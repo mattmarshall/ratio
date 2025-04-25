@@ -125,26 +125,16 @@ ratio/
 
 For detailed component specifications, see the [specs directory](specs/README.md).
 
-## Documentation
+## Documentation & Development
 
-Ratio uses a comprehensive specification system to document all aspects of the project:
+Ratio uses a comprehensive specification system to document all aspects of the project. For detailed guidance, see:
 
-- **Architecture Specs**: System-wide architectural decisions
-- **Feature Specs**: Detailed requirements for user-facing features
-- **Component Specs**: Technical design of system components
-- **Iteration Plans**: Work breakdown for development phases
+- [DEVELOPING.md](DEVELOPING.md) - Development process and spec-driven approach
+- [CONTRIBUTING.md](CONTRIBUTING.md) - How to contribute to the project
+- [CLINE.md](CLINE.md) - Working with Cline and other LLMs on this project
+- [specs/README.md](specs/README.md) - Overview of specifications structure
 
-These specifications help guide development and ensure consistency across the codebase. See the [specs README](specs/README.md) for more information on how to use and contribute to the documentation.
-
-## Development Workflow
-
-When working on Ratio:
-
-1. Start by reviewing the relevant specifications in the `specs/` directory
-2. For new features, create a spec first following the templates in `specs/templates/`
-3. Implement according to the specifications
-4. Update specs as needed when design decisions change during implementation
-5. Include links to relevant specs in PRs and commit messages
+These documents will help you understand the development workflow, contribution process, and how to effectively work with the project's specification-driven development approach.
 
 ## Contributing
 
