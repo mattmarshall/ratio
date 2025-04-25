@@ -8,19 +8,40 @@ The name "Ratio" draws from its Latin roots, where it meant not just "proportion
 
 ## Overview
 
-Ratio is an open-source personal finance tool inspired by GnuCash but focused on implementing only the necessary MVP features for effective household financial management. Built with a hybrid Rust/Python architecture, Ratio provides a fast, efficient CLI/TUI interface while allowing extensibility through Python modules.
+Ratio is an open-source personal finance tool inspired by GnuCash but focused on implementing only the necessary features for effective household financial management. Built with a hybrid Rust/Python architecture, Ratio provides a fast, efficient CLI/TUI interface while allowing extensibility through Python modules.
 
-For detailed design documentation, see the [specs directory](specs/README.md).
+## Quickstart
+
+```bash
+# Clone repository
+git clone https://github.com/yourusername/ratio.git
+cd ratio
+
+# Start PostgreSQL (requires Docker)
+docker-compose up -d postgres
+
+# Build and run
+cargo build
+cargo run
+```
+
+For detailed setup instructions and development environment configuration, see [DEVELOPING.md](DEVELOPING.md).
+
+## Documentation
+
+- **[DEVELOPING.md](DEVELOPING.md)** - Complete development guide, workflow, and spec-driven approach
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Guidelines for contributing to the project
+- **[CLINE.md](CLINE.md)** - Working with Cline and other LLMs on this project
+- **[specs/README.md](specs/README.md)** - Detailed specifications for all components and features
 
 ## Core Features
 
-- **[Account Tracking](specs/features/accounts/account-tracking.md)**: Track multiple accounts (checking, savings, investments) in a unified interface
-- **Liability Management**: Monitor debts, loans, and credit card balances
-- **[Transaction Management](specs/features/transactions/transaction-management.md)**: Record and categorize all financial transactions
-- **Balance Optimization**: Calculate required daily balances to meet all scheduled expenses while maximizing investments and high-yield savings
-- **[Transaction Scheduling](specs/features/scheduling/transaction-scheduling.md)**: Set up recurring transactions for bills, subscriptions, and income
-- **Double-Entry Bookkeeping**: Maintain accurate financial records with built-in validation
-- **Data Visualization**: Terminal-based reports and charts for financial insights
+- **[Account Tracking](specs/features/accounts/account-tracking.md)** - Track multiple accounts in a unified interface
+- **[Transaction Management](specs/features/transactions/transaction-management.md)** - Record and categorize financial transactions
+- **[Transaction Scheduling](specs/features/scheduling/transaction-scheduling.md)** - Set up recurring transactions
+- **Double-Entry Bookkeeping** - Maintain accurate financial records with built-in validation
+- **Balance Optimization** - Maximize investments while ensuring bill coverage
+- **Data Visualization** - Terminal-based reports and charts
 
 ## Technical Architecture
 
@@ -34,17 +55,13 @@ CLI/TUI (Rust) ↔ gRPC API Layer (Rust) ↔ Accounting Kernel (Rust) ↔ Postgr
 
 ### Core Components
 
-- **[Accounting Kernel](specs/components/kernel/accounting-kernel.md)**: Core engine for managing books, accounts, and transactions
-- **[Terminal UI](specs/components/tui/terminal-interface.md)**: User interface built with tui-rs and crossterm
-- **API Layer**: gRPC services for communication between components
-- **Extension System**: Python modules that hook into the accounting kernel via PyO3
-- **Rules Engine**: System for defining custom accounting rules
-- **PostgreSQL Database**: Primary data store with double-entry bookkeeping schema
-
-For detailed technical specifications, see:
-- [Technology Stack](specs/architecture/tech-stack.md)
-- [Data Model](specs/architecture/data-model.md)
-- [API Design](specs/architecture/api-design.md)
+- **[Accounting Kernel](specs/components/kernel/accounting-kernel.md)** - Core accounting engine
+- **[Money Handling](specs/components/kernel/money-handling.md)** - Financial calculations and currency support
+- **[Extension System](specs/components/kernel/extension-system.md)** - Hook system and Python integration
+- **[Terminal UI](specs/components/tui/terminal-interface.md)** - User interface with tui-rs and crossterm
+- **[API Design](specs/architecture/api-design.md)** - gRPC service definitions
+- **[Data Model](specs/architecture/data-model.md)** - Database schema with double-entry support
+- **[Technology Stack](specs/architecture/tech-stack.md)** - Tools, libraries, and implementation choices
 
 ## Development Roadmap
 
@@ -56,94 +73,21 @@ Ratio is being developed in phases:
 
 See the [iteration plans](specs/iterations/) for detailed development roadmaps.
 
-## Development
+## Prerequisites
 
-### Prerequisites
 - Rust 1.70+
 - Python 3.9+
 - PostgreSQL 15+
-- Docker & Docker Compose (for local development)
-
-### Local Development Setup
-```bash
-# Clone repository
-git clone https://github.com/yourusername/ratio.git
-cd ratio
-
-# Start the PostgreSQL container
-docker-compose up -d
-
-# Install dependencies
-cargo build
-pip install -r requirements.txt
-
-# Run migrations
-cargo run --bin migration
-
-# Run development version
-cargo run
-```
-
-### Docker Development Environment
-
-The project includes a Docker Compose setup for local development:
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: ratio
-      POSTGRES_PASSWORD: ratio_dev
-      POSTGRES_DB: ratio_dev
-    volumes:
-      - ratio_pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-
-volumes:
-  ratio_pgdata:
-```
-
-## Project Structure
-
-```
-ratio/
-├── specs/                  # Detailed specifications
-├── src/                    # Rust source code
-│   ├── kernel/             # Accounting kernel
-│   ├── api/                # gRPC API implementation
-│   ├── db/                 # Database interface
-│   └── ui/                 # TUI components
-├── python/                 # Python modules
-├── protos/                 # Protocol buffer definitions
-├── docker/                 # Docker configuration
-└── tests/                  # Test suite
-```
-
-For detailed component specifications, see the [specs directory](specs/README.md).
-
-## Documentation & Development
-
-Ratio uses a comprehensive specification system to document all aspects of the project. For detailed guidance, see:
-
-- [DEVELOPING.md](DEVELOPING.md) - Development process and spec-driven approach
-- [CONTRIBUTING.md](CONTRIBUTING.md) - How to contribute to the project
-- [CLINE.md](CLINE.md) - Working with Cline and other LLMs on this project
-- [specs/README.md](specs/README.md) - Overview of specifications structure
-
-These documents will help you understand the development workflow, contribution process, and how to effectively work with the project's specification-driven development approach.
+- Docker & Docker Compose (for development)
 
 ## Contributing
 
-Contributions are welcome! This project is intended to be developed with assistance from LLM tools like Cline. When contributing:
+Contributions are welcome! This project is intended to be developed with assistance from LLM tools like Cline.
 
-1. Focus on modular design for easier AI-assisted development
-2. Document design decisions clearly in the specs directory
-3. Include comprehensive tests for all features
-4. Follow the established code style guidelines
+Before contributing, please read:
+1. [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines
+2. [DEVELOPING.md](DEVELOPING.md) for development workflow
+3. [CLINE.md](CLINE.md) for working with LLMs effectively
 
 ## License
 
