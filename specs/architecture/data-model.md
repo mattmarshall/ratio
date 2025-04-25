@@ -12,6 +12,47 @@ PostgreSQL 15+ is used as the primary database engine, selected for its reliabil
 - **Temporal Awareness**: All financial data includes timestamps for audit trails
 - **Performance Optimization**: Indexes support common query patterns
 - **Extensibility**: Schema allows for future extensions without major redesigns
+- **Financial Precision**: Money values stored as scaled integers with currency codes for accuracy
+
+## Money Type Implementation
+
+Financial values in Ratio are stored using a custom Money type approach:
+
+- Money amounts are stored as scaled integers (`BIGINT` in the database) 
+- Currency codes are stored as strings (`VARCHAR` in the database)
+- Each currency has an associated decimal places value (e.g., 2 for USD, 0 for JPY)
+- Actual value = amount / 10^decimal_places
+- This approach avoids floating-point errors and ensures exact financial calculations
+
+```rust
+// Implementation overview of the Money type in Rust
+pub struct Money {
+    amount: i64,            // Scaled integer amount
+    currency: Rc<Currency>, // Reference to currency definition
+}
+```
+
+### Currencies Table
+
+```sql
+CREATE TABLE currencies (
+    code VARCHAR(3) PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    symbol VARCHAR(5) NOT NULL,
+    decimal_places SMALLINT NOT NULL,
+    rounding_method VARCHAR(20) NOT NULL DEFAULT 'HALF_UP',
+    active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- Initial data
+INSERT INTO currencies (code, name, symbol, decimal_places, rounding_method) VALUES
+('USD', 'US Dollar', '$', 2, 'HALF_UP'),
+('EUR', 'Euro', '€', 2, 'HALF_UP'),
+('GBP', 'British Pound', '£', 2, 'HALF_UP'),
+('JPY', 'Japanese Yen', '¥', 0, 'HALF_UP');
+```
 
 ## Core Entities
 

@@ -42,9 +42,30 @@ Ratio uses a comprehensive specification system as the foundation for all develo
 ### Specification Types
 
 1. **Architecture Specs**: System-wide technical decisions (tech stack, data model, API design)
+   - Define overall system architecture and technology choices
+   - Located in `specs/architecture/`
+   - Focus on system-wide patterns and standards
+
 2. **Feature Specs**: User-facing functional requirements and behaviors
+   - Focus on what the user can do with the system
+   - Include user stories, acceptance criteria, and functional requirements
+   - Describe requirements from the user's perspective
+   - Located in `specs/features/`
+   - Example: Account tracking, transaction management, scheduling
+
 3. **Component Specs**: Technical design of internal system components
+   - Focus on how the system implements functionality
+   - Detail internal APIs, data structures, and algorithms
+   - Describe implementation details from a developer's perspective
+   - Located in `specs/components/`
+   - Can be hierarchical (breaking larger components into smaller ones)
+   - Example: Accounting kernel, money handling, extension system
+
 4. **Iteration Specs**: Work breakdown and planning for development phases
+   - Define scope and timeline for development iterations
+   - List features and technical tasks to be implemented
+   - Include success criteria and risk mitigations
+   - Located in `specs/iterations/`
 
 ### Benefits of Spec-Driven Development
 

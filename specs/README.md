@@ -20,6 +20,8 @@ This directory contains detailed specifications for the Ratio project, a high-pe
 - **components/** - Technical component specifications
   - **kernel/** - Accounting kernel specifications
     - [accounting-kernel.md](components/kernel/accounting-kernel.md) - Core accounting engine
+    - [money-handling.md](components/kernel/money-handling.md) - Financial calculations and currency support
+    - [extension-system.md](components/kernel/extension-system.md) - Hook system and Python integration
   - **tui/** - Terminal UI specifications
     - [terminal-interface.md](components/tui/terminal-interface.md) - Terminal user interface
 

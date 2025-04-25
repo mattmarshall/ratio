@@ -10,7 +10,7 @@ The Accounting Kernel is the core engine of Ratio, responsible for maintaining t
 - Enforce business rules and constraints on financial operations
 - Manage the lifecycle of financial entities (books, accounts, transactions)
 - Provide a stable API for higher-level components
-- Support extensions through a well-defined hook system
+- Coordinate between specialized sub-components
 
 ## Design
 The Accounting Kernel follows a domain-driven design approach with a clear separation of concerns. It is implemented in Rust for performance, safety, and reliability.
@@ -22,6 +22,15 @@ The Accounting Kernel follows a domain-driven design approach with a clear separ
 - **Event-driven**: Important state changes are communicated through events
 - **Extension Point Pattern**: Well-defined hooks allow for extensions
 
+### Sub-Components
+The Accounting Kernel is composed of several specialized sub-components:
+
+1. **[Money Handling](money-handling.md)**: Provides precise financial calculations with currency support
+2. **[Extension System](extension-system.md)**: Enables extensibility through hooks and Python integration
+3. **Transaction Management**: Core transaction processing logic
+4. **Account Management**: Account hierarchy and balance tracking
+5. **Validation Engine**: Ensures financial data integrity
+
 ### Key Abstractions
 
 #### Domain Models
@@ -31,7 +40,7 @@ pub struct Book {
     pub id: i64,
     pub name: String,
     pub description: Option<String>,
-    pub currency: String,
+    pub default_currency: Rc<Currency>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -87,7 +96,7 @@ pub struct Split {
     pub id: i64,
     pub transaction_id: i64,
     pub account_id: i64,
-    pub amount: Decimal,
+    pub money: Money,  // Using Money type from money-handling.md
     pub debit_credit: DebitCredit,
     pub memo: Option<String>,
     pub reconciled: bool,
@@ -205,46 +214,6 @@ pub trait TransactionRepository {
 }
 ```
 
-### Extension System
-The Accounting Kernel provides extension points through a hook system:
-
-```rust
-/// Hook interface for the transaction creation lifecycle
-pub trait TransactionHook: Send + Sync {
-    /// Called before a transaction is created
-    async fn before_create(&self, transaction: &mut NewTransaction) -> Result<(), Error>;
-    
-    /// Called after a transaction is created
-    async fn after_create(&self, transaction: &Transaction) -> Result<(), Error>;
-    
-    /// Called before a transaction is posted
-    async fn before_post(&self, transaction: &Transaction) -> Result<(), Error>;
-    
-    /// Called after a transaction is posted
-    async fn after_post(&self, transaction: &Transaction) -> Result<(), Error>;
-}
-
-/// Hook registry for managing transaction hooks
-pub struct HookRegistry {
-    transaction_hooks: Vec<Box<dyn TransactionHook>>,
-}
-
-impl HookRegistry {
-    pub fn register_transaction_hook(&mut self, hook: Box<dyn TransactionHook>) {
-        self.transaction_hooks.push(hook);
-    }
-    
-    pub async fn run_before_create_hooks(&self, transaction: &mut NewTransaction) -> Result<(), Error> {
-        for hook in &self.transaction_hooks {
-            hook.before_create(transaction).await?;
-        }
-        Ok(())
-    }
-    
-    // Other hook execution methods...
-}
-```
-
 ## Implementation Details
 
 ### Double-Entry Validation
@@ -258,25 +227,36 @@ impl TransactionService for DefaultTransactionService {
             return Err(ValidationError::InsufficientSplits);
         }
         
-        // Calculate total debits and credits
-        let total_debits: Decimal = transaction.splits
-            .iter()
-            .filter(|s| s.debit_credit == DebitCredit::Debit)
-            .map(|s| s.amount)
-            .sum();
+        // Group splits by currency
+        let mut currency_groups: HashMap<String, Vec<&Split>> = HashMap::new();
+        for split in &transaction.splits {
+            let currency_code = split.money.currency().code.clone();
+            currency_groups.entry(currency_code).or_default().push(split);
+        }
+        
+        // Validate each currency group separately
+        for (currency, splits) in currency_groups {
+            let money_service = self.money_service_provider.get_service();
             
-        let total_credits: Decimal = transaction.splits
-            .iter()
-            .filter(|s| s.debit_credit == DebitCredit::Credit)
-            .map(|s| s.amount)
-            .sum();
+            // Calculate total debits and credits
+            let mut total_debits = Money::zero(money_service.get_currency(&currency).unwrap());
+            let mut total_credits = Money::zero(money_service.get_currency(&currency).unwrap());
             
-        // Ensure debits equal credits
-        if total_debits != total_credits {
-            return Err(ValidationError::UnbalancedTransaction { 
-                debits: total_debits, 
-                credits: total_credits 
-            });
+            for split in splits {
+                match split.debit_credit {
+                    DebitCredit::Debit => total_debits = total_debits.add(&split.money).unwrap(),
+                    DebitCredit::Credit => total_credits = total_credits.add(&split.money).unwrap(),
+                }
+            }
+            
+            // Ensure debits equal credits for each currency
+            if !total_debits.equals(&total_credits) {
+                return Err(ValidationError::UnbalancedTransaction { 
+                    currency, 
+                    debits: total_debits, 
+                    credits: total_credits 
+                });
+            }
         }
         
         Ok(())
@@ -285,8 +265,9 @@ impl TransactionService for DefaultTransactionService {
     async fn post_transaction(&self, id: i64) -> Result<Transaction, Error> {
         let transaction = self.get_transaction(id).await?;
         
-        // Run pre-post hooks
-        self.hook_registry.run_before_post_hooks(&transaction).await?;
+        // Run pre-post hooks using the extension system
+        let hook_registry = self.extension_service.hook_registry();
+        hook_registry.run_before_post_hooks(&transaction).await?;
         
         // Validate transaction
         self.validate_transaction(&transaction)?;
@@ -299,12 +280,17 @@ impl TransactionService for DefaultTransactionService {
         // Update account balances
         for split in &transaction.splits {
             self.account_balance_service
-                .update_balance(split.account_id, split.amount, split.debit_credit)
+                .update_balance(split.account_id, &split.money, split.debit_credit)
                 .await?;
         }
         
         // Run post-post hooks
-        self.hook_registry.run_after_post_hooks(&updated).await?;
+        hook_registry.run_after_post_hooks(&updated).await?;
+        
+        // Publish event to the event bus
+        self.extension_service.event_bus().publish(
+            KernelEvent::TransactionPosted(updated.clone())
+        ).await?;
         
         Ok(updated)
     }
@@ -332,8 +318,11 @@ impl AccountBalanceService for DefaultAccountBalanceService {
             .await?;
             
         // Calculate balance from transaction splits
-        let mut balance = Decimal::ZERO;
-        let mut pending_balance = Decimal::ZERO;
+        let money_service = self.money_service_provider.get_service();
+        let currency = money_service.get_currency(&account.currency)
+            .ok_or_else(|| Error::InvalidCurrency(account.currency.clone()))?;
+            
+        let mut balance = Money::zero(Rc::clone(&currency));
         
         for transaction in transactions {
             for split in transaction.splits {
@@ -341,16 +330,16 @@ impl AccountBalanceService for DefaultAccountBalanceService {
                     match split.debit_credit {
                         DebitCredit::Debit => {
                             if account.account_type.normal_balance() == DebitCredit::Debit {
-                                balance += split.amount;
+                                balance = balance.add(&split.money)?;
                             } else {
-                                balance -= split.amount;
+                                balance = balance.subtract(&split.money)?;
                             }
                         },
                         DebitCredit::Credit => {
                             if account.account_type.normal_balance() == DebitCredit::Credit {
-                                balance += split.amount;
+                                balance = balance.add(&split.money)?;
                             } else {
-                                balance -= split.amount;
+                                balance = balance.subtract(&split.money)?;
                             }
                         }
                     }
@@ -358,23 +347,53 @@ impl AccountBalanceService for DefaultAccountBalanceService {
             }
         }
         
-        // TODO: Calculate pending balance from pending transactions
+        // Calculate pending balance from pending transactions
+        let pending_filters = TransactionFilters {
+            account_ids: vec![account_id],
+            status: Some(TransactionStatus::Pending),
+            end_date: as_of,
+            ..Default::default()
+        };
         
-        Ok(AccountBalance {
+        let (pending_transactions, _) = self.transaction_repository
+            .find_by_book(account.book_id, &pending_filters, &Pagination::all())
+            .await?;
+            
+        let mut pending_balance = Money::zero(Rc::clone(&currency));
+        
+        // Similar calculation for pending transactions...
+        
+        // Run hooks for balance calculation
+        let hook_registry = self.extension_service.hook_registry();
+        
+        // Run before balance calculation hooks
+        hook_registry.run_before_balance_calculation_hooks(account_id, as_of).await?;
+        
+        let account_balance = AccountBalance {
             account_id,
             balance,
             pending_balance,
-            available_balance: balance + pending_balance,
+            available_balance: balance.add(&pending_balance)?,
             as_of: as_of.unwrap_or_else(Utc::now),
-        })
+        };
+        
+        // Run after balance calculation hooks
+        hook_registry.run_after_balance_calculation_hooks(&account_balance).await?;
+        
+        // Publish event
+        self.extension_service.event_bus().publish(
+            KernelEvent::BalanceCalculated(account_balance.clone())
+        ).await?;
+        
+        Ok(account_balance)
     }
 }
 ```
 
 ## Dependencies
+- **Money Handling Component**: For financial calculations and currency management
+- **Extension System Component**: For hooks, events, and Python integration
 - **Database Layer**: For persistence of accounting data
-- **Event System**: For communicating state changes
-- **Extension System**: For integrating with Python extensions
 - **API Layer**: For exposing services to clients
 
 ## Performance Considerations
@@ -405,8 +424,14 @@ pub enum Error {
     /// Business rule violations
     BusinessRuleViolation(String),
     
+    /// Money-related errors
+    Money(MoneyError),
+    
     /// Extension errors
     Extension(String),
+    
+    /// Invalid currency
+    InvalidCurrency(String),
     
     /// Unexpected errors
     Internal(String),
@@ -415,7 +440,11 @@ pub enum Error {
 /// Validation error types
 pub enum ValidationError {
     /// Transaction is not balanced
-    UnbalancedTransaction { debits: Decimal, credits: Decimal },
+    UnbalancedTransaction { 
+        currency: String,
+        debits: Money, 
+        credits: Money 
+    },
     
     /// Insufficient splits in transaction
     InsufficientSplits,
@@ -435,98 +464,6 @@ The kernel will be thoroughly tested using:
 - **Integration Tests**: For service interactions
 - **Property-Based Tests**: For validating accounting rules
 - **Benchmarks**: For performance-critical operations
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[tokio::test]
-    async fn test_transaction_validation() {
-        let service = create_test_transaction_service();
-        
-        // Create a balanced transaction
-        let transaction = Transaction {
-            id: 1,
-            book_id: 1,
-            transaction_date: Utc::now().date_naive(),
-            post_date: None,
-            description: "Test Transaction".to_string(),
-            reference: None,
-            status: TransactionStatus::Pending,
-            splits: vec![
-                Split {
-                    id: 1,
-                    transaction_id: 1,
-                    account_id: 1,
-                    amount: Decimal::from(100),
-                    debit_credit: DebitCredit::Debit,
-                    memo: None,
-                    reconciled: false,
-                    reconciled_at: None,
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                },
-                Split {
-                    id: 2,
-                    transaction_id: 1,
-                    account_id: 2,
-                    amount: Decimal::from(100),
-                    debit_credit: DebitCredit::Credit,
-                    memo: None,
-                    reconciled: false,
-                    reconciled_at: None,
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                },
-            ],
-            metadata: HashMap::new(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        
-        // Validation should pass
-        let result = service.validate_transaction(&transaction);
-        assert!(result.is_ok());
-        
-        // Create an unbalanced transaction
-        let unbalanced_transaction = Transaction {
-            // Same as above but with different amounts
-            splits: vec![
-                Split {
-                    id: 1,
-                    transaction_id: 1,
-                    account_id: 1,
-                    amount: Decimal::from(100),
-                    debit_credit: DebitCredit::Debit,
-                    memo: None,
-                    reconciled: false,
-                    reconciled_at: None,
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                },
-                Split {
-                    id: 2,
-                    transaction_id: 1,
-                    account_id: 2,
-                    amount: Decimal::from(90),
-                    debit_credit: DebitCredit::Credit,
-                    memo: None,
-                    reconciled: false,
-                    reconciled_at: None,
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                },
-            ],
-            ..transaction
-        };
-        
-        // Validation should fail
-        let result = service.validate_transaction(&unbalanced_transaction);
-        assert!(matches!(result, Err(ValidationError::UnbalancedTransaction { .. })));
-    }
-}
-```
 
 ## Security Considerations
 - **Input Validation**: All inputs are validated before processing

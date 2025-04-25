@@ -18,13 +18,14 @@ This document outlines the technology choices for Ratio, a high-performance CLI/
   - Mature ecosystem
 
 ### UI Frameworks
-- **TUI Framework**: Either tui-rs or cursive for terminal-based user interface
+- **TUI Framework**: tui-rs with crossterm for terminal-based user interface
   - Provides responsive, keyboard-driven interface
   - Supports complex layouts and custom widgets
   - Cross-platform compatibility
+  - Enables low-level control for custom financial widgets
 
 ### API & Communication
-- **gRPC**: For service definitions and client-server communication
+- **gRPC**: For service definitions and client-server communication using Tonic
   - Strongly typed API with Protocol Buffers
   - Efficient binary serialization
   - Support for streaming for real-time updates
@@ -34,9 +35,16 @@ This document outlines the technology choices for Ratio, a high-performance CLI/
 - **Docker**: For containerized development and deployment
   - Consistent environments across development and production
   - Easy setup for new contributors
-- **sqlx-cli**: For database migrations management
-  - Type-safe SQL in Rust
+  - Multi-stage builds with Alpine/distroless base images for production
+  - Optimized container size and startup time
+- **sqlx**: For database access and migrations management
+  - Type-safe SQL in Rust with sqlx-cli for migrations
   - Compile-time verification of SQL queries
+  - Connection pooling and transaction management
+- **GitHub Actions**: For continuous integration and deployment
+  - Automated testing and building
+  - Docker image creation and optimization
+  - Release management and versioning
 
 ## Component Architecture
 
@@ -57,6 +65,49 @@ This document outlines the technology choices for Ratio, a high-performance CLI/
 │                 │                          │                 │
 └─────────────────┘                          └─────────────────┘
 ```
+
+## Project Structure
+
+The application is organized as a Cargo workspace with multiple crates to promote modularity and clear separation of concerns:
+
+```
+ratio/
+├── crates/
+│   ├── ratio-kernel/    # Core accounting functionality
+│   ├── ratio-api/       # gRPC service implementations
+│   ├── ratio-tui/       # Terminal UI components
+│   ├── ratio-common/    # Shared types and utilities
+│   └── ratio/           # Main binary crate with subcommands
+```
+
+### Crate Responsibilities
+
+- **ratio-common**: Contains shared types, utilities, and the Money type implementation used across all crates
+- **ratio-kernel**: Implements the core accounting engine with domain models and business logic
+- **ratio-api**: Provides gRPC services that expose kernel functionality
+- **ratio-tui**: Implements the terminal user interface
+- **ratio**: Main binary crate that serves as the entry point with subcommand architecture
+
+### Binary Architecture
+
+Ratio uses a single-binary approach with Git-like subcommands:
+
+```
+ratio                   # Main executable
+├── account             # Account management subcommands
+│   ├── create          # Create a new account
+│   ├── list            # List accounts
+│   └── ...
+├── transaction         # Transaction subcommands
+│   ├── add             # Add a new transaction
+│   ├── search          # Search transactions
+│   └── ...
+├── report              # Reporting subcommands
+├── schedule            # Scheduled transaction subcommands
+└── server              # Run in server mode
+```
+
+This approach provides a unified CLI experience while maintaining modular code organization.
 
 ## Technology Choices Rationale
 
@@ -91,6 +142,20 @@ This document outlines the technology choices for Ratio, a high-performance CLI/
 - Python: 3.9+
 - PostgreSQL: 15+
 - Docker & Docker Compose: Latest stable
+
+## Library Requirements
+
+- **Core Libraries**:
+  - sqlx: Database access with compile-time checked queries
+  - tonic: gRPC implementation
+  - tui-rs and crossterm: Terminal user interface
+  - PyO3: Python extension system integration
+  
+- **Supporting Libraries**:
+  - serde: Serialization and deserialization
+  - tokio: Async runtime
+  - tracing: Logging and instrumentation
+  - chrono: Date and time handling
 
 ## Development Environment
 
