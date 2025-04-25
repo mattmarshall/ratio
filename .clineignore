@@ -1,0 +1,89 @@
+# Ratio .clineignore file
+# This file tells Cline which files and directories to ignore when analyzing the codebase
+
+# Build artifacts
+/target/
+/dist/
+/build/
+**/*.rs.bk
+**/*.so
+**/*.o
+**/*.a
+**/*.pyc
+**/*.pyo
+**/__pycache__/
+**/.pytest_cache/
+
+# Dependencies and packages
+/node_modules/
+**/node_modules/
+/.cargo/
+/.rustup/
+/venv/
+/.venv/
+/.env/
+/.pyenv/
+**/.eggs/
+**/*.egg-info/
+**/.pnp*
+
+# Database files
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.psql
+**/*.dump
+
+# Docker files
+.dockerignore
+Dockerfile
+docker-compose*.yml
+
+# Temporary files and backups
+**/*~
+**/*.swp
+**/*.swo
+**/*.tmp
+**/*.bak
+**/.DS_Store
+**/Thumbs.db
+**/.direnv/
+**/.nix/
+
+# IDE and editor files
+/.vscode/
+/.idea/
+/.vs/
+*.iml
+**/*.sublime-*
+**/.project
+**/.classpath
+**/.settings/
+
+# Generated docs
+/docs/build/
+/docs/site/
+/docs/_build/
+/docs/api/
+/docs/generated/
+
+# Large data files
+**/*.csv
+**/*.xlsx
+**/*.parquet
+**/*.arrow
+**/*.json
+!package.json
+!tsconfig.json
+!cargo.json
+!pyrproject.json
+
+# Log files
+**/*.log
+**/logs/
+**/log/
+
+# Testing artifacts
+/coverage/
+/.coverage
+/.tox/
