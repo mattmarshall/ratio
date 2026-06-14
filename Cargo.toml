@@ -1,0 +1,16 @@
+# Ratio — Cargo workspace. The crate set follows specs/architecture/tech-stack.md.
+# `ratio-common` + `ratio-kernel` become Lean-authored/emitted in Phase 1; for the
+# Phase-0 skeleton they are hand-written stubs that establish the build graph.
+[workspace]
+resolver = "2"
+members = [
+    "crates/ratio-common",
+    "crates/ratio-kernel",
+    "crates/ratio-api",
+    "crates/ratio-tui",
+    "crates/ratio",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"

@@ -1,0 +1,37 @@
+"""ratio — Lean-authored, Rust-emitted personal-finance app on the fastverk stack.
+
+Phase 0: Rust toolchain + crate_universe so the Cargo workspace builds under Bazel.
+Later phases add rules_lean (the Lean kernel + emitter), rules_aip (proto lint),
+rules_rust_prost (gRPC), and meridian (TUI) — the latter two via local_path_override
+since meridian/polyglot_ast are not yet in a public registry.
+"""
+
+module(name = "ratio", version = "0.0.0")
+
+bazel_dep(name = "rules_rust", version = "0.70.0")
+
+# Rust toolchain pinned to 1.85.0 to match the fastverk ecosystem (meridian),
+# so ratio's eventual @meridian//rust deps share one toolchain.
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2021",
+    versions = ["1.85.0"],
+)
+use_repo(rust, "rust_toolchains")
+register_toolchains("@rust_toolchains//:all")
+
+# crate_universe reads the Cargo workspace; external crates resolve as @crates//:<name>.
+crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+crate.from_cargo(
+    name = "crates",
+    cargo_lockfile = "//:Cargo.lock",
+    manifests = [
+        "//:Cargo.toml",
+        "//crates/ratio-common:Cargo.toml",
+        "//crates/ratio-kernel:Cargo.toml",
+        "//crates/ratio-api:Cargo.toml",
+        "//crates/ratio-tui:Cargo.toml",
+        "//crates/ratio:Cargo.toml",
+    ],
+)
+use_repo(crate, "crates")

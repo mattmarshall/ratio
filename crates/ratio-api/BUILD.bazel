@@ -1,0 +1,19 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+rust_library(
+    name = "ratio-api",
+    srcs = ["src/lib.rs"],
+    crate_name = "ratio_api",
+    edition = "2021",
+    deps = ["//crates/ratio-kernel"],
+)
+
+rust_test(
+    name = "ratio-api_test",
+    crate = ":ratio-api",
+    edition = "2021",
+)

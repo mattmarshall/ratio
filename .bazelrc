@@ -1,0 +1,7 @@
+common --enable_bzlmod
+
+# Resolve the public fastverk registry first (rules_aip, rules_lean, …), then BCR
+# (rules_rust, protobuf, …). meridian + polyglot_ast come via local_path_override
+# (MODULE.bazel) until they're published — premium registry is retired.
+common --registry=https://raw.githubusercontent.com/fastverk/bazel-registry/main/
+common --registry=https://bcr.bazel.build

@@ -1,0 +1,15 @@
+[package]
+name = "ratio"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "ratio"
+path = "src/main.rs"
+
+[dependencies]
+ratio-common = { path = "../ratio-common" }
+ratio-kernel = { path = "../ratio-kernel" }
+ratio-api = { path = "../ratio-api" }
+ratio-tui = { path = "../ratio-tui" }
+anyhow = "1"

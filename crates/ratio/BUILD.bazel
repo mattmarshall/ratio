@@ -1,0 +1,18 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+rust_binary(
+    name = "ratio",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    deps = [
+        "//crates/ratio-api",
+        "//crates/ratio-common",
+        "//crates/ratio-kernel",
+        "//crates/ratio-tui",
+        "@crates//:anyhow",
+    ],
+)

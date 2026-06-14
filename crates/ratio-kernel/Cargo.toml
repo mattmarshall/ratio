@@ -1,0 +1,10 @@
+[package]
+name = "ratio-kernel"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+ratio-common = { path = "../ratio-common" }

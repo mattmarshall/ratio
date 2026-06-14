@@ -1,0 +1,10 @@
+package(default_visibility = ["//visibility:public"])
+
+# Exposed for crate_universe's `manifests` (the workspace root manifest).
+exports_files(["Cargo.toml"])
+
+# Convenience: `bazel run //:ratio`.
+alias(
+    name = "ratio",
+    actual = "//crates/ratio:ratio",
+)
