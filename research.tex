@@ -1,0 +1,131 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\title{A Formally Grounded Accounting Kernel for High-Performance Financial Systems}
+\author{}
+\date{December 2025}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Modern financial accounting systems must simultaneously deliver high performance,
+strict correctness guarantees, auditability, reproducibility, and adaptability to
+evolving business rules. In practice, these requirements are often addressed through
+large, expressive application codebases that entangle domain semantics with core
+accounting mechanics, complicating both correctness reasoning and performance
+optimization.
+
+We propose a formally grounded architecture in which economic computation is expressed
+as conservation over integer-valued vector spaces, enforced by a minimal, deterministic
+accounting kernel. All business semantics are externalized into a versioned,
+content-addressed control plane compiled into immutable artifacts. This separation
+enables high assurance, deterministic replay, and auditability without sacrificing
+throughput or extensibility.
+\end{abstract}
+
+\section{Motivation and Problem Statement}
+
+Financial accounting systems are foundational infrastructure for modern financial
+institutions. They are expected to provide absolute correctness while operating at
+large scale and under continuously evolving regulatory and business constraints.
+However, most production systems interleave accounting invariants with business logic,
+procedural workflows, and mutable configuration, making correctness difficult to
+reason about and performance unpredictable.
+
+This work proposes an alternative architectural approach: a small, non-expressive
+accounting kernel that enforces invariants mechanically, paired with a declarative,
+versioned control plane that defines all higher-level semantics. The central design
+principle is that economic computation should be treated as a system of conserved
+quantities rather than as ad hoc procedural logic.
+
+\section{Accounting as Conservation Laws}
+
+At the core of the system, accounting state is modeled as integer-valued vectors over a
+dynamically extensible basis of dimensions. Each dimension represents a conserved
+quantity, such as currency units, positions, tax lots, or profit-and-loss components.
+Transactions are expressed as balanced vectors over this space, generalizing classical
+double-entry accounting to arbitrary conserved dimensions.
+
+Ledger state is derived by deterministically folding an append-only transaction log
+using associative (monoidal) aggregation. Because all valid transactions conserve
+value across the relevant dimensions, the system provides intrinsic guarantees of
+internal consistency, replayability, and auditability independent of business logic.
+
+\section{A Minimal, Deterministic Kernel}
+
+The accounting kernel is intentionally non-expressive. Its sole responsibility is to
+enforce mechanical invariants such as balance, conservation, and deterministic
+aggregation. It encodes no business semantics and exposes no mutable configuration.
+
+To maximize throughput and predictability, the kernel is implemented using
+cache-aligned, fixed-width binary records and branch-minimal aggregation loops.
+Performance is therefore dominated by memory bandwidth rather than control flow
+complexity. Floating-point arithmetic is avoided entirely in favor of fixed-precision
+integer representations, ensuring exact conservation and deterministic replay across
+hardware architectures.
+
+\section{Externalized Semantics via a Control Plane}
+
+All domain semantics---including posting rules, account mappings, interpretation
+policies, and workflow composition---are defined outside the kernel in a declarative
+control plane. Control-plane specifications are treated as immutable computational
+inputs rather than mutable configuration.
+
+Each control-plane artifact is authored in a human-oriented declarative form, compiled
+into a canonical typed representation, and published as a content-addressed,
+cryptographically verifiable artifact. Artifacts are frozen per accounting epoch, such
+as a net asset value (NAV) period. Every transaction produced by the system explicitly
+references the hash of the control-plane artifact under which it was generated.
+
+This design eliminates semantic race conditions and enables complete provenance
+reconstruction. Any ledger state can be replayed exactly as computed, under the precise
+semantic rules in force at the time of execution.
+
+\section{External Data as Typed Facts}
+
+External data dependencies, including prices, foreign exchange rates, and reference
+data, are modeled as first-class typed facts with explicit provenance, temporal
+semantics, and source policies. Data acquisition is not implicit; instead, it is
+expressed as an explicit effect plan describing a dependency graph of I/O operations.
+
+Effect plans are annotated with latency, cost, and concurrency constraints, allowing
+performance and scalability to be reasoned about declaratively. Determinism is preserved
+by binding all computations to immutable fact sets that are explicitly referenced by
+ledger entries.
+
+\section{Role of Large Language Models}
+
+Large language models are integrated strictly as assistive tools. Their role is limited
+to translating human intent into declarative specifications, generating explanations,
+and proposing candidate transformations. They are never treated as authorities over
+financial truth.
+
+All semantic validity is enforced by deterministic compilers and invariant checks.
+An agent-orchestrated control plane coordinates intent capture, validation, compilation,
+simulation, and approval, ensuring that machine learning components cannot violate core
+accounting guarantees.
+
+\section{System Organization and Governance}
+
+The system is organized as a layered, hermetic workspace in which the accounting kernel,
+intermediate representations, and compilers evolve together under strong dependency
+constraints. Governance services, authoring interfaces, and runtime deployment are
+decoupled from this core via signed, content-addressed artifacts.
+
+This structure enables rapid evolution while preserving correctness guarantees,
+auditability, and long-term reproducibility.
+
+\section{Contributions and Implications}
+
+This architecture synthesizes principles from programming languages, database systems,
+and computer architecture into a unified substrate for institutional accounting. By
+treating accounting as deterministic conservation over immutable inputs, the system
+achieves high assurance and high performance simultaneously, without sacrificing
+extensibility or transparency.
+
+\end{document}
