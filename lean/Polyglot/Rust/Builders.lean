@@ -534,4 +534,15 @@ def mkStructItemD (name : String) (fields : List (String × Json))
        ("ident", Json.str name),
        ("fields", fieldsJson)]))]
 
+/-- `pub fn name(params) -> output { stmts }` — like `mkFnItem` but `pub`, for
+the crate's public API. -/
+def mkFnItemD (name : String) (params : List Json) (output : Json)
+    (stmts : List Json) : Json :=
+  Json.mkObj [("fn", Json.mkObj
+    [("vis", Json.str "pub"),
+     ("ident", Json.str name),
+     ("inputs", Json.arr params.toArray),
+     ("output", output),
+     ("stmts", Json.arr stmts.toArray)])]
+
 end Polyglot.Rust.Builders

@@ -1,17 +1,19 @@
 //! ratio — the binary entry point (git-style subcommands: account / transaction
-//! / report / schedule / server). Phase-0 stub: links every crate + anyhow so
-//! the full graph (incl. crate_universe external deps) builds and runs.
+//! / report / schedule / server). Phase-1 stub: exercises the Lean-authored
+//! Money API so the full graph builds + runs.
 
 use anyhow::Result;
+use ratio_kernel::{money_add, money_is_zero, usd_zero, Currency, Money};
 
 fn main() -> Result<()> {
+    let z = usd_zero();
+    let sum = money_add(z, Money { minor: 250, currency: Currency::Usd });
     println!(
-        "ratio {} — {} / {} / {} / {}",
+        "ratio {} — zero={:?} is_zero={} | zero + 2.50 = {:?}",
         env!("CARGO_PKG_VERSION"),
-        ratio_common::CRATE,
-        ratio_kernel::CRATE,
-        ratio_api::CRATE,
-        ratio_tui::CRATE,
+        z,
+        money_is_zero(z),
+        sum,
     );
     Ok(())
 }

@@ -1,20 +1,20 @@
 //! ratio-kernel — the double-entry accounting engine.
 //!
-//! Phase-0 stub. In Phase 1 the domain (Account/Split/Transaction, posting +
-//! balance logic) is authored + proven in Lean and emitted to Rust.
+//! Phase 1 (this increment) wires the Lean-authored Money layer; the
+//! Account/Split/Transaction model + the balance/normal-side invariant proofs
+//! land in Phase 1b (authored + proven in Lean, emitted here like ratio-common).
 
-/// Placeholder marker for the Phase-0 build graph.
-pub const CRATE: &str = "ratio-kernel";
+pub use ratio_common::*;
 
-/// Smoke that the dependency edge to `ratio-common` links.
-pub fn common_crate() -> &'static str {
-    ratio_common::CRATE
+/// A zero USD amount — smoke that the Lean-emitted Money API links + composes.
+pub fn usd_zero() -> Money {
+    money_zero(Currency::Usd)
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
-    fn links_common() {
-        assert_eq!(super::common_crate(), "ratio-common");
+    fn usd_zero_is_zero() {
+        assert!(super::money_is_zero(super::usd_zero()));
     }
 }

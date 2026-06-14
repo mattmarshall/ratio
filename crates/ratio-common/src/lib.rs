@@ -1,16 +1,11 @@
-//! ratio-common — shared value types (Money, Currency).
+//! ratio-common — shared value types (Money, Currency, RoundingMethod).
 //!
-//! Phase-0 stub. In Phase 1 this crate's domain types are authored in Lean
-//! (`//lean/Ratio/...`) and emitted to Rust via `@polyglot_ast`'s Rust builders;
-//! the emitted `ratio_common.rs` replaces this stub and is `lean_regen_test`-gated.
+//! `generated.rs` is **authored in Lean** (`//lean:Ratio/Common/Emit.lean`) and
+//! emitted to Rust via the `Polyglot.Rust` builders; a `diff_test` gates it so
+//! Lean stays the source of truth (regenerate with `//lean:ratio_common_rs`).
+//! The algebraic properties of the Money operations are proven in `Ratio.Core`
+//! (`//lean:money_proof_test`). Hand-written Rust (idiomatic wrappers, trait
+//! impls) belongs here in `lib.rs`, alongside the generated module.
 
-/// Placeholder marker for the Phase-0 build graph.
-pub const CRATE: &str = "ratio-common";
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn crate_name() {
-        assert_eq!(super::CRATE, "ratio-common");
-    }
-}
+mod generated;
+pub use generated::*;
