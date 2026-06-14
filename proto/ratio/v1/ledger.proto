@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+// Ratio's accounting kernel API — the canonical typed representation of a
+// transaction (research.tex §"Externalized Semantics"). A transaction is an
+// integer vector over a conserved-dimension basis; it is valid iff its postings
+// net to zero across every dimension (conservation). AIP-idiomatic (aip.dev);
+// lints clean via //proto:ratio_aip_lint.
+//
+// Layout: lives at `ratio/v1/ledger.proto` (via strip_import_prefix) so the
+// path matches `package ratio.v1`, satisfying AIP-191.
+package ratio.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+
+option java_multiple_files = true;
+option java_package = "com.fastverk.ratio.v1";
+option java_outer_classname = "LedgerProto";
+
+// The accounting kernel: posts and reads balanced transactions over a ledger.
+service Ledger {
+  option (google.api.default_host) = "ratio.fastverk.dev";
+
+  // Gets a transaction. (AIP-131)
+  rpc GetTransaction(GetTransactionRequest) returns (Transaction) {
+    option (google.api.http) = {get: "/v1/{name=books/*/transactions/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Lists the transactions in a book. (AIP-132)
+  rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=books/*}/transactions"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Posts a transaction. The kernel rejects it (FAILED_PRECONDITION) unless its
+  // postings net to zero across every dimension — conservation is the sole
+  // invariant. (AIP-133)
+  rpc CreateTransaction(CreateTransactionRequest) returns (Transaction) {
+    option (google.api.http) = {
+      post: "/v1/{parent=books/*}/transactions"
+      body: "transaction"
+    };
+    option (google.api.method_signature) = "parent,transaction,transaction_id";
+  }
+}
+
+// A balanced transaction: an integer vector over a conserved-dimension basis,
+// valid iff its postings net to zero per dimension. (AIP-123)
+message Transaction {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Transaction"
+    pattern: "books/{book}/transactions/{transaction}"
+    singular: "transaction"
+    plural: "transactions"
+  };
+
+  // Identifier. The resource name of the transaction.
+  // Format: `books/{book}/transactions/{transaction}`
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The postings — the vector's components. Must net to zero per dimension.
+  repeated Posting postings = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // Hash of the control-plane artifact under which this transaction was
+  // generated — provenance for deterministic replay (research.tex §4).
+  string control_plane_hash = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// One component of a transaction's integer vector: a conserved dimension and an
+// exact integer amount in minor units (cents, …). Never floating point.
+message Posting {
+  // The conserved dimension (account / currency / position / tax-lot id).
+  int64 dim = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The signed amount in minor units. Exact integer; no floats.
+  int64 amount = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// Request message for `GetTransaction`. (AIP-131)
+message GetTransactionRequest {
+  // The name of the transaction to retrieve.
+  // Format: `books/{book}/transactions/{transaction}`
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "ratio.fastverk.dev/Transaction"}
+  ];
+}
+
+// Request message for `ListTransactions`. (AIP-132)
+message ListTransactionsRequest {
+  // The book to list transactions from.
+  // Format: `books/{book}`
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {child_type: "ratio.fastverk.dev/Transaction"}
+  ];
+
+  // The maximum number of transactions to return. The service may return fewer.
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // A page token from a previous `ListTransactions` call.
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// Response message for `ListTransactions`. (AIP-132)
+message ListTransactionsResponse {
+  // The transactions in the requested page.
+  repeated Transaction transactions = 1;
+
+  // A token to retrieve the next page, or empty if there are no more.
+  string next_page_token = 2;
+}
+
+// Request message for `CreateTransaction`. (AIP-133)
+message CreateTransactionRequest {
+  // The book to post the transaction into.
+  // Format: `books/{book}`
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {child_type: "ratio.fastverk.dev/Transaction"}
+  ];
+
+  // The transaction to post. Must be balanced (conservation).
+  Transaction transaction = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // Optional client-assigned transaction id. (AIP-133)
+  string transaction_id = 3 [(google.api.field_behavior) = OPTIONAL];
+}

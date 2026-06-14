@@ -11,6 +11,12 @@ module(name = "ratio", version = "0.0.0")
 bazel_dep(name = "rules_rust", version = "0.70.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
 
+# Phase 2: the gRPC API contract + AIP lint. protobuf is a direct dep so the
+# `@protobuf//...:prefer_prebuilt_protoc` flag (in .bazelrc) resolves.
+bazel_dep(name = "rules_aip", version = "0.2.1")
+bazel_dep(name = "protobuf", version = "33.4")
+bazel_dep(name = "googleapis", version = "0.0.0-20260422-20ac242a")
+
 # Rust toolchain pinned to 1.85.0 to match the fastverk ecosystem (meridian),
 # so ratio's eventual @meridian//rust deps share one toolchain.
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")

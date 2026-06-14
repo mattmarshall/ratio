@@ -1,0 +1,23 @@
+load("@rules_aip//aip:defs.bzl", "aip_proto_library", "aip_proto_lint")
+
+package(default_visibility = ["//visibility:public"])
+
+# proto_library + the standard AIP googleapis deps (annotations, field_behavior,
+# resource, client). strip_import_prefix makes the import path
+# `ratio/v1/ledger.proto` match `package ratio.v1` (AIP-191).
+aip_proto_library(
+    name = "ratio_proto",
+    srcs = ["ratio/v1/ledger.proto"],
+    strip_import_prefix = "/proto",
+)
+
+# `bazel test //proto:ratio_aip_lint` runs the AIP linter over the contract.
+# `has-comments` is disabled: rules_aip 0.2.1 lints a descriptor set built
+# without source_code_info, so api-linter can't see proto comments at all (its
+# own bookstore example fails the rule identically) — a false positive here, the
+# contract is thoroughly commented. Re-enable once rules_aip emits source info.
+aip_proto_lint(
+    name = "ratio_aip_lint",
+    disable_rules = ["core::0192::has-comments"],
+    proto = ":ratio_proto",
+)
