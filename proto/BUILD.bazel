@@ -1,4 +1,5 @@
 load("@rules_aip//aip:defs.bzl", "aip_proto_library", "aip_proto_lint")
+load("@rules_rust_prost//:defs.bzl", "rust_prost_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -9,6 +10,13 @@ aip_proto_library(
     name = "ratio_proto",
     srcs = ["ratio/v1/ledger.proto"],
     strip_import_prefix = "/proto",
+)
+
+# prost + tonic Rust codegen from the contract — the `ratio.v1` messages +
+# `Ledger` service trait/client/server, for ratio-api.
+rust_prost_library(
+    name = "ratio_rust_proto",
+    proto = ":ratio_proto",
 )
 
 # `bazel test //proto:ratio_aip_lint` runs the AIP linter over the contract.

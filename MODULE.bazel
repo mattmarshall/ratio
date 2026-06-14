@@ -17,6 +17,11 @@ bazel_dep(name = "rules_aip", version = "0.2.1")
 bazel_dep(name = "protobuf", version = "33.4")
 bazel_dep(name = "googleapis", version = "0.0.0-20260422-20ac242a")
 
+# prost + tonic codegen for the gRPC server. The DEFAULT rules_rust_prost
+# toolchain (with tonic) applies — ratio needs a real gRPC server, unlike
+# meridian's wasm-constrained tonic-free override.
+bazel_dep(name = "rules_rust_prost", version = "0.70.0")
+
 # Rust toolchain pinned to 1.85.0 to match the fastverk ecosystem (meridian),
 # so ratio's eventual @meridian//rust deps share one toolchain.
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
