@@ -35,3 +35,19 @@ crate.from_cargo(
     ],
 )
 use_repo(crate, "crates")
+
+# Lean toolchain (Phase 0b → Phase 1). The accounting domain is authored +
+# proven in Lean and emitted to Rust via the vendored `Polyglot.Rust` builders
+# + `lean_emit`. Dep-free Lean core, provisioned by rules_lean's lake.workspace
+# (pinned v4.30.0-rc2 to match the polyglot emitter sources).
+bazel_dep(name = "rules_lean", version = "0.5.1")
+
+lake = use_extension("@rules_lean//lean:lake.bzl", "lake")
+lake.workspace(
+    name = "ratio_lean_ws",
+    lakefile = "//lean:lakefile.lean",
+    lake_manifest = "//lean:lake-manifest.json",
+    lean_toolchain = "//lean:lean-toolchain",
+)
+use_repo(lake, "ratio_lean_ws")
+register_toolchains("@ratio_lean_ws//:lean_toolchain_def")

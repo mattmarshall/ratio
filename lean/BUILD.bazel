@@ -1,0 +1,19 @@
+load("@rules_lean//lean:lean.bzl", "lean_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "lakefile.lean",
+    "lake-manifest.json",
+    "lean-toolchain",
+])
+
+# Toolchain smoke: passes iff the Lean toolchain elaborates a trivial file.
+# Phase 1 adds the Money / double-entry `lean_test` proofs + the `lean_emit`
+# Rust emitters here.
+lean_test(
+    name = "smoke_test",
+    size = "small",
+    srcs = ["Smoke.lean"],
+    entry = "Smoke.lean",
+)
