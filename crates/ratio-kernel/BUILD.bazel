@@ -1,12 +1,18 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
 exports_files(["Cargo.toml"])
 
+# `src/generated.rs` (Posting/Transaction) is Lean-authored + emitted; `lib.rs`
+# is the hand-written shell + the conservation check (mirrors proven Ratio.Core).
 rust_library(
     name = "ratio-kernel",
-    srcs = ["src/lib.rs"],
+    srcs = [
+        "src/generated.rs",
+        "src/lib.rs",
+    ],
     crate_name = "ratio_kernel",
     edition = "2021",
     deps = ["//crates/ratio-common"],
@@ -16,4 +22,13 @@ rust_test(
     name = "ratio-kernel_test",
     crate = ":ratio-kernel",
     edition = "2021",
+)
+
+# Regen gate: the committed generated.rs must equal the Lean emit. Regenerate:
+#   bazel build //lean:ratio_kernel_rs && \
+#     cp bazel-bin/lean/ratio_kernel.gen.rs crates/ratio-kernel/src/generated.rs
+diff_test(
+    name = "generated_regen_test",
+    file1 = "src/generated.rs",
+    file2 = "//lean:ratio_kernel_rs",
 )
