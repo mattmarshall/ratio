@@ -9,6 +9,7 @@ members = [
     "crates/ratio-api",
     "crates/ratio-tui",
     "crates/ratio",
+    "rust/json_to_rust",
 ]
 
 [workspace.package]

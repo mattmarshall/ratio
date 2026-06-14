@@ -1,0 +1,22 @@
+# Vendored from rules_texlive (originally rules_lang's rust_ast_io). Renders
+# syn-serde JSON (emitted by the Lean Polyglot.Rust builders) to formatted Rust
+# via prettyplease. A build-time tool, not part of the ratio runtime.
+[package]
+name = "json_to_rust"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "json_to_rust"
+path = "src/main.rs"
+
+# Reverse direction — Rust source → syn-serde JSON. Used to discover the exact
+# shape a new Polyglot.Rust builder must emit (the inspect-cycle).
+[[bin]]
+name = "rust_to_json"
+path = "src/rust_to_json.rs"
+
+[dependencies]
+syn = { version = "2", features = ["full", "extra-traits"] }
+syn-serde = { version = "0.3", features = ["json"] }
+prettyplease = "0.2"

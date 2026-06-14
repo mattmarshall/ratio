@@ -9,6 +9,7 @@ since meridian/polyglot_ast are not yet in a public registry.
 module(name = "ratio", version = "0.0.0")
 
 bazel_dep(name = "rules_rust", version = "0.70.0")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
 
 # Rust toolchain pinned to 1.85.0 to match the fastverk ecosystem (meridian),
 # so ratio's eventual @meridian//rust deps share one toolchain.
@@ -32,6 +33,7 @@ crate.from_cargo(
         "//crates/ratio-api:Cargo.toml",
         "//crates/ratio-tui:Cargo.toml",
         "//crates/ratio:Cargo.toml",
+        "//rust/json_to_rust:Cargo.toml",
     ],
 )
 use_repo(crate, "crates")

@@ -1,0 +1,19 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+# Renders the Lean-emitted syn-serde JSON to formatted Rust (syn-serde +
+# prettyplease, with serde_stacker lifting the recursion limit). Driven by the
+# `//lean:*_rs` genrules.
+rust_binary(
+    name = "json_to_rust",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    deps = [
+        "@crates//:prettyplease",
+        "@crates//:syn",
+        "@crates//:syn-serde",
+    ],
+)

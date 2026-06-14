@@ -1,4 +1,6 @@
-load("@rules_lean//lean:lean.bzl", "lean_test")
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@rules_lean//lean:lean.bzl", "lean_emit", "lean_test")
+load("@rules_rust//rust:defs.bzl", "rust_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -9,11 +11,56 @@ exports_files([
 ])
 
 # Toolchain smoke: passes iff the Lean toolchain elaborates a trivial file.
-# Phase 1 adds the Money / double-entry `lean_test` proofs + the `lean_emit`
-# Rust emitters here.
+# Phase 1 adds the Money / double-entry `lean_test` proofs here.
 lean_test(
     name = "smoke_test",
     size = "small",
     srcs = ["Smoke.lean"],
     entry = "Smoke.lean",
+)
+
+# ─── Lean → Rust emit pipeline (Phase 0b) ──────────────────────────────────
+# `Ratio.Common.Emit` builds ratio-common's items as a syn::File JSON via the
+# vendored `Polyglot.Rust` builders; `json_to_rust` renders it to formatted
+# Rust. Phase 0b smoke: a `Money` struct. Phase 1 grows the kernel + adds the
+# `lean_regen_test` gate against a committed `crates/ratio-common/src/lib.rs`.
+_EMITTER_SRCS = [
+    "Polyglot/Rust/RustAst.lean",
+    "Polyglot/Rust/Builders.lean",
+    "Ratio/Common/Emit.lean",
+]
+
+lean_emit(
+    name = "ratio_common_ast",
+    srcs = _EMITTER_SRCS,
+    entry = "Ratio/Common/Emit.lean",
+    out = "ratio_common.ast.json",
+)
+
+genrule(
+    name = "ratio_common_rs",
+    srcs = [":ratio_common_ast"],
+    outs = ["ratio_common.gen.rs"],
+    cmd = "$(execpath //rust/json_to_rust:json_to_rust) $(execpath :ratio_common_ast) > $@",
+    tools = ["//rust/json_to_rust:json_to_rust"],
+)
+
+# Smoke: the Lean-emitted Rust compiles.
+rust_library(
+    name = "ratio_common_emitted",
+    srcs = [":ratio_common_rs"],
+    crate_name = "ratio_common_emitted",
+    crate_root = ":ratio_common_rs",
+    edition = "2021",
+)
+
+# Regen gate: the committed reference must equal the Lean-emitted Rust — so the
+# Lean source is authoritative and any drift (edit the .lean without regen, or
+# hand-edit the .rs) fails the build. Regenerate with:
+#   bazel build //lean:ratio_common_rs && \
+#     cp bazel-bin/lean/ratio_common.gen.rs lean/Ratio/Common/ratio_common.expected.rs
+diff_test(
+    name = "ratio_common_regen_test",
+    file1 = "Ratio/Common/ratio_common.expected.rs",
+    file2 = ":ratio_common_rs",
 )
