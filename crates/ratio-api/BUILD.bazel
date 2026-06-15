@@ -9,7 +9,10 @@ rust_library(
     srcs = ["src/lib.rs"],
     crate_name = "ratio_api",
     edition = "2021",
-    deps = ["//crates/ratio-kernel"],
+    deps = [
+        "//crates/ratio-kernel",
+        "//proto:ratio_rust_proto",  # generated crate `ratio_proto` (ratio.v1)
+    ],
 )
 
 rust_test(
