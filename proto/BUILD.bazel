@@ -1,5 +1,6 @@
 load("@rules_aip//aip:defs.bzl", "aip_proto_library", "aip_proto_lint")
-load("@rules_rust_prost//:defs.bzl", "rust_prost_library")
+load("@rules_rust//rust:defs.bzl", "rust_library_group")
+load("@rules_rust_prost//:defs.bzl", "rust_prost_library", "rust_prost_toolchain")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -17,6 +18,40 @@ aip_proto_library(
 rust_prost_library(
     name = "ratio_rust_proto",
     proto = ":ratio_proto",
+)
+
+# Custom prost+tonic toolchain whose runtimes are ratio's OWN @crates (tonic +
+# prost), so the generated crate, ratio-api's `impl Ledger`, and the server all
+# link ONE tonic — no cross-crate-universe version skew (the default toolchain
+# bundles its own tonic). Registered in MODULE.bazel so it wins resolution.
+rust_library_group(
+    name = "prost_runtime",
+    deps = ["@crates//:prost"],
+)
+
+rust_library_group(
+    name = "tonic_runtime",
+    deps = [
+        ":prost_runtime",
+        "@crates//:tonic",
+    ],
+)
+
+rust_prost_toolchain(
+    name = "prost_toolchain_impl",
+    prost_plugin = "@rules_rust_prost//private/3rdparty/crates:protoc-gen-prost__protoc-gen-prost",
+    prost_plugin_flag = "--plugin=protoc-gen-prost=%s",
+    prost_runtime = ":prost_runtime",
+    prost_types = "@crates//:prost-types",
+    tonic_plugin = "@rules_rust_prost//private/3rdparty/crates:protoc-gen-tonic__protoc-gen-tonic",
+    tonic_plugin_flag = "--plugin=protoc-gen-tonic=%s",
+    tonic_runtime = ":tonic_runtime",
+)
+
+toolchain(
+    name = "prost_toolchain",
+    toolchain = ":prost_toolchain_impl",
+    toolchain_type = "@rules_rust_prost//:toolchain_type",
 )
 
 # `bazel test //proto:ratio_aip_lint` runs the AIP linter over the contract.

@@ -13,3 +13,6 @@ ratio-kernel = { path = "../ratio-kernel" }
 ratio-api = { path = "../ratio-api" }
 ratio-tui = { path = "../ratio-tui" }
 anyhow = "1"
+# The `server` subcommand: a tonic gRPC server on a tokio runtime.
+tonic = "0.12"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

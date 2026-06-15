@@ -12,6 +12,8 @@ rust_library(
     deps = [
         "//crates/ratio-kernel",
         "//proto:ratio_rust_proto",  # generated crate `ratio_proto` (ratio.v1)
+        "@crates//:tokio",
+        "@crates//:tonic",
     ],
 )
 

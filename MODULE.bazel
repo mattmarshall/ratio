@@ -32,6 +32,10 @@ rust.toolchain(
 use_repo(rust, "rust_toolchains")
 register_toolchains("@rust_toolchains//:all")
 
+# Our prost+tonic toolchain (runtimes = @crates) wins over rules_rust_prost's
+# default, so codegen + consumers share one tonic. See //proto:prost_toolchain.
+register_toolchains("//proto:prost_toolchain")
+
 # crate_universe reads the Cargo workspace; external crates resolve as @crates//:<name>.
 crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
 crate.from_cargo(

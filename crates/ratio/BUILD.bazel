@@ -13,6 +13,9 @@ rust_binary(
         "//crates/ratio-common",
         "//crates/ratio-kernel",
         "//crates/ratio-tui",
+        "//proto:ratio_rust_proto",  # LedgerServer (ratio_proto)
         "@crates//:anyhow",
+        "@crates//:tokio",
+        "@crates//:tonic",
     ],
 )
