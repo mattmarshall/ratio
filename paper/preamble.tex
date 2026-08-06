@@ -1,0 +1,83 @@
+\documentclass[10pt,letterpaper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{microtype}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{pgfplotstable}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc,backgrounds,matrix,shapes.geometric,decorations.pathreplacing}
+\usepgfplotslibrary{statistics}
+\usepackage{graphicx}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  citecolor=blue!55!black,
+  urlcolor=blue!55!black,
+}
+
+% Theorem environments. `lthm` carries the Lean theorem name that
+% discharges the proof, so every claim points at a machine-checked source.
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+
+% \leanref{Theorem.name} — typesets the Lean source of record for a result.
+\newcommand{\leanref}[1]{%
+  \hfill{\footnotesize\textsf{Lean: \texttt{#1}}}}
+
+% Shorthand for the conserved-vector notation used throughout.
+\newcommand{\rvec}{\mathbf{v}}
+\newcommand{\rzero}{\mathbf{0}}
+\newcommand{\rdim}{\mathcal{D}}
+\newcommand{\rledger}{\mathcal{L}}
+\newcommand{\rconserves}{\textsf{Conserves}}
+
+\title{Ratio: A Formally Grounded Accounting Kernel\\
+       \large {\normalfont Conservation laws, a non-expressive kernel,
+       and machine-checked correctness for financial systems}}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Production accounting systems entangle three things that should never
+share a blast radius: the mechanical invariants of double-entry, the
+business semantics that interpret them, and the I/O that feeds them.
+The result is software where correctness cannot be reasoned about in
+isolation and performance is unpredictable. \emph{Ratio} proposes a
+different decomposition. We model economic computation as
+\textbf{conservation over integer-valued vector spaces}: a transaction
+is an integer vector over a basis of conserved dimensions, it is valid
+exactly when it nets to zero on every dimension, and the ledger is a
+deterministic monoidal fold of the append-only transaction log.
+Conservation is preserved by aggregation, so the ledger is internally
+consistent and exactly replayable \emph{independent of any business
+logic}. We make this precise and \emph{prove} it: the core algebra and
+the conservation law are mechanically checked in Lean~4, and the Rust
+the application runs is \emph{emitted} from the same Lean source, closing
+the gap between the proof and the artifact. All business semantics are
+externalized to a versioned, content-addressed control plane; external
+data enters as typed facts with explicit provenance; and large language
+models are confined to translating intent into specifications they can
+never override. The payoff is high assurance and high throughput at
+once: a branch-minimal, fixed-width, integer-only kernel whose cost is
+dominated by memory bandwidth rather than control-flow complexity.
+\end{abstract}

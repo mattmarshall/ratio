@@ -1,0 +1,42 @@
+% Black box (legacy) vs glass box (Ratio): the central marketing contrast.
+\begin{figure}[h]
+\centering
+\resizebox{0.96\textwidth}{!}{%
+\begin{tikzpicture}[
+  >={Stealth[length=2.4mm]}, font=\sffamily,
+  io/.style={font=\sffamily\footnotesize, text=ratioBrown, align=center},
+  comp/.style={rounded corners=2pt, draw=ratioTan, fill=ratioCream,
+               font=\sffamily\footnotesize, text=ratioInk, align=center,
+               minimum height=7mm, text width=30mm, inner sep=2pt},
+]
+% ── Left: legacy black box ──
+\node[rectangle, rounded corners=5pt, fill=ratioInk, minimum width=46mm,
+      minimum height=34mm] (lb) at (0,0) {};
+\node[font=\sffamily\bfseries, text=white] at (0,1.35) {Incumbent platform};
+\node[font=\fontsize{30}{30}\selectfont\bfseries, text=ratioSand] at (0,-0.2) {?};
+\node[io, text=ratioInk] at (0,-2.55) {``Trust the output.''};
+\node[io] (lin) at (-4.6,0.4) {transactions,\\ prices};
+\node[io] (lout) at (4.6,0.4) {reports,\\ NAV, tax lots};
+\draw[->, ratioBrown] (lin) -- (lb.west);
+\draw[->, ratioBrown] (lb.east) -- (lout);
+
+% ── Right: Ratio glass box ──
+\begin{scope}[xshift=11.2cm]
+\node[rectangle, rounded corners=5pt, draw=ratioBrown, line width=1pt,
+      fill=ratioSand!35, minimum width=50mm, minimum height=34mm] (rb) at (0,0) {};
+\node[font=\sffamily\bfseries, text=ratioInk] at (0,1.35) {Ratio};
+\node[comp] (k) at (0,0.45) {Conservation kernel \yes\,proven};
+\node[comp] (p) at (0,-0.55) {Lean~4 proof \,$\to$\, Rust};
+\node[comp] (l) at (0,-1.45) {append-only, integer-exact ledger};
+\node[io, text=posGreen] at (0,-2.55) {``Verify the output.''};
+\node[io] (rin) at (-5.0,0.4) {transactions,\\ prices};
+\node[io] (rout) at (5.0,0.4) {reports +\\ checkable proof};
+\draw[->, ratioBrown] (rin) -- (rb.west);
+\draw[->, ratioBrown] (rb.east) -- (rout);
+\end{scope}
+\end{tikzpicture}%
+}
+\caption*{\small\color{ratioBrown}\sffamily Legacy engines are opaque: identical
+inputs, an unseeable middle, and output you take on faith. Ratio's engine is
+transparent and proven --- and emits a checkable result, not just a number.}
+\end{figure}

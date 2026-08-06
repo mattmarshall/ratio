@@ -1,0 +1,47 @@
+% Capability comparison matrix. \yes full, \partialmark partial, \no none.
+\begingroup
+\renewcommand{\arraystretch}{1.35}
+\setlength{\tabcolsep}{5pt}
+\begin{center}
+\sffamily\footnotesize
+\begin{tabular}{@{}p{0.40\textwidth}*{5}{>{\centering\arraybackslash}p{0.085\textwidth}}@{}}
+\rowcolor{ratioInk}
+\textbf{\color{white}Capability} &
+\textbf{\color{white}Ratio} &
+\textbf{\color{white}Black Diamond} &
+\textbf{\color{white}Orion} &
+\textbf{\color{white}Addepar} &
+\textbf{\color{white}Tamarac} \\
+\arrayrulecolor{ratioSand}\midrule
+Investment accounting: multi-currency, positions, tax lots, P\&L &
+\yes & \yes & \yes & \yes & \yes \\
+\rowcolor{ratioCream}
+Performance reporting \& client portal &
+\partialmark & \yes & \yes & \yes & \yes \\
+Formally verified (machine-checked) accounting kernel &
+\yes & \no & \no & \no & \no \\
+\rowcolor{ratioCream}
+Bit-exact, reproducible historical replay &
+\yes & \no & \no & \partialmark & \no \\
+Content-addressed, immutable audit trail &
+\yes & \partialmark & \partialmark & \partialmark & \partialmark \\
+\rowcolor{ratioCream}
+Open core, self-hostable, no data lock-in &
+\yes & \no & \no & \no & \no \\
+Inspectable engine (read the arithmetic) &
+\yes & \no & \no & \no & \no \\
+\rowcolor{ratioCream}
+AI authoring with the model fenced from the ledger &
+\yes & \partialmark & \partialmark & \partialmark & \no \\
+Extensible in code (Rust / Python) &
+\yes & \no & \partialmark & \partialmark & \no \\
+\rowcolor{ratioCream}
+Pricing decoupled from assets under management &
+\yes & \no & \no & \no & \no \\
+\arrayrulecolor{ratioSand}\bottomrule
+\end{tabular}
+
+\smallskip
+{\color{ratioBrown}\footnotesize \yes\ full \quad \partialmark\ partial / emerging \quad \no\ not offered (or not inspectable)}
+\end{center}
+\endgroup

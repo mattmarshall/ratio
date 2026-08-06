@@ -1,0 +1,88 @@
+load(
+    "@rules_tectonic//tectonic:defs.bzl",
+    "tex_paper",
+    "tex_section",
+)
+
+package(default_visibility = ["//visibility:public"])
+
+# The Ratio whitepaper: theory, math, machine-checked proofs, and the
+# value proposition. Composed from typed section fragments and compiled
+# to a PDF by tectonic.
+#
+#   bazel build //paper:ratio   ->  bazel-bin/paper/ratio.pdf
+#
+# Figures: the system-architecture diagram is rendered to vector PDF from
+# PlantUML by rules_puml (//paper/figures:fig_architecture_diagram); the
+# conceptual diagrams and quantitative charts are native TikZ / pgfplots.
+# All figure artifacts ride in via tex_paper.extra_srcs.
+
+tex_section(
+    name = "intro",
+    src = "sections/intro.tex",
+    section_label = "sec:intro",
+    cites = ["pacioli1494summa", "ellerman1985mathematics"],
+)
+
+tex_section(
+    name = "conservation",
+    src = "sections/conservation.tex",
+    section_label = "sec:conservation",
+    cites = ["ellerman1985mathematics", "goldberg1991floating", "hutton1999fold"],
+)
+
+tex_section(
+    name = "proofs",
+    src = "sections/proofs.tex",
+    section_label = "sec:proofs",
+    cites = ["demoura2021lean"],
+)
+
+tex_section(
+    name = "kernel",
+    src = "sections/kernel.tex",
+    section_label = "sec:kernel",
+    cites = ["aip"],
+)
+
+tex_section(
+    name = "emission",
+    src = "sections/emission.tex",
+    section_label = "sec:emission",
+)
+
+tex_section(
+    name = "control",
+    src = "sections/control.tex",
+    section_label = "sec:control",
+    cites = ["merkle1987digital"],
+)
+
+tex_section(
+    name = "evaluation",
+    src = "sections/evaluation.tex",
+    section_label = "sec:eval",
+)
+
+tex_section(
+    name = "conclusion",
+    src = "sections/conclusion.tex",
+    section_label = "sec:conclusion",
+)
+
+tex_paper(
+    name = "ratio",
+    preamble = "preamble.tex",
+    sections = [
+        ":intro",
+        ":conservation",
+        ":proofs",
+        ":kernel",
+        ":emission",
+        ":control",
+        ":evaluation",
+        ":conclusion",
+    ],
+    bibliography = "bibliography.tex",
+    extra_srcs = ["//paper/figures:figures"],
+)

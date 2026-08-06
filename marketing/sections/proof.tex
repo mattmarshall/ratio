@@ -1,0 +1,34 @@
+\section{Proof, Not Promises}
+
+``Formally verified'' can sound like an academic flourish. For a wealth platform
+it is the opposite --- it is the most practical guarantee a buyer can get. Here is
+what it actually means for your firm.
+
+\begin{itemize}
+  \item \textbf{The ledger cannot silently go out of balance.} Ratio's core
+  theorem says: assemble a ledger from valid transactions, and the ledger is
+  balanced --- proved for every possible sequence of inputs, by a proof assistant.
+  This is not ``we tested the common cases.'' It is a guarantee that the failure
+  mode every accounting system fears has been ruled out mathematically.
+  \item \textbf{The engine you run is the engine that was proved.} Ratio generates
+  its production code from the verified source, with a build gate that fails if the
+  two ever diverge. There is no gap between ``the model we reasoned about'' and
+  ``the software that shipped'' --- the classic place where verified systems quietly
+  rot.
+  \item \textbf{Exactness, not tolerance.} Money is integer minor units, never
+  floating point. Sums are associative and exact; there is no rounding epsilon to
+  tune and no end-of-day reconciliation pass to absorb drift. The number is the
+  number.
+  \item \textbf{Reproducibility you can hand to an auditor.} Because inputs are
+  immutable and the rules are pinned by content hash, any prior state replays
+  bit-for-bit. ``Show me exactly how this figure was computed, under the policy in
+  force that quarter'' is a deterministic re-run, not an investigation.
+\end{itemize}
+
+\begin{callout}
+\sffamily\color{ratioInk}
+\textbf{The buyer's translation.} Fewer reconciliation FTEs. Faster, cleaner
+audits. Restatements that are provably correct. A platform whose central numbers
+you can defend to a regulator, a client, or a court --- because they are backed by
+a proof, not a brand.
+\end{callout}

@@ -1,0 +1,35 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+Ratio is a bet that the mechanical core of accounting is a conservation
+law and should be treated like one: stated as mathematics, proved once,
+and relied on forever. We modeled accounting state as integer vectors
+over a basis of conserved dimensions, defined validity as conservation
+($\rvec = \rzero$), and defined the ledger as the monoidal fold of an
+append-only log. The central guarantee --- that a ledger assembled from
+balanced transactions is itself balanced (\cref{thm:conservation}) --- is
+machine-checked in Lean~4, and classical double-entry falls out as the
+one-dimensional instance (\cref{thm:double-entry}).
+
+Three architectural commitments turn that theorem into a system.
+\emph{Non-expressiveness} keeps the kernel small enough to prove and
+cheap enough to run --- branch-minimal, fixed-width, integer-only, with a
+cost dominated by memory bandwidth (\cref{sec:kernel}).
+\emph{Emission} closes the proof-to-artifact gap: the running Rust is
+generated from the proven Lean, so the deployed kernel inherits the proof
+instead of approximating it (\cref{sec:emission}).
+\emph{Externalization} relocates all business semantics to a
+content-addressed control plane and all external data to typed facts with
+explicit provenance, fencing learned components out of the trusted core
+(\cref{sec:control}).
+
+The result synthesizes ideas from programming languages, databases, and
+computer architecture into one substrate: high assurance and high
+throughput \emph{simultaneously}, with auditability and deterministic
+replay as structural properties rather than bolted-on features. Treating
+accounting as deterministic conservation over immutable inputs is what
+makes all three compatible at once. The same recipe --- a proven,
+non-expressive kernel; emission from proof to artifact; and expressiveness
+externalized to a versioned, content-addressed plane --- applies to any
+domain whose core is a conservation law wearing a costume of business
+rules.

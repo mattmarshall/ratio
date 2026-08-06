@@ -1,0 +1,34 @@
+\section{AI You Can Actually Trust}
+
+Every platform in the category is now shipping AI. The question that matters is not
+\emph{whether} a vendor has an LLM feature --- it is \emph{where the model sits
+relative to your numbers}. Bolt a generative model onto a black-box ledger and you
+have added a confident, occasionally-wrong author with write access to financial
+truth.
+
+Ratio's architecture answers the question structurally. Large language models live
+\emph{above} a hard trust boundary; the proven kernel lives below it. A model can:
+
+\begin{itemize}
+  \item translate an advisor's plain-language intent into a precise, typed
+  specification;
+  \item draft client-ready explanations of a position, a fee, or a performance
+  result; and
+  \item propose posting rules, mappings, and reconciliations for human review.
+\end{itemize}
+
+% Scoped to conservation: the kernel proves conservation, not authorization.
+% Authorization/access control is a separate control plane, not a kernel
+% theorem, so we do not claim it here (crank-001 finding C1/D2).
+\noindent What a model \emph{cannot} do is write an entry that violates
+conservation. Every proposal is compiled and checked against the kernel's
+conservation invariant before it can affect a ledger; anything that fails to
+conserve value is rejected at the boundary. The worst case for a hallucination
+is a discarded suggestion --- never an unbalanced book.
+
+\begin{callout}
+\sffamily\color{ratioInk}
+\textbf{Net:} you get the productivity of an AI copilot for the parts that are
+genuinely language problems --- intent, explanation, drafting --- with a
+mathematical guarantee that the model can never be the reason a number is wrong.
+\end{callout}

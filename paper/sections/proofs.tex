@@ -1,0 +1,153 @@
+\section{Formal Proofs}
+\label{sec:proofs}
+
+The results of \cref{sec:conservation} are not informal. Each is a
+theorem in \texttt{Ratio.Core}, a dependency-free Lean~4~\cite{demoura2021lean}
+development that
+uses only the core library and the \texttt{omega} decision procedure for
+linear integer arithmetic --- no Mathlib, no axioms beyond Lean's
+kernel. This section gives the proofs at the level of detail a reader
+needs to check them by hand; the Lean source is the machine-checked
+source of record, and each statement is tagged with the name that
+discharges it.
+
+\subsection{The algebra is a commutative group}
+
+The pointwise operations of \cref{def:vec} inherit their laws from
+$\mathbb{Z}$ dimension by dimension.
+
+\begin{lemma}[Group laws, pointwise]
+\label{lem:group}
+For all $\mathbf{a},\mathbf{b},\mathbf{c} \in \mathbb{Z}^{\rdim}$:
+\[
+\begin{aligned}
+  \mathbf{a}+\mathbf{b} &= \mathbf{b}+\mathbf{a}, &
+  (\mathbf{a}+\mathbf{b})+\mathbf{c} &= \mathbf{a}+(\mathbf{b}+\mathbf{c}), \\
+  \mathbf{a}+\rzero &= \mathbf{a}, &
+  \mathbf{a}+(-\mathbf{a}) &= \rzero.
+\end{aligned}
+\]
+\leanref{Ratio.Vec.add\_comm/assoc/zero/neg}
+\end{lemma}
+
+\begin{proof}
+Each equation is between functions $\rdim \to \mathbb{Z}$, so by
+function extensionality it suffices to fix an arbitrary $d$ and prove the
+scalar equation. After unfolding the pointwise definitions, every case
+reduces to an identity of linear integer arithmetic --- e.g.\
+$\mathbf{a}(d) + \mathbf{b}(d) = \mathbf{b}(d) + \mathbf{a}(d)$ for
+commutativity, $\mathbf{a}(d) + (-\mathbf{a}(d)) = 0$ for the inverse ---
+each closed by \texttt{omega}. In Lean the four proofs are one line apiece
+(\texttt{funext d; show \ldots; omega}).
+\end{proof}
+
+\subsection{Conservation is a subgroup}
+
+\begin{lemma}[Closure of conservation]
+\label{lem:closure}
+$\rconserves(\rzero)$; and for all $\mathbf{a},\mathbf{b}$,
+\[
+  \rconserves(\mathbf{a}) \wedge \rconserves(\mathbf{b})
+  \Rightarrow \rconserves(\mathbf{a}+\mathbf{b}),
+  \qquad
+  \rconserves(\mathbf{a}) \Rightarrow \rconserves(-\mathbf{a}).
+\]
+\leanref{Ratio.conserves\_zero/add/neg}
+\end{lemma}
+
+\begin{proof}
+$\rconserves(\rvec)$ unfolds to $\rvec = \rzero$, so $\rconserves(\rzero)$ holds
+by reflexivity. For closure under $+$: from $\mathbf{a} = \rzero$ and
+$\mathbf{b} = \rzero$ rewrite to get $\mathbf{a}+\mathbf{b} = \rzero + \rzero$,
+which is $\rzero$ by \cref{lem:group}'s identity law. For closure under
+negation: from $\mathbf{a} = \rzero$, $-\mathbf{a} = -\rzero = \rzero$
+pointwise (\texttt{omega} on $-(0)=0$).
+\end{proof}
+
+\Cref{lem:closure} is exactly the statement that the balanced
+transactions form a subgroup of $\mathbb{Z}^{\rdim}$. The conservation law
+is then an induction that this subgroup absorbs the fold.
+
+\subsection{The conservation law}
+
+\begin{lemma}[Fold stays conserving]
+\label{lem:fold}
+For every log and every accumulator $\textit{acc}$, if
+$\rconserves(\textit{acc})$ and every transaction in the log conserves,
+then $\rconserves(\mathrm{foldl}\,(+)\,\textit{acc}\,\textit{log})$.
+\leanref{Ratio.foldl\_conserves}
+\end{lemma}
+
+\begin{proof}
+By induction on the log.
+\emph{Base.} For the empty log the fold returns $\textit{acc}$, which
+conserves by hypothesis.
+\emph{Step.} For $\textit{log} = t :: ts$, the fold takes one step to
+$\mathrm{foldl}\,(+)\,(\textit{acc}+t)\,ts$. The new accumulator
+$\textit{acc}+t$ conserves by closure under $+$ (\cref{lem:closure}),
+since $\textit{acc}$ conserves and $t \in (t::ts)$ conserves by
+hypothesis. The remaining transactions $ts$ all conserve (they are a
+sub-list), so the induction hypothesis applies and yields the result.
+\end{proof}
+
+\begin{theorem}[Conservation law]
+\label{thm:conservation}
+If every transaction in an append-only log conserves value, then the
+folded ledger conserves value:
+\[
+  \big(\forall t \in \textit{log},\; \rconserves(t)\big)
+  \;\Longrightarrow\;
+  \rconserves\!\big(\rledger(\textit{log})\big).
+\]
+\leanref{Ratio.ledger\_conserves}
+\end{theorem}
+
+\begin{proof}
+$\rledger(\textit{log}) = \mathrm{foldl}\,(+)\,\rzero\,\textit{log}$ by
+\cref{def:ledger}. Apply \cref{lem:fold} with $\textit{acc} = \rzero$,
+whose conservation is $\rconserves(\rzero)$ from \cref{lem:closure}.
+\end{proof}
+
+\Cref{thm:conservation} is the whole game. It is a closed-form guarantee,
+quantified over \emph{all} logs of \emph{all} lengths, that a ledger
+assembled from balanced transactions is itself balanced --- proved
+structurally, checked by machine. No production accounting system we know
+of can state its central invariant this way, let alone prove it.
+
+\subsection{Double-entry, recovered}
+
+To show the generalization loses nothing, we recover classical
+double-entry as the one-dimensional instance. Let
+$\mathrm{total}[a_1,\dots,a_n] = \sum_i a_i$ and call a split list
+\emph{balanced} when its total is $0$.
+
+\begin{theorem}[Two-leg postings balance]
+\label{thm:double-entry}
+For every amount $a$, the posting $[a, -a]$ is balanced:
+$\mathrm{total}[a,-a] = 0$.
+\leanref{Ratio.balanced\_pair}
+\end{theorem}
+
+\begin{proof}
+$\mathrm{total}[a,-a] = a + (-a + 0) = 0$ by \texttt{omega}. The empty
+posting is balanced by reflexivity (\texttt{balanced\_nil}). These
+are the $|\rdim|=1$ shadows of \cref{lem:group}'s inverse and identity
+laws.
+\end{proof}
+
+\subsection{What is and is not proved}
+
+The kernel's \emph{arithmetic} is proved: the group structure, the
+subgroup closures, and the conservation law hold for all inputs. What is
+deliberately \emph{not} a theorem is any business claim --- that a
+particular posting rule maps a particular event correctly, or that an
+account's normal balance is debit. Those are policy, and policy lives in
+the control plane (\cref{sec:control}). The normal-balance table
+(\texttt{Ratio.normalSide}) is carried in Lean as a \emph{checked example}
+of such policy --- assets and expenses are debit-normal, liabilities,
+equity, and income credit-normal (\texttt{asset\_debit\_normal}, etc.) ---
+precisely to demonstrate the boundary: it is decidable and checked, but it
+is not a kernel invariant and the kernel does not depend on it.
+\Cref{tab:trust} summarizes the trust boundary.
+
+\input{figures/tab_trust.tex}

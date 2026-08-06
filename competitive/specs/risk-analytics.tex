@@ -1,0 +1,49 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Risk Analytics \& Scenario Modeling}{risk-analytics}
+
+Forward-looking analysis: risk metrics, stress tests, and what-if scenario
+projection over current portfolios.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{Orion}{Risk Intelligence --- ``understand risk, uncover opportunity''}
+\advrow{Addepar}{Navigator --- advanced scenario modeling / project future outcomes}
+\advrow{SS\&C Black Diamond}{Monte Carlo simulations (investment management)}
+\advrow{Envestnet Tamarac}{Risk/analytics within Reporting}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Portfolio risk metrics and exposure analysis.
+  \item Scenario / what-if modeling to project future outcomes.
+  \item Monte Carlo simulation for goal and outcome probabilities.
+  \item Stress testing; opportunity identification across portfolios.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} Scenario modeling runs candidate states through a
+sandboxed instance of the proven kernel, seeded with typed market facts ---
+so projections inherit the engine's exactness and the inputs' provenance.
+Risk computation is a read-only analytical layer (Rust/Python extensions) over
+ledger projections; it never mutates the book. ``Which price set drove this
+projection'' is answerable by hash.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Analytical tier + simulation over the trusted core.} Read-only;
+provenance-bound to fact sets.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://orion.com/advisor-tech}
+  \item \url{https://addepar.com/wealth-management}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

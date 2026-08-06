@@ -1,0 +1,75 @@
+\section{Externalized Semantics and Typed Facts}
+\label{sec:control}
+
+If the kernel is non-expressive, the expressiveness must live somewhere.
+In Ratio it lives in two planes that sit \emph{outside} the trusted core:
+a content-addressed control plane for semantics, and a typed-fact plane
+for external data. Both are designed so that nothing they do can violate
+the conservation law, and so that everything they do is reconstructible
+after the fact.
+
+\subsection{The control plane}
+
+All domain semantics --- posting rules, account mappings, interpretation
+policy, normal-balance classification, workflow composition --- are
+declarative inputs, not engine behavior. Each control-plane artifact is
+authored in a human-oriented form, compiled to a canonical typed
+representation, and published as a \emph{content-addressed},
+cryptographically verifiable artifact identified by its
+hash~\cite{merkle1987digital}.
+
+Two properties follow. First, \textbf{semantic versioning by hash}:
+artifacts are frozen per accounting epoch (e.g.\ a NAV period), and every
+transaction the system produces records the hash of the control-plane
+artifact under which it was generated. There is no ``current
+configuration'' that a transaction implicitly depends on and that might
+later change underneath it --- the dependency is explicit and immutable.
+Second, \textbf{provenance reconstruction}: any ledger state can be
+replayed exactly under the precise semantics in force when it was
+computed, because those semantics are a pinned input rather than mutable
+state. This eliminates the semantic race conditions that plague systems
+where a rule edit silently re-interprets historical postings.
+
+Crucially, the control plane cannot break conservation. It chooses
+\emph{which} balanced transaction to emit for a given business event;
+the kernel still independently checks that the emitted transaction nets
+to zero before it is admitted (\cref{sec:kernel}). A buggy posting rule
+can produce the wrong balanced transaction --- a semantic error, caught
+by review and simulation --- but it cannot produce an \emph{unbalanced}
+ledger, because that path runs through the proven predicate.
+
+\subsection{External data as typed facts}
+
+Prices, FX rates, and reference data are not fetched implicitly in the
+middle of a computation. They are modeled as first-class typed facts
+carrying explicit provenance (source, retrieval time, validity window)
+and source policy. Data acquisition is expressed as an \emph{effect plan}
+--- a declared dependency graph of I/O operations, annotated with
+latency, cost, and concurrency constraints --- rather than as ambient
+side effects.
+
+Determinism is preserved by binding every computation to an immutable
+fact set that ledger entries reference explicitly. A NAV computed on
+date $T$ references the exact price snapshot it used; recomputing it later
+uses the same snapshot and produces the same number. The effect plan also
+makes performance and scalability properties \emph{declarative}: the cost
+and parallelism of data acquisition can be reasoned about from the plan,
+separately from the deterministic arithmetic that consumes its outputs.
+
+\subsection{Large language models, fenced out of the trusted core}
+
+Ratio uses LLMs, but never as an authority over financial truth. Their
+role is confined to translation and explanation: turning natural-language
+intent into candidate declarative specifications, generating
+human-readable explanations, and proposing transformations for review. An
+agent-orchestrated workflow coordinates intent capture, validation,
+compilation, simulation, and approval --- but every artifact an LLM
+proposes is compiled by a deterministic compiler and checked against the
+kernel's invariants before it can affect a ledger.
+
+The trust boundary is therefore sharp (\cref{fig:layers}, \cref{tab:trust}):
+learned components live entirely above the line, producing \emph{proposals};
+the deterministic compilers and the proven kernel live below it,
+producing \emph{truth}. A hallucinated posting rule is, at worst, a
+rejected proposal --- it cannot unbalance the ledger, because admission
+runs through \cref{thm:conservation}.

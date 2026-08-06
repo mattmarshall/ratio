@@ -1,0 +1,27 @@
+% The trust boundary as a table: what is proved vs. what is policy.
+\begin{table}[t]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}p{0.40\linewidth} l p{0.34\linewidth}@{}}
+\toprule
+\textbf{Concern} & \textbf{Status} & \textbf{Source of record} \\
+\midrule
+Group laws of $\mathbb{Z}^{\rdim}$            & proved   & \texttt{Vec.add\_comm/assoc/zero/neg} \\
+Conservation is a subgroup                   & proved   & \texttt{conserves\_zero/add/neg} \\
+Ledger fold preserves conservation           & proved   & \texttt{ledger\_conserves} \\
+Double-entry (two-leg) balances              & proved   & \texttt{balanced\_pair} \\
+Running \texttt{Money} arithmetic            & emitted  & \texttt{Ratio.Common.Emit} (from proofs) \\
+\midrule
+Normal-balance classification                & checked policy & \texttt{normalSide} (example, not invariant) \\
+Posting rules / account mappings             & policy   & content-addressed control plane \\
+Prices / FX / reference data                 & policy   & typed facts with provenance \\
+NL intent $\to$ specification                 & untrusted & LLM proposal, compiled + checked \\
+\bottomrule
+\end{tabular}
+\caption{The trust boundary. The top block is machine-checked (or emitted
+from machine-checked sources) and forms the trusted computing base; the
+bottom block is expressive policy that lives outside the kernel and cannot
+violate conservation, because admission runs through
+\cref{thm:conservation}.}
+\label{tab:trust}
+\end{table}

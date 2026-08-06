@@ -1,0 +1,364 @@
+<title>Ratio — Roadmap to parity with the incumbent stack</title>
+
+<!--
+  Ratio roadmap page — SOURCE. Edit this file; never edit the build output.
+
+  The sixteen components below are the ones enumerated in //competitive/specs
+  (scaffolded from a June 2026 reading of Black Diamond, Orion, Addepar and
+  Tamarac marketing material), and the tier labels are that catalog's own
+  "Ratio placement" column. Keep the two in step: if catalog.tex gains or
+  re-places a component, this page is wrong until it is updated.
+
+  ⚠️ NO DATES. Phases are ordered and gated on each other, not scheduled. A
+  dated roadmap on a public page for a project at this stage would be a promise
+  nobody has the standing to make. If dates are ever added they should come
+  with the staffing assumption that makes them meaningful.
+
+  build.py substitutes three placeholders, each a name in double underscores:
+  STYLE takes the shared stylesheet, WORDMARK and MARK take SVG from marks/.
+  They are named here in prose rather than in their own syntax on purpose:
+  build.py replaces every occurrence, and it fails loudly on a second one.
+-->
+
+__STYLE__
+
+<div class="r-wrap">
+  <nav class="r-nav" aria-label="Main">
+    <a class="r-brandline" href="index.html">
+      <span class="r-mk">__MARK__</span>
+      <span class="r-wm">__WORDMARK__</span>
+    </a>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="workflows.html">Workflows</a></li>
+      <li><a href="platform.html">Platform</a></li>
+      <li><a href="compliance.html">Compliance</a></li>
+      <li><a href="roadmap.html" aria-current="page">Roadmap</a></li>
+      <li><a href="technical.html">Technical</a></li>
+      <li><a href="team.html">Team</a></li>
+    </ul>
+  </nav>
+</div>
+
+<!-- ══════════════════════════════ HERO ══════════════════════════════ -->
+<header class="r-hero">
+  <div class="r-wrap">
+    <div class="r-narrow">
+      <p class="r-eyebrow">Roadmap</p>
+      <h1 class="r-claim">The foundation is finished. The surface is not.</h1>
+      <p class="r-hero-sub">Ratio inverts the usual order. Most platforms ship
+        breadth first and spend the next decade trying to make the core
+        trustworthy. This one started with the part that cannot be retrofitted,
+        which means the remaining work is the part everybody already knows how
+        to do.</p>
+      <div class="r-block">
+        <p>Below is every capability the incumbents advertise, where it sits
+        relative to the proven core, and the order it gets built in. Nothing here
+        is dated — see the note at the foot of the page.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ WHERE THINGS STAND ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Where things stand</p>
+    <h2 class="r-claim">Honest arithmetic on how far along this is</h2>
+
+    <div class="r-status">
+      <div class="r-built">
+        <p class="r-col-tag pos">Built and working</p>
+        <ul>
+          <li>The conservation kernel, with its central invariant
+          machine-checked in Lean&nbsp;4.</li>
+          <li>Generation of the running engine from the proved source, gated so
+          the two cannot drift apart.</li>
+          <li>Exact integer money, with associativity, identity and inverse
+          proved rather than assumed.</li>
+          <li>A linted service contract, and a server that refuses any
+          transaction which fails to balance.</li>
+        </ul>
+      </div>
+      <div class="r-spec">
+        <p class="r-col-tag neg">Designed, specified, not yet built</p>
+        <ul>
+          <li>Both planes described on the <a href="platform.html">platform
+          page</a> — the versioned control plane and the typed fact plane.</li>
+          <li>Persistence, multi-currency, tax lots, corporate actions.</li>
+          <li>Every one of the sixteen capability areas below, at varying
+          depths of specification.</li>
+          <li>The workload planner, the authoring assistant, and every interface
+          shown anywhere on this site.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="r-note">
+      <p>Two things are true at once, and it is worth stating both. The part
+      that is hard to get right — a ledger that cannot go out of balance, and a
+      way to prove it — is done. The part that is merely a lot of work is almost
+      entirely ahead. Anyone evaluating Ratio today is evaluating a foundation
+      and a plan, not a product they could run a fund on this quarter.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ PHASES ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">The route to parity</p>
+    <h2 class="r-claim">Four phases, each gated on the one before</h2>
+    <p class="r-lede">Ordered by dependency, not by demand. Nothing in a later
+    phase can be built honestly before the one above it exists, which is why the
+    sequence is what it is.</p>
+
+    <!-- PHASE 0 -->
+    <div class="r-phase">
+      <div class="r-phase-head">
+        <h3>Phase zero — the core</h3>
+        <span class="r-status-pill done">Complete</span>
+      </div>
+      <p>The arithmetic, and the proof that it holds. The only phase whose
+      correctness cannot be established by testing, and therefore the only one
+      worth doing first.</p>
+      <ul class="r-deliver">
+        <li class="d">Conservation kernel, proved in Lean&nbsp;4</li>
+        <li class="d">Proof-to-engine generation, drift-gated</li>
+        <li class="d">Exact integer money with proved algebra</li>
+        <li class="d">Service contract and balancing server</li>
+      </ul>
+      <p class="r-parity"><strong>Parity reached:</strong> none yet — and by
+      design. No incumbent advertises this, so there is nothing to be at parity
+      <em>with</em>; it is the thing none of them can add later.</p>
+    </div>
+
+    <!-- PHASE 1 -->
+    <div class="r-phase">
+      <div class="r-phase-head">
+        <h3>Phase one — books you can actually keep</h3>
+        <span class="r-status-pill now">Next</span>
+      </div>
+      <p>Everything required before a real fund's data can be loaded at all:
+      somewhere to put it, the two planes that decide and apply policy, and the
+      instrument coverage that a first fund needs.</p>
+      <ul class="r-deliver">
+        <li class="o">Persistence and the append-only record</li>
+        <li class="o">Control plane: versioned, reviewed, atomic</li>
+        <li class="o">Fact plane: prices and FX with provenance</li>
+        <li class="o">Multi-currency and FX revaluation</li>
+        <li class="o">Tax lots and cost-basis methods</li>
+        <li class="o">Corporate actions</li>
+        <li class="o">Chart of accounts and posting rules</li>
+        <li class="o">First custodian feed, end to end</li>
+      </ul>
+      <p class="r-parity"><strong>Parity reached:</strong> the accounting half of
+      <em>portfolio accounting</em>, and the ingest half of <em>data aggregation
+      and reconciliation</em> — the two capabilities every incumbent leads with.</p>
+    </div>
+
+    <!-- PHASE 2 -->
+    <div class="r-phase">
+      <div class="r-phase-head">
+        <h3>Phase two — the close</h3>
+        <span class="r-status-pill next">After</span>
+      </div>
+      <p>The month a fund accountant actually lives in. This is the phase where
+      Ratio becomes usable rather than merely correct, and where a shadow run
+      starts producing something worth comparing.</p>
+      <ul class="r-deliver">
+        <li class="o">Reconciliation and exception handling</li>
+        <li class="o">NAV calculation and period close</li>
+        <li class="o">Fee accrual and billing rules</li>
+        <li class="o">Restatement and point-in-time reporting</li>
+        <li class="o">Audit export and evidence trail</li>
+        <li class="o">Workload planning and parallel execution</li>
+        <li class="o">Rule authoring with grounded checks</li>
+        <li class="o">Operations interface for the above</li>
+      </ul>
+      <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue
+      management</em>, the record-keeping half of <em>compliance and
+      surveillance</em>, and the reconciliation half of <em>data aggregation</em>
+      — plus reproducible history, which no incumbent offers at all.</p>
+    </div>
+
+    <!-- PHASE 3 -->
+    <div class="r-phase">
+      <div class="r-phase-head">
+        <h3>Phase three — the desk</h3>
+        <span class="r-status-pill next">After</span>
+      </div>
+      <p>What advisors, portfolio managers and clients see. All of it reads the
+      same contract any third party can read, so none of it needs privileged
+      access to the ledger.</p>
+      <ul class="r-deliver">
+        <li class="o">Performance measurement and attribution</li>
+        <li class="o">Composites and standards-oriented reporting</li>
+        <li class="o">Client and advisor portals</li>
+        <li class="o">Models, drift and rebalancing</li>
+        <li class="o">Tax-aware lot selection</li>
+        <li class="o">Proposal generation and simulation</li>
+        <li class="o">Practice analytics</li>
+        <li class="o">Alternative-investment servicing</li>
+      </ul>
+      <p class="r-parity"><strong>Parity reached:</strong> <em>performance
+      reporting and client portal</em>, <em>trading and rebalancing</em>,
+      <em>models and managed accounts</em>, <em>proposal generation</em>,
+      <em>practice analytics</em>, <em>alternative investments</em> — the bulk of
+      the advertised feature surface.</p>
+    </div>
+
+    <!-- PHASE 4 -->
+    <div class="r-phase">
+      <div class="r-phase-head">
+        <h3>Phase four — the ecosystem</h3>
+        <span class="r-status-pill next">After</span>
+      </div>
+      <p>Breadth: the long tail of feeds, connectors and adjacent systems that
+      took the incumbents twenty years, and the reason this phase is last rather
+      than hard.</p>
+      <ul class="r-deliver">
+        <li class="o">Custodian and administrator feed catalog</li>
+        <li class="o">Market-data vendor coverage</li>
+        <li class="o">CRM and practice-system connectors</li>
+        <li class="o">Risk analytics and scenario modeling</li>
+        <li class="o">Trust, retirement and insurance servicing</li>
+        <li class="o">Access control and data governance</li>
+        <li class="o">Third-party extension marketplace</li>
+        <li class="o">Migration tooling from incumbent platforms</li>
+      </ul>
+      <p class="r-parity"><strong>Parity reached:</strong> <em>integrations and
+      API</em>, <em>CRM</em>, <em>risk analytics</em>, <em>specialized
+      servicing</em>, <em>data governance</em> — closing the last of the sixteen.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ THE SIXTEEN ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Component by component</p>
+    <h2 class="r-claim">All sixteen, and where each one lives</h2>
+    <p class="r-lede">The tier matters as much as the phase. Only one of these
+    sixteen sits inside the proven core — which is precisely why the other
+    fifteen can be built at ordinary speed without putting the arithmetic at
+    risk.</p>
+
+    <div class="r-scroll">
+      <table class="r-tab">
+        <thead>
+          <tr>
+            <th scope="col">Capability</th>
+            <th scope="col">Where it sits</th>
+            <th scope="col">Phase</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Portfolio accounting and reporting</th>
+            <td><span class="r-tier core">Trusted core</span></td><td>One</td></tr>
+          <tr><th scope="row">Data aggregation and reconciliation</th>
+            <td><span class="r-tier">Fact plane</span></td><td>One → Two</td></tr>
+          <tr><th scope="row">Alternative-investment servicing</th>
+            <td><span class="r-tier core">Trusted core</span></td><td>Three</td></tr>
+          <tr><th scope="row">Billing and revenue management</th>
+            <td><span class="r-tier">Control plane</span></td><td>Two</td></tr>
+          <tr><th scope="row">Compliance and surveillance</th>
+            <td><span class="r-tier">Control plane</span></td><td>Two → Four</td></tr>
+          <tr><th scope="row">Trading and rebalancing</th>
+            <td><span class="r-tier">Control plane</span></td><td>Three</td></tr>
+          <tr><th scope="row">Models, managed accounts, marketplace</th>
+            <td><span class="r-tier">Control plane</span></td><td>Three</td></tr>
+          <tr><th scope="row">Trust, retirement and insurance servicing</th>
+            <td><span class="r-tier">Control plane</span></td><td>Four</td></tr>
+          <tr><th scope="row">Proposal generation</th>
+            <td><span class="r-tier">Simulation</span></td><td>Three</td></tr>
+          <tr><th scope="row">Risk analytics and scenario modeling</th>
+            <td><span class="r-tier">Analytical</span></td><td>Four</td></tr>
+          <tr><th scope="row">Practice analytics and business intelligence</th>
+            <td><span class="r-tier">Analytical</span></td><td>Three</td></tr>
+          <tr><th scope="row">Client experience portal</th>
+            <td><span class="r-tier">Presentation</span></td><td>Three</td></tr>
+          <tr><th scope="row">CRM</th>
+            <td><span class="r-tier">Extension</span></td><td>Four</td></tr>
+          <tr><th scope="row">Integrations, API and marketplace</th>
+            <td><span class="r-tier">Extension</span></td><td>Four</td></tr>
+          <tr><th scope="row">Access control and data governance</th>
+            <td><span class="r-tier">API boundary</span></td><td>Four</td></tr>
+          <tr><th scope="row">AI and natural-language insight</th>
+            <td><span class="r-tier">Fenced authoring</span></td><td>Two</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="r-note">
+      <p>The sixteen capability areas are taken from a June 2026 reading of
+      published material from Black Diamond, Orion, Addepar and Tamarac. It is a
+      reading of what those vendors advertise, not a feature audit of what they
+      ship. Black Diamond is a trademark of SS&amp;C Technologies; Orion, Addepar
+      and Tamarac are trademarks of their respective owners. Ratio is an
+      independent project and is not affiliated with, sponsored by, or endorsed
+      by any of them.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ WHY NO DATES ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <div class="r-narrow">
+      <p class="r-eyebrow">On dates</p>
+      <h2 class="r-claim">There are no dates on this page, deliberately</h2>
+      <p>A schedule is a function of how many people are working on something,
+      and that is not currently a number worth publishing. Putting quarters
+      against this list would communicate confidence that nobody has earned yet —
+      and on a site whose entire argument is that you should check claims rather
+      than accept them, an unbacked date would be the worst thing on it.</p>
+      <p>The ordering, though, is real. Each phase genuinely depends on the one
+      above: you cannot reconcile before you can persist, you cannot report
+      performance before you can close a period, and you cannot sell breadth
+      before any of it. If a phase moves, the ones below it move with it.</p>
+      <p>If you need a date for a decision you are actually making, that is a
+      conversation rather than a web page — and the honest answer will depend on
+      what you need first.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+<footer class="r-foot">
+  <div class="r-wrap">
+    <h2 class="r-claim" style="font-size:clamp(26px,3.2vw,35px)">Hard part first.</h2>
+    <p style="max-width:58ch;font-size:18px">The order is unusual because the
+    thing that is normally left until last cannot be added later at all.</p>
+
+    <div class="r-foot-cta">
+      <div>
+        <h3><a href="platform.html">How it is built</a></h3>
+        <p>The two planes, authored rules, and a planned NAV run.</p>
+      </div>
+      <div>
+        <h3><a href="technical.html">Why the core is finished</a></h3>
+        <p>The proofs, and how the running code is generated from them.</p>
+      </div>
+      <div>
+        <h3><a href="index.html">What it means for your team</a></h3>
+        <p>The close, the breaks, the restatements, the bill.</p>
+      </div>
+    </div>
+
+    <div class="r-fine">
+      <p>This roadmap describes intent, not commitment, and contains no dates for
+      the reason given above. Capability areas are Ratio's reading of publicly
+      available vendor material as of 2026; product names are the trademarks of
+      their respective owners and Ratio is independent of all of them.</p>
+    </div>
+  </div>
+</footer>

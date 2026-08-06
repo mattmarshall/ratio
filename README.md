@@ -31,6 +31,27 @@ For detailed setup instructions and development environment configuration, see [
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Guidelines for contributing to the project
 - **[CLINE.md](CLINE.md)** - Working with Cline and other LLMs on this project
 - **[specs/README.md](specs/README.md)** - Detailed specifications for all components and features
+- **[Whitepaper](paper/)** - *Ratio: A Formally Grounded Accounting Kernel* — the
+  theory, math, machine-checked (Lean 4) proofs, and value proposition. Build the
+  PDF with `bazel build //paper:ratio` (compiled by [rules_tectonic]; the system
+  diagram is rendered to vector PDF by [rules_puml], charts are native pgfplots).
+- **[Positioning brief](marketing/)** - *The Provably Correct Foundation for Wealth
+  Management* — a marketing-oriented brief positioning the proposed Ratio ecosystem
+  against SS&C Black Diamond and the legacy wealth-tech stack. Build the PDF with
+  `bazel build //marketing:positioning` ([rules_tectonic]; all-native TikZ/pgfplots).
+- **[Marketing site](site/)** - two self-contained HTML pages sharing one design
+  system: `index.html` for fund accountants and operations teams (written in
+  their language — the close, breaks, restatements, the bill), and
+  `technical.html` for engineers and due diligence (the Lean theorem and the
+  proof-to-artifact pipeline). Build with `python3 site/build.py` — standard
+  library only, no Bazel; see [site/README.md](site/README.md) for why.
+- **[Competitive component specs](competitive/specs/)** - one per-component spec PDF
+  per advertised wealth-tech component (scaffolded from a June 2026 scrape of Black
+  Diamond, Orion, Addepar, and Tamarac), each mapped onto Ratio's proven-kernel
+  architecture. Build with `bazel build //competitive/specs:all_specs` ([rules_tectonic]).
+
+[rules_tectonic]: https://github.com/fastverk/rules_tectonic
+[rules_puml]: https://github.com/fastverk/rules_puml
 
 ## Core Features
 

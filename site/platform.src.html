@@ -1,0 +1,1167 @@
+<title>Ratio — The platform: two planes, authored rules, a planned NAV</title>
+
+<!--
+  Ratio platform page — SOURCE. Edit this file; never edit the build output.
+
+  AUDIENCE: the technically-minded buyer. A COO, a head of fund accounting, a
+  CTO evaluating architecture. Assumes fund-ops fluency but not compiler or GPU
+  fluency — every mechanism is explained in terms of what it buys.
+
+  ⚠️ EVERY NUMBER IN THE NAV SECTION IS MODELED, NOT MEASURED, and the page
+  says so in three separate places. They are derived from the kernel cost model
+  in //paper (throughput.dat: 6 ns per record, flat in rule-set size) — see
+  site/README.md for the derivation script. The planner described here is
+  DESIGNED, NOT BUILT. Do not restate any of these as achieved performance, and
+  do not name a firm as the source of the 20M-lot workload: it is a scale
+  illustration, not a customer.
+
+  build.py substitutes three placeholders, each a name in double underscores:
+  STYLE takes the shared stylesheet, WORDMARK and MARK take SVG from marks/.
+  They are named here in prose rather than in their own syntax on purpose:
+  build.py replaces every occurrence, and it fails loudly on a second one.
+-->
+
+__STYLE__
+
+<div class="r-wrap">
+  <nav class="r-nav" aria-label="Main">
+    <a class="r-brandline" href="index.html">
+      <span class="r-mk">__MARK__</span>
+      <span class="r-wm">__WORDMARK__</span>
+    </a>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="workflows.html">Workflows</a></li>
+      <li><a href="platform.html" aria-current="page">Platform</a></li>
+      <li><a href="compliance.html">Compliance</a></li>
+      <li><a href="roadmap.html">Roadmap</a></li>
+      <li><a href="technical.html">Technical</a></li>
+      <li><a href="team.html">Team</a></li>
+    </ul>
+  </nav>
+</div>
+
+<!-- ══════════════════════════════ HERO ══════════════════════════════ -->
+<header class="r-hero">
+  <div class="r-wrap">
+    <div class="r-narrow">
+      <p class="r-eyebrow">The platform</p>
+      <h1 class="r-claim">Change the rules like software. Run the data like a query.</h1>
+      <p class="r-hero-sub">Every configuration change a fund makes is a
+        reviewed, versioned, atomic commit. Every trade, price and accrual is
+        processed against one pinned version of that configuration — and because
+        the configuration is pinned, the entire calculation is knowable before a
+        single byte moves.</p>
+    </div>
+  </div>
+</header>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ THE TWO PLANES ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">The split that makes the rest possible</p>
+    <h2 class="r-claim">A control plane for decisions. A data plane for volume.</h2>
+    <p class="r-lede">Most accounting systems fuse the two: the rules live inside
+    the engine, so changing a rule means changing the thing that is currently
+    processing your data. Ratio separates them completely.</p>
+
+    <div class="r-plane-grid">
+      <div>
+        <p class="r-plane-tag">Control plane · how the fund works</p>
+        <h3>Decisions, versioned</h3>
+        <ul>
+          <li>Posting rules, fee schedules, accrual conventions, account
+          mappings, valuation policy, calendars, entitlements.</li>
+          <li>Authored, reviewed and approved like code — proposed, diffed,
+          checked, merged.</li>
+          <li>Every version is content-addressed: an immutable artifact
+          identified by its own hash.</li>
+          <li>Handles no market data and processes no transactions. It cannot be
+          the reason a number is wrong at volume, because it never touches
+          volume.</li>
+        </ul>
+      </div>
+      <div>
+        <p class="r-plane-tag">Data plane · what actually happened</p>
+        <h3>Facts, processed</h3>
+        <ul>
+          <li>Trades, prices, FX, corporate actions, cash movements, positions,
+          tax lots.</li>
+          <li>Every run names the exact configuration version it executed under
+          and cannot silently pick up another.</li>
+          <li>Append-only. Nothing is amended in place; corrections are new
+          facts with their own provenance.</li>
+          <li>Defines no policy. It cannot invent a rule, only apply the one it
+          was handed.</li>
+        </ul>
+      </div>
+    </div>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 1000 340" role="img"
+             aria-label="The control plane holds versioned configurations; an active-version pointer selects one; the data plane processes trades and prices against only that pinned version, and every output records the version hash it ran under.">
+          <!-- control plane -->
+          <rect class="svg-surface" x="20" y="24" width="960" height="104" rx="3"/>
+          <text class="svg-lab svg-muted" x="36" y="48">CONTROL PLANE — versioned, reviewed, atomic</text>
+          <g class="svg-lab-sm">
+            <rect class="svg-raised" x="40" y="60" width="132" height="46" rx="3"/>
+            <rect x="40" y="60" width="132" height="46" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text" x="106" y="80" text-anchor="middle">config@a3f1c8e</text>
+            <text class="svg-muted" x="106" y="97" text-anchor="middle">Q2 2026</text>
+
+            <rect class="svg-raised" x="196" y="60" width="132" height="46" rx="3"/>
+            <rect x="196" y="60" width="132" height="46" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text" x="262" y="80" text-anchor="middle">config@6b0d41f</text>
+            <text class="svg-muted" x="262" y="97" text-anchor="middle">Q3 2026</text>
+
+            <rect class="svg-raised" x="352" y="60" width="132" height="46" rx="3"/>
+            <rect x="352" y="60" width="132" height="46" rx="3" fill="none" style="stroke:var(--yes)" stroke-width="2"/>
+            <text class="svg-text" x="418" y="80" text-anchor="middle">config@7d2b904</text>
+            <text style="fill:var(--yes)" x="418" y="97" text-anchor="middle">Q4 2026 · active</text>
+
+            <rect class="svg-raised" x="508" y="60" width="132" height="46" rx="3"/>
+            <rect x="508" y="60" width="132" height="46" rx="3" fill="none" class="svg-rule"
+                  stroke-width="1" stroke-dasharray="4 4"/>
+            <text class="svg-muted" x="574" y="80" text-anchor="middle">config@e91a55c</text>
+            <text class="svg-muted" x="574" y="97" text-anchor="middle">proposed</text>
+          </g>
+          <line class="svg-rule2" x1="172" y1="83" x2="196" y2="83" stroke-width="1.5"/>
+          <line class="svg-rule2" x1="328" y1="83" x2="352" y2="83" stroke-width="1.5"/>
+          <line class="svg-rule" x1="484" y1="83" x2="508" y2="83" stroke-width="1.5" stroke-dasharray="4 4"/>
+
+          <!-- the seam -->
+          <line x1="418" y1="106" x2="418" y2="182" stroke-width="2" style="stroke:var(--yes)"/>
+          <text class="svg-lab" x="432" y="150" style="fill:var(--yes)">active version — moved atomically, like a release tag</text>
+
+          <!-- data plane -->
+          <rect class="svg-surface" x="20" y="196" width="960" height="120" rx="3"/>
+          <text class="svg-lab svg-muted" x="36" y="220">DATA PLANE — append-only, runs one pinned version</text>
+          <g class="svg-lab-sm">
+            <rect class="svg-raised" x="40" y="234" width="120" height="40" rx="3"/>
+            <rect x="40" y="234" width="120" height="40" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text" x="100" y="259" text-anchor="middle">trades</text>
+            <rect class="svg-raised" x="172" y="234" width="120" height="40" rx="3"/>
+            <rect x="172" y="234" width="120" height="40" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text" x="232" y="259" text-anchor="middle">prices &amp; FX</text>
+            <rect class="svg-raised" x="304" y="234" width="120" height="40" rx="3"/>
+            <rect x="304" y="234" width="120" height="40" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text" x="364" y="259" text-anchor="middle">corp. actions</text>
+          </g>
+
+          <rect x="470" y="228" width="180" height="52" rx="3" class="svg-surface"/>
+          <rect x="470" y="228" width="180" height="52" rx="3" fill="none" class="svg-rule2" stroke-width="2"/>
+          <text class="svg-ttl svg-text" x="560" y="250" text-anchor="middle">kernel</text>
+          <text class="svg-lab-sm svg-muted" x="560" y="268" text-anchor="middle">checks every entry balances</text>
+          <line class="svg-rule2" x1="424" y1="254" x2="466" y2="254" stroke-width="1.5"/>
+
+          <g class="svg-lab-sm">
+            <rect class="svg-raised" x="700" y="228" width="260" height="52" rx="3"/>
+            <rect x="700" y="228" width="260" height="52" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text" x="830" y="250" text-anchor="middle">postings, positions, NAV</text>
+            <text class="svg-muted" x="830" y="268" text-anchor="middle">each stamped config@7d2b904</text>
+          </g>
+          <line class="svg-rule2" x1="650" y1="254" x2="696" y2="254" stroke-width="1.5"/>
+          <text class="svg-lab-sm svg-muted" x="36" y="303">no policy is decided here — only applied</text>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap">Configuration versions live above; data flows
+      below. The only connection between them is a pointer to the active version,
+      and every artifact the data plane produces records which version produced
+      it. Nothing downstream depends on a "current settings" screen that somebody
+      might edit tomorrow.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ GIT FOR FUND OPS ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">What that buys you</p>
+    <h2 class="r-claim">Version control, for the way the fund is run</h2>
+    <p class="r-lede">Software teams stopped editing production twenty years ago.
+    Fund operations largely did not — configuration still tends to live in
+    screens that authorized people change, with an audit log bolted on
+    afterwards. Ratio treats a rule change the way an engineer treats a release.</p>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>Proposed, not applied</h3>
+        <p>A change starts as a proposal against the current version. It is
+        reviewed and approved by name before it is anywhere near a calculation —
+        and until it is approved, nothing in the data plane can see it.</p>
+      </div>
+      <div class="r-row">
+        <h3>Atomic</h3>
+        <p>A version is promoted whole or not at all. There is no window in which
+        half a fee change has taken effect, and no run that catches a
+        configuration mid-edit.</p>
+      </div>
+      <div class="r-row">
+        <h3>Diffable</h3>
+        <p>Two versions can be compared line by line, and — more usefully — the
+        same day's data can be run under both, so you see the change in the
+        numbers before you commit to it rather than after.</p>
+      </div>
+      <div class="r-row">
+        <h3>Attributable</h3>
+        <p>Every posting, position and NAV carries the hash of the configuration
+        that produced it. "Which rules generated this figure?" resolves to one
+        immutable artifact, not to an archaeology exercise.</p>
+      </div>
+      <div class="r-row">
+        <h3>Reversible</h3>
+        <p>Rolling back is moving the pointer to the previous version. It is not
+        a data migration, an unwind script, or an overnight batch — because no
+        historical record was mutated in the first place.</p>
+      </div>
+    </div>
+
+    <figure class="r-fig" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:26px;align-items:start">
+      <div class="r-panel">
+        <div class="r-panel-head"><span>config@7d2b904 ← e91a55c</span><b>proposed</b></div>
+<pre class="r-panel-body"><code><span class="c"># fee schedule — institutional share class</span>
+<span class="chg">~ rule</span> management_fee_accrual
+<span class="chg">-</span>    rate      75bp / year
+<span class="add">+</span>    rate      65bp / year
+<span class="add">+</span>    tier      above 500,000,000 &rarr; 55bp / year
+<span class="add">+ dep</span>   calendar  us_settlement
+
+<span class="c"># effective from the start of the next epoch,</span>
+<span class="c"># never retroactively</span>
+  effective   2026-10-01  <span class="c">(epoch Q4-2026)</span></code></pre>
+        <p class="r-panel-foot">A change is text, reviewed like text — but it
+        compiles to a typed artifact, and the checks below have to pass before
+        anyone can approve it.</p>
+      </div>
+
+      <div class="r-app">
+        <div class="r-app-bar">
+          <span class="r-app-dots"><i></i><i></i><i></i></span>
+          <span class="r-app-title">Ratio · Control plane</span>
+        </div>
+        <div class="r-app-cols">
+          <div class="r-app-side">
+            <ul>
+              <li>Overview</li>
+              <li class="on">Changes</li>
+              <li>Rules</li>
+              <li>Calendars</li>
+              <li>Epochs</li>
+              <li>Runs</li>
+            </ul>
+          </div>
+          <div class="r-app-main">
+            <p class="r-app-h">Reduce institutional fee to 65bp</p>
+            <p class="r-app-sub">e91a55c · opened by A. Mensah · 2 files</p>
+            <table class="r-mini">
+              <tbody>
+                <tr><td>Balances on every dimension</td><td class="n"><span class="r-chip ok">pass</span></td></tr>
+                <tr><td>Accounts exist, normal balance agrees</td><td class="n"><span class="r-chip ok">pass</span></td></tr>
+                <tr><td>No retroactive effect on closed epochs</td><td class="n"><span class="r-chip ok">pass</span></td></tr>
+                <tr><td>Replay Q3 under new rules</td><td class="n"><span class="r-chip warn">−4,182.55</span></td></tr>
+                <tr><td>Review by controller</td><td class="n"><span class="r-chip idle">required</span></td></tr>
+              </tbody>
+            </table>
+            <p class="r-app-sub" style="margin:14px 0 0">The replay difference is
+            expected and is shown, not hidden — it is what the fee change is
+            worth on last quarter's book.</p>
+          </div>
+        </div>
+      </div>
+    </figure>
+    <p class="r-fig-cap">Interface concept — not a shipped product. See the
+    <a href="roadmap.html">roadmap</a> for what exists today.</p>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ INTENT → RULE ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Authoring</p>
+    <h2 class="r-claim">From what an expert says to what the books enforce</h2>
+    <p class="r-lede">The scarce thing in fund accounting is not compute — it is
+    the person who knows precisely how this fund's fees, accruals and
+    classifications actually work. Ratio's job is to get that knowledge into the
+    system without an eighteen-month implementation project, and without trusting
+    a language model with your books.</p>
+
+    <div class="r-stages">
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Stage one</span>
+          <h3>The expert says it</h3>
+          <p>In their own words, in a review call, exactly as they would explain
+          it to a new analyst.</p>
+        </div>
+        <div>
+          <blockquote class="r-quote">
+            “Management fee accrues daily on the prior day's net assets at 75
+            basis points a year, actual/365. Payable quarterly in arrears. Don't
+            accrue on a non-business day — roll it into the next one.”
+            <cite>Fund controller, onboarding session</cite>
+          </blockquote>
+        </div>
+      </div>
+
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Stage two</span>
+          <h3>The model drafts it</h3>
+          <p>A language model turns that sentence into a precise, typed,
+          declarative rule. This is the only step it performs, and it is a
+          drafting step.</p>
+        </div>
+        <div class="r-panel">
+          <div class="r-panel-head"><span>rules/management_fee.ratio</span><b>draft</b></div>
+<pre class="r-panel-body"><code><span class="k">rule</span> management_fee_accrual {
+  <span class="k">when</span>       business_day d
+  <span class="k">basis</span>      net_assets(d.previous)
+  <span class="k">rate</span>       75bp / year
+  <span class="k">day_count</span>  ACT/365
+  <span class="k">posts</span>      debit   expense.management_fee
+             credit  liability.management_fee_payable
+  <span class="k">settles</span>    quarterly in_arrears
+  <span class="k">on_holiday</span> roll_forward
+}</code></pre>
+        </div>
+      </div>
+
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Stage three</span>
+          <h3>The grounding checks it</h3>
+          <p>The draft is compiled and every obligation it implies is discharged
+          mechanically. This is the step that makes the previous one safe.</p>
+        </div>
+        <div>
+          <ul class="r-checks">
+            <li class="ok">The posting nets to zero on every dimension — the
+            kernel would refuse it otherwise, so this cannot be got wrong later.</li>
+            <li class="ok">Both accounts exist in the chart, and their normal
+            balances match the direction the rule assumes.</li>
+            <li class="ok"><code>net_assets(d.previous)</code> resolves to a
+            recorded fact with provenance, not a live lookup that could return a
+            different answer on replay.</li>
+            <li class="ok">Rate and day-count are typed quantities — 75bp/year
+            under ACT/365 — not floating-point constants.</li>
+            <li class="ok">No effect on any closed epoch.</li>
+            <li class="ask"><code>roll_forward</code> needs a holiday calendar,
+            and the fund has two. <strong>Which one governs settlement?</strong>
+            The question goes back to the expert; nothing is guessed.</li>
+          </ul>
+          <div class="r-note" style="margin-top:22px">
+            <p><strong>This is the whole trick.</strong> The model is allowed to
+            be wrong, because everything it produces is checked against
+            structure it cannot influence — the chart of accounts, the epoch
+            calendar, the type system, and the balancing rule the kernel proves.
+            An error surfaces as a failed check or a question, in review, before
+            anything is approved. It cannot surface as a wrong number in a
+            client's statement.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Stage four</span>
+          <h3>It becomes a version</h3>
+          <p>Approved, the rule is frozen into a content-addressed configuration
+          — and from that moment the data plane can execute it.</p>
+        </div>
+        <div class="r-panel">
+          <div class="r-panel-head"><span>promote 7d2b904</span><b>committed</b></div>
+<pre class="r-panel-body"><code>config@6b0d41f <span class="k">&rarr;</span> config@7d2b904
+
+  <span class="add">+ rule</span>     management_fee_accrual
+  <span class="add">+ dep</span>      calendar us_settlement   <span class="c">(answered: US settlement)</span>
+
+  epoch      Q4-2026     effective 2026-10-01
+  authored   model draft, reviewed line by line
+  approved   J. Okafor <span class="c">(controller)</span>, A. Mensah <span class="c">(fund accounting)</span>
+  checks     <span class="s">6 passed</span> · 1 question resolved
+
+  <span class="c">every posting produced under this version will carry</span>
+  <span class="c">the hash 7d2b904 for as long as the fund exists</span></code></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="r-callout">
+      <p><strong>Weeks, not quarters.</strong> The bottleneck in a conventional
+      implementation is translating domain knowledge into a vendor's
+      configuration language, by consultants, over months. Here the expert
+      speaks, the model drafts, the compiler interrogates, and a human approves —
+      and what lands is stricter than what a consultant would have typed, because
+      it had to satisfy the checks to get in.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ THE NAV RUN ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Striking NAV</p>
+    <h2 class="r-claim">A NAV calculation is a query plan. So plan it.</h2>
+    <div class="r-narrow">
+      <p>Valuing a fund is a large conditional graph — scans over lots, prices,
+      FX rates, calendars and corporate actions, joined and filtered and
+      aggregated, with branches everywhere: <em>if</em> this security type,
+      <em>if</em> this lot is wash-sale affected, <em>if</em> this share class,
+      <em>if</em> this jurisdiction. Structurally it is a SQL query tree.</p>
+      <p>Conventional engines <em>interpret</em> that tree, one position at a
+      time. Each branch discovers what data it needs while it is running, so
+      fetching and computing interleave — and the run is spent waiting on
+      round-trips it could not see coming.</p>
+      <p><strong>Ratio compiles it instead.</strong> Because the configuration is
+      pinned and immutable for the epoch, the entire graph is fully determined
+      <em>before</em> the run starts. Every scan it will ever need can be
+      identified up front, hoisted out of the conditionals, and issued as one
+      batched parallel fetch. Only then does any arithmetic happen.</p>
+    </div>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 1000 300" role="img"
+             aria-label="Two timelines. An interpreted engine alternates short fetch and compute blocks for the whole run. Ratio plans, then fetches everything in parallel lanes, then computes in one uninterrupted block, finishing far sooner.">
+          <text class="svg-lab svg-muted" x="0" y="16">INTERPRETED — fetch and compute interleaved, the run waits on round-trips</text>
+          <g>
+            <rect x="0" y="30" width="1000" height="34" rx="2" class="svg-surface"/>
+            <!-- alternating stall/compute -->
+            <g style="fill:var(--series-legacy)" opacity=".85">
+              <rect x="4"   y="34" width="46" height="26" rx="2"/><rect x="70"  y="34" width="52" height="26" rx="2"/>
+              <rect x="140" y="34" width="44" height="26" rx="2"/><rect x="204" y="34" width="56" height="26" rx="2"/>
+              <rect x="280" y="34" width="42" height="26" rx="2"/><rect x="344" y="34" width="54" height="26" rx="2"/>
+              <rect x="418" y="34" width="48" height="26" rx="2"/><rect x="486" y="34" width="50" height="26" rx="2"/>
+              <rect x="556" y="34" width="46" height="26" rx="2"/><rect x="622" y="34" width="54" height="26" rx="2"/>
+              <rect x="696" y="34" width="44" height="26" rx="2"/><rect x="760" y="34" width="52" height="26" rx="2"/>
+              <rect x="832" y="34" width="48" height="26" rx="2"/><rect x="900" y="34" width="56" height="26" rx="2"/>
+            </g>
+            <g style="fill:var(--rule-2)" opacity=".55">
+              <rect x="54"  y="34" width="12" height="26" rx="2"/><rect x="126" y="34" width="10" height="26" rx="2"/>
+              <rect x="188" y="34" width="12" height="26" rx="2"/><rect x="264" y="34" width="12" height="26" rx="2"/>
+              <rect x="326" y="34" width="14" height="26" rx="2"/><rect x="402" y="34" width="12" height="26" rx="2"/>
+              <rect x="470" y="34" width="12" height="26" rx="2"/><rect x="540" y="34" width="12" height="26" rx="2"/>
+              <rect x="606" y="34" width="12" height="26" rx="2"/><rect x="680" y="34" width="12" height="26" rx="2"/>
+              <rect x="744" y="34" width="12" height="26" rx="2"/><rect x="816" y="34" width="12" height="26" rx="2"/>
+              <rect x="884" y="34" width="12" height="26" rx="2"/>
+            </g>
+          </g>
+          <text class="svg-lab-sm svg-muted" x="0" y="82">the wide blocks are waiting, not working</text>
+
+          <text class="svg-lab" x="0" y="126" style="fill:var(--yes)">PLANNED — the graph is known first, so every scan is hoisted and batched</text>
+          <rect x="0" y="140" width="1000" height="34" rx="2" class="svg-surface"/>
+          <rect x="4" y="144" width="34" height="26" rx="2" style="fill:var(--rule-2)" opacity=".75"/>
+          <text class="svg-lab-sm svg-text2" x="46" y="162">plan</text>
+
+          <!-- parallel fetch lanes -->
+          <g style="fill:var(--series-legacy)" opacity=".8">
+            <rect x="86" y="144" width="150" height="5" rx="2"/>
+            <rect x="86" y="151" width="150" height="5" rx="2"/>
+            <rect x="86" y="158" width="150" height="5" rx="2"/>
+            <rect x="86" y="165" width="150" height="5" rx="2"/>
+          </g>
+          <text class="svg-lab-sm svg-text2" x="244" y="162">fetch — 16 lanes at once</text>
+
+          <rect x="404" y="144" width="26" height="26" rx="2" style="fill:var(--yes)"/>
+          <text class="svg-lab-sm svg-text2" x="438" y="162">fold</text>
+          <rect x="486" y="144" width="120" height="26" rx="2" style="fill:var(--yes)" opacity=".5"/>
+          <text class="svg-lab-sm svg-text2" x="614" y="162">commit + verify</text>
+
+          <line class="svg-rule2" x1="700" y1="140" x2="700" y2="196" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <text class="svg-lab svg-muted" x="712" y="180">…and the rest of the close window is slack</text>
+
+          <text class="svg-lab-sm svg-muted" x="0" y="230">Both bars are the same wall-clock scale. Nothing about the arithmetic changed —</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="250">only whether the system knew what it needed before it started asking for it.</text>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap">Schematic, not to measured scale — the budget
+      below gives the modeled figures.</figcaption>
+    </figure>
+
+    <h3 style="font-size:23px;margin:52px 0 0">What the planner knows that a query optimizer doesn't</h3>
+    <p class="r-lede" style="margin-top:10px">A database planner estimates from
+    table statistics. Ratio's planner has something better: the same fund struck
+    NAV yesterday, and roughly two hundred and fifty times before that, under a
+    configuration that barely changed.</p>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>Measured history, not estimates</h3>
+        <p>Actual cardinalities, actual selectivities, actual per-source fetch
+        latencies — recorded from previous runs of a nearly identical graph
+        rather than guessed from a histogram.</p>
+      </div>
+      <div class="r-row">
+        <h3>Branch prediction, at fund scale</h3>
+        <p>Which conditional arms will actually be taken — which lots hit the
+        wash-sale path, which securities have a corporate action pending, which
+        share classes trigger the tiered fee. Scans for branches that will be
+        taken are issued speculatively; scans for branches that will not are
+        skipped entirely.</p>
+      </div>
+      <div class="r-row">
+        <h3>Partitioning that balances</h3>
+        <p>Lots are grouped so that each partition's working set is roughly equal
+        and shares its price, FX and calendar dependencies — so the fetch
+        coalesces and no worker finishes early while another still has a third of
+        the book.</p>
+      </div>
+      <div class="r-row">
+        <h3>It is only ever an optimization</h3>
+        <p>A wrong prediction costs time, never correctness: a missed scan is
+        fetched on demand and a useless one is discarded. The kernel still checks
+        that every entry balances, whatever order the data arrived in.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ THE UNIFORM DATASET / GPU ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Why it parallelizes so well</p>
+    <h2 class="r-claim">Resolve the branches at plan time, and what's left is arithmetic</h2>
+    <div class="r-narrow">
+      <p>Hoisting the scans has a second consequence, and it is the more
+      important one. If every conditional is decided while planning — because the
+      configuration is pinned, so <em>which</em> rule applies to <em>which</em>
+      lot is knowable in advance — then the thing handed to the engine is not a
+      branchy program over irregular objects. It is a <strong>flat array of
+      fixed-width records</strong>, with the decisions already baked in as data:
+      each lot arrives carrying its rate, its day-count, its accounts, its
+      dimension indices.</p>
+      <p>That is the difference between a workload that fights parallel hardware
+      and one that was made for it. Identical instructions, no divergence, no
+      pointer chasing, uniform stride. And the fold is associative and
+      commutative — a proved property of the kernel, not an assumption — so
+      partial sums combine in any order. An associative reduction over a uniform
+      array is the single friendliest shape in all of parallel computing.</p>
+    </div>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 1000 400" role="img"
+             aria-label="A branchy conditional graph is compiled into a uniform array of fixed-width records, which is dispatched across thousands of GPU lanes running the same instruction, and reduced in a tree to a single conserved total.">
+          <!-- 1. the branchy graph -->
+          <text class="svg-lab svg-muted" x="0" y="16">1 — CONDITIONAL GRAPH</text>
+          <g class="svg-rule2" stroke-width="1.4" fill="none">
+            <path d="M92 44 L44 84 M92 44 L140 84 M44 84 L20 128 M44 84 L68 128
+                     M140 84 L116 128 M140 84 L164 128 M20 128 L8 168 M164 128 L176 168"/>
+          </g>
+          <g style="fill:var(--rule-2)">
+            <circle cx="92" cy="42" r="6"/><circle cx="44" cy="84" r="5"/><circle cx="140" cy="84" r="5"/>
+            <circle cx="20" cy="128" r="4"/><circle cx="68" cy="128" r="4"/>
+            <circle cx="116" cy="128" r="4"/><circle cx="164" cy="128" r="4"/>
+          </g>
+          <text class="svg-lab-sm svg-muted" x="0" y="196">branches, joins, scans</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="214">— irregular</text>
+
+          <text class="svg-ttl" x="216" y="120" style="fill:var(--yes)">compile</text>
+          <line x1="212" y1="132" x2="292" y2="132" stroke-width="2" style="stroke:var(--yes)"/>
+          <path d="M292 132l-9-5v10z" style="fill:var(--yes)"/>
+          <text class="svg-lab-sm svg-muted" x="216" y="152">config is pinned,</text>
+          <text class="svg-lab-sm svg-muted" x="216" y="168">so every branch</text>
+          <text class="svg-lab-sm svg-muted" x="216" y="184">is decided here</text>
+
+          <!-- 2. uniform records -->
+          <text class="svg-lab svg-muted" x="320" y="16">2 — UNIFORM RECORDS</text>
+          <g class="svg-lab-sm">
+            <text class="svg-muted" x="320" y="38">lot · rate · day-count · accounts · dims</text>
+          </g>
+          <g>
+            <rect x="320" y="46" width="240" height="150" rx="2" class="svg-surface"/>
+            <g style="fill:var(--rule-2)" opacity=".85">
+              <rect x="328" y="54" width="52" height="12" rx="2"/><rect x="386" y="54" width="52" height="12" rx="2"/>
+              <rect x="444" y="54" width="52" height="12" rx="2"/><rect x="502" y="54" width="52" height="12" rx="2"/>
+              <rect x="328" y="72" width="52" height="12" rx="2"/><rect x="386" y="72" width="52" height="12" rx="2"/>
+              <rect x="444" y="72" width="52" height="12" rx="2"/><rect x="502" y="72" width="52" height="12" rx="2"/>
+              <rect x="328" y="90" width="52" height="12" rx="2"/><rect x="386" y="90" width="52" height="12" rx="2"/>
+              <rect x="444" y="90" width="52" height="12" rx="2"/><rect x="502" y="90" width="52" height="12" rx="2"/>
+              <rect x="328" y="108" width="52" height="12" rx="2"/><rect x="386" y="108" width="52" height="12" rx="2"/>
+              <rect x="444" y="108" width="52" height="12" rx="2"/><rect x="502" y="108" width="52" height="12" rx="2"/>
+              <rect x="328" y="126" width="52" height="12" rx="2"/><rect x="386" y="126" width="52" height="12" rx="2"/>
+              <rect x="444" y="126" width="52" height="12" rx="2"/><rect x="502" y="126" width="52" height="12" rx="2"/>
+              <rect x="328" y="144" width="52" height="12" rx="2"/><rect x="386" y="144" width="52" height="12" rx="2"/>
+              <rect x="444" y="144" width="52" height="12" rx="2"/><rect x="502" y="144" width="52" height="12" rx="2"/>
+              <rect x="328" y="162" width="52" height="12" rx="2"/><rect x="386" y="162" width="52" height="12" rx="2"/>
+              <rect x="444" y="162" width="52" height="12" rx="2"/><rect x="502" y="162" width="52" height="12" rx="2"/>
+              <rect x="328" y="180" width="52" height="12" rx="2"/><rect x="386" y="180" width="52" height="12" rx="2"/>
+              <rect x="444" y="180" width="52" height="12" rx="2"/><rect x="502" y="180" width="52" height="12" rx="2"/>
+            </g>
+          </g>
+          <text class="svg-lab-sm svg-muted" x="320" y="214">20,000,000 records · identical width · no pointers</text>
+
+          <line x1="576" y1="120" x2="616" y2="120" stroke-width="2" style="stroke:var(--yes)"/>
+          <path d="M616 120l-9-5v10z" style="fill:var(--yes)"/>
+
+          <!-- 3. the GPU grid -->
+          <text class="svg-lab svg-muted" x="640" y="16">3 — ONE KERNEL, EVERY LANE</text>
+          <rect x="640" y="46" width="352" height="150" rx="3" class="svg-surface"/>
+          <rect x="640" y="46" width="352" height="150" rx="3" fill="none" class="svg-rule2" stroke-width="1.5"/>
+          <g style="fill:var(--yes)" opacity=".82">
+            <!-- 16 x 8 lane grid -->
+            <g id="lanes">
+              <rect x="652" y="58" width="14" height="14" rx="2"/><rect x="673" y="58" width="14" height="14" rx="2"/>
+              <rect x="694" y="58" width="14" height="14" rx="2"/><rect x="715" y="58" width="14" height="14" rx="2"/>
+              <rect x="736" y="58" width="14" height="14" rx="2"/><rect x="757" y="58" width="14" height="14" rx="2"/>
+              <rect x="778" y="58" width="14" height="14" rx="2"/><rect x="799" y="58" width="14" height="14" rx="2"/>
+              <rect x="820" y="58" width="14" height="14" rx="2"/><rect x="841" y="58" width="14" height="14" rx="2"/>
+              <rect x="862" y="58" width="14" height="14" rx="2"/><rect x="883" y="58" width="14" height="14" rx="2"/>
+              <rect x="904" y="58" width="14" height="14" rx="2"/><rect x="925" y="58" width="14" height="14" rx="2"/>
+              <rect x="946" y="58" width="14" height="14" rx="2"/><rect x="967" y="58" width="14" height="14" rx="2"/>
+            </g>
+            <use href="#lanes" y="21"/><use href="#lanes" y="42"/><use href="#lanes" y="63"/>
+            <use href="#lanes" y="84"/><use href="#lanes" y="105"/>
+          </g>
+          <text class="svg-lab-sm svg-muted" x="640" y="214">16,896 lanes · same instruction · ~1,184 records each</text>
+
+          <!-- 4. tree reduction -->
+          <text class="svg-lab svg-muted" x="640" y="258">4 — ASSOCIATIVE REDUCTION</text>
+          <g class="svg-rule2" stroke-width="1.4" fill="none">
+            <path d="M660 300 L690 330 M720 300 L690 330 M780 300 L810 330 M840 300 L810 330
+                     M690 330 L750 360 M810 330 L750 360"/>
+          </g>
+          <g style="fill:var(--yes)">
+            <circle cx="660" cy="298" r="5"/><circle cx="720" cy="298" r="5"/>
+            <circle cx="780" cy="298" r="5"/><circle cx="840" cy="298" r="5"/>
+            <circle cx="690" cy="330" r="5"/><circle cx="810" cy="330" r="5"/>
+            <circle cx="750" cy="362" r="7"/>
+          </g>
+          <text class="svg-lab-sm svg-text2" x="770" y="366">one conserved total</text>
+          <text class="svg-lab-sm svg-muted" x="596" y="392">partial sums combine in any order — proved associative, so the tree is safe</text>
+
+          <!-- callout on the left under the graph -->
+          <text class="svg-lab-sm svg-muted" x="0" y="300">The branches did not</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="318">disappear. They were</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="336">decided once, at plan</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="354">time, instead of</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="372">20,000,000 times at</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="390">run time.</text>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap">Lane count shown is an NVIDIA H100's 16,896
+      CUDA cores, used here as a concrete illustration of scale. The same
+      structure runs on CPU SIMD or a cluster; nothing about it is
+      GPU-specific — it is just that a uniform, branch-free, associative
+      reduction is exactly what that hardware exists to do.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ THE BUDGET ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">The arithmetic, shown</p>
+    <h2 class="r-claim">Twenty million tax lots, and the accounting is the cheap part</h2>
+    <div class="r-narrow">
+      <p>A large index-fund complex might carry twenty million open tax lots. On
+      the incumbent stack that book is roughly an hour of overnight processing.
+      Here is the same run costed from the kernel's own per-record work, so you
+      can check it rather than take it.</p>
+      <p><strong>The honest headline is ten to fifteen minutes, not ten
+      seconds.</strong> The valuation itself is genuinely milliseconds — but a
+      NAV run has to get its data out of custodians, pricing vendors and fund
+      administrators, and those are other people's systems running at other
+      people's speeds. That is the floor, and no amount of engineering on this
+      side of the wire moves it.</p>
+    </div>
+
+    <figure class="r-fig" style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:36px;align-items:start">
+      <div>
+        <table class="r-budget">
+          <caption class="r-fig-cap" style="caption-side:top;text-align:left;margin:0 0 10px">
+            20,000,000 tax lots · 80-byte lot record · ~40 kernel operations per lot
+          </caption>
+          <tbody>
+            <tr><th scope="row">Ingest from custodian, pricing vendor, administrator</th><td>8–12 min</td></tr>
+            <tr class="sub"><th scope="row">their systems, their latency, their batch windows</th><td></td></tr>
+            <tr><th scope="row">Plan the graph, apply learned statistics</th><td>~1 s</td></tr>
+            <tr><th scope="row">Fetch the resident working set</th><td>2.0 s</td></tr>
+            <tr class="sub"><th scope="row">1.61 GB, 16 parallel lanes @ 800 MB/s</th><td></td></tr>
+            <tr><th scope="row">Fold — the entire valuation</th><td>0.15 s</td></tr>
+            <tr class="sub"><th scope="row">20M × 40 ops @ 6 ns, 32-way CPU</th><td></td></tr>
+            <tr class="sub"><th scope="row">…the same fold, GPU-resident</th><td>0.5 ms</td></tr>
+            <tr><th scope="row">Write ~60M postings, durably</th><td>3.6 s</td></tr>
+            <tr><th scope="row">Verify conservation and trial balance</th><td>0.3 s</td></tr>
+          </tbody>
+          <tfoot>
+            <tr><th scope="row">NAV struck</th><td>10–15 min</td></tr>
+            <tr class="sub"><th scope="row">of which, work on our side of the wire</th><td>&lt; 10 s</td></tr>
+            <tr class="slack"><th scope="row">Same book, incumbent stack</th><td>≈ 1 hour</td></tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div>
+        <div class="r-block">
+          <p>We are not selling you a faster engine. The engine is already
+          effectively free. What we are selling is that <em>we do not add to the
+          part that is slow</em> — and that once the data is here, asking a
+          second question costs almost nothing.</p>
+        </div>
+
+        <div class="r-note" style="margin-top:24px">
+          <p><strong>Read these as a cost model, not a benchmark.</strong> The
+          per-record figures derive from the whitepaper's analysis — 6
+          nanoseconds per record, flat regardless of how many rules the fund has
+          — combined with ordinary assumptions about record sizes and bandwidth.
+          The ingest range is what third-party feeds typically take, not a
+          measurement of any particular one. <strong>Nothing here has been run on
+          a 20-million-lot book, and the planner described on this page is
+          designed, not built.</strong> The whitepaper labels its performance
+          figures the same way, for the same reason.</p>
+          <p>The one-hour incumbent figure is a broad industry observation for a
+          book of this size, not a measurement of a named product.</p>
+        </div>
+      </div>
+    </figure>
+
+    <div class="r-callout">
+      <p><strong>Why the distinction matters more than the total.</strong> An
+      interleaved engine spends its hour with the two costs braided together, so
+      neither can be attacked: you cannot batch the IO because you do not know
+      what you need until you are computing, and you cannot parallelize the
+      compute because it is blocked on the IO. Separating them does not make the
+      feeds faster. It makes everything <em>else</em> disappear — and it means the
+      expensive hardware is only rented for the seconds it is actually working.</p>
+    </div>
+
+    <figure class="r-fig">
+      <div class="r-app">
+        <div class="r-app-bar">
+          <span class="r-app-dots"><i></i><i></i><i></i></span>
+          <span class="r-app-title">Ratio · NAV run · 30 Sep 2026</span>
+        </div>
+        <div class="r-app-body">
+          <dl class="r-kpis">
+            <div class="r-kpi"><dt>Tax lots</dt><dd>20,004,118</dd></div>
+            <div class="r-kpi"><dt>Configuration</dt><dd style="font-size:14px">7d2b904 <small>Q4-2026</small></dd></div>
+            <div class="r-kpi good"><dt>Elapsed</dt><dd>11:24</dd></div>
+            <div class="r-kpi"><dt>Window</dt><dd>30<small>min</small></dd></div>
+            <div class="r-kpi good"><dt>Out of balance</dt><dd>0.00</dd></div>
+          </dl>
+          <table class="r-mini">
+            <thead><tr><th>Phase</th><th>Detail</th><th class="n">Elapsed</th><th class="n">State</th></tr></thead>
+            <tbody>
+              <tr><td>Ingest</td><td>custodian · pricing vendor · administrator</td><td class="n">11:06</td><td class="n"><span class="r-chip warn">their systems</span></td></tr>
+              <tr><td>Plan</td><td>4,211 scans hoisted · 9 branches pruned</td><td class="n">0.9 s</td><td class="n"><span class="r-chip ok">done</span></td></tr>
+              <tr><td>Fetch</td><td>1.61 GB · 16 lanes · 0 cache misses</td><td class="n">2.2 s</td><td class="n"><span class="r-chip ok">done</span></td></tr>
+              <tr><td>Fold</td><td>20,004,118 records · uniform layout</td><td class="n">0.2 s</td><td class="n"><span class="r-chip ok">done</span></td></tr>
+              <tr><td>Post</td><td>59,891,204 postings written</td><td class="n">11.8 s</td><td class="n"><span class="r-chip ok">done</span></td></tr>
+              <tr><td>Verify</td><td>conservation · trial balance</td><td class="n">0.3 s</td><td class="n"><span class="r-chip ok">done</span></td></tr>
+              <tr><td>Publish NAV</td><td>awaiting controller sign-off</td><td class="n">—</td><td class="n"><span class="r-chip idle">held</span></td></tr>
+            </tbody>
+          </table>
+          <div class="r-bar" style="margin-top:14px"><i style="width:38%"></i></div>
+          <p class="r-app-sub" style="margin:8px 0 0">11 minutes 24 seconds of a
+          30-minute window — of which 18 seconds was ours.</p>
+        </div>
+      </div>
+      <figcaption class="r-fig-cap">Interface concept, showing modeled figures —
+      not a shipped product and not a recorded run.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ THE DATA ESTATE ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Where the data lives</p>
+    <h2 class="r-claim">No database license underneath any of this</h2>
+    <div class="r-narrow">
+      <p>It is easy to make a batch job look cheap by quoting the compute and
+      quietly running it on top of a six-figure relational estate. That is the
+      usual shape of this industry's cost base — an enterprise RDBMS, its
+      per-core licensing, its storage tier, and the people who keep it alive —
+      and it is where the money actually goes.</p>
+      <p>Ratio does not have one. The system of record is the append-only log
+      itself, kept as compacted columnar files on ordinary object storage. There
+      is no query engine to license, no per-core bill, and no vendor with pricing
+      power over your own history.</p>
+    </div>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>The log is the database</h3>
+        <p>Facts and postings are immutable and append-only, which is precisely
+        the access pattern object storage is best at and the one relational
+        engines are worst at. Nothing is updated in place, so there are no locks,
+        no vacuum, no index maintenance, and no migration window.</p>
+      </div>
+      <div class="r-row">
+        <h3>Compaction at epoch boundaries</h3>
+        <p>At the close of each accounting epoch the log is folded into a
+        columnar snapshot. Replaying a period reads that snapshot plus a short
+        tail rather than re-folding from the beginning of the fund's life — so
+        replay cost stays flat as history grows.</p>
+      </div>
+      <div class="r-row">
+        <h3>Tiering follows the epoch calendar</h3>
+        <p>The open epoch sits hot; recent closed epochs sit in standard storage;
+        epochs retained only to satisfy a seven-year obligation sit in
+        archive-class storage at a fraction of a cent per gigabyte. The system
+        already knows which is which — the epoch is a first-class concept, not a
+        date column someone has to write a lifecycle policy against.</p>
+      </div>
+      <div class="r-row">
+        <h3>Columnar layout is what makes the fetch predictable</h3>
+        <p>The planner knows which columns and which partitions a run needs, so
+        it reads exactly those. This is the same property that lets the scans be
+        hoisted in the first place: predictable reads and cheap storage are the
+        same design decision.</p>
+      </div>
+      <div class="r-row">
+        <h3>Content addressing dedupes for free</h3>
+        <p>Configuration artifacts are identified by hash, so a rule set shared
+        across fifty funds is stored once, and an unchanged epoch costs nothing
+        to keep referencing.</p>
+      </div>
+    </div>
+
+    <figure class="r-fig" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:36px;align-items:start">
+      <div>
+        <table class="r-budget">
+          <caption class="r-fig-cap" style="caption-side:top;text-align:left;margin:0 0 10px">
+            Annual data-estate cost — 20M lots, 250 closes, seven-year retention
+          </caption>
+          <tbody>
+            <tr><th scope="row">Hot tier — open and recent epochs</th><td>34 GB</td></tr>
+            <tr><th scope="row">Archive tier — seven years, compacted</th><td>1.26 TB</td></tr>
+            <tr class="sub"><th scope="row">storage, blended</th><td>$70 / yr</td></tr>
+            <tr><th scope="row">Ingest and fetch — 50 hr of ordinary CPU</th><td>$18 / yr</td></tr>
+            <tr><th scope="row">Fold — 2 hr of GPU, in 30-second bursts</th><td>$6 / yr</td></tr>
+            <tr><th scope="row">Egress for reporting and extracts</th><td>$54 / yr</td></tr>
+          </tbody>
+          <tfoot>
+            <tr><th scope="row">Whole data estate</th><td>≈ $150 / yr</td></tr>
+            <tr class="sub"><th scope="row">with a 10× allowance for replicas, dev, test, retries</th><td>≈ $1,500 / yr</td></tr>
+            <tr class="slack"><th scope="row">Relational license required</th><td>none</td></tr>
+          </tfoot>
+        </table>
+        <p class="r-fig-cap">Modeled at commodity object-storage and on-demand
+        compute rates. Excludes the people and everything a platform is besides
+        storage and arithmetic.</p>
+      </div>
+
+      <div>
+        <div class="r-note" style="margin-top:0">
+          <p><strong>The phases bill separately, which is the point.</strong>
+          Ingest is eleven minutes of waiting on somebody else, so it runs on a
+          cheap general-purpose instance. The fold is thirty seconds of dense
+          arithmetic, so it rents expensive hardware for thirty seconds and gives
+          it back. An interleaved system cannot do this: it has to hold whatever
+          hardware it provisioned for the whole run, idle, through every stall.</p>
+          <p>That is the difference between paying for a machine and paying for
+          the work.</p>
+        </div>
+        <div class="r-callout" style="margin-top:24px">
+          <p><strong>And it scales the boring way.</strong> A book twice the size
+          is twice the records — roughly twice the seconds, twice the gigabytes,
+          twice the pennies. Not twice the license, and not a re-tiering exercise
+          with a sales conversation attached.</p>
+        </div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ SO WHAT ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">So the close is fast. So what?</p>
+    <h2 class="r-claim">A valuation you can afford to run a thousand times is a different instrument entirely</h2>
+    <div class="r-narrow">
+      <p>Making a nightly batch finish sooner is a nice operational win and not
+      much more. The interesting consequence is elsewhere, and it is easy to miss
+      because the constraint has been in place so long that the industry has
+      built its whole shape around it.</p>
+      <p><strong>Because an exact valuation is expensive, nobody uses the exact
+      valuation to make decisions.</strong> They use something else: a risk
+      system with its own position store, a pre-trade checker with a simplified
+      tax model, an attribution engine with its own price history, a
+      spreadsheet on a PM's desk. Each is a fast approximation of the book,
+      maintained separately, and each drifts.</p>
+      <p>An enormous amount of work in this industry exists to reconcile those
+      approximations back to the book of record — and every discrepancy between
+      them is a decision that was made on a number that was not quite true.</p>
+    </div>
+
+    <div class="r-plane-grid">
+      <div>
+        <p class="r-plane-tag">Today — two systems, permanently drifting</p>
+        <h3>Fast and wrong, or exact and late</h3>
+        <ul>
+          <li>The book of record is exact, auditable — and available tomorrow
+          morning.</li>
+          <li>So every decision made during the day is made against a model of
+          the book, not the book.</li>
+          <li>The model has its own positions, its own prices, its own
+          simplifications of tax and fees.</li>
+          <li>Reconciling the two is somebody's permanent job, and the gap is
+          where bad decisions live.</li>
+        </ul>
+      </div>
+      <div>
+        <p class="r-plane-tag">When exact costs two cents</p>
+        <h3>One system, asked repeatedly</h3>
+        <ul>
+          <li>The exact valuation <em>is</em> the fast one. There is no second
+          model to maintain or reconcile.</li>
+          <li>Every answer is a real, balanced, auditable set of books — not an
+          approximation of one.</li>
+          <li>Any question you would have approximated, you now simply run.</li>
+          <li>The reconciliation between model and book disappears, because
+          there is no longer a model.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 style="font-size:23px;margin:52px 0 0">What that turns NAV into</h3>
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>A continuous reading, not a nightly event</h3>
+        <p>Strike it hourly, or on every material market move. Know what the fund
+        is worth now — exactly, with the fee accrual and the tax position
+        included — rather than knowing what it was worth last night.</p>
+      </div>
+      <div class="r-row">
+        <h3>Pre-trade impact, against the real book</h3>
+        <p>“What does this basket do to NAV, to the tax position, to the fee
+        accrual, to every share class?” Answered by running the actual close over
+        the actual ledger with the trade in it — so the answer cannot disagree
+        with tonight's books, because it was produced by the same engine under
+        the same pinned configuration.</p>
+      </div>
+      <div class="r-row">
+        <h3>Tax-lot selection as a search, not a heuristic</h3>
+        <p>Choosing which lots to sell is an optimization problem that firms
+        currently solve with rules of thumb because evaluating a candidate is
+        expensive. At two cents an evaluation, you can search thousands of
+        harvesting strategies against the real ledger and take the best one.</p>
+      </div>
+      <div class="r-row">
+        <h3>Stress and scenario at book fidelity</h3>
+        <p>Shock the prices, the curve, the FX — and re-run the genuine close,
+        thousands of times in parallel. Each scenario produces a complete,
+        balanced, inspectable set of books rather than a risk number whose
+        derivation nobody can reproduce.</p>
+      </div>
+      <div class="r-row">
+        <h3>Rule changes tested before they ship</h3>
+        <p>The control plane already lets a proposed configuration run against
+        real data. Cheap valuation makes that routine: replay years of closes
+        under a proposed fee schedule or accrual convention and see precisely
+        what it would have done, before approving it.</p>
+      </div>
+      <div class="r-row">
+        <h3>Reconciliation that never stops</h3>
+        <p>Rather than hunting breaks at month-end, run continuously against the
+        custodian feed and surface a break within the hour it appears — while
+        the person who caused it still remembers the trade.</p>
+      </div>
+    </div>
+
+    <figure class="r-fig" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:36px;align-items:start">
+      <div>
+        <table class="r-budget">
+          <caption class="r-fig-cap" style="caption-side:top;text-align:left;margin:0 0 10px">
+            At the modeled 1.8&cent; per full valuation
+          </caption>
+          <tbody>
+            <tr><th scope="row">One scenario, complete books</th><td>$0.02</td></tr>
+            <tr><th scope="row">A thousand-scenario stress sweep</th><td>$17.50</td></tr>
+            <tr><th scope="row">Ten thousand tax-harvesting candidates</th><td>$175</td></tr>
+            <tr><th scope="row">NAV every hour, all year</th><td>$31</td></tr>
+          </tbody>
+          <tfoot>
+            <tr><th scope="row">NAV every five minutes, all year</th><td>$341</td></tr>
+          </tfoot>
+        </table>
+        <p class="r-fig-cap">Compute only, modeled on the same basis as the
+        budget above. The point is not the precise figure — it is that the
+        decimal point is nowhere near where the industry has assumed it is.</p>
+      </div>
+      <div>
+        <div class="r-block">
+          <p>The reason a fund values its book once a day is not that once a day
+          is the right answer. It is that valuation was <em>expensive</em>. Remove
+          the cost and the frequency becomes a choice — and so does every
+          question you never bothered to ask exactly.</p>
+        </div>
+        <div class="r-note" style="margin-top:24px">
+          <p><strong>Where the edge actually comes from.</strong> Not from a
+          faster close — from making decisions against exact positions instead of
+          stale ones. Tax-aware trading, multi-asset rebalancing and share-class
+          management are all optimization problems whose quality is bounded by
+          how many candidates you can afford to evaluate, and how accurate each
+          evaluation is. Both constraints move at once here.</p>
+        </div>
+      </div>
+    </figure>
+
+    <div class="r-callout">
+      <p><strong>The claim in one line:</strong> every other platform makes you
+      choose between a number that is fast and a number that is true. Make the
+      true one fast and the choice disappears — along with the second system, the
+      drift between them, and the reconciliation that has been quietly taxing the
+      whole industry for thirty years.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ ECOSYSTEM ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Integrations and applications</p>
+    <h2 class="r-claim">One contract, and everything else is an application</h2>
+    <p class="r-lede">Because the trusted core is small and closed, everything
+    else can be open. Data comes in as typed facts with provenance; capability
+    goes out over one documented API; and neither can violate the balancing rule
+    that the kernel enforces.</p>
+
+    <div class="r-eco">
+      <div>
+        <h3>Custodian &amp; administrator feeds</h3>
+        <p>Positions, transactions and cash from custodians and fund
+        administrators, normalized into facts that carry their source, retrieval
+        time and validity window.</p>
+        <span class="r-tier">Fact plane</span>
+      </div>
+      <div>
+        <h3>Market data</h3>
+        <p>Prices, FX, corporate actions and reference data. Recorded as of a
+        point in time, so a late arrival is a new fact rather than a silent
+        rewrite of yesterday.</p>
+        <span class="r-tier">Fact plane</span>
+      </div>
+      <div>
+        <h3>Portfolio accounting</h3>
+        <p>Positions, tax lots, multi-currency, P&amp;L. The only tier inside the
+        proven core, and deliberately the smallest.</p>
+        <span class="r-tier core">Trusted core</span>
+      </div>
+      <div>
+        <h3>Fees &amp; billing</h3>
+        <p>Accrual schedules, tiered and blended rates, waivers, rebates —
+        authored as rules in the control plane, executed as ordinary postings.</p>
+        <span class="r-tier">Control plane</span>
+      </div>
+      <div>
+        <h3>Trading &amp; rebalancing</h3>
+        <p>Models, drift, tax-aware lot selection. Proposes transactions; the
+        core still checks each one before it lands.</p>
+        <span class="r-tier">Control plane</span>
+      </div>
+      <div>
+        <h3>Performance &amp; reporting</h3>
+        <p>Time- and money-weighted returns, attribution, GIPS-oriented
+        composites — computed over an immutable history that can be replayed.</p>
+        <span class="r-tier">Analytical</span>
+      </div>
+      <div>
+        <h3>Client &amp; advisor portals</h3>
+        <p>Statements, dashboards and documents, reading the same API any third
+        party can read. No privileged back door into the ledger.</p>
+        <span class="r-tier">Presentation</span>
+      </div>
+      <div>
+        <h3>Compliance &amp; surveillance</h3>
+        <p>Restrictions and mandates expressed as control-plane rules, with the
+        evidence trail falling out of the versioning rather than being assembled
+        for an examiner.</p>
+        <span class="r-tier">Control plane</span>
+      </div>
+      <div>
+        <h3>Risk &amp; scenario analysis</h3>
+        <p>Runs the real engine against hypothetical facts or an alternative
+        configuration, which is what makes a what-if trustworthy rather than a
+        separate model that drifts.</p>
+        <span class="r-tier">Analytical</span>
+      </div>
+      <div>
+        <h3>CRM &amp; practice systems</h3>
+        <p>Connectors rather than a rebuild. Ratio has no ambition to be your CRM
+        — it has an ambition to be the thing your CRM can trust.</p>
+        <span class="r-tier">Extension</span>
+      </div>
+      <div>
+        <h3>Your own code</h3>
+        <p>Extensions in ordinary languages against a documented gRPC contract,
+        with data exportable in open formats. The extension surface is wide
+        precisely because the trusted core is narrow.</p>
+        <span class="r-tier">Extension</span>
+      </div>
+      <div>
+        <h3>Authoring assistant</h3>
+        <p>Drafts rules, explains figures, proposes reconciliations. Fenced above
+        the trust boundary; every output is checked before it can affect
+        anything.</p>
+        <span class="r-tier">Fenced</span>
+      </div>
+    </div>
+
+    <div class="r-note">
+      <p>Tiers are the same taxonomy used in the component specifications behind
+      the <a href="roadmap.html">roadmap</a>: what sits inside the proven core,
+      what merely feeds it, and what is built on top. Almost everything is on
+      top — that is the design working, not a gap in it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+<footer class="r-foot">
+  <div class="r-wrap">
+    <h2 class="r-claim" style="font-size:clamp(26px,3.2vw,35px)">Small proven core.
+      Everything else, open.</h2>
+    <p style="max-width:58ch;font-size:18px">Versioned decisions, planned
+    execution, and a boundary between them that a mistake cannot cross.</p>
+
+    <div class="r-foot-cta">
+      <div>
+        <h3><a href="roadmap.html">See the roadmap</a></h3>
+        <p>What exists today, and the route to parity with the incumbents.</p>
+      </div>
+      <div>
+        <h3><a href="technical.html">Read the technical case</a></h3>
+        <p>The proofs the core rests on, and how the running code is generated
+        from them.</p>
+      </div>
+      <div>
+        <h3><a href="index.html">Back to the overview</a></h3>
+        <p>What this means for an accounting and operations team.</p>
+      </div>
+    </div>
+
+    <div class="r-fine">
+      <p>Every performance figure on this page is a cost model derived from the
+      whitepaper's per-record analysis, not a measured benchmark; the workload
+      planner and the interfaces shown are designed, not built. The 20-million
+      tax-lot workload is a scale illustration and does not describe any actual
+      fund or client. The engine is source-available for audit under a strong
+      copyleft license, with a commercial license for operators; it is not
+      permissively licensed. Ratio is an independent project, not affiliated
+      with, sponsored by, or endorsed by any vendor named elsewhere on this
+      site.</p>
+    </div>
+  </div>
+</footer>

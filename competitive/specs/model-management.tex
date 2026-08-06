@@ -1,0 +1,49 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Models, Managed Accounts \& Marketplace}{model-management}
+
+Definition and lifecycle of investment models (ETF/SMA strategies, UMAs),
+plus turnkey/outsourced management around them.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{SS\&C Black Diamond}{Model Marketplace, Managed Accounts, OCIO; N-tier models}
+\advrow{Orion}{Models within Orion Trading; strategy management}
+\advrow{Addepar}{Rebalancing/model integrations}
+\advrow{Envestnet Tamarac}{Unified Managed Accounts (UMAs)}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item N-tier / sleeve model architecture with security-equivalent tracking.
+  \item Model marketplace: curated third-party ETF and SMA strategies with automated updates.
+  \item Unified Managed Account (UMA) construction and maintenance.
+  \item Turnkey / outsourced trading and rebalancing (managed accounts).
+  \item Outsourced CIO: manager selection, capital-market assumptions, strategy, risk.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} Models, sleeves, and security equivalents are
+\emph{content-addressed control-plane artifacts}, frozen per epoch and referenced
+by hash, so ``which model produced this allocation, under which version'' is
+answerable exactly. The kernel is agnostic to model semantics; it only sees the
+balanced transactions a model-driven rebalance proposes.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Control plane (declarative).} Pure policy; versioned and auditable, with
+no ability to violate conservation.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://www.sscblackdiamond.com/solutions/investment-management/}
+  \item \url{https://www.envestnet.com/tamarac}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

@@ -1,0 +1,50 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Compliance \& Surveillance}{compliance}
+
+Pre-trade rule enforcement, ongoing surveillance, and exam-ready books and
+records.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{SS\&C Black Diamond}{Compliance \& Surveillance}
+\advrow{Orion}{Compliance --- ``exam-ready''; pre-trade compliance reviews}
+\advrow{Envestnet Tamarac}{Compliance workflows within Trading}
+\advrow{Addepar}{Governed data + access controls supporting compliance}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Pre-trade compliance: configurable rule sets run against pending orders.
+  \item Ongoing surveillance / monitoring with flagging for review.
+  \item Exam readiness; books-and-records retention.
+  \item Configurable rule authoring; audit trails of checks and overrides.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} Compliance rules are \emph{control-plane} predicates
+evaluated on proposed transactions before admission --- structurally the same
+``propose, then check'' seam as conservation, so a violating trade is rejected at
+the boundary. Critically, Ratio's append-only, content-addressed ledger \emph{is}
+the books-and-records substrate: every check, override, and rule version is itself
+a provenance-bearing, replayable record. ``Prove what the rule was and that it
+ran'' is a deterministic query.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Control plane (rules) + trusted core (immutable record).} Surveillance
+reads the proven log; the log's immutability is the audit guarantee.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://www.sscblackdiamond.com/}
+  \item \url{https://orion.com/advisor-tech}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

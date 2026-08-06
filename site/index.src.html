@@ -1,0 +1,583 @@
+<title>Ratio — Portfolio accounting that ties out, every time</title>
+
+<!--
+  Ratio practitioner site — SOURCE. Edit this file; never edit the build output.
+
+  AUDIENCE: seasoned fund accountants, controllers and operations leads at RIAs,
+  family offices and asset managers. They know the close, the break log, the
+  audit request and the restatement. They do not want to hear about Lean, proof
+  assistants, conservation laws, kernels or gRPC — every one of those belongs on
+  technical.html, and none of them appears here.
+
+  The rule this page is written to: sell the OUTCOME, not the mechanism. Where a
+  claim needs backing, back it with something the reader can check for
+  themselves — a shadow run against their own feed — not with an appeal to
+  mathematics they have no way to evaluate.
+
+  build.py substitutes three placeholders, each a name in double underscores:
+  STYLE takes the shared stylesheet, WORDMARK and MARK take SVG from marks/.
+  They are named here in prose rather than in their own syntax on purpose:
+  build.py replaces every occurrence, and it now fails loudly on a second one.
+-->
+
+__STYLE__
+
+<div class="r-wrap">
+  <nav class="r-nav" aria-label="Main">
+    <a class="r-brandline" href="index.html">
+      <span class="r-mk">__MARK__</span>
+      <span class="r-wm">__WORDMARK__</span>
+    </a>
+    <ul>
+      <li><a href="index.html" aria-current="page">Overview</a></li>
+      <li><a href="workflows.html">Workflows</a></li>
+      <li><a href="platform.html">Platform</a></li>
+      <li><a href="compliance.html">Compliance</a></li>
+      <li><a href="roadmap.html">Roadmap</a></li>
+      <li><a href="technical.html">Technical</a></li>
+      <li><a href="team.html">Team</a></li>
+    </ul>
+  </nav>
+</div>
+
+<!-- ══════════════════════════════ HERO ══════════════════════════════ -->
+<header class="r-hero">
+  <div class="r-wrap">
+    <div class="r-hero-grid">
+      <div>
+        <h1 class="r-claim">Portfolio accounting that ties out. Every time.</h1>
+        <p class="r-hero-sub">Exact numbers, a history you can reproduce on
+          demand, and a bill that stops tracking your assets under management.</p>
+
+        <div class="r-block">
+          <p>Every platform in this category asks you to <em>trust</em> that its
+          books are right. Ratio is built so you can <em>check</em>.</p>
+        </div>
+
+        <div class="r-cta-row">
+          <a class="r-btn r-btn-solid" href="#shadow">Start a shadow run</a>
+          <a class="r-btn r-btn-ghost" href="#compare">See how it compares</a>
+        </div>
+      </div>
+
+      <!-- The practitioner's equivalent of a proof: a period that closed, and a
+           difference of zero. Figures are invented and labeled as such. -->
+      <figure class="r-tb">
+        <figcaption class="r-tb-head">
+          <span>Trial balance · 30 Sep</span><span>re-run today</span>
+        </figcaption>
+        <table>
+          <thead>
+            <tr><th scope="col">Account</th><th scope="col">Debit</th><th scope="col">Credit</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Investments at fair value</th><td>18,904,211.07</td><td>—</td></tr>
+            <tr><th scope="row">Cash and equivalents</th><td>1,242,880.55</td><td>—</td></tr>
+            <tr><th scope="row">Dividends receivable</th><td>38,417.20</td><td>—</td></tr>
+            <tr><th scope="row">Capital contributions</th><td>—</td><td>17,500,000.00</td></tr>
+            <tr><th scope="row">Unrealized gain</th><td>—</td><td>2,461,908.34</td></tr>
+            <tr><th scope="row">Management fee payable</th><td>—</td><td>61,240.18</td></tr>
+            <tr><th scope="row">Accrued expenses</th><td>—</td><td>162,360.30</td></tr>
+          </tbody>
+          <tfoot>
+            <tr><th scope="row">Total</th><td>20,185,508.82</td><td>20,185,508.82</td></tr>
+            <tr class="r-tb-diff"><th scope="row">Difference</th><td>0.00</td><td>0.00</td></tr>
+          </tfoot>
+        </table>
+        <p class="r-tb-foot">Not a tolerance. Not a rounding plug. Re-run the same
+          period in a year and you will get this page again, to the cent.
+          <em style="font-style:normal;color:var(--muted)">Illustrative figures.</em></p>
+      </figure>
+    </div>
+  </div>
+</header>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ WHAT BREAKS TODAY ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">What you are living with</p>
+    <h2 class="r-claim">The work you do to make the system's numbers trustworthy</h2>
+    <div class="r-narrow">
+      <p>The platforms in this category are capable and entrenched, and most of
+      them do the job. But a large share of what a good accounting team spends
+      its month on is not accounting — it is compensating for a system nobody
+      outside the vendor can look inside.</p>
+    </div>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>Breaks you resolve by hand</h3>
+        <p>The custodian says one thing, the platform says another, and the
+        spreadsheet says a third. There is no way to ask the system to show its
+        work, so somebody reconciles it manually — and does it again next month.</p>
+      </div>
+      <div class="r-row">
+        <h3>A past that will not sit still</h3>
+        <p>A price arrives late. A fee schedule changes. Suddenly last quarter's
+        reported figure is not what the system produces today, and explaining the
+        difference is an investigation rather than a lookup.</p>
+      </div>
+      <div class="r-row">
+        <h3>Differences you absorb rather than explain</h3>
+        <p>Fractions of a cent accumulate across thousands of allocations, so the
+        month ends with a small plug and a tolerance nobody loves. It is
+        defensible. It is not explainable.</p>
+      </div>
+      <div class="r-row">
+        <h3>A bill indexed to your success</h3>
+        <p>Pricing is usually a percentage of assets under management, so a good
+        year raises your technology cost even though your usage has not moved.
+        Then there is the headcount that exists to do the reconciling above.</p>
+      </div>
+      <div class="r-row">
+        <h3>An assistant sitting next to your numbers</h3>
+        <p>Every vendor is adding AI. Very few can tell you what stops a
+        confident, wrong suggestion from becoming an entry.</p>
+      </div>
+    </div>
+
+    <div class="r-callout">
+      <p><strong>The issue is not the feature list — it is the foundation.</strong>
+      You can buy more reports, more dashboards and more integrations. What you
+      cannot buy from any incumbent is a set of books you are able to check
+      yourself.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ WHAT CHANGES ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">What changes</p>
+    <h2 class="r-claim">Five things that stop being your problem</h2>
+    <p class="r-lede">Ratio is not a reporting layer on top of the same kind of
+    engine. It replaces the engine, and these follow from that.</p>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>The books cannot go out of balance</h3>
+        <p>Not “rarely do”. An entry that does not balance is refused at the door
+        rather than written and caught later. There is no state in which the
+        ledger is out and someone has to find it.</p>
+      </div>
+      <div class="r-row">
+        <h3>Any prior period reproduces exactly</h3>
+        <p>Ask for 30 September as it stood on 30 September and you get it — under
+        the fee schedule, prices and policies that were in force then, not
+        today's. Restatements become a re-run instead of a reconstruction.</p>
+      </div>
+      <div class="r-row">
+        <h3>No rounding differences to absorb</h3>
+        <p>Amounts are held exactly, in whole cents, and never as decimals a
+        computer has to approximate. Totals do not drift with the order things
+        were added in. There is no tolerance to set and no plug to book.</p>
+      </div>
+      <div class="r-row">
+        <h3>The audit request is a query</h3>
+        <p>“Show me how this figure was calculated, under the policy in force that
+        quarter.” That is a report Ratio can produce, not a project you staff. The
+        record cannot be quietly edited after the fact.</p>
+      </div>
+      <div class="r-row">
+        <h3>The bill stops tracking the book</h3>
+        <p>Priced on what you use, not on what you manage. It can run in your
+        own environment, and your history exports in open, documented formats —
+        so leaving is always possible, which is what makes staying a choice.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ THE CLOSE ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">The month-end, side by side</p>
+    <h2 class="r-claim">Where the time goes</h2>
+
+    <div class="r-spread">
+      <div>
+        <p class="r-col-tag neg">A close you would recognize</p>
+        <p>Pull the custodian file. Load it. Work the exceptions report. Chase the
+        three positions that did not match, and the corporate action that posted
+        to the wrong lot. Book the rounding difference. Re-run the performance
+        pack. Answer the auditor's question about last March by finding whoever
+        remembers it. Sign off, later than you wanted to.</p>
+      </div>
+      <div>
+        <p class="r-col-tag pos">The same close on Ratio</p>
+        <p>Load the same file. Anything that does not balance is rejected on the
+        way in, with the reason attached, so the exception list is a list of real
+        data problems rather than a mix of those and system artifacts. Nothing to
+        plug. Last March re-runs on demand, exactly as reported, so the auditor's
+        question is answered from the system rather than from memory.</p>
+      </div>
+    </div>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <!-- viewBox runs to 1000, not 900: the right-hand output label is the
+             longest string in the figure and clipped at the old width. -->
+        <svg viewBox="0 0 1000 250" role="img"
+             aria-label="Legacy platforms take transactions and prices into an opaque engine and produce reports you have to trust. Ratio takes the same inputs into an engine you can look inside, and produces reports you can check.">
+          <text class="svg-lab svg-muted" x="8" y="18">Today's platform</text>
+          <rect class="svg-block" x="120" y="34" width="210" height="150" rx="3"/>
+          <text class="svg-block-text" x="225" y="122" text-anchor="middle"
+                style="font:700 54px 'Plex Serif',Georgia,serif" opacity=".55">?</text>
+          <text class="svg-lab svg-muted" x="225" y="210" text-anchor="middle">“Trust the output.”</text>
+          <text class="svg-lab-sm svg-text2" x="8" y="102">trades,</text>
+          <text class="svg-lab-sm svg-text2" x="8" y="120">prices</text>
+          <line class="svg-rule2" x1="94" y1="109" x2="114" y2="109" stroke-width="1.5"/>
+          <text class="svg-lab-sm svg-text2" x="344" y="102">statements,</text>
+          <text class="svg-lab-sm svg-text2" x="344" y="120">NAV, tax lots</text>
+          <line class="svg-rule2" x1="330" y1="109" x2="340" y2="109" stroke-width="1.5"/>
+
+          <line class="svg-rule" x1="500" y1="20" x2="500" y2="230" stroke-width="1" stroke-dasharray="3 5"/>
+
+          <text class="svg-lab svg-text" x="530" y="18">Ratio</text>
+          <rect class="svg-raised" x="642" y="34" width="222" height="150" rx="3"/>
+          <rect x="642" y="34" width="222" height="150" rx="3" fill="none"
+                class="svg-rule2" stroke-width="1.5"/>
+          <g class="svg-lab-sm">
+            <rect class="svg-surface" x="656" y="46" width="194" height="38" rx="2"/>
+            <text class="svg-text" x="668" y="70">Every entry checked first</text>
+            <rect class="svg-surface" x="656" y="90" width="194" height="38" rx="2"/>
+            <text class="svg-text" x="668" y="114">Exact amounts, no rounding</text>
+            <rect class="svg-surface" x="656" y="134" width="194" height="38" rx="2"/>
+            <text class="svg-text" x="668" y="158">History that cannot be edited</text>
+          </g>
+          <text class="svg-lab" x="753" y="210" text-anchor="middle"
+                style="fill:var(--yes)">“Check the output.”</text>
+          <text class="svg-lab-sm svg-text2" x="530" y="102">trades,</text>
+          <text class="svg-lab-sm svg-text2" x="530" y="120">prices</text>
+          <line class="svg-rule2" x1="618" y1="109" x2="636" y2="109" stroke-width="1.5"/>
+          <text class="svg-lab-sm svg-text2" x="878" y="102">the same,</text>
+          <text class="svg-lab-sm svg-text2" x="878" y="120">plus the workings</text>
+          <line class="svg-rule2" x1="864" y1="109" x2="874" y2="109" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap">Same inputs, same outputs — plus the ability to
+      see how the second one got there.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ COMPARISON ═══════════════════════ -->
+<section class="r-section" id="compare">
+  <div class="r-wrap">
+    <p class="r-eyebrow">How Ratio compares</p>
+    <h2 class="r-claim">The incumbents win on breadth. Ratio wins on the foundation.</h2>
+    <p class="r-lede">This asks “can you check it yourself?”, not “is there a
+    button for it?” On breadth of reporting and integrations, today, they are
+    ahead — and the table says so.</p>
+
+    <div class="r-scroll">
+      <table class="r-tab">
+        <thead>
+          <tr>
+            <th scope="col">Capability</th>
+            <th scope="col" class="col-r">Ratio</th>
+            <th scope="col">Black Diamond</th>
+            <th scope="col">Orion</th>
+            <th scope="col">Addepar</th>
+            <th scope="col">Tamarac</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Multi-currency, positions, tax lots, P&amp;L</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-y" title="Full">✓</span></td><td><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-y" title="Full">✓</span></td><td><span class="m m-y" title="Full">✓</span></td></tr>
+          <tr><th scope="row">Breadth of performance reporting and client portal</th>
+            <td class="col-r"><span class="m m-p" title="Partial">~</span></td>
+            <td><span class="m m-y" title="Full">✓</span></td><td><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-y" title="Full">✓</span></td><td><span class="m m-y" title="Full">✓</span></td></tr>
+          <tr><th scope="row">Custodian feeds and integrations available today</th>
+            <td class="col-r"><span class="m m-p" title="Partial">~</span></td>
+            <td><span class="m m-y" title="Full">✓</span></td><td><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-y" title="Full">✓</span></td><td><span class="m m-y" title="Full">✓</span></td></tr>
+          <tr><th scope="row">Books that cannot go out of balance</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+          <tr><th scope="row">Reproduce any prior period exactly, under the rules in force then</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+          <tr><th scope="row">Exact amounts — no rounding tolerance to absorb</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-p" title="Partial">~</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-p" title="Partial">~</span></td></tr>
+          <tr><th scope="row">Audit trail that cannot be quietly amended</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-p" title="Partial">~</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-p" title="Partial">~</span></td></tr>
+          <tr><th scope="row">Reproduce any figure, and see the rules that produced it</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+          <tr><th scope="row">Take your history with you, in open formats</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+          <tr><th scope="row">AI that can draft, but can never change a number</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-p" title="Partial">~</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+          <tr><th scope="row">Pricing that does not track your AUM</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="r-key">
+      <span><span class="m m-y">✓</span> full</span>
+      <span><span class="m m-p">~</span> partial or emerging</span>
+      <span><span class="m m-n">✗</span> not offered, or not something you can inspect</span>
+    </p>
+
+    <div class="r-note">
+      <p><strong>A note on fairness.</strong> This reflects Ratio's reading of
+      publicly available information as of 2026 and general patterns among legacy
+      wealth-technology platforms; capabilities evolve and specific deployments
+      vary. Where a competitor offers part of a capability we mark it
+      <span class="m m-p">~</span> rather than <span class="m m-n">✗</span>. The
+      first three rows are where the incumbents are genuinely ahead today.</p>
+      <p>Black Diamond is a trademark of SS&amp;C Technologies; Orion, Addepar, and
+      Tamarac are trademarks of their respective owners. Ratio is an independent
+      project and is not affiliated with, sponsored by, or endorsed by any of them.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ COST ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">What it costs</p>
+    <h2 class="r-claim">A bill that stops tracking your book</h2>
+    <div class="r-narrow">
+      <p>Most platforms in this category price as a percentage of assets under
+      management. A strong year therefore raises your technology bill without
+      changing what the technology does for you. On top of that sit
+      implementation fees, per-seat add-ons, and the people whose job is to
+      reconcile a system nobody can check.</p>
+      <p>Ratio prices on usage, and can run on your own infrastructure. The cost
+      curve flattens as the book grows, and the reconciliation work shrinks
+      instead of scaling with you.</p>
+    </div>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 760 350" role="img"
+             aria-label="Cumulative five-year cost for a growing firm. The AUM-linked line rises from 180 to 1,400 thousand dollars. The usage-based Ratio line rises from 70 to 470 thousand dollars.">
+          <g class="svg-num svg-muted">
+            <line class="svg-rule" x1="70" y1="270" x2="716" y2="270" stroke-width="1"/>
+            <text x="58" y="274" text-anchor="end">0</text>
+            <line class="svg-rule" x1="70" y1="190" x2="716" y2="190" stroke-width="1"/>
+            <text x="58" y="194" text-anchor="end">500</text>
+            <line class="svg-rule" x1="70" y1="110" x2="716" y2="110" stroke-width="1"/>
+            <text x="58" y="114" text-anchor="end">1,000</text>
+            <line class="svg-rule" x1="70" y1="30" x2="716" y2="30" stroke-width="1"/>
+            <text x="58" y="34" text-anchor="end">1,500</text>
+          </g>
+          <text class="svg-lab-sm svg-muted" x="70" y="14">Cumulative cost ($000s)</text>
+          <g class="svg-num svg-muted">
+            <text x="70"  y="294" text-anchor="middle">0</text>
+            <text x="196" y="294" text-anchor="middle">1</text>
+            <text x="322" y="294" text-anchor="middle">2</text>
+            <text x="448" y="294" text-anchor="middle">3</text>
+            <text x="574" y="294" text-anchor="middle">4</text>
+            <text x="700" y="294" text-anchor="middle">5</text>
+            <text x="385" y="318" text-anchor="middle" class="svg-lab-sm">Year</text>
+          </g>
+
+          <path d="M70 241.2 196 214 322 180.4 448 142 574 97.2 700 46 700 270 70 270Z"
+                style="fill:var(--series-legacy)" opacity=".10"/>
+          <polyline points="70,241.2 196,214 322,180.4 448,142 574,97.2 700,46"
+                fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+                style="stroke:var(--series-legacy)"/>
+          <path d="M70 258.8 196 247.6 322 235.6 448 222.8 574 209.2 700 194.8 700 270 70 270Z"
+                style="fill:var(--series-ratio)" opacity=".12"/>
+          <polyline points="70,258.8 196,247.6 322,235.6 448,222.8 574,209.2 700,194.8"
+                fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+                style="stroke:var(--series-ratio)"/>
+
+          <circle cx="700" cy="46" r="5" style="fill:var(--series-legacy);stroke:var(--ground)" stroke-width="2"/>
+          <circle cx="700" cy="194.8" r="5" style="fill:var(--series-ratio);stroke:var(--ground)" stroke-width="2"/>
+
+          <text class="svg-lab" x="700" y="30" text-anchor="end"
+                style="fill:var(--series-legacy)">Priced on your AUM</text>
+          <text class="svg-num" x="700" y="14" text-anchor="end"
+                style="fill:var(--series-legacy)">$1,400k</text>
+          <text class="svg-lab" x="700" y="222" text-anchor="end"
+                style="fill:var(--series-ratio)">Ratio — priced on usage</text>
+          <text class="svg-num" x="700" y="240" text-anchor="end"
+                style="fill:var(--series-ratio)">$470k</text>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap"><strong>Illustrative.</strong> Five-year
+      cumulative cost for a growing advisory firm — implementation, platform fees
+      and reconciliation overhead. These figures show the shape of the two pricing
+      models. They are not a quote.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ AI ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">About the AI</p>
+    <h2 class="r-claim">It can draft. It cannot touch a number.</h2>
+    <div class="r-narrow">
+      <p>Every vendor in this category is adding an assistant. The question worth
+      asking is not whether they have one — it is what would happen if it were
+      confidently wrong.</p>
+    </div>
+
+    <div class="r-spread">
+      <div>
+        <p class="r-col-tag pos">What it does for you</p>
+        <p>Turns a plain-language request into a precise instruction you can read
+        before it runs. Drafts the client-facing explanation of a position, a fee
+        or a performance figure. Suggests how an unusual transaction should be
+        posted, and how a break might be resolved — as a proposal, for you to
+        approve.</p>
+      </div>
+      <div>
+        <p class="r-col-tag neg">What it cannot do</p>
+        <p>Post an entry. Everything the assistant produces is checked against the
+        same rules as any other entry before it can affect the books, and anything
+        that does not balance is refused. The worst outcome from a bad suggestion
+        is a suggestion you decline.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ SHADOW ═══════════════════════ -->
+<section class="r-section" id="shadow">
+  <div class="r-wrap">
+    <p class="r-eyebrow">How you would adopt it</p>
+    <h2 class="r-claim">You do not have to take our word for any of this</h2>
+    <p class="r-lede">Run Ratio next to what you have, on your own data, and let
+    it earn the switch. Nothing is migrated until you have watched it agree with
+    you for as long as you want.</p>
+
+    <div class="r-steps">
+      <div>
+        <h3>Shadow</h3>
+        <p>Point the same custodian feed at both systems and let them run in
+        parallel. Every difference is itemized and reproducible, so the shadow
+        period doubles as the most thorough reconciliation your books have had.</p>
+      </div>
+      <div>
+        <h3>Verify</h3>
+        <p>Start using Ratio as the independent answer for the things that hurt
+        most — audit support, restatements, and “as at” reporting — while your
+        incumbent still runs the day to day.</p>
+      </div>
+      <div>
+        <h3>Adopt</h3>
+        <p>Move reporting, client and integration work across at whatever pace
+        suits you, with your data in open formats the entire time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ STATUS ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Where Ratio is today</p>
+    <h2 class="r-claim">What exists now, and what does not</h2>
+    <p class="r-lede">Ratio is early. A page that asks you to check rather than
+    trust would be a poor advertisement for itself if it were vague about its own
+    state, so here it is plainly.</p>
+
+    <div class="r-status">
+      <div class="r-built">
+        <p class="r-col-tag pos">Working today</p>
+        <ul>
+          <li>The accounting engine itself — entries that do not balance are
+          refused, and the balancing guarantee has been independently checked
+          rather than merely tested.</li>
+          <li>Exact amounts throughout, held in whole cents, with totals that do
+          not depend on the order things were entered.</li>
+          <li>A documented interface other systems can read from and write to.</li>
+        </ul>
+      </div>
+      <div class="r-spec">
+        <p class="r-col-tag neg">Not built yet</p>
+        <ul>
+          <li>Custodian feeds, performance reporting, the client portal and the
+          day-to-day screens your team would work in.</li>
+          <li>Multi-currency, tax lots and corporate actions — designed and
+          specified, not yet implemented.</li>
+          <li>Fee billing, compliance and the rest of the surface the incumbents
+          have spent twenty years accumulating.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="r-note">
+      <p>In practice that means Ratio is not something you could run your firm on
+      this quarter, and we would rather you heard that here than three meetings
+      in. What it is ready for is a conversation about the foundation — and, when
+      there is a feed to point at it, a shadow run.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+<footer class="r-foot">
+  <div class="r-wrap">
+    <h2 class="r-claim" style="font-size:clamp(26px,3.2vw,35px)">Stop trusting your
+      books. Start checking them.</h2>
+    <p style="max-width:56ch;font-size:18px">Buyers in this category have been
+    choosing between closed systems for twenty years. The differences that matter
+    over the next ten are whether you can see inside one, reproduce what it told
+    you last year, and leave it if you want to.</p>
+
+    <div class="r-foot-cta">
+      <div>
+        <h3>Start a shadow run</h3>
+        <p>Bring a transaction feed. Keep your incumbent. Compare.</p>
+      </div>
+      <div>
+        <h3><a href="technical.html">How it works</a></h3>
+        <p>The technical case, for engineering and due-diligence reviewers.</p>
+      </div>
+      <div>
+        <h3>Audit the math</h3>
+        <p>The engine and its correctness proofs are readable, so your own people
+        — or your auditors — can check them.</p>
+      </div>
+    </div>
+
+    <div class="r-fine">
+      <p>Ratio's accounting engine is source-available for inspection and audit
+      under a strong copyleft license, with a commercial license for operators;
+      it is not permissively licensed. Ratio is an independent project, not
+      affiliated with, sponsored by, or endorsed by SS&amp;C, Orion, Addepar, or
+      Envestnet; product names are the trademarks of their respective owners.
+      Figures shown on this page are illustrative — including the trial balance
+      and the cost comparison — and are neither a quote nor an offer.</p>
+    </div>
+  </div>
+</footer>

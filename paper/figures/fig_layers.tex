@@ -1,0 +1,42 @@
+% Layered architecture with an explicit trust boundary. The proven
+% kernel is the bottom, smallest layer; expressiveness grows upward and
+% sits outside the trusted base.
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    font=\footnotesize,
+    layer/.style={draw, rounded corners, minimum width=88mm, align=center,
+                  inner sep=4pt, minimum height=11mm},
+    trusted/.style={layer, fill=green!12},
+    declarative/.style={layer, fill=black!6},
+    learned/.style={layer, fill=blue!9},
+    >={Stealth[length=2mm]},
+    node distance=3.5mm,
+]
+\node[learned]                       (llm)  {\textbf{Authoring (learned, untrusted)}\\
+                     LLM intent capture $\to$ candidate specifications};
+\node[declarative, below=of llm]     (cp)   {\textbf{Control plane (declarative)}\\
+                     content-addressed posting rules, mappings, policy};
+\node[declarative, below=of cp]      (facts){\textbf{Fact plane (declarative)}\\
+                     typed prices / FX with provenance + validity windows};
+\node[trusted, below=8mm of facts]   (ker)  {\textbf{Conservation kernel (proven, Lean~4)}\\[1pt]
+                     $\rconserves(\rvec):\rvec=\rzero$ \quad
+                     $\rledger=\mathrm{foldl}\,(+)\,\rzero\,\textit{log}$};
+
+% Trust boundary between the declarative planes and the proven kernel.
+\draw[dashed, thick, red!60!black]
+    ([yshift=4mm]ker.north west) -- ([yshift=4mm]ker.north east)
+    node[midway, above, font=\scriptsize\itshape, text=red!60!black]
+    {trust boundary --- only conserving transactions cross downward};
+
+\draw[->] (llm) -- (cp);
+\draw[->] (cp) -- (facts);
+\draw[->] (facts) -- (ker);
+\end{tikzpicture}
+\caption{The trust boundary. Expressiveness increases upward; the trusted
+computing base is only the bottom layer --- the conservation kernel and
+the theorems over it. Learned and declarative layers above produce
+\emph{proposals}; the kernel admits a transaction only if it conserves
+value, so nothing above the boundary can unbalance the ledger.}
+\label{fig:layers}
+\end{figure}

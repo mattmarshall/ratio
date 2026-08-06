@@ -1,0 +1,36 @@
+% Modeled per-transaction cost as the control-plane rule set grows.
+% Expressive engines branch on business cases on the hot path (cost rises
+% with rule-set size); the conservation kernel does a fixed amount of
+% integer work per fixed-width record (flat). Analytical model, not a
+% measured benchmark --- see Section "Analysis and Value Proposition".
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=\linewidth, height=6cm,
+    xmode=log, log basis x=2,
+    xtick={1,4,16,64,256,1024},
+    xticklabels={1,4,16,64,256,1024},
+    xlabel={control-plane rule-set size (number of rules)},
+    ylabel={modeled per-tx cost (ns)},
+    ymin=0,
+    legend style={at={(0.02,0.97)}, anchor=north west, draw=none,
+                  fill=white, fill opacity=0.85, text opacity=1, font=\scriptsize},
+    grid=both, grid style={black!10}, mark options={solid},
+]
+\addplot[mark=*, thick, red!60!black]
+    table[x=rules, y=expressive] {figures/data/throughput.dat};
+\addplot[mark=square*, thick, green!45!black]
+    table[x=rules, y=kernel] {figures/data/throughput.dat};
+\legend{expressive engine (logic-bound), conservation kernel (bandwidth-bound)}
+\end{axis}
+\end{tikzpicture}
+\caption{Modeled per-transaction cost vs.\ control-plane complexity
+(analytical, from the cost model of \cref{sec:kernel}; not a measured
+benchmark). An expressive engine dispatches on business cases on the hot
+path, so its per-transaction cost grows with the rule set; the
+conservation kernel's hot path is a branch-minimal integer fold over
+fixed-width records, so its cost is a constant set by the record width.
+The gap is structural, not a tuning artifact.}
+\label{fig:throughput}
+\end{figure}

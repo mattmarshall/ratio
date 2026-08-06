@@ -1,0 +1,786 @@
+<title>Ratio — How it works: a formally verified accounting kernel</title>
+
+<!--
+  Ratio marketing site — SOURCE. Edit this file; never edit the build output.
+
+  AUDIENCE: engineers, CTOs and technical due-diligence reviewers. The
+  practitioner site is index.html and shares nothing of this vocabulary — no
+  Lean, no conservation law, no kernel. Send a fund accountant there, not here.
+
+  build.py substitutes three placeholders, each a name in double underscores:
+  STYLE takes the shared stylesheet, WORDMARK and MARK take SVG from marks/.
+  They are named here in prose rather than in their own syntax on purpose:
+  build.py replaces every occurrence, and it now fails loudly on a second one.
+
+  Copy is lifted from //marketing (the positioning brief) and //paper (the
+  whitepaper). Where the two disagree, the brief wins — it is the buyer-facing
+  document. Two passages are load-bearing and must not be trimmed: the
+  competitive matrix's fairness/trademark note, and the TCO chart's
+  "illustrative of the pricing model, not a quote".
+-->
+
+__STYLE__
+
+<!-- ══════════════════════════════ HERO ══════════════════════════════ -->
+<div class="r-wrap">
+  <nav class="r-nav" aria-label="Main">
+    <a class="r-brandline" href="index.html">
+      <span class="r-mk">__MARK__</span>
+      <span class="r-wm">__WORDMARK__</span>
+    </a>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="workflows.html">Workflows</a></li>
+      <li><a href="platform.html">Platform</a></li>
+      <li><a href="compliance.html">Compliance</a></li>
+      <li><a href="roadmap.html">Roadmap</a></li>
+      <li><a href="technical.html" aria-current="page">Technical</a></li>
+      <li><a href="team.html">Team</a></li>
+    </ul>
+  </nav>
+</div>
+
+<header class="r-hero">
+  <div class="r-wrap">
+    <div class="r-hero-grid">
+      <div>
+        <h1 class="r-claim">The provably correct foundation for wealth management</h1>
+        <p class="r-hero-sub">An accounting kernel whose central invariant is
+          machine-checked in Lean&nbsp;4 — and whose running engine is generated
+          from those proofs.</p>
+
+        <div class="r-block">
+          <p>Every other portfolio-accounting platform asks you to <em>trust</em>
+          that its ledger is correct. Ratio lets you <em>verify</em> it.</p>
+        </div>
+
+        <div class="r-cta-row">
+          <a class="r-btn r-btn-solid" href="#proof">See what is proved</a>
+          <a class="r-btn r-btn-ghost" href="#compare">How it compares</a>
+        </div>
+      </div>
+
+      <!-- The most characteristic object in Ratio's world, shown rather than
+           described: the actual conservation theorem the kernel rests on. -->
+      <figure class="r-proof" style="margin:0">
+        <figcaption class="r-proof-head">
+          <span>lean/Ratio/Core.lean</span><b>Lean 4</b>
+        </figcaption>
+        <pre class="r-proof-body"><code><span class="c">/-- If every transaction in the log conserves
+    value, the folded ledger conserves value. -/</span>
+<span class="k">theorem</span> ledger_conserves
+    {Dim : Type} (log : List (Vec Dim))
+    (h : ∀ t ∈ log, Conserves t) :
+    Conserves (ledger log) :=
+  foldl_conserves log Vec.zero conserves_zero h</code></pre>
+        <p class="r-proof-foot">This is the whole invariant. Double-entry's
+          “debits = credits” is its one-dimensional case — and the Rust that
+          runs in production is emitted from this file, not translated by hand.</p>
+      </figure>
+    </div>
+  </div>
+</header>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ 2. THE PROBLEM ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">The problem</p>
+    <h2 class="r-claim">The incumbent stack runs on trust, not proof</h2>
+    <div class="r-narrow">
+      <p>For two decades, advisors, family offices, and asset managers have
+      standardized on a handful of portfolio-accounting and performance-reporting
+      platforms. These systems are capable and entrenched. They are also,
+      structurally, black boxes: closed engines whose correctness you cannot
+      inspect, whose history you cannot reproduce independently, and whose
+      roadmap and pricing you do not control.</p>
+      <p>That arrangement was acceptable when there was no alternative. It is
+      increasingly expensive in four concrete ways.</p>
+    </div>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>Correctness is asserted, not demonstrated</h3>
+        <p>The arithmetic behind a performance figure or a tax lot is proprietary.
+        When custodian, platform, and spreadsheet disagree, the resolution is
+        manual reconciliation, not a proof. Operations teams exist largely to
+        paper over a trust gap.</p>
+      </div>
+      <div class="r-row">
+        <h3>History is not reproducible</h3>
+        <p>Restating a prior period — or answering “what did we report on this
+        date, and under which rules?” — means reconstructing state from logs and
+        memory. Late-arriving prices and silent rule changes can alter the past
+        without a trace.</p>
+      </div>
+      <div class="r-row">
+        <h3>You are locked in, and billed on your success</h3>
+        <p>Data lives in the vendor's format and integrations route through the
+        vendor's gates. Pricing is typically a function of assets under
+        management, so the bill rises with your book even when your usage does not.</p>
+      </div>
+      <div class="r-row">
+        <h3>AI is bolted on, not built in safely</h3>
+        <p>The incumbents are racing to add LLM features atop engines never
+        designed to contain them — exactly the architecture in which a confident,
+        wrong model can quietly move a number.</p>
+      </div>
+    </div>
+
+    <div class="r-callout">
+      <p><strong>The core problem isn't features — it's foundations.</strong> You
+      can buy more reports, more dashboards, more integrations. You cannot buy,
+      from any incumbent, a ledger you are able to <em>verify</em>.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ 3. THE THESIS ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">The thesis</p>
+    <h2 class="r-claim">Accounting's mechanical core is a conservation law</h2>
+    <div class="r-narrow">
+      <p>Conservation laws are exactly the kind of thing one proves once and
+      relies on forever. A transaction is an integer vector over a basis of
+      conserved dimensions — currencies, positions, tax lots, P&amp;L. It is
+      valid if and only if it nets to zero on every dimension. The ledger is a
+      deterministic fold of the append-only log, and conservation is closed under
+      that fold.</p>
+      <p>So the ledger conserves value <em>regardless of business semantics</em>.
+      Posting rules, account mappings, and normal-balance conventions — the parts
+      that change constantly — live outside the proven core, where changing them
+      cannot break the arithmetic.</p>
+      <p>The name comes from the same idea. In Roman finance <em>ratio</em> meant
+      not just proportion but <em>account</em> and <em>reckoning</em>; citizens
+      were asked to present their books in symmetrical tablets and achieve
+      <em>parem rationem</em> — the demand that credits and debits balance
+      exactly. That symmetry is the whole invariant, and now it is a theorem.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ 4. FIVE PILLARS ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">What follows from it</p>
+    <h2 class="r-claim">Five differences a reporting layer cannot retrofit</h2>
+    <p class="r-lede">Ratio does not add a layer on top of the same kind of
+    engine. It replaces the engine.</p>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>Provable correctness</h3>
+        <p>The kernel's invariant is machine-checked in Lean&nbsp;4, and the Rust
+        engine is generated from the proven source. Correctness is established for
+        all inputs by a proof assistant, not sampled by a test suite.</p>
+      </div>
+      <div class="r-row">
+        <h3>Deterministic audit</h3>
+        <p>An append-only log of integer-exact entries, folded deterministically.
+        No floating-point drift, no order-dependence, no hidden mutable state.
+        Any past state replays bit-for-bit under the rules in force then.</p>
+      </div>
+      <div class="r-row">
+        <h3>AI-native, safely</h3>
+        <p>Language models turn intent into precise specifications and draft
+        client-ready explanations. They sit above a hard trust boundary and are
+        checked against the kernel before anything reaches a ledger.</p>
+      </div>
+      <div class="r-row">
+        <h3>Readable, and checkable</h3>
+        <p>The kernel is readable Rust, its proofs ship with it, and the contract
+        is documented — so your reviewers, your auditors and your regulator can
+        check the arithmetic rather than take it on trust. Your history exports in
+        open formats. The engine is source-available, not permissively licensed:
+        you can audit it, and you cannot resell it.</p>
+      </div>
+      <div class="r-row">
+        <h3>Fast because it is simple</h3>
+        <p>A non-expressive kernel over fixed-width integer records is
+        branch-minimal: its cost is set by memory bandwidth, not by how many
+        business cases the engine must dispatch on.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ 5. GLASS BOX ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">The contrast</p>
+    <h2 class="r-claim">A glass box, not a black box</h2>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <!-- viewBox runs to 1000, not 900: the right-hand output label is the
+             longest string in the figure and clipped at the old width. -->
+        <svg viewBox="0 0 1000 250" role="img"
+             aria-label="Legacy platforms take transactions and prices into an opaque engine and emit reports you must trust. Ratio takes the same inputs into an inspectable, proven engine and emits reports with a checkable proof.">
+          <!-- legacy -->
+          <text class="svg-lab svg-muted" x="8" y="18">Incumbent platform</text>
+          <rect class="svg-block" x="120" y="34" width="210" height="150" rx="3"/>
+          <text class="svg-block-text" x="225" y="122" text-anchor="middle"
+                style="font:700 54px 'Plex Serif',Georgia,serif" opacity=".55">?</text>
+          <text class="svg-lab svg-muted" x="225" y="210" text-anchor="middle">“Trust the output.”</text>
+          <text class="svg-lab-sm svg-text2" x="8" y="102">transactions,</text>
+          <text class="svg-lab-sm svg-text2" x="8" y="120">prices</text>
+          <line class="svg-rule2" x1="96" y1="109" x2="114" y2="109" stroke-width="1.5"/>
+          <text class="svg-lab-sm svg-text2" x="344" y="102">reports, NAV,</text>
+          <text class="svg-lab-sm svg-text2" x="344" y="120">tax lots</text>
+          <line class="svg-rule2" x1="330" y1="109" x2="340" y2="109" stroke-width="1.5"/>
+
+          <!-- divider -->
+          <line class="svg-rule" x1="500" y1="20" x2="500" y2="230" stroke-width="1" stroke-dasharray="3 5"/>
+
+          <!-- ratio -->
+          <text class="svg-lab svg-text" x="530" y="18">Ratio</text>
+          <rect class="svg-raised" x="642" y="34" width="222" height="150" rx="3"/>
+          <rect x="642" y="34" width="222" height="150" rx="3" fill="none"
+                class="svg-rule2" stroke-width="1.5"/>
+          <g class="svg-lab-sm">
+            <rect class="svg-surface" x="656" y="46" width="194" height="38" rx="2"/>
+            <text class="svg-text" x="668" y="70">Conservation kernel — proven</text>
+            <rect class="svg-surface" x="656" y="90" width="194" height="38" rx="2"/>
+            <text class="svg-text" x="668" y="114">Lean 4 proof → Rust</text>
+            <rect class="svg-surface" x="656" y="134" width="194" height="38" rx="2"/>
+            <text class="svg-text" x="668" y="158">Append-only integer ledger</text>
+          </g>
+          <text class="svg-lab" x="753" y="210" text-anchor="middle"
+                style="fill:var(--yes)">“Verify the output.”</text>
+          <text class="svg-lab-sm svg-text2" x="530" y="102">transactions,</text>
+          <text class="svg-lab-sm svg-text2" x="530" y="120">prices</text>
+          <line class="svg-rule2" x1="618" y1="109" x2="636" y2="109" stroke-width="1.5"/>
+          <text class="svg-lab-sm svg-text2" x="878" y="102">reports +</text>
+          <text class="svg-lab-sm svg-text2" x="878" y="120">checkable proof</text>
+          <line class="svg-rule2" x1="864" y1="109" x2="874" y2="109" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap">Legacy engines are opaque: identical inputs,
+      an unseeable middle, and output you take on faith. Ratio's engine is
+      transparent and proven — and emits a checkable result, not just a number.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ 6. PROOF NOT PROMISES ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">What “formally verified” actually buys</p>
+    <h2 class="r-claim">Proof, not promises</h2>
+    <p class="r-lede">For a wealth platform this is not an academic flourish. It
+    is the most practical guarantee a buyer can get.</p>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>The ledger cannot silently go out of balance</h3>
+        <p>Assemble a ledger from valid transactions and the ledger is balanced —
+        proved for every possible sequence of inputs. Not “we tested the common
+        cases”: the failure mode every accounting system fears is ruled out
+        mathematically.</p>
+      </div>
+      <div class="r-row">
+        <h3>The engine you run is the engine that was proved</h3>
+        <p>Production code is generated from the verified source, with a build
+        gate that fails if the two ever diverge. There is no gap between the model
+        reasoned about and the software that shipped — the classic place where
+        verified systems quietly rot.</p>
+      </div>
+      <div class="r-row">
+        <h3>Exactness, not tolerance</h3>
+        <p>Money is integer minor units, never floating point. Sums are
+        associative and exact. There is no rounding epsilon to tune and no
+        end-of-day pass to absorb drift. The number is the number.</p>
+      </div>
+      <div class="r-row">
+        <h3>Reproducibility you can hand to an auditor</h3>
+        <p>Inputs are immutable and rules are pinned by content hash, so any prior
+        state replays bit-for-bit. “Show me exactly how this figure was computed,
+        under the policy in force that quarter” is a deterministic re-run, not an
+        investigation.</p>
+      </div>
+    </div>
+
+    <div class="r-callout">
+      <p><strong>The buyer's translation.</strong> Fewer reconciliation FTEs.
+      Faster, cleaner audits. Restatements that are provably correct. A platform
+      whose central numbers you can defend to a regulator, a client, or a court —
+      because they are backed by a proof, not a brand.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ 7. COMPARISON ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">How Ratio compares</p>
+    <h2 class="r-claim">The incumbents win on breadth. Ratio wins on the foundation.</h2>
+    <p class="r-lede">This is a capability view, not a feature checklist. It asks
+    “can the platform let you <em>verify</em> this?”, not “does it have a button
+    for it?”</p>
+
+    <div class="r-scroll">
+      <table class="r-tab">
+        <caption class="r-fig-cap" style="caption-side:bottom;padding:12px 14px;text-align:left">
+          Ratio's interpretation of publicly available information as of 2026.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Capability</th>
+            <th scope="col" class="col-r">Ratio</th>
+            <th scope="col">Black Diamond</th>
+            <th scope="col">Orion</th>
+            <th scope="col">Addepar</th>
+            <th scope="col">Tamarac</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Investment accounting: multi-currency, positions, tax lots, P&amp;L</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-y" title="Full">✓</span></td><td><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-y" title="Full">✓</span></td><td><span class="m m-y" title="Full">✓</span></td></tr>
+          <tr><th scope="row">Performance reporting &amp; client portal</th>
+            <td class="col-r"><span class="m m-p" title="Partial">~</span></td>
+            <td><span class="m m-y" title="Full">✓</span></td><td><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-y" title="Full">✓</span></td><td><span class="m m-y" title="Full">✓</span></td></tr>
+          <tr><th scope="row">Formally verified (machine-checked) accounting kernel</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+          <tr><th scope="row">Bit-exact, reproducible historical replay</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+          <tr><th scope="row">Content-addressed, immutable audit trail</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-p" title="Partial">~</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-p" title="Partial">~</span></td></tr>
+          <tr><th scope="row">Deployable in your environment, no data lock-in</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+          <tr><th scope="row">Inspectable engine (read the arithmetic)</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+          <tr><th scope="row">AI authoring with the model fenced from the ledger</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-p" title="Partial">~</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+          <tr><th scope="row">Extensible in code against a documented contract</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-p" title="Partial">~</span></td>
+            <td><span class="m m-p" title="Partial">~</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+          <tr><th scope="row">Pricing decoupled from assets under management</th>
+            <td class="col-r"><span class="m m-y" title="Full">✓</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td>
+            <td><span class="m m-n" title="Not offered">✗</span></td><td><span class="m m-n" title="Not offered">✗</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="r-key">
+      <span><span class="m m-y">✓</span> full</span>
+      <span><span class="m m-p">~</span> partial or emerging</span>
+      <span><span class="m m-n">✗</span> not offered, or not inspectable</span>
+    </p>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 760 470" role="img"
+             aria-label="A positioning quadrant with openness on the horizontal axis and provable assurance on the vertical. Spreadsheets, Tamarac, Orion and Black Diamond cluster low-left; Addepar sits slightly higher; Ratio sits alone in the upper-right quadrant.">
+          <rect x="430" y="40" width="290" height="180" rx="3" class="svg-surface"/>
+          <text class="svg-lab" x="575" y="76" text-anchor="middle" style="fill:var(--text-2)">Verifiable &amp; open</text>
+          <text class="svg-lab-sm svg-muted" x="575" y="96" text-anchor="middle">the next decade</text>
+
+          <line class="svg-rule2" x1="70" y1="400" x2="736" y2="400" stroke-width="1.5"/>
+          <line class="svg-rule2" x1="70" y1="400" x2="70" y2="26" stroke-width="1.5"/>
+          <text class="svg-lab-sm svg-muted" x="403" y="440" text-anchor="middle">Openness &amp; inspectability →</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="0" text-anchor="middle"
+                transform="translate(40,213) rotate(-90)">Provable assurance &amp; reproducibility →</text>
+
+          <g class="svg-lab-sm">
+            <circle cx="126" cy="368" r="4.5" class="svg-muted"/>
+            <text class="svg-muted" x="140" y="372">spreadsheets / in-house</text>
+            <circle cx="150" cy="330" r="5" style="fill:var(--rule-2)"/>
+            <text class="svg-text2" x="164" y="334">Tamarac</text>
+            <circle cx="196" cy="318" r="5" style="fill:var(--rule-2)"/>
+            <text class="svg-text2" x="210" y="322">Orion</text>
+            <circle cx="172" cy="286" r="5" style="fill:var(--rule-2)"/>
+            <text class="svg-text2" x="186" y="290">Black Diamond</text>
+            <circle cx="252" cy="238" r="5" style="fill:var(--rule-2)"/>
+            <text class="svg-text2" x="266" y="242">Addepar</text>
+          </g>
+
+          <path d="M266 232 Q400 150 528 132" fill="none" stroke-width="1.5"
+                stroke-dasharray="4 5" style="stroke:var(--yes)" opacity=".65"/>
+          <circle cx="540" cy="130" r="9" style="fill:var(--yes)"/>
+          <text class="svg-ttl svg-text" x="558" y="136">Ratio</text>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap">Plotted against the two axes that matter most
+      for the next decade, the incumbents cluster in the established,
+      closed-but-capable quadrant. Ratio occupies the one quadrant none of them
+      can reach without rebuilding their engine.</figcaption>
+    </figure>
+
+    <div class="r-note">
+      <p><strong>A note on fairness.</strong> Comparisons reflect Ratio's
+      interpretation of publicly available information as of 2026 and general
+      patterns among legacy wealth-technology platforms; capabilities evolve and
+      specific deployments vary. Where a competitor offers a partial capability we
+      mark it <span class="m m-p">~</span> rather than <span class="m m-n">✗</span>.</p>
+      <p>Black Diamond is a trademark of SS&amp;C Technologies; Orion, Addepar, and
+      Tamarac are trademarks of their respective owners. Ratio is an independent
+      project and is not affiliated with, sponsored by, or endorsed by any of them.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ 8. ECONOMICS ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">The economics of certainty</p>
+    <h2 class="r-claim">A bill that stops tracking your book</h2>
+    <div class="r-narrow">
+      <p>Incumbent platforms typically price as a function of assets under
+      management. That couples your technology bill to your investment success — a
+      tax on growth that has nothing to do with the cost of serving you. Layered
+      on top are implementation fees, per-seat add-ons, and the soft cost of the
+      operations headcount that exists to reconcile a system you cannot verify.</p>
+      <p>Ratio inverts the model. A core priced on usage means platform cost flattens as the book grows, and exact, reproducible
+      accounting shrinks the reconciliation burden rather than feeding it.</p>
+    </div>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 760 350" role="img"
+             aria-label="Cumulative five-year cost. The AUM-coupled legacy line rises from 180 to 1,400 thousand dollars; the usage-based Ratio line rises from 70 to 470 thousand dollars, flattening the gap.">
+          <!-- gridlines + y labels -->
+          <g class="svg-num svg-muted">
+            <line class="svg-rule" x1="70" y1="270" x2="716" y2="270" stroke-width="1"/>
+            <text x="58" y="274" text-anchor="end">0</text>
+            <line class="svg-rule" x1="70" y1="190" x2="716" y2="190" stroke-width="1"/>
+            <text x="58" y="194" text-anchor="end">500</text>
+            <line class="svg-rule" x1="70" y1="110" x2="716" y2="110" stroke-width="1"/>
+            <text x="58" y="114" text-anchor="end">1,000</text>
+            <line class="svg-rule" x1="70" y1="30" x2="716" y2="30" stroke-width="1"/>
+            <text x="58" y="34" text-anchor="end">1,500</text>
+          </g>
+          <text class="svg-lab-sm svg-muted" x="70" y="14">Cumulative cost ($000s)</text>
+
+          <!-- x labels -->
+          <g class="svg-num svg-muted">
+            <text x="70"  y="294" text-anchor="middle">0</text>
+            <text x="196" y="294" text-anchor="middle">1</text>
+            <text x="322" y="294" text-anchor="middle">2</text>
+            <text x="448" y="294" text-anchor="middle">3</text>
+            <text x="574" y="294" text-anchor="middle">4</text>
+            <text x="700" y="294" text-anchor="middle">5</text>
+            <text x="385" y="318" text-anchor="middle" class="svg-lab-sm">Year</text>
+          </g>
+
+          <!-- legacy series -->
+          <path d="M70 241.2 196 214 322 180.4 448 142 574 97.2 700 46 700 270 70 270Z"
+                style="fill:var(--series-legacy)" opacity=".10"/>
+          <polyline points="70,241.2 196,214 322,180.4 448,142 574,97.2 700,46"
+                fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+                style="stroke:var(--series-legacy)"/>
+          <!-- ratio series -->
+          <path d="M70 258.8 196 247.6 322 235.6 448 222.8 574 209.2 700 194.8 700 270 70 270Z"
+                style="fill:var(--series-ratio)" opacity=".12"/>
+          <polyline points="70,258.8 196,247.6 322,235.6 448,222.8 574,209.2 700,194.8"
+                fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+                style="stroke:var(--series-ratio)"/>
+
+          <!-- emphasized endpoints, ringed in the surface so they read over the fill -->
+          <circle cx="700" cy="46" r="5" style="fill:var(--series-legacy);stroke:var(--ground)" stroke-width="2"/>
+          <circle cx="700" cy="194.8" r="5" style="fill:var(--series-ratio);stroke:var(--ground)" stroke-width="2"/>
+
+          <!-- direct labels: identity is never color-alone -->
+          <text class="svg-lab" x="700" y="30" text-anchor="end"
+                style="fill:var(--series-legacy)">Legacy — AUM-coupled</text>
+          <text class="svg-num" x="700" y="14" text-anchor="end"
+                style="fill:var(--series-legacy)">$1,400k</text>
+          <text class="svg-lab" x="700" y="222" text-anchor="end"
+                style="fill:var(--series-ratio)">Ratio — usage-based</text>
+          <text class="svg-num" x="700" y="240" text-anchor="end"
+                style="fill:var(--series-ratio)">$470k</text>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap"><strong>Illustrative</strong> five-year
+      cumulative cost for a growing advisory firm — implementation, platform fees,
+      and reconciliation overhead. Legacy cost scales with assets under
+      management; Ratio's flattens. These figures illustrate the pricing
+      <em>model</em>. They are not a quote.</figcaption>
+    </figure>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>Cost decoupled from AUM</h3>
+        <p>Doubling your book does not double your platform bill.</p>
+      </div>
+      <div class="r-row">
+        <h3>Lower operational drag</h3>
+        <p>Exactness and bit-exact replay remove whole categories of
+        reconciliation and restatement work.</p>
+      </div>
+      <div class="r-row">
+        <h3>No lock-in premium</h3>
+        <p>Open export formats and the option to run it in your own environment
+        mean your exit cost — and therefore your negotiating leverage — is
+        fundamentally different.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ 9. AI ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">AI you can actually trust</p>
+    <h2 class="r-claim">The model proposes. The proven kernel disposes.</h2>
+    <div class="r-narrow">
+      <p>Every platform in the category is now shipping AI. The question that
+      matters is not <em>whether</em> a vendor has a language model — it is
+      <em>where the model sits relative to your numbers</em>. Bolt a generative
+      model onto a black-box ledger and you have added a confident,
+      occasionally-wrong author with write access to financial truth.</p>
+    </div>
+
+    <div class="r-spread">
+      <div>
+        <p class="r-col-tag pos">Above the boundary — what a model may do</p>
+        <p>Translate an advisor's plain-language intent into a precise, typed
+        specification. Draft client-ready explanations of a position, a fee, or a
+        performance result. Propose posting rules, mappings, and reconciliations
+        for human review.</p>
+      </div>
+      <div>
+        <p class="r-col-tag neg">Below it — what no model can do</p>
+        <p>Write an entry that violates conservation. Every proposal is compiled
+        and checked against the kernel's invariant before it can affect a ledger;
+        anything that fails to conserve value is rejected at the boundary. The
+        worst case for a hallucination is a discarded suggestion — never an
+        unbalanced book.</p>
+      </div>
+    </div>
+
+    <div class="r-callout">
+      <p><strong>Net:</strong> the productivity of an AI copilot for the parts
+      that are genuinely language problems — intent, explanation, drafting — with
+      a mathematical guarantee that the model can never be the reason a number is
+      wrong.</p>
+    </div>
+    <p class="r-fig-cap">Scoped deliberately: the kernel proves <em>conservation</em>.
+    Authorization and access control are a separate concern and are not claimed
+    as kernel theorems.</p>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ 10. ECOSYSTEM + MIGRATION ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">The shape of it</p>
+    <h2 class="r-claim">A small proven core, and everything expressive outside it</h2>
+    <p class="r-lede">Ratio is not a monolith you must adopt wholesale. It is an
+    ecosystem of composable parts around a proven core, each speaking open
+    formats and a documented API — which makes it adoptable incrementally, and reversible.</p>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 900 340" role="img"
+             aria-label="Architecture: an AI authoring copilot sits above a trust boundary and submits checked proposals. A content-addressed control plane and a typed fact plane feed the conservation kernel and append-only ledger, which is exposed through one gRPC API to a terminal UI, a client portal, Python extensions, and custodian integrations.">
+          <!-- trust boundary -->
+          <line x1="36" y1="112" x2="864" y2="112" stroke-width="1.5"
+                stroke-dasharray="5 5" style="stroke:var(--yes)" opacity=".8"/>
+          <text class="svg-lab-sm" x="864" y="104" text-anchor="end"
+                style="fill:var(--yes)">trust boundary</text>
+
+          <!-- AI above -->
+          <rect class="svg-block" x="300" y="20" width="300" height="60" rx="3"/>
+          <text class="svg-block-text svg-lab" x="450" y="46" text-anchor="middle">AI authoring copilot</text>
+          <text class="svg-block-text svg-lab-sm" x="450" y="66" text-anchor="middle" opacity=".72">intent → spec, explanations</text>
+          <line class="svg-rule2" x1="450" y1="80" x2="450" y2="146" stroke-width="1.5"/>
+          <text class="svg-lab-sm svg-muted" x="462" y="132">proposals (checked)</text>
+
+          <!-- kernel -->
+          <rect x="300" y="150" width="300" height="76" rx="3" class="svg-surface"/>
+          <rect x="300" y="150" width="300" height="76" rx="3" fill="none"
+                class="svg-rule2" stroke-width="2"/>
+          <text class="svg-ttl svg-text" x="450" y="180" text-anchor="middle">Conservation kernel</text>
+          <text class="svg-lab-sm svg-text2" x="450" y="202" text-anchor="middle">proven · append-only ledger</text>
+
+          <!-- inputs -->
+          <rect class="svg-raised" x="36" y="146" width="180" height="40" rx="3"/>
+          <rect x="36" y="146" width="180" height="40" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+          <text class="svg-lab-sm svg-text" x="126" y="163" text-anchor="middle">Control plane</text>
+          <text class="svg-lab-sm svg-muted" x="126" y="179" text-anchor="middle">rules, content-addressed</text>
+          <rect class="svg-raised" x="36" y="200" width="180" height="40" rx="3"/>
+          <rect x="36" y="200" width="180" height="40" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+          <text class="svg-lab-sm svg-text" x="126" y="217" text-anchor="middle">Fact plane</text>
+          <text class="svg-lab-sm svg-muted" x="126" y="233" text-anchor="middle">prices, FX, provenance</text>
+          <line class="svg-rule2" x1="216" y1="166" x2="296" y2="180" stroke-width="1.5"/>
+          <line class="svg-rule2" x1="216" y1="220" x2="296" y2="198" stroke-width="1.5"/>
+
+          <!-- api -->
+          <rect class="svg-surface" x="656" y="158" width="150" height="60" rx="3"/>
+          <rect x="656" y="158" width="150" height="60" rx="3" fill="none" class="svg-rule2" stroke-width="1.5"/>
+          <text class="svg-lab svg-text" x="731" y="183" text-anchor="middle">gRPC Ledger API</text>
+          <text class="svg-lab-sm svg-muted" x="731" y="201" text-anchor="middle">one open contract</text>
+          <line class="svg-rule2" x1="600" y1="188" x2="652" y2="188" stroke-width="1.5"/>
+
+          <!-- surfaces -->
+          <g class="svg-lab-sm">
+            <rect class="svg-raised" x="300" y="268" width="140" height="34" rx="3"/>
+            <rect x="300" y="268" width="140" height="34" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text" x="370" y="290" text-anchor="middle">Terminal UI</text>
+            <rect class="svg-raised" x="452" y="268" width="140" height="34" rx="3"/>
+            <rect x="452" y="268" width="140" height="34" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text" x="522" y="290" text-anchor="middle">Client portal</text>
+            <rect class="svg-raised" x="604" y="268" width="130" height="34" rx="3"/>
+            <rect x="604" y="268" width="130" height="34" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text" x="669" y="290" text-anchor="middle">Extensions</text>
+            <rect class="svg-raised" x="746" y="268" width="118" height="34" rx="3"/>
+            <rect x="746" y="268" width="118" height="34" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text" x="805" y="290" text-anchor="middle">Integrations</text>
+          </g>
+          <path d="M731 218 V246 H370 V264" fill="none" class="svg-rule2" stroke-width="1.5"/>
+          <path d="M522 246 V264 M669 246 V264 M805 246 V264" fill="none" class="svg-rule2" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap">A proven kernel at the center, fed by a
+      content-addressed control plane and typed market facts, exposed through one
+      open API. Everything expressive — rules, analytics, presentation, and the
+      copilot — sits outside the trusted core, where by construction it cannot
+      violate conservation.</figcaption>
+    </figure>
+
+    <h3 style="font-size:23px;margin:52px 0 0">A staged path off legacy</h3>
+    <div class="r-steps">
+      <div>
+        <h3>Shadow</h3>
+        <p>Run Ratio alongside your incumbent on the same transaction feed.
+        Because Ratio is deterministic and exact, any discrepancy is a precise,
+        reproducible signal — an ongoing reconciliation against your current
+        system.</p>
+      </div>
+      <div>
+        <h3>Verify</h3>
+        <p>Use Ratio as the independent source of truth for audit, restatement,
+        and “as-of” reporting, where reproducibility and proof matter most.</p>
+      </div>
+      <div>
+        <h3>Adopt</h3>
+        <p>Move reporting, client, and integration surfaces onto the open API at
+        your pace, with your data in formats you control the whole way.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ 11. STATUS ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Where Ratio is today</p>
+    <h2 class="r-claim">What is proved, and what is still specified</h2>
+    <p class="r-lede">Ratio is an early-stage project with an unusually finished
+    foundation and a deliberately unfinished surface. The distinction matters more
+    here than it would elsewhere — a platform that asks you to verify rather than
+    trust should start by being precise about itself.</p>
+
+    <div class="r-status">
+      <div class="r-built">
+        <p class="r-col-tag pos">Proved and running</p>
+        <ul>
+          <li>The conservation kernel, machine-checked in Lean&nbsp;4 — the ledger
+          fold preserves conservation, and classical double-entry is recovered as
+          the one-dimensional case.</li>
+          <li>Proof-to-artifact emission: the Rust is generated from the Lean
+          source, gated by a build test that fails if proof and artifact diverge.</li>
+          <li>Integer-exact money with proven associativity, identity, and
+          inverse — no floating point anywhere in the core.</li>
+          <li>An AIP-linted gRPC contract and a server that refuses any
+          transaction failing to conserve.</li>
+        </ul>
+      </div>
+      <div class="r-spec">
+        <p class="r-col-tag neg">Designed and specified</p>
+        <ul>
+          <li>The content-addressed control plane and the typed fact plane —
+          architected in the whitepaper, not yet implemented.</li>
+          <li>Persistence, multi-currency, tax lots, and performance reporting —
+          specified in the repository, on the roadmap.</li>
+          <li>Terminal UI, client portal, Python extension surface, and custodian
+          integrations.</li>
+          <li>Sixteen competitive component specifications mapping the incumbent
+          feature surface onto this architecture.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="r-note">
+      <p>The claims elsewhere on this page describe the architecture and the
+      proofs that exist today; the product surface around them is being built
+      against the roadmap above. The kernel, the emission pipeline, and the proofs
+      are real and readable now — start there.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ 12. FOOTER ═══════════════════════ -->
+<footer class="r-foot">
+  <div class="r-wrap">
+    <h2 class="r-claim" style="font-size:clamp(27px,3.4vw,37px)">Stop trusting your
+      ledger. Start verifying it.</h2>
+    <p style="max-width:56ch;font-size:18px">Wealth-technology buyers have been
+    asked to choose among black boxes for twenty years. The next decade belongs to
+    platforms that are verifiable, open, and AI-native by design — a foundation
+    the incumbents cannot retrofit without rebuilding the engine they sell.</p>
+
+    <div class="r-foot-cta">
+      <div>
+        <h3>Audit the math</h3>
+        <p>The kernel and its Lean&nbsp;4 development, readable under a
+        source-available license so your reviewers can check the theorem.</p>
+      </div>
+      <div>
+        <h3>Read the theory</h3>
+        <p>The whitepaper — <em>Ratio: A Formally Grounded Accounting Kernel</em>.</p>
+      </div>
+      <div>
+        <h3>Start a shadow run</h3>
+        <p>Bring your transaction feed; keep your incumbent.</p>
+      </div>
+    </div>
+
+    <div class="r-fine">
+      <p>Ratio is a formally grounded accounting platform, Lean-authored and
+      Rust-emitted. The engine is source-available for inspection and audit under
+      a strong copyleft license, with a commercial license for operators; it is
+      not permissively licensed. Ratio is an independent project and is not
+      affiliated with, sponsored by, or endorsed by SS&amp;C, Orion, Addepar, or
+      Envestnet. Product names are the trademarks of their respective owners.
+      This page is for informational purposes and contains forward-looking,
+      illustrative figures that are not a quote or an offer.</p>
+    </div>
+  </div>
+</footer>

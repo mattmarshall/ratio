@@ -1,0 +1,64 @@
+name: site
+
+# Builds the four marketing pages and publishes them to GitHub Pages at
+# https://mattmarshall.github.io/ratio/
+#
+# The build is standard-library Python with no network access, so there is
+# nothing to install and nothing to cache. All assertions live in
+# site/verify.py so that CI and a developer run exactly the same checks —
+# an inline shell version of them drifted from what ran locally.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/site.yml'
+  pull_request:
+    paths:
+      - 'site/**'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+
+# One deployment at a time, and a newer push supersedes an in-flight one
+# rather than queueing behind it. Pull requests get their own group so a PR
+# build never cancels a deploy of main.
+concurrency:
+  group: pages-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: python3 site/build.py --check-fonts --standalone -d _site
+
+      - name: Verify
+        run: python3 site/verify.py _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  # Deploying is a separate, gated job: every pull request gets a build and a
+  # verify, but only a push to main can publish. Enabling Pages in repository
+  # settings remains a deliberate one-time action — see site/README.md.
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,425 @@
+<title>Ratio — Compliance: a click and a query, not an audit</title>
+
+<!--
+  Ratio compliance page — SOURCE. Edit this file; never edit the build output.
+
+  AUDIENCE: the person who owns the audit relationship — a CFO, a head of
+  compliance, a fund administrator's controls lead. They have lived through
+  examinations and they will not be impressed by adjectives, so the page is
+  built around specific questions an examiner actually asks and how each one
+  resolves.
+
+  ⚠️ CLAIMS DISCIPLINE. This page must never imply certification, regulatory
+  approval, or that Ratio discharges a legal obligation. Ratio produces
+  evidence; people and processes satisfy obligations. The "What this is not"
+  section is load-bearing and must not be trimmed — a compliance page that
+  overstates is exactly the kind of thing a regulator reads back to you.
+
+  build.py substitutes three placeholders, each a name in double underscores:
+  STYLE takes the shared stylesheet, WORDMARK and MARK take SVG from marks/.
+  They are named here in prose rather than in their own syntax on purpose:
+  build.py replaces every occurrence, and it fails loudly on a second one.
+-->
+
+__STYLE__
+
+<div class="r-wrap">
+  <nav class="r-nav" aria-label="Main">
+    <a class="r-brandline" href="index.html">
+      <span class="r-mk">__MARK__</span>
+      <span class="r-wm">__WORDMARK__</span>
+    </a>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="workflows.html">Workflows</a></li>
+      <li><a href="platform.html">Platform</a></li>
+      <li><a href="compliance.html" aria-current="page">Compliance</a></li>
+      <li><a href="roadmap.html">Roadmap</a></li>
+      <li><a href="technical.html">Technical</a></li>
+      <li><a href="team.html">Team</a></li>
+    </ul>
+  </nav>
+</div>
+
+<!-- ══════════════════════════════ HERO ══════════════════════════════ -->
+<header class="r-hero">
+  <div class="r-wrap">
+    <div class="r-narrow">
+      <p class="r-eyebrow">Compliance and audit</p>
+      <h1 class="r-claim">A click and a query. Not an audit.</h1>
+      <p class="r-hero-sub">Most of what an examination costs is not judgment —
+        it is assembly. Finding out what the system did, under which rules, on
+        which day, and persuading someone that the reconstruction is faithful.</p>
+      <div class="r-block">
+        <p>Ratio does not make audits easier by producing better reports. It
+        makes them easier because <em>the evidence is a by-product of how the
+        system runs</em>, not something anyone has to go and build afterwards.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ WHY IT COSTS ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Why audit season costs what it does</p>
+    <h2 class="r-claim">The answers exist. They are just not stored anywhere.</h2>
+    <div class="r-narrow">
+      <p>An examiner's questions are almost always about the past: what was
+      reported, under what policy, on whose authority, and does it still come out
+      the same. A conventional platform can tell you what it believes
+      <em>today</em>. Everything else is reconstructed from logs, tickets, email
+      and the memory of whoever was there.</p>
+    </div>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>Reconstruction is not evidence</h3>
+        <p>A spreadsheet assembled after the fact to explain a figure is an
+        argument about the past, not a record of it. It is only as good as the
+        person who built it, and it has to be rebuilt for the next question.</p>
+      </div>
+      <div class="r-row">
+        <h3>Rules changed and nothing recorded when</h3>
+        <p>A fee schedule was amended, a classification convention shifted, a
+        threshold moved. If configuration lives in screens that authorized people
+        edit, then the question "what rules were in force in March?" has no
+        authoritative answer.</p>
+      </div>
+      <div class="r-row">
+        <h3>Nobody can re-run the past</h3>
+        <p>Re-running a prior period against today's system gives today's
+        answers. Proving what was reported then means trusting the archive of the
+        report rather than the system that produced it.</p>
+      </div>
+      <div class="r-row">
+        <h3>The burden lands on your best people</h3>
+        <p>The staff who can answer examination questions are the ones who
+        understand the fund — which is to say, the ones you least want spending
+        six weeks assembling binders.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ WHAT MAKES IT A QUERY ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">What changes</p>
+    <h2 class="r-claim">Four properties, and every one of them is structural</h2>
+    <p class="r-lede">None of these are compliance features bolted on. They fall
+    out of decisions made for other reasons — which is why they cannot be
+    switched off, forgotten, or configured wrong.</p>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>Every figure names the rules that made it</h3>
+        <p>Each posting, position and NAV carries the hash of the configuration
+        version it was produced under. "Which rules generated this number?" is a
+        lookup against an immutable artifact, not an investigation.</p>
+      </div>
+      <div class="r-row">
+        <h3>Every rule change is a signed, checked commit</h3>
+        <p>Who proposed it, who approved it, which checks passed, when it takes
+        effect, and what it did to the prior period when replayed. That record is
+        created because it is how a change is made — not because someone
+        remembered to log it.</p>
+      </div>
+      <div class="r-row">
+        <h3>The past re-runs exactly</h3>
+        <p>Inputs are immutable and the rules are pinned, so replaying 30 June
+        under the June configuration produces the June numbers — to the cent,
+        today or in seven years. The archived report and the system agree because
+        the system can still produce it.</p>
+      </div>
+      <div class="r-row">
+        <h3>Nothing can be quietly amended</h3>
+        <p>The record is append-only. A correction is a new fact with its own
+        provenance and its own timestamp, sitting alongside what it corrects. There
+        is no edit path to audit, because there is no edit.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ THE QUESTIONS ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Show, don't tell</p>
+    <h2 class="r-claim">Five questions an examiner actually asks</h2>
+    <p class="r-lede">Not paraphrases — these are the shapes that turn into
+    six-week exercises. Each one resolves against the record rather than against
+    somebody's reconstruction of it.</p>
+
+    <div class="r-stages">
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Question one</span>
+          <h3>“Show me the NAV as at 30 June, and the rules in force when it was struck.”</h3>
+        </div>
+        <div class="r-panel">
+          <div class="r-panel-head"><span>as-of query</span><b>0.4 s</b></div>
+<pre class="r-panel-body"><code>nav <span class="k">as_of</span> 2026-06-30 <span class="k">fund</span> LUX-EQ-I
+
+  NAV per unit          <span class="s">148.2214</span>
+  total net assets      <span class="s">3,904,118,206.44</span>
+  configuration         config@6b0d41f  <span class="c">(epoch Q2-2026)</span>
+  struck                2026-07-01 06:14:22Z
+  <span class="k">re-run now</span>            identical, to the cent
+
+  <span class="c">the configuration is attached, not looked up —</span>
+  <span class="c">it is what produced the figure</span></code></pre>
+          <p class="r-panel-foot">The rules themselves are one further click:
+          <code>config@6b0d41f</code> is an immutable artifact, and it renders as
+          the rule text a human wrote and approved.</p>
+        </div>
+      </div>
+
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Question two</span>
+          <h3>“Who authorized the fee change, and what did it do to the prior quarter?”</h3>
+        </div>
+        <div class="r-panel">
+          <div class="r-panel-head"><span>change record</span><b>immutable</b></div>
+<pre class="r-panel-body"><code>config@6b0d41f <span class="k">&rarr;</span> config@7d2b904
+
+  change      institutional management fee 75bp &rarr; 65bp,
+              tiered above 500,000,000 &rarr; 55bp
+  proposed    A. Mensah        2026-09-02
+  approved    J. Okafor <span class="c">(controller)</span>   2026-09-11
+  checks      <span class="s">5 passed</span> · 1 question resolved
+  effective   2026-10-01  <span class="c">epoch Q4-2026, never retroactive</span>
+
+  <span class="k">replayed against Q3 before approval</span>
+  management fee expense    <span class="chg">−4,182.55</span>
+  <span class="c">shown to the approver at the time, and kept</span></code></pre>
+        </div>
+      </div>
+
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Question three</span>
+          <h3>“Demonstrate the ledger balanced at every point in the period.”</h3>
+        </div>
+        <div>
+          <ul class="r-checks">
+            <li class="ok">Not a sample, and not a reconciliation report — the
+            balancing condition is checked on every transaction before it is
+            admitted, so an unbalanced state is not a thing the system can be in.</li>
+            <li class="ok">The check itself is the subject of a machine-checked
+            proof, which your reviewers can inspect and verify independently. See
+            the <a href="technical.html">technical page</a>.</li>
+            <li class="ok">Replaying the epoch re-establishes it over the whole
+            period rather than at period end, and produces the same result every
+            time it is run.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Question four</span>
+          <h3>“This cost basis differs between two reports. Explain.”</h3>
+        </div>
+        <div class="r-panel">
+          <div class="r-panel-head"><span>diff two runs</span><b>deterministic</b></div>
+<pre class="r-panel-body"><code>lot 8841-C   <span class="k">between</span> run 2026-07-01 <span class="k">and</span> run 2026-10-02
+
+  cost basis      1,204,880.11 &rarr; 1,204,102.49
+  delta           <span class="chg">−777.62</span>
+
+  <span class="k">attributable to</span>
+    config@6b0d41f &rarr; config@c14e07b
+      + DE solidarity surcharge excluded from
+        treaty-reclaimable base  <span class="c">(rule change)</span>
+    fact revision
+      + corporate action CA-2026-0914 restated
+        by custodian on 2026-09-19  <span class="c">(new fact)</span>
+
+  <span class="c">two causes, both recorded, neither reconstructed</span></code></pre>
+          <p class="r-panel-foot">The difference decomposes into a rule change and
+          a data revision because both are first-class records with timestamps.
+          Nobody had to work out which it was.</p>
+        </div>
+      </div>
+
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Question five</span>
+          <h3>“What could this person have changed, and did they?”</h3>
+        </div>
+        <div>
+          <ul class="r-checks">
+            <li class="ok">Configuration changes are the only way policy moves,
+            and each carries its proposer and approver by name.</li>
+            <li class="ok">Nobody can change a number directly. A figure is a
+            function of immutable facts and a pinned configuration; there is no
+            path that edits a posting in place.</li>
+            <li class="ok">Approval and authorship are separable, so
+            four-eyes is a property of the record rather than a policy people are
+            asked to follow.</li>
+            <li class="ask">Access control and entitlement review are a genuine
+            part of this question, and they sit outside the proven core — see the
+            limits below.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="r-callout">
+      <p><strong>The common thread:</strong> none of these answers is produced
+      for the examiner. They are how the system already works, exposed. That is
+      what makes the response a query rather than a project — and it is also why
+      the answer does not depend on who is available that week.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ WHERE IT HELPS ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Where it lands</p>
+    <h2 class="r-claim">The same property, in five different rooms</h2>
+
+    <div class="r-eco">
+      <div>
+        <h3>The annual audit</h3>
+        <p>Sampling still happens, but the sample resolves against a record that
+        re-runs rather than a reconstruction that has to be defended. Fewer
+        rounds, and fewer of them landing on your controller.</p>
+        <span class="r-tier">Evidence by construction</span>
+      </div>
+      <div>
+        <h3>Regulatory examination</h3>
+        <p>“As at” questions and “under which policy” questions are the two
+        expensive shapes, and both are direct queries.</p>
+        <span class="r-tier">Evidence by construction</span>
+      </div>
+      <div>
+        <h3>Investor due diligence</h3>
+        <p>An operational due-diligence questionnaire asks how you know your
+        numbers are right. Being able to show the mechanism rather than describe
+        the controls is a different conversation.</p>
+        <span class="r-tier">Evidence by construction</span>
+      </div>
+      <div>
+        <h3>Restatement</h3>
+        <p>When something has to be restated, the prior position is reproducible
+        and the cause decomposes into rule changes and data revisions — so the
+        restatement is explainable rather than merely correct.</p>
+        <span class="r-tier">Deterministic replay</span>
+      </div>
+      <div>
+        <h3>Internal control testing</h3>
+        <p>Segregation between authorship and approval, and the impossibility of
+        an in-place edit, are structural facts a tester can verify once rather
+        than behaviors they have to sample.</p>
+        <span class="r-tier">Control by construction</span>
+      </div>
+      <div>
+        <h3>Change management</h3>
+        <p>Every policy change carries its proposal, review, checks, approver and
+        effective epoch. The change log is not a parallel artifact that can drift
+        from what actually happened.</p>
+        <span class="r-tier">Control plane</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ WHAT IT IS NOT ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Limits, stated plainly</p>
+    <h2 class="r-claim">What this page is not claiming</h2>
+    <p class="r-lede">A compliance page that overstates is precisely the document
+    that gets read back to you. So, explicitly:</p>
+
+    <div class="r-status">
+      <div class="r-built">
+        <p class="r-col-tag pos">What Ratio provides</p>
+        <ul>
+          <li>Evidence that is generated by the system's ordinary operation and
+          cannot be produced retrospectively.</li>
+          <li>Reproducibility of any prior state under the rules then in force.</li>
+          <li>An immutable, attributable record of every policy change.</li>
+          <li>A correctness property for balancing that is proved rather than
+          tested.</li>
+        </ul>
+      </div>
+      <div class="r-spec">
+        <p class="r-col-tag neg">What it does not</p>
+        <ul>
+          <li><strong>It is not a compliance program</strong>, and it does not
+          discharge any obligation. It produces evidence; your people and
+          processes satisfy the requirement.</li>
+          <li><strong>It carries no certification or regulatory approval</strong>,
+          and nothing on this site should be read as an assurance opinion.</li>
+          <li>It does not perform investor onboarding, sanctions or
+          anti-money-laundering screening, trade surveillance, or regulatory
+          filing.</li>
+          <li>The proved property is <em>balancing</em>. It is not a proof that a
+          rule is the right rule — a correctly-balanced posting can still
+          implement a policy incorrectly, which is what review and replay are for.</li>
+          <li>Access control and entitlement sit outside the proven core and
+          carry the assurance of ordinary well-built software, not of a theorem.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="r-note">
+      <p>And the largest limit of all: most of what this page describes is
+      <strong>designed and specified rather than built</strong>. The balancing
+      proof and the engine that enforces it exist today; the control plane,
+      replay tooling and every interface shown here do not. See the
+      <a href="roadmap.html">roadmap</a> for exactly what is where.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+<footer class="r-foot">
+  <div class="r-wrap">
+    <h2 class="r-claim" style="font-size:clamp(26px,3.2vw,35px)">Stop assembling
+      the answer. Look it up.</h2>
+    <p style="max-width:58ch;font-size:18px">The cheapest audit is the one where
+    the system already knows what it did, and can prove it did it again.</p>
+
+    <div class="r-foot-cta">
+      <div>
+        <h3><a href="platform.html">How the record is kept</a></h3>
+        <p>Versioned configuration, append-only facts, and the seam between them.</p>
+      </div>
+      <div>
+        <h3><a href="technical.html">What is actually proved</a></h3>
+        <p>The balancing theorem, and how your reviewers can check it.</p>
+      </div>
+      <div>
+        <h3><a href="roadmap.html">What exists today</a></h3>
+        <p>An honest account of how much of this is built.</p>
+      </div>
+    </div>
+
+    <div class="r-fine">
+      <p>Nothing on this page is legal, regulatory, audit or tax advice, and
+      nothing here constitutes a certification, an assurance opinion, or evidence
+      of regulatory approval. Ratio produces records; obligations are satisfied by
+      firms and their advisers. Query results and change records shown are
+      illustrative of the shape of the answer, not recorded output. Much of what
+      is described is designed rather than built — see the roadmap. The engine is
+      source-available for inspection and audit under a strong copyleft license,
+      with a commercial license for operators; it is not permissively licensed.</p>
+    </div>
+  </div>
+</footer>

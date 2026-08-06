@@ -1,0 +1,43 @@
+\section{From Proof to Artifact}
+\label{sec:emission}
+
+A proof about a model is worth only as much as the model's fidelity to
+the code that runs. The classic failure mode of ``verified'' systems is
+\emph{drift}: the proof concerns an idealization, an engineer hand-writes
+the production code, and the two diverge silently as the code is
+maintained. Ratio closes this gap by making the Lean source not just the
+specification but the \emph{author} of the Rust.
+
+\subsection{The emission seam}
+
+The accounting core is written and proved once, in Lean. The same Lean
+development then \emph{emits} the Rust the application compiles: an
+emitter (\texttt{Ratio.Common.Emit}, built on the vendored
+\texttt{Polyglot.Rust} AST builders) constructs a \texttt{syn}-shaped
+Rust syntax tree as JSON, which a small renderer (\texttt{json\_to\_rust})
+turns into the committed \texttt{crates/ratio-common/src/generated.rs}.
+The value layer that ships --- the \texttt{Money} type in integer minor
+units, \texttt{money\_zero}, \texttt{money\_add}, \texttt{money\_neg} ---
+is generated from the very definitions whose algebraic laws are proved in
+\texttt{Ratio.Core} (\cref{lem:group}). \Cref{fig:emission} shows the
+pipeline.
+
+\subsection{Why this matters}
+
+The seam means the deployed kernel \emph{inherits} the proof rather than
+merely resembling it. \texttt{money\_add} is associative and commutative
+with \texttt{money\_zero} as identity not because a test sampled some
+inputs and a reviewer eyeballed the rest, but because the function was
+generated from a Lean definition carrying a machine-checked proof of
+those exact laws. Maintenance cannot induce drift: the committed Rust is
+build-time gated against re-emission from Lean, so a change to the Rust
+that the Lean did not author is a build failure, and a change to the Lean
+re-derives the Rust. Lean stays authoritative.
+
+This is the property that distinguishes Ratio from ``we used a memory-safe
+language'' or ``we have good test coverage''. Memory safety rules out a
+class of \emph{implementation} bugs; tests sample the input space. The
+emission seam, layered on top of both, rules out the \emph{specification}
+gap --- the running arithmetic is the proven arithmetic, by construction.
+
+\input{figures/fig_emission.tex}

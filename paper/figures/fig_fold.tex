@@ -1,0 +1,41 @@
+% The ledger fold as a walk through the conserving subgroup. Each
+% partial accumulator is balanced, so the final ledger state is balanced
+% --- the inductive content of Theorem (conservation law).
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+    font=\footnotesize, >={Stealth[length=2mm]},
+    acc/.style={draw, rounded corners, fill=green!10, minimum height=8mm,
+                inner sep=3pt, align=center},
+    txn/.style={font=\scriptsize},
+]
+\node[acc] (a0) {$\rzero$};
+\node[acc, right=14mm of a0] (a1) {$\rzero{+}\rvec_1$};
+\node[acc, right=14mm of a1] (a2) {$\cdots{+}\rvec_2$};
+\node[right=11mm of a2] (dots) {$\cdots$};
+\node[acc, right=10mm of dots] (an) {$\rledger(\textit{log})$};
+
+\draw[->] (a0) -- node[above, txn] {$+\rvec_1$} (a1);
+\draw[->] (a1) -- node[above, txn] {$+\rvec_2$} (a2);
+\draw[->] (a2) -- node[above, txn] {$+\rvec_3$} (dots);
+\draw[->] (dots) -- node[above, txn] {$+\rvec_n$} (an);
+
+% Invariant annotation under every accumulator.
+\node[font=\scriptsize\itshape, text=green!45!black, below=2.5mm of a0] {$\rconserves$};
+\node[font=\scriptsize\itshape, text=green!45!black, below=2.5mm of a1] {$\rconserves$};
+\node[font=\scriptsize\itshape, text=green!45!black, below=2.5mm of a2] {$\rconserves$};
+\node[font=\scriptsize\itshape, text=green!45!black, below=2.5mm of an] {$\rconserves$};
+
+\node[font=\scriptsize, align=center, below=12mm of a2]
+  (note) {Every $\rvec_i$ conserves $\Rightarrow$ each step stays in the conserving subgroup
+          (closure under $+$) $\Rightarrow$ by induction $\rconserves(\rledger(\textit{log}))$.};
+\end{tikzpicture}
+\caption{The ledger is a monoidal fold $\mathrm{foldl}\,(+)\,\rzero$ over
+the append-only log. Conserving vectors form a subgroup
+(\cref{prop:subgroup}); the seed $\rzero$ conserves, and adding a
+conserving $\rvec_i$ keeps the accumulator conserving, so an induction on
+the log proves the final state conserves (\cref{thm:conservation}).
+Balance is preserved \emph{structurally} by the fold, not re-checked at
+the end.}
+\label{fig:fold}
+\end{figure}

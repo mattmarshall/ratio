@@ -1,0 +1,167 @@
+<title>Ratio — Team</title>
+
+<!--
+  Ratio team page — SOURCE. Edit this file; never edit the build output.
+
+  ⚠️ SIX REAL, NAMED PEOPLE. Every biography here is a factual summary of that
+  person's own public career history, read from their profile — not invented
+  copy, which is what an earlier draft of this file refused to write. Names and
+  spellings were confirmed the same way ("Corrine" is correct; "Villa Briongos"
+  is not hyphenated).
+
+  The role line is an AREA OF EXPERTISE, not a job title at Ratio, and each bio
+  names the person's current employer. That is deliberate: four of the six work
+  elsewhere today — several at FundGuard, which competes in this category — and
+  the page must not imply a position nobody has agreed to. The note at the foot
+  says so explicitly. Do not replace those role lines with Ratio titles unless
+  the titles are real.
+
+  Publishing this makes their names and career histories part of a public,
+  indexable marketing page. That was the repo owner's explicit decision, taken
+  after the risk was raised; if anyone listed asks to come off, remove them
+  immediately rather than negotiating.
+
+  Order is alphabetical by surname and carries no seniority meaning.
+
+  PHOTOS. Each card carries an initials monogram with a data-photo slug. Drop a
+  square JPEG or PNG at site/photos/<slug>.jpg and build.py inlines it as a
+  data: URI, replacing the initials — no source edit needed. It MUST be inlined
+  rather than linked: an external image URL is blocked by the Artifact CSP and
+  is (correctly) failed by verify.py. Photos could not be taken from LinkedIn —
+  it refuses automated requests outright, and republishing someone's profile
+  photo needs their permission regardless. Ask each person for one.
+
+  build.py substitutes three placeholders, each a name in double underscores:
+  STYLE takes the shared stylesheet, WORDMARK and MARK take SVG from marks/.
+  They are named here in prose rather than in their own syntax on purpose:
+  build.py replaces every occurrence, and it fails loudly on a second one.
+-->
+
+__STYLE__
+
+<div class="r-wrap">
+  <nav class="r-nav" aria-label="Main">
+    <a class="r-brandline" href="index.html">
+      <span class="r-mk">__MARK__</span>
+      <span class="r-wm">__WORDMARK__</span>
+    </a>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="workflows.html">Workflows</a></li>
+      <li><a href="platform.html">Platform</a></li>
+      <li><a href="compliance.html">Compliance</a></li>
+      <li><a href="roadmap.html">Roadmap</a></li>
+      <li><a href="technical.html">Technical</a></li>
+      <li><a href="team.html" aria-current="page">Team</a></li>
+    </ul>
+  </nav>
+</div>
+
+<!-- ══════════════════════════════ HERO ══════════════════════════════ -->
+<header class="r-hero">
+  <div class="r-wrap">
+    <div class="r-narrow">
+      <p class="r-eyebrow">Team</p>
+      <h1 class="r-claim">The people building it</h1>
+      <p class="r-hero-sub">Ratio is an argument about how fund accounting should
+        work, which means it only counts for anything in the hands of people who
+        have done the job — closing books, and building the systems that close
+        them.</p>
+      <div class="r-block">
+        <p>Between them: <em>Eagle Investment Systems</em>, <em>Brown Brothers
+        Harriman</em>, <em>State Street</em>, <em>FundGuard</em>, <em>Google</em>,
+        <em>Amazon</em> and <em>Charles River Development</em>.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ PEOPLE ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <div class="r-eco">
+      <div>
+        <div class="r-avatar" data-photo="corrine-duhamel">CD</div>
+        <h3>Corrine Duhamel</h3>
+        <p class="r-role">Core accounting engineering</p>
+        <p>Seventeen years inside fund accounting engines: eleven at BNY Mellon's Eagle Investment Systems on mutual fund and core accounting, and six on the Eagle STAR team before that. Now a team lead and senior engineer at FundGuard.</p>
+        <a class="r-person-link" href="https://www.linkedin.com/in/corrineduhamel/">LinkedIn →</a>
+      </div>
+      <div>
+        <div class="r-avatar" data-photo="saro-getzoyan">SG</div>
+        <h3>Saro Getzoyan</h3>
+        <p class="r-role">Distributed systems</p>
+        <p>Nearly eleven years at Google as a tech lead, with Charles River Development and TripAdvisor before it, and engineering leadership at Capital One now. EECS at MIT, computer science at NYU.</p>
+        <a class="r-person-link" href="https://www.linkedin.com/in/saro-getzoyan/">LinkedIn →</a>
+      </div>
+      <div>
+        <div class="r-avatar" data-photo="ted-leone">TL</div>
+        <h3>Ted Leone</h3>
+        <p class="r-role">Backend and data engineering</p>
+        <p>Six years at Amazon building the data ecosystem behind Alexa's ambient devices, and now a senior backend engineer in FundGuard's R&D team. UMass Amherst.</p>
+        <a class="r-person-link" href="https://www.linkedin.com/in/ted-leone-0674a9146/">LinkedIn →</a>
+      </div>
+      <div>
+        <div class="r-avatar" data-photo="matt-marshall">MM</div>
+        <h3>Matt Marshall</h3>
+        <p class="r-role">Kernel and proofs</p>
+        <p>Built Ratio's conservation kernel, its Lean development and the emission pipeline that keeps the two in step. Co-founder of Lotic Labs, lead engineer at SAVVI Financial, and fifteen years of software and product before that. MIT.</p>
+        <a class="r-person-link" href="https://www.linkedin.com/in/mattmmarshall/">LinkedIn →</a>
+      </div>
+      <div>
+        <div class="r-avatar" data-photo="daniel-mcguire">DM</div>
+        <h3>Daniel McGuire</h3>
+        <p class="r-role">Fund accounting</p>
+        <p>Investment accounting from both ends: six years closing books as a fund accountant at Brown Brothers Harriman, eleven years at Eagle Investment Systems building the system that does it, and State Street's Alpha conversions in between. Now a financial data analyst at FundGuard.</p>
+        <a class="r-person-link" href="https://www.linkedin.com/in/daniel-mcguire-4a1b8a48/">LinkedIn →</a>
+      </div>
+      <div>
+        <div class="r-avatar" data-photo="luis-villa-briongos">LV</div>
+        <h3>Luis Villa Briongos</h3>
+        <p class="r-role">Platform engineering</p>
+        <p>Software engineer at FundGuard, and technical lead at Intelygenz in Madrid before that, with a decade across payments and enterprise platforms. Universidad Politécnica de Madrid.</p>
+        <a class="r-person-link" href="https://www.linkedin.com/in/luis-villa-briongos/">LinkedIn →</a>
+      </div>
+    </div>
+
+    <div class="r-note">
+      <p>Current affiliations are shown above and are each person's own; several
+      hold roles elsewhere, and their appearance here reflects the experience
+      Ratio draws on rather than a full-time position with it. Ratio is an
+      independent project and is not affiliated with, endorsed by, or speaking
+      for any employer named on this page.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+<footer class="r-foot">
+  <div class="r-wrap">
+    <h2 class="r-claim" style="font-size:clamp(26px,3.2vw,35px)">Built by people who
+      have closed a month.</h2>
+
+    <div class="r-foot-cta">
+      <div>
+        <h3><a href="index.html">What we are building</a></h3>
+        <p>Portfolio accounting that ties out, every time.</p>
+      </div>
+      <div>
+        <h3><a href="workflows.html">How we build it</a></h3>
+        <p>Expertise in, enforced rules out.</p>
+      </div>
+      <div>
+        <h3><a href="roadmap.html">Where it stands</a></h3>
+        <p>An honest account of what exists today.</p>
+      </div>
+    </div>
+
+    <div class="r-fine">
+      <p>Ratio is an independent project, not affiliated with, sponsored by, or
+      endorsed by any vendor named elsewhere on this site. The engine is
+      source-available for inspection and audit under a strong copyleft license,
+      with a commercial license for operators; it is not permissively licensed.</p>
+    </div>
+  </div>
+</footer>

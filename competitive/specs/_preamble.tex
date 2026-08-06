@@ -1,0 +1,62 @@
+% Shared preamble + layout macros for Ratio competitive component specs.
+% Each <slug>.tex \input{}s this, then opens \begin{document}. Compiled
+% per-component to its own PDF by rules_tectonic (see spec.bzl / BUILD).
+\documentclass[11pt,letterpaper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=0.9in]{geometry}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{colortbl}
+\usepackage{pifont}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{hyperref}
+
+% ── Brand palette (shared with the Ratio papers) ────────────────────
+\definecolor{ratioInk}{HTML}{3A2A1C}
+\definecolor{ratioBrown}{HTML}{6E4F34}
+\definecolor{ratioTan}{HTML}{B98E5E}
+\definecolor{ratioSand}{HTML}{D9C19A}
+\definecolor{ratioCream}{HTML}{F4EEDD}
+\definecolor{posGreen}{HTML}{2E7D52}
+\definecolor{negGray}{HTML}{9A9A9A}
+
+\hypersetup{colorlinks=true, linkcolor=ratioBrown, citecolor=ratioBrown, urlcolor=ratioBrown}
+\setlist[itemize]{leftmargin=1.3em, itemsep=2.5pt, topsep=2pt}
+\pagestyle{plain}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+
+\newcommand{\yes}{{\color{posGreen}\ding{51}}}
+\newcommand{\no}{{\color{negGray}\ding{55}}}
+
+% ── Header banner: \spechead{Title}{slug} ───────────────────────────
+\newcommand{\spechead}[2]{%
+  \noindent\begin{tcolorbox}[colback=ratioInk, colframe=ratioInk, arc=4pt,
+      left=14pt, right=14pt, top=11pt, bottom=11pt, boxrule=0pt]
+    {\sffamily\footnotesize\color{ratioSand}
+      RATIO COMPONENT SPEC \;\textbullet\; benchmarked to the wealth-tech stack
+      \;\textbullet\; \texttt{#2}}\\[3pt]
+    {\sffamily\bfseries\LARGE\color{white} #1}
+  \end{tcolorbox}\par\vspace{8pt}}
+
+% ── Section heading: \specsection{Name} ─────────────────────────────
+\newcommand{\specsection}[1]{%
+  \vspace{6pt}{\sffamily\large\bfseries\color{ratioBrown} #1}\par
+  \vspace{1pt}{\color{ratioSand}\rule{\linewidth}{1pt}}\par\vspace{3pt}}
+
+% ── Highlighted "Ratio mapping" box ─────────────────────────────────
+\newtcolorbox{ratiobox}{colback=ratioCream, colframe=ratioTan, boxrule=0.8pt,
+  arc=3pt, left=9pt, right=9pt, top=7pt, bottom=7pt}
+
+% ── Status footer box ───────────────────────────────────────────────
+\newtcolorbox{statusbox}{colback=ratioSand!35, colframe=ratioSand, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=5pt, bottom=5pt}
+
+% ── "Advertised by" two-column table helper ─────────────────────────
+\newcommand{\advrow}[2]{\textbf{#1} & #2 \\}

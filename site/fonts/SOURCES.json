@@ -1,0 +1,35 @@
+[
+  {
+    "family": "IBM Plex Serif",
+    "file": "ibm-plex-serif-700-latin.woff2",
+    "weight": "700",
+    "style": "normal",
+    "unicode_range": "U+0000-00FF",
+    "bytes": 14936,
+    "sha256": "8d256fda8c12db0d7bbde004f3e844ba23cfaa3e764880b24056d6f0b79d70dd",
+    "source": "https://fonts.gstatic.com/s/ibmplexserif/v20/jizAREVNn1dOx-zrZ2X3pZvkTi2k_iI0q1vjitOh.woff2",
+    "role": "display headings; also the outline source for marks/wordmark-ratio.svg"
+  },
+  {
+    "family": "IBM Plex Serif",
+    "file": "ibm-plex-serif-600-latin.woff2",
+    "weight": "600",
+    "style": "normal",
+    "unicode_range": "U+0000-00FF",
+    "bytes": 15580,
+    "sha256": "d8bf89a58f34027c1ee0b24d4bd66f19a782887980e3ce149519c2c527cac3ce",
+    "source": "https://fonts.gstatic.com/s/ibmplexserif/v20/jizAREVNn1dOx-zrZ2X3pZvkTi3A_yI0q1vjitOh.woff2",
+    "role": "section headings, pull-quotes"
+  },
+  {
+    "family": "Outfit",
+    "file": "outfit-latin-variable.woff2",
+    "weight": "100 900",
+    "style": "normal",
+    "unicode_range": "U+0000-00FF",
+    "bytes": 32228,
+    "sha256": "92684e4acde79ef07758cd09380b7e01e9824d8b061eddeda046f78c166d7b12",
+    "source": "https://fonts.gstatic.com/s/outfit/v15/QGYvz_MVcBeNP4NJtEtqUYLknw.woff2",
+    "role": "body, UI, table and figure labels"
+  }
+]

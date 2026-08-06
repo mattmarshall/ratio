@@ -1,0 +1,39 @@
+\section{The Incumbent Stack Runs on Trust, Not Proof}
+
+For two decades, advisors, family offices, and asset managers have standardized
+on a handful of portfolio-accounting and performance-reporting platforms ---
+SS\&C Black Diamond, Orion, Addepar, Envestnet Tamarac, and their peers. These
+systems are capable and entrenched. They are also, structurally, \emph{black
+boxes}: closed engines whose correctness you cannot inspect, whose history you
+cannot reproduce independently, and whose roadmap and pricing you do not control.
+
+That arrangement was acceptable when there was no alternative. It is increasingly
+expensive in four concrete ways:
+
+\begin{itemize}
+  \item \textbf{Correctness is asserted, not demonstrated.} The arithmetic behind
+  a performance figure or a tax lot is proprietary. When numbers disagree across
+  systems --- custodian vs.\ platform vs.\ spreadsheet --- the resolution is
+  manual reconciliation, not a proof. Operations teams exist largely to paper
+  over a trust gap.
+  \item \textbf{History is not reproducible.} Restating a prior period, answering
+  ``what did we report on this date and under which rules,'' or surviving an audit
+  means reconstructing state from logs and memory. Late-arriving prices and silent
+  rule changes can alter the past without a trace.
+  \item \textbf{You are locked in --- and billed on your success.} Data lives in
+  the vendor's format; integrations route through the vendor's gates; and pricing
+  is typically a function of assets under management, so your platform bill rises
+  with your book even when your usage does not.
+  \item \textbf{AI is bolted on, not built in safely.} The incumbents are racing
+  to add LLM features atop engines never designed to contain them --- exactly the
+  architecture in which a confident, wrong model can quietly move a number.
+\end{itemize}
+
+\begin{callout}
+\sffamily\color{ratioInk}
+\textbf{The core problem isn't features --- it's foundations.} You can buy more
+reports, more dashboards, more integrations. You cannot buy, from any incumbent,
+a ledger you are able to \emph{verify}. Ratio is built foundation-first, so that
+correctness, reproducibility, and openness are properties of the system rather
+than promises about it.
+\end{callout}

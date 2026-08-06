@@ -1,0 +1,51 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Client Experience Portal}{client-portal}
+
+The investor-facing surface: a branded web and mobile experience with
+dashboards, performance views, document exchange, and held-away aggregation.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{SS\&C Black Diamond}{Advisor Client Experience + Black Diamond Vault (two-way documents)}
+\advrow{Orion}{Client Portal (``real-time transparency''); Summit Experience}
+\advrow{Addepar}{Client portal with mobile access and shared reports}
+\advrow{Envestnet Tamarac}{Client Portal --- holistic, customizable financial view}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Responsive, custom-branded web portal with native mobile apps.
+  \item Interactive dashboards; complete wealth picture across accounts.
+  \item Secure two-way document vault (statements, uploads, e-sign workflows).
+  \item Outside-account aggregation for a held-away view.
+  \item Real-time performance and balance views; secure messaging.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} A pure \emph{client surface} over the gRPC \texttt{Ledger}
+API, alongside the meridian TUI and advisor web apps. It reads deterministic
+projections of the proven ledger, so what a client sees is bit-for-bit what the
+books say --- and a client can be handed a \emph{checkable} performance figure,
+not just a rendered number. Open API + open formats mean the portal is replaceable
+without re-platforming the ledger.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Presentation tier, outside the trusted core.} Read-only; no path to write
+unbalanced state.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://www.sscblackdiamond.com/}
+  \item \url{https://orion.com/advisor-tech}
+  \item \url{https://www.envestnet.com/tamarac}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

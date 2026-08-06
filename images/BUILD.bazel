@@ -1,0 +1,5 @@
+# Brand assets, exported so other packages (e.g. //marketing) can stage
+# them into tectonic builds.
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["ratio.png"])
