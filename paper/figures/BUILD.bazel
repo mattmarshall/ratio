@@ -1,0 +1,53 @@
+load("@rules_puml//puml:defs.bzl", "puml_diagram")
+load(":figure.bzl", "paper_figures", "tex_figure")
+
+package(default_visibility = ["//visibility:public"])
+
+# System architecture: PlantUML source -> vector PDF via rules_puml
+# (PlantUML + Apache Batik/FOP inside one JVM invocation; no external
+# toolchain). The PDF is embedded by figures/fig_architecture.tex via
+# \includegraphics, so it must be staged alongside the wrapper.
+puml_diagram(
+    name = "fig_architecture_diagram",
+    src = "fig_architecture.puml",
+    output_format = "pdf",
+)
+
+# Hand-authored TikZ concept diagrams + the booktabs trust-boundary table.
+tex_figure(name = "fig_layers", tex = "fig_layers.tex")
+tex_figure(name = "fig_vector", tex = "fig_vector.tex")
+tex_figure(name = "fig_fold", tex = "fig_fold.tex")
+tex_figure(name = "fig_emission", tex = "fig_emission.tex")
+tex_figure(name = "tab_trust", tex = "tab_trust.tex")
+
+# The \includegraphics wrapper for the rules_puml-rendered architecture PDF.
+tex_figure(name = "fig_architecture", tex = "fig_architecture.tex")
+
+# Quantitative charts (pgfplots) + their data.
+tex_figure(
+    name = "fig_throughput",
+    tex = "fig_throughput.tex",
+    data = ["data/throughput.dat"],
+)
+tex_figure(
+    name = "fig_determinism",
+    tex = "fig_determinism.tex",
+    data = ["data/determinism.dat"],
+)
+
+# Everything the sections \input or \includegraphics, bundled for the
+# paper's extra_srcs. Mixes tex_figure targets with the puml PDF target.
+paper_figures(
+    name = "figures",
+    figures = [
+        ":fig_layers",
+        ":fig_vector",
+        ":fig_fold",
+        ":fig_emission",
+        ":tab_trust",
+        ":fig_throughput",
+        ":fig_determinism",
+        ":fig_architecture",
+        ":fig_architecture_diagram",
+    ],
+)

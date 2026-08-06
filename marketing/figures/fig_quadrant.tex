@@ -1,0 +1,36 @@
+% Positioning quadrant — Ratio's view. x: openness, y: provable assurance.
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+  >={Stealth[length=2.2mm]}, font=\sffamily\footnotesize,
+  dot/.style={circle, fill=ratioBrown, inner sep=2pt},
+  lbl/.style={font=\sffamily\footnotesize, text=ratioInk},
+]
+% Desirable quadrant shading (top-right)
+\fill[ratioSand!45, rounded corners=2pt] (3,3) rectangle (6,6);
+\node[align=center, text=ratioBrown, font=\sffamily\bfseries\small] at (4.5,5.55)
+  {Verifiable \& open\\[-1pt]\footnotesize\mdseries (the next decade)};
+
+% Axes
+\draw[->, ratioInk, line width=0.9pt] (0,0) -- (6.4,0)
+  node[right, lbl, align=center] {};
+\draw[->, ratioInk, line width=0.9pt] (0,0) -- (0,6.4);
+\node[lbl, align=center] at (3.2,-0.55) {Openness \& inspectability $\rightarrow$};
+\node[lbl, align=center, rotate=90] at (-0.55,3.2) {Provable assurance \& reproducibility $\rightarrow$};
+
+% Incumbent cluster (lower-left / center)
+\node[dot] (bd) at (1.5,1.7) {}; \node[lbl, right=1mm of bd] {Black Diamond};
+\node[dot] (or) at (1.9,1.2) {}; \node[lbl, right=1mm of or] {Orion};
+\node[dot] (ta) at (1.2,1.1) {}; \node[lbl, left=1mm of ta] {Tamarac};
+\node[dot] (ad) at (2.4,2.6) {}; \node[lbl, right=1mm of ad] {Addepar};
+\node[dot, fill=negGray] (ss) at (1.05,0.65) {}; \node[lbl, anchor=west, text=negGray] at (1.2,0.5) {spreadsheets / in-house};
+
+% Ratio — emphasized, alone, top-right
+\node[circle, fill=posGreen, inner sep=3.4pt, label={[text=ratioInk,font=\sffamily\bfseries]right:Ratio}]
+  (rt) at (4.6,4.7) {};
+\draw[->, posGreen, line width=0.9pt, densely dashed] (ad) to[bend left=15] (rt);
+\end{tikzpicture}
+\caption*{\small\color{ratioBrown}\sffamily Ratio's positioning view. Incumbents
+are capable but closed; only Ratio combines an open, inspectable engine with
+machine-checked assurance and reproducible history.}
+\end{figure}

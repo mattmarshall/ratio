@@ -1,0 +1,20 @@
+load("@rules_tectonic//tectonic:defs.bzl", "tectonic_pdf")
+
+package(default_visibility = ["//visibility:public"])
+
+# The Ratio positioning brief — a marketing-oriented paper positioning the
+# proposed Ratio ecosystem against SS&C Black Diamond and the legacy
+# wealth-tech stack. Single-document compile (tectonic_pdf): main.tex pulls
+# in the section and figure fragments and the brand logo. All visuals are
+# native TikZ / pgfplots, so the whole brief is one hermetic tectonic action.
+#
+#   bazel build //marketing:positioning   ->  bazel-bin/marketing/positioning.pdf
+tectonic_pdf(
+    name = "positioning",
+    main = "main.tex",
+    srcs = glob([
+        "sections/*.tex",
+        "figures/*.tex",
+        "figures/data/*.dat",
+    ]) + ["//images:ratio.png"],
+)

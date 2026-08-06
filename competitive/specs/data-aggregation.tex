@@ -1,0 +1,55 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Data Aggregation \& Reconciliation}{data-aggregation}
+
+The ingestion layer: pulling positions, transactions, and prices from
+custodians, banks, and administrators, then normalizing and reconciling them
+into one consolidated view.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{SS\&C Black Diamond}{Data Aggregation \& Accounting (centralized aggregation + reconciliation)}
+\advrow{Orion}{Denali Data Layer --- ingests Orion, Redtail, custodian, and non-Orion sources}
+\advrow{Addepar}{Data Aggregation + Addepar Data Exchange (ADX)}
+\advrow{Envestnet Tamarac}{Custodial feeds feeding Reporting}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Automated daily feeds from hundreds of custodians, banks, and fund administrators.
+  \item Normalization / standardization of heterogeneous source data into one schema.
+  \item Position- and transaction-level reconciliation; break detection and workflows.
+  \item Outside-account / held-away aggregation for a complete wealth picture.
+  \item Alternative-investment data capture alongside public holdings.
+  \item Managed, governed data environment (e.g.\ ADX) as a foundation for analytics/AI.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} External data enters Ratio as \emph{typed facts} with
+explicit provenance (source, retrieval time, validity window) --- never fetched
+implicitly mid-computation. Acquisition is a declarative \emph{effect plan};
+ingested facts are immutable and referenced by hash, so reconciliation against a
+second source is a deterministic, reproducible diff rather than a nightly batch
+that may differ run-to-run. Connectors live as Python extensions / control-plane
+adapters, outside the trusted core.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Fact plane (declarative), outside the trusted core.} Bad or late data is
+quarantined as an unbound fact; it cannot silently alter a historical balance,
+because ledger entries bind the exact fact set they used.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://www.sscblackdiamond.com/}
+  \item \url{https://orion.com/advisor-tech}
+  \item \url{https://addepar.com/wealth-management}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

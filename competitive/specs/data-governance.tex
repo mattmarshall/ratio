@@ -1,0 +1,49 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Access Control \& Data Governance}{data-governance}
+
+Who can see and do what: role-based permissions, entity scoping, and governance
+over client and portfolio data.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{Addepar}{Role-Based Access Controls --- granular, permissioned data model}
+\advrow{Orion}{Platform roles + Denali governed data}
+\advrow{SS\&C Black Diamond}{Permissions across the unified platform}
+\advrow{Envestnet Tamarac}{Role-based access within the platform}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Role-based access control with granular, per-object permissions.
+  \item Entity / household / firm data scoping and segregation.
+  \item Governed, managed data environment as the basis for analytics and AI.
+  \item Auditability of who accessed which client and portfolio data.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} Authorization is enforced at the gRPC \texttt{Ledger}
+API boundary and over book/entity scoping in the data model (the existing Ratio
+security specs --- authentication, authorization, object permissions ---
+formalize this). Because the ledger is append-only and content-addressed, access
+itself is logged as immutable, replayable provenance: ``who saw what, when'' is a
+query against the same audit substrate as the accounting.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{API boundary + data model.} Orthogonal to conservation; governs reads and
+who may submit transactions.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://addepar.com/wealth-management}
+  \item \url{https://addepar.com/why-addepar}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Cross-reference the existing \texttt{specs/components/security/} specs when
+expanding. Capabilities reflect competitors' public marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

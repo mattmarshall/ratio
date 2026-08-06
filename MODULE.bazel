@@ -11,6 +11,14 @@ module(name = "ratio", version = "0.0.0")
 bazel_dep(name = "rules_rust", version = "0.70.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
 
+# Whitepaper toolchain. `//paper:ratio` compiles the formally-grounded
+# whitepaper (theory, math, Lean-backed proofs, value prop) to a PDF via
+# tectonic; the system architecture figure is rendered to vector PDF from a
+# PlantUML source by rules_puml (Java/Batik/FOP, no external toolchain), and
+# the conceptual diagrams + quantitative charts are native TikZ / pgfplots.
+bazel_dep(name = "rules_tectonic", version = "0.2.0")
+bazel_dep(name = "rules_puml", version = "0.0.2")
+
 # Phase 2: the gRPC API contract + AIP lint. protobuf is a direct dep so the
 # `@protobuf//...:prefer_prebuilt_protoc` flag (in .bazelrc) resolves.
 bazel_dep(name = "rules_aip", version = "0.2.1")
@@ -35,6 +43,13 @@ register_toolchains("@rust_toolchains//:all")
 # Our prost+tonic toolchain (runtimes = @crates) wins over rules_rust_prost's
 # default, so codegen + consumers share one tonic. See //proto:prost_toolchain.
 register_toolchains("//proto:prost_toolchain")
+
+# Tectonic toolchain for `//paper`. rules_* modules don't propagate `use_repo`
+# to dependents, so the extension + toolchain are wired here (rules_puml carries
+# its own JVM/maven toolchain internally — no consumer wiring needed).
+tectonic = use_extension("@rules_tectonic//tectonic:extensions.bzl", "tectonic")
+use_repo(tectonic, "tectonic")
+register_toolchains("@tectonic//:tectonic_toolchain_def")
 
 # crate_universe reads the Cargo workspace; external crates resolve as @crates//:<name>.
 crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")

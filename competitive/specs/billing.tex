@@ -1,0 +1,50 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Billing \& Revenue Management}{billing}
+
+Advisory fee calculation, invoicing, and revenue analytics --- driven by
+householded AUM and configurable fee schedules.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{SS\&C Black Diamond}{Billing \& Revenue Management; Business Intelligence \& Billing}
+\advrow{Orion}{Billing within Portfolio Accounting (``billing\dots at scale'')}
+\advrow{Addepar}{Fee tracking}
+\advrow{Envestnet Tamarac}{Billing within the unified platform}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Configurable fee schedules: tiered, flat, and AUM-based; householding rules.
+  \item Automated fee calculation and invoice generation.
+  \item Revenue management and practice-level revenue analytics.
+  \item Fee reconciliation against centralized, aggregated data.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} Fee schedules are \emph{control-plane} policy; a billing
+run \emph{proposes} fee transactions that the kernel admits only if balanced
+(fee debit $=$ revenue credit), and every fee entry references the
+content-addressed schedule version that produced it --- so any invoice is exactly
+reproducible and auditable. Notably, Ratio's own \emph{platform} pricing is
+decoupled from client AUM (see the positioning brief); this component bills
+\emph{your} clients, not you.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Control plane (proposes) + trusted core (admits + records).} Fee math is
+integer-exact; no rounding drift across invoices.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://www.sscblackdiamond.com/}
+  \item \url{https://orion.com/advisor-tech/portfolio-accounting}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

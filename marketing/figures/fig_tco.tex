@@ -1,0 +1,30 @@
+% Illustrative cumulative total cost of ownership. AUM-coupled legacy pricing vs
+% Ratio's usage-based, self-hostable model. Numbers are illustrative.
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=0.92\textwidth, height=6.2cm,
+    font=\sffamily\footnotesize,
+    xlabel={Year}, ylabel={Cumulative cost (\$\,000s)},
+    xtick=data, ymin=0,
+    legend style={at={(0.02,0.97)}, anchor=north west, draw=ratioSand,
+                  fill=white, font=\sffamily\footnotesize},
+    grid=both, grid style={ratioSand!40},
+    axis line style={ratioInk}, tick label style={ratioInk},
+    label style={ratioInk}, mark options={solid},
+]
+\addplot[ratioBrown, line width=1.3pt, mark=*, mark size=2pt,
+         fill=ratioBrown, fill opacity=0.10]
+    table[x=year, y=legacy] {figures/data/tco.dat} \closedcycle;
+\addplot[posGreen, line width=1.3pt, mark=square*, mark size=2pt,
+         fill=posGreen, fill opacity=0.10]
+    table[x=year, y=ratio] {figures/data/tco.dat} \closedcycle;
+\legend{Legacy (AUM-coupled), Ratio (usage-based)}
+\end{axis}
+\end{tikzpicture}
+\caption*{\small\color{ratioBrown}\sffamily Illustrative five-year cumulative TCO
+for a growing advisory firm (implementation, platform fees, and reconciliation
+overhead). Legacy cost scales with assets under management; Ratio's flattens.
+Figures are illustrative of the pricing \emph{model}, not a quote.}
+\end{figure}

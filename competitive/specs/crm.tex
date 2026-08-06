@@ -1,0 +1,49 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Client Relationship Management (CRM)}{crm}
+
+Contact, household, and activity management wired into reporting and trading so
+advisors act on portfolio context.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{SS\&C Black Diamond}{CRM (client relationship management)}
+\advrow{Orion}{Redtail CRM --- ``the industry's most-adopted advisor CRM''}
+\advrow{Envestnet Tamarac}{CRM integrated with Reporting and Trading}
+\advrow{Addepar}{Via CRM partner integrations}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Contact and household relationship management.
+  \item Activity, task, and workflow tracking; calendar and pipeline.
+  \item Tight integration with performance reporting and rebalancing tools.
+  \item Surfacing of portfolio data (performance, alerts) in the client record.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} CRM is an \emph{extension-tier} application (Python
+extension surface) that consumes the gRPC \texttt{Ledger} API for portfolio
+context. It holds relationship state, not financial truth; it never writes ledger
+entries directly. Household structure aligns with the ledger's book/entity scoping
+so CRM views and accounting views agree by construction.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Extension tier, outside the trusted core.} Relationship data store;
+read-only against the ledger.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://www.sscblackdiamond.com/}
+  \item \url{https://orion.com/advisor-tech}
+  \item \url{https://www.envestnet.com/wealth-management/crm}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

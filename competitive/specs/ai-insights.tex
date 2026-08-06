@@ -1,0 +1,50 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{AI \& Natural-Language Insights}{ai-insights}
+
+Embedded AI for natural-language portfolio queries, document analysis, and
+surfaced insights across the workflow.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{Orion}{Denali AI --- enterprise AI across CRM, planning, trading, reporting, risk}
+\advrow{Addepar}{Addison --- natural-language portfolio analysis + document analysis}
+\advrow{SS\&C Black Diamond}{AI-assisted workflows across the platform}
+\advrow{Envestnet Tamarac}{Emerging AI features}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Natural-language portfolio questions answered over connected data.
+  \item Document ingestion and analysis (e.g.\ statements, alt docs).
+  \item Insights surfaced across CRM, planning, trading, reporting, and risk.
+  \item Drafting and summarization for advisor and operations workflows.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} This is where Ratio's architecture is categorically
+safer. LLMs sit \emph{above the trust boundary} as an authoring copilot: they
+translate intent into typed specifications and draft explanations, but every
+proposal is compiled and checked against the kernel's invariants before it can
+touch a ledger. Bolting AI onto a black-box ledger gives a confident model write
+access to truth; Ratio gives it propose-only access. A hallucination is a
+discarded suggestion, never a corrupted book.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Authoring tier, strictly outside the trusted core.} Propose-only; all
+outputs pass the deterministic compiler + conservation check.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://orion.com/advisor-tech}
+  \item \url{https://addepar.com/wealth-management}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

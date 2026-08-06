@@ -1,0 +1,48 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Alternative Investments Servicing}{alternative-investments}
+
+Capturing and servicing private and illiquid assets --- capital calls,
+distributions, valuations, and benchmarks --- alongside public holdings.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{SS\&C Black Diamond}{Alternative Investments Servicing}
+\advrow{Addepar}{Alts Data Management; Private Fund Benchmarks (\textasciitilde15{,}000 funds)}
+\advrow{Orion}{Alternatives data within the Denali Data Layer}
+\advrow{Envestnet Tamarac}{Alt holdings within Reporting}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Standardized capture of alternative-investment data and documents.
+  \item Capital call and distribution tracking; commitment vs.\ funded views.
+  \item Private-market valuations integrated with public holdings in one view.
+  \item Benchmarking against a proprietary private-fund universe.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} Alts are first-class in Ratio's model: each private
+position, commitment, and unfunded balance is just another \emph{conserved
+dimension} in the integer-vector basis, so a capital call is one balanced
+transaction spanning cash, commitment, and position dimensions --- no bolt-on
+sub-ledger. Valuations and benchmarks enter as typed facts with provenance.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Trusted core (as additional dimensions) + fact plane (valuations).}
+The conservation law generalizes to alts at no structural cost.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://www.sscblackdiamond.com/}
+  \item \url{https://addepar.com/wealth-management}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

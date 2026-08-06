@@ -1,0 +1,33 @@
+% A transaction as an integer vector over a conserved-dimension basis,
+% netting to zero. Example: buy \$1{,}200 of equity, settling cash, with
+% a brokerage fee booked to an expense dimension --- one balanced vector.
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\footnotesize, >={Stealth[length=2mm]}]
+\matrix (m) [matrix of nodes,
+    nodes={anchor=center, minimum height=6.5mm, minimum width=24mm,
+           draw=black!25, inner sep=2pt, align=center},
+    column sep=-\pgflinewidth, row sep=-\pgflinewidth,
+    row 1/.style={nodes={fill=black!8, font=\bfseries}}]{
+  dimension $d$ & net $\rvec(d)$ (minor units) \\
+  Cash (USD)            & $-121500$ \\
+  Equity position (USD) & $+120000$ \\
+  Brokerage fee (USD)   & $+1500$ \\
+};
+% Sum bracket
+\node[right=6mm of m, align=left] (sum) {%
+  $\displaystyle\sum_{d\in\rdim}\rvec(d)=0$\\[2pt]
+  {\scriptsize $\Rightarrow \rconserves(\rvec)$: the}\\[-1pt]
+  {\scriptsize transaction is \emph{balanced}.}};
+\draw[->] (m.east|-m-2-2) -- ++(0.5,0) |- (sum.west);
+\draw[->] (m.east|-m-3-2) -- ++(0.5,0) |- (sum.west);
+\draw[->] (m.east|-m-4-2) -- ++(0.5,0) |- (sum.west);
+\end{tikzpicture}
+\caption{A transaction is one integer vector $\rvec\in\mathbb{Z}^{\rdim}$
+over a basis of conserved dimensions. Here a \$1{,}200 equity purchase
+plus a \$15 fee settles against cash; the components net to zero across
+the basis, so $\rconserves(\rvec)$ holds and the kernel admits it. Classical
+double-entry is the one-dimensional shadow ($|\rdim|=1$): a list of signed
+legs summing to zero.}
+\label{fig:vector}
+\end{figure}

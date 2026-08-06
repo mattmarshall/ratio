@@ -1,0 +1,46 @@
+% Proof-to-artifact pipeline: the running Rust is emitted from the proven
+% Lean, so the deployed kernel inherits the proof instead of approximating
+% it. The build gate makes drift a build failure.
+\begin{figure}[t]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+    font=\footnotesize, >={Stealth[length=2mm]}, node distance=7mm and 11mm,
+    proven/.style={draw, rounded corners, fill=green!10, align=center,
+                   minimum height=11mm, text width=24mm, inner sep=3pt},
+    tool/.style={draw, fill=black!5, align=center,
+                 minimum height=11mm, text width=22mm, inner sep=3pt},
+    art/.style={draw, dashed, align=center, text width=24mm, inner sep=3pt,
+                minimum height=11mm},
+]
+\node[proven] (core) {\texttt{Ratio.Core}\\ {\scriptsize defs $+$ proofs}\\
+                      {\scriptsize (group laws,}\\ {\scriptsize conservation)}};
+\node[proven, right=of core] (emit) {\texttt{Ratio.Common}\\ \texttt{.Emit}\\
+                      {\scriptsize Lean $\to$ Rust AST}};
+\node[tool, right=of emit] (json) {\texttt{syn} AST\\ as JSON};
+\node[tool, right=of json] (render) {\texttt{json\_to\_}\\ \texttt{rust}};
+\node[art, right=of render] (rs) {\texttt{generated.rs}\\ {\scriptsize \texttt{Money}, \texttt{money\_add},}\\
+                      {\scriptsize \texttt{money\_zero}, \ldots}};
+
+\draw[->] (core) -- node[above, font=\scriptsize] {proves} (emit);
+\draw[->] (emit) -- (json);
+\draw[->] (json) -- (render);
+\draw[->] (render) -- (rs);
+
+% Build gate: committed Rust is checked against re-emission.
+\node[draw, red!60!black, rounded corners, font=\scriptsize\itshape,
+      text=red!60!black, align=center, below=8mm of json, text width=0.92\linewidth]
+  (gate) {build gate: committed \texttt{generated.rs} $\equiv$ re-emission from Lean, or the build fails};
+\draw[->, red!60!black, dashed] (core.south) |- (gate.west);
+\draw[<-, red!60!black, dashed] (gate.east) -| (rs.south);
+\end{tikzpicture}%
+}
+\caption{From proof to artifact. The value layer the application compiles
+is \emph{generated} from the Lean definitions whose algebraic laws are
+proved in \texttt{Ratio.Core}: \texttt{Ratio.Common.Emit} builds a
+\texttt{syn}-shaped Rust AST as JSON, and \texttt{json\_to\_rust} renders
+the committed \texttt{generated.rs}. A build gate gives a hard error if
+the committed Rust diverges from re-emission, so Lean stays authoritative
+and the deployed kernel inherits the proof.}
+\label{fig:emission}
+\end{figure}

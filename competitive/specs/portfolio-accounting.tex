@@ -1,0 +1,58 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Portfolio Accounting \& Performance Reporting}{portfolio-accounting}
+
+The system of record for holdings, transactions, and returns, plus the
+reporting surface advisors and clients consume. The category's anchor
+component --- every incumbent leads with it.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{SS\&C Black Diamond}{Portfolio Management \& Reporting}
+\advrow{Orion}{Portfolio Accounting --- ``billing, reporting, and performance at scale''}
+\advrow{Addepar}{Portfolio Reporting + on-demand analytics}
+\advrow{Envestnet Tamarac}{Advisor View / Reporting}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Daily portfolio accounting: positions, transactions, cost basis, tax lots.
+  \item Performance calculation (time- and money-weighted returns) at account,
+        sleeve, and household levels.
+  \item Multi-currency and multi-asset-class support, including complex ownership
+        structures.
+  \item Drag-and-drop custom report builder; pre-built templates; white-labeled,
+        firm-branded output.
+  \item Real-time / on-demand recalculation; delivery as PDF, client portal, and mobile.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} This is the heart of Ratio's \emph{trusted core}.
+Holdings and transactions are integer-vector entries over the conserved-dimension
+basis (currencies, positions, tax lots, P\&L); the ledger is the proven monoidal
+fold. Performance and report aggregations are read-only projections over the
+append-only log via the gRPC \texttt{Ledger} API. Where incumbents \emph{assert}
+the accounting is right, Ratio's is \emph{machine-checked} (\,see the whitepaper,
+\emph{A Formally Grounded Accounting Kernel}\,) and bit-exactly replayable.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Trusted core (proven).} The accounting kernel; report rendering and
+return formulas sit just above it as deterministic projections. Report
+\emph{templates} are control-plane artifacts (versioned, content-addressed).
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://www.sscblackdiamond.com/}
+  \item \url{https://orion.com/advisor-tech/portfolio-accounting}
+  \item \url{https://addepar.com/wealth-management}
+  \item \url{https://www.envestnet.com/tamarac}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec (data model, API surface, acceptance
+criteria). Capabilities reflect competitors' public marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

@@ -1,0 +1,49 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Proposal Generation}{proposal-generation}
+
+Prospect- and client-facing investment proposals: goals-based portfolio
+construction with tax-smart transition analysis and branded output.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{SS\&C Black Diamond}{Proposal Generation --- goals-based construction, tax-smart transitions}
+\advrow{Envestnet Tamarac}{Proposal Tool --- strategic portfolio construction}
+\advrow{Orion}{Proposal/planning within the Advisor Portal}
+\advrow{Addepar}{Scenario-driven proposals via Navigator}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Goals-based portfolio construction and recommendation.
+  \item Tax-smart transition analysis (current vs.\ proposed, with tax impact).
+  \item Side-by-side scenario comparison and what-if allocations.
+  \item Firm-branded, client-ready proposal documents.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} A proposal is a \emph{simulation}: candidate transactions
+run against a sandboxed copy of the proven kernel, so the projected post-trade
+state and tax impact are computed by the same exact engine that will book the
+real trades --- the proposal and the eventual reality cannot diverge by
+construction. The AI authoring copilot can draft the narrative; the numbers come
+from the kernel.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Control plane + simulation over the trusted core.} No persistence; uses
+the kernel read-only for projections.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://www.sscblackdiamond.com/solutions/investment-management/}
+  \item \url{https://www.envestnet.com/tamarac}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

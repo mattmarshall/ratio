@@ -1,0 +1,134 @@
+\section{Accounting as Conservation Laws}
+\label{sec:conservation}
+
+This section develops the mathematics. Everything here is stated so that
+the Lean formalization of \cref{sec:proofs} is a direct transcription:
+the definitions below have the same names as their Lean counterparts in
+\texttt{Ratio.Core}.
+
+\subsection{The conserved-dimension basis}
+
+Fix a (possibly infinite, dynamically extensible) set $\rdim$ of
+\emph{conserved dimensions}. A dimension is any quantity that must be
+neither created nor destroyed by a transaction --- a currency's minor
+units, a security position, a tax lot, a P\&L component. Accounting
+state is an integer-valued vector over this basis.
+
+\begin{definition}[State / net-effect vector]
+\label{def:vec}
+A state is a function $\rvec : \rdim \to \mathbb{Z}$, written
+$\rvec \in \mathbb{Z}^{\rdim}$. Addition and negation are pointwise,
+\[
+  (\rvec + \mathbf{w})(d) \;=\; \rvec(d) + \mathbf{w}(d),
+  \qquad
+  (-\rvec)(d) \;=\; -\,\rvec(d),
+\]
+and $\rzero$ is the everywhere-zero vector $\rzero(d) = 0$.
+\end{definition}
+
+We work over $\mathbb{Z}$, never $\mathbb{R}$ or floating point. Money is
+represented in integer minor units (e.g.\ cents): this is the only
+representation under which conservation is \emph{exact} and replay is
+\emph{deterministic} across architectures. Floating-point addition is
+neither associative nor exactly invertible~\cite{goldberg1991floating},
+so it cannot carry a conservation law at all. The group-theoretic view of
+double-entry is due to Ellerman~\cite{ellerman1985mathematics}; we
+generalize it from a single balancing dimension to an arbitrary basis.
+
+\begin{proposition}[$\mathbb{Z}^{\rdim}$ is a commutative group]
+\label{prop:group}
+$(\mathbb{Z}^{\rdim}, +, \rzero, -)$ is an abelian group: $+$ is
+associative and commutative, $\rzero$ is a two-sided identity, and $-\rvec$
+is a two-sided inverse.
+\leanref{Ratio.Vec.add\_comm, add\_assoc, add\_zero, add\_neg}
+\end{proposition}
+
+This is the algebraic substrate. It is unremarkable as mathematics ---
+which is the point. The kernel does nothing but exploit the group
+structure; all the difficulty of real accounting lives in choosing
+$\rdim$ and interpreting the result, and that difficulty is pushed out of
+the kernel entirely (\cref{sec:control}).
+
+\subsection{Transactions and conservation}
+
+\begin{definition}[Conservation / balance]
+\label{def:conserves}
+A vector $\rvec$ \emph{conserves value} --- equivalently, a transaction
+with net effect $\rvec$ is \emph{balanced} --- iff
+\[
+  \rconserves(\rvec) \;:\Longleftrightarrow\; \rvec = \rzero,
+  \qquad\text{i.e.}\qquad \forall d \in \rdim,\; \rvec(d) = 0 .
+\]
+\end{definition}
+
+This single predicate \emph{is} the kernel's only invariant. A
+transaction is a movement of value across dimensions; it is admissible
+exactly when nothing leaks. \Cref{fig:vector} shows the picture: a
+two-line cash purchase as a vector over a four-dimension basis, summing
+to $\rzero$.
+
+\input{figures/fig_vector.tex}
+
+\paragraph{Double-entry is the one-dimensional shadow.} Classical
+double-entry bookkeeping is the special case $|\rdim| = 1$. A transaction
+there is a list of signed split amounts $[a_1, \dots, a_n]$, ``balanced''
+when $\sum_i a_i = 0$ --- the familiar ``debits equal credits''. The
+canonical two-leg posting $[a, -a]$ balances because $a + (-a) = 0$, the
+group inverse law. Ratio keeps double-entry as a derived, checked
+instance (\cref{thm:double-entry}) but its kernel reasons over the full
+$\mathbb{Z}^{\rdim}$, so a single FX trade that touches two currencies and
+a realized-gain component is \emph{one} balanced transaction over three
+dimensions rather than an awkward pile of bridging postings.
+
+\begin{proposition}[Conserving vectors form a subgroup]
+\label{prop:subgroup}
+The set $\{\rvec : \rconserves(\rvec)\}$ contains $\rzero$ and is closed
+under $+$ and $-$. Concretely:
+$\rconserves(\rzero)$; and if $\rconserves(\mathbf{a})$ and
+$\rconserves(\mathbf{b})$ then $\rconserves(\mathbf{a}+\mathbf{b})$ and
+$\rconserves(-\mathbf{a})$.
+\leanref{Ratio.conserves\_zero, conserves\_add, conserves\_neg}
+\end{proposition}
+
+\Cref{prop:subgroup} is the load-bearing fact. It says that balance is
+\emph{compositional}: combine two balanced transactions and the result
+is balanced; reverse a balanced transaction and it is still balanced.
+Everything the ledger does is built from these two closures.
+
+\subsection{The ledger as a monoidal fold}
+
+\begin{definition}[Ledger]
+\label{def:ledger}
+Given an append-only log of transactions
+$\textit{log} = [\rvec_1, \dots, \rvec_n]$, the ledger state is the
+left fold
+\[
+  \rledger(\textit{log}) \;=\;
+  \big(\cdots(\rzero + \rvec_1) + \rvec_2 \cdots\big) + \rvec_n
+  \;=\; \sum_{i=1}^{n} \rvec_i .
+\]
+\end{definition}
+
+Because $+$ is associative with identity $\rzero$
+(\cref{prop:group}), $(\mathbb{Z}^{\rdim}, +, \rzero)$ is a commutative
+monoid and the fold is well-defined independent of association --- it is
+a \emph{monoidal aggregation}~\cite{hutton1999fold}. \Cref{fig:fold} renders this as the
+commuting picture that makes the conservation law inevitable: folding the
+log and checking balance commute, because every accumulator the fold
+passes through is itself balanced.
+
+\input{figures/fig_fold.tex}
+
+The central theorem, proved in \cref{sec:proofs}, is that this fold never
+leaves the conserving subgroup:
+\[
+  \big(\forall i,\; \rconserves(\rvec_i)\big)
+  \;\Longrightarrow\;
+  \rconserves\!\big(\rledger(\textit{log})\big).
+\]
+In words: \emph{if every transaction balances, the whole ledger
+balances} --- and it does so by a structural argument over the fold, not
+by re-summing and hoping. This is what lets Ratio treat the ledger as
+trustworthy infrastructure: internal consistency, replayability, and
+auditability fall out of one closed-form invariant rather than out of
+defensive checks scattered through application code.

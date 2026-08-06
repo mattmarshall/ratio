@@ -1,0 +1,49 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Integrations, API \& Marketplace}{integrations}
+
+Connectivity to custodians, third-party apps, and developer tooling --- the
+platform's openness surface.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{SS\&C Black Diamond}{Integrations; Annuities \& Insurance Marketplace}
+\advrow{Orion}{Connected platform; Denali Data ingestion of third-party sources}
+\advrow{Addepar}{Developer API, Sandbox, ADX}
+\advrow{Envestnet Tamarac}{Growing partner integration list}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Custodian and bank connectors; standardized import/export.
+  \item Third-party application marketplace / integration catalog.
+  \item Developer API and sandbox for building custom solutions.
+  \item Data exchange across internal and external systems.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} Integration is native, not a gated add-on: the
+AIP-idiomatic gRPC \texttt{Ledger} API \emph{is} the integration surface, the
+core is self-hostable, and data exports use open formats. Connectors are Python
+extensions / control-plane adapters. The differentiator is reversibility ---
+because the engine is open and the API standard, you are never locked behind a
+proprietary integration gate.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{API boundary + extension tier.} Inbound writes are ordinary
+\texttt{CreateTransaction} calls, subject to the conservation check.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://www.sscblackdiamond.com/solutions/integrations/}
+  \item \url{https://addepar.com/wealth-management}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}

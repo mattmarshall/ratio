@@ -1,0 +1,28 @@
+% Five value pillars as a row of cards. Native TikZ, resized to text width.
+\begin{center}
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  card/.style={rectangle, rounded corners=4pt, draw=ratioTan, line width=0.8pt,
+               fill=ratioCream, minimum width=33mm, minimum height=34mm,
+               anchor=north west},
+  bar/.style={rectangle, fill=ratioBrown, minimum width=33mm, minimum height=4mm,
+              anchor=north west, rounded corners=2pt},
+  ttl/.style={font=\sffamily\bfseries\large, text=ratioInk, align=center, text width=30mm},
+  sub/.style={font=\sffamily\footnotesize, text=ratioBrown, align=center, text width=30mm},
+]
+\def\cw{37mm}
+\foreach \i/\title/\desc in {
+    0/{Provable\\correctness}/{Lean~4 machine-checked kernel --- verified for all inputs, not sampled},
+    1/{Deterministic\\audit}/{Integer-exact, append-only ledger replays bit-for-bit},
+    2/{AI-native,\\safely}/{LLMs propose specs; the proven kernel decides truth},
+    3/{Open \&\\extensible}/{Readable Rust/Python core you can self-host and extend},
+    4/{High\\performance}/{Bandwidth-bound integer engine, no reconciliation epsilon}
+  }{
+    \node[card] (c\i) at ({\i*\cw},0) {};
+    \node[bar] at ({\i*\cw},0) {};
+    \node[ttl] at ({\i*\cw+16.5mm},-13mm) {\title};
+    \node[sub] at ({\i*\cw+16.5mm},-25mm) {\desc};
+  }
+\end{tikzpicture}%
+}
+\end{center}

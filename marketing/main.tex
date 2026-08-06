@@ -1,0 +1,156 @@
+\documentclass[11pt,letterpaper]{article}
+
+% ── Ratio positioning brief — marketing-oriented, compiled by rules_tectonic.
+%    Visuals are native TikZ / pgfplots so the whole brief is one hermetic
+%    tectonic action. Brand palette taken from the ledger wordmark.
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=0.9in]{geometry}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{colortbl}
+\usepackage{pifont}
+\usepackage{enumitem}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{pgfplotstable}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc,backgrounds,shapes.geometric,shadows.blur}
+\usepackage[most]{tcolorbox}
+\usepackage{titlesec}
+\usepackage{caption}
+\captionsetup{labelformat=empty, justification=centering}
+\usepackage{hyperref}
+
+% ── Brand palette (warm ledger sepia) ───────────────────────────────
+\definecolor{ratioInk}{HTML}{3A2A1C}    % near-black brown — headings/body emphasis
+\definecolor{ratioBrown}{HTML}{6E4F34}  % primary brown
+\definecolor{ratioTan}{HTML}{B98E5E}    % mid tan
+\definecolor{ratioSand}{HTML}{D9C19A}   % light tan — fills/rules
+\definecolor{ratioCream}{HTML}{F4EEDD}  % page-tint cream
+\definecolor{posGreen}{HTML}{2E7D52}    % "yes" / advantage
+\definecolor{amber}{HTML}{C8881F}       % "partial"
+\definecolor{negGray}{HTML}{9A9A9A}     % "no"
+
+\hypersetup{
+  colorlinks=true, linkcolor=ratioBrown, citecolor=ratioBrown, urlcolor=ratioBrown,
+  pdftitle={Ratio — The Provably Correct Foundation for Wealth Management},
+  pdfauthor={Ratio},
+}
+
+% ── Section styling: sans, brown, with a tan rule ───────────────────
+\titleformat{\section}
+  {\sffamily\Large\bfseries\color{ratioInk}}{\thesection}{0.6em}{}[{\color{ratioSand}\titlerule[1.2pt]}]
+\titleformat{\subsection}
+  {\sffamily\large\bfseries\color{ratioBrown}}{\thesubsection}{0.5em}{}
+\titlespacing*{\section}{0pt}{14pt}{6pt}
+
+% ── Symbols for the comparison matrix ───────────────────────────────
+\newcommand{\yes}{{\color{posGreen}\ding{51}}}
+\newcommand{\partialmark}{{\color{amber}\textbf{\textasciitilde}}}
+\newcommand{\no}{{\color{negGray}\ding{55}}}
+
+% ── A reusable "callout" box ────────────────────────────────────────
+\newtcolorbox{callout}[1][]{
+  colback=ratioCream, colframe=ratioTan, boxrule=0.8pt, arc=3pt,
+  left=8pt, right=8pt, top=6pt, bottom=6pt, #1}
+
+\newtcolorbox{keybox}[1][]{
+  colback=ratioInk, colframe=ratioInk, coltext=white, arc=3pt,
+  left=10pt, right=10pt, top=8pt, bottom=8pt, #1}
+
+\setlist[itemize]{leftmargin=1.3em, itemsep=2pt, topsep=2pt}
+\pagestyle{plain}
+
+\begin{document}
+
+% ══════════════════════════════ COVER ══════════════════════════════
+\thispagestyle{empty}
+\begin{center}
+\vspace*{0.6in}
+\includegraphics[width=0.42\textwidth]{../images/ratio.png}
+
+\vspace{0.35in}
+{\color{ratioSand}\rule{0.86\textwidth}{1.4pt}}
+
+\vspace{0.30in}
+{\sffamily\bfseries\fontsize{26}{30}\selectfont\color{ratioInk}
+The Provably Correct Foundation\\[2pt] for Wealth Management}
+
+\vspace{0.18in}
+{\sffamily\large\color{ratioBrown}
+A positioning brief: how the Ratio ecosystem competes with\\
+SS\&C Black Diamond and the legacy wealth-tech stack}
+
+\vspace{0.30in}
+{\color{ratioSand}\rule{0.86\textwidth}{1.4pt}}
+\end{center}
+
+\vspace{0.35in}
+\begin{center}
+\begin{minipage}{0.86\textwidth}
+\begin{keybox}
+\sffamily\large
+Every other portfolio-accounting platform asks you to \emph{trust} that its
+ledger is correct. Ratio lets you \emph{verify} it --- with
+machine-checked proofs, bit-exact replay, and an open core you can read.
+\end{keybox}
+\end{minipage}
+\end{center}
+
+\vfill
+\begin{center}
+{\sffamily\color{ratioBrown} Ratio Positioning Brief \quad\textbullet\quad 2026 \quad\textbullet\quad Built on the fastverk stack}
+\end{center}
+\newpage
+
+% ════════════════════════ EXECUTIVE SUMMARY ════════════════════════
+\section*{Executive Summary}
+\addcontentsline{toc}{section}{Executive Summary}
+{\color{ratioSand}\titlerule[1.2pt]}
+\vspace{6pt}
+
+Wealth-management technology runs on a paradox: the systems entrusted with the
+most exacting arithmetic in finance are the ones their users can least inspect.
+Performance reports, tax lots, multi-currency NAVs, and fee calculations emerge
+from proprietary black boxes, reconciled by armies of operations staff and taken
+on faith. \textbf{Ratio replaces faith with proof.}
+
+\begin{itemize}
+  \item \textbf{Provably correct, not just well-tested.} Ratio's accounting
+  kernel is modeled as a conservation law and \emph{machine-checked in Lean~4};
+  the running engine is generated from those proofs, so the math your clients
+  depend on is verified for all inputs, not sampled by a test suite.
+  \item \textbf{Auditable by construction.} An append-only, integer-exact ledger
+  with a content-addressed control plane means any historical state replays
+  bit-for-bit, under the exact rules in force at the time --- audit and
+  point-in-time reporting become a query, not a forensic project.
+  \item \textbf{AI-native, safely.} LLMs translate intent into specifications and
+  draft explanations, but are architecturally fenced out of the trusted core:
+  a model can propose, never corrupt the ledger.
+  \item \textbf{Open, extensible, and unbundled from AUM.} A readable Rust/Python
+  core you can self-host, extend, and price independently of assets under
+  management --- the opposite of legacy lock-in.
+\end{itemize}
+
+\vspace{4pt}
+\input{figures/fig_pillars.tex}
+
+\noindent This brief lays out the problem with the incumbent stack, the five ways
+Ratio is different, a capability-by-capability comparison against Black Diamond
+and its peers, and the economics of switching.
+
+\input{sections/problem.tex}
+\input{sections/difference.tex}
+\input{sections/compare.tex}
+\input{sections/proof.tex}
+\input{sections/tco.tex}
+\input{sections/ai.tex}
+\input{sections/migration.tex}
+\input{sections/cta.tex}
+
+\end{document}

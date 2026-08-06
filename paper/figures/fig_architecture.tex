@@ -1,0 +1,17 @@
+% System architecture. The diagram itself is authored in PlantUML
+% (figures/fig_architecture.puml) and rendered to vector PDF by
+% rules_puml (PlantUML + Apache Batik/FOP, no external toolchain);
+% this wrapper embeds the rendered PDF.
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig_architecture_diagram.pdf}
+\caption{Ratio in the running system. Natural-language intent is turned
+into a candidate specification by an LLM and compiled, deterministically,
+into a content-addressed control-plane artifact (top, untrusted). The
+only path to ledger state is the gRPC \texttt{Ledger} contract, whose
+\texttt{CreateTransaction} admits a transaction \emph{iff} it conserves
+value --- the kernel's sole invariant, proved in Lean and emitted to the
+Rust that runs. Learned and declarative components sit outside the
+trusted core (green) and cannot violate conservation.}
+\label{fig:architecture}
+\end{figure}

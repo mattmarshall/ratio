@@ -1,0 +1,41 @@
+\section{The Ratio Difference}
+
+Ratio is not another reporting layer on top of the same kind of engine. It
+replaces the engine. The difference reduces to one idea: \textbf{the mechanical
+core of accounting is a conservation law, and conservation laws can be proved.}
+From that single commitment, five buyer-visible advantages follow.
+
+\input{figures/fig_glassbox.tex}
+
+\subsection{1. Provable correctness}
+Ratio models every transaction as a movement of value that must net to zero
+across every dimension --- currencies, positions, tax lots, P\&L. That invariant
+is \emph{machine-checked in Lean~4}, and the Rust engine you run is generated
+from the proven source. Correctness is established for all inputs by a proof
+assistant, not estimated by a test suite. When a ledger is assembled from valid
+transactions, it is guaranteed balanced --- as a theorem.
+
+\subsection{2. Reproducible, audit-ready history}
+The ledger is an append-only log of integer-exact entries, folded
+deterministically. There is no floating-point drift, no order-dependence, no
+hidden mutable state. Any past state replays bit-for-bit, under the exact rules
+in force then, because those rules are pinned as content-addressed artifacts.
+Audit, restatement, and ``as-of'' reporting become deterministic queries.
+
+\subsection{3. AI-native, with the model fenced out of the truth}
+Ratio uses LLMs where they are genuinely useful --- turning an advisor's intent
+into a precise specification, drafting client-ready explanations --- and nowhere
+they are dangerous. Every model output is compiled and checked against the
+kernel's invariants before it can touch a ledger. The model proposes; the proven
+kernel disposes.
+
+\subsection{4. Open core, no lock-in}
+The accounting core is readable Rust with a Python extension surface and a
+standard gRPC API. You can self-host it, inspect it, extend it, and export your
+data in open formats. Your history is yours, in a shape you control.
+
+\subsection{5. Performance that is fast \emph{because} it is simple}
+A non-expressive kernel over fixed-width integer records is branch-minimal: its
+cost is set by memory bandwidth, not by how many business cases the engine must
+dispatch on. Exactness removes the reconciliation passes legacy engines spend
+cycles on. Simple, proven, and quick are the same design decision.

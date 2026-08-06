@@ -1,0 +1,50 @@
+% The proposed Ratio ecosystem — product surface for buyers.
+\begin{figure}[h]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[
+  >={Stealth[length=2.4mm]}, font=\sffamily\footnotesize,
+  mod/.style={rounded corners=3pt, draw=ratioTan, fill=ratioCream, text=ratioInk,
+              align=center, minimum height=10mm, text width=30mm, inner sep=3pt},
+  core/.style={rounded corners=4pt, draw=ratioBrown, line width=1.1pt,
+               fill=ratioSand!45, text=ratioInk, align=center,
+               minimum height=15mm, text width=40mm, font=\sffamily\bfseries},
+  ai/.style={rounded corners=3pt, draw=ratioBrown, fill=ratioInk, text=white,
+             align=center, minimum height=10mm, text width=44mm},
+  edge/.style={->, ratioBrown, line width=0.8pt},
+]
+% Core
+\node[core] (k) at (0,0) {Conservation kernel\\ \mdseries\footnotesize (proven) + append-only ledger};
+
+% AI copilot on top
+\node[ai] (ai) at (0,2.6) {AI authoring copilot\\ \footnotesize intent\,$\to$\,spec, explanations};
+\draw[edge] (ai) -- node[right, font=\scriptsize] {proposals (checked)} (k);
+
+% Inputs on the left
+\node[mod] (cp) at (-6.2,1.1) {Control plane\\ \footnotesize rules, mappings\\ (content-addressed)};
+\node[mod] (fx) at (-6.2,-1.1) {Typed facts\\ \footnotesize prices, FX, custodial\\ feeds (provenance)};
+\draw[edge] (cp) -- (k);
+\draw[edge] (fx) -- (k);
+
+% API gateway on the right
+\node[mod, fill=ratioSand!55, font=\sffamily\bfseries] (api) at (5.4,0) {gRPC Ledger API\\ \mdseries\footnotesize AIP-idiomatic};
+\draw[edge] (k) -- (api);
+
+% Client surfaces fanning from the API
+\node[mod] (tui)  at (10.6,2.4)  {meridian TUI};
+\node[mod] (web)  at (10.6,0.8)  {Client portal / web};
+\node[mod] (py)   at (10.6,-0.8) {Python extensions};
+\node[mod] (intg) at (10.6,-2.4) {Custodian \&\\ BI integrations};
+\foreach \n in {tui,web,py,intg}{ \draw[edge] (api) -- (\n); }
+
+% Trust boundary annotation
+\draw[densely dashed, posGreen, line width=0.9pt] (-3.3,3.4) -- (-3.3,-3.0);
+\node[text=posGreen, font=\sffamily\footnotesize\bfseries, rotate=90] at (-3.6,0.2)
+  {trusted core (proven)};
+\end{tikzpicture}%
+}
+\caption*{\small\color{ratioBrown}\sffamily The proposed Ratio ecosystem: a proven
+kernel at the center, fed by a content-addressed control plane and typed market
+facts, exposed through one open API to advisor, client, and integration surfaces.
+Everything expressive sits outside the trusted core.}
+\end{figure}

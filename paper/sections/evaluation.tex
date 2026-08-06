@@ -1,0 +1,56 @@
+\section{Analysis and Value Proposition}
+\label{sec:eval}
+
+This section makes the value proposition quantitative. The figures here
+are \emph{analytical models} of the architecture's asymptotics, not
+measurements of a tuned deployment; they are drawn from the cost model of
+\cref{sec:kernel} and are labeled as such. Their purpose is to show the
+\emph{shape} of the trade Ratio makes, which is structural and therefore
+predictable in advance of any benchmark.
+
+\subsection{Throughput: bandwidth-bound, not logic-bound}
+
+\Cref{fig:throughput} models per-transaction cost as the rule set grows.
+An expressive engine dispatches on business cases on the hot path, so its
+cost rises with rule-set complexity; the conservation kernel does a
+fixed amount of integer work per fixed-width record, so its cost is flat.
+The crossover is not a tuning artifact --- it is the difference between a
+loop whose body depends on semantics and one whose body does not.
+
+\subsection{Determinism: zero replay variance}
+
+\Cref{fig:determinism} models replay dispersion. Because the kernel is
+integer-only over immutable inputs with a fixed fold, repeated replays of
+a log land on a single point --- variance is identically zero. An
+order-sensitive or floating-point engine accumulates a small but nonzero
+spread that compounds with log length, which is exactly what makes
+bit-exact audit impossible in such systems. Determinism here is a
+theorem of the construction, not a property one hopes survives
+optimization.
+
+\subsection{Assurance: a tiny trusted base}
+
+\Cref{tab:trust} (\cref{sec:proofs}) and \cref{fig:layers}
+(\cref{sec:intro}) tell the assurance story structurally: the trusted
+computing base is the kernel's definitions plus the theorems over them,
+and everything expressive --- control plane, fact plane, LLM-driven
+authoring --- sits outside it, unable to violate conservation by
+construction. The relevant comparison is not ``how many bugs were found''
+but ``how large is the surface on which a correctness bug could exist at
+all.'' Ratio shrinks that surface to a kernel small enough to prove, and
+then proves it.
+
+\subsection{Summary of the trade}
+
+Ratio gives up engine-level expressiveness --- you cannot encode a
+posting rule ``in the kernel'' --- and in exchange gets a core that is
+(i) \emph{proved} correct for all inputs (\cref{thm:conservation}),
+(ii) \emph{deterministically replayable} (\cref{fig:determinism}),
+(iii) \emph{bandwidth-bound and fast} (\cref{fig:throughput}), and
+(iv) faithfully \emph{realized} by emission rather than re-implementation
+(\cref{sec:emission}). The expressiveness is not lost; it is relocated to
+a content-addressed control plane where it is versioned, auditable, and
+fenced away from the arithmetic it must never corrupt.
+
+\input{figures/fig_throughput.tex}
+\input{figures/fig_determinism.tex}

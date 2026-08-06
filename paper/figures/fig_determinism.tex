@@ -1,0 +1,36 @@
+% Modeled replay dispersion vs. log length. The integer-only kernel over
+% immutable inputs replays bit-for-bit (zero spread); a float / order-
+% sensitive engine accumulates a nonzero spread that grows with the log.
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=\linewidth, height=6cm,
+    xmode=log, log basis x=10,
+    xtick=data,
+    log ticks with fixed point,
+    xlabel={transaction-log length},
+    ylabel={replay dispersion (minor units)},
+    ymin=-8, ymax=160,
+    legend style={at={(0.02,0.97)}, anchor=north west, draw=none,
+                  fill=white, fill opacity=0.85, text opacity=1, font=\scriptsize},
+    grid=both, grid style={black!10}, mark options={solid},
+]
+\addplot[mark=*, thick, red!60!black]
+    table[x=length, y=floatengine] {figures/data/determinism.dat};
+\addplot[mark=square*, thick, green!45!black]
+    table[x=length, y=kernel] {figures/data/determinism.dat};
+\node[font=\scriptsize, text=green!45!black, anchor=south west]
+    at (axis cs:100,2) {kernel: $0$, exactly (Theorem~\ref{thm:conservation})};
+\legend{float / order-sensitive engine, conservation kernel}
+\end{axis}
+\end{tikzpicture}
+\caption{Modeled dispersion across independent replays of the same log
+(analytical). Because the kernel is integer-only over immutable inputs
+with a fixed monoidal fold, repeated replays land on a single point ---
+dispersion is identically zero, by construction. A float or
+order-sensitive engine accumulates a small, compounding spread that makes
+bit-exact audit impossible. Determinism here is a property of the
+construction, not of careful tuning.}
+\label{fig:determinism}
+\end{figure}

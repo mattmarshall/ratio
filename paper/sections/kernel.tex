@@ -1,0 +1,71 @@
+\section{A Minimal, Deterministic Kernel}
+\label{sec:kernel}
+
+The conservation law (\cref{thm:conservation}) describes \emph{what} the
+kernel computes. This section describes \emph{how}, and why the
+how is fast precisely \emph{because} the what is small.
+
+\subsection{Non-expressiveness as a design goal}
+
+The kernel's sole responsibility is to enforce the mechanical
+invariants: that a transaction conserves value, and that the ledger is
+the deterministic fold of the log. It encodes no posting rules, no
+account hierarchy semantics, no interpretation policy, and exposes no
+mutable configuration. This is a deliberate inversion of the usual
+priority. Most systems make the core expressive so that business needs
+can be met ``in the engine''; Ratio makes the core \emph{non-expressive}
+so that the engine is small enough to prove and cheap enough to run, and
+pushes expressiveness outward into the control plane.
+
+Non-expressiveness pays off twice. For \emph{assurance}, the trusted
+computing base is a handful of definitions and the theorems over them ---
+the surface a reviewer (or a proof assistant) must trust is tiny. For
+\emph{performance}, a kernel that does not branch on business semantics
+does not branch much at all: it streams fixed-width records and adds
+integers.
+
+\subsection{Data layout and the cost model}
+
+A transaction's postings are stored as cache-aligned, fixed-width binary
+records: an integer dimension index and an \texttt{i64} minor-unit
+amount, never a tagged union of value types and never floating point.
+The ledger fold (\cref{def:ledger}) is then a branch-minimal loop ---
+load record, accumulate into a per-dimension integer, advance --- with no
+data-dependent control flow on the hot path. Its arithmetic is exact by
+construction (\cref{sec:proofs}), so there is no reconciliation pass and
+no tolerance epsilon to tune.
+
+The consequence is a cost model dominated by \emph{memory bandwidth}
+rather than control-flow complexity. Throughput scales with how fast the
+machine can stream the log past the ALU, not with how many business
+cases the engine must dispatch on. \Cref{fig:throughput} contrasts the
+asymptotics: an expressive engine pays a per-transaction dispatch and
+allocation cost that grows with rule-set complexity, while the
+conservation kernel's per-transaction cost is a small constant set by the
+record width. \Cref{fig:determinism} makes the determinism claim
+concrete: because the inputs are immutable and the fold is fixed and
+integer-only, independent replays of the same log produce bit-identical
+ledger states --- the variance across runs is exactly zero, by
+construction, where a float-based or order-sensitive engine accumulates
+drift.
+
+\subsection{Determinism and replay}
+
+Three properties combine to make any ledger state exactly reconstructible:
+the log is append-only, the fold is a fixed monoidal aggregation, and all
+arithmetic is over $\mathbb{Z}$. There is no source of nondeterminism on
+the path from log to state --- no floating-point rounding, no hash-map
+iteration order leaking into a sum, no wall-clock dependence. Replaying a
+prefix of the log reproduces the historical state it implies, which is
+what makes point-in-time audit and ``what did we believe on date $T$''
+queries first-class rather than forensic.
+
+\Cref{fig:architecture} places the kernel in the running system: the
+gRPC \texttt{Ledger} service (an AIP-idiomatic~\cite{aip} contract --- \texttt{GetTransaction},
+\texttt{ListTransactions}, \texttt{CreateTransaction}) is the only door to
+the kernel, and \texttt{CreateTransaction} rejects any transaction that
+fails conservation with \texttt{FAILED\_PRECONDITION}. The kernel's
+invariant is thus enforced at the system boundary by the same predicate
+the proofs reason about.
+
+\input{figures/fig_architecture.tex}

@@ -152,6 +152,7 @@
     "https://bcr.bazel.build/modules/rules_jvm_external/5.3/MODULE.bazel": "bf93870767689637164657731849fb887ad086739bd5d360d90007a581d5527d",
     "https://bcr.bazel.build/modules/rules_jvm_external/6.1/MODULE.bazel": "75b5fec090dbd46cf9b7d8ea08cf84a0472d92ba3585b476f44c326eda8059c4",
     "https://bcr.bazel.build/modules/rules_jvm_external/6.3/MODULE.bazel": "c998e060b85f71e00de5ec552019347c8bca255062c990ac02d051bb80a38df0",
+    "https://bcr.bazel.build/modules/rules_jvm_external/6.6/MODULE.bazel": "153042249c7060536dc95b6bb9f9bb8063b8a0b0cb7acdb381bddbc2374aed55",
     "https://bcr.bazel.build/modules/rules_jvm_external/6.7/MODULE.bazel": "e717beabc4d091ecb2c803c2d341b88590e9116b8bf7947915eeb33aab4f96dd",
     "https://bcr.bazel.build/modules/rules_jvm_external/6.7/source.json": "5426f412d0a7fc6b611643376c7e4a82dec991491b9ce5cb1cfdd25fe2e92be4",
     "https://bcr.bazel.build/modules/rules_kotlin/1.9.0/MODULE.bazel": "ef85697305025e5a61f395d4eaede272a5393cee479ace6686dba707de804d59",
@@ -324,6 +325,8 @@
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_cc/0.2.8/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_foreign_cc/0.9.0/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_fuzzing/0.5.2/MODULE.bazel": "not found",
+    "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_github/0.1.1/MODULE.bazel": "5ba48515bab9ac717c1f50cf8ef67fcf80299f479a34bfdbb5654d51039d5eb8",
+    "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_github/0.1.1/source.json": "90a44a3145e0ee5c1f15e43217d1d3fe79e93d26b376dc4ec503893231081cb2",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_go/0.33.0/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_go/0.38.1/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_go/0.39.1/MODULE.bazel": "not found",
@@ -347,6 +350,7 @@
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_jvm_external/5.3/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_jvm_external/6.1/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_jvm_external/6.3/MODULE.bazel": "not found",
+    "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_jvm_external/6.6/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_jvm_external/6.7/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_kotlin/1.9.0/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_kotlin/1.9.6/MODULE.bazel": "not found",
@@ -365,6 +369,8 @@
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_proto/6.0.2/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_proto/7.0.2/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_proto/7.1.0/MODULE.bazel": "not found",
+    "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_puml/0.0.2/MODULE.bazel": "c6ca17051f2cf02e1bb98a2e4c737ec0317bbecab52720b906e8d13b69bc7708",
+    "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_puml/0.0.2/source.json": "fbc6c999f08187212fe36b350c16fc2bc7ff3f41865e17121716d3ce098060e7",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_python/0.10.2/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_python/0.23.1/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_python/0.25.0/MODULE.bazel": "not found",
@@ -382,6 +388,8 @@
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_shell/0.6.1/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_swift/1.16.0/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_swift/2.1.1/MODULE.bazel": "not found",
+    "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_tectonic/0.2.0/MODULE.bazel": "1a72f1513e59e5f7c3c72b31c0aa1247bf60616f66c5e0027afff4bd22528c00",
+    "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/rules_tectonic/0.2.0/source.json": "d051ae35dab81af428ef96d2098e453f691432c1fa7cb217aba9eb2991a6f339",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/stardoc/0.5.0/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/stardoc/0.5.1/MODULE.bazel": "not found",
     "https://raw.githubusercontent.com/fastverk/bazel-registry/main/modules/stardoc/0.5.3/MODULE.bazel": "not found",
@@ -2237,6 +2245,47 @@
             "rules_rust+",
             "rules_rust",
             "rules_rust+"
+          ]
+        ]
+      }
+    },
+    "@@rules_tectonic+//tectonic:extensions.bzl%tectonic": {
+      "general": {
+        "bzlTransitiveDigest": "ZktTb0mbZEO39u1qfCMF+pZxTkQVnvMIb/wsDagEzYA=",
+        "usagesDigest": "02bBeDISLf79RhPoAA/TGhUEnXVF88f+CBbIXu4ROXg=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "tectonic": {
+            "repoRuleId": "@@rules_github+//github:repositories.bzl%github_binary_repository",
+            "attributes": {
+              "repo": "tectonic-typesetting/tectonic",
+              "version": "0.15.0",
+              "tag_format": "tectonic@{version}",
+              "asset_template": "tectonic-{version}-{platform}",
+              "strip_prefix_template": "",
+              "platform_aliases": {
+                "darwin_aarch64": "aarch64-apple-darwin.tar.gz",
+                "darwin_x86_64": "x86_64-apple-darwin.tar.gz",
+                "linux_aarch64": "aarch64-unknown-linux-musl.tar.gz",
+                "linux_x86_64": "x86_64-unknown-linux-musl.tar.gz"
+              },
+              "platform_shas": {
+                "darwin_aarch64": "24bd46566fa30d41101848405e9cbc4645edb92d8f857c9d21262174fb70cd33",
+                "darwin_x86_64": "dd42576eaa4c0df58c243dd78b7b864d9deb405ffdfcdadd1b79a31faceab747",
+                "linux_aarch64": "1f59f9fb8eb65e8ba18658fc9016767e7d3e12488ded8b8fffa34254e51ce42c",
+                "linux_x86_64": "dfb82876f2986862996e564fa507a9e576e0c1e3bee63c2c1bd677c2543e6407"
+              },
+              "build_file_content": "package(default_visibility = [\"//visibility:public\"])\n\nload(\"@bazel_skylib//rules:native_binary.bzl\", \"native_binary\")\nload(\"@rules_tectonic//tectonic:toolchains.bzl\", \"tectonic_toolchain\")\n\nexports_files([\"tectonic\"])\n\n# Wrap the raw release binary as a runnable target so the toolchain\n# can declare it as an `executable` attribute.\nnative_binary(\n    name = \"tectonic_bin\",\n    src = \"tectonic\",\n    out = \"tectonic_bin\",\n)\n\ntectonic_toolchain(\n    name = \"tectonic_toolchain\",\n    tectonic = \":tectonic_bin\",\n)\n\ntoolchain(\n    name = \"tectonic_toolchain_def\",\n    toolchain = \":tectonic_toolchain\",\n    toolchain_type = \"@rules_tectonic//tectonic:toolchain_type\",\n)\n"
+            }
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "rules_tectonic+",
+            "rules_github",
+            "rules_github+"
           ]
         ]
       }

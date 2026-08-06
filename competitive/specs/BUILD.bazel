@@ -1,0 +1,30 @@
+load(":spec.bzl", "component_specs")
+
+package(default_visibility = ["//visibility:public"])
+
+# One PDF per advertised wealth-tech component, scaffolded from a June 2026
+# scrape of SS&C Black Diamond, Orion, Addepar, and Envestnet Tamarac. Each
+# <slug>.tex compiles to <slug>.pdf via rules_tectonic; `catalog` is the master
+# component-architecture overview.
+#
+#   bazel build //competitive/specs:all                 # every spec + catalog
+#   bazel build //competitive/specs:portfolio-accounting # a single component
+component_specs([
+    "catalog",
+    "portfolio-accounting",
+    "data-aggregation",
+    "trading-rebalancing",
+    "model-management",
+    "proposal-generation",
+    "billing",
+    "client-portal",
+    "crm",
+    "compliance",
+    "risk-analytics",
+    "business-intelligence",
+    "alternative-investments",
+    "integrations",
+    "ai-insights",
+    "data-governance",
+    "specialized-servicing",
+])

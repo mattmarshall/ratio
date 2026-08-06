@@ -1,0 +1,51 @@
+@startuml
+' Ratio system architecture, rendered to vector PDF by rules_puml
+' (PlantUML + Batik/FOP) and embedded in the whitepaper. The proven
+' kernel is the only path to ledger state; learned + declarative
+' components sit outside the trusted core.
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam roundCorner 8
+skinparam defaultFontName Menlo
+skinparam defaultFontSize 12
+skinparam ArrowColor #444444
+skinparam componentBorderColor #555555
+skinparam databaseBorderColor #555555
+skinparam actorBorderColor #555555
+
+actor "Operator" as user
+
+package "Authoring (learned, untrusted)" #F2F6FF {
+  component "LLM intent\ncapture" as llm
+  component "Deterministic\ncompiler" as comp
+}
+
+package "Control plane (declarative)" #F4F4F4 {
+  database "Content-addressed\nartifacts\n(posting rules, mappings)" as cp
+  database "Typed facts\n(prices, FX — provenance,\nvalidity window)" as facts
+}
+
+package "Trusted core (proven in Lean 4)" #EAF7EE {
+  component "Ledger gRPC\n(AIP contract)" as api
+  component "Conservation kernel\nConserves(v) := v = 0\nledger = foldl (+) 0 log" as kernel
+  database "Append-only\ntransaction log\n(i64 minor units)" as log
+}
+
+user --> llm : NL intent
+llm --> comp : candidate spec
+comp --> cp : pin (hash)
+api --> cp : reads artifact hash
+api --> facts : binds fact set
+user --> api : CreateTransaction
+api --> kernel : balanced? (FAILED_PRECONDITION if not)
+kernel --> log : append (conserving only)
+log --> kernel : monoidal fold
+kernel --> api : ledger state (replayable)
+
+note bottom of kernel
+  Sole invariant: conservation.
+  Emitted from the proven Lean
+  source (no hand-port).
+end note
+
+@enduml

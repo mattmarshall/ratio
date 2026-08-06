@@ -1,0 +1,83 @@
+\section{Motivation}
+\label{sec:intro}
+
+Double-entry bookkeeping has been the discipline's backbone since
+Pacioli first printed it in 1494~\cite{pacioli1494summa}, and its
+deep structure is group-theoretic: Ellerman showed that the
+``T-accounts'' of double-entry form a group~\cite{ellerman1985mathematics}.
+Accounting systems are foundational infrastructure: ledgers, sub-ledgers,
+position keepers, and NAV engines underpin every financial institution.
+They are held to an unusual standard --- \emph{absolute} arithmetic
+correctness --- while simultaneously being asked to scale, to replay
+history exactly for audit, and to absorb a continuous stream of new
+business rules. In most production systems these demands are met by a
+single, large, expressive codebase in which three concerns are fused:
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=2pt]
+  \item the \textbf{mechanical invariants} of accounting --- balance,
+        conservation, deterministic aggregation;
+  \item the \textbf{business semantics} --- posting rules, account
+        mappings, normal-balance conventions, interpretation policy; and
+  \item the \textbf{I/O} --- prices, FX rates, reference data, and the
+        timing and provenance of each.
+\end{enumerate}
+
+When these share one mutable codebase, correctness becomes a
+whole-program property. A change to a posting rule can violate an
+arithmetic invariant; a late-arriving price can silently change a
+historical balance; a refactor for performance can perturb semantics.
+The invariant that \emph{should} be a three-line theorem is instead an
+emergent, untestable property of hundreds of thousands of lines.
+
+\paragraph{Thesis.} Ratio's claim is that the mechanical core of
+accounting is not domain logic at all --- it is a \emph{conservation
+law}, and conservation laws are exactly the kind of thing one proves
+once and relies on forever. Concretely:
+
+\begin{quote}
+\itshape Economic computation is conservation over integer-valued vector
+spaces. A transaction is an integer vector over a basis of conserved
+dimensions; it is valid iff it nets to zero on every dimension; and the
+ledger is a deterministic monoidal fold of the append-only log.
+Conservation is closed under that fold, so the ledger conserves value
+regardless of business semantics.
+\end{quote}
+
+This reframing buys three things that the entangled design cannot.
+\textbf{Assurance:} the core is small enough to state as theorems and
+\emph{machine-check} them --- we do, in Lean~4 (\cref{sec:proofs}).
+\textbf{Determinism:} integers only, a fixed fold, immutable inputs ---
+any ledger state replays bit-for-bit. \textbf{Performance:} a
+non-expressive kernel over fixed-width records is branch-minimal and
+memory-bandwidth bound, not control-flow bound (\cref{sec:kernel}).
+
+\paragraph{What makes Ratio different from ``we wrote tests''.} The
+kernel's correctness is not asserted by a test suite that samples the
+input space; it is \emph{proved} for all inputs in a dependently-typed
+proof assistant, and the Rust the application actually executes is
+\emph{emitted from that same Lean source} rather than hand-translated
+(\cref{sec:emission}). The proof and the artifact are not two documents
+that drift; they are one. \Cref{fig:layers} shows the resulting
+stratification: a proven kernel at the bottom, a content-addressed
+control plane and typed-fact plane above it, and learned components
+firmly outside the trusted core.
+
+\paragraph{Contributions.}
+\begin{itemize}[leftmargin=1.4em,itemsep=2pt]
+  \item A formalization of double-entry accounting as conservation over
+        $\mathbb{Z}$-modules, generalizing ``debits $=$ credits'' to an
+        arbitrary basis of conserved dimensions (\cref{sec:conservation}).
+  \item A machine-checked proof, in Lean~4, that the ledger fold
+        preserves conservation --- the kernel's sole invariant ---
+        together with the recovery of classical double-entry as the
+        one-dimensional instance (\cref{sec:proofs}).
+  \item A \emph{proof-to-artifact} pipeline that emits the running Rust
+        from the proven Lean, so the deployed kernel inherits the proof
+        (\cref{sec:emission}).
+  \item An architecture --- non-expressive kernel, content-addressed
+        control plane, typed facts, LLM-as-assistant --- that delivers
+        auditability and deterministic replay without sacrificing
+        throughput (\cref{sec:control,sec:eval}).
+\end{itemize}
+
+\input{figures/fig_layers.tex}

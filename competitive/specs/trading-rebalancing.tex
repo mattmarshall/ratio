@@ -1,0 +1,51 @@
+\input{_preamble.tex}
+\begin{document}
+\spechead{Trading \& Rebalancing}{trading-rebalancing}
+
+The engine that monitors portfolios against models and generates, optimizes, and
+routes trades --- increasingly at the household level and tax-aware.
+
+\specsection{Advertised by (benchmark sources)}
+\begin{tabular}{@{}p{0.34\linewidth}p{0.60\linewidth}@{}}
+\advrow{SS\&C Black Diamond}{Trading \& Rebalancing --- ``intelligent engine,'' straight-through processing}
+\advrow{Orion}{Orion Trading --- ``tax-intelligent trading at scale''}
+\advrow{Addepar}{Integrated trading \& rebalancing}
+\advrow{Envestnet Tamarac}{Trading --- automated execution, rebalancing, tax optimization}
+\end{tabular}
+
+\specsection{Advertised capabilities (feature level)}
+\begin{itemize}
+  \item Household-level rebalancing; sleeve-based account management.
+  \item Model drift monitoring with proactive cash-need alerts.
+  \item Tax-aware optimization: daily tax-loss harvesting, asset-location optimization.
+  \item N-tier model architecture with security-equivalent substitution.
+  \item Straight-through processing; direct trade routing to multiple custodians.
+\end{itemize}
+
+\begin{ratiobox}
+\textbf{Ratio mapping.} Rebalancing is a \emph{control-plane} optimizer that
+\emph{proposes} a set of trades; each proposed trade becomes a balanced
+transaction the kernel independently checks for conservation before it is
+admitted. Tax-lot and asset-location logic read the proven ledger's tax-lot
+dimension. A buggy or AI-assisted optimizer can pick the wrong trade (a reviewable
+semantic error) but can never produce an unbalanced book.
+\end{ratiobox}
+
+\specsection{Conservation \& trust placement}
+\textbf{Control plane (proposes) + trusted core (admits).} Optimization is
+expressive and external; admission runs through the conservation predicate.
+
+\specsection{References}
+\footnotesize
+\begin{itemize}
+  \item \url{https://www.sscblackdiamond.com/solutions/investment-management/}
+  \item \url{https://orion.com/advisor-tech/trading}
+  \item \url{https://www.envestnet.com/tamarac}
+\end{itemize}
+
+\begin{statusbox}
+\textbf{Status:} scaffold --- generated from a June 2026 competitive scrape.
+Expand into a full Ratio component spec. Capabilities reflect competitors' public
+marketing, not Ratio commitments.
+\end{statusbox}
+\end{document}
