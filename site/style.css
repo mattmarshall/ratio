@@ -55,6 +55,7 @@
     --series-legacy:#CE7A33; --series-ratio:#4CA87A;
     --block:#0E1210; --block-text:#E8EAE8; --block-rule:#3F7A57;
     --shadow:rgba(0,0,0,.42);
+  }
 }
 :root[data-theme="dark"]{
   --ground:#141816; --surface:#1C211E; --raised:#242A26;

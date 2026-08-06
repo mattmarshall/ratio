@@ -104,6 +104,42 @@ def main() -> int:
         if n_fonts != 3:
             err(name, f"expected 3 inlined faces, found {n_fonts}")
 
+        # The stylesheet has to actually PARSE, which nothing above checks.
+        # A dropped brace shipped once: an edit to the palette ate the closing
+        # brace of `@media (prefers-color-scheme:dark)`, so the whole rest of
+        # the stylesheet nested inside it and the site rendered completely
+        # unstyled in light mode. Every check here passed — the bytes were
+        # present, the fonts inlined, the size plausible — because none of them
+        # looked at structure.
+        for css in re.findall(r"<style>(.*?)</style>", doc, re.S):
+            depth = 0
+            for ch in css:
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth < 0:
+                        break
+            if depth != 0:
+                err(name, f"CSS braces unbalanced by {depth:+d} — a rule or "
+                          "at-rule is unclosed, which silently swallows "
+                          "everything after it")
+
+            # Top-level rule count. The real stylesheet has well over a hundred;
+            # if a stray at-rule has captured the file this collapses to a
+            # handful, which is the shape the dropped brace produced.
+            top = depth = 0
+            for ch in css:
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        top += 1
+            if top < 60:
+                err(name, f"only {top} top-level CSS rules — expected 100+; an "
+                          "at-rule has probably swallowed the stylesheet")
+
         kb = len(doc.encode()) // 1024
         if not MIN_KB < kb < MAX_KB:
             err(name, f"implausible size {kb}KB (expected {MIN_KB}–{MAX_KB})")
