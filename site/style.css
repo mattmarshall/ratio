@@ -1,0 +1,511 @@
+/* Ratio site — shared design system for both pages.
+   build.py inlines this into each page and substitutes the three font payloads
+   here, once, rather than once per page.
+
+   PALETTE — green bar on cream. Continuous-form accounting paper was printed
+   in alternating white and pale green for a century, for the same reason this
+   page uses it: it is what makes a long ruled table readable. The banding on
+   every table here is that paper.
+
+   ⚠️ THIS HAS DIVERGED FROM //marketing/main.tex, which is still the original
+   ledger-sepia (ratioBrown #6E4F34 et al) and now renders the PDFs in a
+   different brand from the website. Reconciling the two is a deliberate
+   outstanding decision, not an oversight — see site/README.md.
+
+   The two chart series are unchanged and deliberately warm against all this
+   green; they were re-validated for color-blind separation against the new
+   surfaces rather than assumed to still work.
+
+   The faces are inlined as data: URIs. A font host cannot be relied on (the
+   Artifact CSP blocks external subresources outright) and a silent fallback
+   would cost the pages their identity: the serif states claims and Outfit
+   carries evidence, and that split IS the type system. Only two serif weights
+   exist in the vendored set — there is no Plex Serif regular anywhere on disk
+   and no CDN URL for one — which is why the serif is display-only. */
+
+@font-face{font-family:'Plex Serif';font-style:normal;font-weight:700;font-display:block;
+  src:url(data:font/woff2;base64,__PLEX7__) format('woff2')}
+@font-face{font-family:'Plex Serif';font-style:normal;font-weight:600;font-display:block;
+  src:url(data:font/woff2;base64,__PLEX6__) format('woff2')}
+@font-face{font-family:'Outfit';font-style:normal;font-weight:100 900;font-display:swap;
+  src:url(data:font/woff2;base64,__OUTFIT__) format('woff2')}
+
+/* ── Tokens ───────────────────────────────────────────────────────────────
+   Components style through these and never inside a media query, so the
+   viewer's theme toggle can override the OS preference in both directions.
+   Neutrals are warm-biased throughout — every gray here is pulled toward the
+   ledger brown, so nothing on the page reads as an unconsidered default. */
+:root{
+  --ground:#FCFBF7; --surface:#E6EFE2; --raised:#FFFFFF;
+  --text:#0F2418; --text-2:#2B4436; --muted:#4C6053;
+  --rule:#C3D6BF; --rule-2:#679177;
+  --accent:#1B6440; --accent-hover:#2A8657;
+  --yes:#1F6B45; --partial:#8A5A0B; --no:#666666;
+  --series-legacy:#BC4A18; --series-ratio:#2E7D52;
+  --block:#12291B; --block-text:#F2F7F0; --block-rule:#3F7A57;
+  --shadow:rgba(15,36,24,.10);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#141816; --surface:#1C211E; --raised:#242A26;
+    --text:#E8EAE8; --text-2:#B4BDB6; --muted:#8A938C;
+    --rule:#2F3733; --rule-2:#617068;
+    --accent:#7FC79D; --accent-hover:#A6DCBB;
+    --yes:#5CBB8B; --partial:#D9A03F; --no:#9A9A9A;
+    --series-legacy:#CE7A33; --series-ratio:#4CA87A;
+    --block:#0E1210; --block-text:#E8EAE8; --block-rule:#3F7A57;
+    --shadow:rgba(0,0,0,.42);
+}
+:root[data-theme="dark"]{
+  --ground:#141816; --surface:#1C211E; --raised:#242A26;
+  --text:#E8EAE8; --text-2:#B4BDB6; --muted:#8A938C;
+  --rule:#2F3733; --rule-2:#617068;
+  --accent:#7FC79D; --accent-hover:#A6DCBB;
+  --yes:#5CBB8B; --partial:#D9A03F; --no:#9A9A9A;
+  --series-legacy:#CE7A33; --series-ratio:#4CA87A;
+  --block:#0E1210; --block-text:#E8EAE8; --block-rule:#3F7A57;
+  --shadow:rgba(0,0,0,.42);
+}
+:root[data-theme="light"]{
+  --ground:#FCFBF7; --surface:#E6EFE2; --raised:#FFFFFF;
+  --text:#0F2418; --text-2:#2B4436; --muted:#4C6053;
+  --rule:#C3D6BF; --rule-2:#679177;
+  --accent:#1B6440; --accent-hover:#2A8657;
+  --yes:#1F6B45; --partial:#8A5A0B; --no:#666666;
+  --series-legacy:#BC4A18; --series-ratio:#2E7D52;
+  --block:#12291B; --block-text:#F2F7F0; --block-rule:#3F7A57;
+  --shadow:rgba(15,36,24,.10);
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--text);
+  font:400 17px/1.62 'Outfit',ui-sans-serif,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+:where(a){color:var(--accent);text-decoration-thickness:1px;text-underline-offset:3px}
+:where(a):hover{color:var(--accent-hover)}
+:where(a):focus-visible,:where(button):focus-visible{
+  outline:2px solid var(--rule-2); outline-offset:3px; border-radius:1px}
+img,svg{max-width:100%}
+
+.r-wrap{max-width:1080px;margin:0 auto;padding:0 28px}
+.r-narrow{max-width:660px}
+
+/* Type roles. The serif states claims; Outfit carries evidence and apparatus.
+   That split is the pages' argument made typographic — assertion vs. the thing
+   that checks it — and it mirrors how //marketing uses \sffamily for captions,
+   tables and callouts while the argument itself is set in serif. */
+.r-claim{font-family:'Plex Serif',Georgia,serif;font-weight:700;
+  letter-spacing:-.018em;line-height:1.13;text-wrap:balance;color:var(--text)}
+h1.r-claim{font-size:clamp(34px,4.4vw,52px);margin:0}
+h2.r-claim{font-size:clamp(26px,3.2vw,35px);margin:0 0 .5em}
+h3{font-family:'Plex Serif',Georgia,serif;font-weight:600;font-size:19px;
+  letter-spacing:-.01em;margin:0 0 .35em;color:var(--text)}
+p{margin:0 0 1.05em;max-width:66ch}
+.r-lede{font-size:19px;color:var(--text-2);max-width:60ch}
+.r-eyebrow{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 14px}
+.r-fig-cap{font-size:13.5px;line-height:1.55;color:var(--muted);
+  max-width:74ch;margin:14px 0 0}
+strong{font-weight:600;color:var(--text)}
+
+/* The accountant's double rule — the mark for a balanced, final total. It
+   divides the sections here for the same reason it divides a ledger: it says
+   the thing above it is closed. A single hairline would say nothing. */
+.r-section{padding:64px 0 0}
+.r-rule{border:0;height:0;margin:64px 0 0;
+  border-top:2px solid var(--rule-2);
+  box-shadow:0 4px 0 -1px var(--rule)}
+
+/* ── Masthead ─────────────────────────────────────────────────────────── */
+.r-top{display:flex;align-items:center;justify-content:space-between;gap:20px;
+  padding:26px 0 0;flex-wrap:wrap}
+.r-brandline{display:flex;align-items:center;gap:14px}
+.r-brandline .r-mk{width:34px;flex:none;color:var(--accent);display:block}
+.r-brandline .r-wm{width:132px;flex:none;color:var(--text);display:block}
+.r-top-link{font-size:13.5px;font-weight:500;color:var(--text-2);
+  text-decoration-color:var(--rule-2)}
+
+/* ── Hero ─────────────────────────────────────────────────────────────── */
+.r-hero{padding:44px 0 8px}
+.r-hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:56px;align-items:center}
+.r-hero h1{margin-bottom:22px}
+.r-hero-sub{font-size:19px;color:var(--text-2);margin:0 0 30px;max-width:48ch}
+
+.r-block{background:var(--block);color:var(--block-text);padding:26px 28px;
+  border-radius:2px;box-shadow:0 1px 0 var(--shadow)}
+.r-block p{color:var(--block-text);margin:0;font-size:18px;line-height:1.55;max-width:none}
+.r-block em{font-style:normal;font-weight:600;
+  border-bottom:2px solid var(--block-rule);padding-bottom:1px}
+
+.r-cta-row{display:flex;flex-wrap:wrap;gap:12px;margin:30px 0 0}
+.r-btn{display:inline-block;font-size:13.5px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;padding:13px 22px;border-radius:2px;text-decoration:none;
+  border:1.5px solid var(--text);transition:background .14s,color .14s}
+.r-btn-solid{background:var(--text);color:var(--ground)}
+.r-btn-solid:hover{background:var(--accent);border-color:var(--accent);color:var(--ground)}
+.r-btn-ghost{background:transparent;color:var(--text)}
+.r-btn-ghost:hover{background:var(--surface);color:var(--text)}
+
+/* ── Trial-balance panel (practitioner hero) ──────────────────────────── */
+.r-tb{margin:0;border:1px solid var(--rule-2);border-radius:2px;
+  background:var(--raised);overflow:hidden}
+.r-tb-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:11px 16px;border-bottom:1px solid var(--rule);background:var(--surface);
+  font-size:11.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted)}
+.r-tb table{border-collapse:collapse;width:100%;font-size:14px;
+  font-variant-numeric:tabular-nums}
+.r-tb th,.r-tb td{padding:7px 16px;text-align:right}
+.r-tb th:first-child,.r-tb td:first-child{text-align:left;font-weight:400}
+.r-tb thead th{font-size:11px;font-weight:600;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);padding-top:14px}
+.r-tb tbody td,.r-tb tbody th{color:var(--text-2)}
+/* The double rule again, this time doing its literal job: closing a total. */
+.r-tb tfoot tr:first-child th,.r-tb tfoot tr:first-child td{
+  border-top:1px solid var(--rule-2);padding-top:10px;
+  font-weight:600;color:var(--text)}
+.r-tb-diff th,.r-tb-diff td{
+  border-top:3px double var(--rule-2);color:var(--yes);font-weight:600;
+  padding-bottom:14px}
+.r-tb-foot{padding:13px 16px;border-top:1px solid var(--rule);
+  font-size:13.5px;line-height:1.5;color:var(--text-2)}
+
+/* ── Proof panel (technical hero) ─────────────────────────────────────── */
+.r-proof{border:1px solid var(--rule-2);border-radius:2px;background:var(--raised);
+  overflow:hidden}
+.r-proof-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:11px 16px;border-bottom:1px solid var(--rule);background:var(--surface);
+  font:500 12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted)}
+.r-proof-head b{font:600 11px 'Outfit',system-ui,sans-serif;letter-spacing:.1em;
+  text-transform:uppercase}
+.r-proof-body{margin:0;padding:18px 16px;overflow-x:auto;
+  font:400 13px/1.72 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--text);tab-size:2}
+.r-proof-body .k{color:var(--accent);font-weight:600}
+.r-proof-body .c{color:var(--muted)}
+.r-proof-foot{padding:13px 16px;border-top:1px solid var(--rule);
+  font-size:13.5px;line-height:1.5;color:var(--text-2)}
+
+/* ── Ledger spread: two facing columns, one rule between ──────────────── */
+.r-spread{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:34px 0 0;
+  border:1px solid var(--rule);border-radius:2px;overflow:hidden}
+.r-spread > div{padding:26px 28px}
+.r-spread > div + div{border-left:1px solid var(--rule)}
+.r-spread h3{margin-bottom:.55em}
+.r-spread p:last-child{margin-bottom:0}
+.r-col-tag{font-size:11.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+  margin:0 0 10px}
+.r-col-tag.neg{color:var(--muted)}
+.r-col-tag.pos{color:var(--yes)}
+
+/* ── Ledger rows ──────────────────────────────────────────────────────── */
+.r-rows{border-top:1px solid var(--rule);margin:30px 0 0}
+.r-row{display:grid;grid-template-columns:minmax(150px,250px) 1fr;gap:28px;
+  padding:20px 0;border-bottom:1px solid var(--rule);align-items:baseline}
+.r-row h3{margin:0}
+.r-row p{margin:0;color:var(--text-2);font-size:16px}
+
+/* ── Comparison matrix ────────────────────────────────────────────────── */
+.r-scroll{overflow-x:auto;margin:30px 0 0;
+  border:1px solid var(--rule);border-radius:2px;background:var(--raised)}
+table.r-tab{border-collapse:collapse;width:100%;min-width:720px;font-size:15px}
+table.r-tab th,table.r-tab td{padding:12px 14px;text-align:left;
+  border-bottom:1px solid var(--rule)}
+table.r-tab thead th{background:var(--block);color:var(--block-text);
+  font-size:11.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  border-bottom:none}
+table.r-tab tbody th{font-weight:400;color:var(--text);max-width:38ch}
+table.r-tab td{text-align:center;width:11%;font-variant-numeric:tabular-nums}
+table.r-tab tbody tr:last-child th,table.r-tab tbody tr:last-child td{border-bottom:none}
+table.r-tab tbody tr:nth-child(even){background:var(--surface)}
+table.r-tab .col-r{background:color-mix(in srgb,var(--yes) 8%,transparent)}
+table.r-tab tbody tr:nth-child(even) .col-r{background:color-mix(in srgb,var(--yes) 13%,transparent)}
+table.r-tab thead th.col-r{background:var(--block)}
+.m{font-weight:600;font-size:16px}
+.m-y{color:var(--yes)} .m-p{color:var(--partial)} .m-n{color:var(--no)}
+.r-key{display:flex;flex-wrap:wrap;gap:20px;margin:14px 0 0;
+  font-size:13.5px;color:var(--muted)}
+.r-key span{display:inline-flex;align-items:center;gap:7px}
+
+.r-note{background:var(--surface);border-left:3px solid var(--rule-2);
+  padding:18px 22px;margin:26px 0 0;border-radius:0 2px 2px 0}
+.r-note p{font-size:14.5px;line-height:1.6;color:var(--text-2);margin:0;max-width:78ch}
+.r-note p + p{margin-top:.7em}
+
+.r-callout{border:1px solid var(--rule-2);background:var(--raised);
+  padding:22px 26px;margin:30px 0 0;border-radius:2px}
+.r-callout p{margin:0;max-width:72ch}
+
+/* ── Figures ──────────────────────────────────────────────────────────── */
+.r-fig{margin:34px 0 0}
+.r-fig .r-scroll{margin:0;border:none;background:transparent}
+.r-fig svg{display:block;width:100%;height:auto;min-width:520px}
+.svg-ground{fill:var(--ground)} .svg-surface{fill:var(--surface)}
+.svg-raised{fill:var(--raised)} .svg-block{fill:var(--block)}
+.svg-rule{stroke:var(--rule)} .svg-rule2{stroke:var(--rule-2)}
+.svg-text{fill:var(--text)} .svg-text2{fill:var(--text-2)} .svg-muted{fill:var(--muted)}
+.svg-block-text{fill:var(--block-text)}
+.svg-lab{font:600 13px 'Outfit',system-ui,sans-serif}
+.svg-lab-sm{font:500 12px 'Outfit',system-ui,sans-serif}
+.svg-num{font:500 12px 'Outfit',system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.svg-ttl{font:700 15px 'Plex Serif',Georgia,serif}
+
+/* ── Status band ──────────────────────────────────────────────────────── */
+.r-status{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:30px 0 0;
+  border:1px solid var(--rule-2);border-radius:2px;overflow:hidden}
+.r-status > div{padding:24px 26px}
+.r-status > div + div{border-left:1px solid var(--rule)}
+.r-status ul{margin:0;padding:0;list-style:none}
+.r-status li{position:relative;padding:0 0 0 26px;margin:0 0 11px;font-size:15.5px;
+  line-height:1.5;color:var(--text-2)}
+.r-status li::before{position:absolute;left:0;top:0;font-weight:600}
+.r-built li::before{content:"✓";color:var(--yes)}
+.r-spec li::before{content:"◦";color:var(--muted);font-size:19px;line-height:1.15}
+.r-status li:last-child{margin-bottom:0}
+
+/* ── Steps ────────────────────────────────────────────────────────────── */
+.r-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin:30px 0 0;
+  border-top:2px solid var(--rule-2)}
+.r-steps > div{padding:22px 24px 4px;border-right:1px solid var(--rule)}
+.r-steps > div:last-child{border-right:none}
+.r-steps h3{margin-bottom:.4em}
+.r-steps p{font-size:15.5px;color:var(--text-2);margin:0 0 1em}
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+.r-foot{margin:70px 0 0;background:var(--block);color:var(--block-text);
+  padding:56px 0 40px}
+.r-foot .r-claim,.r-foot h3{color:var(--block-text)}
+.r-foot p{color:var(--block-text);opacity:.86}
+.r-foot a{color:var(--block-text)}
+.r-foot-cta{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;margin:34px 0 0;
+  padding:30px 0 0;border-top:1px solid var(--block-rule)}
+.r-foot-cta p{font-size:15px;margin:0;opacity:.8}
+.r-fine{margin:38px 0 0;padding:22px 0 0;border-top:1px solid var(--block-rule)}
+.r-fine p{font-size:12.5px;line-height:1.62;opacity:.62;max-width:88ch}
+
+/* ── Narrow ───────────────────────────────────────────────────────────── */
+@media (max-width:860px){
+  .r-hero-grid{grid-template-columns:1fr;gap:40px}
+  .r-spread,.r-status{grid-template-columns:1fr}
+  .r-spread > div + div,.r-status > div + div{border-left:none;border-top:1px solid var(--rule)}
+  .r-steps{grid-template-columns:1fr}
+  .r-steps > div{border-right:none;border-bottom:1px solid var(--rule);padding-bottom:16px}
+  .r-steps > div:last-child{border-bottom:none}
+  .r-foot-cta{grid-template-columns:1fr;gap:20px}
+  .r-row{grid-template-columns:1fr;gap:6px}
+}
+@media (max-width:560px){
+  body{font-size:16px}
+  .r-wrap{padding:0 20px}
+  .r-section{padding-top:48px}
+  .r-rule{margin-top:48px}
+  .r-spread > div,.r-status > div,.r-block{padding:20px}
+  .r-tb th,.r-tb td{padding-left:14px;padding-right:14px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Added for the four-page site: nav, the two planes, intent grounding,
+   the NAV budget, the ecosystem grid, roadmap phases, and the interface
+   concepts. Everything below still styles through the tokens above.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Site nav ─────────────────────────────────────────────────────────── */
+.r-nav{display:flex;align-items:center;justify-content:space-between;gap:24px;
+  padding:22px 0 0;flex-wrap:wrap}
+.r-nav .r-brandline{text-decoration:none}
+.r-nav ul{display:flex;gap:26px;margin:0;padding:0;list-style:none;flex-wrap:wrap}
+.r-nav a{font-size:14.5px;font-weight:500;color:var(--text-2);text-decoration:none;
+  padding-bottom:3px;border-bottom:2px solid transparent}
+.r-nav a:hover{color:var(--text);border-bottom-color:var(--rule)}
+.r-nav a[aria-current="page"]{color:var(--text);font-weight:600;
+  border-bottom-color:var(--rule-2)}
+
+/* ── Generic code / artifact panel (generalizes the proof panel) ──────── */
+.r-panel{border:1px solid var(--rule-2);border-radius:2px;background:var(--raised);
+  overflow:hidden;margin:0}
+.r-panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  padding:11px 16px;border-bottom:1px solid var(--rule);background:var(--surface);
+  font:500 12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted)}
+.r-panel-head b{font:600 11px 'Outfit',system-ui,sans-serif;letter-spacing:.1em;
+  text-transform:uppercase}
+.r-panel-body{margin:0;padding:16px;overflow-x:auto;
+  font:400 12.5px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--text);tab-size:2}
+.r-panel-body .k{color:var(--accent);font-weight:600}
+.r-panel-body .c{color:var(--muted)}
+.r-panel-body .s{color:var(--yes)}
+.r-panel-body .add{color:var(--yes)}
+.r-panel-body .chg{color:var(--partial)}
+.r-panel-foot{padding:13px 16px;border-top:1px solid var(--rule);
+  font-size:13.5px;line-height:1.5;color:var(--text-2)}
+.r-panel-foot:first-of-type{border-top:none}
+
+/* ── Stage sequence (intent → rule → grounding → commit) ──────────────── */
+.r-stages{display:grid;gap:18px;margin:30px 0 0}
+.r-stage{display:grid;grid-template-columns:minmax(0,210px) minmax(0,1fr);gap:28px;
+  align-items:start;padding:24px 0 0;border-top:1px solid var(--rule)}
+.r-stage:first-child{border-top:2px solid var(--rule-2)}
+.r-stage-lede h3{margin:0 0 .3em}
+.r-stage-lede p{font-size:14.5px;color:var(--muted);margin:0;max-width:34ch}
+.r-stage-num{font:600 11.5px 'Outfit',system-ui,sans-serif;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--rule-2);display:block;margin:0 0 6px}
+.r-quote{border-left:3px solid var(--rule-2);padding:2px 0 2px 20px;margin:0;
+  font-size:18px;line-height:1.55;color:var(--text)}
+.r-quote cite{display:block;margin-top:10px;font-style:normal;font-size:13.5px;
+  color:var(--muted)}
+
+/* ── Check list (grounding obligations) ───────────────────────────────── */
+.r-checks{margin:0;padding:0;list-style:none}
+.r-checks li{position:relative;padding:0 0 0 30px;margin:0 0 10px;font-size:15.5px;
+  line-height:1.5;color:var(--text-2)}
+.r-checks li:last-child{margin-bottom:0}
+.r-checks li::before{position:absolute;left:0;top:0;font-weight:600;font-size:14px}
+.r-checks li.ok::before{content:"✓";color:var(--yes)}
+.r-checks li.ask::before{content:"?";color:var(--partial)}
+.r-checks li code{font:500 13px ui-monospace,SFMono-Regular,Menlo,monospace;
+  background:var(--surface);padding:1px 5px;border-radius:2px}
+
+/* ── The two planes ───────────────────────────────────────────────────── */
+.r-plane-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:30px 0 0;
+  border:1px solid var(--rule-2);border-radius:2px;overflow:hidden}
+.r-plane-grid > div{padding:26px 28px}
+.r-plane-grid > div + div{border-left:1px solid var(--rule-2)}
+.r-plane-grid ul{margin:14px 0 0;padding:0;list-style:none}
+.r-plane-grid li{font-size:15.5px;line-height:1.5;color:var(--text-2);
+  padding:0 0 0 18px;margin:0 0 9px;position:relative}
+.r-plane-grid li::before{content:"";position:absolute;left:0;top:.62em;
+  width:7px;height:1.5px;background:var(--rule-2)}
+.r-plane-tag{font:600 11.5px 'Outfit',system-ui,sans-serif;letter-spacing:.12em;
+  text-transform:uppercase;margin:0 0 10px;color:var(--muted)}
+
+/* ── Budget table (the NAV cost model) ────────────────────────────────── */
+.r-budget{width:100%;border-collapse:collapse;margin:26px 0 0;font-size:15.5px;
+  font-variant-numeric:tabular-nums}
+.r-budget th,.r-budget td{padding:11px 4px;border-bottom:1px solid var(--rule);
+  text-align:left}
+.r-budget td{text-align:right;white-space:nowrap;color:var(--text-2)}
+.r-budget th{font-weight:400;color:var(--text)}
+.r-budget .sub th,.r-budget .sub td{color:var(--muted);font-size:14.5px;
+  padding-left:22px}
+.r-budget tfoot th,.r-budget tfoot td{border-top:1px solid var(--rule-2);
+  border-bottom:3px double var(--rule-2);font-weight:600;color:var(--text);
+  font-size:17px;padding-top:13px;padding-bottom:13px}
+.r-budget .slack th,.r-budget .slack td{border:none;color:var(--yes);
+  font-weight:600;padding-top:13px}
+
+/* ── Ecosystem grid ───────────────────────────────────────────────────── */
+.r-eco{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:0;margin:30px 0 0;border-top:1px solid var(--rule);
+  border-left:1px solid var(--rule)}
+.r-eco > div{padding:20px 22px;border-right:1px solid var(--rule);
+  border-bottom:1px solid var(--rule)}
+.r-eco h3{font-size:17px;margin:0 0 .3em}
+.r-eco p{font-size:14.5px;color:var(--text-2);margin:0 0 12px;max-width:none}
+.r-tier{font:600 10.5px 'Outfit',system-ui,sans-serif;letter-spacing:.1em;
+  text-transform:uppercase;display:inline-block;padding:3px 8px;border-radius:2px;
+  border:1px solid var(--rule-2);color:var(--muted)}
+.r-tier.core{border-color:var(--yes);color:var(--yes)}
+
+/* ── Roadmap phases ───────────────────────────────────────────────────── */
+.r-phase{border-top:2px solid var(--rule-2);margin:34px 0 0;padding:24px 0 0}
+.r-phase-head{display:flex;justify-content:space-between;align-items:baseline;
+  gap:20px;flex-wrap:wrap;margin:0 0 6px}
+.r-phase-head h3{font-size:24px;margin:0}
+.r-status-pill{font:600 11px 'Outfit',system-ui,sans-serif;letter-spacing:.1em;
+  text-transform:uppercase;padding:4px 10px;border-radius:2px;white-space:nowrap}
+.r-status-pill.done{background:var(--yes);color:var(--ground)}
+.r-status-pill.now{background:var(--partial);color:var(--ground)}
+.r-status-pill.next{border:1px solid var(--rule-2);color:var(--muted)}
+.r-phase > p{color:var(--text-2)}
+.r-deliver{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+  gap:0 30px;margin:16px 0 0;padding:0;list-style:none}
+.r-deliver li{font-size:15.5px;line-height:1.5;color:var(--text-2);
+  padding:9px 0 9px 26px;position:relative;border-bottom:1px solid var(--rule)}
+.r-deliver li::before{position:absolute;left:0;top:9px;font-weight:600;font-size:14px}
+.r-deliver li.d::before{content:"✓";color:var(--yes)}
+.r-deliver li.o::before{content:"◦";color:var(--muted);font-size:18px;top:6px}
+.r-parity{margin:16px 0 0;font-size:14.5px;color:var(--muted);
+  padding:12px 16px;background:var(--surface);border-radius:2px}
+.r-parity strong{color:var(--text-2)}
+
+/* ── Interface concepts: an app window, drawn not screenshotted ───────── */
+.r-app{border:1px solid var(--rule-2);border-radius:3px;overflow:hidden;
+  background:var(--raised);margin:0;box-shadow:0 2px 0 var(--shadow)}
+.r-app-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;
+  background:var(--surface);border-bottom:1px solid var(--rule)}
+.r-app-dots{display:flex;gap:5px;flex:none}
+.r-app-dots i{width:9px;height:9px;border-radius:50%;background:var(--rule-2);
+  opacity:.5;display:block}
+.r-app-title{font:600 12px 'Outfit',system-ui,sans-serif;color:var(--muted);
+  letter-spacing:.04em}
+.r-app-body{padding:18px 20px}
+.r-app-cols{display:grid;grid-template-columns:150px 1fr;gap:0;min-height:230px}
+.r-app-side{border-right:1px solid var(--rule);padding:16px 14px;background:var(--surface)}
+.r-app-side ul{list-style:none;margin:0;padding:0}
+.r-app-side li{font-size:13px;color:var(--muted);padding:6px 8px;border-radius:2px;
+  line-height:1.35}
+.r-app-side li.on{background:var(--raised);color:var(--text);font-weight:600}
+.r-app-main{padding:16px 18px}
+.r-app-h{font:700 16px 'Plex Serif',Georgia,serif;color:var(--text);margin:0 0 3px}
+.r-app-sub{font-size:12.5px;color:var(--muted);margin:0 0 16px}
+.r-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));
+  gap:12px;margin:0 0 18px}
+.r-kpi{border:1px solid var(--rule);border-radius:2px;padding:10px 12px;
+  background:var(--ground)}
+.r-kpi dt{font:600 10px 'Outfit',system-ui,sans-serif;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+.r-kpi dd{margin:0;font:600 18px 'Outfit',system-ui,sans-serif;color:var(--text);
+  font-variant-numeric:tabular-nums;line-height:1.2}
+.r-kpi dd small{font-size:12px;font-weight:500;color:var(--muted)}
+.r-kpi.good dd{color:var(--yes)}
+.r-mini{width:100%;border-collapse:collapse;font-size:12.5px;
+  font-variant-numeric:tabular-nums}
+.r-mini th,.r-mini td{padding:7px 8px;border-bottom:1px solid var(--rule);
+  text-align:left;color:var(--text-2)}
+.r-mini thead th{font:600 10px 'Outfit',system-ui,sans-serif;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted)}
+.r-mini td.n{text-align:right;white-space:nowrap}
+.r-mini tr:last-child th,.r-mini tr:last-child td{border-bottom:none}
+.r-chip{font:600 10px 'Outfit',system-ui,sans-serif;letter-spacing:.06em;
+  text-transform:uppercase;padding:2px 7px;border-radius:9px;white-space:nowrap}
+.r-chip.ok{background:color-mix(in srgb,var(--yes) 18%,transparent);color:var(--yes)}
+.r-chip.warn{background:color-mix(in srgb,var(--partial) 20%,transparent);color:var(--partial)}
+.r-chip.idle{background:var(--surface);color:var(--muted)}
+.r-bar{height:6px;border-radius:3px;background:var(--surface);overflow:hidden;
+  margin:5px 0 0}
+.r-bar i{display:block;height:100%;background:var(--yes);border-radius:3px}
+.r-bar.part i{background:var(--partial)}
+
+@media (max-width:860px){
+  .r-stage{grid-template-columns:1fr;gap:16px}
+  .r-plane-grid{grid-template-columns:1fr}
+  .r-plane-grid > div + div{border-left:none;border-top:1px solid var(--rule-2)}
+  .r-app-cols{grid-template-columns:1fr}
+  .r-app-side{border-right:none;border-bottom:1px solid var(--rule)}
+  .r-app-side ul{display:flex;gap:6px;flex-wrap:wrap}
+}
+
+/* ── Team page ────────────────────────────────────────────────────────── */
+.r-role{font:600 11.5px 'Outfit',system-ui,sans-serif;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.r-person-link{font-size:14px;font-weight:500;text-decoration:none;
+  border-bottom:1px solid var(--rule-2);padding-bottom:1px}
+.r-person-link:hover{border-bottom-color:var(--accent)}
+/* An unfilled placeholder should look wrong, not blend in. verify.py blocks the
+   build while any remain, but the visual cue matters during authoring. */
+.r-eco p:not(.r-role):first-letter{font-weight:inherit}
+
+/* Avatar slot. Initials until a real photo exists — a considered monogram
+   reads as a choice, where a gray silhouette reads as a broken image. */
+.r-avatar{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;background:var(--surface);border:1px solid var(--rule-2);
+  color:var(--accent);font:600 17px 'Outfit',system-ui,sans-serif;letter-spacing:.02em;
+  margin:0 0 14px;overflow:hidden;flex:none}
+.r-avatar img{width:100%;height:100%;object-fit:cover;display:block}

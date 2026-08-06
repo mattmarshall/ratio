@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor" role="img" aria-label="Ratio">
+  <!-- The open ledger of the original wordmark, reduced to its one claim: two
+       facing columns of exactly equal ink, closed by a single rule that spans
+       them both. The mirror symmetry IS the mark - parem rationem, the tablets
+       that balance.
+
+       Solid blocks rather than ruled lines, and only three shapes, because the
+       mark has to survive a 16px favicon; an earlier version drew the entries
+       as stacked rules and turned to mush below 24px. currentColor throughout,
+       so one asset serves both themes. -->
+  <rect x="6" y="10" width="22" height="31" rx="3"/>
+  <rect x="36" y="10" width="22" height="31" rx="3"/>
+  <rect x="6" y="48" width="52" height="7" rx="3.5"/>
+</svg>

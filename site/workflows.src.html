@@ -1,0 +1,571 @@
+<title>Ratio — How the work actually gets done</title>
+
+<!--
+  Ratio workflows page — SOURCE. Edit this file; never edit the build output.
+
+  AUDIENCE: the person who would have to run the implementation. A head of fund
+  accounting, an operations director, a boutique administrator. The argument is
+  that their existing expertise is the asset and the bottleneck has always been
+  getting it into a system.
+
+  The worked example is deliberately one of the genuinely hard ones —
+  cross-border dividend withholding with treaty reclaims — because an easy
+  example proves nothing to this reader. The messy transcript in stage one is
+  the point: experts do not speak in specifications, and a page that showed a
+  tidy requirement would be describing a problem nobody has.
+
+  ⚠️ The rates quoted (FR 25%/15%, DE 26.375%) are illustrative of the SHAPE of
+  the problem and are not tax advice; they are labeled as such on the page.
+  Keep that label. The authoring assistant described here is designed, not
+  built — see the roadmap.
+
+  build.py substitutes three placeholders, each a name in double underscores:
+  STYLE takes the shared stylesheet, WORDMARK and MARK take SVG from marks/.
+  They are named here in prose rather than in their own syntax on purpose:
+  build.py replaces every occurrence, and it fails loudly on a second one.
+-->
+
+__STYLE__
+
+<div class="r-wrap">
+  <nav class="r-nav" aria-label="Main">
+    <a class="r-brandline" href="index.html">
+      <span class="r-mk">__MARK__</span>
+      <span class="r-wm">__WORDMARK__</span>
+    </a>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="workflows.html" aria-current="page">Workflows</a></li>
+      <li><a href="platform.html">Platform</a></li>
+      <li><a href="compliance.html">Compliance</a></li>
+      <li><a href="roadmap.html">Roadmap</a></li>
+      <li><a href="technical.html">Technical</a></li>
+      <li><a href="team.html">Team</a></li>
+    </ul>
+  </nav>
+</div>
+
+<!-- ══════════════════════════════ HERO ══════════════════════════════ -->
+<header class="r-hero">
+  <div class="r-wrap">
+    <div class="r-narrow">
+      <p class="r-eyebrow">How the work gets done</p>
+      <h1 class="r-claim">Your people already know how the fund works. That has never been the problem.</h1>
+      <p class="r-hero-sub">The problem is the eighteen months it takes to get
+        what they know into a system — through requirement documents, a vendor's
+        configuration language, and consultants who learn your business on your
+        time and then leave with it.</p>
+      <div class="r-block">
+        <p>Ratio's premise is that the expert should be able to <em>say</em> it,
+        and the system should do the work of making it precise — then argue back
+        about everything they left out.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ THE OLD LOOP ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">What an implementation costs today</p>
+    <h2 class="r-claim">Knowledge goes in as prose and comes out as somebody else's config</h2>
+
+    <div class="r-plane-grid">
+      <div>
+        <p class="r-plane-tag">The usual path</p>
+        <h3>Expensive, slow, and lossy at every step</h3>
+        <ul>
+          <li>Workshops produce a requirements document, written by someone who
+          does not do the job, read by someone who does not know the fund.</li>
+          <li>Consultants translate it into the vendor's configuration language,
+          which nobody at your firm can read.</li>
+          <li>The translation loses the edge cases — the ones your controller
+          would have mentioned if anyone had asked the right question.</li>
+          <li>You discover which ones in user acceptance testing, or in
+          production, or in an audit.</li>
+          <li>The knowledge ends up in a consultant's head and a config export.
+          When your controller retires, so does the reasoning.</li>
+        </ul>
+      </div>
+      <div>
+        <p class="r-plane-tag">What has actually changed</p>
+        <h3>The translation step is now cheap</h3>
+        <ul>
+          <li>Turning careful domain prose into a precise draft specification is
+          exactly what a language model is good at.</li>
+          <li>It is also exactly the step that used to cost the most, take the
+          longest, and lose the most detail.</li>
+          <li>The reason nobody could safely automate it before is that a wrong
+          draft is worse than no draft — and nothing could tell you it was wrong.</li>
+          <li>Ratio can tell you. Every draft is compiled against the chart of
+          accounts, the epoch calendar, the type system and the balancing rule,
+          and what does not hold up comes back as a question.</li>
+          <li>So the expert's time goes into <em>answering good questions</em>
+          rather than filling in forms.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="r-callout">
+      <p><strong>The asset was always the expertise.</strong> Twenty years of
+      knowing why this fund accrues the way it does is not something a platform
+      can supply, and it is not something that should live in one person's head
+      or in a spreadsheet called <em>fees_v4_FINAL.xlsx</em>. The point of what
+      follows is to get it out of both and into something versioned.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ THE LOOP ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">The loop</p>
+    <h2 class="r-claim">Say it, draft it, check it, answer back, approve</h2>
+    <p class="r-lede">It is a loop rather than a pipeline, and the return
+    path — the questions coming back — is where most of the value is. A
+    specification nobody interrogated is how implementations go wrong.</p>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 1000 250" role="img"
+             aria-label="A cycle: the expert speaks, the model drafts a rule, the compiler checks it against structure, unresolved points return to the expert as questions, and a reviewer approves the result into a version.">
+          <g class="svg-lab-sm">
+            <rect class="svg-raised" x="12" y="70" width="150" height="62" rx="3"/>
+            <rect x="12" y="70" width="150" height="62" rx="3" fill="none" class="svg-rule2" stroke-width="1.5"/>
+            <text class="svg-text svg-lab" x="87" y="96" text-anchor="middle">Expert speaks</text>
+            <text class="svg-muted" x="87" y="115" text-anchor="middle">in their own words</text>
+
+            <rect class="svg-raised" x="222" y="70" width="150" height="62" rx="3"/>
+            <rect x="222" y="70" width="150" height="62" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text svg-lab" x="297" y="96" text-anchor="middle">Model drafts</text>
+            <text class="svg-muted" x="297" y="115" text-anchor="middle">a typed rule</text>
+
+            <rect class="svg-raised" x="432" y="70" width="150" height="62" rx="3"/>
+            <rect x="432" y="70" width="150" height="62" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text svg-lab" x="507" y="96" text-anchor="middle">Compiler checks</text>
+            <text class="svg-muted" x="507" y="115" text-anchor="middle">against structure</text>
+
+            <rect class="svg-raised" x="642" y="70" width="150" height="62" rx="3"/>
+            <rect x="642" y="70" width="150" height="62" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text svg-lab" x="717" y="96" text-anchor="middle">Reviewer approves</text>
+            <text class="svg-muted" x="717" y="115" text-anchor="middle">a human, by name</text>
+
+            <rect class="svg-surface" x="852" y="70" width="136" height="62" rx="3"/>
+            <rect x="852" y="70" width="136" height="62" rx="3" fill="none" style="stroke:var(--yes)" stroke-width="2"/>
+            <text class="svg-text svg-lab" x="920" y="96" text-anchor="middle">Version</text>
+            <text class="svg-muted" x="920" y="115" text-anchor="middle">immutable, pinned</text>
+          </g>
+          <g class="svg-rule2" stroke-width="1.5">
+            <line x1="162" y1="101" x2="218" y2="101"/>
+            <line x1="372" y1="101" x2="428" y2="101"/>
+            <line x1="582" y1="101" x2="638" y2="101"/>
+            <line x1="792" y1="101" x2="848" y2="101"/>
+          </g>
+
+          <!-- the return path -->
+          <path d="M507 132 V186 H87 V136" fill="none" stroke-width="2"
+                stroke-dasharray="5 4" style="stroke:var(--partial)"/>
+          <path d="M87 136l-5 9h10z" style="fill:var(--partial)"/>
+          <text class="svg-lab" x="297" y="206" text-anchor="middle" style="fill:var(--partial)">
+            questions the expert never thought to answer</text>
+          <text class="svg-lab-sm svg-muted" x="297" y="226" text-anchor="middle">
+            this is the part that makes the difference</text>
+        </svg>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ WORKED EXAMPLE ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Worked example</p>
+    <h2 class="r-claim">A genuinely hard one: cross-border dividends with treaty reclaims</h2>
+    <div class="r-narrow">
+      <p>An easy example would prove nothing. So: a Luxembourg-domiciled fund
+      holding European equities, where each country withholds tax at source at
+      its own rate, a treaty reduces that rate, the difference is reclaimable
+      years later, and whether you accrue the reclaim depends on the vehicle.</p>
+      <p>This is the kind of thing that takes a quarter to configure and still
+      produces an audit finding. Here it is, end to end.</p>
+    </div>
+
+    <div class="r-stages">
+      <!-- STAGE 1 -->
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Stage one</span>
+          <h3>The brain dump</h3>
+          <p>Recorded in a working session. Note that it is not organized, not
+          complete, and doubles back on itself — which is how expertise actually
+          sounds.</p>
+        </div>
+        <div>
+          <blockquote class="r-quote">
+            “Right, dividends. French name — France takes 25% at source. But
+            we're a Lux SICAV so under the treaty it should be 15, and we file
+            for the difference. Reclaims take two, three years though, so whether
+            we accrue it depends on the fund: for the UCITS we accrue the full
+            reclaim because that route's been reliable, for the segregated
+            accounts we don't accrue at all until cash lands, the client doesn't
+            want the volatility. We book the receivable gross on ex-date, FX at
+            the ex-date rate, then true up at payment. And keep the reclaimable
+            bit as its own receivable — don't net it against the withholding
+            expense, the auditors want to see both. Germany's different, they're
+            26.375 with the solidarity surcharge…”
+            <cite>Head of fund accounting, session one</cite>
+          </blockquote>
+        </div>
+      </div>
+
+      <!-- STAGE 2 -->
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Stage two</span>
+          <h3>What the model pulls out</h3>
+          <p>Before drafting anything it separates the facts, the events, the
+          policies and the things that were mentioned but not specified.</p>
+        </div>
+        <div class="r-panel">
+          <div class="r-panel-head"><span>extraction</span><b>draft</b></div>
+<pre class="r-panel-body"><code><span class="c">— jurisdictions with two rates each (statutory, treaty)</span>
+    FR  25%    &rarr; 15%   <span class="c">when fund domicile LU</span>
+    DE  26.375% &rarr; 15%  <span class="c">incl. solidarity surcharge</span>
+
+<span class="c">— events</span>
+    ex_date        book gross receivable, FX at ex_date
+    pay_date       true up FX
+    reclaim_filed  <span class="chg">(mentioned, not specified)</span>
+    reclaim_paid   <span class="chg">(mentioned, not specified)</span>
+
+<span class="c">— policy that varies BY VEHICLE, not globally</span>
+    UCITS       accrue reclaim at 100%
+    segregated  accrue at 0% until cash received
+
+<span class="c">— explicit constraint from the expert</span>
+    reclaim receivable must NOT net against
+    withholding expense — auditors want both visible</code></pre>
+          <p class="r-panel-foot">The last line matters: it was said in passing,
+          and it is about to catch an error.</p>
+        </div>
+      </div>
+
+      <!-- STAGE 3 -->
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Stage three</span>
+          <h3>The first draft</h3>
+          <p>Typed, declarative, and — as it turns out — wrong in one place.</p>
+        </div>
+        <div class="r-panel">
+          <div class="r-panel-head"><span>rules/dividends_eu.ratio</span><b>draft 1</b></div>
+<pre class="r-panel-body"><code><span class="k">jurisdiction</span> FR { statutory 25.0% ; treaty 15.0% <span class="k">when</span> domicile = LU }
+<span class="k">jurisdiction</span> DE { statutory 26.375% ; treaty 15.0% <span class="k">when</span> domicile = LU }
+
+<span class="k">rule</span> dividend_accrual {
+  <span class="k">when</span>   ex_date(security s, gross g, currency c)
+  <span class="k">fx</span>     rate(c &rarr; fund.base, on: ex_date)
+  <span class="k">posts</span>  debit  asset.dividend_receivable   g
+         credit income.dividend             g
+}
+
+<span class="k">rule</span> withholding_at_source {
+  <span class="k">when</span>   ex_date(security s, gross g, ...)
+  <span class="k">amount</span> g × jurisdiction(s.issuer_country).statutory
+  <span class="k">posts</span>  debit  expense.withholding_tax     amount
+         credit asset.dividend_receivable   amount
+}
+
+<span class="k">rule</span> treaty_reclaim {
+  <span class="k">when</span>   withholding_at_source <span class="k">and</span> treaty_eligible(s, fund)
+  <span class="k">amount</span> g × (statutory − treaty)
+  <span class="k">accrue</span> fund.policy.reclaim_accrual
+  <span class="k">posts</span>  debit  asset.reclaim_receivable    amount
+         <span class="chg">credit expense.withholding_tax     amount</span>
+}</code></pre>
+        </div>
+      </div>
+
+      <!-- STAGE 4 -->
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Stage four</span>
+          <h3>What the checks find</h3>
+          <p>Some obligations are discharged mechanically. The rest come back as
+          questions — including one where the draft contradicts something the
+          expert actually said.</p>
+        </div>
+        <div>
+          <ul class="r-checks">
+            <li class="ok">Every posting nets to zero on every dimension.</li>
+            <li class="ok">All five accounts exist, and their normal balances
+            match the directions used.</li>
+            <li class="ok">The FX rate resolves to a recorded fact with
+            provenance at <code>ex_date</code>, not a live lookup.</li>
+            <li class="ok">Rates are typed percentages; 26.375% is exact, not a
+            float.</li>
+            <li class="ask"><strong>The draft contradicts your stated
+            constraint.</strong> You said the reclaim receivable must not net
+            against withholding expense, but
+            <code>credit expense.withholding_tax</code> does exactly that. Should
+            it credit a separate contra account —
+            <code>expense.withholding_tax_reclaimable</code> — so both stay
+            visible?</li>
+            <li class="ask"><code>fund.policy.reclaim_accrual</code> is
+            per-vehicle, and only two vehicles were described. What is the
+            default for a new fund, and who is allowed to set it?</li>
+            <li class="ask">Is Germany's solidarity surcharge reclaimable under
+            the treaty, or only the 25% base? The draft assumes the whole
+            26.375% is in scope, which may over-accrue the receivable.</li>
+            <li class="ask">If <code>ex_date</code> and <code>pay_date</code>
+            fall in different accounting epochs, the FX true-up crosses a closed
+            period. Book the difference in the later epoch, or restate?</li>
+            <li class="ask">Which FX source, and what happens when it has no rate
+            for that date because the currency's market was closed?</li>
+          </ul>
+
+          <div class="r-note" style="margin-top:22px">
+            <p><strong>Look at what just happened.</strong> The first question is
+            the model catching its own error — not because it reconsidered, but
+            because the expert's own constraint was captured as a checkable
+            obligation and the draft violated it. The other four are things the
+            expert knows perfectly well and did not think to say, because nobody
+            asked. In a conventional implementation each one is discovered later:
+            in testing, in an audit, or in a restatement.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- STAGE 5 -->
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Stage five</span>
+          <h3>Answers, and the corrected rule</h3>
+          <p>Ten minutes of the expert's time, on questions only they can
+          answer.</p>
+        </div>
+        <div class="r-panel">
+          <div class="r-panel-head"><span>rules/dividends_eu.ratio</span><b>draft 2</b></div>
+<pre class="r-panel-body"><code><span class="k">rule</span> treaty_reclaim {
+  <span class="k">when</span>   withholding_at_source <span class="k">and</span> treaty_eligible(s, fund)
+  <span class="k">amount</span> g × (reclaimable_rate(s.issuer_country) − treaty)
+  <span class="k">accrue</span> fund.policy.reclaim_accrual   <span class="c">default 0%, set by controller</span>
+  <span class="k">posts</span>  debit  asset.reclaim_receivable            amount
+         <span class="add">credit expense.withholding_tax_reclaimable amount</span>
+}
+
+<span class="c">— DE: surcharge is not treaty-reclaimable; base only</span>
+<span class="k">jurisdiction</span> DE {
+  statutory        26.375%
+  <span class="add">reclaimable_base 25.0%</span>
+  treaty           15.0% <span class="k">when</span> domicile = LU
+}
+
+<span class="c">— FX true-up crossing an epoch boundary posts to the</span>
+<span class="c">— later epoch; closed periods are never restated</span>
+<span class="k">rule</span> fx_trueup { <span class="k">on</span> pay_date ; <span class="k">epoch</span> current ; ... }</code></pre>
+          <p class="r-panel-foot">All eight checks pass. The Germany correction
+          alone would have over-stated the reclaim receivable on every German
+          dividend the fund ever received.</p>
+        </div>
+      </div>
+
+      <!-- STAGE 6 -->
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Stage six</span>
+          <h3>Into a version</h3>
+          <p>Reviewed, approved by name, frozen, and from then on attached to
+          every number it produces.</p>
+        </div>
+        <div class="r-panel">
+          <div class="r-panel-head"><span>promote c14e07b</span><b>committed</b></div>
+<pre class="r-panel-body"><code>config@7d2b904 <span class="k">&rarr;</span> config@c14e07b
+
+  <span class="add">+ jurisdiction</span>  FR, DE
+  <span class="add">+ rule</span>          dividend_accrual
+  <span class="add">+ rule</span>          withholding_at_source
+  <span class="add">+ rule</span>          treaty_reclaim
+  <span class="add">+ rule</span>          fx_trueup
+  <span class="add">+ account</span>       expense.withholding_tax_reclaimable
+  <span class="add">+ policy</span>        reclaim_accrual  <span class="c">per vehicle, default 0%</span>
+
+  authored   session transcript &rarr; draft &rarr; 5 questions resolved
+  approved   M. Okonjo <span class="c">(head of fund accounting)</span>
+             R. Baptiste <span class="c">(financial reporting)</span>
+  checks     <span class="s">8 passed</span>
+
+  <span class="c">replayed against Q2 and Q3 before approval:</span>
+  <span class="c">reclaim receivable −18,411.62 vs the old treatment</span></code></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="r-callout">
+      <p><strong>Elapsed: two working sessions and a review.</strong> Not because
+      anything was skipped — eight obligations were discharged and five genuine
+      ambiguities were resolved, which is more rigour than the requirements
+      document would have carried. It is faster because the expert spent their
+      time being interrogated about what they know, instead of watching somebody
+      else type it into a form.</p>
+    </div>
+
+    <p class="r-fig-cap">Withholding rates are illustrative of the shape of the
+    problem, not tax advice, and treaty positions differ by fund, by security
+    and by year. The point is the process, not the percentages.</p>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ WHO DOES WHAT ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">Who does what</p>
+    <h2 class="r-claim">Nobody is trusting the model with anything</h2>
+    <p class="r-lede">The division of labor is the whole safety argument. The
+    model is the only participant that can be wrong without consequence, because
+    it is the only one whose output is checked by everything downstream.</p>
+
+    <div class="r-scroll">
+      <table class="r-tab">
+        <thead>
+          <tr>
+            <th scope="col">Responsibility</th>
+            <th scope="col">Expert</th>
+            <th scope="col">Model</th>
+            <th scope="col">Compiler</th>
+            <th scope="col">Reviewer</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Knows how this fund actually works</th>
+            <td><span class="m m-y">●</span></td><td></td><td></td><td><span class="m m-p">○</span></td></tr>
+          <tr><th scope="row">Turns words into a precise draft</th>
+            <td></td><td><span class="m m-y">●</span></td><td></td><td></td></tr>
+          <tr><th scope="row">Checks the draft against the chart, the calendar, the types</th>
+            <td></td><td></td><td><span class="m m-y">●</span></td><td></td></tr>
+          <tr><th scope="row">Proves every posting balances</th>
+            <td></td><td></td><td><span class="m m-y">●</span></td><td></td></tr>
+          <tr><th scope="row">Surfaces what was left unsaid</th>
+            <td></td><td><span class="m m-p">○</span></td><td><span class="m m-y">●</span></td><td></td></tr>
+          <tr><th scope="row">Answers the questions</th>
+            <td><span class="m m-y">●</span></td><td></td><td></td><td></td></tr>
+          <tr><th scope="row">Decides the rule is right</th>
+            <td><span class="m m-p">○</span></td><td></td><td></td><td><span class="m m-y">●</span></td></tr>
+          <tr><th scope="row">Can cause a number to change</th>
+            <td></td><td></td><td></td><td><span class="m m-y">●</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="r-key">
+      <span><span class="m m-y">●</span> owns it</span>
+      <span><span class="m m-p">○</span> contributes</span>
+      <span>blank — cannot, by construction</span>
+    </p>
+
+    <div class="r-note">
+      <p>The model appears in exactly two rows, both of them drafting. It cannot
+      approve, it cannot post, and it cannot cause a number to move. If it
+      hallucinates an entire tax regime, the compiler rejects the accounts that
+      do not exist, the balancing check rejects the postings that do not net, and
+      a human declines to approve what is left.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="r-rule">
+
+<!-- ═══════════════════════ WHAT IT MEANS ═══════════════════════ -->
+<section class="r-section">
+  <div class="r-wrap">
+    <p class="r-eyebrow">What this changes</p>
+    <h2 class="r-claim">Expertise stops being a person and starts being an asset</h2>
+
+    <div class="r-rows">
+      <div class="r-row">
+        <h3>Your knowledge, not a vendor's template</h3>
+        <p>Nobody has to decide which of the vendor's pre-built fee models is
+        closest to how your fund actually works. The rule is what your controller
+        said, made precise — including the parts that are unusual because your
+        fund is unusual.</p>
+      </div>
+      <div class="r-row">
+        <h3>It outlives the person who knew it</h3>
+        <p>Every rule carries the session it came from, the questions that were
+        asked, the answers given and who approved them. When your controller
+        retires, the reasoning stays — which is not true of a spreadsheet or a
+        consultant.</p>
+      </div>
+      <div class="r-row">
+        <h3>Small teams stop being disqualified</h3>
+        <p>Complex cross-border treatment has been the preserve of firms that
+        could afford a long implementation. The cost of getting expertise into a
+        system was the barrier, not the expertise itself — and a boutique
+        administrator often has more of the latter than the client they are
+        losing business to.</p>
+      </div>
+      <div class="r-row">
+        <h3>Changing your mind is cheap</h3>
+        <p>A rule change is a session, a diff and a review — and it can be
+        replayed against last quarter before anyone approves it. Compare that
+        with a change request against a vendor's implementation backlog.</p>
+      </div>
+      <div class="r-row">
+        <h3>Onboarding a fund is a conversation</h3>
+        <p>The same loop that authored the rules is how a new mandate gets set
+        up: describe how it differs, let the checks find what that implies, and
+        approve. The unusual fund is no longer the expensive one.</p>
+      </div>
+    </div>
+
+    <div class="r-callout">
+      <p><strong>The honest caveat.</strong> None of this removes the need for
+      someone who genuinely understands fund accounting — it makes that person
+      more valuable, not less. What it removes is the tax that has always been
+      charged on turning their knowledge into a working system.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+<footer class="r-foot">
+  <div class="r-wrap">
+    <h2 class="r-claim" style="font-size:clamp(26px,3.2vw,35px)">Say it once. Have it
+      argue back. Approve it.</h2>
+    <p style="max-width:58ch;font-size:18px">The expertise was never the
+    bottleneck. Getting it in was.</p>
+
+    <div class="r-foot-cta">
+      <div>
+        <h3><a href="platform.html">Where the rules live</a></h3>
+        <p>The versioned control plane, and why a change is atomic.</p>
+      </div>
+      <div>
+        <h3><a href="roadmap.html">When this exists</a></h3>
+        <p>The authoring loop is designed and specified, not yet built.</p>
+      </div>
+      <div>
+        <h3><a href="index.html">What it means for your team</a></h3>
+        <p>The close, the breaks, the restatements, the bill.</p>
+      </div>
+    </div>
+
+    <div class="r-fine">
+      <p>The authoring assistant and the interfaces described on this page are
+      designed, not built — see the roadmap for what exists today. Withholding
+      rates and treaty positions shown are illustrative of the shape of the
+      problem and are not tax advice. The engine is source-available for
+      inspection and audit under a strong copyleft license, with a commercial
+      license for operators; it is not permissively licensed. Ratio is an
+      independent project, not affiliated with, sponsored by, or endorsed by any
+      vendor named elsewhere on this site.</p>
+    </div>
+  </div>
+</footer>
