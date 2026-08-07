@@ -300,3 +300,4 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   letter-spacing:.05em;text-transform:uppercase;margin-top:2px}
 .posting .num small{display:block;font-size:10.5px;color:var(--muted);
   font-weight:500;margin-top:1px}
+.cap{font-size:11px;color:var(--muted);line-height:1.5;margin:-4px 0 9px}

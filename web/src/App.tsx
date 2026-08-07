@@ -293,6 +293,13 @@ function Lines({ account }: { account: Account | undefined }) {
 
       <div className="dsec postings">
         <h3>Every line behind it</h3>
+        {/* The dimmed figure on each row is the balance AFTER that line. The
+            last one is the balance above — which is the point of the pane, and
+            worth saying rather than leaving a reader to notice. */}
+        <div className="cap">
+          in journal order · the second figure is the balance after that line,
+          and the last one is the balance above
+        </div>
         {postings.isError ? (
           <div className="empty err">{postings.error.message}</div>
         ) : null}
