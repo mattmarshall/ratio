@@ -29,6 +29,7 @@ on:
     branches: [main]
     paths:
       - 'crates/**'
+      - 'web/**'
       - 'proto/**'
       - 'deploy/**'
       - 'lean/**'
@@ -68,7 +69,7 @@ jobs:
           path: |
             ~/.cache/bazel
             ~/.cache/bazelisk
-          key: bazel-deploy-${{ runner.os }}-${{ hashFiles('MODULE.bazel.lock', 'Cargo.lock', '.bazelrc') }}
+          key: bazel-deploy-${{ runner.os }}-${{ hashFiles('MODULE.bazel.lock', 'Cargo.lock', '.bazelrc', 'web/pnpm-lock.yaml') }}
           restore-keys: bazel-deploy-${{ runner.os }}-
 
       # Bazel only, never cargo — the same build the tests run against.
@@ -163,6 +164,17 @@ jobs:
           # figure should not be able to move without someone noticing.
           curl -sf "${URL}breaks.json" | grep -q '"difference":"2000.00"' \
             || { echo "::error::the break report is missing its 2000.00 break"; exit 1; }
+
+          # The console and its API. An empty fund list would mean the BFF
+          # found no book — the same class of failure as the empty demo book,
+          # and just as invisible from a 200.
+          curl -sf "${URL}app" | grep -q "id=\"root\"" \
+            || { echo "::error::the console shell did not render"; exit 1; }
+          FUNDS="$(curl -sf "${URL}v1/funds")"
+          echo "$FUNDS" | grep -q '"funds":\[{' \
+            || { echo "::error::the console API returned no funds: $FUNDS"; exit 1; }
+          echo "$FUNDS" | grep -q '"netAssetValue":"' \
+            || { echo "::error::NAV is not a string — int64 must not cross as a number"; exit 1; }
 
           # MCP answers, and the fence still holds on a public endpoint.
           TOOLS="$(curl -sf -X POST "${URL}mcp" -H 'content-type: application/json' \
