@@ -6,7 +6,15 @@
 // however many books are on disk everywhere else.
 
 import { useEffect, useState } from "react";
-import { useBreaks, useChangeLog, useFunds, useNavStrikes, useReplay } from "./api.js";
+import {
+  useBreaks,
+  useChangeLog,
+  useConfigDiff,
+  useConfigVersions,
+  useFunds,
+  useNavStrikes,
+  useReplay,
+} from "./api.js";
 import {
   SEVERITY_CLASS,
   STATE_CLASS,
@@ -14,7 +22,7 @@ import {
   count,
   money,
 } from "./format.js";
-import type { Break, Fund, NavStrike } from "./types.js";
+import type { Break, ConfigVersion, Fund, NavStrike } from "./types.js";
 
 const FILTERS = [
   { key: "", label: "All" },
@@ -136,6 +144,62 @@ function Detail({ brk }: { brk: Break | undefined }) {
   );
 }
 
+const CHANGE_LABEL = {
+  ADDED: "added",
+  CHANGED: "changed",
+  REMOVED: "removed",
+  UNSPECIFIED: "",
+} as const;
+
+/** One configuration version, with what it changed available on demand. */
+function Version({ v }: { v: ConfigVersion }) {
+  const [asked, setAsked] = useState(false);
+  // "" means the previous version — the server picks it, so the client never
+  // has to know the ordering. On the first version there is no previous, and
+  // every rule reads as added, which is what happened.
+  const diff = useConfigDiff(asked ? v.name : undefined, "");
+
+  return (
+    <div className="logrow strike">
+      <span className="t num">{v.digest.slice(0, 7)}</span>
+      <span className="w">
+        <b>v{v.sequence}</b>
+        {v.active ? <span className="inforce">in force</span> : null}{" "}
+        <span className="cfg">
+          {v.rules.length} rule{v.rules.length === 1 ? "" : "s"}
+          {v.actor ? ` · ${v.actor}` : " · no recorded approver"}
+          {v.subject ? ` · ${v.subject}` : ""}
+        </span>
+        {diff.data ? (
+          <div className="proof">
+            {diff.data.changes.length === 0 ? (
+              // A digest changes on any byte, and formatting is a byte.
+              "no rule changed — the bytes differ, the rules do not"
+            ) : (
+              diff.data.changes.map((c) => (
+                <div className="chg" key={c.ruleId + c.kind}>
+                  <b>{CHANGE_LABEL[c.kind]}</b> {c.ruleId}
+                  {c.baseForm ? <div className="was">{c.baseForm}</div> : null}
+                  {c.form ? <div className="now">{c.form}</div> : null}
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
+        {diff.isError ? <div className="proof bad">{diff.error.message}</div> : null}
+      </span>
+      <button
+        className="act"
+        type="button"
+        onClick={() => setAsked(!asked)}
+        disabled={asked && diff.isFetching}
+      >
+        {diff.isFetching ? "diffing…" : asked ? "Hide" : "What changed"}
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const funds = useFunds();
   const [fundName, setFundName] = useState<string>();
@@ -154,6 +218,7 @@ export default function App() {
   const breaks = useBreaks(fundName, filter);
   const log = useChangeLog(fundName);
   const strikes = useNavStrikes(fundName);
+  const versions = useConfigVersions(fundName);
   const fund: Fund | undefined = funds.data?.find((f) => f.name === fundName);
   const shown = breaks.data ?? [];
   const selected = shown.find((b) => b.name === brkName) ?? shown[0];
@@ -321,6 +386,24 @@ export default function App() {
             {strikes.data?.map((s) => <Strike key={s.name} s={s} />)}
           </section>
 
+          {/* The configuration axis. Every figure above was produced under one
+              of these, and each one can say what it changed. */}
+          <section className="log" aria-label="Configuration history">
+            <div className="loghead">
+              <span>Configuration</span>
+              <span className="sortnote">
+                {versions.data?.length ? "newest first" : ""}
+              </span>
+            </div>
+            {versions.data?.length === 0 ? (
+              <div className="empty">No configuration promoted yet.</div>
+            ) : null}
+            {versions.isError ? (
+              <div className="empty err">{versions.error.message}</div>
+            ) : null}
+            {versions.data?.map((v) => <Version key={v.digest} v={v} />)}
+          </section>
+
           <section className="log" aria-label="Change log">
             <div className="loghead">
               <span>Change log</span>
@@ -340,9 +423,10 @@ export default function App() {
                   {e.action} <b>{e.subject}</b>
                   {e.detail ? ` — ${e.detail}` : ""}
                 </span>
-                <span className="cfg num">
-                  {e.actorKind === "MODEL" ? "awaiting a person" : ""}
-                </span>
+                {/* `detail` already carries "awaiting a person" for a model's
+                    row, and printing it twice on one line read as emphasis
+                    where it is just repetition. */}
+                <span className="cfg num" />
               </div>
             ))}
           </section>

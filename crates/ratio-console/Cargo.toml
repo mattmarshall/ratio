@@ -8,6 +8,7 @@ path = "src/lib.rs"
 
 [dependencies]
 ratio-nav = { path = "../ratio-nav" }
+ratio-rules = { path = "../ratio-rules" }
 ratio-store = { path = "../ratio-store" }
 anyhow = "1"
 prost = "0.13"

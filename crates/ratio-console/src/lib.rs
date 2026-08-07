@@ -29,6 +29,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use prost::Message;
 use ratio_proto::ratio::v1 as pb;
+use ratio_rules::RuleSet;
 use ratio_store::{AccountTypeRecord, ConfigStore, FileBook, Journal};
 
 /// Above this, a difference blocks the NAV. Below the lower one, it is noise.
@@ -170,6 +171,158 @@ impl Console {
             .into_iter()
             .find(|k| k.name.ends_with(&format!("/breaks/{brk}")))
             .with_context(|| format!("no break {brk:?} on {fund:?}"))
+    }
+
+    pub fn list_config_versions(&self, parent: &str) -> Result<pb::ListConfigVersionsResponse> {
+        let id = resource_id(parent, "funds").context("bad parent")?;
+        let mut versions = self.config_versions(&id)?;
+        versions.reverse(); // newest first
+        Ok(pb::ListConfigVersionsResponse {
+            config_versions: versions,
+            next_page_token: String::new(),
+        })
+    }
+
+    pub fn get_config_version(&self, name: &str) -> Result<pb::ConfigVersion> {
+        let (fund, digest) = nested_id(name, "funds", "configVersions").context("bad name")?;
+        self.config_versions(&fund)?
+            .into_iter()
+            .find(|v| v.digest == digest)
+            .with_context(|| format!("no configuration version {digest:?}"))
+    }
+
+    /// What changed between two versions.
+    ///
+    /// `base` defaults to the version immediately before `name` in this fund's
+    /// history — the comparison somebody almost always wants, and the one that
+    /// is tedious to look up by hand.
+    pub fn diff_config_versions(
+        &self,
+        name: &str,
+        base: &str,
+    ) -> Result<pb::DiffConfigVersionsResponse> {
+        let (fund, digest) = nested_id(name, "funds", "configVersions").context("bad name")?;
+        let path = self.book_path(&fund)?;
+        let versions = self.config_versions(&fund)?;
+
+        let at = versions
+            .iter()
+            .position(|v| v.digest == digest)
+            .with_context(|| format!("no configuration version {digest:?}"))?;
+        let base_digest = if base.is_empty() {
+            // The first version has nothing before it, so the base is the
+            // empty rule set and every rule reads as ADDED. That is what
+            // happened: a book opens with no rules and the opening
+            // configuration puts them there.
+            versions.get(at.wrapping_sub(1)).map(|v| v.digest.clone()).unwrap_or_default()
+        } else {
+            base.to_string()
+        };
+
+        let b = FileBook::open(&path)?;
+        let chart = b.accounts()?;
+        let load = |d: &str| -> Result<RuleSet> {
+            if d.is_empty() {
+                return Ok(RuleSet::default());
+            }
+            let dig = ratio_store::Digest::parse(d)?;
+            RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&dig)?))
+        };
+        let (from, to) = (load(&base_digest)?, load(&digest)?);
+
+        let render = |r: &ratio_rules::Rule| ratio_rules::render(r, &chart);
+        let mut changes = Vec::new();
+        for r in &to.rules {
+            match from.rule(&r.id) {
+                None => changes.push(pb::RuleChange {
+                    rule_id: r.id.clone(),
+                    kind: pb::rule_change::Kind::Added as i32,
+                    base_form: String::new(),
+                    form: render(r),
+                }),
+                Some(prev) if prev != r => changes.push(pb::RuleChange {
+                    rule_id: r.id.clone(),
+                    kind: pb::rule_change::Kind::Changed as i32,
+                    base_form: render(prev),
+                    form: render(r),
+                }),
+                Some(_) => {}
+            }
+        }
+        for r in &from.rules {
+            if to.rule(&r.id).is_none() {
+                changes.push(pb::RuleChange {
+                    rule_id: r.id.clone(),
+                    kind: pb::rule_change::Kind::Removed as i32,
+                    base_form: render(r),
+                    form: String::new(),
+                });
+            }
+        }
+        changes.sort_by(|a, b| a.rule_id.cmp(&b.rule_id));
+
+        Ok(pb::DiffConfigVersionsResponse { base_digest, digest, changes })
+    }
+
+    /// Every configuration this fund has run, oldest first.
+    ///
+    /// `config/HISTORY` is the sequence; `CHANGELOG` supplies who promoted each
+    /// one. A version with no changelog line gets an empty actor rather than a
+    /// guessed one — an audit trail that invents an actor is worse than one
+    /// that admits a gap.
+    fn config_versions(&self, fund: &str) -> Result<Vec<pb::ConfigVersion>> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        let active = b.active()?.map(|d| d.as_str().to_string()).unwrap_or_default();
+        let chart = b.accounts()?;
+
+        let mut promoted: BTreeMap<String, (i64, String, String)> = BTreeMap::new();
+        for l in std::fs::read_to_string(path.join("CHANGELOG")).unwrap_or_default().lines() {
+            let f: Vec<&str> = l.split('\t').collect();
+            if f.len() >= 5 {
+                promoted.insert(
+                    f[4].to_string(),
+                    (f[0].parse().unwrap_or(0), f[1].to_string(), f[3].to_string()),
+                );
+            }
+        }
+
+        // ⚠ `history()` returns NEWEST FIRST — the trait says so, while the
+        // struct's own layout comment says `config/HISTORY` is oldest first.
+        // Both are true and they sit fifty lines apart, which is how this was
+        // written backwards: sequence numbers counted from the newest end and
+        // the diff's "previous version" walked forwards in time.
+        let mut history = b.history()?;
+        history.reverse(); // oldest first, so `sequence` means what it says
+
+        let mut out = Vec::new();
+        for (i, digest) in history.iter().enumerate() {
+            let d = digest.as_str().to_string();
+            let rules = match RuleSet::from_toml(&String::from_utf8_lossy(&b.get(digest)?)) {
+                Ok(set) => set.rules.iter().map(|r| ratio_rules::render(r, &chart)).collect(),
+                // A version that no longer parses is still part of the history
+                // and is shown as such. Dropping it would make the sequence lie
+                // about what this fund has run.
+                Err(e) => vec![format!("(does not parse: {e})")],
+            };
+            let (time, actor, subject) = promoted.get(&d).cloned().unwrap_or_default();
+            out.push(pb::ConfigVersion {
+                name: format!("funds/{fund}/configVersions/{d}"),
+                digest: d.clone(),
+                sequence: i as i64 + 1,
+                active: d == active,
+                actor,
+                approve_time: (time > 0).then(|| {
+                    ratio_proto::timestamp_proto::google::protobuf::Timestamp {
+                        seconds: time,
+                        nanos: 0,
+                    }
+                }),
+                subject,
+                rules,
+            });
+        }
+        Ok(out)
     }
 
     pub fn list_nav_strikes(&self, parent: &str) -> Result<pb::ListNavStrikesResponse> {
@@ -679,6 +832,150 @@ mod tests {
         assert_eq!(first, "funds/demo/breaks/1");
         // And it is fetchable by that name.
         assert!(Console::new(&d).get_break(&first).is_ok());
+    }
+
+    /// Promote a rule set and return its digest, the way `ratio approve` does.
+    fn promote(at: &Path, toml: &str, actor: &str, subject: &str) -> String {
+        let mut b = FileBook::open(at).unwrap();
+        let d = b.put(toml.as_bytes()).unwrap();
+        b.set_active(&d).unwrap();
+        let log = at.join("CHANGELOG");
+        let mut prior = std::fs::read_to_string(&log).unwrap_or_default();
+        prior.push_str(&format!("1780000000\t{actor}\tapproved\t{subject}\t{}\n", d.as_str()));
+        std::fs::write(&log, prior).unwrap();
+        d.as_str().to_string()
+    }
+
+    const R1: &str = "[[rule]]\nid = \"fee\"\nkind = \"accrual\"\nrate_bp = 75\n\
+                      day_count = \"act/365\"\n\
+                      [[rule.posting]]\naccount = 10\nweight = 1\n\
+                      [[rule.posting]]\naccount = 40\nweight = -1\n";
+
+    #[test]
+    fn config_versions_are_sequenced_and_attributed() {
+        let d = fresh("cfgversions");
+        book(&d);
+        promote(&d, R1, "e.marsh", "fee_q2");
+
+        let vs = Console::new(&d).list_config_versions("funds/demo").unwrap().config_versions;
+        assert!(vs.len() >= 2, "expected the initial version and the promoted one");
+        // Newest first, and the newest is the active one.
+        assert!(vs[0].active, "the newest version should be active");
+        assert_eq!(vs[0].actor, "e.marsh");
+        assert_eq!(vs[0].subject, "fee_q2");
+        assert!(vs[0].approve_time.is_some());
+        // Sequence counts from the start of history, so it does not change when
+        // a new version is added — unlike an index into a reversed list.
+        assert_eq!(vs.last().unwrap().sequence, 1);
+        // The version that predates the CHANGELOG has no actor, and says so
+        // rather than inventing one.
+        assert_eq!(vs.last().unwrap().actor, "");
+        assert!(vs.last().unwrap().approve_time.is_none());
+    }
+
+    #[test]
+    fn the_first_version_reads_as_all_added() {
+        use ratio_store::{Account, AccountTypeRecord as A};
+        // Not `book()` — that one opens with `rules = []`, so its first version
+        // has nothing in it to read as added. This book's opening
+        // configuration is the rule.
+        let d = fresh("firstversion");
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 10, display_name: "Management fee expense".into(), account_type: A::Expense },
+            Account { dim: 40, display_name: "Management fee payable".into(), account_type: A::Liability },
+        ])
+        .unwrap();
+        drop(b);
+        let first = promote(&d, R1, "e.marsh", "opening");
+
+        let out = Console::new(&d)
+            .diff_config_versions(&format!("funds/demo/configVersions/{first}"), "")
+            .unwrap();
+
+        // Nothing precedes it, so there is no base digest to name.
+        assert_eq!(out.base_digest, "", "the first version has no predecessor");
+        assert!(!out.changes.is_empty(), "the opening configuration is not empty");
+        assert!(
+            out.changes.iter().all(|c| c.kind == pb::rule_change::Kind::Added as i32),
+            "every rule in the first version was added by it",
+        );
+        assert!(
+            out.changes.iter().all(|c| c.base_form.is_empty()),
+            "there is no earlier form of a rule that did not exist",
+        );
+    }
+
+    #[test]
+    fn a_diff_names_what_was_added_changed_and_removed() {
+        let d = fresh("cfgdiff");
+        book(&d);
+        let v1 = promote(&d, R1, "e.marsh", "fee_q2");
+        // Change the rate, add a rule, and remove nothing.
+        let r2 = R1.replace("rate_bp = 75", "rate_bp = 80")
+            + "\n[[rule]]\nid = \"perf\"\nkind = \"trade\"\n\
+               [[rule.posting]]\naccount = 1\nweight = 1\n\
+               [[rule.posting]]\naccount = 2\nweight = -1\n";
+        let v2 = promote(&d, &r2, "j.okafor", "perf_fee");
+
+        let c = Console::new(&d);
+        let diff = c
+            .diff_config_versions(&format!("funds/demo/configVersions/{v2}"), "")
+            .unwrap();
+        assert_eq!(diff.base_digest, v1, "base should default to the previous version");
+        let by: BTreeMap<&str, i32> =
+            diff.changes.iter().map(|c| (c.rule_id.as_str(), c.kind)).collect();
+        assert_eq!(by["fee"], pb::rule_change::Kind::Changed as i32);
+        assert_eq!(by["perf"], pb::rule_change::Kind::Added as i32);
+        // A changed rule carries both forms, which is what makes the diff
+        // readable rather than merely true.
+        let fee = diff.changes.iter().find(|c| c.rule_id == "fee").unwrap();
+        assert!(fee.base_form.contains("75bp"), "{}", fee.base_form);
+        assert!(fee.form.contains("80bp"), "{}", fee.form);
+
+        // And removal, diffing the other direction.
+        let back = c
+            .diff_config_versions(&format!("funds/demo/configVersions/{v1}"), &v2)
+            .unwrap();
+        let kinds: BTreeMap<&str, i32> =
+            back.changes.iter().map(|c| (c.rule_id.as_str(), c.kind)).collect();
+        assert_eq!(kinds["perf"], pb::rule_change::Kind::Removed as i32);
+    }
+
+    #[test]
+    fn diffing_a_version_against_itself_finds_nothing() {
+        let d = fresh("cfgsame");
+        book(&d);
+        let v = promote(&d, R1, "e.marsh", "fee");
+        let diff = Console::new(&d)
+            .diff_config_versions(&format!("funds/demo/configVersions/{v}"), &v)
+            .unwrap();
+        assert!(diff.changes.is_empty(), "{:?}", diff.changes);
+    }
+
+    #[test]
+    fn the_first_version_diffs_against_nothing_rather_than_panicking() {
+        // `at - 1` on the first element underflows. A history of one is the
+        // normal state of a fund on its first day.
+        let d = fresh("cfgfirst");
+        book(&d);
+        let first = Console::new(&d).list_config_versions("funds/demo").unwrap()
+            .config_versions.last().unwrap().digest.clone();
+        let diff = Console::new(&d)
+            .diff_config_versions(&format!("funds/demo/configVersions/{first}"), "")
+            .unwrap();
+        assert_eq!(diff.base_digest, "", "nothing precedes the first version");
+    }
+
+    #[test]
+    fn an_unknown_version_is_an_error_not_an_empty_diff() {
+        let d = fresh("cfgunknown");
+        book(&d);
+        let c = Console::new(&d);
+        assert!(c.get_config_version("funds/demo/configVersions/deadbeef").is_err());
+        assert!(c
+            .diff_config_versions("funds/demo/configVersions/deadbeef", "")
+            .is_err());
     }
 
     #[test]

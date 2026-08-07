@@ -110,3 +110,36 @@ export interface ListChangeLogEntriesResponse {
   changeLogEntries: ChangeLogEntry[];
   nextPageToken: string;
 }
+
+export type RuleChangeKind = "ADDED" | "CHANGED" | "REMOVED" | "UNSPECIFIED";
+
+/** One promoted configuration, oldest first — `sequence` 1 is the first. */
+export interface ConfigVersion {
+  name: string;
+  digest: string;
+  sequence: Int64;
+  active: boolean;
+  /** Empty for a version promoted before the changelog existed. Not guessed. */
+  actor: string;
+  approveTime: string;
+  subject: string;
+  rules: string[];
+}
+
+export interface ListConfigVersionsResponse {
+  configVersions: ConfigVersion[];
+  nextPageToken: string;
+}
+
+export interface RuleChange {
+  ruleId: string;
+  kind: RuleChangeKind;
+  baseForm: string;
+  form: string;
+}
+
+export interface DiffConfigVersionsResponse {
+  baseDigest: string;
+  digest: string;
+  changes: RuleChange[];
+}

@@ -65,6 +65,31 @@ service Console {
     option (google.api.method_signature) = "name";
   }
 
+  // Lists a fund's configuration versions, newest first. (AIP-132)
+  rpc ListConfigVersions(ListConfigVersionsRequest)
+      returns (ListConfigVersionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/configVersions"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one configuration version, with its rules as a person reads them.
+  // (AIP-131)
+  rpc GetConfigVersion(GetConfigVersionRequest) returns (ConfigVersion) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/configVersions/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // What changed between two configuration versions. (AIP-136)
+  //
+  // GET, like the replay above: comparing two immutable, content-addressed
+  // blobs is safe and idempotent, and a verb that implies mutation would be a
+  // lie about a method that cannot.
+  rpc DiffConfigVersions(DiffConfigVersionsRequest)
+      returns (DiffConfigVersionsResponse) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/configVersions/*}:diff"};
+    option (google.api.method_signature) = "name";
+  }
+
   // Lists a fund's NAV strikes, newest first. (AIP-132)
   rpc ListNavStrikes(ListNavStrikesRequest) returns (ListNavStrikesResponse) {
     option (google.api.http) = {get: "/v1/{parent=funds/*}/navStrikes"};
@@ -403,6 +428,109 @@ message ReplayNavStrikeResponse {
   // than merely reported.
   string net_asset_value = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
   string journal_digest = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One version of a fund's configuration.
+//
+// Content-addressed, so the digest IS the identity: two funds running the same
+// rules have the same digest, and a version cannot be edited without becoming a
+// different version. That is what makes "the configuration this figure was
+// computed under" a citation rather than a label.
+message ConfigVersion {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/ConfigVersion"
+    pattern: "funds/{fund}/configVersions/{config_version}"
+    singular: "configVersion"
+    plural: "configVersions"
+  };
+
+  // The resource name: `funds/{fund}/configVersions/{config_version}`.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // SHA-256 of the configuration bytes.
+  string digest = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Where it sits in this fund's history. 1 is the first.
+  int64 sequence = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // True for the version currently in force.
+  bool active = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Who promoted it, and when — from what `ratio approve` recorded. Empty for a
+  // version that predates the record rather than guessed at: an audit trail
+  // that invents an actor is worse than one that admits a gap.
+  string actor = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Timestamp approve_time = 6
+      [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The proposal this came from, if it came from one.
+  string subject = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The rules, rendered the way the rules screen shows them.
+  repeated string rules = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One rule's fate between two versions.
+message RuleChange {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_ADDED = 1;
+    KIND_REMOVED = 2;
+    KIND_CHANGED = 3;
+  }
+
+  string rule_id = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  Kind kind = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How the rule read in each version, rendered. Empty on the side where it did
+  // not exist. Named for the versions rather than "before"/"after", which
+  // AIP-140 rejects as prepositions and which are ambiguous anyway once a diff
+  // can run in either direction.
+  string base_form = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string form = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListConfigVersionsRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListConfigVersionsResponse {
+  repeated ConfigVersion config_versions = 1;
+  string next_page_token = 2;
+}
+
+message GetConfigVersionRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/ConfigVersion"
+  ];
+}
+
+message DiffConfigVersionsRequest {
+  // The version to diff, which is the AFTER side.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/ConfigVersion"
+  ];
+
+  // The digest to compare against. Defaults to the version immediately before
+  // `name` in this fund's history, which is the comparison somebody almost
+  // always wants and the one it is tedious to look up.
+  string base = 2 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message DiffConfigVersionsResponse {
+  string base_digest = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string digest = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Empty when the two versions hold the same rules — which happens, because a
+  // digest changes on any byte and formatting is a byte.
+  repeated RuleChange changes = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message ListNavStrikesRequest {

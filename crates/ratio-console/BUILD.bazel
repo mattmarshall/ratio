@@ -12,6 +12,7 @@ rust_library(
     edition = "2021",
     deps = [
         "//crates/ratio-nav",
+        "//crates/ratio-rules",
         "//crates/ratio-store",
         "//proto:ratio_rust_proto",  # generated crate `ratio_proto` (ratio.v1)
         "@crates//:anyhow",

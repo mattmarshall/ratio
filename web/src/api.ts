@@ -3,7 +3,7 @@
 // Every hook maps to one `google.api.http` rule on `ratio.v1.Console`. The
 // query keys are the RESOURCE NAMES the API itself uses — `["funds/demo",
 // "breaks"]` rather than an invented cache-key scheme — so a key is always
-// something the server would recognise, and invalidating "everything under
+// something the server would recognize, and invalidating "everything under
 // this fund" is a prefix match rather than a convention to remember.
 
 import {
@@ -13,6 +13,9 @@ import {
 import type {
   Break,
   ChangeLogEntry,
+  ConfigVersion,
+  DiffConfigVersionsResponse,
+  ListConfigVersionsResponse,
   Fund,
   NavStrike,
   ReplayNavStrikeResponse,
@@ -130,5 +133,37 @@ export function useChangeLog(
     select: (r) => r.changeLogEntries,
     enabled: !!fund,
     ...LIVE,
+  });
+}
+
+export function useConfigVersions(
+  fund: string | undefined,
+): UseQueryResult<ConfigVersion[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "configVersions"],
+    queryFn: () => get<ListConfigVersionsResponse>(`/${fund}/configVersions`),
+    // Newest first is how the server sends it and how the panel reads it.
+    select: (r) => r.configVersions,
+    enabled: !!fund,
+    ...LIVE,
+  });
+}
+
+/// What changed between two configurations. Like a replay, this is a derived
+/// answer about the past: the same two digests always diff the same way, so it
+/// never goes stale.
+export function useConfigDiff(
+  version: string | undefined,
+  base: string,
+): UseQueryResult<DiffConfigVersionsResponse, Error> {
+  return useQuery({
+    queryKey: [version ?? "", "diff", base],
+    queryFn: () =>
+      get<DiffConfigVersionsResponse>(
+        `/${version}:diff${base ? `?base=${encodeURIComponent(base)}` : ""}`,
+      ),
+    enabled: !!version,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 }

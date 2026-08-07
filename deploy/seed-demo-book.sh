@@ -88,6 +88,37 @@ weight = -1
 TOML
 "$RATIO" config set rules.toml --book "$OUT" >/dev/null
 
+# A second configuration, promoted the way a real one is: proposed as a file,
+# approved by a named person, recorded in the CHANGELOG.
+#
+# `config set` above promotes directly and writes no approval line, which is
+# right for a book's opening configuration — nobody approved it, it is where
+# the book started. Everything after it goes through `approve`, so the console
+# can say who put each rule in force. Without this the configuration panel
+# reads "no recorded approver" for every version, which demonstrates the
+# absence of the feature rather than the feature.
+#
+# It is approved BEFORE any entry is posted, so every entry in the book cites
+# the configuration that is still active at the end. A rule promoted afterwards
+# would leave the fund's active digest disagreeing with the digest on its own
+# entries — true to life, but a different demo.
+mkdir -p "$OUT/proposals"
+cat > "$OUT/proposals/management_fee.toml" <<'TOML'
+[[rule]]
+id = "management_fee"
+kind = "accrual"
+description = "Management fee, 75bp per annum on net assets"
+rate_bp = 75
+day_count = "act/365"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+TOML
+RATIO_ACTOR="${RATIO_ACTOR:-e.marsh}" "$RATIO" approve management_fee --book "$OUT" >/dev/null
+
 # The fund takes capital before it buys anything.
 #
 # Without this the seeded fund has negative cash and a NAV of 17,120 against

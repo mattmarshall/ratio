@@ -36,6 +36,9 @@ pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/{parent=funds/*}/changeLogEntries" },
     Route { method: "GET", template: "/v1/{name=funds/*/breaks/*}" },
     Route { method: "GET", template: "/v1/{name=funds/*/changeLogEntries/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*}/configVersions" },
+    Route { method: "GET", template: "/v1/{name=funds/*/configVersions/*}:diff" },
+    Route { method: "GET", template: "/v1/{name=funds/*/configVersions/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/navStrikes" },
     // A custom method (AIP-136) on GET, because replaying is safe and
     // idempotent — it folds a journal prefix and writes nothing.
@@ -68,6 +71,19 @@ pub fn serve(console: &Console, method: &str, path: &str, query: &str) -> Result
         ["funds", id, "changeLogEntries"] => {
             to_json(&console.list_change_log_entries(&format!("funds/{id}"))?)?
         }
+        ["funds", id, "configVersions"] => {
+            to_json(&console.list_config_versions(&format!("funds/{id}"))?)?
+        }
+        ["funds", id, "configVersions", v] if v.ends_with(":diff") => {
+            let digest = v.trim_end_matches(":diff");
+            to_json(&console.diff_config_versions(
+                &format!("funds/{id}/configVersions/{digest}"),
+                param_of(query, "base"),
+            )?)?
+        }
+        ["funds", id, "configVersions", v] => {
+            to_json(&console.get_config_version(&format!("funds/{id}/configVersions/{v}"))?)?
+        }
         ["funds", id, "navStrikes"] => {
             to_json(&console.list_nav_strikes(&format!("funds/{id}"))?)?
         }
@@ -93,9 +109,20 @@ pub fn serve(console: &Console, method: &str, path: &str, query: &str) -> Result
 
 /// `?filter=blocking` → `"blocking"`.
 fn filter_of(query: &str) -> &str {
+    param_of(query, "filter")
+}
+
+/// One query parameter, unescaped only insofar as it needs to be.
+///
+/// Values here are digests and short keywords, so there is nothing to decode —
+/// and a hand-rolled percent-decoder on a public endpoint would be a liability
+/// out of proportion to what it buys. A value containing `%` simply will not
+/// match a digest, which is the correct outcome.
+fn param_of<'a>(query: &'a str, key: &str) -> &'a str {
+    let prefix = format!("{key}=");
     query
         .split('&')
-        .find_map(|kv| kv.strip_prefix("filter="))
+        .find_map(|kv| kv.strip_prefix(prefix.as_str()))
         .unwrap_or("")
 }
 
@@ -243,6 +270,62 @@ impl JsonView for pb::ChangeLogEntry {
              \"subject\":{},\"detail\":{},\"configDigest\":{}}}",
             q(&self.name), q(&self.actor), q(actor_kind_name(self.actor_kind)),
             q(&self.action), q(&self.subject), q(&self.detail), q(&self.config_digest)
+        )
+    }
+}
+
+fn change_kind(v: i32) -> &'static str {
+    match pb::rule_change::Kind::try_from(v) {
+        Ok(pb::rule_change::Kind::Added) => "ADDED",
+        Ok(pb::rule_change::Kind::Removed) => "REMOVED",
+        Ok(pb::rule_change::Kind::Changed) => "CHANGED",
+        _ => "UNSPECIFIED",
+    }
+}
+
+impl JsonView for pb::ConfigVersion {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"digest\":{},\"sequence\":{},\"active\":{},\
+             \"actor\":{},\"approveTime\":{},\"subject\":{},\"rules\":[{}]}}",
+            q(&self.name), q(&self.digest), q(&self.sequence.to_string()), self.active,
+            q(&self.actor),
+            q(&self
+                .approve_time
+                .as_ref()
+                .map(|t| ratio_nav::rfc3339(t.seconds))
+                .unwrap_or_default()),
+            q(&self.subject),
+            self.rules.iter().map(|r| q(r)).collect::<Vec<_>>().join(",")
+        )
+    }
+}
+
+impl JsonView for pb::ListConfigVersionsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"configVersions\":[{}],\"nextPageToken\":{}}}",
+            self.config_versions.iter().map(|v| v.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+impl JsonView for pb::RuleChange {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"ruleId\":{},\"kind\":{},\"baseForm\":{},\"form\":{}}}",
+            q(&self.rule_id), q(change_kind(self.kind)), q(&self.base_form), q(&self.form)
+        )
+    }
+}
+
+impl JsonView for pb::DiffConfigVersionsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"baseDigest\":{},\"digest\":{},\"changes\":[{}]}}",
+            q(&self.base_digest), q(&self.digest),
+            self.changes.iter().map(|c| c.to_json()).collect::<Vec<_>>().join(",")
         )
     }
 }

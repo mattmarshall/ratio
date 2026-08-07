@@ -246,3 +246,18 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   line-height:1.55;background:var(--block);color:#C6D3CB;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .proof.bad{color:#F0BFA0;box-shadow:inset 0 0 0 1px var(--crit)}
+
+/* A configuration version reads like a strike — the same "ask for it" shape —
+   but what it offers is a diff rather than a re-derivation. */
+.inforce{margin-left:7px;padding:1px 7px;border-radius:999px;font-size:11px;
+  font-weight:700;letter-spacing:.02em;color:var(--good);
+  box-shadow:inset 0 0 0 1px var(--good)}
+.chg + .chg{margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.07)}
+.chg b{color:var(--text);text-transform:uppercase;font-size:10.5px;
+  letter-spacing:.06em;margin-right:5px}
+/* The earlier form is struck through rather than merely dimmer: a rule that no
+   longer applies should not read as one that does. */
+.was,.now{white-space:pre-wrap}
+.was{color:var(--text-2);text-decoration:line-through;
+  text-decoration-color:var(--crit);opacity:.75}
+.now{color:#C6D3CB}
