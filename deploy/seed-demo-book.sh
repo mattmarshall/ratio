@@ -13,10 +13,21 @@ set -euo pipefail
 
 RATIO="${1:?usage: seed-demo-book.sh <ratio-binary> <out-dir>}"
 OUT="${2:?usage: seed-demo-book.sh <ratio-binary> <out-dir>}"
-RATIO="$(cd "$(dirname "$RATIO")" && pwd)/$(basename "$RATIO")"
 
-rm -rf "$OUT"
+# Resolve BOTH paths before the `cd` below, and resolve them absolutely.
+#
+# This script changes directory into a scratch dir to keep its intermediate
+# CSVs out of the caller's tree. A relative $OUT then resolves *inside* that
+# scratch dir — so the book was built somewhere the trap deleted, the caller
+# was left with the empty directory `mkdir -p` had made, and the script's own
+# assertions passed because they checked the same relative path. It reported
+# success and shipped nothing. Local runs did not catch it because they were
+# given an absolute path; CI passed `deploy/demo-book`.
+RATIO="$(cd "$(dirname "$RATIO")" && pwd)/$(basename "$RATIO")"
 mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)"
+rm -rf "${OUT:?}"/*
+
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 cd "$WORK"
@@ -118,6 +129,12 @@ grep -q "6 entrie(s)" <<<"$BAL" || { echo "expected 6 entries:"; echo "$BAL"; ex
 grep -q "^Difference  *0.00  *0.00" <<<"$BAL" || { echo "book does not tie:"; echo "$BAL"; exit 1; }
 [ -n "$(ls -A "$OUT/reports" 2>/dev/null)" ] || { echo "no break report stored"; exit 1; }
 [ -f "$OUT/proposals/performance_fee.toml" ] || { echo "no pending proposal"; exit 1; }
+
+# Everything above checked $OUT. Check it once more the way the caller will —
+# by absolute path, after the cd — so "the script said it worked" and "there is
+# a book where I asked for one" cannot come apart again.
+[ -s "$OUT/accounts.json" ] || { echo "no accounts.json at $OUT"; exit 1; }
+[ -s "$OUT/journal.jsonl" ] || { echo "no journal at $OUT"; exit 1; }
 
 echo "demo book ready at $OUT"
 echo "  $(grep -c . "$OUT"/journal* 2>/dev/null || echo 6) journal line(s)"
