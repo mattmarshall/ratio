@@ -267,6 +267,23 @@ books wrong.*
 
 ---
 
+## The demo, deployed — ✅ LIVE
+
+`https://1h4q8av2gb.execute-api.us-east-1.amazonaws.com/` — the three screens,
+plus the MCP tools at `POST /mcp` so a model can reach them over the network
+rather than through a process on the caller's machine. Same six tools as the
+stdio transport, same dispatcher, same fence; a test asserts `approve_rule` is
+absent from the *public* endpoint's tool list.
+
+AWS account `320473299741` (`ratio`), Platform OU. Lambda behind an HTTP API:
+nothing bills at rest, and a demo used a few times a week rounds to zero
+against a $5 budget. Deployed by GitHub Actions over OIDC on every push to
+main, by image digest, with a smoke test that fails the deploy if the live site
+serves an empty book. See `deploy/README.md` — including why a Function URL,
+which would have been simpler, is refused in this account.
+
+---
+
 ## UI screens — ✅ BUILT (`ratio watch`)
 
 Three. Not four. All three are served by `ratio watch` on loopback — one
