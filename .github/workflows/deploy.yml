@@ -1,0 +1,153 @@
+name: deploy
+
+# Builds the demo image and deploys it to the ratio account (320473299741) as
+# a Lambda behind a Function URL.
+#
+# Why Lambda: the demo is used a few times a week, and everything else that
+# serves HTTP on AWS bills while idle. A Function URL costs nothing at rest,
+# and the Lambda Web Adapter runs `ratio watch` unmodified — so what is demoed
+# is what ships, not a Lambda-shaped port of it.
+#
+# Why no long-lived key: the runner assumes `ratio-demo-deploy` via GitHub's
+# OIDC provider. The trust policy is scoped to this repo's main branch, so a
+# pull request from a fork cannot deploy.
+#
+# One-time setup, run by a human with admin on the account:
+#
+#   aws cloudformation deploy \
+#     --template-file deploy/bootstrap.yaml \
+#     --stack-name ratio-demo-bootstrap \
+#     --capabilities CAPABILITY_NAMED_IAM \
+#     --parameter-overrides GitHubRepo=mattmarshall/ratio BudgetEmail=you@example.com
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/**'
+      - 'proto/**'
+      - 'deploy/**'
+      - 'lean/**'
+      - 'MODULE.bazel*'
+      - 'Cargo.*'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+# A deploy must not race another deploy. Not cancel-in-progress: a half-applied
+# CloudFormation change set is worse than a queued one.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # required to request the OIDC token
+
+env:
+  AWS_REGION: us-east-1
+  ACCOUNT_ID: "320473299741"
+  ECR_REPO: ratio-demo
+  STACK: ratio-demo-app
+
+jobs:
+  deploy:
+    # Pinned, not `ubuntu-latest`. The binary links against this runner's glibc
+    # and deploy/Dockerfile runs it on ubuntu:24.04; the two are a matched pair.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Bazel
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel
+            ~/.cache/bazelisk
+          key: bazel-deploy-${{ runner.os }}-${{ hashFiles('MODULE.bazel.lock', 'Cargo.lock', '.bazelrc') }}
+          restore-keys: bazel-deploy-${{ runner.os }}-
+
+      # Bazel only, never cargo — the same build the tests run against.
+      - name: Build ratio
+        run: bazel build --lockfile_mode=error //crates/ratio
+
+      # Refuse to ship an image whose contents were never checked. The deploy
+      # workflow runs on the same push as build.yml but not after it, so
+      # without this a red test suite and a green deploy can happen at once.
+      - name: Test
+        run: bazel test --lockfile_mode=error --test_output=errors //...
+
+      - name: Seed the demo book
+        run: |
+          cp "$(bazel info bazel-bin)/crates/ratio/ratio" deploy/ratio
+          chmod +x deploy/ratio
+          ./deploy/seed-demo-book.sh deploy/ratio deploy/demo-book
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::320473299741:role/ratio-demo-deploy
+          aws-region: us-east-1
+          role-session-name: gha-${{ github.run_id }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: Build and push
+        id: image
+        working-directory: deploy
+        run: |
+          set -euo pipefail
+          REG="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          docker build --platform linux/amd64 -t "$REG/$ECR_REPO:${GITHUB_SHA}" .
+          docker push "$REG/$ECR_REPO:${GITHUB_SHA}"
+          # Deploy by digest, not by tag. A tag can be moved; a digest names
+          # exactly the bytes this run built, so the function and the commit
+          # cannot drift apart.
+          DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$REG/$ECR_REPO:${GITHUB_SHA}")"
+          echo "uri=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Deploying $DIGEST"
+
+      - name: Deploy
+        run: |
+          aws cloudformation deploy \
+            --template-file deploy/app.yaml \
+            --stack-name "$STACK" \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              ImageUri='${{ steps.image.outputs.uri }}' \
+              ExecutionRoleArn="arn:aws:iam::${ACCOUNT_ID}:role/ratio-demo-execution"
+
+      - name: Smoke test the deployed demo
+        run: |
+          set -euo pipefail
+          URL="$(aws cloudformation describe-stacks --stack-name "$STACK" \
+                  --query 'Stacks[0].Outputs[?OutputKey==`FunctionUrl`].OutputValue' --output text)"
+          echo "URL: $URL"
+
+          # A deploy that reports success while serving a 502 is the failure
+          # this step exists to catch. Retry through the cold start rather than
+          # racing it.
+          for i in $(seq 1 12); do
+            CODE="$(curl -s -o /dev/null -w '%{http_code}' "${URL}healthz" || true)"
+            [ "$CODE" = "200" ] && break
+            echo "  attempt $i: $CODE"; sleep 5
+          done
+          [ "$CODE" = "200" ] || { echo "::error::healthz never returned 200"; exit 1; }
+
+          # The screens render.
+          curl -sf "$URL" | grep -q "Trial balance" \
+            || { echo "::error::the balance screen did not render"; exit 1; }
+
+          # MCP answers, and the fence still holds on a public endpoint.
+          TOOLS="$(curl -sf -X POST "${URL}mcp" -H 'content-type: application/json' \
+                    -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
+          echo "$TOOLS" | grep -q propose_rule \
+            || { echo "::error::MCP did not list its tools"; exit 1; }
+          echo "$TOOLS" | grep -q approve_rule \
+            && { echo "::error::approve_rule is exposed on the public endpoint"; exit 1; }
+
+          echo "### Ratio demo deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Screens: $URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- MCP: \`${URL}mcp\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`${{ steps.image.outputs.uri }}\`" >> "$GITHUB_STEP_SUMMARY"

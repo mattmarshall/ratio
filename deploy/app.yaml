@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Ratio demo — the function itself. Deployed by CI on every push to main,
+  parameterised only by the image it should run.
+
+Parameters:
+  ImageUri:
+    Type: String
+    Description: The image CI just pushed, by digest.
+  ExecutionRoleArn:
+    Type: String
+    Description: From the bootstrap stack.
+  ReservedConcurrency:
+    Type: Number
+    Default: 5
+    Description: >
+      The hard cap on simultaneous invocations, and the main thing standing
+      between a public URL and a surprising bill. Five is more than a demo
+      needs and far less than a bill worth noticing.
+
+Resources:
+  # Created explicitly rather than left to Lambda, which creates log groups
+  # with retention set to "never expire" — the quietest recurring cost in AWS.
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/ratio-demo
+      RetentionInDays: 7
+
+  Function:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroup
+    Properties:
+      FunctionName: ratio-demo
+      Description: The three screens and the MCP endpoint, behind a Function URL.
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      Role: !Ref ExecutionRoleArn
+      # 512MB is not about memory — the demo needs a fraction of it — but about
+      # CPU, which Lambda allocates in proportion. It is the cheapest point at
+      # which a cold start stays under half a second.
+      MemorySize: 512
+      # Every request is a table render or one JSON-RPC call. Anything taking
+      # longer than this is stuck, and should fail rather than bill.
+      Timeout: 15
+      ReservedConcurrentExecutions: !Ref ReservedConcurrency
+      Environment:
+        Variables:
+          RATIO_BOOK: /tmp/book
+          AWS_LWA_PORT: "8080"
+          AWS_LWA_READINESS_CHECK_PATH: /healthz
+      Tags:
+        - Key: project
+          Value: ratio
+        - Key: purpose
+          Value: demo
+
+  # A Function URL rather than an API Gateway or an ALB: it is the only one of
+  # the three that costs nothing at rest. An ALB alone would be roughly ten
+  # times the entire rest of this stack.
+  Url:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt Function.Arn
+      # A public demo has to be reachable without credentials. What keeps this
+      # safe is what the function can do, not who can call it: it holds no
+      # secrets, has no AWS permissions beyond writing its own logs, serves a
+      # book baked into its own image, and every cold start discards whatever
+      # the last caller did. The concurrency cap bounds the cost.
+      AuthType: NONE
+      InvokeMode: BUFFERED
+      Cors:
+        AllowOrigins: ["*"]
+        AllowMethods: [GET, POST]
+        AllowHeaders: [content-type, mcp-session-id, mcp-protocol-version]
+        MaxAge: 3600
+
+  UrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt Function.Arn
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+Outputs:
+  FunctionUrl:
+    Description: The demo. Screens at /, MCP at POST /mcp.
+    Value: !GetAtt Url.FunctionUrl
+  McpEndpoint:
+    Value: !Sub
+      - "${Base}mcp"
+      - Base: !GetAtt Url.FunctionUrl

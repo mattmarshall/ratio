@@ -1,0 +1,6 @@
+# Only what the image needs. Without this the build context is the whole deploy
+# directory including the CloudFormation templates and this file.
+*
+!ratio
+!demo-book
+!entrypoint.sh

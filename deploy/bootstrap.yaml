@@ -1,0 +1,237 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Ratio demo — one-time account setup: the registry the image lands in, the
+  role GitHub Actions assumes to push it, and the cost guardrails. Deployed
+  once by hand; everything after it is deployed by CI.
+
+# Split from app.yaml on purpose. A Lambda whose PackageType is Image cannot be
+# created before an image exists, so the registry has to be a separate stack
+# that CI can push to before the app stack is ever deployed.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: mattmarshall/ratio
+    Description: owner/repo allowed to assume the deploy role.
+  BudgetEmail:
+    Type: String
+    Description: Where budget alerts go.
+  MonthlyBudgetUSD:
+    Type: Number
+    Default: 5
+    Description: >
+      The demo should cost close to nothing. This is set low deliberately: the
+      alert is meant to fire on a mistake, not on growth.
+
+Resources:
+  # ── The registry ────────────────────────────────────────────────────────
+  Repository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: ratio-demo
+      ImageTagMutability: MUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      # Storage is billed per GB-month. Three images is enough to roll back to
+      # while keeping the bill in the noise.
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Expire untagged images after a day",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 1
+                },
+                "action": {"type": "expire"}
+              },
+              {
+                "rulePriority": 2,
+                "description": "Keep only the last 3 tagged images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 3
+                },
+                "action": {"type": "expire"}
+              }
+            ]
+          }
+
+  # ── How GitHub Actions gets in ──────────────────────────────────────────
+  # OIDC rather than a long-lived access key. There is no secret to leak, no
+  # rotation to forget, and the trust policy below is what actually constrains
+  # who can assume this — not the absence of a published key.
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      # AWS verifies GitHub's certificate chain against its own trust store for
+      # this provider, so the thumbprint is vestigial — kept because the
+      # resource still requires the field.
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ratio-demo-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              # Scoped to this repo's main branch. `repo:owner/name:*` would
+              # let a pull request from a fork deploy to production, which is
+              # the classic way this pattern is got wrong.
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubRepo}:ref:refs/heads/main"
+      Policies:
+        - PolicyName: push-image-and-deploy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: PushToTheDemoRepositoryOnly
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                  - ecr:BatchGetImage
+                  - ecr:DescribeImages
+                Resource: !GetAtt Repository.Arn
+              - Sid: AuthToTheRegistry
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"   # this action does not accept a resource
+              - Sid: DeployTheAppStack
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:ListStackResources
+                Resource: !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/ratio-demo-app/*"
+              - Sid: ManageTheDemoFunction
+                Effect: Allow
+                Action:
+                  - lambda:CreateFunction
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:GetFunction
+                  - lambda:GetFunctionConfiguration
+                  - lambda:GetFunctionUrlConfig
+                  - lambda:CreateFunctionUrlConfig
+                  - lambda:UpdateFunctionUrlConfig
+                  - lambda:AddPermission
+                  - lambda:RemovePermission
+                  - lambda:GetPolicy
+                  - lambda:PutFunctionConcurrency
+                  - lambda:DeleteFunctionConcurrency
+                  - lambda:TagResource
+                  - lambda:ListTags
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ratio-demo"
+              - Sid: TheFunctionsOwnLogGroup
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
+                  - logs:DescribeLogGroups
+                  - logs:PutRetentionPolicy
+                  - logs:TagResource
+                  - logs:ListTagsForResource
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/ratio-demo*"
+              - Sid: PassOnlyTheExecutionRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt ExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: lambda.amazonaws.com
+              - Sid: ReadTheExecutionRoleForStackDrift
+                Effect: Allow
+                Action:
+                  - iam:GetRole
+                  - iam:ListRoleTags
+                Resource: !GetAtt ExecutionRole.Arn
+
+  # ── What the function itself may do ─────────────────────────────────────
+  # Deliberately almost nothing. The demo reads a book baked into its own image
+  # and writes to /tmp; it has no reason to reach any AWS API, so it is given
+  # no permission to.
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ratio-demo-execution
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # ── Cost guardrail ──────────────────────────────────────────────────────
+  # The Function URL is public, so invocations are not bounded by who knows the
+  # link. Reserved concurrency in app.yaml caps the rate; this catches anything
+  # that gets past it, including a mistake that has nothing to do with the demo.
+  Budget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: ratio-account-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetUSD
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 50
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetEmail
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetEmail
+
+Outputs:
+  RepositoryUri:
+    Value: !GetAtt Repository.RepositoryUri
+  DeployRoleArn:
+    Description: Set as the AWS_DEPLOY_ROLE repository variable in GitHub.
+    Value: !GetAtt DeployRole.Arn
+  ExecutionRoleArn:
+    Description: Passed to the app stack.
+    Value: !GetAtt ExecutionRole.Arn

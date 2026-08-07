@@ -32,3 +32,9 @@ site/photos/_demo.png
 # Python bytecode — build.py and the generators get imported during authoring.
 __pycache__/
 *.pyc
+
+# Built by .github/workflows/deploy.yml into the Docker build context.
+# Generated per deploy from deploy/seed-demo-book.sh — never committed, because
+# a book checked in as bytes rots silently the first time a format changes.
+/deploy/ratio
+/deploy/demo-book/

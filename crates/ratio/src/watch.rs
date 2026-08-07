@@ -28,7 +28,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use prost::Message;
 use ratio_chart::{normal_side, Side};
 use ratio_proto::ratio::v1 as pb;
@@ -63,13 +63,75 @@ pub fn watch(book: PathBuf, port: u16) -> Result<()> {
     Ok(())
 }
 
-fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
+/// One parsed request. Only what the routes actually need.
+struct Request {
+    method: String,
+    path: String,
+    query: String,
+    body: String,
+}
+
+/// Read a request: the request line, the headers, and `Content-Length` bytes of
+/// body if there are any.
+///
+/// The first version of this read only the request line, which was enough while
+/// every route was a GET. `POST /mcp` carries the JSON-RPC call in the body, so
+/// the body has to be read exactly — read too little and the call is truncated,
+/// read greedily and the handler blocks waiting for bytes that never come.
+fn read_request(reader: &mut impl BufRead) -> Result<Request> {
     let mut line = String::new();
-    BufReader::new(stream.try_clone()?).read_line(&mut line)?;
-    let target = line.split_whitespace().nth(1).unwrap_or("/").to_string();
+    reader.read_line(&mut line)?;
+    let mut parts = line.split_whitespace();
+    let method = parts.next().unwrap_or("GET").to_string();
+    let target = parts.next().unwrap_or("/").to_string();
+
+    let mut length = 0usize;
+    loop {
+        let mut h = String::new();
+        if reader.read_line(&mut h)? == 0 || h == "\r\n" || h == "\n" {
+            break; // end of headers, or the peer hung up
+        }
+        if let Some((name, value)) = h.split_once(':') {
+            if name.trim().eq_ignore_ascii_case("content-length") {
+                length = value.trim().parse().unwrap_or(0);
+            }
+        }
+    }
+
+    // Cap the body. This endpoint is reachable from the internet when deployed,
+    // and an unbounded read is an invitation to fill memory with one request.
+    const MAX_BODY: usize = 1 << 20;
+    let mut body = String::new();
+    if length > 0 {
+        if length > MAX_BODY {
+            bail!("request body of {length} bytes exceeds the {MAX_BODY}-byte limit");
+        }
+        let mut buf = vec![0u8; length];
+        reader.read_exact(&mut buf)?;
+        body = String::from_utf8_lossy(&buf).into_owned();
+    }
+
     let (path, query) = match target.split_once('?') {
-        Some((p, q)) => (p, q),
-        None => (target.as_str(), ""),
+        Some((p, q)) => (p.to_string(), q.to_string()),
+        None => (target, String::new()),
+    };
+    Ok(Request { method, path, query, body })
+}
+
+fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let req = match read_request(&mut reader) {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = format!("{e:#}");
+            write!(
+                stream,
+                "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain; charset=utf-8\r\n\
+                 Content-Length: {}\r\nConnection: close\r\n\r\n{msg}",
+                msg.len()
+            )?;
+            return Ok(());
+        }
     };
 
     let json = |r: Result<String>| match r {
@@ -83,14 +145,36 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         ),
     };
 
-    let (status, content_type, body) = match path {
-        "/" => ("200 OK", "text/html; charset=utf-8", page(BALANCE_BODY, "balance")),
-        "/breaks" => ("200 OK", "text/html; charset=utf-8", page(BREAKS_BODY, "breaks")),
-        "/rules" => ("200 OK", "text/html; charset=utf-8", page(RULES_BODY, "rules")),
-        "/balance.json" => json(balance_json(book)),
-        "/postings.json" => json(postings_json(book, query)),
-        "/breaks.json" => json(breaks_json(book)),
-        "/rules.json" => json(rules_json(book)),
+    let (status, content_type, body) = match (req.method.as_str(), req.path.as_str()) {
+        (_, "/") => ("200 OK", "text/html; charset=utf-8", page(BALANCE_BODY, "balance")),
+        (_, "/breaks") => ("200 OK", "text/html; charset=utf-8", page(BREAKS_BODY, "breaks")),
+        (_, "/rules") => ("200 OK", "text/html; charset=utf-8", page(RULES_BODY, "rules")),
+        (_, "/balance.json") => json(balance_json(book)),
+        (_, "/postings.json") => json(postings_json(book, &req.query)),
+        (_, "/breaks.json") => json(breaks_json(book)),
+        (_, "/rules.json") => json(rules_json(book)),
+
+        // MCP over Streamable HTTP, so a model can reach the same tools the
+        // stdio transport exposes without a process on the caller's machine.
+        // The dispatcher is shared with `ratio mcp` — there is one tool list
+        // and one fence, not one per transport.
+        ("POST", "/mcp") => match ratio_mcp::handle_line(book, &req.body) {
+            Some(response) => ("200 OK", "application/json", response),
+            // A notification has no id and MUST NOT be answered. 202 with an
+            // empty body is what the transport says to send.
+            None => ("202 Accepted", "application/json", String::new()),
+        },
+        // Say what is wrong rather than 404ing a correct path with a wrong verb.
+        (_, "/mcp") => (
+            "405 Method Not Allowed",
+            "text/plain; charset=utf-8",
+            "MCP requests are POSTed to this path.".to_string(),
+        ),
+
+        // A liveness probe for whatever runs this. Cheap on purpose: it must
+        // not touch the book, or a probe becomes a load test.
+        (_, "/healthz") => ("200 OK", "text/plain; charset=utf-8", "ok".to_string()),
+
         _ => ("404 Not Found", "text/plain; charset=utf-8", "no".to_string()),
     };
 
@@ -415,7 +499,7 @@ const HEAD: &str = r##"<!doctype html>
 <title>Ratio</title>
 <!-- Inline, so the server stays a fixed route table and the browser never
      404s on a favicon in front of a customer. -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Crect%20width%3D%2216%22%20height%3D%2216%22%20rx%3D%223%22%20fill%3D%22%231B6440%22/%3E%3Crect%20x%3D%223%22%20y%3D%223.5%22%20width%3D%2210%22%20height%3D%221.6%22%20fill%3D%22%23FCFBF7%22/%3E%3Crect%20x%3D%224%22%20y%3D%226.6%22%20width%3D%222.2%22%20height%3D%226%22%20fill%3D%22%23FCFBF7%22/%3E%3Crect%20x%3D%229.8%22%20y%3D%226.6%22%20width%3D%222.2%22%20height%3D%226%22%20fill%3D%22%23FCFBF7%22/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2212%22%20fill%3D%22%231B6440%22%2F%3E%3Crect%20fill%3D%22%23FCFBF7%22%20x%3D%228.00%22%20y%3D%2219%22%20width%3D%2216.34%22%20height%3D%2210%22%20rx%3D%222%22%2F%3E%20%3Crect%20fill%3D%22%23FCFBF7%22%20x%3D%2229.34%22%20y%3D%2219%22%20width%3D%2226.66%22%20height%3D%2210%22%20rx%3D%222%22%2F%3E%20%3Crect%20fill%3D%22%23FCFBF7%22%20x%3D%228.00%22%20y%3D%2235%22%20width%3D%2248.00%22%20height%3D%2210%22%20rx%3D%222%22%2F%3E%3C%2Fsvg%3E">
 <style>
 :root{
   --ground:#FCFBF7; --surface:#E6EFE2; --raised:#FFFFFF;
@@ -837,6 +921,77 @@ function card(...kids) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse(raw: &str) -> Request {
+        read_request(&mut std::io::BufReader::new(raw.as_bytes())).unwrap()
+    }
+
+    #[test]
+    fn a_post_body_is_read_exactly() {
+        // Read too little and a JSON-RPC call arrives truncated; read greedily
+        // and the handler blocks on bytes the client never sends.
+        let body = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
+        let r = parse(&format!(
+            "POST /mcp HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        ));
+        assert_eq!(r.method, "POST");
+        assert_eq!(r.path, "/mcp");
+        assert_eq!(r.body, body);
+    }
+
+    #[test]
+    fn content_length_is_matched_case_insensitively() {
+        // HTTP header names are case-insensitive and real clients vary.
+        for name in ["Content-Length", "content-length", "CONTENT-LENGTH"] {
+            let r = parse(&format!("POST /mcp HTTP/1.1\r\n{name}: 2\r\n\r\nhi"));
+            assert_eq!(r.body, "hi", "{name}");
+        }
+    }
+
+    #[test]
+    fn a_get_with_no_body_still_parses() {
+        let r = parse("GET /balance.json?account=1 HTTP/1.1\r\nHost: x\r\n\r\n");
+        assert_eq!(r.method, "GET");
+        assert_eq!(r.path, "/balance.json");
+        assert_eq!(r.query, "account=1");
+        assert!(r.body.is_empty());
+    }
+
+    #[test]
+    fn an_oversized_body_is_refused_rather_than_allocated() {
+        // This endpoint faces the internet once deployed. An unbounded read is
+        // an invitation to fill memory with a single request.
+        let r = read_request(&mut std::io::BufReader::new(
+            "POST /mcp HTTP/1.1\r\nContent-Length: 99999999\r\n\r\n".as_bytes(),
+        ));
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn the_http_transport_reaches_the_same_tools_as_stdio() {
+        // One dispatcher, one tool list, one fence — not one per transport.
+        let book = fresh("mcphttp");
+        let req = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
+        let via_http = ratio_mcp::handle_line(&book, req).unwrap();
+        assert!(via_http.contains("propose_rule"), "{via_http}");
+    }
+
+    #[test]
+    fn the_fence_holds_over_http_too() {
+        // A transport is not a permission boundary. If HTTP could approve and
+        // stdio could not, the fence would be a property of the plumbing.
+        let book = fresh("mcpfence");
+        let req = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call",
+                      "params":{"name":"approve_rule","arguments":{"id":"x"}}}"#;
+        let out = ratio_mcp::handle_line(&book, req).unwrap();
+        assert!(out.contains("\"isError\":true"), "{out}");
+        assert!(out.contains("ratio approve"), "{out}");
+
+        let listed = ratio_mcp::handle_line(
+            &book, r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#).unwrap();
+        assert!(!listed.contains("approve_rule"), "approve_rule is listed: {listed}");
+    }
 
     #[test]
     fn json_strings_are_escaped() {
