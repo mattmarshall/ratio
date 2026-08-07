@@ -30,6 +30,17 @@ COPY demo-book /opt/demo-book
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/ratio /usr/local/bin/entrypoint.sh
 
+# Fail the build on an empty demo book rather than shipping one.
+#
+# This is not hypothetical: a .dockerignore that re-included `demo-book` but
+# not `demo-book/**` produced exactly that. The image built, the container
+# started, the adapter reported ready, and the demo served a blank ledger. An
+# assertion here turns a silent blank screen into a red build.
+RUN test -s /opt/demo-book/accounts.json \
+ && test -d /opt/demo-book/reports \
+ && test -d /opt/demo-book/proposals \
+ && echo "demo book present: $(find /opt/demo-book -type f | wc -l) file(s)"
+
 # The adapter polls this until the server answers, so a cold start does not
 # race the first request.
 ENV AWS_LWA_PORT=8080 \

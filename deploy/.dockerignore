@@ -1,6 +1,12 @@
-# Only what the image needs. Without this the build context is the whole deploy
-# directory including the CloudFormation templates and this file.
+# Only what the image needs. Without this the context is the whole deploy
+# directory, CloudFormation templates included.
+#
+# `!demo-book` alone is NOT enough. `*` excludes every root entry, and
+# re-including a directory does not re-include its children — the first build
+# shipped an empty /opt/demo-book, the container started fine, and the demo
+# served a blank ledger. The `/**` is what carries the contents.
 *
 !ratio
-!demo-book
 !entrypoint.sh
+!demo-book
+!demo-book/**

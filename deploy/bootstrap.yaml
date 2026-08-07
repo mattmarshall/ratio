@@ -144,6 +144,7 @@ Resources:
                 Action:
                   - cloudformation:CreateStack
                   - cloudformation:UpdateStack
+                  - cloudformation:DeleteStack
                   - cloudformation:DescribeStacks
                   - cloudformation:DescribeStackEvents
                   - cloudformation:DescribeStackResources
@@ -158,6 +159,11 @@ Resources:
                 Effect: Allow
                 Action:
                   - lambda:CreateFunction
+                  # Rollback deletes what a failed create left behind. Without
+                  # these the first failure wedges the stack in ROLLBACK_FAILED
+                  # and needs a human with admin to clear it by hand.
+                  - lambda:DeleteFunction
+                  - lambda:DeleteFunctionUrlConfig
                   - lambda:UpdateFunctionCode
                   - lambda:UpdateFunctionConfiguration
                   - lambda:GetFunction
@@ -173,6 +179,16 @@ Resources:
                   - lambda:TagResource
                   - lambda:ListTags
                 Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ratio-demo"
+              - Sid: TheHttpApiInFrontOfIt
+                Effect: Allow
+                Action:
+                  - apigateway:POST
+                  - apigateway:GET
+                  - apigateway:PATCH
+                  - apigateway:PUT
+                  - apigateway:DELETE
+                  - apigateway:TagResource
+                Resource: !Sub "arn:aws:apigateway:${AWS::Region}::/apis*"
               - Sid: TheFunctionsOwnLogGroup
                 Effect: Allow
                 Action:

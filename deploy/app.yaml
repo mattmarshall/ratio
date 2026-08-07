@@ -12,11 +12,22 @@ Parameters:
     Description: From the bootstrap stack.
   ReservedConcurrency:
     Type: Number
-    Default: 5
+    Default: 0
     Description: >
-      The hard cap on simultaneous invocations, and the main thing standing
-      between a public URL and a surprising bill. Five is more than a demo
-      needs and far less than a bill worth noticing.
+      Simultaneous invocations to reserve for this function; 0 leaves it unset.
+
+      Unset is correct here and is not a missing guardrail. A new AWS account
+      gets a total concurrency limit of 10, and AWS refuses any reservation
+      that would leave fewer than 10 unreserved — so on this account a
+      reservation cannot be created at all, and the account limit *is* the cap.
+      It is also the better cap: a template edit cannot widen it, and it bounds
+      every function in the account rather than this one.
+
+      Set this only after raising the account quota, and only if something else
+      in the account then needs protecting from the demo.
+
+Conditions:
+  ReserveConcurrency: !Not [!Equals [!Ref ReservedConcurrency, 0]]
 
 Resources:
   # Created explicitly rather than left to Lambda, which creates log groups
@@ -44,7 +55,10 @@ Resources:
       # Every request is a table render or one JSON-RPC call. Anything taking
       # longer than this is stuck, and should fail rather than bill.
       Timeout: 15
-      ReservedConcurrentExecutions: !Ref ReservedConcurrency
+      ReservedConcurrentExecutions: !If
+        - ReserveConcurrency
+        - !Ref ReservedConcurrency
+        - !Ref "AWS::NoValue"
       Environment:
         Variables:
           RATIO_BOOK: /tmp/book
@@ -56,39 +70,73 @@ Resources:
         - Key: purpose
           Value: demo
 
-  # A Function URL rather than an API Gateway or an ALB: it is the only one of
-  # the three that costs nothing at rest. An ALB alone would be roughly ten
-  # times the entire rest of this stack.
-  Url:
-    Type: AWS::Lambda::Url
+  # How the demo is reached.
+  #
+  # This was a public Lambda Function URL, then CloudFront-in-front-of-one.
+  # Neither works in this account: anonymous Function URLs are refused, and so
+  # is CloudFront's OAC-signed request. Both were verified rather than
+  # assumed — a SigV4 request signed with account credentials returns 200, a
+  # throwaway control function is refused identically, and no SCP or RCP is
+  # involved. Something above the account blocks Function URL access by
+  # principals outside it, and no template can turn that off.
+  #
+  # An HTTP API reaches the same function and works. It is also cheap in the
+  # same way a Function URL is: $1.00 per million requests and nothing at rest,
+  # so a demo used a few times a week rounds to zero. The one thing given up is
+  # response streaming, which nothing here uses.
+  Api:
+    Type: AWS::ApiGatewayV2::Api
     Properties:
-      TargetFunctionArn: !GetAtt Function.Arn
-      # A public demo has to be reachable without credentials. What keeps this
-      # safe is what the function can do, not who can call it: it holds no
-      # secrets, has no AWS permissions beyond writing its own logs, serves a
-      # book baked into its own image, and every cold start discards whatever
-      # the last caller did. The concurrency cap bounds the cost.
-      AuthType: NONE
-      InvokeMode: BUFFERED
-      Cors:
+      Name: ratio-demo
+      ProtocolType: HTTP
+      Description: The three screens and the MCP endpoint.
+      CorsConfiguration:
         AllowOrigins: ["*"]
-        AllowMethods: [GET, POST]
+        AllowMethods: [GET, POST, OPTIONS]
         AllowHeaders: [content-type, mcp-session-id, mcp-protocol-version]
         MaxAge: 3600
 
-  UrlPermission:
+  Integration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref Api
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt Function.Arn
+      # 2.0 is what the Lambda Web Adapter expects; on 1.0 it sees a different
+      # event shape and every request 500s.
+      PayloadFormatVersion: "2.0"
+      TimeoutInMillis: 15000
+
+  # One catch-all route. The application does its own routing — adding routes
+  # here would mean two route tables that have to agree, and they would not.
+  Route:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref Api
+      RouteKey: $default
+      Target: !Sub "integrations/${Integration}"
+
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref Api
+      # $default serves at the API root, so URLs carry no stage prefix and the
+      # links printed in the demo are the links people use.
+      StageName: $default
+      AutoDeploy: true
+
+  ApiInvoke:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt Function.Arn
-      Action: lambda:InvokeFunctionUrl
-      Principal: "*"
-      FunctionUrlAuthType: NONE
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*"
 
 Outputs:
-  FunctionUrl:
-    Description: The demo. Screens at /, MCP at POST /mcp.
-    Value: !GetAtt Url.FunctionUrl
+  DemoUrl:
+    Description: The demo. Screens at /, break report at /breaks, rules at /rules.
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/"
   McpEndpoint:
-    Value: !Sub
-      - "${Base}mcp"
-      - Base: !GetAtt Url.FunctionUrl
+    Description: POST JSON-RPC here. Same tools as `ratio mcp`, same fence.
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/mcp"
