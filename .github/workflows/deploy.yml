@@ -74,10 +74,7 @@ jobs:
 
       # Bazel only, never cargo — the same build the tests run against.
       - name: Build ratio
-        # RATIO_BUILD is baked into the binary and reported at /version, which is
-        # how the smoke test below tells the new deployment from a warm container
-        # still running the old one.
-        run: bazel build --lockfile_mode=error --action_env=RATIO_BUILD="${GITHUB_SHA}" //crates/ratio
+        run: bazel build --lockfile_mode=error //crates/ratio
 
       # Refuse to ship an image whose contents were never checked. The deploy
       # workflow runs on the same push as build.yml but not after it, so
@@ -123,7 +120,8 @@ jobs:
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               ImageUri='${{ steps.image.outputs.uri }}' \
-              ExecutionRoleArn="arn:aws:iam::${ACCOUNT_ID}:role/ratio-demo-execution"
+              ExecutionRoleArn="arn:aws:iam::${ACCOUNT_ID}:role/ratio-demo-execution" \
+              BuildSha="${GITHUB_SHA}"
 
       - name: Smoke test the deployed demo
         run: |

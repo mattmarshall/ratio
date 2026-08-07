@@ -10,6 +10,14 @@ Parameters:
   ExecutionRoleArn:
     Type: String
     Description: From the bootstrap stack.
+  BuildSha:
+    Type: String
+    Default: dev
+    Description: >
+      The commit this deployment serves, reported at /version. The smoke test
+      polls it to tell the new deployment from a warm container still running
+      the previous image — "the URL returns 200" never meant "the URL runs what
+      was just built".
   ReservedConcurrency:
     Type: Number
     Default: 0
@@ -62,6 +70,7 @@ Resources:
       Environment:
         Variables:
           RATIO_BOOK: /tmp/book
+          RATIO_BUILD: !Ref BuildSha
           AWS_LWA_PORT: "8080"
           AWS_LWA_READINESS_CHECK_PATH: /healthz
       Tags:

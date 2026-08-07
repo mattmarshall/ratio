@@ -236,7 +236,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         (_, "/version") => (
             "200 OK",
             "text/plain; charset=utf-8",
-            option_env!("RATIO_BUILD").unwrap_or("dev").to_string(),
+            std::env::var("RATIO_BUILD").unwrap_or_else(|_| "dev".into()),
         ),
 
         _ => ("404 Not Found", "text/plain; charset=utf-8", "no".to_string()),
