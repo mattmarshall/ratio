@@ -558,6 +558,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ratio-chart"
+version = "0.0.0"
+dependencies = [
+ "ratio-kernel",
+]
+
+[[package]]
 name = "ratio-common"
 version = "0.0.0"
 

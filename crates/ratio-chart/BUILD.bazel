@@ -1,0 +1,39 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+# `generated.rs` is Lean-authored (//lean:Ratio/Chart/Emit.lean) — the normal-
+# balance classification and the debit/credit split of a signed amount, both of
+# which carry proofs in //lean:chart_proof_test. Rendered by json_to_rust
+# straight into the crate as a src: one DAG edge, nothing to copy, nothing to
+# drift.
+genrule(
+    name = "generated_rs",
+    srcs = ["//lean:ratio_chart_ast"],
+    outs = ["src/generated.rs"],
+    cmd = "$(execpath //rust/json_to_rust:json_to_rust) $(execpath //lean:ratio_chart_ast) > $@",
+    tools = ["//rust/json_to_rust:json_to_rust"],
+)
+
+# `lib.rs` holds the folds over a posting list, written against the emitted
+# per-element primitives — the same split as ratio-kernel, where the records
+# are emitted and the aggregation mirrors the proof.
+rust_library(
+    name = "ratio-chart",
+    srcs = [
+        "src/lib.rs",
+        ":generated_rs",
+    ],
+    crate_name = "ratio_chart",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    deps = ["//crates/ratio-kernel"],
+)
+
+rust_test(
+    name = "ratio-chart_test",
+    crate = ":ratio-chart",
+    edition = "2021",
+)

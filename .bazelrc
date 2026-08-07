@@ -8,5 +8,13 @@ common --@protobuf//bazel/toolchains:prefer_prebuilt_protoc
 # Resolve the public fastverk registry first (rules_aip, rules_lean, …), then BCR
 # (rules_rust, protobuf, …). meridian + polyglot_ast come via local_path_override
 # (MODULE.bazel) until they're published — premium registry is retired.
-common --registry=https://raw.githubusercontent.com/fastverk/bazel-registry/main/
+#
+# ⚠️ registry.tbzl.dev, NOT raw.githubusercontent.com/fastverk/bazel-registry.
+# The registry moved in 2026-07 and the source.json files were reformatted in
+# the process, so their SHA-256s drifted from any lock pinned against the old
+# mirror. Symptom is a hard stop at "Computing the main repository mapping"
+# with `Checksum was X but wanted Y` for rules_lean. Note that --registry
+# ACCUMULATES rather than replaces, so leaving the old URL here kept the stale
+# entry in the chain even though ~/.bazelrc already had the new one.
+common --registry=https://registry.tbzl.dev/
 common --registry=https://bcr.bazel.build

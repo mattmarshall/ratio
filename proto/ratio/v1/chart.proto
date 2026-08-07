@@ -1,0 +1,237 @@
+syntax = "proto3";
+
+// Ratio's chart-of-accounts contract — the vocabulary a book is kept in, and
+// the trial balance over it.
+//
+// The kernel (see `ledger.proto`) knows only conserved dimensions and integer
+// amounts. An `Account` is the human-facing name for a dimension, plus the one
+// piece of classification the kernel cares about: which side is normal. That
+// classification is proved per case in `Ratio.Core` (`asset_debit_normal`, …)
+// and emitted to Rust, so this contract and the engine cannot disagree about it.
+//
+// `GetTrialBalance` is the accountant's view of conservation. It cannot report
+// an out-of-balance book that the kernel admitted:
+// `Ratio.Chart.trial_balance_ties` proves total debits equal total credits for
+// any conserving transaction, and conservation is closed under the ledger fold
+// (`Ratio.Core.ledger_conserves`).
+//
+// AIP-idiomatic (aip.dev); lints clean via //proto:ratio_aip_lint. Layout is
+// `ratio/v1/chart.proto` so the path matches `package ratio.v1` (AIP-191).
+package ratio.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+
+option java_multiple_files = true;
+option java_package = "com.fastverk.ratio.v1";
+option java_outer_classname = "ChartProto";
+
+// The chart of accounts: the named dimensions a book is kept in, and the trial
+// balance over them.
+service Chart {
+  option (google.api.default_host) = "ratio.fastverk.dev";
+
+  // Gets an account. (AIP-131)
+  rpc GetAccount(GetAccountRequest) returns (Account) {
+    option (google.api.http) = {get: "/v1/{name=books/*/accounts/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Lists the accounts in a book. (AIP-132)
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=books/*}/accounts"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Creates an account. (AIP-133)
+  rpc CreateAccount(CreateAccountRequest) returns (Account) {
+    option (google.api.http) = {
+      post: "/v1/{parent=books/*}/accounts"
+      body: "account"
+    };
+    option (google.api.method_signature) = "parent,account,account_id";
+  }
+
+  // Gets the trial balance of a book. Total debits equal total credits for any
+  // book the kernel admitted — this reads the invariant rather than checking
+  // it. (AIP-131)
+  rpc GetTrialBalance(GetTrialBalanceRequest) returns (TrialBalance) {
+    option (google.api.http) = {get: "/v1/{name=books/*/trialBalance}"};
+    option (google.api.method_signature) = "name";
+  }
+}
+
+// Which side of an account is its normal balance. Proved per account type in
+// `Ratio.Core` and emitted to the engine, so this enum and the running code are
+// the same definition.
+enum Side {
+  // Default value. This value is unused.
+  SIDE_UNSPECIFIED = 0;
+
+  // Debit — the normal side of assets and expenses.
+  SIDE_DEBIT = 1;
+
+  // Credit — the normal side of liabilities, equity and income.
+  SIDE_CREDIT = 2;
+}
+
+// The classification that determines an account's normal side.
+enum AccountType {
+  // Default value. This value is unused.
+  ACCOUNT_TYPE_UNSPECIFIED = 0;
+
+  // An asset. Normal side: debit.
+  ACCOUNT_TYPE_ASSET = 1;
+
+  // A liability. Normal side: credit.
+  ACCOUNT_TYPE_LIABILITY = 2;
+
+  // Equity. Normal side: credit.
+  ACCOUNT_TYPE_EQUITY = 3;
+
+  // Income. Normal side: credit.
+  ACCOUNT_TYPE_INCOME = 4;
+
+  // An expense. Normal side: debit.
+  ACCOUNT_TYPE_EXPENSE = 5;
+}
+
+// A named conserved dimension — what an accountant calls an account. (AIP-123)
+message Account {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Account"
+    pattern: "books/{book}/accounts/{account}"
+    singular: "account"
+    plural: "accounts"
+  };
+
+  // Identifier. The resource name of the account.
+  // Format: `books/{book}/accounts/{account}`
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The conserved dimension this account names. Postings carry this value.
+  int64 dim = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // Human-readable name, as it appears on a report.
+  string display_name = 3 [(google.api.field_behavior) = REQUIRED];
+
+  // The account's classification, which fixes its normal side.
+  AccountType account_type = 4 [(google.api.field_behavior) = REQUIRED];
+
+  // Output only. The normal side implied by `account_type`. Derived, never
+  // stored — the classification is the input and this is the proved function
+  // of it.
+  Side normal_side = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// The trial balance of a book: totals per side, and the difference between
+// them. (AIP-123)
+message TrialBalance {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/TrialBalance"
+    pattern: "books/{book}/trialBalance"
+    singular: "trialBalance"
+    plural: "trialBalances"
+  };
+
+  // Identifier. The resource name of the trial balance.
+  // Format: `books/{book}/trialBalance`
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // Output only. Total debits, in minor units. Exact integer; no floats.
+  int64 debits = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Output only. Total credits, in minor units, as a positive number.
+  int64 credits = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Output only. Debits minus credits. Zero for any book the kernel admitted;
+  // a non-zero value here would mean a posting reached the book without passing
+  // the conservation check.
+  int64 difference = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Output only. Per-account totals making up the balance above.
+  repeated AccountBalance account_balances = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Output only. Hash of the control-plane artifact the balance was computed
+  // under — the provenance that makes the figure reproducible.
+  string control_plane_hash = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One account's contribution to a trial balance.
+message AccountBalance {
+  // The account.
+  // Format: `books/{book}/accounts/{account}`
+  string account = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "ratio.fastverk.dev/Account"}
+  ];
+
+  // Debits posted to the account, in minor units.
+  int64 debits = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // Credits posted to the account, in minor units, as a positive number.
+  int64 credits = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+// Request message for `GetAccount`. (AIP-131)
+message GetAccountRequest {
+  // The name of the account to retrieve.
+  // Format: `books/{book}/accounts/{account}`
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "ratio.fastverk.dev/Account"}
+  ];
+}
+
+// Request message for `ListAccounts`. (AIP-132)
+message ListAccountsRequest {
+  // The book to list accounts from.
+  // Format: `books/{book}`
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {child_type: "ratio.fastverk.dev/Account"}
+  ];
+
+  // The maximum number of accounts to return. The service may return fewer.
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // A page token from a previous `ListAccounts` call.
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// Response message for `ListAccounts`. (AIP-132)
+message ListAccountsResponse {
+  // The accounts in the requested page.
+  repeated Account accounts = 1;
+
+  // A token to retrieve the next page, or empty if there are no more.
+  string next_page_token = 2;
+}
+
+// Request message for `CreateAccount`. (AIP-133)
+message CreateAccountRequest {
+  // The book to create the account in.
+  // Format: `books/{book}`
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {child_type: "ratio.fastverk.dev/Account"}
+  ];
+
+  // The account to create.
+  Account account = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // Optional client-assigned account id. (AIP-133)
+  string account_id = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// Request message for `GetTrialBalance`. (AIP-131)
+message GetTrialBalanceRequest {
+  // The name of the trial balance to retrieve.
+  // Format: `books/{book}/trialBalance`
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "ratio.fastverk.dev/TrialBalance"}
+  ];
+}

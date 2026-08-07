@@ -28,6 +28,20 @@ lean_test(
     entry = "Ratio/Core.lean",
 )
 
+# The chart layer: the trial balance ties (debits = credits is a restatement of
+# conservation, not a second check), and a balanced posting template stays
+# balanced at every amount it is applied at. Passes iff every theorem in
+# Ratio/Chart.lean elaborates.
+lean_test(
+    name = "chart_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Chart.lean",
+        "Ratio/Core.lean",
+    ],
+    entry = "Ratio/Chart.lean",
+)
+
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
@@ -50,4 +64,11 @@ lean_emit(
     srcs = _BUILDER_SRCS + ["Ratio/Kernel/Emit.lean"],
     entry = "Ratio/Kernel/Emit.lean",
     out = "ratio_kernel.ast.json",
+)
+
+lean_emit(
+    name = "ratio_chart_ast",
+    srcs = _BUILDER_SRCS + ["Ratio/Chart/Emit.lean"],
+    entry = "Ratio/Chart/Emit.lean",
+    out = "ratio_chart.ast.json",
 )

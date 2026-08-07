@@ -9,7 +9,10 @@ package(default_visibility = ["//visibility:public"])
 # `ratio/v1/ledger.proto` match `package ratio.v1` (AIP-191).
 aip_proto_library(
     name = "ratio_proto",
-    srcs = ["ratio/v1/ledger.proto"],
+    srcs = [
+        "ratio/v1/chart.proto",
+        "ratio/v1/ledger.proto",
+    ],
     strip_import_prefix = "/proto",
 )
 

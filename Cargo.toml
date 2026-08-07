@@ -6,6 +6,7 @@ resolver = "2"
 members = [
     "crates/ratio-common",
     "crates/ratio-kernel",
+    "crates/ratio-chart",
     "crates/ratio-api",
     "crates/ratio-tui",
     "crates/ratio",
