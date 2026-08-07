@@ -28,3 +28,7 @@ site/*.html
 site/_site/
 site/.venv/
 site/photos/_demo.png
+
+# Python bytecode — build.py and the generators get imported during authoring.
+__pycache__/
+*.pyc
