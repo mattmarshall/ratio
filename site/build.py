@@ -102,11 +102,9 @@ PAGES = {
         "Ratio's route to capability parity with the incumbent wealth-technology "
         "stack, component by component.",
     ),
-    "team": (
-        "team.src.html",
-        "The people behind Ratio, and the fund-accounting experience it is "
-        "built on.",
-    ),
+    # "team" is NOT built — the people grid is disabled pending each person's
+    # agreement to appear (see team.src.html). Re-add here, in verify.py, and
+    # in every page's nav to bring it back.
     "technical": (
         "technical.src.html",
         "How Ratio works: an accounting kernel whose central invariant is "
@@ -117,7 +115,7 @@ PAGES = {
 
 # Nav order is deliberate and is NOT sorted(PAGES) — it runs from audience to
 # mechanism: what it does, how it is built, when it lands, why it is correct.
-NAV_ORDER = ["index", "workflows", "platform", "compliance", "roadmap", "technical", "team"]
+NAV_ORDER = ["index", "workflows", "platform", "compliance", "roadmap", "technical"]
 
 TITLE_RE = re.compile(r"[ \t]*<title>(.*?)</title>\n?", re.S)
 

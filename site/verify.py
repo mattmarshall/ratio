@@ -25,7 +25,7 @@ import re
 import sys
 
 PAGES = ["index", "workflows", "platform", "compliance", "roadmap",
-         "technical", "team"]
+         "technical"]   # "team" withheld — see build.py
 
 # The practitioner page sells outcomes. Every one of these belongs on
 # platform.html or technical.html instead. See site/README.md.
