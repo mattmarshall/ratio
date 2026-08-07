@@ -11,6 +11,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import type {
+  Account,
   Break,
   ChangeLogEntry,
   ConfigVersion,
@@ -22,7 +23,10 @@ import type {
   ListNavStrikesResponse,
   ListBreaksResponse,
   ListChangeLogEntriesResponse,
+  ListAccountsResponse,
   ListFundsResponse,
+  ListPostingsResponse,
+  Posting,
 } from "./types.js";
 
 /** Where the API lives, relative to wherever the console is served from. */
@@ -165,5 +169,38 @@ export function useConfigDiff(
     enabled: !!version,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useAccounts(
+  fund: string | undefined,
+  filter: string,
+): UseQueryResult<Account[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "accounts", filter],
+    queryFn: () =>
+      get<ListAccountsResponse>(
+        `/${fund}/accounts${filter ? `?filter=${encodeURIComponent(filter)}` : ""}`,
+      ),
+    select: (r) => r.accounts,
+    enabled: !!fund,
+    placeholderData: (prev) => prev,
+    ...LIVE,
+  });
+}
+
+/// The lines behind one figure. Fetched when an account is opened rather than
+/// with the trial balance: a book has one row per account and many postings
+/// per row, and loading every line to show a column of totals would be the
+/// wrong trade in exactly the case that matters — a big book.
+export function usePostings(
+  account: string | undefined,
+): UseQueryResult<Posting[], Error> {
+  return useQuery({
+    queryKey: [account ?? "", "postings"],
+    queryFn: () => get<ListPostingsResponse>(`/${account}/postings`),
+    select: (r) => r.postings,
+    enabled: !!account,
+    ...LIVE,
   });
 }

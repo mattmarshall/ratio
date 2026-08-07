@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 set -euo pipefail
-exec python3 "$1" "$2" "$3"
+exec python3 "$1" "$2" "$3" "$4"

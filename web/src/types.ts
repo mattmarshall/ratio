@@ -33,6 +33,8 @@ export interface Fund {
   currencyCode: string;
   state: FundState;
   netAssetValue: Int64;
+  totalDebit: Int64;
+  totalCredit: Int64;
   trialBalanceDifference: Int64;
   openDifference: Int64;
   entryCount: Int64;
@@ -142,4 +144,46 @@ export interface DiffConfigVersionsResponse {
   baseDigest: string;
   digest: string;
   changes: RuleChange[];
+}
+
+export type AccountType =
+  | "ASSET"
+  | "EQUITY"
+  | "EXPENSE"
+  | "LIABILITY"
+  | "REVENUE"
+  | "UNSPECIFIED";
+
+/** One line of the trial balance. */
+export interface Account {
+  name: string;
+  displayName: string;
+  dimension: Int64;
+  type: AccountType;
+  debit: Int64;
+  credit: Int64;
+  /** Debits minus credits, signed and NOT flipped to the normal side. */
+  balance: Int64;
+  /** Sitting on the side its type calls abnormal. Legal, worth a look. */
+  abnormal: boolean;
+  postingCount: Int64;
+}
+
+export interface ListAccountsResponse {
+  accounts: Account[];
+  nextPageToken: string;
+}
+
+export interface Posting {
+  name: string;
+  entryId: string;
+  memo: string;
+  amount: Int64;
+  runningBalance: Int64;
+  configDigest: string;
+}
+
+export interface ListPostingsResponse {
+  postings: Posting[];
+  nextPageToken: string;
 }

@@ -95,7 +95,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .fund .meta{display:flex;justify-content:space-between;align-items:center;
   font-size:12px;color:var(--muted)}
 /* State is carried by a shape as well as a color, so it survives a printout,
-   a projector, and colour-blindness. */
+   a projector, and color blindness. */
 .state{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:11.5px}
 .state::before{content:"";width:8px;height:8px;flex:none}
 .state.struck{color:var(--good)}       .state.struck::before{background:var(--good);border-radius:50%}
@@ -261,3 +261,42 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .was{color:var(--text-2);text-decoration:line-through;
   text-decoration-color:var(--crit);opacity:.75}
 .now{color:#C6D3CB}
+
+/* The view switch. Two views over the same fund: the queue of what is wrong,
+   and the balance everything else is derived from. */
+.views{display:flex;gap:2px;margin-left:14px;padding:2px;border-radius:9px;
+  background:var(--raised);border:1px solid var(--rule)}
+.views button{padding:4px 12px;border:0;border-radius:7px;background:transparent;
+  color:var(--text-2);font-size:12.5px;font-weight:600;cursor:pointer}
+.views button:hover{color:var(--text)}
+.views button[aria-pressed="true"]{background:var(--surface);color:var(--text);
+  box-shadow:0 1px 2px var(--shadow)}
+
+/* The trial balance.
+   A four-column grid rather than a <table>: the rows are buttons, and a button
+   cannot be a <tr>. ARIA roles carry the table semantics a screen reader needs.
+   `tabular-nums` because a column of figures that does not line up is harder to
+   read than one that does, and this is the screen where that matters most. */
+.tb{display:flex;flex-direction:column;overflow-x:auto}
+.tbhead,.tbrow,.tbfoot{display:grid;
+  grid-template-columns:minmax(220px,1fr) 130px 130px 150px;
+  gap:14px;padding:9px 22px;align-items:baseline;min-width:660px;text-align:left}
+.tbhead{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);border-bottom:1px solid var(--rule)}
+.tbrow{border:0;border-bottom:1px solid var(--rule);background:transparent;
+  color:var(--text);font:inherit;cursor:pointer}
+.tbrow:hover{background:var(--raised)}
+.tbrow[aria-current="true"]{background:var(--raised);
+  box-shadow:inset 3px 0 0 var(--accent)}
+.tbrow .an{display:block;font-size:13.5px}
+.tbrow .at{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+.tbrow .abn{margin-left:7px;color:var(--warn);font-weight:600}
+.tb .num{font-variant-numeric:tabular-nums}
+.tbrow .bal{font-weight:600}
+/* The two columns that must agree. Reported, not asserted. */
+.tbfoot{border-top:1px solid var(--rule-2);font-weight:600;font-size:13px;
+  background:var(--raised);color:var(--text)}
+.tbfoot small{display:block;font-size:10.5px;font-weight:500;color:var(--muted);
+  letter-spacing:.05em;text-transform:uppercase;margin-top:2px}
+.posting .num small{display:block;font-size:10.5px;color:var(--muted);
+  font-weight:500;margin-top:1px}

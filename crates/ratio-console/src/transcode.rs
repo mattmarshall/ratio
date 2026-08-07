@@ -39,6 +39,10 @@ pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/{parent=funds/*}/configVersions" },
     Route { method: "GET", template: "/v1/{name=funds/*/configVersions/*}:diff" },
     Route { method: "GET", template: "/v1/{name=funds/*/configVersions/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*}/accounts" },
+    Route { method: "GET", template: "/v1/{parent=funds/*/accounts/*}/postings" },
+    Route { method: "GET", template: "/v1/{name=funds/*/accounts/*/postings/*}" },
+    Route { method: "GET", template: "/v1/{name=funds/*/accounts/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/navStrikes" },
     // A custom method (AIP-136) on GET, because replaying is safe and
     // idempotent — it folds a journal prefix and writes nothing.
@@ -83,6 +87,18 @@ pub fn serve(console: &Console, method: &str, path: &str, query: &str) -> Result
         }
         ["funds", id, "configVersions", v] => {
             to_json(&console.get_config_version(&format!("funds/{id}/configVersions/{v}"))?)?
+        }
+        ["funds", id, "accounts"] => {
+            to_json(&console.list_accounts(&format!("funds/{id}"), filter_of(query))?)?
+        }
+        ["funds", id, "accounts", a, "postings"] => {
+            to_json(&console.list_postings(&format!("funds/{id}/accounts/{a}"))?)?
+        }
+        ["funds", id, "accounts", a, "postings", p] => {
+            to_json(&console.get_posting(&format!("funds/{id}/accounts/{a}/postings/{p}"))?)?
+        }
+        ["funds", id, "accounts", a] => {
+            to_json(&console.get_account(&format!("funds/{id}/accounts/{a}"))?)?
         }
         ["funds", id, "navStrikes"] => {
             to_json(&console.list_nav_strikes(&format!("funds/{id}"))?)?
@@ -175,7 +191,7 @@ pub(crate) fn q(s: &str) -> String {
 // the integer kernel exists to prevent — and it would happen silently, in the
 // last hop, after the arithmetic had been exact the whole way.
 
-use ratio_proto::ratio::v1 as pb;
+use ratio_proto::ratio::console::v1 as pb;
 
 fn state_name(v: i32) -> &'static str {
     match pb::fund::State::try_from(v) {
@@ -208,10 +224,12 @@ impl JsonView for pb::Fund {
     fn to_json(&self) -> String {
         format!(
             "{{\"name\":{},\"displayName\":{},\"currencyCode\":{},\"state\":{},\
-             \"netAssetValue\":{},\"trialBalanceDifference\":{},\"openDifference\":{},\
+             \"netAssetValue\":{},\"totalDebit\":{},\"totalCredit\":{},\
+             \"trialBalanceDifference\":{},\"openDifference\":{},\
              \"entryCount\":{},\"openBreakCount\":{},\"configDigest\":{}}}",
             q(&self.name), q(&self.display_name), q(&self.currency_code),
             q(state_name(self.state)), q(&self.net_asset_value),
+            q(&self.total_debit), q(&self.total_credit),
             q(&self.trial_balance_difference), q(&self.open_difference),
             q(&self.entry_count.to_string()), q(&self.open_break_count.to_string()),
             q(&self.config_digest)
@@ -224,6 +242,61 @@ impl JsonView for pb::ListFundsResponse {
         format!(
             "{{\"funds\":[{}],\"nextPageToken\":{}}}",
             self.funds.iter().map(|f| f.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+fn account_type_name(v: i32) -> &'static str {
+    match pb::account::Type::try_from(v) {
+        Ok(pb::account::Type::Asset) => "ASSET",
+        Ok(pb::account::Type::Liability) => "LIABILITY",
+        Ok(pb::account::Type::Equity) => "EQUITY",
+        Ok(pb::account::Type::Revenue) => "REVENUE",
+        Ok(pb::account::Type::Expense) => "EXPENSE",
+        _ => "UNSPECIFIED",
+    }
+}
+
+impl JsonView for pb::Account {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"displayName\":{},\"dimension\":{},\"type\":{},\
+             \"debit\":{},\"credit\":{},\"balance\":{},\"abnormal\":{},\
+             \"postingCount\":{}}}",
+            q(&self.name), q(&self.display_name), q(&self.dimension),
+            q(account_type_name(self.r#type)), q(&self.debit), q(&self.credit),
+            q(&self.balance), self.abnormal, q(&self.posting_count)
+        )
+    }
+}
+
+impl JsonView for pb::ListAccountsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"accounts\":[{}],\"nextPageToken\":{}}}",
+            self.accounts.iter().map(|a| a.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+impl JsonView for pb::Posting {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"entryId\":{},\"memo\":{},\"amount\":{},\
+             \"runningBalance\":{},\"configDigest\":{}}}",
+            q(&self.name), q(&self.entry_id), q(&self.memo), q(&self.amount),
+            q(&self.running_balance), q(&self.config_digest)
+        )
+    }
+}
+
+impl JsonView for pb::ListPostingsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"postings\":[{}],\"nextPageToken\":{}}}",
+            self.postings.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
             q(&self.next_page_token)
         )
     }

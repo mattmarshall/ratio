@@ -7,12 +7,14 @@
 
 import { useEffect, useState } from "react";
 import {
+  useAccounts,
   useBreaks,
   useChangeLog,
   useConfigDiff,
   useConfigVersions,
   useFunds,
   useNavStrikes,
+  usePostings,
   useReplay,
 } from "./api.js";
 import {
@@ -22,7 +24,13 @@ import {
   count,
   money,
 } from "./format.js";
-import type { Break, ConfigVersion, Fund, NavStrike } from "./types.js";
+import type { Account, Break, ConfigVersion, Fund, NavStrike } from "./types.js";
+
+const ACCOUNT_FILTERS = [
+  { key: "", label: "Whole chart" },
+  { key: "posted", label: "Posted to" },
+  { key: "abnormal", label: "Abnormal side" },
+] as const;
 
 const FILTERS = [
   { key: "", label: "All" },
@@ -200,11 +208,126 @@ function Version({ v }: { v: ConfigVersion }) {
   );
 }
 
+/** The trial balance. Every account, whether or not anything touched it. */
+function Balance({
+  fund,
+  accounts,
+  selected,
+  onSelect,
+}: {
+  fund: Fund | undefined;
+  accounts: Account[];
+  selected: string | undefined;
+  onSelect: (name: string) => void;
+}) {
+  return (
+    <div className="tb" role="table" aria-label="Trial balance">
+      <div className="tbhead" role="row">
+        <span role="columnheader">Account</span>
+        <span role="columnheader" className="num">Debit</span>
+        <span role="columnheader" className="num">Credit</span>
+        <span role="columnheader" className="num">Balance</span>
+      </div>
+      {accounts.map((a) => (
+        <button
+          key={a.name}
+          className="tbrow"
+          role="row"
+          aria-current={a.name === selected}
+          onClick={() => onSelect(a.name)}
+        >
+          <span role="cell">
+            <span className="an">{a.displayName}</span>
+            <span className="at">
+              {a.type.toLowerCase()}
+              {/* An abnormal balance is legal. It is flagged, not scored. */}
+              {a.abnormal ? <b className="abn">abnormal side</b> : null}
+            </span>
+          </span>
+          <span role="cell" className="num">{a.debit === "0" ? "—" : money(a.debit)}</span>
+          <span role="cell" className="num">{a.credit === "0" ? "—" : money(a.credit)}</span>
+          <span role="cell" className="num bal">{money(a.balance)}</span>
+        </button>
+      ))}
+      {/* The two columns that must agree, and the difference reported as a
+          figure rather than as a green tick. */}
+      <div className="tbfoot" role="row">
+        <span role="cell">
+          {accounts.length} account{accounts.length === 1 ? "" : "s"}
+        </span>
+        <span role="cell" className="num">{fund ? money(fund.totalDebit) : "—"}</span>
+        <span role="cell" className="num">{fund ? money(fund.totalCredit) : "—"}</span>
+        <span role="cell" className="num bal">
+          {fund ? money(fund.trialBalanceDifference) : "—"}
+          <small>difference</small>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** The lines behind one figure, in journal order, with the running balance. */
+function Lines({ account }: { account: Account | undefined }) {
+  const postings = usePostings(account?.name);
+
+  if (!account) {
+    return <aside className="detail"><div className="empty">Select an account.</div></aside>;
+  }
+  return (
+    <aside className="detail" aria-label="Account detail">
+      <div className="dhead">
+        <h2>{account.displayName}</h2>
+        <div className="sub">
+          {account.type.toLowerCase()} · dimension {account.dimension}
+        </div>
+      </div>
+
+      <div className="dsec">
+        <h3>What it holds</h3>
+        <dl className="kv">
+          <dt>Debit</dt><dd className="num">{money(account.debit)}</dd>
+          <dt>Credit</dt><dd className="num">{money(account.credit)}</dd>
+          <dt>Balance</dt><dd className="num">{money(account.balance)}</dd>
+        </dl>
+      </div>
+
+      <div className="dsec postings">
+        <h3>Every line behind it</h3>
+        {postings.isError ? (
+          <div className="empty err">{postings.error.message}</div>
+        ) : null}
+        {postings.data?.length === 0 ? (
+          <div className="sub">Nothing has been posted to this account.</div>
+        ) : null}
+        {postings.data?.map((p) => (
+          <div className="posting" key={p.name}>
+            <span>
+              <div className="p1">{p.memo || "—"}</div>
+              <div className="p2 num">
+                {p.entryId} · {p.configDigest.slice(0, 7)}
+              </div>
+            </span>
+            <span className="num">
+              {money(p.amount)}
+              {/* The balance AFTER this line: where the figure came from, not
+                  just what it ended at. */}
+              <small>{money(p.runningBalance)}</small>
+            </span>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 export default function App() {
   const funds = useFunds();
   const [fundName, setFundName] = useState<string>();
   const [filter, setFilter] = useState<string>("");
   const [brkName, setBrkName] = useState<string>();
+  const [view, setView] = useState<"breaks" | "balance">("breaks");
+  const [acctFilter, setAcctFilter] = useState<string>("");
+  const [acctName, setAcctName] = useState<string>();
 
   // Select the first fund once the list arrives, and prefer one that needs
   // attention — an operator opening this wants the blocked fund, not the
@@ -219,9 +342,14 @@ export default function App() {
   const log = useChangeLog(fundName);
   const strikes = useNavStrikes(fundName);
   const versions = useConfigVersions(fundName);
+  // Only fetched on the trial-balance view: the exceptions queue does not
+  // show a chart, and a query nobody reads is a round trip nobody asked for.
+  const accounts = useAccounts(view === "balance" ? fundName : undefined, acctFilter);
   const fund: Fund | undefined = funds.data?.find((f) => f.name === fundName);
   const shown = breaks.data ?? [];
   const selected = shown.find((b) => b.name === brkName) ?? shown[0];
+  const rows = accounts.data ?? [];
+  const account = rows.find((a) => a.name === acctName) ?? rows[0];
 
   return (
     <div className="app">
@@ -237,6 +365,22 @@ export default function App() {
         <span className="crumb">
           Operations <span aria-hidden="true">/</span> <b>NAV</b>
         </span>
+        <nav className="views" aria-label="View">
+          <button
+            type="button"
+            aria-pressed={view === "breaks"}
+            onClick={() => setView("breaks")}
+          >
+            Exceptions
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === "balance"}
+            onClick={() => setView("balance")}
+          >
+            Trial balance
+          </button>
+        </nav>
         <span className="spacer" />
         <span className="who">
           <span className="avatar">OP</span>Operator
@@ -307,6 +451,46 @@ export default function App() {
             />
           </div>
 
+          {view === "balance" ? (
+            <>
+              <div className="qbar" role="group" aria-label="Filter accounts">
+                {ACCOUNT_FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    className="chip"
+                    type="button"
+                    aria-pressed={acctFilter === f.key}
+                    onClick={() => setAcctFilter(f.key)}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+                <span className="spacer" />
+                <span className="sortnote">
+                  {accounts.isFetching ? "refreshing…" : "Chart order"}
+                </span>
+              </div>
+              {accounts.isError ? (
+                <div className="empty err">{accounts.error.message}</div>
+              ) : null}
+              {!accounts.isPending && rows.length === 0 ? (
+                <div className="empty">
+                  {acctFilter
+                    ? "No account matches this filter."
+                    : "This book has no chart of accounts yet."}
+                </div>
+              ) : null}
+              {rows.length > 0 ? (
+                <Balance
+                  fund={fund}
+                  accounts={rows}
+                  selected={account?.name}
+                  onSelect={setAcctName}
+                />
+              ) : null}
+            </>
+          ) : (
+          <>
           <div className="qbar" role="group" aria-label="Filter breaks">
             {FILTERS.map((f) => (
               <button
@@ -366,6 +550,8 @@ export default function App() {
               </li>
             ))}
           </ul>
+          </>
+          )}
 
           {/* The time axis. Every figure above is "now"; this is every NAV this
               fund has struck, and each one can be re-derived on demand. */}
@@ -432,7 +618,7 @@ export default function App() {
           </section>
         </main>
 
-        <Detail brk={selected} />
+        {view === "balance" ? <Lines account={account} /> : <Detail brk={selected} />}
       </div>
     </div>
   );

@@ -28,7 +28,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use prost::Message;
-use ratio_proto::ratio::v1 as pb;
+use ratio_proto::ratio::console::v1 as pb;
+// The kernel's own contracts. A shadow run writes a `ratio.v1.BreakReport`,
+// which the console reads and translates into its own `Break` — two packages
+// because they are two APIs, and this is the seam between them.
+use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::RuleSet;
 use ratio_store::{AccountTypeRecord, ConfigStore, FileBook, Journal};
 
@@ -91,6 +95,118 @@ impl Console {
 
     // ── Console methods ───────────────────────────────────────────────────
 
+    /// The trial balance: every account in the chart with what it holds.
+    ///
+    /// The chart is the source of the rows, not the journal — an account with
+    /// no postings is a real row with a zero on it, and dropping it would make
+    /// an empty chart and a complete one look the same. `filter=posted` is
+    /// there for when you want only what moved.
+    pub fn list_accounts(&self, parent: &str, filter: &str) -> Result<pb::ListAccountsResponse> {
+        let fund = resource_id(parent, "funds")?;
+        let accounts = self.accounts_of(&fund)?;
+        let keep: Vec<pb::Account> = accounts
+            .into_iter()
+            .filter(|a| match filter {
+                "posted" => a.posting_count != "0",
+                "abnormal" => a.abnormal,
+                _ => true,
+            })
+            .collect();
+        Ok(pb::ListAccountsResponse { accounts: keep, next_page_token: String::new() })
+    }
+
+    pub fn get_account(&self, name: &str) -> Result<pb::Account> {
+        let (fund, dim) = nested_id(name, "funds", "accounts")?;
+        self.accounts_of(&fund)?
+            .into_iter()
+            .find(|a| a.dimension == dim)
+            .with_context(|| format!("no account {dim:?} in {fund}"))
+    }
+
+    /// Every account in a fund's chart, with its debit and credit totals.
+    fn accounts_of(&self, fund: &str) -> Result<Vec<pb::Account>> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        let totals = b.balances_by_dim()?;
+
+        let mut counts: BTreeMap<i64, i64> = BTreeMap::new();
+        for e in b.entries()? {
+            for p in e.postings {
+                *counts.entry(p.dim).or_default() += 1;
+            }
+        }
+
+        Ok(b.accounts()?
+            .into_iter()
+            .map(|a| {
+                let (debit, credit) = totals.get(&a.dim).copied().unwrap_or((0, 0));
+                let balance = debit - credit;
+                pb::Account {
+                    name: format!("funds/{fund}/accounts/{}", a.dim),
+                    display_name: a.display_name,
+                    dimension: a.dim.to_string(),
+                    r#type: account_type(a.account_type) as i32,
+                    debit: debit.to_string(),
+                    credit: credit.to_string(),
+                    balance: balance.to_string(),
+                    // The proved classification, not a second copy of it:
+                    // `is_normal_side` is emitted from the Lean that proves
+                    // one theorem per account type.
+                    abnormal: !ratio_chart::is_normal_side(a.account_type.into(), balance),
+                    posting_count: counts.get(&a.dim).copied().unwrap_or(0).to_string(),
+                }
+            })
+            .collect())
+    }
+
+    /// Every posting on one account, in journal order, each with the balance
+    /// after it.
+    pub fn list_postings(&self, parent: &str) -> Result<pb::ListPostingsResponse> {
+        let (fund, dim_str) = nested_id(parent, "funds", "accounts")?;
+        let dim: i64 = dim_str.parse().with_context(|| format!("{dim_str:?} is not a dimension"))?;
+        let path = self.book_path(&fund)?;
+        let b = FileBook::open(&path)?;
+
+        let mut running = 0i64;
+        let mut out = Vec::new();
+        for entry in b.entries()? {
+            // `leg` counts within the entry, so an entry that touches the same
+            // account twice yields two citable postings rather than one name
+            // for two lines.
+            for (leg, p) in entry.postings.iter().enumerate() {
+                if p.dim != dim {
+                    continue;
+                }
+                running += p.amount;
+                out.push(pb::Posting {
+                    name: format!("funds/{fund}/accounts/{dim}/postings/{}.{leg}", entry.id),
+                    entry_id: entry.id.clone(),
+                    memo: entry.memo.clone(),
+                    amount: p.amount.to_string(),
+                    running_balance: running.to_string(),
+                    config_digest: entry.config.as_str().to_string(),
+                });
+            }
+        }
+        Ok(pb::ListPostingsResponse { postings: out, next_page_token: String::new() })
+    }
+
+    pub fn get_posting(&self, name: &str) -> Result<pb::Posting> {
+        // `funds/f/accounts/1/postings/t1.0` — one segment deeper than
+        // `nested_id` handles, and the id itself contains a dot rather than a
+        // slash, so the split stays at six.
+        let parts: Vec<&str> = name.split('/').collect();
+        if parts.len() != 6 || parts[0] != "funds" || parts[2] != "accounts" || parts[4] != "postings" {
+            bail!("{name:?} is not a funds/*/accounts/*/postings/* name");
+        }
+        let parent = format!("funds/{}/accounts/{}", parts[1], parts[3]);
+        self.list_postings(&parent)?
+            .postings
+            .into_iter()
+            .find(|p| p.name == name)
+            .with_context(|| format!("no posting {:?}", parts[5]))
+    }
+
     pub fn list_funds(&self) -> Result<pb::ListFundsResponse> {
         let mut funds = Vec::new();
         for id in self.fund_ids()? {
@@ -144,6 +260,11 @@ impl Console {
             currency_code: "USD".into(),
             state: state as i32,
             net_asset_value: nav.to_string(),
+            // The same `tb` the difference below comes from, so the two
+            // columns and their difference can never be computed from
+            // different reads of the journal.
+            total_debit: tb.debits.to_string(),
+            total_credit: tb.credits.to_string(),
             trial_balance_difference: (tb.debits - tb.credits).to_string(),
             open_difference: open_difference.to_string(),
             entry_count: entries.len() as i64,
@@ -515,7 +636,7 @@ fn to_pb(fund: &str, s: &ratio_nav::Strike) -> pb::NavStrike {
     }
 }
 
-fn newest_report(book: &Path) -> Result<Option<pb::BreakReport>> {
+fn newest_report(book: &Path) -> Result<Option<kernel::BreakReport>> {
     let dir = book.join("reports");
     let mut found: Vec<PathBuf> = std::fs::read_dir(&dir)
         .map(|rd| {
@@ -533,17 +654,17 @@ fn newest_report(book: &Path) -> Result<Option<pb::BreakReport>> {
     match found.last() {
         None => Ok(None),
         Some(p) => Ok(Some(
-            pb::BreakReport::decode(&std::fs::read(p)?[..])
+            kernel::BreakReport::decode(&std::fs::read(p)?[..])
                 .with_context(|| format!("reading {}", p.display()))?,
         )),
     }
 }
 
 fn cause_text(cause: i32) -> String {
-    match pb::Cause::try_from(cause) {
-        Ok(pb::Cause::AmountDiffers) => "Figures differ",
-        Ok(pb::Cause::AbsentFromReport) => "Not in the report",
-        Ok(pb::Cause::AbsentFromRatio) => "Ratio produced nothing",
+    match kernel::Cause::try_from(cause) {
+        Ok(kernel::Cause::AmountDiffers) => "Figures differ",
+        Ok(kernel::Cause::AbsentFromReport) => "Not in the report",
+        Ok(kernel::Cause::AbsentFromRatio) => "Ratio produced nothing",
         _ => "Unspecified",
     }
     .to_string()
@@ -562,6 +683,19 @@ fn display_name(id: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// The store's classification as the console's enum. A `match` rather than a
+/// cast: the two enums are declared in different files and nothing but this
+/// function stops them drifting apart silently.
+fn account_type(t: AccountTypeRecord) -> pb::account::Type {
+    match t {
+        AccountTypeRecord::Asset => pb::account::Type::Asset,
+        AccountTypeRecord::Liability => pb::account::Type::Liability,
+        AccountTypeRecord::Equity => pb::account::Type::Equity,
+        AccountTypeRecord::Income => pb::account::Type::Revenue,
+        AccountTypeRecord::Expense => pb::account::Type::Expense,
+    }
 }
 
 /// `funds/abc` → `abc`, checking the collection is the one expected.
@@ -742,19 +876,19 @@ mod tests {
     fn breaks_are_ordered_by_money_and_severity_follows_the_tolerance() {
         let d = fresh("breaks");
         book(&d);
-        let report = pb::BreakReport {
+        let report = kernel::BreakReport {
             name: "books/demo/breakReports/r".into(),
             config_digest: "abc123".into(),
             scope: None,
             transactions_replayed: 2,
             entries_posted: 2,
             breaks: vec![
-                pb::BreakLine { account: 40, display_name: "Management fee payable".into(),
+                kernel::BreakLine { account: 40, display_name: "Management fee payable".into(),
                     ratio_amount: 100, reported_amount: 0, difference: 100,
-                    cause: pb::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
-                pb::BreakLine { account: 1, display_name: "Investments at fair value".into(),
+                    cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
+                kernel::BreakLine { account: 1, display_name: "Investments at fair value".into(),
                     ratio_amount: 25_000_000, reported_amount: 24_000_000, difference: 1_000_000,
-                    cause: pb::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
+                    cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
             ],
             exceptions: vec![],
             book_ties: true,
@@ -789,14 +923,14 @@ mod tests {
         // 404'd when followed — a list whose links are all dead.
         let d = fresh("roundtrip");
         book(&d);
-        let report = pb::BreakReport {
+        let report = kernel::BreakReport {
             name: "books/SOMETHING-ELSE/breakReports/r".into(),
             config_digest: "c".into(), scope: None,
             transactions_replayed: 1, entries_posted: 1,
-            breaks: vec![pb::BreakLine { account: 1,
+            breaks: vec![kernel::BreakLine { account: 1,
                 display_name: "Investments at fair value".into(),
                 ratio_amount: 5, reported_amount: 4, difference: 1,
-                cause: pb::Cause::AmountDiffers as i32, ratio_basis: "1".into() }],
+                cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() }],
             exceptions: vec![], book_ties: true };
         std::fs::create_dir_all(d.join("reports")).unwrap();
         std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
@@ -815,10 +949,10 @@ mod tests {
         // an email dead by morning.
         let d = fresh("stablename");
         book(&d);
-        let line = pb::BreakLine { account: 1, display_name: "Investments at fair value".into(),
+        let line = kernel::BreakLine { account: 1, display_name: "Investments at fair value".into(),
             ratio_amount: 5, reported_amount: 4, difference: 1,
-            cause: pb::Cause::AmountDiffers as i32, ratio_basis: "1".into() };
-        let mk = |n: &str| pb::BreakReport {
+            cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() };
+        let mk = |n: &str| kernel::BreakReport {
             name: format!("books/demo/breakReports/{n}"), config_digest: "c".into(), scope: None,
             transactions_replayed: 1, entries_posted: 1, breaks: vec![line.clone()],
             exceptions: vec![], book_ties: true };
@@ -871,6 +1005,113 @@ mod tests {
         // rather than inventing one.
         assert_eq!(vs.last().unwrap().actor, "");
         assert!(vs.last().unwrap().approve_time.is_none());
+    }
+
+    #[test]
+    fn the_trial_balance_agrees_with_itself() {
+        use ratio_store::{Account, AccountTypeRecord as A};
+        let d = fresh("trialbalance");
+        book(&d);
+        // `book()` posts to all five of its accounts, so a chart-sourced list
+        // and a journal-sourced one would be indistinguishable on it. This
+        // sixth account is the one that tells them apart.
+        {
+            let mut b = FileBook::open(&d).unwrap();
+            let mut chart = b.accounts().unwrap();
+            chart.push(Account {
+                dim: 3,
+                display_name: "Dividends receivable".into(),
+                account_type: A::Asset,
+            });
+            b.put_accounts(&chart).unwrap();
+        }
+
+        let c = Console::new(&d);
+        let rows = c.list_accounts("funds/demo", "").unwrap().accounts;
+
+        assert_eq!(rows.len(), 6, "every account in the chart, posted to or not");
+        let idle = rows.iter().find(|a| a.dimension == "3").expect("the untouched account is a row");
+        assert_eq!(idle.posting_count, "0");
+        assert_eq!(idle.balance, "0");
+        // …and `posted` is what drops it.
+        assert_eq!(c.list_accounts("funds/demo", "posted").unwrap().accounts.len(), 5);
+
+        let debit: i64 = rows.iter().map(|a| a.debit.parse::<i64>().unwrap()).sum();
+        let credit: i64 = rows.iter().map(|a| a.credit.parse::<i64>().unwrap()).sum();
+        assert_eq!(debit, credit, "the two columns must agree");
+
+        // And the fund reports the same two figures — they must come from one
+        // read of the journal, not two.
+        let f = c.get_fund("funds/demo").unwrap();
+        assert_eq!(f.total_debit, debit.to_string());
+        assert_eq!(f.total_credit, credit.to_string());
+        assert_eq!(f.trial_balance_difference, "0");
+    }
+
+    #[test]
+    fn a_balance_on_the_wrong_side_is_flagged() {
+        // ⚠ The demo book has no abnormal account, so `filter=abnormal`
+        // returns nothing there — and "nothing" reads the same whether the
+        // flag works or the filter is broken. This is the case that tells them
+        // apart: an asset with a credit balance.
+        use ratio_store::{Account, AccountTypeRecord as A, JournalEntry, PostingRecord};
+        let d = fresh("abnormal");
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 2, display_name: "Cash and equivalents".into(), account_type: A::Asset },
+            Account { dim: 20, display_name: "Capital contributions".into(), account_type: A::Equity },
+        ])
+        .unwrap();
+        let cfg = b.put(b"rules = []\n").unwrap();
+        b.set_active(&cfg).unwrap();
+        // Cash goes negative: an overdrawn account. Legal, and worth a look.
+        b.append(&JournalEntry {
+            id: "w1".into(),
+            memo: "drawn down past zero".into(),
+            config: cfg.clone(),
+            postings: vec![
+                PostingRecord { dim: 2, amount: -500 },
+                PostingRecord { dim: 20, amount: 500 },
+            ],
+        })
+        .unwrap();
+        drop(b);
+
+        let c = Console::new(&d);
+        let cash = c.get_account("funds/demo/accounts/2").unwrap();
+        assert_eq!(cash.balance, "-500");
+        assert!(cash.abnormal, "an asset with a credit balance sits on the abnormal side");
+
+        // Equity is credit-normal, so a credit balance is ordinary there —
+        // otherwise the flag would just be reporting the sign.
+        let equity = c.get_account("funds/demo/accounts/20").unwrap();
+        assert_eq!(equity.balance, "500");
+        assert!(equity.abnormal, "equity holding a DEBIT balance is the abnormal one");
+
+        let flagged = c.list_accounts("funds/demo", "abnormal").unwrap().accounts;
+        assert_eq!(flagged.len(), 2, "the filter returns exactly what is flagged");
+    }
+
+    #[test]
+    fn the_running_balance_lands_on_the_account_balance() {
+        let d = fresh("running");
+        book(&d);
+        let c = Console::new(&d);
+
+        for a in c.list_accounts("funds/demo", "posted").unwrap().accounts {
+            let lines = c.list_postings(&a.name).unwrap().postings;
+            assert!(!lines.is_empty(), "{} was filtered as posted-to", a.name);
+            // The whole claim of the screen: the lines add up to the figure.
+            assert_eq!(
+                lines.last().unwrap().running_balance,
+                a.balance,
+                "the last running balance on {} is not the account balance",
+                a.display_name,
+            );
+            // And each line is citable on its own.
+            let one = c.get_posting(&lines[0].name).unwrap();
+            assert_eq!(one.entry_id, lines[0].entry_id);
+        }
     }
 
     #[test]
@@ -1021,16 +1262,16 @@ mod tests {
     fn filters_are_the_three_the_console_offers() {
         let d = fresh("filter");
         book(&d);
-        let report = pb::BreakReport {
+        let report = kernel::BreakReport {
             name: "books/demo/breakReports/r".into(), config_digest: "c".into(), scope: None,
             transactions_replayed: 1, entries_posted: 1,
             breaks: vec![
-                pb::BreakLine { account: 1, display_name: "Investments at fair value".into(),
+                kernel::BreakLine { account: 1, display_name: "Investments at fair value".into(),
                     ratio_amount: 200_000, reported_amount: 0, difference: 200_000,
-                    cause: pb::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
-                pb::BreakLine { account: 40, display_name: "Management fee payable".into(),
+                    cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
+                kernel::BreakLine { account: 40, display_name: "Management fee payable".into(),
                     ratio_amount: 10, reported_amount: 0, difference: 10,
-                    cause: pb::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
+                    cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
             ],
             exceptions: vec![], book_ties: true };
         std::fs::create_dir_all(d.join("reports")).unwrap();

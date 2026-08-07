@@ -31,7 +31,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use prost::Message;
 use ratio_chart::{normal_side, Side};
-use ratio_proto::ratio::v1 as pb;
+use ratio_proto::ratio::console::v1 as pb;
+// The kernel's contracts — a shadow run's report is a `ratio.v1` message, and
+// the console's are `ratio.console.v1`. Two aliases because they are two APIs.
+use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::{check, render as render_rule, RuleSet};
 use ratio_store::{ConfigStore, FileBook, Journal};
 
@@ -496,7 +499,7 @@ fn breaks_json(book: &Path) -> Result<String> {
         return Ok("{\"report\":null}".to_string());
     };
 
-    let report = pb::BreakReport::decode(&std::fs::read(path)?[..])
+    let report = kernel::BreakReport::decode(&std::fs::read(path)?[..])
         .with_context(|| format!("reading {}", path.display()))?;
 
     let breaks: Vec<String> = report
@@ -511,10 +514,10 @@ fn breaks_json(book: &Path) -> Result<String> {
                 quote(&crate::minor(b.ratio_amount)),
                 quote(&crate::minor(b.reported_amount)),
                 quote(&crate::minor(b.difference)),
-                quote(match pb::Cause::try_from(b.cause) {
-                    Ok(pb::Cause::AmountDiffers) => "figures differ",
-                    Ok(pb::Cause::AbsentFromReport) => "not in the report",
-                    Ok(pb::Cause::AbsentFromRatio) => "Ratio produced nothing",
+                quote(match kernel::Cause::try_from(b.cause) {
+                    Ok(kernel::Cause::AmountDiffers) => "figures differ",
+                    Ok(kernel::Cause::AbsentFromReport) => "not in the report",
+                    Ok(kernel::Cause::AbsentFromRatio) => "Ratio produced nothing",
                     _ => "unspecified",
                 }),
                 quote(&b.ratio_basis)
@@ -529,11 +532,11 @@ fn breaks_json(book: &Path) -> Result<String> {
             format!(
                 "{{\"id\":{},\"refusal\":{},\"detail\":{}}}",
                 quote(&e.transaction_id),
-                quote(match pb::Refusal::try_from(e.refusal) {
-                    Ok(pb::Refusal::UnknownTransactionType) => "transaction type not covered",
-                    Ok(pb::Refusal::ForeignCurrency) => "foreign currency",
-                    Ok(pb::Refusal::DisposalWithoutBasis) => "disposal with no basis",
-                    Ok(pb::Refusal::NoRuleForType) => "no rule for this type",
+                quote(match kernel::Refusal::try_from(e.refusal) {
+                    Ok(kernel::Refusal::UnknownTransactionType) => "transaction type not covered",
+                    Ok(kernel::Refusal::ForeignCurrency) => "foreign currency",
+                    Ok(kernel::Refusal::DisposalWithoutBasis) => "disposal with no basis",
+                    Ok(kernel::Refusal::NoRuleForType) => "no rule for this type",
                     _ => "unspecified",
                 }),
                 quote(&e.detail)
@@ -1495,10 +1498,10 @@ mod tests {
     #[test]
     fn a_stored_report_is_read_back() {
         let book = fresh("report");
-        let report = pb::BreakReport {
+        let report = kernel::BreakReport {
             name: "books/b/breakReports/r".into(),
             config_digest: "abc123".into(),
-            scope: Some(pb::Scope {
+            scope: Some(kernel::Scope {
                 label: "equity-long-only-single-ccy".into(),
                 base_currency: "USD".into(),
                 transaction_types: vec!["buy".into()],
@@ -1506,13 +1509,13 @@ mod tests {
             }),
             transactions_replayed: 3,
             entries_posted: 4,
-            breaks: vec![pb::BreakLine {
+            breaks: vec![kernel::BreakLine {
                 account: 1,
                 display_name: "Investments at fair value".into(),
                 ratio_amount: 2_500_000,
                 reported_amount: 2_400_000,
                 difference: 100_000,
-                cause: pb::Cause::AmountDiffers as i32,
+                cause: kernel::Cause::AmountDiffers as i32,
                 ratio_basis: "3 posting(s)".into(),
             }],
             exceptions: vec![],

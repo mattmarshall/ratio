@@ -1,3 +1,5 @@
+exports_files(["src/types.ts"])
+
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
@@ -69,21 +71,6 @@ js_run_binary(
 # This asserts they still do — every message field, by name, in canonical JSON
 # form. Same discipline as //crates/ratio-console:transcode_test: a mirror
 # nothing compares is a mirror that drifts.
-sh_test(
-    name = "types_test",
-    size = "small",
-    srcs = ["types_test.sh"],
-    args = [
-        "$(rootpath types_test.py)",
-        "$(rootpath //proto:ratio/v1/console.proto)",
-        "$(rootpath src/types.ts)",
-    ],
-    data = [
-        "src/types.ts",
-        "types_test.py",
-        "//proto:ratio/v1/console.proto",
-    ],
-)
 
 # The shell, with the stylesheet and the bundle inlined.
 #

@@ -2,7 +2,10 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["Cargo.toml"])
+exports_files([
+    "Cargo.toml",
+    "src/transcode.rs",
+])
 
 rust_library(
     name = "ratio-console",
@@ -11,6 +14,7 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     deps = [
+        "//crates/ratio-chart",
         "//crates/ratio-nav",
         "//crates/ratio-rules",
         "//crates/ratio-store",

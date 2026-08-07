@@ -1,4 +1,4 @@
-exports_files(["ratio/v1/console.proto"])
+exports_files(["ratio/console/v1/console.proto"])
 
 load("@rules_aip//aip:defs.bzl", "aip_proto_library", "aip_proto_lint")
 load("@rules_rust//rust:defs.bzl", "rust_library_group")
@@ -13,7 +13,7 @@ aip_proto_library(
     name = "ratio_proto",
     srcs = [
         "ratio/v1/chart.proto",
-        "ratio/v1/console.proto",
+        "ratio/console/v1/console.proto",
         "ratio/v1/ledger.proto",
         "ratio/v1/recon.proto",
     ],
@@ -74,4 +74,28 @@ aip_proto_lint(
     name = "ratio_aip_lint",
     disable_rules = ["core::0192::has-comments"],
     proto = ":ratio_proto",
+)
+
+# ⛔ Both hand-written mirrors of the contract, checked against it.
+#
+# `web/src/types.ts` is what the client believes the wire looks like, and the
+# `JsonView` impls in `transcode.rs` are what actually writes it. Either can
+# drift silently — and the encoder is the dangerous one, because types.ts will
+# happily promise a field the server never sends and TypeScript will not care.
+sh_test(
+    name = "mirrors_test",
+    size = "small",
+    srcs = ["mirrors_test.sh"],
+    args = [
+        "$(rootpath mirrors_test.py)",
+        "$(rootpath ratio/console/v1/console.proto)",
+        "$(rootpath //web:src/types.ts)",
+        "$(rootpath //crates/ratio-console:src/transcode.rs)",
+    ],
+    data = [
+        "mirrors_test.py",
+        "ratio/console/v1/console.proto",
+        "//crates/ratio-console:src/transcode.rs",
+        "//web:src/types.ts",
+    ],
 )

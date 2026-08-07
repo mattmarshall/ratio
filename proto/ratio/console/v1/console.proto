@@ -23,8 +23,17 @@ syntax = "proto3";
 // from its annotation is a failing build rather than a 404 someone finds.
 //
 // AIP-idiomatic (aip.dev); lints clean via //proto:ratio_aip_lint. Layout is
-// `ratio/v1/console.proto` so the path matches `package ratio.v1` (AIP-191).
-package ratio.v1;
+// `ratio/console/v1/console.proto` so the path matches the package (AIP-191).
+// ⛔ ITS OWN PACKAGE, not `ratio.v1`.
+//
+// The console is a BFF over its own resource hierarchy (`funds/…`), while the
+// kernel contracts are keyed on `books/…`. Both need an `Account` and a
+// `Posting`, and they are not the same message: the kernel's carry integers
+// and classification, the console's carry rendered strings and a running
+// balance. Sharing a package made that a protoc error — "ratio.v1.Account is
+// already defined" — and the fix is not to rename the console's messages into
+// something they are not. It is to say that these are two APIs.
+package ratio.console.v1;
 
 import "google/api/annotations.proto";
 import "google/api/client.proto";
@@ -33,7 +42,7 @@ import "google/api/resource.proto";
 import "google/protobuf/timestamp.proto";
 
 option java_multiple_files = true;
-option java_package = "com.fastverk.ratio.v1";
+option java_package = "com.fastverk.ratio.console.v1";
 option java_outer_classname = "ConsoleProto";
 
 // What a fund controller works from.
@@ -87,6 +96,41 @@ service Console {
   rpc DiffConfigVersions(DiffConfigVersionsRequest)
       returns (DiffConfigVersionsResponse) {
     option (google.api.http) = {get: "/v1/{name=funds/*/configVersions/*}:diff"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // The trial balance: every account in the chart with what it holds.
+  // (AIP-132)
+  //
+  // This is the screen the whole product argues for. A NAV is a fold over
+  // these figures, and until you can open one there is no difference between
+  // a proved ledger and a confident one.
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/accounts"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one account with its balance. (AIP-131)
+  rpc GetAccount(GetAccountRequest) returns (Account) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/accounts/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Every posting on one account, in the order the journal holds them, each
+  // carrying the running balance after it. (AIP-132)
+  //
+  // The same answer `ratio explain` gives at a terminal. A figure that cannot
+  // name the lines behind it is a claim; this is what makes it a derivation.
+  rpc ListPostings(ListPostingsRequest) returns (ListPostingsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*/accounts/*}/postings"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one posting. (AIP-131)
+  rpc GetPosting(GetPostingRequest) returns (Posting) {
+    option (google.api.http) = {
+      get: "/v1/{name=funds/*/accounts/*/postings/*}"
+    };
     option (google.api.method_signature) = "name";
   }
 
@@ -169,6 +213,16 @@ message Fund {
   // that has been exact all the way through the kernel should not become a
   // double in the last hop to a browser.
   string net_asset_value = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The two column totals of the trial balance, in minor units. Equal for any
+  // book the journal accepted.
+  //
+  // On the fund rather than on ListAccountsResponse: they are properties of
+  // the book, not of a page of accounts, and AIP-132 is right that a list
+  // response carrying its own summary is a page whose meaning changes with
+  // page_size.
+  string total_debit = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string total_credit = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Debits minus credits. Zero for any book the journal accepted — it is
   // reported as a figure rather than a green tick because it is a proved
@@ -531,6 +585,131 @@ message DiffConfigVersionsResponse {
   // Empty when the two versions hold the same rules — which happens, because a
   // digest changes on any byte and formatting is a byte.
   repeated RuleChange changes = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message Account {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Account"
+    pattern: "funds/{fund}/accounts/{account}"
+    singular: "account"
+    plural: "accounts"
+  };
+
+  // What the account is, which fixes which side is normal for it.
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    TYPE_ASSET = 1;
+    TYPE_LIABILITY = 2;
+    TYPE_EQUITY = 3;
+    TYPE_REVENUE = 4;
+    TYPE_EXPENSE = 5;
+  }
+
+  // The resource name: `funds/{fund}/accounts/{account}`, where the account id
+  // is its dimension. The dimension is what postings carry, so it is the
+  // stable id; the display name is a label a chart can revise.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  string display_name = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The account dimension postings are keyed by.
+  string dimension = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  Type type = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Minor units, as strings. Debits and credits are reported separately as
+  // well as netted, because a netted figure hides gross activity — an account
+  // that moved ten million each way is not the same as one that never moved.
+  string debit = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string credit = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Debits minus credits. Signed, and not flipped to the account's normal
+  // side: a presentation that always shows a positive number cannot show the
+  // case worth seeing.
+  string balance = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // True when the balance sits on the side this type calls abnormal — a
+  // negative asset, a positive liability. Legal, and usually worth a look.
+  bool abnormal = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string posting_count = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One line of one entry, as it lands on an account.
+message Posting {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Posting"
+    pattern: "funds/{fund}/accounts/{account}/postings/{posting}"
+    singular: "posting"
+    plural: "postings"
+  };
+
+  // The resource name. The posting id is the entry id and the leg's position
+  // within that entry — one entry may touch the same account twice, and two
+  // lines that cannot be told apart cannot be cited.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  string entry_id = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string memo = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Minor units, as a string. Signed: a debit is positive.
+  string amount = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The account's balance after this line, folding from the start of the
+  // journal. This is the audit trail as a running figure rather than a final
+  // one — you can see where a balance became what it is.
+  string running_balance = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The configuration in force when this line was posted, which is not
+  // necessarily the one active now.
+  string config_digest = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListAccountsRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // `posted` for accounts that have postings on them, `abnormal` for those
+  // sitting on the wrong side; empty for the whole chart. Three chips, not an
+  // expression language — same reasoning as ListBreaks.
+  string filter = 4 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListAccountsResponse {
+  repeated Account accounts = 1;
+  string next_page_token = 2;
+}
+
+message GetAccountRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Account"
+  ];
+}
+
+message ListPostingsRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Account"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListPostingsResponse {
+  repeated Posting postings = 1;
+  string next_page_token = 2;
+}
+
+message GetPostingRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Posting"
+  ];
 }
 
 message ListNavStrikesRequest {
