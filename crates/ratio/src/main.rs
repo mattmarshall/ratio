@@ -42,6 +42,9 @@ usage:
   ratio apply FILE [--book DIR]        apply rules to events and post the result
   ratio post FILE [--book DIR]         post entries directly; refuses unbalanced
   ratio balance [--book DIR]           print the trial balance
+  ratio explain ACCOUNT [--book DIR]   read back the postings behind a figure
+  ratio recon TXNS.csv POSITIONS.csv   shadow-run a period and report breaks
+        [--book DIR] [--out FILE.pb] [--post]
   ratio watch [--book DIR] [--port N]  live trial balance in a browser
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
@@ -53,6 +56,20 @@ The book defaults to ./book, or $RATIO_BOOK if set.
 mod watch;
 
 fn main() -> Result<()> {
+    // Restore the default SIGPIPE behavior that Rust turns off at startup.
+    //
+    // Without this, `ratio balance | head` panics: `head` closes the pipe, the
+    // write fails, and `println!` unwraps it. Every command here prints enough
+    // to be piped into `head` or `less`, and a panic trace on screen during a
+    // demo is not a thing to explain away.
+    //
+    // Safe in the way this call is always safe: it runs before any thread is
+    // spawned, and SIG_DFL for SIGPIPE is the behavior every other command-line
+    // tool on the system already has.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (positional, book) = split_book_flag(&args)?;
     let cmd: Vec<&str> = positional.iter().map(String::as_str).collect();
@@ -70,6 +87,16 @@ fn main() -> Result<()> {
         ["apply", file] => apply(book, file),
         ["post", file] => post(book, file),
         ["balance"] => balance(book),
+        ["explain", account] => explain(book, account),
+        ["recon", txns, positions] => recon(book, txns, positions, None, false),
+        ["recon", txns, positions, "--post"] => recon(book, txns, positions, None, true),
+        ["recon", txns, positions, "--out", out] => {
+            recon(book, txns, positions, Some(out), false)
+        }
+        ["recon", txns, positions, "--out", out, "--post"]
+        | ["recon", txns, positions, "--post", "--out", out] => {
+            recon(book, txns, positions, Some(out), true)
+        }
         ["watch"] => watch::watch(book, 7373),
         ["watch", "--port", p] => {
             watch::watch(book, p.parse().context("--port must be a number")?)
@@ -116,6 +143,10 @@ pub(crate) fn init(book: PathBuf) -> Result<()> {
             acct(20, "Capital contributions", AccountTypeRecord::Equity),
             acct(21, "Unrealized gain", AccountTypeRecord::Equity),
             acct(30, "Dividend income", AccountTypeRecord::Income),
+            // A disposal relieves the investment at cost and books the
+            // difference here. Without it the scope in ratio-recon claims
+            // coverage this chart cannot deliver.
+            acct(31, "Realized gain on investments", AccountTypeRecord::Income),
             acct(40, "Management fee payable", AccountTypeRecord::Liability),
         ])?;
     }
@@ -388,6 +419,153 @@ pub(crate) fn minor(v: i64) -> String {
     } else {
         s
     }
+}
+
+/// Read back every posting behind one account's balance.
+///
+/// The break report tells a reader to run this, so it has to exist: an
+/// instruction pointing at a missing command is worse than no instruction.
+/// Takes a dimension number or an account name.
+fn explain(book: PathBuf, account: &str) -> Result<()> {
+    let b = FileBook::open(&book)?;
+    let chart = b.accounts()?;
+    let dim = match account.parse::<i64>() {
+        Ok(d) => d,
+        Err(_) => {
+            chart
+                .iter()
+                .find(|a| a.display_name.eq_ignore_ascii_case(account.trim()))
+                .with_context(|| format!("no account named `{account}` in the chart"))?
+                .dim
+        }
+    };
+    let name = chart
+        .iter()
+        .find(|a| a.dim == dim)
+        .map(|a| a.display_name.clone())
+        .unwrap_or_else(|| format!("dim {dim}"));
+
+    let mut total = 0i64;
+    let mut rows = Vec::new();
+    for entry in b.entries()? {
+        for p in &entry.postings {
+            if p.dim == dim {
+                total += p.amount;
+                // Every line carries the configuration in force when it was
+                // posted, not the one active now — a period spanning a change
+                // has to show which entry used which.
+                rows.push(format!(
+                    "  {:<18}{:>16}  {}  {}",
+                    entry.id,
+                    minor(p.amount),
+                    entry.config.short(),
+                    entry.memo
+                ));
+            }
+        }
+    }
+
+    if rows.is_empty() {
+        println!("{name} has no postings.");
+        return Ok(());
+    }
+    println!("{name} — {} posting(s)", rows.len());
+    println!();
+    println!("  {:<18}{:>16}  {:<8}  {}", "ENTRY", "AMOUNT", "CONFIG", "MEMO");
+    for r in &rows {
+        println!("{r}");
+    }
+    println!();
+    println!("  {:<18}{:>16}", "net", minor(total));
+    println!();
+    println!(
+        "Re-running the configuration each line names reproduces that line exactly."
+    );
+    Ok(())
+}
+
+/// Shadow-run a period: replay a transactions file through the active
+/// configuration and compare against the positions the incumbent reported.
+///
+/// # Exit codes
+///
+/// A shadow run has three outcomes and they are not the same thing, so they
+/// get different codes rather than all being "success with different text":
+///
+/// | code | meaning |
+/// |---|---|
+/// | 0 | reconciled, no differences |
+/// | 2 | reconciled, differences found |
+/// | 3 | **refused** — the file contains rows outside the run's scope |
+///
+/// 3 is not a failure of the run; it is the run declining to produce a
+/// comparison it cannot stand behind. Conflating it with 2 would let a
+/// refusal be scripted as "breaks found" and quietly investigated as data.
+fn recon(
+    book: PathBuf,
+    txns: &str,
+    positions: &str,
+    out: Option<&str>,
+    post: bool,
+) -> Result<()> {
+    let mut b = FileBook::open(&book)?;
+    let digest = b
+        .active()?
+        .context("no configuration promoted — run `ratio approve` first")?;
+    let set = RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))?;
+    let chart = b.accounts()?;
+
+    let txn_text = std::fs::read_to_string(txns).with_context(|| format!("reading {txns}"))?;
+    let pos_text =
+        std::fs::read_to_string(positions).with_context(|| format!("reading {positions}"))?;
+
+    let parsed = ratio_recon::parse_transactions(&txn_text)
+        .with_context(|| format!("parsing {txns}"))?;
+    let reported = ratio_recon::parse_reported(&pos_text, &chart)
+        .with_context(|| format!("parsing {positions}"))?;
+
+    let scope = ratio_recon::equity_long_only_single_ccy("USD");
+    let (report, entries) =
+        ratio_recon::reconcile_with_entries(&parsed, &reported, &scope, &set, &chart, &digest)?;
+
+    print!("{}", ratio_recon::render(&report));
+
+    if post {
+        // Only entries from a run that was not refused ever reach the book —
+        // `reconcile_with_entries` hands back none for a refused file, so a
+        // partial period cannot be written even by asking.
+        for entry in &entries {
+            b.append(entry)
+                .with_context(|| format!("posting {}", entry.id))?;
+        }
+        if !entries.is_empty() {
+            println!("\nposted {} entrie(s) into {}", entries.len(), book.display());
+            println!("  ratio explain <account> --book {}", book.display());
+        }
+    }
+
+    if let Some(path) = out {
+        use prost::Message;
+        let book_name = book
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "book".into());
+        // The run is named for the configuration that produced it, so two
+        // reports over the same period under different configurations do not
+        // land on the same name.
+        let id = format!("{}-{}", digest.short(), parsed.len());
+        std::fs::write(path, report.to_proto(&book_name, &id).encode_to_vec())
+            .with_context(|| format!("writing {path}"))?;
+        println!("\nwrote {path}");
+    }
+
+    std::process::exit(if !report.was_reconciled() {
+        3
+    } else if report.breaks.is_empty() {
+        0
+    } else {
+        2
+    });
 }
 
 /// Serve the MCP tools on stdio, for a model to call.

@@ -109,5 +109,19 @@ READ="$("$RATIO" mcp --book book < read.jsonl)"
 has "$READ" "$CONFIG" "the reported balance must cite the config that produced it"
 pass "reporting, not deciding"
 
+echo "== 8. and none of it panics when piped =="
+# Rust turns SIGPIPE off at startup, so `ratio explain | head` panics unless
+# main puts it back. This check needs output larger than the 64KB pipe buffer
+# or the producer finishes before the reader closes anything and the check
+# passes vacuously — which is why it lives here, after ten thousand entries,
+# and not in a script with a six-entry book.
+LINES="$("$RATIO" explain 10 --book book | wc -l)"
+[ "$LINES" -gt 10000 ] || fail "explain printed $LINES lines, too few to close a pipe on"
+set +o pipefail
+"$RATIO" explain 10 --book book 2>err.txt | head -2 >/dev/null
+set -o pipefail
+grep -qF "panicked" err.txt && fail "panicked on a closed pipe: $(cat err.txt)"
+pass "$LINES lines through a pipe closed at 2, no panic"
+
 echo
 echo "the model wrote the rule, and still could not have made the books wrong."

@@ -185,18 +185,59 @@ name on it), and *merges* into the active rule set rather than replacing it, so
 approving a fee rule does not silently retire the trade rules. Both are tested,
 and the merge test was negative-tested by sabotaging the merge.
 
-### Stage 3 — the wedge
+### Stage 3 — the wedge — ✅ BUILT (`crates/ratio-recon`, `ratio recon`)
 
-- Ingest **one** file format. Pick the one the first prospect actually has;
-  do not build a framework for formats you have not seen.
+- Ingest **one** file format. **Deviation, flagged:** there is no first
+  prospect yet, so the format is a plain CSV with a documented column
+  contract — the thing any prospect can hand over on a first call without an
+  integration project. Columns are located by header name, not position,
+  because a customer's export reorders them between runs. When a real prospect
+  appears, their format replaces this one; it does not get generalized into a
+  framework for both.
 - Replay against the customer's reported positions and produce a break report:
   each difference, its cause, and the config hash that produced Ratio's figure.
-- **Scope it to a fund type where coverage can be complete** — single currency,
-  long-only equities, plain trades, cash dividends, one management fee. A fund
-  with FX, corporate actions or tax lots will generate false breaks and the
-  engagement dies on the first call.
+  The report is `ratio.v1.BreakReport` — a proto, because it is the artifact
+  the customer keeps and argues with. `--out` writes it.
+- **Scope it to a fund type where coverage can be complete.** The scope is
+  declared (`equity-long-only-single-ccy`) and is a **gate, not a best
+  effort**: one row outside it and the run produces *no breaks at all*, only
+  exceptions naming every such row. A partial replay compared against a whole
+  period's positions manufactures a break for everything it skipped, and those
+  breaks are Ratio's fault, not the customer's.
 - **Done when:** a real period reconciles to zero differences, or every
-  difference has an explanation the customer agrees with.
+  difference has an explanation the customer agrees with. *A synthetic quarter
+  reconciles to zero in `demo/shadow-run.sh`; the second half waits on a real
+  customer.*
+
+#### Three design decisions worth keeping
+
+**A disposal must carry its basis.** A sale relieves the investment at cost,
+and without tax lots there is no way to know the cost. Relieving at proceeds
+instead produces an entry that *balances* while leaving the investment figure
+wrong — the worst failure available, because it ties. So a disposal without a
+`basis` column is refused. Given one, no tax-lot engine is needed: the source
+system already chose which lots to relieve, and taking that choice as input is
+correct for a run that is trying to reproduce their books rather than replace
+their decisions.
+
+**A sale is two balanced events, not a three-legged rule.** A rule is a weight
+vector applied to one amount and cannot carry two. Rather than extend the rule
+model, `sell` compiles to `disposal_proceeds` at proceeds and `disposal_basis`
+at basis; both conserve, so their sum does. This works because the ledger is a
+monoidal fold over conserved vectors — the property `Ratio.Core` proves — and
+it is why the rule model did not need changing.
+
+**Three exit codes, because there are three outcomes.** `0` reconciled clean,
+`2` reconciled with differences, `3` refused. Conflating 3 with 2 would let a
+refusal be scripted as "breaks found" and quietly investigated as data.
+
+#### Still open
+
+- A zero-difference run on a *real* customer's period. Everything above is
+  verified against a synthetic quarter.
+- The `--post` path writes the shadow book, but there is no way to compare two
+  runs under different configurations — which is what "we changed the fee rule,
+  what moved?" actually needs.
 
 ---
 

@@ -13,10 +13,13 @@ ratio-kernel = { path = "../ratio-kernel" }
 ratio-api = { path = "../ratio-api" }
 ratio-chart = { path = "../ratio-chart" }
 ratio-mcp = { path = "../ratio-mcp" }
+ratio-recon = { path = "../ratio-recon" }
 ratio-rules = { path = "../ratio-rules" }
 ratio-store = { path = "../ratio-store" }
 ratio-tui = { path = "../ratio-tui" }
 anyhow = "1"
+libc = "0.2"
+prost = "0.13"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The `server` subcommand: a tonic gRPC server on a tokio runtime.

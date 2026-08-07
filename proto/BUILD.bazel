@@ -12,6 +12,7 @@ aip_proto_library(
     srcs = [
         "ratio/v1/chart.proto",
         "ratio/v1/ledger.proto",
+        "ratio/v1/recon.proto",
     ],
     strip_import_prefix = "/proto",
 )

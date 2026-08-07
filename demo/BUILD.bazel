@@ -14,3 +14,14 @@ sh_test(
     args = ["$(rootpath //crates/ratio)"],
     data = ["//crates/ratio"],
 )
+
+# The shadow run — PLAN.md Stage 3. Covers what the ratio-recon unit tests
+# cannot: the three exit codes, that --post writes nothing for a refused file,
+# and that the commands a report tells a reader to run actually exist.
+sh_test(
+    name = "shadow_run_test",
+    size = "small",
+    srcs = ["shadow-run.sh"],
+    args = ["$(rootpath //crates/ratio)"],
+    data = ["//crates/ratio"],
+)

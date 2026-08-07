@@ -586,11 +586,14 @@ name = "ratio"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "libc",
+ "prost",
  "ratio-api",
  "ratio-chart",
  "ratio-common",
  "ratio-kernel",
  "ratio-mcp",
+ "ratio-recon",
  "ratio-rules",
  "ratio-store",
  "ratio-tui",
@@ -640,6 +643,16 @@ dependencies = [
  "ratio-store",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "ratio-recon"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "prost",
+ "ratio-rules",
+ "ratio-store",
 ]
 
 [[package]]

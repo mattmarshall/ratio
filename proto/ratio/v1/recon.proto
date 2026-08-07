@@ -1,0 +1,177 @@
+syntax = "proto3";
+
+// Reconciliation — the shadow run. PLAN.md Stage 3.
+//
+// A prospect hands over a period's transactions and the positions their
+// incumbent system reported. Ratio replays the transactions through a
+// configuration a human approved, compares, and produces a `BreakReport`:
+// every difference, its cause, and the configuration hash that produced
+// Ratio's figure.
+//
+// # Why this contract refuses more than it reports
+//
+// The failure that kills a shadow run is not a missed break. It is a **false**
+// break — a difference Ratio reports because it modeled something it does not
+// actually cover. The customer checks two, finds them both spurious, and stops
+// reading. So coverage is a gate, not a best effort: a file containing
+// anything outside the declared `Scope` yields `Exception`s and **no breaks at
+// all**, naming every row it saw and why. Silence about what you cannot model
+// is the expensive kind of wrong.
+//
+// The report is a proto because it crosses a boundary: it is the artifact the
+// customer reads, keeps, and argues with, and it is what "every difference has
+// an explanation the customer agreed with" gets recorded in.
+//
+// AIP-idiomatic (aip.dev); lints clean via //proto:ratio_aip_lint. Layout is
+// `ratio/v1/recon.proto` so the path matches `package ratio.v1` (AIP-191).
+package ratio.v1;
+
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+
+option java_multiple_files = true;
+option java_package = "com.fastverk.ratio.v1";
+option java_outer_classname = "ReconProto";
+
+// What a reconciliation covers. Declared, not inferred — a run states its
+// scope up front so the gate has something to check a file against, and so a
+// reader knows what a clean report does and does not prove.
+//
+// Deliberately **not** a resource (AIP-122): a scope is never stored, fetched
+// by name, or mutated. It is the parameters of one run, and it is embedded in
+// the report rather than referenced because a report that has to be joined to
+// something else to say what it covered is a report that will be read without
+// its scope.
+message Scope {
+  // A short label for the scope, for a reader: `equity-long-only-single-ccy`.
+  string label = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // ISO 4217. Every amount in the file must be in this currency; a second
+  // currency means FX, which this scope does not cover.
+  string base_currency = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The transaction types the run will accept. A type outside this list is a
+  // refusal, not a warning.
+  repeated string transaction_types = 3 [(google.api.field_behavior) = REQUIRED];
+
+  // What this scope deliberately does not cover, in words a fund accountant
+  // would use. Carried into the report so a clean result is never mistaken for
+  // a broader claim than it is.
+  repeated string exclusions = 4 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// Why a file could not be reconciled. Every value names something the run
+// found that it does not model — never a parse failure, which is an error.
+enum Refusal {
+  REFUSAL_UNSPECIFIED = 0;
+
+  // A transaction type not in the scope's list.
+  REFUSAL_UNKNOWN_TRANSACTION_TYPE = 1;
+
+  // An amount in a currency other than the base. Modeling this needs FX rates
+  // and a translation policy, and guessing either produces false breaks.
+  REFUSAL_FOREIGN_CURRENCY = 2;
+
+  // A disposal with no cost basis given. Relieving it would require tax lots;
+  // relieving it at proceeds instead balances the entry while making the
+  // investment figure wrong — a break that looks like Ratio's fault.
+  REFUSAL_DISPOSAL_WITHOUT_BASIS = 3;
+
+  // A transaction type naming a rule the active configuration does not have.
+  // The scope claims coverage the configuration cannot deliver.
+  REFUSAL_NO_RULE_FOR_TYPE = 4;
+}
+
+// One thing in the file that the run does not model.
+message Exception {
+  // Which row, by the file's own identifier.
+  string transaction_id = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // Why it was refused.
+  Refusal refusal = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // What to do about it, addressed to whoever hands over the next file.
+  string detail = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+// What kind of difference this is.
+enum Cause {
+  CAUSE_UNSPECIFIED = 0;
+
+  // Both sides carry the account; the figures differ.
+  CAUSE_AMOUNT_DIFFERS = 1;
+
+  // Ratio produced a balance for an account the report does not carry.
+  CAUSE_ABSENT_FROM_REPORT = 2;
+
+  // The report carries an account Ratio produced nothing for.
+  CAUSE_ABSENT_FROM_RATIO = 3;
+}
+
+// One difference between Ratio's figure and the reported one.
+message Break {
+  // The account dimension.
+  int64 account = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The account's name in the book, for a reader.
+  string display_name = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Ratio's balance, in minor units. Never a float: an exact figure that meets
+  // a float in the last six inches of its journey stops being exact.
+  int64 ratio_amount = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The reported balance, in minor units.
+  int64 reported_amount = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // `ratio_amount - reported_amount`, in minor units.
+  int64 difference = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  Cause cause = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What produced Ratio's figure, said in words. Not an explanation of the
+  // break — Ratio does not know why the other system disagrees — but of its
+  // own number, which is the half of the difference it can account for.
+  string ratio_basis = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// The result of a shadow run.
+message BreakReport {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/BreakReport"
+    pattern: "books/{book}/breakReports/{break_report}"
+    singular: "breakReport"
+    plural: "breakReports"
+  };
+
+  // The resource name: `books/{book}/breakReports/{break_report}`.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The configuration that produced every Ratio figure in this report. The
+  // report is worthless without it: it is what makes the run repeatable, and
+  // what a disagreement is argued against.
+  string config_digest = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What the run covered.
+  Scope scope = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How many transactions were replayed.
+  int64 transactions_replayed = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How many journal entries that produced.
+  int64 entries_posted = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The differences. Empty means the period reconciled — which is Stage 3's
+  // first "done when".
+  repeated Break breaks = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Rows the run refused. **If this is non-empty the report was not produced**
+  // — a partial reconciliation is the false-break machine this whole design
+  // exists to avoid. It is carried here so the refusal itself is an artifact
+  // the customer can act on.
+  repeated Exception exceptions = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // True when the replayed book itself ties. A false value is a defect in
+  // Ratio, not a break: the kernel refuses a non-conserving entry, so this
+  // cannot be false for a book the journal accepted.
+  bool book_ties = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
