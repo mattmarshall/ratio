@@ -397,6 +397,39 @@ fn tool_trial_balance(book: &std::path::Path) -> Result<String> {
         tb.credits,
         tb.debits - tb.credits
     ));
+
+    // Cite the provenance. A figure a model reads back without saying what
+    // produced it is a figure nobody can check, which is the failure this
+    // whole system exists to prevent.
+    let entries = b.entries()?;
+    let configs: std::collections::BTreeSet<String> =
+        entries.iter().map(|e| e.config.as_str().to_string()).collect();
+    out.push_str(&format!("\n{} entrie(s)\n", entries.len()));
+    match configs.len() {
+        // Nothing posted yet: the active configuration is all there is to cite.
+        0 => {
+            if let Some(active) = b.active()? {
+                out.push_str(&format!("configuration {active}\n"));
+            }
+        }
+        1 => out.push_str(&format!(
+            "configuration {}\n",
+            configs.iter().next().expect("len == 1")
+        )),
+        // Say so rather than naming the active one and implying it produced
+        // every figure above. A period spanning a configuration change is a
+        // normal thing that a single hash would misreport.
+        n => {
+            out.push_str(&format!(
+                "posted under {n} configurations — this balance spans a change:\n"
+            ));
+            for c in &configs {
+                out.push_str(&format!("  {c}\n"));
+            }
+            out.push_str("Use explain_figure to see which entry used which.\n");
+        }
+    }
+
     out.push_str("\nAmounts are minor units. The difference is zero because every \
                   entry was checked for conservation on the way in.");
     Ok(out)
@@ -447,6 +480,39 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    #[test]
+    fn the_trial_balance_cites_the_configuration_that_produced_it() {
+        // PLAN.md step 7: the model reads a figure back and cites the config
+        // hash — reporting, not deciding. A figure with no provenance is a
+        // figure nobody can check.
+        let book = tmp_book();
+        seed_fee_rule(&book);
+        post_one_accrual(&book);
+
+        let out = tool_trial_balance(&book).unwrap();
+        let active = FileBook::open(&book).unwrap().active().unwrap().unwrap();
+        assert!(
+            out.contains(active.as_str()),
+            "no configuration cited:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_balance_spanning_two_configurations_says_so() {
+        // Naming one hash here would imply it produced every figure above it.
+        let book = tmp_book();
+        seed_fee_rule(&book);
+        post_one_accrual(&book);
+
+        // Change the configuration, then post again under the new one.
+        bump_rate(&book);
+        post_one_accrual(&book);
+
+        let out = tool_trial_balance(&book).unwrap();
+        assert!(out.contains("spans a change"), "{out}");
+        assert!(out.contains("2 configurations"), "{out}");
+    }
+
     fn tmp_book() -> PathBuf {
         let n = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -496,6 +562,37 @@ weight = 1
 account = 40
 weight = -1
 "#;
+
+    /// A human approving the fee rule, out of band — what `ratio approve` does.
+    fn seed_fee_rule(book: &PathBuf) {
+        let mut b = FileBook::open(book).unwrap();
+        let d = b.put(FEE.as_bytes()).unwrap();
+        b.set_active(&d).unwrap();
+    }
+
+    /// Approve a *different* configuration, so the next posting carries a new
+    /// hash. Any change to the bytes gives a different digest; the rate is the
+    /// clearest thing to move.
+    fn bump_rate(book: &PathBuf) {
+        let mut b = FileBook::open(book).unwrap();
+        let d = b
+            .put(FEE.replace("rate_bp = 75", "rate_bp = 80").as_bytes())
+            .unwrap();
+        b.set_active(&d).unwrap();
+    }
+
+    fn post_one_accrual(book: &PathBuf) {
+        let n = FileBook::open(book).unwrap().entries().unwrap().len();
+        let r = call(
+            book,
+            "post_events",
+            json!({"events": [
+                {"rule":"management_fee_accrual","id":format!("a{n}"),
+                 "amount":1_750_000_000i64,"days":30}
+            ]}),
+        );
+        assert_ne!(r["result"]["isError"], true, "{}", text_of(&r));
+    }
 
     #[test]
     fn initialize_echoes_the_clients_protocol_version() {

@@ -151,8 +151,17 @@ cries wolf trains people to ignore the checks. A correct rule set now produces
   accruals posted from a second terminal moved the table with no reload,
   difference held at `0.00`, console clean.
 - **Done when:** the five-minute script below runs end to end without a
-  rehearsal. *Steps 1–3 and 5–7 verified end to end over real stdio; step 4's
-  answer-a-question exchange is the deviation below.*
+  rehearsal. **`demo/rehearse.sh` is that rehearsal**, wired as
+  `//demo:rehearse_test` so CI runs the whole thing — all seven steps, ten
+  thousand real events, asserting at each one. It fails if the fence opens:
+  negative-tested by exposing `approve_rule` as a working tool, which the
+  rehearsal caught at "must not appear in tools/list" and the unit test caught
+  independently.
+
+  The one thing not automated is the model itself. Steps 2–4 are a person
+  talking to Claude, which drives the MCP tools; the rehearsal drives those
+  same tools over the same stdio transport, so what is covered is the surface
+  the model actually touches.
 
 #### Two deviations from this plan, both deliberate
 

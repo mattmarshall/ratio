@@ -1,0 +1,16 @@
+package(default_visibility = ["//visibility:public"])
+
+# The five-minute demo, run end to end with no human in it.
+#
+# PLAN.md Stage 2 is "done when the five-minute script runs end to end without
+# a rehearsal" — a claim that decays the moment nobody checks it. This target
+# is the check. It is `medium` because step 6 posts ten thousand events and
+# takes about half a minute; that number is from PLAN.md and is not worth
+# trimming to make a test faster.
+sh_test(
+    name = "rehearse_test",
+    size = "medium",
+    srcs = ["rehearse.sh"],
+    args = ["$(rootpath //crates/ratio)"],
+    data = ["//crates/ratio"],
+)
