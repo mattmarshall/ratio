@@ -114,6 +114,30 @@ The heart of both products.
 - **Done when:** a bad rule is rejected with a reason a fund accountant would
   recognize, not a stack trace.
 
+✅ **DONE 2026-08-07.** `crates/ratio-rules` + `ratio rules check` / `rules
+show` / `apply`. A rule set with three faults reports:
+
+```
+x management_fee_accrual: does not balance: the posting weights net to -1,
+  not 0. Every debit needs a matching credit — check the signs.
+x management_fee_accrual: posts to account 999 which is not in the chart of
+  accounts. Add it, or point the rule at an existing account.
+? management_fee_accrual: is an accrual with no day-count convention.
+  Which applies — act/365, act/360 or 30/360?
+```
+
+Rules are TOML; `render` produces the `rule … { }` form for humans and nothing
+parses it. `rate_bp` is an integer and `day_count` an enum, so a float is
+**inexpressible** rather than rejected by a check somebody might forget to run.
+
+**A false positive was found and removed.** The first version flagged any leg
+posting against its account's normal side — which fires on every purchase,
+because purchases credit cash. Normal side is a property of a *balance*, not a
+posting, so the indicator stays on the trial balance and the rule check says
+nothing about it. Same principle as false breaks in a shadow run: a check that
+cries wolf trains people to ignore the checks. A correct rule set now produces
+**no output at all**, which is what makes a finding worth reading.
+
 ### Stage 2 — the demo
 
 - MCP server exposing exactly: `list_accounts`, `propose_rule`, `check_rule`,

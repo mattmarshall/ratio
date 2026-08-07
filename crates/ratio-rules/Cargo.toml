@@ -1,0 +1,18 @@
+[package]
+name = "ratio-rules"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+ratio-chart = { path = "../ratio-chart" }
+ratio-kernel = { path = "../ratio-kernel" }
+ratio-store = { path = "../ratio-store" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+# Rules are TOML with a schema, never a language. The `rule … { }` syntax on
+# the website is a RENDERING of this, produced by `render.rs` — a parser would
+# be weeks of work no customer can see.
+toml = "0.8"

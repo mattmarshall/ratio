@@ -14,6 +14,7 @@ use anyhow::{bail, Context, Result};
 use ratio_api::LedgerService;
 use ratio_chart::{normal_side, Side};
 use ratio_proto::ratio::v1::ledger_server::LedgerServer;
+use ratio_rules::{check, compile, render, Event, RuleSet};
 use ratio_store::{
     Account, AccountTypeRecord, ConfigStore, FileBook, Journal, JournalEntry, PostingRecord,
 };
@@ -36,7 +37,10 @@ usage:
   ratio init [--book DIR]              create a book and seed a chart of accounts
   ratio config set FILE [--book DIR]   store a configuration and promote it
   ratio config show [--book DIR]       the active configuration and its history
-  ratio post FILE [--book DIR]         post entries; refuses any that do not balance
+  ratio rules check FILE [--book DIR]  check a rule set against the chart
+  ratio rules show [--book DIR]        render the active rules for a human
+  ratio apply FILE [--book DIR]        apply rules to events and post the result
+  ratio post FILE [--book DIR]         post entries directly; refuses unbalanced
   ratio balance [--book DIR]           print the trial balance
   ratio server                         serve the Ledger gRPC API
 
@@ -56,6 +60,9 @@ fn main() -> Result<()> {
         ["init"] => init(book),
         ["config", "set", file] => config_set(book, file),
         ["config", "show"] => config_show(book),
+        ["rules", "check", file] => rules_check(book, file),
+        ["rules", "show"] => rules_show(book),
+        ["apply", file] => apply(book, file),
         ["post", file] => post(book, file),
         ["balance"] => balance(book),
         ["server"] => serve(),
@@ -143,6 +150,110 @@ fn config_show(book: PathBuf) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+/// Check a rule set against the book's chart, without promoting it.
+///
+/// Reports every finding rather than the first, so a configuration is fixed in
+/// one pass. Questions do not fail the check — they are for a human to answer.
+fn rules_check(book: PathBuf, file: &str) -> Result<()> {
+    let b = FileBook::open(&book)?;
+    let text = std::fs::read_to_string(file).with_context(|| format!("reading {file}"))?;
+    let set = RuleSet::from_toml(&text)?;
+    let chart = b.accounts()?;
+    let findings = check(&set, &chart);
+
+    let errors = findings.iter().filter(|f| !f.is_question).count();
+    let questions = findings.iter().filter(|f| f.is_question).count();
+
+    println!("checked  {} rule(s) against {} account(s)", set.rules.len(), chart.len());
+    for f in &findings {
+        let mark = if f.is_question { "?" } else { "x" };
+        println!("  {mark} {}: {}", f.rule, f.message);
+    }
+    if findings.is_empty() {
+        println!("  all checks passed");
+    }
+    println!();
+    println!("{errors} error(s), {questions} question(s)");
+
+    if errors > 0 {
+        bail!("{errors} rule(s) cannot be used as written");
+    }
+    Ok(())
+}
+
+/// Render the active rule set in the readable form.
+///
+/// Nobody writes this syntax and nothing parses it — the rules are the TOML.
+/// This is what a reviewer or an examiner is shown.
+fn rules_show(book: PathBuf) -> Result<()> {
+    let b = FileBook::open(&book)?;
+    let digest = b
+        .active()?
+        .context("no configuration promoted — run `ratio init` or `ratio config set`")?;
+    let bytes = b.get(&digest)?;
+    let set = RuleSet::from_toml(&String::from_utf8_lossy(&bytes))?;
+    let chart = b.accounts()?;
+
+    println!("config {digest}\n");
+    if set.rules.is_empty() {
+        println!("(no rules)");
+    }
+    for rule in &set.rules {
+        println!("{}", render(rule, &chart));
+    }
+    Ok(())
+}
+
+/// Apply the active rules to a list of events and post what comes out.
+///
+/// The postings are balanced by theorem, not by inspection: `ratio rules check`
+/// verifies each template's weights net to zero, and
+/// `Ratio.Chart.balanced_template_balances` proves every instantiation of such
+/// a template balances at any amount. The book still checks on the way in.
+fn apply(book: PathBuf, file: &str) -> Result<()> {
+    let mut b = FileBook::open(&book)?;
+    let digest = b
+        .active()?
+        .context("no configuration promoted — run `ratio init` or `ratio config set`")?;
+    let set = RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))?;
+
+    // Refuse to apply a rule set that would not pass its own check — otherwise
+    // a bad template quietly produces bad postings on every event.
+    let findings = check(&set, &b.accounts()?);
+    let errors: Vec<_> = findings.iter().filter(|f| !f.is_question).collect();
+    if !errors.is_empty() {
+        for f in &errors {
+            println!("  x {}: {}", f.rule, f.message);
+        }
+        bail!("the active configuration has {} error(s); fix it before applying", errors.len());
+    }
+
+    let text = std::fs::read_to_string(file).with_context(|| format!("reading {file}"))?;
+    let events: Vec<Event> =
+        serde_json::from_str(&text).with_context(|| format!("{file} is not a list of events"))?;
+
+    let mut posted = 0usize;
+    for event in &events {
+        let rule = set
+            .rule(&event.rule)
+            .with_context(|| format!("event {:?} names rule {:?}, which is not in the active configuration", event.id, event.rule))?;
+        let postings = compile(rule, event)?;
+        b.append(&JournalEntry {
+            id: event.id.clone(),
+            memo: if event.memo.is_empty() {
+                format!("{} via {}", event.id, rule.id)
+            } else {
+                event.memo.clone()
+            },
+            config: digest.clone(),
+            postings,
+        })?;
+        posted += 1;
+    }
+    println!("applied  {posted} event(s) under config {}", digest.short());
     Ok(())
 }
 

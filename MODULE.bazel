@@ -62,6 +62,7 @@ crate.from_cargo(
         "//crates/ratio-kernel:Cargo.toml",
         "//crates/ratio-chart:Cargo.toml",
         "//crates/ratio-store:Cargo.toml",
+        "//crates/ratio-rules:Cargo.toml",
         "//crates/ratio-api:Cargo.toml",
         "//crates/ratio-tui:Cargo.toml",
         "//crates/ratio:Cargo.toml",

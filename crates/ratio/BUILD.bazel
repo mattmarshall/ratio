@@ -13,6 +13,7 @@ rust_binary(
         "//crates/ratio-chart",
         "//crates/ratio-common",
         "//crates/ratio-kernel",
+        "//crates/ratio-rules",
         "//crates/ratio-store",
         "//crates/ratio-tui",
         "//proto:ratio_rust_proto",  # LedgerServer (ratio_proto)
