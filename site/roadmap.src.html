@@ -28,7 +28,11 @@ __STYLE__
       <span class="r-mk">__MARK__</span>
       <span class="r-wm">__WORDMARK__</span>
     </a>
-    <ul>
+    <button class="r-navtoggle" type="button" aria-expanded="false"
+            aria-controls="r-nav-list" aria-label="Menu">
+      <span class="r-navtoggle-bars" aria-hidden="true"></span>
+    </button>
+    <ul class="r-nav-list" id="r-nav-list">
       <li><a href="index.html">Overview</a></li>
       <li><a href="workflows.html">Workflows</a></li>
       <li><a href="platform.html">Platform</a></li>
@@ -116,6 +120,58 @@ __STYLE__
     <p class="r-lede">Ordered by dependency, not by demand. Nothing in a later
     phase can be built honestly before the one above it exists, which is why the
     sequence is what it is.</p>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 980 232" role="img"
+             aria-label="Five phases in a chain. Phase zero, the proven core, is complete. Each later phase is gated on the one before it: books you can keep, then the close, then the desk, then the ecosystem.">
+          <text class="svg-lab svg-muted" x="0" y="14">EACH PHASE IS GATED ON THE ONE BEFORE IT</text>
+
+          <!-- phase 0 — complete -->
+          <rect x="0" y="34" width="176" height="72" rx="3" class="svg-surface"/>
+          <rect x="0" y="34" width="176" height="72" rx="3" fill="none" style="stroke:var(--yes)" stroke-width="2"/>
+          <text class="svg-lab" x="16" y="58" style="fill:var(--yes)">Phase zero</text>
+          <text class="svg-lab-sm svg-text" x="16" y="78">the proven core</text>
+          <text class="svg-lab-sm" x="16" y="96" style="fill:var(--yes)">complete</text>
+
+          <!-- 1 -->
+          <rect x="202" y="34" width="176" height="72" rx="3" class="svg-raised"/>
+          <rect x="202" y="34" width="176" height="72" rx="3" fill="none" style="stroke:var(--partial)" stroke-width="2"/>
+          <text class="svg-lab" x="218" y="58" style="fill:var(--partial)">Phase one</text>
+          <text class="svg-lab-sm svg-text" x="218" y="78">books you can keep</text>
+          <text class="svg-lab-sm" x="218" y="96" style="fill:var(--partial)">next</text>
+
+          <!-- 2..4 -->
+          <rect x="404" y="34" width="176" height="72" rx="3" fill="none" class="svg-rule2" stroke-width="1.4" stroke-dasharray="5 4"/>
+          <text class="svg-lab svg-muted" x="420" y="58">Phase two</text>
+          <text class="svg-lab-sm svg-text2" x="420" y="78">the close</text>
+
+          <rect x="606" y="34" width="176" height="72" rx="3" fill="none" class="svg-rule2" stroke-width="1.4" stroke-dasharray="5 4"/>
+          <text class="svg-lab svg-muted" x="622" y="58">Phase three</text>
+          <text class="svg-lab-sm svg-text2" x="622" y="78">the desk</text>
+
+          <rect x="808" y="34" width="172" height="72" rx="3" fill="none" class="svg-rule2" stroke-width="1.4" stroke-dasharray="5 4"/>
+          <text class="svg-lab svg-muted" x="824" y="58">Phase four</text>
+          <text class="svg-lab-sm svg-text2" x="824" y="78">the ecosystem</text>
+
+          <g class="svg-rule2" stroke-width="1.6">
+            <line x1="176" y1="70" x2="198" y2="70"/><line x1="378" y1="70" x2="400" y2="70"/>
+            <line x1="580" y1="70" x2="602" y2="70"/><line x1="782" y1="70" x2="804" y2="70"/>
+          </g>
+
+          <!-- where the product actually is -->
+          <line x1="188" y1="118" x2="188" y2="152" stroke-width="1.6" style="stroke:var(--yes)"/>
+          <circle cx="188" cy="118" r="4" style="fill:var(--yes)"/>
+          <text class="svg-lab" x="200" y="150" style="fill:var(--yes)">Ratio is here</text>
+          <text class="svg-lab-sm svg-muted" x="200" y="170">the foundation is done; the surface is not</text>
+
+          <text class="svg-lab-sm svg-muted" x="0" y="206">Nothing later can be built honestly before the phase above it exists — you cannot</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="224">reconcile before you can persist, or report performance before you can close a period.</text>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap">Ordered by dependency, not by demand. If a
+      phase moves, everything to its right moves with it.</figcaption>
+    </figure>
 
     <!-- PHASE 0 -->
     <div class="r-phase">
@@ -362,3 +418,5 @@ __STYLE__
     </div>
   </div>
 </footer>
+
+__SCRIPT__

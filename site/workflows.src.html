@@ -33,7 +33,11 @@ __STYLE__
       <span class="r-mk">__MARK__</span>
       <span class="r-wm">__WORDMARK__</span>
     </a>
-    <ul>
+    <button class="r-navtoggle" type="button" aria-expanded="false"
+            aria-controls="r-nav-list" aria-label="Menu">
+      <span class="r-navtoggle-bars" aria-hidden="true"></span>
+    </button>
+    <ul class="r-nav-list" id="r-nav-list">
       <li><a href="index.html">Overview</a></li>
       <li><a href="workflows.html" aria-current="page">Workflows</a></li>
       <li><a href="platform.html">Platform</a></li>
@@ -115,6 +119,44 @@ __STYLE__
       or in a spreadsheet called <em>fees_v4_FINAL.xlsx</em>. The point of what
       follows is to get it out of both and into something versioned.</p>
     </div>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 980 220" role="img"
+             aria-label="A conventional implementation spends months on workshops, a requirements document, consultant configuration, user acceptance testing and rework. The same rule authored through Ratio takes two sessions and a review, drawn at the same scale.">
+          <text class="svg-lab svg-muted" x="0" y="14">A CONVENTIONAL IMPLEMENTATION</text>
+          <rect x="0" y="28" width="900" height="34" rx="2" class="svg-surface"/>
+          <g style="fill:var(--series-legacy)" opacity=".85">
+            <rect x="2" y="31" width="150" height="28" rx="2"/>
+            <rect x="158" y="31" width="196" height="28" rx="2"/>
+            <rect x="360" y="31" width="268" height="28" rx="2"/>
+            <rect x="634" y="31" width="150" height="28" rx="2"/>
+            <rect x="790" y="31" width="108" height="28" rx="2"/>
+          </g>
+          <g class="svg-lab-sm" style="fill:var(--block-text)">
+            <text x="77" y="49" text-anchor="middle">workshops</text>
+            <text x="256" y="49" text-anchor="middle">requirements doc</text>
+            <text x="494" y="49" text-anchor="middle">consultant configuration</text>
+            <text x="709" y="49" text-anchor="middle">UAT</text>
+            <text x="844" y="49" text-anchor="middle">rework</text>
+          </g>
+          <text class="svg-lab-sm svg-muted" x="0" y="82">knowledge translated twice, by people who do not do the job</text>
+
+          <text class="svg-lab" x="0" y="128" style="fill:var(--yes)">THE SAME RULE, AUTHORED</text>
+          <rect x="0" y="142" width="900" height="34" rx="2" class="svg-surface"/>
+          <g style="fill:var(--yes)">
+            <rect x="2" y="145" width="46" height="28" rx="2"/>
+            <rect x="54" y="145" width="30" height="28" rx="2"/>
+            <rect x="90" y="145" width="38" height="28" rx="2"/>
+          </g>
+          <text class="svg-lab-sm svg-text2" x="142" y="163">two sessions and a review</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="196">Same scale. Eight obligations discharged and five ambiguities resolved — more rigour, less elapsed time.</text>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap">Nothing was skipped. The expert's time went
+      into answering questions instead of watching somebody else type.</figcaption>
+    </figure>
+
   </div>
 </section>
 
@@ -569,3 +611,5 @@ __STYLE__
     </div>
   </div>
 </footer>
+
+__SCRIPT__

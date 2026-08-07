@@ -188,6 +188,11 @@ def substitute(html: str, token: str, payload: str) -> str:
     return html.replace(token, payload)
 
 
+def script_block() -> str:
+    """nav.js, inlined. One source of truth rather than a copy per page."""
+    return "<script>\n" + (HERE / "nav.js").read_text().strip() + "\n</script>"
+
+
 def stylesheet(fonts: pathlib.Path) -> str:
     """style.css with the three faces inlined, wrapped ready to drop into a page."""
     css = (HERE / "style.css").read_text()
@@ -234,6 +239,7 @@ def render(src: pathlib.Path, css_block: str, links: dict[str, str]) -> str:
     html = src.read_text()
     html = inline_photos(html)
     html = substitute(html, "__STYLE__", css_block)
+    html = substitute(html, "__SCRIPT__", script_block())
     for token, name in MARK_FILES.items():
         svg = strip_svg_comments((MARKS / name).read_text()).strip()
         html = substitute(html, token, svg)
