@@ -69,14 +69,32 @@ The kernel proves conservation over vectors in memory. There is no persistence,
 no chart of accounts, no way to ask what the balances are. Until that exists,
 neither the demo nor the wedge can be built at all.
 
-- **SQLite, not Postgres.** Zero operations for a solo developer, and the
-  access pattern is append-only so the engine barely matters. Swapping later is
-  a schema port, not a rewrite; choosing Postgres now costs weeks of ops for
-  nothing.
-- Tables: `fact`, `posting`, `account`, `config_version`. Append-only.
+- ~~SQLite, not Postgres.~~ **Built with no database at all** — see below.
 - CLI: load a config, post events, print a trial balance.
 - **Done when:** `ratio post events.json && ratio balance` prints a trial
   balance that ties.
+
+✅ **DONE 2026-08-07.** `crates/ratio-store` + the `ratio` CLI. Measured on a
+five-entry fund book: total 36,503,867.45 on both sides, difference 0.00. Two
+deliberately unbalanced entries were refused with their exact shortfall, zero
+of them reached the journal, and the book still tied afterwards.
+
+**Amended: no SQLite.** The plan said SQLite and the build does not use it. The
+reason is the one this document already gives for the control plane: the
+smallest thing that is not a lie. The log *is* the database — entries are
+immutable and appended, and the trial balance is a fold of them, which is the
+definition rather than an optimisation. A relational engine at this size buys
+indexed lookup that nothing needs yet, in exchange for a C dependency
+(`libsqlite3-sys`) inside a hermetic Bazel build maintained part-time.
+
+The seam is a trait either way, so this is an implementation swap rather than a
+rewrite. **Trigger to adopt a real engine:** the wedge needing per-account
+lookups over a period without a full scan, or concurrent writers. Neither has
+arrived.
+
+Crate-universe repinning was verified working in the process
+(`CARGO_BAZEL_REPIN=1`), so adding SQLite later is a dependency edit, not a
+research project.
 
 ### Stage 1 — rules that compile and get checked
 

@@ -1,4 +1,4 @@
-load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -10,12 +10,22 @@ rust_binary(
     edition = "2021",
     deps = [
         "//crates/ratio-api",
+        "//crates/ratio-chart",
         "//crates/ratio-common",
         "//crates/ratio-kernel",
+        "//crates/ratio-store",
         "//crates/ratio-tui",
         "//proto:ratio_rust_proto",  # LedgerServer (ratio_proto)
         "@crates//:anyhow",
+        "@crates//:serde",
+        "@crates//:serde_json",
         "@crates//:tokio",
         "@crates//:tonic",
     ],
+)
+
+rust_test(
+    name = "ratio_test",
+    crate = ":ratio",
+    edition = "2021",
 )

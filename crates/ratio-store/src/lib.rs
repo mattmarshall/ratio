@@ -1,0 +1,573 @@
+//! ratio-store — the append-only record, and the content-addressed config seam.
+//!
+//! PLAN.md Stage 0: *a ledger you can query*. The kernel proves conservation
+//! over vectors in memory; until something durably records what was posted and
+//! under which rules, neither the demo nor the shadow wedge can be built.
+//!
+//! **The log is the database.** Entries are immutable and appended; a
+//! correction is a new entry with its own provenance, never an edit. That is
+//! the same access pattern the platform page describes, and it is why this
+//! needs no relational engine at MVP scale: the trial balance is a fold of the
+//! log, which is the definition rather than an optimisation of it.
+//!
+//! Two seams are stated as traits so the implementation can change without the
+//! callers noticing:
+//!
+//! * [`ConfigStore`] — exactly the five methods PLAN.md specifies. Backed here
+//!   by a directory and a pointer file; later by crova for the blobs and geetch
+//!   for review and history. Every entry records the digest it was posted
+//!   under, so nothing downstream changes when the implementation does.
+//! * [`Journal`] — the append-only record. Backed here by one JSON line per
+//!   entry. The trigger to put a real engine underneath is indexed lookup
+//!   (postings for one account over a period, without a full scan), which the
+//!   MVP does not need and the wedge might.
+//!
+//! **An unbalanced entry cannot be appended.** [`Journal::append`] runs the
+//! kernel's conservation check first and refuses. This is the product's actual
+//! claim, so it is enforced at the door rather than reported at month-end.
+
+use std::collections::BTreeMap;
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+
+use anyhow::{anyhow, bail, Context, Result};
+use ratio_chart::{trial_balance, AccountType, Posting, TrialBalance};
+use ratio_kernel::{transaction_is_balanced, Transaction};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
+
+/// A content address: the SHA-256 of some bytes, lowercase hex.
+///
+/// Names the artifact by what it *is* rather than where it sits, which is what
+/// makes "which rules produced this figure?" answerable years later.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct Digest(String);
+
+impl Digest {
+    /// The content address of `bytes`.
+    pub fn of(bytes: &[u8]) -> Self {
+        let mut h = Sha256::new();
+        h.update(bytes);
+        Digest(format!("{:x}", h.finalize()))
+    }
+
+    /// The full hex digest.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// The first seven characters, for display. Long enough to be unambiguous
+    /// in a report, short enough to read aloud on a call.
+    pub fn short(&self) -> &str {
+        &self.0[..7]
+    }
+
+    /// Parse a hex digest, rejecting anything that is not one — a malformed
+    /// digest in a journal line means the provenance is not trustworthy, and
+    /// silently accepting it would defeat the point of recording it.
+    pub fn parse(s: &str) -> Result<Self> {
+        if s.len() != 64 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+            bail!("not a sha-256 hex digest: {s:?}");
+        }
+        Ok(Digest(s.to_ascii_lowercase()))
+    }
+}
+
+impl std::fmt::Display for Digest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// One posting as it is written down: a conserved dimension and an exact
+/// integer amount in minor units.
+///
+/// Deliberately distinct from `ratio_kernel::Posting`, which is Lean-emitted
+/// and carries no dependencies. Serialisation is an I/O concern and does not
+/// belong on the proven kernel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PostingRecord {
+    pub dim: i64,
+    pub amount: i64,
+}
+
+impl From<PostingRecord> for Posting {
+    fn from(p: PostingRecord) -> Self {
+        Posting {
+            dim: p.dim,
+            amount: p.amount,
+        }
+    }
+}
+
+/// An entry in the journal: a balanced transaction, plus the provenance that
+/// makes the figures it produces reproducible.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JournalEntry {
+    /// Client-assigned identifier, unique within the book.
+    pub id: String,
+    /// What this entry is, in a human's words.
+    #[serde(default)]
+    pub memo: String,
+    /// The configuration version in force when this was posted.
+    pub config: Digest,
+    /// The postings. Must net to zero on every dimension.
+    pub postings: Vec<PostingRecord>,
+}
+
+impl JournalEntry {
+    /// The kernel's view of this entry.
+    pub fn transaction(&self) -> Transaction {
+        Transaction {
+            postings: self.postings.iter().map(|p| (*p).into()).collect(),
+        }
+    }
+
+    /// Whether the entry conserves value.
+    pub fn is_balanced(&self) -> bool {
+        transaction_is_balanced(&self.transaction())
+    }
+}
+
+/// A named dimension — what an accountant calls an account.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Account {
+    pub dim: i64,
+    pub display_name: String,
+    /// Serialised as the lowercase type name: `asset`, `liability`, …
+    pub account_type: AccountTypeRecord,
+}
+
+/// `AccountType` as it is written down. Mirrors the Lean-emitted enum, which
+/// carries no serde dependency.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountTypeRecord {
+    Asset,
+    Liability,
+    Equity,
+    Income,
+    Expense,
+}
+
+impl From<AccountTypeRecord> for AccountType {
+    fn from(t: AccountTypeRecord) -> Self {
+        match t {
+            AccountTypeRecord::Asset => AccountType::Asset,
+            AccountTypeRecord::Liability => AccountType::Liability,
+            AccountTypeRecord::Equity => AccountType::Equity,
+            AccountTypeRecord::Income => AccountType::Income,
+            AccountTypeRecord::Expense => AccountType::Expense,
+        }
+    }
+}
+
+/// The content-addressed configuration store — PLAN.md's seam, verbatim.
+pub trait ConfigStore {
+    /// Store `bytes` and return their content address.
+    fn put(&mut self, bytes: &[u8]) -> Result<Digest>;
+    /// Retrieve the bytes at `digest`.
+    fn get(&self, digest: &Digest) -> Result<Vec<u8>>;
+    /// Promote `digest` to active. The only way policy moves.
+    fn set_active(&mut self, digest: &Digest) -> Result<()>;
+    /// The active configuration, if one has been promoted.
+    fn active(&self) -> Result<Option<Digest>>;
+    /// Every configuration ever promoted, newest first.
+    fn history(&self) -> Result<Vec<Digest>>;
+}
+
+/// The append-only record of what happened.
+pub trait Journal {
+    /// Append an entry. **Refuses an unbalanced one.**
+    fn append(&mut self, entry: &JournalEntry) -> Result<()>;
+    /// Every entry, in the order they were posted.
+    fn entries(&self) -> Result<Vec<JournalEntry>>;
+}
+
+/// A book on disk.
+///
+/// ```text
+/// <root>/
+///   journal.jsonl      one entry per line, appended, never rewritten
+///   accounts.json      the chart of accounts
+///   config/<digest>    configuration bytes, addressed by content
+///   config/ACTIVE      the digest currently in force
+///   config/HISTORY     every promotion, one digest per line, oldest first
+/// ```
+pub struct FileBook {
+    root: PathBuf,
+}
+
+impl FileBook {
+    /// Open a book, creating the layout if it is not there.
+    pub fn open(root: impl AsRef<Path>) -> Result<Self> {
+        let root = root.as_ref().to_path_buf();
+        fs::create_dir_all(root.join("config"))
+            .with_context(|| format!("creating book at {}", root.display()))?;
+        Ok(FileBook { root })
+    }
+
+    fn journal_path(&self) -> PathBuf {
+        self.root.join("journal.jsonl")
+    }
+    fn accounts_path(&self) -> PathBuf {
+        self.root.join("accounts.json")
+    }
+    fn config_dir(&self) -> PathBuf {
+        self.root.join("config")
+    }
+
+    /// Replace the chart of accounts. The chart is current-state, not a log —
+    /// it names dimensions rather than recording events.
+    pub fn put_accounts(&mut self, accounts: &[Account]) -> Result<()> {
+        let json = serde_json::to_string_pretty(accounts)?;
+        fs::write(self.accounts_path(), json).context("writing accounts")?;
+        Ok(())
+    }
+
+    /// The chart of accounts. Empty if none has been set.
+    pub fn accounts(&self) -> Result<Vec<Account>> {
+        let path = self.accounts_path();
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let s = fs::read_to_string(&path).context("reading accounts")?;
+        Ok(serde_json::from_str(&s).context("parsing accounts")?)
+    }
+
+    /// The trial balance of the whole book — the fold of the log.
+    ///
+    /// Cannot report out of balance for a book built through [`Journal::append`]:
+    /// every entry conserved on the way in, and conservation is closed under
+    /// the fold (`Ratio.Core.ledger_conserves`), so total debits equal total
+    /// credits by `Ratio.Chart.trial_balance_ties`.
+    pub fn trial_balance(&self) -> Result<TrialBalance> {
+        let postings: Vec<Posting> = self
+            .entries()?
+            .iter()
+            .flat_map(|e| e.postings.iter().map(|p| Posting::from(*p)))
+            .collect();
+        Ok(trial_balance(&postings))
+    }
+
+    /// Debit and credit totals per dimension, for the report.
+    pub fn balances_by_dim(&self) -> Result<BTreeMap<i64, (i64, i64)>> {
+        let mut out: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
+        for entry in self.entries()? {
+            for p in entry.postings {
+                let slot = out.entry(p.dim).or_insert((0, 0));
+                if p.amount >= 0 {
+                    slot.0 += p.amount;
+                } else {
+                    slot.1 += -p.amount;
+                }
+            }
+        }
+        Ok(out)
+    }
+}
+
+impl ConfigStore for FileBook {
+    fn put(&mut self, bytes: &[u8]) -> Result<Digest> {
+        let digest = Digest::of(bytes);
+        let path = self.config_dir().join(digest.as_str());
+        // Content-addressed: identical bytes are already stored, and rewriting
+        // them would be a no-op at best and a corruption window at worst.
+        if !path.exists() {
+            fs::write(&path, bytes)
+                .with_context(|| format!("writing config {}", digest.short()))?;
+        }
+        Ok(digest)
+    }
+
+    fn get(&self, digest: &Digest) -> Result<Vec<u8>> {
+        let path = self.config_dir().join(digest.as_str());
+        fs::read(&path).with_context(|| format!("no config {}", digest.short()))
+    }
+
+    fn set_active(&mut self, digest: &Digest) -> Result<()> {
+        // Promoting something that was never stored would leave every entry
+        // posted afterwards pointing at nothing.
+        if !self.config_dir().join(digest.as_str()).exists() {
+            bail!("cannot promote {}: not stored", digest.short());
+        }
+        fs::write(self.config_dir().join("ACTIVE"), digest.as_str())
+            .context("writing ACTIVE")?;
+        let mut hist = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(self.config_dir().join("HISTORY"))
+            .context("opening HISTORY")?;
+        writeln!(hist, "{digest}").context("appending to HISTORY")?;
+        Ok(())
+    }
+
+    fn active(&self) -> Result<Option<Digest>> {
+        let path = self.config_dir().join("ACTIVE");
+        if !path.exists() {
+            return Ok(None);
+        }
+        let s = fs::read_to_string(&path).context("reading ACTIVE")?;
+        Ok(Some(Digest::parse(s.trim())?))
+    }
+
+    fn history(&self) -> Result<Vec<Digest>> {
+        let path = self.config_dir().join("HISTORY");
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let s = fs::read_to_string(&path).context("reading HISTORY")?;
+        let mut out: Vec<Digest> = s
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| Digest::parse(l.trim()))
+            .collect::<Result<_>>()?;
+        out.reverse(); // newest first
+        Ok(out)
+    }
+}
+
+impl Journal for FileBook {
+    fn append(&mut self, entry: &JournalEntry) -> Result<()> {
+        // The check at the door. An unbalanced entry never reaches the record,
+        // so there is no state in which the book is out and somebody has to
+        // find it.
+        if !entry.is_balanced() {
+            let net: i64 = entry.postings.iter().map(|p| p.amount).sum();
+            return Err(anyhow!(
+                "entry {:?} does not conserve value: postings net to {net}, not 0",
+                entry.id
+            ));
+        }
+        // The provenance has to resolve, or the entry is not reproducible.
+        if self.get(&entry.config).is_err() {
+            bail!(
+                "entry {:?} names config {} which is not stored",
+                entry.id,
+                entry.config.short()
+            );
+        }
+        let line = serde_json::to_string(entry).context("serialising entry")?;
+        let mut f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(self.journal_path())
+            .context("opening journal")?;
+        writeln!(f, "{line}").context("appending to journal")?;
+        Ok(())
+    }
+
+    fn entries(&self) -> Result<Vec<JournalEntry>> {
+        let path = self.journal_path();
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let f = File::open(&path).context("opening journal")?;
+        let mut out = Vec::new();
+        for (i, line) in BufReader::new(f).lines().enumerate() {
+            let line = line.context("reading journal")?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            out.push(
+                serde_json::from_str(&line)
+                    .with_context(|| format!("journal line {} is not an entry", i + 1))?,
+            );
+        }
+        Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp() -> PathBuf {
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let p = std::env::temp_dir().join(format!("ratio-store-test-{n}-{:?}", std::thread::current().id()));
+        fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    fn book() -> (FileBook, Digest) {
+        let mut b = FileBook::open(tmp()).unwrap();
+        let d = b.put(b"rules = []\n").unwrap();
+        b.set_active(&d).unwrap();
+        (b, d)
+    }
+
+    fn entry(id: &str, cfg: &Digest, postings: &[(i64, i64)]) -> JournalEntry {
+        JournalEntry {
+            id: id.into(),
+            memo: String::new(),
+            config: cfg.clone(),
+            postings: postings
+                .iter()
+                .map(|(dim, amount)| PostingRecord {
+                    dim: *dim,
+                    amount: *amount,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn digest_is_content_addressed() {
+        assert_eq!(Digest::of(b"abc"), Digest::of(b"abc"));
+        assert_ne!(Digest::of(b"abc"), Digest::of(b"abd"));
+        // Known SHA-256 of "abc" — pins that this is the real hash, not a
+        // stand-in that happens to be deterministic.
+        assert_eq!(
+            Digest::of(b"abc").as_str(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn a_malformed_digest_is_rejected() {
+        assert!(Digest::parse("nope").is_err());
+        assert!(Digest::parse(&"z".repeat(64)).is_err());
+        assert!(Digest::parse(&"a".repeat(64)).is_ok());
+    }
+
+    #[test]
+    fn config_round_trips_and_promotes() {
+        let mut b = FileBook::open(tmp()).unwrap();
+        assert_eq!(b.active().unwrap(), None);
+        let d = b.put(b"fee = 75bp").unwrap();
+        assert_eq!(b.get(&d).unwrap(), b"fee = 75bp");
+        b.set_active(&d).unwrap();
+        assert_eq!(b.active().unwrap(), Some(d.clone()));
+        assert_eq!(b.history().unwrap(), vec![d]);
+    }
+
+    #[test]
+    fn promoting_something_unstored_is_refused() {
+        let mut b = FileBook::open(tmp()).unwrap();
+        let ghost = Digest::of(b"never stored");
+        assert!(b.set_active(&ghost).is_err());
+    }
+
+    #[test]
+    fn history_is_newest_first() {
+        let mut b = FileBook::open(tmp()).unwrap();
+        let d1 = b.put(b"one").unwrap();
+        let d2 = b.put(b"two").unwrap();
+        b.set_active(&d1).unwrap();
+        b.set_active(&d2).unwrap();
+        assert_eq!(b.history().unwrap(), vec![d2.clone(), d1]);
+        assert_eq!(b.active().unwrap(), Some(d2));
+    }
+
+    #[test]
+    fn a_balanced_entry_is_appended_and_read_back() {
+        let (mut b, cfg) = book();
+        let e = entry("t1", &cfg, &[(1, 500), (2, -500)]);
+        b.append(&e).unwrap();
+        assert_eq!(b.entries().unwrap(), vec![e]);
+    }
+
+    #[test]
+    fn an_unbalanced_entry_is_refused_at_the_door() {
+        let (mut b, cfg) = book();
+        let err = b
+            .append(&entry("bad", &cfg, &[(1, 500), (2, -499)]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("does not conserve"), "{err}");
+        // And nothing reached the record.
+        assert!(b.entries().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_entry_naming_an_unstored_config_is_refused() {
+        let (mut b, _) = book();
+        let ghost = Digest::of(b"never stored");
+        assert!(b.append(&entry("t1", &ghost, &[(1, 1), (2, -1)])).is_err());
+    }
+
+    #[test]
+    fn the_book_ties_however_many_entries_are_posted() {
+        let (mut b, cfg) = book();
+        for i in 0..50 {
+            b.append(&entry(
+                &format!("t{i}"),
+                &cfg,
+                &[(1, 100 + i), (2, -(100 + i))],
+            ))
+            .unwrap();
+        }
+        let tb = b.trial_balance().unwrap();
+        assert_eq!(tb.debits, tb.credits);
+        assert!(ratio_chart::trial_balance_ties(tb));
+        assert_eq!(tb.debits, (0..50).map(|i| 100 + i).sum::<i64>());
+    }
+
+    #[test]
+    fn multi_leg_entries_tie_too() {
+        let (mut b, cfg) = book();
+        b.append(&entry("fee", &cfg, &[(10, 61_240_18), (20, -61_240_00), (21, -18)]))
+            .unwrap();
+        let tb = b.trial_balance().unwrap();
+        assert!(ratio_chart::trial_balance_ties(tb));
+        assert_eq!(tb.debits, 61_240_18);
+    }
+
+    #[test]
+    fn balances_are_reported_per_dimension() {
+        let (mut b, cfg) = book();
+        b.append(&entry("a", &cfg, &[(1, 300), (2, -300)])).unwrap();
+        b.append(&entry("b", &cfg, &[(1, 200), (3, -200)])).unwrap();
+        let by = b.balances_by_dim().unwrap();
+        assert_eq!(by[&1], (500, 0));
+        assert_eq!(by[&2], (0, 300));
+        assert_eq!(by[&3], (0, 200));
+    }
+
+    #[test]
+    fn the_journal_survives_reopening() {
+        let root = tmp();
+        let cfg = {
+            let mut b = FileBook::open(&root).unwrap();
+            let d = b.put(b"cfg").unwrap();
+            b.set_active(&d).unwrap();
+            b.append(&entry("t1", &d, &[(1, 7), (2, -7)])).unwrap();
+            d
+        };
+        let reopened = FileBook::open(&root).unwrap();
+        assert_eq!(reopened.entries().unwrap().len(), 1);
+        assert_eq!(reopened.active().unwrap(), Some(cfg));
+        assert!(ratio_chart::trial_balance_ties(
+            reopened.trial_balance().unwrap()
+        ));
+    }
+
+    #[test]
+    fn accounts_round_trip() {
+        let mut b = FileBook::open(tmp()).unwrap();
+        assert!(b.accounts().unwrap().is_empty());
+        let chart = vec![
+            Account {
+                dim: 1,
+                display_name: "Cash".into(),
+                account_type: AccountTypeRecord::Asset,
+            },
+            Account {
+                dim: 2,
+                display_name: "Capital".into(),
+                account_type: AccountTypeRecord::Equity,
+            },
+        ];
+        b.put_accounts(&chart).unwrap();
+        assert_eq!(b.accounts().unwrap(), chart);
+        // The record type maps onto the Lean-emitted classification.
+        assert_eq!(
+            ratio_chart::normal_side(chart[0].account_type.into()),
+            ratio_chart::Side::Debit
+        );
+    }
+}

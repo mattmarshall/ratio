@@ -7,6 +7,7 @@ members = [
     "crates/ratio-common",
     "crates/ratio-kernel",
     "crates/ratio-chart",
+    "crates/ratio-store",
     "crates/ratio-api",
     "crates/ratio-tui",
     "crates/ratio",

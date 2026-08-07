@@ -11,8 +11,12 @@ path = "src/main.rs"
 ratio-common = { path = "../ratio-common" }
 ratio-kernel = { path = "../ratio-kernel" }
 ratio-api = { path = "../ratio-api" }
+ratio-chart = { path = "../ratio-chart" }
+ratio-store = { path = "../ratio-store" }
 ratio-tui = { path = "../ratio-tui" }
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # The `server` subcommand: a tonic gRPC server on a tokio runtime.
 tonic = "0.12"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
