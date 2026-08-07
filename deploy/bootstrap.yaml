@@ -13,15 +13,6 @@ Parameters:
     Type: String
     Default: mattmarshall/ratio
     Description: owner/repo allowed to assume the deploy role.
-  BudgetEmail:
-    Type: String
-    Description: Where budget alerts go.
-  MonthlyBudgetUSD:
-    Type: Number
-    Default: 5
-    Description: >
-      The demo should cost close to nothing. This is set low deliberately: the
-      alert is meant to fire on a mistake, not on growth.
 
 Resources:
   # ── The registry ────────────────────────────────────────────────────────
@@ -231,37 +222,15 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 
-  # ── Cost guardrail ──────────────────────────────────────────────────────
-  # The Function URL is public, so invocations are not bounded by who knows the
-  # link. Reserved concurrency in app.yaml caps the rate; this catches anything
-  # that gets past it, including a mistake that has nothing to do with the demo.
-  Budget:
-    Type: AWS::Budgets::Budget
-    Properties:
-      Budget:
-        BudgetName: ratio-account-monthly
-        BudgetType: COST
-        TimeUnit: MONTHLY
-        BudgetLimit:
-          Amount: !Ref MonthlyBudgetUSD
-          Unit: USD
-      NotificationsWithSubscribers:
-        - Notification:
-            NotificationType: ACTUAL
-            ComparisonOperator: GREATER_THAN
-            Threshold: 50
-            ThresholdType: PERCENTAGE
-          Subscribers:
-            - SubscriptionType: EMAIL
-              Address: !Ref BudgetEmail
-        - Notification:
-            NotificationType: FORECASTED
-            ComparisonOperator: GREATER_THAN
-            Threshold: 100
-            ThresholdType: PERCENTAGE
-          Subscribers:
-            - SubscriptionType: EMAIL
-              Address: !Ref BudgetEmail
+  # ⛔ NO BUDGET HERE. mattmarshall/cloud-org owns budgets for every account in
+  # the organization, at the payer, filtered by LinkedAccount — including this
+  # one (`msoftware-ratio`, $5, a tripwire rather than a cost control). A
+  # second budget in this account would be a duplicate of a thing that already
+  # exists a level up, and the two would drift.
+  #
+  # What bounds cost here instead: the account's own Lambda concurrency limit
+  # of 10, which no template can widen, and log retention set explicitly in
+  # app.yaml because Lambda's default is never-expire.
 
 Outputs:
   RepositoryUri:

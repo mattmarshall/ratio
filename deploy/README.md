@@ -19,29 +19,24 @@ organization. Region `us-east-1`.
 |---|---|---|
 | `ratio-demo-bootstrap` | ECR repository, GitHub OIDC provider, deploy role, execution role, budget | a human, once |
 | `ratio-demo-app` | the function, the HTTP API, the log group | CI, on every push |
-| `ratio-identity-center` | who may sign in to the account | a human, in the **management** account |
+
+⛔ **Anything about the ACCOUNT rather than the demo lives in
+[`mattmarshall/cloud-org`](https://github.com/mattmarshall/cloud-org)**, not
+here: Identity Center assignments, the budget, and the cost-category bucket.
+That repository is payer-level IaC for the whole organization, and its account
+inventory (`aws/org/accounts.bzl`) is the one place account ids are written
+down. Sign-in access is generated from that list by construction, which is what
+makes a missing assignment a diff rather than a silence.
+
+This directory owns only what is specific to running the demo.
 
 ## Signing in
 
-Access is granted to the `platform-admins` group through Identity Center, the
-same pair every other account in the org carries — `AdministratorAccess` and
-`ReadOnlyAccess`, separate so that reading the account does not require a role
-that can delete it. Declared in `identity-center.yaml`, which is deployed in
-the management account (740659854426) because that is where Identity Center
-assignments are made:
-
-```sh
-aws cloudformation deploy \
-  --template-file deploy/identity-center.yaml \
-  --stack-name ratio-identity-center \
-  --profile marsh --region us-east-1
-```
-
-Then `aws sso login --sso-session marsh`, and the account is reachable as the
-`ratio` and `ratio-ro` profiles.
-
-Assignments go to the group, never to a user: adding a second person is then a
-membership change rather than a template change.
+`aws sso login --sso-session marsh`, then the account is reachable as the
+`ratio` and `ratio-ro` profiles. Access comes from the `platform-admins` group —
+`AdministratorAccess` and `ReadOnlyAccess`, kept separate so reading the account
+does not require a role that can delete it. Add or remove people by changing
+group membership, not by changing a template.
 
 ## What it costs
 
@@ -54,7 +49,8 @@ Close to nothing, and that is a design constraint rather than a happy accident.
 - **ECR** — three images kept, untagged expired after a day.
 - **CloudWatch Logs** — 7-day retention, set explicitly. Lambda's default is
   *never expire*, which is the quietest recurring cost in AWS.
-- **Budget** — $5/month, alerting at 50% actual and 100% forecast.
+- **Budget** — $5/month at the payer, alerting at 50% actual and 100% forecast.
+  Declared in cloud-org, not here.
 
 The account's own Lambda concurrency limit of 10 is the cap on runaway
 invocations. `ReservedConcurrentExecutions` is deliberately unset: AWS refuses
@@ -104,9 +100,7 @@ aws cloudformation deploy \
   --template-file deploy/bootstrap.yaml \
   --stack-name ratio-demo-bootstrap \
   --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides \
-    GitHubRepo=mattmarshall/ratio \
-    BudgetEmail=you@example.com
+  --parameter-overrides GitHubRepo=mattmarshall/ratio
 ```
 
 Then update `ACCOUNT_ID` in `.github/workflows/deploy.yml` and push.
