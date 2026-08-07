@@ -147,7 +147,22 @@ fn tools_list() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "toml": {"type": "string", "description": "The rule set, as TOML."}
+                    "toml": {"type": "string", "description": "The rule set, as TOML. Every rule needs `id` and `kind` \
+                         (trade | dividend | accrual); an accrual also needs `rate_bp` \
+                         and `day_count` (act/365 | act/360 | 30/360). Each posting is \
+                         an `[[rule.posting]]` with `account` and `weight`.\n\n\
+                         [[rule]]\n\
+                         id = \"management_fee_accrual\"\n\
+                         kind = \"accrual\"\n\
+                         description = \"75bp a year on net assets, ACT/365\"\n\
+                         rate_bp = 75\n\
+                         day_count = \"act/365\"\n\
+                         [[rule.posting]]\n\
+                         account = 10\n\
+                         weight = 1\n\
+                         [[rule.posting]]\n\
+                         account = 40\n\
+                         weight = -1"}
                 },
                 "required": ["toml"]
             }
@@ -157,7 +172,7 @@ fn tools_list() -> Value {
             "description":
                 "Check a rule set against the chart without proposing it. Returns every \
                  finding: errors are things that cannot be used as written, questions are \
-                 for a human to answer.",
+                 for a human to answer. Same TOML shape as propose_rule.",
             "inputSchema": {
                 "type": "object",
                 "properties": {"toml": {"type": "string"}},
@@ -636,6 +651,32 @@ weight = -1
 
     /// The fence. `approve_rule` must not be listed, must not dispatch, and the
     /// refusal must tell the model what to do instead.
+    #[test]
+    fn propose_rule_shows_the_shape_it_wants() {
+        // Watched live: a model took three attempts to find this, discovering
+        // `id` then `kind` one parse error at a time — while the schema knew
+        // both. A tool description that omits its required fields turns every
+        // caller into a bisector.
+        let d = tools()["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == "propose_rule")
+            .unwrap()["inputSchema"]["properties"]["toml"]["description"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        for needed in ["id", "kind", "rate_bp", "day_count", "[[rule.posting]]", "weight"] {
+            assert!(d.contains(needed), "propose_rule does not mention {needed}");
+        }
+        // And the example it shows must actually parse, or it teaches a lie.
+        let example = d[d.find("[[rule]]").unwrap()..].to_string();
+        let set = ratio_rules::RuleSet::from_toml(&example)
+            .unwrap_or_else(|e| panic!("the example in propose_rule does not parse: {e}\n{example}"));
+        assert_eq!(set.rules.len(), 1);
+        assert_eq!(set.rules[0].id, "management_fee_accrual");
+    }
+
     #[test]
     fn the_exposed_dispatcher_carries_the_same_fence() {
         // `dispatch` exists so the in-process chat demo does not need its own
