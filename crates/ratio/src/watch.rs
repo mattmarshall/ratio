@@ -227,6 +227,18 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         // not touch the book, or a probe becomes a load test.
         (_, "/healthz") => ("200 OK", "text/plain; charset=utf-8", "ok".to_string()),
 
+        // Which commit this binary was built from.
+        //
+        // Lambda serves warm containers on the previous image for a while after
+        // a deploy, so "the URL returns 200" does not mean "the URL runs what
+        // was just built". A deploy that asserts against the old image passes
+        // while shipping nothing, which is how the first /app smoke test failed.
+        (_, "/version") => (
+            "200 OK",
+            "text/plain; charset=utf-8",
+            option_env!("RATIO_BUILD").unwrap_or("dev").to_string(),
+        ),
+
         _ => ("404 Not Found", "text/plain; charset=utf-8", "no".to_string()),
     };
 

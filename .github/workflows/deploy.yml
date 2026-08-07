@@ -74,7 +74,10 @@ jobs:
 
       # Bazel only, never cargo — the same build the tests run against.
       - name: Build ratio
-        run: bazel build --lockfile_mode=error //crates/ratio
+        # RATIO_BUILD is baked into the binary and reported at /version, which is
+        # how the smoke test below tells the new deployment from a warm container
+        # still running the old one.
+        run: bazel build --lockfile_mode=error --action_env=RATIO_BUILD="${GITHUB_SHA}" //crates/ratio
 
       # Refuse to ship an image whose contents were never checked. The deploy
       # workflow runs on the same push as build.yml but not after it, so
@@ -136,15 +139,28 @@ jobs:
             *) echo "::error::no DemoUrl output on $STACK (got '$URL')"; exit 1 ;;
           esac
 
-          # A deploy that reports success while serving a 502 is the failure
-          # this step exists to catch. Retry through the cold start rather than
-          # racing it.
-          for i in $(seq 1 12); do
-            CODE="$(curl -s -o /dev/null -w '%{http_code}' "${URL}healthz" || true)"
-            [ "$CODE" = "200" ] && break
-            echo "  attempt $i: $CODE"; sleep 5
+          # ⛔ WAIT FOR THE NEW IMAGE, NOT FOR A 200.
+          #
+          # `cloudformation deploy` returns when the stack is updated, but Lambda
+          # keeps serving warm containers on the OLD image for a while after. A
+          # healthz probe is answered by one of those and reports success, so the
+          # next assertion runs against the previous build — which is exactly how
+          # this step failed the first time /app existed: healthz was green and
+          # /app was a 404 from an image that predated it.
+          #
+          # So poll for something only the new build serves. /version reports the
+          # commit the binary was built from.
+          for i in $(seq 1 24); do
+            SEEN="$(curl -s "${URL}version" || true)"
+            [ "$SEEN" = "$GITHUB_SHA" ] && break
+            echo "  attempt $i: serving '${SEEN:-nothing}', want ${GITHUB_SHA:0:7}"
+            sleep 5
           done
-          [ "$CODE" = "200" ] || { echo "::error::healthz never returned 200"; exit 1; }
+          [ "$SEEN" = "$GITHUB_SHA" ] || {
+            echo "::error::after 2 minutes the URL still serves '${SEEN:-nothing}', not $GITHUB_SHA"
+            exit 1
+          }
+          echo "serving $GITHUB_SHA"
 
           # The screens render.
           curl -sf "$URL" | grep -q "Trial balance" \
