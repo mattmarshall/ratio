@@ -32,6 +32,27 @@ Resources:
       ImageTagMutability: MUTABLE
       ImageScanningConfiguration:
         ScanOnPush: true
+      # A container-image Lambda is pulled by the Lambda service, not by the
+      # execution role, so an identity policy cannot grant this — the registry
+      # has to allow it. Without this the function fails to create with
+      # "Lambda does not have permission to access the ECR image", which reads
+      # like a broken image rather than a missing repository policy.
+      #
+      # Scoped by sourceArn to this one function: the default snippet AWS
+      # publishes uses `function:*` and lets any Lambda in the account pull.
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: LambdaPullsTheDemoImage
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - ecr:BatchGetImage
+              - ecr:GetDownloadUrlForLayer
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:ratio-demo"
       # Storage is billed per GB-month. Three images is enough to roll back to
       # while keeping the bill in the noise.
       LifecyclePolicy:
