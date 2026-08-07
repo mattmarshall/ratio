@@ -1,12 +1,16 @@
 name: deploy
 
 # Builds the demo image and deploys it to the ratio account (320473299741) as
-# a Lambda behind a Function URL.
+# a Lambda behind an HTTP API.
 #
 # Why Lambda: the demo is used a few times a week, and everything else that
-# serves HTTP on AWS bills while idle. A Function URL costs nothing at rest,
-# and the Lambda Web Adapter runs `ratio watch` unmodified — so what is demoed
-# is what ships, not a Lambda-shaped port of it.
+# serves HTTP on AWS bills while idle. Lambda plus an HTTP API costs nothing at
+# rest — $1 per million requests and no hourly charge — and the Lambda Web
+# Adapter runs `ratio watch` unmodified, so what is demoed is what ships rather
+# than a Lambda-shaped port of it.
+#
+# The API is there because a public Function URL, which would have been simpler
+# still, is refused in this account. See the comment in deploy/app.yaml.
 #
 # Why no long-lived key: the runner assumes `ratio-demo-deploy` via GitHub's
 # OIDC provider. The trust policy is scoped to this repo's main branch, so a
@@ -121,8 +125,15 @@ jobs:
         run: |
           set -euo pipefail
           URL="$(aws cloudformation describe-stacks --stack-name "$STACK" \
-                  --query 'Stacks[0].Outputs[?OutputKey==`FunctionUrl`].OutputValue' --output text)"
+                  --query 'Stacks[0].Outputs[?OutputKey==`DemoUrl`].OutputValue' --output text)"
           echo "URL: $URL"
+          # An empty URL makes every curl below return 000, which reads as "the
+          # demo is down" when it actually means this query named an output
+          # that no longer exists. It did, once — the output was renamed.
+          case "$URL" in
+            https://*) ;;
+            *) echo "::error::no DemoUrl output on $STACK (got '$URL')"; exit 1 ;;
+          esac
 
           # A deploy that reports success while serving a 502 is the failure
           # this step exists to catch. Retry through the cold start rather than
@@ -137,6 +148,17 @@ jobs:
           # The screens render.
           curl -sf "$URL" | grep -q "Trial balance" \
             || { echo "::error::the balance screen did not render"; exit 1; }
+
+          # And they render the demo BOOK, not an empty one. An image whose
+          # book failed to ship starts cleanly, answers healthz, and serves a
+          # blank ledger — every signal green. That shipped twice.
+          BAL="$(curl -sf "${URL}balance.json")"
+          echo "$BAL" | grep -q '"entries":6' \
+            || { echo "::error::expected 6 entries, got: $BAL"; exit 1; }
+          curl -sf "${URL}rules.json" | grep -q '"pending":\[{' \
+            || { echo "::error::no pending proposal — the rules screen has one column"; exit 1; }
+          curl -sf "${URL}breaks.json" | grep -q '"difference":"1000.00"' \
+            || { echo "::error::the break report is missing its break"; exit 1; }
 
           # MCP answers, and the fence still holds on a public endpoint.
           TOOLS="$(curl -sf -X POST "${URL}mcp" -H 'content-type: application/json' \
