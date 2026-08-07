@@ -138,16 +138,40 @@ nothing about it. Same principle as false breaks in a shadow run: a check that
 cries wolf trains people to ignore the checks. A correct rule set now produces
 **no output at all**, which is what makes a finding worth reading.
 
-### Stage 2 — the demo
+### Stage 2 — the demo — ✅ DONE (`crates/ratio-mcp`, `ratio mcp`, `ratio approve`)
 
 - MCP server exposing exactly: `list_accounts`, `propose_rule`, `check_rule`,
-  `answer_question`, `approve_rule`, `post_events`, `trial_balance`,
-  `explain_figure`.
+  `post_events`, `trial_balance`, `explain_figure`. Line-delimited JSON-RPC 2.0
+  on stdio; `ratio mcp` serves it.
 - **The model can call `propose_rule` and nothing else that writes.** Approval
-  is a separate call a human makes. This is the demo's whole point and it must
-  be true in the code, not just in the narration.
+  is `ratio approve <id>`, a CLI command, run by a person.
 - A live trial-balance page that updates as events post — the visual payoff.
-- **Done when:** the five-minute script below runs end to end without a rehearsal.
+  **Still outstanding**; the CLI `ratio balance` is what the script uses today.
+- **Done when:** the five-minute script below runs end to end without a
+  rehearsal. *Steps 1–3 and 5–7 verified end to end over real stdio; step 4's
+  answer-a-question exchange is the deviation below.*
+
+#### Two deviations from this plan, both deliberate
+
+**`approve_rule` is not a tool, and neither is `answer_question`.** This plan
+listed both, *and* required that the model "can call `propose_rule` and nothing
+else that writes… true in the code, not just in the narration." Those two
+demands are in direct conflict: a write tool that a model can call is a write
+tool a model can call, whatever the permission check around it says. The fence
+won. `approve_rule` is not exposed, not dispatched, and not reachable — the
+dispatcher answers the name with a sentence explaining that a person runs
+`ratio approve` at a terminal. It is enforced by **absence**, not by a
+permission check somebody could later relax. `answer_question` went with it:
+the questions `check_rule` returns are answered by revising the rule and
+proposing again, which leaves the whole exchange in the proposal history rather
+than in a side channel nothing content-addresses.
+
+**Approval re-checks and merges.** `approve` re-runs `check` at approval time
+(the chart may have moved since the proposal was made — approving something
+that no longer passes would put a bad template into production with a human's
+name on it), and *merges* into the active rule set rather than replacing it, so
+approving a fee rule does not silently retire the trade rules. Both are tested,
+and the merge test was negative-tested by sabotaging the merge.
 
 ### Stage 3 — the wedge
 

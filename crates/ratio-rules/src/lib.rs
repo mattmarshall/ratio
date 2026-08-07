@@ -133,9 +133,9 @@ impl RuleSet {
         toml::from_str(s).context("configuration is not valid TOML for a rule set")
     }
 
-    /// Serialise back to TOML — the canonical form that gets content-addressed.
+    /// Serialize back to TOML — the canonical form that gets content-addressed.
     pub fn to_toml(&self) -> Result<String> {
-        toml::to_string_pretty(self).context("serialising rule set")
+        toml::to_string_pretty(self).context("serializing rule set")
     }
 
     /// Find a rule by id.

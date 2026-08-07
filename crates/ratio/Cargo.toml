@@ -12,6 +12,7 @@ ratio-common = { path = "../ratio-common" }
 ratio-kernel = { path = "../ratio-kernel" }
 ratio-api = { path = "../ratio-api" }
 ratio-chart = { path = "../ratio-chart" }
+ratio-mcp = { path = "../ratio-mcp" }
 ratio-rules = { path = "../ratio-rules" }
 ratio-store = { path = "../ratio-store" }
 ratio-tui = { path = "../ratio-tui" }

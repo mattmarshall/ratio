@@ -590,6 +590,7 @@ dependencies = [
  "ratio-chart",
  "ratio-common",
  "ratio-kernel",
+ "ratio-mcp",
  "ratio-rules",
  "ratio-store",
  "ratio-tui",
@@ -626,6 +627,19 @@ name = "ratio-kernel"
 version = "0.0.0"
 dependencies = [
  "ratio-common",
+]
+
+[[package]]
+name = "ratio-mcp"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "ratio-chart",
+ "ratio-kernel",
+ "ratio-rules",
+ "ratio-store",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

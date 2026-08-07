@@ -84,7 +84,7 @@ impl std::fmt::Display for Digest {
 /// integer amount in minor units.
 ///
 /// Deliberately distinct from `ratio_kernel::Posting`, which is Lean-emitted
-/// and carries no dependencies. Serialisation is an I/O concern and does not
+/// and carries no dependencies. Serialization is an I/O concern and does not
 /// belong on the proven kernel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PostingRecord {
@@ -135,7 +135,7 @@ impl JournalEntry {
 pub struct Account {
     pub dim: i64,
     pub display_name: String,
-    /// Serialised as the lowercase type name: `asset`, `liability`, …
+    /// Serialized as the lowercase type name: `asset`, `liability`, …
     pub account_type: AccountTypeRecord,
 }
 
@@ -348,7 +348,7 @@ impl Journal for FileBook {
                 entry.config.short()
             );
         }
-        let line = serde_json::to_string(entry).context("serialising entry")?;
+        let line = serde_json::to_string(entry).context("serializing entry")?;
         let mut f = OpenOptions::new()
             .create(true)
             .append(true)

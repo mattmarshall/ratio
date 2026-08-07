@@ -42,6 +42,8 @@ usage:
   ratio apply FILE [--book DIR]        apply rules to events and post the result
   ratio post FILE [--book DIR]         post entries directly; refuses unbalanced
   ratio balance [--book DIR]           print the trial balance
+  ratio mcp [--book DIR]               serve the MCP tools on stdio
+  ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio server                         serve the Ledger gRPC API
 
 The book defaults to ./book, or $RATIO_BOOK if set.
@@ -65,10 +67,12 @@ fn main() -> Result<()> {
         ["apply", file] => apply(book, file),
         ["post", file] => post(book, file),
         ["balance"] => balance(book),
+        ["mcp"] => mcp(book),
+        ["approve", id] => approve(book, id),
         ["server"] => serve(),
         other => {
             eprint!("{USAGE}");
-            bail!("unrecognised command: {}", other.join(" "));
+            bail!("unrecognized command: {}", other.join(" "));
         }
     }
 }
@@ -114,7 +118,7 @@ fn init(book: PathBuf) -> Result<()> {
         let digest = b.put(b"# ratio configuration\nrules = []\n")?;
         b.set_active(&digest)?;
     }
-    println!("initialised book at {}", book.display());
+    println!("initialized book at {}", book.display());
     println!("  accounts  {}", b.accounts()?.len());
     println!("  config    {}", b.active()?.expect("just set").short());
     Ok(())
@@ -379,6 +383,72 @@ fn minor(v: i64) -> String {
     }
 }
 
+/// Serve the MCP tools on stdio, for a model to call.
+///
+/// Note what this cannot do: promote a rule. `approve` below is a CLI command
+/// and is not exposed as a tool, so a proposal becomes policy only when a
+/// person runs it. See `ratio-mcp`'s module docs.
+fn mcp(book: PathBuf) -> Result<()> {
+    FileBook::open(&book)?; // fail here rather than mid-conversation
+    let stdin = std::io::stdin();
+    ratio_mcp::serve(&book, stdin.lock(), std::io::stdout())
+}
+
+/// Promote a proposal to the active configuration.
+///
+/// **Deliberately not an MCP tool.** This is the step a human takes, at a
+/// terminal, having read the rule. The proposal is merged into the active rule
+/// set rather than replacing it, so approving a fee rule does not silently
+/// retire the trade rules.
+fn approve(book: PathBuf, id: &str) -> Result<()> {
+    let mut b = FileBook::open(&book)?;
+    let path = book.join("proposals").join(format!("{id}.toml"));
+    let proposed = std::fs::read_to_string(&path)
+        .with_context(|| format!("no proposal {id} — expected {}", path.display()))?;
+    let incoming = RuleSet::from_toml(&proposed)?;
+
+    // Re-check at approval time. The chart may have moved since the proposal
+    // was made, and approving something that no longer passes would put a bad
+    // template into production with a human's name on it.
+    let chart = b.accounts()?;
+    let findings = check(&incoming, &chart);
+    let errors: Vec<_> = findings.iter().filter(|f| !f.is_question).collect();
+    if !errors.is_empty() {
+        for f in &errors {
+            println!("  x {}: {}", f.rule, f.message);
+        }
+        bail!("proposal {id} does not pass its checks and cannot be approved");
+    }
+
+    let mut merged = match b.active()? {
+        Some(d) => RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))?,
+        None => RuleSet::default(),
+    };
+    let mut replaced = 0usize;
+    for rule in incoming.rules {
+        match merged.rules.iter_mut().find(|r| r.id == rule.id) {
+            Some(existing) => {
+                *existing = rule;
+                replaced += 1;
+            }
+            None => merged.rules.push(rule),
+        }
+    }
+
+    let toml = merged.to_toml()?;
+    let digest = b.put(toml.as_bytes())?;
+    b.set_active(&digest)?;
+
+    println!("approved {id}");
+    println!("  {} rule(s) now active ({replaced} replaced)", merged.rules.len());
+    println!("  config {}", digest.short());
+    for rule in &merged.rules {
+        println!();
+        print!("{}", render(rule, &chart));
+    }
+    Ok(())
+}
+
 /// Serve the Ledger gRPC API. Every posted transaction must conserve value or
 /// it is rejected (FAILED_PRECONDITION).
 #[tokio::main]
@@ -423,5 +493,101 @@ mod tests {
     fn a_missing_book_directory_is_an_error_not_a_default() {
         let args = vec!["--book".to_string()];
         assert!(split_book_flag(&args).is_err());
+    }
+
+    /// A book with a chart and an empty rule set, plus a proposal on disk —
+    /// the state the MCP server leaves behind after `propose_rule`.
+    fn book_with_a_proposal(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("ratio-approve-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone()).unwrap();
+
+        let empty = dir.join("empty.toml");
+        std::fs::write(&empty, "").unwrap();
+        config_set(dir.clone(), empty.to_str().unwrap()).unwrap();
+
+        std::fs::create_dir_all(dir.join("proposals")).unwrap();
+        std::fs::write(
+            dir.join("proposals").join("p1.toml"),
+            r#"
+[[rule]]
+id = "management_fee_accrual"
+kind = "accrual"
+rate_bp = 75
+day_count = "act/365"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+"#,
+        )
+        .unwrap();
+        dir
+    }
+
+    fn active_rules(book: &PathBuf) -> RuleSet {
+        let b = FileBook::open(book).unwrap();
+        let d = b.active().unwrap().unwrap();
+        RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d).unwrap())).unwrap()
+    }
+
+    #[test]
+    fn a_proposal_is_inert_until_a_person_approves_it() {
+        let book = book_with_a_proposal("inert");
+        assert!(
+            active_rules(&book).rules.is_empty(),
+            "a proposal on disk must not be active"
+        );
+
+        approve(book.clone(), "p1").unwrap();
+        assert_eq!(active_rules(&book).rules.len(), 1);
+    }
+
+    #[test]
+    fn approving_merges_rather_than_replaces() {
+        // The trap this guards: approving a fee rule must not retire the trade
+        // rules that were already live.
+        let book = book_with_a_proposal("merge");
+        std::fs::write(
+            book.join("proposals").join("p2.toml"),
+            "[[rule]]\nid = \"other\"\nkind = \"trade\"\n[[rule.posting]]\naccount = 10\nweight = 1\n[[rule.posting]]\naccount = 40\nweight = -1\n",
+        )
+        .unwrap();
+
+        approve(book.clone(), "p1").unwrap();
+        approve(book.clone(), "p2").unwrap();
+
+        let ids: Vec<_> = active_rules(&book).rules.iter().map(|r| r.id.clone()).collect();
+        assert!(ids.contains(&"management_fee_accrual".to_string()), "{ids:?}");
+        assert!(ids.contains(&"other".to_string()), "{ids:?}");
+    }
+
+    #[test]
+    fn re_approving_the_same_id_replaces_it_and_does_not_duplicate() {
+        let book = book_with_a_proposal("replace");
+        approve(book.clone(), "p1").unwrap();
+        approve(book.clone(), "p1").unwrap();
+        assert_eq!(active_rules(&book).rules.len(), 1);
+    }
+
+    #[test]
+    fn a_proposal_naming_an_account_outside_the_chart_cannot_be_approved() {
+        let book = book_with_a_proposal("badaccount");
+        std::fs::write(
+            book.join("proposals").join("bad.toml"),
+            "[[rule]]\nid = \"r\"\nkind = \"trade\"\n[[rule.posting]]\naccount = 99999\nweight = 1\n[[rule.posting]]\naccount = 40\nweight = -1\n",
+        )
+        .unwrap();
+        assert!(approve(book.clone(), "bad").is_err());
+        assert!(active_rules(&book).rules.is_empty(), "a refused proposal must not go active");
+    }
+
+    #[test]
+    fn approving_a_proposal_that_is_not_there_names_the_path() {
+        let book = book_with_a_proposal("missing");
+        let e = approve(book, "nope").unwrap_err().to_string();
+        assert!(e.contains("nope"), "{e}");
     }
 }

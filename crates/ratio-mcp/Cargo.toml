@@ -1,0 +1,16 @@
+[package]
+name = "ratio-mcp"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+ratio-chart = { path = "../ratio-chart" }
+ratio-kernel = { path = "../ratio-kernel" }
+ratio-rules = { path = "../ratio-rules" }
+ratio-store = { path = "../ratio-store" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

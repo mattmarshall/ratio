@@ -52,8 +52,8 @@ def treat(im: Image.Image) -> Image.Image:
     """Square-crop, desaturate, shape contrast, and duotone."""
     im = ImageOps.exif_transpose(im).convert("RGB")
 
-    # Square crop about the centre-top: headshots put the face above centre, so
-    # a plain centre crop tends to take the chin off.
+    # Square crop about the center-top: headshots put the face above center, so
+    # a plain center crop tends to take the chin off.
     w, h = im.size
     s = min(w, h)
     top = int((h - s) * 0.32) if h > s else 0
