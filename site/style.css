@@ -510,3 +510,129 @@ table.r-tab thead th.col-r{background:var(--block)}
   color:var(--accent);font:600 17px 'Outfit',system-ui,sans-serif;letter-spacing:.02em;
   margin:0 0 14px;overflow:hidden;flex:none}
 .r-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+
+/* ── Side-by-side figure pairs ────────────────────────────────────────────
+   These were inline `style="display:grid;…"` on the figure, which no media
+   query can override — so they stayed two-column on a 390px screen and
+   squeezed a code panel down to 160px. As a class they collapse properly. */
+.r-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:32px;align-items:start}
+@media (max-width:860px){
+  .r-split{grid-template-columns:1fr;gap:26px}
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Mobile. The desktop layout gave 227px of masthead and nav before the
+   headline on a 390x844 screen — a quarter of the first view spent on
+   chrome, with a seven-item nav wrapping to two rows. Below 720px the
+   masthead shrinks and the nav becomes a single scrolling row, which is
+   what a nav of this length wants on a phone.
+   ══════════════════════════════════════════════════════════════════ */
+@media (max-width:720px){
+  .r-nav{padding:16px 0 0;gap:12px;flex-wrap:nowrap;align-items:flex-start}
+  .r-brandline{gap:10px}
+  .r-brandline .r-mk{width:26px}
+  .r-brandline .r-wm{width:98px}
+
+  /* One row, scrolled rather than wrapped. Edge-to-edge so the cut-off item
+     reads as "there is more", and the padding is restored inside the list. */
+  .r-nav ul{flex:1 1 auto;min-width:0;gap:18px;overflow-x:auto;flex-wrap:nowrap;
+    margin:4px -20px 0;padding:0 20px 6px;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .r-nav ul::-webkit-scrollbar{display:none}
+  .r-nav li{flex:0 0 auto}
+  .r-nav a{font-size:14px;white-space:nowrap;padding-bottom:5px}
+
+  .r-hero{padding:22px 0 4px}
+  .r-hero-sub{font-size:17.5px;margin-bottom:24px}
+  .r-lede{font-size:17.5px}
+  .r-section{padding-top:40px}
+  .r-rule{margin-top:40px}
+
+  /* Full-bleed buttons stack better than two half-width ones at this size. */
+  .r-cta-row{gap:10px;margin-top:24px}
+  .r-btn{width:100%;text-align:center;padding:14px 18px}
+
+  /* Figures: 520px of SVG inside a 350px column was a 33% squeeze. Letting
+     them run to the screen edge buys back the side padding, and the scroll
+     hint below says the wide ones are scrollable rather than clipped. */
+  .r-fig .r-scroll{margin-inline:-20px;padding-inline:20px}
+  .r-fig svg{min-width:460px}
+  .r-fig-cap{font-size:13px}
+
+  .r-panel-body,.r-proof-body{font-size:12px;padding:14px 13px}
+  .r-block p{font-size:17px}
+  .r-quote{font-size:17px;padding-left:16px}
+  .r-stage{padding-top:20px}
+  .r-stage-lede h3{font-size:18px}
+
+  /* Tables keep their own scroller; just stop them being needlessly wide. */
+  table.r-tab{min-width:600px;font-size:14.5px}
+  table.r-tab th,table.r-tab td{padding:10px 11px}
+
+  .r-budget{font-size:14.5px}
+  .r-budget th,.r-budget td{padding:9px 2px}
+  .r-app-body{padding:14px 14px}
+  .r-kpis{gap:9px}
+  .r-foot{padding:44px 0 32px}
+}
+
+/* A quiet affordance for figures that genuinely overflow — nav.js sets
+   data-scrollable by measuring, so this never claims a diagram scrolls when
+   it fits. Deliberately lighter than the caption it sits above: it is an
+   instruction about the interface, not part of the argument. */
+.r-fig .r-scroll[data-scrollable] + figcaption::before,
+.r-fig .r-scroll[data-scrollable] ~ figcaption::before{
+  content:"⟷ scroll";display:inline-block;font-size:10.5px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted);opacity:.65;
+  border:1px solid var(--rule);border-radius:2px;padding:2px 7px;
+  margin:0 8px 6px 0;vertical-align:1px}
+
+/* ── Mobile nav toggle ────────────────────────────────────────────────────
+   Hidden entirely until nav.js sets data-js, so a page whose script did not
+   run keeps a working (if longer) nav rather than an inert button. */
+.r-navtoggle{display:none;flex:0 0 auto;width:42px;height:42px;padding:0;
+  margin:-4px -8px -4px 0;background:none;border:0;cursor:pointer;
+  align-items:center;justify-content:center;border-radius:3px;color:var(--text)}
+.r-navtoggle-bars,
+.r-navtoggle-bars::before,
+.r-navtoggle-bars::after{
+  content:"";display:block;width:20px;height:2px;border-radius:2px;
+  background:currentColor;transition:transform .18s ease,opacity .12s ease}
+.r-navtoggle-bars{position:relative}
+.r-navtoggle-bars::before{position:absolute;top:-6px}
+.r-navtoggle-bars::after{position:absolute;top:6px}
+.r-navtoggle:hover{background:var(--surface)}
+
+@media (max-width:720px){
+  .r-nav[data-js] .r-navtoggle{display:flex}
+
+  /* Collapsed: the list becomes a panel under the masthead rather than the
+     scrolling row, which was only ever a way to survive seven items. */
+  .r-nav[data-js]{flex-wrap:wrap;align-items:center}
+  .r-nav[data-js] .r-nav-list{
+    flex:0 0 100%;order:3;overflow:visible;
+    flex-direction:column;gap:0;margin:0;padding:0;
+    max-height:0;opacity:0;visibility:hidden;
+    transition:max-height .22s ease,opacity .16s ease,visibility 0s linear .22s}
+  .r-nav[data-js][data-open] .r-nav-list{
+    max-height:70vh;opacity:1;visibility:visible;
+    margin:14px 0 2px;border-top:1px solid var(--rule);
+    transition:max-height .24s ease,opacity .18s ease,visibility 0s}
+  .r-nav[data-js] .r-nav-list li{width:100%}
+  .r-nav[data-js] .r-nav-list a{
+    display:block;padding:13px 2px;font-size:16px;
+    border-bottom:1px solid var(--rule);border-bottom-color:var(--rule)}
+  .r-nav[data-js] .r-nav-list a[aria-current="page"]{
+    border-bottom-color:var(--rule);color:var(--accent)}
+  .r-nav[data-js] .r-nav-list li:last-child a{border-bottom:0}
+
+  /* The bars become an X while the panel is open. */
+  .r-nav[data-open] .r-navtoggle-bars{background:transparent}
+  .r-nav[data-open] .r-navtoggle-bars::before{top:0;transform:rotate(45deg)}
+  .r-nav[data-open] .r-navtoggle-bars::after{top:0;transform:rotate(-45deg)}
+}
+@media (prefers-reduced-motion:reduce){
+  .r-nav .r-nav-list,.r-navtoggle-bars,
+  .r-navtoggle-bars::before,.r-navtoggle-bars::after{transition:none}
+}

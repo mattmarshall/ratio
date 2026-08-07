@@ -29,7 +29,11 @@ __STYLE__
       <span class="r-mk">__MARK__</span>
       <span class="r-wm">__WORDMARK__</span>
     </a>
-    <ul>
+    <button class="r-navtoggle" type="button" aria-expanded="false"
+            aria-controls="r-nav-list" aria-label="Menu">
+      <span class="r-navtoggle-bars" aria-hidden="true"></span>
+    </button>
+    <ul class="r-nav-list" id="r-nav-list">
       <li><a href="index.html">Overview</a></li>
       <li><a href="workflows.html">Workflows</a></li>
       <li><a href="platform.html">Platform</a></li>
@@ -73,6 +77,67 @@ __STYLE__
       <em>today</em>. Everything else is reconstructed from logs, tickets, email
       and the memory of whoever was there.</p>
     </div>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 1000 300" role="img"
+             aria-label="On the left, one examiner question scatters across logs, tickets, email and memory, is assembled by a person into a spreadsheet, and produces an argument about the past. On the right, the same question resolves directly to one immutable configuration version and produces a record of it.">
+          <text class="svg-lab svg-muted" x="0" y="14">TODAY — RECONSTRUCTED</text>
+
+          <rect class="svg-block" x="0" y="30" width="150" height="42" rx="3"/>
+          <text class="svg-block-text svg-lab-sm" x="75" y="56" text-anchor="middle">“under which rules?”</text>
+
+          <g class="svg-lab-sm">
+            <rect class="svg-raised" x="0" y="98" width="94" height="30" rx="3"/>
+            <rect x="0" y="98" width="94" height="30" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text2" x="47" y="118" text-anchor="middle">logs</text>
+            <rect class="svg-raised" x="104" y="98" width="94" height="30" rx="3"/>
+            <rect x="104" y="98" width="94" height="30" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text2" x="151" y="118" text-anchor="middle">tickets</text>
+            <rect class="svg-raised" x="0" y="138" width="94" height="30" rx="3"/>
+            <rect x="0" y="138" width="94" height="30" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-text2" x="47" y="158" text-anchor="middle">email</text>
+            <rect class="svg-raised" x="104" y="138" width="94" height="30" rx="3"/>
+            <rect x="104" y="138" width="94" height="30" rx="3" fill="none" class="svg-rule" stroke-width="1" stroke-dasharray="4 3"/>
+            <text class="svg-muted" x="151" y="158" text-anchor="middle">memory</text>
+          </g>
+          <g style="stroke:var(--series-legacy)" stroke-width="1.3" opacity=".75">
+            <path d="M60 72 L47 94 M84 72 L151 94 M66 72 L47 134 M90 72 L151 134" fill="none"/>
+            <path d="M198 113 L246 130 M198 153 L246 138" fill="none"/>
+          </g>
+
+          <rect class="svg-raised" x="250" y="112" width="118" height="46" rx="3"/>
+          <rect x="250" y="112" width="118" height="46" rx="3" fill="none" style="stroke:var(--series-legacy)" stroke-width="1.5"/>
+          <text class="svg-lab-sm svg-text" x="309" y="132" text-anchor="middle">somebody</text>
+          <text class="svg-lab-sm svg-muted" x="309" y="149" text-anchor="middle">assembles it</text>
+          <line x1="368" y1="135" x2="398" y2="135" stroke-width="1.5" style="stroke:var(--series-legacy)"/>
+          <text class="svg-lab" x="402" y="131" style="fill:var(--series-legacy)">an argument</text>
+          <text class="svg-lab-sm svg-muted" x="402" y="150">about the past</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="196">rebuilt from scratch for the next question</text>
+
+          <line class="svg-rule" x1="560" y1="20" x2="560" y2="230" stroke-width="1" stroke-dasharray="3 5"/>
+
+          <text class="svg-lab" x="600" y="14" style="fill:var(--yes)">WITH RATIO — LOOKED UP</text>
+          <rect class="svg-block" x="600" y="30" width="150" height="42" rx="3"/>
+          <text class="svg-block-text svg-lab-sm" x="675" y="56" text-anchor="middle">“under which rules?”</text>
+          <line x1="675" y1="72" x2="675" y2="110" stroke-width="1.6" style="stroke:var(--yes)"/>
+
+          <rect class="svg-surface" x="600" y="112" width="230" height="58" rx="3"/>
+          <rect x="600" y="112" width="230" height="58" rx="3" fill="none" style="stroke:var(--yes)" stroke-width="2"/>
+          <text class="svg-lab svg-text" x="715" y="136" text-anchor="middle">config@6b0d41f</text>
+          <text class="svg-lab-sm svg-muted" x="715" y="156" text-anchor="middle">immutable · attached to the figure</text>
+          <line x1="830" y1="141" x2="860" y2="141" stroke-width="1.6" style="stroke:var(--yes)"/>
+          <text class="svg-lab" x="864" y="137" style="fill:var(--yes)">a record</text>
+          <text class="svg-lab-sm svg-muted" x="864" y="156">of it</text>
+          <text class="svg-lab-sm svg-muted" x="600" y="196">the same answer next year, and the year after</text>
+
+          <text class="svg-lab-sm svg-muted" x="0" y="256">The evidence is not produced for the examiner. It is how the system already works,</text>
+          <text class="svg-lab-sm svg-muted" x="0" y="274">exposed — which is why the answer does not depend on who is available that week.</text>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap">The difference is not better reporting. It is
+      that one side has to rebuild the past and the other still has it.</figcaption>
+    </figure>
 
     <div class="r-rows">
       <div class="r-row">
@@ -423,3 +488,5 @@ __STYLE__
     </div>
   </div>
 </footer>
+
+__SCRIPT__

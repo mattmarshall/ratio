@@ -29,7 +29,11 @@ __STYLE__
       <span class="r-mk">__MARK__</span>
       <span class="r-wm">__WORDMARK__</span>
     </a>
-    <ul>
+    <button class="r-navtoggle" type="button" aria-expanded="false"
+            aria-controls="r-nav-list" aria-label="Menu">
+      <span class="r-navtoggle-bars" aria-hidden="true"></span>
+    </button>
+    <ul class="r-nav-list" id="r-nav-list">
       <li><a href="index.html">Overview</a></li>
       <li><a href="workflows.html">Workflows</a></li>
       <li><a href="platform.html" aria-current="page">Platform</a></li>
@@ -221,7 +225,7 @@ __STYLE__
       </div>
     </div>
 
-    <figure class="r-fig" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:26px;align-items:start">
+    <figure class="r-fig r-split">
       <div class="r-panel">
         <div class="r-panel-head"><span>config@7d2b904 ← e91a55c</span><b>proposed</b></div>
 <pre class="r-panel-body"><code><span class="c"># fee schedule — institutional share class</span>
@@ -679,7 +683,7 @@ __STYLE__
       side of the wire moves it.</p>
     </div>
 
-    <figure class="r-fig" style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:36px;align-items:start">
+    <figure class="r-fig r-split">
       <div>
         <table class="r-budget">
           <caption class="r-fig-cap" style="caption-side:top;text-align:left;margin:0 0 10px">
@@ -833,7 +837,7 @@ __STYLE__
       </div>
     </div>
 
-    <figure class="r-fig" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:36px;align-items:start">
+    <figure class="r-fig r-split">
       <div>
         <table class="r-budget">
           <caption class="r-fig-cap" style="caption-side:top;text-align:left;margin:0 0 10px">
@@ -978,7 +982,7 @@ __STYLE__
       </div>
     </div>
 
-    <figure class="r-fig" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:36px;align-items:start">
+    <figure class="r-fig r-split">
       <div>
         <table class="r-budget">
           <caption class="r-fig-cap" style="caption-side:top;text-align:left;margin:0 0 10px">
@@ -1165,3 +1169,5 @@ __STYLE__
     </div>
   </div>
 </footer>
+
+__SCRIPT__

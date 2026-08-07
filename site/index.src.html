@@ -28,7 +28,11 @@ __STYLE__
       <span class="r-mk">__MARK__</span>
       <span class="r-wm">__WORDMARK__</span>
     </a>
-    <ul>
+    <button class="r-navtoggle" type="button" aria-expanded="false"
+            aria-controls="r-nav-list" aria-label="Menu">
+      <span class="r-navtoggle-bars" aria-hidden="true"></span>
+    </button>
+    <ul class="r-nav-list" id="r-nav-list">
       <li><a href="index.html" aria-current="page">Overview</a></li>
       <li><a href="workflows.html">Workflows</a></li>
       <li><a href="platform.html">Platform</a></li>
@@ -105,6 +109,54 @@ __STYLE__
       its month on is not accounting — it is compensating for a system nobody
       outside the vendor can look inside.</p>
     </div>
+
+    <figure class="r-fig">
+      <div class="r-scroll">
+        <svg viewBox="0 0 980 250" role="img"
+             aria-label="Three systems report different values for the same position and the gap is resolved by hand. With Ratio there is one value, and the custodian file is checked against it on the way in.">
+          <text class="svg-lab svg-muted" x="0" y="14">ONE POSITION, THREE ANSWERS</text>
+          <g class="svg-num">
+            <rect class="svg-raised" x="0" y="30" width="150" height="62" rx="3"/>
+            <rect x="0" y="30" width="150" height="62" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-lab-sm svg-muted" x="14" y="50">custodian</text>
+            <text class="svg-text" x="14" y="74" style="font-size:15px">1,204,880.11</text>
+            <rect class="svg-raised" x="166" y="30" width="150" height="62" rx="3"/>
+            <rect x="166" y="30" width="150" height="62" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-lab-sm svg-muted" x="180" y="50">the platform</text>
+            <text class="svg-text" x="180" y="74" style="font-size:15px">1,204,102.49</text>
+            <rect class="svg-raised" x="332" y="30" width="150" height="62" rx="3"/>
+            <rect x="332" y="30" width="150" height="62" rx="3" fill="none" class="svg-rule" stroke-width="1" stroke-dasharray="4 3"/>
+            <text class="svg-lab-sm svg-muted" x="346" y="50">the spreadsheet</text>
+            <text class="svg-text" x="346" y="74" style="font-size:15px">1,204,880.11</text>
+          </g>
+          <line x1="241" y1="100" x2="241" y2="124" style="stroke:var(--series-legacy)" stroke-width="1.5"/>
+          <rect x="150" y="126" width="182" height="34" rx="3" fill="none" style="stroke:var(--series-legacy)" stroke-width="1.5"/>
+          <text class="svg-lab" x="241" y="148" text-anchor="middle" style="fill:var(--series-legacy)">someone reconciles it</text>
+          <text class="svg-lab-sm svg-muted" x="241" y="180" text-anchor="middle">and does it again next month</text>
+
+          <line class="svg-rule" x1="540" y1="20" x2="540" y2="200" stroke-width="1" stroke-dasharray="3 5"/>
+
+          <text class="svg-lab" x="580" y="14" style="fill:var(--yes)">ONE POSITION, ONE ANSWER</text>
+          <g class="svg-num">
+            <rect class="svg-raised" x="580" y="30" width="150" height="62" rx="3"/>
+            <rect x="580" y="30" width="150" height="62" rx="3" fill="none" class="svg-rule" stroke-width="1"/>
+            <text class="svg-lab-sm svg-muted" x="594" y="50">custodian file</text>
+            <text class="svg-text" x="594" y="74" style="font-size:15px">1,204,880.11</text>
+          </g>
+          <line x1="730" y1="61" x2="762" y2="61" stroke-width="1.5" class="svg-rule2"/>
+          <rect class="svg-surface" x="766" y="30" width="214" height="62" rx="3"/>
+          <rect x="766" y="30" width="214" height="62" rx="3" fill="none" style="stroke:var(--yes)" stroke-width="2"/>
+          <text class="svg-lab-sm svg-muted" x="782" y="50">checked on the way in</text>
+          <text class="svg-text svg-num" x="782" y="74" style="font-size:15px">1,204,880.11</text>
+          <text class="svg-lab" x="580" y="148" style="fill:var(--yes)">a break is a real data problem</text>
+          <text class="svg-lab-sm svg-muted" x="580" y="176">not a disagreement between two systems that both claim to be right</text>
+        </svg>
+      </div>
+      <figcaption class="r-fig-cap">Illustrative. The point is not that one number
+      is prettier — it is that there is only one, and anything disagreeing with it
+      is rejected at the door rather than argued about at month-end.</figcaption>
+    </figure>
+
 
     <div class="r-rows">
       <div class="r-row">
@@ -581,3 +633,5 @@ __STYLE__
     </div>
   </div>
 </footer>
+
+__SCRIPT__
