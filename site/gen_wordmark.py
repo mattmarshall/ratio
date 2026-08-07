@@ -36,17 +36,30 @@ except ImportError:  # pragma: no cover - operator error, not a code path
     sys.exit("fontTools missing. See the module docstring for the venv recipe.")
 
 HERE = pathlib.Path(__file__).parent
-FACE = HERE / "fonts" / "ibm-plex-serif-700-latin.woff2"
+# IBM Plex MONO, not Serif. The mark is two ledger rules of equal length, and a
+# monospaced face is the typographic version of the same idea: fixed advances,
+# tabular figures, columns that line up because the metrics make them. The
+# serif read as a law firm; this reads as a ledger. It is also the same
+# superfamily as the Plex Serif already used for site headings, so the two
+# pair rather than collide.
+#
+# A .ttf rather than a .woff2 on purpose: fontTools needs brotli to read woff2,
+# and this face exists only to be cut from — it is never served to a browser,
+# so there is nothing to gain from the compressed form and a dependency to lose.
+FACE = HERE / "fonts" / "ibm-plex-mono-600-latin.ttf"
 OUT = HERE / "marks" / "wordmark-ratio.svg"
 
 WORD = "ratio"
 
-# Optical tracking, in 1/1000 em, applied between glyph pairs. The default face
-# metrics set "ratio" a shade tight at display size; a touch of air makes the
-# lowercase read as a considered wordmark rather than as running text. The `ti`
-# pair gets less because the `t`'s crossbar already carries the gap.
-TRACKING = 22
-PAIR_OVERRIDE = {("t", "i"): 10, ("r", "a"): 16}
+# Optical tracking, in 1/1000 em, applied between glyph pairs.
+#
+# NEGATIVE here, where the serif wanted positive. A monospaced face gives every
+# glyph the same advance, which is right for a column of figures and too airy
+# for a five-letter wordmark — the narrow `i` and `t` float in slots sized for
+# the `o`. Pulling the whole word in restores the density without touching the
+# letterforms, and the `i` gets pulled hardest because its slot is emptiest.
+TRACKING = -70
+PAIR_OVERRIDE = {("t", "i"): -95, ("i", "o"): -85}
 
 PAD = 40  # viewBox padding in font units, so strokes never clip
 

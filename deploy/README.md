@@ -19,6 +19,29 @@ organization. Region `us-east-1`.
 |---|---|---|
 | `ratio-demo-bootstrap` | ECR repository, GitHub OIDC provider, deploy role, execution role, budget | a human, once |
 | `ratio-demo-app` | the function, the HTTP API, the log group | CI, on every push |
+| `ratio-identity-center` | who may sign in to the account | a human, in the **management** account |
+
+## Signing in
+
+Access is granted to the `platform-admins` group through Identity Center, the
+same pair every other account in the org carries — `AdministratorAccess` and
+`ReadOnlyAccess`, separate so that reading the account does not require a role
+that can delete it. Declared in `identity-center.yaml`, which is deployed in
+the management account (740659854426) because that is where Identity Center
+assignments are made:
+
+```sh
+aws cloudformation deploy \
+  --template-file deploy/identity-center.yaml \
+  --stack-name ratio-identity-center \
+  --profile marsh --region us-east-1
+```
+
+Then `aws sso login --sso-session marsh`, and the account is reachable as the
+`ratio` and `ratio-ro` profiles.
+
+Assignments go to the group, never to a user: adding a second person is then a
+membership change rather than a template change.
 
 ## What it costs
 

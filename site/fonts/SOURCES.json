@@ -31,5 +31,16 @@
     "sha256": "92684e4acde79ef07758cd09380b7e01e9824d8b061eddeda046f78c166d7b12",
     "source": "https://fonts.gstatic.com/s/outfit/v15/QGYvz_MVcBeNP4NJtEtqUYLknw.woff2",
     "role": "body, UI, table and figure labels"
+  },
+  {
+    "family": "IBM Plex Mono",
+    "file": "ibm-plex-mono-600-latin.ttf",
+    "weight": "600",
+    "style": "normal",
+    "unicode_range": "full",
+    "bytes": 133444,
+    "sha256": "754dfc9d50cf7aabfb6b108d2c2f7d20a3f1f2cc6f6c01640c6728091272cec0",
+    "source": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAO8lc.ttf",
+    "role": "the outline source for marks/wordmark-ratio.svg; NOT served to browsers"
   }
 ]
