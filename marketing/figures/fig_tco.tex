@@ -1,5 +1,5 @@
 % Illustrative cumulative total cost of ownership. AUM-coupled legacy pricing vs
-% Ratio's usage-based, self-hostable model. Numbers are illustrative.
+% Ratio's usage-based model. Numbers are illustrative.
 \begin{figure}[h]
 \centering
 \begin{tikzpicture}
@@ -8,22 +8,27 @@
     font=\sffamily\footnotesize,
     xlabel={Year}, ylabel={Cumulative cost (\$\,000s)},
     xtick=data, ymin=0,
-    legend style={at={(0.02,0.97)}, anchor=north west, draw=ratioSand,
+    legend style={at={(0.02,0.97)}, anchor=north west, draw=ratioRule,
                   fill=white, font=\sffamily\footnotesize},
-    grid=both, grid style={ratioSand!40},
+    grid=both, grid style={ratioRule!40},
     axis line style={ratioInk}, tick label style={ratioInk},
     label style={ratioInk}, mark options={solid},
 ]
-\addplot[ratioBrown, line width=1.3pt, mark=*, mark size=2pt,
-         fill=ratioBrown, fill opacity=0.10]
+% Two series need two HUES, not two greens. Under the sepia palette these
+% were brown vs green and read fine; repainting the brand green made them
+% 1B6440 vs 1F6B45, which is one color twice. seriesLegacy/seriesRatio are
+% the site's chart pair, checked for colorblind separation. The marks differ
+% too, so identity never rests on color alone.
+\addplot[seriesLegacy, line width=1.3pt, mark=*, mark size=2pt,
+         fill=seriesLegacy, fill opacity=0.10]
     table[x=year, y=legacy] {figures/data/tco.dat} \closedcycle;
-\addplot[posGreen, line width=1.3pt, mark=square*, mark size=2pt,
-         fill=posGreen, fill opacity=0.10]
+\addplot[seriesRatio, line width=1.3pt, mark=square*, mark size=2pt,
+         fill=seriesRatio, fill opacity=0.10]
     table[x=year, y=ratio] {figures/data/tco.dat} \closedcycle;
 \legend{Legacy (AUM-coupled), Ratio (usage-based)}
 \end{axis}
 \end{tikzpicture}
-\caption*{\small\color{ratioBrown}\sffamily Illustrative five-year cumulative TCO
+\caption*{\small\color{ratioAccent}\sffamily Illustrative five-year cumulative TCO
 for a growing advisory firm (implementation, platform fees, and reconciliation
 overhead). Legacy cost scales with assets under management; Ratio's flattens.
 Figures are illustrative of the pricing \emph{model}, not a quote.}

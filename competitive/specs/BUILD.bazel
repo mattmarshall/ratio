@@ -28,3 +28,11 @@ component_specs([
     "data-governance",
     "specialized-servicing",
 ])
+
+# Every .tex in this tree, for //marketing:language_test — the licensing sweep
+# runs over all document trees at once so they cannot diverge from each other.
+filegroup(
+    name = "specs_tex",
+    srcs = glob(["*.tex"]),
+    visibility = ["//visibility:public"],
+)

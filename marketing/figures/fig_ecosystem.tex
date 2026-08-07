@@ -4,14 +4,14 @@
 \resizebox{0.98\textwidth}{!}{%
 \begin{tikzpicture}[
   >={Stealth[length=2.4mm]}, font=\sffamily\footnotesize,
-  mod/.style={rounded corners=3pt, draw=ratioTan, fill=ratioCream, text=ratioInk,
+  mod/.style={rounded corners=3pt, draw=ratioMid, fill=ratioTint, text=ratioInk,
               align=center, minimum height=10mm, text width=30mm, inner sep=3pt},
-  core/.style={rounded corners=4pt, draw=ratioBrown, line width=1.1pt,
-               fill=ratioSand!45, text=ratioInk, align=center,
+  core/.style={rounded corners=4pt, draw=ratioAccent, line width=1.1pt,
+               fill=ratioRule!45, text=ratioInk, align=center,
                minimum height=15mm, text width=40mm, font=\sffamily\bfseries},
-  ai/.style={rounded corners=3pt, draw=ratioBrown, fill=ratioInk, text=white,
+  ai/.style={rounded corners=3pt, draw=ratioAccent, fill=ratioInk, text=white,
              align=center, minimum height=10mm, text width=44mm},
-  edge/.style={->, ratioBrown, line width=0.8pt},
+  edge/.style={->, ratioAccent, line width=0.8pt},
 ]
 % Core
 \node[core] (k) at (0,0) {Conservation kernel\\ \mdseries\footnotesize (proven) + append-only ledger};
@@ -27,13 +27,13 @@
 \draw[edge] (fx) -- (k);
 
 % API gateway on the right
-\node[mod, fill=ratioSand!55, font=\sffamily\bfseries] (api) at (5.4,0) {gRPC Ledger API\\ \mdseries\footnotesize AIP-idiomatic};
+\node[mod, fill=ratioRule!55, font=\sffamily\bfseries] (api) at (5.4,0) {gRPC Ledger API\\ \mdseries\footnotesize AIP-idiomatic};
 \draw[edge] (k) -- (api);
 
 % Client surfaces fanning from the API
-\node[mod] (tui)  at (10.6,2.4)  {meridian TUI};
+\node[mod] (tui)  at (10.6,2.4)  {Operator TUI};
 \node[mod] (web)  at (10.6,0.8)  {Client portal / web};
-\node[mod] (py)   at (10.6,-0.8) {Python extensions};
+\node[mod] (py)   at (10.6,-0.8) {Firm extensions};
 \node[mod] (intg) at (10.6,-2.4) {Custodian \&\\ BI integrations};
 \foreach \n in {tui,web,py,intg}{ \draw[edge] (api) -- (\n); }
 
@@ -43,7 +43,7 @@
   {trusted core (proven)};
 \end{tikzpicture}%
 }
-\caption*{\small\color{ratioBrown}\sffamily The proposed Ratio ecosystem: a proven
+\caption*{\small\color{ratioAccent}\sffamily The proposed Ratio ecosystem: a proven
 kernel at the center, fed by a content-addressed control plane and typed market
 facts, exposed through one open API to advisor, client, and integration surfaces.
 Everything expressive sits outside the trusted core.}

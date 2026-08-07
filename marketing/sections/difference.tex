@@ -29,10 +29,14 @@ they are dangerous. Every model output is compiled and checked against the
 kernel's invariants before it can touch a ledger. The model proposes; the proven
 kernel disposes.
 
-\subsection{4. Open core, no lock-in}
-The accounting core is readable Rust with a Python extension surface and a
-standard gRPC API. You can self-host it, inspect it, extend it, and export your
-data in open formats. Your history is yours, in a shape you control.
+\subsection{4. A core you can audit, and data you can take}
+The accounting kernel is authored in Lean~4 and emitted to readable Rust behind
+a standard gRPC API, published under a source-available license. Your reviewers,
+your auditors, and your regulators can read the arithmetic your firm depends on
+and check the theorem for themselves --- which is the guarantee that matters,
+and the one no incumbent offers. Your data leaves in open formats, complete,
+whenever you want it. Ratio is not permissively licensed and is not open source:
+operating the platform is a commercial arrangement with us.
 
 \subsection{5. Performance that is fast \emph{because} it is simple}
 A non-expressive kernel over fixed-width integer records is branch-minimal: its

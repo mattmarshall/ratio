@@ -51,3 +51,13 @@ paper_figures(
         ":fig_architecture_diagram",
     ],
 )
+
+# A Bazel glob does not cross a package boundary, and `paper/figures` is its own
+# package — so //paper:paper_tex silently missed all eight figures. Exposed here
+# and pulled in explicitly, because a coverage hole in a language sweep looks
+# exactly like a clean sweep.
+filegroup(
+    name = "figures_tex",
+    srcs = glob(["*.tex"]),
+    visibility = ["//visibility:public"],
+)

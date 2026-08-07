@@ -18,15 +18,15 @@
 \usepackage{hyperref}
 
 % ── Brand palette (shared with the Ratio papers) ────────────────────
-\definecolor{ratioInk}{HTML}{3A2A1C}
-\definecolor{ratioBrown}{HTML}{6E4F34}
-\definecolor{ratioTan}{HTML}{B98E5E}
-\definecolor{ratioSand}{HTML}{D9C19A}
-\definecolor{ratioCream}{HTML}{F4EEDD}
-\definecolor{posGreen}{HTML}{2E7D52}
-\definecolor{negGray}{HTML}{9A9A9A}
+\definecolor{ratioInk}{HTML}{0F2418}
+\definecolor{ratioAccent}{HTML}{1B6440}
+\definecolor{ratioMid}{HTML}{679177}
+\definecolor{ratioRule}{HTML}{C3D6BF}
+\definecolor{ratioTint}{HTML}{E6EFE2}
+\definecolor{posGreen}{HTML}{1F6B45}
+\definecolor{negGray}{HTML}{666666}
 
-\hypersetup{colorlinks=true, linkcolor=ratioBrown, citecolor=ratioBrown, urlcolor=ratioBrown}
+\hypersetup{colorlinks=true, linkcolor=ratioAccent, citecolor=ratioAccent, urlcolor=ratioAccent}
 \setlist[itemize]{leftmargin=1.3em, itemsep=2.5pt, topsep=2pt}
 \pagestyle{plain}
 \setlength{\parindent}{0pt}
@@ -39,7 +39,7 @@
 \newcommand{\spechead}[2]{%
   \noindent\begin{tcolorbox}[colback=ratioInk, colframe=ratioInk, arc=4pt,
       left=14pt, right=14pt, top=11pt, bottom=11pt, boxrule=0pt]
-    {\sffamily\footnotesize\color{ratioSand}
+    {\sffamily\footnotesize\color{ratioRule}
       RATIO COMPONENT SPEC \;\textbullet\; benchmarked to the wealth-tech stack
       \;\textbullet\; \texttt{#2}}\\[3pt]
     {\sffamily\bfseries\LARGE\color{white} #1}
@@ -47,15 +47,15 @@
 
 % ── Section heading: \specsection{Name} ─────────────────────────────
 \newcommand{\specsection}[1]{%
-  \vspace{6pt}{\sffamily\large\bfseries\color{ratioBrown} #1}\par
-  \vspace{1pt}{\color{ratioSand}\rule{\linewidth}{1pt}}\par\vspace{3pt}}
+  \vspace{6pt}{\sffamily\large\bfseries\color{ratioAccent} #1}\par
+  \vspace{1pt}{\color{ratioRule}\rule{\linewidth}{1pt}}\par\vspace{3pt}}
 
 % ── Highlighted "Ratio mapping" box ─────────────────────────────────
-\newtcolorbox{ratiobox}{colback=ratioCream, colframe=ratioTan, boxrule=0.8pt,
+\newtcolorbox{ratiobox}{colback=ratioTint, colframe=ratioMid, boxrule=0.8pt,
   arc=3pt, left=9pt, right=9pt, top=7pt, bottom=7pt}
 
 % ── Status footer box ───────────────────────────────────────────────
-\newtcolorbox{statusbox}{colback=ratioSand!35, colframe=ratioSand, boxrule=0.6pt,
+\newtcolorbox{statusbox}{colback=ratioRule!35, colframe=ratioRule, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=5pt, bottom=5pt}
 
 % ── "Advertised by" two-column table helper ─────────────────────────

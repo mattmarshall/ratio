@@ -86,3 +86,11 @@ tex_paper(
     bibliography = "bibliography.tex",
     extra_srcs = ["//paper/figures:figures"],
 )
+
+# Every .tex in this tree, for //marketing:language_test — the licensing sweep
+# runs over all document trees at once so they cannot diverge from each other.
+filegroup(
+    name = "paper_tex",
+    srcs = glob(["**/*.tex"]) + ["//paper/figures:figures_tex"],
+    visibility = ["//visibility:public"],
+)

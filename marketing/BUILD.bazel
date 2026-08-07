@@ -16,5 +16,33 @@ tectonic_pdf(
         "sections/*.tex",
         "figures/*.tex",
         "figures/data/*.dat",
-    ]) + ["//images:ratio.png"],
+        "figures/*.pdf",
+    ]),
+)
+
+# The licensing sweep. Ratio is source-available with a commercial license for
+# operators — NOT open source and NOT self-hostable — and the brief shipped the
+# opposite wording for months because nothing checked it. site/verify.py has
+# enforced this on the web pages all along; this is the same check for the
+# LaTeX, over every document tree at once.
+sh_test(
+    name = "language_test",
+    size = "small",
+    srcs = ["verify_language_test.sh"],
+    args = [
+        "$(rootpath verify_language.py)",
+        "$(rootpaths :all_tex)",
+    ],
+    data = [
+        "verify_language.py",
+        ":all_tex",
+    ],
+)
+
+filegroup(
+    name = "all_tex",
+    srcs = glob(["**/*.tex"]) + [
+        "//competitive/specs:specs_tex",
+        "//paper:paper_tex",
+    ],
 )

@@ -25,7 +25,7 @@ projection over current portfolios.
 \textbf{Ratio mapping.} Scenario modeling runs candidate states through a
 sandboxed instance of the proven kernel, seeded with typed market facts ---
 so projections inherit the engine's exactness and the inputs' provenance.
-Risk computation is a read-only analytical layer (Rust/Python extensions) over
+Risk computation is a read-only analytical layer (read-only Rust extensions) over
 ledger projections; it never mutates the book. ``Which price set drove this
 projection'' is answerable by hash.
 \end{ratiobox}

@@ -26,27 +26,39 @@
 \captionsetup{labelformat=empty, justification=centering}
 \usepackage{hyperref}
 
-% ── Brand palette (warm ledger sepia) ───────────────────────────────
-\definecolor{ratioInk}{HTML}{3A2A1C}    % near-black brown — headings/body emphasis
-\definecolor{ratioBrown}{HTML}{6E4F34}  % primary brown
-\definecolor{ratioTan}{HTML}{B98E5E}    % mid tan
-\definecolor{ratioSand}{HTML}{D9C19A}   % light tan — fills/rules
-\definecolor{ratioCream}{HTML}{F4EEDD}  % page-tint cream
-\definecolor{posGreen}{HTML}{2E7D52}    % "yes" / advantage
-\definecolor{amber}{HTML}{C8881F}       % "partial"
-\definecolor{negGray}{HTML}{9A9A9A}     % "no"
+% ── Brand palette ───────────────────────────────────────────────────
+%
+% These are the site's tokens, verbatim (site/style.css, light theme), so the
+% brief and https://mattmarshall.github.io/ratio cannot drift apart. The names
+% are ROLES, not hues — the palette moved from ledger sepia to green-on-cream
+% in 2026-08, and names like `ratioAccent` holding a green is how a palette
+% quietly becomes unmaintainable.
+%
+% The three matrix colors were re-solved for WCAG AA on the site; the old
+% amber (C8881F) sat at 2.55:1 and the old gray failed too. Keeping the tested
+% values means the printed matrix is legible for the same reason the page is.
+\definecolor{ratioInk}{HTML}{0F2418}     % darkest — headings, body emphasis
+\definecolor{ratioAccent}{HTML}{1B6440}  % primary
+\definecolor{ratioMid}{HTML}{679177}     % mid — borders, secondary rules
+\definecolor{ratioRule}{HTML}{C3D6BF}    % light — rules, hairlines
+\definecolor{ratioTint}{HTML}{E6EFE2}    % surface tint — fills, row shading
+\definecolor{posGreen}{HTML}{1F6B45}     % "yes" / advantage
+\definecolor{amber}{HTML}{8A5A0B}        % "partial"
+\definecolor{negGray}{HTML}{666666}      % "no"
+\definecolor{seriesLegacy}{HTML}{BC4A18} % TCO: the incumbent stack
+\definecolor{seriesRatio}{HTML}{2E7D52}  % TCO: Ratio
 
 \hypersetup{
-  colorlinks=true, linkcolor=ratioBrown, citecolor=ratioBrown, urlcolor=ratioBrown,
+  colorlinks=true, linkcolor=ratioAccent, citecolor=ratioAccent, urlcolor=ratioAccent,
   pdftitle={Ratio — The Provably Correct Foundation for Wealth Management},
   pdfauthor={Ratio},
 }
 
 % ── Section styling: sans, brown, with a tan rule ───────────────────
 \titleformat{\section}
-  {\sffamily\Large\bfseries\color{ratioInk}}{\thesection}{0.6em}{}[{\color{ratioSand}\titlerule[1.2pt]}]
+  {\sffamily\Large\bfseries\color{ratioInk}}{\thesection}{0.6em}{}[{\color{ratioRule}\titlerule[1.2pt]}]
 \titleformat{\subsection}
-  {\sffamily\large\bfseries\color{ratioBrown}}{\thesubsection}{0.5em}{}
+  {\sffamily\large\bfseries\color{ratioAccent}}{\thesubsection}{0.5em}{}
 \titlespacing*{\section}{0pt}{14pt}{6pt}
 
 % ── Symbols for the comparison matrix ───────────────────────────────
@@ -56,7 +68,7 @@
 
 % ── A reusable "callout" box ────────────────────────────────────────
 \newtcolorbox{callout}[1][]{
-  colback=ratioCream, colframe=ratioTan, boxrule=0.8pt, arc=3pt,
+  colback=ratioTint, colframe=ratioMid, boxrule=0.8pt, arc=3pt,
   left=8pt, right=8pt, top=6pt, bottom=6pt, #1}
 
 \newtcolorbox{keybox}[1][]{
@@ -72,22 +84,31 @@
 \thispagestyle{empty}
 \begin{center}
 \vspace*{0.6in}
-\includegraphics[width=0.42\textwidth]{../images/ratio.png}
+% The site's wordmark, not //images/ratio.png. That PNG bakes the original
+% "CLI/TUI personal finance application" strapline into the artwork, which
+% contradicts every page after it. Regenerate this PDF from the SVG with:
+%
+%   rsvg-convert -f pdf -h 300 site/marks/wordmark-ratio.svg -o \
+%     marketing/figures/wordmark-ratio.pdf
+%
+% checked in rather than built, the same way site/marks/*.svg is: rsvg is a
+% system tool and a genrule calling it would make this build non-hermetic.
+\includegraphics[width=0.40\textwidth]{figures/wordmark-ratio.pdf}
 
 \vspace{0.35in}
-{\color{ratioSand}\rule{0.86\textwidth}{1.4pt}}
+{\color{ratioRule}\rule{0.86\textwidth}{1.4pt}}
 
 \vspace{0.30in}
 {\sffamily\bfseries\fontsize{26}{30}\selectfont\color{ratioInk}
 The Provably Correct Foundation\\[2pt] for Wealth Management}
 
 \vspace{0.18in}
-{\sffamily\large\color{ratioBrown}
+{\sffamily\large\color{ratioAccent}
 A positioning brief: how the Ratio ecosystem competes with\\
 SS\&C Black Diamond and the legacy wealth-tech stack}
 
 \vspace{0.30in}
-{\color{ratioSand}\rule{0.86\textwidth}{1.4pt}}
+{\color{ratioRule}\rule{0.86\textwidth}{1.4pt}}
 \end{center}
 
 \vspace{0.35in}
@@ -97,21 +118,21 @@ SS\&C Black Diamond and the legacy wealth-tech stack}
 \sffamily\large
 Every other portfolio-accounting platform asks you to \emph{trust} that its
 ledger is correct. Ratio lets you \emph{verify} it --- with
-machine-checked proofs, bit-exact replay, and an open core you can read.
+machine-checked proofs, bit-exact replay, and a core your own reviewers can read.
 \end{keybox}
 \end{minipage}
 \end{center}
 
 \vfill
 \begin{center}
-{\sffamily\color{ratioBrown} Ratio Positioning Brief \quad\textbullet\quad 2026 \quad\textbullet\quad Built on the fastverk stack}
+{\sffamily\color{ratioAccent} Ratio Positioning Brief \quad\textbullet\quad 2026}
 \end{center}
 \newpage
 
 % ════════════════════════ EXECUTIVE SUMMARY ════════════════════════
 \section*{Executive Summary}
 \addcontentsline{toc}{section}{Executive Summary}
-{\color{ratioSand}\titlerule[1.2pt]}
+{\color{ratioRule}\titlerule[1.2pt]}
 \vspace{6pt}
 
 Wealth-management technology runs on a paradox: the systems entrusted with the
@@ -132,9 +153,10 @@ on faith. \textbf{Ratio replaces faith with proof.}
   \item \textbf{AI-native, safely.} LLMs translate intent into specifications and
   draft explanations, but are architecturally fenced out of the trusted core:
   a model can propose, never corrupt the ledger.
-  \item \textbf{Open, extensible, and unbundled from AUM.} A readable Rust/Python
-  core you can self-host, extend, and price independently of assets under
-  management --- the opposite of legacy lock-in.
+  \item \textbf{Auditable, extensible, and unbundled from AUM.} A readable Rust
+  core your reviewers can check, open data formats you can export in full, and
+  pricing independent of assets under management --- the opposite of legacy
+  lock-in.
 \end{itemize}
 
 \vspace{4pt}

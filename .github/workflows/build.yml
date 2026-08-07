@@ -10,6 +10,11 @@ name: build
 # nobody tests is a fence that quietly opens, and a demo nobody rehearses is a
 # demo that breaks in front of a customer.
 #
+# marketing/, paper/ and competitive/ are deliberately NOT path-ignored: they
+# carry //marketing:language_test, the licensing sweep, and ignoring them would
+# mean the one change that reintroduces "open source" is the one change that
+# skips the check.
+#
 # Bazel is the only build path — never cargo. The lockfiles are committed, so
 # a build that needs `CARGO_BAZEL_REPIN=1` is a change somebody forgot to
 # commit, and `--lockfile_mode=error` turns that into a failure here instead of
@@ -20,16 +25,10 @@ on:
     branches: [main]
     paths-ignore:
       - 'site/**'
-      - 'marketing/**'
-      - 'paper/**'
-      - 'competitive/**'
       - '**/*.md'
   pull_request:
     paths-ignore:
       - 'site/**'
-      - 'marketing/**'
-      - 'paper/**'
-      - 'competitive/**'
       - '**/*.md'
   workflow_dispatch:
 
