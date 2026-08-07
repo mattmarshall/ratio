@@ -41,3 +41,4 @@ __pycache__/
 
 # pnpm's store, installed by rules_js into the workspace.
 /web/node_modules/
+/deploy/demo-funds/

@@ -6,7 +6,7 @@
 // however many books are on disk everywhere else.
 
 import { useEffect, useState } from "react";
-import { useBreaks, useChangeLog, useFunds } from "./api.js";
+import { useBreaks, useChangeLog, useFunds, useNavStrikes, useReplay } from "./api.js";
 import {
   SEVERITY_CLASS,
   STATE_CLASS,
@@ -14,7 +14,7 @@ import {
   count,
   money,
 } from "./format.js";
-import type { Break, Fund } from "./types.js";
+import type { Break, Fund, NavStrike } from "./types.js";
 
 const FILTERS = [
   { key: "", label: "All" },
@@ -40,6 +40,45 @@ function Stat({
         {v}
         {sub ? <small>{sub}</small> : null}
       </div>
+    </div>
+  );
+}
+
+/** One strike, with the proof available on demand rather than asserted. */
+function Strike({ s }: { s: NavStrike }) {
+  const [asked, setAsked] = useState(false);
+  const replay = useReplay(s.name, asked);
+  const proof = replay.data;
+
+  return (
+    <div className="logrow strike">
+      <span className="t num">{s.valuationTime.slice(11, 16)}</span>
+      <span className="w">
+        <b className="num">{money(s.netAssetValue)}</b>{" "}
+        <span className="cfg">
+          {count(s.journalPosition)} entries · {s.configDigest.slice(0, 7)} · {s.actor}
+        </span>
+        {proof ? (
+          <div className={`proof${proof.historyIntact && proof.reproduced ? "" : " bad"}`}>
+            {proof.historyIntact
+              ? "history intact — the journal prefix hashes as it did"
+              : "HISTORY REWRITTEN — the prefix no longer hashes as it did"}
+            <br />
+            {proof.reproduced
+              ? `re-derived ${money(proof.netAssetValue)} — identical`
+              : `DIVERGED — re-derived ${money(proof.netAssetValue)}`}
+          </div>
+        ) : null}
+        {replay.isError ? <div className="proof bad">{replay.error.message}</div> : null}
+      </span>
+      <button
+        className="act"
+        type="button"
+        onClick={() => setAsked(true)}
+        disabled={asked && replay.isFetching}
+      >
+        {replay.isFetching ? "re-deriving…" : asked ? "replayed" : "Replay"}
+      </button>
     </div>
   );
 }
@@ -114,6 +153,7 @@ export default function App() {
 
   const breaks = useBreaks(fundName, filter);
   const log = useChangeLog(fundName);
+  const strikes = useNavStrikes(fundName);
   const fund: Fund | undefined = funds.data?.find((f) => f.name === fundName);
   const shown = breaks.data ?? [];
   const selected = shown.find((b) => b.name === brkName) ?? shown[0];
@@ -261,6 +301,25 @@ export default function App() {
               </li>
             ))}
           </ul>
+
+          {/* The time axis. Every figure above is "now"; this is every NAV this
+              fund has struck, and each one can be re-derived on demand. */}
+          <section className="log" aria-label="NAV strikes">
+            <div className="loghead">
+              <span>NAV strikes</span>
+              <span className="sortnote">
+                {strikes.data?.length
+                  ? "each folds a pinned journal prefix"
+                  : ""}
+              </span>
+            </div>
+            {strikes.data?.length === 0 ? (
+              <div className="empty">
+                No NAV struck yet. <code>ratio strike</code> takes one.
+              </div>
+            ) : null}
+            {strikes.data?.map((s) => <Strike key={s.name} s={s} />)}
+          </section>
 
           <section className="log" aria-label="Change log">
             <div className="loghead">

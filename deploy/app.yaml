@@ -70,6 +70,7 @@ Resources:
       Environment:
         Variables:
           RATIO_BOOK: /tmp/book
+          RATIO_FUNDS: /tmp/funds
           RATIO_BUILD: !Ref BuildSha
           AWS_LWA_PORT: "8080"
           AWS_LWA_READINESS_CHECK_PATH: /healthz

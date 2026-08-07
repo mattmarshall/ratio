@@ -168,7 +168,16 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         // rules. //crates/ratio-console:transcode_test asserts these routes are
         // exactly the ones the contract declares.
         (m, p) if p.starts_with("/v1/") => {
-            let c = ratio_console::Console::new(book);
+            // The console reads a FUNDS ROOT — a directory of books — while
+            // every other screen, the MCP tools and the terminal operate on one
+            // book. Pointing both at the same path would either give the console
+            // a single fund or give the trial balance a directory that is not a
+            // book. `RATIO_FUNDS` separates them, and defaults to the book so a
+            // single-book deployment keeps working unchanged.
+            let root = std::env::var("RATIO_FUNDS").ok();
+            let c = ratio_console::Console::new(
+                root.as_deref().map(std::path::Path::new).unwrap_or(book),
+            );
             match ratio_console::transcode::serve(&c, m, p, &req.query) {
                 Ok(j) => ("200 OK", "application/json", j),
                 // A bad resource name is the caller's mistake and a missing

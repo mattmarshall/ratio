@@ -23,7 +23,12 @@ from pathlib import Path
 # out of the encoded bytes — every template starts "/v1/" and is length-
 # delimited ASCII, so they survive a scan intact. A structural parse would be
 # better; this is enough to catch drift and adds no dependency to a test.
-TEMPLATE = re.compile(rb"/v1/[A-Za-z0-9{}=*/_.-]*")
+# `:` is in the class because AIP-136 custom methods are suffixed with one —
+# `/v1/{name=funds/*/navStrikes/*}:replay`. Without it the scan silently
+# truncated every custom method to its resource path, so a missing custom route
+# looked identical to a present one. Found when NavStrike's :replay was the one
+# route this test did NOT flag.
+TEMPLATE = re.compile(rb"/v1/[A-Za-z0-9{}=*/_.:-]*")
 
 
 def from_descriptor(path: Path) -> set[str]:

@@ -1,5 +1,5 @@
 [package]
-name = "ratio-console"
+name = "ratio-nav"
 version.workspace = true
 edition.workspace = true
 
@@ -7,7 +7,6 @@ edition.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
-ratio-nav = { path = "../ratio-nav" }
 ratio-store = { path = "../ratio-store" }
 anyhow = "1"
-prost = "0.13"
+serde_json = "1"

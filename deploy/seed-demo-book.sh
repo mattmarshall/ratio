@@ -8,11 +8,17 @@
 # on every image build means the demo can only contain states the product can
 # actually produce.
 #
-# Usage:  deploy/seed-demo-book.sh path/to/ratio path/to/output-book
+# Usage:  deploy/seed-demo-book.sh <ratio> <out-dir> [positions.csv]
+#
+# The third argument is the positions to reconcile against. It defaults to a set
+# that disagrees by 2,000.00, because a break report with no break demonstrates
+# nothing — pass agreeing positions to seed a fund that reconciles clean.
 set -euo pipefail
 
-RATIO="${1:?usage: seed-demo-book.sh <ratio-binary> <out-dir>}"
-OUT="${2:?usage: seed-demo-book.sh <ratio-binary> <out-dir>}"
+RATIO="${1:?usage: seed-demo-book.sh <ratio-binary> <out-dir> [positions.csv]}"
+OUT="${2:?usage: seed-demo-book.sh <ratio-binary> <out-dir> [positions.csv]}"
+POSITIONS="${3:-}"
+[ -n "$POSITIONS" ] && POSITIONS="$(cd "$(dirname "$POSITIONS")" && pwd)/$(basename "$POSITIONS")"
 
 # Resolve BOTH paths before the `cd` below, and resolve them absolutely.
 #
@@ -116,7 +122,9 @@ Realized gain on investments,-15000.00
 CSV
 # `|| true` because a run that finds breaks exits 2 by design, and that is the
 # run we want.
-"$RATIO" recon txns.csv positions.csv --book "$OUT" --post >/dev/null || true
+# `|| true` because a run that finds breaks exits 2 by design, and for the
+# default positions that is the run we want.
+"$RATIO" recon txns.csv "${POSITIONS:-positions.csv}" --book "$OUT" --post >/dev/null || true
 
 # A proposal nobody has approved, so the rules screen shows both columns — the
 # gap between them is what the demo is about.

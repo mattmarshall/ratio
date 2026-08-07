@@ -1462,6 +1462,7 @@ dependencies = [
  "ratio-console",
  "ratio-kernel",
  "ratio-mcp",
+ "ratio-nav",
  "ratio-recon",
  "ratio-rules",
  "ratio-store",
@@ -1513,6 +1514,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "prost",
+ "ratio-nav",
  "ratio-store",
 ]
 
@@ -1533,6 +1535,15 @@ dependencies = [
  "ratio-rules",
  "ratio-store",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "ratio-nav"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "ratio-store",
  "serde_json",
 ]
 

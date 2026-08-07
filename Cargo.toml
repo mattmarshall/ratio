@@ -12,6 +12,7 @@ members = [
     "crates/ratio-rules",
     "crates/ratio-agent",
     "crates/ratio-mcp",
+    "crates/ratio-nav",
     "crates/ratio-recon",
     "crates/ratio-api",
     "crates/ratio-tui",

@@ -71,6 +71,33 @@ export interface ChangeLogEntry {
   configDigest: string;
 }
 
+export interface NavStrike {
+  name: string;
+  /** RFC 3339. proto3 renders a Timestamp as a string. */
+  valuationTime: string;
+  actor: string;
+  journalPosition: Int64;
+  journalDigest: string;
+  netAssetValue: Int64;
+  trialBalanceDifference: Int64;
+  configDigest: string;
+}
+
+export interface ReplayNavStrikeResponse {
+  name: string;
+  /** The journal prefix still hashes as it did: history was not rewritten. */
+  historyIntact: boolean;
+  /** The fold landed on the same figures: the engine is deterministic. */
+  reproduced: boolean;
+  netAssetValue: Int64;
+  journalDigest: string;
+}
+
+export interface ListNavStrikesResponse {
+  navStrikes: NavStrike[];
+  nextPageToken: string;
+}
+
 export interface ListFundsResponse {
   funds: Fund[];
   nextPageToken: string;

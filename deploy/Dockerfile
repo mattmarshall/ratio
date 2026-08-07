@@ -27,6 +27,7 @@ COPY --from=adapter /lambda-adapter /opt/extensions/lambda-adapter
 # Built by Bazel on the runner and passed in — see .github/workflows/deploy.yml.
 COPY ratio /usr/local/bin/ratio
 COPY demo-book /opt/demo-book
+COPY demo-funds /opt/demo-funds
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/ratio /usr/local/bin/entrypoint.sh
 
@@ -50,7 +51,15 @@ RUN set -eu; \
     done; \
     test -n "$(ls -A /opt/demo-book/reports)" || { echo "FAIL: no break report"; exit 1; }; \
     test -n "$(ls -A /opt/demo-book/proposals)" || { echo "FAIL: no pending proposal"; exit 1; }; \
-    echo "demo book ok: $(find /opt/demo-book -type f | wc -l) file(s)"
+    echo "demo book ok: $(find /opt/demo-book -type f | wc -l) file(s)"; \
+    echo "== /opt/demo-funds =="; \
+    ls -1 /opt/demo-funds | sed 's|^|  |'; \
+    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 3 || { echo "FAIL: expected 3 funds"; exit 1; }; \
+    for f in /opt/demo-funds/*/; do \
+      test -s "$f/accounts.json" || { echo "FAIL: $f has no chart"; exit 1; }; \
+    done; \
+    test -s /opt/demo-funds/harbourline-global-value/NAVS || { echo "FAIL: no NAV struck"; exit 1; }; \
+    echo "demo funds ok"
 
 # The adapter polls this until the server answers, so a cold start does not
 # race the first request.

@@ -172,6 +172,39 @@ impl Console {
             .with_context(|| format!("no break {brk:?} on {fund:?}"))
     }
 
+    pub fn list_nav_strikes(&self, parent: &str) -> Result<pb::ListNavStrikesResponse> {
+        let id = resource_id(parent, "funds").context("bad parent")?;
+        let path = self.book_path(&id)?;
+        Ok(pb::ListNavStrikesResponse {
+            nav_strikes: ratio_nav::list(&path)?
+                .into_iter()
+                .map(|s| to_pb(&id, &s))
+                .collect(),
+            next_page_token: String::new(),
+        })
+    }
+
+    pub fn get_nav_strike(&self, name: &str) -> Result<pb::NavStrike> {
+        let (fund, id) = nested_id(name, "funds", "navStrikes").context("bad name")?;
+        let path = self.book_path(&fund)?;
+        Ok(to_pb(&fund, &ratio_nav::get(&path, &id)?))
+    }
+
+    /// Re-derive a strike. Read-only: it folds a journal prefix and compares.
+    pub fn replay_nav_strike(&self, name: &str) -> Result<pb::ReplayNavStrikeResponse> {
+        let (fund, id) = nested_id(name, "funds", "navStrikes").context("bad name")?;
+        let path = self.book_path(&fund)?;
+        let s = ratio_nav::get(&path, &id)?;
+        let r = ratio_nav::replay(&path, &s)?;
+        Ok(pb::ReplayNavStrikeResponse {
+            name: name.to_string(),
+            history_intact: r.history_intact,
+            reproduced: r.reproduced,
+            net_asset_value: r.net_asset_value.to_string(),
+            journal_digest: r.journal_digest,
+        })
+    }
+
     pub fn list_change_log_entries(&self, parent: &str) -> Result<pb::ListChangeLogEntriesResponse> {
         let id = resource_id(parent, "funds").context("bad parent")?;
         let path = self.book_path(&id)?;
@@ -306,6 +339,26 @@ impl Console {
         }
         out.reverse(); // newest first
         Ok(out)
+    }
+}
+
+fn to_pb(fund: &str, s: &ratio_nav::Strike) -> pb::NavStrike {
+    pb::NavStrike {
+        name: format!("funds/{fund}/navStrikes/{}", s.id),
+        // The generated crate's own Timestamp, re-exported by ratio_proto — NOT
+        // `prost_types::Timestamp`. rules_rust_prost compiles the well-known
+        // types itself, so the two are distinct types with the same name and
+        // the same shape, and the compiler says so in as many words.
+        valuation_time: Some(ratio_proto::timestamp_proto::google::protobuf::Timestamp {
+            seconds: s.valuation_time,
+            nanos: 0,
+        }),
+        actor: s.actor.clone(),
+        journal_position: s.journal_position as i64,
+        journal_digest: s.journal_digest.clone(),
+        net_asset_value: s.net_asset_value.to_string(),
+        trial_balance_difference: s.trial_balance_difference.to_string(),
+        config_digest: s.config_digest.clone(),
     }
 }
 

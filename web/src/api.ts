@@ -14,6 +14,9 @@ import type {
   Break,
   ChangeLogEntry,
   Fund,
+  NavStrike,
+  ReplayNavStrikeResponse,
+  ListNavStrikesResponse,
   ListBreaksResponse,
   ListChangeLogEntriesResponse,
   ListFundsResponse,
@@ -85,6 +88,36 @@ export function useBreaks(
     // as "there is nothing here" for as long as the round trip takes.
     placeholderData: (prev) => prev,
     ...LIVE,
+  });
+}
+
+export function useNavStrikes(
+  fund: string | undefined,
+): UseQueryResult<NavStrike[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "navStrikes"],
+    queryFn: () => get<ListNavStrikesResponse>(`/${fund}/navStrikes`),
+    select: (r) => r.navStrikes,
+    enabled: !!fund,
+    ...LIVE,
+  });
+}
+
+/// Re-derive a strike. Disabled until asked: a replay is something an operator
+/// DOES, and a page that quietly replayed every strike on load would be
+/// asserting the proof rather than offering it.
+export function useReplay(
+  strike: string | undefined,
+  enabled: boolean,
+): UseQueryResult<ReplayNavStrikeResponse, Error> {
+  return useQuery({
+    queryKey: [strike ?? "", "replay"],
+    queryFn: () => get<ReplayNavStrikeResponse>(`/${strike}:replay`),
+    enabled: !!strike && enabled,
+    // A proof does not go stale. Re-deriving the same prefix gives the same
+    // answer, so refetching on focus would be pure noise.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 }
 

@@ -36,6 +36,11 @@ pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/{parent=funds/*}/changeLogEntries" },
     Route { method: "GET", template: "/v1/{name=funds/*/breaks/*}" },
     Route { method: "GET", template: "/v1/{name=funds/*/changeLogEntries/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*}/navStrikes" },
+    // A custom method (AIP-136) on GET, because replaying is safe and
+    // idempotent — it folds a journal prefix and writes nothing.
+    Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}:replay" },
+    Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}" },
     Route { method: "GET", template: "/v1/{name=funds/*}" },
 ];
 
@@ -62,6 +67,19 @@ pub fn serve(console: &Console, method: &str, path: &str, query: &str) -> Result
         }
         ["funds", id, "changeLogEntries"] => {
             to_json(&console.list_change_log_entries(&format!("funds/{id}"))?)?
+        }
+        ["funds", id, "navStrikes"] => {
+            to_json(&console.list_nav_strikes(&format!("funds/{id}"))?)?
+        }
+        // The custom method is matched on the LAST segment before the plain
+        // Get, so `x:replay` never falls through to a lookup for a strike
+        // literally named `x:replay`.
+        ["funds", id, "navStrikes", s] if s.ends_with(":replay") => {
+            let strike = s.trim_end_matches(":replay");
+            to_json(&console.replay_nav_strike(&format!("funds/{id}/navStrikes/{strike}"))?)?
+        }
+        ["funds", id, "navStrikes", s] => {
+            to_json(&console.get_nav_strike(&format!("funds/{id}/navStrikes/{s}"))?)?
         }
         ["funds", id, "breaks", b] => to_json(&console.get_break(&format!("funds/{id}/breaks/{b}"))?)?,
         ["funds", id, "changeLogEntries", e] => {
@@ -225,6 +243,50 @@ impl JsonView for pb::ChangeLogEntry {
              \"subject\":{},\"detail\":{},\"configDigest\":{}}}",
             q(&self.name), q(&self.actor), q(actor_kind_name(self.actor_kind)),
             q(&self.action), q(&self.subject), q(&self.detail), q(&self.config_digest)
+        )
+    }
+}
+
+impl JsonView for pb::NavStrike {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"valuationTime\":{},\"actor\":{},\"journalPosition\":{},\
+             \"journalDigest\":{},\"netAssetValue\":{},\"trialBalanceDifference\":{},\
+             \"configDigest\":{}}}",
+            q(&self.name),
+            // proto3 canonical JSON renders a Timestamp as an RFC 3339 string.
+            q(&self
+                .valuation_time
+                .as_ref()
+                .map(|t| ratio_nav::rfc3339(t.seconds))
+                .unwrap_or_default()),
+            q(&self.actor),
+            q(&self.journal_position.to_string()),
+            q(&self.journal_digest),
+            q(&self.net_asset_value),
+            q(&self.trial_balance_difference),
+            q(&self.config_digest)
+        )
+    }
+}
+
+impl JsonView for pb::ListNavStrikesResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"navStrikes\":[{}],\"nextPageToken\":{}}}",
+            self.nav_strikes.iter().map(|s| s.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+impl JsonView for pb::ReplayNavStrikeResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"historyIntact\":{},\"reproduced\":{},\
+             \"netAssetValue\":{},\"journalDigest\":{}}}",
+            q(&self.name), self.history_intact, self.reproduced,
+            q(&self.net_asset_value), q(&self.journal_digest)
         )
     }
 }

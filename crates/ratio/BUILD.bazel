@@ -20,6 +20,7 @@ rust_binary(
         "//crates/ratio-common",
         "//crates/ratio-kernel",
         "//crates/ratio-mcp",
+        "//crates/ratio-nav",
         "//crates/ratio-recon",
         "//crates/ratio-rules",
         "//crates/ratio-store",

@@ -43,6 +43,9 @@ usage:
   ratio post FILE [--book DIR]         post entries directly; refuses unbalanced
   ratio balance [--book DIR]           print the trial balance
   ratio explain ACCOUNT [--book DIR]   read back the postings behind a figure
+  ratio strike [--book DIR]            strike a NAV, pinned to the journal
+  ratio navs [--book DIR]              every NAV struck on this book
+  ratio replay STRIKE-ID [--book DIR]  re-derive a strike and prove it again
   ratio recon TXNS.csv POSITIONS.csv   shadow-run a period and report breaks
         [--book DIR] [--out FILE.pb] [--post]
   ratio watch [--book DIR] [--port N]  live trial balance in a browser
@@ -88,6 +91,9 @@ fn main() -> Result<()> {
         ["post", file] => post(book, file),
         ["balance"] => balance(book),
         ["explain", account] => explain(book, account),
+        ["strike"] => strike(book),
+        ["navs"] => navs(book),
+        ["replay", id] => replay_strike(book, id),
         ["recon", txns, positions] => recon(book, txns, positions, None, false),
         ["recon", txns, positions, "--post"] => recon(book, txns, positions, None, true),
         ["recon", txns, positions, "--out", out] => {
@@ -428,6 +434,97 @@ fn book_label(book: &std::path::Path) -> String {
         .unwrap_or_else(|| "book".into())
 }
 
+/// Strike a NAV over the journal as it stands.
+///
+/// The valuation point is now. A real system takes it from the fund's calendar
+/// — 16:00 New York for a US mutual fund — and that belongs in configuration
+/// rather than in a flag, so it is deliberately not one.
+fn strike(book: PathBuf) -> Result<()> {
+    let actor = actor_name();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let s = ratio_nav::strike_and_record(&book, now, &actor)?;
+
+    println!("struck {}", s.id);
+    println!("  NAV        {}", minor(s.net_asset_value));
+    println!("  difference {}", minor(s.trial_balance_difference));
+    println!("  journal    {} entrie(s)", s.journal_position);
+    println!("  digest     {}", &s.journal_digest[..12]);
+    println!("  config     {}", &s.config_digest[..7.min(s.config_digest.len())]);
+    println!("  by         {}", s.actor);
+    println!();
+    println!("Re-derive it any time with:  ratio replay {}", s.id);
+    Ok(())
+}
+
+/// Every NAV struck on this book.
+fn navs(book: PathBuf) -> Result<()> {
+    let all = ratio_nav::list(&book)?;
+    if all.is_empty() {
+        println!("No NAV has been struck on this book. `ratio strike` takes one.");
+        return Ok(());
+    }
+    println!("{:<20}{:>18}{:>10}  {:<10}{}", "AS OF", "NAV", "ENTRIES", "CONFIG", "BY");
+    for s in &all {
+        println!(
+            "{:<20}{:>18}{:>10}  {:<10}{}",
+            ratio_nav::rfc3339(s.valuation_time),
+            minor(s.net_asset_value),
+            s.journal_position,
+            &s.config_digest[..7.min(s.config_digest.len())],
+            s.actor
+        );
+    }
+    Ok(())
+}
+
+/// Re-derive a strike and report what was found.
+///
+/// Exits non-zero when either check fails. A replay that reports a broken NAV
+/// on stdout and exits 0 is a replay nothing can be built on.
+fn replay_strike(book: PathBuf, id: &str) -> Result<()> {
+    let s = ratio_nav::get(&book, id)?;
+    let r = ratio_nav::replay(&book, &s)?;
+
+    println!("replaying {}", s.id);
+    println!("  struck     {} by {}", ratio_nav::rfc3339(s.valuation_time), s.actor);
+    println!("  folding    {} entrie(s) of the journal", s.journal_position);
+    println!();
+    println!(
+        "  history    {}",
+        if r.history_intact {
+            "intact — the journal prefix hashes as it did".to_string()
+        } else {
+            format!("REWRITTEN — {} now, {} then", &r.journal_digest[..12.min(r.journal_digest.len())], &s.journal_digest[..12])
+        }
+    );
+    println!(
+        "  arithmetic {}",
+        if r.reproduced {
+            format!("reproduced — {}", minor(r.net_asset_value))
+        } else {
+            format!("DIVERGED — {} now, {} then", minor(r.net_asset_value), minor(s.net_asset_value))
+        }
+    );
+    println!();
+    if r.ok() {
+        println!("{} is exactly the NAV it was.", minor(s.net_asset_value));
+        Ok(())
+    } else {
+        bail!("this NAV did not replay")
+    }
+}
+
+/// Who is running this. Not authentication — a record of who ran a command on
+/// a machine they were already trusted with, which is what a CLI is.
+fn actor_name() -> String {
+    std::env::var("RATIO_ACTOR")
+        .or_else(|_| std::env::var("USER"))
+        .unwrap_or_else(|_| "operator".into())
+}
+
 /// Read back every posting behind one account's balance.
 ///
 /// The break report tells a reader to run this, so it has to exist: an
@@ -666,9 +763,7 @@ pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
     // The actor comes from RATIO_ACTOR, falling back to the OS user. Neither
     // is authentication — this is a record of who ran the command on a machine
     // they were already trusted with, which is what the CLI is.
-    let actor = std::env::var("RATIO_ACTOR")
-        .or_else(|_| std::env::var("USER"))
-        .unwrap_or_else(|_| "operator".into());
+    let actor = actor_name();
     let when = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())

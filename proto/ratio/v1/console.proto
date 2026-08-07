@@ -30,6 +30,7 @@ import "google/api/annotations.proto";
 import "google/api/client.proto";
 import "google/api/field_behavior.proto";
 import "google/api/resource.proto";
+import "google/protobuf/timestamp.proto";
 
 option java_multiple_files = true;
 option java_package = "com.fastverk.ratio.v1";
@@ -61,6 +62,30 @@ service Console {
   // configuration that produced it. (AIP-131)
   rpc GetBreak(GetBreakRequest) returns (Break) {
     option (google.api.http) = {get: "/v1/{name=funds/*/breaks/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Lists a fund's NAV strikes, newest first. (AIP-132)
+  rpc ListNavStrikes(ListNavStrikesRequest) returns (ListNavStrikesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/navStrikes"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one NAV strike. (AIP-131)
+  rpc GetNavStrike(GetNavStrikeRequest) returns (NavStrike) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/navStrikes/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Re-derives a strike from the journal and reports whether it reproduced.
+  // (AIP-136)
+  //
+  // A custom method on GET rather than POST, which AIP permits for one that is
+  // safe and idempotent: replaying reads a journal prefix and folds it. It
+  // writes nothing, and a method that cannot change anything should not need a
+  // verb that says it might.
+  rpc ReplayNavStrike(ReplayNavStrikeRequest) returns (ReplayNavStrikeResponse) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/navStrikes/*}:replay"};
     option (google.api.method_signature) = "name";
   }
 
@@ -308,6 +333,103 @@ message GetChangeLogEntryRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference).type = "ratio.fastverk.dev/ChangeLogEntry"
+  ];
+}
+
+// A NAV, struck at a point in time and pinned to the journal that produced it.
+//
+// # What makes this more than a saved number
+//
+// A strike records the journal POSITION it was taken at and a digest of that
+// prefix. Re-deriving it folds the same entries and must produce the identical
+// figure — so a replay checks two different things at once:
+//
+//   * the prefix still hashes the same, meaning history was not rewritten; and
+//   * the fold still lands on the same number, meaning the engine is
+//     deterministic.
+//
+// Either failing is serious and they fail differently, which is why `NavReplay`
+// reports them separately rather than as one boolean. An append-only journal
+// should make the first impossible; saying so is cheaper than assuming it.
+message NavStrike {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/NavStrike"
+    pattern: "funds/{fund}/navStrikes/{nav_strike}"
+    singular: "navStrike"
+    plural: "navStrikes"
+  };
+
+  // The resource name: `funds/{fund}/navStrikes/{nav_strike}`.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The valuation point — not the moment the command ran. Those differ whenever
+  // a strike is taken late, which is most of the time.
+  google.protobuf.Timestamp valuation_time = 2
+      [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Who struck it. A NAV is signed by a person; nothing here strikes itself.
+  // Named to match ChangeLogEntry rather than inventing a second word.
+  string actor = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How many journal entries this NAV folds. The pin.
+  int64 journal_position = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // SHA-256 of exactly those entries. What makes a rewritten history visible.
+  string journal_digest = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Minor units, as strings.
+  string net_asset_value = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string trial_balance_difference = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The configuration in force at the last entry folded.
+  string config_digest = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// The result of re-deriving a strike. Not a resource — nothing stores it;
+// it is computed on demand and is only meaningful about the strike it names.
+message ReplayNavStrikeResponse {
+  // The strike that was replayed.
+  string name = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The journal prefix still hashes to what the strike recorded. False means
+  // history was rewritten, which an append-only journal should prevent.
+  bool history_intact = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The fold produced the same figures. False means the engine is not
+  // deterministic, which is the claim this product is built on.
+  bool reproduced = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What the re-derivation actually produced, so a mismatch can be read rather
+  // than merely reported.
+  string net_asset_value = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string journal_digest = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListNavStrikesRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListNavStrikesResponse {
+  repeated NavStrike nav_strikes = 1;
+  string next_page_token = 2;
+}
+
+message GetNavStrikeRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/NavStrike"
+  ];
+}
+
+message ReplayNavStrikeRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/NavStrike"
   ];
 }
 
