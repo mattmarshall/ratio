@@ -1,3 +1,4 @@
+set_option warningAsError true
 /-! `Ratio.Core` — the proven kernel, after `research.tex`
 ("A Formally Grounded Accounting Kernel for High-Performance Financial Systems").
 

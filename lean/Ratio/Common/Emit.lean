@@ -2,6 +2,8 @@ import Lean.Data.Json
 import Polyglot.Rust.RustAst
 import Polyglot.Rust.Builders
 
+set_option warningAsError true
+
 /-! Emit `ratio-common`'s Rust (the Money value layer) as one `syn::File` JSON,
 via the `Polyglot.Rust` builders. Captured by `lean_emit` → rendered by
 `json_to_rust`; the committed `crates/ratio-common/src/generated.rs` is gated

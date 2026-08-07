@@ -1,3 +1,4 @@
+set_option warningAsError true
 /-! Toolchain smoke: passes iff the pinned Lean toolchain elaborates a trivial
 proof. The real domain (Money / double-entry, with proofs) lands under
 `Ratio/` in Phase 1, emitted to Rust via the `Polyglot.Rust` builders. -/

@@ -1,5 +1,7 @@
 import Ratio.Core
 
+set_option warningAsError true
+
 /-! `Ratio.Chart` — the two properties the MVP ledger rests on, proved.
 
 `Ratio.Core` proves the kernel's sole invariant: a ledger folded from
@@ -22,7 +24,15 @@ both are cheap to prove and expensive to get wrong:
    posting it ever produces is balanced by theorem rather than by inspection.
 
 Both are stated over `Int` — the 1-dimensional instance — matching
-`Ratio.Core.total` / `Ratio.Core.Balanced`. Lean core + `omega`, no Mathlib. -/
+`Ratio.Core.total` / `Ratio.Core.Balanced`. Lean core + `omega`, no Mathlib.
+
+⛔ `set_option warningAsError true` above is load-bearing, not hygiene. A
+`sorry` in Lean is a *warning*, and `lean` exits 0 on a warning — so before
+this option was set, `//lean:*_test` passed with sorries in it. Measured:
+a probe file proving `(1 : Int) = 2` by `sorry` went green through
+`lean_test`. Every "the proofs ARE the test" claim in `lean/BUILD.bazel`
+depended on an assumption that was false. Do not remove it.
+-/
 
 namespace Ratio
 
@@ -121,5 +131,63 @@ theorem two_leg_template_balanced (amount : Int) :
 theorem template_preserves_tie (amount : Int) (ws : List Int) (h : Balanced ws) :
     debits (applyTemplate amount ws) = credits (applyTemplate amount ws) :=
   trial_balance_ties _ (balanced_template_balances amount ws h)
+
+/- ── Non-vacuity ────────────────────────────────────────────────────────────
+
+A theorem with an unsatisfiable hypothesis is true and worthless, and a theorem
+whose conclusion holds for everything constrains nothing. Neither failure is
+visible from the statement, and neither is caught by the build. The witnesses
+below pin down that the theorems above are about something:
+
+  · the hypotheses are satisfiable — there ARE balanced lists and templates
+  · the conclusions are NOT automatic — `debits = credits` is false for some
+    list, so `Balanced` is doing real work in `trial_balance_ties`
+  · the definitions are not degenerate — `debits` and `credits` are not
+    constant, and `Balanced` is not universally true
+   ── -/
+
+/-- `debits` is not the zero function. -/
+theorem debits_nontrivial : debits [(5 : Int), -3] = 5 := by decide
+
+/-- `credits` is not the zero function, and reports a *positive* total. -/
+theorem credits_nontrivial : credits [(5 : Int), -3] = 3 := by decide
+
+/-- The two are genuinely different functions. -/
+theorem debits_ne_credits_in_general : debits [(5 : Int), -3] ≠ credits [(5 : Int), -3] := by
+  decide
+
+/-- `Balanced` is not universally true, so it is a real hypothesis. -/
+theorem not_balanced_singleton : ¬ Balanced [(1 : Int)] := by
+  intro h
+  have : (1 : Int) + 0 = 0 := h
+  omega
+
+/-- `Balanced` is satisfiable by something other than the empty list, so
+`trial_balance_ties` is not vacuous. -/
+theorem balanced_witness : Balanced [(500 : Int), -500] := by
+  show (500 : Int) + (-500 + 0) = 0
+  omega
+
+/-- …and on that witness the conclusion says something: both sides are 500,
+not zero. A tie between two zeroes would prove nothing. -/
+theorem trial_balance_ties_witness :
+    debits [(500 : Int), -500] = 500 ∧ credits [(500 : Int), -500] = 500 :=
+  ⟨by decide, by decide⟩
+
+/-- `applyTemplate` actually scales — it is not the identity or a constant. -/
+theorem apply_template_witness : applyTemplate 7 [(1 : Int), -1] = [7, -7] := by decide
+
+/-- The template theorem is applied to a real, non-degenerate case: a two-leg
+template at a non-unit amount, yielding a non-zero balanced posting. -/
+theorem balanced_template_witness : Balanced (applyTemplate 7 [(1 : Int), -1]) :=
+  two_leg_template_balanced 7
+
+/-- An unbalanced template does NOT become balanced by instantiation — the
+hypothesis of `balanced_template_balances` cannot be dropped. -/
+theorem unbalanced_template_stays_unbalanced :
+    ¬ Balanced (applyTemplate 7 [(1 : Int), -2]) := by
+  intro h
+  have : (7 : Int) + (-14 + 0) = 0 := h
+  omega
 
 end Ratio

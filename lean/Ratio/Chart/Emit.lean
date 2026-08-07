@@ -2,6 +2,8 @@ import Lean.Data.Json
 import Polyglot.Rust.RustAst
 import Polyglot.Rust.Builders
 
+set_option warningAsError true
+
 /-! Emit `ratio-chart`'s Rust as one `syn::File` JSON.
 
 This crate carries the pieces of the chart-of-accounts layer whose correctness

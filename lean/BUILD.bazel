@@ -1,5 +1,12 @@
 load("@rules_lean//lean:lean.bzl", "lean_emit", "lean_test")
 
+# Every Lean source that carries proofs or emits code. `lakefile.lean` is Lake
+# build configuration, not a development, so it is not audited.
+_LEAN_SRCS = glob(
+    ["**/*.lean"],
+    exclude = ["lakefile.lean"],
+)
+
 package(default_visibility = ["//visibility:public"])
 
 exports_files([
@@ -71,4 +78,21 @@ lean_emit(
     srcs = _BUILDER_SRCS + ["Ratio/Chart/Emit.lean"],
     entry = "Ratio/Chart/Emit.lean",
     out = "ratio_chart.ast.json",
+)
+
+# `set_option warningAsError true` makes a `sorry` a hard error, but it says
+# nothing about a declared `axiom` or `native_decide` — both of which would let
+# a green build mean nothing. This asserts, textually, that no source contains
+# either, and that every source carries the option.
+sh_test(
+    name = "audit_proofs_test",
+    size = "small",
+    srcs = ["audit_proofs.sh"],
+    args = ["$(rootpaths :lean_srcs)"],
+    data = [":lean_srcs"],
+)
+
+filegroup(
+    name = "lean_srcs",
+    srcs = _LEAN_SRCS,
 )

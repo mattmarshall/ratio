@@ -2,6 +2,8 @@ import Lean.Data.Json
 import Polyglot.Rust.RustAst
 import Polyglot.Rust.Builders
 
+set_option warningAsError true
+
 /-! Emit `ratio-kernel`'s Rust conservation records as one `syn::File` JSON.
 
 Per `research.tex`, the kernel is non-expressive: it models a transaction as an

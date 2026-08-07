@@ -19,6 +19,8 @@ documented in this commit.
 import Lean.Data.Json
 import Polyglot.Rust.RustAst
 
+set_option warningAsError true
+
 namespace Polyglot.Rust.Builders
 
 open Lean (Json)

@@ -31,6 +31,8 @@ typed surface grows with consumer demand.
 
 import Lean.Data.Json
 
+set_option warningAsError true
+
 namespace Polyglot.Rust
 
 open Lean (Json)
