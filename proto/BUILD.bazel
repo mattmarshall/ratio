@@ -11,6 +11,7 @@ aip_proto_library(
     name = "ratio_proto",
     srcs = [
         "ratio/v1/chart.proto",
+        "ratio/v1/console.proto",
         "ratio/v1/ledger.proto",
         "ratio/v1/recon.proto",
     ],

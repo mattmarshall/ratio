@@ -159,6 +159,32 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         // stdio transport exposes without a process on the caller's machine.
         // The dispatcher is shared with `ratio mcp` — there is one tool list
         // and one fence, not one per transport.
+        // The console's API, transcoded from ratio.v1.Console's google.api.http
+        // rules. //crates/ratio-console:transcode_test asserts these routes are
+        // exactly the ones the contract declares.
+        (m, p) if p.starts_with("/v1/") => {
+            let c = ratio_console::Console::new(book);
+            match ratio_console::transcode::serve(&c, m, p, &req.query) {
+                Ok(j) => ("200 OK", "application/json", j),
+                // A bad resource name is the caller's mistake and a missing
+                // fund is a 404; both are told apart by what the console said
+                // rather than by guessing from the path.
+                Err(e) => {
+                    let msg = format!("{e:#}");
+                    let status = if msg.contains("no fund") || msg.contains("no route")
+                        || msg.contains("no break") || msg.contains("no change-log")
+                    {
+                        "404 Not Found"
+                    } else if msg.contains("read-only") {
+                        "405 Method Not Allowed"
+                    } else {
+                        "400 Bad Request"
+                    };
+                    (status, "application/json", format!("{{\"error\":{}}}", quote(&msg)))
+                }
+            }
+        }
+
         // The other half of the fence. A person approves here, at something
         // shaped like the terminal they would really use — and the model has
         // no path to it: its six tools are the whole of what it can reach, and
@@ -1444,7 +1470,7 @@ mod tests {
             }),
             transactions_replayed: 3,
             entries_posted: 4,
-            breaks: vec![pb::Break {
+            breaks: vec![pb::BreakLine {
                 account: 1,
                 display_name: "Investments at fair value".into(),
                 ratio_amount: 2_500_000,

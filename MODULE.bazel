@@ -64,6 +64,7 @@ crate.from_cargo(
         "//crates/ratio-store:Cargo.toml",
         "//crates/ratio-rules:Cargo.toml",
         "//crates/ratio-agent:Cargo.toml",
+        "//crates/ratio-console:Cargo.toml",
         "//crates/ratio-mcp:Cargo.toml",
         "//crates/ratio-recon:Cargo.toml",
         "//crates/ratio-api:Cargo.toml",

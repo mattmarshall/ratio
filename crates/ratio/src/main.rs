@@ -656,6 +656,29 @@ pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
     let digest = b.put(toml.as_bytes())?;
     b.set_active(&digest)?;
 
+    // Record WHO did this, not just that the configuration moved.
+    //
+    // `config/HISTORY` already lists every digest in order, which is enough to
+    // replay and not enough to audit: it cannot say whether a change was
+    // approved by a person or what it was approved from. An approval is
+    // exactly the moment that distinction matters, so it is written here.
+    //
+    // The actor comes from RATIO_ACTOR, falling back to the OS user. Neither
+    // is authentication — this is a record of who ran the command on a machine
+    // they were already trusted with, which is what the CLI is.
+    let actor = std::env::var("RATIO_ACTOR")
+        .or_else(|_| std::env::var("USER"))
+        .unwrap_or_else(|_| "operator".into());
+    let when = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let line = format!("{when}\t{actor}\tapproved\t{id}\t{}\n", digest.as_str());
+    let log = book.join("CHANGELOG");
+    let mut prior = std::fs::read_to_string(&log).unwrap_or_default();
+    prior.push_str(&line);
+    std::fs::write(&log, prior).context("recording the approval")?;
+
     let mut out = format!(
         "approved {id}\n  {} rule(s) now active ({replaced} replaced)\n  config {}\n",
         merged.rules.len(),
@@ -762,6 +785,25 @@ weight = -1
 
         approve(book.clone(), "p1").unwrap();
         assert_eq!(active_rules(&book).rules.len(), 1);
+    }
+
+    #[test]
+    fn approving_records_who_did_it() {
+        // config/HISTORY lists digests, which is enough to replay and not
+        // enough to audit. An approval is the moment that gap matters.
+        let book = book_with_a_proposal("changelog");
+        std::env::set_var("RATIO_ACTOR", "e.marsh");
+        approve(book.clone(), "p1").unwrap();
+
+        let log = std::fs::read_to_string(book.join("CHANGELOG")).unwrap();
+        let fields: Vec<&str> = log.trim().split('\t').collect();
+        assert_eq!(fields.len(), 5, "expected 5 tab-separated fields: {log:?}");
+        assert!(fields[0].parse::<u64>().unwrap() > 1_700_000_000, "no timestamp");
+        assert_eq!(fields[1], "e.marsh");
+        assert_eq!(fields[2], "approved");
+        assert_eq!(fields[3], "p1");
+        assert_eq!(fields[4].len(), 64, "expected the full digest");
+        std::env::remove_var("RATIO_ACTOR");
     }
 
     #[test]

@@ -108,8 +108,13 @@ enum Cause {
   CAUSE_ABSENT_FROM_RATIO = 3;
 }
 
-// One difference between Ratio's figure and the reported one.
-message Break {
+// One line of a break report: a difference between Ratio's figure and the
+// reported one, as it stood when the report was produced.
+//
+// A LINE, not the open item. `ratio.v1.Break` in console.proto is the thing an
+// operator works — it carries severity, whether anyone has explained it, and
+// the postings behind it. This one is the record.
+message BreakLine {
   // The account dimension.
   int64 account = 1 [(google.api.field_behavior) = REQUIRED];
 
@@ -162,7 +167,7 @@ message BreakReport {
 
   // The differences. Empty means the period reconciled — which is Stage 3's
   // first "done when".
-  repeated Break breaks = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  repeated BreakLine breaks = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Rows the run refused. **If this is non-empty the report was not produced**
   // — a partial reconciliation is the false-break machine this whole design

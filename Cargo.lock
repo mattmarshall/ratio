@@ -1459,6 +1459,7 @@ dependencies = [
  "ratio-api",
  "ratio-chart",
  "ratio-common",
+ "ratio-console",
  "ratio-kernel",
  "ratio-mcp",
  "ratio-recon",
@@ -1505,6 +1506,15 @@ dependencies = [
 [[package]]
 name = "ratio-common"
 version = "0.0.0"
+
+[[package]]
+name = "ratio-console"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "prost",
+ "ratio-store",
+]
 
 [[package]]
 name = "ratio-kernel"

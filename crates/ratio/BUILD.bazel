@@ -15,6 +15,7 @@ rust_binary(
         "//crates/ratio-api",
         "//crates/ratio-agent",
         "//crates/ratio-chart",
+        "//crates/ratio-console",
         "//crates/ratio-common",
         "//crates/ratio-kernel",
         "//crates/ratio-mcp",

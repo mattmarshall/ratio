@@ -1,0 +1,45 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+rust_library(
+    name = "ratio-console",
+    srcs = glob(["src/*.rs"]),
+    crate_name = "ratio_console",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    deps = [
+        "//crates/ratio-store",
+        "//proto:ratio_rust_proto",  # generated crate `ratio_proto` (ratio.v1)
+        "@crates//:anyhow",
+        "@crates//:prost",
+    ],
+)
+
+rust_test(
+    name = "ratio-console_test",
+    crate = ":ratio-console",
+    edition = "2021",
+)
+
+# ⛔ The transcoder's routes are hand-written; this is what makes that safe.
+# It reads the descriptor set the protos compile to and asserts the route table
+# is exactly the set of google.api.http rules on the Console service — drift in
+# either direction is a failing build rather than a 404 found by a customer.
+sh_test(
+    name = "transcode_test",
+    size = "small",
+    srcs = ["transcode_test.sh"],
+    args = [
+        "$(rootpath transcode_test.py)",
+        "$(rootpath //proto:ratio_proto)",
+        "$(rootpath src/transcode.rs)",
+    ],
+    data = [
+        "transcode_test.py",
+        "src/transcode.rs",
+        "//proto:ratio_proto",
+    ],
+)

@@ -1,0 +1,326 @@
+syntax = "proto3";
+
+// The operations console's contract — the backend-for-frontend.
+//
+// # Why a BFF and not the domain services directly
+//
+// `Chart` and `Ledger` are the domain: accounts, transactions, a trial
+// balance. A fund controller on a NAV day does not think in those terms. They
+// think in funds that are blocked or struck, exceptions ordered by money at
+// risk, and a deadline. Shaping that in the browser would mean the console
+// issuing a fan-out of domain calls and reassembling them — over a link whose
+// latency it does not control, in a language where the reassembly is untyped.
+//
+// So this service is view-shaped on purpose. It is allowed to know what a
+// screen needs; the domain services are not allowed to know a screen exists.
+//
+// # HTTP
+//
+// Every method carries a `google.api.http` rule, and the transcoder in
+// `ratio-console` is generated from nothing — it is written by hand and then
+// CHECKED against these annotations by `//crates/ratio-console:transcode_test`,
+// which reads the descriptor set this file compiles to. A route that drifts
+// from its annotation is a failing build rather than a 404 someone finds.
+//
+// AIP-idiomatic (aip.dev); lints clean via //proto:ratio_aip_lint. Layout is
+// `ratio/v1/console.proto` so the path matches `package ratio.v1` (AIP-191).
+package ratio.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+
+option java_multiple_files = true;
+option java_package = "com.fastverk.ratio.v1";
+option java_outer_classname = "ConsoleProto";
+
+// What a fund controller works from.
+service Console {
+  option (google.api.default_host) = "ratio.fastverk.dev";
+
+  // Lists the funds this operator is responsible for. (AIP-132)
+  rpc ListFunds(ListFundsRequest) returns (ListFundsResponse) {
+    option (google.api.http) = {get: "/v1/funds"};
+  }
+
+  // Gets one fund, with the figures that decide whether its NAV can be
+  // struck. (AIP-131)
+  rpc GetFund(GetFundRequest) returns (Fund) {
+    option (google.api.http) = {get: "/v1/{name=funds/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Lists a fund's open breaks, ordered by money at risk. (AIP-132)
+  rpc ListBreaks(ListBreaksRequest) returns (ListBreaksResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/breaks"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one break, with the postings behind Ratio's figure and the
+  // configuration that produced it. (AIP-131)
+  rpc GetBreak(GetBreakRequest) returns (Break) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/breaks/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Gets one change-log entry — a permalink for citing a specific approval in
+  // an audit, which is the whole reason the log is addressable. (AIP-131)
+  rpc GetChangeLogEntry(GetChangeLogEntryRequest) returns (ChangeLogEntry) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/changeLogEntries/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Lists configuration changes, newest first. (AIP-132)
+  rpc ListChangeLogEntries(ListChangeLogEntriesRequest)
+      returns (ListChangeLogEntriesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/changeLogEntries"};
+    option (google.api.method_signature) = "parent";
+  }
+}
+
+// A fund on a valuation date.
+message Fund {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Fund"
+    pattern: "funds/{fund}"
+    singular: "fund"
+    plural: "funds"
+  };
+
+  // Where a fund is in its NAV day.
+  enum State {
+    STATE_UNSPECIFIED = 0;
+
+    // Prices have not landed; there is nothing to reconcile yet.
+    STATE_AWAITING_PRICES = 1;
+
+    // Open breaks that must be resolved before the NAV can be struck.
+    STATE_BLOCKED = 2;
+
+    // Breaks remain, but all of them are explained and within tolerance.
+    STATE_IN_REVIEW = 3;
+
+    // Struck and signed off.
+    STATE_STRUCK = 4;
+  }
+
+  // The resource name: `funds/{fund}`.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  string display_name = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // ISO 4217.
+  string currency_code = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  State state = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Minor units, as a string. Never a float and never a JSON number: a figure
+  // that has been exact all the way through the kernel should not become a
+  // double in the last hop to a browser.
+  string net_asset_value = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Debits minus credits. Zero for any book the journal accepted — it is
+  // reported as a figure rather than a green tick because it is a proved
+  // property of the kernel, not a check that happened to pass.
+  string trial_balance_difference = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The total unresolved difference across open breaks, in minor units. Named
+  // for the quantity rather than the phrase "amount at risk", which AIP-140
+  // rejects for its preposition and which is vaguer anyway.
+  string open_difference = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  int64 entry_count = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  int64 open_break_count = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The configuration every figure above was produced under.
+  string config_digest = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// How serious an exception is, which is what the queue is ordered by.
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+
+  // Explained and within tolerance.
+  SEVERITY_LOW = 1;
+
+  // Wants a decision, but does not stop the NAV.
+  SEVERITY_MEDIUM = 2;
+
+  // Blocks the NAV.
+  SEVERITY_HIGH = 3;
+}
+
+// One posting behind a break's figure, as the console shows it.
+//
+// NOT `ratio.v1.Posting` from ledger.proto, which is the kernel's own type: a
+// conserved dimension and an integer. That one is what conservation is proved
+// about; this one carries the memo and the provenance a person reads. Folding
+// them together would drag `dim` into a view that has no use for it and put a
+// display concern into the type the proofs are about.
+message BreakPosting {
+  string entry_id = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string memo = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Minor units, as a string.
+  string amount = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The configuration in force when this line was posted — which is not
+  // necessarily the one active now. A period spanning a change has to show
+  // which entry used which.
+  string config_digest = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// An unresolved difference on a fund, as the operator works it.
+//
+// NAMED FOR WHAT IT IS. `ratio.v1.Exception` in recon.proto already means
+// something else — a row a shadow run REFUSED to model — and `ratio.v1.Break`
+// there is a line in a finished report. This is neither: it is a break that is
+// still open, carrying the severity, the explanation state and the postings an
+// operator needs to close it. The console labels these "exceptions" on screen
+// because that is the desk's word; the contract uses the accountant's.
+message Break {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Break"
+    pattern: "funds/{fund}/breaks/{break}"
+    singular: "break"
+    plural: "breaks"
+  };
+
+  // The resource name: `funds/{fund}/breaks/{break}`.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The account this concerns, by its name in the chart.
+  string account = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  int64 account_dimension = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  Severity severity = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // True when a person has recorded why this difference is acceptable. An
+  // unexplained difference is work; an explained one is a note.
+  bool explained = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What is different, in words a fund accountant would use.
+  string cause = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Minor units, as strings.
+  string ratio_amount = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string reported_amount = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string difference = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The postings that produced Ratio's figure.
+  repeated BreakPosting postings = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The configuration that produced Ratio's figure. Without it the figure is
+  // not checkable, which is the only thing that makes it worth more than the
+  // other one.
+  string config_digest = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// Whether a person or a model did something.
+enum ActorKind {
+  ACTOR_KIND_UNSPECIFIED = 0;
+
+  ACTOR_KIND_PERSON = 1;
+
+  // A model. It appears in this log only ever as the author of a DRAFT — the
+  // verb that changed the books always has a person on it.
+  ACTOR_KIND_MODEL = 2;
+}
+
+// Who changed the configuration, and how.
+message ChangeLogEntry {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/ChangeLogEntry"
+    pattern: "funds/{fund}/changeLogEntries/{change_log_entry}"
+    singular: "changeLogEntry"
+    plural: "changeLogEntries"
+  };
+
+  // The resource name: `funds/{fund}/changeLogEntries/{change_log_entry}`.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // Who did it. A model appears here only as the author of a DRAFT; the verb
+  // that changed the books always has a person on it.
+  string actor = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  ActorKind actor_kind = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // `approved`, `drafted`, `signed_off`, `accepted`.
+  string action = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What the action was about — a rule id, an account name.
+  string subject = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string detail = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The configuration that resulted, or `proposal` for a draft.
+  string config_digest = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListFundsRequest {
+  // (AIP-158)
+  int32 page_size = 1 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 2 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListFundsResponse {
+  repeated Fund funds = 1;
+  string next_page_token = 2;
+}
+
+message GetFundRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+}
+
+message ListBreaksRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // `unexplained` or `blocking`; empty for everything. Deliberately not a
+  // general filter expression (AIP-160) — the console offers three chips, and
+  // an expression language nothing sends is a surface to get wrong.
+  string filter = 4 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListBreaksResponse {
+  repeated Break breaks = 1;
+  string next_page_token = 2;
+}
+
+message GetBreakRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/FundBreak"
+  ];
+}
+
+message GetChangeLogEntryRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/ChangeLogEntry"
+  ];
+}
+
+message ListChangeLogEntriesRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListChangeLogEntriesResponse {
+  repeated ChangeLogEntry change_log_entries = 1;
+  string next_page_token = 2;
+}

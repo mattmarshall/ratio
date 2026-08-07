@@ -753,7 +753,7 @@ impl BreakReport {
             breaks: self
                 .breaks
                 .iter()
-                .map(|b| pb::Break {
+                .map(|b| pb::BreakLine {
                     account: b.account,
                     display_name: b.display_name.clone(),
                     ratio_amount: b.ratio_amount,
