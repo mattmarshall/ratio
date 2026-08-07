@@ -160,43 +160,50 @@ jobs:
           }
           echo "serving $GITHUB_SHA"
 
-          # The screens render.
-          curl -sf "$URL" | grep -q "Trial balance" \
-            || { echo "::error::the balance screen did not render"; exit 1; }
+          # ⛔ NEVER `curl ... | grep -q` UNDER pipefail.
+          #
+          # `grep -q` exits at the first match, which SIGPIPEs curl, which
+          # pipefail reports as a failed pipeline — so the assertion fails
+          # BECAUSE it matched. It is racy below the 64KB pipe buffer and
+          # reliable above it, which is why the 196KB console page failed here
+          # while the smaller screens passed. Capture, then match.
+          want() {  # want <name> <pattern> <url>
+            local body
+            body="$(curl -sf "$3")" || { echo "::error::$1: could not fetch $3"; exit 1; }
+            case "$body" in
+              *"$2"*) ;;
+              *) echo "::error::$1: expected '$2'"; exit 1 ;;
+            esac
+          }
+
+          # The plain screens still render.
+          want "the balance screen" "Trial balance" "$URL"
 
           # And they render the demo BOOK, not an empty one. An image whose
           # book failed to ship starts cleanly, answers healthz, and serves a
           # blank ledger — every signal green. That shipped twice.
-          BAL="$(curl -sf "${URL}balance.json")"
-          echo "$BAL" | grep -q '"entries":7' \
-            || { echo "::error::expected 7 entries, got: $BAL"; exit 1; }
-          curl -sf "${URL}rules.json" | grep -q '"pending":\[{' \
-            || { echo "::error::no pending proposal — the rules screen has one column"; exit 1; }
-          # 2000.00 is deploy/seed-demo-book.sh's number: it reports investments
-          # at 348,000 against the 350,000 the transactions produce. Change it
-          # there and this fails, which is the intent — the demo's headline
-          # figure should not be able to move without someone noticing.
-          curl -sf "${URL}breaks.json" | grep -q '"difference":"2000.00"' \
-            || { echo "::error::the break report is missing its 2000.00 break"; exit 1; }
+          want "the book"      '"entries":7'          "${URL}balance.json"
+          want "the proposal"  '"pending":[{'         "${URL}rules.json"
+          # 2000.00 is deploy/seed-demo-book.sh's number.
+          want "the break"     '"difference":"2000.00"' "${URL}breaks.json"
 
-          # The console and its API. An empty fund list would mean the BFF
-          # found no book — the same class of failure as the empty demo book,
-          # and just as invisible from a 200.
-          curl -sf "${URL}app" | grep -q "id=\"root\"" \
-            || { echo "::error::the console shell did not render"; exit 1; }
-          FUNDS="$(curl -sf "${URL}v1/funds")"
-          echo "$FUNDS" | grep -q '"funds":\[{' \
-            || { echo "::error::the console API returned no funds: $FUNDS"; exit 1; }
-          echo "$FUNDS" | grep -q '"netAssetValue":"' \
-            || { echo "::error::NAV is not a string — int64 must not cross as a number"; exit 1; }
+          # The console and its API.
+          want "the console shell" 'id="root"'        "${URL}app"
+          want "the fund list"     '"funds":[{'       "${URL}v1/funds"
+          # NAV as a JSON STRING is the one property a browser would otherwise
+          # silently violate: an int64 as a number is a double.
+          want "NAV as a string"   '"netAssetValue":"' "${URL}v1/funds"
 
           # MCP answers, and the fence still holds on a public endpoint.
           TOOLS="$(curl -sf -X POST "${URL}mcp" -H 'content-type: application/json' \
                     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
-          echo "$TOOLS" | grep -q propose_rule \
-            || { echo "::error::MCP did not list its tools"; exit 1; }
-          echo "$TOOLS" | grep -q approve_rule \
-            && { echo "::error::approve_rule is exposed on the public endpoint"; exit 1; }
+          case "$TOOLS" in
+            *propose_rule*) ;;
+            *) echo "::error::MCP did not list its tools"; exit 1 ;;
+          esac
+          case "$TOOLS" in
+            *approve_rule*) echo "::error::approve_rule is exposed publicly"; exit 1 ;;
+          esac
 
           echo "### Ratio demo deployed" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
