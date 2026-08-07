@@ -157,8 +157,12 @@ jobs:
             || { echo "::error::expected 6 entries, got: $BAL"; exit 1; }
           curl -sf "${URL}rules.json" | grep -q '"pending":\[{' \
             || { echo "::error::no pending proposal — the rules screen has one column"; exit 1; }
-          curl -sf "${URL}breaks.json" | grep -q '"difference":"1000.00"' \
-            || { echo "::error::the break report is missing its break"; exit 1; }
+          # 2000.00 is deploy/seed-demo-book.sh's number: it reports investments
+          # at 348,000 against the 350,000 the transactions produce. Change it
+          # there and this fails, which is the intent — the demo's headline
+          # figure should not be able to move without someone noticing.
+          curl -sf "${URL}breaks.json" | grep -q '"difference":"2000.00"' \
+            || { echo "::error::the break report is missing its 2000.00 break"; exit 1; }
 
           # MCP answers, and the fence still holds on a public endpoint.
           TOOLS="$(curl -sf -X POST "${URL}mcp" -H 'content-type: application/json' \
