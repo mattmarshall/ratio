@@ -159,6 +159,17 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         // stdio transport exposes without a process on the caller's machine.
         // The dispatcher is shared with `ratio mcp` — there is one tool list
         // and one fence, not one per transport.
+        // The other half of the fence. A person approves here, at something
+        // shaped like the terminal they would really use — and the model has
+        // no path to it: its six tools are the whole of what it can reach, and
+        // this route is not one of them.
+        ("POST", "/terminal.json") => json(terminal_json(book, &req.body)),
+        (_, "/terminal.json") => (
+            "405 Method Not Allowed",
+            "text/plain; charset=utf-8",
+            "Commands are POSTed to this path.".to_string(),
+        ),
+
         // The chat demo. Same tools, same dispatcher, same fence as /mcp —
         // this endpoint only adds a model in front of them.
         ("POST", "/chat.json") => json(chat_json(book, &req.body)),
@@ -203,6 +214,87 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
 // ---------------------------------------------------------------------------
 // Data
 // ---------------------------------------------------------------------------
+
+/// Run one command, from a strict list.
+///
+/// # Why a whitelist and not a shell
+///
+/// This endpoint is public. Anything that resolves a command through a shell,
+/// or that dispatches on a string the caller controls without an exhaustive
+/// match, is a remote-execution seam wearing a demo costume. There are exactly
+/// two commands, both parsed here, and an unrecognized one is refused by
+/// falling off the end of a `match` rather than by a filter somebody could
+/// widen.
+///
+/// ⛔ `approve` is here and NOT in the MCP tool list, and that asymmetry is the
+/// product's central claim rather than an oversight. A person operates this; a
+/// model cannot reach it.
+fn terminal_json(book: &Path, body: &str) -> Result<String> {
+    let req: serde_json::Value =
+        serde_json::from_str(body).context("the command is not JSON")?;
+    let line = req["command"].as_str().unwrap_or("").trim();
+    if line.len() > 200 {
+        bail!("that is too long to be one of the two commands this accepts");
+    }
+
+    let words: Vec<&str> = line.split_whitespace().collect();
+    let output = match words.as_slice() {
+        // The command the chat screen tells you to run, running for real.
+        ["ratio", "approve", id] | ["approve", id] => {
+            // The id comes from the caller and becomes a filename. Anything
+            // that is not a proposal id is refused before it reaches the
+            // filesystem — `..` in particular.
+            if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+                bail!("{id:?} is not a proposal id");
+            }
+            crate::approve_text(book, id)?
+        }
+        ["ratio", "balance"] | ["balance"] => balance_text(book)?,
+        [] => bail!("type a command"),
+        _ => bail!(
+            "This is a demo terminal, not a shell. It runs two commands:\n\
+             \n  ratio approve <proposal-id>\n  ratio balance"
+        ),
+    };
+    Ok(format!("{{\"output\":{}}}", quote(&output)))
+}
+
+/// The trial balance as the CLI prints it, for the terminal.
+fn balance_text(book: &Path) -> Result<String> {
+    let b = FileBook::open(book)?;
+    let entries = b.entries()?;
+    let names: std::collections::BTreeMap<i64, String> = b
+        .accounts()?
+        .into_iter()
+        .map(|a| (a.dim, a.display_name))
+        .collect();
+    let tb = b.trial_balance()?;
+
+    let mut out = format!("TRIAL BALANCE — {} entrie(s)\n", entries.len());
+    if let Some(c) = b.active()? {
+        out.push_str(&format!("configuration  {c}\n"));
+    }
+    out.push_str(&format!("\n{:<34}{:>16}{:>16}\n", "ACCOUNT", "DEBIT", "CREDIT"));
+    for (dim, (debit, credit)) in b.balances_by_dim()? {
+        out.push_str(&format!(
+            "{:<34}{:>16}{:>16}\n",
+            names.get(&dim).cloned().unwrap_or_else(|| format!("dim {dim}")),
+            crate::minor(debit),
+            crate::minor(credit)
+        ));
+    }
+    out.push_str(&format!("{}\n", "-".repeat(66)));
+    out.push_str(&format!(
+        "{:<34}{:>16}{:>16}\n{:<34}{:>16}{:>16}\n",
+        "Total",
+        crate::minor(tb.debits),
+        crate::minor(tb.credits),
+        "Difference",
+        crate::minor(tb.debits - tb.credits),
+        crate::minor(0)
+    ));
+    Ok(out)
+}
 
 /// One exchange with the model.
 ///
@@ -475,10 +567,25 @@ fn rules_json(book: &Path) -> Result<String> {
                     .join("\n"),
                 Err(e) => format!("(does not parse: {e})"),
             };
+            // Approving does not delete the proposal — it is a record, and
+            // `ratio approve` is idempotent by design. But a proposal that is
+            // already live must not keep saying "waiting on a person" after
+            // somebody just approved it, which is what the screen did for
+            // exactly as long as it took to notice.
+            let already = match RuleSet::from_toml(&text) {
+                Ok(proposed) => {
+                    !proposed.rules.is_empty()
+                        && proposed.rules.iter().all(|r| {
+                            set.rule(&r.id).is_some_and(|active| active == r)
+                        })
+                }
+                Err(_) => false,
+            };
             pending.push(format!(
-                "{{\"id\":{},\"rendered\":{}}}",
+                "{{\"id\":{},\"rendered\":{},\"active\":{}}}",
                 quote(&id),
-                quote(&rendered)
+                quote(&rendered),
+                already
             ));
         }
     }
@@ -644,6 +751,17 @@ pre{margin:0;padding:14px 18px;font-size:13px;line-height:1.55;overflow-x:auto;
 h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
   font-weight:600;margin:26px 0 10px}
 .offline{color:var(--warn)}
+/* ── the approval terminal ───────────────────────────────────────────── */
+.term{background:#0D1512;border:1px solid var(--rule);border-radius:10px;
+  padding:14px 16px;margin-top:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.term-line{display:flex;align-items:center;gap:8px}
+.term-line span{color:#7FC79D;font-size:14px;flex:none}
+.term input{flex:1;background:transparent;border:0;outline:0;color:#E8EAE8;
+  font:inherit;font-size:14px;padding:3px 0}
+.term input::placeholder{color:#5C6B63}
+.term pre{margin:10px 0 0;font-size:12.5px;line-height:1.5;color:#C6D3CB;
+  white-space:pre-wrap;overflow-x:auto}
+.term .err{color:#CE7A33}
 /* ── the chat screen ─────────────────────────────────────────────────── */
 .turn{margin:0 0 20px}
 .who{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
@@ -1079,6 +1197,50 @@ function card(...kids) {
   return c;
 }
 
+// A terminal, not a button. The distinction is the product: a person runs the
+// command, and the model has no route to this endpoint at all — its six tools
+// are the whole of what it can reach.
+function terminal(suggestion) {
+  const box = el("div", "term");
+  const line = el("div", "term-line");
+  line.append(el("span", null, "$"));
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = suggestion;
+  input.setAttribute("aria-label", "command");
+  line.append(input);
+  box.append(line);
+  const out = el("pre");
+  out.hidden = true;
+  box.append(out);
+
+  async function run() {
+    const cmd = input.value.trim() || suggestion;
+    out.hidden = false;
+    out.className = "";
+    out.textContent = "…";
+    let d;
+    try {
+      const r = await fetch("terminal.json", {
+        method: "POST",
+        headers: {"content-type": "application/json"},
+        body: JSON.stringify({command: cmd}),
+      });
+      d = await r.json();
+    } catch { d = {error: "could not reach the server"}; }
+    if (d.error) { out.className = "err"; out.textContent = d.error; }
+    else {
+      out.textContent = d.output;
+      // The books just moved. Reload so the active rules and the balance
+      // reflect it rather than showing the state from before the approval.
+      if (cmd.includes("approve")) setTimeout(() => location.reload(), 1400);
+    }
+    input.value = "";
+  }
+  input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); run(); } });
+  return box;
+}
+
 (async () => {
   const content = document.getElementById("content");
   let d;
@@ -1106,12 +1268,16 @@ function card(...kids) {
   }
 
   // Proposals sit beside the active rules on purpose: the gap between the two
-  // lists is exactly what a person's approval bought.
+  // lists is exactly what a person's approval bought — so a proposal that has
+  // BEEN approved belongs on the other side of it, not still waiting.
+  const waiting = d.pending.filter(p => !p.active);
+  const done = d.pending.filter(p => p.active);
+
   content.append(el("h2", null, "Waiting on a person"));
-  if (!d.pending.length) {
+  if (!waiting.length) {
     content.append(card(el("p", "empty", "Nothing is waiting for approval.")));
   }
-  for (const p of d.pending) {
+  for (const p of waiting) {
     const h = el("div", "rule-head");
     h.append(el("b", null, p.id), el("span", "chip warn", "not active"));
     const c = card(h, el("pre", null, p.rendered));
@@ -1120,7 +1286,21 @@ function card(...kids) {
     note.append(document.createTextNode(
       " at a terminal — there is no button here, and no tool the model can call, that does it."));
     c.append(note);
+    c.append(terminal("ratio approve " + p.id));
     content.append(c);
+  }
+
+  if (done.length) {
+    content.append(el("h2", null, "Approved"));
+    for (const p of done) {
+      const h = el("div", "rule-head");
+      h.append(el("b", null, p.id), el("span", "chip ok", "approved"));
+      const c = card(h, el("pre", null, p.rendered));
+      c.append(el("p", "pending",
+        "A person approved this, and it is live in the configuration above. The " +
+        "proposal is kept as a record rather than deleted."));
+      content.append(c);
+    }
   }
 })();
 </script>
@@ -1333,6 +1513,27 @@ mod tests {
     }
 
     #[test]
+    fn an_approved_proposal_stops_saying_it_is_waiting() {
+        // After `ratio approve`, the proposal file remains — it is a record.
+        // The screen must not keep listing it as pending, which contradicts
+        // the approval the viewer just performed.
+        let book = fresh("approvedstate");
+        let toml = "[[rule]]\nid = \"r1\"\nkind = \"trade\"\n\
+                    [[rule.posting]]\naccount = 1\nweight = 1\n\
+                    [[rule.posting]]\naccount = 2\nweight = -1\n";
+        std::fs::create_dir_all(book.join("proposals")).unwrap();
+        std::fs::write(book.join("proposals").join("p1.toml"), toml).unwrap();
+
+        let before = rules_json(&book).unwrap();
+        assert!(before.contains("\"active\":false"), "{before}");
+
+        terminal_json(&book, r#"{"command":"ratio approve p1"}"#).unwrap();
+
+        let after = rules_json(&book).unwrap();
+        assert!(after.contains("\"active\":true"), "still pending after approval: {after}");
+    }
+
+    #[test]
     fn a_proposal_that_does_not_parse_is_shown_rather_than_hidden() {
         let book = fresh("badproposal");
         std::fs::create_dir_all(book.join("proposals")).unwrap();
@@ -1416,25 +1617,99 @@ mod tests {
     }
 
     #[test]
-    fn no_screen_offers_a_way_to_approve_anything() {
-        // The fence has to hold on the screen too. A button here would be a
-        // second path to the thing the MCP server refuses.
+    fn approval_is_a_person_typing_a_command_not_a_control() {
+        // This assertion changed when the approval terminal landed, so it is
+        // worth stating what it now protects. The claim was never "no UI can
+        // approve" — a real product needs one. It is that the MODEL cannot,
+        // and that approval is visibly outside its reach.
+        //
+        // So: the chat screen, where the model acts, carries no approval path
+        // at all; and the rules screen approves only through a terminal a
+        // person types into.
+        assert!(
+            !CHAT_BODY.contains("terminal.json"),
+            "the chat screen can reach the approval endpoint"
+        );
+        assert!(
+            RULES_BODY.contains("terminal(\"ratio approve \" + p.id)"),
+            "the rules screen no longer offers the terminal"
+        );
+        // The terminal runs on Enter, from an <input> — not from a click
+        // handler that could fire without anyone typing anything.
+        assert!(RULES_BODY.contains("if (e.key === \"Enter\")"));
+
         for (name, body) in SCREENS {
-            // The chat screen has a send button and starter prompts. What it
-            // must not have is a control that promotes anything — every button
-            // on it goes through `send()`, which POSTs a message to a model
-            // that has no approval tool.
-            if name != "chat" {
-                assert!(!body.contains("<button"), "{name} grew a button");
-            }
             assert!(!body.contains("<form"), "{name} grew a form");
             assert!(!body.to_lowercase().contains("method=\"post\""), "{name}");
-            for word in ["approve(", "promote(", "setActive", "set_active"] {
-                assert!(!body.contains(word), "{name} grew {word}");
-            }
         }
-        // And the rules screen says so in as many words.
-        assert!(RULES_BODY.contains("no tool the model can call"));
+    }
+
+    // ── the terminal ──────────────────────────────────────────────────────
+
+    #[test]
+    fn the_terminal_runs_two_commands_and_refuses_everything_else() {
+        let book = fresh("terminal");
+        for bad in [
+            "ls",
+            "ratio init",
+            "ratio approve x; rm -rf /",
+            "ratio balance && curl evil.example",
+            "$(whoami)",
+            "ratio server",
+        ] {
+            let r = terminal_json(&book, &format!("{{\"command\":{}}}", quote(bad)));
+            assert!(r.is_err(), "the terminal accepted {bad:?}");
+        }
+        // And the two it does run.
+        assert!(terminal_json(&book, r#"{"command":"ratio balance"}"#).is_ok());
+        assert!(terminal_json(&book, r#"{"command":"balance"}"#).is_ok());
+    }
+
+    #[test]
+    fn a_proposal_id_cannot_walk_out_of_the_proposals_directory() {
+        // The id becomes a filename on a public endpoint. `..` is the whole
+        // reason this is validated before it reaches the filesystem.
+        let book = fresh("traversal");
+        for bad in ["../../etc/passwd", "..", "a/b", "x\0y"] {
+            let cmd = format!("{{\"command\":{}}}", quote(&format!("ratio approve {bad}")));
+            let e = terminal_json(&book, &cmd).unwrap_err().to_string();
+            assert!(
+                e.contains("not a proposal id"),
+                "{bad:?} was not rejected as an id: {e}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_terminal_approves_by_running_the_cli_s_own_code() {
+        // A demo that approves through its own path is a demo of its own path.
+        // This asserts the shared one: propose a rule into the book, approve
+        // it through the terminal, and see it in the active set.
+        let book = fresh("approve");
+        std::fs::create_dir_all(book.join("proposals")).unwrap();
+        std::fs::write(
+            book.join("proposals").join("p1.toml"),
+            "[[rule]]\nid = \"r1\"\nkind = \"trade\"\n\
+             [[rule.posting]]\naccount = 1\nweight = 1\n\
+             [[rule.posting]]\naccount = 2\nweight = -1\n",
+        )
+        .unwrap();
+
+        let before = rules_json(&book).unwrap();
+        assert!(before.contains("\"rules\":[]"), "expected no active rules: {before}");
+
+        let out = terminal_json(&book, r#"{"command":"ratio approve p1"}"#).unwrap();
+        assert!(out.contains("approved p1"), "{out}");
+
+        let after = rules_json(&book).unwrap();
+        assert!(after.contains("\"id\":\"r1\""), "the rule did not go active: {after}");
+    }
+
+    #[test]
+    fn an_overlong_command_is_refused_before_parsing() {
+        let book = fresh("longcmd");
+        let cmd = format!("{{\"command\":{}}}", quote(&"a".repeat(500)));
+        assert!(terminal_json(&book, &cmd).is_err());
     }
 
     #[test]

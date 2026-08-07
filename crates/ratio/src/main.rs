@@ -604,6 +604,18 @@ fn mcp(book: PathBuf) -> Result<()> {
 /// set rather than replacing it, so approving a fee rule does not silently
 /// retire the trade rules.
 fn approve(book: PathBuf, id: &str) -> Result<()> {
+    print!("{}", approve_text(&book, id)?);
+    Ok(())
+}
+
+/// The approval itself, returning what it would have printed.
+///
+/// Split out so the demo's terminal runs THIS rather than a second
+/// implementation. A demo that approves by its own code path is a demo of its
+/// own code path; the only thing worth showing is the command a person really
+/// runs.
+pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
+    let book = book.to_path_buf();
     let mut b = FileBook::open(&book)?;
     let path = book.join("proposals").join(format!("{id}.toml"));
     let proposed = std::fs::read_to_string(&path)
@@ -617,10 +629,12 @@ fn approve(book: PathBuf, id: &str) -> Result<()> {
     let findings = check(&incoming, &chart);
     let errors: Vec<_> = findings.iter().filter(|f| !f.is_question).collect();
     if !errors.is_empty() {
-        for f in &errors {
-            println!("  x {}: {}", f.rule, f.message);
-        }
-        bail!("proposal {id} does not pass its checks and cannot be approved");
+        let detail: Vec<String> =
+            errors.iter().map(|f| format!("  x {}: {}", f.rule, f.message)).collect();
+        bail!(
+            "proposal {id} does not pass its checks and cannot be approved\n{}",
+            detail.join("\n")
+        );
     }
 
     let mut merged = match b.active()? {
@@ -642,14 +656,16 @@ fn approve(book: PathBuf, id: &str) -> Result<()> {
     let digest = b.put(toml.as_bytes())?;
     b.set_active(&digest)?;
 
-    println!("approved {id}");
-    println!("  {} rule(s) now active ({replaced} replaced)", merged.rules.len());
-    println!("  config {}", digest.short());
+    let mut out = format!(
+        "approved {id}\n  {} rule(s) now active ({replaced} replaced)\n  config {}\n",
+        merged.rules.len(),
+        digest.short()
+    );
     for rule in &merged.rules {
-        println!();
-        print!("{}", render(rule, &chart));
+        out.push('\n');
+        out.push_str(&render(rule, &chart));
     }
-    Ok(())
+    Ok(out)
 }
 
 /// Serve the Ledger gRPC API. Every posted transaction must conserve value or
