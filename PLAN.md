@@ -267,9 +267,13 @@ books wrong.*
 
 ---
 
-## UI screens
+## UI screens — ✅ BUILT (`ratio watch`)
 
-Three. Not four.
+Three. Not four. All three are served by `ratio watch` on loopback — one
+binary, a fixed route table, reads and never writes. There is no button and no
+form on any of them: the fence that keeps a model from approving a rule would
+be worthless if the screen offered a second way round it, and a test asserts
+that no screen has grown one.
 
 | Screen | Why it exists |
 |---|---|
@@ -280,6 +284,11 @@ Three. Not four.
 No portal, no dashboard, no settings screens. The MCP conversation *is* the
 authoring interface; building a rule editor would be building the thing the
 demo exists to make unnecessary.
+
+The rules screen shows active rules and unapproved proposals as two separate
+lists, deliberately: the gap between them is exactly what a person's approval
+bought, and merging them would erase it. A test asserts a proposal never
+appears among the active rules.
 
 ---
 

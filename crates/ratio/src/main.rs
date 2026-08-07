@@ -421,6 +421,13 @@ pub(crate) fn minor(v: i64) -> String {
     }
 }
 
+/// A short name for a book directory, for the `books/{book}/...` resource name.
+fn book_label(book: &std::path::Path) -> String {
+    book.file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "book".into())
+}
+
 /// Read back every posting behind one account's balance.
 ///
 /// The break report tells a reader to run this, so it has to exist: an
@@ -534,22 +541,33 @@ fn recon(
         // Only entries from a run that was not refused ever reach the book —
         // `reconcile_with_entries` hands back none for a refused file, so a
         // partial period cannot be written even by asking.
-        for entry in &entries {
-            b.append(entry)
-                .with_context(|| format!("posting {}", entry.id))?;
-        }
         if !entries.is_empty() {
+            // Keep the report with the book it describes. `ratio watch` reads
+            // the newest one; a report that only ever existed on somebody's
+            // terminal is not evidence anybody else can look at.
+            use prost::Message;
+            let dir = book.join("reports");
+            std::fs::create_dir_all(&dir).context("creating the reports directory")?;
+            let name = format!("{}-{}.pb", digest.short(), parsed.len());
+            std::fs::write(
+                dir.join(&name),
+                report.to_proto(&book_label(&book), &name).encode_to_vec(),
+            )
+            .context("storing the report")?;
+
+            for entry in &entries {
+                b.append(entry)
+                    .with_context(|| format!("posting {}", entry.id))?;
+            }
             println!("\nposted {} entrie(s) into {}", entries.len(), book.display());
+            println!("  report   reports/{name}");
             println!("  ratio explain <account> --book {}", book.display());
         }
     }
 
     if let Some(path) = out {
         use prost::Message;
-        let book_name = book
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "book".into());
+        let book_name = book_label(&book);
         // The run is named for the configuration that produced it, so two
         // reports over the same period under different configurations do not
         // land on the same name.
