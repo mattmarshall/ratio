@@ -42,12 +42,15 @@ usage:
   ratio apply FILE [--book DIR]        apply rules to events and post the result
   ratio post FILE [--book DIR]         post entries directly; refuses unbalanced
   ratio balance [--book DIR]           print the trial balance
+  ratio watch [--book DIR] [--port N]  live trial balance in a browser
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio server                         serve the Ledger gRPC API
 
 The book defaults to ./book, or $RATIO_BOOK if set.
 ";
+
+mod watch;
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -67,6 +70,10 @@ fn main() -> Result<()> {
         ["apply", file] => apply(book, file),
         ["post", file] => post(book, file),
         ["balance"] => balance(book),
+        ["watch"] => watch::watch(book, 7373),
+        ["watch", "--port", p] => {
+            watch::watch(book, p.parse().context("--port must be a number")?)
+        }
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
         ["server"] => serve(),
@@ -96,7 +103,7 @@ fn split_book_flag(args: &[String]) -> Result<(Vec<String>, PathBuf)> {
     Ok((positional, book))
 }
 
-fn init(book: PathBuf) -> Result<()> {
+pub(crate) fn init(book: PathBuf) -> Result<()> {
     let mut b = FileBook::open(&book)?;
     if b.accounts()?.is_empty() {
         // A minimal chart that a single-currency equity fund can actually post
@@ -372,7 +379,7 @@ fn balance(book: PathBuf) -> Result<()> {
 
 /// Minor units as a decimal string. Integer arithmetic throughout — the value
 /// is never converted to a float, not even to print it.
-fn minor(v: i64) -> String {
+pub(crate) fn minor(v: i64) -> String {
     let neg = v < 0;
     let a = v.unsigned_abs();
     let s = format!("{}.{:02}", a / 100, a % 100);

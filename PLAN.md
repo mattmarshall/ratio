@@ -146,7 +146,10 @@ cries wolf trains people to ignore the checks. A correct rule set now produces
 - **The model can call `propose_rule` and nothing else that writes.** Approval
   is `ratio approve <id>`, a CLI command, run by a person.
 - A live trial-balance page that updates as events post — the visual payoff.
-  **Still outstanding**; the CLI `ratio balance` is what the script uses today.
+  `ratio watch` serves it on loopback: one page, one JSON endpoint, no
+  dependencies, same palette as the website. Verified in a browser — 250
+  accruals posted from a second terminal moved the table with no reload,
+  difference held at `0.00`, console clean.
 - **Done when:** the five-minute script below runs end to end without a
   rehearsal. *Steps 1–3 and 5–7 verified end to end over real stdio; step 4's
   answer-a-question exchange is the deviation below.*
