@@ -217,7 +217,23 @@ fn call_tool(book: &std::path::Path, req: &Value) -> Result<Value> {
         .pointer("/params/arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
+    let text = dispatch(book, name, &args)?;
+    Ok(json!({"content": [{"type": "text", "text": text}], "isError": false}))
+}
 
+/// The tool surface, for a caller that is not speaking JSON-RPC.
+///
+/// The in-process chat demo drives a model against these same tools. It goes
+/// through here rather than reimplementing the list, because a second copy of
+/// the dispatch table is a second place for the fence to be missing — and the
+/// fence being *absent* rather than *denied* is the only reason it holds.
+pub fn tools() -> Value {
+    tools_list()
+}
+
+/// Run one tool by name. `Err` is a message meant for the model to read.
+pub fn dispatch(book: &std::path::Path, name: &str, args: &Value) -> Result<String> {
+    let args = args.clone();
     let text = match name {
         "list_accounts" => tool_list_accounts(book)?,
         "propose_rule" => tool_propose_rule(book, &args)?,
@@ -233,7 +249,7 @@ fn call_tool(book: &std::path::Path, req: &Value) -> Result<Value> {
         ),
         other => anyhow::bail!("no tool named {other:?}"),
     };
-    Ok(json!({"content": [{"type": "text", "text": text}], "isError": false}))
+    Ok(text)
 }
 
 fn tool_list_accounts(book: &std::path::Path) -> Result<String> {
@@ -620,6 +636,39 @@ weight = -1
 
     /// The fence. `approve_rule` must not be listed, must not dispatch, and the
     /// refusal must tell the model what to do instead.
+    #[test]
+    fn the_exposed_dispatcher_carries_the_same_fence() {
+        // `dispatch` exists so the in-process chat demo does not need its own
+        // copy of the tool table. A second copy is a second place for the
+        // fence to go missing, and the fence works by ABSENCE — so the public
+        // entry point has to refuse exactly as the JSON-RPC one does.
+        let b = tmp_book();
+        for name in ["approve_rule", "promote_config", "set_active"] {
+            let e = dispatch(&b, name, &json!({})).unwrap_err().to_string();
+            assert!(e.contains("no such tool"), "{name}: {e}");
+            assert!(e.contains("ratio approve"), "{name}: {e}");
+        }
+        // And the exposed list is the same list, not a superset.
+        let names: Vec<String> = tools()["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(!names.iter().any(|n| n.contains("approve")), "{names:?}");
+        assert!(names.contains(&"propose_rule".to_string()), "{names:?}");
+    }
+
+    #[test]
+    fn dispatch_and_jsonrpc_agree() {
+        // If these two ever diverge, the chat demo stops being evidence about
+        // the MCP server — which is the whole reason it is worth showing.
+        let b = tmp_book();
+        let direct = dispatch(&b, "list_accounts", &json!({})).unwrap();
+        let viajsonrpc = text_of(&call(&b, "list_accounts", json!({})));
+        assert_eq!(direct, viajsonrpc);
+    }
+
     #[test]
     fn there_is_no_approve_tool() {
         let b = tmp_book();

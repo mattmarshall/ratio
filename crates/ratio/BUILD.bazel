@@ -13,6 +13,7 @@ rust_binary(
     edition = "2021",
     deps = [
         "//crates/ratio-api",
+        "//crates/ratio-agent",
         "//crates/ratio-chart",
         "//crates/ratio-common",
         "//crates/ratio-kernel",

@@ -120,6 +120,16 @@ Resources:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
       ApiId: !Ref Api
+      # ⛔ THE COST CONTROL THAT MATTERS. Every other route is cheap; /chat.json
+      # calls a paid model, and the endpoint is public. This bounds how fast
+      # anyone can spend — a demo needs a handful of requests a minute and this
+      # allows an order of magnitude more, while making a scripted abuser hit a
+      # wall rather than a bill.
+      #
+      # The account's $5 budget in cloud-org is the alarm; this is the brake.
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 10
+        ThrottlingBurstLimit: 20
       # $default serves at the API root, so URLs carry no stage prefix and the
       # links printed in the demo are the links people use.
       StageName: $default

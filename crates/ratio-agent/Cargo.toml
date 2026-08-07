@@ -1,0 +1,21 @@
+[package]
+name = "ratio-agent"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+ratio-mcp = { path = "../ratio-mcp" }
+anyhow = "1"
+serde_json = "1"
+# `default-https-client` is NOT optional here despite the name. Without it the
+# SDK builds and links, and then panics at the first call with "a http_client is
+# required" — a runtime failure produced by a compile-time choice.
+aws-config = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+aws-sdk-bedrockruntime = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+# Pinned: 0.3.55 uses let-chains, stable only from Rust 1.88, and this repo is
+# on 1.85. A direct dependency is the only way to hold a TRANSITIVE crate back.
+time = "=0.3.36"

@@ -146,7 +146,8 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
     };
 
     let (status, content_type, body) = match (req.method.as_str(), req.path.as_str()) {
-        (_, "/") => ("200 OK", "text/html; charset=utf-8", page(BALANCE_BODY, "balance")),
+        (_, "/") => ("200 OK", "text/html; charset=utf-8", page(CHAT_BODY, "chat")),
+        (_, "/balance") => ("200 OK", "text/html; charset=utf-8", page(BALANCE_BODY, "balance")),
         (_, "/breaks") => ("200 OK", "text/html; charset=utf-8", page(BREAKS_BODY, "breaks")),
         (_, "/rules") => ("200 OK", "text/html; charset=utf-8", page(RULES_BODY, "rules")),
         (_, "/balance.json") => json(balance_json(book)),
@@ -158,6 +159,15 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         // stdio transport exposes without a process on the caller's machine.
         // The dispatcher is shared with `ratio mcp` — there is one tool list
         // and one fence, not one per transport.
+        // The chat demo. Same tools, same dispatcher, same fence as /mcp —
+        // this endpoint only adds a model in front of them.
+        ("POST", "/chat.json") => json(chat_json(book, &req.body)),
+        (_, "/chat.json") => (
+            "405 Method Not Allowed",
+            "text/plain; charset=utf-8",
+            "Chat messages are POSTed to this path.".to_string(),
+        ),
+
         ("POST", "/mcp") => match ratio_mcp::handle_line(book, &req.body) {
             Some(response) => ("200 OK", "application/json", response),
             // A notification has no id and MUST NOT be answered. 202 with an
@@ -193,6 +203,42 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
 // ---------------------------------------------------------------------------
 // Data
 // ---------------------------------------------------------------------------
+
+/// One exchange with the model.
+///
+/// The transcript lives in the browser and comes back on each turn, so this
+/// stays stateless — which is what lets it run on Lambda without a session
+/// store. `ratio-agent` bounds how much of it will be accepted.
+fn chat_json(book: &Path, body: &str) -> Result<String> {
+    let req: serde_json::Value =
+        serde_json::from_str(body).context("the chat request is not JSON")?;
+    let message = req["message"].as_str().unwrap_or("");
+    let reply = ratio_agent::chat(book, &req["history"], message)?;
+
+    let steps: Vec<String> = reply
+        .steps
+        .iter()
+        .map(|s| match s {
+            ratio_agent::Step::Said(text) => {
+                format!("{{\"kind\":\"said\",\"text\":{}}}", quote(text))
+            }
+            ratio_agent::Step::Used { tool, input, output, refused } => format!(
+                "{{\"kind\":\"used\",\"tool\":{},\"input\":{},\"output\":{},\"refused\":{}}}",
+                quote(tool),
+                quote(input),
+                quote(output),
+                refused
+            ),
+        })
+        .collect();
+
+    Ok(format!(
+        "{{\"steps\":[{}],\"truncated\":{},\"history\":{}}}",
+        steps.join(","),
+        reply.truncated,
+        serde_json::to_string(&reply.history)?
+    ))
+}
 
 /// The trial balance.
 ///
@@ -485,8 +531,9 @@ fn page(body: &str, current: &str) -> String {
         )
     };
     format!(
-        "{HEAD}<nav class=\"tabs\">{}{}{}</nav>{body}{FOOT}",
-        tab("balance", "/", "Trial balance"),
+        "{HEAD}<nav class=\"tabs\">{}{}{}{}</nav>{body}{FOOT}",
+        tab("chat", "/", "Set up the books"),
+        tab("balance", "/balance", "Trial balance"),
         tab("breaks", "/breaks", "Break report"),
         tab("rules", "/rules", "Rules")
     )
@@ -597,10 +644,171 @@ pre{margin:0;padding:14px 18px;font-size:13px;line-height:1.55;overflow-x:auto;
 h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
   font-weight:600;margin:26px 0 10px}
 .offline{color:var(--warn)}
+/* ── the chat screen ─────────────────────────────────────────────────── */
+.turn{margin:0 0 20px}
+.who{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  font-weight:600;margin:0 0 6px}
+.said{background:var(--raised);border:1px solid var(--rule);border-radius:10px;
+  padding:12px 16px;white-space:pre-wrap;line-height:1.6}
+.turn.you .said{background:var(--surface)}
+/* A tool call is the evidence, so it is shown rather than summarized. */
+.tool{border:1px solid var(--rule);border-left:3px solid var(--accent);
+  border-radius:8px;margin:10px 0;background:var(--raised);overflow:hidden}
+.tool.refused{border-left-color:var(--warn)}
+.tool summary{cursor:pointer;padding:9px 14px;font-size:13px;color:var(--text-2);
+  display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.tool summary::marker{color:var(--muted)}
+.tool code{font-size:13px;font-weight:600;color:var(--accent)}
+.tool.refused code{color:var(--warn)}
+.tool pre{padding:0 14px 12px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;
+  color:var(--muted);margin:0}
+.tool .args{padding:2px 14px 0;font-size:12.5px;color:var(--muted);white-space:pre-wrap;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.ask{display:flex;gap:10px;margin-top:22px}
+.ask textarea{flex:1;min-height:64px;resize:vertical;padding:11px 14px;font:inherit;
+  font-size:15px;color:var(--text);background:var(--raised);border:1px solid var(--rule);
+  border-radius:9px}
+.ask textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ask button{padding:0 20px;font:inherit;font-size:15px;font-weight:600;cursor:pointer;
+  color:var(--ground);background:var(--accent);border:0;border-radius:9px;align-self:stretch}
+.ask button:disabled{opacity:.5;cursor:default}
+.starters{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 0}
+.starters button{padding:7px 13px;font:inherit;font-size:13px;cursor:pointer;
+  color:var(--text-2);background:var(--surface);border:1px solid var(--rule);
+  border-radius:999px;text-align:left}
+.starters button:hover{border-color:var(--accent);color:var(--accent)}
+.thinking{color:var(--muted);font-size:14px;padding:8px 0}
+.fence{border:1px solid var(--warn);border-radius:9px;padding:12px 16px;margin:18px 0 0;
+  font-size:13.5px;color:var(--text-2);background:var(--raised)}
+.fence b{color:var(--warn)}
 </style></head><body>
 "##;
 
 const FOOT: &str = "</body></html>\n";
+
+const CHAT_BODY: &str = r##"<div class="wrap">
+  <h1>Set up the books</h1>
+  <p class="meta">A model with six tools and no way to approve anything.
+    Every call below runs against the same book the other screens read.</p>
+
+  <div id="log"></div>
+
+  <div class="ask">
+    <textarea id="msg" rows="2" placeholder="Describe a rule the way you would say it out loud…"
+      aria-label="Message"></textarea>
+    <button id="send">Send</button>
+  </div>
+  <div class="starters" id="starters"></div>
+
+  <div class="fence">
+    <b>What it cannot do.</b> There is no approval tool — not a permission check,
+    an absent one. Ask it to approve something and watch what comes back. A
+    proposal becomes policy when a person runs
+    <code>ratio approve &lt;id&gt;</code> at a terminal, having read it.
+  </div>
+</div>
+<script>
+let history = null;
+let busy = false;
+
+const STARTERS = [
+  "What accounts does this fund have?",
+  "Management fee accrues daily on the prior day's net assets at 75 basis points a year, actual/365.",
+  "Approve that rule and make it active.",
+  "Show me the trial balance.",
+];
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function turn(who, cls) {
+  const t = el("div", "turn" + (cls ? " " + cls : ""));
+  t.append(el("p", "who", who));
+  document.getElementById("log").append(t);
+  return t;
+}
+
+// Every value below came from a model or from a customer's book, so the
+// transcript is built with the DOM. innerHTML here would be a script-injection
+// seam wearing a demo costume.
+function renderStep(into, s) {
+  if (s.kind === "said") { into.append(el("div", "said", s.text)); return; }
+
+  const d = el("details", "tool" + (s.refused ? " refused" : ""));
+  const sum = el("summary");
+  sum.append(el("code", null, s.tool));
+  sum.append(el("span", null, s.refused ? "refused" : "called"));
+  d.append(sum);
+  if (s.input) d.append(el("div", "args", s.input));
+  d.append(el("pre", null, s.output));
+  // A refusal is the point of the demo, so it opens itself.
+  if (s.refused) d.open = true;
+  into.append(d);
+}
+
+async function send(text) {
+  if (busy || !text.trim()) return;
+  busy = true;
+  document.getElementById("send").disabled = true;
+
+  turn("You", "you").append(el("div", "said", text));
+  const mine = turn("Ratio");
+  const wait = el("div", "thinking", "thinking…");
+  mine.append(wait);
+
+  let d;
+  try {
+    const r = await fetch("chat.json", {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify({message: text, history}),
+    });
+    d = await r.json();
+  } catch {
+    d = {error: "could not reach the server"};
+  }
+
+  wait.remove();
+  if (d.error) {
+    mine.append(el("div", "said", d.error));
+  } else {
+    history = d.history;
+    for (const s of d.steps) renderStep(mine, s);
+    // Say when the loop stopped early rather than letting a truncated
+    // exchange look like a finished one.
+    if (d.truncated) {
+      mine.append(el("div", "thinking",
+        "(stopped after the tool-call limit — ask again to continue)"));
+    }
+  }
+
+  busy = false;
+  document.getElementById("send").disabled = false;
+  mine.scrollIntoView({block: "end", behavior: "smooth"});
+}
+
+const box = document.getElementById("msg");
+document.getElementById("send").addEventListener("click", () => {
+  const t = box.value; box.value = ""; send(t);
+});
+box.addEventListener("keydown", e => {
+  // Enter sends; shift-enter is a newline, because a rule is often several lines.
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    const t = box.value; box.value = ""; send(t);
+  }
+});
+for (const s of STARTERS) {
+  const b = el("button", null, s);
+  b.addEventListener("click", () => send(s));
+  document.getElementById("starters").append(b);
+}
+</script>
+"##;
 
 const BALANCE_BODY: &str = r##"<div class="wrap">
   <h1>Trial balance</h1>
@@ -1136,7 +1344,8 @@ mod tests {
 
     // -- the pages ---------------------------------------------------------
 
-    const SCREENS: [(&str, &str); 3] = [
+    const SCREENS: [(&str, &str); 4] = [
+        ("chat", CHAT_BODY),
         ("balance", BALANCE_BODY),
         ("breaks", BREAKS_BODY),
         ("rules", RULES_BODY),
@@ -1184,12 +1393,26 @@ mod tests {
     }
 
     #[test]
-    fn there_are_three_screens_and_no_fourth() {
-        // PLAN.md: "Three. Not four." No portal, no dashboard, no settings,
-        // and no rule editor — the MCP conversation is the authoring surface.
-        let html = page(BALANCE_BODY, "balance");
+    fn there_are_four_screens_and_no_fifth() {
+        // PLAN.md said "Three. Not four." The fourth is the MCP conversation
+        // itself, which that rule assumed would happen in someone else's
+        // client — "the MCP conversation IS the authoring interface". It still
+        // is; this screen shows it rather than replacing it, and there is
+        // still no portal, no dashboard, no settings and no rule editor.
+        let html = page(CHAT_BODY, "chat");
         let tabs = html.matches("<a href=").count();
-        assert_eq!(tabs, 3, "the nav offers {tabs} screens");
+        assert_eq!(tabs, 4, "the nav offers {tabs} screens");
+    }
+
+    #[test]
+    fn the_chat_screen_says_what_the_model_cannot_do() {
+        // The fence is invisible unless something names it. A viewer who never
+        // asks the model to approve should still leave knowing it cannot.
+        assert!(CHAT_BODY.contains("There is no approval tool"));
+        assert!(CHAT_BODY.contains("ratio approve"));
+        // And one of the offered prompts asks it to approve, so the refusal is
+        // one click away rather than something you have to think to try.
+        assert!(CHAT_BODY.contains("Approve that rule and make it active."));
     }
 
     #[test]
@@ -1197,9 +1420,18 @@ mod tests {
         // The fence has to hold on the screen too. A button here would be a
         // second path to the thing the MCP server refuses.
         for (name, body) in SCREENS {
-            assert!(!body.contains("<button"), "{name} grew a button");
+            // The chat screen has a send button and starter prompts. What it
+            // must not have is a control that promotes anything — every button
+            // on it goes through `send()`, which POSTs a message to a model
+            // that has no approval tool.
+            if name != "chat" {
+                assert!(!body.contains("<button"), "{name} grew a button");
+            }
             assert!(!body.contains("<form"), "{name} grew a form");
             assert!(!body.to_lowercase().contains("method=\"post\""), "{name}");
+            for word in ["approve(", "promote(", "setActive", "set_active"] {
+                assert!(!body.contains(word), "{name} grew {word}");
+            }
         }
         // And the rules screen says so in as many words.
         assert!(RULES_BODY.contains("no tool the model can call"));

@@ -1,0 +1,27 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+rust_library(
+    name = "ratio-agent",
+    srcs = glob(["src/*.rs"]),
+    crate_name = "ratio_agent",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    deps = [
+        "//crates/ratio-mcp",
+        "@crates//:anyhow",
+        "@crates//:aws-config",
+        "@crates//:aws-sdk-bedrockruntime",
+        "@crates//:serde_json",
+        "@crates//:tokio",
+    ],
+)
+
+rust_test(
+    name = "ratio-agent_test",
+    crate = ":ratio-agent",
+    edition = "2021",
+)

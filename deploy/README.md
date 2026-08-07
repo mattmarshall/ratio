@@ -4,11 +4,30 @@ The three screens and the MCP endpoint, running on AWS as a Lambda behind an
 HTTP API. Live at the `DemoUrl` output of the `ratio-demo-app` stack.
 
 ```
-  /          trial balance, with drill-down
-  /breaks    break report
-  /rules     rules and their checks
-  POST /mcp  the MCP tools — the same six as `ratio mcp`, and the same fence
+  /               set up the books — a model driving the MCP tools
+  /balance        trial balance, with drill-down
+  /breaks         break report
+  /rules          rules and their checks
+  POST /mcp       the MCP tools — the same six as `ratio mcp`, same fence
+  POST /chat.json one exchange with the model
 ```
+
+## ⛔ The chat screen needs a one-time console action
+
+Bedrock requires an **Anthropic use-case form** per account before any Claude
+model can be invoked. Until it is submitted the chat screen says so plainly and
+everything else keeps working — the tools, the books and the fence are all
+local and need no model.
+
+Submit it at **Bedrock → Model access** in account 320473299741. There is a
+`bedrock:PutUseCaseForModelAccess` API, but its payload is a compliance
+attestation about intended use filed on behalf of the company, so it is left to
+a person.
+
+⚠ **A working Bedrock call is not evidence that the form was submitted.** This
+account answered a tool-use call correctly and refused the identical call forty
+minutes later — new accounts appear to get a grace window. Test after the form,
+not before.
 
 ## Where it runs
 

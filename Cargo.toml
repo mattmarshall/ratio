@@ -9,6 +9,7 @@ members = [
     "crates/ratio-chart",
     "crates/ratio-store",
     "crates/ratio-rules",
+    "crates/ratio-agent",
     "crates/ratio-mcp",
     "crates/ratio-recon",
     "crates/ratio-api",

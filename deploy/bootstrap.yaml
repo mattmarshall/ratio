@@ -221,6 +221,29 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: invoke-the-demo-model
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # The chat screen runs a model against the MCP tools. It uses the
+              # execution role's own credentials, so there is no API key in the
+              # image, in an environment variable, or on the wire for a visitor
+              # to extract.
+              #
+              # Scoped to the two inference profiles the demo can select and the
+              # foundation models behind them — not `bedrock:*` on `*`. A public
+              # endpoint with an unscoped model permission is a bill waiting to
+              # be discovered.
+              - Sid: InvokeTheDemoModels
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource:
+                  - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0"
+                  - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+                  - arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0
+                  - arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0
 
   # ⛔ NO BUDGET HERE. mattmarshall/cloud-org owns budgets for every account in
   # the organization, at the payer, filtered by LinkedAccount — including this
