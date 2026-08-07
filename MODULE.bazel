@@ -33,6 +33,29 @@ bazel_dep(name = "rules_rust_prost", version = "0.70.0")
 # Rust toolchain pinned to 1.85.0 to match the fastverk ecosystem (meridian),
 # so ratio's eventual @meridian//rust deps share one toolchain.
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+# ── The console's web client ──────────────────────────────────────────────
+# Versions match mattmarshall/meridian, which is the fleet's existing TypeScript
+# build — not because this repo depends on it, but because two JS toolchains in
+# one estate is two sets of upgrade problems.
+bazel_dep(name = "aspect_rules_js", version = "3.1.2")
+bazel_dep(name = "aspect_rules_ts", version = "3.8.9")
+bazel_dep(name = "rules_nodejs", version = "6.7.4")
+
+node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node", dev_dependency = True)
+node.toolchain(node_version = "22.11.0")
+
+rules_ts_ext = use_extension("@aspect_rules_ts//ts:extensions.bzl", "ext")
+rules_ts_ext.deps(ts_version = "5.6.2")
+use_repo(rules_ts_ext, "npm_typescript")
+
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm", dev_dependency = True)
+npm.npm_translate_lock(
+    name = "npm",
+    pnpm_lock = "//web:pnpm-lock.yaml",
+    verify_node_modules_ignored = "//:.bazelignore",
+)
+use_repo(npm, "npm")
+
 rust.toolchain(
     edition = "2021",
     versions = ["1.85.0"],

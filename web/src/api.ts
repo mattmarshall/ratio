@@ -1,0 +1,101 @@
+// The console's data layer: TanStack Query over the transcoded gRPC API.
+//
+// Every hook maps to one `google.api.http` rule on `ratio.v1.Console`. The
+// query keys are the RESOURCE NAMES the API itself uses — `["funds/demo",
+// "breaks"]` rather than an invented cache-key scheme — so a key is always
+// something the server would recognise, and invalidating "everything under
+// this fund" is a prefix match rather than a convention to remember.
+
+import {
+  useQuery,
+  type UseQueryResult,
+} from "@tanstack/react-query";
+import type {
+  Break,
+  ChangeLogEntry,
+  Fund,
+  ListBreaksResponse,
+  ListChangeLogEntriesResponse,
+  ListFundsResponse,
+} from "./types.js";
+
+/** Where the API lives, relative to wherever the console is served from. */
+const BASE = "../v1";
+
+async function get<T>(path: string): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, {
+    headers: { accept: "application/json" },
+  });
+  if (!r.ok) {
+    // The BFF puts a sentence in `error`. Surfacing it beats "500" — the whole
+    // point of the thing is that a figure can be accounted for, and that has
+    // to include the figure not being there.
+    let detail = `${r.status}`;
+    try {
+      const body = (await r.json()) as { error?: string };
+      if (body.error) detail = body.error;
+    } catch {
+      /* a non-JSON error body is still an error */
+    }
+    throw new Error(detail);
+  }
+  return (await r.json()) as T;
+}
+
+/** How long a NAV-day figure stays fresh before it is refetched. */
+const LIVE = {
+  // A fund's state changes when someone posts or approves, which is rare but
+  // consequential — so it is refetched on focus rather than polled.
+  staleTime: 10_000,
+  refetchOnWindowFocus: true,
+} as const;
+
+export function useFunds(): UseQueryResult<Fund[], Error> {
+  return useQuery({
+    queryKey: ["funds"],
+    queryFn: () => get<ListFundsResponse>("/funds"),
+    select: (r) => r.funds,
+    ...LIVE,
+  });
+}
+
+export function useFund(name: string | undefined): UseQueryResult<Fund, Error> {
+  return useQuery({
+    queryKey: [name ?? "", "self"],
+    queryFn: () => get<Fund>(`/${name}`),
+    enabled: !!name,
+    ...LIVE,
+  });
+}
+
+export function useBreaks(
+  fund: string | undefined,
+  filter: string,
+): UseQueryResult<Break[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "breaks", filter],
+    queryFn: () =>
+      get<ListBreaksResponse>(
+        `/${fund}/breaks${filter ? `?filter=${encodeURIComponent(filter)}` : ""}`,
+      ),
+    select: (r) => r.breaks,
+    enabled: !!fund,
+    // `placeholderData` keeps the previous list on screen while a filter
+    // change loads. Without it every chip click blanks the queue, which reads
+    // as "there is nothing here" for as long as the round trip takes.
+    placeholderData: (prev) => prev,
+    ...LIVE,
+  });
+}
+
+export function useChangeLog(
+  fund: string | undefined,
+): UseQueryResult<ChangeLogEntry[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "changeLogEntries"],
+    queryFn: () => get<ListChangeLogEntriesResponse>(`/${fund}/changeLogEntries`),
+    select: (r) => r.changeLogEntries,
+    enabled: !!fund,
+    ...LIVE,
+  });
+}

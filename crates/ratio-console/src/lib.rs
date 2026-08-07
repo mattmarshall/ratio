@@ -488,6 +488,30 @@ mod tests {
     }
 
     #[test]
+    fn every_int64_crosses_the_wire_as_a_string() {
+        // proto3's canonical JSON mapping, which is what makes a generated
+        // TypeScript client correct against this wire form without a
+        // translation layer. A number here would also be a silent double in
+        // the browser — the failure the integer kernel exists to prevent,
+        // arriving in the last hop.
+        use crate::transcode::JsonView;
+        let d = fresh("wireints");
+        book(&d);
+        let f = Console::new(&d).get_fund("funds/demo").unwrap().to_json();
+        for field in ["entryCount", "openBreakCount", "netAssetValue",
+                      "trialBalanceDifference", "openDifference"] {
+            assert!(
+                f.contains(&format!("\"{field}\":\"")),
+                "{field} is not a string in {f}"
+            );
+        }
+        // And enums cross as their names, not their numbers.
+        assert!(f.contains("\"state\":\"BLOCKED\"") || f.contains("\"state\":\"STRUCK\"")
+                || f.contains("\"state\":\"IN_REVIEW\"") || f.contains("\"state\":\"AWAITING_PRICES\""),
+                "state is not a canonical enum name: {f}");
+    }
+
+    #[test]
     fn resource_names_are_parsed_strictly() {
         assert_eq!(resource_id("funds/abc", "funds").unwrap(), "abc");
         assert!(resource_id("funds/abc/breaks/1", "funds").is_err());

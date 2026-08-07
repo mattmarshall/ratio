@@ -1,3 +1,5 @@
+exports_files(["ratio/v1/console.proto"])
+
 load("@rules_aip//aip:defs.bzl", "aip_proto_library", "aip_proto_lint")
 load("@rules_rust//rust:defs.bzl", "rust_library_group")
 load("@rules_rust_prost//:defs.bzl", "rust_prost_library", "rust_prost_toolchain")

@@ -159,6 +159,11 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         // stdio transport exposes without a process on the caller's machine.
         // The dispatcher is shared with `ratio mcp` — there is one tool list
         // and one fence, not one per transport.
+        // The console. Embedded at compile time from //web:console_html, so the
+        // binary that serves the API also serves the client and there is no
+        // second artifact to deploy, version or get out of step.
+        (_, "/app") | (_, "/app/") => ("200 OK", "text/html; charset=utf-8", CONSOLE.to_string()),
+
         // The console's API, transcoded from ratio.v1.Console's google.api.http
         // rules. //crates/ratio-console:transcode_test asserts these routes are
         // exactly the ones the contract declares.
@@ -654,6 +659,16 @@ fn quote(s: &str) -> String {
 // ---------------------------------------------------------------------------
 // The pages
 // ---------------------------------------------------------------------------
+
+/// The operations console, built by //web:console_rs.
+///
+/// One string: the shell, its stylesheet and the React bundle, inlined. On
+/// Lambda a second request for a stylesheet is a second invocation and possibly
+/// a second cold start, and the whole page is smaller than the round trip it
+/// would save.
+#[path = "console_html.rs"]
+mod console_html;
+use console_html::CONSOLE;
 
 /// Wrap a screen's body in the shared document, marking the current tab.
 fn page(body: &str, current: &str) -> String {

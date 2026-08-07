@@ -82,6 +82,20 @@ weight = -1
 TOML
 "$RATIO" config set rules.toml --book "$OUT" >/dev/null
 
+# The fund takes capital before it buys anything.
+#
+# Without this the seeded fund has negative cash and a NAV of 17,120 against
+# 350,000 of investments — arithmetically correct and a terrible advertisement.
+# An opening subscription is posted directly rather than through a rule: a
+# fund's opening balance is not one of the transaction types the recon scope
+# covers, and pretending it were would widen the scope to flatter the demo.
+cat > opening.json <<'JSON'
+[{"id":"sub-0001","memo":"Opening subscription","postings":[
+  {"dim":2,"amount":50000000000},
+  {"dim":20,"amount":-50000000000}]}]
+JSON
+"$RATIO" post opening.json --book "$OUT" >/dev/null
+
 # A quarter of transactions, and the positions the incumbent reported. The
 # investments figure is deliberately 2,000 light so the break screen has a real
 # break on it — an empty break report demos nothing.
@@ -125,7 +139,7 @@ TOML
 # Assert the book is in the state the demo needs, rather than trusting that it
 # is. A demo image that boots to an empty screen is found by a customer.
 BAL="$("$RATIO" balance --book "$OUT")"
-grep -q "6 entrie(s)" <<<"$BAL" || { echo "expected 6 entries:"; echo "$BAL"; exit 1; }
+grep -q "7 entrie(s)" <<<"$BAL" || { echo "expected 7 entries:"; echo "$BAL"; exit 1; }
 grep -q "^Difference  *0.00  *0.00" <<<"$BAL" || { echo "book does not tie:"; echo "$BAL"; exit 1; }
 [ -n "$(ls -A "$OUT/reports" 2>/dev/null)" ] || { echo "no break report stored"; exit 1; }
 [ -f "$OUT/proposals/performance_fee.toml" ] || { echo "no pending proposal"; exit 1; }

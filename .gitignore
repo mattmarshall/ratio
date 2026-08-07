@@ -38,3 +38,6 @@ __pycache__/
 # a book checked in as bytes rots silently the first time a format changes.
 /deploy/ratio
 /deploy/demo-book/
+
+# pnpm's store, installed by rules_js into the workspace.
+/web/node_modules/

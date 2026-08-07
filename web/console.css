@@ -1,0 +1,232 @@
+
+:root{
+  /* The site's tokens, unchanged. site/style.css is the source; this page is a
+     consumer of that system rather than a second one. */
+  --ground:#FCFBF7; --surface:#E6EFE2; --raised:#FFFFFF; --block:#12291B;
+  --text:#0F2418; --text-2:#2B4436; --muted:#4C6053;
+  --rule:#C3D6BF; --rule-2:#679177;
+  --accent:#1B6440; --accent-soft:#E6EFE2;
+  /* Semantic, and deliberately NOT the accent. A console is read by state
+     before it is read by number, and "attention" must not be the same green
+     as "this is a link". */
+  --good:#1F6B45; --warn:#8A5A0B; --crit:#BC4A18;
+  --shadow:rgba(15,36,24,.10);
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#141816; --surface:#1C211E; --raised:#242A26; --block:#0D1512;
+    --text:#E8EAE8; --text-2:#B4BDB6; --muted:#8A938C;
+    --rule:#2F3733; --rule-2:#617068;
+    --accent:#7FC79D; --accent-soft:#1E2A24;
+    --good:#4CA87A; --warn:#C08A2E; --crit:#CE7A33;
+    --shadow:rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#141816; --surface:#1C211E; --raised:#242A26; --block:#0D1512;
+  --text:#E8EAE8; --text-2:#B4BDB6; --muted:#8A938C;
+  --rule:#2F3733; --rule-2:#617068;
+  --accent:#7FC79D; --accent-soft:#1E2A24;
+  --good:#4CA87A; --warn:#C08A2E; --crit:#CE7A33;
+  --shadow:rgba(0,0,0,.4);
+}
+:root[data-theme="light"]{
+  --ground:#FCFBF7; --surface:#E6EFE2; --raised:#FFFFFF; --block:#12291B;
+  --text:#0F2418; --text-2:#2B4436; --muted:#4C6053;
+  --rule:#C3D6BF; --rule-2:#679177;
+  --accent:#1B6440; --accent-soft:#E6EFE2;
+  --good:#1F6B45; --warn:#8A5A0B; --crit:#BC4A18;
+  --shadow:rgba(15,36,24,.10);
+}
+
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--text);
+  font:400 14px/1.5 ui-sans-serif,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.num{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-variant-numeric:tabular-nums}
+h1,h2,h3{margin:0;font-family:Georgia,'Times New Roman',serif;font-weight:600}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+/* ── the frame ─────────────────────────────────────────────────────────── */
+.app{display:grid;grid-template-rows:auto 1fr;height:100%;min-height:100vh}
+.top{display:flex;align-items:center;gap:18px;padding:0 18px;height:54px;
+  border-bottom:1px solid var(--rule);background:var(--raised)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em}
+.brand svg{width:22px;height:22px;color:var(--accent);flex:none}
+.crumb{color:var(--muted);font-size:13px;display:flex;gap:8px;align-items:center}
+.crumb b{color:var(--text);font-weight:600}
+.spacer{flex:1}
+/* The deadline is the single most load-bearing number on the page: it is what
+   makes an exception urgent rather than interesting. */
+.clock{display:flex;align-items:center;gap:9px;padding:5px 12px;border-radius:999px;
+  border:1px solid var(--warn);color:var(--warn);font-size:13px;font-weight:600}
+.clock .dot{width:7px;height:7px;border-radius:50%;background:var(--warn);
+  animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.clock .dot{animation:none}}
+.who{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2)}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--accent);
+  color:var(--raised);display:grid;place-items:center;font-size:11px;font-weight:600}
+
+.body{display:grid;grid-template-columns:264px minmax(0,1fr) 380px;min-height:0}
+@media (max-width:1180px){
+  .body{grid-template-columns:224px minmax(0,1fr)}
+  .detail{display:none}
+}
+@media (max-width:860px){
+  .body{grid-template-columns:1fr}
+  .funds{display:none}
+}
+
+/* ── funds ─────────────────────────────────────────────────────────────── */
+.funds{border-right:1px solid var(--rule);background:var(--raised);overflow-y:auto}
+.railhead{padding:16px 16px 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;display:flex;justify-content:space-between}
+.fund{width:100%;text-align:left;padding:11px 16px;border-left:3px solid transparent;
+  border-bottom:1px solid var(--rule);display:block}
+.fund:hover{background:var(--surface)}
+.fund[aria-current="true"]{background:var(--surface);border-left-color:var(--accent)}
+.fund .name{font-weight:600;font-size:13.5px;margin-bottom:3px}
+.fund .meta{display:flex;justify-content:space-between;align-items:center;
+  font-size:12px;color:var(--muted)}
+/* State is carried by a shape as well as a color, so it survives a printout,
+   a projector, and colour-blindness. */
+.state{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:11.5px}
+.state::before{content:"";width:8px;height:8px;flex:none}
+.state.struck{color:var(--good)}       .state.struck::before{background:var(--good);border-radius:50%}
+.state.blocked{color:var(--crit)}      .state.blocked::before{background:var(--crit);
+  clip-path:polygon(50% 0,100% 100%,0 100%)}
+.state.review{color:var(--warn)}       .state.review::before{background:var(--warn)}
+.state.waiting{color:var(--muted)}     .state.waiting::before{border:2px solid var(--muted);
+  border-radius:50%;background:none}
+
+/* ── queue ─────────────────────────────────────────────────────────────── */
+.queue{overflow-y:auto;min-width:0}
+.qhead{padding:18px 22px 12px;border-bottom:1px solid var(--rule);background:var(--ground);
+  position:sticky;top:0;z-index:2}
+.qhead h1{font-size:21px;letter-spacing:-.015em}
+.subhead{display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;margin-top:5px;
+  font-size:12.5px;color:var(--muted)}
+.subhead code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+/* The three figures that decide whether the NAV can be struck. */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+  background:var(--rule);border-block:1px solid var(--rule)}
+.stat{background:var(--raised);padding:13px 22px}
+.stat .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+  font-weight:600;margin-bottom:5px}
+.stat .v{font-size:22px;font-weight:600;letter-spacing:-.02em}
+.stat .v small{font-size:12px;color:var(--muted);font-weight:500;margin-left:5px}
+.stat.tied .v{color:var(--good)}
+.stat.at-risk .v{color:var(--crit)}
+
+.qbar{display:flex;gap:8px;align-items:center;padding:11px 22px;flex-wrap:wrap;
+  border-bottom:1px solid var(--rule)}
+.chip{padding:5px 11px;border-radius:999px;border:1px solid var(--rule);font-size:12.5px;
+  color:var(--text-2);background:var(--raised)}
+.chip[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);
+  background:var(--accent-soft);font-weight:600}
+.qbar .spacer{flex:1}
+.sortnote{font-size:12px;color:var(--muted)}
+
+.rows{list-style:none;margin:0;padding:0}
+.row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:start;
+  width:100%;text-align:left;padding:13px 22px;border-bottom:1px solid var(--rule)}
+.row:hover{background:var(--surface)}
+.row[aria-current="true"]{background:var(--surface);box-shadow:inset 3px 0 0 var(--accent)}
+.sev{width:8px;height:8px;margin-top:6px;flex:none}
+.sev.high{background:var(--crit);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.sev.med{background:var(--warn)}
+.sev.low{background:var(--muted);border-radius:50%}
+.row .title{font-weight:600;font-size:14px;margin-bottom:2px}
+.row .why{font-size:12.5px;color:var(--muted);line-height:1.45}
+.row .amt{text-align:right;font-size:15px;font-weight:600;white-space:nowrap}
+.row .amt small{display:block;font-size:11px;color:var(--muted);font-weight:500;
+  margin-top:2px;letter-spacing:.04em;text-transform:uppercase}
+.amt.pos{color:var(--crit)}
+.empty{padding:40px 22px;color:var(--muted);text-align:center}
+
+/* ── change log ────────────────────────────────────────────────────────── */
+/* The audit trail is not a settings page you visit; it is the bottom of the
+   screen you already live on. Every entry names a person, because every entry
+   required one. */
+.log{margin-top:26px;border-top:1px solid var(--rule)}
+.loghead{padding:14px 22px 8px;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);font-weight:600;
+  display:flex;justify-content:space-between;align-items:baseline}
+.loghead a{color:var(--accent);text-decoration:none;font-size:12px;
+  letter-spacing:0;text-transform:none;font-weight:500}
+.logrow{display:grid;grid-template-columns:64px 1fr auto;gap:14px;align-items:baseline;
+  padding:9px 22px;border-bottom:1px solid var(--rule);font-size:13px}
+.logrow .t{color:var(--muted);font-size:12px}
+.logrow .w{color:var(--text-2)}
+.logrow .w b{font-weight:600;color:var(--text)}
+.logrow .cfg{color:var(--muted);font-size:11.5px}
+.by{display:inline-flex;align-items:center;gap:5px}
+.by::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent);flex:none}
+.by.model::before{background:var(--muted)}
+
+/* ── detail ────────────────────────────────────────────────────────────── */
+.detail{border-left:1px solid var(--rule);background:var(--raised);overflow-y:auto;
+  display:flex;flex-direction:column}
+.dhead{padding:16px 18px 12px;border-bottom:1px solid var(--rule)}
+.dhead h2{font-size:16px;letter-spacing:-.01em;margin-bottom:4px}
+.dhead .sub{font-size:12.5px;color:var(--muted)}
+.dsec{padding:14px 18px;border-bottom:1px solid var(--rule)}
+.dsec h3{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+  margin-bottom:9px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:13px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;text-align:right;font-weight:500}
+.postings{font-size:12.5px}
+.posting{display:grid;grid-template-columns:1fr auto;gap:10px;padding:6px 0;
+  border-bottom:1px solid var(--rule)}
+.posting:last-child{border:0}
+.posting .p1{color:var(--text-2)}
+.posting .p2{color:var(--muted);font-size:11.5px}
+/* Provenance is the product. Every figure on this page can name the
+   configuration that produced it, which is what makes a disagreement a query
+   rather than an investigation. */
+.prov{background:var(--block);color:#E8EAE8;border-radius:8px;padding:11px 13px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.65}
+.prov .g{color:#7FC79D}
+.acts{display:flex;gap:8px;flex-wrap:wrap;padding:14px 18px}
+.act{padding:8px 14px;border-radius:8px;border:1px solid var(--rule);font-size:13px;
+  font-weight:600;color:var(--text-2);background:var(--ground)}
+.act:hover{border-color:var(--accent);color:var(--accent)}
+.act.primary{background:var(--accent);border-color:var(--accent);color:var(--ground)}
+.act.primary:hover{opacity:.9;color:var(--ground)}
+
+/* ── assistant ─────────────────────────────────────────────────────────── */
+.asst{margin-top:auto;border-top:1px solid var(--rule);background:var(--ground)}
+.asst-h{display:flex;align-items:center;gap:8px;padding:11px 18px 0;
+  font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+  font-weight:600}
+.asst-h .live{width:6px;height:6px;border-radius:50%;background:var(--good)}
+.msg{margin:9px 18px;padding:10px 13px;border-radius:9px;font-size:13px;line-height:1.55;
+  background:var(--raised);border:1px solid var(--rule)}
+.msg.you{background:var(--surface);border-color:var(--rule-2)}
+.msg .cite{display:block;margin-top:7px;font-size:11px;color:var(--muted);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.asst-in{display:flex;gap:8px;padding:0 18px 14px}
+.asst-in input{flex:1;padding:9px 12px;font:inherit;font-size:13px;color:var(--text);
+  background:var(--raised);border:1px solid var(--rule);border-radius:8px}
+.asst-in button{padding:0 14px;border-radius:8px;background:var(--accent);
+  color:var(--ground);font-weight:600;font-size:13px}
+/* The claim the whole product rests on, said where a model is answering. */
+.guard{margin:0 18px 14px;padding:9px 12px;border:1px dashed var(--rule-2);border-radius:8px;
+  font-size:11.5px;color:var(--muted);line-height:1.5}
+.guard b{color:var(--text-2)}
+
+.note{padding:10px 18px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--rule);
+  background:var(--surface)}
+
+/* Additions for the live console, which the concept did not need. */
+.empty.err{color:var(--crit)}
+.fund .meta .num{font-size:11.5px}
+.row .why{font-family:ui-sans-serif,system-ui,sans-serif}
+.logrow .t{font-size:11.5px}

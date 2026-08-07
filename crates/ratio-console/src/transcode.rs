@@ -84,10 +84,16 @@ fn filter_of(query: &str) -> &str {
 /// Serialize a prost message as JSON.
 ///
 /// Hand-written rather than via prost's reflection because the console's
-/// messages are a closed set and the one property that matters — every integer
-/// amount crossing as a STRING — is easier to guarantee by writing it than by
-/// configuring it. `ratio.v1` already declares those fields as strings; this
-/// keeps the counts as JSON numbers, which are safe (they are counts, not money).
+/// messages are a closed set and the property that matters — every `int64`
+/// crossing as a STRING — is easier to guarantee by writing it than by
+/// configuring it.
+///
+/// EVERY int64, not just the money. proto3's canonical JSON mapping says so,
+/// and following it means a generated TypeScript client is correct against this
+/// wire form without a translation layer. It is also the easier rule to keep: a
+/// per-field judgment about which integers are "safe" as JSON numbers is a
+/// judgment somebody eventually makes wrong, and 2^53 is not a boundary anyone
+/// notices until a fund is large enough to cross it.
 fn to_json<T: JsonView>(m: &T) -> Result<String> {
     Ok(m.to_json())
 }
@@ -162,7 +168,8 @@ impl JsonView for pb::Fund {
             q(&self.name), q(&self.display_name), q(&self.currency_code),
             q(state_name(self.state)), q(&self.net_asset_value),
             q(&self.trial_balance_difference), q(&self.open_difference),
-            self.entry_count, self.open_break_count, q(&self.config_digest)
+            q(&self.entry_count.to_string()), q(&self.open_break_count.to_string()),
+            q(&self.config_digest)
         )
     }
 }
@@ -192,7 +199,7 @@ impl JsonView for pb::Break {
             "{{\"name\":{},\"account\":{},\"accountDimension\":{},\"severity\":{},\
              \"explained\":{},\"cause\":{},\"ratioAmount\":{},\"reportedAmount\":{},\
              \"difference\":{},\"postings\":[{}],\"configDigest\":{}}}",
-            q(&self.name), q(&self.account), self.account_dimension,
+            q(&self.name), q(&self.account), q(&self.account_dimension.to_string()),
             q(severity_name(self.severity)), self.explained, q(&self.cause),
             q(&self.ratio_amount), q(&self.reported_amount), q(&self.difference),
             self.postings.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),

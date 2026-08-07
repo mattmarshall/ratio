@@ -1,0 +1,6 @@
+# rules_js refuses to guess which packages may run lifecycle hooks, and it is
+# right to: a postinstall is arbitrary code executing during a build. esbuild's
+# downloads its platform binary, which is the whole reason it is fast, so it is
+# declared here explicitly rather than allowed globally.
+onlyBuiltDependencies:
+  - esbuild

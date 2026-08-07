@@ -153,8 +153,8 @@ jobs:
           # book failed to ship starts cleanly, answers healthz, and serves a
           # blank ledger — every signal green. That shipped twice.
           BAL="$(curl -sf "${URL}balance.json")"
-          echo "$BAL" | grep -q '"entries":6' \
-            || { echo "::error::expected 6 entries, got: $BAL"; exit 1; }
+          echo "$BAL" | grep -q '"entries":7' \
+            || { echo "::error::expected 7 entries, got: $BAL"; exit 1; }
           curl -sf "${URL}rules.json" | grep -q '"pending":\[{' \
             || { echo "::error::no pending proposal — the rules screen has one column"; exit 1; }
           # 2000.00 is deploy/seed-demo-book.sh's number: it reports investments
