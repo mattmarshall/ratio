@@ -1,0 +1,78 @@
+name: build
+
+# Builds and tests everything: the Lean proofs, the Rust crates emitted from
+# them, the AIP lint over the protos, and the two demo scripts.
+#
+# The demo scripts are the point of running this in CI rather than trusting a
+# developer to remember. `//demo:rehearse_test` is PLAN.md's five-minute demo
+# run end to end, and its central assertion is that the model has no way to
+# approve a rule; `//demo:shadow_run_test` is the Stage 3 shadow run. A fence
+# nobody tests is a fence that quietly opens, and a demo nobody rehearses is a
+# demo that breaks in front of a customer.
+#
+# Bazel is the only build path — never cargo. The lockfiles are committed, so
+# a build that needs `CARGO_BAZEL_REPIN=1` is a change somebody forgot to
+# commit, and `--lockfile_mode=error` turns that into a failure here instead of
+# a surprise later.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'site/**'
+      - 'marketing/**'
+      - 'paper/**'
+      - 'competitive/**'
+      - '**/*.md'
+  pull_request:
+    paths-ignore:
+      - 'site/**'
+      - 'marketing/**'
+      - 'paper/**'
+      - 'competitive/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+# A merge burst must not stack runs on a fleet this size. `github.event_name`
+# is in the key so a pull-request run never cancels a run of main.
+concurrency:
+  group: build-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # Keyed on the files that decide what gets fetched — the module lock, the
+      # crate lock, and the toolchain pins. A miss re-downloads the Lean
+      # toolchain and rebuilds the crate universe, which is the slow part.
+      - name: Cache Bazel
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel
+            ~/.cache/bazelisk
+          key: bazel-${{ runner.os }}-${{ hashFiles('MODULE.bazel.lock', 'Cargo.lock', '.bazelrc') }}
+          restore-keys: |
+            bazel-${{ runner.os }}-
+
+      - name: Build
+        run: bazel build --lockfile_mode=error //...
+
+      # `bazel test //...` covers the Lean proof tests, the emitted-artifact
+      # diff tests, the sorry audit, every Rust crate, and both demo scripts.
+      - name: Test
+        run: bazel test --lockfile_mode=error --test_output=errors //...
+
+      # Surface which targets ran, so a silently-empty test set cannot pass as
+      # a green build. A run that tests nothing looks identical to a run that
+      # tests everything, right up until it matters.
+      - name: What ran
+        if: always()
+        run: bazel query 'tests(//...)' --output=label 2>/dev/null | sort
