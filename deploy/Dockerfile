@@ -30,16 +30,27 @@ COPY demo-book /opt/demo-book
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/ratio /usr/local/bin/entrypoint.sh
 
-# Fail the build on an empty demo book rather than shipping one.
+# Fail the build on an empty demo book rather than shipping one, and say what
+# was actually there when it does.
 #
 # This is not hypothetical: a .dockerignore that re-included `demo-book` but
-# not `demo-book/**` produced exactly that. The image built, the container
-# started, the adapter reported ready, and the demo served a blank ledger. An
-# assertion here turns a silent blank screen into a red build.
-RUN test -s /opt/demo-book/accounts.json \
- && test -d /opt/demo-book/reports \
- && test -d /opt/demo-book/proposals \
- && echo "demo book present: $(find /opt/demo-book -type f | wc -l) file(s)"
+# not its contents produced exactly that, twice. The image built, the container
+# started, the adapter reported ready, cold start was 95ms, and the demo served
+# a blank ledger. Every signal was green. An assertion here turns a blank
+# screen in front of a customer into a red build — and printing the tree means
+# the next failure names itself instead of needing a bisect.
+RUN set -eu; \
+    echo "== /opt/demo-book =="; \
+    find /opt/demo-book -maxdepth 2 -print | sed 's|^|  |' || true; \
+    for f in accounts.json journal.jsonl; do \
+      test -s "/opt/demo-book/$f" || { echo "FAIL: $f is missing or empty"; exit 1; }; \
+    done; \
+    for d in reports proposals config; do \
+      test -d "/opt/demo-book/$d" || { echo "FAIL: $d/ is missing"; exit 1; }; \
+    done; \
+    test -n "$(ls -A /opt/demo-book/reports)" || { echo "FAIL: no break report"; exit 1; }; \
+    test -n "$(ls -A /opt/demo-book/proposals)" || { echo "FAIL: no pending proposal"; exit 1; }; \
+    echo "demo book ok: $(find /opt/demo-book -type f | wc -l) file(s)"
 
 # The adapter polls this until the server answers, so a cold start does not
 # race the first request.

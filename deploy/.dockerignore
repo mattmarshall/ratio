@@ -1,12 +1,11 @@
-# Only what the image needs. Without this the context is the whole deploy
-# directory, CloudFormation templates included.
+# A blacklist, deliberately.
 #
-# `!demo-book` alone is NOT enough. `*` excludes every root entry, and
-# re-including a directory does not re-include its children — the first build
-# shipped an empty /opt/demo-book, the container started fine, and the demo
-# served a blank ledger. The `/**` is what carries the contents.
-*
-!ratio
-!entrypoint.sh
-!demo-book
-!demo-book/**
+# The whitelist form (`*` then `!name`) is tempting for a small context, but
+# its directory-recursion rules are subtle enough that two attempts at it both
+# shipped an EMPTY /opt/demo-book — the image built, the container started, and
+# the demo served a blank ledger. The context here is dominated by a 15MB
+# binary anyway, so excluding a few KB of templates buys nothing worth a subtle
+# rule. List what must not ship, and let everything else through.
+*.yaml
+*.yml
+.dockerignore
