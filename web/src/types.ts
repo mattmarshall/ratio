@@ -190,7 +190,12 @@ export interface ListPostingsResponse {
   nextPageToken: string;
 }
 
-export type RuleKind = "ACCRUAL" | "DIVIDEND" | "TRADE" | "UNSPECIFIED";
+export type RuleKind =
+  | "ACCRUAL"
+  | "DIVIDEND"
+  | "MARK"
+  | "TRADE"
+  | "UNSPECIFIED";
 
 /** One rule of the configuration in force. */
 export interface Rule {
@@ -362,4 +367,40 @@ export interface Position {
 export interface ListPositionsResponse {
   positions: Position[];
   nextPageToken: string;
+}
+
+/** A calendar date. Not a timestamp — a valuation date has no timezone. */
+export interface CalendarDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
+/** One position's valuation. */
+export interface Mark {
+  instrument: string;
+  instrumentLabel: string;
+  quantity: Int64;
+  /** What the book held it at, what it is worth, and the difference posted. */
+  carrying: Int64;
+  market: Int64;
+  movement: Int64;
+  price: Int64;
+  priceDate: CalendarDate | null;
+}
+
+export interface MarkPositionsRequest {
+  valuationDate: CalendarDate;
+  validateOnly: boolean;
+}
+
+export interface MarkPositionsResponse {
+  marks: Mark[];
+  /** ⛔ NOT marked at zero. Zero says "worth what it cost"; these are unvalued. */
+  unpriced: Mark[];
+  inexact: string[];
+  postedCount: Int64;
+  netAssetValue: Int64;
+  previousNetAssetValue: Int64;
+  validateOnly: boolean;
 }

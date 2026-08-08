@@ -64,6 +64,7 @@ pub const ROUTES: &[Route] = &[
     Route { method: "POST", template: "/v1/{parent=funds/*}:applyEvent" },
     Route { method: "POST", template: "/v1/{parent=funds/*}:ingest" },
     Route { method: "POST", template: "/v1/{parent=funds/*}:admit" },
+    Route { method: "POST", template: "/v1/{parent=funds/*}:mark" },
     Route { method: "GET", template: "/v1/{name=funds/*}" },
 ];
 
@@ -98,6 +99,9 @@ pub fn serve(
         }
         if let Some(parent) = fund(":ingest") {
             return to_json(&console.ingest_delivery(&ingest_delivery_request(&parent, body)?)?);
+        }
+        if let Some(parent) = fund(":mark") {
+            return to_json(&console.mark_positions(&mark_positions_request(&parent, body)?)?);
         }
         if let Some(parent) = fund(":admit") {
             return to_json(&console.admit_facts(&admit_facts_request(&parent, body)?)?);
@@ -242,6 +246,36 @@ fn ingest_delivery_request(parent: &str, body: &str) -> Result<pb::IngestDeliver
         content: text("content")?,
         origin: text("origin")?,
         validate_only: matches!(v.get("validateOnly"), Some(serde_json::Value::Bool(true))),
+    })
+}
+
+fn mark_positions_request(parent: &str, body: &str) -> Result<pb::MarkPositionsRequest> {
+    let v: serde_json::Value =
+        serde_json::from_str(body).context("the request body is not JSON")?;
+    // proto3 canonical JSON renders a `google.type.Date` as an object of three
+    // numbers, not the ISO string a person would write. Accepting only the
+    // canonical form keeps one encoding rather than two.
+    Ok(pb::MarkPositionsRequest {
+        parent: parent.to_string(),
+        valuation_date: date_from_json(
+            v.get("valuationDate").context("valuationDate is required")?,
+        ),
+        validate_only: matches!(v.get("validateOnly"), Some(serde_json::Value::Bool(true))),
+    })
+}
+
+/// A `google.type.Date` from its canonical JSON: three numbers, not a string.
+///
+/// A free function rather than a closure inside the decoder above, because
+/// `//proto:mirrors_test` reads the field names a `*_request` decoder mentions
+/// and would take `year`, `month` and `day` for fields of the REQUEST. Keeping
+/// nested messages in their own decoder keeps that check honest.
+fn date_from_json(v: &serde_json::Value) -> Option<ratio_proto::date_proto::google::r#type::Date> {
+    let num = |k: &str| -> i32 { v.get(k).and_then(serde_json::Value::as_i64).unwrap_or(0) as i32 };
+    Some(ratio_proto::date_proto::google::r#type::Date {
+        year: num("year"),
+        month: num("month"),
+        day: num("day"),
     })
 }
 
@@ -395,6 +429,7 @@ fn rule_kind_name(v: i32) -> &'static str {
         Ok(pb::rule::Kind::Trade) => "TRADE",
         Ok(pb::rule::Kind::Dividend) => "DIVIDEND",
         Ok(pb::rule::Kind::Accrual) => "ACCRUAL",
+        Ok(pb::rule::Kind::Mark) => "MARK",
         _ => "UNSPECIFIED",
     }
 }
@@ -520,6 +555,44 @@ impl JsonView for pb::IngestDeliveryResponse {
             self.rejected.iter().map(|r| r.to_json()).collect::<Vec<_>>().join(","),
             self.pending.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
             self.validate_only
+        )
+    }
+}
+
+fn date_json(d: &Option<ratio_proto::date_proto::google::r#type::Date>) -> String {
+    match d {
+        Some(d) => format!(
+            "{{\"year\":{},\"month\":{},\"day\":{}}}",
+            d.year, d.month, d.day
+        ),
+        None => "null".into(),
+    }
+}
+
+impl JsonView for pb::Mark {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"instrument\":{},\"instrumentLabel\":{},\"quantity\":{},\
+             \"carrying\":{},\"market\":{},\"movement\":{},\"price\":{},\
+             \"priceDate\":{}}}",
+            q(&self.instrument), q(&self.instrument_label), q(&self.quantity),
+            q(&self.carrying), q(&self.market), q(&self.movement), q(&self.price),
+            date_json(&self.price_date)
+        )
+    }
+}
+
+impl JsonView for pb::MarkPositionsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"marks\":[{}],\"unpriced\":[{}],\"inexact\":[{}],\
+             \"postedCount\":{},\"netAssetValue\":{},\"previousNetAssetValue\":{},\
+             \"validateOnly\":{}}}",
+            self.marks.iter().map(|m| m.to_json()).collect::<Vec<_>>().join(","),
+            self.unpriced.iter().map(|m| m.to_json()).collect::<Vec<_>>().join(","),
+            strings(&self.inexact),
+            q(&self.posted_count), q(&self.net_asset_value),
+            q(&self.previous_net_asset_value), self.validate_only
         )
     }
 }

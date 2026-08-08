@@ -263,6 +263,7 @@ impl Console {
                     ratio_rules::RuleKind::Trade => pb::rule::Kind::Trade,
                     ratio_rules::RuleKind::Dividend => pb::rule::Kind::Dividend,
                     ratio_rules::RuleKind::Accrual => pb::rule::Kind::Accrual,
+                    ratio_rules::RuleKind::Mark => pb::rule::Kind::Mark,
                 } as i32,
                 description: r.description.clone(),
                 form: ratio_rules::render(r, &chart),
@@ -721,6 +722,142 @@ impl Console {
                 .filter(|r| !r.is_admissible())
                 .map(|r| pending_fact(&fund, r))
                 .collect(),
+            validate_only: req.validate_only,
+        })
+    }
+
+    /// Mark the book to market at a valuation date.
+    ///
+    /// ⛔ A POSTING, NOT AN ASSIGNMENT. Each position moves by the difference
+    /// between what the book holds it at and what it is worth, with the contra
+    /// in unrealized gain. Nothing is overwritten, so "why is this worth more
+    /// than we paid" has an entry to point at.
+    ///
+    /// The delta is taken from the CARRYING value, never from cost.
+    /// `//tla:mark_from_cost_check` shows the other way: the book drifts by the
+    /// whole gain on every mark, and every entry is still balanced — the trial
+    /// balance ties while the figure is wrong.
+    pub fn mark_positions(
+        &self,
+        req: &pb::MarkPositionsRequest,
+    ) -> Result<pb::MarkPositionsResponse> {
+        use ratio_ingest::value::{observations, value_position, Valuation};
+
+        let fund = resource_id(&req.parent, "funds")?;
+        let as_of = req
+            .valuation_date
+            .as_ref()
+            .map(|d| format!("{:04}-{:02}-{:02}", d.year, d.month, d.day))
+            .filter(|s| s.len() == 10 && !s.starts_with("0000"))
+            .context("a valuation date is required")?;
+        let previous = self.get_fund(&req.parent)?.net_asset_value;
+
+        let path = self.book_path(&fund)?;
+        let mut b = FileBook::open(&path)?;
+        let digest = b.active()?.context("no configuration is in force")?;
+        let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
+        let rules = RuleSet::from_toml(&text)?;
+
+        // The configuration decides where a mark lands, the same as every other
+        // posting. A book with no mark rule cannot be marked, and says so
+        // rather than inventing accounts.
+        let rule = rules
+            .rules
+            .iter()
+            .find(|r| r.kind == ratio_rules::RuleKind::Mark)
+            .context("no rule of kind `mark` is in force, so there is nowhere for a                       valuation to post")?;
+        let held_in = rule
+            .legs
+            .iter()
+            .find(|l| l.per_instrument)
+            .context("the mark rule has no `per_instrument` leg, so it does not say                       which account holds positions")?
+            .account;
+
+        let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+        let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+        let observed = observations(&ratio_ingest::resolve_all(&facts, &master))?;
+        let (positions, _) = b.positions()?;
+        let names: BTreeMap<String, String> =
+            ratio_ingest::current(&master).into_iter().map(|e| (e.id, e.display_name)).collect();
+
+        let (mut marks, mut unpriced, mut inexact) = (Vec::new(), Vec::new(), Vec::new());
+        let mut posted = 0usize;
+
+        for ((dim, instrument), (carrying, quantity)) in positions {
+            if dim != held_in {
+                continue;
+            }
+            let label = names.get(&instrument).cloned().unwrap_or_else(|| instrument.clone());
+            let row = |market: i64, movement: i64, price: i64, day: &str| pb::Mark {
+                instrument: instrument.clone(),
+                instrument_label: label.clone(),
+                quantity: quantity.to_string(),
+                carrying: carrying.to_string(),
+                market: market.to_string(),
+                movement: movement.to_string(),
+                price: price.to_string(),
+                price_date: iso_date(day),
+            };
+
+            // Units in hundredths, because the proved `marketValue` takes them
+            // that way — and a whole quantity always values exactly
+            // (`whole_units_value_exactly`).
+            let units = quantity.saturating_mul(100);
+            match value_position(&as_of, units, carrying, observed.get(&instrument).map_or(&[][..], |v| v)) {
+                Valuation::Unpriced => {
+                    unpriced.push(row(0, 0, 0, ""));
+                }
+                Valuation::Inexact { price, reason } => {
+                    inexact.push(format!("{label}: {reason} (price {price})"));
+                }
+                Valuation::Marked { market, delta, price, on_day, .. } => {
+                    marks.push(row(market, delta, price, &on_day));
+                    // A position already at market moves by nothing and posts
+                    // nothing — `Ratio.Valuation.mark_again_posts_nothing`.
+                    if delta == 0 {
+                        continue;
+                    }
+                    if !req.validate_only {
+                        b.append(&ratio_store::JournalEntry {
+                            id: format!("mark-{instrument}-{as_of}"),
+                            memo: format!(
+                                "{label} to {} on {on_day} · {} · {as_of}",
+                                money_words(price),
+                                rule.id,
+                            ),
+                            config: digest.clone(),
+                            postings: ratio_rules::compile(
+                                rule,
+                                &ratio_rules::Event {
+                                    rule: rule.id.clone(),
+                                    id: format!("mark-{instrument}-{as_of}"),
+                                    amount: delta,
+                                    days: None,
+                                    memo: String::new(),
+                                    instrument: Some(instrument.clone()),
+                                    // A mark moves value, not units.
+                                    quantity: None,
+                                },
+                            )?,
+                        })?;
+                    }
+                    posted += 1;
+                }
+            }
+        }
+
+        let net_asset_value = if req.validate_only {
+            previous.clone()
+        } else {
+            self.get_fund(&req.parent)?.net_asset_value
+        };
+        Ok(pb::MarkPositionsResponse {
+            marks,
+            unpriced,
+            inexact,
+            posted_count: posted.to_string(),
+            net_asset_value,
+            previous_net_asset_value: previous,
             validate_only: req.validate_only,
         })
     }
@@ -1398,6 +1535,26 @@ fn now() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+/// `2026-02-26` as a `google.type.Date`. An empty day yields none rather than
+/// a date of zeroes, which would read as the first of January in year nought.
+fn iso_date(day: &str) -> Option<ratio_proto::date_proto::google::r#type::Date> {
+    let p: Vec<&str> = day.split('-').collect();
+    if p.len() != 3 {
+        return None;
+    }
+    Some(ratio_proto::date_proto::google::r#type::Date {
+        year: p[0].parse().ok()?,
+        month: p[1].parse().ok()?,
+        day: p[2].parse().ok()?,
+    })
+}
+
+/// Minor units as a decimal, for a memo a person reads.
+fn money_words(minor: i64) -> String {
+    let (sign, m) = if minor < 0 { ("-", -minor) } else { ("", minor) };
+    format!("{sign}{}.{:02}", m / 100, m % 100)
 }
 
 /// Seconds since the epoch as a proto timestamp.

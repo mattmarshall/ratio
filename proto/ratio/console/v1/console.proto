@@ -40,6 +40,7 @@ import "google/api/client.proto";
 import "google/api/field_behavior.proto";
 import "google/api/resource.proto";
 import "google/protobuf/timestamp.proto";
+import "google/type/date.proto";
 
 option java_multiple_files = true;
 option java_package = "com.fastverk.ratio.console.v1";
@@ -133,6 +134,23 @@ service Console {
   rpc IngestDelivery(IngestDeliveryRequest) returns (IngestDeliveryResponse) {
     option (google.api.http) = {
       post: "/v1/{parent=funds/*}:ingest"
+      body: "*"
+    };
+  }
+
+  // Marks the book to market at a valuation date. (AIP-136)
+  //
+  // ⛔ A WRITE, and a POSTING rather than an assignment: each position moves by
+  // the difference between what the book holds it at and what it is worth, with
+  // the contra in unrealized gain. Nothing is overwritten, so "why is this
+  // worth more than we paid" has an entry to point at.
+  //
+  // A position with no price on or before the date is NOT marked at zero. It is
+  // reported unpriced, and it blocks — a NAV struck over a position nobody has
+  // priced is wrong in a way nobody can see.
+  rpc MarkPositions(MarkPositionsRequest) returns (MarkPositionsResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=funds/*}:mark"
       body: "*"
     };
   }
@@ -855,6 +873,11 @@ message Rule {
 
     // Takes an amount (the basis the rate applies to) AND a day count.
     KIND_ACCRUAL = 3;
+
+    // Takes the difference between what the book holds a position at and what
+    // it is worth. Not invoked by recording an event — a valuation computes
+    // the amount, because only it knows the carrying value.
+    KIND_MARK = 4;
   }
 
   string name = 1 [(google.api.field_behavior) = IDENTIFIER];
@@ -1221,6 +1244,64 @@ message IngestDeliveryResponse {
   repeated PendingFact pending = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   bool validate_only = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One position's valuation.
+message Mark {
+  // The instrument, and the label the screens show.
+  string instrument = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string instrument_label = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whole units held.
+  string quantity = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What the book held it at, what it is worth, and the difference the mark
+  // posts. All in minor units.
+  string carrying = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string market = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string movement = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The price used, and the day it was observed — never after the valuation
+  // date.
+  string price = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.type.Date price_date = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message MarkPositionsRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+
+  // The day to value at. A price observed after it is not evidence about it
+  // and is not used.
+  //
+  // A `Date` and not a `Timestamp`: a valuation date is a calendar day, not an
+  // instant, and pretending otherwise would invite a timezone into a figure
+  // that does not have one.
+  google.type.Date valuation_date = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // Compute the marks and post nothing. (AIP-163)
+  bool validate_only = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message MarkPositionsResponse {
+  repeated Mark marks = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Positions nothing has priced on or before the date. NOT marked at zero.
+  repeated Mark unpriced = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Positions whose arithmetic does not land on a whole minor unit.
+  repeated string inexact = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How many entries were posted. A position already at market moves by
+  // nothing and posts nothing.
+  string posted_count = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string net_asset_value = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string previous_net_asset_value = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  bool validate_only = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message AdmitFactsRequest {

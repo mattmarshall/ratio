@@ -64,6 +64,7 @@ fn trigger(kind: RuleKind) -> &'static str {
         RuleKind::Trade => "trade t",
         RuleKind::Dividend => "dividend d",
         RuleKind::Accrual => "business_day d",
+        RuleKind::Mark => "valuation v",
     }
 }
 

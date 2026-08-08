@@ -54,6 +54,7 @@ usage:
   ratio entities [--book DIR]          the master: instruments, counterparties
   ratio entity add --kind K --id I …   add one to the master
   ratio admit [--book DIR]             post every fact that fully resolves
+  ratio mark --as-of YYYY-MM-DD        mark positions to market
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio server                         serve the Ledger gRPC API
@@ -119,6 +120,7 @@ fn main() -> Result<()> {
         ["entity", "add", rest @ ..] => entity_add(book, rest),
         ["pending"] => pending(book),
         ["admit"] => admit(book),
+        ["mark", "--as-of", d] | ["mark", d] => mark(book, d),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
         ["server"] => serve(),
@@ -405,6 +407,60 @@ fn entity_add(book: PathBuf, args: &[&str]) -> Result<()> {
     let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
     let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
     report_resolution(&facts, &master);
+    Ok(())
+}
+
+/// Mark positions to market at a valuation date.
+fn mark(book: PathBuf, as_of: &str) -> Result<()> {
+    let p: Vec<&str> = as_of.split('-').collect();
+    if p.len() != 3 {
+        bail!("{as_of:?} is not a date — YYYY-MM-DD");
+    }
+    let c = ratio_console::Console::new(&book);
+    let out = c.mark_positions(&ratio_proto::ratio::console::v1::MarkPositionsRequest {
+        parent: "funds/demo".into(),
+        valuation_date: Some(ratio_proto::date_proto::google::r#type::Date {
+            year: p[0].parse().context("year")?,
+            month: p[1].parse().context("month")?,
+            day: p[2].parse().context("day")?,
+        }),
+        validate_only: false,
+    })?;
+
+    println!("MARKED TO MARKET — {as_of}");
+    println!();
+    if !out.marks.is_empty() {
+        println!("{:<34}{:>10}{:>16}{:>16}{:>14}", "INSTRUMENT", "UNITS", "CARRYING", "MARKET", "MOVEMENT");
+        for m in &out.marks {
+            println!(
+                "{:<34}{:>10}{:>16}{:>16}{:>14}",
+                m.instrument_label,
+                m.quantity,
+                minor(m.carrying.parse().unwrap_or(0)),
+                minor(m.market.parse().unwrap_or(0)),
+                minor(m.movement.parse().unwrap_or(0)),
+            );
+        }
+        println!();
+    }
+    // ⛔ Not marked at zero, and not silently skipped. A position nobody has
+    // priced is a NAV nobody should strike.
+    if !out.unpriced.is_empty() {
+        println!("UNPRICED — these are NOT held at zero, they are unvalued:");
+        for m in &out.unpriced {
+            println!("  {:<32}{:>10} units", m.instrument_label, m.quantity);
+        }
+        println!();
+    }
+    for i in &out.inexact {
+        println!("  refused  {i}");
+    }
+    println!("  posted   {} entrie(s)", out.posted_count);
+    println!(
+        "  nav      {} → {}",
+        minor(out.previous_net_asset_value.parse().unwrap_or(0)),
+        minor(out.net_asset_value.parse().unwrap_or(0)),
+    );
     Ok(())
 }
 

@@ -43,6 +43,15 @@ pub enum RuleKind {
     Dividend,
     /// An accrual: the amount is *computed* from a basis, a rate and a period.
     Accrual,
+    /// A mark to market: the amount is the DIFFERENCE between what the book
+    /// holds a position at and what it is worth.
+    ///
+    /// A posting, never an assignment. `Ratio.Valuation.mark_conserves` proves
+    /// the entry balances and `mark_lands_on_market` proves it lands on market
+    /// value; `//tla:mark_from_cost_check` shows what happens when the delta is
+    /// taken from cost instead — the book drifts by the whole gain on every
+    /// mark, and every entry is still balanced.
+    Mark,
 }
 
 /// The day-count convention an accrual is computed on.
@@ -349,6 +358,7 @@ fn kind_word(k: RuleKind) -> &'static str {
         RuleKind::Trade => "trade",
         RuleKind::Dividend => "dividend",
         RuleKind::Accrual => "accrual",
+        RuleKind::Mark => "mark",
     }
 }
 
@@ -360,7 +370,9 @@ fn kind_word(k: RuleKind) -> &'static str {
 /// permitted to invent a leg or adjust a total — it scales, and nothing else.
 pub fn compile(rule: &Rule, event: &Event) -> Result<Vec<PostingRecord>> {
     let amount = match rule.kind {
-        RuleKind::Trade | RuleKind::Dividend => event.amount,
+        // A mark's amount is the delta its caller computed from the carrying
+        // value; the rule decides only where it lands.
+        RuleKind::Trade | RuleKind::Dividend | RuleKind::Mark => event.amount,
         RuleKind::Accrual => accrual_amount(rule, event)?,
     };
     Ok(rule

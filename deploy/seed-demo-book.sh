@@ -88,6 +88,22 @@ weight = 1
 account = 30
 weight = -1
 
+# Marking to market. A POSTING, not an assignment: the position moves by the
+# difference between what the book holds it at and what it is worth, and the
+# contra is unrealized gain. The amount is not in the file — a valuation
+# computes it, because only it knows the carrying value.
+[[rule]]
+id = "mark_to_market"
+kind = "mark"
+description = "Revalue a position, with the movement to unrealized gain"
+[[rule.posting]]
+account = 1
+weight = 1
+per_instrument = true
+[[rule.posting]]
+account = 21
+weight = -1
+
 # ── the mapping, in the SAME configuration as the rules above ─────────────
 #
 # That is the claim, made real: one digest fixes how a file becomes an event
@@ -147,6 +163,38 @@ reads = "csv"
   by = "side"
   amount = "consideration"
   rules = { buy = "equity_purchase", sell = "disposal_proceeds" }
+
+  # Prices. REFERENCE DATA: no `posts` block, so these are recorded, resolved
+  # and citable, and never touch the books until a valuation uses them.
+  [[template]]
+  id = "vendor_eod_prices"
+  reads = "csv"
+
+    [[template.entity]]
+    name = "instrument"
+    kind = "instrument"
+    absent = "pend"
+    by = [
+      { attribute = "isin", column = "ISIN" },
+      { attribute = "ticker", column = "Ticker", within = { attribute = "exchange", column = "Exchange" } },
+    ]
+
+    [template.fact]
+    kind = "price"
+    reference = "PriceRef"
+    entities = { instrument = "instrument" }
+
+    [[template.fact.value]]
+    field = "asOf"
+    as = "date"
+    column = "ValuationDate"
+    format = "DD/MM/YYYY"
+
+    [[template.fact.value]]
+    field = "price"
+    as = "money"
+    column = "Price"
+    currency = "Currency"
 TOML
 "$RATIO" config set rules.toml --book "$OUT" >/dev/null
 
@@ -250,6 +298,16 @@ if [ -z "${LEAVE_ONE_PENDING:-}" ]; then
     --book "$OUT" >/dev/null
 fi
 "$RATIO" ingest prime-trades.csv --template prime_equity_trades --book "$OUT" >/dev/null
+
+# End-of-day prices from the vendor. Deliberately DD/MM/YYYY and keyed on
+# ticker+exchange, so the identity ladder has to fall through the ISIN rung it
+# tries first — which is what a ladder is for.
+cat > eod-prices.csv <<'CSV'
+PriceRef,ValuationDate,ISIN,Ticker,Exchange,Price,Currency
+P-0001,26/02/2026,,VTI,ARCX,262.50,USD
+P-0002,26/02/2026,,VOO,ARCX,441.75,USD
+CSV
+"$RATIO" ingest eod-prices.csv --template vendor_eod_prices --book "$OUT" >/dev/null
 
 # A proposal nobody has approved, so the rules screen shows both columns — the
 # gap between them is what the demo is about.

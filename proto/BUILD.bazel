@@ -21,7 +21,10 @@ aip_proto_library(
     # google.protobuf.Timestamp, for NavStrike.valuation_time. AIP-142 wants a
     # Timestamp rather than a string for any time field, and a well-known type
     # still needs a declared dep even though protoc bundles it.
-    deps = ["@protobuf//:timestamp_proto"],
+    deps = [
+        "@googleapis//google/type:date_proto",
+        "@protobuf//:timestamp_proto",
+    ],
 )
 
 # prost + tonic Rust codegen from the contract — the `ratio.v1` messages +
