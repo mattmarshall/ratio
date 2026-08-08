@@ -15,6 +15,7 @@ rust_library(
     edition = "2021",
     deps = [
         "//crates/ratio-chart",
+        "//crates/ratio-common",
         "//crates/ratio-nav",
         "//crates/ratio-rules",
         "//crates/ratio-store",

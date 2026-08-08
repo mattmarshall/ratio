@@ -884,47 +884,14 @@ fn display_name(id: &str) -> String {
         .join(" ")
 }
 
-/// A decimal string as a person types it — "250000.00" — into minor units.
+/// The one money parser, in `ratio-common`.
 ///
-/// By splitting on the point, never by parsing a float. `"1.005" as f64 * 100.0`
-/// is 100.49999999999999, and a product whose entire claim is that the
-/// arithmetic is exact cannot afford to lose that in the last hop before the
-/// journal. Two decimal places at most, because the books are in minor units
-/// and silently dropping a third digit would be worse than refusing it.
-pub fn parse_amount(text: &str) -> Result<i64> {
-    let t = text.trim().replace(',', "");
-    if t.is_empty() {
-        bail!("an amount is required");
-    }
-    let (sign, digits) = match t.strip_prefix('-') {
-        Some(rest) => (-1i64, rest),
-        None => (1i64, t.strip_prefix('+').unwrap_or(&t)),
-    };
-    let (whole, frac) = match digits.split_once('.') {
-        Some((w, f)) => (w, f),
-        None => (digits, ""),
-    };
-    if whole.is_empty() && frac.is_empty() {
-        bail!("{text:?} is not an amount");
-    }
-    if frac.len() > 2 {
-        bail!("{text:?} has more than two decimal places; the books are kept in minor units");
-    }
-    if !whole.chars().all(|c| c.is_ascii_digit()) || !frac.chars().all(|c| c.is_ascii_digit()) {
-        bail!("{text:?} is not an amount");
-    }
-    let major: i64 = if whole.is_empty() { 0 } else { whole.parse().context("amount too large")? };
-    let minor: i64 = match frac.len() {
-        0 => 0,
-        1 => frac.parse::<i64>()? * 10,
-        _ => frac.parse::<i64>()?,
-    };
-    major
-        .checked_mul(100)
-        .and_then(|m| m.checked_add(minor))
-        .map(|m| sign * m)
-        .context("amount too large")
-}
+/// This was briefly a second implementation, written here for the entry form
+/// without noticing `ratio-recon` already had one for counterparty files. They
+/// agreed by luck. Two parsers for the same product's money is two places for
+/// the same rounding bug, and only one of them had the `1.005` test.
+pub use ratio_common::parse_minor as parse_amount;
+
 
 /// The store's classification as the console's enum. A `match` rather than a
 /// cast: the two enums are declared in different files and nothing but this
@@ -1246,32 +1213,6 @@ mod tests {
         // rather than inventing one.
         assert_eq!(vs.last().unwrap().actor, "");
         assert!(vs.last().unwrap().approve_time.is_none());
-    }
-
-    #[test]
-    fn an_amount_is_parsed_by_splitting_not_by_floating() {
-        assert_eq!(parse_amount("250000.00").unwrap(), 25_000_000);
-        assert_eq!(parse_amount("1.5").unwrap(), 150);
-        assert_eq!(parse_amount("0.07").unwrap(), 7);
-        assert_eq!(parse_amount("42").unwrap(), 4_200);
-        assert_eq!(parse_amount("-80000.00").unwrap(), -8_000_000);
-        assert_eq!(parse_amount(" 1,234.56 ").unwrap(), 123_456);
-        assert_eq!(parse_amount(".99").unwrap(), 99);
-
-        // ⛔ THE CASE THE WHOLE APPROACH EXISTS FOR.
-        // `"1.005".parse::<f64>().unwrap() * 100.0` is 100.49999999999999,
-        // which truncates to 100 and loses a cent on every such amount. This
-        // is refused instead: the books are kept in minor units, and silently
-        // dropping a third digit is worse than saying so.
-        assert!(parse_amount("1.005").is_err(), "three decimal places must be refused");
-        assert_eq!(parse_amount("1.00").unwrap(), 100);
-
-        // And a third digit is not the only way to be wrong.
-        for bad in ["", "  ", "abc", "1.2.3", "1e5", "--1", "1 000", "$5"] {
-            assert!(parse_amount(bad).is_err(), "{bad:?} should not parse");
-        }
-        // Overflow is refused rather than wrapped.
-        assert!(parse_amount("92233720368547758.08").is_err(), "overflow must be refused");
     }
 
     #[test]

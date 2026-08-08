@@ -1,0 +1,42 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+# `generated.rs` is Lean-authored (//lean:Ratio/Ingest/Emit.lean): the decided
+# core of the data plane — the three-outcome resolution, the empty-rung guard,
+# and the decimal→minor-units arithmetic. Rendered straight into the crate's
+# src, so the Lean and the running Rust are one DAG edge with nothing to drift.
+genrule(
+    name = "generated_rs",
+    srcs = ["//lean:ratio_ingest_ast"],
+    outs = ["src/generated.rs"],
+    cmd = "$(execpath //rust/json_to_rust:json_to_rust) $(execpath //lean:ratio_ingest_ast) > $@",
+    tools = ["//rust/json_to_rust:json_to_rust"],
+)
+
+rust_library(
+    name = "ratio-ingest",
+    srcs = [
+        "src/lib.rs",
+        "src/tests.rs",
+        ":generated_rs",
+    ],
+    crate_name = "ratio_ingest",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    deps = [
+        "//crates/ratio-common",
+        "@crates//:anyhow",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:toml",
+    ],
+)
+
+rust_test(
+    name = "ratio-ingest_test",
+    crate = ":ratio-ingest",
+    edition = "2021",
+)

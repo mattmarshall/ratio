@@ -1,0 +1,11 @@
+[package]
+name = "ratio-ingest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+ratio-common = { path = "../ratio-common" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"

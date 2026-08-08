@@ -1515,6 +1515,7 @@ dependencies = [
  "anyhow",
  "prost",
  "ratio-chart",
+ "ratio-common",
  "ratio-nav",
  "ratio-rules",
  "ratio-store",
@@ -1556,6 +1557,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "prost",
+ "ratio-common",
  "ratio-rules",
  "ratio-store",
 ]

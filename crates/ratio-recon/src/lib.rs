@@ -274,37 +274,7 @@ fn split_csv_line(line: &str) -> Result<Vec<String>> {
 /// `"-25,000.00"` → `-2_500_000`. Never touches a float: `"0.1"` has no exact
 /// binary representation, and a cent lost in parsing is a break that no amount
 /// of downstream exactness recovers.
-pub fn parse_minor(s: &str) -> Result<i64> {
-    let s = s.trim().replace(',', "").replace('$', "");
-    let (neg, s) = match s.strip_prefix('-') {
-        Some(rest) => (true, rest.to_string()),
-        None => (false, s.strip_prefix('+').unwrap_or(&s).to_string()),
-    };
-    if s.is_empty() {
-        bail!("empty amount");
-    }
-    let (whole, frac) = match s.split_once('.') {
-        Some((w, f)) => (w, f),
-        None => (s.as_str(), ""),
-    };
-    if frac.len() > 2 {
-        bail!("{s} has more than two decimal places — minor units are cents");
-    }
-    if !whole.chars().all(|c| c.is_ascii_digit()) || !frac.chars().all(|c| c.is_ascii_digit()) {
-        bail!("{s} is not a number");
-    }
-    let whole: i64 = if whole.is_empty() { 0 } else { whole.parse().context("whole part")? };
-    let frac: i64 = match frac.len() {
-        0 => 0,
-        1 => frac.parse::<i64>()? * 10,
-        _ => frac.parse()?,
-    };
-    let v = whole
-        .checked_mul(100)
-        .and_then(|v| v.checked_add(frac))
-        .context("amount overflows i64 minor units")?;
-    Ok(if neg { -v } else { v })
-}
+pub use ratio_common::parse_minor;
 
 /// Parse a transactions CSV.
 ///

@@ -49,6 +49,18 @@ lean_test(
     entry = "Ratio/Chart.lean",
 )
 
+# The data plane's proved core: resolution can only go forwards (a reference
+# that resolved never goes absent when the master grows), an empty identity
+# ladder matches nothing rather than everything, silence about an attribute is
+# not agreement with a claim about it, and the decimal→minor-units conversion is
+# a multiplication with no division for a rounding decision to hide in.
+lean_test(
+    name = "ingest_proof_test",
+    size = "small",
+    srcs = ["Ratio/Ingest.lean"],
+    entry = "Ratio/Ingest.lean",
+)
+
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
@@ -71,6 +83,13 @@ lean_emit(
     srcs = _BUILDER_SRCS + ["Ratio/Kernel/Emit.lean"],
     entry = "Ratio/Kernel/Emit.lean",
     out = "ratio_kernel.ast.json",
+)
+
+lean_emit(
+    name = "ratio_ingest_ast",
+    srcs = _BUILDER_SRCS + ["Ratio/Ingest/Emit.lean"],
+    entry = "Ratio/Ingest/Emit.lean",
+    out = "ratio_ingest.ast.json",
 )
 
 lean_emit(

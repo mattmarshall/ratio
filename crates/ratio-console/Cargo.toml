@@ -7,6 +7,7 @@ edition.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+ratio-common = { path = "../ratio-common" }
 ratio-chart = { path = "../ratio-chart" }
 ratio-nav = { path = "../ratio-nav" }
 ratio-rules = { path = "../ratio-rules" }
