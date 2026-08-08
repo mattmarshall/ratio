@@ -338,3 +338,28 @@ export interface ListTemplatesResponse {
   templates: Template[];
   nextPageToken: string;
 }
+
+/**
+ * What the fund holds in one instrument, in one account.
+ *
+ * ⛔ `instrument` is EMPTY for value in the account that is not attributed to
+ * any instrument. That is a real row, not a missing one — the rows sum to the
+ * accounts, and a view that filtered it out would disagree with the trial
+ * balance by exactly the amount it hid.
+ */
+export interface Position {
+  name: string;
+  account: string;
+  accountLabel: string;
+  instrument: string;
+  instrumentLabel: string;
+  /** Whole units. A measure, not a conserved quantity. */
+  quantity: Int64;
+  /** Minor units. Value does conserve. */
+  value: Int64;
+}
+
+export interface ListPositionsResponse {
+  positions: Position[];
+  nextPageToken: string;
+}

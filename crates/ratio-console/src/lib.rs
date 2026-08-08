@@ -507,6 +507,92 @@ impl Console {
             .collect())
     }
 
+    /// What the fund holds, by account and instrument.
+    ///
+    /// ⛔ THE UNATTRIBUTED REMAINDER IS IN THE LIST, as a row with no
+    /// instrument — not a field beside it. A caller can render a list without
+    /// noticing a field, and a positions view that quietly omits what it does
+    /// not attribute disagrees with the trial balance by exactly the amount it
+    /// hid. In the list, the rows sum to the accounts by construction, which is
+    /// `Ratio.Ingest.positions_roll_up` made structural rather than remembered.
+    pub fn list_positions(&self, parent: &str) -> Result<pb::ListPositionsResponse> {
+        let fund = resource_id(parent, "funds")?;
+        Ok(pb::ListPositionsResponse {
+            positions: self.positions_of(&fund)?,
+            next_page_token: String::new(),
+        })
+    }
+
+    pub fn get_position(&self, name: &str) -> Result<pb::Position> {
+        let (fund, id) = nested_id(name, "funds", "positions")?;
+        self.positions_of(&fund)?
+            .into_iter()
+            .find(|p| p.name.ends_with(&format!("/{id}")))
+            .with_context(|| format!("no position {id:?}"))
+    }
+
+    fn positions_of(&self, fund: &str) -> Result<Vec<pb::Position>> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        let (held, rest) = b.positions()?;
+        let chart: BTreeMap<i64, String> = b
+            .accounts()?
+            .into_iter()
+            .map(|a| (a.dim, a.display_name))
+            .collect();
+        // The master's label for an instrument, so a screen shows "Vanguard
+        // S&P 500 ETF" rather than the internal id it resolved to.
+        let names: BTreeMap<String, String> =
+            ratio_ingest::current(&b.records::<ratio_ingest::Entity>(Plane::Entities)?)
+                .into_iter()
+                .map(|e| (e.id, e.display_name))
+                .collect();
+        let label = |d: i64| chart.get(&d).cloned().unwrap_or_else(|| format!("dimension {d}"));
+
+        let mut out: Vec<pb::Position> = held
+            .into_iter()
+            .map(|((dim, instrument), (value, quantity))| pb::Position {
+                name: format!("funds/{fund}/positions/{dim}-{instrument}"),
+                account: format!("funds/{fund}/accounts/{dim}"),
+                account_label: label(dim),
+                instrument_label: names
+                    .get(&instrument)
+                    .cloned()
+                    .unwrap_or_else(|| instrument.clone()),
+                instrument,
+                quantity: quantity.to_string(),
+                value: value.to_string(),
+            })
+            .collect();
+
+        for (dim, value) in rest {
+            if value == 0 {
+                continue;
+            }
+            out.push(pb::Position {
+                name: format!("funds/{fund}/positions/{dim}-unattributed"),
+                account: format!("funds/{fund}/accounts/{dim}"),
+                account_label: label(dim),
+                instrument: String::new(),
+                instrument_label: "Not attributed".into(),
+                quantity: "0".into(),
+                value: value.to_string(),
+            });
+        }
+        // By account, then by what it holds most of — an operator scanning a
+        // position list is looking for the big ones.
+        out.sort_by(|a, b| {
+            a.account_label.cmp(&b.account_label).then_with(|| {
+                b.value
+                    .parse::<i64>()
+                    .unwrap_or(0)
+                    .abs()
+                    .cmp(&a.value.parse::<i64>().unwrap_or(0).abs())
+            })
+        });
+        Ok(out)
+    }
+
     /// The mapping templates in force.
     pub fn list_templates(&self, parent: &str) -> Result<pb::ListTemplatesResponse> {
         let fund = resource_id(parent, "funds")?;

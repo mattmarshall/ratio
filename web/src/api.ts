@@ -18,7 +18,9 @@ import type {
   AdmitFactsRequest,
   AdmitFactsResponse,
   IngestDeliveryRequest,
+  ListPositionsResponse,
   ListTemplatesResponse,
+  Position,
   Template,
   IngestDeliveryResponse,
   Delivery,
@@ -340,6 +342,18 @@ export function useTemplates(
     queryKey: [fund ?? "", "templates"],
     queryFn: () => get<ListTemplatesResponse>(`/${fund}/templates`),
     select: (r) => r.templates,
+    enabled: !!fund,
+    ...LIVE,
+  });
+}
+
+export function usePositions(
+  fund: string | undefined,
+): UseQueryResult<Position[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "positions"],
+    queryFn: () => get<ListPositionsResponse>(`/${fund}/positions`),
+    select: (r) => r.positions,
     enabled: !!fund,
     ...LIVE,
   });

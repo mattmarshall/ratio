@@ -19,6 +19,7 @@ import {
   useFunds,
   useNavStrikes,
   usePendingFacts,
+  usePositions,
   usePostings,
   useReplay,
   useRules,
@@ -41,6 +42,7 @@ import type {
   IngestDeliveryResponse,
   NavStrike,
   PendingFact,
+  Position,
 } from "./types.js";
 
 const ACCOUNT_FILTERS = [
@@ -793,12 +795,85 @@ function Deliver({ fund }: { fund: Fund | undefined }) {
   );
 }
 
+/**
+ * What the fund holds.
+ *
+ * Grouped by account, and each group foots to that account's own figure —
+ * INCLUDING the row for value the book does not attribute to any instrument.
+ * That row is not a blemish to be filtered out: `Ratio.Ingest.positions_roll_up`
+ * says a breakdown plus its remainder equals the total, and a screen that
+ * showed only the attributed half would disagree with the trial balance by
+ * exactly what it hid.
+ */
+function Positions({ positions }: { positions: Position[] }) {
+  const byAccount = new Map<string, Position[]>();
+  for (const p of positions) {
+    const list = byAccount.get(p.accountLabel);
+    if (list) list.push(p);
+    else byAccount.set(p.accountLabel, [p]);
+  }
+
+  if (positions.length === 0) {
+    return (
+      <div className="empty">
+        Nothing held. A position appears when an entry posts against an
+        instrument — which means a rule whose leg is <code>per_instrument</code>.
+      </div>
+    );
+  }
+
+  return (
+    <div className="tb" role="table" aria-label="Positions">
+      <div className="tbhead" role="row">
+        <span role="columnheader">Instrument</span>
+        <span role="columnheader" className="num">Units</span>
+        <span role="columnheader" className="num" />
+        <span role="columnheader" className="num">Book value</span>
+      </div>
+      {[...byAccount.entries()].map(([account, rows]) => {
+        const total = rows.reduce((n, r) => n + BigInt(r.value), 0n);
+        return (
+          <div className="posgroup" key={account}>
+            <div className="posacct">{account}</div>
+            {rows.map((p) => (
+              <div className="tbrow static" role="row" key={p.name}>
+                <span role="cell">
+                  <span className={`an${p.instrument ? "" : " unattr"}`}>
+                    {p.instrumentLabel}
+                  </span>
+                  {/* The id it RESOLVED to, not the identifier a file
+                      happened to carry. */}
+                  <span className="at">{p.instrument || "no instrument on these postings"}</span>
+                </span>
+                <span role="cell" className="num">
+                  {p.quantity === "0" ? "—" : count(p.quantity)}
+                </span>
+                <span role="cell" className="num" />
+                <span role="cell" className="num bal">{money(p.value)}</span>
+              </div>
+            ))}
+            <div className="tbfoot" role="row">
+              <span role="cell">{account}</span>
+              <span role="cell" className="num" />
+              <span role="cell" className="num" />
+              <span role="cell" className="num bal">
+                {money(total.toString())}
+                <small>account total</small>
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function App() {
   const funds = useFunds();
   const [fundName, setFundName] = useState<string>();
   const [filter, setFilter] = useState<string>("");
   const [brkName, setBrkName] = useState<string>();
-  const [view, setView] = useState<"breaks" | "balance" | "data">("breaks");
+  const [view, setView] = useState<"breaks" | "balance" | "positions" | "data">("breaks");
   const [acctFilter, setAcctFilter] = useState<string>("");
   const [acctName, setAcctName] = useState<string>();
 
@@ -819,6 +894,7 @@ export default function App() {
   // show a chart, and a query nobody reads is a round trip nobody asked for.
   const accounts = useAccounts(view === "balance" ? fundName : undefined, acctFilter);
   const deliveries = useDeliveries(view === "data" ? fundName : undefined);
+  const positions = usePositions(view === "positions" ? fundName : undefined);
   // Pending is fetched on every view, not just the data one: it is a blocking
   // condition, and a count an operator only sees after clicking a tab is a
   // count they will miss.
@@ -857,6 +933,13 @@ export default function App() {
             onClick={() => setView("balance")}
           >
             Trial balance
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === "positions"}
+            onClick={() => setView("positions")}
+          >
+            Positions
           </button>
           <button
             type="button"
@@ -945,7 +1028,14 @@ export default function App() {
             />
           </div>
 
-          {view === "data" ? (
+          {view === "positions" ? (
+            <>
+              {positions.isError ? (
+                <div className="empty err">{positions.error.message}</div>
+              ) : null}
+              <Positions positions={positions.data ?? []} />
+            </>
+          ) : view === "data" ? (
             <Data
               fund={fund}
               deliveries={deliveries.data ?? []}
@@ -1120,7 +1210,58 @@ export default function App() {
           </section>
         </main>
 
-        {view === "balance" ? <Lines account={account} /> : <Detail brk={selected} />}
+        {/* The aside belongs to the view. It was showing "Select a break" on
+            the positions and data screens, which invites a click that does
+            nothing. */}
+        {view === "balance" ? (
+          <Lines account={account} />
+        ) : view === "breaks" ? (
+          <Detail brk={selected} />
+        ) : view === "positions" ? (
+          <aside className="detail" aria-label="About positions">
+            <div className="dhead">
+              <h2>What this holds</h2>
+              <div className="sub">by account, then by instrument</div>
+            </div>
+            <div className="dsec">
+              <div className="prov">
+                an instrument partitions where value sits,
+                <br />
+                not how much there is
+                <br />
+                <br />
+                every group foots to its own account,
+                <br />
+                <span className="g">including what is not attributed</span>
+              </div>
+            </div>
+            <div className="dsec">
+              <h3>Units are a measure, not a balance</h3>
+              <div className="sub">
+                A share count does not conserve inside one book — buying a
+                hundred creates a hundred here and destroys them at the
+                counterparty, who is outside it. What checks units is
+                reconciliation against the custodian.
+              </div>
+            </div>
+          </aside>
+        ) : (
+          <aside className="detail" aria-label="About the data plane">
+            <div className="dhead">
+              <h2>The data plane</h2>
+              <div className="sub">files in, facts out</div>
+            </div>
+            <div className="dsec">
+              <div className="prov">
+                every fact names the row it came from,
+                <br />
+                the file that row was in,
+                <br />
+                and the template that mapped it
+              </div>
+            </div>
+          </aside>
+        )}
       </div>
     </div>
   );

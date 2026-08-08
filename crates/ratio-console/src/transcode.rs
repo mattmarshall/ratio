@@ -52,6 +52,8 @@ pub const ROUTES: &[Route] = &[
     // idempotent — it folds a journal prefix and writes nothing.
     Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}:replay" },
     Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*}/positions" },
+    Route { method: "GET", template: "/v1/{name=funds/*/positions/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/templates" },
     Route { method: "GET", template: "/v1/{name=funds/*/templates/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/rules" },
@@ -133,6 +135,12 @@ pub fn serve(
         }
         ["funds", id, "configVersions", v] => {
             to_json(&console.get_config_version(&format!("funds/{id}/configVersions/{v}"))?)?
+        }
+        ["funds", id, "positions"] => {
+            to_json(&console.list_positions(&format!("funds/{id}"))?)?
+        }
+        ["funds", id, "positions", p] => {
+            to_json(&console.get_position(&format!("funds/{id}/positions/{p}"))?)?
         }
         ["funds", id, "templates"] => {
             to_json(&console.list_templates(&format!("funds/{id}"))?)?
@@ -452,6 +460,27 @@ fn blocker_name(v: i32) -> &'static str {
         Ok(pb::pending_fact::Blocker::Absent) => "ABSENT",
         Ok(pb::pending_fact::Blocker::Ambiguous) => "AMBIGUOUS",
         _ => "UNSPECIFIED",
+    }
+}
+
+impl JsonView for pb::Position {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"account\":{},\"accountLabel\":{},\"instrument\":{},\
+             \"instrumentLabel\":{},\"quantity\":{},\"value\":{}}}",
+            q(&self.name), q(&self.account), q(&self.account_label), q(&self.instrument),
+            q(&self.instrument_label), q(&self.quantity), q(&self.value)
+        )
+    }
+}
+
+impl JsonView for pb::ListPositionsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"positions\":[{}],\"nextPageToken\":{}}}",
+            self.positions.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
     }
 }
 

@@ -367,3 +367,17 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .form label:has(textarea){grid-column:1/-1}
 .prev .why{color:var(--text-2);font-size:12.5px;margin-bottom:7px}
 .prev .posting .p2{color:var(--muted);font-size:11px;margin-top:2px}
+
+/* Positions, grouped by the account they sit in — each group foots to that
+   account's own figure, so the breakdown and the trial balance are visibly one
+   number read two ways. */
+.posgroup{border-bottom:1px solid var(--rule-2)}
+.posgroup:last-child{border-bottom:0}
+.posacct{padding:11px 22px 3px;font-size:10.5px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted)}
+.tbrow.static{cursor:default}
+.tbrow.static:hover{background:transparent}
+/* The unattributed row is dimmed, never hidden. It is the half of the theorem
+   a screen is most tempted to drop. */
+.an.unattr{color:var(--text-2);font-style:italic}
+.posgroup .tbfoot{background:transparent;border-top:1px solid var(--rule)}

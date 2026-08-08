@@ -199,6 +199,24 @@ service Console {
     option (google.api.method_signature) = "name";
   }
 
+  // What the fund holds, by account and instrument. (AIP-132)
+  //
+  // ⛔ THE UNATTRIBUTED REMAINDER IS IN THIS LIST, as a position with no
+  // instrument. Not a separate field beside it: a caller can render a list
+  // without noticing a field, and a positions view that quietly omits what it
+  // does not attribute disagrees with the trial balance by exactly the amount
+  // it hid. In the list, the rows sum to the accounts by construction.
+  rpc ListPositions(ListPositionsRequest) returns (ListPositionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/positions"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one position. (AIP-131)
+  rpc GetPosition(GetPositionRequest) returns (Position) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/positions/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
   // The trial balance: every account in the chart with what it holds.
   // (AIP-132)
   //
@@ -1058,6 +1076,64 @@ message GetPendingFactRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference).type = "ratio.fastverk.dev/PendingFact"
+  ];
+}
+
+// What a fund holds in one instrument, in one account.
+message Position {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Position"
+    pattern: "funds/{fund}/positions/{position}"
+    singular: "position"
+    plural: "positions"
+  };
+
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The account, as a resource name.
+  string account = 2 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Account"
+  ];
+  // Its label, so a screen does not have to join to show one. `_label` rather
+  // than `_name`: AIP-122 reserves `name` for a resource name.
+  string account_label = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The instrument this is held in. EMPTY for value in the account that is not
+  // attributed to any instrument — which is a real row, not a missing one.
+  string instrument = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string instrument_label = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whole units.
+  //
+  // ⚠ A MEASURE, not a conserved quantity: buying a hundred shares creates a
+  // hundred here and destroys them at the counterparty, who is outside this
+  // book. What checks it is reconciliation against the custodian.
+  string quantity = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What the book holds it at, in minor units. Value DOES conserve — an
+  // instrument partitions where it sits, not how much there is.
+  string value = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListPositionsRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListPositionsResponse {
+  repeated Position positions = 1;
+  string next_page_token = 2;
+}
+
+message GetPositionRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Position"
   ];
 }
 
