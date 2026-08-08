@@ -391,74 +391,101 @@ fn entity_add(book: PathBuf, args: &[&str]) -> Result<()> {
 }
 
 /// Post every fact that fully resolves.
+///
+/// The fact becomes an EVENT and the rules already in force decide the
+/// entries — the same path `ratio apply` takes. Nothing here knows how a trade
+/// books; that was approved separately and is the rule's business.
 fn admit(book: PathBuf) -> Result<()> {
     use ratio_store::Plane;
+
     let mut b = FileBook::open(&book)?;
     let digest = b.active()?.context("no configuration is in force")?;
+    let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
+    let templates = ratio_ingest::TemplateSet::from_toml(&text)?;
+    let rules = RuleSet::from_toml(&text)?;
+
     let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
     let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
     let resolved = ratio_ingest::resolve_all(&facts, &master);
 
+    // An event is recorded once. The journal's own ids are the record of what
+    // has already posted, so re-running this is a no-op rather than a second
+    // set of entries.
     let posted: std::collections::BTreeSet<String> =
         b.entries()?.into_iter().map(|e| e.id).collect();
 
-    let mut n = 0usize;
-    let mut skipped = Vec::new();
+    let (mut n, mut skipped) = (0usize, Vec::new());
     for r in resolved.iter().filter(|r| r.is_admissible()) {
         if posted.contains(&r.fact.reference) {
             continue;
         }
-        match consideration(r) {
-            Ok(_amount) => n += 1,
-            Err(e) => skipped.push(format!("{}: {e:#}", r.fact.reference)),
-        }
+        let Some(template) = templates.template(&r.fact.provenance.template_id) else {
+            skipped.push(format!(
+                "{}: template {:?} is not in the configuration in force",
+                r.fact.reference, r.fact.provenance.template_id
+            ));
+            continue;
+        };
+        let (rule_id, amount) = match ratio_ingest::posting_for(template, &r.fact) {
+            Ok(v) => v,
+            Err(e) => {
+                skipped.push(format!("{}: {e:#}", r.fact.reference));
+                continue;
+            }
+        };
+        let Some(rule) = rules.rule(&rule_id) else {
+            skipped.push(format!(
+                "{}: the template posts it as `{rule_id}`, which is not a rule in force",
+                r.fact.reference
+            ));
+            continue;
+        };
+
+        // The memo carries the resolved entities and the row it came from, so
+        // the entry can name its whole provenance without a join.
+        let who: Vec<String> = r
+            .entities
+            .keys()
+            .filter_map(|k| r.entity(k).map(|e| e.to_string()))
+            .collect();
+        let event = ratio_rules::Event {
+            rule: rule_id.clone(),
+            id: r.fact.reference.clone(),
+            amount,
+            days: None,
+            memo: String::new(),
+        };
+        let postings = ratio_rules::compile(rule, &event)?;
+        b.append(&ratio_store::JournalEntry {
+            id: r.fact.reference.clone(),
+            memo: format!(
+                "{} · {} · row {} of {}",
+                who.join(" "),
+                rule_id,
+                r.fact.provenance.row,
+                &r.fact.provenance.delivery[..12],
+            ),
+            config: digest.clone(),
+            postings,
+        })?;
+        n += 1;
     }
 
     println!("configuration {}", digest.short());
-    println!("  admissible {}", resolved.iter().filter(|r| r.is_admissible()).count());
-    println!("  postable   {n}");
+    println!("  posted     {n}");
     if !skipped.is_empty() {
         println!("  refused    {}", skipped.len());
         for s in &skipped {
             println!("    {s}");
         }
     }
-    println!();
-    println!("Posting is the next increment: an admitted fact becomes an event,");
-    println!("and the rules already in force decide the entries.");
+    let pend = resolved.iter().filter(|r| !r.is_admissible()).count();
+    if pend > 0 {
+        println!("  pending    {pend} (they clear when the master does)");
+    }
     Ok(())
 }
 
-/// What a trade was worth, in minor units.
-///
-/// ⛔ Quantity and price are both in minor units, so their product is scaled by
-/// ten thousand and has to come back down by a hundred. When that division is
-/// not exact — a fractional quantity at an odd price — there is a ROUNDING
-/// DECISION, and this refuses rather than making it silently. Which way to
-/// round is a term of an administration agreement, so it belongs in the
-/// configuration next to the tolerances, not in this function.
-fn consideration(r: &ratio_ingest::Resolved) -> Result<i64> {
-    let q = r
-        .fact
-        .values
-        .get("quantity")
-        .and_then(ratio_ingest::Value::as_minor)
-        .context("no quantity on this fact")?;
-    let p = r
-        .fact
-        .values
-        .get("price")
-        .and_then(ratio_ingest::Value::as_minor)
-        .context("no price on this fact")?;
-    let scaled = q.checked_mul(p).context("consideration overflows i64")?;
-    if scaled % 100 != 0 {
-        bail!(
-            "quantity x price is not a whole number of minor units, so posting it \
-             would take a rounding decision the configuration has not declared"
-        );
-    }
-    Ok(scaled / 100)
-}
 
 /// Pull `--book DIR` out of the argument list, wherever it appears.
 fn split_book_flag(args: &[String]) -> Result<(Vec<String>, PathBuf)> {

@@ -137,6 +137,14 @@ reads = "csv"
   as = "date"
   column = "TradeDate"
   format = "MM/DD/YYYY"
+
+  # How an admitted fact reaches the journal. The template says WHICH rule
+  # applies — this counterparty's `B` means a purchase — and the rule, approved
+  # separately, decides what that does to the books.
+  [template.fact.posts]
+  by = "side"
+  amount = "consideration"
+  rules = { buy = "equity_purchase", sell = "disposal_proceeds" }
 TOML
 "$RATIO" config set rules.toml --book "$OUT" >/dev/null
 

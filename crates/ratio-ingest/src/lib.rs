@@ -416,6 +416,30 @@ pub struct FieldDecl {
     pub value: ValueDecl,
 }
 
+/// How an admitted fact reaches the journal.
+///
+/// The template says WHICH RULE applies, because that is a mapping decision —
+/// this counterparty's `B` means a purchase — and mapping decisions belong
+/// with the rest of the mapping. What the rule then DOES is the rule's
+/// business, and it was approved separately.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PostsDecl {
+    /// The field whose value picks the rule.
+    #[serde(rename = "by")]
+    pub discriminator: String,
+
+    /// That field's value → the id of a rule in the same configuration.
+    pub rules: BTreeMap<String, String>,
+
+    /// Where the event's amount comes from: either the name of a money field,
+    /// or `consideration` for quantity × price.
+    ///
+    /// Deliberately two options rather than an expression language. A
+    /// mini-language in a mapping file is a second thing to get wrong, and
+    /// every counterparty file this has met needs one of these two.
+    pub amount: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FactDecl {
     pub kind: String,
@@ -426,6 +450,12 @@ pub struct FactDecl {
     pub entities: BTreeMap<String, String>,
     #[serde(default, rename = "value")]
     pub values: Vec<FieldDecl>,
+
+    /// How an admitted fact posts. Absent means the facts are recorded and
+    /// reconciled against but never posted — which is a real mode: a shadow
+    /// run reads the counterparty's file without touching the books.
+    #[serde(default)]
+    pub posts: Option<PostsDecl>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -474,6 +504,26 @@ impl Template {
             }
             if e.ladder.is_empty() {
                 out.push(format!("entity `{}` has no identity ladder, so nothing can match it", e.name));
+            }
+        }
+        if let Some(p) = &self.fact.posts {
+            let fields: BTreeSet<&str> =
+                self.fact.values.iter().map(|v| v.field.as_str()).collect();
+            if !fields.contains(p.discriminator.as_str()) {
+                out.push(format!(
+                    "posts is keyed on `{}`, which the fact does not read",
+                    p.discriminator
+                ));
+            }
+            if p.amount != "consideration" && !fields.contains(p.amount.as_str()) {
+                out.push(format!(
+                    "posts takes its amount from `{}`, which is neither a field \
+                     the fact reads nor `consideration`",
+                    p.amount
+                ));
+            }
+            if p.rules.is_empty() {
+                out.push("posts declares no rules, so nothing would ever post".into());
             }
         }
         if self.fact.reference.is_empty() {
@@ -736,6 +786,64 @@ fn project_row(
             received: delivery.received,
         },
     })
+}
+
+/// What an admitted fact posts as: a rule id and an amount in minor units.
+///
+/// ⛔ Returns an error rather than a rounding when quantity × price is not a
+/// whole number of minor units. Which way to round is a term of an
+/// administration agreement, so it belongs in the configuration beside the
+/// tolerances — not in this function, and certainly not implicitly.
+pub fn posting_for(template: &Template, fact: &Fact) -> Result<(String, i64)> {
+    let posts = template
+        .fact
+        .posts
+        .as_ref()
+        .context("this template does not declare how its facts post")?;
+
+    let key = fact
+        .values
+        .get(&posts.discriminator)
+        .and_then(Value::as_text)
+        .with_context(|| format!("no `{}` on this fact", posts.discriminator))?;
+    let rule = posts.rules.get(key).with_context(|| {
+        format!(
+            "`{key}` is not one of the values this template posts ({})",
+            posts.rules.keys().cloned().collect::<Vec<_>>().join(", ")
+        )
+    })?;
+
+    let amount = if posts.amount == "consideration" {
+        let q = fact
+            .values
+            .get("quantity")
+            .and_then(Value::as_minor)
+            .context("consideration needs a quantity")?;
+        let p = fact
+            .values
+            .get("price")
+            .and_then(Value::as_minor)
+            .context("consideration needs a price")?;
+        // Both are scaled by a hundred, so their product is scaled by ten
+        // thousand and has to come back down.
+        let scaled = q.checked_mul(p).context("consideration overflows i64")?;
+        if scaled % 100 != 0 {
+            bail!(
+                "quantity x price is {} ten-thousandths, which is not a whole number of \
+                 minor units — posting it would take a rounding decision the \
+                 configuration has not declared",
+                scaled
+            );
+        }
+        scaled / 100
+    } else {
+        fact.values
+            .get(&posts.amount)
+            .and_then(Value::as_minor)
+            .with_context(|| format!("no `{}` on this fact", posts.amount))?
+    };
+
+    Ok((rule.clone(), amount))
 }
 
 /// A date in the template's format, as ISO-8601.

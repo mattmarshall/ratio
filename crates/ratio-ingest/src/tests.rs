@@ -58,6 +58,11 @@ reads = "csv"
   as = "date"
   column = "TradeDate"
   format = "MM/DD/YYYY"
+
+  [template.fact.posts]
+  by = "side"
+  amount = "consideration"
+  rules = { buy = "equity_purchase", sell = "disposal_proceeds" }
 "#;
     let set = TemplateSet::from_toml(toml).expect("the template should parse");
     set.template("gs_equity_trades").expect("by id").clone()
@@ -404,4 +409,60 @@ fn a_later_duplicate_makes_an_unposted_fact_ambiguous_but_not_a_posted_one() {
         after.entities.get("security"),
         Some(Resolution::Ambiguous { .. })
     ));
+}
+
+#[test]
+fn the_template_says_which_rule_a_fact_posts_as() {
+    let t = template();
+    let facts = facts();
+
+    // 100 at 189.50 is 18,950.00 exactly.
+    let (rule, amount) = posting_for(&t, &facts[0]).unwrap();
+    assert_eq!(rule, "equity_purchase", "this counterparty's `B` is a purchase");
+    assert_eq!(amount, 1_895_000);
+
+    // …and the sell takes the other rule, from the same declaration.
+    let (rule, _) = posting_for(&t, &facts[2]).unwrap();
+    assert_eq!(rule, "disposal_proceeds");
+}
+
+#[test]
+fn an_inexact_consideration_is_refused_rather_than_rounded() {
+    // ⛔ A fractional quantity at an odd price does not land on a whole number
+    // of minor units. Which way to round is a term of an administration
+    // agreement — it belongs in the configuration beside the tolerances, not
+    // implicitly in a multiplication.
+    let t = template();
+    let odd = "\
+TradeRef,ISIN,Symbol,Exch,Broker,B/S,Quantity,Price,Ccy,TradeDate
+T-9,US0378331005,AAPL,XNAS,GSCO,B,0.5,1.01,USD,01/14/2026
+";
+    let rows = extract_csv(odd).unwrap();
+    let p = project(&t, &delivery(), &rows, "cfg");
+    assert_eq!(p.facts.len(), 1);
+
+    let err = posting_for(&t, &p.facts[0]).unwrap_err();
+    let msg = format!("{err:#}");
+    assert!(msg.contains("rounding decision"), "{msg}");
+    assert!(msg.contains("configuration has not declared"), "{msg}");
+}
+
+#[test]
+fn a_posts_declaration_that_names_a_field_the_fact_never_reads_is_caught() {
+    // At approval, not on the first file.
+    let mut t = template();
+    t.fact.posts.as_mut().unwrap().discriminator = "direction".into();
+    assert!(
+        t.check().iter().any(|p| p.contains("does not read")),
+        "{:?}",
+        t.check(),
+    );
+
+    let mut t = template();
+    t.fact.posts.as_mut().unwrap().amount = "gross".into();
+    assert!(
+        t.check().iter().any(|p| p.contains("neither a field")),
+        "{:?}",
+        t.check(),
+    );
 }
