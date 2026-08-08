@@ -1137,6 +1137,15 @@ message Position {
   // What the book holds it at, in minor units. Value DOES conserve — an
   // instrument partitions where it sits, not how much there is.
   string value = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The valuation date this was last marked at, ABSENT if it never has been.
+  //
+  // ⛔ THE DIFFERENCE BETWEEN COST AND MARKET, ON THE FACE OF THE FIGURE. Two
+  // positions can show the same number for opposite reasons — one because that
+  // is what it is worth, the other because that is what it cost and nobody has
+  // priced it. A screen that does not distinguish them is reporting an opinion
+  // as a fact.
+  google.type.Date mark_date = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message ListPositionsRequest {

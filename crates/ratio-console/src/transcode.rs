@@ -502,9 +502,10 @@ impl JsonView for pb::Position {
     fn to_json(&self) -> String {
         format!(
             "{{\"name\":{},\"account\":{},\"accountLabel\":{},\"instrument\":{},\
-             \"instrumentLabel\":{},\"quantity\":{},\"value\":{}}}",
+             \"instrumentLabel\":{},\"quantity\":{},\"value\":{},\"markDate\":{}}}",
             q(&self.name), q(&self.account), q(&self.account_label), q(&self.instrument),
-            q(&self.instrument_label), q(&self.quantity), q(&self.value)
+            q(&self.instrument_label), q(&self.quantity), q(&self.value),
+            date_json(&self.mark_date)
         )
     }
 }

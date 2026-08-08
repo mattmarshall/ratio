@@ -19,6 +19,8 @@ import type {
   AdmitFactsResponse,
   IngestDeliveryRequest,
   ListPositionsResponse,
+  MarkPositionsRequest,
+  MarkPositionsResponse,
   ListTemplatesResponse,
   Position,
   Template,
@@ -356,5 +358,27 @@ export function usePositions(
     select: (r) => r.positions,
     enabled: !!fund,
     ...LIVE,
+  });
+}
+
+/**
+ * Mark positions to market.
+ *
+ * `validateOnly` computes the marks and posts nothing, the same shape as every
+ * other write here. A position already at market moves by nothing, so a second
+ * mark at one price is a no-op rather than a second gain.
+ */
+export function useMark(
+  fund: string | undefined,
+): UseMutationResult<MarkPositionsResponse, Error, MarkPositionsRequest> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (req: MarkPositionsRequest) =>
+      send<MarkPositionsResponse>(`/${fund}:mark`, req),
+    onSuccess: (res) => {
+      if (res.validateOnly) return;
+      qc.invalidateQueries({ queryKey: [fund ?? ""] });
+      qc.invalidateQueries({ queryKey: ["funds"] });
+    },
   });
 }

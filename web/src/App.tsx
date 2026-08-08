@@ -11,6 +11,7 @@ import {
   useAdmit,
   useApplyEvent,
   useIngest,
+  useMark,
   useDeliveries,
   useBreaks,
   useChangeLog,
@@ -42,6 +43,7 @@ import type {
   IngestDeliveryResponse,
   NavStrike,
   PendingFact,
+  MarkPositionsResponse,
   Position,
 } from "./types.js";
 
@@ -805,6 +807,12 @@ function Deliver({ fund }: { fund: Fund | undefined }) {
  * showed only the attributed half would disagree with the trial balance by
  * exactly what it hid.
  */
+/** `{year, month, day}` as `26 Feb 2026`. */
+function isoDate(d: { year: number; month: number; day: number }): string {
+  const M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${d.day} ${M[d.month - 1] ?? "?"} ${d.year}`;
+}
+
 function Positions({ positions }: { positions: Position[] }) {
   const byAccount = new Map<string, Position[]>();
   for (const p of positions) {
@@ -827,8 +835,8 @@ function Positions({ positions }: { positions: Position[] }) {
       <div className="tbhead" role="row">
         <span role="columnheader">Instrument</span>
         <span role="columnheader" className="num">Units</span>
-        <span role="columnheader" className="num" />
-        <span role="columnheader" className="num">Book value</span>
+        <span role="columnheader">Held at</span>
+        <span role="columnheader" className="num">Value</span>
       </div>
       {[...byAccount.entries()].map(([account, rows]) => {
         const total = rows.reduce((n, r) => n + BigInt(r.value), 0n);
@@ -848,7 +856,25 @@ function Positions({ positions }: { positions: Position[] }) {
                 <span role="cell" className="num">
                   {p.quantity === "0" ? "—" : count(p.quantity)}
                 </span>
-                <span role="cell" className="num" />
+                {/* ⛔ The distinction the whole screen turns on. Two rows can
+                    show the same number for opposite reasons: one because that
+                    is what it is worth, the other because that is what it cost
+                    and nobody has priced it. */}
+                <span role="cell">
+                  {!p.instrument ? (
+                    <span className="at">—</span>
+                  ) : p.markDate ? (
+                    <span className="held mkt">
+                      market
+                      <small>{isoDate(p.markDate)}</small>
+                    </span>
+                  ) : (
+                    <span className="held cost">
+                      cost
+                      <small>never priced</small>
+                    </span>
+                  )}
+                </span>
                 <span role="cell" className="num bal">{money(p.value)}</span>
               </div>
             ))}
@@ -865,6 +891,137 @@ function Positions({ positions }: { positions: Position[] }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Mark the book to market.
+ *
+ * A POSTING, not an assignment: each position moves by the difference between
+ * what the book holds it at and what it is worth, with the contra in unrealized
+ * gain. Nothing is overwritten, so "why is this worth more than we paid" has an
+ * entry to point at.
+ */
+function MarkForm({ fund }: { fund: Fund | undefined }) {
+  const mark = useMark(fund?.name);
+  const [day, setDay] = useState("2026-02-26");
+  const [preview, setPreview] = useState<MarkPositionsResponse | null>(null);
+
+  const parts = day.split("-").map(Number);
+  const ready = parts.length === 3 && parts.every((n) => Number.isFinite(n) && n > 0);
+
+  function run(validateOnly: boolean) {
+    if (!ready) return;
+    mark.mutate(
+      {
+        valuationDate: { year: parts[0]!, month: parts[1]!, day: parts[2]! },
+        validateOnly,
+      },
+      {
+        onSuccess: (res) => setPreview(res.validateOnly ? res : null),
+      },
+    );
+  }
+
+  const shown = preview ?? (mark.data && !mark.data.validateOnly ? mark.data : null);
+
+  return (
+    <section className="rec" aria-label="Mark to market">
+      <div className="loghead">
+        <span>Mark to market</span>
+        <span className="sortnote">
+          a price observed after the date is not evidence about it
+        </span>
+      </div>
+
+      <div className="form">
+        <label>
+          <span>Valuation date</span>
+          <input
+            className="num"
+            value={day}
+            placeholder="2026-02-26"
+            onChange={(e) => { setPreview(null); mark.reset(); setDay(e.target.value); }}
+          />
+        </label>
+      </div>
+
+      {mark.isError ? <div className="empty err">{mark.error.message}</div> : null}
+
+      {shown ? (
+        <div className="prev">
+          <div className="ph">
+            {shown.validateOnly ? "What this would post" : "Marked"}
+            <span>{day}</span>
+          </div>
+          {shown.marks.map((m) => (
+            <div className="posting" key={m.instrument}>
+              <span>
+                <div className="p1">{m.instrumentLabel}</div>
+                <div className="p2 num">
+                  {count(m.quantity)} units at {money(m.price)}
+                  {m.priceDate ? ` · ${isoDate(m.priceDate)}` : ""}
+                </div>
+              </span>
+              <span className={`num${m.movement.startsWith("-") ? " pos" : ""}`}>
+                {money(m.movement)}
+                <small>{money(m.carrying)} → {money(m.market)}</small>
+              </span>
+            </div>
+          ))}
+          {/* ⛔ Not marked at zero. Zero says "worth what it cost"; this says
+              nobody has priced it, and only one of those should let a NAV be
+              struck. */}
+          {shown.unpriced.map((m) => (
+            <div className="posting" key={m.instrument}>
+              <span>
+                <div className="p1">{m.instrumentLabel}</div>
+                <div className="p2">no price on or before this date</div>
+              </span>
+              <span className="num pos">unvalued</span>
+            </div>
+          ))}
+          {shown.inexact.map((r) => (
+            <div className="posting" key={r}>
+              <span><div className="p1">{r}</div></span>
+              <span className="num pos">refused</span>
+            </div>
+          ))}
+          <div className="navdelta">
+            <span>Net asset value</span>
+            <span className="num">
+              {money(shown.previousNetAssetValue)}
+              <b aria-hidden="true"> → </b>
+              {money(shown.netAssetValue)}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="formbar">
+        <span className="sortnote">
+          {preview
+            ? "Nothing has been posted. A position already at market moves by nothing."
+            : "Preview runs the same code path and posts nothing."}
+        </span>
+        <button
+          className="act"
+          type="button"
+          disabled={!ready || mark.isPending}
+          onClick={() => run(true)}
+        >
+          {mark.isPending && !preview ? "valuing…" : "Preview"}
+        </button>
+        <button
+          className="act primary"
+          type="button"
+          disabled={!ready || !preview || mark.isPending}
+          onClick={() => run(false)}
+        >
+          {mark.isPending && preview ? "posting…" : "Mark"}
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -1033,6 +1190,7 @@ export default function App() {
               {positions.isError ? (
                 <div className="empty err">{positions.error.message}</div>
               ) : null}
+              <MarkForm fund={fund} />
               <Positions positions={positions.data ?? []} />
             </>
           ) : view === "data" ? (

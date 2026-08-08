@@ -344,6 +344,13 @@ export interface ListTemplatesResponse {
   nextPageToken: string;
 }
 
+/** A calendar date. Not a timestamp — a valuation date has no timezone. */
+export interface CalendarDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
 /**
  * What the fund holds in one instrument, in one account.
  *
@@ -362,18 +369,20 @@ export interface Position {
   quantity: Int64;
   /** Minor units. Value does conserve. */
   value: Int64;
+  /**
+   * The date this was last marked at, NULL if it never has been.
+   *
+   * ⛔ Two positions can show the same number for opposite reasons — one
+   * because that is what it is worth, the other because that is what it cost
+   * and nobody has priced it. A screen that does not distinguish them is
+   * reporting an opinion as a fact.
+   */
+  markDate: CalendarDate | null;
 }
 
 export interface ListPositionsResponse {
   positions: Position[];
   nextPageToken: string;
-}
-
-/** A calendar date. Not a timestamp — a valuation date has no timezone. */
-export interface CalendarDate {
-  year: number;
-  month: number;
-  day: number;
 }
 
 /** One position's valuation. */

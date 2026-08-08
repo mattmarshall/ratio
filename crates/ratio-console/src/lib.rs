@@ -550,6 +550,25 @@ impl Console {
                 .collect();
         let label = |d: i64| chart.get(&d).cloned().unwrap_or_else(|| format!("dimension {d}"));
 
+        // When each instrument was last marked, from the journal's own entry
+        // ids. Derived rather than stored: a "last marked" field would be one
+        // more thing that can disagree with the entries, and the entries are
+        // the record.
+        let mut marked: BTreeMap<String, String> = BTreeMap::new();
+        for e in b.entries()? {
+            let Some(rest) = e.id.strip_prefix("mark-") else { continue };
+            // `mark-<instrument>-<YYYY-MM-DD>`; the date is the last ten.
+            if rest.len() < 11 {
+                continue;
+            }
+            let (inst, day) = rest.split_at(rest.len() - 11);
+            let day = &day[1..];
+            let slot = marked.entry(inst.to_string()).or_default();
+            if day > slot.as_str() {
+                *slot = day.to_string();
+            }
+        }
+
         let mut out: Vec<pb::Position> = held
             .into_iter()
             .map(|((dim, instrument), (value, quantity))| pb::Position {
@@ -560,6 +579,7 @@ impl Console {
                     .get(&instrument)
                     .cloned()
                     .unwrap_or_else(|| instrument.clone()),
+                mark_date: marked.get(&instrument).and_then(|d| iso_date(d)),
                 instrument,
                 quantity: quantity.to_string(),
                 value: value.to_string(),
@@ -578,6 +598,7 @@ impl Console {
                 instrument_label: "Not attributed".into(),
                 quantity: "0".into(),
                 value: value.to_string(),
+                mark_date: None,
             });
         }
         // By account, then by what it holds most of — an operator scanning a

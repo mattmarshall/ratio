@@ -381,3 +381,17 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
    a screen is most tempted to drop. */
 .an.unattr{color:var(--text-2);font-style:italic}
 .posgroup .tbfoot{background:transparent;border-top:1px solid var(--rule)}
+
+/* Held at cost or at market. The same figure means different things in the two
+   cases, so they do not look the same. */
+.held{font-size:12px;font-weight:600}
+.held small{display:block;font-size:10.5px;font-weight:500;color:var(--muted);
+  margin-top:1px}
+.held.mkt{color:var(--good)}
+.held.cost{color:var(--warn)}
+/* ⚠ SCOPED to the positions table. Unscoped, this reshaped the trial balance
+   too — the two share `.tbrow` and the trial balance's columns are not these. */
+[aria-label="Positions"] .tbhead,
+[aria-label="Positions"] .tbrow,
+[aria-label="Positions"] .tbfoot{
+  grid-template-columns:minmax(200px,1fr) 100px 130px 150px}
