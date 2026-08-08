@@ -21,6 +21,7 @@ rust_library(
         "//proto:ratio_rust_proto",  # generated crate `ratio_proto` (ratio.v1)
         "@crates//:anyhow",
         "@crates//:prost",
+        "@crates//:serde_json",
     ],
 )
 

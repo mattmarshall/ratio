@@ -301,3 +301,43 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .posting .num small{display:block;font-size:10.5px;color:var(--muted);
   font-weight:500;margin-top:1px}
 .cap{font-size:11px;color:var(--muted);line-height:1.5;margin:-4px 0 9px}
+
+/* Recording an event.
+   The form is deliberately short: a rule, a reference, an amount. There is no
+   field for an account and none for a memo — the first is the configuration's
+   decision and the second would be free text on a journal other people read. */
+.rec{border-top:1px solid var(--rule)}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:12px;padding:13px 22px 4px}
+.form label{display:flex;flex-direction:column;gap:5px}
+.form label>span{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted)}
+.form input,.form select{padding:7px 10px;border-radius:8px;font:inherit;
+  font-size:13px;border:1px solid var(--rule);background:var(--ground);
+  color:var(--text)}
+.form input:focus-visible,.form select:focus-visible{outline:2px solid var(--accent);
+  outline-offset:1px;border-color:var(--accent)}
+.form .num{font-variant-numeric:tabular-nums}
+.ruleform{padding:2px 22px 0;font-size:12px;color:var(--muted);line-height:1.6}
+.ruleform b{color:var(--text-2);font-weight:600;display:block}
+
+/* The postings a preview would produce. Shown BEFORE anything is written,
+   because a figure you cannot inspect before committing is a figure you are
+   trusting rather than verifying. */
+.prev{margin:12px 22px 0;border:1px solid var(--rule);border-radius:10px;
+  padding:11px 14px;background:var(--raised)}
+.ph{display:flex;justify-content:space-between;font-size:10.5px;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--muted);
+  margin-bottom:7px}
+.ph span{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:0;text-transform:none}
+.prev .posting{font-size:12.5px}
+.navdelta{display:flex;justify-content:space-between;align-items:baseline;
+  margin-top:9px;padding-top:9px;border-top:1px solid var(--rule);
+  font-size:12.5px;color:var(--text-2)}
+.navdelta .num{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.navdelta b{color:var(--accent);font-weight:600}
+
+.formbar{display:flex;gap:9px;align-items:center;padding:13px 22px 16px}
+.formbar .sortnote{flex:1}
+.formbar .act:disabled{opacity:.45;cursor:default}

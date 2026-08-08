@@ -11,7 +11,7 @@
 //! exactly those patterns and no others. Hand-written and unchecked would be a
 //! 404 discovered by a customer; hand-written and checked is a failing build.
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 
 use crate::Console;
 
@@ -48,6 +48,12 @@ pub const ROUTES: &[Route] = &[
     // idempotent — it folds a journal prefix and writes nothing.
     Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}:replay" },
     Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*}/rules" },
+    Route { method: "GET", template: "/v1/{name=funds/*/rules/*}" },
+    // The one write. A custom method (AIP-136) because recording an event is a
+    // domain operation with a computed result, not a Create of the thing the
+    // caller sent.
+    Route { method: "POST", template: "/v1/{parent=funds/*}:applyEvent" },
     Route { method: "GET", template: "/v1/{name=funds/*}" },
 ];
 
@@ -55,9 +61,30 @@ pub const ROUTES: &[Route] = &[
 ///
 /// Returns the JSON body. An unroutable path is an error, not an empty result —
 /// a console that silently receives `{}` from a mistyped URL debugs badly.
-pub fn serve(console: &Console, method: &str, path: &str, query: &str) -> Result<String> {
+pub fn serve(
+    console: &Console,
+    method: &str,
+    path: &str,
+    query: &str,
+    body: &str,
+) -> Result<String> {
+    let rest = path
+        .strip_prefix("/v1/")
+        .ok_or_else(|| anyhow::anyhow!("{path:?} is not a /v1 path"))?;
+
+    // Exactly one route writes, and it is named here rather than inferred, so
+    // adding a method cannot quietly widen what POST reaches.
+    if method == "POST" {
+        if let Some(id) = rest.strip_suffix(":applyEvent") {
+            let id = id.strip_prefix("funds/").filter(|s| !s.contains('/'))
+                .ok_or_else(|| anyhow::anyhow!("{path:?} is not a fund"))?;
+            let req = apply_event_request(&format!("funds/{id}"), body)?;
+            return to_json(&console.apply_event(&req)?);
+        }
+        bail!("{path:?} does not accept POST");
+    }
     if method != "GET" {
-        bail!("the console API is read-only; {method} is not accepted");
+        bail!("the console API is read-only apart from :applyEvent; {method} is not accepted");
     }
     let rest = path
         .strip_prefix("/v1/")
@@ -88,6 +115,8 @@ pub fn serve(console: &Console, method: &str, path: &str, query: &str) -> Result
         ["funds", id, "configVersions", v] => {
             to_json(&console.get_config_version(&format!("funds/{id}/configVersions/{v}"))?)?
         }
+        ["funds", id, "rules"] => to_json(&console.list_rules(&format!("funds/{id}"))?)?,
+        ["funds", id, "rules", r] => to_json(&console.get_rule(&format!("funds/{id}/rules/{r}"))?)?,
         ["funds", id, "accounts"] => {
             to_json(&console.list_accounts(&format!("funds/{id}"), filter_of(query))?)?
         }
@@ -121,6 +150,35 @@ pub fn serve(console: &Console, method: &str, path: &str, query: &str) -> Result
         _ => bail!("no route for {path:?}"),
     };
     Ok(json)
+}
+
+/// The request body, read field by field.
+///
+/// ⛔ A HAND-WRITTEN MIRROR, like the encoders below and checked with them by
+/// `//proto:mirrors_test`. `parent` is bound by the path template rather than
+/// carried in the body, which is what `body: "*"` means.
+///
+/// Everything is read as a string and validated downstream, so a caller
+/// sending a JSON NUMBER for an amount is refused rather than silently run
+/// through a double.
+fn apply_event_request(parent: &str, body: &str) -> Result<pb::ApplyEventRequest> {
+    let v: serde_json::Value =
+        serde_json::from_str(body).context("the request body is not JSON")?;
+    let text = |k: &str| -> Result<String> {
+        match v.get(k) {
+            None | Some(serde_json::Value::Null) => Ok(String::new()),
+            Some(serde_json::Value::String(s)) => Ok(s.clone()),
+            Some(other) => bail!("{k} must be a string, not {other}"),
+        }
+    };
+    Ok(pb::ApplyEventRequest {
+        parent: parent.to_string(),
+        rule_id: text("ruleId")?,
+        event_id: text("eventId")?,
+        amount: text("amount")?,
+        days: text("days")?,
+        validate_only: matches!(v.get("validateOnly"), Some(serde_json::Value::Bool(true))),
+    })
 }
 
 /// `?filter=blocking` → `"blocking"`.
@@ -255,6 +313,71 @@ fn account_type_name(v: i32) -> &'static str {
         Ok(pb::account::Type::Revenue) => "REVENUE",
         Ok(pb::account::Type::Expense) => "EXPENSE",
         _ => "UNSPECIFIED",
+    }
+}
+
+fn rule_kind_name(v: i32) -> &'static str {
+    match pb::rule::Kind::try_from(v) {
+        Ok(pb::rule::Kind::Trade) => "TRADE",
+        Ok(pb::rule::Kind::Dividend) => "DIVIDEND",
+        Ok(pb::rule::Kind::Accrual) => "ACCRUAL",
+        _ => "UNSPECIFIED",
+    }
+}
+
+fn strings(v: &[String]) -> String {
+    v.iter().map(|s| q(s)).collect::<Vec<_>>().join(",")
+}
+
+impl JsonView for pb::Rule {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"ruleId\":{},\"kind\":{},\"description\":{},\
+             \"form\":{},\"accounts\":[{}]}}",
+            q(&self.name), q(&self.rule_id), q(rule_kind_name(self.kind)),
+            q(&self.description), q(&self.form), strings(&self.accounts)
+        )
+    }
+}
+
+impl JsonView for pb::ListRulesResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"rules\":[{}],\"nextPageToken\":{}}}",
+            self.rules.iter().map(|r| r.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+impl JsonView for pb::EntryPosting {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"account\":{},\"displayName\":{},\"amount\":{}}}",
+            q(&self.account), q(&self.display_name), q(&self.amount)
+        )
+    }
+}
+
+impl JsonView for pb::Entry {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"entryId\":{},\"memo\":{},\"configDigest\":{},\
+             \"postings\":[{}]}}",
+            q(&self.name), q(&self.entry_id), q(&self.memo), q(&self.config_digest),
+            self.postings.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(",")
+        )
+    }
+}
+
+impl JsonView for pb::ApplyEventResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"entry\":{},\"validateOnly\":{},\"netAssetValue\":{},\
+             \"previousNetAssetValue\":{}}}",
+            self.entry.as_ref().map(|e| e.to_json()).unwrap_or_else(|| "null".into()),
+            self.validate_only, q(&self.net_asset_value), q(&self.previous_net_asset_value)
+        )
     }
 }
 

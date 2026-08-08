@@ -48,11 +48,32 @@ const BELOW_NOTICE: i64 = 500; //     5.00
 /// The books this console serves.
 pub struct Console {
     root: PathBuf,
+    /// How many entries a book may hold before `ApplyEvent` refuses to add
+    /// another. `None` is no ceiling.
+    ///
+    /// Read from the environment ONCE, here, rather than inside the handler.
+    /// A handler that reads a process-global on every call cannot be tested
+    /// without mutating one, and `std::env::set_var` in a test is a race
+    /// against every other test in the binary — which is exactly what it was
+    /// when this lived in `apply_event`.
+    max_entries: Option<usize>,
 }
 
 impl Console {
     pub fn new(root: impl AsRef<Path>) -> Self {
-        Console { root: root.as_ref().to_path_buf() }
+        Console {
+            root: root.as_ref().to_path_buf(),
+            max_entries: std::env::var("RATIO_MAX_API_ENTRIES")
+                .ok()
+                .and_then(|v| v.parse().ok()),
+        }
+    }
+
+    /// The same console with an explicit ceiling, for a caller that has one —
+    /// and for a test that must not reach for a process-global to set it.
+    pub fn with_max_entries(mut self, max: Option<usize>) -> Self {
+        self.max_entries = max;
+        self
     }
 
     /// The funds, in a stable order.
@@ -205,6 +226,184 @@ impl Console {
             .into_iter()
             .find(|p| p.name == name)
             .with_context(|| format!("no posting {:?}", parts[5]))
+    }
+
+
+    /// The rules in force, structured enough to choose one.
+    pub fn list_rules(&self, parent: &str) -> Result<pb::ListRulesResponse> {
+        let fund = resource_id(parent, "funds")?;
+        Ok(pb::ListRulesResponse {
+            rules: self.rules_of(&fund)?,
+            next_page_token: String::new(),
+        })
+    }
+
+    pub fn get_rule(&self, name: &str) -> Result<pb::Rule> {
+        let (fund, id) = nested_id(name, "funds", "rules")?;
+        self.rules_of(&fund)?
+            .into_iter()
+            .find(|r| r.rule_id == id)
+            .with_context(|| format!("no rule {id:?} in the active configuration"))
+    }
+
+    fn rules_of(&self, fund: &str) -> Result<Vec<pb::Rule>> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        let chart = b.accounts()?;
+        let Some(digest) = b.active()? else { return Ok(Vec::new()) };
+        let set = RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))?;
+
+        Ok(set
+            .rules
+            .iter()
+            .map(|r| pb::Rule {
+                name: format!("funds/{fund}/rules/{}", r.id),
+                rule_id: r.id.clone(),
+                kind: match r.kind {
+                    ratio_rules::RuleKind::Trade => pb::rule::Kind::Trade,
+                    ratio_rules::RuleKind::Dividend => pb::rule::Kind::Dividend,
+                    ratio_rules::RuleKind::Accrual => pb::rule::Kind::Accrual,
+                } as i32,
+                description: r.description.clone(),
+                form: ratio_rules::render(r, &chart),
+                accounts: r
+                    .legs
+                    .iter()
+                    .map(|l| {
+                        chart
+                            .iter()
+                            .find(|a| a.dim == l.account)
+                            .map(|a| a.display_name.clone())
+                            .unwrap_or_else(|| format!("dimension {}", l.account))
+                    })
+                    .collect(),
+            })
+            .collect())
+    }
+
+    /// Record an event, and return the entry the active configuration made of
+    /// it. The ONLY write on this service.
+    pub fn apply_event(&self, req: &pb::ApplyEventRequest) -> Result<pb::ApplyEventResponse> {
+        let fund = resource_id(&req.parent, "funds")?;
+        let path = self.book_path(&fund)?;
+
+        // The event id reaches a filename-shaped identifier and, on the public
+        // demo, a screen other visitors read. Nothing but an id gets through.
+        let id = req.event_id.trim();
+        if id.is_empty() || id.len() > 64
+            || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+        {
+            bail!("{:?} is not an event id — letters, digits, - _ . and at most 64 of them", req.event_id);
+        }
+
+        let amount = parse_amount(&req.amount)?;
+        let days = if req.days.trim().is_empty() {
+            None
+        } else {
+            Some(req.days.trim().parse::<i64>().context("days must be a whole number")?)
+        };
+
+        let mut b = FileBook::open(&path)?;
+        let digest = b.active()?.context("no configuration is in force on this fund")?;
+        let chart = b.accounts()?;
+        let set = RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))?;
+        let rule = set
+            .rule(&req.rule_id)
+            .with_context(|| format!("no rule {:?} in the configuration in force", req.rule_id))?;
+
+        let existing = b.entries()?;
+        if existing.iter().any(|e| e.id == id) {
+            bail!("{id:?} is already in this journal — an event is recorded once");
+        }
+
+        // ⚠ On the public demo this endpoint is unauthenticated, because the
+        // demo is the point. The exposure is deliberately small — the fields
+        // are structured, the memo is composed rather than supplied, the event
+        // id is validated, and a cold start restores the books — but "small"
+        // is not "none", and an unbounded journal in a 512 MB /tmp is the one
+        // part that does not heal itself. The deployment sets a ceiling; a
+        // local run has none.
+        if let Some(max) = self.max_entries {
+            if !req.validate_only && existing.len() >= max {
+                bail!(
+                    "this book has {} entries, which is as many as the demo accepts; \
+                     it resets on the next cold start",
+                    existing.len()
+                );
+            }
+        }
+
+        let event = ratio_rules::Event {
+            rule: rule.id.clone(),
+            id: id.to_string(),
+            amount,
+            days,
+            memo: String::new(),
+        };
+        let postings = ratio_rules::compile(rule, &event)?;
+
+        // The memo is COMPOSED from what the rule and the event say, never
+        // taken from the caller. On a public endpoint, free text on the
+        // journal is free text on somebody else's screen.
+        let memo = format!("{id} via {}", rule.id);
+
+        let previous = self.get_fund(&format!("funds/{fund}"))?.net_asset_value;
+
+        let entry = ratio_store::JournalEntry {
+            id: id.to_string(),
+            memo: memo.clone(),
+            config: digest.clone(),
+            postings: postings.clone(),
+        };
+
+        // The kernel refuses an unbalanced entry at the door, so `append` is
+        // the check — there is no state in which this wrote something that
+        // does not conserve.
+        if !req.validate_only {
+            b.append(&entry)?;
+        }
+
+        let net_asset_value = if req.validate_only {
+            // Nothing was written, so the fund still reports the old figure.
+            // Fold the proposed postings over it instead of reading it back.
+            let delta: i64 = postings
+                .iter()
+                .filter(|p| {
+                    matches!(
+                        chart.iter().find(|a| a.dim == p.dim).map(|a| a.account_type),
+                        Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
+                    )
+                })
+                .map(|p| p.amount)
+                .sum();
+            (previous.parse::<i64>().unwrap_or(0) + delta).to_string()
+        } else {
+            self.get_fund(&format!("funds/{fund}"))?.net_asset_value
+        };
+
+        Ok(pb::ApplyEventResponse {
+            entry: Some(pb::Entry {
+                name: format!("funds/{fund}/entries/{id}"),
+                entry_id: id.to_string(),
+                memo,
+                config_digest: digest.as_str().to_string(),
+                postings: postings
+                    .iter()
+                    .map(|p| pb::EntryPosting {
+                        account: format!("funds/{fund}/accounts/{}", p.dim),
+                        display_name: chart
+                            .iter()
+                            .find(|a| a.dim == p.dim)
+                            .map(|a| a.display_name.clone())
+                            .unwrap_or_else(|| format!("dimension {}", p.dim)),
+                        amount: p.amount.to_string(),
+                    })
+                    .collect(),
+            }),
+            validate_only: req.validate_only,
+            net_asset_value,
+            previous_net_asset_value: previous,
+        })
     }
 
     pub fn list_funds(&self) -> Result<pb::ListFundsResponse> {
@@ -685,6 +884,48 @@ fn display_name(id: &str) -> String {
         .join(" ")
 }
 
+/// A decimal string as a person types it — "250000.00" — into minor units.
+///
+/// By splitting on the point, never by parsing a float. `"1.005" as f64 * 100.0`
+/// is 100.49999999999999, and a product whose entire claim is that the
+/// arithmetic is exact cannot afford to lose that in the last hop before the
+/// journal. Two decimal places at most, because the books are in minor units
+/// and silently dropping a third digit would be worse than refusing it.
+pub fn parse_amount(text: &str) -> Result<i64> {
+    let t = text.trim().replace(',', "");
+    if t.is_empty() {
+        bail!("an amount is required");
+    }
+    let (sign, digits) = match t.strip_prefix('-') {
+        Some(rest) => (-1i64, rest),
+        None => (1i64, t.strip_prefix('+').unwrap_or(&t)),
+    };
+    let (whole, frac) = match digits.split_once('.') {
+        Some((w, f)) => (w, f),
+        None => (digits, ""),
+    };
+    if whole.is_empty() && frac.is_empty() {
+        bail!("{text:?} is not an amount");
+    }
+    if frac.len() > 2 {
+        bail!("{text:?} has more than two decimal places; the books are kept in minor units");
+    }
+    if !whole.chars().all(|c| c.is_ascii_digit()) || !frac.chars().all(|c| c.is_ascii_digit()) {
+        bail!("{text:?} is not an amount");
+    }
+    let major: i64 = if whole.is_empty() { 0 } else { whole.parse().context("amount too large")? };
+    let minor: i64 = match frac.len() {
+        0 => 0,
+        1 => frac.parse::<i64>()? * 10,
+        _ => frac.parse::<i64>()?,
+    };
+    major
+        .checked_mul(100)
+        .and_then(|m| m.checked_add(minor))
+        .map(|m| sign * m)
+        .context("amount too large")
+}
+
 /// The store's classification as the console's enum. A `match` rather than a
 /// cast: the two enums are declared in different files and nothing but this
 /// function stops them drifting apart silently.
@@ -1005,6 +1246,167 @@ mod tests {
         // rather than inventing one.
         assert_eq!(vs.last().unwrap().actor, "");
         assert!(vs.last().unwrap().approve_time.is_none());
+    }
+
+    #[test]
+    fn an_amount_is_parsed_by_splitting_not_by_floating() {
+        assert_eq!(parse_amount("250000.00").unwrap(), 25_000_000);
+        assert_eq!(parse_amount("1.5").unwrap(), 150);
+        assert_eq!(parse_amount("0.07").unwrap(), 7);
+        assert_eq!(parse_amount("42").unwrap(), 4_200);
+        assert_eq!(parse_amount("-80000.00").unwrap(), -8_000_000);
+        assert_eq!(parse_amount(" 1,234.56 ").unwrap(), 123_456);
+        assert_eq!(parse_amount(".99").unwrap(), 99);
+
+        // ⛔ THE CASE THE WHOLE APPROACH EXISTS FOR.
+        // `"1.005".parse::<f64>().unwrap() * 100.0` is 100.49999999999999,
+        // which truncates to 100 and loses a cent on every such amount. This
+        // is refused instead: the books are kept in minor units, and silently
+        // dropping a third digit is worse than saying so.
+        assert!(parse_amount("1.005").is_err(), "three decimal places must be refused");
+        assert_eq!(parse_amount("1.00").unwrap(), 100);
+
+        // And a third digit is not the only way to be wrong.
+        for bad in ["", "  ", "abc", "1.2.3", "1e5", "--1", "1 000", "$5"] {
+            assert!(parse_amount(bad).is_err(), "{bad:?} should not parse");
+        }
+        // Overflow is refused rather than wrapped.
+        assert!(parse_amount("92233720368547758.08").is_err(), "overflow must be refused");
+    }
+
+    #[test]
+    fn a_preview_writes_nothing_and_a_commit_writes_once() {
+        let d = fresh("applyevent");
+        book(&d);
+        promote(&d, R1, "e.marsh", "fee_q2");
+        let c = Console::new(&d);
+
+        let before = c.get_fund("funds/demo").unwrap();
+        let entries_before = FileBook::open(&d).unwrap().entries().unwrap().len();
+
+        let req = |validate_only: bool| pb::ApplyEventRequest {
+            parent: "funds/demo".into(),
+            rule_id: "fee".into(),
+            event_id: "acc-1".into(),
+            amount: "1000000.00".into(),
+            days: "30".into(),
+            validate_only,
+        };
+
+        // A preview returns the entry and the NAV it WOULD produce…
+        let preview = c.apply_event(&req(true)).unwrap();
+        assert!(preview.validate_only);
+        let entry = preview.entry.as_ref().unwrap();
+        assert!(!entry.postings.is_empty(), "a preview still shows the postings");
+        assert_eq!(entry.config_digest.len(), 64, "and which configuration decided them");
+        assert_eq!(preview.previous_net_asset_value, before.net_asset_value);
+
+        // …and writes nothing.
+        assert_eq!(
+            FileBook::open(&d).unwrap().entries().unwrap().len(),
+            entries_before,
+            "a preview must not touch the journal",
+        );
+        assert_eq!(c.get_fund("funds/demo").unwrap().net_asset_value, before.net_asset_value);
+
+        // The commit writes exactly one entry, and the NAV the preview
+        // predicted is the NAV that results.
+        let done = c.apply_event(&req(false)).unwrap();
+        assert!(!done.validate_only);
+        assert_eq!(
+            FileBook::open(&d).unwrap().entries().unwrap().len(),
+            entries_before + 1,
+        );
+        assert_eq!(
+            done.net_asset_value, preview.net_asset_value,
+            "the preview predicted a different NAV from the one the commit produced",
+        );
+        // ⚠ …and the NAV actually MOVED. Without this the assertion above is
+        // satisfied by two identical figures, which is what it would report if
+        // the fold ignored the entry entirely. An accrual credits a liability,
+        // so the NAV must fall.
+        assert_ne!(
+            done.net_asset_value, done.previous_net_asset_value,
+            "the entry left the NAV unchanged, so the check above proved nothing",
+        );
+        assert!(
+            done.net_asset_value.parse::<i64>().unwrap()
+                < done.previous_net_asset_value.parse::<i64>().unwrap(),
+            "accruing a fee raises a liability, so the NAV falls",
+        );
+
+        // An event is recorded once. A retried POST is a conflict, not a
+        // second entry.
+        let again = c.apply_event(&req(false));
+        assert!(again.is_err(), "the same event id must not post twice");
+        assert_eq!(
+            FileBook::open(&d).unwrap().entries().unwrap().len(),
+            entries_before + 1,
+        );
+    }
+
+    #[test]
+    fn the_ceiling_stops_writes_and_not_previews() {
+        let d = fresh("ceiling");
+        book(&d);
+        promote(&d, R1, "e.marsh", "fee_q2");
+        let c = Console::new(&d);
+        let req = |id: &str, validate_only: bool| pb::ApplyEventRequest {
+            parent: "funds/demo".into(),
+            rule_id: "fee".into(),
+            event_id: id.into(),
+            amount: "100.00".into(),
+            days: "1".into(),
+            validate_only,
+        };
+
+        // `book()` posts three entries, so a ceiling of three is already met.
+        let c = c.with_max_entries(Some(3));
+        let refused = c.apply_event(&req("over-1", false));
+        assert!(refused.is_err(), "a write past the ceiling must be refused");
+        assert!(
+            format!("{:#}", refused.unwrap_err()).contains("cold start"),
+            "and must say what happens next",
+        );
+
+        // A preview writes nothing, so the ceiling has no business refusing it.
+        assert!(c.apply_event(&req("over-1", true)).is_ok(), "a preview is not a write");
+
+        // With no ceiling there is no limit — a local run is not the demo.
+        let c = c.with_max_entries(None);
+        assert!(c.apply_event(&req("over-1", false)).is_ok());
+    }
+
+    #[test]
+    fn an_event_id_that_is_not_an_id_is_refused() {
+        let d = fresh("eventid");
+        book(&d);
+        promote(&d, R1, "e.marsh", "fee_q2");
+        let c = Console::new(&d);
+
+        // This reaches a journal other people read, on a public endpoint.
+        for bad in ["", "../../etc/passwd", "a b", "<script>", "x".repeat(65).as_str()] {
+            let r = c.apply_event(&pb::ApplyEventRequest {
+                parent: "funds/demo".into(),
+                rule_id: "fee".into(),
+                event_id: bad.into(),
+                amount: "1.00".into(),
+                days: "1".into(),
+                validate_only: false,
+            });
+            assert!(r.is_err(), "{bad:?} should not be accepted as an event id");
+        }
+        // And the memo is composed, never supplied — there is no field for it.
+        let ok = c.apply_event(&pb::ApplyEventRequest {
+            parent: "funds/demo".into(),
+            rule_id: "fee".into(),
+            event_id: "acc-2".into(),
+            amount: "1000.00".into(),
+            days: "1".into(),
+            validate_only: true,
+        })
+        .unwrap();
+        assert_eq!(ok.entry.unwrap().memo, "acc-2 via fee");
     }
 
     #[test]

@@ -99,6 +99,40 @@ service Console {
     option (google.api.method_signature) = "name";
   }
 
+  // The rules in force, structured. `ConfigVersion.rules` renders them for
+  // reading; this is for a caller that has to choose one. (AIP-132)
+  rpc ListRules(ListRulesRequest) returns (ListRulesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/rules"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one rule of the active configuration. (AIP-131)
+  rpc GetRule(GetRuleRequest) returns (Rule) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/rules/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Records an event and returns the entry the active configuration produced
+  // from it. (AIP-136)
+  //
+  // ⛔ THE ONLY METHOD ON THIS SERVICE THAT WRITES.
+  //
+  // It takes a RULE and an amount, never a set of postings. Which accounts
+  // move, and in which direction, is decided by the configuration a person
+  // approved — an operator recording a trade is asserting that something
+  // happened, not deciding how it is booked. That distinction is the reason
+  // this can be a write at all while `approve` stays humans-only at a
+  // terminal: recording a fact does not change how any figure is derived.
+  //
+  // Set `validate_only` to see the entry and the NAV it would produce without
+  // writing anything (AIP-163).
+  rpc ApplyEvent(ApplyEventRequest) returns (ApplyEventResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=funds/*}:applyEvent"
+      body: "*"
+    };
+  }
+
   // The trial balance: every account in the chart with what it holds.
   // (AIP-132)
   //
@@ -710,6 +744,140 @@ message GetPostingRequest {
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference).type = "ratio.fastverk.dev/Posting"
   ];
+}
+
+// One rule of the active configuration, structured enough to choose from.
+message Rule {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Rule"
+    pattern: "funds/{fund}/rules/{rule}"
+    singular: "rule"
+    plural: "rules"
+  };
+
+  // What an event of this kind needs, which fixes what a caller must supply.
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+
+    // Takes an amount: the consideration.
+    KIND_TRADE = 1;
+
+    // Takes an amount: the cash received.
+    KIND_DIVIDEND = 2;
+
+    // Takes an amount (the basis the rate applies to) AND a day count.
+    KIND_ACCRUAL = 3;
+  }
+
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+  string rule_id = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  Kind kind = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string description = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The rule as the rules screen shows it, so a caller can read what it is
+  // about to invoke rather than trust its name.
+  string form = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The accounts it posts to, as display names, in leg order.
+  repeated string accounts = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListRulesRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListRulesResponse {
+  repeated Rule rules = 1;
+  string next_page_token = 2;
+}
+
+// One entry in the journal, and the postings the rule produced.
+message Entry {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Entry"
+    pattern: "funds/{fund}/entries/{entry}"
+    singular: "entry"
+    plural: "entries"
+  };
+
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+  string entry_id = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string memo = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The configuration that decided these postings.
+  string config_digest = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  repeated EntryPosting postings = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message EntryPosting {
+  // The account, as a resource name: `funds/{fund}/accounts/{account}`.
+  string account = 1 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Account"
+  ];
+
+  string display_name = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Minor units, as a string. Signed: a debit is positive.
+  string amount = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message GetRuleRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Rule"
+  ];
+}
+
+message ApplyEventRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+
+  // Which rule of the ACTIVE configuration to apply. Not a set of postings:
+  // see the comment on the method.
+  string rule_id = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The event's own identifier, carried onto the journal entry so the entry
+  // can be traced back to what caused it.
+  string event_id = 3 [(google.api.field_behavior) = REQUIRED];
+
+  // A DECIMAL string as a person types it — "250000.00", not minor units.
+  //
+  // Parsed on the server, exactly, by splitting on the point. The browser
+  // never does arithmetic on money: `parseFloat("1.005") * 100` is
+  // 100.49999999999999, and a product whose whole claim is exactness must not
+  // lose it in the form.
+  string amount = 4 [(google.api.field_behavior) = REQUIRED];
+
+  // Accrual rules only: how many days of the period this covers.
+  string days = 5 [(google.api.field_behavior) = OPTIONAL];
+
+  // Compute the entry and the resulting NAV, and write NOTHING. (AIP-163)
+  bool validate_only = 6 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ApplyEventResponse {
+  // The entry the rule produced. Present whether or not it was written.
+  Entry entry = 1;
+
+  // True when nothing was written because `validate_only` was set.
+  bool validate_only = 2;
+
+  // The fund's NAV with this entry, and what it was without it. Both in minor
+  // units, and reported as a pair rather than as a delta: a NAV is the figure
+  // that matters, and a delta invites reading the difference as the answer.
+  //
+  // Named without "before"/"after", which AIP-140 rejects as prepositions.
+  string net_asset_value = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string previous_net_asset_value = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message ListNavStrikesRequest {

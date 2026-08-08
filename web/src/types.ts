@@ -187,3 +187,57 @@ export interface ListPostingsResponse {
   postings: Posting[];
   nextPageToken: string;
 }
+
+export type RuleKind = "ACCRUAL" | "DIVIDEND" | "TRADE" | "UNSPECIFIED";
+
+/** One rule of the configuration in force. */
+export interface Rule {
+  name: string;
+  ruleId: string;
+  kind: RuleKind;
+  description: string;
+  /** The rule as the rules screen shows it. */
+  form: string;
+  /** The accounts it posts to, in leg order. */
+  accounts: string[];
+}
+
+export interface ListRulesResponse {
+  rules: Rule[];
+  nextPageToken: string;
+}
+
+export interface EntryPosting {
+  account: string;
+  displayName: string;
+  amount: Int64;
+}
+
+export interface Entry {
+  name: string;
+  entryId: string;
+  memo: string;
+  configDigest: string;
+  postings: EntryPosting[];
+}
+
+/**
+ * What recording an event produced.
+ *
+ * ⛔ `amount` on the REQUEST is a decimal string as typed — "250000.00" — and
+ * is parsed on the server. The browser never does arithmetic on money.
+ */
+export interface ApplyEventRequest {
+  ruleId: string;
+  eventId: string;
+  amount: string;
+  days: string;
+  validateOnly: boolean;
+}
+
+export interface ApplyEventResponse {
+  entry: Entry | null;
+  validateOnly: boolean;
+  netAssetValue: Int64;
+  previousNetAssetValue: Int64;
+}

@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import {
   useAccounts,
+  useApplyEvent,
   useBreaks,
   useChangeLog,
   useConfigDiff,
@@ -16,6 +17,7 @@ import {
   useNavStrikes,
   usePostings,
   useReplay,
+  useRules,
 } from "./api.js";
 import {
   SEVERITY_CLASS,
@@ -24,7 +26,14 @@ import {
   count,
   money,
 } from "./format.js";
-import type { Account, Break, ConfigVersion, Fund, NavStrike } from "./types.js";
+import type {
+  Account,
+  ApplyEventResponse,
+  Break,
+  ConfigVersion,
+  Fund,
+  NavStrike,
+} from "./types.js";
 
 const ACCOUNT_FILTERS = [
   { key: "", label: "Whole chart" },
@@ -327,6 +336,190 @@ function Lines({ account }: { account: Account | undefined }) {
   );
 }
 
+/**
+ * Record an event.
+ *
+ * The operator chooses a RULE and an amount. They do not choose accounts —
+ * which accounts move, and in which direction, was decided by whoever approved
+ * the configuration. That is the whole argument of the product expressed as a
+ * form: you assert that something happened, and the thing that was proved
+ * decides what it means.
+ *
+ * Nothing is written until the postings have been seen. `validateOnly` runs
+ * the same code path and writes nothing, so what is previewed is what posts.
+ */
+function Record({ fund }: { fund: Fund | undefined }) {
+  const rules = useRules(fund?.name);
+  const apply = useApplyEvent(fund?.name);
+  const [ruleId, setRuleId] = useState("");
+  const [eventId, setEventId] = useState("");
+  const [amount, setAmount] = useState("");
+  const [days, setDays] = useState("");
+  const [preview, setPreview] = useState<ApplyEventResponse | null>(null);
+
+  const rule = rules.data?.find((r) => r.ruleId === ruleId) ?? rules.data?.[0];
+  const needsDays = rule?.kind === "ACCRUAL";
+  const ready = !!rule && eventId.trim() !== "" && amount.trim() !== "" &&
+    (!needsDays || days.trim() !== "");
+
+  // Any edit invalidates a preview. A form that keeps showing the postings for
+  // an amount you have since changed is worse than one that shows none.
+  function edit<T>(set: (v: T) => void) {
+    return (v: T) => { setPreview(null); apply.reset(); set(v); };
+  }
+
+  function run(validateOnly: boolean) {
+    if (!rule) return;
+    apply.mutate(
+      { ruleId: rule.ruleId, eventId: eventId.trim(), amount, days, validateOnly },
+      {
+        onSuccess: (res) => {
+          if (res.validateOnly) { setPreview(res); return; }
+          // Posted. Clear the form rather than leave an id that would now
+          // conflict with itself.
+          setPreview(null);
+          setEventId("");
+          setAmount("");
+          setDays("");
+        },
+      },
+    );
+  }
+
+  return (
+    <section className="rec" aria-label="Record an event">
+      <div className="loghead">
+        <span>Record an event</span>
+        <span className="sortnote">
+          {fund?.configDigest
+            ? `under configuration ${fund.configDigest.slice(0, 7)}`
+            : ""}
+        </span>
+      </div>
+
+      {rules.data?.length === 0 ? (
+        <div className="empty">
+          No rules are in force on this fund, so there is nothing to record
+          against.
+        </div>
+      ) : null}
+
+      {rules.data && rules.data.length > 0 ? (
+        <>
+          <div className="form">
+            <label>
+              <span>Rule</span>
+              <select
+                value={rule?.ruleId ?? ""}
+                onChange={(e) => edit(setRuleId)(e.target.value)}
+              >
+                {rules.data.map((r) => (
+                  <option key={r.ruleId} value={r.ruleId}>
+                    {r.ruleId} — {r.kind.toLowerCase()}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Reference</span>
+              <input
+                value={eventId}
+                placeholder="t6"
+                onChange={(e) => edit(setEventId)(e.target.value)}
+              />
+            </label>
+            <label>
+              <span>{needsDays ? "Basis" : "Amount"}</span>
+              <input
+                className="num"
+                value={amount}
+                inputMode="decimal"
+                placeholder="250000.00"
+                onChange={(e) => edit(setAmount)(e.target.value)}
+              />
+            </label>
+            {needsDays ? (
+              <label>
+                <span>Days</span>
+                <input
+                  className="num"
+                  value={days}
+                  inputMode="numeric"
+                  placeholder="30"
+                  onChange={(e) => edit(setDays)(e.target.value)}
+                />
+              </label>
+            ) : null}
+          </div>
+
+          {rule ? (
+            <div className="ruleform">
+              {rule.description ? <b>{rule.description}</b> : null}
+              <div>posts to {rule.accounts.join(" and ")}</div>
+            </div>
+          ) : null}
+
+          {apply.isError ? (
+            <div className="empty err">{apply.error.message}</div>
+          ) : null}
+
+          {preview?.entry ? (
+            <div className="prev">
+              <div className="ph">
+                What this would post
+                <span>{preview.entry.configDigest.slice(0, 7)}</span>
+              </div>
+              {preview.entry.postings.map((p) => (
+                <div className="posting" key={p.account + p.amount}>
+                  <span>
+                    <div className="p1">{p.displayName}</div>
+                    <div className="p2 num">
+                      {p.amount.startsWith("-") ? "credit" : "debit"}
+                    </div>
+                  </span>
+                  <span className="num">{money(p.amount)}</span>
+                </div>
+              ))}
+              <div className="navdelta">
+                <span>Net asset value</span>
+                <span className="num">
+                  {money(preview.previousNetAssetValue)}
+                  <b aria-hidden="true"> → </b>
+                  {money(preview.netAssetValue)}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="formbar">
+            <span className="sortnote">
+              {preview
+                ? "Nothing has been written. Post to record it."
+                : "Preview runs the same code path and writes nothing."}
+            </span>
+            <button
+              className="act"
+              type="button"
+              disabled={!ready || apply.isPending}
+              onClick={() => run(true)}
+            >
+              {apply.isPending && !preview ? "checking…" : "Preview"}
+            </button>
+            <button
+              className="act primary"
+              type="button"
+              disabled={!ready || !preview || apply.isPending}
+              onClick={() => run(false)}
+            >
+              {apply.isPending && preview ? "posting…" : "Post"}
+            </button>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 export default function App() {
   const funds = useFunds();
   const [fundName, setFundName] = useState<string>();
@@ -559,6 +752,8 @@ export default function App() {
           </ul>
           </>
           )}
+
+          <Record fund={fund} />
 
           {/* The time axis. Every figure above is "now"; this is every NAV this
               fund has struck, and each one can be re-derived on demand. */}

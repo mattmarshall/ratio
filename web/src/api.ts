@@ -7,11 +7,18 @@
 // this fund" is a prefix match rather than a convention to remember.
 
 import {
+  useMutation,
+  useQueryClient,
   useQuery,
+  type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
 import type {
   Account,
+  ApplyEventRequest,
+  ApplyEventResponse,
+  ListRulesResponse,
+  Rule,
   Break,
   ChangeLogEntry,
   ConfigVersion,
@@ -33,8 +40,19 @@ import type {
 const BASE = "../v1";
 
 async function get<T>(path: string): Promise<T> {
+  return send<T>(path, undefined);
+}
+
+/// One request. `body` present means POST — the console API is GET everywhere
+/// except `:applyEvent`, so the method follows from whether there is a body
+/// rather than being passed around.
+async function send<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
-    headers: { accept: "application/json" },
+    method: body === undefined ? "GET" : "POST",
+    headers: body === undefined
+      ? { accept: "application/json" }
+      : { accept: "application/json", "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!r.ok) {
     // The BFF puts a sentence in `error`. Surfacing it beats "500" — the whole
@@ -202,5 +220,40 @@ export function usePostings(
     select: (r) => r.postings,
     enabled: !!account,
     ...LIVE,
+  });
+}
+
+export function useRules(
+  fund: string | undefined,
+): UseQueryResult<Rule[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "rules"],
+    queryFn: () => get<ListRulesResponse>(`/${fund}/rules`),
+    select: (r) => r.rules,
+    enabled: !!fund,
+    ...LIVE,
+  });
+}
+
+/**
+ * Record an event.
+ *
+ * The only mutation in the console. On a real commit every figure under this
+ * fund is stale — the NAV, the trial balance, the strikes, the change log — so
+ * the whole prefix is invalidated rather than a list of the queries someone
+ * remembered. A preview invalidates nothing, because it changed nothing.
+ */
+export function useApplyEvent(
+  fund: string | undefined,
+): UseMutationResult<ApplyEventResponse, Error, ApplyEventRequest> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (req: ApplyEventRequest) =>
+      send<ApplyEventResponse>(`/${fund}:applyEvent`, req),
+    onSuccess: (res) => {
+      if (res.validateOnly) return;
+      qc.invalidateQueries({ queryKey: [fund ?? ""] });
+      qc.invalidateQueries({ queryKey: ["funds"] });
+    },
   });
 }

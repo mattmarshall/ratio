@@ -181,7 +181,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             let c = ratio_console::Console::new(
                 root.as_deref().map(std::path::Path::new).unwrap_or(book),
             );
-            match ratio_console::transcode::serve(&c, m, p, &req.query) {
+            match ratio_console::transcode::serve(&c, m, p, &req.query, &req.body) {
                 Ok(j) => ("200 OK", "application/json", j),
                 // A bad resource name is the caller's mistake and a missing
                 // fund is a 404; both are told apart by what the console said
@@ -192,8 +192,13 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
                         || msg.contains("no break") || msg.contains("no change-log")
                     {
                         "404 Not Found"
-                    } else if msg.contains("read-only") {
+                    } else if msg.contains("read-only") || msg.contains("does not accept POST") {
                         "405 Method Not Allowed"
+                    } else if msg.contains("already in this journal") {
+                        // A repeated event id is a conflict, not a malformed
+                        // request — the caller sent something well-formed that
+                        // the journal already has.
+                        "409 Conflict"
                     } else {
                         "400 Bad Request"
                     };

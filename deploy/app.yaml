@@ -71,6 +71,12 @@ Resources:
         Variables:
           RATIO_BOOK: /tmp/book
           RATIO_FUNDS: /tmp/funds
+          # The console's one write path is unauthenticated here, on purpose:
+          # a demo nobody can touch demonstrates nothing. Everything about the
+          # request is structured and validated, and the books are restored on
+          # every cold start — but the journal itself is the part that does not
+          # heal on its own, so it has a ceiling.
+          RATIO_MAX_API_ENTRIES: "250"
           RATIO_BUILD: !Ref BuildSha
           AWS_LWA_PORT: "8080"
           AWS_LWA_READINESS_CHECK_PATH: /healthz

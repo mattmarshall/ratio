@@ -26,9 +26,15 @@ import re
 import sys
 from pathlib import Path
 
-# Messages the client does not consume. Request messages never cross the wire
-# as JSON here — the transcoder builds them from the URL — so neither mirror has
-# a reason to declare them.
+# Request messages the transcoder builds from the URL never cross the wire as
+# JSON, so neither mirror has a reason to declare them.
+#
+# ⚠ That stopped being true of ALL of them the moment a method declared
+# `body: "*"`. Such a request IS a wire type — it is what the browser POSTs and
+# what the Rust decodes — and skipping it left BOTH its mirrors unchecked, which
+# is exactly the hole this file exists to close. `body_requests()` below finds
+# them from the contract rather than from a list somebody has to remember to
+# update.
 SKIP = re.compile(r"(Request)$")
 
 
@@ -91,6 +97,48 @@ def json_impls(text: str) -> dict[str, set[str]]:
     return out
 
 
+def body_requests(text: str) -> dict[str, set[str]]:
+    """request message -> the fields carried in the BODY, in canonical JSON.
+
+    A field bound by the path template (`{parent=funds/*}`) is not in the body;
+    that is what `body: "*"` means. Read off the contract so a new method with a
+    body is covered the day it is declared.
+    """
+    out: dict[str, set[str]] = {}
+    for m in re.finditer(
+        r"rpc\s+\w+\((\w+)\)[^{]*\{(.*?)\n  \}", text, re.S
+    ):
+        req, block = m.group(1), m.group(2)
+        if "body:" not in block:
+            continue
+        template = re.search(r'(?:post|put|patch):\s*"([^"]+)"', block)
+        bound = set(re.findall(r"\{(\w+)=", template.group(1))) if template else set()
+        out[req] = bound
+    return out
+
+
+def rust_decoders(text: str) -> dict[str, set[str]]:
+    """request message -> the JSON keys its decoder reads.
+
+    By convention the decoder for `FooRequest` is `fn foo_request(`. Nothing
+    enforces that but this test, which fails loudly when it cannot find one.
+    """
+    out: dict[str, set[str]] = {}
+    for m in re.finditer(r"fn (\w+_request)\(", text):
+        i = text.index("{", m.end())
+        j, depth = i + 1, 1
+        while j < len(text) and depth:
+            depth += (text[j] == "{") - (text[j] == "}")
+            j += 1
+        # Single-word string literals only; prose and format strings have spaces.
+        out[m.group(1)] = set(re.findall(r'"(\w+)"', text[i:j]))
+    return out
+
+
+def snake(camel_name: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", camel_name).lower()
+
+
 def compare(what: str, proto: dict[str, set[str]], mirror: dict[str, set[str]],
             only: set[str] | None = None) -> list[str]:
     problems = []
@@ -123,6 +171,22 @@ def main() -> None:
     # level, and demanding an impl for each would be demanding dead code.
     problems = compare("types.ts", checked, ts)
     problems += compare("the JSON encoder", checked, rs, only=set(rs))
+
+    # Request messages carried in a body are wire types too — both mirrors.
+    bodies = body_requests(Path(sys.argv[1]).read_text())
+    decoders = rust_decoders(Path(sys.argv[3]).read_text())
+    for req, bound in sorted(bodies.items()):
+        fields = proto.get(req, set()) - {camel(b) for b in bound}
+        if not fields:
+            problems.append(f"{req}: declares a body but has no fields outside the path")
+            continue
+        problems += compare("types.ts", {req: fields}, ts)
+        fn = snake(req)
+        if fn not in decoders:
+            problems.append(f"{req}: carried in a body, and no `fn {fn}` decodes it")
+            continue
+        problems += compare("the request decoder", {req: fields}, {req: decoders[fn]})
+        print(f"  ok  {req} ({len(fields)} body fields, both mirrors)")
 
     for name in sorted(set(rs) & set(checked)):
         if not compare("x", {name: checked[name]}, {name: rs[name]}):

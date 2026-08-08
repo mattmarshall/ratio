@@ -33,7 +33,11 @@ TEMPLATE = re.compile(rb"/v1/[A-Za-z0-9{}=*/_.:-]*")
 
 def from_descriptor(path: Path) -> set[str]:
     blob = path.read_bytes()
-    found = {m.decode("ascii") for m in TEMPLATE.findall(blob)}
+    # ⛔ The scan is byte-based, and HttpRule's `body` field tag is 0x3a — an
+    # ASCII colon. On any rule that declares a body it lands on the end of the
+    # template, so `…:applyEvent` scanned as `…:applyEvent:`. A template never
+    # ends in a bare colon; a custom method always names one after it.
+    found = {m.decode("ascii").rstrip(":") for m in TEMPLATE.findall(blob)}
     # Other services in the same descriptor declare /v1 routes too; the console's
     # are the ones under funds/.
     return {t for t in found if "funds" in t}
