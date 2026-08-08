@@ -129,13 +129,17 @@ fn main() -> Result<()> {
     }
 }
 
-/// The configuration with its `[[rule]]` sections replaced and everything else
-/// left exactly as it was.
+/// The configuration with its `[[rule]]` and `[[template]]` sections replaced
+/// and everything else left exactly as it was.
 ///
 /// Round-tripping the whole document through `RuleSet` would drop every key
 /// that struct does not know about — which is how approving a rule came to
 /// delete the templates beside it.
-fn replace_rules(previous: &str, merged: &RuleSet) -> Result<String> {
+fn replace_sections(
+    previous: &str,
+    merged: &RuleSet,
+    templates: &ratio_ingest::TemplateSet,
+) -> Result<String> {
     let mut doc: toml::Table = if previous.trim().is_empty() {
         toml::Table::new()
     } else {
@@ -157,6 +161,20 @@ fn replace_rules(previous: &str, merged: &RuleSet) -> Result<String> {
             doc.remove("rule");
         }
     }
+
+    let only_templates: toml::Table = toml::to_string_pretty(templates)
+        .context("serializing the templates")?
+        .parse()
+        .context("the merged templates did not round-trip through TOML")?;
+    match only_templates.get("template") {
+        Some(t) => {
+            doc.insert("template".into(), t.clone());
+        }
+        None => {
+            doc.remove("template");
+        }
+    }
+
     toml::to_string_pretty(&doc).context("re-serializing the configuration")
 }
 
@@ -415,6 +433,7 @@ fn admit(book: PathBuf) -> Result<()> {
         b.entries()?.into_iter().map(|e| e.id).collect();
 
     let (mut n, mut skipped) = (0usize, Vec::new());
+    let mut reference_only = 0usize;
     for r in resolved.iter().filter(|r| r.is_admissible()) {
         if posted.contains(&r.fact.reference) {
             continue;
@@ -426,6 +445,15 @@ fn admit(book: PathBuf) -> Result<()> {
             ));
             continue;
         };
+        // ⚠ A template with no `posts` block is REFERENCE DATA — a price file,
+        // an FX file, a security master. It is recorded, resolved and citable,
+        // and it never touches the books. Reporting that as a refusal reads as
+        // a fault, which is how a demo comes to show red for the thing working
+        // exactly as designed.
+        if template.fact.posts.is_none() {
+            reference_only += 1;
+            continue;
+        }
         let (rule_id, amount) = match ratio_ingest::posting_for(template, &r.fact) {
             Ok(v) => v,
             Err(e) => {
@@ -473,6 +501,9 @@ fn admit(book: PathBuf) -> Result<()> {
 
     println!("configuration {}", digest.short());
     println!("  posted     {n}");
+    if reference_only > 0 {
+        println!("  recorded   {reference_only} (reference data — posts nothing by design)");
+    }
     if !skipped.is_empty() {
         println!("  refused    {}", skipped.len());
         for s in &skipped {
@@ -1132,7 +1163,30 @@ pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
     // `rule` key. Anything else in the configuration survives, including
     // sections added after this code was written — which is the property that
     // matters, because the next one will not be templates.
-    let toml = replace_rules(&previous_text, &merged)?;
+    // Templates merge the same way, by id. A proposal may carry rules,
+    // templates or both — the fence is the same either way, because both
+    // decide how a figure is derived.
+    let incoming_templates = ratio_ingest::TemplateSet::from_toml(&proposed)?;
+    let mut templates = ratio_ingest::TemplateSet::from_toml(&previous_text)?;
+    let mut templates_replaced = 0usize;
+    for t in incoming_templates.templates {
+        let problems = t.check();
+        if !problems.is_empty() {
+            for p in &problems {
+                println!("  x {}: {p}", t.id);
+            }
+            bail!("template {:?} does not check and cannot be approved", t.id);
+        }
+        match templates.templates.iter_mut().find(|x| x.id == t.id) {
+            Some(existing) => {
+                *existing = t;
+                templates_replaced += 1;
+            }
+            None => templates.templates.push(t),
+        }
+    }
+
+    let toml = replace_sections(&previous_text, &merged, &templates)?;
     let digest = b.put(toml.as_bytes())?;
     b.set_active(&digest)?;
 
@@ -1158,8 +1212,10 @@ pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
     std::fs::write(&log, prior).context("recording the approval")?;
 
     let mut out = format!(
-        "approved {id}\n  {} rule(s) now active ({replaced} replaced)\n  config {}\n",
+        "approved {id}\n  {} rule(s) now active ({replaced} replaced)\n  \
+         {} template(s) now active ({templates_replaced} replaced)\n  config {}\n",
         merged.rules.len(),
+        templates.templates.len(),
         digest.short()
     );
     for rule in &merged.rules {

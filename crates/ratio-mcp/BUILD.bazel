@@ -14,6 +14,7 @@ rust_library(
         "//crates/ratio-chart",
         "//crates/ratio-kernel",
         "//crates/ratio-rules",
+        "//crates/ratio-ingest",
         "//crates/ratio-store",
         "@crates//:anyhow",
         "@crates//:serde",

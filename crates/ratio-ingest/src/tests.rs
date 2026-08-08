@@ -466,3 +466,79 @@ fn a_posts_declaration_that_names_a_field_the_fact_never_reads_is_caught() {
         t.check(),
     );
 }
+
+#[test]
+fn reference_data_declares_no_posts_and_that_is_a_mode_not_a_gap() {
+    // A price file, an FX file, a security master: recorded, resolved and
+    // citable, and it never touches the books. The absence of a `posts` block
+    // is the declaration, so `posting_for` refuses — and the caller must read
+    // that as "reference data", not as a fault.
+    let toml = r#"
+[[template]]
+id = "vendor_eod_prices"
+reads = "csv"
+
+  [[template.entity]]
+  name = "instrument"
+  kind = "instrument"
+  absent = "pend"
+  by = [
+    { attribute = "sedol", column = "SEDOL" },
+    { attribute = "ticker", column = "Ticker", within = { attribute = "exchange", column = "Exchange" } },
+  ]
+
+  [template.fact]
+  kind = "price"
+  reference = "SEDOL"
+  entities = { instrument = "instrument" }
+
+  [[template.fact.value]]
+  field = "asOf"
+  as = "date"
+  column = "ValuationDate"
+  format = "DD/MM/YYYY"
+
+  [[template.fact.value]]
+  field = "price"
+  as = "money"
+  column = "Price"
+  currency = "Currency"
+"#;
+    let set = TemplateSet::from_toml(toml).unwrap();
+    let t = set.template("vendor_eod_prices").unwrap();
+    assert!(t.check().is_empty(), "{:?}", t.check());
+    assert!(t.fact.posts.is_none(), "reference data posts nothing");
+
+    let sample = "\
+ValuationDate,SEDOL,Ticker,Exchange,Price,Currency
+26/02/2026,BMTS0Z3,VTI,ARCX,251.14,USD
+26/02/2026,B00FLM1,BND,BATS,72.88,USD
+";
+    let rows = extract_csv(sample).unwrap();
+    let p = project(t, &delivery(), &rows, "cfg");
+    assert_eq!(p.facts.len(), 2);
+    assert!(p.rejected.is_empty());
+
+    // ⚠ A EUROPEAN DATE. 26/02 is the 26th of February; read as MM/DD it is
+    // not a date at all, and 03/04 would have been silently the wrong month.
+    assert_eq!(
+        p.facts[0].values.get("asOf").and_then(Value::as_text),
+        Some("2026-02-26"),
+    );
+
+    // The ladder falls through SEDOL — which the master does not carry — to
+    // ticker within exchange, which it does. That is why identity is a ladder
+    // and not a key.
+    let master = vec![instrument(
+        "inst-vti",
+        &[("ticker", "VTI"), ("exchange", "ARCX")],
+    )];
+    let r = resolve_all(&p.facts, &master);
+    assert_eq!(r[0].entity("instrument"), Some("inst-vti"));
+    assert!(!r[1].is_admissible(), "the instrument nobody knows pends");
+
+    assert!(
+        posting_for(t, &p.facts[0]).is_err(),
+        "reference data has nothing to post as",
+    );
+}

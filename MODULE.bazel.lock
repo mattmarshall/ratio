@@ -879,7 +879,7 @@
         "bzlTransitiveDigest": "QVeMjnyhLnvezEGE1dsP66SeW7LYNISB0YbxfF17Ubc=",
         "usagesDigest": "HeqFMy04Umi392XqEKS9mHU8oxhYH6AvuXXkO6wMVSo=",
         "recordedFileInputs": {
-          "@@//Cargo.lock": "f5456240905a799e294adb0a83f2ccb099bab2c9c12a6cb616559ba067545b8d",
+          "@@//Cargo.lock": "c374cd280353d2711dd6c2cb5617b4952940d37791a51d5612442107d4a2143c",
           "@@//Cargo.toml": "88f5c2eca712e7cc8dbdb866a2eb897c0a2caf532aea956adafb55e87b60e5b4",
           "@@//crates/ratio-agent/Cargo.toml": "f00f3fe0da7157863b87f5763d8e7998f65c2eb9e60ff5407765fb3bc38ec69d",
           "@@//crates/ratio-api/Cargo.toml": "d8bcc1b1ce44df69671f81e45a144dbc62d8ef34dfc341f3f3b2f831a0a1c060",
@@ -888,7 +888,7 @@
           "@@//crates/ratio-console/Cargo.toml": "399fa9610db4ce87a2811939102995adf349142b8c237fb69267d059d326a02e",
           "@@//crates/ratio-ingest/Cargo.toml": "bb1a3c9c7c77e31726bf3b6ff460f4be8b9b4131aa0fc581cdb1398de91de00f",
           "@@//crates/ratio-kernel/Cargo.toml": "500e9f1ec233d0ee033719144bb8df5bf08624227c61202686a81dd47da2ff2b",
-          "@@//crates/ratio-mcp/Cargo.toml": "626ab3c8b9174f6cb35dd53b593f3f023ad6c1b9bf05ddfa02e9752014b1ff6a",
+          "@@//crates/ratio-mcp/Cargo.toml": "cd31ae5bf6e1d4815088455d4c842d304b3aa4443f017ac8bf03c9e432b46c14",
           "@@//crates/ratio-nav/Cargo.toml": "a1b39cc46ddb94b35b16e3a85e925a2088930e822e4d9ebdc39947dfec1d712d",
           "@@//crates/ratio-recon/Cargo.toml": "e7081bea4e9f9154946c2ead32ee375a0ac59c8b499d4c85c072c2bebd193ae8",
           "@@//crates/ratio-rules/Cargo.toml": "440c1b5951ebb01e914e04d22593529274904b41801479cf5e84948e90cf73fc",

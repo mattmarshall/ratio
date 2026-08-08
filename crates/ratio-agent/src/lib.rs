@@ -319,8 +319,11 @@ mod tests {
             .iter()
             .map(|t| t["name"].as_str().unwrap().to_string())
             .collect();
-        assert_eq!(tools.len(), 6, "{tools:?}");
+        assert_eq!(tools.len(), 8, "{tools:?}");
         assert!(tools.contains(&"propose_rule".to_string()));
+        // Drafting a MAPPING is the same shape as drafting a rule, and sits
+        // behind the same fence: it writes a proposal a person approves.
+        assert!(tools.contains(&"propose_template".to_string()));
         // The fence, at the surface the model actually sees. If `approve_rule`
         // were ever added to the MCP list, this demo would hand it to a model
         // — so the assertion belongs here as well as in ratio-mcp.

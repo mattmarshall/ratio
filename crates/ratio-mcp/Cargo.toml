@@ -10,6 +10,7 @@ path = "src/lib.rs"
 ratio-chart = { path = "../ratio-chart" }
 ratio-kernel = { path = "../ratio-kernel" }
 ratio-rules = { path = "../ratio-rules" }
+ratio-ingest = { path = "../ratio-ingest" }
 ratio-store = { path = "../ratio-store" }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }

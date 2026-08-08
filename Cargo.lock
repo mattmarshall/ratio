@@ -1549,6 +1549,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "ratio-chart",
+ "ratio-ingest",
  "ratio-kernel",
  "ratio-rules",
  "ratio-store",

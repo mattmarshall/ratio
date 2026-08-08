@@ -168,6 +168,65 @@ fn tools_list() -> Value {
             }
         },
         {
+            "name": "propose_template",
+            "description":
+                "Draft a MAPPING TEMPLATE for a counterparty's file and see what it would \
+                 produce. Takes the template as TOML and a SAMPLE of the file (its header \
+                 and a few rows). Runs the template against the sample and reports the \
+                 facts it would read, what each would resolve to in the master, and what \
+                 would pend — then saves it as a proposal. THIS DOES NOT MAKE THE TEMPLATE \
+                 ACTIVE: a person approves it at a terminal, and what they approve is what \
+                 you showed them it does. Use `list_accounts` to see the chart and \
+                 `list_entities` to see what the master can already identify.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "toml": {"type": "string", "description":
+                        "The template, as TOML. Shape:\n\n\
+                         [[template]]\n\
+                         id = \"<counterparty>_<what>\"\n\
+                         reads = \"csv\"\n\
+                         [[template.entity]]\n\
+                         name = \"security\"          # your name for it in this file\n\
+                         kind = \"instrument\"        # instrument | counterparty\n\
+                         absent = \"pend\"            # pend | reject\n\
+                         by = [                     # the identity ladder, best first\n\
+                           { attribute = \"isin\", column = \"ISIN\" },\n\
+                           { attribute = \"ticker\", column = \"Symbol\", within = { attribute = \"exchange\", column = \"Exch\" } },\n\
+                         ]\n\
+                         [template.fact]\n\
+                         kind = \"trade\"\n\
+                         reference = \"TradeRef\"     # the column holding the row's own id\n\
+                         entities = { security = \"security\" }\n\
+                         [[template.fact.value]]\n\
+                         field = \"price\"\n\
+                         as = \"money\"               # money | decimal | text | date | enum\n\
+                         column = \"Price\"\n\
+                         currency = \"Ccy\"           # money only: the column holding it\n\n\
+                         `as = \"date\"` also needs `format` (YYYY-MM-DD | MM/DD/YYYY | \
+                         DD/MM/YYYY). `as = \"enum\"` also needs `map`, e.g. \
+                         map = { B = \"buy\", S = \"sell\" }.\n\n\
+                         Add [template.fact.posts] ONLY if this file should reach the \
+                         journal: by = \"<field>\", amount = \"consideration\" (quantity x \
+                         price) or a money field name, rules = { <value> = \"<rule id>\" }. \
+                         Reference data — prices, FX, a security master — has no posts \
+                         block and is recorded without posting."},
+                    "sample": {"type": "string", "description":
+                        "The file's header row and a few data rows, verbatim."}
+                },
+                "required": ["toml", "sample"]
+            }
+        },
+        {
+            "name": "list_entities",
+            "description":
+                "The master: the instruments and counterparties this book can already \
+                 identify, and which attributes identify each. Read this before drafting \
+                 an identity ladder — a ladder that matches on an attribute the master \
+                 does not carry will pend every row.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
             "name": "check_rule",
             "description":
                 "Check a rule set against the chart without proposing it. Returns every \
@@ -252,6 +311,8 @@ pub fn dispatch(book: &std::path::Path, name: &str, args: &Value) -> Result<Stri
     let text = match name {
         "list_accounts" => tool_list_accounts(book)?,
         "propose_rule" => tool_propose_rule(book, &args)?,
+        "propose_template" => tool_propose_template(book, &args)?,
+        "list_entities" => tool_list_entities(book)?,
         "check_rule" => tool_check_rule(book, &args)?,
         "post_events" => tool_post_events(book, &args)?,
         "trial_balance" => tool_trial_balance(book)?,
@@ -265,6 +326,126 @@ pub fn dispatch(book: &std::path::Path, name: &str, args: &Value) -> Result<Stri
         other => anyhow::bail!("no tool named {other:?}"),
     };
     Ok(text)
+}
+
+/// The master, so a model can see what a ladder can match on.
+fn tool_list_entities(book: &std::path::Path) -> Result<String> {
+    use ratio_store::Plane;
+    let b = FileBook::open(book)?;
+    let master = ratio_ingest::current(&b.records::<ratio_ingest::Entity>(Plane::Entities)?);
+    if master.is_empty() {
+        return Ok("The master is empty. Every identity ladder will pend until \
+                   somebody adds instruments and counterparties."
+            .into());
+    }
+    let mut out = String::from("id                kind          identified by\n");
+    for e in &master {
+        let by: Vec<String> =
+            e.attributes.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        out.push_str(&format!(
+            "{:<18}{:<14}{}\n",
+            e.id,
+            e.kind.as_str(),
+            by.join("  ")
+        ));
+    }
+    out.push_str(
+        "\nA ladder matches on these attribute names. One that names something \
+         else will pend every row.",
+    );
+    Ok(out)
+}
+
+/// Draft a template and DRY-RUN it against a sample.
+///
+/// ⛔ The dry run is the point. A person approving a mapping specification has
+/// to simulate it in their head; a person approving one they have SEEN RUN is
+/// reading an outcome. Same fence, better-informed approval.
+fn tool_propose_template(book: &std::path::Path, args: &Value) -> Result<String> {
+    use ratio_store::Plane;
+    let toml = args
+        .get("toml")
+        .and_then(Value::as_str)
+        .context("propose_template needs `toml`")?;
+    let sample = args
+        .get("sample")
+        .and_then(Value::as_str)
+        .context("propose_template needs `sample` — the file's header and a few rows")?;
+
+    let set = ratio_ingest::TemplateSet::from_toml(toml)?;
+    let template = set
+        .templates
+        .first()
+        .context("no [[template]] in that TOML")?;
+
+    let mut out = String::new();
+    let problems = template.check();
+    if !problems.is_empty() {
+        out.push_str("This template does not check:\n");
+        for p in &problems {
+            out.push_str(&format!("  x {p}\n"));
+        }
+        out.push_str("\nNothing was saved. Fix these and propose it again.\n");
+        return Ok(out);
+    }
+
+    let rows = match template.reads {
+        ratio_ingest::Reader::Csv => ratio_ingest::extract_csv(sample)?,
+    };
+    let delivery = ratio_ingest::Delivery {
+        digest: "0".repeat(64),
+        origin: "sample".into(),
+        received: 0,
+        bytes: sample.len() as i64,
+    };
+    let projection = ratio_ingest::project(template, &delivery, &rows, "draft");
+
+    let b = FileBook::open(book)?;
+    let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+    let resolved = ratio_ingest::resolve_all(&projection.facts, &master);
+
+    out.push_str(&format!(
+        "{}\n\nAgainst the sample: {} row(s) read, {} fact(s), {} refused.\n",
+        template.render(),
+        rows.len(),
+        projection.facts.len(),
+        projection.rejected.len(),
+    ));
+    for r in &projection.rejected {
+        out.push_str(&format!("  refused  row {}: {}\n", r.row, r.reason));
+    }
+    for r in &resolved {
+        if r.is_admissible() {
+            let to: Vec<String> = r
+                .entities
+                .keys()
+                .filter_map(|k| r.entity(k).map(|e| format!("{k}={e}")))
+                .collect();
+            out.push_str(&format!("  ready    {} -> {}\n", r.fact.reference, to.join(" ")));
+        } else {
+            out.push_str(&format!(
+                "  pending  {} — {}\n",
+                r.fact.reference,
+                r.blocker().unwrap_or_default()
+            ));
+        }
+    }
+
+    let id = format!("template-{}", template.id);
+    let dir = book.join("proposals");
+    std::fs::create_dir_all(&dir).context("creating the proposals directory")?;
+    std::fs::write(dir.join(format!("{id}.toml")), toml)
+        .with_context(|| format!("writing proposal {id}"))?;
+
+    out.push_str(&format!(
+        "\nSaved as proposal `{id}`. THIS IS NOT ACTIVE. A person approves it by \
+         running `ratio approve {id}` at a terminal — and what they approve is \
+         exactly what you have shown them it does.\n\n\
+         A pending row is not a fault in the template: it means the master does \
+         not know that instrument yet, and the fact will clear on its own when \
+         somebody adds it.\n",
+    ));
+    Ok(out)
 }
 
 fn tool_list_accounts(book: &std::path::Path) -> Result<String> {
