@@ -331,3 +331,77 @@ fn a_template_renders_the_way_it_reads() {
         assert!(r.contains(expected), "missing {expected:?} in:\n{r}");
     }
 }
+
+#[test]
+fn correcting_an_entity_supersedes_it_rather_than_duplicating_it() {
+    // ⛔ FOUND BY `//tla:master_duplicates_check`, as a violation of
+    // `ResolutionUsesCurrentRecords`.
+    //
+    // The entity log is append-only, so correcting an instrument appends a new
+    // record beside the old one. Matching every record would mean the
+    // corrected-away identifier keeps matching forever — and both records
+    // match, so the reference goes AMBIGUOUS and every fact that resolved
+    // through it blocks. A correction that does not take effect is worse than
+    // no correction, because it looks like one.
+    let facts = facts();
+    let log = vec![
+        broker("cp-gs", "GSCO"),
+        // Typed wrong, then corrected. Same id, later record.
+        instrument("inst-aapl", &[("isin", "US0378331OO5")]),
+        instrument("inst-aapl", &[("isin", "US0378331005")]),
+        instrument("inst-voo", &[("ticker", "VOO"), ("exchange", "ARCX")]),
+    ];
+
+    assert_eq!(current(&log).len(), 3, "four records, three entities");
+
+    let r = &resolve_all(&facts, &log)[0];
+    assert_eq!(
+        r.entity("security"),
+        Some("inst-aapl"),
+        "the corrected record resolves, and the superseded one does not make it ambiguous",
+    );
+
+    // …and the identifier that was corrected AWAY no longer matches anything.
+    let wrong = Entity {
+        id: "probe".into(),
+        kind: EntityKind::Instrument,
+        display_name: "probe".into(),
+        attributes: [("isin".to_string(), "US0378331OO5".to_string())]
+            .into_iter()
+            .collect(),
+    };
+    assert!(
+        !current(&log).iter().any(|e| e.attributes == wrong.attributes),
+        "the corrected-away identifier is gone from the current master",
+    );
+}
+
+#[test]
+fn a_later_duplicate_makes_an_unposted_fact_ambiguous_but_not_a_posted_one() {
+    // ⛔ FOUND BY `//tla:control_plane_check`. The console filters posted facts
+    // out of the pending queue; this pins the half of that behavior which
+    // lives in the resolution layer — a duplicate under a DIFFERENT id really
+    // does make the reference ambiguous, which is correct and is exactly why
+    // the console must not re-ask the question for a fact already posted.
+    let facts = facts();
+    let master = vec![
+        broker("cp-gs", "GSCO"),
+        instrument("inst-aapl", &[("isin", "US0378331005")]),
+        instrument("inst-voo", &[("ticker", "VOO"), ("exchange", "ARCX")]),
+    ];
+    assert!(resolve_all(&facts, &master)[0].is_admissible());
+
+    // A different instrument arrives carrying the same identifier.
+    let mut wider = master.clone();
+    wider.push(instrument("inst-aapl-other", &[("isin", "US0378331005")]));
+    let after = &resolve_all(&facts, &wider)[0];
+    assert!(!after.is_admissible(), "two ids, one identifier: ambiguous");
+
+    // ⭐ And it is ambiguous, NOT absent — which is what
+    // `Ratio.Ingest.resolved_never_becomes_absent` proves and what makes the
+    // remedy "narrow the master", never "add another record".
+    assert!(matches!(
+        after.entities.get("security"),
+        Some(Resolution::Ambiguous { .. })
+    ));
+}

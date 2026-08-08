@@ -744,7 +744,7 @@ export default function App() {
             <Stat
               k="Pending"
               v={fund ? count(fund.pendingFactCount) : "—"}
-              sub="facts unresolved"
+              sub={fund?.pendingFactCount === "1" ? "fact unresolved" : "facts unresolved"}
               tone={fund && fund.pendingFactCount !== "0" ? "at-risk" : "tied"}
             />
             <Stat

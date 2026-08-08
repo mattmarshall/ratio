@@ -294,9 +294,32 @@ fn render_rung(rung: &[Claim]) -> String {
         .join(" within ")
 }
 
+/// The master as it stands now: the LATEST record for each id.
+///
+/// ⛔ The entity log is append-only, so correcting an instrument appends a new
+/// record beside the old one. If matching looked at every record, the corrected
+/// -away identifier would keep matching forever — and a correction that does
+/// not take effect is worse than no correction, because it looks like one.
+/// Worse still, the old and new records both match, so the reference becomes
+/// AMBIGUOUS and every fact that resolved through it blocks.
+///
+/// Append-only on disk, superseding in meaning: the latest record for an id is
+/// the record. `//tla:master_duplicates_check` turns this off and watches
+/// `ResolutionUsesCurrentRecords` go red.
+pub fn current(master: &[Entity]) -> Vec<Entity> {
+    let mut latest: BTreeMap<&str, &Entity> = BTreeMap::new();
+    for e in master {
+        latest.insert(e.id.as_str(), e);
+    }
+    latest.into_values().cloned().collect()
+}
+
 /// Resolve every fact against the master. A FOLD, not a queue drain — this is
 /// what makes a pending fact clear without being touched.
+///
+/// The master is collapsed to its current records first; see `current`.
 pub fn resolve_all(facts: &[Fact], master: &[Entity]) -> Vec<Resolved> {
+    let master = &current(master);
     facts
         .iter()
         .map(|f| Resolved {

@@ -465,6 +465,8 @@
     "https://registry.tbzl.dev/modules/rules_swift/2.1.1/MODULE.bazel": "not found",
     "https://registry.tbzl.dev/modules/rules_tectonic/0.2.0/MODULE.bazel": "1a72f1513e59e5f7c3c72b31c0aa1247bf60616f66c5e0027afff4bd22528c00",
     "https://registry.tbzl.dev/modules/rules_tectonic/0.2.0/source.json": "86f75b4a3471e51c19df0b8c5ed52caed60f78572ba73ce8c600c31899d4becc",
+    "https://registry.tbzl.dev/modules/rules_tla/0.1.1/MODULE.bazel": "bb06d20a03e561f61cc7e0216ef3abfc6e50d9f38361ef0f2a3bb6709537b0ec",
+    "https://registry.tbzl.dev/modules/rules_tla/0.1.1/source.json": "07f55b8b56f16f5d8ed5b88836dd80915b50ed06b809701bee1148f102d2a9ef",
     "https://registry.tbzl.dev/modules/stardoc/0.5.0/MODULE.bazel": "not found",
     "https://registry.tbzl.dev/modules/stardoc/0.5.1/MODULE.bazel": "not found",
     "https://registry.tbzl.dev/modules/stardoc/0.5.3/MODULE.bazel": "not found",
@@ -4714,6 +4716,34 @@
             "rules_tectonic+",
             "rules_github",
             "rules_github+"
+          ]
+        ]
+      }
+    },
+    "@@rules_tla+//tla:extensions.bzl%tla2tools": {
+      "general": {
+        "bzlTransitiveDigest": "sH1oPpjSdL56S8LHgPih0RNlosIuaDN2yJlUTyNUiZ4=",
+        "usagesDigest": "Jlj54G2jU0M2lDlITNmGjU1xS8b+CLpNWYYtkkC3lSY=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "tla2tools": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
+            "attributes": {
+              "urls": [
+                "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+              ],
+              "sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+              "downloaded_file_path": "tla2tools.jar"
+            }
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "rules_tla+",
+            "bazel_tools",
+            "bazel_tools"
           ]
         ]
       }

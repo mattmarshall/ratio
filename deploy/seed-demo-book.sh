@@ -211,9 +211,13 @@ CSV
 
 # ── the data plane, with a gap in the master on purpose ───────────────────
 #
-# Three trades arrive from the prime broker. The master knows the broker and
-# two of the three instruments, so the third PENDS — which is the state worth
-# demonstrating, because it is the one every real integration lives in.
+# Three trades arrive from the prime broker.
+#
+# ⚠ Whether the third instrument is in the master is the CALLER'S choice, and
+# it has to be, because a pending fact BLOCKS the NAV. Giving every fund the
+# gap made the reconciled fund blocked too — the smoke test caught it with "no
+# fund in state STRUCK", which is the second time a seeder here has quietly
+# produced a fund whose state contradicted the story it was seeded to tell.
 "$RATIO" entity add --kind counterparty --id cp-prime --name "Prime Brokerage" \
   --attr code=PRME --book "$OUT" >/dev/null
 "$RATIO" entity add --kind instrument --id inst-vti --name "Vanguard Total Stock Market ETF" \
@@ -227,6 +231,14 @@ PB-0041,US9229087690,VTI,ARCX,PRME,B,1000,250.00,USD,02/24/2026
 PB-0042,,VOO,ARCX,PRME,B,400,450.00,USD,02/25/2026
 PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
 CSV
+# The instrument the third trade needs. Present unless the caller wants the
+# pending state on this book.
+if [ -z "${LEAVE_ONE_PENDING:-}" ]; then
+  "$RATIO" entity add --kind instrument --id inst-vwrl \
+    --name "Vanguard FTSE All-World UCITS ETF" \
+    --attr isin=IE00B3RBWM25 --attr ticker=VWRL --attr exchange=XAMS \
+    --book "$OUT" >/dev/null
+fi
 "$RATIO" ingest prime-trades.csv --template prime_equity_trades --book "$OUT" >/dev/null
 
 # A proposal nobody has approved, so the rules screen shows both columns — the

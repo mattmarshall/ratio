@@ -35,7 +35,10 @@ Realized gain on investments,-15000.00
 CSV
 
 # ── 1. Blocked: a 2,000.00 break nobody has explained ─────────────────────
-"$HERE/seed-demo-book.sh" "$RATIO" "$OUT/harbourline-global-value" >/dev/null
+# This one carries the data-plane gap as well as the break: an instrument the
+# master does not know, so a fact pends and the NAV is blocked for two
+# independent reasons — which is what a real morning looks like.
+LEAVE_ONE_PENDING=1 "$HERE/seed-demo-book.sh" "$RATIO" "$OUT/harbourline-global-value" >/dev/null
 "$RATIO" strike --book "$OUT/harbourline-global-value" >/dev/null
 
 # ── 2. Struck: the same book, reconciled against figures that agree ────────

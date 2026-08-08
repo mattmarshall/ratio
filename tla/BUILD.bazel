@@ -1,0 +1,46 @@
+load("@rules_tla//tla:defs.bzl", "tla_check", "tla_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# ⛔ The properties Lean does not reach.
+#
+# `Ratio.Ingest` proves what resolution and parsing COMPUTE. It cannot say
+# what a sequence of operations does to shared state — and that is where the
+# bug that shipped lived: approving a rule deleted the templates beside it,
+# after which every Lean theorem held vacuously over an empty set of facts.
+tla_library(
+    name = "control_plane",
+    srcs = ["ControlPlane.tla"],
+)
+
+# The system as it is now. Both invariants must hold.
+tla_check(
+    name = "control_plane_check",
+    size = "medium",
+    config = "MCControlPlane.cfg",
+    module = "MCControlPlane.tla",
+    deps = [":control_plane"],
+)
+
+# ─── failure-path probes ──────────────────────────────────────────────────
+#
+# Each of these MUST go red. Tagged manual so `bazel test //...` stays green;
+# run them explicitly. A check that cannot fail is not a check, and this spec
+# exists because two things that could not fail had already been believed.
+tla_check(
+    name = "approve_drops_sections_check",
+    size = "medium",
+    config = "ApproveDropsSections.cfg",
+    module = "ApproveDropsSections.tla",
+    tags = ["manual"],
+    deps = [":control_plane"],
+)
+
+tla_check(
+    name = "master_duplicates_check",
+    size = "medium",
+    config = "MasterDuplicates.cfg",
+    module = "MasterDuplicates.tla",
+    tags = ["manual"],
+    deps = [":control_plane"],
+)

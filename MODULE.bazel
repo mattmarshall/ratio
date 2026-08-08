@@ -19,6 +19,11 @@ bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "rules_tectonic", version = "0.2.0")
 bazel_dep(name = "rules_puml", version = "0.0.2")
 
+# TLC, for the properties Lean does not reach: what a SEQUENCE of operations
+# can do to shared state. Hermetic — the tools jar is pinned and the JDK
+# comes from Bazel's own java runtime toolchain.
+bazel_dep(name = "rules_tla", version = "0.1.1")
+
 # Phase 2: the gRPC API contract + AIP lint. protobuf is a direct dep so the
 # `@protobuf//...:prefer_prebuilt_protoc` flag (in .bazelrc) resolves.
 bazel_dep(name = "rules_aip", version = "0.2.1")

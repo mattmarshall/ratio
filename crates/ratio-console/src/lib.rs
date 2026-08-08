@@ -484,9 +484,26 @@ impl Console {
             return Ok(Vec::new());
         }
         let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+
+        // ⛔ A FACT ALREADY IN THE JOURNAL IS NOT PENDING.
+        //
+        // Its entry was written under the resolution in force at the time and
+        // is immutable; re-resolving it afterwards asks a question that has
+        // already been answered. Without this, a duplicate identifier arriving
+        // weeks later would make a posted fact ambiguous again and re-block a
+        // NAV that was already struck.
+        //
+        // Found by `//tla:control_plane_check`, which produced the sequence in
+        // four steps. `resolved_never_becomes_absent` in Lean is still true and
+        // still the right theorem — it allows resolved -> AMBIGUOUS by design.
+        // This is the system-level consequence of that allowance, and no
+        // theorem about resolution could have shown it.
+        let posted: std::collections::BTreeSet<String> =
+            b.entries()?.into_iter().map(|e| e.id).collect();
+
         Ok(ratio_ingest::resolve_all(&facts, &master)
             .into_iter()
-            .filter(|r| !r.is_admissible())
+            .filter(|r| !r.is_admissible() && !posted.contains(&r.fact.reference))
             .map(|r| {
                 // Absent and ambiguous take different remedies, so they are
                 // reported apart rather than as one "unresolved".
