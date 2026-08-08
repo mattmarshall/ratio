@@ -177,13 +177,26 @@ jobs:
             esac
           }
 
+          deny() {
+            case "$(curl -sf "$3" || echo FETCH-FAILED)" in
+              *"$2"*) echo "::error::$1: found '$2' and should not have"; exit 1 ;;
+            esac
+          }
+
           # The plain screens still render.
           want "the balance screen" "Trial balance" "$URL"
 
           # And they render the demo BOOK, not an empty one. An image whose
           # book failed to ship starts cleanly, answers healthz, and serves a
           # blank ledger — every signal green. That shipped twice.
-          want "the book"      '"entries":7'          "${URL}balance.json"
+          # ⚠ NOT an exact entry count. This asserted '"entries":7' until
+          # seeding learned to admit facts and mark positions, which changed it
+          # correctly and turned the deploy red. A check that has to be edited
+          # every time the demo gains a step gets edited without being read.
+          # What it is FOR is telling a shipped book from a blank one, so it
+          # says that instead.
+          deny "an empty book" '"entries":0'          "${URL}balance.json"
+          want "a book that ties" '"difference":"0.00"' "${URL}balance.json"
           want "the proposal"  '"pending":[{'         "${URL}rules.json"
           # 2000.00 is deploy/seed-demo-book.sh's number.
           want "the break"     '"difference":"2000.00"' "${URL}breaks.json"
@@ -191,6 +204,12 @@ jobs:
           # The console and its API.
           want "the console shell" 'id="root"'        "${URL}app"
           want "the fund list"     '"funds":[{'       "${URL}v1/funds"
+          # ⛔ A POSITION. The seeder shipped facts that had never been admitted
+          # once, so every row of the positions screen read "Not attributed" and
+          # marking had nothing to mark — with every other signal green. This is
+          # the assertion that would have caught it.
+          want "a held position" '"quantity":"1000"' \
+            "${URL}v1/funds/northstar-multi-strategy/positions"
           # Three funds in three states, and a NAV that re-derives. The replay
           # is the product's central claim; a demo that ships it broken ships
           # nothing.
