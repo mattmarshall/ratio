@@ -309,6 +309,15 @@ P-0002,26/02/2026,,VOO,ARCX,441.75,USD
 CSV
 "$RATIO" ingest eod-prices.csv --template vendor_eod_prices --book "$OUT" >/dev/null
 
+# Post what resolves, then value it.
+#
+# ⚠ Without these the demo has facts and no POSITIONS — every row on the
+# positions screen reads "Not attributed", and marking has nothing to mark.
+# Reading a file and never admitting it is a real mode (a shadow run), but it
+# is not the one a first look should land on.
+"$RATIO" admit --book "$OUT" >/dev/null
+"$RATIO" mark --as-of 2026-02-26 --book "$OUT" >/dev/null
+
 # A proposal nobody has approved, so the rules screen shows both columns — the
 # gap between them is what the demo is about.
 mkdir -p "$OUT/proposals"
@@ -330,8 +339,16 @@ TOML
 # Assert the book is in the state the demo needs, rather than trusting that it
 # is. A demo image that boots to an empty screen is found by a customer.
 BAL="$("$RATIO" balance --book "$OUT")"
-grep -q "7 entrie(s)" <<<"$BAL" || { echo "expected 7 entries:"; echo "$BAL"; exit 1; }
+# ⚠ NOT an exact entry count. It used to assert "7 entrie(s)", and admitting
+# facts and marking positions changed it — correctly. An assertion that has to
+# be edited every time the demo gains a step is one that will eventually be
+# edited without being read. These are the properties that actually matter.
 grep -q "^Difference  *0.00  *0.00" <<<"$BAL" || { echo "book does not tie:"; echo "$BAL"; exit 1; }
+ENTRIES="$(grep -c . "$OUT/journal.jsonl")"
+[ "$ENTRIES" -ge 7 ] || { echo "expected at least 7 entries, got $ENTRIES"; exit 1; }
+# A position, so the positions screen is not five rows of "Not attributed".
+grep -q '"instrument"' "$OUT/journal.jsonl" \
+  || { echo "no posting carries an instrument, so there are no positions"; exit 1; }
 [ -n "$(ls -A "$OUT/reports" 2>/dev/null)" ] || { echo "no break report stored"; exit 1; }
 [ -f "$OUT/proposals/performance_fee.toml" ] || { echo "no pending proposal"; exit 1; }
 
