@@ -22,6 +22,22 @@ tla_check(
     deps = [":control_plane"],
 )
 
+# Marking to market. `Ratio.Valuation` proves what ONE mark does; this is what
+# a SEQUENCE of them does to the carrying value, which marking, trading and
+# price corrections all write.
+tla_library(
+    name = "valuation",
+    srcs = ["Valuation.tla"],
+)
+
+tla_check(
+    name = "valuation_check",
+    size = "medium",
+    config = "MCValuation.cfg",
+    module = "MCValuation.tla",
+    deps = [":valuation"],
+)
+
 # ─── failure-path probes ──────────────────────────────────────────────────
 #
 # Each of these MUST go red. Tagged manual so `bazel test //...` stays green;
@@ -43,4 +59,17 @@ tla_check(
     module = "MasterDuplicates.tla",
     tags = ["manual"],
     deps = [":control_plane"],
+)
+
+# ⛔ Marking from COST rather than from the carrying value. Every mark posts the
+# whole gain again — and the entry is still BALANCED, so the trial balance ties
+# while the book is wrong. Conservation cannot catch this, which is exactly why
+# the property is worth checking.
+tla_check(
+    name = "mark_from_cost_check",
+    size = "medium",
+    config = "MarkFromCost.cfg",
+    module = "MarkFromCost.tla",
+    tags = ["manual"],
+    deps = [":valuation"],
 )

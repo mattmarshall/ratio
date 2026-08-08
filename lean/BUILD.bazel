@@ -61,6 +61,17 @@ lean_test(
     entry = "Ratio/Ingest.lean",
 )
 
+# Marking a book to market, proved before it is built. A mark is a POSTING and
+# not an assignment: it conserves, it lands on market value, marking twice at
+# one price posts nothing, and a position with no price yields NO mark rather
+# than a zero one.
+lean_test(
+    name = "valuation_proof_test",
+    size = "small",
+    srcs = ["Ratio/Valuation.lean"],
+    entry = "Ratio/Valuation.lean",
+)
+
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
