@@ -133,6 +133,36 @@ service Console {
     };
   }
 
+  // Files received on the data plane, newest first. (AIP-132)
+  rpc ListDeliveries(ListDeliveriesRequest) returns (ListDeliveriesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/deliveries"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Facts read out of those files that cannot post yet, and what blocks each.
+  // (AIP-132)
+  //
+  // These are exceptions in the same sense a reconciliation break is: a figure
+  // missing an input is not a figure. They block the NAV for the same reason
+  // and appear in the same place.
+  rpc ListPendingFacts(ListPendingFactsRequest)
+      returns (ListPendingFactsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/pendingFacts"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one delivery. (AIP-131)
+  rpc GetDelivery(GetDeliveryRequest) returns (Delivery) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/deliveries/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Gets one pending fact. (AIP-131)
+  rpc GetPendingFact(GetPendingFactRequest) returns (PendingFact) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/pendingFacts/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
   // The trial balance: every account in the chart with what it holds.
   // (AIP-132)
   //
@@ -255,6 +285,10 @@ message Fund {
   // the book, not of a page of accounts, and AIP-132 is right that a list
   // response carrying its own summary is a page whose meaning changes with
   // page_size.
+  // Facts read off a delivered file that cannot post yet. Non-zero blocks the
+  // NAV, exactly as an open break does.
+  string pending_fact_count = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
+
   string total_debit = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
   string total_credit = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
 
@@ -878,6 +912,117 @@ message ApplyEventResponse {
   // Named without "before"/"after", which AIP-140 rejects as prepositions.
   string net_asset_value = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
   string previous_net_asset_value = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// A file received on the data plane.
+message Delivery {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Delivery"
+    pattern: "funds/{fund}/deliveries/{delivery}"
+    singular: "delivery"
+    plural: "deliveries"
+  };
+
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // SHA-256 of the bytes, taken on arrival. The same file delivered twice is
+  // recognizable rather than a second copy.
+  string digest = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Where it came from — a path, an S3 key, an SFTP URL.
+  string origin = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  google.protobuf.Timestamp receive_time = 4
+      [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string byte_count = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How many facts were read out of it, and how many of those cannot post yet.
+  string fact_count = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string pending_fact_count = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// A fact that cannot post yet, and why.
+message PendingFact {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/PendingFact"
+    pattern: "funds/{fund}/pendingFacts/{pending_fact}"
+    singular: "pendingFact"
+    plural: "pendingFacts"
+  };
+
+  // How a reference failed to resolve. Three outcomes, not two: the remedies
+  // differ, and reporting an ambiguity as "unknown" invites adding a THIRD
+  // record to a master that already has one too many.
+  enum Blocker {
+    BLOCKER_UNSPECIFIED = 0;
+
+    // Nothing in the master matches. Someone adds the instrument or broker.
+    BLOCKER_ABSENT = 1;
+
+    // More than one matches. The master needs narrowing or de-duplicating.
+    BLOCKER_AMBIGUOUS = 2;
+  }
+
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The row's own reference, as the counterparty knows it.
+  string reference = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string kind = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  Blocker blocker = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What blocks it, in a sentence an operator can act on — naming the claim
+  // that was looked for rather than saying "unresolved".
+  string detail = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The chain back to the bytes: which delivery, which row, which template.
+  string delivery_digest = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string row = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string template_id = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListDeliveriesRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListDeliveriesResponse {
+  repeated Delivery deliveries = 1;
+  string next_page_token = 2;
+}
+
+message ListPendingFactsRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListPendingFactsResponse {
+  repeated PendingFact pending_facts = 1;
+  string next_page_token = 2;
+}
+
+message GetDeliveryRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Delivery"
+  ];
+}
+
+message GetPendingFactRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/PendingFact"
+  ];
 }
 
 message ListNavStrikesRequest {

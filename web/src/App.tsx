@@ -9,12 +9,14 @@ import { useEffect, useState } from "react";
 import {
   useAccounts,
   useApplyEvent,
+  useDeliveries,
   useBreaks,
   useChangeLog,
   useConfigDiff,
   useConfigVersions,
   useFunds,
   useNavStrikes,
+  usePendingFacts,
   usePostings,
   useReplay,
   useRules,
@@ -31,8 +33,10 @@ import type {
   ApplyEventResponse,
   Break,
   ConfigVersion,
+  Delivery,
   Fund,
   NavStrike,
+  PendingFact,
 } from "./types.js";
 
 const ACCOUNT_FILTERS = [
@@ -520,12 +524,91 @@ function Record({ fund }: { fund: Fund | undefined }) {
   );
 }
 
+/**
+ * The data plane: what arrived, and what it could not resolve.
+ *
+ * A pending fact is an exception in the same sense a reconciliation break is —
+ * a figure missing an input is not a figure — so it blocks the NAV and is
+ * counted with them. What differs is the remedy, which is why ABSENT and
+ * AMBIGUOUS are shown apart: one wants a new instrument, the other wants one
+ * fewer.
+ */
+function Data({
+  deliveries,
+  pending,
+}: {
+  deliveries: Delivery[];
+  pending: PendingFact[];
+}) {
+  return (
+    <>
+      <section className="log" aria-label="Files received">
+        <div className="loghead">
+          <span>Files received</span>
+          <span className="sortnote">
+            {deliveries.length ? "newest first · hashed on arrival" : ""}
+          </span>
+        </div>
+        {deliveries.length === 0 ? (
+          <div className="empty">
+            Nothing delivered yet. <code>ratio ingest</code> reads a file.
+          </div>
+        ) : null}
+        {deliveries.map((d) => (
+          <div className="logrow strike" key={d.name + d.receiveTime}>
+            <span className="t num">{d.digest.slice(0, 7)}</span>
+            <span className="w">
+              <b>{d.origin.split("/").pop()}</b>{" "}
+              <span className="cfg">
+                {count(d.factCount)} fact{d.factCount === "1" ? "" : "s"} ·{" "}
+                {count(d.byteCount)} bytes · {d.receiveTime.slice(0, 16).replace("T", " ")}
+              </span>
+            </span>
+            <span className={`amt num${d.pendingFactCount === "0" ? "" : " pos"}`}>
+              {d.pendingFactCount === "0" ? "all clear" : `${d.pendingFactCount} pending`}
+            </span>
+          </div>
+        ))}
+      </section>
+
+      <section className="log" aria-label="Pending facts">
+        <div className="loghead">
+          <span>Pending</span>
+          <span className="sortnote">
+            {pending.length ? "these clear when the master does" : ""}
+          </span>
+        </div>
+        {pending.length === 0 ? (
+          <div className="empty">
+            Nothing pending — every fact read resolves against the master.
+          </div>
+        ) : null}
+        {pending.map((p) => (
+          <div className="logrow pend" key={p.name}>
+            <span className={`sev ${p.blocker === "AMBIGUOUS" ? "med" : "high"}`} />
+            <span className="w">
+              <b>{p.reference}</b>{" "}
+              <span className="tagx">{p.blocker.toLowerCase()}</span>
+              <div className="why">{p.detail}</div>
+              {/* The chain back to the bytes. A pending fact can say exactly
+                  which row of which file it came from, and what mapped it. */}
+              <div className="p2 num">
+                row {p.row} of {p.deliveryDigest.slice(0, 12)} · {p.templateId}
+              </div>
+            </span>
+          </div>
+        ))}
+      </section>
+    </>
+  );
+}
+
 export default function App() {
   const funds = useFunds();
   const [fundName, setFundName] = useState<string>();
   const [filter, setFilter] = useState<string>("");
   const [brkName, setBrkName] = useState<string>();
-  const [view, setView] = useState<"breaks" | "balance">("breaks");
+  const [view, setView] = useState<"breaks" | "balance" | "data">("breaks");
   const [acctFilter, setAcctFilter] = useState<string>("");
   const [acctName, setAcctName] = useState<string>();
 
@@ -545,6 +628,11 @@ export default function App() {
   // Only fetched on the trial-balance view: the exceptions queue does not
   // show a chart, and a query nobody reads is a round trip nobody asked for.
   const accounts = useAccounts(view === "balance" ? fundName : undefined, acctFilter);
+  const deliveries = useDeliveries(view === "data" ? fundName : undefined);
+  // Pending is fetched on every view, not just the data one: it is a blocking
+  // condition, and a count an operator only sees after clicking a tab is a
+  // count they will miss.
+  const pendingFacts = usePendingFacts(fundName);
   const fund: Fund | undefined = funds.data?.find((f) => f.name === fundName);
   const shown = breaks.data ?? [];
   const selected = shown.find((b) => b.name === brkName) ?? shown[0];
@@ -579,6 +667,16 @@ export default function App() {
             onClick={() => setView("balance")}
           >
             Trial balance
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === "data"}
+            onClick={() => setView("data")}
+          >
+            Data
+            {fund && fund.pendingFactCount !== "0" ? (
+              <b className="pip">{fund.pendingFactCount}</b>
+            ) : null}
           </button>
         </nav>
         <span className="spacer" />
@@ -644,6 +742,12 @@ export default function App() {
               tone={fund?.trialBalanceDifference === "0" ? "tied" : undefined}
             />
             <Stat
+              k="Pending"
+              v={fund ? count(fund.pendingFactCount) : "—"}
+              sub="facts unresolved"
+              tone={fund && fund.pendingFactCount !== "0" ? "at-risk" : "tied"}
+            />
+            <Stat
               k="Open difference"
               v={fund ? money(fund.openDifference) : "—"}
               sub={fund?.currencyCode}
@@ -651,7 +755,9 @@ export default function App() {
             />
           </div>
 
-          {view === "balance" ? (
+          {view === "data" ? (
+            <Data deliveries={deliveries.data ?? []} pending={pendingFacts.data ?? []} />
+          ) : view === "balance" ? (
             <>
               <div className="qbar" role="group" aria-label="Filter accounts">
                 {ACCOUNT_FILTERS.map((f) => (

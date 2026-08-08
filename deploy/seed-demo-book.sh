@@ -85,6 +85,58 @@ weight = 1
 [[rule.posting]]
 account = 30
 weight = -1
+
+# ── the mapping, in the SAME configuration as the rules above ─────────────
+#
+# That is the claim, made real: one digest fixes how a file becomes an event
+# and how an event becomes postings. A NAV cites it and the whole derivation is
+# determined, from the broker's bytes onward.
+[[template]]
+id = "prime_equity_trades"
+reads = "csv"
+
+  [[template.entity]]
+  name = "security"
+  kind = "instrument"
+  absent = "pend"
+  by = [
+    { attribute = "isin", column = "ISIN" },
+    { attribute = "ticker", column = "Symbol", within = { attribute = "exchange", column = "Exch" } },
+  ]
+
+  [[template.entity]]
+  name = "broker"
+  kind = "counterparty"
+  absent = "pend"
+  by = [{ attribute = "code", column = "Broker" }]
+
+  [template.fact]
+  kind = "trade"
+  reference = "TradeRef"
+  entities = { security = "security", broker = "broker" }
+
+  [[template.fact.value]]
+  field = "side"
+  as = "enum"
+  column = "B/S"
+  map = { B = "buy", S = "sell" }
+
+  [[template.fact.value]]
+  field = "quantity"
+  as = "decimal"
+  column = "Quantity"
+
+  [[template.fact.value]]
+  field = "price"
+  as = "money"
+  column = "Price"
+  currency = "Ccy"
+
+  [[template.fact.value]]
+  field = "traded"
+  as = "date"
+  column = "TradeDate"
+  format = "MM/DD/YYYY"
 TOML
 "$RATIO" config set rules.toml --book "$OUT" >/dev/null
 
@@ -156,6 +208,26 @@ CSV
 # `|| true` because a run that finds breaks exits 2 by design, and for the
 # default positions that is the run we want.
 "$RATIO" recon txns.csv "${POSITIONS:-positions.csv}" --book "$OUT" --post >/dev/null || true
+
+# ── the data plane, with a gap in the master on purpose ───────────────────
+#
+# Three trades arrive from the prime broker. The master knows the broker and
+# two of the three instruments, so the third PENDS — which is the state worth
+# demonstrating, because it is the one every real integration lives in.
+"$RATIO" entity add --kind counterparty --id cp-prime --name "Prime Brokerage" \
+  --attr code=PRME --book "$OUT" >/dev/null
+"$RATIO" entity add --kind instrument --id inst-vti --name "Vanguard Total Stock Market ETF" \
+  --attr isin=US9229087690 --attr ticker=VTI --attr exchange=ARCX --book "$OUT" >/dev/null
+"$RATIO" entity add --kind instrument --id inst-voo --name "Vanguard S&P 500 ETF" \
+  --attr isin=US9229083632 --attr ticker=VOO --attr exchange=ARCX --book "$OUT" >/dev/null
+
+cat > prime-trades.csv <<'CSV'
+TradeRef,ISIN,Symbol,Exch,Broker,B/S,Quantity,Price,Ccy,TradeDate
+PB-0041,US9229087690,VTI,ARCX,PRME,B,1000,250.00,USD,02/24/2026
+PB-0042,,VOO,ARCX,PRME,B,400,450.00,USD,02/25/2026
+PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
+CSV
+"$RATIO" ingest prime-trades.csv --template prime_equity_trades --book "$OUT" >/dev/null
 
 # A proposal nobody has approved, so the rules screen shows both columns — the
 # gap between them is what the demo is about.

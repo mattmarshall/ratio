@@ -39,6 +39,10 @@ pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/{parent=funds/*}/configVersions" },
     Route { method: "GET", template: "/v1/{name=funds/*/configVersions/*}:diff" },
     Route { method: "GET", template: "/v1/{name=funds/*/configVersions/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*}/deliveries" },
+    Route { method: "GET", template: "/v1/{name=funds/*/deliveries/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*}/pendingFacts" },
+    Route { method: "GET", template: "/v1/{name=funds/*/pendingFacts/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/accounts" },
     Route { method: "GET", template: "/v1/{parent=funds/*/accounts/*}/postings" },
     Route { method: "GET", template: "/v1/{name=funds/*/accounts/*/postings/*}" },
@@ -117,6 +121,18 @@ pub fn serve(
         }
         ["funds", id, "rules"] => to_json(&console.list_rules(&format!("funds/{id}"))?)?,
         ["funds", id, "rules", r] => to_json(&console.get_rule(&format!("funds/{id}/rules/{r}"))?)?,
+        ["funds", id, "deliveries"] => {
+            to_json(&console.list_deliveries(&format!("funds/{id}"))?)?
+        }
+        ["funds", id, "deliveries", d] => {
+            to_json(&console.get_delivery(&format!("funds/{id}/deliveries/{d}"))?)?
+        }
+        ["funds", id, "pendingFacts"] => {
+            to_json(&console.list_pending_facts(&format!("funds/{id}"))?)?
+        }
+        ["funds", id, "pendingFacts", f] => {
+            to_json(&console.get_pending_fact(&format!("funds/{id}/pendingFacts/{f}"))?)?
+        }
         ["funds", id, "accounts"] => {
             to_json(&console.list_accounts(&format!("funds/{id}"), filter_of(query))?)?
         }
@@ -284,13 +300,14 @@ impl JsonView for pb::Fund {
             "{{\"name\":{},\"displayName\":{},\"currencyCode\":{},\"state\":{},\
              \"netAssetValue\":{},\"totalDebit\":{},\"totalCredit\":{},\
              \"trialBalanceDifference\":{},\"openDifference\":{},\
-             \"entryCount\":{},\"openBreakCount\":{},\"configDigest\":{}}}",
+             \"entryCount\":{},\"openBreakCount\":{},\"pendingFactCount\":{},\
+             \"configDigest\":{}}}",
             q(&self.name), q(&self.display_name), q(&self.currency_code),
             q(state_name(self.state)), q(&self.net_asset_value),
             q(&self.total_debit), q(&self.total_credit),
             q(&self.trial_balance_difference), q(&self.open_difference),
             q(&self.entry_count.to_string()), q(&self.open_break_count.to_string()),
-            q(&self.config_digest)
+            q(&self.pending_fact_count), q(&self.config_digest)
         )
     }
 }
@@ -377,6 +394,61 @@ impl JsonView for pb::ApplyEventResponse {
              \"previousNetAssetValue\":{}}}",
             self.entry.as_ref().map(|e| e.to_json()).unwrap_or_else(|| "null".into()),
             self.validate_only, q(&self.net_asset_value), q(&self.previous_net_asset_value)
+        )
+    }
+}
+
+fn blocker_name(v: i32) -> &'static str {
+    match pb::pending_fact::Blocker::try_from(v) {
+        Ok(pb::pending_fact::Blocker::Absent) => "ABSENT",
+        Ok(pb::pending_fact::Blocker::Ambiguous) => "AMBIGUOUS",
+        _ => "UNSPECIFIED",
+    }
+}
+
+impl JsonView for pb::Delivery {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"digest\":{},\"origin\":{},\"receiveTime\":{},\
+             \"byteCount\":{},\"factCount\":{},\"pendingFactCount\":{}}}",
+            q(&self.name), q(&self.digest), q(&self.origin), // proto3 canonical JSON renders a Timestamp as an RFC 3339 string.
+            q(&self
+                .receive_time
+                .as_ref()
+                .map(|t| ratio_nav::rfc3339(t.seconds))
+                .unwrap_or_default()),
+            q(&self.byte_count), q(&self.fact_count), q(&self.pending_fact_count)
+        )
+    }
+}
+
+impl JsonView for pb::ListDeliveriesResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"deliveries\":[{}],\"nextPageToken\":{}}}",
+            self.deliveries.iter().map(|d| d.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+impl JsonView for pb::PendingFact {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"reference\":{},\"kind\":{},\"blocker\":{},\
+             \"detail\":{},\"deliveryDigest\":{},\"row\":{},\"templateId\":{}}}",
+            q(&self.name), q(&self.reference), q(&self.kind), q(blocker_name(self.blocker)),
+            q(&self.detail), q(&self.delivery_digest), q(&self.row), q(&self.template_id)
+        )
+    }
+}
+
+impl JsonView for pb::ListPendingFactsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"pendingFacts\":[{}],\"nextPageToken\":{}}}",
+            self.pending_facts.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
         )
     }
 }

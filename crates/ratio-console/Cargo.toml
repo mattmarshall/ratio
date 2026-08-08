@@ -9,6 +9,7 @@ path = "src/lib.rs"
 [dependencies]
 ratio-common = { path = "../ratio-common" }
 ratio-chart = { path = "../ratio-chart" }
+ratio-ingest = { path = "../ratio-ingest" }
 ratio-nav = { path = "../ratio-nav" }
 ratio-rules = { path = "../ratio-rules" }
 ratio-store = { path = "../ratio-store" }

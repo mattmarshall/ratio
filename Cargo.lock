@@ -1471,6 +1471,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "toml",
  "tonic",
 ]
 
@@ -1517,6 +1518,7 @@ dependencies = [
  "prost",
  "ratio-chart",
  "ratio-common",
+ "ratio-ingest",
  "ratio-nav",
  "ratio-rules",
  "ratio-store",

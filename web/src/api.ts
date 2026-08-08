@@ -15,6 +15,10 @@ import {
 } from "@tanstack/react-query";
 import type {
   Account,
+  Delivery,
+  ListDeliveriesResponse,
+  ListPendingFactsResponse,
+  PendingFact,
   ApplyEventRequest,
   ApplyEventResponse,
   ListRulesResponse,
@@ -255,5 +259,32 @@ export function useApplyEvent(
       qc.invalidateQueries({ queryKey: [fund ?? ""] });
       qc.invalidateQueries({ queryKey: ["funds"] });
     },
+  });
+}
+
+export function useDeliveries(
+  fund: string | undefined,
+): UseQueryResult<Delivery[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "deliveries"],
+    queryFn: () => get<ListDeliveriesResponse>(`/${fund}/deliveries`),
+    select: (r) => r.deliveries,
+    enabled: !!fund,
+    ...LIVE,
+  });
+}
+
+/// Facts that cannot post yet. Recomputed server-side on every call — a fact
+/// clears when the master changes, not when something re-reads the file, so
+/// there is nothing here to invalidate on.
+export function usePendingFacts(
+  fund: string | undefined,
+): UseQueryResult<PendingFact[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "pendingFacts"],
+    queryFn: () => get<ListPendingFactsResponse>(`/${fund}/pendingFacts`),
+    select: (r) => r.pendingFacts,
+    enabled: !!fund,
+    ...LIVE,
   });
 }

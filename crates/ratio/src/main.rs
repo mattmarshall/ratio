@@ -129,6 +129,37 @@ fn main() -> Result<()> {
     }
 }
 
+/// The configuration with its `[[rule]]` sections replaced and everything else
+/// left exactly as it was.
+///
+/// Round-tripping the whole document through `RuleSet` would drop every key
+/// that struct does not know about — which is how approving a rule came to
+/// delete the templates beside it.
+fn replace_rules(previous: &str, merged: &RuleSet) -> Result<String> {
+    let mut doc: toml::Table = if previous.trim().is_empty() {
+        toml::Table::new()
+    } else {
+        previous.parse().context("the configuration in force is not valid TOML")?
+    };
+    // Serialize just the rules, then lift the array out of it, so the rule
+    // encoding stays `RuleSet`'s business rather than being duplicated here.
+    let only_rules: toml::Table = merged
+        .to_toml()?
+        .parse()
+        .context("the merged rules did not round-trip through TOML")?;
+    match only_rules.get("rule") {
+        Some(rules) => {
+            doc.insert("rule".into(), rules.clone());
+        }
+        // A merge that produced no rules removes the key rather than leaving a
+        // stale one behind.
+        None => {
+            doc.remove("rule");
+        }
+    }
+    toml::to_string_pretty(&doc).context("re-serializing the configuration")
+}
+
 /// Seconds since the epoch, for a received-at stamp.
 fn now() -> i64 {
     std::time::SystemTime::now()
@@ -1046,10 +1077,11 @@ pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
         );
     }
 
-    let mut merged = match b.active()? {
-        Some(d) => RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))?,
-        None => RuleSet::default(),
+    let previous_text = match b.active()? {
+        Some(d) => String::from_utf8_lossy(&b.get(&d)?).into_owned(),
+        None => String::new(),
     };
+    let mut merged = RuleSet::from_toml(&previous_text)?;
     let mut replaced = 0usize;
     for rule in incoming.rules {
         match merged.rules.iter_mut().find(|r| r.id == rule.id) {
@@ -1061,7 +1093,19 @@ pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
         }
     }
 
-    let toml = merged.to_toml()?;
+    // ⛔ WRITE BACK THE WHOLE CONFIGURATION, NOT JUST THE RULES.
+    //
+    // A configuration holds the posting rules AND the mapping templates, and
+    // serializing a `RuleSet` emits only `[[rule]]`. Approving one rule was
+    // therefore DELETING every template in the configuration — silently, with
+    // the changelog recording it as a routine approval, and the next ingest
+    // reporting "0 templates" as if none had ever been declared.
+    //
+    // So the merge round-trips through a generic table and replaces only the
+    // `rule` key. Anything else in the configuration survives, including
+    // sections added after this code was written — which is the property that
+    // matters, because the next one will not be templates.
+    let toml = replace_rules(&previous_text, &merged)?;
     let digest = b.put(toml.as_bytes())?;
     b.set_active(&digest)?;
 
@@ -1211,6 +1255,45 @@ weight = -1
         assert_eq!(fields[3], "p1");
         assert_eq!(fields[4].len(), 64, "expected the full digest");
         std::env::remove_var("RATIO_ACTOR");
+    }
+
+    #[test]
+    fn approving_a_rule_does_not_delete_the_templates_beside_it() {
+        // ⛔ THE BUG THIS EXISTS FOR. A configuration holds the posting rules
+        // AND the mapping templates. `approve` used to merge into a `RuleSet`
+        // and serialize that, which emits only `[[rule]]` — so approving one
+        // rule silently deleted every template, the changelog recorded a
+        // routine approval, and the next ingest reported "0 templates" as if
+        // none had ever been declared.
+        let book = book_with_a_proposal("keepstemplates");
+        let mut b = FileBook::open(&book).unwrap();
+        let before = String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap())
+            .into_owned();
+        let with_template = format!(
+            "{before}\n[[template]]\nid = \"gs_trades\"\nreads = \"csv\"\n\
+             [template.fact]\nkind = \"trade\"\nreference = \"Ref\"\n",
+        );
+        let d = b.put(with_template.as_bytes()).unwrap();
+        b.set_active(&d).unwrap();
+        drop(b);
+
+        // ⚠ Deliberately does NOT touch RATIO_ACTOR. It is a process-global,
+        // these tests run in parallel, and removing it here made
+        // `approving_records_who_did_it` read an empty actor. Nothing below
+        // asserts on the actor, so nothing below needs to set one.
+        approve(book.clone(), "p1").unwrap();
+
+        let b = FileBook::open(&book).unwrap();
+        let after = String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap())
+            .into_owned();
+        assert!(
+            after.contains("gs_trades"),
+            "approving a rule deleted the template beside it:\n{after}",
+        );
+        // …and the rule it was approving is in there too, so the fix did not
+        // simply stop writing.
+        let set = RuleSet::from_toml(&after).unwrap();
+        assert!(!set.rules.is_empty(), "the approved rule should be in force");
     }
 
     #[test]

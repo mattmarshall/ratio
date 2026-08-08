@@ -362,6 +362,91 @@ theorem render_parse_round_trip (v : Nat) :
   have hv : v / 100 * 100 + v % 100 = v := by omega
   simp [renderMinor, parseMinor, scale, hv]
 
+/- ── The configuration that holds templates ────────────────────────────────
+
+⚠ ADDED AFTER A BUG THE PROOFS ABOVE DID NOT CATCH, and could not have.
+
+A configuration holds the posting rules AND the mapping templates. `approve`
+merged an incoming rule into a `RuleSet` and serialized that — which emits only
+the rules — so approving one rule silently DELETED every template beside it.
+The changelog recorded a routine approval and the next ingest reported zero
+templates as if none had ever been declared.
+
+Every theorem above stayed true throughout. `resolved_never_becomes_absent`
+quantifies over facts, and with the templates gone there were no facts, so it
+held VACUOUSLY. That is the general hazard worth stating plainly: a proof
+constrains the function it is about; it says nothing about whether that
+function is reached, or with what. Correctness of the parts is not reachability
+of the parts.
+
+The property that WAS violated is small, and provable, and now is: replacing
+one section of a document leaves every other section alone. -/
+
+/-- A configuration as a list of named sections — `rule`, `template`, and
+whatever is added next. -/
+abbrev Document := List (String × String)
+
+/-- What the document records for a section, if anything.
+
+Defined by structural recursion rather than through `find?` and `map`, because
+what matters here is that the proofs below are readable — this is the lemma
+that a real bug turned on. -/
+def section? : Document → String → Option String
+  | [], _ => none
+  | (a, v) :: rest, k => if a == k then some v else section? rest k
+
+/-- Replace one section in place, or add it if it is not there. -/
+def replaceSection : Document → String → String → Document
+  | [], k, v => [(k, v)]
+  | (a, w) :: rest, k, v =>
+    if a == k then (k, v) :: rest else (a, w) :: replaceSection rest k v
+
+/-- String equality is symmetric, which the two theorems below both need. -/
+private theorem beq_false_symm {a b : String} (h : (a == b) = false) :
+    (b == a) = false := by
+  cases hb : b == a with
+  | false => rfl
+  | true =>
+    have : b = a := by simpa using hb
+    subst this
+    simp at h
+
+/-- **The property `approve` violated.** Replacing one section leaves every
+other section exactly as it was — so writing back the rules cannot disturb the
+templates beside them. -/
+theorem replace_preserves_other_sections (d : Document) (k v j : String)
+    (hne : (j == k) = false) :
+    section? (replaceSection d k v) j = section? d j := by
+  induction d with
+  | nil =>
+    simp only [replaceSection, section?]
+    rw [beq_false_symm hne]
+    simp
+  | cons p rest ih =>
+    obtain ⟨a, w⟩ := p
+    by_cases h : a == k
+    · have hak : a = k := by simpa using h
+      subst hak
+      simp only [replaceSection, section?, h, if_pos]
+      simp [beq_false_symm hne]
+    · simp only [replaceSection, section?, h, if_neg, Bool.false_eq_true,
+        not_false_eq_true]
+      by_cases hj : a == j
+      · simp [hj]
+      · simp [hj]; exact ih
+
+/-- And the section that was replaced holds what it was given. A preservation
+theorem on its own would be satisfied by doing nothing at all. -/
+theorem replace_sets_the_section (d : Document) (k v : String) :
+    section? (replaceSection d k v) k = some v := by
+  induction d with
+  | nil => simp [replaceSection, section?]
+  | cons p rest ih =>
+    obtain ⟨a, w⟩ := p
+    by_cases h : a == k
+    · simp [replaceSection, section?, h]
+    · simp [replaceSection, section?, h, ih]
+
 /- ── The emitted surface, and what ties it to the proofs above ─────────────
 
 `Polyglot.Rust`'s builders cover enums, structs, functions, matches and

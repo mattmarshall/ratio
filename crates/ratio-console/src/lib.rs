@@ -34,7 +34,7 @@ use ratio_proto::ratio::console::v1 as pb;
 // because they are two APIs, and this is the seam between them.
 use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::RuleSet;
-use ratio_store::{AccountTypeRecord, ConfigStore, FileBook, Journal};
+use ratio_store::{AccountTypeRecord, ConfigStore, FileBook, Journal, Plane};
 
 /// Above this, a difference blocks the NAV. Below the lower one, it is noise.
 ///
@@ -406,6 +406,111 @@ impl Console {
         })
     }
 
+
+    /// Files received on the data plane, newest first.
+    pub fn list_deliveries(&self, parent: &str) -> Result<pb::ListDeliveriesResponse> {
+        let fund = resource_id(parent, "funds")?;
+        let path = self.book_path(&fund)?;
+        let b = FileBook::open(&path)?;
+        let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+        let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+        let resolved = ratio_ingest::resolve_all(&facts, &master);
+
+        let mut out: Vec<pb::Delivery> = b
+            .records::<ratio_ingest::Delivery>(Plane::Deliveries)?
+            .into_iter()
+            .map(|d| {
+                let mine: Vec<&ratio_ingest::Resolved> = resolved
+                    .iter()
+                    .filter(|r| r.fact.provenance.delivery == d.digest)
+                    .collect();
+                pb::Delivery {
+                    name: format!("funds/{fund}/deliveries/{}", &d.digest[..16]),
+                    digest: d.digest.clone(),
+                    origin: d.origin,
+                    receive_time: Some(stamp(d.received)),
+                    byte_count: d.bytes.to_string(),
+                    fact_count: mine.len().to_string(),
+                    pending_fact_count: mine
+                        .iter()
+                        .filter(|r| !r.is_admissible())
+                        .count()
+                        .to_string(),
+                }
+            })
+            .collect();
+        // Newest first. The same file delivered twice is one row per delivery,
+        // because when it arrived is part of the record even when the bytes
+        // are not new.
+        out.reverse();
+        Ok(pb::ListDeliveriesResponse { deliveries: out, next_page_token: String::new() })
+    }
+
+    pub fn get_delivery(&self, name: &str) -> Result<pb::Delivery> {
+        let (fund, id) = nested_id(name, "funds", "deliveries")?;
+        self.list_deliveries(&format!("funds/{fund}"))?
+            .deliveries
+            .into_iter()
+            .find(|d| d.digest.starts_with(&id))
+            .with_context(|| format!("no delivery {id:?}"))
+    }
+
+    /// Facts that cannot post yet, and what blocks each.
+    ///
+    /// Recomputed on every call, never cached. That is the whole design: a fact
+    /// that was pending this morning and is admissible now needs no
+    /// re-ingestion, because only the master changed.
+    pub fn list_pending_facts(&self, parent: &str) -> Result<pb::ListPendingFactsResponse> {
+        let fund = resource_id(parent, "funds")?;
+        Ok(pb::ListPendingFactsResponse {
+            pending_facts: self.pending_of(&fund)?,
+            next_page_token: String::new(),
+        })
+    }
+
+    pub fn get_pending_fact(&self, name: &str) -> Result<pb::PendingFact> {
+        let (fund, id) = nested_id(name, "funds", "pendingFacts")?;
+        self.pending_of(&fund)?
+            .into_iter()
+            .find(|p| p.name.ends_with(&format!("/{id}")))
+            .with_context(|| format!("no pending fact {id:?}"))
+    }
+
+    fn pending_of(&self, fund: &str) -> Result<Vec<pb::PendingFact>> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+        if facts.is_empty() {
+            return Ok(Vec::new());
+        }
+        let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+        Ok(ratio_ingest::resolve_all(&facts, &master)
+            .into_iter()
+            .filter(|r| !r.is_admissible())
+            .map(|r| {
+                // Absent and ambiguous take different remedies, so they are
+                // reported apart rather than as one "unresolved".
+                let blocker = if r.entities.values().any(|e| {
+                    matches!(e, ratio_ingest::Resolution::Ambiguous { .. })
+                }) {
+                    pb::pending_fact::Blocker::Ambiguous
+                } else {
+                    pb::pending_fact::Blocker::Absent
+                };
+                pb::PendingFact {
+                    name: format!("funds/{fund}/pendingFacts/{}", r.fact.id.replace(':', "-")),
+                    reference: r.fact.reference.clone(),
+                    kind: r.fact.kind.clone(),
+                    blocker: blocker as i32,
+                    detail: r.blocker().unwrap_or_default(),
+                    delivery_digest: r.fact.provenance.delivery.clone(),
+                    row: r.fact.provenance.row.to_string(),
+                    template_id: r.fact.provenance.template_id.clone(),
+                }
+            })
+            .collect())
+    }
+
     pub fn list_funds(&self) -> Result<pb::ListFundsResponse> {
         let mut funds = Vec::new();
         for id in self.fund_ids()? {
@@ -442,10 +547,17 @@ impl Console {
         let open: Vec<&pb::Break> = breaks.iter().filter(|k| !k.explained).collect();
         let open_difference: i64 = open.iter().filter_map(|k| k.difference.parse::<i64>().ok().map(i64::abs)).sum();
 
+        // A fact that cannot resolve is an exception in the same sense a
+        // reconciliation break is: a figure missing an input is not a figure.
+        // It blocks for the same reason and is counted with them.
+        let pending = self.pending_of(&id)?;
+
         let entries = b.entries()? as Vec<_>;
-        let state = if entries.is_empty() {
+        let state = if entries.is_empty() && pending.is_empty() {
             pb::fund::State::AwaitingPrices
-        } else if open.iter().any(|k| k.severity == pb::Severity::High as i32) {
+        } else if !pending.is_empty()
+            || open.iter().any(|k| k.severity == pb::Severity::High as i32)
+        {
             pb::fund::State::Blocked
         } else if !breaks.is_empty() {
             pb::fund::State::InReview
@@ -462,6 +574,7 @@ impl Console {
             // The same `tb` the difference below comes from, so the two
             // columns and their difference can never be computed from
             // different reads of the journal.
+            pending_fact_count: pending.len().to_string(),
             total_debit: tb.debits.to_string(),
             total_credit: tb.credits.to_string(),
             trial_balance_difference: (tb.debits - tb.credits).to_string(),
@@ -892,6 +1005,11 @@ fn display_name(id: &str) -> String {
 /// the same rounding bug, and only one of them had the `1.005` test.
 pub use ratio_common::parse_minor as parse_amount;
 
+
+/// Seconds since the epoch as a proto timestamp.
+fn stamp(seconds: i64) -> ratio_proto::timestamp_proto::google::protobuf::Timestamp {
+    ratio_proto::timestamp_proto::google::protobuf::Timestamp { seconds, nanos: 0 }
+}
 
 /// The store's classification as the console's enum. A `match` rather than a
 /// cast: the two enums are declared in different files and nothing but this

@@ -39,6 +39,8 @@ export interface Fund {
   openDifference: Int64;
   entryCount: Int64;
   openBreakCount: Int64;
+  /** Facts read off a file that cannot post yet. Non-zero blocks the NAV. */
+  pendingFactCount: Int64;
   configDigest: string;
 }
 
@@ -240,4 +242,44 @@ export interface ApplyEventResponse {
   validateOnly: boolean;
   netAssetValue: Int64;
   previousNetAssetValue: Int64;
+}
+
+/** A file received on the data plane. */
+export interface Delivery {
+  name: string;
+  digest: string;
+  origin: string;
+  receiveTime: string;
+  byteCount: Int64;
+  factCount: Int64;
+  pendingFactCount: Int64;
+}
+
+export interface ListDeliveriesResponse {
+  deliveries: Delivery[];
+  nextPageToken: string;
+}
+
+/**
+ * Why a reference did not resolve.
+ *
+ * ABSENT and AMBIGUOUS take different remedies — add the instrument, versus
+ * de-duplicate the master — so they are never collapsed into "unresolved".
+ */
+export type Blocker = "ABSENT" | "AMBIGUOUS" | "UNSPECIFIED";
+
+export interface PendingFact {
+  name: string;
+  reference: string;
+  kind: string;
+  blocker: Blocker;
+  detail: string;
+  deliveryDigest: string;
+  row: Int64;
+  templateId: string;
+}
+
+export interface ListPendingFactsResponse {
+  pendingFacts: PendingFact[];
+  nextPageToken: string;
 }
