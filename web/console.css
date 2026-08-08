@@ -356,3 +356,14 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
    clicking is one they will miss. */
 .views .pip{margin-left:6px;padding:0 5px;border-radius:999px;font-size:10.5px;
   font-weight:700;background:var(--warn);color:var(--ground)}
+/* The file itself. Monospace because what is pasted here is a machine's
+   output and a column that does not line up is harder to check. */
+.form textarea{padding:9px 11px;border-radius:8px;font-size:12px;line-height:1.5;
+  border:1px solid var(--rule);background:var(--ground);color:var(--text);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical;
+  min-height:78px}
+.form textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px;
+  border-color:var(--accent)}
+.form label:has(textarea){grid-column:1/-1}
+.prev .why{color:var(--text-2);font-size:12.5px;margin-bottom:7px}
+.prev .posting .p2{color:var(--muted);font-size:11px;margin-top:2px}

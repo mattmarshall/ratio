@@ -52,12 +52,16 @@ pub const ROUTES: &[Route] = &[
     // idempotent — it folds a journal prefix and writes nothing.
     Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}:replay" },
     Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*}/templates" },
+    Route { method: "GET", template: "/v1/{name=funds/*/templates/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/rules" },
     Route { method: "GET", template: "/v1/{name=funds/*/rules/*}" },
     // The one write. A custom method (AIP-136) because recording an event is a
     // domain operation with a computed result, not a Create of the thing the
     // caller sent.
     Route { method: "POST", template: "/v1/{parent=funds/*}:applyEvent" },
+    Route { method: "POST", template: "/v1/{parent=funds/*}:ingest" },
+    Route { method: "POST", template: "/v1/{parent=funds/*}:admit" },
     Route { method: "GET", template: "/v1/{name=funds/*}" },
 ];
 
@@ -79,11 +83,22 @@ pub fn serve(
     // Exactly one route writes, and it is named here rather than inferred, so
     // adding a method cannot quietly widen what POST reaches.
     if method == "POST" {
-        if let Some(id) = rest.strip_suffix(":applyEvent") {
-            let id = id.strip_prefix("funds/").filter(|s| !s.contains('/'))
-                .ok_or_else(|| anyhow::anyhow!("{path:?} is not a fund"))?;
-            let req = apply_event_request(&format!("funds/{id}"), body)?;
-            return to_json(&console.apply_event(&req)?);
+        // Each write is named here rather than inferred, so adding a method
+        // cannot quietly widen what POST reaches.
+        let fund = |suffix: &str| -> Option<String> {
+            rest.strip_suffix(suffix)?
+                .strip_prefix("funds/")
+                .filter(|s| !s.is_empty() && !s.contains('/'))
+                .map(|s| format!("funds/{s}"))
+        };
+        if let Some(parent) = fund(":applyEvent") {
+            return to_json(&console.apply_event(&apply_event_request(&parent, body)?)?);
+        }
+        if let Some(parent) = fund(":ingest") {
+            return to_json(&console.ingest_delivery(&ingest_delivery_request(&parent, body)?)?);
+        }
+        if let Some(parent) = fund(":admit") {
+            return to_json(&console.admit_facts(&admit_facts_request(&parent, body)?)?);
         }
         bail!("{path:?} does not accept POST");
     }
@@ -118,6 +133,12 @@ pub fn serve(
         }
         ["funds", id, "configVersions", v] => {
             to_json(&console.get_config_version(&format!("funds/{id}/configVersions/{v}"))?)?
+        }
+        ["funds", id, "templates"] => {
+            to_json(&console.list_templates(&format!("funds/{id}"))?)?
+        }
+        ["funds", id, "templates", t] => {
+            to_json(&console.get_template(&format!("funds/{id}/templates/{t}"))?)?
         }
         ["funds", id, "rules"] => to_json(&console.list_rules(&format!("funds/{id}"))?)?,
         ["funds", id, "rules", r] => to_json(&console.get_rule(&format!("funds/{id}/rules/{r}"))?)?,
@@ -193,6 +214,34 @@ fn apply_event_request(parent: &str, body: &str) -> Result<pb::ApplyEventRequest
         event_id: text("eventId")?,
         amount: text("amount")?,
         days: text("days")?,
+        validate_only: matches!(v.get("validateOnly"), Some(serde_json::Value::Bool(true))),
+    })
+}
+
+fn ingest_delivery_request(parent: &str, body: &str) -> Result<pb::IngestDeliveryRequest> {
+    let v: serde_json::Value =
+        serde_json::from_str(body).context("the request body is not JSON")?;
+    let text = |k: &str| -> Result<String> {
+        match v.get(k) {
+            None | Some(serde_json::Value::Null) => Ok(String::new()),
+            Some(serde_json::Value::String(s)) => Ok(s.clone()),
+            Some(other) => bail!("{k} must be a string, not {other}"),
+        }
+    };
+    Ok(pb::IngestDeliveryRequest {
+        parent: parent.to_string(),
+        template_id: text("templateId")?,
+        content: text("content")?,
+        origin: text("origin")?,
+        validate_only: matches!(v.get("validateOnly"), Some(serde_json::Value::Bool(true))),
+    })
+}
+
+fn admit_facts_request(parent: &str, body: &str) -> Result<pb::AdmitFactsRequest> {
+    let v: serde_json::Value =
+        serde_json::from_str(body).context("the request body is not JSON")?;
+    Ok(pb::AdmitFactsRequest {
+        parent: parent.to_string(),
         validate_only: matches!(v.get("validateOnly"), Some(serde_json::Value::Bool(true))),
     })
 }
@@ -403,6 +452,59 @@ fn blocker_name(v: i32) -> &'static str {
         Ok(pb::pending_fact::Blocker::Absent) => "ABSENT",
         Ok(pb::pending_fact::Blocker::Ambiguous) => "AMBIGUOUS",
         _ => "UNSPECIFIED",
+    }
+}
+
+impl JsonView for pb::Template {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"templateId\":{},\"factKind\":{},\"form\":{},\"posts\":{}}}",
+            q(&self.name), q(&self.template_id), q(&self.fact_kind), q(&self.form), self.posts
+        )
+    }
+}
+
+impl JsonView for pb::ListTemplatesResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"templates\":[{}],\"nextPageToken\":{}}}",
+            self.templates.iter().map(|t| t.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+impl JsonView for pb::RejectedRow {
+    fn to_json(&self) -> String {
+        format!("{{\"row\":{},\"reason\":{}}}", q(&self.row), q(&self.reason))
+    }
+}
+
+impl JsonView for pb::IngestDeliveryResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"deliveryDigest\":{},\"rowCount\":{},\"factCount\":{},\
+             \"newFactCount\":{},\"readyCount\":{},\"rejected\":[{}],\
+             \"pending\":[{}],\"validateOnly\":{}}}",
+            q(&self.delivery_digest), q(&self.row_count), q(&self.fact_count),
+            q(&self.new_fact_count), q(&self.ready_count),
+            self.rejected.iter().map(|r| r.to_json()).collect::<Vec<_>>().join(","),
+            self.pending.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
+            self.validate_only
+        )
+    }
+}
+
+impl JsonView for pb::AdmitFactsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"postedCount\":{},\"recordedCount\":{},\"pendingCount\":{},\
+             \"refused\":[{}],\"netAssetValue\":{},\"previousNetAssetValue\":{},\
+             \"validateOnly\":{}}}",
+            q(&self.posted_count), q(&self.recorded_count), q(&self.pending_count),
+            strings(&self.refused), q(&self.net_asset_value),
+            q(&self.previous_net_asset_value), self.validate_only
+        )
     }
 }
 

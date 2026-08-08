@@ -8,7 +8,9 @@
 import { useEffect, useState } from "react";
 import {
   useAccounts,
+  useAdmit,
   useApplyEvent,
+  useIngest,
   useDeliveries,
   useBreaks,
   useChangeLog,
@@ -20,6 +22,7 @@ import {
   usePostings,
   useReplay,
   useRules,
+  useTemplates,
 } from "./api.js";
 import {
   SEVERITY_CLASS,
@@ -35,6 +38,7 @@ import type {
   ConfigVersion,
   Delivery,
   Fund,
+  IngestDeliveryResponse,
   NavStrike,
   PendingFact,
 } from "./types.js";
@@ -534,14 +538,17 @@ function Record({ fund }: { fund: Fund | undefined }) {
  * fewer.
  */
 function Data({
+  fund,
   deliveries,
   pending,
 }: {
+  fund: Fund | undefined;
   deliveries: Delivery[];
   pending: PendingFact[];
 }) {
   return (
     <>
+      <Deliver fund={fund} />
       <section className="log" aria-label="Files received">
         <div className="loghead">
           <span>Files received</span>
@@ -600,6 +607,189 @@ function Data({
         ))}
       </section>
     </>
+  );
+}
+
+/**
+ * Read a file, having first seen what it would produce.
+ *
+ * The same preview-then-commit shape as recording an event, and the same
+ * reason: `validateOnly` runs the identical code path and records nothing, so
+ * what is shown is what lands. A mapping you have watched run beats one you
+ * have to imagine.
+ */
+function Deliver({ fund }: { fund: Fund | undefined }) {
+  const ingest = useIngest(fund?.name);
+  const admit = useAdmit(fund?.name);
+  const [templateId, setTemplateId] = useState("");
+  const [origin, setOrigin] = useState("");
+  const [content, setContent] = useState("");
+  const [preview, setPreview] = useState<IngestDeliveryResponse | null>(null);
+  const templates = (useTemplates(fund?.name).data ?? []).map((t) => t.templateId);
+
+  const chosen = templateId || templates[0] || "";
+  const ready = !!chosen && content.trim() !== "";
+
+  function edit<T>(set: (v: T) => void) {
+    return (v: T) => { setPreview(null); ingest.reset(); set(v); };
+  }
+
+  function run(validateOnly: boolean) {
+    ingest.mutate(
+      { templateId: chosen, content, origin: origin.trim() || "upload", validateOnly },
+      {
+        onSuccess: (res) => {
+          if (res.validateOnly) { setPreview(res); return; }
+          setPreview(null);
+          setContent("");
+          setOrigin("");
+        },
+      },
+    );
+  }
+
+  return (
+    <section className="rec" aria-label="Deliver a file">
+      <div className="loghead">
+        <span>Deliver a file</span>
+        <span className="sortnote">
+          {templates.length
+            ? `${templates.length} template${templates.length === 1 ? "" : "s"} in force`
+            : "no templates in force"}
+        </span>
+      </div>
+
+      {templates.length === 0 ? (
+        <div className="empty">
+          No template is in force, so there is nothing to read a file with. A
+          model drafts one with <code>propose_template</code>; a person approves it.
+        </div>
+      ) : (
+        <>
+          <div className="form">
+            <label>
+              <span>Template</span>
+              <select value={chosen} onChange={(e) => edit(setTemplateId)(e.target.value)}>
+                {templates.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Called</span>
+              <input
+                value={origin}
+                placeholder="prime-trades.csv"
+                onChange={(e) => edit(setOrigin)(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="form">
+            <label>
+              <span>The file</span>
+              <textarea
+                className="num"
+                rows={4}
+                value={content}
+                spellCheck={false}
+                placeholder="Paste the file — its header row and the rows under it."
+                onChange={(e) => edit(setContent)(e.target.value)}
+              />
+            </label>
+          </div>
+
+          {ingest.isError ? (
+            <div className="empty err">{ingest.error.message}</div>
+          ) : null}
+          {admit.isError ? <div className="empty err">{admit.error.message}</div> : null}
+
+          {preview ? (
+            <div className="prev">
+              <div className="ph">
+                What this would read
+                <span>{preview.deliveryDigest.slice(0, 12)}</span>
+              </div>
+              <div className="why">
+                {count(preview.rowCount)} row{preview.rowCount === "1" ? "" : "s"} ·{" "}
+                {count(preview.factCount)} fact{preview.factCount === "1" ? "" : "s"} ·{" "}
+                {count(preview.readyCount)} ready · {preview.pending.length} pending
+                {preview.newFactCount !== preview.factCount
+                  ? ` · ${count(preview.newFactCount)} new`
+                  : ""}
+              </div>
+              {preview.rejected.map((r) => (
+                <div className="posting" key={r.row}>
+                  <span><div className="p1">row {r.row}</div></span>
+                  <span className="num pos">{r.reason}</span>
+                </div>
+              ))}
+              {preview.pending.map((p) => (
+                <div className="posting" key={p.name}>
+                  <span>
+                    <div className="p1">{p.reference}</div>
+                    <div className="p2">{p.detail}</div>
+                  </span>
+                  <span className="num">pending</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {admit.data && !admit.data.validateOnly ? (
+            <div className="prev">
+              <div className="ph">Admitted</div>
+              <div className="why">
+                {count(admit.data.postedCount)} posted ·{" "}
+                {count(admit.data.recordedCount)} recorded ·{" "}
+                {count(admit.data.pendingCount)} pending
+              </div>
+              <div className="navdelta">
+                <span>Net asset value</span>
+                <span className="num">
+                  {money(admit.data.previousNetAssetValue)}
+                  <b aria-hidden="true"> → </b>
+                  {money(admit.data.netAssetValue)}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="formbar">
+            <span className="sortnote">
+              {preview
+                ? "Nothing has been recorded. Read it to record the facts."
+                : "Preview runs the same code path and records nothing."}
+            </span>
+            <button
+              className="act"
+              type="button"
+              disabled={!ready || ingest.isPending}
+              onClick={() => run(true)}
+            >
+              {ingest.isPending && !preview ? "reading…" : "Preview"}
+            </button>
+            <button
+              className="act"
+              type="button"
+              disabled={!ready || !preview || ingest.isPending}
+              onClick={() => run(false)}
+            >
+              {ingest.isPending && preview ? "reading…" : "Read"}
+            </button>
+            {/* Posting is a separate act from reading. A file can be read and
+                left unposted — that is a shadow run. */}
+            <button
+              className="act primary"
+              type="button"
+              disabled={admit.isPending}
+              onClick={() => admit.mutate({ validateOnly: false })}
+            >
+              {admit.isPending ? "posting…" : "Admit"}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -756,7 +946,11 @@ export default function App() {
           </div>
 
           {view === "data" ? (
-            <Data deliveries={deliveries.data ?? []} pending={pendingFacts.data ?? []} />
+            <Data
+              fund={fund}
+              deliveries={deliveries.data ?? []}
+              pending={pendingFacts.data ?? []}
+            />
           ) : view === "balance" ? (
             <>
               <div className="qbar" role="group" aria-label="Filter accounts">

@@ -15,6 +15,12 @@ import {
 } from "@tanstack/react-query";
 import type {
   Account,
+  AdmitFactsRequest,
+  AdmitFactsResponse,
+  IngestDeliveryRequest,
+  ListTemplatesResponse,
+  Template,
+  IngestDeliveryResponse,
   Delivery,
   ListDeliveriesResponse,
   ListPendingFactsResponse,
@@ -284,6 +290,56 @@ export function usePendingFacts(
     queryKey: [fund ?? "", "pendingFacts"],
     queryFn: () => get<ListPendingFactsResponse>(`/${fund}/pendingFacts`),
     select: (r) => r.pendingFacts,
+    enabled: !!fund,
+    ...LIVE,
+  });
+}
+
+/**
+ * Read a file into facts.
+ *
+ * `validateOnly` runs the same code path and records nothing, so what a
+ * preview shows is what lands. A real read invalidates everything under the
+ * fund: the deliveries, the pending queue, and the fund's own blocking state.
+ */
+export function useIngest(
+  fund: string | undefined,
+): UseMutationResult<IngestDeliveryResponse, Error, IngestDeliveryRequest> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (req: IngestDeliveryRequest) =>
+      send<IngestDeliveryResponse>(`/${fund}:ingest`, req),
+    onSuccess: (res) => {
+      if (res.validateOnly) return;
+      qc.invalidateQueries({ queryKey: [fund ?? ""] });
+      qc.invalidateQueries({ queryKey: ["funds"] });
+    },
+  });
+}
+
+/** Post every fact that fully resolves. */
+export function useAdmit(
+  fund: string | undefined,
+): UseMutationResult<AdmitFactsResponse, Error, AdmitFactsRequest> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (req: AdmitFactsRequest) =>
+      send<AdmitFactsResponse>(`/${fund}:admit`, req),
+    onSuccess: (res) => {
+      if (res.validateOnly) return;
+      qc.invalidateQueries({ queryKey: [fund ?? ""] });
+      qc.invalidateQueries({ queryKey: ["funds"] });
+    },
+  });
+}
+
+export function useTemplates(
+  fund: string | undefined,
+): UseQueryResult<Template[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "templates"],
+    queryFn: () => get<ListTemplatesResponse>(`/${fund}/templates`),
+    select: (r) => r.templates,
     enabled: !!fund,
     ...LIVE,
   });

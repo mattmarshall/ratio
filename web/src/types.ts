@@ -283,3 +283,58 @@ export interface ListPendingFactsResponse {
   pendingFacts: PendingFact[];
   nextPageToken: string;
 }
+
+/** A row the template could not map. Per row, never per file. */
+export interface RejectedRow {
+  row: Int64;
+  reason: string;
+}
+
+export interface IngestDeliveryRequest {
+  templateId: string;
+  content: string;
+  origin: string;
+  validateOnly: boolean;
+}
+
+export interface IngestDeliveryResponse {
+  deliveryDigest: string;
+  rowCount: Int64;
+  factCount: Int64;
+  newFactCount: Int64;
+  readyCount: Int64;
+  rejected: RejectedRow[];
+  pending: PendingFact[];
+  validateOnly: boolean;
+}
+
+export interface AdmitFactsRequest {
+  validateOnly: boolean;
+}
+
+export interface AdmitFactsResponse {
+  postedCount: Int64;
+  /** Reference data — a price file, an FX file — posts nothing by design. */
+  recordedCount: Int64;
+  pendingCount: Int64;
+  refused: string[];
+  netAssetValue: Int64;
+  previousNetAssetValue: Int64;
+  validateOnly: boolean;
+}
+
+/** A mapping template in force. */
+export interface Template {
+  name: string;
+  templateId: string;
+  factKind: string;
+  /** The template as a person reads it. */
+  form: string;
+  /** False for reference data, which is recorded and never posted. */
+  posts: boolean;
+}
+
+export interface ListTemplatesResponse {
+  templates: Template[];
+  nextPageToken: string;
+}

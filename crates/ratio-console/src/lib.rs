@@ -504,28 +504,243 @@ impl Console {
         Ok(ratio_ingest::resolve_all(&facts, &master)
             .into_iter()
             .filter(|r| !r.is_admissible() && !posted.contains(&r.fact.reference))
-            .map(|r| {
-                // Absent and ambiguous take different remedies, so they are
-                // reported apart rather than as one "unresolved".
-                let blocker = if r.entities.values().any(|e| {
-                    matches!(e, ratio_ingest::Resolution::Ambiguous { .. })
-                }) {
-                    pb::pending_fact::Blocker::Ambiguous
-                } else {
-                    pb::pending_fact::Blocker::Absent
-                };
-                pb::PendingFact {
-                    name: format!("funds/{fund}/pendingFacts/{}", r.fact.id.replace(':', "-")),
-                    reference: r.fact.reference.clone(),
-                    kind: r.fact.kind.clone(),
-                    blocker: blocker as i32,
-                    detail: r.blocker().unwrap_or_default(),
-                    delivery_digest: r.fact.provenance.delivery.clone(),
-                    row: r.fact.provenance.row.to_string(),
-                    template_id: r.fact.provenance.template_id.clone(),
-                }
+            .map(|r| pending_fact(fund, &r))
+            .collect())
+    }
+
+    /// The mapping templates in force.
+    pub fn list_templates(&self, parent: &str) -> Result<pb::ListTemplatesResponse> {
+        let fund = resource_id(parent, "funds")?;
+        Ok(pb::ListTemplatesResponse {
+            templates: self.templates_of(&fund)?,
+            next_page_token: String::new(),
+        })
+    }
+
+    pub fn get_template(&self, name: &str) -> Result<pb::Template> {
+        let (fund, id) = nested_id(name, "funds", "templates")?;
+        self.templates_of(&fund)?
+            .into_iter()
+            .find(|t| t.template_id == id)
+            .with_context(|| format!("no template {id:?} in the configuration in force"))
+    }
+
+    fn templates_of(&self, fund: &str) -> Result<Vec<pb::Template>> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        let Some(digest) = b.active()? else { return Ok(Vec::new()) };
+        let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
+        Ok(ratio_ingest::TemplateSet::from_toml(&text)?
+            .templates
+            .iter()
+            .map(|t| pb::Template {
+                name: format!("funds/{fund}/templates/{}", t.id),
+                template_id: t.id.clone(),
+                fact_kind: t.fact.kind.clone(),
+                form: t.render(),
+                posts: t.fact.posts.is_some(),
             })
             .collect())
+    }
+
+    /// Read a delivered file into facts.
+    ///
+    /// `validate_only` runs the same code path and records nothing (AIP-163).
+    /// What you preview is what lands, because it is not a second path.
+    pub fn ingest_delivery(
+        &self,
+        req: &pb::IngestDeliveryRequest,
+    ) -> Result<pb::IngestDeliveryResponse> {
+        let fund = resource_id(&req.parent, "funds")?;
+        let path = self.book_path(&fund)?;
+        let mut b = FileBook::open(&path)?;
+
+        let digest = b.active()?.context("no configuration is in force on this fund")?;
+        let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
+        let set = ratio_ingest::TemplateSet::from_toml(&text)?;
+        let template = set.template(&req.template_id).with_context(|| {
+            format!(
+                "no template {:?} in the configuration in force ({} there: {})",
+                req.template_id,
+                set.templates.len(),
+                set.templates.iter().map(|t| t.id.as_str()).collect::<Vec<_>>().join(", "),
+            )
+        })?;
+        let problems = template.check();
+        if !problems.is_empty() {
+            bail!("the template does not check: {}", problems.join("; "));
+        }
+
+        if req.content.trim().is_empty() {
+            bail!("the file is empty");
+        }
+        let bytes = req.content.as_bytes();
+        let delivery = ratio_ingest::Delivery {
+            digest: ratio_store::Digest::of(bytes).as_str().to_string(),
+            // Composed, never taken raw: on a public endpoint this reaches a
+            // screen other people read.
+            origin: sanitize_origin(&req.origin),
+            received: now(),
+            bytes: bytes.len() as i64,
+        };
+
+        let rows = match template.reads {
+            ratio_ingest::Reader::Csv => ratio_ingest::extract_csv(&req.content)?,
+        };
+        let projection =
+            ratio_ingest::project(template, &delivery, &rows, digest.as_str());
+
+        let known: BTreeMap<String, ()> = b
+            .records::<ratio_ingest::Fact>(Plane::Facts)?
+            .into_iter()
+            .map(|f| (f.id, ()))
+            .collect();
+        let fresh: Vec<&ratio_ingest::Fact> =
+            projection.facts.iter().filter(|f| !known.contains_key(&f.id)).collect();
+
+        if !req.validate_only {
+            if let Some(max) = self.max_entries {
+                let held = known.len() + fresh.len();
+                if held > max {
+                    bail!(
+                        "this book would hold {held} facts, which is more than the demo \
+                         accepts; it resets on the next cold start"
+                    );
+                }
+            }
+            b.append_record(Plane::Deliveries, &delivery)?;
+            for f in &fresh {
+                b.append_record(Plane::Facts, f)?;
+            }
+        }
+
+        // Resolve against the master as it stands, so the preview shows what
+        // would pend rather than only what would parse.
+        let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+        let resolved = ratio_ingest::resolve_all(&projection.facts, &master);
+        let ready = resolved.iter().filter(|r| r.is_admissible()).count();
+
+        Ok(pb::IngestDeliveryResponse {
+            delivery_digest: delivery.digest,
+            row_count: rows.len().to_string(),
+            fact_count: projection.facts.len().to_string(),
+            new_fact_count: fresh.len().to_string(),
+            ready_count: ready.to_string(),
+            rejected: projection
+                .rejected
+                .iter()
+                .map(|r| pb::RejectedRow { row: r.row.to_string(), reason: r.reason.clone() })
+                .collect(),
+            pending: resolved
+                .iter()
+                .filter(|r| !r.is_admissible())
+                .map(|r| pending_fact(&fund, r))
+                .collect(),
+            validate_only: req.validate_only,
+        })
+    }
+
+    /// Post every fact that fully resolves.
+    ///
+    /// ⛔ THE ONE IMPLEMENTATION. `ratio admit` calls this too — a second copy
+    /// for the CLI would be a second set of decisions about what posts.
+    pub fn admit_facts(&self, req: &pb::AdmitFactsRequest) -> Result<pb::AdmitFactsResponse> {
+        let fund = resource_id(&req.parent, "funds")?;
+        let path = self.book_path(&fund)?;
+        let previous = self.get_fund(&req.parent)?.net_asset_value;
+
+        let mut b = FileBook::open(&path)?;
+        let digest = b.active()?.context("no configuration is in force")?;
+        let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
+        let templates = ratio_ingest::TemplateSet::from_toml(&text)?;
+        let rules = RuleSet::from_toml(&text)?;
+
+        let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+        let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+        let resolved = ratio_ingest::resolve_all(&facts, &master);
+        let posted: BTreeMap<String, ()> =
+            b.entries()?.into_iter().map(|e| (e.id, ())).collect();
+
+        let (mut n, mut recorded) = (0usize, 0usize);
+        let mut refused = Vec::new();
+        for r in resolved.iter().filter(|r| r.is_admissible()) {
+            if posted.contains_key(&r.fact.reference) {
+                continue;
+            }
+            let Some(t) = templates.template(&r.fact.provenance.template_id) else {
+                refused.push(format!(
+                    "{}: template {:?} is not in the configuration in force",
+                    r.fact.reference, r.fact.provenance.template_id
+                ));
+                continue;
+            };
+            // Reference data posts nothing BY DESIGN. Counted apart from a
+            // refusal, because reporting the design as a fault is how a demo
+            // comes to show red for the thing working.
+            if t.fact.posts.is_none() {
+                recorded += 1;
+                continue;
+            }
+            let (rule_id, amount) = match ratio_ingest::posting_for(t, &r.fact) {
+                Ok(v) => v,
+                Err(e) => {
+                    refused.push(format!("{}: {e:#}", r.fact.reference));
+                    continue;
+                }
+            };
+            let Some(rule) = rules.rule(&rule_id) else {
+                refused.push(format!(
+                    "{}: the template posts it as `{rule_id}`, which is not a rule in force",
+                    r.fact.reference
+                ));
+                continue;
+            };
+            let who: Vec<String> = r
+                .entities
+                .keys()
+                .filter_map(|k| r.entity(k).map(str::to_string))
+                .collect();
+            let postings = ratio_rules::compile(
+                rule,
+                &ratio_rules::Event {
+                    rule: rule_id.clone(),
+                    id: r.fact.reference.clone(),
+                    amount,
+                    days: None,
+                    memo: String::new(),
+                },
+            )?;
+            if !req.validate_only {
+                b.append(&ratio_store::JournalEntry {
+                    id: r.fact.reference.clone(),
+                    memo: format!(
+                        "{} · {} · row {} of {}",
+                        who.join(" "),
+                        rule_id,
+                        r.fact.provenance.row,
+                        &r.fact.provenance.delivery[..12],
+                    ),
+                    config: digest.clone(),
+                    postings,
+                })?;
+            }
+            n += 1;
+        }
+
+        let net_asset_value = if req.validate_only {
+            previous.clone()
+        } else {
+            self.get_fund(&req.parent)?.net_asset_value
+        };
+        Ok(pb::AdmitFactsResponse {
+            posted_count: n.to_string(),
+            recorded_count: recorded.to_string(),
+            pending_count: resolved.iter().filter(|r| !r.is_admissible()).count().to_string(),
+            refused,
+            net_asset_value,
+            previous_net_asset_value: previous,
+            validate_only: req.validate_only,
+        })
     }
 
     pub fn list_funds(&self) -> Result<pb::ListFundsResponse> {
@@ -1022,6 +1237,57 @@ fn display_name(id: &str) -> String {
 /// the same rounding bug, and only one of them had the `1.005` test.
 pub use ratio_common::parse_minor as parse_amount;
 
+
+/// One unresolved fact, as the console reports it.
+///
+/// Shared by the pending list and the ingest preview so the two cannot describe
+/// the same fact differently.
+fn pending_fact(fund: &str, r: &ratio_ingest::Resolved) -> pb::PendingFact {
+    // Absent and ambiguous take different remedies, so they are reported apart
+    // rather than as one "unresolved".
+    let blocker = if r
+        .entities
+        .values()
+        .any(|e| matches!(e, ratio_ingest::Resolution::Ambiguous { .. }))
+    {
+        pb::pending_fact::Blocker::Ambiguous
+    } else {
+        pb::pending_fact::Blocker::Absent
+    };
+    pb::PendingFact {
+        name: format!("funds/{fund}/pendingFacts/{}", r.fact.id.replace(':', "-")),
+        reference: r.fact.reference.clone(),
+        kind: r.fact.kind.clone(),
+        blocker: blocker as i32,
+        detail: r.blocker().unwrap_or_default(),
+        delivery_digest: r.fact.provenance.delivery.clone(),
+        row: r.fact.provenance.row.to_string(),
+        template_id: r.fact.provenance.template_id.clone(),
+    }
+}
+
+/// What to call a delivery. Composed from what the caller sent rather than
+/// taken raw: on a public endpoint this reaches a screen other people read.
+fn sanitize_origin(origin: &str) -> String {
+    let cleaned: String = origin
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || "._-/".contains(*c))
+        .take(120)
+        .collect();
+    if cleaned.trim().is_empty() {
+        "upload".into()
+    } else {
+        cleaned
+    }
+}
+
+/// Seconds since the epoch, for a received-at stamp.
+fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
 
 /// Seconds since the epoch as a proto timestamp.
 fn stamp(seconds: i64) -> ratio_proto::timestamp_proto::google::protobuf::Timestamp {

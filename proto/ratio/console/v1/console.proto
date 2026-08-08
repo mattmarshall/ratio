@@ -112,6 +112,42 @@ service Console {
     option (google.api.method_signature) = "name";
   }
 
+  // The mapping templates in force. (AIP-132)
+  rpc ListTemplates(ListTemplatesRequest) returns (ListTemplatesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/templates"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one template. (AIP-131)
+  rpc GetTemplate(GetTemplateRequest) returns (Template) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/templates/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Reads a delivered file into facts. (AIP-136)
+  //
+  // ⛔ A WRITE. Set `validate_only` to see what the template would produce —
+  // the facts, what each resolves to, what would pend — without recording
+  // anything (AIP-163). The same move as ApplyEvent, and for the same reason:
+  // a mapping you have watched run beats a mapping you have to imagine.
+  rpc IngestDelivery(IngestDeliveryRequest) returns (IngestDeliveryResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=funds/*}:ingest"
+      body: "*"
+    };
+  }
+
+  // Posts every fact that fully resolves. (AIP-136)
+  //
+  // ⛔ A WRITE. The fact becomes an event and the rules already in force decide
+  // the entries; nothing here knows how a trade books.
+  rpc AdmitFacts(AdmitFactsRequest) returns (AdmitFactsResponse) {
+    option (google.api.http) = {
+      post: "/v1/{parent=funds/*}:admit"
+      body: "*"
+    };
+  }
+
   // Records an event and returns the entry the active configuration produced
   // from it. (AIP-136)
   //
@@ -1023,6 +1059,118 @@ message GetPendingFactRequest {
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference).type = "ratio.fastverk.dev/PendingFact"
   ];
+}
+
+// A mapping template: how a counterparty's file becomes facts.
+message Template {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Template"
+    pattern: "funds/{fund}/templates/{template}"
+    singular: "template"
+    plural: "templates"
+  };
+
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+  string template_id = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What a row of this file is: a trade, a price, an fx rate.
+  string fact_kind = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The template as a person reads it — the same rendering the rules screen
+  // uses, so a mapping can be read before it is trusted.
+  string form = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // False for reference data — a price file, an FX file, a security master —
+  // which is recorded, resolved and citable, and never touches the books.
+  bool posts = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListTemplatesRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListTemplatesResponse {
+  repeated Template templates = 1;
+  string next_page_token = 2;
+}
+
+message GetTemplateRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Template"
+  ];
+}
+
+// A row the template could not map, and why. Per row, never per file.
+message RejectedRow {
+  string row = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string reason = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message IngestDeliveryRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+
+  // A template in the configuration in force.
+  string template_id = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // The file, verbatim.
+  string content = 3 [(google.api.field_behavior) = REQUIRED];
+
+  // What to call it — a filename, an S3 key, an SFTP path.
+  string origin = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // Read the file and report what it would produce, recording nothing.
+  bool validate_only = 5 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message IngestDeliveryResponse {
+  string delivery_digest = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string row_count = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Facts this file produced, and how many of them are new — the same bytes
+  // under the same template do not produce a second set.
+  string fact_count = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string new_fact_count = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string ready_count = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  repeated RejectedRow rejected = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  repeated PendingFact pending = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  bool validate_only = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message AdmitFactsRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  bool validate_only = 2 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message AdmitFactsResponse {
+  string posted_count = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Reference data — a price file, an FX file — declares no posting rules. It
+  // is recorded, resolved and citable, and never touches the books. Counted
+  // apart from a refusal, because it is the design rather than a fault.
+  string recorded_count = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string pending_count = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  repeated string refused = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The fund's NAV with what this posted, and what it was without.
+  string net_asset_value = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string previous_net_asset_value = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  bool validate_only = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message ListNavStrikesRequest {
