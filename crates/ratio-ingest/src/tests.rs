@@ -205,7 +205,7 @@ fn two_instruments_matching_one_claim_is_ambiguous_and_blocks() {
         other => panic!("expected ambiguous, got {other:?}"),
     }
     let why = r.blocker().unwrap();
-    assert!(why.contains("2 securitys match"), "{why}");
+    assert!(why.contains("2 matches for security"), "{why}");
     assert!(why.contains("narrowing"), "the reason points at the right remedy: {why}");
 }
 

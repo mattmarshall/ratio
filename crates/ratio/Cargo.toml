@@ -14,6 +14,7 @@ ratio-api = { path = "../ratio-api" }
 ratio-agent = { path = "../ratio-agent" }
 ratio-chart = { path = "../ratio-chart" }
 ratio-console = { path = "../ratio-console" }
+ratio-ingest = { path = "../ratio-ingest" }
 ratio-mcp = { path = "../ratio-mcp" }
 ratio-nav = { path = "../ratio-nav" }
 ratio-recon = { path = "../ratio-recon" }

@@ -1460,6 +1460,7 @@ dependencies = [
  "ratio-chart",
  "ratio-common",
  "ratio-console",
+ "ratio-ingest",
  "ratio-kernel",
  "ratio-mcp",
  "ratio-nav",
@@ -1520,6 +1521,17 @@ dependencies = [
  "ratio-rules",
  "ratio-store",
  "serde_json",
+]
+
+[[package]]
+name = "ratio-ingest"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ratio-common",
+ "serde",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]

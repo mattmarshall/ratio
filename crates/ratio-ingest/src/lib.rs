@@ -276,10 +276,11 @@ impl Resolved {
                 "no {name} matches {}",
                 tried.iter().map(|r| render_rung(r)).collect::<Vec<_>>().join(" or "),
             )),
+            // Not "{name}s" — the entity names are domain words and English
+            // does not pluralize "security" by adding an s to it.
             Resolution::Ambiguous { rung, candidates } => Some(format!(
-                "{} {}s match {} — the master needs narrowing, not a new record",
+                "{} matches for {name} on {} — the master needs narrowing, not a new record",
                 candidates.len(),
-                name,
                 render_rung(rung),
             )),
         })

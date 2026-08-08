@@ -194,9 +194,41 @@ pub trait Journal {
 ///   config/<digest>    configuration bytes, addressed by content
 ///   config/ACTIVE      the digest currently in force
 ///   config/HISTORY     every promotion, one digest per line, oldest first
+///   deliveries.jsonl   every file received, by content digest
+///   entities.jsonl     the master: instruments, counterparties
+///   facts.jsonl        what the templates read out of those files
 /// ```
+///
+/// The last three are append-only for the same reason the journal is: a
+/// correction is a NEW record, never an edit, so what was believed at the time
+/// a figure was struck is still there to be read afterwards.
 pub struct FileBook {
     root: PathBuf,
+}
+
+/// An append-only plane beside the journal.
+///
+/// Named rather than free-form: these are the three logs the data plane keeps,
+/// and a store that would append to any filename a caller passed is a store
+/// that will one day append to `journal.jsonl`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Plane {
+    /// Files received, by content digest.
+    Deliveries,
+    /// The master: instruments, counterparties.
+    Entities,
+    /// What the templates read out of the files.
+    Facts,
+}
+
+impl Plane {
+    fn file(self) -> &'static str {
+        match self {
+            Plane::Deliveries => "deliveries.jsonl",
+            Plane::Entities => "entities.jsonl",
+            Plane::Facts => "facts.jsonl",
+        }
+    }
 }
 
 impl FileBook {
@@ -216,6 +248,45 @@ impl FileBook {
     }
     fn config_dir(&self) -> PathBuf {
         self.root.join("config")
+    }
+
+    /// Append one record to a plane beside the journal.
+    ///
+    /// Generic over the record so the store does not need to know what a fact
+    /// or an instrument looks like — those belong to `ratio-ingest`, and a
+    /// storage layer that had to be edited every time the data plane learned a
+    /// new fact type would be the wrong shape.
+    pub fn append_record<T: serde::Serialize>(&mut self, log: Plane, record: &T) -> Result<()> {
+        let line = serde_json::to_string(record).context("serializing the record")?;
+        if line.contains('\n') {
+            bail!("a record with a newline in it would break the log");
+        }
+        let path = self.root.join(log.file());
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .with_context(|| format!("opening {}", path.display()))?;
+        use std::io::Write;
+        writeln!(f, "{line}").with_context(|| format!("appending to {}", path.display()))?;
+        Ok(())
+    }
+
+    /// Every record on a plane, in the order they were appended.
+    pub fn records<T: serde::de::DeserializeOwned>(&self, log: Plane) -> Result<Vec<T>> {
+        let path = self.root.join(log.file());
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let text = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        text.lines()
+            .filter(|l| !l.trim().is_empty())
+            .enumerate()
+            .map(|(i, l)| {
+                serde_json::from_str(l)
+                    .with_context(|| format!("{} line {}", path.display(), i + 1))
+            })
+            .collect()
     }
 
     /// Replace the chart of accounts. The chart is current-state, not a log —

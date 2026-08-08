@@ -49,6 +49,11 @@ usage:
   ratio recon TXNS.csv POSITIONS.csv   shadow-run a period and report breaks
         [--book DIR] [--out FILE.pb] [--post]
   ratio watch [--book DIR] [--port N]  live trial balance in a browser
+  ratio ingest FILE --template ID      read a counterparty file into facts
+  ratio pending [--book DIR]           facts held back, and what blocks each
+  ratio entities [--book DIR]          the master: instruments, counterparties
+  ratio entity add --kind K --id I …   add one to the master
+  ratio admit [--book DIR]             post every fact that fully resolves
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio server                         serve the Ledger gRPC API
@@ -107,6 +112,13 @@ fn main() -> Result<()> {
         ["watch", "--port", p] => {
             watch::watch(book, p.parse().context("--port must be a number")?)
         }
+        ["ingest", file, "--template", id] | ["ingest", file, "-t", id] => {
+            ingest(book, file, id)
+        }
+        ["entities"] => entities(book),
+        ["entity", "add", rest @ ..] => entity_add(book, rest),
+        ["pending"] => pending(book),
+        ["admit"] => admit(book),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
         ["server"] => serve(),
@@ -115,6 +127,306 @@ fn main() -> Result<()> {
             bail!("unrecognized command: {}", other.join(" "));
         }
     }
+}
+
+/// Seconds since the epoch, for a received-at stamp.
+fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+// ─── the data plane ───────────────────────────────────────────────────────
+
+/// The templates in the configuration in force.
+///
+/// A configuration holds BOTH the posting rules and the mapping templates, and
+/// each parser reads its own sections and ignores the other's — which is how
+/// one digest comes to determine the whole derivation, from the counterparty's
+/// bytes to the NAV.
+///
+/// ⚠ Because unknown sections are ignored rather than rejected, a misspelt
+/// `[[templat]]` would silently yield zero templates. That is why every command
+/// that reads them reports HOW MANY it found: a count of nothing is visible in
+/// a way that a missing section is not.
+fn templates_of(b: &FileBook) -> Result<(ratio_ingest::TemplateSet, ratio_store::Digest)> {
+    let digest = b
+        .active()?
+        .context("no configuration is in force — run `ratio config set`")?;
+    let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
+    Ok((ratio_ingest::TemplateSet::from_toml(&text)?, digest))
+}
+
+/// Read a counterparty file into facts.
+fn ingest(book: PathBuf, file: &str, template_id: &str) -> Result<()> {
+    use ratio_store::Plane;
+
+    let mut b = FileBook::open(&book)?;
+    let (set, digest) = templates_of(&b)?;
+    let template = set.template(template_id).with_context(|| {
+        format!(
+            "no template {template_id:?} in the configuration in force \
+             ({} template(s) there: {})",
+            set.templates.len(),
+            set.templates.iter().map(|t| t.id.as_str()).collect::<Vec<_>>().join(", "),
+        )
+    })?;
+    let problems = template.check();
+    if !problems.is_empty() {
+        for p in &problems {
+            println!("  x {p}");
+        }
+        bail!("the template does not check; fix it before mapping a file with it");
+    }
+
+    let bytes = std::fs::read(file).with_context(|| format!("reading {file}"))?;
+    // Hashed on arrival, so every fact below can name the exact bytes it came
+    // from — and re-delivering the same file is recognizable rather than a
+    // second copy.
+    let delivery = ratio_ingest::Delivery {
+        digest: ratio_store::Digest::of(&bytes).as_str().to_string(),
+        origin: file.to_string(),
+        received: now(),
+        bytes: bytes.len() as i64,
+    };
+
+    let rows = match template.reads {
+        ratio_ingest::Reader::Csv => {
+            ratio_ingest::extract_csv(&String::from_utf8_lossy(&bytes))?
+        }
+    };
+    let projection =
+        ratio_ingest::project(template, &delivery, &rows, digest.as_str());
+
+    // A fact id is derived from the delivery digest and the row, so the same
+    // bytes under the same template do not produce a second set.
+    let known: std::collections::BTreeSet<String> = b
+        .records::<ratio_ingest::Fact>(Plane::Facts)?
+        .into_iter()
+        .map(|f| f.id)
+        .collect();
+    let fresh: Vec<&ratio_ingest::Fact> =
+        projection.facts.iter().filter(|f| !known.contains(&f.id)).collect();
+
+    b.append_record(Plane::Deliveries, &delivery)?;
+    for f in &fresh {
+        b.append_record(Plane::Facts, f)?;
+    }
+
+    println!("read     {file}");
+    println!("  bytes  {} ({})", delivery.bytes, &delivery.digest[..12]);
+    println!("  rows   {}", rows.len());
+    println!(
+        "  facts  {} new{}",
+        fresh.len(),
+        if fresh.len() == projection.facts.len() {
+            String::new()
+        } else {
+            format!(", {} already read", projection.facts.len() - fresh.len())
+        },
+    );
+    if !projection.rejected.is_empty() {
+        // Per row. A bad row does not take the file down with it.
+        println!("  refused {}", projection.rejected.len());
+        for r in &projection.rejected {
+            println!("    row {:<5} {}", r.row, r.reason);
+        }
+    }
+
+    let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+    report_resolution(&b.records::<ratio_ingest::Fact>(Plane::Facts)?, &master);
+    Ok(())
+}
+
+/// Resolve every fact against the master and say where things stand.
+///
+/// A FOLD, recomputed every time. Nothing is cached, so a fact that was pending
+/// this morning and is admissible now needs no re-ingestion — only the master
+/// changed.
+fn report_resolution(facts: &[ratio_ingest::Fact], master: &[ratio_ingest::Entity]) {
+    let resolved = ratio_ingest::resolve_all(facts, master);
+    let ok = resolved.iter().filter(|r| r.is_admissible()).count();
+    println!("  ready  {ok} of {} ({} pending)", resolved.len(), resolved.len() - ok);
+}
+
+fn pending(book: PathBuf) -> Result<()> {
+    use ratio_store::Plane;
+    let b = FileBook::open(&book)?;
+    let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+    let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+    let resolved = ratio_ingest::resolve_all(&facts, &master);
+
+    let held: Vec<&ratio_ingest::Resolved> =
+        resolved.iter().filter(|r| !r.is_admissible()).collect();
+    if held.is_empty() {
+        println!("nothing pending — {} fact(s), all resolved", facts.len());
+        return Ok(());
+    }
+    println!("PENDING — {} of {} fact(s)", held.len(), facts.len());
+    println!();
+    for r in &held {
+        println!("  {:<12} {}", r.fact.reference, r.blocker().unwrap_or_default());
+        println!(
+            "  {:<12} row {} of {} · template {}",
+            "",
+            r.fact.provenance.row,
+            &r.fact.provenance.delivery[..12],
+            r.fact.provenance.template_id,
+        );
+    }
+    println!();
+    println!("These clear when the master does. Nothing needs re-reading.");
+    Ok(())
+}
+
+fn entities(book: PathBuf) -> Result<()> {
+    use ratio_store::Plane;
+    let b = FileBook::open(&book)?;
+    let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+    if master.is_empty() {
+        println!("the master is empty — `ratio entity add` puts something in it");
+        return Ok(());
+    }
+    println!("{:<16}{:<14}{:<28}{}", "ID", "KIND", "NAME", "IDENTIFIED BY");
+    for e in &master {
+        let by: Vec<String> =
+            e.attributes.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        println!(
+            "{:<16}{:<14}{:<28}{}",
+            e.id,
+            e.kind.as_str(),
+            e.display_name,
+            by.join("  "),
+        );
+    }
+    Ok(())
+}
+
+fn entity_add(book: PathBuf, args: &[&str]) -> Result<()> {
+    use ratio_store::Plane;
+    let mut kind: Option<ratio_ingest::EntityKind> = None;
+    let (mut id, mut name) = (String::new(), String::new());
+    let mut attributes = std::collections::BTreeMap::new();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        let mut next = || it.next().copied().with_context(|| format!("{a} needs a value"));
+        match *a {
+            "--kind" => {
+                kind = Some(match next()? {
+                    "instrument" => ratio_ingest::EntityKind::Instrument,
+                    "counterparty" => ratio_ingest::EntityKind::Counterparty,
+                    k => bail!("{k:?} is not a kind — instrument or counterparty"),
+                })
+            }
+            "--id" => id = next()?.to_string(),
+            "--name" => name = next()?.to_string(),
+            "--attr" => {
+                let kv = next()?;
+                let (k, v) = kv
+                    .split_once('=')
+                    .with_context(|| format!("--attr wants key=value, got {kv:?}"))?;
+                attributes.insert(k.to_string(), v.to_string());
+            }
+            other => bail!("unrecognized flag {other:?}"),
+        }
+    }
+    let kind = kind.context("--kind is required")?;
+    if id.is_empty() {
+        bail!("--id is required");
+    }
+    if attributes.is_empty() {
+        // An entity with no attributes can never be matched by anything, so
+        // adding one would look like progress and be none.
+        bail!("--attr is required at least once, or nothing can ever resolve to this");
+    }
+
+    let mut b = FileBook::open(&book)?;
+    let entity = ratio_ingest::Entity {
+        id: id.clone(),
+        kind,
+        display_name: if name.is_empty() { id.clone() } else { name },
+        attributes,
+    };
+    b.append_record(Plane::Entities, &entity)?;
+    println!("added    {id}");
+
+    // ⭐ The point of the design, shown rather than described: nothing is
+    // re-read, and facts that were waiting on this are simply resolved now.
+    let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+    let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+    report_resolution(&facts, &master);
+    Ok(())
+}
+
+/// Post every fact that fully resolves.
+fn admit(book: PathBuf) -> Result<()> {
+    use ratio_store::Plane;
+    let mut b = FileBook::open(&book)?;
+    let digest = b.active()?.context("no configuration is in force")?;
+    let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+    let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+    let resolved = ratio_ingest::resolve_all(&facts, &master);
+
+    let posted: std::collections::BTreeSet<String> =
+        b.entries()?.into_iter().map(|e| e.id).collect();
+
+    let mut n = 0usize;
+    let mut skipped = Vec::new();
+    for r in resolved.iter().filter(|r| r.is_admissible()) {
+        if posted.contains(&r.fact.reference) {
+            continue;
+        }
+        match consideration(r) {
+            Ok(_amount) => n += 1,
+            Err(e) => skipped.push(format!("{}: {e:#}", r.fact.reference)),
+        }
+    }
+
+    println!("configuration {}", digest.short());
+    println!("  admissible {}", resolved.iter().filter(|r| r.is_admissible()).count());
+    println!("  postable   {n}");
+    if !skipped.is_empty() {
+        println!("  refused    {}", skipped.len());
+        for s in &skipped {
+            println!("    {s}");
+        }
+    }
+    println!();
+    println!("Posting is the next increment: an admitted fact becomes an event,");
+    println!("and the rules already in force decide the entries.");
+    Ok(())
+}
+
+/// What a trade was worth, in minor units.
+///
+/// ⛔ Quantity and price are both in minor units, so their product is scaled by
+/// ten thousand and has to come back down by a hundred. When that division is
+/// not exact — a fractional quantity at an odd price — there is a ROUNDING
+/// DECISION, and this refuses rather than making it silently. Which way to
+/// round is a term of an administration agreement, so it belongs in the
+/// configuration next to the tolerances, not in this function.
+fn consideration(r: &ratio_ingest::Resolved) -> Result<i64> {
+    let q = r
+        .fact
+        .values
+        .get("quantity")
+        .and_then(ratio_ingest::Value::as_minor)
+        .context("no quantity on this fact")?;
+    let p = r
+        .fact
+        .values
+        .get("price")
+        .and_then(ratio_ingest::Value::as_minor)
+        .context("no price on this fact")?;
+    let scaled = q.checked_mul(p).context("consideration overflows i64")?;
+    if scaled % 100 != 0 {
+        bail!(
+            "quantity x price is not a whole number of minor units, so posting it \
+             would take a rounding decision the configuration has not declared"
+        );
+    }
+    Ok(scaled / 100)
 }
 
 /// Pull `--book DIR` out of the argument list, wherever it appears.
