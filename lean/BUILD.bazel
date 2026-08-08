@@ -72,6 +72,17 @@ lean_test(
     entry = "Ratio/Valuation.lean",
 )
 
+# The day a fund is valuing. Settles what carrying that on the fund constrains,
+# BEFORE any of it is built: the day only moves forward, moving on never erases
+# what a day held, a day is struck at most once, and a skipped day is a visible
+# gap rather than a silent zero.
+lean_test(
+    name = "period_proof_test",
+    size = "small",
+    srcs = ["Ratio/Period.lean"],
+    entry = "Ratio/Period.lean",
+)
+
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
