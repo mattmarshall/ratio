@@ -883,6 +883,51 @@ impl Console {
         })
     }
 
+    /// The positions that cannot be valued at a date.
+    ///
+    /// ⛔ WHAT BLOCKS A STRIKE. A net asset value computed over a position
+    /// nobody has priced is not a net asset value — it is a number with a hole
+    /// in it, and the hole is invisible in the figure.
+    ///
+    /// `Ratio.Valuation.strike_refuses_exactly_when_something_is_unpriced`
+    /// proves the refusal is exactly this list, so the message and the decision
+    /// are one derivation and cannot disagree. And
+    /// `a_later_price_does_not_help` proves a price observed after the date
+    /// does not clear it — otherwise the strike could not be replayed from what
+    /// existed when it was taken.
+    pub fn unpriced_at(&self, fund: &str, as_of: &str) -> Result<Vec<(String, i64)>> {
+        use ratio_ingest::value::{mark_price, observations};
+
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+        let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+        let observed = observations(&ratio_ingest::resolve_all(&facts, &master))?;
+        let names: BTreeMap<String, String> =
+            ratio_ingest::current(&master).into_iter().map(|e| (e.id, e.display_name)).collect();
+
+        let (held, _) = b.positions()?;
+        let mut out = Vec::new();
+        for ((_, instrument), (_, quantity)) in held {
+            // A position closed out holds nothing, so nothing about it is
+            // unknown. Blocking on a zero holding would stop a strike over a
+            // security the fund no longer owns.
+            if quantity == 0 {
+                continue;
+            }
+            let none = observed
+                .get(&instrument)
+                .map_or(true, |os| mark_price(as_of, os).is_none());
+            if none {
+                out.push((
+                    names.get(&instrument).cloned().unwrap_or_else(|| instrument.clone()),
+                    quantity,
+                ));
+            }
+        }
+        Ok(out)
+    }
+
     /// Post every fact that fully resolves.
     ///
     /// ⛔ THE ONE IMPLEMENTATION. `ratio admit` calls this too — a second copy

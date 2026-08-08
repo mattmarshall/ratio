@@ -43,7 +43,8 @@ usage:
   ratio post FILE [--book DIR]         post entries directly; refuses unbalanced
   ratio balance [--book DIR]           print the trial balance
   ratio explain ACCOUNT [--book DIR]   read back the postings behind a figure
-  ratio strike [--book DIR]            strike a NAV, pinned to the journal
+  ratio strike [--as-of YYYY-MM-DD]    strike a NAV, pinned to the journal
+        [--book DIR]                   with --as-of it REFUSES an unpriced position
   ratio navs [--book DIR]              every NAV struck on this book
   ratio replay STRIKE-ID [--book DIR]  re-derive a strike and prove it again
   ratio recon TXNS.csv POSITIONS.csv   shadow-run a period and report breaks
@@ -97,7 +98,8 @@ fn main() -> Result<()> {
         ["post", file] => post(book, file),
         ["balance"] => balance(book),
         ["explain", account] => explain(book, account),
-        ["strike"] => strike(book),
+        ["strike"] => strike(book, None),
+        ["strike", "--as-of", d] => strike(book, Some(d)),
         ["navs"] => navs(book),
         ["replay", id] => replay_strike(book, id),
         ["recon", txns, positions] => recon(book, txns, positions, None, false),
@@ -822,7 +824,30 @@ fn book_label(book: &std::path::Path) -> String {
 /// The valuation point is now. A real system takes it from the fund's calendar
 /// — 16:00 New York for a US mutual fund — and that belongs in configuration
 /// rather than in a flag, so it is deliberately not one.
-fn strike(book: PathBuf) -> Result<()> {
+fn strike(book: PathBuf, as_of: Option<&str>) -> Result<()> {
+    // ⛔ A NAV struck over a position nobody has priced is a number with a hole
+    // in it, and the hole is invisible in the figure. With a valuation date,
+    // that is a refusal.
+    //
+    // Without one it is not checked — because "unpriced" is not a well-formed
+    // question until somebody says as of WHEN, and a book does not know what
+    // day it is. That is the honest limit of this check, not an oversight.
+    if let Some(day) = as_of {
+        if day.split('-').count() != 3 {
+            bail!("{day:?} is not a date — YYYY-MM-DD");
+        }
+        let blocked = ratio_console::Console::new(&book).unpriced_at("demo", day)?;
+        if !blocked.is_empty() {
+            println!("REFUSED — {} position(s) have no price on or before {day}:", blocked.len());
+            for (name, units) in &blocked {
+                println!("  {name:<38}{units:>10} units");
+            }
+            println!();
+            println!("These are not held at zero; they are unvalued. Deliver a price");
+            println!("file and `ratio mark --as-of {day}`, then strike.");
+            bail!("the NAV was not struck");
+        }
+    }
     let actor = actor_name();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

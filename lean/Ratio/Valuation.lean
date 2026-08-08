@@ -281,6 +281,89 @@ theorem mark_uses_an_eligible_price
   obtain ⟨o, ho⟩ := hsome
   exact ⟨o, ho, markPrice_is_not_after asOf os o ho⟩
 
+/- ── Whether a NAV may be struck at all ────────────────────────────────── -/
+
+/-- What the book holds: an instrument, and how much of it. -/
+structure Holding where
+  instrument : String
+  units : Int
+deriving DecidableEq, Repr
+
+/-- Whether a holding can be valued on the day.
+
+The prices are given as a function from instrument to what has been observed
+about it — the shape the fact log folds to, and the shape the Rust hands in. -/
+def priced (asOf : Int) (prices : String → List Observation) (h : Holding) : Bool :=
+  (markPrice asOf (prices h.instrument)).isSome
+
+/-- The holdings that cannot be valued on the day. -/
+def unpricedAt (asOf : Int) (prices : String → List Observation)
+    (hs : List Holding) : List Holding :=
+  hs.filter (fun h => !priced asOf prices h)
+
+/-- Whether a NAV may be struck at the day: every holding has a price.
+
+⛔ THE POINT OF THE WHOLE VALUATION LAYER. A net asset value computed over a
+position nobody has priced is not a net asset value — it is a number with a
+hole in it, and the hole is invisible in the figure. So this is a refusal, and
+`strike_refuses_exactly_when_something_is_unpriced` says the refusal is total:
+there is no path to a struck NAV with an unvalued holding in it. -/
+def strikeable (asOf : Int) (prices : String → List Observation)
+    (hs : List Holding) : Bool :=
+  hs.all (priced asOf prices)
+
+/-- A fund that holds nothing can be struck. Vacuous, and worth stating: the
+refusal must not fire on an empty book. -/
+theorem nothing_held_is_strikeable (asOf : Int) (prices : String → List Observation) :
+    strikeable asOf prices [] = true := rfl
+
+/-- **The refusal is exactly the unpriced list.** What blocks a strike is what
+the screen shows as blocking it — one derivation, so the message and the
+decision cannot disagree. -/
+theorem strike_refuses_exactly_when_something_is_unpriced
+    (asOf : Int) (prices : String → List Observation) (hs : List Holding) :
+    strikeable asOf prices hs = true ↔ unpricedAt asOf prices hs = [] := by
+  unfold strikeable unpricedAt
+  rw [List.filter_eq_nil_iff, List.all_eq_true]
+  constructor
+  · intro h a ha; simp [h a ha]
+  · intro h a ha
+    have := h a ha
+    simpa using this
+
+/-- An observation from after the day does not change the eligible ones. -/
+theorem eligible_ignores_later (asOf : Int) (o : Observation) (os : List Observation)
+    (h : asOf < o.onDay) : eligible asOf (o :: os) = eligible asOf os := by
+  have hd : decide (o.onDay ≤ asOf) = false := by simp; omega
+  simp [eligible, List.filter, hd]
+
+/-- **A price observed after the valuation date does not unblock it.**
+Tomorrow's file is not evidence about today, so it cannot be what lets today be
+struck — otherwise the strike could not be replayed from what existed when it
+was taken. -/
+theorem a_later_price_does_not_help
+    (asOf : Int) (o : Observation) (os : List Observation) (hlater : asOf < o.onDay) :
+    markPrice asOf (o :: os) = markPrice asOf os := by
+  unfold markPrice
+  rw [eligible_ignores_later asOf o os hlater]
+
+/-- **A price can only ever unblock.** Observing something never takes away a
+valuation that was already possible — so a strike that could be taken stays
+takeable, and the queue of what blocks only shrinks as data arrives. -/
+theorem observing_never_blocks
+    (asOf : Int) (os : List Observation) (o : Observation)
+    (h : (markPrice asOf os).isSome = true) :
+    (markPrice asOf (o :: os)).isSome = true := by
+  unfold markPrice at *
+  unfold eligible at *
+  cases hc : decide (o.onDay ≤ asOf) with
+  | false => simpa [List.filter, hc] using h
+  | true =>
+    simp only [List.filter, hc]
+    -- `latest` of a non-empty list is always some, whichever branch it takes.
+    unfold latest
+    split <;> simp
+
 /- ── The net asset value moves by exactly the marks ────────────────────── -/
 
 /-- The total a list of marks moves the book. -/
