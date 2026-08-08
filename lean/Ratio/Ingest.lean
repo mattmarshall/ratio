@@ -447,6 +447,55 @@ theorem replace_sets_the_section (d : Document) (k v : String) :
     · simp [replaceSection, section?, h]
     · simp [replaceSection, section?, h, ih]
 
+/- ── Positions: refining the partition ────────────────────────────────────
+
+An account does not name a conserved quantity — it PARTITIONS one. The kernel
+conserves value; accounts say where the value sits. So recording which
+instrument a posting concerns partitions it further, and conservation is
+untouched by construction rather than by care.
+
+The property that makes a position breakdown trustworthy is that it cannot
+contradict the figure it breaks down: splitting a list of postings any way at
+all and summing the parts gives the total back. If that failed, the positions
+screen and the trial balance could disagree, and the whole claim of the product
+is that two views of the same book cannot.
+
+⚠ QUANTITY IS NOT THIS. A share count does not conserve inside one entity's
+books — buying a hundred shares creates a hundred shares here and destroys them
+at the counterparty, who is outside the boundary. Quantity is carried as a
+measure and CHECKED BY RECONCILIATION against the custodian, which is exactly
+what reconciliation is for. Claiming it as a conserved dimension would be a
+nicer story and a false one. -/
+
+/-- Splitting a list by any predicate and summing the parts gives the total. -/
+theorem split_preserves_total : ∀ (xs : List Int) (p : Int → Bool),
+    (xs.filter p).sum + (xs.filter (fun x => !p x)).sum = xs.sum
+  | [], _ => by simp
+  | x :: rest, p => by
+    have ih := split_preserves_total rest p
+    by_cases h : p x
+    · simp [List.filter, h]
+      omega
+    · simp [List.filter, h]
+      omega
+
+/-- **A position breakdown cannot contradict the account it breaks down.**
+
+Filtering postings to one instrument and taking the rest gives back the
+account's own figure, so the positions screen and the trial balance are two
+readings of one number rather than two numbers. -/
+theorem positions_roll_up (xs : List Int) (p : Int → Bool) (total : Int)
+    (h : xs.sum = total) :
+    (xs.filter p).sum + (xs.filter (fun x => !p x)).sum = total := by
+  rw [split_preserves_total]; exact h
+
+/-- And a conserving book stays conserving however it is partitioned: the parts
+of zero sum to zero. -/
+theorem partition_preserves_conservation (xs : List Int) (p : Int → Bool)
+    (h : xs.sum = 0) :
+    (xs.filter p).sum + (xs.filter (fun x => !p x)).sum = 0 :=
+  positions_roll_up xs p 0 h
+
 /- ── The emitted surface, and what ties it to the proofs above ─────────────
 
 `Polyglot.Rust`'s builders cover enums, structs, functions, matches and

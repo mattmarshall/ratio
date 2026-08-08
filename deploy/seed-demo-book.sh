@@ -49,6 +49,7 @@ description = "Buy: investments up, cash down"
 [[rule.posting]]
 account = 1
 weight = 1
+per_instrument = true
 [[rule.posting]]
 account = 2
 weight = -1
@@ -74,6 +75,7 @@ weight = 1
 [[rule.posting]]
 account = 1
 weight = -1
+per_instrument = true
 
 [[rule]]
 id = "cash_dividend"

@@ -316,7 +316,7 @@ mod tests {
                 id: id.into(),
                 memo: id.into(),
                 config: c.clone(),
-                postings: legs.into_iter().map(|(dim, amount)| PostingRecord { dim, amount }).collect(),
+                postings: legs.into_iter().map(|(dim, amount)| PostingRecord::new(dim, amount)).collect(),
             })
             .unwrap();
         }
@@ -361,8 +361,8 @@ mod tests {
             memo: "later".into(),
             config: c,
             postings: vec![
-                PostingRecord { dim: 1, amount: 5_000_000 },
-                PostingRecord { dim: 2, amount: -5_000_000 },
+                PostingRecord::new(1, 5_000_000),
+                PostingRecord::new(2, -5_000_000),
             ],
         })
         .unwrap();

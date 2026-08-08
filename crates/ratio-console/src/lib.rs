@@ -338,8 +338,7 @@ impl Console {
             id: id.to_string(),
             amount,
             days,
-            memo: String::new(),
-        };
+            memo: String::new(), instrument: None, quantity: None };
         let postings = ratio_rules::compile(rule, &event)?;
 
         // The memo is COMPOSED from what the rule and the event say, never
@@ -700,6 +699,21 @@ impl Console {
                 .keys()
                 .filter_map(|k| r.entity(k).map(str::to_string))
                 .collect();
+            // The instrument the fact RESOLVED to, not the identifier the file
+            // happened to carry. Two counterparties calling the same security
+            // by different identifiers must land on one position, which is the
+            // whole reason resolution exists.
+            let instrument = r
+                .entities
+                .keys()
+                .find(|k| {
+                    r.fact
+                        .entities
+                        .get(*k)
+                        .is_some_and(|e| e.kind == ratio_ingest::EntityKind::Instrument)
+                })
+                .and_then(|k| r.entity(k))
+                .map(str::to_string);
             let postings = ratio_rules::compile(
                 rule,
                 &ratio_rules::Event {
@@ -708,6 +722,17 @@ impl Console {
                     amount,
                     days: None,
                     memo: String::new(),
+                    instrument,
+                    // Whole units. The fact carries it in minor units because
+                    // fractional shares exist; a quantity that is not whole is
+                    // carried as none rather than rounded.
+                    quantity: r
+                        .fact
+                        .values
+                        .get("quantity")
+                        .and_then(ratio_ingest::Value::as_minor)
+                        .filter(|q| q % 100 == 0)
+                        .map(|q| q / 100),
                 },
             )?;
             if !req.validate_only {
@@ -1362,7 +1387,7 @@ mod tests {
                 id: id.into(),
                 memo: memo.into(),
                 config: d.clone(),
-                postings: legs.into_iter().map(|(dim, amount)| PostingRecord { dim, amount }).collect(),
+                postings: legs.into_iter().map(|(dim, amount)| PostingRecord::new(dim, amount)).collect(),
             })
             .unwrap();
         };
@@ -1814,8 +1839,8 @@ mod tests {
             memo: "drawn down past zero".into(),
             config: cfg.clone(),
             postings: vec![
-                PostingRecord { dim: 2, amount: -500 },
-                PostingRecord { dim: 20, amount: 500 },
+                PostingRecord::new(2, -500),
+                PostingRecord::new(20, 500),
             ],
         })
         .unwrap();

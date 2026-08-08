@@ -455,8 +455,7 @@ pub fn cover(txns: &[Txn], scope: &Scope, set: &RuleSet) -> Result<Vec<Event>, V
                 id: t.id.clone(),
                 amount: t.amount.abs(),
                 days: t.days,
-                memo: memo(t),
-            }),
+                memo: memo(t), instrument: None, quantity: None }),
             TypeHandling::Disposal { proceeds_rule, basis_rule } => {
                 let Some(basis) = t.basis else {
                     exceptions.push(Exception {
@@ -477,15 +476,13 @@ pub fn cover(txns: &[Txn], scope: &Scope, set: &RuleSet) -> Result<Vec<Event>, V
                     id: format!("{}-proceeds", t.id),
                     amount: t.amount.abs(),
                     days: None,
-                    memo: memo(t),
-                });
+                    memo: memo(t), instrument: None, quantity: None });
                 events.push(Event {
                     rule: basis_rule.clone(),
                     id: format!("{}-basis", t.id),
                     amount: basis.abs(),
                     days: None,
-                    memo: memo(t),
-                });
+                    memo: memo(t), instrument: None, quantity: None });
             }
         }
     }

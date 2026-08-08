@@ -410,113 +410,39 @@ fn entity_add(book: PathBuf, args: &[&str]) -> Result<()> {
 
 /// Post every fact that fully resolves.
 ///
-/// The fact becomes an EVENT and the rules already in force decide the
-/// entries — the same path `ratio apply` takes. Nothing here knows how a trade
-/// books; that was approved separately and is the rule's business.
+/// ⛔ CALLS THE CONSOLE'S IMPLEMENTATION. There were briefly two — one here and
+/// one in `ratio-console` for the API — and a commit message of mine claimed
+/// there was one. Two implementations of "what posts" is two sets of decisions
+/// about the books, and the second silently lacked the instrument the first had
+/// just learned to carry, which is how the positions view came up empty.
 fn admit(book: PathBuf) -> Result<()> {
-    use ratio_store::Plane;
+    let c = ratio_console::Console::new(&book);
+    let out = c.admit_facts(&ratio_proto::ratio::console::v1::AdmitFactsRequest {
+        parent: "funds/demo".into(),
+        validate_only: false,
+    })?;
 
-    let mut b = FileBook::open(&book)?;
-    let digest = b.active()?.context("no configuration is in force")?;
-    let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
-    let templates = ratio_ingest::TemplateSet::from_toml(&text)?;
-    let rules = RuleSet::from_toml(&text)?;
-
-    let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
-    let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
-    let resolved = ratio_ingest::resolve_all(&facts, &master);
-
-    // An event is recorded once. The journal's own ids are the record of what
-    // has already posted, so re-running this is a no-op rather than a second
-    // set of entries.
-    let posted: std::collections::BTreeSet<String> =
-        b.entries()?.into_iter().map(|e| e.id).collect();
-
-    let (mut n, mut skipped) = (0usize, Vec::new());
-    let mut reference_only = 0usize;
-    for r in resolved.iter().filter(|r| r.is_admissible()) {
-        if posted.contains(&r.fact.reference) {
-            continue;
-        }
-        let Some(template) = templates.template(&r.fact.provenance.template_id) else {
-            skipped.push(format!(
-                "{}: template {:?} is not in the configuration in force",
-                r.fact.reference, r.fact.provenance.template_id
-            ));
-            continue;
-        };
-        // ⚠ A template with no `posts` block is REFERENCE DATA — a price file,
-        // an FX file, a security master. It is recorded, resolved and citable,
-        // and it never touches the books. Reporting that as a refusal reads as
-        // a fault, which is how a demo comes to show red for the thing working
-        // exactly as designed.
-        if template.fact.posts.is_none() {
-            reference_only += 1;
-            continue;
-        }
-        let (rule_id, amount) = match ratio_ingest::posting_for(template, &r.fact) {
-            Ok(v) => v,
-            Err(e) => {
-                skipped.push(format!("{}: {e:#}", r.fact.reference));
-                continue;
-            }
-        };
-        let Some(rule) = rules.rule(&rule_id) else {
-            skipped.push(format!(
-                "{}: the template posts it as `{rule_id}`, which is not a rule in force",
-                r.fact.reference
-            ));
-            continue;
-        };
-
-        // The memo carries the resolved entities and the row it came from, so
-        // the entry can name its whole provenance without a join.
-        let who: Vec<String> = r
-            .entities
-            .keys()
-            .filter_map(|k| r.entity(k).map(|e| e.to_string()))
-            .collect();
-        let event = ratio_rules::Event {
-            rule: rule_id.clone(),
-            id: r.fact.reference.clone(),
-            amount,
-            days: None,
-            memo: String::new(),
-        };
-        let postings = ratio_rules::compile(rule, &event)?;
-        b.append(&ratio_store::JournalEntry {
-            id: r.fact.reference.clone(),
-            memo: format!(
-                "{} · {} · row {} of {}",
-                who.join(" "),
-                rule_id,
-                r.fact.provenance.row,
-                &r.fact.provenance.delivery[..12],
-            ),
-            config: digest.clone(),
-            postings,
-        })?;
-        n += 1;
+    println!("  posted     {}", out.posted_count);
+    if out.recorded_count != "0" {
+        println!(
+            "  recorded   {} (reference data — posts nothing by design)",
+            out.recorded_count
+        );
     }
-
-    println!("configuration {}", digest.short());
-    println!("  posted     {n}");
-    if reference_only > 0 {
-        println!("  recorded   {reference_only} (reference data — posts nothing by design)");
-    }
-    if !skipped.is_empty() {
-        println!("  refused    {}", skipped.len());
-        for s in &skipped {
-            println!("    {s}");
+    if !out.refused.is_empty() {
+        println!("  refused    {}", out.refused.len());
+        for r in &out.refused {
+            println!("    {r}");
         }
     }
-    let pend = resolved.iter().filter(|r| !r.is_admissible()).count();
-    if pend > 0 {
-        println!("  pending    {pend} (they clear when the master does)");
+    if out.pending_count != "0" {
+        println!(
+            "  pending    {} (they clear when the master does)",
+            out.pending_count
+        );
     }
     Ok(())
 }
-
 
 /// Pull `--book DIR` out of the argument list, wherever it appears.
 fn split_book_flag(args: &[String]) -> Result<(Vec<String>, PathBuf)> {

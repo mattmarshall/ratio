@@ -92,6 +92,19 @@ pub struct Leg {
     pub account: i64,
     /// This leg's multiple of the amount. Positive debits, negative credits.
     pub weight: i64,
+
+    /// Whether this leg is held PER INSTRUMENT.
+    ///
+    /// An accounting decision, so it belongs in the approved rule rather than
+    /// in the mapping: investments at fair value are held per instrument, and
+    /// the cash that paid for them is not. Marking every leg would put a
+    /// security on the cash account, which is not a thing.
+    ///
+    /// Instruments partition value further; they do not change how much there
+    /// is, so conservation is untouched — proved in
+    /// `Ratio.Ingest.partition_preserves_conservation`.
+    #[serde(default)]
+    pub per_instrument: bool,
 }
 
 /// A posting rule.
@@ -159,6 +172,16 @@ pub struct Event {
     pub days: Option<i64>,
     #[serde(default)]
     pub memo: String,
+
+    /// The instrument this event concerns, if any. Legs that declare
+    /// `per_instrument` carry it; the rest do not.
+    #[serde(default)]
+    pub instrument: Option<String>,
+
+    /// Whole units moved. ⚠ A MEASURE, not a conserved quantity — see
+    /// `PostingRecord::quantity`.
+    #[serde(default)]
+    pub quantity: Option<i64>,
 }
 
 /// Why a rule was rejected, in words a fund accountant would use.
@@ -343,10 +366,22 @@ pub fn compile(rule: &Rule, event: &Event) -> Result<Vec<PostingRecord>> {
     Ok(rule
         .legs
         .iter()
-        .map(|leg| PostingRecord {
-            dim: leg.account,
+        .map(|leg| {
             // `Ratio.Chart.applyTemplate`: weight × amount, per leg.
-            amount: leg.weight * amount,
+            let value = leg.weight * amount;
+            match (leg.per_instrument, event.instrument.as_deref()) {
+                (true, Some(i)) => PostingRecord::of(
+                    leg.account,
+                    value,
+                    i,
+                    // The quantity follows the leg's SIGN: a purchase debits
+                    // investments and adds shares; the disposal leg credits and
+                    // removes them. Taking the event's sign instead would add
+                    // shares on a sale.
+                    event.quantity.map(|q| if leg.weight < 0 { -q } else { q }),
+                ),
+                _ => PostingRecord::new(leg.account, value),
+            }
         })
         .collect())
 }
@@ -565,8 +600,7 @@ weight = -1
                 id: "t1".into(),
                 amount: 1_690_421_107,
                 days: None,
-                memo: String::new(),
-            },
+                memo: String::new(), instrument: None, quantity: None },
         )
         .unwrap();
         assert_eq!(out[0].amount, 1_690_421_107);
@@ -589,8 +623,7 @@ weight = -1
                         id: "a".into(),
                         amount: basis,
                         days: Some(days),
-                        memo: String::new(),
-                    },
+                        memo: String::new(), instrument: None, quantity: None },
                 )
                 .unwrap();
                 let net: i64 = out.iter().map(|p| p.amount).sum();
@@ -611,8 +644,7 @@ weight = -1
                     id: "a".into(),
                     amount: basis,
                     days: Some(days),
-                    memo: String::new(),
-                },
+                    memo: String::new(), instrument: None, quantity: None },
             )
             .unwrap()[0]
                 .amount
@@ -639,8 +671,7 @@ weight = -1
                 id: "big".into(),
                 amount: 1_000_000_000_000, // 10 billion units
                 days: Some(365),
-                memo: String::new(),
-            },
+                memo: String::new(), instrument: None, quantity: None },
         )
         .unwrap();
         assert_eq!(out[0].amount, 7_500_000_000);

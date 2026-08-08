@@ -86,14 +86,59 @@ impl std::fmt::Display for Digest {
 /// Deliberately distinct from `ratio_kernel::Posting`, which is Lean-emitted
 /// and carries no dependencies. Serialization is an I/O concern and does not
 /// belong on the proven kernel.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PostingRecord {
     pub dim: i64,
     pub amount: i64,
+
+    /// Which instrument this posting concerns, if any.
+    ///
+    /// An account does not name a conserved quantity — it PARTITIONS one. The
+    /// kernel conserves value; accounts say where the value sits. Recording the
+    /// instrument partitions it further, so conservation is untouched by
+    /// construction: `Ratio.Ingest.partition_preserves_conservation` proves the
+    /// parts of zero sum to zero, and `positions_roll_up` proves a position
+    /// breakdown cannot contradict the account it breaks down.
+    ///
+    /// `#[serde(default)]` so every journal written before this field existed
+    /// still reads — an append-only log you cannot read is not a record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instrument: Option<String>,
+
+    /// The share count, in whole units.
+    ///
+    /// ⚠ NOT CONSERVED, and deliberately not claimed to be. Buying a hundred
+    /// shares creates a hundred here and destroys them at the counterparty, who
+    /// is outside this book's boundary. Quantity is a MEASURE, checked against
+    /// the custodian by reconciliation — which is what reconciliation is for.
+    /// Calling it a conserved dimension would be a better story and a false
+    /// one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quantity: Option<i64>,
 }
 
-impl From<PostingRecord> for Posting {
-    fn from(p: PostingRecord) -> Self {
+impl PostingRecord {
+    /// A posting that concerns no particular instrument — a fee, a
+    /// subscription, a transfer.
+    pub fn new(dim: i64, amount: i64) -> Self {
+        PostingRecord { dim, amount, instrument: None, quantity: None }
+    }
+
+    /// A posting against an instrument, with the quantity it moved.
+    pub fn of(dim: i64, amount: i64, instrument: &str, quantity: Option<i64>) -> Self {
+        PostingRecord {
+            dim,
+            amount,
+            instrument: Some(instrument.to_string()),
+            quantity,
+        }
+    }
+}
+
+impl From<&PostingRecord> for Posting {
+    /// The kernel sees only the conserved quantity. An instrument partitions
+    /// where the value sits; it does not change how much there is.
+    fn from(p: &PostingRecord) -> Self {
         Posting {
             dim: p.dim,
             amount: p.amount,
@@ -120,7 +165,7 @@ impl JournalEntry {
     /// The kernel's view of this entry.
     pub fn transaction(&self) -> Transaction {
         Transaction {
-            postings: self.postings.iter().map(|p| (*p).into()).collect(),
+            postings: self.postings.iter().map(Posting::from).collect(),
         }
     }
 
@@ -317,9 +362,35 @@ impl FileBook {
         let postings: Vec<Posting> = self
             .entries()?
             .iter()
-            .flat_map(|e| e.postings.iter().map(|p| Posting::from(*p)))
+            .flat_map(|e| e.postings.iter().map(|p| Posting::from(p)))
             .collect();
         Ok(trial_balance(&postings))
+    }
+
+    /// Value and quantity per (account, instrument), plus what is NOT
+    /// attributed to any instrument.
+    ///
+    /// ⛔ THE UNATTRIBUTED PART IS RETURNED, NOT DROPPED. `positions_roll_up`
+    /// proves that filtering a list and taking the rest gives the total back —
+    /// BOTH halves. A positions view that showed only the attributed half
+    /// would disagree with the trial balance by exactly the amount it hid,
+    /// which is the one thing two views of one book must never do.
+    pub fn positions(&self) -> Result<(BTreeMap<(i64, String), (i64, i64)>, BTreeMap<i64, i64>)> {
+        let mut held: BTreeMap<(i64, String), (i64, i64)> = BTreeMap::new();
+        let mut rest: BTreeMap<i64, i64> = BTreeMap::new();
+        for entry in self.entries()? {
+            for p in entry.postings {
+                match p.instrument {
+                    Some(i) => {
+                        let slot = held.entry((p.dim, i)).or_insert((0, 0));
+                        slot.0 += p.amount;
+                        slot.1 += p.quantity.unwrap_or(0);
+                    }
+                    None => *rest.entry(p.dim).or_default() += p.amount,
+                }
+            }
+        }
+        Ok((held, rest))
     }
 
     /// Debit and credit totals per dimension, for the report.
@@ -451,6 +522,66 @@ impl Journal for FileBook {
 }
 
 #[cfg(test)]
+mod position_tests {
+    use super::*;
+
+    /// ⛔ The property `Ratio.Ingest.positions_roll_up` proves, on a real book.
+    ///
+    /// A positions breakdown plus what it does not attribute must equal the
+    /// account. My first check of this asserted the positions alone equalled
+    /// the account and failed by 350,000 — I had forgotten the other half of
+    /// the theorem I had just written.
+    #[test]
+    fn positions_and_what_they_do_not_attribute_equal_the_account() {
+        let dir = std::env::temp_dir().join("ratio-store-positions");
+        let _ = fs::remove_dir_all(&dir);
+        let mut b = FileBook::open(&dir).unwrap();
+        let cfg = b.put(b"rules = []\n").unwrap();
+        b.set_active(&cfg).unwrap();
+
+        // One entry attributed to an instrument, one not — a fee has no
+        // security on it, and a book has both.
+        b.append(&JournalEntry {
+            id: "t1".into(),
+            memo: "buy".into(),
+            config: cfg.clone(),
+            postings: vec![
+                PostingRecord::of(1, 25_000_00, "inst-vti", Some(100)),
+                PostingRecord::new(2, -25_000_00),
+            ],
+        })
+        .unwrap();
+        b.append(&JournalEntry {
+            id: "f1".into(),
+            memo: "an adjustment with no security on it".into(),
+            config: cfg.clone(),
+            postings: vec![
+                PostingRecord::new(1, 1_000_00),
+                PostingRecord::new(2, -1_000_00),
+            ],
+        })
+        .unwrap();
+
+        let (held, rest) = b.positions().unwrap();
+        assert_eq!(held[&(1, "inst-vti".to_string())], (25_000_00, 100));
+        assert_eq!(rest[&1], 1_000_00);
+
+        let account: i64 = b.balances_by_dim().unwrap()[&1].0 - b.balances_by_dim().unwrap()[&1].1;
+        let attributed: i64 = held.iter().filter(|((d, _), _)| *d == 1).map(|(_, v)| v.0).sum();
+        assert_eq!(
+            attributed + rest[&1],
+            account,
+            "the breakdown must equal the figure it breaks down",
+        );
+
+        // …and conservation is untouched: an instrument partitions where the
+        // value sits, not how much there is.
+        let tb = b.trial_balance().unwrap();
+        assert_eq!(tb.debits, tb.credits, "an instrument partitions value, it does not create any");
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -478,10 +609,7 @@ mod tests {
             config: cfg.clone(),
             postings: postings
                 .iter()
-                .map(|(dim, amount)| PostingRecord {
-                    dim: *dim,
-                    amount: *amount,
-                })
+                .map(|(dim, amount)| PostingRecord::new(*dim, *amount))
                 .collect(),
         }
     }
