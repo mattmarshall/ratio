@@ -143,3 +143,67 @@ tla_check(
     tags = ["manual"],
     deps = [":actions"],
 )
+
+# ⛔ The derived read model, and the one way it silently produces a wrong figure.
+#
+# Twenty million lots do not scan through the journal quickly — 89 seconds at
+# the rate `ratio_nav::closure::measure` reports — so reads move to a projection
+# folded from a journal prefix. That is safe only if a strike pins the prefix it
+# actually read. Pinning the journal HEAD while reading a lagging projection
+# passes every downstream check: the trial balance ties, the digest is
+# well-formed, and `ratio replay` disagrees with the figure it was asked to
+# confirm.
+#
+# It also carries `Ratio.Actions.Factor`'s precondition into the system: under
+# the factor representation nothing is applied, so a corporate action in a side
+# plane is pinned by no strike and a replay reads whatever arrived since.
+tla_library(
+    name = "projection",
+    srcs = ["Projection.tla"],
+)
+
+tla_check(
+    name = "projection_check",
+    size = "medium",
+    config = "MCProjection.cfg",
+    module = "MCProjection.tla",
+    deps = [":projection"],
+)
+
+# ⛔ The strike pins the journal head while reading a lagging projection — the
+# obvious, tempting bug, because the head is the number closest to hand.
+# StrikeFoldsItsOwnPrefix goes red.
+tla_check(
+    name = "unpinned_projection_check",
+    size = "medium",
+    config = "UnpinnedProjection.cfg",
+    module = "UnpinnedProjection.tla",
+    tags = ["manual"],
+    deps = [":projection"],
+)
+
+# ⛔ A rebuild that re-folds from zero onto state it already holds. Its claimed
+# position stays honest and its contents do not, so nothing about the resulting
+# number looks wrong — it is simply too big.
+# ProjectionIsTheFold goes red.
+tla_check(
+    name = "rebuild_double_counts_check",
+    size = "medium",
+    config = "RebuildDoubleCounts.cfg",
+    module = "RebuildDoubleCounts.tla",
+    tags = ["manual"],
+    deps = [":projection"],
+)
+
+# ⛔ Corporate actions in a side plane, which is where `Plane::Actions` has them
+# today. `Ratio.Actions.Factor.an_unpinned_announcement_changes_the_answer` is
+# one step of this; here it is a run.
+# ReplayReproduces goes red.
+tla_check(
+    name = "announcements_in_side_log_check",
+    size = "medium",
+    config = "AnnouncementsInSideLog.cfg",
+    module = "AnnouncementsInSideLog.tla",
+    tags = ["manual"],
+    deps = [":projection"],
+)
