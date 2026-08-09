@@ -197,6 +197,8 @@ mod tests {
                     },
                     PostingRecord::new(2, -*cost),
                 ],
+            
+                announcement: None,
             })
             .unwrap();
         }

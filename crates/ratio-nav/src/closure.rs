@@ -377,6 +377,8 @@ mod tests {
                 memo: "measured".into(),
                 config: c.clone(),
                 postings: vec![PostingRecord::new(1, 100), PostingRecord::new(2, -100)],
+            
+                announcement: None,
             })
             .unwrap();
         }

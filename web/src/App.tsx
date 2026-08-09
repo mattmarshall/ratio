@@ -586,6 +586,18 @@ function Actions({ actions }: { actions: CorporateAction[] }) {
                   {String(a.exDate.day).padStart(2, "0")}
                 </span>
               ) : null}
+              {/* ⛔ An announcement pinned by nothing. Under the factor
+                  representation a replay would read whatever arrived since and
+                  answer differently, so this figure's citation is not binding.
+                  Books written before announcements became journal entries all
+                  look like this, and no rewrite can fix them — the
+                  announcements were not in the order. */}
+              {a.announcePosition === "0" ? (
+                <div className="qual">
+                  announced outside the journal — no strike pins it, so a replay
+                  is not determined
+                </div>
+              ) : null}
               {/* ⛔ The strikes it was not in, on the action itself. This list
                   can never be emptied — a valuation point is never restated —
                   so it is the permanent record of what arriving late cost. */}

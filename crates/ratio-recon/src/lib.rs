@@ -518,6 +518,8 @@ pub fn replay(events: &[Event], set: &RuleSet, config: &Digest) -> Result<Vec<Jo
             memo: e.memo.clone(),
             config: config.clone(),
             postings: compile(rule, e).with_context(|| format!("compiling {}", e.id))?,
+        
+            announcement: None,
         });
     }
     Ok(entries)

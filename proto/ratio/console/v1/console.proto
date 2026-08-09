@@ -690,6 +690,21 @@ message CorporateAction {
   // Where in the journal it landed. Zero when it has not been applied.
   int64 journal_position = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
 
+  // Where the ANNOUNCEMENT sits in the journal. Zero means it does not.
+  //
+  // ⛔ ZERO IS NOT "UNKNOWN", IT IS "PINNED BY NOTHING". An announcement in the
+  // journal is inside the prefix every later strike pins, so a replay
+  // re-derives the same figure forever
+  // (`Ratio.Actions.Factor.replay_is_determined_by_the_prefix`). One in a side
+  // plane — where every book written before that change has them — is pinned by
+  // no strike, so under the factor representation a replay reads whatever has
+  // arrived since and answers differently.
+  //
+  // ⚠ Such a book cannot be made retroactively pinnable. The announcements were
+  // not in the order, and no rewrite can put them there without changing every
+  // digest after the point. Reporting the zero is the only honest option.
+  int64 announce_position = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+
   // ⭐ The NAV strikes this action was NOT in — resource names, so a caller can
   // follow them.
   //

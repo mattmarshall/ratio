@@ -23,7 +23,7 @@
 
 pub mod transcode;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -354,6 +354,8 @@ impl Console {
             memo: memo.clone(),
             config: digest.clone(),
             postings: postings.clone(),
+        
+            announcement: None,
         };
 
         // The kernel refuses an unbalanced entry at the door, so `append` is
@@ -774,7 +776,7 @@ impl Console {
             .collect();
 
         let mut out = Vec::new();
-        for a in b.records::<ratio_ingest::actions::Announced>(Plane::Actions)? {
+        for (a, _) in self.announcements(fund)? {
             for s in ratio_nav::list(&path)? {
                 // The strike's own day, as the ex-date is written.
                 let day = ratio_nav::rfc3339(s.valuation_time);
@@ -792,8 +794,8 @@ impl Console {
                         format!(
                             "{} {}-for-{} effective {} — {}",
                             a.instrument,
-                            a.split.num,
-                            a.split.den,
+                            a.numerator,
+                            a.denominator,
                             a.ex_date,
                             if applied_at.contains_key(&a.id) {
                                 "applied after this NAV was struck"
@@ -874,6 +876,8 @@ impl Console {
             // conserves trivially — and a reader who checked only the amounts
             // would see nothing happen.
             postings: vec![ratio_store::PostingRecord::of(dim_touched, 0, instrument, Some(moved))],
+        
+            announcement: None,
         })?;
         Ok((moved, dim_touched))
     }
@@ -997,6 +1001,8 @@ impl Console {
                                     quantity: None,
                                 },
                             )?,
+                        
+                            announcement: None,
                         })?;
                     }
                     posted += 1;
@@ -1173,6 +1179,8 @@ impl Console {
                     ),
                     config: digest.clone(),
                     postings,
+                
+                    announcement: None,
                 })?;
             }
             n += 1;
@@ -1512,6 +1520,52 @@ impl Console {
             .with_context(|| format!("{name:?} is not an announced corporate action"))
     }
 
+    /// Every announcement on a fund, with the journal position that pins it.
+    ///
+    /// ⛔ TWO SOURCES, AND THE DIFFERENCE IS NOT COSMETIC. An announcement in
+    /// the JOURNAL sits inside the prefix every later strike pins, so a replay
+    /// re-derives the same figure forever
+    /// (`Ratio.Actions.Factor.replay_is_determined_by_the_prefix`). One in
+    /// `Plane::Actions` — where every book written before this change has them
+    /// — is pinned by nothing, so under the factor representation a replay
+    /// would read whatever arrived since and answer differently.
+    ///
+    /// ⚠ THE OLD ONES ARE STILL READ, and reported with position 0 rather than
+    /// hidden or silently migrated. A book cannot be made retroactively
+    /// pinnable: the announcements were not in the order, and no rewrite can
+    /// put them there without changing every digest after the point. Saying so
+    /// is the only honest option.
+    fn announcements(&self, fund: &str) -> Result<Vec<(ratio_store::AnnouncementRecord, usize)>> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        let mut out: Vec<(ratio_store::AnnouncementRecord, usize)> = b
+            .entries()?
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| e.announcement.clone().map(|a| (a, i + 1)))
+            .collect();
+
+        // Books written before announcements were journal entries.
+        let known: BTreeSet<String> = out.iter().map(|(a, _)| a.id.clone()).collect();
+        for a in b.records::<ratio_ingest::actions::Announced>(Plane::Actions)? {
+            if known.contains(&a.id) {
+                continue;
+            }
+            out.push((
+                ratio_store::AnnouncementRecord {
+                    id: a.id,
+                    instrument: a.instrument,
+                    numerator: a.split.num,
+                    denominator: a.split.den,
+                    ex_date: a.ex_date,
+                    announced: a.announced,
+                },
+                0, // ⛔ pinned by nothing
+            ));
+        }
+        Ok(out)
+    }
+
     /// Every announced action on a fund, with what the journal says about it.
     fn corporate_actions(&self, fund: &str) -> Result<Vec<pb::CorporateAction>> {
         let path = self.book_path(fund)?;
@@ -1528,9 +1582,9 @@ impl Console {
 
         let strikes = ratio_nav::list(&path)?;
 
-        b.records::<ratio_ingest::actions::Announced>(Plane::Actions)?
+        self.announcements(fund)?
             .into_iter()
-            .map(|a| {
+            .map(|(a, announce_at)| {
                 let at = applied_at.get(&a.id).copied();
 
                 // The strikes this action was not in. The reverse of
@@ -1550,11 +1604,11 @@ impl Console {
                 Ok(pb::CorporateAction {
                     name: format!("funds/{fund}/corporateActions/{}", a.id),
                     instrument: a.instrument.clone(),
-                    numerator: a.split.num.to_string(),
-                    denominator: a.split.den.to_string(),
+                    numerator: a.numerator.to_string(),
+                    denominator: a.denominator.to_string(),
                     // Rendered once, here, so two screens cannot disagree about
                     // how to say a ratio out loud.
-                    form: format!("{}-for-{}", a.split.num, a.split.den),
+                    form: format!("{}-for-{}", a.numerator, a.denominator),
                     ex_date: iso_date(&a.ex_date),
                     // Zero yields none rather than the epoch: an announcement
                     // time we do not have should read as absent, not as 1970.
@@ -1566,6 +1620,10 @@ impl Console {
                     }),
                     applied: at.is_some(),
                     journal_position: at.map(|i| i as i64 + 1).unwrap_or(0),
+                    // ⛔ ZERO MEANS PINNED BY NOTHING — the announcement is in
+                    // `Plane::Actions`, outside every strike's prefix, so a
+                    // replay could answer differently as more arrives.
+                    announce_position: announce_at as i64,
                     qualified_nav_strikes: qualified,
                 })
             })
@@ -1948,6 +2006,8 @@ mod tests {
                 memo: memo.into(),
                 config: d.clone(),
                 postings: legs.into_iter().map(|(dim, amount)| PostingRecord::new(dim, amount)).collect(),
+            
+                announcement: None,
             })
             .unwrap();
         };
@@ -2451,6 +2511,8 @@ mod tests {
                 PostingRecord::new(2, -500),
                 PostingRecord::new(20, 500),
             ],
+        
+            announcement: None,
         })
         .unwrap();
         drop(b);

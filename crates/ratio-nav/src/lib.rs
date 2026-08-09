@@ -326,6 +326,8 @@ mod tests {
                 memo: id.into(),
                 config: c.clone(),
                 postings: legs.into_iter().map(|(dim, amount)| PostingRecord::new(dim, amount)).collect(),
+            
+                announcement: None,
             })
             .unwrap();
         }
@@ -373,6 +375,8 @@ mod tests {
                 PostingRecord::new(1, 5_000_000),
                 PostingRecord::new(2, -5_000_000),
             ],
+        
+            announcement: None,
         })
         .unwrap();
 

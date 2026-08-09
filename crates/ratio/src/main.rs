@@ -441,21 +441,40 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str)
     // Announced first, applied second. The record of the ANNOUNCEMENT carries
     // the ex-date, and it is what makes a NAV struck before this answerable
     // afterwards — see `ratio stale`.
+    //
+    // ⛔ THE ANNOUNCEMENT GOES IN THE JOURNAL, not in `Plane::Actions`, and it
+    // is a real entry with no postings — it moves no money, so it nets to zero
+    // trivially and passes the balance check at the door. What it is doing
+    // there is taking a POSITION in the order, so every strike after it pins
+    // it. `Ratio.Actions.Factor.replay_is_determined_by_the_prefix`.
+    //
+    // A side log has no relationship to a strike's pinned prefix, so a figure
+    // that depended on it would answer differently on every replay as the world
+    // told us more: `//tla:announcements_in_side_log_check`.
     {
-        use ratio_store::Plane;
         let mut b = FileBook::open(&book)?;
-        let known: Vec<ratio_ingest::actions::Announced> = b.records(Plane::Actions)?;
-        if !known.iter().any(|a| a.id == id) {
-            b.append_record(
-                Plane::Actions,
-                &ratio_ingest::actions::Announced {
+        let announce_id = format!("announce-{id}");
+        let known = b
+            .entries()?
+            .iter()
+            .filter_map(|e| e.announcement.clone())
+            .any(|a| a.id == id);
+        if !known {
+            let cfg = b.active()?.context("no configuration is in force")?;
+            b.append(&JournalEntry {
+                id: announce_id,
+                memo: format!("announced {id}: {instrument} {ratio} ex {ex_date}"),
+                config: cfg,
+                postings: Vec::new(),
+                announcement: Some(ratio_store::AnnouncementRecord {
                     id: id.to_string(),
                     instrument: instrument.to_string(),
-                    split: s,
+                    numerator: s.num,
+                    denominator: s.den,
                     ex_date: ex_date.to_string(),
                     announced: now(),
-                },
-            )?;
+                }),
+            })?;
         }
     }
     let (moved, dim) =
@@ -882,6 +901,8 @@ fn apply(book: PathBuf, file: &str) -> Result<()> {
             },
             config: digest.clone(),
             postings,
+        
+            announcement: None,
         })?;
         posted += 1;
     }
@@ -907,6 +928,8 @@ fn post(book: PathBuf, file: &str) -> Result<()> {
             memo: input.memo,
             config: config.clone(),
             postings: input.postings,
+        
+            announcement: None,
         };
         // The book refuses an unbalanced entry; report every one rather than
         // stopping at the first, so a bad file is fixed in one pass.

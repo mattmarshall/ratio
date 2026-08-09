@@ -840,7 +840,8 @@ impl JsonView for pb::CorporateAction {
         format!(
             "{{\"name\":{},\"instrument\":{},\"numerator\":{},\"denominator\":{},\
              \"form\":{},\"exDate\":{},\"announceTime\":{},\"applied\":{},\
-             \"journalPosition\":{},\"qualifiedNavStrikes\":[{}]}}",
+             \"journalPosition\":{},\"announcePosition\":{},\
+             \"qualifiedNavStrikes\":[{}]}}",
             q(&self.name),
             q(&self.instrument),
             q(&self.numerator),
@@ -854,6 +855,7 @@ impl JsonView for pb::CorporateAction {
                 .unwrap_or_default()),
             self.applied,
             q(&self.journal_position.to_string()),
+            q(&self.announce_position.to_string()),
             strings(&self.qualified_nav_strikes)
         )
     }

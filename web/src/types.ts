@@ -136,6 +136,15 @@ export interface CorporateAction {
   /** Where it landed in the journal. Zero when unapplied. */
   journalPosition: Int64;
   /**
+   * Where the ANNOUNCEMENT sits in the journal. Zero means it does not.
+   *
+   * ⛔ Zero is not "unknown", it is "pinned by nothing". An announcement in the
+   * journal is inside the prefix every later strike pins, so a replay
+   * re-derives the same figure forever. One in a side plane is pinned by no
+   * strike — a replay would read whatever arrived since.
+   */
+  announcePosition: Int64;
+  /**
    * ⭐ The NAV strikes this action was NOT in, as resource names.
    *
    * The reverse of `NavStrike.qualification`: a strike knows what qualifies it,

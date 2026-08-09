@@ -570,6 +570,8 @@ fn tool_post_events(book: &std::path::Path, args: &Value) -> Result<String> {
             memo: event.memo.clone(),
             config: digest.clone(),
             postings: compile(rule, event)?,
+        
+            announcement: None,
         })?;
         posted += 1;
     }

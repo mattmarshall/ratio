@@ -146,6 +146,37 @@ impl From<&PostingRecord> for Posting {
     }
 }
 
+/// A corporate action as announced, recorded IN THE JOURNAL.
+///
+/// ⛔ IN THE JOURNAL, NOT IN `Plane::Actions`, AND THAT IS THE WHOLE POINT.
+/// `Ratio.Actions.Factor.replay_is_determined_by_the_prefix` is the obligation:
+/// under the factor representation nothing is applied, so a strike's figure
+/// depends on the announcements in force — and unless those are inside the
+/// prefix a strike pins, a replay run later reads whatever has arrived since
+/// and answers differently.
+///
+/// `Ratio.Actions.Factor.an_unpinned_announcement_changes_the_answer` is the
+/// counterexample and `//tla:announcements_in_side_log_check` is the run: same
+/// pin, same day, a different number. Worse than a restatement, because a
+/// restatement announces itself.
+///
+/// ⚠ FLAT, and duplicating the shape of `ratio_ingest::actions::Announced`
+/// rather than importing it. The store owns the format of what it persists; a
+/// journal that could only be read by linking the ingest layer would be a
+/// record with a dependency.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnnouncementRecord {
+    pub id: String,
+    pub instrument: String,
+    /// Units received for units given up: a 2-for-1 is `2` and `1`.
+    pub numerator: i64,
+    pub denominator: i64,
+    /// `YYYY-MM-DD`. ISO so it compares in date order as a string.
+    pub ex_date: String,
+    /// When we were told, which is not when it took effect.
+    pub announced: i64,
+}
+
 /// An entry in the journal: a balanced transaction, plus the provenance that
 /// makes the figures it produces reproducible.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,6 +190,18 @@ pub struct JournalEntry {
     pub config: Digest,
     /// The postings. Must net to zero on every dimension.
     pub postings: Vec<PostingRecord>,
+
+    /// A corporate action being ANNOUNCED, if that is what this entry is.
+    ///
+    /// ⛔ AN ANNOUNCEMENT MOVES NO MONEY, so such an entry carries no postings
+    /// and nets to zero trivially — it passes the balance check at the door
+    /// because it has nothing to unbalance. What it is doing in the journal is
+    /// taking a POSITION in the order, so that every strike after it pins it.
+    ///
+    /// `#[serde(default)]` so every journal written before this field existed
+    /// still reads. An append-only log you cannot read is not a record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub announcement: Option<AnnouncementRecord>,
 }
 
 impl JournalEntry {
@@ -557,6 +600,8 @@ mod position_tests {
                 PostingRecord::of(1, 25_000_00, "inst-vti", Some(100)),
                 PostingRecord::new(2, -25_000_00),
             ],
+        
+            announcement: None,
         })
         .unwrap();
         b.append(&JournalEntry {
@@ -567,6 +612,8 @@ mod position_tests {
                 PostingRecord::new(1, 1_000_00),
                 PostingRecord::new(2, -1_000_00),
             ],
+        
+            announcement: None,
         })
         .unwrap();
 
@@ -619,6 +666,7 @@ mod tests {
                 .iter()
                 .map(|(dim, amount)| PostingRecord::new(*dim, *amount))
                 .collect(),
+            announcement: None,
         }
     }
 
