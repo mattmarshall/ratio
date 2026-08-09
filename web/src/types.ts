@@ -85,6 +85,16 @@ export interface NavStrike {
   netAssetValue: Int64;
   trialBalanceDifference: Int64;
   configDigest: string;
+  /**
+   * Why this figure cannot be read at face value, if it cannot. Empty means it
+   * stands on its own.
+   *
+   * ⛔ ON the strike rather than beside it: a valuation point is never
+   * restated, so a late corporate action cannot correct the NAVs it should
+   * have been in — and a qualification a caller fetches separately is one a
+   * caller renders the figure without.
+   */
+  qualification: string[];
 }
 
 export interface ReplayNavStrikeResponse {

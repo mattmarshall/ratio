@@ -95,6 +95,12 @@ function Strike({ s }: { s: NavStrike }) {
         <span className="cfg">
           {count(s.journalPosition)} entries · {s.configDigest.slice(0, 7)} · {s.actor}
         </span>
+        {/* ⛔ BEFORE the replay, not after. A qualification a reader reaches
+            only by clicking is one they will read the figure without — and the
+            figure is what somebody gets paid on. */}
+        {s.qualification.map((q) => (
+          <div className="qual" key={q}>{q}</div>
+        ))}
         {proof ? (
           <div className={`proof${proof.historyIntact && proof.reproduced ? "" : " bad"}`}>
             {proof.historyIntact

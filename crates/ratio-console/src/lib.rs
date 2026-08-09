@@ -1445,10 +1445,23 @@ impl Console {
         let id = resource_id(parent, "funds").context("bad parent")?;
         let path = self.book_path(&id)?;
         Ok(pb::ListNavStrikesResponse {
-            nav_strikes: ratio_nav::list(&path)?
-                .into_iter()
-                .map(|s| to_pb(&id, &s))
-                .collect(),
+            nav_strikes: {
+                // The qualification travels WITH the figure. Same derivation as
+                // `stale_strikes`: a strike pins a journal position and an
+                // applied action is a journal entry, so nothing is stored.
+                let stale = self.stale_strikes(&id).unwrap_or_default();
+                ratio_nav::list(&path)?
+                    .into_iter()
+                    .map(|s| {
+                        let why: Vec<String> = stale
+                            .iter()
+                            .filter(|(strike, _, _)| *strike == s.id)
+                            .map(|(_, _, why)| why.clone())
+                            .collect();
+                        to_pb(&id, &s, &why)
+                    })
+                    .collect()
+            },
             next_page_token: String::new(),
         })
     }
@@ -1456,7 +1469,18 @@ impl Console {
     pub fn get_nav_strike(&self, name: &str) -> Result<pb::NavStrike> {
         let (fund, id) = nested_id(name, "funds", "navStrikes").context("bad name")?;
         let path = self.book_path(&fund)?;
-        Ok(to_pb(&fund, &ratio_nav::get(&path, &id)?))
+        let s = ratio_nav::get(&path, &id)?;
+        // Getting one strike qualifies it the same way listing them does — a
+        // figure fetched on its own must not look sounder than the same figure
+        // in a list.
+        let why: Vec<String> = self
+            .stale_strikes(&fund)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(strike, _, _)| *strike == s.id)
+            .map(|(_, _, why)| why)
+            .collect();
+        Ok(to_pb(&fund, &s, &why))
     }
 
     /// Re-derive a strike. Read-only: it folds a journal prefix and compares.
@@ -1611,7 +1635,7 @@ impl Console {
     }
 }
 
-fn to_pb(fund: &str, s: &ratio_nav::Strike) -> pb::NavStrike {
+fn to_pb(fund: &str, s: &ratio_nav::Strike, why: &[String]) -> pb::NavStrike {
     pb::NavStrike {
         name: format!("funds/{fund}/navStrikes/{}", s.id),
         // The generated crate's own Timestamp, re-exported by ratio_proto — NOT
@@ -1628,6 +1652,7 @@ fn to_pb(fund: &str, s: &ratio_nav::Strike) -> pb::NavStrike {
         net_asset_value: s.net_asset_value.to_string(),
         trial_balance_difference: s.trial_balance_difference.to_string(),
         config_digest: s.config_digest.clone(),
+        qualification: why.to_vec(),
     }
 }
 

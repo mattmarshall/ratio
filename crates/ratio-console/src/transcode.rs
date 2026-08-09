@@ -808,7 +808,7 @@ impl JsonView for pb::NavStrike {
         format!(
             "{{\"name\":{},\"valuationTime\":{},\"actor\":{},\"journalPosition\":{},\
              \"journalDigest\":{},\"netAssetValue\":{},\"trialBalanceDifference\":{},\
-             \"configDigest\":{}}}",
+             \"configDigest\":{},\"qualification\":[{}]}}",
             q(&self.name),
             // proto3 canonical JSON renders a Timestamp as an RFC 3339 string.
             q(&self
@@ -821,7 +821,8 @@ impl JsonView for pb::NavStrike {
             q(&self.journal_digest),
             q(&self.net_asset_value),
             q(&self.trial_balance_difference),
-            q(&self.config_digest)
+            q(&self.config_digest),
+            strings(&self.qualification)
         )
     }
 }

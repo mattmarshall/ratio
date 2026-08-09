@@ -600,6 +600,18 @@ message NavStrike {
   string net_asset_value = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
   string trial_balance_difference = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 
+  // Why this figure cannot be read at face value, if it cannot.
+  //
+  // ⛔ ON THE STRIKE, NOT BESIDE IT. `Ratio.Period.one_answer_per_day` refuses
+  // restatement — a valuation point has one answer and the first is what
+  // somebody was paid on — so a corporate action arriving afterwards CANNOT
+  // correct the NAVs it should have been in. The obligation that leaves is to
+  // qualify them, and a qualification a caller has to fetch separately is one
+  // a caller will render the figure without.
+  //
+  // Empty means the figure stands on its own.
+  repeated string qualification = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
   // The configuration in force at the last entry folded.
   string config_digest = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
