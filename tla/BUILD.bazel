@@ -38,6 +38,23 @@ tla_check(
     deps = [":valuation"],
 )
 
+# Relieving tax lots at scale. `Ratio.Lots` proves the ARITHMETIC of one
+# relief; twenty million lots do not fit in one application, and paging them
+# through an I/O compartment into CPU workers is where a proved function starts
+# giving a different answer.
+tla_library(
+    name = "lot_engine",
+    srcs = ["LotEngine.tla"],
+)
+
+tla_check(
+    name = "lot_engine_check",
+    size = "medium",
+    config = "MCLotEngine.cfg",
+    module = "MCLotEngine.tla",
+    deps = [":lot_engine"],
+)
+
 # ─── failure-path probes ──────────────────────────────────────────────────
 #
 # Each of these MUST go red. Tagged manual so `bazel test //...` stays green;
@@ -72,4 +89,16 @@ tla_check(
     module = "MarkFromCost.tla",
     tags = ["manual"],
     deps = [":valuation"],
+)
+
+# ⛔ Two sales inside one shard. Each one's arithmetic is impeccable — the
+# proofs in `Ratio.Lots` hold of both — and the instrument ends up relieved for
+# more than it held. Conservation of a single relief cannot see this.
+tla_check(
+    name = "shared_shard_check",
+    size = "medium",
+    config = "SharedShard.cfg",
+    module = "SharedShard.tla",
+    tags = ["manual"],
+    deps = [":lot_engine"],
 )

@@ -83,6 +83,17 @@ lean_test(
     entry = "Ratio/Period.lean",
 )
 
+# Tax lots at scale. Every optimization a twenty-million-lot book needs — an
+# index, a cached aggregate, a partition — is a claim of equality with the naive
+# fold, and each is proved here rather than hoped for. The load-bearing one is
+# that a sale costs what it CONSUMES rather than what the fund HOLDS.
+lean_test(
+    name = "lots_proof_test",
+    size = "small",
+    srcs = ["Ratio/Lots.lean"],
+    entry = "Ratio/Lots.lean",
+)
+
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
