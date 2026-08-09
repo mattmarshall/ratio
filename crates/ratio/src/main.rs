@@ -544,10 +544,18 @@ fn closure(book: PathBuf, args: &[&str]) -> Result<()> {
         }
     }
 
-    // Measure this machine if there is a book to measure against; otherwise say
-    // so and fall back. ⛔ A MEASUREMENT IS PREFERRED TO A CONSTANT, and when it
-    // cannot be taken the output says which one it used.
-    let cal = ratio_nav::closure::measure(&book).unwrap_or_else(|_| Calibration::measured());
+    // Measure this machine if there is a book to measure against, and fall back
+    // to the shipped constant when there is not.
+    //
+    // ⛔ THE REASON IS KEPT, not discarded with `unwrap_or_else(|_| …)`. Saying
+    // which rate was used is half of it; a reader looking at a duration built on
+    // a constant is owed WHY it could not be measured, because "there is no book
+    // here" and "the book is unreadable" are different situations and only one
+    // of them is fine.
+    let (cal, fell_back) = match ratio_nav::closure::measure(&book) {
+        Ok(c) => (c, None),
+        Err(e) => (Calibration::measured(), Some(format!("{e:#}"))),
+    };
     let e = estimate(d, &cal);
 
     println!("A PERIOD END OF THIS SHAPE");
@@ -572,6 +580,9 @@ fn closure(book: PathBuf, args: &[&str]) -> Result<()> {
     println!("  {:<22}{:>12}", "total", e.reads);
     println!();
     println!("  ≈ {}   {}", ratio_nav::closure::human_nanos(e.nanos), e.provenance);
+    if let Some(why) = &fell_back {
+        println!("           not measured here: {why}");
+    }
     println!();
     println!("⛔ The tax lots are not in the total. `Ratio.Closure.nav_never_reads_");
     println!("   the_lots` — hold everything else fixed and the cost does not move");

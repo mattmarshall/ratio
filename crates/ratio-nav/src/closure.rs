@@ -164,19 +164,46 @@ pub fn estimate(d: Dials, c: &Calibration) -> Estimate {
 /// facts out of a journal, so the thing timed here is `Journal::entries` over
 /// the book at `path` — the same call the strike path makes.
 ///
-/// ⚠ RETURNS AN ERROR ON AN EMPTY JOURNAL rather than a rate. Dividing by a
-/// record count of zero is not the interesting failure; reporting a confident
-/// nanosecond figure derived from having read nothing is, and that is what a
-/// silent `0` here would become downstream.
+/// ⛔ AND IT REFUSES A JOURNAL TOO SMALL TO AMORTIZE THE FIXED COST, which is a
+/// bigger trap than the empty one. Each `entries()` call pays to open and parse
+/// the file whether it holds one record or ten thousand, so a naive
+/// elapsed/records divides that fixed cost across however few reads there were.
+/// Measured on one machine:
+///
+///     entries      1       10       50      100      500     2000
+///     ns/read  227000    26736     7411     5296     4460     3462
+///
+/// ⚠ A 51× SPREAD, and every one of those numbers looks like a plausible
+/// measurement. `nav_cost` counts MARGINAL reads — the model has no per-call
+/// term — so a rate taken from a small book is not the quantity the model is
+/// asking for, and multiplying by it produces a confident, wrong duration. The
+/// floor is where the curve flattens, not a round number.
+///
+/// ⚠ It also errors on an EMPTY journal rather than returning a rate. Reporting
+/// a nanosecond figure derived from having read nothing is the failure that
+/// matters; a division by zero is not.
+/// Below this the fixed per-call cost swamps the marginal one. See `measure`
+/// for the measured curve this is read off.
+pub const MIN_ENTRIES: usize = 100;
+
 pub fn measure(path: &Path) -> Result<Calibration> {
     let b = FileBook::open(path).context("opening the book to measure it")?;
 
     // One pass to warm, then timed passes. An unwarmed first read measures the
     // filesystem, not the store.
+    let n = b.entries()?.len();
     anyhow::ensure!(
-        !b.entries()?.is_empty(),
+        n > 0,
         "the journal at {} has no entries — there is nothing here to measure, and a \
          rate derived from zero reads would be a fabrication rather than a measurement",
+        path.display()
+    );
+    anyhow::ensure!(
+        n >= MIN_ENTRIES,
+        "the journal at {} has {n} entries, and below {MIN_ENTRIES} the fixed cost of \
+         opening and parsing the file dominates: the same code measures 227,000 ns/read \
+         over one entry and 4,460 over five hundred. `nav_cost` counts MARGINAL reads, \
+         so a rate taken here would not be the quantity the model multiplies",
         path.display()
     );
 
@@ -282,7 +309,7 @@ mod tests {
         assert_eq!((ordinary.per_unit, ordinary.residual), (333, 1));
     }
 
-    fn book_with(n: usize, name: &str) -> std::path::PathBuf {
+    pub(super) fn book_with(n: usize, name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("ratio-closure-{name}"));
         let _ = std::fs::remove_dir_all(&d);
         let mut b = FileBook::open(&d).unwrap();
@@ -336,6 +363,21 @@ mod tests {
     }
 
     #[test]
+    fn a_journal_too_small_to_amortize_refuses() {
+        // ⛔ THE TRAP THE EMPTY CASE DOES NOT COVER. A one-entry book produces
+        // 227,000 ns/read — a number that looks exactly like a measurement and
+        // is 51× the marginal cost the model actually multiplies.
+        let d = book_with(3, "tiny");
+        let err = measure(&d).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("MARGINAL"), "{msg}");
+        assert!(msg.contains("227,000"), "the spread is named, not just asserted: {msg}");
+
+        // And at the floor it goes through.
+        assert!(measure(&book_with(MIN_ENTRIES, "atfloor")).is_ok());
+    }
+
+    #[test]
     fn an_empty_journal_refuses_to_produce_a_rate() {
         // ⛔ THE FAILURE THAT MATTERS. A rate derived from zero reads would be
         // a confident nanosecond figure built on nothing, and it would flow
@@ -365,3 +407,4 @@ mod tests {
 
     }
 }
+
