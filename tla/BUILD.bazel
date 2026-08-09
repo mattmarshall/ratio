@@ -207,3 +207,49 @@ tla_check(
     tags = ["manual"],
     deps = [":projection"],
 )
+
+# ⛔ Partitions handed to workers. `Ratio.Exec` proves what a partitioning
+# COSTS; this is whether the partitions all ran, ran once, and were finished
+# when somebody read the answer.
+#
+# Both failures here are arithmetically silent. A partition run twice
+# double-counts, and every number in the doubled total is correct arithmetic on
+# real rows. A partial result read as a whole one is simply LOW — no null, no
+# ragged edge — and by the time anybody could tell, it has been struck and
+# `one_answer_per_day` refuses to replace it.
+tla_library(
+    name = "executor",
+    srcs = ["Executor.tla"],
+)
+
+tla_check(
+    name = "executor_check",
+    size = "medium",
+    config = "MCExecutor.cfg",
+    module = "MCExecutor.tla",
+    deps = [":executor"],
+)
+
+# ⛔ No claim before work: two workers take the same partition, both compute it
+# correctly, and the total double-counts.
+# NoPartitionRunsTwice goes red.
+tla_check(
+    name = "unclaimed_partitions_check",
+    size = "medium",
+    config = "UnclaimedPartitions.cfg",
+    module = "UnclaimedPartitions.tla",
+    tags = ["manual"],
+    deps = [":executor"],
+)
+
+# ⛔ Results published as each partition lands, so a reader arriving early folds
+# part of the data into a figure that looks exactly like a whole one.
+# CommitIsAllOrNothing goes red.
+tla_check(
+    name = "partial_commit_check",
+    size = "medium",
+    config = "PartialCommit.cfg",
+    module = "PartialCommit.tla",
+    tags = ["manual"],
+    deps = [":executor"],
+)

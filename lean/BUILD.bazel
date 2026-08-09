@@ -148,6 +148,45 @@ lean_test(
     entry = "Ratio/Actions/Factor.lean",
 )
 
+# ⛔ A correction to the cost model, and the reason the factor redesign is not an
+# optimization.
+#
+# `Ratio.Closure.actionCost` says an open action costs `openActions *
+# securities`. A split reaches into ONE instrument and touches every LOT of it,
+# so the cost is `openActions * lotsPer` — forty thousand, not five hundred.
+#
+# ⛔ AND THE CORRECTION BREAKS `nav_never_reads_the_lots`, which is the whole
+# scale argument. Under a rewrite it is false the moment an action is open,
+# because applying one IS a walk over the lots; it survives today only because
+# the model understated the term. The factor representation is what makes the
+# central claim true, not a performance idea beside it.
+lean_test(
+    name = "closure_factored_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Closure.lean",
+        "Ratio/Closure/Factored.lean",
+    ],
+    entry = "Ratio/Closure/Factored.lean",
+)
+
+# ⛔ Two compartments that do not substitute for each other.
+#
+# `Ratio.Closure` counts reads, which proves the thing that matters most — a NAV
+# never reads the tax lots — but says nothing about what adding workers does.
+# This does, and the answer is mostly NO: there is one store, so IO adds up
+# across partitions while only CPU divides, and no partition beats the IO floor.
+#
+# Which is also why the factor redesign matters more than the executor: removing
+# forty thousand lot rewrites removes IO, and IO is the term concurrency cannot
+# reach.
+lean_test(
+    name = "exec_proof_test",
+    size = "small",
+    srcs = ["Ratio/Exec.lean"],
+    entry = "Ratio/Exec.lean",
+)
+
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
