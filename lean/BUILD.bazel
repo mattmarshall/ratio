@@ -94,6 +94,16 @@ lean_test(
     entry = "Ratio/Lots.lean",
 )
 
+# Two plans for one question, and what makes them the same answer. The cost
+# functions are counts rather than seconds — what they are for is turning the
+# dial (500 securities, 10,000 lots each) and reading off which term moves.
+lean_test(
+    name = "plan_proof_test",
+    size = "small",
+    srcs = ["Ratio/Plan.lean"],
+    entry = "Ratio/Plan.lean",
+)
+
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
