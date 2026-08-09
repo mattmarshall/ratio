@@ -206,6 +206,15 @@ lean_emit(
 # The cost model. Emitted rather than rewritten because the whole value of the
 # answer is that it IS `Ratio.Closure` — a hand-written `nav_cost` in Rust would
 # be a claim about the proofs instead of the thing they are about.
+# The planner's decision, emitted. The folds stay in Rust and ask this what to
+# do — `Ratio.Exec.a_plan_that_cannot_be_helped_takes_its_io` is the bridge.
+lean_emit(
+    name = "ratio_exec_ast",
+    srcs = _BUILDER_SRCS + ["Ratio/Exec.lean", "Ratio/Exec/Emit.lean"],
+    entry = "Ratio/Exec/Emit.lean",
+    out = "ratio_exec.ast.json",
+)
+
 lean_emit(
     name = "ratio_closure_ast",
     srcs = _BUILDER_SRCS + ["Ratio/Closure/Emit.lean"],

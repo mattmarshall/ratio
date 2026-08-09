@@ -149,6 +149,43 @@ theorem splitting_helps_until_it_does_not :
   refine ⟨?_, ?_, ?_, ?_⟩ <;>
     simp [elapsed, plan, scan, totalIo, slowestCpu]
 
+/- ── The decision a planner makes ──────────────────────────────────────── -/
+
+/-- **Is another partition worth anything?**
+
+The whole planner rule, and it is one comparison: splitting helps only while the
+slowest partition is doing more CPU than the plan is doing IO. Below that the
+IO floor is binding and another worker has nowhere to take time from.
+
+⛔ THE DECISION IS HERE AND THE FOLDS ARE IN RUST, the same arrangement as
+`Ratio.Ingest.kind_is_determined_by_count` — the running code counts rows and
+sums IO with a loop, and asks this whether to go further. The bridge is
+`a_plan_that_cannot_be_helped_takes_its_io` below: the answer depends on nothing
+but the two totals, so a fold and this cannot disagree about a partition. -/
+def splittingHelps (io cpu : Nat) : Bool := decide (io < cpu)
+
+/-- **⭐ WHEN SPLITTING DOES NOT HELP, THE PLAN TAKES ITS IO — exactly.**
+
+The bridge, and the theorem that makes the planner's one comparison sound. If
+`splittingHelps` says no, the elapsed time is the IO total and nothing a planner
+does afterwards can move it. -/
+theorem a_plan_that_cannot_be_helped_takes_its_io (ws : List Work)
+    (h : splittingHelps (totalIo ws) (slowestCpu ws) = false) :
+    elapsed ws = totalIo ws := by
+  apply an_io_bound_plan_ignores_its_workers
+  simp [splittingHelps] at h
+  omega
+
+/-- And when it says yes, there is genuinely something to take: the plan is
+currently paying for CPU it does not have to. Stated so the rule is not
+vacuously safe by always saying no. -/
+theorem a_plan_that_can_be_helped_is_paying_for_cpu (ws : List Work)
+    (h : splittingHelps (totalIo ws) (slowestCpu ws) = true) :
+    totalIo ws < elapsed ws := by
+  simp [splittingHelps] at h
+  simp [elapsed]
+  omega
+
 /-- **An uneven partition is as slow as its worst piece.**
 
 Sixteen rows split seven ways is not sixteen sevenths of anything if one worker
