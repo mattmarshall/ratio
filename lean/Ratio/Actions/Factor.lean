@@ -237,4 +237,53 @@ theorem a_day_before_the_first_ex_date_sees_nothing
   rw [this]
   rfl
 
+/- ── Selling, when the lots are stored unscaled ────────────────────────── -/
+
+/-- A sale is quoted in TODAY's units. The lots are stored in the units they
+were bought in. So a relief has to come back through the factor, and that is a
+division the other direction. -/
+def reliefInStoredUnits (f : Ratio) (wanted : Int) : Option Int :=
+  if f.num = 0 ∨ wanted * f.den % f.num ≠ 0 then none
+  else some (wanted * f.den / f.num)
+
+/-- **⛔ AN ODD SALE AFTER A SPLIT DOES NOT LAND ON A STORED LOT.**
+
+Two-for-one, and the client sells 101 shares. In stored units that is fifty and
+a half, and half a stored unit is not a thing the lot table can express.
+
+⚠ THIS IS NOT THE CASH-IN-LIEU CASE AND MUST NOT BE HANDLED LIKE IT. Nothing
+fractional is being paid away here — the client really does own 101 shares and
+really is selling all of them. The fraction is an artifact of the REPRESENTATION
+choosing to store pre-split units, and refusing the sale would be refusing a
+perfectly ordinary instruction.
+
+The resolution is to SUBDIVIDE the stored lot: `Ratio.Lots.partition_sums_to_
+whole` says a lot may be split in two without changing what is held, and
+`Ratio.Lots.partial_relief_is_exactly_pro_rata` says the cost follows exactly.
+So the sale relieves fifty whole stored units plus a subdivided half.
+
+⭐ AND THAT IS THE HONEST LIMIT OF THE REDESIGN. The factor does not remove
+every write — it removes the BULK write. A split stops rewriting forty thousand
+lots and starts subdividing, at most, the one lot a sale straddles. Four orders
+of magnitude, not infinity, and `Ratio.Exec.no_partition_beats_the_io_floor` is
+why that distinction is the whole game: the removed work is IO, which no number
+of workers would have reached. -/
+theorem an_odd_sale_after_a_split_does_not_land_on_a_stored_lot :
+    reliefInStoredUnits ⟨2, 1⟩ 101 = none := by
+  simp [reliefInStoredUnits]
+
+/-- And an even one does, exactly — no rounding, no residue. -/
+theorem an_even_sale_lands_exactly :
+    reliefInStoredUnits ⟨2, 1⟩ 100 = some 50 := by
+  simp [reliefInStoredUnits]
+
+/-- **A relief through the identity factor is the sale itself.**
+
+The instrument with no corporate history, which is most of them: nothing is
+scaled, nothing can fail to divide, and the path costs nothing. Stated so the
+common case is on the record rather than assumed. -/
+theorem no_history_means_no_conversion (wanted : Int) :
+    reliefInStoredUnits (compose []) wanted = some wanted := by
+  simp [reliefInStoredUnits, compose]
+
 end Ratio.Actions
