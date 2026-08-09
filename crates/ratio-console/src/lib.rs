@@ -747,6 +747,67 @@ impl Console {
         })
     }
 
+    /// Strikes that were taken without an action that should have been in them.
+    ///
+    /// ⛔ THE OBLIGATION THAT REFUSING RESTATEMENT CREATES.
+    /// `Ratio.Period.one_answer_per_day` says a valuation point is struck once
+    /// and never replaced — the first answer is what somebody was paid on. So
+    /// an action arriving late CANNOT correct the NAVs it should have been in,
+    /// and the only honest thing left is to be able to NAME them.
+    /// `//tla:actions_check` calls this `StalenessIsAttributable`, and a fund
+    /// that cannot compute it is publishing figures it cannot qualify.
+    ///
+    /// ⭐ DERIVED, NOT STORED. A strike pins a journal POSITION; an applied
+    /// action IS a journal entry. So "was this action in that strike" is
+    /// answerable by comparing the two — no staleness flag to maintain, and
+    /// nothing that can disagree with the journal, because it is the journal.
+    pub fn stale_strikes(&self, fund: &str) -> Result<Vec<(String, String, String)>> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+
+        // Where each action landed in the journal, if it landed at all.
+        let entries = b.entries()?;
+        let applied_at: BTreeMap<String, usize> = entries
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| e.id.strip_prefix("action-").map(|a| (a.to_string(), i)))
+            .collect();
+
+        let mut out = Vec::new();
+        for a in b.records::<ratio_ingest::actions::Announced>(Plane::Actions)? {
+            for s in ratio_nav::list(&path)? {
+                // The strike's own day, as the ex-date is written.
+                let day = ratio_nav::rfc3339(s.valuation_time);
+                let day = day.get(..10).unwrap_or("").to_string();
+                if day < a.ex_date {
+                    continue; // effective after this strike; correctly absent
+                }
+                let included = applied_at
+                    .get(&a.id)
+                    .is_some_and(|i| *i < s.journal_position);
+                if !included {
+                    out.push((
+                        s.id.clone(),
+                        a.id.clone(),
+                        format!(
+                            "{} {}-for-{} effective {} — {}",
+                            a.instrument,
+                            a.split.num,
+                            a.split.den,
+                            a.ex_date,
+                            if applied_at.contains_key(&a.id) {
+                                "applied after this NAV was struck"
+                            } else {
+                                "not applied"
+                            },
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(out)
+    }
+
     /// Apply a corporate action to every position in an instrument.
     ///
     /// ⛔ THE JOURNAL IS THE IDEMPOTENCE RECORD. The entry id is
@@ -2159,6 +2220,55 @@ mod tests {
         })
         .unwrap();
         assert_eq!(ok.entry.unwrap().memo, "acc-2 via fee");
+    }
+
+    #[test]
+    fn a_late_action_names_the_navs_it_was_not_in() {
+        use ratio_ingest::actions::{Announced, Split};
+        use ratio_store::Plane;
+
+        let d = fresh("stale");
+        book(&d);
+        // A NAV, struck before anybody heard about the action.
+        let s = ratio_nav::strike_and_record(&d, 1_780_000_000, "e.marsh").unwrap();
+        let day = ratio_nav::rfc3339(s.valuation_time)[..10].to_string();
+
+        let mut b = FileBook::open(&d).unwrap();
+        let announce = |b: &mut FileBook, id: &str, ex: &str| {
+            b.append_record(
+                Plane::Actions,
+                &Announced {
+                    id: id.into(),
+                    instrument: "inst-x".into(),
+                    split: Split { num: 2, den: 1 },
+                    ex_date: ex.into(),
+                    announced: 1_780_000_100,
+                },
+            )
+            .unwrap();
+        };
+        // One effective BEFORE the strike, one after.
+        announce(&mut b, "before", "2000-01-01");
+        announce(&mut b, "after", "2999-01-01");
+        drop(b);
+
+        let rows = Console::new(&d).stale_strikes("demo").unwrap();
+        assert_eq!(rows.len(), 1, "only the one that should have been in it: {rows:?}");
+        assert_eq!(rows[0].0, s.id);
+        assert_eq!(rows[0].1, "before");
+        assert!(rows[0].2.contains("not applied"), "{}", rows[0].2);
+
+        // ⛔ AND THE STRIKE ITSELF IS UNTOUCHED. `Ratio.Period.one_answer_per_day`
+        // refuses restatement, so naming a stale figure must not quietly change
+        // it — the first answer is what somebody was paid on.
+        let after = ratio_nav::list(&d).unwrap();
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].net_asset_value, s.net_asset_value);
+        assert_eq!(after[0].journal_digest, s.journal_digest);
+
+        // Sanity: `{day}` is the strike's own day, so the comparison above was
+        // against a real date rather than an empty string.
+        assert_eq!(day.len(), 10, "the strike has a valuation day: {day:?}");
     }
 
     #[test]

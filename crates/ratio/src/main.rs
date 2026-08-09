@@ -56,7 +56,9 @@ usage:
   ratio entity add --kind K --id I …   add one to the master
   ratio admit [--book DIR]             post every fact that fully resolves
   ratio mark --as-of YYYY-MM-DD        mark positions to market
-  ratio action ID INSTRUMENT N-for-M   apply a split; refuses a second time
+  ratio action ID INST N-for-M --ex-date YYYY-MM-DD
+                                       apply a split; refuses a second time
+  ratio stale [--book DIR]             NAVs struck without an action since arrived
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio server                         serve the Ledger gRPC API
@@ -124,7 +126,8 @@ fn main() -> Result<()> {
         ["pending"] => pending(book),
         ["admit"] => admit(book),
         ["mark", "--as-of", d] | ["mark", d] => mark(book, d),
-        ["action", id, inst, r] => action(book, id, inst, r),
+        ["action", id, inst, r, "--ex-date", d] => action(book, id, inst, r, d),
+        ["stale"] => stale(book),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
         ["server"] => serve(),
@@ -420,7 +423,10 @@ fn entity_add(book: PathBuf, args: &[&str]) -> Result<()> {
 /// `admit`, `ingest` and `mark` are all no-ops the second time. This one is
 /// not: `Ratio.Actions.applying_twice_is_not_applying_once`, and the position
 /// would double while the trial balance went on tying.
-fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str) -> Result<()> {
+fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str) -> Result<()> {
+    if ex_date.split('-').count() != 3 {
+        bail!("{ex_date:?} is not a date — YYYY-MM-DD");
+    }
     let (num, den) = ratio
         .split_once("-for-")
         .context("the ratio reads like `2-for-1` or `1-for-10`")?;
@@ -428,6 +434,26 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str) -> Result<()> 
         num: num.parse().context("units received")?,
         den: den.parse().context("units given up")?,
     };
+    // Announced first, applied second. The record of the ANNOUNCEMENT carries
+    // the ex-date, and it is what makes a NAV struck before this answerable
+    // afterwards — see `ratio stale`.
+    {
+        use ratio_store::Plane;
+        let mut b = FileBook::open(&book)?;
+        let known: Vec<ratio_ingest::actions::Announced> = b.records(Plane::Actions)?;
+        if !known.iter().any(|a| a.id == id) {
+            b.append_record(
+                Plane::Actions,
+                &ratio_ingest::actions::Announced {
+                    id: id.to_string(),
+                    instrument: instrument.to_string(),
+                    split: s,
+                    ex_date: ex_date.to_string(),
+                    announced: now(),
+                },
+            )?;
+        }
+    }
     let (moved, dim) =
         ratio_console::Console::new(&book).apply_action("demo", id, instrument, s)?;
 
@@ -438,6 +464,30 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str) -> Result<()> 
     println!();
     println!("Applying it again is refused: an action is not idempotent, and the");
     println!("trial balance would not notice.");
+    Ok(())
+}
+
+/// NAVs struck without an action that has since arrived.
+///
+/// ⛔ THE OBLIGATION REFUSING RESTATEMENT CREATES. A valuation point has one
+/// answer and it is never replaced, so a late action cannot correct the NAVs it
+/// should have been in — and a fund that cannot NAME them is publishing figures
+/// it cannot qualify.
+fn stale(book: PathBuf) -> Result<()> {
+    let rows = ratio_console::Console::new(&book).stale_strikes("demo")?;
+    if rows.is_empty() {
+        println!("No struck NAV is missing a corporate action.");
+        return Ok(());
+    }
+    println!("STRUCK WITHOUT AN ACTION — {} figure(s)", rows.len());
+    println!();
+    for (strike, action, why) in &rows {
+        println!("  {strike:<24}{action}");
+        println!("  {:<24}{why}", "");
+    }
+    println!();
+    println!("These cannot be restated — a valuation point has one answer, and the");
+    println!("first is what somebody was paid on. What they can be is QUALIFIED.");
     Ok(())
 }
 

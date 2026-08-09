@@ -34,6 +34,24 @@ pub struct Split {
     pub den: i64,
 }
 
+/// A corporate action as announced — before anybody applies it.
+///
+/// ⛔ THE EX-DATE IS WHY THIS IS RECORDED SEPARATELY FROM APPLYING IT. An action
+/// is effective on a day, and a NAV struck on or after that day should have
+/// included it. Whether it did is answerable from the journal — the strike pins
+/// a position and the applied action is an entry — but only if the ex-date was
+/// written down when the action arrived.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Announced {
+    pub id: String,
+    pub instrument: String,
+    pub split: Split,
+    /// `YYYY-MM-DD`. ISO so it compares in date order as a string.
+    pub ex_date: String,
+    /// When we were told, which is not when it took effect.
+    pub announced: i64,
+}
+
 /// A holding of one instrument, as a split sees it: units and what they cost.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Holding {

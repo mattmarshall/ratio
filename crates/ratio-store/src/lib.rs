@@ -264,6 +264,13 @@ pub enum Plane {
     Entities,
     /// What the templates read out of the files.
     Facts,
+    /// Corporate actions announced, whether or not they have been applied.
+    ///
+    /// Announcement is not application. An action sits here from the moment
+    /// somebody tells us about it, and the JOURNAL says whether it has gone
+    /// through — which is how a strike taken before it can be identified
+    /// afterwards without storing anything about staleness.
+    Actions,
 }
 
 impl Plane {
@@ -272,6 +279,7 @@ impl Plane {
             Plane::Deliveries => "deliveries.jsonl",
             Plane::Entities => "entities.jsonl",
             Plane::Facts => "facts.jsonl",
+            Plane::Actions => "actions.jsonl",
         }
     }
 }
