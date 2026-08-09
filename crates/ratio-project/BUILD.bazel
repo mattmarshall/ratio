@@ -18,6 +18,7 @@ rust_library(
     crate_name = "ratio_project",
     edition = "2021",
     deps = [
+        "//crates/ratio-ingest",
         "//crates/ratio-store",
         "@crates//:anyhow",
     ],
