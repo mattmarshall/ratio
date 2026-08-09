@@ -1567,6 +1567,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ratio-project"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "ratio-store",
+ "serde_json",
+]
+
+[[package]]
 name = "ratio-recon"
 version = "0.0.0"
 dependencies = [

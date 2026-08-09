@@ -1,0 +1,30 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+# ⛔ The derived read model. `//tla:projection_check` is its safety argument and
+# `//tla:unpinned_projection_check` is the failure it prevents: a figure that
+# pins one journal position and reads a projection built from another.
+#
+# The prevention is a TYPE. Every read returns `AsOf<T>`, which carries the
+# prefix it was folded from, and there is no other way to get a number out of
+# this crate — so a caller cannot pin the journal head while reading a lagging
+# projection, because it never has the head to hand.
+rust_library(
+    name = "ratio-project",
+    srcs = glob(["src/*.rs"]),
+    crate_name = "ratio_project",
+    edition = "2021",
+    deps = [
+        "//crates/ratio-store",
+        "@crates//:anyhow",
+    ],
+)
+
+rust_test(
+    name = "ratio-project_test",
+    crate = ":ratio-project",
+    edition = "2021",
+)
