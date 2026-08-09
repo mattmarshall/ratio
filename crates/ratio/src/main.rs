@@ -56,6 +56,7 @@ usage:
   ratio entity add --kind K --id I …   add one to the master
   ratio admit [--book DIR]             post every fact that fully resolves
   ratio mark --as-of YYYY-MM-DD        mark positions to market
+  ratio action ID INSTRUMENT N-for-M   apply a split; refuses a second time
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio server                         serve the Ledger gRPC API
@@ -123,6 +124,7 @@ fn main() -> Result<()> {
         ["pending"] => pending(book),
         ["admit"] => admit(book),
         ["mark", "--as-of", d] | ["mark", d] => mark(book, d),
+        ["action", id, inst, r] => action(book, id, inst, r),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
         ["server"] => serve(),
@@ -409,6 +411,33 @@ fn entity_add(book: PathBuf, args: &[&str]) -> Result<()> {
     let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
     let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
     report_resolution(&facts, &master);
+    Ok(())
+}
+
+/// Apply a corporate action.
+///
+/// ⛔ REFUSES A SECOND APPLICATION. Every other verb here is safe to retry —
+/// `admit`, `ingest` and `mark` are all no-ops the second time. This one is
+/// not: `Ratio.Actions.applying_twice_is_not_applying_once`, and the position
+/// would double while the trial balance went on tying.
+fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str) -> Result<()> {
+    let (num, den) = ratio
+        .split_once("-for-")
+        .context("the ratio reads like `2-for-1` or `1-for-10`")?;
+    let s = ratio_ingest::actions::Split {
+        num: num.parse().context("units received")?,
+        den: den.parse().context("units given up")?,
+    };
+    let (moved, dim) =
+        ratio_console::Console::new(&book).apply_action("demo", id, instrument, s)?;
+
+    println!("applied  {id}");
+    println!("  {instrument} {}-for-{}", s.num, s.den);
+    println!("  units    {}{moved} on account {dim}", if moved > 0 { "+" } else { "" });
+    println!("  cost     unchanged — a split moves units, not value");
+    println!();
+    println!("Applying it again is refused: an action is not idempotent, and the");
+    println!("trial balance would not notice.");
     Ok(())
 }
 

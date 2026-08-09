@@ -20,6 +20,7 @@ rust_library(
     name = "ratio-ingest",
     srcs = [
         "src/lib.rs",
+        "src/actions.rs",
         "src/tests.rs",
         "src/value.rs",
         ":generated_rs",

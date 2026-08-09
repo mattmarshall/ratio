@@ -27,6 +27,7 @@
 //! step with the first.
 
 mod generated;
+pub mod actions;
 pub mod value;
 /// The Lean-authored core: `ResolutionKind`, `resolution_of_count`,
 /// `rung_satisfied`, `claim_holds`, `scale_for`, `minor_units`.

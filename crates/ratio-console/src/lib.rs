@@ -747,6 +747,76 @@ impl Console {
         })
     }
 
+    /// Apply a corporate action to every position in an instrument.
+    ///
+    /// ⛔ THE JOURNAL IS THE IDEMPOTENCE RECORD. The entry id is
+    /// `action-{id}`, and this refuses when the journal already has it —
+    /// because `Ratio.Actions.applying_twice_is_not_applying_once` and there is
+    /// no arithmetic underneath that would notice. `//tla:reapply_action_check`
+    /// is the same guard one layer up: without it a retry doubles the position
+    /// and the trial balance still ties.
+    ///
+    /// A split posts an entry whose AMOUNTS ARE ZERO and whose QUANTITY moves.
+    /// That is exactly the proved shape — cost conserved, units changed — and
+    /// it balances by construction, so the kernel accepts it without being told
+    /// anything special.
+    pub fn apply_action(
+        &self,
+        fund: &str,
+        action_id: &str,
+        instrument: &str,
+        s: ratio_ingest::actions::Split,
+    ) -> Result<(i64, i64)> {
+        let path = self.book_path(fund)?;
+        let mut b = FileBook::open(&path)?;
+        let digest = b.active()?.context("no configuration is in force")?;
+
+        let entry_id = format!("action-{action_id}");
+        if b.entries()?.iter().any(|e| e.id == entry_id) {
+            bail!(
+                "{action_id:?} has already been applied to this book. An action is not \
+                 idempotent — applying it again would change the position while the trial \
+                 balance went on tying."
+            );
+        }
+
+        // Units held now, and what they cost, per account holding this
+        // instrument. A split applies to the POSITION, not to one lot: the lot
+        // detail is what `Ratio.Lots` relieves, and this crate's journal holds
+        // positions.
+        let (held, _) = b.positions()?;
+        let mut moved = 0i64;
+        let mut dim_touched = 0i64;
+        for ((dim, i), (cost, units)) in held {
+            if i != instrument || units == 0 {
+                continue;
+            }
+            let after = ratio_ingest::actions::split(
+                s,
+                &ratio_ingest::actions::Holding { units, cost },
+            )?;
+            moved += after.units - units;
+            dim_touched = dim;
+        }
+        if moved == 0 {
+            bail!("no position in {instrument:?} for this action to apply to");
+        }
+
+        b.append(&ratio_store::JournalEntry {
+            id: entry_id,
+            memo: format!(
+                "{instrument} {}-for-{} · units only, cost unchanged",
+                s.num, s.den
+            ),
+            config: digest,
+            // ⚠ AMOUNT ZERO. A split moves units and not value, so the entry
+            // conserves trivially — and a reader who checked only the amounts
+            // would see nothing happen.
+            postings: vec![ratio_store::PostingRecord::of(dim_touched, 0, instrument, Some(moved))],
+        })?;
+        Ok((moved, dim_touched))
+    }
+
     /// Mark the book to market at a valuation date.
     ///
     /// ⛔ A POSTING, NOT AN ASSIGNMENT. Each position moves by the difference
@@ -786,12 +856,18 @@ impl Console {
             .rules
             .iter()
             .find(|r| r.kind == ratio_rules::RuleKind::Mark)
-            .context("no rule of kind `mark` is in force, so there is nowhere for a                       valuation to post")?;
+            .context(
+                "no rule of kind `mark` is in force, so there is nowhere for a valuation \
+                 to post",
+            )?;
         let held_in = rule
             .legs
             .iter()
             .find(|l| l.per_instrument)
-            .context("the mark rule has no `per_instrument` leg, so it does not say                       which account holds positions")?
+            .context(
+                "the mark rule has no `per_instrument` leg, so it does not say which \
+                 account holds positions",
+            )?
             .account;
 
         let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
