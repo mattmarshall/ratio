@@ -64,6 +64,23 @@ impl<T> AsOf<T> {
 /// directly — which `the_projection_agrees_with_a_full_fold` does, because a
 /// read model that drifts from the record it derives from is worse than no read
 /// model at all.
+/// Running totals a NAV needs, accumulated as the journal is folded.
+///
+/// ⛔ ACCUMULATED, NOT RECOMPUTED. `ratio_nav::fold_nav` walks every entry on
+/// every strike — O(journal), and the journal holds every trade ever made. These
+/// move by exactly what each new entry contributes, so a strike off a maintained
+/// projection is O(positions): `Ratio.Plan.aggregate_agrees_with_scan`, and
+/// `Ratio.Plan.a_stale_total_makes_the_plans_disagree` is what goes wrong if
+/// they ever drift.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Totals {
+    /// Postings by dimension, whatever the account type. The NAV picks out
+    /// assets and liabilities; the projection does not know the chart.
+    pub by_dim: BTreeMap<i64, i64>,
+    pub debits: i64,
+    pub credits: i64,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Positions {
     /// `(dim, instrument) -> (cost, quantity)`.
@@ -98,6 +115,7 @@ struct Actions {
 #[derive(Clone, Debug, Default)]
 pub struct Projection {
     positions: Positions,
+    totals: Totals,
     actions: Actions,
     /// Entries folded so far.
     ///
@@ -127,7 +145,14 @@ impl Projection {
     /// contents. `advance` takes the WHOLE journal and skips what it has,
     /// rather than taking a delta the caller computed — a delta is one more
     /// thing a caller can get wrong, and getting it wrong is silent.
-    pub fn advance(&mut self, journal: &[JournalEntry]) {
+    /// Returns how many entries it folded.
+    ///
+    /// ⛔ RETURNED SO THE INCREMENTAL PROPERTY IS OBSERVABLE. "It advances
+    /// rather than rebuilding" is otherwise only checkable by timing, and a
+    /// timing test that passes on a rebuild fast enough to look incremental
+    /// proves nothing. A maintained projection folds the DELTA; this is the
+    /// number that says so.
+    pub fn advance(&mut self, journal: &[JournalEntry]) -> usize {
         for entry in journal.iter().skip(self.at) {
             if let Some(a) = &entry.announcement {
                 self.actions.announced.push((
@@ -142,6 +167,12 @@ impl Projection {
                 self.actions.rewritten.insert(id.to_string());
             }
             for p in &entry.postings {
+                *self.totals.by_dim.entry(p.dim).or_default() += p.amount;
+                if p.amount >= 0 {
+                    self.totals.debits += p.amount;
+                } else {
+                    self.totals.credits += -p.amount;
+                }
                 match &p.instrument {
                     Some(i) => {
                         let slot =
@@ -153,7 +184,20 @@ impl Projection {
                 }
             }
         }
-        self.at = journal.len();
+        let folded = journal.len().saturating_sub(self.at);
+        // ⛔ `max`, NOT `= journal.len()`. A SHORTER journal must not rewind the
+        // prefix — the entries were folded and the totals still hold them.
+        // Assigning the length outright let a truncated or sliced read move the
+        // position BACKWARD, after which the next advance re-folds everything
+        // between and double-counts it: `//tla:rebuild_double_counts_check`,
+        // reachable without any rebuild at all.
+        //
+        // ⚠ Found by `a_maintained_projection_folds_only_the_delta`, which was
+        // written to check the incremental property and caught this instead.
+        // Every other test in this file passed — none of them ever handed
+        // `advance` a journal shorter than one it had already seen.
+        self.at = journal.len().max(self.at);
+        folded
     }
 
     /// Build from scratch.
@@ -162,7 +206,7 @@ impl Projection {
     /// advance — the distinction `//tla:rebuild_double_counts_check` is about.
     pub fn rebuild(journal: &[JournalEntry]) -> Self {
         let mut p = Self::new();
-        p.advance(journal);
+        let _ = p.advance(journal);
         p
     }
 
@@ -191,6 +235,29 @@ impl Projection {
                 .sum(),
             prefix: self.at,
         }
+    }
+
+    /// Net asset value and the trial-balance difference, off the maintained
+    /// totals rather than a walk over the journal.
+    ///
+    /// ⭐ THIS IS THE POINT OF THE WHOLE CRATE. `ratio_nav::fold_nav` is
+    /// O(journal) and this is O(dimensions) — a chart, not a history. The figure
+    /// must be IDENTICAL, which `the_projection_strikes_the_same_nav_as_a_full_
+    /// fold` checks against the existing path rather than against itself.
+    ///
+    /// A liability nets negative because it is credit-normal, so summing assets
+    /// and liabilities subtracts without a special case — the same fold as
+    /// `ratio_nav`, and a sign error here is invisible in a screenshot and wrong
+    /// by twice the liability.
+    pub fn nav(&self, is_asset_or_liability: &dyn Fn(i64) -> bool) -> AsOf<(i64, i64)> {
+        let nav = self
+            .totals
+            .by_dim
+            .iter()
+            .filter(|(dim, _)| is_asset_or_liability(**dim))
+            .map(|(_, amount)| *amount)
+            .sum();
+        AsOf { value: (nav, self.totals.debits - self.totals.credits), prefix: self.at }
     }
 
     /// The splits an instrument's stored units must be read through, on a day.
@@ -302,6 +369,55 @@ mod tests {
     }
 
     #[test]
+    fn the_projection_strikes_the_same_nav_as_a_full_fold() {
+        // ⭐ AGAINST THE EXISTING PATH, NOT AGAINST ITSELF. `ratio_nav::strike`
+        // walks every entry; this reads maintained totals. The whole value of
+        // the projection is that the figures are the same number, and a test
+        // that compared the projection to another projection would prove only
+        // that it is consistent with its own mistake.
+        let d = book(
+            "navsame",
+            &[("vti", 25_000, 100), ("voo", 10_000, 40), ("vti", 5_000, 20)],
+        );
+        let js = entries(&d);
+        let p = Projection::rebuild(&js);
+
+        // dims 1 and 2 are assets in `book()`; nothing else is.
+        let got = p.nav(&|dim| dim == 1 || dim == 2);
+        let want = ratio_nav::strike(&d, 1_782_662_400, "e.marsh").unwrap();
+
+        assert_eq!(got.value.0, want.net_asset_value, "the same NAV");
+        assert_eq!(got.value.1, want.trial_balance_difference, "and the same difference");
+        assert_eq!(got.prefix, want.journal_position, "over the same prefix");
+    }
+
+    #[test]
+    fn the_nav_ignores_dimensions_that_are_not_assets_or_liabilities() {
+        // Capital is equity. Including it would net the NAV to zero — the
+        // figure would look "balanced" and be worthless, which is the sign
+        // error this fold exists to avoid.
+        let d = book("navdims", &[("vti", 25_000, 100)]);
+        let p = Projection::rebuild(&entries(&d));
+        assert_eq!(p.nav(&|dim| dim == 1 || dim == 2).value.0, 0, "buy: asset in, cash out");
+        assert_eq!(p.nav(&|dim| dim == 1).value.0, 25_000, "investments alone");
+    }
+
+    #[test]
+    fn totals_advance_rather_than_being_recomputed() {
+        // The incremental property: catching up in pieces lands where folding
+        // the lot from scratch would. `Ratio.Plan.a_stale_total_makes_the_plans
+        // _disagree` is what a drifted total would cause.
+        let d = book("navincr", &[("vti", 10, 1), ("voo", 20, 2), ("vti", 30, 3)]);
+        let js = entries(&d);
+        let mut piecemeal = Projection::new();
+        for n in 1..=js.len() {
+            piecemeal.advance(&js[..n]);
+        }
+        let assets = |dim: i64| dim == 1 || dim == 2;
+        assert_eq!(piecemeal.nav(&assets), Projection::rebuild(&js).nav(&assets));
+    }
+
+    #[test]
     fn advancing_twice_folds_each_entry_once() {
         // ⛔ `//tla:rebuild_double_counts_check`. A second advance over the same
         // journal must be a no-op. If it re-folded, the position would stay
@@ -334,6 +450,30 @@ mod tests {
         }
         assert_eq!(piecemeal.positions().value, &Projection::rebuild(&js).positions().value.clone());
         assert_eq!(piecemeal.prefix(), js.len());
+    }
+
+    #[test]
+    fn a_maintained_projection_folds_only_the_delta() {
+        // ⭐ STEP 3 OF THE SEAM, AND THE ONE THAT MAKES THE FLAT CURVE REAL IN
+        // PRODUCTION. `of_book` rebuilds from zero — O(journal) — which is the
+        // cost the benchmark reports as COLD BUILD. A process that keeps a
+        // projection pays it once and then folds only what arrived.
+        //
+        // ⚠ Asserted by COUNT, not by timing. A rebuild fast enough to look
+        // incremental would pass a stopwatch and fail this.
+        let d = book("delta", &[("vti", 10, 1), ("voo", 20, 2), ("vti", 30, 3)]);
+        let js = entries(&d);
+
+        let mut p = Projection::new();
+        assert_eq!(p.advance(&js), 3, "the first pass folds everything");
+        assert_eq!(p.advance(&js), 0, "and a second folds nothing at all");
+        assert_eq!(p.advance(&js[..2]), 0, "a SHORTER journal folds nothing either");
+
+        // One more arrives.
+        let mut grown = js.clone();
+        grown.push(js[0].clone());
+        assert_eq!(p.advance(&grown), 1, "only the new entry");
+        assert_eq!(p.prefix(), 4);
     }
 
     #[test]

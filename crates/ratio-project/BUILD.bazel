@@ -28,4 +28,8 @@ rust_test(
     name = "ratio-project_test",
     crate = ":ratio-project",
     edition = "2021",
+    # ⛔ The projection's NAV is checked against `ratio_nav::strike`, the path it
+    # replaces — not against another projection, which would prove only that it
+    # is consistent with its own mistake.
+    deps = ["//crates/ratio-nav"],
 )

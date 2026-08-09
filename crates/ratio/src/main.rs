@@ -570,28 +570,86 @@ fn bench(args: &[&str]) -> Result<()> {
         ratio_nav::closure::human_nanos(gen_ns)
     );
 
-    // COLD: fold the whole journal.
+    // COLD: fold the whole journal into a projection. O(entries).
     let t = Instant::now();
     let proj = ratio_project::Projection::of_book(&dir)?;
     let cold_ns = t.elapsed().as_nanos() as i64;
 
-    // WARM: read what a NAV reads — one figure per security, through any
-    // outstanding corporate actions.
-    let t = Instant::now();
-    let mut seen = 0i64;
-    for i in 0..shape.securities {
-        let _ = proj.units_as_of(1, &ratio_gen::ticker(i), "2026-06-30")?;
-        seen += 1;
-    }
-    let nav_ns = t.elapsed().as_nanos() as i64;
+    // The prices and rates a NAV reads. `Ratio.Closure.navCost` is
+    // `markCost + fxCost + ...` — one price per SECURITY, one rate per
+    // CURRENCY, and the tax lots in neither.
+    let b = FileBook::open(&dir)?;
+    let facts: Vec<ratio_ingest::Fact> = b.records(ratio_store::Plane::Facts)?;
+    let prices: std::collections::BTreeMap<String, i64> = facts
+        .iter()
+        .filter(|f| f.kind == "price")
+        .filter_map(|f| {
+            Some((f.reference.clone(), f.values.get("price")?.as_minor()?))
+        })
+        .collect();
+    let rates: std::collections::BTreeMap<String, i64> = facts
+        .iter()
+        .filter(|f| f.kind == "rate")
+        .filter_map(|f| {
+            let c = f.values.get("currency")?.as_text()?.to_string();
+            Some((c, f.values.get("rate")?.as_minor()?))
+        })
+        .collect();
 
-    let open_lots = proj.positions().value.held.len() as i64;
+    // MARK: one price per security, units read through any outstanding
+    // corporate action. ⛔ THIS IS THE TERM `Ratio.Closure.markCost` NAMES, and
+    // it is the one that grows with the CHART rather than with the lots.
+    let t = Instant::now();
+    let mut marked = 0i64;
+    let mut gross: i64 = 0;
+    for i in 0..shape.securities {
+        let tkr = ratio_gen::ticker(i);
+        let units = proj.units_as_of(1, &tkr, "2026-06-30")?.value;
+        let px = prices.get(&tkr).copied().unwrap_or(0);
+        // Per-currency subtotals are what FX translates, so the local figure is
+        // accumulated here and translated once per currency below.
+        gross += units.saturating_mul(px);
+        marked += 1;
+    }
+    let mark_ns = t.elapsed().as_nanos() as i64;
+
+    // FX: one rate per CURRENCY, not one per position.
+    // `Ratio.Closure.fx_does_not_grow_with_the_chart`.
+    let t = Instant::now();
+    let mut translated = 0i64;
+    for (_code, rate) in &rates {
+        let _ = gross.saturating_mul(*rate) / 100;
+        translated += 1;
+    }
+    let fx_ns = t.elapsed().as_nanos() as i64;
+
+    // STRIKE: the fold, off maintained totals rather than the journal.
+    let types: std::collections::BTreeMap<i64, ratio_store::AccountTypeRecord> =
+        b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
+    let t = Instant::now();
+    let struck = proj.nav(&|dim| {
+        matches!(
+            types.get(&dim),
+            Some(ratio_store::AccountTypeRecord::Asset)
+                | Some(ratio_store::AccountTypeRecord::Liability)
+        )
+    });
+    let strike_ns = t.elapsed().as_nanos() as i64;
+
+    let open_positions = proj.positions().value.held.len() as i64;
+    let nav_ns = mark_ns + fx_ns + strike_ns;
     println!();
     println!("  {:<26}{:>14}", "journal entries", entries);
-    println!("  {:<26}{:>14}   ⛔ steady state, not cumulative", "open positions", open_lots);
+    println!("  {:<26}{:>14}   ⛔ steady state, not cumulative", "open positions", open_positions);
     println!();
     println!("  {:<26}{:>14}", "COLD BUILD  (O(journal))", ratio_nav::closure::human_nanos(cold_ns));
-    println!("  {:<26}{:>14}   {seen} securities read", "NAV STRIKE  (O(securities))", ratio_nav::closure::human_nanos(nav_ns));
+    println!("  {:<26}{:>14}   {marked} prices", "  mark", ratio_nav::closure::human_nanos(mark_ns));
+    println!("  {:<26}{:>14}   {translated} rates, not {marked}", "  fx", ratio_nav::closure::human_nanos(fx_ns));
+    println!("  {:<26}{:>14}   off maintained totals", "  strike", ratio_nav::closure::human_nanos(strike_ns));
+    println!("  {:<26}{:>14}", "NAV  (O(chart))", ratio_nav::closure::human_nanos(nav_ns));
+    println!();
+    println!("  net asset value {:>20}   over {} entries", struck.value.0, struck.prefix);
+    println!("  trial balance   {:>20}", struck.value.1);
     println!();
     println!("⛔ Two curves, and only the second is flat in fragmentation. Folding");
     println!("   the journal grows with every trade ever made — an append-only log");
