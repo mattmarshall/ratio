@@ -115,18 +115,6 @@ lean_test(
     entry = "Ratio/Closure.lean",
 )
 
-# ⚠ BELONGS IN LEANGRES. The first increment of a query planner: a denotation
-# for queries, without which "this plan equals that plan" is not a statement
-# that can be made. Bags rather than sets, three-valued predicates, and the
-# theorem that a SQL predicate DOES NOT partition a table — which contradicts
-# the boolean-predicate partition theorems the rest of this repo relies on.
-lean_test(
-    name = "relational_proof_test",
-    size = "small",
-    srcs = ["Ratio/Relational.lean"],
-    entry = "Ratio/Relational.lean",
-)
-
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
