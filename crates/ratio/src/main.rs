@@ -59,6 +59,9 @@ usage:
   ratio action ID INST N-for-M --ex-date YYYY-MM-DD
                                        apply a split; refuses a second time
   ratio stale [--book DIR]             NAVs struck without an action since arrived
+  ratio closure [--securities N] [--currencies N] [--lots-per N]
+        [--open-actions N] [--capital N]
+                                       what a period end costs, before running it
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio server                         serve the Ledger gRPC API
@@ -128,6 +131,7 @@ fn main() -> Result<()> {
         ["mark", "--as-of", d] | ["mark", d] => mark(book, d),
         ["action", id, inst, r, "--ex-date", d] => action(book, id, inst, r, d),
         ["stale"] => stale(book),
+        ["closure", rest @ ..] => closure(book, rest),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
         ["server"] => serve(),
@@ -488,6 +492,97 @@ fn stale(book: PathBuf) -> Result<()> {
     println!();
     println!("These cannot be restated — a valuation point has one answer, and the");
     println!("first is what somebody was paid on. What they can be is QUALIFIED.");
+    Ok(())
+}
+
+/// Turn the dial: what does a period end of this shape cost?
+///
+/// ⛔ THE ARITHMETIC IS NOT HERE. Every term comes from `ratio_nav::closure`,
+/// which is emitted from `Ratio.Closure`. This function parses flags and prints;
+/// if it computed anything, the printed number would stop being the proved one.
+fn closure(book: PathBuf, args: &[&str]) -> Result<()> {
+    use ratio_nav::closure::{estimate, Calibration, Dials};
+
+    // An S&P tracker in its twentieth year, which is the case worth arguing
+    // about: five hundred names, three currencies, twenty million open lots.
+    let mut d = Dials {
+        securities: 500,
+        currencies: 3,
+        lots_per: 40_000,
+        open_actions: 0,
+        capital_txns: 0,
+    };
+
+    let mut it = args.iter();
+    while let Some(flag) = it.next() {
+        let v = || -> Result<i64> {
+            it.clone()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("{flag} needs a number"))?
+                .parse::<i64>()
+                .with_context(|| format!("{flag} needs a number"))
+        };
+        match *flag {
+            "--securities" => d.securities = v()?,
+            "--currencies" => d.currencies = v()?,
+            "--lots-per" => d.lots_per = v()?,
+            "--open-actions" => d.open_actions = v()?,
+            "--capital" => d.capital_txns = v()?,
+            other => bail!("{other:?} is not a dial — see `ratio help`"),
+        }
+        it.next();
+    }
+    for (name, n) in [
+        ("--securities", d.securities),
+        ("--currencies", d.currencies),
+        ("--lots-per", d.lots_per),
+        ("--open-actions", d.open_actions),
+        ("--capital", d.capital_txns),
+    ] {
+        if n < 0 {
+            bail!("{name} cannot be negative");
+        }
+    }
+
+    // Measure this machine if there is a book to measure against; otherwise say
+    // so and fall back. ⛔ A MEASUREMENT IS PREFERRED TO A CONSTANT, and when it
+    // cannot be taken the output says which one it used.
+    let cal = ratio_nav::closure::measure(&book).unwrap_or_else(|_| Calibration::measured());
+    let e = estimate(d, &cal);
+
+    println!("A PERIOD END OF THIS SHAPE");
+    println!();
+    println!("  {:<22}{:>12}", "securities", d.securities);
+    println!("  {:<22}{:>12}", "currencies", d.currencies);
+    println!("  {:<22}{:>12}", "open corp. actions", d.open_actions);
+    println!("  {:<22}{:>12}", "capital transactions", d.capital_txns);
+    println!("  {:<22}{:>12}   ⛔ not read by the NAV", "open tax lots", e.open_lots);
+    println!();
+    println!("READS");
+    println!("  {:<22}{:>12}   one price per security", "marking", e.marks);
+    println!("  {:<22}{:>12}   one rate per CURRENCY, not per position", "fx", e.fx);
+    println!(
+        "  {:<22}{:>12}   {}% of the work",
+        "corporate actions",
+        e.actions,
+        e.actions_share()
+    );
+    println!("  {:<22}{:>12}", "capital", e.capital);
+    println!("  {:<22}{:>12}", "", "────────────");
+    println!("  {:<22}{:>12}", "total", e.reads);
+    println!();
+    println!("  ≈ {}   {}", ratio_nav::closure::human_nanos(e.nanos), e.provenance);
+    println!();
+    println!("⛔ The tax lots are not in the total. `Ratio.Closure.nav_never_reads_");
+    println!("   the_lots` — hold everything else fixed and the cost does not move");
+    println!("   when fragmentation does. A fund's twentieth year strikes as fast");
+    println!("   as its first.");
+    if d.open_actions > 0 {
+        println!();
+        println!("⚠ One unapplied corporate action costs a whole chart of reads —");
+        println!("  more than marking every security. The term to engineer is the");
+        println!("  actions, not the lots.");
+    }
     Ok(())
 }
 

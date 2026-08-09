@@ -27,6 +27,15 @@
 //! system that struck its own NAV on a timer would be asserting exactly the
 //! thing this product exists to stop asserting.
 
+/// The cost model, emitted from `Ratio.Closure` — what a period end reads,
+/// term by term. Kept out of `lib.rs` because it is authored in Lean.
+mod generated;
+
+/// What a period end costs before anybody runs it: the emitted model, plus a
+/// rate measured against a real store so the answer can be given in time as
+/// well as in reads.
+pub mod closure;
+
 use anyhow::{bail, Context, Result};
 use ratio_store::{AccountTypeRecord, ConfigStore, Digest, FileBook, Journal, JournalEntry};
 

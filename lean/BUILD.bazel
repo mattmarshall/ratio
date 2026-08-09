@@ -164,6 +164,16 @@ lean_emit(
     out = "ratio_chart.ast.json",
 )
 
+# The cost model. Emitted rather than rewritten because the whole value of the
+# answer is that it IS `Ratio.Closure` — a hand-written `nav_cost` in Rust would
+# be a claim about the proofs instead of the thing they are about.
+lean_emit(
+    name = "ratio_closure_ast",
+    srcs = _BUILDER_SRCS + ["Ratio/Closure/Emit.lean"],
+    entry = "Ratio/Closure/Emit.lean",
+    out = "ratio_closure.ast.json",
+)
+
 # `set_option warningAsError true` makes a `sorry` a hard error, but it says
 # nothing about a declared `axiom` or `native_decide` — both of which would let
 # a green build mean nothing. This asserts, textually, that no source contains

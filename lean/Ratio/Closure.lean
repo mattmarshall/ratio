@@ -145,4 +145,27 @@ theorem an_exact_division_leaves_nothing (nav units : Int)
     (h : nav % units = 0) : (perShare nav units).2 = 0 := by
   simp [perShare, h]
 
+/-- **⛔ THIS DIVISION IS EUCLIDEAN, AND RUST'S IS NOT.**
+
+Checked, because the emitted Rust has to agree with it and the two languages
+disagree by default. Lean's `/` and `%` on `Int` are `ediv`/`emod`, which is why
+`residual_is_accounted` closes with `Int.mul_ediv_add_emod`; the residual is
+always NON-NEGATIVE. Rust's `/` and `%` truncate toward zero, so the residual
+carries the sign of the numerator:
+
+    perShare (-7) 3   Lean:  (-3,  2)      Rust `(-7/3, -7%3)`:  (-2, -1)
+
+Both satisfy `units * q + r = nav`, so `residual_is_accounted` would hold of
+EITHER and cannot tell them apart — the theorem is not the guard here. The
+emitted code uses `div_euclid`/`rem_euclid` for that reason, and this example is
+what says which convention it must match.
+
+A negative NAV is not hypothetical: a fund carrying a liability greater than its
+assets has one, and units in issue stay positive. -/
+example : perShare (-7) 3 = (-3, 2) := by decide
+
+/-- And the ordinary case is the same under either convention, which is exactly
+why the disagreement above would not show up in testing. -/
+example : perShare 1000 3 = (333, 1) := by decide
+
 end Ratio.Closure
