@@ -126,6 +126,28 @@ lean_test(
     entry = "Ratio/Actions.lean",
 )
 
+# A split as something you READ THROUGH rather than something you write.
+#
+# `Ratio.Closure` makes actions the only superlinear term, and that cost is
+# entirely an artifact of rewriting every affected lot. Composing the splits
+# into a factor removes the rewrite — but NOT for free, and this file proves
+# both halves: the factor describes the rewrite (multiplicatively, so no
+# rounding can make it true), AND it succeeds where the rewrite refuses, in
+# which case it is the factor that is wrong about the world.
+#
+# It also carries the precondition the redesign turns on: a strike's factor
+# must be fixed by the journal prefix it pinned, which is only true if
+# announcements are journal entries.
+lean_test(
+    name = "actions_factor_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Actions.lean",
+        "Ratio/Actions/Factor.lean",
+    ],
+    entry = "Ratio/Actions/Factor.lean",
+)
+
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
