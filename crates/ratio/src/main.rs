@@ -570,7 +570,7 @@ fn closure(book: PathBuf, args: &[&str]) -> Result<()> {
     println!("  {:<22}{:>12}   one price per security", "marking", e.marks);
     println!("  {:<22}{:>12}   one rate per CURRENCY, not per position", "fx", e.fx);
     println!(
-        "  {:<22}{:>12}   {}% of the work",
+        "  {:<22}{:>12}   {}% of the work — the LOTS of one name",
         "corporate actions",
         e.actions,
         e.actions_share()
@@ -584,15 +584,29 @@ fn closure(book: PathBuf, args: &[&str]) -> Result<()> {
         println!("           not measured here: {why}");
     }
     println!();
-    println!("⛔ The tax lots are not in the total. `Ratio.Closure.nav_never_reads_");
-    println!("   the_lots` — hold everything else fixed and the cost does not move");
-    println!("   when fragmentation does. A fund's twentieth year strikes as fast");
-    println!("   as its first.");
-    if d.open_actions > 0 {
+    if d.open_actions == 0 {
+        println!("⛔ The tax lots are not in the total. `Ratio.Closure.a_quiet_nav_never_");
+        println!("   reads_the_lots` — hold everything else fixed and the cost does not");
+        println!("   move when fragmentation does. A fund's twentieth year strikes as");
+        println!("   fast as its first.");
+    } else {
+        // ⛔ THE HONEST VERSION. With something outstanding the flat claim does
+        // NOT hold, because applying an action by rewriting IS a walk over the
+        // lots. Printing the reassuring sentence here would be the same
+        // overclaim the cost model itself made for weeks.
+        println!("⛔ WITH AN ACTION OUTSTANDING, THIS NAV READS THE LOTS. Applying one by");
+        println!("   rewriting is a walk over every lot of that instrument, so the");
+        println!("   flat-in-fragmentation claim does NOT hold today:");
+        println!("   `Ratio.Closure.an_open_action_makes_the_nav_read_the_lots`.");
         println!();
-        println!("⚠ One unapplied corporate action costs a whole chart of reads —");
-        println!("  more than marking every security. The term to engineer is the");
-        println!("  actions, not the lots.");
+        println!(
+            "   as a factor instead   {:>10} reads   ≈ {}",
+            e.factored_reads,
+            ratio_nav::closure::human_nanos(e.factored_nanos)
+        );
+        println!("   `Ratio.Actions.Factor` — nothing is written, so the claim holds for");
+        println!("   ANY number of open actions. ⚠ It removes a CLIFF, not a slope: on a");
+        println!("   quiet day the two models are the same number.");
     }
     Ok(())
 }

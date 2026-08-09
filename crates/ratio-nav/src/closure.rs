@@ -30,7 +30,8 @@ use std::path::Path;
 use std::time::Instant;
 
 pub use crate::generated::{
-    action_cost, capital_cost, fx_cost, lots, mark_cost, nav_cost, per_share, Dials, PerShare,
+    action_cost, capital_cost, factor_action_cost, factor_nav_cost, fx_cost, lots, mark_cost,
+    nav_cost, per_share, Dials, PerShare,
 };
 
 /// Nanoseconds per read.
@@ -112,14 +113,26 @@ pub struct Estimate {
     pub actions: i64,
     /// One per subscription or redemption.
     pub capital: i64,
-    /// The sum, and the proved quantity: `Ratio.Closure.navCost`.
+    /// The sum as the system works TODAY: `Ratio.Closure.navCost`, actions
+    /// applied by rewriting the lots they touch.
     pub reads: i64,
+    /// ⭐ The same period end once actions are factors:
+    /// `Ratio.Closure.factorNavCost`.
+    ///
+    /// ⛔ REPORTED BESIDE `reads`, NOT INSTEAD OF IT. The flat-in-fragmentation
+    /// claim holds of this one and not of the other, and quoting only the
+    /// better number is the same mistake the model already made once — it
+    /// charged an open action `openActions × securities` when a split touches
+    /// every LOT of one instrument, understating its own worst term by eighty.
+    pub factored_reads: i64,
     /// Open tax lots. ⛔ REPORTED AND NOT SUMMED — `nav_never_reads_the_lots`
     /// is precisely the claim that this number is not in `reads`. It is here so
     /// a reader can see the size of the thing that does not cost anything.
     pub open_lots: i64,
     /// `reads × nanos_per_read`. The measured part.
     pub nanos: i64,
+    /// The same, for `factored_reads`.
+    pub factored_nanos: i64,
     pub provenance: String,
 }
 
@@ -145,8 +158,11 @@ impl Estimate {
 /// Cost a period end.
 pub fn estimate(d: Dials, c: &Calibration) -> Estimate {
     let reads = nav_cost(d);
+    let factored = factor_nav_cost(d);
     Estimate {
         dials: d,
+        factored_reads: factored,
+        factored_nanos: factored.saturating_mul(c.nanos_per_read),
         marks: mark_cost(d),
         fx: fx_cost(d),
         actions: action_cost(d),
@@ -260,24 +276,59 @@ mod tests {
     }
 
     #[test]
-    fn one_open_action_costs_more_than_the_whole_quiet_day() {
+    fn one_open_action_costs_eighty_period_ends() {
+        // ⛔ THE CLIFF, and the number that used to be here was 500.
+        //
+        // `action_cost` charged `open_actions × securities` until the model was
+        // corrected: a split reaches into ONE instrument and touches every LOT
+        // of it. Forty thousand, not five hundred — the model understated its
+        // own worst term by eighty, in the direction that flattered.
         let quiet = TRACKER;
         let one = Dials { open_actions: 1, ..TRACKER };
 
-        assert_eq!(nav_cost(one) - nav_cost(quiet), 500, "a whole chart");
+        assert_eq!(nav_cost(quiet), 503, "the chart plus the currencies");
+        assert_eq!(nav_cost(one), 40_503);
+        assert_eq!(nav_cost(one) - nav_cost(quiet), 40_000, "the lots of one name");
         assert!(
-            nav_cost(one) - nav_cost(quiet) > nav_cost(quiet) / 2,
-            "the action costs more than half of everything else put together"
+            nav_cost(one) > nav_cost(quiet) * 80,
+            "eighty period ends, not one"
+        );
+    }
+
+    #[test]
+    fn a_rewrite_makes_the_nav_read_the_lots_and_a_factor_does_not() {
+        // ⭐ THE CLAIM THE PRODUCT RESTS ON, IN BOTH POSITIONS.
+        //
+        // Two funds identical but for fragmentation, one split outstanding.
+        // Under a rewrite the cost moves with the lots — which is the
+        // flat-in-fragmentation promise simply not holding.
+        let young = Dials { lots_per: 1, open_actions: 1, ..TRACKER };
+        let old = Dials { open_actions: 1, ..TRACKER };
+
+        assert_ne!(
+            nav_cost(young),
+            nav_cost(old),
+            "a rewrite walks the lots, so fragmentation is in the cost"
+        );
+        assert_eq!(
+            factor_nav_cost(young),
+            factor_nav_cost(old),
+            "under a factor it is not — for ANY number of open actions"
         );
 
-        // Which is the headline: the term to engineer is the actions, not the
-        // lots — and it is the opposite of where the industry looks.
-        //
-        // 500 of 1,003 reads. ⚠ JUST UNDER HALF, not over — I claimed "over
-        // half" in the doc comment above and this assertion is what caught it.
-        let e = estimate(one, &Calibration::measured());
-        assert_eq!(e.actions_share(), 49, "500 of 1003 reads is 49.85%");
-        assert_eq!(e.open_lots, 20_000_000, "still unread, still free");
+        // And the size of what the redesign removes.
+        assert_eq!((nav_cost(old), factor_nav_cost(old)), (40_503, 503));
+    }
+
+    #[test]
+    fn on_a_quiet_day_the_two_models_agree_exactly() {
+        // ⚠ The redesign removes a CLIFF, and a cliff is not a slope. Anyone
+        // quoting it as "the NAV got faster" has it backwards.
+        assert_eq!(nav_cost(TRACKER), factor_nav_cost(TRACKER));
+
+        let e = estimate(TRACKER, &Calibration::measured());
+        assert_eq!(e.reads, e.factored_reads);
+        assert_eq!(e.nanos, e.factored_nanos);
     }
 
     #[test]

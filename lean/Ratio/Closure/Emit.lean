@@ -6,10 +6,17 @@ set_option warningAsError true
 
 /-! Emit `Ratio.Closure`'s cost model as one `syn::File` JSON.
 
-`Ratio.Closure` answers "how long does this fund's period end take" in READS,
-and proves the thing that makes the answer interesting: a NAV never reads the
-tax lots, so twenty million of them cost nothing, while ONE unapplied corporate
-action costs a whole chart.
+`Ratio.Closure` answers "how long does this fund's period end take" in READS.
+
+⛔ AND IT EMITS TWO ANSWERS, because the interesting claim is only true of one
+of them. A NAV never reads the tax lots — twenty million cost nothing — EXCEPT
+that applying an open action by rewriting IS a walk over them, forty thousand
+per split. `nav_cost` is what the system does today and carries that cliff;
+`factor_nav_cost` is what it costs once `Ratio.Actions.Factor` lands, and is the
+one for which the flat-in-fragmentation claim holds unconditionally.
+
+Emitting both is deliberate. A single number would have to pick, and picking the
+better one would be the same mistake the model already made once.
 
 ⛔ EMITTED RATHER THAN REWRITTEN, because the entire value of the answer is that
 it is the proved function. A hand-written `nav_cost` in Rust would be a claim
@@ -77,11 +84,19 @@ def ratioClosureItems : List Json :=
     mkFnItemD "fx_cost" [param "d" "Dials"] (ty "i64")
       [tail (dial "currencies")],
 
-    -- pub fn action_cost(d: Dials) -> i64 { d.open_actions * d.securities }
-    -- ⛔ The only SUPERLINEAR term and the only RETROACTIVE one.
-    -- `Ratio.Closure.an_open_action_costs_a_whole_chart`.
+    -- pub fn action_cost(d: Dials) -> i64 { d.open_actions * d.lots_per }
+    -- ⛔ `lots_per`, NOT `securities`. A split reaches into ONE instrument and
+    -- touches every LOT of it. This read `securities` until 2026-08-09 and
+    -- understated its own worst term by eighty.
     mkFnItemD "action_cost" [param "d" "Dials"] (ty "i64")
-      [tail (mkBin "*" (dial "open_actions") (dial "securities"))],
+      [tail (mkBin "*" (dial "open_actions") (dial "lots_per"))],
+
+    -- pub fn factor_action_cost(_d: Dials) -> i64 { 0 }
+    -- Applying by composing a factor read at the point of use: nothing is
+    -- written, so bringing the book up to date costs nothing.
+    -- `Ratio.Actions.Factor` is the equivalence and its counterexample.
+    mkFnItemD "factor_action_cost" [param "_d" "Dials"] (ty "i64")
+      [tail (mkLitInt "0")],
 
     -- pub fn capital_cost(d: Dials) -> i64 { d.capital_txns }
     mkFnItemD "capital_cost" [param "d" "Dials"] (ty "i64")
@@ -89,13 +104,25 @@ def ratioClosureItems : List Json :=
 
     -- pub fn nav_cost(d: Dials) -> i64 {
     --   mark_cost(d) + fx_cost(d) + action_cost(d) + capital_cost(d) }
-    -- ⛔ `lots` is absent, and that absence is the whole scale argument:
-    -- `Ratio.Closure.nav_never_reads_the_lots`.
+    -- ⛔ `lots` is absent HERE and present inside `action_cost`, which is
+    -- exactly the problem: `Ratio.Closure.an_open_action_makes_the_nav_read_
+    -- the_lots`. The flat-in-fragmentation claim holds only on a quiet day.
     mkFnItemD "nav_cost" [param "d" "Dials"] (ty "i64")
       [tail (mkBin "+"
               (mkBin "+"
                 (mkBin "+" (term "mark_cost") (term "fx_cost"))
                 (term "action_cost"))
+              (term "capital_cost"))],
+
+    -- pub fn factor_nav_cost(d: Dials) -> i64 {
+    --   mark_cost(d) + fx_cost(d) + factor_action_cost(d) + capital_cost(d) }
+    -- ⭐ `Ratio.Closure.factored_nav_never_reads_the_lots` — unconditional,
+    -- for any number of open actions. What the other one was meant to say.
+    mkFnItemD "factor_nav_cost" [param "d" "Dials"] (ty "i64")
+      [tail (mkBin "+"
+              (mkBin "+"
+                (mkBin "+" (term "mark_cost") (term "fx_cost"))
+                (term "factor_action_cost"))
               (term "capital_cost"))],
 
     -- pub struct PerShare { per_unit: i64, residual: i64 }
