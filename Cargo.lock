@@ -1535,6 +1535,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ratio-gen"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "ratio-store",
+ "serde_json",
+]
+
+[[package]]
 name = "ratio-ingest"
 version = "0.1.0"
 dependencies = [

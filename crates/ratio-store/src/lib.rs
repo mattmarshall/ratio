@@ -269,6 +269,8 @@ pub trait ConfigStore {
 pub trait Journal {
     /// Append an entry. **Refuses an unbalanced one.**
     fn append(&mut self, entry: &JournalEntry) -> Result<()>;
+    /// Append many, opening the journal once. **Same checks, one file handle.**
+    fn append_all(&mut self, entries: &[JournalEntry]) -> Result<()>;
     /// Every entry, in the order they were posted.
     fn entries(&self) -> Result<Vec<JournalEntry>>;
 }
@@ -548,6 +550,63 @@ impl Journal for FileBook {
             .open(self.journal_path())
             .context("opening journal")?;
         writeln!(f, "{line}").context("appending to journal")?;
+        Ok(())
+    }
+
+    /// Append many entries, opening the journal once.
+    ///
+    /// ⛔ THE DOOR CHECK IS STILL PER ENTRY. What is shared is the file handle
+    /// and nothing else: every entry is balanced and has resolvable provenance
+    /// before any of them is written, so a batch cannot smuggle in an entry that
+    /// `append` would have refused. Sharing the VALIDATION would be a different
+    /// function wearing this one's name.
+    ///
+    /// ⚠ AND IT IS ALL-OR-NOTHING ON VALIDATION, NOT ON WRITING. The checks run
+    /// over the whole batch first, so a bad entry stops the write before it
+    /// starts — but a failure mid-write (a full disk) leaves what was already
+    /// appended. That is the same guarantee `append` gives one entry at a time,
+    /// and an append-only log is readable to wherever it stops.
+    ///
+    /// Exists because `append` opens and closes the journal on every call, which
+    /// is ~4 ms an entry — 549 seconds for 140,000, and twenty-one hours for the
+    /// twenty million this system's central claim is about. Measured, not
+    /// assumed.
+    fn append_all(&mut self, entries: &[JournalEntry]) -> Result<()> {
+        // ⚠ THE PROVENANCE CHECK IS PER DISTINCT CONFIG, NOT PER ENTRY, and
+        // that is a correctness-preserving change rather than a shortcut:
+        // `get` is a pure read of content-addressed bytes, so asking twice for
+        // one digest cannot give two answers. Asking per entry read the config
+        // file 140,000 times and was most of what this function cost.
+        let mut checked: std::collections::BTreeSet<&Digest> = Default::default();
+        for entry in entries {
+            if !entry.is_balanced() {
+                let net: i64 = entry.postings.iter().map(|p| p.amount).sum();
+                return Err(anyhow!(
+                    "entry {:?} does not conserve value: postings net to {net}, not 0",
+                    entry.id
+                ));
+            }
+            if checked.insert(&entry.config) && self.get(&entry.config).is_err() {
+                bail!(
+                    "entry {:?} names config {} which is not stored",
+                    entry.id,
+                    entry.config.short()
+                );
+            }
+        }
+        let mut f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(self.journal_path())
+            .context("opening journal")?;
+        let mut buf = String::new();
+        for entry in entries {
+            buf.clear();
+            let line = serde_json::to_string(entry).context("serializing entry")?;
+            buf.push_str(&line);
+            buf.push('\n');
+            f.write_all(buf.as_bytes()).context("appending to journal")?;
+        }
         Ok(())
     }
 

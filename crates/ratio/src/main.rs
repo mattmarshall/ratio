@@ -59,6 +59,8 @@ usage:
   ratio action ID INST N-for-M --ex-date YYYY-MM-DD
                                        apply a split; refuses a second time
   ratio stale [--book DIR]             NAVs struck without an action since arrived
+  ratio bench [--securities N] [--lots-per N] [--turnover N]
+                                       generate a fund and measure a period end
   ratio closure [--securities N] [--currencies N] [--lots-per N]
         [--open-actions N] [--capital N]
                                        what a period end costs, before running it
@@ -132,6 +134,7 @@ fn main() -> Result<()> {
         ["action", id, inst, r, "--ex-date", d] => action(book, id, inst, r, d),
         ["stale"] => stale(book),
         ["closure", rest @ ..] => closure(book, rest),
+        ["bench", rest @ ..] => bench(rest),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
         ["server"] => serve(),
@@ -511,6 +514,91 @@ fn stale(book: PathBuf) -> Result<()> {
     println!();
     println!("These cannot be restated — a valuation point has one answer, and the");
     println!("first is what somebody was paid on. What they can be is QUALIFIED.");
+    Ok(())
+}
+
+/// Generate a fund and measure what a period end actually takes.
+///
+/// ⛔ IT REPORTS TWO CURVES BECAUSE THERE ARE TWO, and reporting one would be
+/// the easiest overclaim this repo has available:
+///
+///   COLD BUILD   folding the journal into a projection. O(entries), and the
+///                journal holds every buy AND every sale forever — an
+///                append-only log does not forget a closed lot. This grows.
+///   NAV STRIKE   reading the maintained projection. `Ratio.Closure.navCost` —
+///                one price per security, one rate per currency, and the tax
+///                lots nowhere in it. This does NOT grow.
+///
+/// "Twenty million lots are free" is true of the second and false of the first.
+fn bench(args: &[&str]) -> Result<()> {
+    use ratio_gen::Shape;
+    use std::time::Instant;
+
+    let mut shape = Shape::default();
+    let mut it = args.iter().peekable();
+    while let Some(flag) = it.next() {
+        let mut v = || -> Result<i64> {
+            it.next()
+                .ok_or_else(|| anyhow::anyhow!("{flag} needs a number"))?
+                .parse::<i64>()
+                .with_context(|| format!("{flag} needs a number"))
+        };
+        match *flag {
+            "--securities" => shape.securities = v()?,
+            "--lots-per" => shape.lots_per = v()?,
+            "--turnover" => shape.turnover = v()?,
+            "--open-actions" => shape.open_actions = v()?,
+            other => bail!("{other:?} is not a dial — see `ratio help`"),
+        }
+    }
+
+    println!("A FUND OF THIS SHAPE, GENERATED AND MEASURED");
+    println!();
+    println!("  {:<22}{:>12}", "securities", shape.securities);
+    println!("  {:<22}{:>12}", "currencies", shape.currencies);
+    println!("  {:<22}{:>12}   at steady state", "open lots / security", shape.lots_per);
+    println!("  {:<22}{:>12}   opened per lot left open", "turnover", shape.turnover);
+    println!("  {:<22}{:>12}", "open corp. actions", shape.open_actions);
+    println!();
+
+    let dir = std::env::temp_dir().join("ratio-bench-book");
+    let t = Instant::now();
+    let entries = ratio_gen::generate(&dir, shape)?;
+    let gen_ns = t.elapsed().as_nanos() as i64;
+    println!(
+        "  generated {entries} journal entries in {}",
+        ratio_nav::closure::human_nanos(gen_ns)
+    );
+
+    // COLD: fold the whole journal.
+    let t = Instant::now();
+    let proj = ratio_project::Projection::of_book(&dir)?;
+    let cold_ns = t.elapsed().as_nanos() as i64;
+
+    // WARM: read what a NAV reads — one figure per security, through any
+    // outstanding corporate actions.
+    let t = Instant::now();
+    let mut seen = 0i64;
+    for i in 0..shape.securities {
+        let _ = proj.units_as_of(1, &ratio_gen::ticker(i), "2026-06-30")?;
+        seen += 1;
+    }
+    let nav_ns = t.elapsed().as_nanos() as i64;
+
+    let open_lots = proj.positions().value.held.len() as i64;
+    println!();
+    println!("  {:<26}{:>14}", "journal entries", entries);
+    println!("  {:<26}{:>14}   ⛔ steady state, not cumulative", "open positions", open_lots);
+    println!();
+    println!("  {:<26}{:>14}", "COLD BUILD  (O(journal))", ratio_nav::closure::human_nanos(cold_ns));
+    println!("  {:<26}{:>14}   {seen} securities read", "NAV STRIKE  (O(securities))", ratio_nav::closure::human_nanos(nav_ns));
+    println!();
+    println!("⛔ Two curves, and only the second is flat in fragmentation. Folding");
+    println!("   the journal grows with every trade ever made — an append-only log");
+    println!("   does not forget a closed lot. Striking the NAV off the maintained");
+    println!("   projection does not: `Ratio.Closure.factored_nav_never_reads_the_");
+    println!("   lots`. Quoting the second as though it were the first is the");
+    println!("   overclaim this command exists to make hard.");
     Ok(())
 }
 

@@ -1,0 +1,31 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+# A fund with realistic shape, generated the same way every time.
+#
+# ⛔ No RNG dependency: every quantity is a pure function of the dials and a
+# seed through one integer hash, so books are byte-identical across machines and
+# in CI. A generator that drifted would make every measurement taken against it
+# unreproducible, which is a strange thing to accept in a system whose whole
+# claim is reproducibility.
+rust_library(
+    name = "ratio-gen",
+    srcs = glob(["src/*.rs"]),
+    crate_name = "ratio_gen",
+    edition = "2021",
+    deps = [
+        "//crates/ratio-ingest",
+        "//crates/ratio-store",
+        "@crates//:anyhow",
+    ],
+)
+
+rust_test(
+    name = "ratio-gen_test",
+    crate = ":ratio-gen",
+    edition = "2021",
+    deps = ["//crates/ratio-project"],
+)

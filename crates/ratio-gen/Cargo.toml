@@ -1,0 +1,12 @@
+[package]
+name = "ratio-gen"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+ratio-store = { path = "../ratio-store" }
+anyhow = "1"
+serde_json = "1"
