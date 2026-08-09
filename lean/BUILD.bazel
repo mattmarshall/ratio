@@ -104,6 +104,17 @@ lean_test(
     entry = "Ratio/Plan.lean",
 )
 
+# Everything a period end needs, and what each term costs. The terms are not
+# alike: marking is per security, fx is per CURRENCY, corporate actions are the
+# only superlinear and only retroactive one, and per-share is the one division
+# in this system that must round.
+lean_test(
+    name = "closure_proof_test",
+    size = "small",
+    srcs = ["Ratio/Closure.lean"],
+    entry = "Ratio/Closure.lean",
+)
+
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
