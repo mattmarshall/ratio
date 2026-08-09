@@ -55,6 +55,22 @@ tla_check(
     deps = [":lot_engine"],
 )
 
+# Corporate actions arriving, being applied, and NAVs struck around them.
+# `Ratio.Actions` proves what ONE does; non-idempotence and retroactivity are
+# sequence problems, which is this.
+tla_library(
+    name = "actions",
+    srcs = ["Actions.tla"],
+)
+
+tla_check(
+    name = "actions_check",
+    size = "medium",
+    config = "MCActions.cfg",
+    module = "MCActions.tla",
+    deps = [":actions"],
+)
+
 # ─── failure-path probes ──────────────────────────────────────────────────
 #
 # Each of these MUST go red. Tagged manual so `bazel test //...` stays green;
@@ -101,4 +117,29 @@ tla_check(
     module = "SharedShard.tla",
     tags = ["manual"],
     deps = [":lot_engine"],
+)
+
+# ⛔ No record of having applied. A retry re-applies a split; the cost is
+# unchanged so the trial balance still ties, and the position silently doubles.
+# Every other write in this system is safe to retry, which is exactly why this
+# one needs a guard rather than a habit.
+tla_check(
+    name = "reapply_action_check",
+    size = "medium",
+    config = "ReapplyAction.cfg",
+    module = "ReapplyAction.tla",
+    tags = ["manual"],
+    deps = [":actions"],
+)
+
+# ⛔ Applied in arrival order rather than ex-date order. Actions do not commute
+# — `Ratio.Actions.actions_do_not_commute` — so this is not a performance
+# question, it decides whether the book can be brought up to date at all.
+tla_check(
+    name = "out_of_order_action_check",
+    size = "medium",
+    config = "OutOfOrderAction.cfg",
+    module = "OutOfOrderAction.tla",
+    tags = ["manual"],
+    deps = [":actions"],
 )

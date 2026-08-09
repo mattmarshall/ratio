@@ -115,6 +115,17 @@ lean_test(
     entry = "Ratio/Closure.lean",
 )
 
+# Corporate actions, which behave like nothing else here: they conserve COST
+# while deliberately changing UNITS, they are RETROACTIVE, and — against every
+# reflex the rest of this system teaches — they are NOT IDEMPOTENT. Applying a
+# two-for-one twice quadruples the position and the trial balance still ties.
+lean_test(
+    name = "actions_proof_test",
+    size = "small",
+    srcs = ["Ratio/Actions.lean"],
+    entry = "Ratio/Actions.lean",
+)
+
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
