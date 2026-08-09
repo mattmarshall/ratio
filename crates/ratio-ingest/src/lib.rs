@@ -27,6 +27,12 @@
 //! step with the first.
 
 mod generated;
+/// The per-step corporate-action guard, authored in Lean.
+mod generated_actions;
+
+/// Reading a holding through its corporate actions instead of rewriting it.
+pub mod factor;
+
 pub mod actions;
 pub mod value;
 /// The Lean-authored core: `ResolutionKind`, `resolution_of_count`,

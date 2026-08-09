@@ -206,6 +206,17 @@ lean_emit(
 # The cost model. Emitted rather than rewritten because the whole value of the
 # answer is that it IS `Ratio.Closure` — a hand-written `nav_cost` in Rust would
 # be a claim about the proofs instead of the thing they are about.
+# Corporate actions read as factors: the PER-STEP guard, not a composed ratio.
+# `Ratio.Actions.Factor.a_factor_can_succeed_where_the_rewrite_refuses` is why —
+# composing 3-for-2 and 2-for-1 divides five units cleanly and silently swallows
+# the half-share the holder was paid cash for.
+lean_emit(
+    name = "ratio_actions_ast",
+    srcs = _BUILDER_SRCS + ["Ratio/Actions/Emit.lean"],
+    entry = "Ratio/Actions/Emit.lean",
+    out = "ratio_actions.ast.json",
+)
+
 # The planner's decision, emitted. The folds stay in Rust and ask this what to
 # do — `Ratio.Exec.a_plan_that_cannot_be_helped_takes_its_io` is the bridge.
 lean_emit(
