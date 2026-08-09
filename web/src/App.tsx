@@ -13,6 +13,7 @@ import {
   useIngest,
   useMark,
   useDeliveries,
+  useCorporateActions,
   useBreaks,
   useChangeLog,
   useConfigDiff,
@@ -39,6 +40,7 @@ import type {
   Break,
   ConfigVersion,
   Delivery,
+  CorporateAction,
   Fund,
   IngestDeliveryResponse,
   NavStrike,
@@ -547,18 +549,80 @@ function Record({ fund }: { fund: Fund | undefined }) {
  * AMBIGUOUS are shown apart: one wants a new instrument, the other wants one
  * fewer.
  */
+/**
+ * Corporate actions announced on this fund.
+ *
+ * ⛔ ANNOUNCED, NOT APPLIED — showing only applied ones would hide exactly the
+ * actions a NAV was struck without, which are the only ones anybody needs to
+ * look at.
+ *
+ * The strikes each action disturbed are listed ON the action. That is the
+ * reverse of the qualification on the NAV screen, and both directions are
+ * needed: a strike knows what qualifies it, and only the action knows the full
+ * extent of what it reached back into.
+ */
+function Actions({ actions }: { actions: CorporateAction[] }) {
+  return (
+    <section className="log" aria-label="Corporate actions">
+      <div className="loghead">
+        <span>Corporate actions</span>
+        <span className="sortnote">
+          {actions.length ? "announced, whether or not applied" : ""}
+        </span>
+      </div>
+      {actions.length === 0 ? (
+        <div className="empty">No corporate action has been announced.</div>
+      ) : (
+        actions.map((a) => (
+          <div className="logrow" key={a.name}>
+            <span className="t num">{a.form}</span>
+            <span className="w">
+              <b>{a.instrument}</b>
+              {a.exDate ? (
+                <span className="cfg">
+                  {" "}
+                  effective {a.exDate.year}-
+                  {String(a.exDate.month).padStart(2, "0")}-
+                  {String(a.exDate.day).padStart(2, "0")}
+                </span>
+              ) : null}
+              {/* ⛔ The strikes it was not in, on the action itself. This list
+                  can never be emptied — a valuation point is never restated —
+                  so it is the permanent record of what arriving late cost. */}
+              {a.qualifiedNavStrikes.map((s) => (
+                <div className="qual" key={s}>
+                  qualified {s.split("/").pop()}
+                </div>
+              ))}
+            </span>
+            {/* Not a status badge. Applying twice doubles the position and the
+                trial balance goes on tying, so the record of having applied it
+                IS the idempotence. */}
+            <span className={a.applied ? "cfg" : "unapplied"}>
+              {a.applied ? `applied at entry ${a.journalPosition}` : "NOT APPLIED"}
+            </span>
+          </div>
+        ))
+      )}
+    </section>
+  );
+}
+
 function Data({
   fund,
   deliveries,
   pending,
+  actions,
 }: {
   fund: Fund | undefined;
   deliveries: Delivery[];
   pending: PendingFact[];
+  actions: CorporateAction[];
 }) {
   return (
     <>
       <Deliver fund={fund} />
+      <Actions actions={actions} />
       <section className="log" aria-label="Files received">
         <div className="loghead">
           <span>Files received</span>
@@ -1057,6 +1121,7 @@ export default function App() {
   // show a chart, and a query nobody reads is a round trip nobody asked for.
   const accounts = useAccounts(view === "balance" ? fundName : undefined, acctFilter);
   const deliveries = useDeliveries(view === "data" ? fundName : undefined);
+  const actions = useCorporateActions(view === "data" ? fundName : undefined);
   const positions = usePositions(view === "positions" ? fundName : undefined);
   // Pending is fetched on every view, not just the data one: it is a blocking
   // condition, and a count an operator only sees after clicking a tab is a
@@ -1204,6 +1269,7 @@ export default function App() {
               fund={fund}
               deliveries={deliveries.data ?? []}
               pending={pendingFacts.data ?? []}
+              actions={actions.data ?? []}
             />
           ) : view === "balance" ? (
             <>

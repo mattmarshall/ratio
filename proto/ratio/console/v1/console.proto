@@ -294,6 +294,24 @@ service Console {
     option (google.api.method_signature) = "name";
   }
 
+  // Lists the corporate actions announced on this fund. (AIP-132)
+  //
+  // Announced, NOT applied. An action sits here from the moment somebody tells
+  // us about it, and whether it has gone through the book is a field on it —
+  // because a list that showed only applied actions would hide precisely the
+  // ones a NAV was struck without.
+  rpc ListCorporateActions(ListCorporateActionsRequest)
+      returns (ListCorporateActionsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/corporateActions"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one corporate action. (AIP-131)
+  rpc GetCorporateAction(GetCorporateActionRequest) returns (CorporateAction) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/corporateActions/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
   // Gets one change-log entry — a permalink for citing a specific approval in
   // an audit, which is the whole reason the log is addressable. (AIP-131)
   rpc GetChangeLogEntry(GetChangeLogEntryRequest) returns (ChangeLogEntry) {
@@ -614,6 +632,74 @@ message NavStrike {
 
   // The configuration in force at the last entry folded.
   string config_digest = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// A corporate action, as announced.
+//
+// ⛔ ANNOUNCEMENT IS NOT APPLICATION, and this resource exists at the moment we
+// are told rather than the moment the book moves. `Ratio.Closure` makes that
+// distinction expensive: OPEN actions are the dial that dominates the cost of a
+// period end, and actions-ever is not a dial at all.
+//
+// ⛔ AND AN ACTION IS NOT IDEMPOTENT, which nothing else on this surface can
+// say. Marking twice at one price posts nothing, admitting a fact twice writes
+// nothing, ingesting a file twice reads nothing — the console retries all of
+// them freely. A two-for-one applied twice quadruples the position and the
+// trial balance goes on tying. `Ratio.Actions.applying_twice_is_not_applying_
+// once`. `applied` is therefore not a status field; it is the idempotence.
+message CorporateAction {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/CorporateAction"
+    pattern: "funds/{fund}/corporateActions/{corporate_action}"
+    singular: "corporateAction"
+    plural: "corporateActions"
+  };
+
+  // The resource name: `funds/{fund}/corporateActions/{corporate_action}`.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The instrument it acts on.
+  string instrument = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The ratio, as the action declares it: units received for units given up.
+  // A 2-for-1 is `numerator: 2, denominator: 1`; a 1-for-10 reverse split is
+  // `1` and `10`. Minor units, as strings — proto3 JSON renders int64 that way.
+  string numerator = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string denominator = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The same ratio the way a person says it: `2-for-1`. Rendered here rather
+  // than in each caller, so two screens cannot disagree about how to say it.
+  string form = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The day it takes effect. A NAV struck on or after this day should have
+  // included it.
+  google.type.Date ex_date = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // When we were told — which is NOT when it took effect. An action announced
+  // late is the whole reason `NavStrike.qualification` exists.
+  google.protobuf.Timestamp announce_time = 7
+      [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether it has gone through the book.
+  //
+  // Derived from the journal rather than stored beside the announcement: the
+  // applied action IS an entry, so a book cannot disagree with itself about
+  // whether it happened.
+  bool applied = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Where in the journal it landed. Zero when it has not been applied.
+  int64 journal_position = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // ⭐ The NAV strikes this action was NOT in — resource names, so a caller can
+  // follow them.
+  //
+  // This is the reverse of `NavStrike.qualification` and the reason the screen
+  // is worth having: the strike knows what qualifies it, but only the action
+  // knows the full extent of what it disturbed. `Ratio.Period.one_answer_per_
+  // day` refuses restatement, so this list can never be emptied by fixing
+  // anything — it is the permanent record of what a late arrival cost.
+  repeated string qualified_nav_strikes = 10
+      [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // The result of re-deriving a strike. Not a resource — nothing stores it;
@@ -1369,6 +1455,27 @@ message GetNavStrikeRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference).type = "ratio.fastverk.dev/NavStrike"
+  ];
+}
+
+message ListCorporateActionsRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListCorporateActionsResponse {
+  repeated CorporateAction corporate_actions = 1;
+  string next_page_token = 2;
+}
+
+message GetCorporateActionRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/CorporateAction"
   ];
 }
 

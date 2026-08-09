@@ -47,6 +47,8 @@ pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/{parent=funds/*/accounts/*}/postings" },
     Route { method: "GET", template: "/v1/{name=funds/*/accounts/*/postings/*}" },
     Route { method: "GET", template: "/v1/{name=funds/*/accounts/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*}/corporateActions" },
+    Route { method: "GET", template: "/v1/{name=funds/*/corporateActions/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/navStrikes" },
     // A custom method (AIP-136) on GET, because replaying is safe and
     // idempotent — it folds a journal prefix and writes nothing.
@@ -177,6 +179,12 @@ pub fn serve(
         }
         ["funds", id, "accounts", a] => {
             to_json(&console.get_account(&format!("funds/{id}/accounts/{a}"))?)?
+        }
+        ["funds", id, "corporateActions"] => {
+            to_json(&console.list_corporate_actions(&format!("funds/{id}"))?)?
+        }
+        ["funds", id, "corporateActions", a] => {
+            to_json(&console.get_corporate_action(&format!("funds/{id}/corporateActions/{a}"))?)?
         }
         ["funds", id, "navStrikes"] => {
             to_json(&console.list_nav_strikes(&format!("funds/{id}"))?)?
@@ -823,6 +831,40 @@ impl JsonView for pb::NavStrike {
             q(&self.trial_balance_difference),
             q(&self.config_digest),
             strings(&self.qualification)
+        )
+    }
+}
+
+impl JsonView for pb::CorporateAction {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"instrument\":{},\"numerator\":{},\"denominator\":{},\
+             \"form\":{},\"exDate\":{},\"announceTime\":{},\"applied\":{},\
+             \"journalPosition\":{},\"qualifiedNavStrikes\":[{}]}}",
+            q(&self.name),
+            q(&self.instrument),
+            q(&self.numerator),
+            q(&self.denominator),
+            q(&self.form),
+            date_json(&self.ex_date),
+            q(&self
+                .announce_time
+                .as_ref()
+                .map(|t| ratio_nav::rfc3339(t.seconds))
+                .unwrap_or_default()),
+            self.applied,
+            q(&self.journal_position.to_string()),
+            strings(&self.qualified_nav_strikes)
+        )
+    }
+}
+
+impl JsonView for pb::ListCorporateActionsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"corporateActions\":[{}],\"nextPageToken\":{}}}",
+            self.corporate_actions.iter().map(|a| a.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
         )
     }
 }

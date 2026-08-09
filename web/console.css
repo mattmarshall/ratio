@@ -399,6 +399,12 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 /* A NAV that cannot be read at face value says so on its own row. It is not an
    error — the figure is what it is and will not be restated — so it wears the
    attention colour rather than the failure one. */
+/* An action that has not gone through the book. ⛔ It wears the attention
+   color, not the failure one: nothing is wrong yet, and that is exactly the
+   point — an unapplied action is the term that dominates the cost of a period
+   end and the reason a NAV gets qualified. */
+.unapplied{color:var(--warn);font-size:12px;font-weight:600;letter-spacing:.04em}
+
 .qual{margin-top:6px;padding:7px 10px;border-radius:7px;font-size:12px;
   line-height:1.5;color:var(--warn);background:var(--raised);
   box-shadow:inset 0 0 0 1px var(--warn)}

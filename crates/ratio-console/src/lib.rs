@@ -1483,6 +1483,95 @@ impl Console {
         Ok(to_pb(&fund, &s, &why))
     }
 
+    /// The corporate actions announced on this fund, applied or not.
+    ///
+    /// ⛔ EVERY FIELD IS DERIVED FROM THE JOURNAL, nothing about application is
+    /// stored beside the announcement. The applied action IS a journal entry,
+    /// so a book cannot come to disagree with itself about whether one
+    /// happened — which matters more here than anywhere else on this surface,
+    /// because `Ratio.Actions.applying_twice_is_not_applying_once` means a
+    /// second application would double the position while the trial balance
+    /// went on tying. A stored `applied` flag that drifted would be the thing
+    /// that let that happen.
+    pub fn list_corporate_actions(
+        &self,
+        parent: &str,
+    ) -> Result<pb::ListCorporateActionsResponse> {
+        let id = resource_id(parent, "funds").context("bad parent")?;
+        Ok(pb::ListCorporateActionsResponse {
+            corporate_actions: self.corporate_actions(&id)?,
+            next_page_token: String::new(),
+        })
+    }
+
+    pub fn get_corporate_action(&self, name: &str) -> Result<pb::CorporateAction> {
+        let (fund, id) = nested_id(name, "funds", "corporateActions").context("bad name")?;
+        self.corporate_actions(&fund)?
+            .into_iter()
+            .find(|a| a.name == format!("funds/{fund}/corporateActions/{id}"))
+            .with_context(|| format!("{name:?} is not an announced corporate action"))
+    }
+
+    /// Every announced action on a fund, with what the journal says about it.
+    fn corporate_actions(&self, fund: &str) -> Result<Vec<pb::CorporateAction>> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+
+        // Where each action landed, if it landed. Same derivation as
+        // `stale_strikes` — one reading of the journal, not two conventions.
+        let entries = b.entries()?;
+        let applied_at: BTreeMap<String, usize> = entries
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| e.id.strip_prefix("action-").map(|a| (a.to_string(), i)))
+            .collect();
+
+        let strikes = ratio_nav::list(&path)?;
+
+        b.records::<ratio_ingest::actions::Announced>(Plane::Actions)?
+            .into_iter()
+            .map(|a| {
+                let at = applied_at.get(&a.id).copied();
+
+                // The strikes this action was not in. The reverse of
+                // `NavStrike.qualification`: the strike knows what qualifies
+                // it, and only the action knows everything it disturbed.
+                let qualified: Vec<String> = strikes
+                    .iter()
+                    .filter(|s| {
+                        let day = ratio_nav::rfc3339(s.valuation_time);
+                        let day = day.get(..10).unwrap_or("");
+                        day >= a.ex_date.as_str()
+                            && !at.is_some_and(|i| i < s.journal_position)
+                    })
+                    .map(|s| format!("funds/{fund}/navStrikes/{}", s.id))
+                    .collect();
+
+                Ok(pb::CorporateAction {
+                    name: format!("funds/{fund}/corporateActions/{}", a.id),
+                    instrument: a.instrument.clone(),
+                    numerator: a.split.num.to_string(),
+                    denominator: a.split.den.to_string(),
+                    // Rendered once, here, so two screens cannot disagree about
+                    // how to say a ratio out loud.
+                    form: format!("{}-for-{}", a.split.num, a.split.den),
+                    ex_date: iso_date(&a.ex_date),
+                    // Zero yields none rather than the epoch: an announcement
+                    // time we do not have should read as absent, not as 1970.
+                    announce_time: (a.announced > 0).then(|| {
+                        ratio_proto::timestamp_proto::google::protobuf::Timestamp {
+                            seconds: a.announced,
+                            nanos: 0,
+                        }
+                    }),
+                    applied: at.is_some(),
+                    journal_position: at.map(|i| i as i64 + 1).unwrap_or(0),
+                    qualified_nav_strikes: qualified,
+                })
+            })
+            .collect()
+    }
+
     /// Re-derive a strike. Read-only: it folds a journal prefix and compares.
     pub fn replay_nav_strike(&self, name: &str) -> Result<pb::ReplayNavStrikeResponse> {
         let (fund, id) = nested_id(name, "funds", "navStrikes").context("bad name")?;

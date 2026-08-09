@@ -107,6 +107,50 @@ export interface ReplayNavStrikeResponse {
   journalDigest: string;
 }
 
+/**
+ * A corporate action, as announced.
+ *
+ * ⛔ ANNOUNCEMENT IS NOT APPLICATION. An action is here from the moment
+ * somebody tells us, and `applied` says whether the book has moved — a list
+ * showing only applied actions would hide exactly the ones a NAV was struck
+ * without.
+ *
+ * ⛔ AND IT IS NOT IDEMPOTENT, unlike everything else this console can do.
+ * Marking twice posts nothing; a two-for-one applied twice quadruples the
+ * position and the trial balance goes on tying. `applied` is not a status
+ * badge, it is the idempotence.
+ */
+export interface CorporateAction {
+  name: string;
+  instrument: string;
+  /** Units received / units given up. A 2-for-1 is `2` and `1`. */
+  numerator: Int64;
+  denominator: Int64;
+  /** The same ratio the way a person says it: `2-for-1`. */
+  form: string;
+  /** The day it takes effect. A NAV struck on or after it should include it. */
+  exDate: CalendarDate | null;
+  /** When we were told — NOT when it took effect. RFC 3339. */
+  announceTime: string;
+  applied: boolean;
+  /** Where it landed in the journal. Zero when unapplied. */
+  journalPosition: Int64;
+  /**
+   * ⭐ The NAV strikes this action was NOT in, as resource names.
+   *
+   * The reverse of `NavStrike.qualification`: a strike knows what qualifies it,
+   * and only the action knows the full extent of what it disturbed. This list
+   * can never be emptied — a valuation point is never restated — so it is the
+   * permanent record of what arriving late cost.
+   */
+  qualifiedNavStrikes: string[];
+}
+
+export interface ListCorporateActionsResponse {
+  corporateActions: CorporateAction[];
+  nextPageToken: string;
+}
+
 export interface ListNavStrikesResponse {
   navStrikes: NavStrike[];
   nextPageToken: string;

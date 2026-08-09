@@ -16,6 +16,8 @@ import {
 import type {
   Account,
   AdmitFactsRequest,
+  CorporateAction,
+  ListCorporateActionsResponse,
   AdmitFactsResponse,
   IngestDeliveryRequest,
   ListPositionsResponse,
@@ -344,6 +346,28 @@ export function useTemplates(
     queryKey: [fund ?? "", "templates"],
     queryFn: () => get<ListTemplatesResponse>(`/${fund}/templates`),
     select: (r) => r.templates,
+    enabled: !!fund,
+    ...LIVE,
+  });
+}
+
+/**
+ * Corporate actions announced on a fund, applied or not.
+ *
+ * ⛔ LIVE, not cached against a mutation. `applied` and `qualifiedNavStrikes`
+ * are both derived from the journal on every call — the applied action IS an
+ * entry — so there is no client-side state that could disagree with the book
+ * about whether an action went through. Given that applying one twice doubles a
+ * position while the trial balance goes on tying, a stale `applied` here is not
+ * a cosmetic problem.
+ */
+export function useCorporateActions(
+  fund: string | undefined,
+): UseQueryResult<CorporateAction[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "corporateActions"],
+    queryFn: () => get<ListCorporateActionsResponse>(`/${fund}/corporateActions`),
+    select: (r) => r.corporateActions,
     enabled: !!fund,
     ...LIVE,
   });
