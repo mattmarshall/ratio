@@ -226,6 +226,363 @@ impl Method {
     }
 }
 
+/// Cost per unit, compared exactly.
+///
+/// ⛔ CROSS-MULTIPLIED, NEVER `cost / units`. Integer division ties lots whose
+/// per-unit costs differ by less than a minor unit, and a method that ties lots
+/// which are not tied gives them up in whatever order the container happened to
+/// hold them. `Ratio.Lots.Methods.hifo_is_per_unit_not_per_lot`.
+///
+/// ⚠ `i128` because the products are `cost x units`, and both are `i64`.
+///
+/// ⛔ `Eq` IS HAND-WRITTEN TO AGREE WITH `Ord`, AND DERIVING IT WAS A BUG. A
+/// derived `Eq` compares the FIELDS, so `100/10` and `200/20` were unequal
+/// while the comparator called them equal — and `BTreeMap` requires
+/// `a.cmp(b) == Equal` exactly when `a == b`. Two lots at the same per-unit cost
+/// would have been two different keys or one, depending on which the map
+/// happened to consult. My own totality test caught it on the first run.
+#[derive(Clone, Copy, Debug)]
+pub struct PerUnit {
+    cost: i64,
+    units: i64,
+}
+
+impl PartialEq for PerUnit {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == std::cmp::Ordering::Equal
+    }
+}
+
+impl Eq for PerUnit {}
+
+impl Ord for PerUnit {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.cost as i128 * other.units as i128)
+            .cmp(&(other.cost as i128 * self.units as i128))
+    }
+}
+
+impl PartialOrd for PerUnit {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// Where a lot sits in the order its method gives up lots in.
+///
+/// ⛔ THE `seq` IN THE TUPLE IS WHY THIS IS A TOTAL ORDER, and it is structural
+/// rather than a comparator somebody has to remember to write. HIFO once
+/// silently performed FIFO because the tiebreak was written
+/// `dearer(a, b) || a.seq <= b.seq`, which is true whenever the sequence
+/// ascends, whatever the costs — and only Lean's `decide` caught it. A tuple
+/// key cannot express that mistake.
+/// ⛔ THE DIRECTION IS BAKED INTO THE KEY, AND THE `seq` TIEBREAK IS ALWAYS
+/// ASCENDING. Reversing by popping from the BACK of the map reverses the whole
+/// key — including the tiebreak — so lots at an equal per-unit cost came off
+/// newest-first while `Method::arrange` takes them oldest-first. The
+/// differential test caught it immediately; nothing else would have, because
+/// the two orders only differ on ties.
+///
+/// A holding only ever holds one variant at a time; the enum ordering across
+/// variants is never consulted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Rank {
+    /// LOFO: cheapest per unit first.
+    CostAsc(PerUnit, u64),
+    /// HIFO: dearest per unit first.
+    CostDesc(std::cmp::Reverse<PerUnit>, u64),
+    /// Longest held: earliest acquisition first.
+    HeldAsc(Day, u64),
+    /// Shortest held: latest acquisition first.
+    HeldDesc(std::cmp::Reverse<Day>, u64),
+}
+
+/// A position's open lots, kept so the next one to give up is at the front.
+///
+/// ⛔ THE HOLDING OWNS ITS ORDER; A RELIEF IS A POP. Relief used to copy the
+/// whole holding and sort it on EVERY SALE — measured at 7.4 s of a 20.2 s cold
+/// build at five hundred lots a position, and 31.1 s over the same number of
+/// reliefs at two thousand. That is the term that made the cold build scale with
+/// fragmentation rather than with entries.
+///
+/// ⭐ AND THE ORDER IS A TERM OF AN AGREEMENT, so it changes on a configuration
+/// promotion and not otherwise. Ordering work belongs on that rare event, not on
+/// every sale — which is the whole idea here.
+///
+/// ⛔ THE HUSK CHECK MOVED TO `push` FOR THE SAME REASON IT BELONGS THERE. A lot
+/// holding nothing and carrying cost is refused when it is OFFERED, not
+/// rediscovered by scanning the holding on every subsequent sale — the same
+/// judgement `ChartRoles` makes by checking when the configuration is read.
+#[derive(Clone, Debug)]
+pub struct Holding {
+    order: Method,
+    /// FIFO and LIFO: `seq` order IS insertion order, so there is nothing to
+    /// maintain and both ends are O(1).
+    seq: std::collections::VecDeque<Lot>,
+    /// The ranked methods: a key fixed at acquisition, so this is a priority
+    /// queue rather than something to re-sort.
+    ranked: std::collections::BTreeMap<Rank, Lot>,
+}
+
+impl Default for Holding {
+    fn default() -> Self {
+        Self {
+            order: Method::Fifo,
+            seq: Default::default(),
+            ranked: Default::default(),
+        }
+    }
+}
+
+impl Holding {
+    /// A holding that gives lots up under `order`.
+    pub fn new(order: Method) -> Self {
+        Self { order, ..Default::default() }
+    }
+
+    /// How many lots are open.
+    pub fn len(&self) -> usize {
+        self.seq.len() + self.ranked.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn rank(order: Method, l: &Lot) -> Option<Rank> {
+        match order {
+            Method::Fifo | Method::Lifo => None,
+            Method::Lofo => Some(Rank::CostAsc(PerUnit { cost: l.cost, units: l.units }, l.seq)),
+            Method::Hifo => Some(Rank::CostDesc(
+                std::cmp::Reverse(PerUnit { cost: l.cost, units: l.units }),
+                l.seq,
+            )),
+            Method::LongestHeldFirst => l.acquired.map(|d| Rank::HeldAsc(d, l.seq)),
+            Method::ShortestHeldFirst => {
+                l.acquired.map(|d| Rank::HeldDesc(std::cmp::Reverse(d), l.seq))
+            }
+        }
+    }
+
+    /// Whether the SEQUENCE arm takes from the back. ⚠ Only FIFO and LIFO reach
+    /// this; the ranked orders carry their direction in the key, so they always
+    /// take the first — which is what keeps their `seq` tiebreak ascending.
+    fn reversed(order: Method) -> bool {
+        matches!(order, Method::Lifo)
+    }
+
+    /// Open a lot.
+    ///
+    /// ⛔ REFUSES A HUSK HERE, where it is offered. `Ratio.Lots.Edges.a_husk_is_
+    /// refused`: a lot holding nothing and carrying cost would be consumed by
+    /// the walk and hand over its whole basis for no units, understating the
+    /// gain by exactly that amount with every invariant satisfied.
+    pub fn push(&mut self, lot: Lot) -> Result<()> {
+        if !lot_is_sound(lot.units, lot.cost) {
+            bail!(
+                "lot {} holds {} units and carries {} — a holding of nothing that owes \
+                 something is not a lot, and relieving it would give away its basis for \
+                 no units at all",
+                lot.seq,
+                lot.units,
+                lot.cost
+            );
+        }
+        match Self::rank(self.order, &lot) {
+            None => self.seq.push_back(lot),
+            Some(r) => {
+                self.ranked.insert(r, lot);
+            }
+        }
+        Ok(())
+    }
+
+    /// Put the holding into `order`, if it is not already.
+    ///
+    /// ⚠ O(n log n), and paid ONCE PER CONFIGURATION CHANGE rather than once per
+    /// sale. A fund that never changes method never pays it after the first lot.
+    fn reorder(&mut self, order: Method) {
+        if self.order == order {
+            return;
+        }
+        let mut all: Vec<Lot> = self.drain_all();
+        // Stable in `seq` so the ranked keys are built from a settled order.
+        all.sort_by_key(|l| l.seq);
+        self.order = order;
+        for l in all {
+            match Self::rank(order, &l) {
+                None => self.seq.push_back(l),
+                Some(r) => {
+                    self.ranked.insert(r, l);
+                }
+            }
+        }
+    }
+
+    fn drain_all(&mut self) -> Vec<Lot> {
+        let mut out: Vec<Lot> = self.seq.drain(..).collect();
+        out.extend(std::mem::take(&mut self.ranked).into_values());
+        out
+    }
+
+    /// The lots this holding currently has, oldest acquisition first.
+    ///
+    /// ⚠ SORTED ON READ, not maintained. This is a screen reading one position;
+    /// the fold's cost is what the structure above is arranged for.
+    pub fn lots(&self) -> Vec<Lot> {
+        let mut out: Vec<Lot> = self.seq.iter().chain(self.ranked.values()).cloned().collect();
+        out.sort_by_key(|l| l.seq);
+        out
+    }
+
+    /// Take the next lot the order gives up, or `None` when empty.
+    fn pop(&mut self) -> Option<Lot> {
+        if Self::reversed(self.order) {
+            self.seq.pop_back()
+        } else {
+            self.seq.pop_front()
+        }
+        .or_else(|| self.ranked.pop_first().map(|(_, l)| l))
+    }
+
+    /// Put a partially-relieved lot back where it came from.
+    fn put_back(&mut self, lot: Lot) {
+        match Self::rank(self.order, &lot) {
+            None => {
+                if Self::reversed(self.order) {
+                    self.seq.push_back(lot)
+                } else {
+                    self.seq.push_front(lot)
+                }
+            }
+            Some(r) => {
+                self.ranked.insert(r, lot);
+            }
+        }
+    }
+
+    /// Give up `want` units under `method`, mutating the holding.
+    ///
+    /// ⛔ A MUTATION, NOT A TRANSFORMATION. `relieve_by` returned a whole new
+    /// `left` vector that the caller assigned over the old one — a second O(n)
+    /// copy per sale, on top of the O(n) copy it made to sort.
+    pub fn relieve(&mut self, method: Method, want: i64) -> Result<Relief> {
+        if want < 0 {
+            bail!("a relief of {want} units is not a relief; a negative sale is a purchase");
+        }
+        self.reorder(method);
+        if method.needs_acquisition_dates() {
+            // ⚠ A lot with no date cannot be RANKED by one, so it never entered
+            // `ranked` — which would silently exclude it from the walk. Refusing
+            // is what `Ratio.Lots.Methods.a_missing_acquisition_date_refuses`
+            // asks for, and the count is how this notices.
+            if !self.seq.is_empty() {
+                bail!(
+                    "{} lot(s) have no acquisition date, and {method:?} cannot classify \
+                     them — assuming the epoch would make them long-term at the favorable \
+                     rate on records that do not support the claim, and assuming today \
+                     would make them short-term on holdings that may have been held for \
+                     years. Neither is conservative; they are wrong in opposite directions",
+                    self.seq.len()
+                );
+            }
+        }
+
+        // ⛔ A REFUSED RELIEF LEAVES THE HOLDING UNTOUCHED, and making relief a
+        // MUTATION is what put that at risk. `relieve_by` built a new `left` and
+        // the caller assigned it only on success, so a failure could not consume
+        // anything; popping in place can — and did, until
+        // `a_sale_that_cannot_be_relieved_is_a_break_not_a_failure` said so. A
+        // sale that refuses must not have eaten half the position on its way out.
+        //
+        // ⚠ Bounded by what the relief CONSUMES, not by the holding: one lot in
+        // the ordinary case, never the five hundred the old copy touched.
+        let mut consumed: Vec<Lot> = Vec::new();
+        let mut taken = Vec::new();
+        let mut cost = 0i64;
+        let mut remaining = want;
+
+        macro_rules! refuse {
+            ($($arg:tt)*) => {{
+                for lot in consumed.into_iter().rev() {
+                    self.put_back(lot);
+                }
+                bail!($($arg)*)
+            }};
+        }
+
+        while remaining > 0 {
+            let Some(lot) = self.pop() else {
+                refuse!(
+                    "the holding is short: {remaining} more unit(s) were sold than are held"
+                );
+            };
+            consumed.push(lot.clone());
+            if takes_whole_lot(lot.units, remaining) {
+                taken.push(Taken {
+                    seq: lot.seq,
+                    units: lot.units,
+                    cost: lot.cost,
+                    acquired: lot.acquired,
+                });
+                cost = ratio_common::checked::add(cost, lot.cost, "the relieved cost")?;
+                remaining -= lot.units;
+                continue;
+            }
+            // Part of this lot, and none of the ones behind it.
+            if ratio_common::checked::mul(lot.cost, remaining, "a pro-rata lot split").is_err() {
+                refuse!("relieving lot {}'s cost of {} by {remaining} units does not fit in 64 bits", lot.seq, lot.cost);
+            }
+            if !partial_divides(lot.cost, remaining, lot.units) {
+                refuse!(
+                    // ⚠ THE SAME SENTENCE `relieve_by` USES. I wrote a fresh one
+                    // here and the test caught it: two implementations with two
+                    // wordings for one refusal is the drift this repo keeps
+                    // finding, and the original says WHY — which way to round is
+                    // somebody's decision, not arithmetic's.
+                    "relieving {remaining} of lot {}'s {} units does not divide its cost of \
+                     {} into whole minor units — which way to round is a term of an \
+                     administration agreement, not a property of arithmetic",
+                    lot.seq,
+                    lot.units,
+                    lot.cost
+                );
+            }
+            let part = partial_cost(lot.cost, remaining, lot.units);
+            taken.push(Taken {
+                seq: lot.seq,
+                units: remaining,
+                cost: part,
+                acquired: lot.acquired,
+            });
+            cost = ratio_common::checked::add(cost, part, "the relieved cost")?;
+            self.put_back(Lot {
+                seq: lot.seq,
+                units: lot.units - remaining,
+                cost: ratio_common::checked::sub(lot.cost, part, "the remaining basis")?,
+                acquired: lot.acquired,
+            });
+            remaining = 0;
+        }
+
+        Ok(Relief { taken, cost })
+    }
+}
+
+/// What a relief took. ⛔ No `left`: the holding kept it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Relief {
+    pub taken: Vec<Taken>,
+    pub cost: i64,
+}
+
+impl Relief {
+    /// ⛔ `sub`, not `add(proceeds, -cost)` — see `Relieved::gain`.
+    pub fn gain(&self, proceeds: i64) -> Result<i64> {
+        ratio_common::checked::sub(proceeds, self.cost, "the realized gain")
+    }
+}
+
 /// Relieve `want` units, oldest lot first.
 pub fn relieve(lots: &[Lot], want: i64) -> Result<Relieved> {
     relieve_by(Method::Fifo, lots, want)
@@ -392,6 +749,172 @@ pub fn sale_postings(
 
 #[cfg(test)]
 mod tests {
+
+    // ── the holding, against the walk it replaces ─────────────────────────
+
+    /// ⛔ THE ARGUMENT THAT THE FAST PATH IS THE SAME FUNCTION. `relieve_by`
+    /// copies and sorts on every call and is the shape `Ratio.Lots` is written
+    /// about; `Holding` maintains the order instead. Asserting they agree on
+    /// every input is worth more than asserting either one against examples,
+    /// because it is the DIFFERENCE between them that a performance change can
+    /// introduce — and this is the same device as
+    /// `the_projection_agrees_with_a_full_fold`.
+    fn agree(method: Method, lots: &[Lot], want: i64) {
+        let slow = relieve_by(method, lots, want);
+        let mut h = Holding::new(method);
+        let pushed: Result<()> = lots.iter().try_for_each(|l| h.push(l.clone()));
+        let fast = pushed.and_then(|()| h.relieve(method, want));
+
+        match (slow, fast) {
+            (Ok(s), Ok(f)) => {
+                assert_eq!(s.cost, f.cost, "{method:?} cost, want {want}, {lots:?}");
+                assert_eq!(s.taken, f.taken, "{method:?} taken, want {want}, {lots:?}");
+                let mut left = s.left.clone();
+                left.sort_by_key(|l| l.seq);
+                assert_eq!(left, h.lots(), "{method:?} left, want {want}, {lots:?}");
+            }
+            (Err(_), Err(_)) => {
+                // ⛔ AND A REFUSAL CONSUMED NOTHING. Relief is a mutation now, so
+                // a failure part-way through could leave the position half
+                // relieved — the old pure walk could not. A sale that refuses
+                // must not have eaten anything on its way out.
+                let mut before = lots.to_vec();
+                before.sort_by_key(|l| l.seq);
+                let intact: Vec<Lot> =
+                    before.iter().filter(|l| lot_is_sound(l.units, l.cost)).cloned().collect();
+                assert_eq!(
+                    h.lots(),
+                    intact,
+                    "{method:?} refused want {want} and did not put the holding back"
+                );
+            }
+            (s, f) => panic!(
+                "{method:?} want {want}: one path answered and the other did not\n \
+                 slow={s:?}\n fast={f:?}\n lots={lots:?}"
+            ),
+        }
+    }
+
+    #[test]
+    fn the_holding_gives_up_exactly_what_the_walk_would_have() {
+        // Deterministic spread rather than a random one: same reason `ratio-gen`
+        // has no RNG — a failure has to be reproducible from the source alone.
+        let mk = |seq, units, cost, day: Option<&str>| Lot {
+            seq,
+            units,
+            cost,
+            acquired: day.map(|d| ratio_common::days_from_iso_date(d).unwrap() as Day),
+        };
+        let holdings: Vec<Vec<Lot>> = vec![
+            vec![],
+            vec![mk(1, 10, 100, Some("2024-01-01"))],
+            // Equal per-unit costs — the tie the seq tiebreak has to settle.
+            vec![
+                mk(1, 10, 100, Some("2024-01-01")),
+                mk(2, 20, 200, Some("2024-06-01")),
+                mk(3, 5, 50, Some("2025-01-01")),
+            ],
+            // Dearest is neither first nor last.
+            vec![
+                mk(1, 10, 100, Some("2024-01-01")),
+                mk(2, 1, 400, Some("2023-01-01")),
+                mk(3, 10, 50, Some("2026-01-01")),
+            ],
+            // A large cheap lot against a small dear one — HIFO by TOTAL cost
+            // would take the wrong one.
+            vec![
+                mk(1, 1000, 1000, Some("2024-01-01")),
+                mk(2, 1, 40, Some("2024-02-01")),
+            ],
+            // No dates at all: the holding-period methods must refuse.
+            vec![mk(1, 10, 100, None), mk(2, 10, 300, None)],
+            // Mixed — some dated, some not.
+            vec![mk(1, 10, 100, Some("2024-01-01")), mk(2, 10, 300, None)],
+        ];
+        let methods = [
+            Method::Fifo,
+            Method::Lifo,
+            Method::Hifo,
+            Method::Lofo,
+            Method::LongestHeldFirst,
+            Method::ShortestHeldFirst,
+        ];
+        for lots in &holdings {
+            for m in methods {
+                // 0 through more than the holding, so shortfalls and partial
+                // splits are both exercised.
+                for want in 0..=32 {
+                    agree(m, lots, want);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn per_unit_is_a_total_order() {
+        // ⛔ A `BTreeMap` SILENTLY MISBEHAVES ON A COMPARATOR THAT IS NOT ONE,
+        // and this codebase has been bitten there twice — the HIFO tiebreak, and
+        // an eviction comparator that broke transitivity. Checked over every
+        // pair and triple rather than by example.
+        let vals: Vec<PerUnit> = [
+            (100, 10),
+            (10, 1),
+            (200, 20),
+            (1, 1000),
+            (0, 5),
+            (-50, 10),
+            (i64::MAX, 1),
+            (i64::MIN, 1),
+        ]
+        .iter()
+        .map(|&(cost, units)| PerUnit { cost, units })
+        .collect();
+
+        for a in &vals {
+            assert_eq!(a.cmp(a), std::cmp::Ordering::Equal, "reflexive");
+            for b in &vals {
+                // Antisymmetric.
+                assert_eq!(a.cmp(b), b.cmp(a).reverse(), "{a:?} vs {b:?}");
+                for c in &vals {
+                    if a <= b && b <= c {
+                        assert!(a <= c, "transitivity: {a:?} <= {b:?} <= {c:?}");
+                    }
+                }
+            }
+        }
+        // And equal ratios really are equal, which is what makes the seq
+        // tiebreak necessary rather than decorative.
+        assert_eq!(
+            PerUnit { cost: 100, units: 10 },
+            PerUnit { cost: 200, units: 20 }
+        );
+    }
+
+    #[test]
+    fn changing_the_method_reorders_the_holding_once() {
+        // ⚠ The order is a term of an agreement: it changes on a promotion, not
+        // on a sale. What matters is that the holding follows it when it does.
+        let mut h = Holding::new(Method::Fifo);
+        for (seq, cost) in [(1u64, 100i64), (2, 400), (3, 50)] {
+            h.push(Lot { seq, units: 10, cost, acquired: None }).unwrap();
+        }
+        assert_eq!(h.relieve(Method::Fifo, 10).unwrap().cost, 100, "oldest");
+        assert_eq!(h.relieve(Method::Hifo, 10).unwrap().cost, 400, "then dearest");
+        assert_eq!(h.relieve(Method::Lofo, 10).unwrap().cost, 50, "then cheapest");
+        assert!(h.is_empty());
+    }
+
+    #[test]
+    fn a_husk_is_refused_when_it_is_offered() {
+        // ⚠ Moved from the walk to `push`: checked where it can first be wrong,
+        // rather than rediscovered by scanning the holding on every sale.
+        let mut h = Holding::new(Method::Fifo);
+        let err = h
+            .push(Lot { seq: 1, units: 0, cost: 500, acquired: None })
+            .unwrap_err();
+        assert!(format!("{err:#}").contains("holding of nothing"), "{err:#}");
+        assert!(h.is_empty(), "and it did not enter the holding");
+    }
     use super::*;
 
     fn l(seq: u64, units: i64, cost: i64) -> Lot {

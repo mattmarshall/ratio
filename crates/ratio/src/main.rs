@@ -597,15 +597,14 @@ fn plural(n: i64, one: &str, many: &str) -> String {
 /// ⛔ IT REPORTS TWO CURVES BECAUSE THERE ARE TWO, and reporting one would be
 /// the easiest overclaim this repo has available:
 ///
-///   COLD BUILD   folding the journal into a projection. ⛔ NOT O(entries),
-///                though it was labelled that here and in HANDOFF.md for
-///                months. Holding entries constant at ~1.8M and raising
-///                fragmentation 500 → 1000 → 2000 lots a position took it from
-///                20.2 s to 26.3 s to 44.5 s. The breakdown says why: `parse`
-///                tracks ENTRIES (8.2 s → 8.5 s across that range) and
-///                `relieve` tracks LOTS PER POSITION (7.4 s → 31.1 s over the
-///                same number of reliefs), because a relief copies and sorts
-///                the whole holding. This grows in BOTH.
+///   COLD BUILD   folding the journal into a projection. O(entries) — and now
+///                MEASURED rather than asserted. ⚠ It was labelled that for
+///                months while being false: a relief copied and sorted the
+///                whole holding, so at constant entries and 4x the
+///                fragmentation the build went 20.2 s → 44.5 s. `Holding` keeps
+///                the order instead of re-deriving it, and the same comparison
+///                is now 12.6 s → 12.8 s. The breakdown below is what proves
+///                it: `relieve` is 60 ms either way.
 ///   NAV STRIKE   reading the maintained projection. `Ratio.Closure.navCost` —
 ///                one price per security, one rate per currency, and the tax
 ///                lots nowhere in it. This does NOT grow.
@@ -737,7 +736,7 @@ fn bench(args: &[&str]) -> Result<()> {
     // and the breakdown below says which line carries it.
     let cost = proj.cost();
     println!(
-        "  {:<26}{:>14}   O(entries) + O(entries x lots/position)",
+        "  {:<26}{:>14}   O(entries), and MEASURED to be",
         "COLD BUILD", ratio_nav::closure::human_nanos(cold_ns)
     );
     println!(
