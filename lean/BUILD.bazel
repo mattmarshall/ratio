@@ -206,6 +206,46 @@ lean_emit(
 # The cost model. Emitted rather than rewritten because the whole value of the
 # answer is that it IS `Ratio.Closure` — a hand-written `nav_cost` in Rust would
 # be a claim about the proofs instead of the thing they are about.
+# ⛔ WHERE A REALIZED GAIN GOES. The engine computes one and nothing posts it —
+# six methods and holding-period classification deciding a number that is then
+# discarded.
+#
+# A gain is the ONE figure a transaction creates rather than moves, which is why
+# the posting has three legs. And the failure to prevent is the gain computed
+# TWICE: if the entry carries its own figure and the relief carries another, the
+# entry still BALANCES — the gain leg absorbs the difference — and the taxable
+# income is wrong by the drift.
+lean_test(
+    name = "lots_posting_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Chart/Dimensions.lean",
+        "Ratio/Lots.lean",
+        "Ratio/Lots/Posting.lean",
+    ],
+    entry = "Ratio/Lots/Posting.lean",
+)
+
+# ⛔ What a chart of accounts IS, on a kernel that conserves vectors.
+#
+# `Ratio.Core.Conserves` is zero in EVERY dimension and `Dim` is the
+# conserved-quantity basis. The running kernel collapsed that to one number — sum
+# every amount, require zero — and the collapse loses multi-currency: USD +100
+# against EUR −100 sums to zero and neither currency balances.
+#
+# The architecture is a classification, and it is the whole design. CURRENCY
+# conserves, and two of them are two independent laws rather than one over a sum.
+# ACCOUNT, instrument and class PARTITION — they say where the value sits, they
+# do not net to zero, and a breakdown rolls up. QUANTITY is MEASURED: buying a
+# hundred shares creates a hundred in the book, so a conservation check over
+# units would refuse every purchase.
+lean_test(
+    name = "chart_dimensions_proof_test",
+    size = "small",
+    srcs = ["Ratio/Chart/Dimensions.lean"],
+    entry = "Ratio/Chart/Dimensions.lean",
+)
+
 # ⛔ The hypothesis every theorem in this repo was assuming.
 #
 # Every proof here is over Lean's unbounded `Int`; every emitted function runs on
