@@ -111,8 +111,14 @@ the conserved one, and the kernel never said it was.
 - ⛔ **`bazel cquery --output=files` can hand back a stale binary.** Twice: an API
   returned an empty list and the code was right. Explicit `bazel build` first,
   then query.
-- ⛔ **`//web:console` and `//web:console_html` are different targets.** The
-  binary embeds the second. Building the first and reloading shows a stale page.
+- ⛔ **A console change needs `//crates/ratio` rebuilt, not `//web:...`.** The
+  chain is `//web:console_html` → genrule `//crates/ratio:console_rs` →
+  `src/console_html.rs` → the binary, which embeds it as a `&str` at compile
+  time. Building anything under `//web:` alone refreshes nothing that is served.
+  ⚠ This entry used to say "`//web:console` and `//web:console_html` are
+  different targets" — there is no `//web:console` target and there never was.
+  `//crates/ratio:ratio_test` now greps the served HTML, so the trap fails
+  loudly instead of being remembered.
 - ⛔ **`append` and `append_all` are two doors with the same law**, with different
   indentation. A fix applied by string replace hits one.
 - ⛔ **Python edits collapse Rust `\` line continuations** into runs of spaces
