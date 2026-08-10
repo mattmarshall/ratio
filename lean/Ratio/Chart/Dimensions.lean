@@ -117,6 +117,55 @@ theorem a_real_exchange_conserves_both :
     ∧ netIn "EUR" [usd 1 10000, usd 2 (-10000), eur 3 9000, eur 4 (-9000)] = 0 := by
   constructor <;> decide
 
+/- ── Where the rate goes ───────────────────────────────────────────────── -/
+
+/-- A hundred dollars sold for ninety euros, through account 5.
+
+Both sides of the exchange land in ONE account, which is what makes the rate a
+recorded fact rather than an inference from two unrelated legs. -/
+private def exchange : List Posting :=
+  [usd 2 (-10000), usd 5 10000, eur 5 (-9000), eur 3 9000]
+
+/-- **⭐ AN EXCHANGE CONSERVES EVERY CURRENCY, AND ITS CONVERSION ACCOUNT DOES
+NOT NET TO ZERO.**
+
+Both halves matter and they say different things.
+
+The first is the law: neither currency moved in aggregate, so nothing was
+created by the exchange.
+
+The second is the POINT. Account 5 is left holding `+10000 USD` and `−9000 EUR`,
+which is not an error and must not be netted away — it is the RATE, recorded as
+two figures the way it was actually struck. `netOf 5` is `1000`, a number in no
+currency at all, and it is meaningless: the flat total across currencies is the
+quantity `a_flat_total_hides_a_currency_mismatch` already showed says nothing.
+
+⚠ THIS IS WHERE AN FX GAIN WILL LIVE, and it is deliberately not computed here.
+Separating a foreign-currency gain into its security component and its currency
+component needs a decision about whether a lot carries a rate at acquisition,
+which is a modelling question rather than a missing theorem. -/
+theorem an_exchange_conserves_and_leaves_the_rate_behind :
+    netIn "USD" exchange = 0
+    ∧ netIn "EUR" exchange = 0
+    ∧ netOfIn 5 "USD" exchange = 10000
+    ∧ netOfIn 5 "EUR" exchange = -9000 := by
+  refine ⟨?_, ?_, ?_, ?_⟩ <;> decide
+
+/-- **⛔ AND DROPPING THE CONVERSION ACCOUNT BREAKS THE LAW, NOT THE BOOKKEEPING.**
+
+The tempting shortcut is two legs: cash out in one currency, cash in in the
+other. It has a flat total near zero and it conserves NEITHER currency — the
+dollars left and no dollar entry says where, the euros arrived from nowhere.
+
+⚠ Note this is a DIFFERENT failure from the one above. There the flat total was
+exactly zero and hid the mismatch; here it is not even zero, and a kernel
+checking only the sum would refuse this one while admitting that one. Which is
+the argument for checking per currency rather than picking a better sum. -/
+theorem a_two_leg_exchange_conserves_neither_currency :
+    netIn "USD" [usd 2 (-10000), eur 3 9000] ≠ 0
+    ∧ netIn "EUR" [usd 2 (-10000), eur 3 9000] ≠ 0 := by
+  constructor <;> decide
+
 /- ── Accounts partition; they do not conserve ─────────────────────────── -/
 
 /-- **⛔ AN ACCOUNT DOES NOT NET TO ZERO, AND MUST NOT.**

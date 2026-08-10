@@ -1317,22 +1317,30 @@ impl Console {
         let accounts = b.accounts()?;
         let by_dim: BTreeMap<i64, AccountTypeRecord> =
             accounts.iter().map(|a| (a.dim, a.account_type)).collect();
-        let balances = b.balances_by_dim()?;
         let tb = b.trial_balance()?;
 
         // NAV is assets minus liabilities, and both are the same fold: a
         // liability's net is negative because it is credit-normal, so summing
         // the two families subtracts one from the other without a special case.
-        let nav: i64 = balances
-            .iter()
-            .filter(|(d, _)| {
-                matches!(
-                    by_dim.get(d),
-                    Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
-                )
-            })
-            .map(|(_, (dr, cr))| dr - cr)
-            .sum();
+        //
+        // ⛔ THROUGH THE PROJECTION, WHICH TRANSLATES. This summed
+        // `balances_by_dim` — a fold that keys on the dimension and drops the
+        // currency — so on a multi-currency book it added dollars to euros and
+        // reported the result as USD. The same book gave 16,899,685,259 here
+        // and 17,835,336,781 from `ratio bench`, and neither screen said which
+        // one it was: `Ratio.Chart.Dimensions.a_flat_total_hides_a_currency_
+        // mismatch` is about exactly that sum.
+        //
+        // ⚠ A book whose currencies have no rates now REFUSES rather than
+        // answering, which is the right failure and a visible one.
+        let is_asset_or_liability = |d: i64| {
+            matches!(
+                by_dim.get(&d),
+                Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
+            )
+        };
+        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
+        let nav: i64 = self.projection(&id)?.nav(&is_asset_or_liability, &rates)?.value.0;
 
         let breaks = self.breaks_for(&path, &id)?;
         let open: Vec<&pb::Break> = breaks.iter().filter(|k| !k.explained).collect();
@@ -1370,15 +1378,18 @@ impl Console {
             Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?)).ok(),
             None => None,
         };
+        // The same rates the NAV above was struck at — one read, so the two
+        // figures on this screen cannot have been translated differently.
         let realized = self
             .projection(&id)
             .ok()
-            .and_then(|p| p.realized(set.as_ref().and_then(|s| s.chart_roles)).value);
+            .and_then(|p| p.realized(set.as_ref().and_then(|s| s.chart_roles), &rates).ok())
+            .and_then(|r| r.value);
 
         Ok(pb::Fund {
             name: format!("funds/{id}"),
             display_name: display_name(&id),
-            currency_code: "USD".into(),
+            currency_code: FUND_CURRENCY.into(),
             state: state as i32,
             net_asset_value: nav.to_string(),
             lot_method: set
@@ -2147,6 +2158,19 @@ pub fn position_key(id: &str) -> Result<(i64, String)> {
     ))
 }
 
+/// The currency a fund reports in.
+///
+/// ⛔ ONE CONSTANT, BECAUSE IT IS TWO ANSWERS TO ONE QUESTION OTHERWISE. It is
+/// what `Fund.currency_code` tells a reader the figures are in, AND the base
+/// `Rates` translates every other currency into. Those must be the same
+/// currency: a NAV translated into euros and labelled USD is wrong by the rate,
+/// and nothing about the number looks unusual.
+///
+/// ⚠ HARDCODED, AND THAT IS A REAL LIMITATION rather than a placeholder to
+/// forget. A fund's reporting currency is a property of the fund, and when a
+/// second one arrives this becomes a field on the book.
+pub const FUND_CURRENCY: &str = "USD";
+
 pub fn nested_id(name: &str, outer: &str, inner: &str) -> Result<(String, String)> {
     let parts: Vec<&str> = name.split('/').collect();
     if parts.len() != 4 || parts[0] != outer || parts[2] != inner {
@@ -2252,7 +2276,7 @@ mod tests {
         // the cache safe to have at all.
         let cold = ratio_project::Projection::of_book(&d).unwrap();
         let assets = |dim: i64| dim == 1 || dim == 2 || dim == 40;
-        assert_eq!(after.nav(&assets).unwrap().value, cold.nav(&assets).unwrap().value);
+        assert_eq!(after.nav(&assets, &ratio_project::Rates::none()).unwrap().value, cold.nav(&assets, &ratio_project::Rates::none()).unwrap().value);
         assert_eq!(after.positions().value, &cold.positions().value.clone());
     }
 
@@ -2290,7 +2314,7 @@ mod tests {
 
         let p = c.projection("demo").unwrap();
         assert_eq!(p.prefix(), 1, "rebuilt from the new book, not spliced onto the old");
-        assert_eq!(p.nav(&|dim| dim == 1).unwrap().value.0, 11, "and the totals are the new book's");
+        assert_eq!(p.nav(&|dim| dim == 1, &ratio_project::Rates::none()).unwrap().value.0, 11, "and the totals are the new book's");
     }
 
     #[test]

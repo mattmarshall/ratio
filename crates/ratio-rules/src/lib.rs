@@ -220,6 +220,24 @@ pub struct ChartRoles {
     /// ⛔ Where the difference lands. A partition like any other — the gain is
     /// not a fourth kind of thing, it is value sitting in a different account.
     pub realized_gain: i64,
+
+    /// Where both sides of a currency exchange land.
+    ///
+    /// ⛔ ONE ACCOUNT, TAKING BOTH LEGS, WHICH IS WHAT RECORDS THE RATE.
+    /// `Ratio.Chart.Dimensions.an_exchange_conserves_and_leaves_the_rate_behind`
+    /// — a hundred dollars out and ninety euros in, both through here, leaves
+    /// `+10000 USD` and `−9000 EUR` sitting in one place. That pair IS the rate,
+    /// as it was actually struck, rather than something inferred later from two
+    /// unrelated legs.
+    ///
+    /// ⚠ ITS FLAT TOTAL ACROSS CURRENCIES IS NOT ZERO AND MUST NOT BE NETTED.
+    /// That residual is the fund's FX position. Separating it into a currency
+    /// gain and a security gain is a modelling question this does not answer.
+    ///
+    /// ⚠ OPTIONAL, because a single-currency book never exchanges anything and
+    /// requiring it would refuse every chart written before this existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub currency_conversion: Option<i64>,
 }
 
 impl ChartRoles {
@@ -235,11 +253,18 @@ impl ChartRoles {
     /// chart that cannot express a gain is wrong the moment it is written down,
     /// and finding out at the first disposal means finding out in production.
     pub fn check(&self) -> Result<()> {
-        let named = [
+        // ⚠ THE CONVERSION ROLE IS IN THE SWEEP WHEN IT IS DECLARED. Colliding
+        // it with cash would net an exchange away against the balance it was
+        // supposed to move — the rate would be nowhere and the entry would
+        // still conserve in both currencies.
+        let mut named = vec![
             ("investments", self.investments),
             ("cash", self.cash),
             ("realized gain", self.realized_gain),
         ];
+        if let Some(c) = self.currency_conversion {
+            named.push(("currency conversion", c));
+        }
         for (i, (an, a)) in named.iter().enumerate() {
             for (bn, b) in named.iter().skip(i + 1) {
                 if a == b {

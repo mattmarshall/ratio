@@ -152,6 +152,25 @@ impl PostingRecord {
             quantity,
         }
     }
+
+    /// A posting denominated in a named currency.
+    ///
+    /// ⚠ SEPARATE FROM [`new`] RATHER THAN AN ARGUMENT ON IT. `None` is its own
+    /// conservation group, not a default, so a caller that has a currency and
+    /// one that has none are making genuinely different statements — and the
+    /// door refuses an entry that mixes them. A single constructor taking
+    /// `Option` would make forgetting it look like declaring nothing.
+    ///
+    /// [`new`]: PostingRecord::new
+    pub fn of_currency(dim: i64, amount: i64, currency: &str) -> Self {
+        PostingRecord {
+            dim,
+            amount,
+            currency: Some(currency.to_string()),
+            instrument: None,
+            quantity: None,
+        }
+    }
 }
 
 impl From<&PostingRecord> for Posting {

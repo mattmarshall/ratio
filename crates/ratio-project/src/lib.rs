@@ -88,9 +88,107 @@ pub struct Totals {
     /// the fund — it adds the magnitude of every posting ever made. An `i64`
     /// accumulator wraps, and a wrapped total does not look wrong; it looks
     /// like a NAV.
-    pub by_dim: BTreeMap<i64, i128>,
+    /// ⛔ KEYED BY DIMENSION **AND CURRENCY**, because a total over both is not
+    /// a figure. `Ratio.Chart.Dimensions.a_flat_total_hides_a_currency_mismatch`
+    /// is about exactly this sum: a hundred dollars and minus a hundred euros
+    /// add to zero and nothing balanced. This map used to key on the dimension
+    /// alone, which was harmless only for as long as no posting carried a
+    /// currency — and the moment one did, every NAV would have been a mixture
+    /// of denominations reported as one number.
+    pub by_dim: BTreeMap<(i64, Option<String>), i128>,
     pub debits: i128,
     pub credits: i128,
+}
+
+/// How many hundredths of the base currency one unit of a currency is worth.
+///
+/// ⚠ HUNDREDTHS, matching the rate facts the data plane already carries and
+/// `Ratio.Closure.fxCost`'s one-rate-per-currency shape. It is a coarse rate,
+/// and it is the rate this system actually has.
+pub const RATE_SCALE: i64 = 100;
+
+/// What each currency is worth, for translating a book into one figure.
+///
+/// ⛔ A TRANSLATION IS NOT A CONSERVATION. The kernel checks that every currency
+/// nets to zero on its own — that is the law, and it needs no rates. This is the
+/// separate question of what the whole book is WORTH in one denomination, which
+/// cannot be answered without saying at what rate. Keeping them apart is why
+/// `is_balanced` takes no rates and this exists.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Rates {
+    /// The currency everything is translated INTO.
+    ///
+    /// ⛔ EXPLICIT, BECAUSE IT CANNOT BE INFERRED. There is no rate fact for the
+    /// base — a fund does not record what a dollar is worth in dollars — so the
+    /// base is exactly the currency the rates are silent about, and "the one
+    /// that is missing" is not something to work out from a data file. A
+    /// translation whose destination is unstated is a number without a unit.
+    base: Option<String>,
+    per: BTreeMap<String, i64>,
+}
+
+impl Rates {
+    /// No rates at all: an untyped book translates at par and a typed one is
+    /// refused.
+    ///
+    /// ⚠ THE DEFAULT REFUSES RATHER THAN ASSUMING PAR. A missing rate treated
+    /// as 1.00 would report a fund holding yen at its yen figure, which is off
+    /// by two orders of magnitude and looks like an ordinary number.
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// `code -> hundredths of the base currency`.
+    pub fn of(base: &str, per: impl IntoIterator<Item = (String, i64)>) -> Self {
+        Self { base: Some(base.to_string()), per: per.into_iter().collect() }
+    }
+
+    /// The rates the data plane has resolved.
+    ///
+    /// ⛔ ONE PLACE THAT KNOWS WHAT A RATE FACT LOOKS LIKE. `ratio bench` and
+    /// the console both need this, and two readers of one record format is two
+    /// chances to disagree about which field is the rate — with the disagreement
+    /// showing up as a fund valued at a number nobody chose.
+    ///
+    /// ⚠ ONE RATE PER CURRENCY, not per position:
+    /// `Ratio.Closure.fx_does_not_grow_with_the_chart`. Three currencies is
+    /// three rows at five holdings or five hundred.
+    pub fn of_facts(base: &str, facts: &[ratio_ingest::Fact]) -> Self {
+        Self::of(
+            base,
+            facts.iter().filter(|f| f.kind == "rate").filter_map(|f| {
+                Some((
+                    f.values.get("currency")?.as_text()?.to_string(),
+                    f.values.get("rate")?.as_minor()?,
+                ))
+            }),
+        )
+    }
+
+    /// The factor for one posting's currency.
+    ///
+    /// ⛔ AN UNTYPED LEG TRANSLATES AT PAR, and that is a DIFFERENT decision
+    /// from the one `PostingRecord::currency` makes for conservation, where
+    /// `None` is its own group. Both are right: for the law, an untyped leg
+    /// cannot be assumed to be any particular currency, so it groups alone; for
+    /// translation, a book with no currencies in it is already in one
+    /// denomination and there is nothing to translate.
+    /// The factor for a named currency, for a caller costing a translation
+    /// rather than performing one.
+    pub fn factor_of(&self, currency: &str) -> Option<i64> {
+        self.factor(Some(currency))
+    }
+
+    fn factor(&self, currency: Option<&str>) -> Option<i64> {
+        match currency {
+            None => Some(RATE_SCALE),
+            // ⛔ THE BASE IS AT PAR AND HAS NO FACT. A fund does not record what
+            // a dollar is worth in dollars, so looking the base up in `per`
+            // would refuse every book that holds any of its own currency.
+            Some(c) if self.base.as_deref() == Some(c) => Some(RATE_SCALE),
+            Some(c) => self.per.get(c).copied(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -189,6 +287,18 @@ impl Realized {
     /// no `trade_date` has no acquisition date, and the honest answer about its
     /// holding period is that there is not one — both defaults being wrong in
     /// opposite directions is the same argument `relieve_by` already makes.
+    ///
+    /// ⚠ AND ON A MULTI-CURRENCY BOOK IT CARRIES A TRANSLATION RESIDUE OF AT
+    /// MOST ONE MINOR UNIT PER CURRENCY. Integer translation does not distribute
+    /// over a sum: `(a + b) × r / s` and `a × r / s + b × r / s` differ by the
+    /// dropped remainders. The total and the two parts are each translated, so
+    /// the difference lands here.
+    ///
+    /// ⛔ WHICH IS WHY THIS IS DERIVED RATHER THAN ACCUMULATED. Computed as the
+    /// remainder, the three parts sum to the total exactly, by construction. A
+    /// fourth accumulator would put the residue nowhere and leave four figures
+    /// that do not add up — and a reader has no way to tell a rounding residue
+    /// from a disposal that went missing.
     pub fn unclassified(&self) -> i128 {
         self.gain - self.short_term - self.long_term
     }
@@ -214,15 +324,26 @@ struct LotBook {
     /// Cumulative cost given up by sales. ⛔ NOT the realized gain: that needs
     /// PROCEEDS, which is a property of the transaction rather than of the
     /// position, and the fold does not know which leg was the cash.
-    relieved: i128,
+    ///
+    /// ⛔ PER CURRENCY, like every other total here. A sum over denominations is
+    /// not a figure.
+    relieved: BTreeMap<Option<String>, i128>,
     /// The part of the realized gain a holding period could be established for.
     ///
     /// ⛔ ONLY THE CLASSIFIABLE PART IS ACCUMULATED HERE. The TOTAL is the
     /// realized-gain dimension in `totals`, which ties to the trial balance; if
     /// this held its own copy of the total there would be two answers to one
     /// question, and the one that drifted would be the one nothing checks.
-    short_term: i128,
-    long_term: i128,
+    ///
+    /// ⛔ AND PER CURRENCY, WHICH IS NOT COSMETIC. These are reported as parts
+    /// of a TRANSLATED total, so they have to be translated the same way. Held
+    /// as flat sums they were local-currency figures being subtracted from a
+    /// base-currency one, and the difference landed in `unclassified` — which
+    /// then meant two unrelated things at once: disposals whose holding period
+    /// was unknown, and an FX translation difference. A figure that means two
+    /// things is the failure this whole file is about.
+    short_term: BTreeMap<Option<String>, i128>,
+    long_term: BTreeMap<Option<String>, i128>,
     /// ⛔ SALES THAT COULD NOT BE RELIEVED, named rather than propagated.
     ///
     /// A husk, a pro-rata split that will not divide, a holding that is short —
@@ -354,7 +475,7 @@ impl Projection {
             // ⚠ `-p.amount` is not the magnitude at the floor: `-i64::MIN`
             // overflows. Widened first, it does not.
             let amount = p.amount as i128;
-            *self.totals.by_dim.entry(p.dim).or_default() += amount;
+            *self.totals.by_dim.entry((p.dim, p.currency.clone())).or_default() += amount;
             if amount >= 0 {
                 self.totals.debits += amount;
             } else {
@@ -597,15 +718,16 @@ impl Projection {
                             -p.amount - r.cost
                         ));
                     }
-                    self.lots.relieved += r.cost as i128;
+                    *self.lots.relieved.entry(p.currency.clone()).or_default() +=
+                        r.cost as i128;
                     // Computed before `r.left` is moved out below, and as a free
                     // function because `held` still borrows the lot book.
                     let split = gain_leg
                         .and_then(|g| classify(&r, g, entry.trade_date.as_deref(), terms));
                     *held = r.left;
                     if let Some((short, long)) = split {
-                        self.lots.short_term += short;
-                        self.lots.long_term += long;
+                        *self.lots.short_term.entry(p.currency.clone()).or_default() += short;
+                        *self.lots.long_term.entry(p.currency.clone()).or_default() += long;
                     }
                 }
                 Err(e) => self.lots.breaks.push(format!(
@@ -627,16 +749,28 @@ impl Projection {
     /// Returns `None` when the configuration names no chart roles: without one
     /// the engine does not know which dimension a gain lands in, and answering
     /// zero would be a fund that realized nothing.
-    pub fn realized(&self, roles: Option<ratio_rules::ChartRoles>) -> AsOf<Option<Realized>> {
-        AsOf {
-            value: roles.map(|r| Realized {
-                gain: self.totals.by_dim.get(&r.realized_gain).copied().unwrap_or(0),
-                basis: self.lots.relieved,
-                short_term: self.lots.short_term,
-                long_term: self.lots.long_term,
+    /// ⚠ THE GAIN IS TRANSLATED AND THE SPLIT IS NOT. The total is a chart
+    /// balance and can hold several currencies; the split is accumulated by the
+    /// fold in whatever the disposal was denominated in. On a book with one
+    /// currency they agree, and `unclassified` being the remainder means a
+    /// multi-currency book shows the discrepancy there rather than hiding it.
+    /// Separating an FX gain from a security gain is the modelling question
+    /// this deliberately does not answer.
+    pub fn realized(
+        &self,
+        roles: Option<ratio_rules::ChartRoles>,
+        rates: &Rates,
+    ) -> Result<AsOf<Option<Realized>>> {
+        let value = match roles {
+            None => None,
+            Some(r) => Some(Realized {
+                gain: self.translate(&|dim| dim == r.realized_gain, rates)?,
+                basis: convert(&self.lots.relieved, rates)?,
+                short_term: convert(&self.lots.short_term, rates)?,
+                long_term: convert(&self.lots.long_term, rates)?,
             }),
-            prefix: self.at,
-        }
+        };
+        Ok(AsOf { value, prefix: self.at })
     }
 
     /// The open lots of one position, oldest first.
@@ -664,7 +798,7 @@ impl Projection {
 
     /// Cumulative cost given up by sales.
     pub fn relieved_cost(&self) -> i128 {
-        self.lots.relieved
+        self.lots.relieved.values().sum()
     }
 
     /// Sales that could not be relieved, and why.
@@ -684,14 +818,12 @@ impl Projection {
     /// and liabilities subtracts without a special case — the same fold as
     /// `ratio_nav`, and a sign error here is invisible in a screenshot and wrong
     /// by twice the liability.
-    pub fn nav(&self, is_asset_or_liability: &dyn Fn(i64) -> bool) -> Result<AsOf<(i64, i64)>> {
-        let nav: i128 = self
-            .totals
-            .by_dim
-            .iter()
-            .filter(|(dim, _)| is_asset_or_liability(**dim))
-            .map(|(_, amount)| *amount)
-            .sum();
+    pub fn nav(
+        &self,
+        is_asset_or_liability: &dyn Fn(i64) -> bool,
+        rates: &Rates,
+    ) -> Result<AsOf<(i64, i64)>> {
+        let nav = self.translate(&|dim| is_asset_or_liability(dim), rates)?;
         // ⛔ A figure that cannot be represented is REFUSED rather than
         // truncated. `Ratio.Bounded`: an operation agrees with the theorem or
         // declines, and there is no third answer.
@@ -706,6 +838,37 @@ impl Projection {
             ),
             prefix: self.at,
         })
+    }
+
+    /// Sum the dimensions a predicate picks out, translated into one currency.
+    ///
+    /// ⛔ REFUSES A CURRENCY IT HAS NO RATE FOR. The tempting alternatives are
+    /// both worse than an error: skipping the leg reports a fund that does not
+    /// hold what it holds, and translating at par reports yen as though it were
+    /// dollars. Neither looks wrong on the page.
+    ///
+    /// ⚠ TRANSLATION ROUNDS, AND RELIEF DOES NOT. `Ratio.Lots.partial_relief_
+    /// is_exactly_pro_rata` refuses a basis that will not divide because the
+    /// remainder would be a misstatement of taxable income; a translated figure
+    /// has no exact answer at any rate with finitely many digits, so refusing
+    /// would refuse every foreign holding. Rounded down, in `i128`, once per
+    /// (dimension, currency) rather than per posting.
+    fn translate(&self, want: &dyn Fn(i64) -> bool, rates: &Rates) -> Result<i128> {
+        let mut total: i128 = 0;
+        for ((dim, currency), amount) in &self.totals.by_dim {
+            if !want(*dim) {
+                continue;
+            }
+            let factor = rates.factor(currency.as_deref()).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "this fund holds {} and no rate for it was supplied — a figure \
+                     mixing denominations is not a figure",
+                    currency.as_deref().unwrap_or("an untyped balance")
+                )
+            })?;
+            total += amount * factor as i128 / RATE_SCALE as i128;
+        }
+        Ok(total)
     }
 
     /// The splits an instrument's stored units must be read through, on a day.
@@ -757,6 +920,26 @@ impl Projection {
     pub fn is_current_with(&self, journal_len: usize) -> bool {
         self.at == journal_len
     }
+}
+
+/// Translate a per-currency total into the base.
+///
+/// ⚠ THE SAME ARITHMETIC AS `Projection::translate`, over a map the lot book
+/// keeps rather than the chart. Both exist because a total over denominations
+/// is not a figure, and the split has to be translated the same way as the
+/// total it is a part of or the two do not add up.
+fn convert(by_currency: &BTreeMap<Option<String>, i128>, rates: &Rates) -> Result<i128> {
+    let mut total = 0i128;
+    for (currency, amount) in by_currency {
+        let factor = rates.factor(currency.as_deref()).ok_or_else(|| {
+            anyhow::anyhow!(
+                "this fund realized gains in {} and no rate for it was supplied",
+                currency.as_deref().unwrap_or("an untyped currency")
+            )
+        })?;
+        total += amount * factor as i128 / RATE_SCALE as i128;
+    }
+    Ok(total)
 }
 
 /// Split one disposal's gain into (short-term, long-term), or decline.
@@ -1020,7 +1203,7 @@ mod tests {
         // ⚠ A derived model CANNOT enforce this — the journal is the record, and
         // the posted figure is what the trial balance is built from. What it can
         // do is notice, and say which figure it disagrees with.
-        assert!(p.nav(&|dim| dim == 1 || dim == 2).is_ok(), "and the fund still values");
+        assert!(p.nav(&|dim| dim == 1 || dim == 2, &Rates::none()).is_ok(), "and the fund still values");
     }
 
     #[test]
@@ -1066,7 +1249,7 @@ mod tests {
 
         // ⚠ And the NAV still strikes. A break is something an operator looks
         // at, not something that stops the fund being valued.
-        assert!(p.nav(&|dim| dim == 1 || dim == 2).is_ok());
+        assert!(p.nav(&|dim| dim == 1 || dim == 2, &Rates::none()).is_ok());
     }
 
     #[test]
@@ -1117,7 +1300,7 @@ mod tests {
         let p = Projection::rebuild(&js, FIFO);
 
         // dims 1 and 2 are assets in `book()`; nothing else is.
-        let got = p.nav(&|dim| dim == 1 || dim == 2).unwrap();
+        let got = p.nav(&|dim| dim == 1 || dim == 2, &Rates::none()).unwrap();
         let want = ratio_nav::strike(&d, 1_782_662_400, "e.marsh").unwrap();
 
         assert_eq!(got.value.0, want.net_asset_value, "the same NAV");
@@ -1132,8 +1315,8 @@ mod tests {
         // error this fold exists to avoid.
         let d = book("navdims", &[("vti", 25_000, 100)]);
         let p = Projection::rebuild(&entries(&d), FIFO);
-        assert_eq!(p.nav(&|dim| dim == 1 || dim == 2).unwrap().value.0, 0, "buy: asset in, cash out");
-        assert_eq!(p.nav(&|dim| dim == 1).unwrap().value.0, 25_000, "investments alone");
+        assert_eq!(p.nav(&|dim| dim == 1 || dim == 2, &Rates::none()).unwrap().value.0, 0, "buy: asset in, cash out");
+        assert_eq!(p.nav(&|dim| dim == 1, &Rates::none()).unwrap().value.0, 25_000, "investments alone");
     }
 
     #[test]
@@ -1148,7 +1331,7 @@ mod tests {
             piecemeal.advance(&js[..n], FIFO);
         }
         let assets = |dim: i64| dim == 1 || dim == 2;
-        assert_eq!(piecemeal.nav(&assets).unwrap(), Projection::rebuild(&js, FIFO).nav(&assets).unwrap());
+        assert_eq!(piecemeal.nav(&assets, &Rates::none()).unwrap(), Projection::rebuild(&js, FIFO).nav(&assets, &Rates::none()).unwrap());
     }
 
     #[test]
@@ -1245,7 +1428,7 @@ mod tests {
         // And it lands exactly where a cold build would.
         assert_eq!(p.positions().value, &Projection::of_book(&d).unwrap().positions().value.clone());
         let assets = |dim: i64| dim == 1 || dim == 2;
-        assert_eq!(p.nav(&assets).unwrap().value, Projection::of_book(&d).unwrap().nav(&assets).unwrap().value);
+        assert_eq!(p.nav(&assets, &Rates::none()).unwrap().value, Projection::of_book(&d).unwrap().nav(&assets, &Rates::none()).unwrap().value);
     }
 
     #[test]
@@ -1628,7 +1811,12 @@ mod tests {
     // ── what the fund realized, and how much of it is classified ───────────
 
     const ROLES: ratio_rules::ChartRoles =
-        ratio_rules::ChartRoles { investments: 1, cash: 2, realized_gain: 30 };
+        ratio_rules::ChartRoles {
+        investments: 1,
+        cash: 2,
+        realized_gain: 30,
+        currency_conversion: None,
+    };
 
     /// A book that posts sales through `relief::sale_postings` — three legs,
     /// with the gain derived rather than supplied.
@@ -1692,7 +1880,7 @@ mod tests {
         dispose(&d, "s-new", 1, 150, "2026-06-30"); // then the new one
 
         let p = Projection::of_book(&d).unwrap();
-        let r = p.realized(Some(ROLES)).value.unwrap();
+        let r = p.realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
 
         // Credit-normal: a gain reads negative. 200 long, 50 short.
         assert_eq!(r.gain, -250);
@@ -1715,7 +1903,7 @@ mod tests {
         let d = book_with_gains("threshold-exact", 365);
         buy_on(&d, "b", 1, 100, "2025-06-30");
         dispose(&d, "s", 1, 300, "2026-06-30"); // exactly 365 days
-        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES)).value.unwrap();
+        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.long_term, -200, "the threshold day is long-term");
         assert_eq!(r.short_term, 0);
 
@@ -1723,7 +1911,7 @@ mod tests {
         let d = book_with_gains("threshold-short", 365);
         buy_on(&d, "b", 1, 100, "2025-07-01");
         dispose(&d, "s", 1, 300, "2026-06-30"); // 364 days
-        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES)).value.unwrap();
+        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.short_term, -200);
         assert_eq!(r.long_term, 0);
 
@@ -1731,7 +1919,7 @@ mod tests {
         let d = book_with_gains("threshold-730", 730);
         buy_on(&d, "b", 1, 100, "2025-06-30");
         dispose(&d, "s", 1, 300, "2026-06-30"); // 365 days — short, under 730
-        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES)).value.unwrap();
+        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.short_term, -200, "365 days is short-term at a 730-day threshold");
         assert_eq!(r.long_term, 0);
     }
@@ -1747,7 +1935,7 @@ mod tests {
         buy_on(&d, "b2", 1, 40, "2026-06-01");
         dispose(&d, "s", 2, 101, "2026-06-30");
 
-        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES)).value.unwrap();
+        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.gain, -21, "the total is exact and ties to the chart");
         assert_eq!(r.short_term, 0);
         assert_eq!(r.long_term, 0);
@@ -1784,7 +1972,7 @@ mod tests {
         drop(b);
         dispose(&d, "s", 1, 300, "2026-06-30");
 
-        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES)).value.unwrap();
+        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.gain, -200);
         assert_eq!(r.unclassified(), -200);
         assert_eq!(r.short_term + r.long_term, 0);
@@ -1803,9 +1991,91 @@ mod tests {
         dispose(&d, "s2", 2, 401, "2026-06-30"); // will not divide
 
         let p = Projection::of_book(&d).unwrap();
-        let r = p.realized(Some(ROLES)).value.unwrap();
+        let r = p.realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.short_term + r.long_term + r.unclassified(), r.gain);
         assert!(r.unclassified() != 0, "the indivisible disposal is in there");
+    }
+
+    // ── currencies ─────────────────────────────────────────────────────────
+
+    /// A book holding one hundred of the base and ninety of a foreign currency,
+    /// in the same asset dimension.
+    fn two_currency_book(name: &str) -> std::path::PathBuf {
+        let d = tmp_root().join(format!("ratio-project-{name}"));
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Cash".into(), account_type: A::Asset },
+            Account { dim: 20, display_name: "Capital".into(), account_type: A::Equity },
+        ])
+        .unwrap();
+        let c = b.put(b"rules = []\n").unwrap();
+        b.set_active(&c).unwrap();
+        for (id, ccy, amount) in [("usd", "USD", 10_000i64), ("eur", "EUR", 9_000)] {
+            b.append(&JournalEntry {
+                id: id.into(),
+                memo: "subscription".into(),
+                config: c.clone(),
+                postings: vec![
+                    PostingRecord::of_currency(1, amount, ccy),
+                    PostingRecord::of_currency(20, -amount, ccy),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap();
+        }
+        d
+    }
+
+    #[test]
+    fn a_nav_over_several_currencies_is_refused_without_a_rate_for_each() {
+        // ⛔ THE FAILURE THIS EXISTS TO PREVENT. `totals.by_dim` used to key on
+        // the dimension alone, so this book's NAV was 19,000 — a hundred dollars
+        // and ninety euros added together, which is
+        // `Ratio.Chart.Dimensions.a_flat_total_hides_a_currency_mismatch` in the
+        // other direction. Every leg conserved, the trial balance tied, and the
+        // figure was in no currency at all.
+        let d = two_currency_book("two-ccy-refused");
+        let p = Projection::of_book(&d).unwrap();
+
+        let err = p.nav(&|dim| dim == 1, &Rates::of("USD", [])).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("EUR"), "{msg}");
+        assert!(msg.contains("mixing denominations"), "{msg}");
+    }
+
+    #[test]
+    fn given_a_rate_the_nav_is_translated_rather_than_added_up() {
+        let d = two_currency_book("two-ccy-translated");
+        let p = Projection::of_book(&d).unwrap();
+
+        // EUR at 1.20: 9,000 becomes 10,800, plus 10,000 of base.
+        let rates = Rates::of("USD", [("EUR".to_string(), 120)]);
+        assert_eq!(p.nav(&|dim| dim == 1, &rates).unwrap().value.0, 20_800);
+
+        // ⛔ AND THE RATE CHANGES THE ANSWER, which is the whole reason it must
+        // be stated. At par the same book is 19,000 — the number the old flat
+        // sum produced, and it is only right if a euro is worth a dollar.
+        let par = Rates::of("USD", [("EUR".to_string(), RATE_SCALE)]);
+        assert_eq!(p.nav(&|dim| dim == 1, &par).unwrap().value.0, 19_000);
+    }
+
+    #[test]
+    fn the_base_currency_needs_no_rate_and_an_untyped_book_still_values() {
+        // ⛔ A FUND DOES NOT RECORD WHAT A DOLLAR IS WORTH IN DOLLARS, so there
+        // is no rate fact for the base and looking it up would refuse every
+        // book that holds any of its own currency.
+        let d = two_currency_book("base-at-par");
+        let p = Projection::of_book(&d).unwrap();
+        let rates = Rates::of("USD", [("EUR".to_string(), 100)]);
+        assert!(p.nav(&|dim| dim == 20, &rates).is_ok());
+
+        // And a book written before any of this, whose legs name no currency,
+        // values with no rates at all — one group, translated at par.
+        let d = book("untyped-values", &[("vti", 10, 1)]);
+        let p = Projection::of_book(&d).unwrap();
+        assert!(p.nav(&|dim| dim == 1, &Rates::none()).is_ok());
     }
 
     #[test]
@@ -1815,9 +2085,9 @@ mod tests {
         dispose(&d, "s", 1, 300, "2026-06-30");
         let p = Projection::of_book(&d).unwrap();
 
-        assert_eq!(p.realized(Some(ROLES)).prefix, p.prefix());
+        assert_eq!(p.realized(Some(ROLES), &Rates::none()).unwrap().prefix, p.prefix());
         // ⛔ `None`, NOT ZERO. Without a chart the engine does not know which
         // dimension a gain lands in, and zero is a fund that realized nothing.
-        assert!(p.realized(None).value.is_none());
+        assert!(p.realized(None, &Rates::none()).unwrap().value.is_none());
     }
 }
