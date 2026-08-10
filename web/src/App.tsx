@@ -1033,7 +1033,7 @@ function Lots({ fund, position }: { fund: string; position: string }) {
           <span className="at">
             {/* ⛔ Absent rather than defaulted. The holding-period methods
                 REFUSE such a lot rather than guessing, because the epoch makes
-                it long-term at the favourable rate and today makes it
+                it long-term at the favorable rate and today makes it
                 short-term on a holding of years. */}
             {l.acquired ? isoDate(l.acquired) : <em>no trade date</em>}
           </span>
