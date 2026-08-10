@@ -55,6 +55,12 @@ pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}:replay" },
     Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/positions" },
+    // ⛔ BEFORE the bare position, and before the position pattern can swallow
+    // it. `funds/f/positions/p/lots` has more segments than `funds/*/positions/*`
+    // matches, but the ordering here is the documented contract and a reader
+    // should not have to work that out.
+    Route { method: "GET", template: "/v1/{parent=funds/*/positions/*}/lots" },
+    Route { method: "GET", template: "/v1/{name=funds/*/positions/*/lots/*}" },
     Route { method: "GET", template: "/v1/{name=funds/*/positions/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/templates" },
     Route { method: "GET", template: "/v1/{name=funds/*/templates/*}" },
@@ -144,6 +150,12 @@ pub fn serve(
         }
         ["funds", id, "positions"] => {
             to_json(&console.list_positions(&format!("funds/{id}"))?)?
+        }
+        ["funds", id, "positions", p, "lots"] => {
+            to_json(&console.list_lots(&format!("funds/{id}/positions/{p}"))?)?
+        }
+        ["funds", id, "positions", p, "lots", l] => {
+            to_json(&console.get_lot(&format!("funds/{id}/positions/{p}/lots/{l}"))?)?
         }
         ["funds", id, "positions", p] => {
             to_json(&console.get_position(&format!("funds/{id}/positions/{p}"))?)?
@@ -400,13 +412,18 @@ impl JsonView for pb::Fund {
              \"netAssetValue\":{},\"totalDebit\":{},\"totalCredit\":{},\
              \"trialBalanceDifference\":{},\"openDifference\":{},\
              \"entryCount\":{},\"openBreakCount\":{},\"pendingFactCount\":{},\
-             \"configDigest\":{}}}",
+             \"configDigest\":{},\"lotMethod\":{},\"realizedGain\":{},\
+             \"basisRelieved\":{},\"shortTermGain\":{},\"longTermGain\":{},\
+             \"unclassifiedGain\":{},\"longTermDays\":{}}}",
             q(&self.name), q(&self.display_name), q(&self.currency_code),
             q(state_name(self.state)), q(&self.net_asset_value),
             q(&self.total_debit), q(&self.total_credit),
             q(&self.trial_balance_difference), q(&self.open_difference),
             q(&self.entry_count.to_string()), q(&self.open_break_count.to_string()),
-            q(&self.pending_fact_count), q(&self.config_digest)
+            q(&self.pending_fact_count), q(&self.config_digest),
+            q(&self.lot_method), q(&self.realized_gain), q(&self.basis_relieved),
+            q(&self.short_term_gain), q(&self.long_term_gain),
+            q(&self.unclassified_gain), q(&self.long_term_days.to_string())
         )
     }
 }
@@ -524,6 +541,29 @@ impl JsonView for pb::ListPositionsResponse {
         format!(
             "{{\"positions\":[{}],\"nextPageToken\":{}}}",
             self.positions.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+impl JsonView for pb::Lot {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"sequence\":{},\"units\":{},\"cost\":{},\"acquired\":{}}}",
+            q(&self.name),
+            q(&self.sequence.to_string()),
+            q(&self.units),
+            q(&self.cost),
+            date_json(&self.acquired)
+        )
+    }
+}
+
+impl JsonView for pb::ListLotsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"lots\":[{}],\"nextPageToken\":{}}}",
+            self.lots.iter().map(|l| l.to_json()).collect::<Vec<_>>().join(","),
             q(&self.next_page_token)
         )
     }

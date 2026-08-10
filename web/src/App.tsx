@@ -11,6 +11,7 @@ import {
   useAdmit,
   useApplyEvent,
   useIngest,
+  useLots,
   useMark,
   useDeliveries,
   useCorporateActions,
@@ -32,6 +33,7 @@ import {
   STATE_CLASS,
   STATE_LABEL,
   count,
+  gain,
   money,
 } from "./format.js";
 import type {
@@ -926,7 +928,123 @@ function isoDate(d: { year: number; month: number; day: number }): string {
   return `${d.day} ${M[d.month - 1] ?? "?"} ${d.year}`;
 }
 
-function Positions({ positions }: { positions: Position[] }) {
+/**
+ * The terms the lot engine ran under, and what it realized.
+ *
+ * ⛔ BESIDE THE FIGURES IT DECIDES, NOT IN A CONFIGURATION SCREEN. The method
+ * is a term of an administration agreement: the same holding and the same trade
+ * produce four different taxable incomes under the four methods, with nothing
+ * on the balance sheet moving. A reader looking at positions is looking at the
+ * thing it decides.
+ *
+ * ⚠ AND THE GAIN IS PRINTED THROUGH `gain`, NEVER RAW. It is credit-normal, so
+ * the underlying figure is negative on a profitable fund.
+ */
+function LotTerms({ fund }: { fund: Fund }) {
+  // ⛔ Empty, not "0". A fund whose chart names no realized-gain role cannot
+  // say what it realized, and zero is a claim that it realized nothing.
+  if (!fund.lotMethod) return null;
+  const known = fund.realizedGain !== "";
+
+  return (
+    <section className="lotterms" aria-label="Lot method and realized gain">
+      <div className="lt">
+        <span className="ltk">Lot method</span>
+        <span className="ltv strong">{fund.lotMethod}</span>
+        <span className="at">a term of the administration agreement</span>
+      </div>
+      {known ? (
+        <>
+          <div className="lt">
+            <span className="ltk">Realized gain</span>
+            <span className="ltv num bal">{gain(fund.realizedGain)}</span>
+            <span className="at">since inception</span>
+          </div>
+          <div className="lt">
+            <span className="ltk">Short-term</span>
+            <span className="ltv num">{gain(fund.shortTermGain)}</span>
+            <span className="at">held under {count(fund.longTermDays)} days</span>
+          </div>
+          <div className="lt">
+            <span className="ltk">Long-term</span>
+            <span className="ltv num">{gain(fund.longTermGain)}</span>
+            <span className="at">held {count(fund.longTermDays)} days or more</span>
+          </div>
+          {/* ⚠ SHOWN ONLY WHEN NON-ZERO, and never hidden when it is not. A
+              disposal whose lots carry no acquisition date, or whose proceeds
+              will not divide exactly across them, is refused rather than
+              rounded — and the part that could not be classified has to be
+              visible or the split reads as complete. */}
+          {fund.unclassifiedGain !== "0" ? (
+            <div className="lt warn">
+              <span className="ltk">Unclassified</span>
+              <span className="ltv num">{gain(fund.unclassifiedGain)}</span>
+              <span className="at">no holding period could be established</span>
+            </div>
+          ) : null}
+          <div className="lt">
+            <span className="ltk">Basis relieved</span>
+            <span className="ltv num">{money(fund.basisRelieved)}</span>
+            <span className="at">cost given up by sales</span>
+          </div>
+        </>
+      ) : (
+        <div className="lt warn">
+          <span className="ltk">Realized gain</span>
+          <span className="ltv at">not attributable</span>
+          <span className="at">
+            the chart names no realized-gain role, so the engine cannot say
+            which dimension a gain lands in
+          </span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The lots behind one position, once a reader has asked for them.
+ *
+ * ⛔ FETCHED ON EXPANSION, NEVER WITH THE LIST. A position is one line and its
+ * lots are the whole history behind it — loading them for every row would turn
+ * a chart-sized read into a history-sized one, which is the conflation
+ * `Ratio.Closure.factored_nav_never_reads_the_lots` exists to keep apart.
+ */
+function Lots({ fund, position }: { fund: string; position: string }) {
+  const lots = useLots(fund, position);
+  if (lots.isError) return <div className="empty err">{lots.error.message}</div>;
+  if (!lots.data) return <div className="lotsbox at">reading the lot book…</div>;
+
+  return (
+    <div className="lotsbox">
+      <div className="lotrow lothead">
+        <span>Lot</span>
+        <span className="num">Units</span>
+        <span className="num">Cost</span>
+        <span>Acquired</span>
+      </div>
+      {lots.data.map((l) => (
+        <div className="lotrow" key={l.name}>
+          <span className="at">#{l.sequence}</span>
+          <span className="num">{count(l.units)}</span>
+          {/* ⛔ COST, NOT VALUE. A lot is never revalued — the mark lands on
+              the position, and the lot keeps what it was bought for. */}
+          <span className="num">{money(l.cost)}</span>
+          <span className="at">
+            {/* ⛔ Absent rather than defaulted. The holding-period methods
+                REFUSE such a lot rather than guessing, because the epoch makes
+                it long-term at the favourable rate and today makes it
+                short-term on a holding of years. */}
+            {l.acquired ? isoDate(l.acquired) : <em>no trade date</em>}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Positions({ fund, positions }: { fund: string; positions: Position[] }) {
+  const [open, setOpen] = useState<string | null>(null);
   const byAccount = new Map<string, Position[]>();
   for (const p of positions) {
     const list = byAccount.get(p.accountLabel);
@@ -956,8 +1074,12 @@ function Positions({ positions }: { positions: Position[] }) {
         return (
           <div className="posgroup" key={account}>
             <div className="posacct">{account}</div>
-            {rows.map((p) => (
-              <div className="tbrow static" role="row" key={p.name}>
+            {rows.map((p) => {
+              const id = p.name.split("/").pop() ?? "";
+              const expanded = open === p.name;
+              return (
+              <div className="posrow" key={p.name}>
+              <div className="tbrow static" role="row">
                 <span role="cell">
                   <span className={`an${p.instrument ? "" : " unattr"}`}>
                     {p.instrumentLabel}
@@ -975,7 +1097,14 @@ function Positions({ positions }: { positions: Position[] }) {
                       touch the second. Shown so a reader can see that rather
                       than be told it. */}
                   {p.openLotCount !== "0" ? (
-                    <small className="lots">{count(p.openLotCount)} lots</small>
+                    <button
+                      type="button"
+                      className="lots"
+                      aria-expanded={expanded}
+                      onClick={() => setOpen(expanded ? null : p.name)}
+                    >
+                      {count(p.openLotCount)} lots
+                    </button>
                   ) : null}
                 </span>
                 {/* ⛔ The distinction the whole screen turns on. Two rows can
@@ -999,7 +1128,10 @@ function Positions({ positions }: { positions: Position[] }) {
                 </span>
                 <span role="cell" className="num bal">{money(p.value)}</span>
               </div>
-            ))}
+              {expanded ? <Lots fund={fund} position={id} /> : null}
+              </div>
+              );
+            })}
             <div className="tbfoot" role="row">
               <span role="cell">{account}</span>
               <span role="cell" className="num" />
@@ -1314,7 +1446,8 @@ export default function App() {
                 <div className="empty err">{positions.error.message}</div>
               ) : null}
               <MarkForm fund={fund} />
-              <Positions positions={positions.data ?? []} />
+              {fund ? <LotTerms fund={fund} /> : null}
+              <Positions fund={fundName ?? ""} positions={positions.data ?? []} />
             </>
           ) : view === "data" ? (
             <Data

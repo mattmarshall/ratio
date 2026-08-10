@@ -17,6 +17,7 @@ rust_library(
     crate_name = "ratio_gen",
     edition = "2021",
     deps = [
+        "//crates/ratio-common",
         "//crates/ratio-ingest",
         "//crates/ratio-project",
         "//crates/ratio-rules",

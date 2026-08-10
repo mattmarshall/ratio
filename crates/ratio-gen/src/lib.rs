@@ -123,6 +123,18 @@ fn between(seed: u64, a: u64, b: u64, lo: i64, hi: i64) -> i64 {
     lo + (mix(seed ^ mix(a).wrapping_add(b)) % span) as i64
 }
 
+/// The day the generated fund starts trading, as days since 1970-01-01.
+///
+/// 2006-01-03 — twenty years before the June 2026 valuation date every
+/// measurement here strikes at, which is what "an S&P tracker in its twentieth
+/// year" means when the lots have to carry dates.
+///
+/// ⚠ A CONSTANT, NOT `today`. A generator whose output depended on the day it
+/// ran would produce a different book every morning, and every measurement
+/// taken against one would be unreproducible — the same reason there is no RNG
+/// in this crate.
+const FIRST_TRADE_DAY: i64 = 13_151;
+
 /// Ticker for security `i`. Deterministic, and shaped like a real one.
 pub fn ticker(i: i64) -> String {
     let letters = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -203,8 +215,25 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
         // A ring of open lots: buy, and once there are more than `keep`, sell
         // the oldest. `Ratio.Lots.relief_touches_only_what_it_takes` is the FIFO
         // rule; here it is only the shape that matters.
+        // ⛔ TRADES ARE DATED, AND THE SPACING VARIES BY SECURITY. Without a
+        // trade date a lot has no acquisition date, the holding-period methods
+        // refuse it, and every realized gain lands in `unclassified` — so the
+        // short/long split would be built, shipped and exercised by nothing.
+        // That is the same failure as selling at cost: the engine looks correct
+        // because nothing asks it the question.
+        //
+        // ⚠ THE SPACING HAS TO STRADDLE THE THRESHOLD. A lot is relieved `keep`
+        // buys after it opens, so its holding period is `keep × step` days.
+        // A step that made every security's holding over a year would produce a
+        // book that is entirely long-term, which tests the split no better than
+        // no dates at all. Between 3 and 20 days against these ring sizes puts
+        // securities on both sides of 365.
+        let step = between(shape.seed, 17, i as u64, 3, 20);
         let mut open: std::collections::VecDeque<(i64, i64)> = Default::default();
         for l in 0..opened {
+            // Twenty years of history, ending before the June 2026 valuation
+            // date every measurement here strikes at.
+            let day = ratio_common::iso_date_from_days(FIRST_TRADE_DAY + l * step);
             let units = between(shape.seed, 2, (i * 4096 + l) as u64, 2, 500) * 2;
             let cost = units * between(shape.seed, 3, (i * 4096 + l) as u64, 10_00, 400_00);
             memo.clear();
@@ -223,7 +252,7 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                     },
                     PostingRecord::new(2, -cost),
                 ],
-                trade_date: None,
+                trade_date: Some(day.clone()),
                 announcement: None,
             });
             written += 1;
@@ -251,7 +280,9 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                         c,
                         c + swing,
                     )?,
-                    trade_date: None,
+                    // The same day the buy that displaced it happened, so the
+                    // holding period is exactly `keep` steps.
+                    trade_date: Some(day.clone()),
                     announcement: None,
                 });
                 written += 1;
@@ -501,6 +532,34 @@ mod tests {
             !entries.iter().any(|e| e.id.starts_with("action-")),
             "nothing was rewritten"
         );
+    }
+
+    #[test]
+    fn the_generated_book_realizes_gains_on_both_sides_of_the_threshold() {
+        // ⛔ THE GENERATOR HAS TO EXERCISE WHAT IT CLAIMS TO. It sold at cost
+        // until the gain posting landed, so every disposal realized nothing and
+        // six lot methods ran against a book where the answer was always zero.
+        // The same shape of mistake was live again: undated trades gave every
+        // lot no acquisition date, so the whole realized gain fell into
+        // `unclassified` and the short/long split was exercised by nothing.
+        //
+        // ⚠ BOTH SIDES, NOT JUST NON-ZERO. A book that is entirely long-term
+        // tests the classification no better than one that is entirely
+        // unclassified — it passes whatever the threshold comparison does.
+        let d = tmp("dated");
+        generate(&d, Shape { securities: 20, lots_per: 40, ..Shape::default() }).unwrap();
+        let roles = ratio_rules::ChartRoles { investments: 1, cash: 2, realized_gain: 30 };
+        let p = ratio_project::Projection::of_book(&d).unwrap();
+        let r = p.realized(Some(roles)).value.unwrap();
+
+        assert!(r.short_term < 0, "no short-term gains: {r:?}");
+        assert!(r.long_term < 0, "no long-term gains: {r:?}");
+        assert_eq!(
+            r.short_term + r.long_term + r.unclassified(),
+            r.gain,
+            "the split must partition the total"
+        );
+        assert_eq!(r.unclassified(), 0, "every generated trade carries a date");
     }
 
     #[test]

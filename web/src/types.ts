@@ -42,6 +42,30 @@ export interface Fund {
   /** Facts read off a file that cannot post yet. Non-zero blocks the NAV. */
   pendingFactCount: Int64;
   configDigest: string;
+  /**
+   * Which lots a sale gives up, as the active configuration declares it.
+   *
+   * A term of an administration agreement: four methods give four different
+   * taxable incomes from one holding and one trade, with nothing on the balance
+   * sheet moving. Empty when the book has no configuration.
+   */
+  lotMethod: string;
+  /**
+   * ⛔ CREDIT-NORMAL — a gain reads NEGATIVE. Print it through `gainOf` and
+   * never raw, or every profitable fund shows a minus sign.
+   *
+   * Empty (not "0") when the chart names no realized-gain role: a fund that
+   * realized nothing and a fund whose engine cannot tell are different answers.
+   */
+  realizedGain: Int64;
+  basisRelieved: Int64;
+  /** Parts of `realizedGain`, same sign convention. The three sum to it. */
+  shortTermGain: Int64;
+  longTermGain: Int64;
+  /** Disposals no holding period could be established for. The remainder. */
+  unclassifiedGain: Int64;
+  /** Days held for a gain to be long-term. A jurisdiction's number, not 365. */
+  longTermDays: Int64;
 }
 
 export interface BreakPosting {
@@ -453,6 +477,34 @@ export interface Position {
 
 export interface ListPositionsResponse {
   positions: Position[];
+  nextPageToken: string;
+}
+
+/**
+ * One open tax lot: what was bought, when, and what it cost.
+ *
+ * ⛔ THE HISTORY BEHIND A POSITION, and the one read whose cost grows with it.
+ * A fund's positions are a chart of a few hundred lines whatever its age; its
+ * lots are every purchase it still holds. Fetched per position, on demand, and
+ * there is deliberately no way to ask for every lot in the fund at once.
+ */
+export interface Lot {
+  name: string;
+  /** Acquisition order — the journal position of the entry that opened it. */
+  sequence: Int64;
+  units: Int64;
+  /** ⛔ COST, NOT VALUE. A lot is never revalued. */
+  cost: Int64;
+  /**
+   * ⛔ NULL when the entry that opened it carried no trade date, and the
+   * holding-period methods REFUSE such a holding rather than guessing. Both
+   * defaults are wrong in opposite directions.
+   */
+  acquired: CalendarDate | null;
+}
+
+export interface ListLotsResponse {
+  lots: Lot[];
   nextPageToken: string;
 }
 
