@@ -440,6 +440,14 @@ export interface Position {
    * and nobody has priced it. A screen that does not distinguish them is
    * reporting an opinion as a fact.
    */
+  /**
+   * How many open tax lots stand behind this figure.
+   *
+   * ⛔ The number that does NOT appear in a NAV, shown beside one that does.
+   * A position is a chart and its lots are a history; the whole scale argument
+   * is that valuing the first does not touch the second.
+   */
+  openLotCount: Int64;
   markDate: CalendarDate | null;
 }
 

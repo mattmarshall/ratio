@@ -381,7 +381,9 @@ impl Projection {
                     // notice, and say which figure it disagrees with.
                     if -p.amount != r.cost {
                         self.lots.breaks.push(format!(
-                            "{}: selling {} of {} posted {} of basis, and relieving the lots                              oldest-first costs {} — the position and the lot book will                              disagree by {}",
+                            "{}: selling {} of {} posted {} of basis, and relieving the lots \
+                             oldest-first costs {} — the position and the lot book \
+                             will disagree by {}",
                             entry.id,
                             -qty,
                             inst,

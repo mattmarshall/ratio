@@ -403,6 +403,10 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
    color, not the failure one: nothing is wrong yet, and that is exactly the
    point — an unapplied action is the term that dominates the cost of a period
    end and the reason a NAV gets qualified. */
+/* The open-lot count beside a position's units. Quiet — it is context for the
+   figure, not a figure. */
+.lots{display:block;color:var(--muted);font-size:11px;font-weight:400;letter-spacing:.02em}
+
 .unapplied{color:var(--warn);font-size:12px;font-weight:600;letter-spacing:.04em}
 
 .qual{margin-top:6px;padding:7px 10px;border-radius:7px;font-size:12px;

@@ -128,6 +128,19 @@ function Strike({ s }: { s: NavStrike }) {
   );
 }
 
+/**
+ * Whether a break is a difference between two figures.
+ *
+ * ⛔ A reconciliation break has a Ratio figure, a reported figure, and a gap. A
+ * LOT break has none of those — it is a sale the engine could not relieve, and
+ * the figure it corrupts is the realized gain, which has no counterparty and so
+ * cannot be reconciled against anything. Rendering it through the money path
+ * shows 0.00 on a HIGH-severity row, which reads as "nothing is wrong".
+ */
+function isMoneyBreak(b: Break): boolean {
+  return b.ratioAmount !== "0" || b.reportedAmount !== "0" || b.difference !== "0";
+}
+
 function Detail({ brk }: { brk: Break | undefined }) {
   if (!brk) {
     return <aside className="detail"><div className="empty">Select a break.</div></aside>;
@@ -139,14 +152,32 @@ function Detail({ brk }: { brk: Break | undefined }) {
         <div className="sub">{brk.cause}</div>
       </div>
 
-      <div className="dsec">
-        <h3>The two figures</h3>
-        <dl className="kv">
-          <dt>Ratio</dt><dd className="num">{money(brk.ratioAmount)}</dd>
-          <dt>Reported</dt><dd className="num">{money(brk.reportedAmount)}</dd>
-          <dt>Difference</dt><dd className="num">{money(brk.difference)}</dd>
-        </dl>
-      </div>
+      {/* ⛔ NOT EVERY BREAK IS A MONEY DIFFERENCE. A reconciliation break has
+          two figures and a gap between them; a lot break has none — it is a
+          sale the engine could not relieve, and the figure it corrupts is the
+          realized gain, which has no counterparty to be reconciled against.
+          Showing 0.00 / 0.00 / 0.00 on a HIGH-severity break reads as "nothing
+          is wrong", which is the opposite of what it means. */}
+      {isMoneyBreak(brk) ? (
+        <div className="dsec">
+          <h3>The two figures</h3>
+          <dl className="kv">
+            <dt>Ratio</dt><dd className="num">{money(brk.ratioAmount)}</dd>
+            <dt>Reported</dt><dd className="num">{money(brk.reportedAmount)}</dd>
+            <dt>Difference</dt><dd className="num">{money(brk.difference)}</dd>
+          </dl>
+        </div>
+      ) : (
+        <div className="dsec">
+          <h3>Why this blocks</h3>
+          <p className="note">
+            There are no two figures to compare. The lot engine could not
+            relieve this sale, so the position and the lot book disagree — and
+            what that corrupts is the realized gain, which no reconciliation
+            reaches because it has no counterparty.
+          </p>
+        </div>
+      )}
 
       <div className="dsec postings">
         <h3>What produced ours</h3>
@@ -937,6 +968,15 @@ function Positions({ positions }: { positions: Position[] }) {
                 </span>
                 <span role="cell" className="num">
                   {p.quantity === "0" ? "—" : count(p.quantity)}
+                  {/* ⛔ THE NUMBER THAT DOES NOT APPEAR IN THE NAV, BESIDE ONE
+                      THAT DOES. A position is a chart and its lots are a
+                      history — twenty thousand lots produce one line, and the
+                      whole scale argument is that valuing the first does not
+                      touch the second. Shown so a reader can see that rather
+                      than be told it. */}
+                  {p.openLotCount !== "0" ? (
+                    <small className="lots">{count(p.openLotCount)} lots</small>
+                  ) : null}
                 </span>
                 {/* ⛔ The distinction the whole screen turns on. Two rows can
                     show the same number for opposite reasons: one because that
@@ -1366,16 +1406,20 @@ export default function App() {
                   <span className={`sev ${SEVERITY_CLASS[b.severity]}`} />
                   <span>
                     <div className="title">
-                      {b.account} — {money(b.difference)}
+                      {b.account}
+                      {isMoneyBreak(b) ? ` — ${money(b.difference)}` : ""}
                     </div>
                     <div className="why">
-                      {b.cause} · {b.postings.length} posting
-                      {b.postings.length === 1 ? "" : "s"} under configuration{" "}
-                      {b.configDigest.slice(0, 7)}
+                      {b.cause}
+                      {isMoneyBreak(b)
+                        ? ` · ${b.postings.length} posting${
+                            b.postings.length === 1 ? "" : "s"
+                          } under configuration ${b.configDigest.slice(0, 7)}`
+                        : ""}
                     </div>
                   </span>
                   <span className={`amt num${b.explained ? "" : " pos"}`}>
-                    {money(b.difference)}
+                    {isMoneyBreak(b) ? money(b.difference) : "—"}
                     <small>{b.explained ? "explained" : "open"}</small>
                   </span>
                 </button>

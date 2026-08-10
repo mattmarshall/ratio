@@ -1251,6 +1251,15 @@ message Position {
   // instrument partitions where it sits, not how much there is.
   string value = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 
+  // How many open tax lots stand behind this figure.
+  //
+  // ⛔ THE NUMBER THAT DOES NOT APPEAR IN A NAV, SHOWN NEXT TO ONE THAT DOES.
+  // `Ratio.Closure.factored_nav_never_reads_the_lots` — a position is a chart
+  // and its lots are a history, and the whole scale argument is that valuing
+  // the first does not touch the second. Putting them side by side is what lets
+  // a reader see that twenty thousand lots produced one line.
+  int64 open_lot_count = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+
   // The valuation date this was last marked at, ABSENT if it never has been.
   //
   // ⛔ THE DIFFERENCE BETWEEN COST AND MARKET, ON THE FACE OF THE FIGURE. Two

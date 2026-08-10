@@ -617,9 +617,18 @@ impl Console {
             }
         }
 
+        // The lot book, so a position can say how many lots stand behind it.
+        // ⛔ `Ratio.Closure.factored_nav_never_reads_the_lots` is the claim that
+        // this number does not appear in the NAV; showing it beside one that
+        // does is what lets a reader see the claim rather than be told it.
+        let proj = self.projection(fund).ok();
         let mut out: Vec<pb::Position> = held
             .into_iter()
             .map(|((dim, instrument), (value, quantity))| pb::Position {
+                open_lot_count: proj
+                    .as_ref()
+                    .map(|p| p.lots_of(dim, &instrument).value.len() as i64)
+                    .unwrap_or(0),
                 name: format!("funds/{fund}/positions/{dim}-{instrument}"),
                 account: format!("funds/{fund}/accounts/{dim}"),
                 account_label: label(dim),
@@ -646,6 +655,9 @@ impl Console {
                 instrument_label: "Not attributed".into(),
                 quantity: "0".into(),
                 value: value.to_string(),
+                // ⚠ Value attributed to no instrument has no lots by
+                // construction — a lot is a purchase of something.
+                open_lot_count: 0,
                 mark_date: None,
             });
         }
@@ -1720,9 +1732,49 @@ impl Console {
     /// Returns none rather than failing when a fund has no report: a fund that
     /// has not been reconciled yet is a normal state on a NAV morning, not an
     /// error.
+    /// Sales the lot engine could not relieve, as breaks.
+    ///
+    /// ⛔ IN THE EXCEPTIONS LIST, NOT A SCREEN OF THEIR OWN. A lot break is an
+    /// unresolved difference on a fund that an operator has to work — which is
+    /// exactly what a break is — and inventing a second place to look is how a
+    /// thing gets looked at by nobody. `Ratio.Lots.Edges` and
+    /// `partial_relief_is_exactly_pro_rata` are what produce them.
+    ///
+    /// ⚠ SEVERITY HIGH, and not because of the amount. Every other break is
+    /// graded by how much money is at stake; these are graded by what they mean.
+    /// A sale that could not be relieved leaves the lot book and the position
+    /// disagreeing, and the figure it corrupts is the REALIZED GAIN — which no
+    /// reconciliation reaches, because it has no counterparty. A small one is
+    /// not a small problem.
+    fn lot_breaks_for(&self, fund: &str) -> Result<Vec<pb::Break>> {
+        let proj = self.projection(fund)?;
+        Ok(proj
+            .lot_breaks()
+            .iter()
+            .enumerate()
+            .map(|(i, why)| pb::Break {
+                name: format!("funds/{fund}/breaks/lot-{}", i + 1),
+                account: "Tax lots".into(),
+                account_dimension: 0,
+                severity: pb::Severity::High as i32,
+                explained: false,
+                cause: why.clone(),
+                ratio_amount: "0".into(),
+                reported_amount: "0".into(),
+                difference: "0".into(),
+                postings: Vec::new(),
+                config_digest: String::new(),
+            })
+            .collect())
+    }
+
     fn breaks_for(&self, book: &Path, fund: &str) -> Result<Vec<pb::Break>> {
         let Some(report) = newest_report(book)? else {
-            return Ok(Vec::new());
+            // ⚠ STILL RETURNS THE LOT BREAKS. A fund with no reconciliation
+            // report has no recon breaks, and used to have no breaks at all —
+            // so a lot break on such a fund would have been invisible for the
+            // want of an unrelated file.
+            return self.lot_breaks_for(fund);
         };
         let b = FileBook::open(book)?;
         let dims: BTreeMap<String, i64> =
@@ -1777,6 +1829,8 @@ impl Console {
         // Largest first: the queue is ordered by money, because that is the
         // order an operator with a deadline works in.
         out.sort_by_key(|k| -k.difference.parse::<i64>().unwrap_or(0).abs());
+        // ⛔ And the lot engine's, in the same list.
+        out.extend(self.lot_breaks_for(fund)?);
         Ok(out)
     }
 
@@ -2153,6 +2207,62 @@ mod tests {
         let p = c.projection("demo").unwrap();
         assert_eq!(p.prefix(), 1, "rebuilt from the new book, not spliced onto the old");
         assert_eq!(p.nav(&|dim| dim == 1).unwrap().value.0, 11, "and the totals are the new book's");
+    }
+
+    #[test]
+    fn a_sale_the_lot_engine_could_not_relieve_is_an_exception() {
+        // ⛔ IN THE EXCEPTIONS LIST, WHERE AN OPERATOR ALREADY LOOKS. A lot
+        // break was computed into a void: the projection reported it and no
+        // surface showed it. Inventing a second screen is how a thing gets
+        // looked at by nobody.
+        let d = fresh("lotbrk");
+        book(&d);
+        {
+            use ratio_store::{JournalEntry, PostingRecord};
+            let mut b = FileBook::open(&d).unwrap();
+            let cfg = b.active().unwrap().unwrap();
+            // Seven units in, three out — a pro-rata split that will not divide.
+            b.append(&JournalEntry {
+                id: "buy".into(),
+                memo: "buy".into(),
+                config: cfg.clone(),
+                postings: vec![
+                    PostingRecord { dim: 1, amount: 100, currency: None, instrument: Some("VTI".into()), quantity: Some(7) },
+                    PostingRecord::new(2, -100),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap();
+            b.append(&JournalEntry {
+                id: "sell".into(),
+                memo: "sell".into(),
+                config: cfg,
+                postings: vec![
+                    PostingRecord { dim: 1, amount: -45, currency: None, instrument: Some("VTI".into()), quantity: Some(-3) },
+                    PostingRecord::new(2, 45),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap();
+        }
+
+        let c = Console::new(&d);
+        let breaks = c.list_breaks("funds/demo", "").unwrap().breaks;
+        let lot: Vec<_> = breaks.iter().filter(|b| b.name.contains("lot-")).collect();
+        assert_eq!(lot.len(), 1, "{:?}", breaks.iter().map(|b| &b.cause).collect::<Vec<_>>());
+        assert!(lot[0].cause.contains("administration agreement"), "{}", lot[0].cause);
+
+        // ⚠ HIGH, and not because of the amount. Every other break is graded by
+        // money at stake; this one is graded by what it means — the figure it
+        // corrupts is the realized gain, which no reconciliation reaches.
+        assert_eq!(lot[0].severity, pb::Severity::High as i32);
+
+        // And it survives the blocking filter, which is what an operator uses
+        // to find the things that stop a NAV.
+        let blocking = c.list_breaks("funds/demo", "blocking").unwrap().breaks;
+        assert!(blocking.iter().any(|b| b.name.contains("lot-")));
     }
 
     #[test]
