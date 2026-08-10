@@ -126,9 +126,10 @@ struct Actions {
 /// Open tax lots, per position, and what relieving them has cost.
 ///
 /// ⛔ THE LOTS ARE MAINTAINED BY THE FOLD, not derived on demand. A buy opens a
-/// lot; a sale relieves oldest-first through `relief::relieve`, which is the
-/// walk `Ratio.Lots` proves. Deriving them on demand would mean re-walking the
-/// journal per query — the cost this whole crate exists to remove.
+/// lot; a sale relieves through `relief::relieve_by` under the method the
+/// entry's own configuration named, which is the walk `Ratio.Lots` proves.
+/// Deriving them on demand would mean re-walking the journal per query — the
+/// cost this whole crate exists to remove.
 ///
 /// ⚠ AND THIS IS WHERE THE MEMORY IS. Positions are a chart: five hundred
 /// entries for an S&P tracker whatever its history. Lots are a HISTORY: twenty
@@ -176,6 +177,19 @@ pub struct Projection {
     /// contents are folded twice is not detectably wrong — the number is simply
     /// too big.
     at: usize,
+    /// The relief method each configuration names, resolved once per digest.
+    ///
+    /// ⛔ CACHED BY DIGEST BECAUSE THE FOLD IS PER ENTRY. A book holds a handful
+    /// of configurations and millions of entries naming them; reading and
+    /// parsing the TOML per entry would be most of the cost of a cold build.
+    /// `FileBook::append_all` caches its provenance check the same way and for
+    /// the same reason.
+    ///
+    /// ⚠ AN UNRESOLVABLE CONFIG IS HELD AS ITS ERROR, never as a default. This
+    /// is the one place where guessing is worst: FIFO is the right answer for
+    /// some fund somewhere, so a guess that lands on it is indistinguishable
+    /// from having read it.
+    methods: BTreeMap<ratio_store::Digest, Result<relief::Method, String>>,
 }
 
 impl Projection {
@@ -203,9 +217,17 @@ impl Projection {
     /// timing test that passes on a rebuild fast enough to look incremental
     /// proves nothing. A maintained projection folds the DELTA; this is the
     /// number that says so.
-    pub fn advance(&mut self, journal: &[JournalEntry]) -> usize {
+    ///
+    /// ⛔ THE METHOD IS A PARAMETER AND HAS NO DEFAULT. A slice of entries does
+    /// not carry the configurations they named — only `follow` can read those —
+    /// so a caller folding this way must say which method the whole slice was
+    /// relieved under. It read `Method::Fifo` implicitly for a long time, which
+    /// meant a fund declaring HIFO was relieved FIFO while every other figure
+    /// agreed: `//tla:stale_method_relief_check`. An unparameterized `advance`
+    /// is that defect with a shorter signature.
+    pub fn advance(&mut self, journal: &[JournalEntry], method: relief::Method) -> usize {
         for (i, entry) in journal.iter().enumerate().skip(self.at) {
-            self.fold(i, entry);
+            self.fold(i, entry, &Ok(method));
         }
         let folded = journal.len().saturating_sub(self.at);
         // ⛔ `max`, NOT `= journal.len()`. A SHORTER journal must not rewind the
@@ -230,8 +252,13 @@ impl Projection {
     /// would be two chances to disagree about what an entry means, and the
     /// disagreement would be a NAV that changed depending on how the projection
     /// happened to be brought up to date.
-    fn fold(&mut self, at: usize, entry: &JournalEntry) {
-        self.fold_lots(at, entry);
+    fn fold(
+        &mut self,
+        at: usize,
+        entry: &JournalEntry,
+        method: &Result<relief::Method, String>,
+    ) {
+        self.fold_lots(at, entry, method);
         if let Some(a) = &entry.announcement {
             self.actions.announced.push((
                 a.instrument.clone(),
@@ -269,9 +296,13 @@ impl Projection {
     ///
     /// Discards everything first, so this is a rebuild rather than a second
     /// advance — the distinction `//tla:rebuild_double_counts_check` is about.
-    pub fn rebuild(journal: &[JournalEntry]) -> Self {
+    ///
+    /// Takes the method for the same reason `advance` does: a slice of entries
+    /// is not a book, and the configurations they name are only readable from
+    /// one.
+    pub fn rebuild(journal: &[JournalEntry], method: relief::Method) -> Self {
         let mut p = Self::new();
-        let _ = p.advance(journal);
+        let _ = p.advance(journal, method);
         p
     }
 
@@ -295,14 +326,51 @@ impl Projection {
     /// path — and resuming from a stale offset would splice two histories and
     /// fold the result as one.
     pub fn follow(&mut self, path: &std::path::Path) -> Result<usize> {
-        let (fresh, now) = FileBook::open(path)?.entries_since(self.read_to)?;
+        let book = FileBook::open(path)?;
+        let (fresh, now) = book.entries_since(self.read_to)?;
+        // ⛔ RESOLVE PER DISTINCT CONFIG, NOT PER ENTRY. Every entry names the
+        // digest it was posted under and millions of them name the same one;
+        // parsing that TOML per entry would put a config read on the hot path of
+        // the cold build. The cache is keyed on the digest, so this costs one
+        // read per configuration a book has ever promoted.
+        for entry in &fresh {
+            if !self.methods.contains_key(&entry.config) {
+                let resolved = Self::method_of(&book, &entry.config);
+                self.methods.insert(entry.config.clone(), resolved);
+            }
+        }
         let n = fresh.len();
         for (i, entry) in fresh.iter().enumerate() {
-            self.fold(self.at + i, entry);
+            // Present because the loop above inserted it.
+            let method = self.methods.get(&entry.config).cloned().unwrap_or_else(|| {
+                Err("the configuration was not resolved before folding".to_string())
+            });
+            self.fold(self.at + i, entry, &method);
         }
         self.at += n;
         self.read_to = now;
         Ok(n)
+    }
+
+    /// The relief method a stored configuration names.
+    ///
+    /// ⚠ THE ERROR IS CARRIED, NOT RAISED. A configuration that cannot be read
+    /// concerns the sales posted under it, not the whole fund — the same
+    /// judgement `LotBook::breaks` already makes. A projection that refused to
+    /// build would take a fund's NAV down over one bad config, and the NAV does
+    /// not read the lots at all (`Ratio.Closure.factored_nav_never_reads_the_
+    /// lots`).
+    fn method_of(
+        book: &FileBook,
+        config: &ratio_store::Digest,
+    ) -> Result<relief::Method, String> {
+        use ratio_store::ConfigStore;
+        let bytes = book
+            .get(config)
+            .map_err(|e| format!("config {} could not be read — {e:#}", config.as_str()))?;
+        let set = ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&bytes))
+            .map_err(|e| format!("config {} is not a rule set — {e:#}", config.as_str()))?;
+        Ok(set.lot_method.into())
     }
 
     /// The positions, as of the prefix folded.
@@ -335,7 +403,20 @@ impl Projection {
     /// stability of the sort, and the ordinals differed between a cold build and
     /// an incremental one. `the_lot_book_advances_with_everything_else` caught
     /// it; nothing else would have.
-    fn fold_lots(&mut self, at: usize, entry: &JournalEntry) {
+    ///
+    /// ⛔ `method` IS THE ONE THE ENTRY'S OWN CONFIGURATION NAMED, resolved by
+    /// the caller. Which lots a sale gives up is a term of an administration
+    /// agreement — `Ratio.Lots.Methods.the_method_decides_the_taxable_gain` is
+    /// four methods giving four different taxable incomes from one holding and
+    /// one trade — so relieving under anything else is relieving somebody
+    /// else's book. It is silent: the units left are right, the proceeds are
+    /// right, the trial balance ties, and only the realized gain moves.
+    fn fold_lots(
+        &mut self,
+        at: usize,
+        entry: &JournalEntry,
+        method: &Result<relief::Method, String>,
+    ) {
         for p in &entry.postings {
             let (Some(inst), Some(qty)) = (&p.instrument, p.quantity) else {
                 continue;
@@ -362,9 +443,27 @@ impl Projection {
                 });
                 continue;
             }
-            // A sale relieves.
+            // A sale relieves — under the method this entry's configuration
+            // named, or not at all.
+            //
+            // ⛔ A CONFIGURATION THAT COULD NOT BE READ REFUSES THE RELIEF. The
+            // tempting fallback is FIFO, and it is the worst available answer:
+            // it is a real method that real funds elect, so a book relieved
+            // under it by accident is indistinguishable from one relieved under
+            // it by agreement. A break says which sale and why.
+            let method = match method {
+                Ok(m) => *m,
+                Err(why) => {
+                    self.lots.breaks.push(format!(
+                        "{}: selling {} of {} could not be relieved — the lot method is \
+                         not known: {why}",
+                        entry.id, -qty, inst
+                    ));
+                    continue;
+                }
+            };
             let held = self.lots.open.entry(key.clone()).or_default();
-            match relief::relieve(held, -qty) {
+            match relief::relieve_by(method, held, -qty) {
                 Ok(r) => {
                     // ⛔ THE POSITION AND THE LOT BOOK ARE TWO INDEPENDENT
                     // PATHS, AND NOTHING FORCES THEM TO AGREE. The aggregate
@@ -379,15 +478,21 @@ impl Projection {
                     // system-level obligation, and a derived model cannot
                     // enforce it — the journal is the record. What it can do is
                     // notice, and say which figure it disagrees with.
+                    // ⚠ NAMES THE METHOD IT ACTUALLY USED. This message said
+                    // "oldest-first" whatever the fund had elected, back when
+                    // the fold ignored the configuration — so the one line an
+                    // operator would read to investigate a drift asserted the
+                    // very thing that was wrong.
                     if -p.amount != r.cost {
                         self.lots.breaks.push(format!(
                             "{}: selling {} of {} posted {} of basis, and relieving the lots \
-                             oldest-first costs {} — the position and the lot book \
+                             {} costs {} — the position and the lot book \
                              will disagree by {}",
                             entry.id,
                             -qty,
                             inst,
                             -p.amount,
+                            method.describe(),
                             r.cost,
                             -p.amount - r.cost
                         ));
@@ -527,6 +632,14 @@ impl Projection {
 mod tests {
     use super::*;
     use ratio_store::{Account, AccountTypeRecord as A, ConfigStore, PostingRecord};
+
+    /// The method the slice-folding tests below are written against.
+    ///
+    /// ⚠ Named rather than defaulted. Every one of these tests was written when
+    /// the fold relieved FIFO unconditionally, so FIFO is what preserves their
+    /// meaning — but a test that does not say which method it assumes is a test
+    /// that cannot notice the method changing under it.
+    const FIFO: relief::Method = relief::Method::Fifo;
 
     fn book(name: &str, trades: &[(&str, i64, i64)]) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("ratio-project-{name}"));
@@ -755,9 +868,9 @@ mod tests {
 
         let mut piecemeal = Projection::new();
         for n in 1..=js.len() {
-            piecemeal.advance(&js[..n]);
+            piecemeal.advance(&js[..n], FIFO);
         }
-        let cold = Projection::rebuild(&js);
+        let cold = Projection::rebuild(&js, FIFO);
         assert_eq!(piecemeal.open_lots(), cold.open_lots());
         assert_eq!(piecemeal.relieved_cost(), cold.relieved_cost());
         assert_eq!(piecemeal.lots_of(1, "vti").value, cold.lots_of(1, "vti").value);
@@ -770,7 +883,7 @@ mod tests {
         // it is a second opinion nobody asked for and nobody can adjudicate.
         let d = book("agrees", &[("vti", 25_000, 100), ("voo", 10_000, 40), ("vti", 5_000, 20)]);
         let js = entries(&d);
-        let p = Projection::rebuild(&js);
+        let p = Projection::rebuild(&js, FIFO);
 
         let (held, rest) = FileBook::open(&d).unwrap().positions().unwrap();
         assert_eq!(p.positions().value.held, held);
@@ -790,7 +903,7 @@ mod tests {
             &[("vti", 25_000, 100), ("voo", 10_000, 40), ("vti", 5_000, 20)],
         );
         let js = entries(&d);
-        let p = Projection::rebuild(&js);
+        let p = Projection::rebuild(&js, FIFO);
 
         // dims 1 and 2 are assets in `book()`; nothing else is.
         let got = p.nav(&|dim| dim == 1 || dim == 2).unwrap();
@@ -807,7 +920,7 @@ mod tests {
         // figure would look "balanced" and be worthless, which is the sign
         // error this fold exists to avoid.
         let d = book("navdims", &[("vti", 25_000, 100)]);
-        let p = Projection::rebuild(&entries(&d));
+        let p = Projection::rebuild(&entries(&d), FIFO);
         assert_eq!(p.nav(&|dim| dim == 1 || dim == 2).unwrap().value.0, 0, "buy: asset in, cash out");
         assert_eq!(p.nav(&|dim| dim == 1).unwrap().value.0, 25_000, "investments alone");
     }
@@ -821,10 +934,10 @@ mod tests {
         let js = entries(&d);
         let mut piecemeal = Projection::new();
         for n in 1..=js.len() {
-            piecemeal.advance(&js[..n]);
+            piecemeal.advance(&js[..n], FIFO);
         }
         let assets = |dim: i64| dim == 1 || dim == 2;
-        assert_eq!(piecemeal.nav(&assets).unwrap(), Projection::rebuild(&js).nav(&assets).unwrap());
+        assert_eq!(piecemeal.nav(&assets).unwrap(), Projection::rebuild(&js, FIFO).nav(&assets).unwrap());
     }
 
     #[test]
@@ -837,9 +950,9 @@ mod tests {
         let js = entries(&d);
 
         let mut p = Projection::new();
-        p.advance(&js);
+        p.advance(&js, FIFO);
         let once = p.cost_of("vti");
-        p.advance(&js);
+        p.advance(&js, FIFO);
         let twice = p.cost_of("vti");
 
         assert_eq!(once.value, 30_000);
@@ -856,9 +969,9 @@ mod tests {
 
         let mut piecemeal = Projection::new();
         for n in 1..=js.len() {
-            piecemeal.advance(&js[..n]);
+            piecemeal.advance(&js[..n], FIFO);
         }
-        assert_eq!(piecemeal.positions().value, &Projection::rebuild(&js).positions().value.clone());
+        assert_eq!(piecemeal.positions().value, &Projection::rebuild(&js, FIFO).positions().value.clone());
         assert_eq!(piecemeal.prefix(), js.len());
     }
 
@@ -875,14 +988,14 @@ mod tests {
         let js = entries(&d);
 
         let mut p = Projection::new();
-        assert_eq!(p.advance(&js), 3, "the first pass folds everything");
-        assert_eq!(p.advance(&js), 0, "and a second folds nothing at all");
-        assert_eq!(p.advance(&js[..2]), 0, "a SHORTER journal folds nothing either");
+        assert_eq!(p.advance(&js, FIFO), 3, "the first pass folds everything");
+        assert_eq!(p.advance(&js, FIFO), 0, "and a second folds nothing at all");
+        assert_eq!(p.advance(&js[..2], FIFO), 0, "a SHORTER journal folds nothing either");
 
         // One more arrives.
         let mut grown = js.clone();
         grown.push(js[0].clone());
-        assert_eq!(p.advance(&grown), 1, "only the new entry");
+        assert_eq!(p.advance(&grown, FIFO), 1, "only the new entry");
         assert_eq!(p.prefix(), 4);
     }
 
@@ -953,7 +1066,7 @@ mod tests {
         let js = entries(&d);
 
         let mut p = Projection::new();
-        p.advance(&js[..1]);
+        p.advance(&js[..1], FIFO);
 
         let read = p.cost_of("vti");
         assert_eq!(read.prefix, 1, "what it folded");
@@ -968,7 +1081,7 @@ mod tests {
         // caller can shape the value without ever getting the chance to restate
         // where it came from.
         let d = book("map", &[("vti", 10, 1)]);
-        let p = Projection::rebuild(&entries(&d));
+        let p = Projection::rebuild(&entries(&d), FIFO);
         let doubled = p.cost_of("vti").map(|v| v * 2);
         assert_eq!(doubled, AsOf { value: 20, prefix: 1 });
     }
@@ -1000,7 +1113,7 @@ mod tests {
         let mut js = entries(&d);
         let cfg = js[0].config.clone();
         js.push(announce("ca-1", "vti", 2, 1, "2026-01-15", &cfg));
-        let p = Projection::rebuild(&js);
+        let p = Projection::rebuild(&js, FIFO);
 
         assert_eq!(p.units_as_of(1, "vti", "2026-01-14").unwrap().value, 100, "before the ex-date");
         assert_eq!(p.units_as_of(1, "vti", "2026-02-01").unwrap().value, 200, "on and after it");
@@ -1022,7 +1135,7 @@ mod tests {
         let mut js = entries(&d);
         let cfg = js[0].config.clone();
         js.push(announce("ca-1", "vti", 2, 1, "2026-01-15", &cfg));
-        let p = Projection::rebuild(&js);
+        let p = Projection::rebuild(&js, FIFO);
 
         assert_eq!(p.units_as_of(1, "vti", "2026-01-14").unwrap().value, 50, "the day before");
         assert_eq!(p.units_as_of(1, "vti", "2026-01-15").unwrap().value, 100, "ON the ex-date");
@@ -1038,7 +1151,7 @@ mod tests {
         let mut js = entries(&d);
         let cfg = js[0].config.clone();
         js.push(announce("ca-1", "vti", 2, 1, "2026-01-15", &cfg));
-        let p = Projection::rebuild(&js);
+        let p = Projection::rebuild(&js, FIFO);
 
         assert_eq!(p.units_as_of(1, "vti", "2026-02-01").unwrap().value, 100, "split");
         assert_eq!(p.units_as_of(1, "voo", "2026-02-01").unwrap().value, 80, "untouched");
@@ -1071,7 +1184,7 @@ mod tests {
             trade_date: None,
             announcement: None,
         });
-        let p = Projection::rebuild(&js);
+        let p = Projection::rebuild(&js, FIFO);
 
         assert_eq!(
             p.positions().value.held[&(1, "vti".into())].1,
@@ -1091,7 +1204,7 @@ mod tests {
         let mut js = entries(&d);
         let cfg = js[0].config.clone();
         js.push(announce("ca-1", "vti", 3, 2, "2026-01-15", &cfg));
-        let p = Projection::rebuild(&js);
+        let p = Projection::rebuild(&js, FIFO);
 
         assert_eq!(p.units_as_of(1, "vti", "2026-01-14").unwrap().value, 5, "before: fine");
         let err = p.units_as_of(1, "vti", "2026-02-01").unwrap_err();
@@ -1106,15 +1219,198 @@ mod tests {
         let mut js = entries(&d);
         let cfg = js[0].config.clone();
         js.push(announce("ca-1", "vti", 2, 1, "2026-01-15", &cfg));
-        let p = Projection::rebuild(&js);
+        let p = Projection::rebuild(&js, FIFO);
         assert_eq!(p.units_as_of(1, "vti", "2026-02-01").unwrap().prefix, 2);
     }
 
     #[test]
     fn an_empty_journal_projects_to_nothing_at_position_zero() {
-        let p = Projection::rebuild(&[]);
+        let p = Projection::rebuild(&[], FIFO);
         assert_eq!(p.prefix(), 0);
         assert_eq!(p.cost_of("vti"), AsOf { value: 0, prefix: 0 });
         assert!(p.is_current_with(0), "current with an empty journal, not stale");
+    }
+
+    /// A book whose active configuration declares `method`, holding one cheap
+    /// lot and one dear one.
+    ///
+    /// ⚠ The two costs are 10 and 40 on one unit each, which is
+    /// `Ratio.Lots.Methods.the_method_decides_the_taxable_gain`'s own holding.
+    /// Lots far apart in cost are what makes the methods DISTINGUISHABLE — a
+    /// holding whose lots cost the same is relieved identically by all six, and
+    /// a test built on one would pass against any wiring at all.
+    fn book_electing(name: &str, method: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("ratio-project-{name}"));
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+        ])
+        .unwrap();
+        let c = b.put(format!("lot_method = \"{method}\"\nrules = []\n").as_bytes()).unwrap();
+        b.set_active(&c).unwrap();
+        for (n, (cost, qty)) in [(10i64, 1i64), (40, 1)].iter().enumerate() {
+            b.append(&JournalEntry {
+                id: format!("b{n}"),
+                memo: "buy".into(),
+                config: c.clone(),
+                postings: vec![
+                    PostingRecord {
+                        dim: 1,
+                        amount: *cost,
+                        currency: None,
+                        instrument: Some("vti".into()),
+                        quantity: Some(*qty),
+                    },
+                    PostingRecord::new(2, -*cost),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap();
+        }
+        d
+    }
+
+    #[test]
+    fn the_declared_method_is_the_method_the_fold_relieves_under() {
+        // ⛔ THE TEST THIS ENGINE DID NOT HAVE. `the_configured_method_reaches_
+        // the_engine` in relief.rs proves the ENUM MAPPING is faithful; nothing
+        // proved the mapping was ever consulted. It was not: `fold_lots` called
+        // `relief::relieve`, which is FIFO whatever the fund elected, so a book
+        // declaring HIFO was relieved FIFO with every other figure agreeing —
+        // the units left were right, the proceeds were right, the trial balance
+        // tied, and only the realized gain moved.
+        let d = book_electing("elects-hifo", "hifo");
+        sell(&d, "s1", "vti", 1, 40);
+        let p = Projection::of_book(&d).unwrap();
+
+        assert_eq!(p.relieved_cost(), 40, "HIFO gives up the DEAR lot, not the old one");
+        let left = p.lots_of(1, "vti").value;
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].cost, 10, "the cheap lot is what remains");
+        assert!(p.lot_breaks().is_empty(), "{:?}", p.lot_breaks());
+    }
+
+    #[test]
+    fn electing_a_different_method_relieves_a_different_lot() {
+        // The other half of the same claim. One of these passing alone proves
+        // nothing — a fold hardcoded to either method passes one of them.
+        let d = book_electing("elects-fifo", "fifo");
+        sell(&d, "s1", "vti", 1, 10);
+        let p = Projection::of_book(&d).unwrap();
+
+        assert_eq!(p.relieved_cost(), 10, "FIFO gives up the OLD lot");
+        assert_eq!(p.lots_of(1, "vti").value[0].cost, 40);
+    }
+
+    #[test]
+    fn a_method_change_applies_to_the_entries_posted_after_it() {
+        // ⛔ THE METHOD IS RESOLVED PER ENTRY, from the config that entry
+        // pinned — `//tla:stale_method_relief_check`. A projection holding ONE
+        // method would relieve the whole journal under whichever it happened to
+        // be handed, and a fund that changed method mid-year would have its
+        // earlier sales silently restated.
+        let d = book_electing("changes-method", "fifo");
+        sell(&d, "s-under-fifo", "vti", 1, 10);
+
+        // A new rule set is promoted. Nothing already posted moves.
+        let mut b = FileBook::open(&d).unwrap();
+        let hifo = b.put(b"lot_method = \"hifo\"\nrules = []\n").unwrap();
+        b.set_active(&hifo).unwrap();
+        drop(b);
+
+        // Two more lots, then a sale under the new method.
+        for (n, cost) in [(0usize, 30i64), (1, 60)] {
+            let mut b = FileBook::open(&d).unwrap();
+            b.append(&JournalEntry {
+                id: format!("b-after-{n}"),
+                memo: "buy".into(),
+                config: hifo.clone(),
+                postings: vec![
+                    PostingRecord {
+                        dim: 1,
+                        amount: cost,
+                        currency: None,
+                        instrument: Some("vti".into()),
+                        quantity: Some(1),
+                    },
+                    PostingRecord::new(2, -cost),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap();
+        }
+        sell(&d, "s-under-hifo", "vti", 1, 60);
+
+        let p = Projection::of_book(&d).unwrap();
+        // 10 relieved under FIFO, then 60 — the dearest — under HIFO.
+        assert_eq!(p.relieved_cost(), 70);
+        let left: Vec<i64> = p.lots_of(1, "vti").value.iter().map(|l| l.cost).collect();
+        assert_eq!(left, vec![40, 30], "the dear lot went, the cheap ones stayed");
+        assert!(p.lot_breaks().is_empty(), "{:?}", p.lot_breaks());
+    }
+
+    #[test]
+    fn a_configuration_that_is_not_a_rule_set_refuses_the_relief() {
+        // ⛔ NO FALLBACK TO FIFO. FIFO is a method real funds elect, so a book
+        // relieved under it by accident is indistinguishable from one relieved
+        // under it by agreement. The sale becomes a break instead.
+        let d = std::env::temp_dir().join("ratio-project-unreadable-config");
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[Account {
+            dim: 1,
+            display_name: "Investments".into(),
+            account_type: A::Asset,
+        }])
+        .unwrap();
+        let c = b.put(b"lot_method = \"not-a-method\"\n").unwrap();
+        b.set_active(&c).unwrap();
+        for (id, amount, qty) in [("b0", 10i64, 1i64), ("s0", -10, -1)] {
+            b.append(&JournalEntry {
+                id: id.into(),
+                memo: "trade".into(),
+                config: c.clone(),
+                postings: vec![
+                    PostingRecord {
+                        dim: 1,
+                        amount,
+                        currency: None,
+                        instrument: Some("vti".into()),
+                        quantity: Some(qty),
+                    },
+                    PostingRecord::new(2, -amount),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap();
+        }
+        drop(b);
+
+        let p = Projection::of_book(&d).unwrap();
+        let breaks = p.lot_breaks();
+        assert_eq!(breaks.len(), 1, "{breaks:?}");
+        assert!(breaks[0].contains("lot method is not known"), "{}", breaks[0]);
+        assert_eq!(p.relieved_cost(), 0, "nothing was relieved under a guess");
+        assert_eq!(p.lots_of(1, "vti").value.len(), 1, "the lot is still open");
+    }
+
+    #[test]
+    fn the_drift_break_names_the_method_it_actually_used() {
+        // ⚠ This message said "oldest-first" whatever ran, back when the fold
+        // ignored the configuration — so the one line an operator reads to
+        // investigate a disagreement asserted the thing that was wrong.
+        let d = book_electing("break-names-method", "hifo");
+        sell(&d, "s1", "vti", 1, 25); // posts 25 of basis; HIFO relieves 40
+        let p = Projection::of_book(&d).unwrap();
+
+        let breaks = p.lot_breaks();
+        assert_eq!(breaks.len(), 1, "{breaks:?}");
+        assert!(breaks[0].contains("dearest-per-unit-first"), "{}", breaks[0]);
+        assert!(!breaks[0].contains("oldest-first"), "{}", breaks[0]);
     }
 }

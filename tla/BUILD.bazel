@@ -292,3 +292,17 @@ tla_check(
     tags = ["manual"],
     deps = [":relief_engine"],
 )
+
+# ⛔ The sale is relieved under the method in force when the engine reaches it,
+# rather than the one its own journal entry pinned. Unlike the factor probe
+# above this needs no race to go wrong — it is wrong on every sale posted under
+# a different rule set, and the books tie on all of them.
+# ReliefUsesTheMethodItPinned goes red.
+tla_check(
+    name = "stale_method_relief_check",
+    size = "medium",
+    config = "StaleMethodRelief.cfg",
+    module = "StaleMethodRelief.tla",
+    tags = ["manual"],
+    deps = [":relief_engine"],
+)

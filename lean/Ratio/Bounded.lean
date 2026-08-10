@@ -51,6 +51,14 @@ def mul (a b : Int) : Option Int := if fits (a * b) then some (a * b) else none
 /-- Negation, or nothing. ⛔ It can fail, at exactly one input. -/
 def neg (a : Int) : Option Int := if fits (-a) then some (-a) else none
 
+/-- Subtraction, or nothing.
+
+⛔ **NOT `add a (-b)`**, and the difference is a real one. Writing a difference
+that way asks for `-b` first, and at `b = lo` that negation is the one input
+`neg` refuses — so the subtraction declines at an input where the DIFFERENCE is
+perfectly representable. `-1 - lo` is exactly `hi`; `-lo` is not a value. -/
+def sub (a b : Int) : Option Int := if fits (a - b) then some (a - b) else none
+
 /-- Euclidean division, or nothing.
 ⛔ TWO WAYS TO FAIL AND THEY ARE DIFFERENT: a zero divisor is a question with no
 answer, and `lo / -1` is a question whose answer will not fit. -/
@@ -73,6 +81,24 @@ theorem mul_agrees (a b c : Int) (h : mul a b = some c) : c = a * b := by
 
 theorem neg_agrees (a c : Int) (h : neg a = some c) : c = -a := by
   unfold neg at h; split at h <;> simp_all
+
+theorem sub_agrees (a b c : Int) (h : sub a b = some c) : c = a - b := by
+  unfold sub at h; split at h <;> simp_all
+
+/-- **⛔ AND SUBTRACTION IS STRICTLY WEAKER WHEN ROUTED THROUGH NEGATION.**
+
+The concrete case: `-1 - lo` is exactly `hi`, so `sub` answers it; `neg lo` has
+no answer at all, so `add a (neg b)` never gets to ask. A difference routed
+through negation declines a question the difference itself answers correctly.
+This is why the Rust has its own `sub` rather than composing the two — the
+composition is not the same function.
+
+⚠ The witness has to be a NEGATIVE `a`. `0 - lo` is `-lo`, which is the value
+that does not exist — `decide` reported the first version of this theorem FALSE
+for exactly that reason. -/
+theorem routing_a_difference_through_negation_loses_an_answer :
+    sub (-1) lo = some hi ∧ neg lo = none := by
+  constructor <;> decide
 
 theorem div_agrees (a b c : Int) (h : div a b = some c) : c = a / b := by
   unfold div at h; split at h
