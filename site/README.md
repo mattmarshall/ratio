@@ -138,11 +138,29 @@ old "CLI/TUI personal finance application" strapline and is raster only) and is
 
 ## Licensing position
 
-⚠️ **Ratio is not open source, and the phrase must not appear on the site.** The
-position as of 2026-08-06 is **source-available under strong copyleft, dual
-licensed with a commercial license for operators** — readable so a client, an
-auditor or a regulator can check the arithmetic, but licensed so that operating
-the stack as a competing service is impractical without a commercial agreement.
+✅ **SETTLED 2026-08-10: AGPL-3.0, with a commercial license alongside it.** See
+[../LICENSING.md](../LICENSING.md). Readable so a client, an auditor or a
+regulator can check the arithmetic; reciprocal so that a modification made by
+someone operating it over a network comes back rather than becoming a private
+advantage over the people relying on it to be correct.
+
+⛔ **THE "NOT OPEN SOURCE" LINE IS GONE, AND SO ARE THE CHECKS THAT ENFORCED IT.**
+AGPL-3.0 is OSI- and FSF-approved. Banning the phrase would have made
+`verify.py` and `//marketing:language_test` assert something false about our own
+license, which is worse than not checking: it defends the error. What is
+commercially load-bearing is **reciprocity**, not closedness — you may read it,
+run it and modify it, and §13 means you may not take it private.
+
+⛔ **AND "self-host" IS NO LONGER BANNED, because the AGPL permits it.** The old
+note claimed the license made "operating the stack as a competing service
+impractical without a commercial agreement". That was never true of the AGPL: it
+requires a competitor to publish their modifications, it does not forbid the
+service. A license that forbids it — BUSL-1.1, Elastic v2 — is neither copyleft
+nor open source, and would trade the verification argument for the exclusion.
+That trade has not been made.
+
+What still must not appear: "MIT licen", "open core", "permissively licensed"
+(except as "not permissively licensed"), and "use it however you like".
 
 This matters for the copy because the *verification* argument used to lean on
 openness. It still holds, on three legs that survive the license change:
@@ -152,9 +170,13 @@ stays. "Use it however you like" goes.** MIT, "open source", "open core",
 "self-host the open core" and links to a public repository have all been removed
 — `verify.py` does not police this, so it is on review.
 
-The exact copyleft license is still to be confirmed. AGPL-style network copyleft
-is the one that actually achieves the stated intent, because plain GPL leaves
-the SaaS loophole open and would not prevent a competitor operating the stack.
+✅ Confirmed: **AGPL-3.0**. Plain GPL leaves the SaaS loophole open — a modified
+version offered as a service triggers no obligation at all — and §13 is what
+closes it.
+
+⚠ This paragraph used to end "and would not prevent a competitor operating the
+stack", implying AGPL does. It does not, and no copyleft license does. What it
+prevents is a competitor operating a modified version *privately*.
 
 ## Where the numbers on the platform page come from
 

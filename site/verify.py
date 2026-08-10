@@ -35,13 +35,20 @@ BANNED_ON_INDEX = [
     "bit-exact", "append-only", "CUDA", "GPU", "associative",
 ]
 
-# Ratio is source-available under strong copyleft with a commercial license, and
-# is NOT open source. The distinction is commercially load-bearing, and prose
-# drifts back toward the familiar phrase without anyone noticing in a diff — so
-# it is asserted rather than left to review. See site/README.md.
+# Ratio is AGPL-3.0 with a commercial license alongside it. What must not appear
+# is any phrasing that implies the PERMISSIVE grant it used to carry — prose
+# drifts back toward the familiar words without anyone noticing in a diff, so it
+# is asserted rather than left to review. See site/README.md and LICENSING.md.
+#
+# ⛔ "open source" WAS ON THIS LIST AND HAS BEEN REMOVED. The license is now
+# AGPL-3.0, which is OSI- and FSF-approved: banning the phrase would have made
+# this check enforce a false statement about our own license. The distinction
+# that is actually commercially load-bearing is reciprocity — you may read, run
+# and modify it, and §13 means you may not take it private — not openness.
 BANNED_EVERYWHERE = [
-    "open source", "open-source", "MIT licen", "open core", "self-host",
+    "MIT licen", "open core",
     "permissively licensed",   # only ever correct as "NOT permissively licensed"
+    "use it however you like",
 ]
 # Phrases that legitimately contain a banned substring.
 LICENSE_EXCEPTIONS = ["not permissively licensed"]
