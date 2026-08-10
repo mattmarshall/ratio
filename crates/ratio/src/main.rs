@@ -597,9 +597,15 @@ fn plural(n: i64, one: &str, many: &str) -> String {
 /// ⛔ IT REPORTS TWO CURVES BECAUSE THERE ARE TWO, and reporting one would be
 /// the easiest overclaim this repo has available:
 ///
-///   COLD BUILD   folding the journal into a projection. O(entries), and the
-///                journal holds every buy AND every sale forever — an
-///                append-only log does not forget a closed lot. This grows.
+///   COLD BUILD   folding the journal into a projection. ⛔ NOT O(entries),
+///                though it was labelled that here and in HANDOFF.md for
+///                months. Holding entries constant at ~1.8M and raising
+///                fragmentation 500 → 1000 → 2000 lots a position took it from
+///                20.2 s to 26.3 s to 44.5 s. The breakdown says why: `parse`
+///                tracks ENTRIES (8.2 s → 8.5 s across that range) and
+///                `relieve` tracks LOTS PER POSITION (7.4 s → 31.1 s over the
+///                same number of reliefs), because a relief copies and sorts
+///                the whole holding. This grows in BOTH.
 ///   NAV STRIKE   reading the maintained projection. `Ratio.Closure.navCost` —
 ///                one price per security, one rate per currency, and the tax
 ///                lots nowhere in it. This does NOT grow.
@@ -724,7 +730,30 @@ fn bench(args: &[&str]) -> Result<()> {
         }
     }
     println!();
-    println!("  {:<26}{:>14}", "COLD BUILD  (O(journal))", ratio_nav::closure::human_nanos(cold_ns));
+    // ⛔ THE LABEL WAS WRONG, AND IT IS THE ONE #6 EXTRAPOLATES FROM. Holding
+    // entries constant at ~1.8M and raising fragmentation 500 → 1000 → 2000
+    // lots a position took this from 20.7 s to 26.3 s to 44.1 s. That is not
+    // O(entries): there is a term proportional to entries × LOTS PER POSITION,
+    // and the breakdown below says which line carries it.
+    let cost = proj.cost();
+    println!(
+        "  {:<26}{:>14}   O(entries) + O(entries x lots/position)",
+        "COLD BUILD", ratio_nav::closure::human_nanos(cold_ns)
+    );
+    println!(
+        "  {:<26}{:>14}   reading and deserializing",
+        "  parse", ratio_nav::closure::human_nanos(cost.parse.as_nanos() as i64)
+    );
+    println!(
+        "  {:<26}{:>14}   totals, positions, actions, lots",
+        "  fold", ratio_nav::closure::human_nanos(cost.fold.as_nanos() as i64)
+    );
+    println!(
+        "  {:<26}{:>14}   of the fold, in {} reliefs",
+        "    relieve",
+        ratio_nav::closure::human_nanos(cost.relieve.as_nanos() as i64),
+        cost.reliefs
+    );
     println!("  {:<26}{:>14}   {marked} prices", "  mark", ratio_nav::closure::human_nanos(mark_ns));
     println!("  {:<26}{:>14}   {translated} rates, not {marked}", "  fx", ratio_nav::closure::human_nanos(fx_ns));
     println!("  {:<26}{:>14}   off maintained totals", "  strike", ratio_nav::closure::human_nanos(strike_ns));
