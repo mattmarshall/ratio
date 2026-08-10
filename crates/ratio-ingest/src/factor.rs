@@ -24,6 +24,38 @@
 
 use anyhow::{bail, Result};
 
+/// ⛔ THE GAP BETWEEN A PROOF AND A MACHINE.
+///
+/// Every theorem behind this module is stated over Lean's `Int`, which is
+/// unbounded. The emitted code runs on `i64`, which is not — and the failure is
+/// not a panic, it is a WRONG ANSWER THAT PASSES THE GUARD:
+///
+///     4_000_000_000_000_000_000 * 3   wraps to  -6446744073709551616
+///     (-6446744073709551616).rem_euclid(2)  ==  0
+///
+/// So `step_divides` returns TRUE for a multiplication that overflowed, and
+/// `step_units` then hands back a negative holding. In a debug build this
+/// panics; in release it is silent. Neither is acceptable and the proof cannot
+/// see either, because in `Int` the multiplication simply happened.
+///
+/// ⚠ AND IT IS REACHABLE ON THE COST PATH, not only at absurd unit counts:
+/// `cost * want` in a relief, at 1e13 minor units of basis against a million
+/// units sold, exceeds `i64::MAX`.
+///
+/// So every multiplication that a theorem performs in `Int` is checked here
+/// before the emitted function is asked anything. The check is not a
+/// belt-and-braces addition to the proof — it is the hypothesis the proof was
+/// always assuming and nobody had written down.
+fn checked(a: i64, b: i64, what: &str) -> Result<i64> {
+    a.checked_mul(b).ok_or_else(|| {
+        anyhow::anyhow!(
+            "{what}: {a} × {b} does not fit in 64 bits. The proofs behind this are stated \
+             over unbounded integers, so they do not rule this out — and the wrapped value \
+             would PASS the divisibility guard and yield a negative holding"
+        )
+    })
+}
+
 use crate::generated_actions::{relief_divides, relief_units, step_divides, step_units};
 
 /// A split, as one announcement declares it.
@@ -42,6 +74,10 @@ pub struct Step {
 pub fn units_as_of(stored_units: i64, steps: &[Step]) -> Result<i64> {
     let mut units = stored_units;
     for (n, s) in steps.iter().enumerate() {
+        // ⛔ BEFORE the guard, not after. `step_divides` computes `units * num`
+        // itself, so asking it first is asking a question about a wrapped
+        // number.
+        checked(units, s.num, "reading a holding through a split")?;
         if !step_divides(units, s.num, s.den) {
             bail!(
                 "{units} units {}-for-{} (split {} of {}) is not a whole number of units — \
@@ -98,6 +134,7 @@ pub fn relief_in_stored_units(wanted: i64, steps: &[Step]) -> Result<Relief> {
     if num == 0 {
         bail!("a split cannot be for zero units");
     }
+    checked(wanted, den, "converting a sale into stored units")?;
     if relief_divides(wanted, num, den) {
         return Ok(Relief::Whole(relief_units(wanted, num, den)));
     }
@@ -216,6 +253,47 @@ mod tests {
         // negative on a short.
         assert_eq!(units_as_of(-100, &[s(2, 1)]).unwrap(), -200);
         assert!(step_divides(-100, 2, 1));
+    }
+
+    #[test]
+    fn an_overflowing_holding_is_refused_rather_than_wrapping() {
+        // ⛔ THE PROOF CANNOT SEE THIS. Every theorem behind this module is over
+        // Lean's unbounded `Int`; `i64` wraps, and the wrapped value PASSES the
+        // divisibility guard:
+        //
+        //     4e18 * 3  ->  -6446744073709551616,  rem_euclid(2) == 0
+        //
+        // so `step_divides` says yes and `step_units` returns a negative
+        // holding. Silent in release, a panic in debug, and wrong in both.
+        let err = units_as_of(4_000_000_000_000_000_000, &[s(3, 1)]).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("64 bits"), "{msg}");
+        assert!(msg.contains("unbounded integers"), "names WHY the proof missed it: {msg}");
+
+        // And the wrapped arithmetic really would have been accepted, which is
+        // what makes this a guard rather than a formality.
+        let wrapped = 4_000_000_000_000_000_000i64.wrapping_mul(3);
+        assert!(wrapped < 0, "it wraps NEGATIVE");
+        assert!(step_divides(wrapped, 1, 2), "and the guard would have said yes");
+    }
+
+    #[test]
+    fn an_overflowing_sale_conversion_is_refused() {
+        // ⚠ Reachable at ordinary magnitudes on the COST path — 1e13 minor units
+        // of basis against a million units sold exceeds i64::MAX — which is why
+        // this is not a theoretical bound.
+        let err = relief_in_stored_units(i64::MAX / 2, &[s(1, 4)]).unwrap_err();
+        assert!(format!("{err:#}").contains("64 bits"));
+    }
+
+    #[test]
+    fn ordinary_magnitudes_are_untouched_by_the_check() {
+        // A fund with a trillion minor units of basis and a million-unit sale.
+        assert_eq!(units_as_of(1_000_000, &[s(2, 1)]).unwrap(), 2_000_000);
+        assert_eq!(
+            relief_in_stored_units(1_000_000, &[s(2, 1)]).unwrap(),
+            Relief::Whole(500_000)
+        );
     }
 
     #[test]

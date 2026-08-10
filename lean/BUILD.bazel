@@ -206,6 +206,27 @@ lean_emit(
 # The cost model. Emitted rather than rewritten because the whole value of the
 # answer is that it IS `Ratio.Closure` — a hand-written `nav_cost` in Rust would
 # be a claim about the proofs instead of the thing they are about.
+# The lots that are NOT ordinary.
+#
+# ⛔ A lot holding zero units and carrying cost is CONSUMED by `relieveFifo` —
+# `units <= want` is satisfied by zero — and hands its whole basis to a sale that
+# received no units for it. Cost conserved, units conserved, realized gain
+# understated by exactly the husk. Every invariant this system had holds of the
+# wrong answer.
+#
+# ⛔ And `relieveFifo` does not sort: it takes the head, so it is FIFO exactly
+# when the caller handed it acquisition order. Named for a policy it does not
+# enforce.
+lean_test(
+    name = "lots_edges_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Lots.lean",
+        "Ratio/Lots/Edges.lean",
+    ],
+    entry = "Ratio/Lots/Edges.lean",
+)
+
 # What a sale PRODUCES, not just what it consumes.
 #
 # `Ratio.Lots` proves relief conserves and says nothing about the realized gain,
