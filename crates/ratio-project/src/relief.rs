@@ -39,7 +39,7 @@ pub struct Lot {
     /// ⛔ OPTIONAL, AND ITS ABSENCE IS NOT A DEFAULT. A lot opened by an entry
     /// with no trade date cannot be classified short- or long-term, and the two
     /// obvious fallbacks are wrong in opposite directions: the epoch makes
-    /// everything long-term (the favourable rate, on records that do not support
+    /// everything long-term (the favorable rate, on records that do not support
     /// it) and today makes everything short-term (punitive, on a holding held
     /// for years). The holding-period methods REFUSE such a holding.
     pub acquired: Option<String>,
@@ -63,7 +63,7 @@ pub struct Taken {
     /// ⛔ OPTIONAL, AND ITS ABSENCE IS NOT A DEFAULT. A lot opened by an entry
     /// with no trade date cannot be classified short- or long-term, and the two
     /// obvious fallbacks are wrong in opposite directions: the epoch makes
-    /// everything long-term (the favourable rate, on records that do not support
+    /// everything long-term (the favorable rate, on records that do not support
     /// it) and today makes everything short-term (punitive, on a holding held
     /// for years). The holding-period methods REFUSE such a holding.
     pub acquired: Option<String>,
@@ -228,7 +228,7 @@ pub fn relieve_by(method: Method, lots: &[Lot], want: i64) -> Result<Relieved> {
         if let Some(l) = lots.iter().find(|l| l.acquired.is_none()) {
             bail!(
                 "lot {} has no acquisition date, and {method:?} cannot classify it — \
-                 assuming the epoch would make it long-term at the favourable rate on \
+                 assuming the epoch would make it long-term at the favorable rate on \
                  records that do not support the claim, and assuming today would make it \
                  short-term on a holding that may have been held for years. Neither is \
                  conservative; they are wrong in opposite directions",

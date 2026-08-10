@@ -200,7 +200,7 @@ fn default_long_term_days() -> i64 {
 /// here while `#[serde(default = ...)]` makes it 365 on the way in from TOML.
 /// One fact with two answers, differing by which door the rule set came
 /// through — and a threshold of zero classifies every disposal ever made as
-/// long-term, at the favourable rate, silently.
+/// long-term, at the favorable rate, silently.
 impl Default for RuleSet {
     fn default() -> Self {
         Self {
@@ -304,7 +304,7 @@ pub enum LotMethod {
     Lofo,
     /// Longest held first. ⛔ REFUSES a holding where any lot has no acquisition
     /// date, rather than defaulting: the epoch makes everything long-term at the
-    /// favourable rate on records that do not support it, and today makes
+    /// favorable rate on records that do not support it, and today makes
     /// everything short-term on a holding held for years.
     LongestHeldFirst,
     /// Shortest held first.
@@ -933,7 +933,7 @@ weight = -4
         // ⛔ `#[derive(Default)]` WOULD HAVE MADE THIS 0. A rule set built in
         // Rust and one parsed from TOML would then disagree about the threshold
         // by 365 days, and a threshold of zero makes every disposal ever made
-        // long-term — the favourable rate, on every fund, silently.
+        // long-term — the favorable rate, on every fund, silently.
         assert_eq!(RuleSet::default().long_term_days, 365);
         assert_eq!(RuleSet::from_toml("rules = []\n").unwrap().long_term_days, 365);
 

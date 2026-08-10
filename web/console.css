@@ -398,7 +398,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 
 /* A NAV that cannot be read at face value says so on its own row. It is not an
    error — the figure is what it is and will not be restated — so it wears the
-   attention colour rather than the failure one. */
+   attention color rather than the failure one. */
 /* An action that has not gone through the book. ⛔ It wears the attention
    color, not the failure one: nothing is wrong yet, and that is exactly the
    point — an unapplied action is the term that dominates the cost of a period
@@ -434,7 +434,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .ltv{font-variant-numeric:tabular-nums}
 .ltv.num{text-align:right}
 .ltv.strong{font-weight:600;color:var(--accent)}
-/* ⚠ The unclassified row wears the attention colour, not the failure one.
+/* ⚠ The unclassified row wears the attention color, not the failure one.
    Nothing is wrong — a holding period could not be established and the engine
    said so instead of guessing, which is the whole point. */
 .lt.warn .ltk,.lt.warn .ltv{color:var(--warn)}

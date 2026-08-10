@@ -1391,7 +1391,7 @@ message Lot {
   //
   // ⛔ ABSENT RATHER THAN DEFAULTED, and the holding-period methods REFUSE such
   // a holding rather than guessing. Both defaults are wrong in opposite
-  // directions: the epoch makes it long-term at the favourable rate on records
+  // directions: the epoch makes it long-term at the favorable rate on records
   // that do not support the claim, and today makes it short-term on a holding
   // that may have been held for years.
   google.type.Date acquired = 5 [(google.api.field_behavior) = OUTPUT_ONLY];

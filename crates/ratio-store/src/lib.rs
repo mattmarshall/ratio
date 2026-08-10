@@ -247,7 +247,7 @@ pub struct JournalEntry {
     /// by an entry with no date has no acquisition date, and the holding-period
     /// methods REFUSE such a holding rather than guessing — both defaults are
     /// wrong in the direction that matters. Defaulting to the epoch makes
-    /// everything long-term, which is the favourable rate on records that do not
+    /// everything long-term, which is the favorable rate on records that do not
     /// support it; defaulting to today makes everything short-term, which is
     /// punitive on a holding held for years.
     #[serde(default, skip_serializing_if = "Option::is_none")]

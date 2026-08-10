@@ -1946,7 +1946,7 @@ mod tests {
     fn a_lot_with_no_acquisition_date_leaves_its_gain_unclassified() {
         // ⚠ Every journal written before `trade_date` existed is in this state.
         // The honest answer about such a holding's period is that there is not
-        // one — assuming the epoch makes it long-term at the favourable rate on
+        // one — assuming the epoch makes it long-term at the favorable rate on
         // records that do not support the claim.
         let d = book_with_gains("undated-gain", 365);
         let mut b = FileBook::open(&d).unwrap();
