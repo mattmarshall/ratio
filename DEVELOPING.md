@@ -1,198 +1,139 @@
-# Development Guide for Ratio
+# Developing Ratio
 
-This guide outlines the development process for Ratio, with a focus on spec-driven development and best practices.
+## Build
 
-## Table of Contents
-- [Development Guide for Ratio](#development-guide-for-ratio)
-  - [Table of Contents](#table-of-contents)
-  - [Development Philosophy](#development-philosophy)
-  - [Spec-Driven Development](#spec-driven-development)
-    - [Specification Types](#specification-types)
-    - [Benefits of Spec-Driven Development](#benefits-of-spec-driven-development)
-  - [Development Workflow](#development-workflow)
-  - [Working with Specifications](#working-with-specifications)
-    - [Creating a New Specification](#creating-a-new-specification)
-    - [Updating Existing Specifications](#updating-existing-specifications)
-    - [Specification Quality Checklist](#specification-quality-checklist)
-  - [Implementation Guidelines](#implementation-guidelines)
-    - [Code Organization](#code-organization)
-    - [Code Style](#code-style)
-    - [Implementation Checklist](#implementation-checklist)
-  - [Testing Approach](#testing-approach)
-    - [Test Types](#test-types)
-    - [Testing Guidelines](#testing-guidelines)
-  - [Working with Cline](#working-with-cline)
-    - [Best Practices for LLM-Assisted Development](#best-practices-for-llm-assisted-development)
-    - [Example Workflow with Cline](#example-workflow-with-cline)
+⛔ **Bazel is the only build path. `cargo build` does not work here.** The
+workspace members in the root `Cargo.toml` are stale, several crate manifests
+omit dependencies that `BUILD.bazel` requires, and the Lean → Rust emission step
+has no Cargo equivalent. `Cargo.lock` is committed because `rules_rust`'s crate
+universe reads it, not because Cargo drives anything.
 
-## Development Philosophy
+```bash
+bazel build //...                   # everything, including the Lean emission
+bazel test  //...                   # proofs, TLA+ checks, crates, demos, lints
+bazel run //crates/ratio -- --help  # the CLI
+```
 
-Ratio follows these core development principles:
+The lockfiles are committed and CI runs `--lockfile_mode=error`, so a build that
+needs `CARGO_BAZEL_REPIN=1` is a change somebody forgot to commit. Repin with:
 
-1. **Spec-First Development**: Write specifications before code to ensure clear understanding
-2. **Modular Architecture**: Build components with clear boundaries and well-defined interfaces
-3. **Test-Driven Development**: Write tests alongside implementation
-4. **Progressive Refinement**: Start with MVP features and refine based on feedback
-5. **Documentation as Code**: Maintain specifications as a core part of the codebase
+```bash
+CARGO_BAZEL_REPIN=1 bazel build //...
+```
 
-## Spec-Driven Development
+### Prerequisites
 
-Ratio uses a comprehensive specification system as the foundation for all development:
+Bazelisk (or Bazel at the version in `.bazelversion`), a JDK for TLC, and
+Python 3 for the lint and mirror tests. The Lean toolchain, the Rust toolchain
+and every crate are fetched hermetically — there is nothing else to install, and
+nothing to run as a service.
 
-### Specification Types
+## What runs in CI
 
-1. **Architecture Specs**: System-wide technical decisions (tech stack, data model, API design)
-   - Define overall system architecture and technology choices
-   - Located in `specs/architecture/`
-   - Focus on system-wide patterns and standards
+`bazel build //...` then `bazel test //...`, and nothing more. That covers:
 
-2. **Feature Specs**: User-facing functional requirements and behaviors
-   - Focus on what the user can do with the system
-   - Include user stories, acceptance criteria, and functional requirements
-   - Describe requirements from the user's perspective
-   - Located in `specs/features/`
-   - Example: Account tracking, transaction management, scheduling
+| | |
+|---|---|
+| `//lean:*_proof_test` | the proofs — type-checking IS the test |
+| `//lean:audit_proofs_test` | no `sorry`, `admit`, `axiom` or `native_decide`; every file sets `warningAsError` |
+| `//tla:*_check` | seven model checks |
+| `//tla:probes_test` | every failure-path probe can still say what it claims |
+| `//crates/*:*_test` | the Rust |
+| `//proto:ratio_aip_lint`, `//proto:mirrors_test` | the wire contract, and its two hand-written mirrors |
+| `//crates/ratio-console:transcode_test` | the route table against the proto |
+| `//demo:rehearse_test`, `//demo:shadow_run_test` | the demo and the shadow run, end to end |
+| `//marketing:language_test` | the licensing language sweep |
 
-3. **Component Specs**: Technical design of internal system components
-   - Focus on how the system implements functionality
-   - Detail internal APIs, data structures, and algorithms
-   - Describe implementation details from a developer's perspective
-   - Located in `specs/components/`
-   - Can be hierarchical (breaking larger components into smaller ones)
-   - Example: Accounting kernel, money handling, extension system
+`paths-ignore` covers `site/**` and `**/*.md` only. `marketing/`, `paper/` and
+`competitive/` are deliberately NOT ignored.
 
-4. **Iteration Specs**: Work breakdown and planning for development phases
-   - Define scope and timeline for development iterations
-   - List features and technical tasks to be implemented
-   - Include success criteria and risk mitigations
-   - Located in `specs/iterations/`
+### ⛔ What CI does not run
 
-### Benefits of Spec-Driven Development
+**The `manual`-tagged TLA probes.** Each is a spec with one dial flipped and one
+invariant that MUST break, and `tags = ["manual"]` keeps them out of `//...` so
+the suite stays green. Run them yourself after touching a spec:
 
-- **Clarity**: Clear documentation of what we're building and why
-- **Focus**: Reduced scope creep and feature bloat
-- **Collaboration**: Easier communication among team members
-- **LLM Assistance**: Specifications provide context for Cline and other AI tools
-- **Quality**: Well-defined expectations lead to better implementations
+```bash
+tla/probes.sh
+```
 
-## Development Workflow
+It checks each went red **for the reason its config names**. That distinction is
+the point: a probe that dies on a missing constant exits exactly like one whose
+invariant was violated, and adding a `CONSTANT` to a spec has already turned a
+neighbouring probe into a test of nothing.
 
-The typical development workflow for Ratio follows these steps:
+## Layout
 
-1. **Specification Creation**
-   - Create a new specification using the appropriate template
-   - For feature specs, focus on user stories and requirements
-   - For component specs, focus on technical design and interfaces
-   - Get feedback and iterate on the specification
+```
+lean/Ratio/       the proofs, and the Emit modules that author Rust from them
+tla/              the specs, their MC configs, and the failure-path probes
+crates/           the Rust. `ratio` is the binary; the rest are libraries
+proto/            the wire types, AIP-linted
+web/              the operations console (React + esbuild, one inlined bundle)
+demo/             the five-minute demo and the shadow run, as shell tests
+deploy/           the Lambda that serves the console and the API
+site/ paper/ marketing/ competitive/   the written material
+specs/            ⚠ the ORIGINAL program's specs. History, not requirements.
+```
 
-2. **Implementation Planning**
-   - Break down the work into manageable tasks
-   - Create issues/tickets for each task
-   - Assign tasks to iterations based on priority
+### The Lean → Rust seam
 
-3. **Implementation**
-   - Write tests that verify the specification requirements
-   - Implement the feature/component according to the specification
-   - Document any deviations or decisions made during implementation
+`lean/Ratio/*/Emit.lean` produces a `syn` AST as JSON; a genrule runs it through
+`//rust/json_to_rust` into `src/generated*.rs`, which is a direct `src` of the
+consuming crate. Nothing is committed — it is one DAG edge from Lean source to
+compiled Rust, so a Lean file that fails to elaborate breaks the Rust build.
 
-4. **Review**
-   - Ensure the implementation meets the specification requirements
-   - Update the specification if necessary to reflect actual implementation
-   - Get code review from other team members
+The division is deliberate: **the walk stays in Rust, the decision is emitted.**
+`relieveFifo`'s fold is `crates/ratio-project/src/relief.rs`; what comes from
+Lean is `takes_whole_lot`, `partial_divides`, `partial_cost`, `lot_is_sound`.
 
-5. **Integration**
-   - Merge changes into the main branch
-   - Update any dependent components
-   - Verify the integrated changes work as expected
+## Console changes
 
-## Working with Specifications
+⛔ **Rebuild `//crates/ratio`, not `//web:...`.** The chain is
+`//web:console_html` → genrule `//crates/ratio:console_rs` →
+`src/console_html.rs` → the binary, which embeds the page as a `&str` at compile
+time. Building anything under `//web:` alone refreshes nothing that is served.
 
-### Creating a New Specification
+```bash
+bazel build //crates/ratio
+bazel run //crates/ratio -- watch --book <dir>   # then open /app
+```
 
-1. Choose the appropriate specification type (feature, component, architecture, iteration)
-2. Copy the template from `specs/templates/` to the appropriate directory
-3. Fill in all sections of the template with detailed information
-4. Add the specification to the relevant listing in `specs/README.md`
+⚠ `bazel cquery --output=files` can hand back a stale binary. Build explicitly
+first, then query.
 
-### Updating Existing Specifications
+Adding a field to the API touches seven files in order: `console.proto`,
+`transcode.rs` (route, dispatch arm, `JsonView`), `ratio-console/src/lib.rs`,
+`web/src/types.ts`, `web/src/api.ts`, `web/src/App.tsx`, `web/console.css`.
+`//proto:mirrors_test` and `//crates/ratio-console:transcode_test` turn any
+omission into a build failure rather than a 404.
 
-1. When requirements change, update the specification first
-2. Highlight changes in PRs when modifying specifications
-3. Ensure code and specifications remain in sync
-4. Use specifications as living documents that evolve with the project
+## Adding a proof
 
-### Specification Quality Checklist
+1. `lean/Ratio/Foo/Bar.lean`, with `set_option warningAsError true` and a module
+   doc saying what it proves and why.
+2. A `lean_test` in `lean/BUILD.bazel` listing the file **and its whole
+   transitive import closure** in `srcs`, with `entry` set to the file.
+3. `audit_proofs_test` picks it up from a glob — no BUILD edit needed.
 
-Ensure your specifications:
-- [ ] Are complete with all sections filled out
-- [ ] Include clear user stories (for feature specs)
-- [ ] Provide detailed technical design (for component specs)
-- [ ] Define clear acceptance criteria
-- [ ] Identify dependencies and constraints
-- [ ] Document any open questions or decisions
-- [ ] Link to related specifications
+⚠ `decide` cannot reduce `List.mergeSort` (well-founded recursion). Use a
+structural insertion sort; `native_decide` would trade a checked theorem for a
+trusted compiler and the audit rejects it.
 
-## Implementation Guidelines
+## Adding a TLA spec
 
-When implementing features or components:
+1. `Foo.tla` with `CONSTANTS` for the bounds and a boolean dial per fix, and
+   actions branching `IF Dial THEN <correct> ELSE <bug>`.
+2. `MCFoo.tla` (three lines, `EXTENDS Foo`) and `MCFoo.cfg` with every dial
+   `TRUE`.
+3. A probe: `BadThing.tla` (three lines) and `BadThing.cfg` with one dial
+   `FALSE`, a header comment ending `<Invariant> MUST go red.`, and `INVARIANTS`
+   narrowed to `TypeOK` plus that one.
+4. `tla_library` + `tla_check`, and the probe `tla_check` with
+   `tags = ["manual"]`.
 
-### Code Organization
+## Working with an LLM
 
-- Follow the project structure defined in README.md
-- Keep components modular and focused on a single responsibility
-- Use clear, descriptive names for files, modules, and functions
-
-### Code Style
-
-- Follow Rust's official style guidelines
-- Use consistent naming conventions
-- Write clear comments explaining *why* not just *what*
-- Document public APIs thoroughly
-
-### Implementation Checklist
-
-- [ ] All acceptance criteria from the specification are met
-- [ ] Tests cover the functionality defined in the spec
-- [ ] Code follows project style guidelines
-- [ ] Documentation is updated (including inline docs)
-- [ ] Any deviations from the spec are documented and justified
-
-## Testing Approach
-
-Ratio uses a comprehensive testing strategy:
-
-### Test Types
-
-- **Unit Tests**: Test individual functions and methods
-- **Integration Tests**: Test interactions between components
-- **Property-Based Tests**: Test invariants and properties of the system
-- **End-to-End Tests**: Test complete user workflows
-
-### Testing Guidelines
-
-- Write tests alongside implementation, not after
-- Use tests to verify specification requirements
-- Aim for high test coverage, especially for critical components
-- Use property-based tests for complex financial calculations
-- Mock external dependencies when testing components in isolation
-
-## Working with Cline
-
-Ratio is designed to be developed with assistance from Cline and other LLM tools:
-
-### Best Practices for LLM-Assisted Development
-
-- Provide specifications as context when asking for implementation help
-- Break down complex tasks into smaller, more manageable pieces
-- Review and understand all generated code before committing
-- Use LLMs for code generation, refactoring, and documentation
-- See [CLINE.md](CLINE.md) for specific guidance on working with Cline
-
-### Example Workflow with Cline
-
-1. Share the relevant specification with Cline
-2. Ask for implementation suggestions or code generation
-3. Review, test, and refine the generated code
-4. Document any insights or patterns for future reference
-
-For detailed guidance on working with Cline specifically for this project, see [CLINE.md](CLINE.md).
+See [AGENTS.md](AGENTS.md). Most of this repository was written that way, and
+the rules there are the ones that matter — proofs first, Bazel only, and break
+what a test protects to find out whether it works.

@@ -1,4 +1,22 @@
-# Ratio Specifications
+# Ratio Specifications — ⚠ HISTORY, NOT REQUIREMENTS
+
+⛔ **This directory describes a different program.** It is the specification set
+for the personal-finance tool this repository began as: a Rust/Python CLI and TUI
+over PostgreSQL, with `sqlx`, `tui-rs`, and a Python extension system. None of
+that exists. There is no database, no Python, and no TUI beyond a stub.
+
+What Ratio is now — a fund accounting kernel with machine-checked properties, in
+Lean 4, TLA+ and Rust — is described in [../HANDOFF.md](../HANDOFF.md),
+[../README.md](../README.md) and [../DEVELOPING.md](../DEVELOPING.md). Those are
+the accurate documents.
+
+⚠ **Nothing below is a requirement, and nothing here should be updated.** It is
+kept because the reasoning in it is sometimes still interesting, and because
+deleting the record of what a project used to be makes its history harder to
+read. `specs/iterations/iteration-1-mvp.md` in particular was explicitly
+superseded by [../PLAN.md](../PLAN.md).
+
+---
 
 This directory contains detailed specifications for the Ratio project, a high-performance CLI/TUI personal finance application built with Rust and Python.
 
