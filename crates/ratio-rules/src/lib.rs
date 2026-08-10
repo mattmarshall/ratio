@@ -160,10 +160,20 @@ pub struct RuleSet {
     /// would restate every investor's tax position, which is exactly what
     /// `Ratio.Period.one_answer_per_day` refuses.
     ///
-    /// Defaults to FIFO because a fund with no declared method has one by
-    /// custom, not because the engine prefers it.
-    #[serde(default)]
-    pub lot_method: LotMethod,
+    /// ⛔ `None` MEANS NOBODY SAID, AND THAT IS NOT THE SAME AS SAYING FIFO.
+    /// A fund with no declared method is relieved oldest-first by custom rather
+    /// than by election, and the two are indistinguishable once the absence has
+    /// been defaulted away. That mattered the moment a screen reported the
+    /// method as "a term of the administration agreement": on the seeded demo
+    /// books, whose configuration declares nothing, it asserted an election
+    /// nobody had made.
+    ///
+    /// Use [`effective_lot_method`] for what the engine should DO, and this
+    /// field for whether anyone chose it.
+    ///
+    /// [`effective_lot_method`]: RuleSet::effective_lot_method
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lot_method: Option<LotMethod>,
 
     /// Which dimensions play which part when the engine posts a sale.
     ///
@@ -205,10 +215,21 @@ impl Default for RuleSet {
     fn default() -> Self {
         Self {
             rules: Vec::new(),
-            lot_method: LotMethod::default(),
+            lot_method: None,
             chart_roles: None,
             long_term_days: default_long_term_days(),
         }
+    }
+}
+
+impl RuleSet {
+    /// The method the engine relieves under: what was declared, or FIFO.
+    ///
+    /// ⚠ FIFO BY CUSTOM, NOT BECAUSE THE ENGINE PREFERS IT. Every caller that
+    /// needs to RELIEVE something wants this; the only caller that wants the
+    /// raw field is one reporting whether a fund actually elected a method.
+    pub fn effective_lot_method(&self) -> LotMethod {
+        self.lot_method.unwrap_or_default()
     }
 }
 
@@ -926,6 +947,36 @@ weight = -4
             .replace("account = 10", "account = 999");
         let f = check(&RuleSet::from_toml(&bad).unwrap(), &chart());
         assert!(f.len() >= 2, "{f:?}");
+    }
+
+    #[test]
+    fn a_silent_configuration_declares_no_method_but_still_relieves() {
+        // ⛔ THE DISTINCTION A DEFAULT DESTROYS. A rule set that says nothing
+        // about lots is relieved oldest-first by CUSTOM; one that says "fifo"
+        // is relieved oldest-first by ELECTION. The engine does the same thing
+        // either way, and only one of them is a term somebody agreed to.
+        //
+        // ⚠ Found on the live demo, where the console reported the default as
+        // "a term of the administration agreement" on three funds whose
+        // configuration declares nothing at all.
+        let silent = RuleSet::from_toml("rules = []\n").unwrap();
+        assert_eq!(silent.lot_method, None, "nobody said");
+        assert_eq!(silent.effective_lot_method(), LotMethod::Fifo, "and it still relieves");
+
+        let elected = RuleSet::from_toml("rules = []\nlot_method = \"fifo\"\n").unwrap();
+        assert_eq!(elected.lot_method, Some(LotMethod::Fifo), "somebody said");
+        assert_eq!(elected.effective_lot_method(), LotMethod::Fifo);
+
+        // ⛔ The two are the SAME to the engine and DIFFERENT to a reader, which
+        // is the whole point — an assertion on the effective method alone
+        // passes whether or not the distinction survives.
+        assert_eq!(silent.effective_lot_method(), elected.effective_lot_method());
+        assert_ne!(silent.lot_method, elected.lot_method);
+
+        // And a declared non-default still round-trips.
+        let hifo = RuleSet::from_toml("rules = []\nlot_method = \"hifo\"\n").unwrap();
+        assert_eq!(hifo.effective_lot_method(), LotMethod::Hifo);
+        assert_eq!(RuleSet::default().lot_method, None);
     }
 
     #[test]

@@ -1392,10 +1392,20 @@ impl Console {
             currency_code: FUND_CURRENCY.into(),
             state: state as i32,
             net_asset_value: nav.to_string(),
+            // ⛔ THE METHOD THE ENGINE USED, AND SEPARATELY WHETHER ANYONE CHOSE
+            // IT. Reporting only the first made the console assert an election
+            // nobody had made: the seeded demo books declare no method, are
+            // relieved oldest-first by custom, and the screen called that "a
+            // term of the administration agreement".
             lot_method: set
                 .as_ref()
-                .map(|s| ratio_project::relief::Method::from(s.lot_method).describe().to_string())
+                .map(|s| {
+                    ratio_project::relief::Method::from(s.effective_lot_method())
+                        .describe()
+                        .to_string()
+                })
                 .unwrap_or_default(),
+            lot_method_declared: set.as_ref().is_some_and(|s| s.lot_method.is_some()),
             long_term_days: set.as_ref().map(|s| s.long_term_days).unwrap_or(0),
             realized_gain: realized.map(|r| r.gain.to_string()).unwrap_or_default(),
             basis_relieved: realized.map(|r| r.basis.to_string()).unwrap_or_default(),
