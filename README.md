@@ -101,14 +101,16 @@ about a wrapped number answers about a product that never happened.
 
 ## License
 
-⛔ **`LICENSE` and the stated position do not agree, and this needs resolving.**
-The file says MIT. [site/README.md](site/README.md) records the position as of
-2026-08-06 as *source-available under strong copyleft, dual licensed with a
-commercial license for operators*, says the phrase "open source" must not appear,
-and names MIT specifically as removed copy — and `//marketing:language_test`
-enforces that ban across `marketing/`, `paper/` and `competitive/`.
+**AGPL-3.0** ([LICENSE](LICENSE)), **and available under a commercial license.**
+See [LICENSING.md](LICENSING.md).
 
-So a reader is currently told two different things, and the permissive one is the
-one with legal effect. The copyleft license is recorded as "still to be
-confirmed"; until it is chosen and `LICENSE` replaced, MIT is what has been
-granted.
+Copyleft because the argument for Ratio is that a figure can be checked, and
+that argument is weak if the code cannot be read. §13 means a modification made
+by someone operating this over a network comes back rather than becoming a
+private advantage over the people relying on it to be correct. The **hosted
+service** is the path with no copyleft obligation on the customer.
+
+⚠ **AGPL-3.0 is open source** — OSI- and FSF-approved. Earlier positioning called
+Ratio "source-available, not open source"; that phrasing does not survive this
+choice. What changed is reciprocity, not openness: MIT let anyone take the work
+private, and this does not.

@@ -19,17 +19,24 @@ import pathlib
 import re
 import sys
 
-# Ratio is source-available under strong copyleft with a commercial license for
-# operators. It is NOT open source and NOT self-hostable. The distinction is
-# commercially load-bearing, and prose drifts back toward the familiar phrase
-# without anyone noticing in a diff.
+# Ratio is AGPL-3.0 with a commercial license alongside it. What must not appear
+# is any phrasing implying the PERMISSIVE grant it used to carry — prose drifts
+# back toward the familiar words without anyone noticing in a diff.
+#
+# ⛔ THREE BANS WERE REMOVED WHEN THE LICENSE WAS CHOSEN, and the reason is that
+# they had become false statements about our own license. AGPL-3.0 is OSI- and
+# FSF-approved, so "open source" is accurate; and it PERMITS self-hosting, so
+# "not self-hostable" was wrong. A check that asserts something untrue is worse
+# than no check — it defends the error.
+#
+# ⚠ "not open source" is now BANNED rather than excepted, for the same reason in
+# the other direction. See LICENSING.md.
 BANNED = [
-    ("open source", "Ratio is source-available, not open source"),
-    ("open-source", "Ratio is source-available, not open source"),
     ("open core", "say 'auditable core' or 'source-available core'"),
-    ("self-host", "operating the platform is a commercial arrangement"),
-    ("MIT licen", "the MIT license was dropped"),
+    ("not open source", "AGPL-3.0 is OSI-approved; this is now false"),
+    ("MIT licen", "the MIT license was dropped for AGPL-3.0"),
     ("permissively licensed", "only ever correct as 'not permissively licensed'"),
+    ("use it however you like", "reciprocity is the point: AGPL-3.0 §13"),
     # The stack is Lean-authored and Rust-emitted. There is no Python in it.
     ("Rust/Python", "there is no Python in the stack"),
     ("Rust / Python", "there is no Python in the stack"),
@@ -42,8 +49,6 @@ BANNED = [
 # Phrases that legitimately contain a banned substring.
 EXCEPTIONS = [
     "not permissively licensed",
-    "is not open source",
-    "not open source",
 ]
 
 
