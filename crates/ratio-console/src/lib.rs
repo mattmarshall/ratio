@@ -600,7 +600,14 @@ impl Console {
                     sequence: l.seq as i64,
                     units: l.units.to_string(),
                     cost: l.cost.to_string(),
-                    acquired: l.acquired.as_deref().and_then(iso_date),
+                    // The lot stores a day; the wire wants a calendar date.
+                    // Rendered on the way out rather than retained as text on
+                    // every one of a million lots.
+                    acquired: l
+                        .acquired
+                        .map(|d| ratio_common::iso_date_from_days(d as i64))
+                        .as_deref()
+                        .and_then(iso_date),
                 })
                 .collect(),
             next_page_token: String::new(),

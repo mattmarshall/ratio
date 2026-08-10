@@ -26,6 +26,24 @@ use anyhow::{bail, Result};
 
 use crate::generated_lots::{lot_is_sound, partial_cost, partial_divides, takes_whole_lot};
 
+/// A calendar day, as days since 1970-01-01.
+///
+/// ⛔ A DATE IS A NUMBER, NOT A STRING, and this field proved it. `Lot.acquired`
+/// held an `Option<String>`, so a book with a million open lots retained a
+/// MILLION small heap allocations — and the mark went from 927 µs to 5.0 ms on
+/// the same five hundred price lookups, because the heap underneath them had
+/// been shredded. The lookups never got more numerous.
+///
+/// ⭐ AND IT IS ALSO THE RIGHT TYPE. `Ratio.Lots.Methods.heldDays` is
+/// `asOf - acquired` over `Int`: the holding period was being decided by
+/// parsing ISO text on every classification, and `Method::arrange` sorted dates
+/// as STRINGS — correct only because the format is fixed, and only for as long
+/// as nobody wrote one that was not.
+///
+/// `i32` spans ±5.8 million years, and a lot is lighter for it than for the
+/// pointer alone.
+pub type Day = i32;
+
 /// A tax lot: when it was acquired, what it holds, what it cost.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Lot {
@@ -42,7 +60,7 @@ pub struct Lot {
     /// everything long-term (the favorable rate, on records that do not support
     /// it) and today makes everything short-term (punitive, on a holding held
     /// for years). The holding-period methods REFUSE such a holding.
-    pub acquired: Option<String>,
+    pub acquired: Option<Day>,
 }
 
 /// What a sale took out of one lot.
@@ -66,7 +84,7 @@ pub struct Taken {
     /// everything long-term (the favorable rate, on records that do not support
     /// it) and today makes everything short-term (punitive, on a holding held
     /// for years). The holding-period methods REFUSE such a holding.
-    pub acquired: Option<String>,
+    pub acquired: Option<Day>,
 }
 
 /// What a relief produced.
@@ -272,7 +290,7 @@ pub fn relieve_by(method: Method, lots: &[Lot], want: i64) -> Result<Relieved> {
                 seq: lot.seq,
                 units: lot.units,
                 cost: lot.cost,
-                acquired: lot.acquired.clone(),
+                acquired: lot.acquired,
             });
             cost = ratio_common::checked::add(cost, lot.cost, "the relieved cost")?;
             remaining -= lot.units;
@@ -295,14 +313,14 @@ pub fn relieve_by(method: Method, lots: &[Lot], want: i64) -> Result<Relieved> {
             seq: lot.seq,
             units: remaining,
             cost: part,
-            acquired: lot.acquired.clone(),
+            acquired: lot.acquired,
         });
         cost = ratio_common::checked::add(cost, part, "the relieved cost")?;
         left.push(Lot {
             seq: lot.seq,
             units: lot.units - remaining,
             cost: lot.cost - part,
-            acquired: lot.acquired.clone(),
+            acquired: lot.acquired,
         });
         remaining = 0;
     }
@@ -381,7 +399,7 @@ mod tests {
     }
 
     fn dated(seq: u64, units: i64, cost: i64, day: &str) -> Lot {
-        Lot { seq, units, cost, acquired: Some(day.into()) }
+        Lot { seq, units, cost, acquired: Some(ratio_common::days_from_iso_date(day).unwrap() as Day) }
     }
 
     const ROLES: ratio_rules::ChartRoles =

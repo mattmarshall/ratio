@@ -11,6 +11,9 @@
 /// of `Ratio.Bounded`, and the hypothesis every theorem in this repo assumes.
 pub mod checked;
 
+/// One copy of each distinct string, shared by everything that names it.
+pub mod intern;
+
 mod generated;
 pub use generated::*;
 
