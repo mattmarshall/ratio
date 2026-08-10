@@ -123,6 +123,77 @@ struct Actions {
     rewritten: std::collections::BTreeSet<String>,
 }
 
+/// What one entry's configuration tells the lot engine.
+///
+/// ⛔ RESOLVED FROM THE DIGEST THAT ENTRY PINNED, never from whatever is active
+/// now. All three of these are terms of an administration agreement rather than
+/// implementation choices, and all three decide a REALIZED GAIN — the figure
+/// with no counterparty, which no reconciliation reaches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Terms {
+    /// Which lots a sale gives up.
+    pub method: relief::Method,
+    /// Which dimensions play which part. `None` when the chart names no roles,
+    /// in which case a gain cannot be attributed to a disposal at all.
+    pub roles: Option<ratio_rules::ChartRoles>,
+    /// Days held for a gain to be long-term. `Ratio.Lots.Methods.isLongTerm`.
+    pub long_term_days: i64,
+}
+
+impl Terms {
+    /// The terms a rule set sets.
+    pub fn of(set: &ratio_rules::RuleSet) -> Self {
+        Self {
+            method: set.lot_method.into(),
+            roles: set.chart_roles,
+            long_term_days: set.long_term_days,
+        }
+    }
+
+    /// Terms for a caller folding a slice of entries, which carries no chart.
+    ///
+    /// ⚠ `roles: None`, so nothing is CLASSIFIED short or long — and that is
+    /// visible rather than assumed, because the split is reported against a
+    /// total that includes what could not be classified.
+    pub fn under(method: relief::Method) -> Self {
+        Self { method, ..Self::of(&ratio_rules::RuleSet::default()) }
+    }
+}
+
+/// What a fund has realized, and how much of it is classified.
+///
+/// ⛔ `unclassified` IS DERIVED, NOT ACCUMULATED: `gain − short − long`. The
+/// split is a partition of a figure the fold does not own — the total is the
+/// realized-gain DIMENSION, which ties to the trial balance — so computing the
+/// remainder is the only way the three cannot drift from it. A fourth
+/// accumulator would be a fourth thing to keep in step, and the failure would be
+/// three figures that each look reasonable and do not sum.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Realized {
+    /// ⛔ CREDIT-NORMAL: a gain reads NEGATIVE. `Ratio.Lots.Posting` has the
+    /// convention. A screen printing this unflipped shows every profitable fund
+    /// with a minus sign.
+    pub gain: i128,
+    /// Cost given up by sales.
+    pub basis: i128,
+    /// The part of `gain` on holdings held less than the threshold.
+    pub short_term: i128,
+    /// And at least the threshold. `the_threshold_day_is_long_term`.
+    pub long_term: i128,
+}
+
+impl Realized {
+    /// The part of the gain no holding period could be established for.
+    ///
+    /// ⚠ NOT AN ERROR, AND NOT ZERO IN PRACTICE. A lot opened by an entry with
+    /// no `trade_date` has no acquisition date, and the honest answer about its
+    /// holding period is that there is not one — both defaults being wrong in
+    /// opposite directions is the same argument `relieve_by` already makes.
+    pub fn unclassified(&self) -> i128 {
+        self.gain - self.short_term - self.long_term
+    }
+}
+
 /// Open tax lots, per position, and what relieving them has cost.
 ///
 /// ⛔ THE LOTS ARE MAINTAINED BY THE FOLD, not derived on demand. A buy opens a
@@ -144,6 +215,14 @@ struct LotBook {
     /// PROCEEDS, which is a property of the transaction rather than of the
     /// position, and the fold does not know which leg was the cash.
     relieved: i128,
+    /// The part of the realized gain a holding period could be established for.
+    ///
+    /// ⛔ ONLY THE CLASSIFIABLE PART IS ACCUMULATED HERE. The TOTAL is the
+    /// realized-gain dimension in `totals`, which ties to the trial balance; if
+    /// this held its own copy of the total there would be two answers to one
+    /// question, and the one that drifted would be the one nothing checks.
+    short_term: i128,
+    long_term: i128,
     /// ⛔ SALES THAT COULD NOT BE RELIEVED, named rather than propagated.
     ///
     /// A husk, a pro-rata split that will not divide, a holding that is short —
@@ -189,7 +268,7 @@ pub struct Projection {
     /// is the one place where guessing is worst: FIFO is the right answer for
     /// some fund somewhere, so a guess that lands on it is indistinguishable
     /// from having read it.
-    methods: BTreeMap<ratio_store::Digest, Result<relief::Method, String>>,
+    terms: BTreeMap<ratio_store::Digest, Result<Terms, String>>,
 }
 
 impl Projection {
@@ -227,7 +306,7 @@ impl Projection {
     /// is that defect with a shorter signature.
     pub fn advance(&mut self, journal: &[JournalEntry], method: relief::Method) -> usize {
         for (i, entry) in journal.iter().enumerate().skip(self.at) {
-            self.fold(i, entry, &Ok(method));
+            self.fold(i, entry, &Ok(Terms::under(method)));
         }
         let folded = journal.len().saturating_sub(self.at);
         // ⛔ `max`, NOT `= journal.len()`. A SHORTER journal must not rewind the
@@ -256,9 +335,9 @@ impl Projection {
         &mut self,
         at: usize,
         entry: &JournalEntry,
-        method: &Result<relief::Method, String>,
+        terms: &Result<Terms, String>,
     ) {
-        self.fold_lots(at, entry, method);
+        self.fold_lots(at, entry, terms);
         if let Some(a) = &entry.announcement {
             self.actions.announced.push((
                 a.instrument.clone(),
@@ -334,25 +413,25 @@ impl Projection {
         // the cold build. The cache is keyed on the digest, so this costs one
         // read per configuration a book has ever promoted.
         for entry in &fresh {
-            if !self.methods.contains_key(&entry.config) {
-                let resolved = Self::method_of(&book, &entry.config);
-                self.methods.insert(entry.config.clone(), resolved);
+            if !self.terms.contains_key(&entry.config) {
+                let resolved = Self::terms_of(&book, &entry.config);
+                self.terms.insert(entry.config.clone(), resolved);
             }
         }
         let n = fresh.len();
         for (i, entry) in fresh.iter().enumerate() {
             // Present because the loop above inserted it.
-            let method = self.methods.get(&entry.config).cloned().unwrap_or_else(|| {
+            let terms = self.terms.get(&entry.config).cloned().unwrap_or_else(|| {
                 Err("the configuration was not resolved before folding".to_string())
             });
-            self.fold(self.at + i, entry, &method);
+            self.fold(self.at + i, entry, &terms);
         }
         self.at += n;
         self.read_to = now;
         Ok(n)
     }
 
-    /// The relief method a stored configuration names.
+    /// The terms a stored configuration sets for the lot engine.
     ///
     /// ⚠ THE ERROR IS CARRIED, NOT RAISED. A configuration that cannot be read
     /// concerns the sales posted under it, not the whole fund — the same
@@ -360,17 +439,14 @@ impl Projection {
     /// build would take a fund's NAV down over one bad config, and the NAV does
     /// not read the lots at all (`Ratio.Closure.factored_nav_never_reads_the_
     /// lots`).
-    fn method_of(
-        book: &FileBook,
-        config: &ratio_store::Digest,
-    ) -> Result<relief::Method, String> {
+    fn terms_of(book: &FileBook, config: &ratio_store::Digest) -> Result<Terms, String> {
         use ratio_store::ConfigStore;
         let bytes = book
             .get(config)
             .map_err(|e| format!("config {} could not be read — {e:#}", config.as_str()))?;
         let set = ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&bytes))
             .map_err(|e| format!("config {} is not a rule set — {e:#}", config.as_str()))?;
-        Ok(set.lot_method.into())
+        Ok(Terms::of(&set))
     }
 
     /// The positions, as of the prefix folded.
@@ -415,8 +491,31 @@ impl Projection {
         &mut self,
         at: usize,
         entry: &JournalEntry,
-        method: &Result<relief::Method, String>,
+        terms: &Result<Terms, String>,
     ) {
+        // ⛔ THE GAIN IS ATTRIBUTED ONLY WHEN THE ENTRY IS UNAMBIGUOUS: exactly
+        // one sale, and a chart that names where a gain goes. An entry disposing
+        // of two instruments carries ONE gain leg between them, and splitting it
+        // would be inventing an attribution the journal does not record.
+        //
+        // ⚠ Ambiguous entries are not dropped — they land in
+        // `Realized::unclassified`, which is the total MINUS what was
+        // classified, so nothing can go missing without showing up there.
+        let sales = entry
+            .postings
+            .iter()
+            .filter(|p| p.instrument.is_some() && p.quantity.is_some_and(|q| q < 0))
+            .count();
+        let gain_leg: Option<i64> = terms.as_ref().ok().and_then(|t| t.roles).and_then(|r| {
+            let legs: Vec<i64> = entry
+                .postings
+                .iter()
+                .filter(|p| p.dim == r.realized_gain)
+                .map(|p| p.amount)
+                .collect();
+            (sales == 1 && !legs.is_empty()).then(|| legs.iter().sum())
+        });
+
         for p in &entry.postings {
             let (Some(inst), Some(qty)) = (&p.instrument, p.quantity) else {
                 continue;
@@ -451,8 +550,8 @@ impl Projection {
             // it is a real method that real funds elect, so a book relieved
             // under it by accident is indistinguishable from one relieved under
             // it by agreement. A break says which sale and why.
-            let method = match method {
-                Ok(m) => *m,
+            let terms = match terms {
+                Ok(t) => *t,
                 Err(why) => {
                     self.lots.breaks.push(format!(
                         "{}: selling {} of {} could not be relieved — the lot method is \
@@ -462,6 +561,7 @@ impl Projection {
                     continue;
                 }
             };
+            let method = terms.method;
             let held = self.lots.open.entry(key.clone()).or_default();
             match relief::relieve_by(method, held, -qty) {
                 Ok(r) => {
@@ -497,14 +597,45 @@ impl Projection {
                             -p.amount - r.cost
                         ));
                     }
-                    *held = r.left;
                     self.lots.relieved += r.cost as i128;
+                    // Computed before `r.left` is moved out below, and as a free
+                    // function because `held` still borrows the lot book.
+                    let split = gain_leg
+                        .and_then(|g| classify(&r, g, entry.trade_date.as_deref(), terms));
+                    *held = r.left;
+                    if let Some((short, long)) = split {
+                        self.lots.short_term += short;
+                        self.lots.long_term += long;
+                    }
                 }
                 Err(e) => self.lots.breaks.push(format!(
                     "{}: selling {} of {} could not be relieved — {e:#}",
                     entry.id, -qty, inst
                 )),
             }
+        }
+    }
+
+    /// What the fund has realized, as of the prefix folded.
+    ///
+    /// ⛔ THE TOTAL COMES FROM THE CHART, NOT FROM THE LOT BOOK. It is the
+    /// realized-gain dimension's balance, which is the figure the trial balance
+    /// ties on — so this cannot disagree with the books. Only the SPLIT is the
+    /// lot engine's, and it is reported as a part of that total rather than
+    /// beside it.
+    ///
+    /// Returns `None` when the configuration names no chart roles: without one
+    /// the engine does not know which dimension a gain lands in, and answering
+    /// zero would be a fund that realized nothing.
+    pub fn realized(&self, roles: Option<ratio_rules::ChartRoles>) -> AsOf<Option<Realized>> {
+        AsOf {
+            value: roles.map(|r| Realized {
+                gain: self.totals.by_dim.get(&r.realized_gain).copied().unwrap_or(0),
+                basis: self.lots.relieved,
+                short_term: self.lots.short_term,
+                long_term: self.lots.long_term,
+            }),
+            prefix: self.at,
         }
     }
 
@@ -628,10 +759,90 @@ impl Projection {
     }
 }
 
+/// Split one disposal's gain into (short-term, long-term), or decline.
+///
+/// ⛔ THE GAIN FOLLOWS THE PROCEEDS, NOT THE COST. Two lots relieved by one sale
+/// share its proceeds in proportion to their UNITS — that is what the holder
+/// sold — while each keeps its own basis. Apportioning by cost instead gives
+/// every lot a gain of zero and puts the whole difference on whichever lot the
+/// arithmetic happened to end on.
+///
+/// ⛔ AND IT REFUSES RATHER THAN ROUNDING, which is
+/// `Ratio.Lots.partial_relief_is_exactly_pro_rata`'s discipline in the one place
+/// it had not been applied. A disposal whose proceeds do not divide exactly
+/// across its lots is left WHOLLY unclassified: rounding here moves minor units
+/// between two tax rates, which is not a rounding error — it is a misstatement
+/// of taxable income.
+///
+/// ⚠ A FREE FUNCTION because the caller still holds a mutable borrow of the lot
+/// book while it has the `Relieved` in hand, and because nothing here needs the
+/// projection: it is arithmetic over one disposal.
+///
+/// ⚠ Everything it declines stays in the total, and shows up in
+/// `Realized::unclassified` — which is the remainder, so nothing goes missing.
+fn classify(
+    r: &relief::Relieved,
+    gain: i64,
+    disposed_on: Option<&str>,
+    terms: Terms,
+) -> Option<(i128, i128)> {
+    // `sale_postings` posts the gain credit-normal: `relieved − proceeds`.
+    let proceeds = ratio_common::checked::sub(r.cost, gain, "proceeds").ok()?;
+    let day = ratio_common::days_from_iso_date(disposed_on?).ok()?;
+    let units: i64 = r.taken.iter().map(|t| t.units).sum();
+    if units <= 0 {
+        return None;
+    }
+
+    let mut short = 0i128;
+    let mut long = 0i128;
+    for t in &r.taken {
+        let scaled = ratio_common::checked::mul(proceeds, t.units, "proceeds pro rata").ok()?;
+        if scaled.rem_euclid(units) != 0 {
+            return None;
+        }
+        let acquired = ratio_common::days_from_iso_date(t.acquired.as_deref()?).ok()?;
+        let share = ratio_common::checked::sub(t.cost, scaled / units, "a lot's gain").ok()?;
+        // `Ratio.Lots.Methods.isLongTerm`: the threshold day IS long-term.
+        if day - acquired >= terms.long_term_days {
+            long += share as i128;
+        } else {
+            short += share as i128;
+        }
+    }
+    Some((short, long))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use ratio_store::{Account, AccountTypeRecord as A, ConfigStore, PostingRecord};
+
+    /// Where a test's book goes.
+    ///
+    /// ⛔ `TEST_TMPDIR` WHEN BAZEL SETS IT, which is per test run and cleaned
+    /// between them. `std::env::temp_dir()` is the user's one shared directory,
+    /// so a book survives the run that made it — and a run interrupted midway
+    /// leaves one whose ACTIVE config pointer names a blob that is no longer
+    /// there. The next run then fails inside a helper, reporting a stored-config
+    /// error about a test that has nothing to do with configs.
+    ///
+    /// ⚠ Observed, not theorized: a sabotage run left exactly that state behind
+    /// and the following clean run failed with `entry "s" names config … which
+    /// is not stored`.
+    ///
+    /// ⛔ AND THE NAME MUST BE UNIQUE ACROSS THE WHOLE FILE. Tests run in
+    /// PARALLEL, every book helper begins with `remove_dir_all`, so two tests
+    /// naming one book wipe each other's directory mid-flight — leaving ACTIVE
+    /// pointing at a config blob that has just been deleted. It fails perhaps
+    /// one run in three, in whichever test lost the race, reporting a
+    /// stored-config error that has nothing to do with what it is testing.
+    fn tmp_root() -> std::path::PathBuf {
+        match std::env::var_os("TEST_TMPDIR") {
+            Some(d) => std::path::PathBuf::from(d),
+            None => std::env::temp_dir(),
+        }
+    }
 
     /// The method the slice-folding tests below are written against.
     ///
@@ -642,7 +853,7 @@ mod tests {
     const FIFO: relief::Method = relief::Method::Fifo;
 
     fn book(name: &str, trades: &[(&str, i64, i64)]) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("ratio-project-{name}"));
+        let d = tmp_root().join(format!("ratio-project-{name}"));
         let _ = std::fs::remove_dir_all(&d);
         let mut b = FileBook::open(&d).unwrap();
         b.put_accounts(&[
@@ -1240,7 +1451,7 @@ mod tests {
     /// holding whose lots cost the same is relieved identically by all six, and
     /// a test built on one would pass against any wiring at all.
     fn book_electing(name: &str, method: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("ratio-project-{name}"));
+        let d = tmp_root().join(format!("ratio-project-{name}"));
         let _ = std::fs::remove_dir_all(&d);
         let mut b = FileBook::open(&d).unwrap();
         b.put_accounts(&[
@@ -1358,7 +1569,7 @@ mod tests {
         // ⛔ NO FALLBACK TO FIFO. FIFO is a method real funds elect, so a book
         // relieved under it by accident is indistinguishable from one relieved
         // under it by agreement. The sale becomes a break instead.
-        let d = std::env::temp_dir().join("ratio-project-unreadable-config");
+        let d = tmp_root().join("ratio-project-unreadable-config");
         let _ = std::fs::remove_dir_all(&d);
         let mut b = FileBook::open(&d).unwrap();
         b.put_accounts(&[Account {
@@ -1412,5 +1623,201 @@ mod tests {
         assert_eq!(breaks.len(), 1, "{breaks:?}");
         assert!(breaks[0].contains("dearest-per-unit-first"), "{}", breaks[0]);
         assert!(!breaks[0].contains("oldest-first"), "{}", breaks[0]);
+    }
+
+    // ── what the fund realized, and how much of it is classified ───────────
+
+    const ROLES: ratio_rules::ChartRoles =
+        ratio_rules::ChartRoles { investments: 1, cash: 2, realized_gain: 30 };
+
+    /// A book that posts sales through `relief::sale_postings` — three legs,
+    /// with the gain derived rather than supplied.
+    fn book_with_gains(name: &str, long_term_days: i64) -> std::path::PathBuf {
+        let d = tmp_root().join(format!("ratio-project-{name}"));
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+            Account { dim: 30, display_name: "Realized gain".into(), account_type: A::Income },
+        ])
+        .unwrap();
+        let c = b
+            .put(
+                format!(
+                    "lot_method = \"fifo\"\nrules = []\nlong_term_days = {long_term_days}\n\n\
+                     [chart_roles]\ninvestments = 1\ncash = 2\nrealized_gain = 30\n"
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        b.set_active(&c).unwrap();
+        d
+    }
+
+    fn buy_on(d: &std::path::Path, id: &str, units: i64, cost: i64, day: &str) {
+        buy_dated(d, id, "vti", units, cost, day);
+    }
+
+    /// A disposal posted the way the engine posts one: investments out at
+    /// basis, cash in at proceeds, the difference to realized gain.
+    fn dispose(d: &std::path::Path, id: &str, units: i64, proceeds: i64, day: &str) {
+        let mut b = FileBook::open(d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        let p = Projection::of_book(d).unwrap();
+        let held = p.lots_of(1, "vti").value;
+        let r = relief::relieve_by(relief::Method::Fifo, &held, units).unwrap();
+        let postings =
+            relief::sale_postings(ROLES, None, "vti", units, r.cost, proceeds).unwrap();
+        b.append(&JournalEntry {
+            id: id.into(),
+            memo: "sell".into(),
+            config: c,
+            postings,
+            trade_date: Some(day.into()),
+            announcement: None,
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn a_gain_is_split_by_how_long_the_lot_was_actually_held() {
+        // ⛔ THE REASON THE HOLDING-PERIOD METHODS EXIST. One holding, one
+        // trade, and the two halves are taxed at different rates — a report
+        // that gives only a total is missing the figure the fund is asked for.
+        let d = book_with_gains("split", 365);
+        buy_on(&d, "b-old", 1, 100, "2024-01-10"); // held well over a year
+        buy_on(&d, "b-new", 1, 100, "2026-06-01"); // held weeks
+        dispose(&d, "s-old", 1, 300, "2026-06-30"); // FIFO takes the old lot
+        dispose(&d, "s-new", 1, 150, "2026-06-30"); // then the new one
+
+        let p = Projection::of_book(&d).unwrap();
+        let r = p.realized(Some(ROLES)).value.unwrap();
+
+        // Credit-normal: a gain reads negative. 200 long, 50 short.
+        assert_eq!(r.gain, -250);
+        assert_eq!(r.long_term, -200, "the lot held since 2024");
+        assert_eq!(r.short_term, -50, "the one bought this month");
+        assert_eq!(r.unclassified(), 0);
+        assert_eq!(r.basis, 200);
+    }
+
+    #[test]
+    fn the_threshold_is_the_configured_number_and_the_boundary_day_is_long() {
+        // ⛔ `365` IS A JURISDICTION'S NUMBER. A fund administered under other
+        // rules says so, and the engine must use what it said —
+        // `Ratio.Lots.Methods.isLongTerm` takes the threshold as a parameter
+        // for exactly this reason.
+        //
+        // ⚠ AND THE BOUNDARY IS ON THE DAY: held exactly the threshold is LONG.
+        // `the_threshold_day_is_long_term`. Off by one moves a disposal between
+        // tax rates and nothing about the figure looks unusual.
+        let d = book_with_gains("threshold-exact", 365);
+        buy_on(&d, "b", 1, 100, "2025-06-30");
+        dispose(&d, "s", 1, 300, "2026-06-30"); // exactly 365 days
+        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES)).value.unwrap();
+        assert_eq!(r.long_term, -200, "the threshold day is long-term");
+        assert_eq!(r.short_term, 0);
+
+        // One day short of it is not.
+        let d = book_with_gains("threshold-short", 365);
+        buy_on(&d, "b", 1, 100, "2025-07-01");
+        dispose(&d, "s", 1, 300, "2026-06-30"); // 364 days
+        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES)).value.unwrap();
+        assert_eq!(r.short_term, -200);
+        assert_eq!(r.long_term, 0);
+
+        // And a fund whose agreement says two years gets two years.
+        let d = book_with_gains("threshold-730", 730);
+        buy_on(&d, "b", 1, 100, "2025-06-30");
+        dispose(&d, "s", 1, 300, "2026-06-30"); // 365 days — short, under 730
+        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES)).value.unwrap();
+        assert_eq!(r.short_term, -200, "365 days is short-term at a 730-day threshold");
+        assert_eq!(r.long_term, 0);
+    }
+
+    #[test]
+    fn a_disposal_whose_proceeds_do_not_divide_is_left_wholly_unclassified() {
+        // ⛔ REFUSES RATHER THAN ROUNDING. Two lots of one unit each sharing
+        // proceeds of 101 cannot be apportioned exactly, and rounding would move
+        // a minor unit between two tax rates — a misstatement of taxable income
+        // rather than a rounding error. The TOTAL is untouched.
+        let d = book_with_gains("indivisible", 365);
+        buy_on(&d, "b1", 1, 40, "2024-01-10");
+        buy_on(&d, "b2", 1, 40, "2026-06-01");
+        dispose(&d, "s", 2, 101, "2026-06-30");
+
+        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES)).value.unwrap();
+        assert_eq!(r.gain, -21, "the total is exact and ties to the chart");
+        assert_eq!(r.short_term, 0);
+        assert_eq!(r.long_term, 0);
+        assert_eq!(r.unclassified(), -21, "all of it, named rather than rounded");
+    }
+
+    #[test]
+    fn a_lot_with_no_acquisition_date_leaves_its_gain_unclassified() {
+        // ⚠ Every journal written before `trade_date` existed is in this state.
+        // The honest answer about such a holding's period is that there is not
+        // one — assuming the epoch makes it long-term at the favourable rate on
+        // records that do not support the claim.
+        let d = book_with_gains("undated-gain", 365);
+        let mut b = FileBook::open(&d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        b.append(&JournalEntry {
+            id: "b-undated".into(),
+            memo: "buy".into(),
+            config: c,
+            postings: vec![
+                PostingRecord {
+                    dim: 1,
+                    amount: 100,
+                    currency: None,
+                    instrument: Some("vti".into()),
+                    quantity: Some(1),
+                },
+                PostingRecord::new(2, -100),
+            ],
+            trade_date: None,
+            announcement: None,
+        })
+        .unwrap();
+        drop(b);
+        dispose(&d, "s", 1, 300, "2026-06-30");
+
+        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES)).value.unwrap();
+        assert_eq!(r.gain, -200);
+        assert_eq!(r.unclassified(), -200);
+        assert_eq!(r.short_term + r.long_term, 0);
+    }
+
+    #[test]
+    fn the_split_always_sums_to_the_total_the_chart_reports() {
+        // ⛔ THE INVARIANT THAT MAKES THE THREE FIGURES SAFE TO PRINT TOGETHER.
+        // `unclassified` is DERIVED as the remainder, so a classification that
+        // silently dropped a disposal shows up as a larger unclassified figure
+        // rather than as three numbers that do not add up.
+        let d = book_with_gains("sums", 365);
+        buy_on(&d, "b1", 2, 200, "2024-01-10");
+        buy_on(&d, "b2", 1, 90, "2026-05-01");
+        dispose(&d, "s1", 1, 250, "2026-06-30");
+        dispose(&d, "s2", 2, 401, "2026-06-30"); // will not divide
+
+        let p = Projection::of_book(&d).unwrap();
+        let r = p.realized(Some(ROLES)).value.unwrap();
+        assert_eq!(r.short_term + r.long_term + r.unclassified(), r.gain);
+        assert!(r.unclassified() != 0, "the indivisible disposal is in there");
+    }
+
+    #[test]
+    fn realized_carries_the_prefix_and_says_nothing_without_a_chart() {
+        let d = book_with_gains("no-roles", 365);
+        buy_on(&d, "b", 1, 100, "2025-01-10");
+        dispose(&d, "s", 1, 300, "2026-06-30");
+        let p = Projection::of_book(&d).unwrap();
+
+        assert_eq!(p.realized(Some(ROLES)).prefix, p.prefix());
+        // ⛔ `None`, NOT ZERO. Without a chart the engine does not know which
+        // dimension a gain lands in, and zero is a fund that realized nothing.
+        assert!(p.realized(None).value.is_none());
     }
 }
