@@ -24,34 +24,54 @@
 (* lives with being slightly behind. A relief cannot — it is a WRITE, and    *)
 (* writing a relief computed against a stale factor puts the wrong number of *)
 (* units into the book permanently.                                          *)
+(*                                                                          *)
+(* ⛔ AND THE SAME SHAPE AGAIN, ONE LAYER OUT: the METHOD. Which lots a sale  *)
+(* gives up is a term of an administration agreement, carried in the rule    *)
+(* set that the sale's journal entry pinned. A relief computed under the     *)
+(* method in force NOW rather than the method that entry named relieves the  *)
+(* wrong lots — and once again the entry balances, conservation holds and    *)
+(* the trial balance ties, because the cost relieved is the cost of the lots *)
+(* it took. `Ratio.Lots.Methods.the_method_decides_the_taxable_gain` is the  *)
+(* proof that four methods give four different taxable incomes from one      *)
+(* holding and one trade; this is the obligation that the fund gets the one  *)
+(* it agreed to.                                                            *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS
     Sales,
     MaxSplits,
+    MaxConfigs,     \* bound, not a property
     PinTheFactor,   \* the fix. FALSE converts on read and writes on current.
-    RefuseOnChange  \* the fix. FALSE writes anyway when the factor moved.
+    RefuseOnChange, \* the fix. FALSE writes anyway when the factor moved.
+    PinTheMethod    \* the fix. FALSE relieves under the method in force now.
 
 VARIABLES
     splits,     \* how many splits have been announced. The factor, abstracted.
+    configs,    \* how many rule sets have been promoted. The method, abstracted.
     readAt,     \* [Sales -> Nat] the factor each sale converted against
-    stage,      \* [Sales -> {"new","converted","written"}]
+    stage,      \* [Sales -> {"unposted","new","converted","written"}]
     wroteAt,    \* [Sales -> Nat] the factor in force when the relief landed
+    postedUnder,\* [Sales -> Nat] the config the sale's JOURNAL ENTRY pinned
+    reliefUnder,\* [Sales -> Nat] the config the relief was actually computed under
     refused,    \* SUBSET Sales — sent back to be recomputed
     lastOp
 
-vars == <<splits, readAt, stage, wroteAt, refused, lastOp>>
+vars == <<splits, configs, readAt, stage, wroteAt, postedUnder, reliefUnder,
+          refused, lastOp>>
 
-NotRead == 99   \* a marker, distinguishable from any split count
+NotRead == 99   \* a marker, distinguishable from any split or config count
 
 ----------------------------------------------------------------------------
 
 Init ==
     /\ splits = 0
+    /\ configs = 0
     /\ readAt = [s \in Sales |-> NotRead]
-    /\ stage = [s \in Sales |-> "new"]
+    /\ stage = [s \in Sales |-> "unposted"]
     /\ wroteAt = [s \in Sales |-> NotRead]
+    /\ postedUnder = [s \in Sales |-> NotRead]
+    /\ reliefUnder = [s \in Sales |-> NotRead]
     /\ refused = {}
     /\ lastOp = "init"
 
@@ -61,7 +81,28 @@ Announce ==
     /\ splits < MaxSplits
     /\ splits' = splits + 1
     /\ lastOp' = "announce"
-    /\ UNCHANGED <<readAt, stage, wroteAt, refused>>
+    /\ UNCHANGED <<configs, readAt, stage, wroteAt, postedUnder, reliefUnder,
+                   refused>>
+
+(* A new rule set is promoted. Like an announcement, this rewrites nothing:
+   entries already posted keep pointing at the config digest they named, and
+   it is only what happens NEXT that moves. *)
+Promote ==
+    /\ configs < MaxConfigs
+    /\ configs' = configs + 1
+    /\ lastOp' = "promote"
+    /\ UNCHANGED <<splits, readAt, stage, wroteAt, postedUnder, reliefUnder,
+                   refused>>
+
+(* The sale reaches the journal, pinning the configuration in force. This is
+   the step that makes the method a FACT ABOUT THE ENTRY rather than a global
+   — every `JournalEntry` carries the digest it was posted under. *)
+Post(s) ==
+    /\ stage[s] = "unposted"
+    /\ postedUnder' = [postedUnder EXCEPT ![s] = configs]
+    /\ stage' = [stage EXCEPT ![s] = "new"]
+    /\ lastOp' = "post"
+    /\ UNCHANGED <<splits, configs, readAt, wroteAt, reliefUnder, refused>>
 
 (* Read the position and convert the sale into stored units. *)
 Convert(s) ==
@@ -69,7 +110,7 @@ Convert(s) ==
     /\ readAt' = [readAt EXCEPT ![s] = splits]
     /\ stage' = [stage EXCEPT ![s] = "converted"]
     /\ lastOp' = "convert"
-    /\ UNCHANGED <<splits, wroteAt, refused>>
+    /\ UNCHANGED <<splits, configs, wroteAt, postedUnder, reliefUnder, refused>>
 
 (* Write the relief.
    ⛔ THE CHECK IS THE WHOLE THING. If the factor moved between converting and
@@ -84,23 +125,32 @@ Write(s) ==
               /\ stage' = [stage EXCEPT ![s] = "new"]
               /\ readAt' = [readAt EXCEPT ![s] = NotRead]
               /\ refused' = refused \cup {s}
-              /\ UNCHANGED wroteAt
+              /\ UNCHANGED <<wroteAt, reliefUnder>>
          ELSE /\ stage' = [stage EXCEPT ![s] = "written"]
               /\ wroteAt' = [wroteAt EXCEPT ![s] =
                    IF PinTheFactor THEN readAt[s] ELSE splits]
+              \* ⛔ The method is resolved HERE, and the only defensible source
+              \* is the entry's own pin. Reading `configs` is the version that
+              \* looks harmless: the fund declared a method, the engine used a
+              \* method, and nothing says they were the same one.
+              /\ reliefUnder' = [reliefUnder EXCEPT ![s] =
+                   IF PinTheMethod THEN postedUnder[s] ELSE configs]
               /\ UNCHANGED <<readAt, refused>>
     /\ lastOp' = "write"
-    /\ UNCHANGED splits
+    /\ UNCHANGED <<splits, configs, postedUnder>>
 
 Settled == \A s \in Sales : stage[s] = "written"
 
 Next ==
     \/ Announce
+    \/ Promote
+    \/ \E s \in Sales : Post(s)
     \/ \E s \in Sales : Convert(s)
     \/ \E s \in Sales : Write(s)
     \/ (Settled /\ UNCHANGED vars)
 
-Spec == Init /\ [][Next]_vars /\ WF_vars(\E s \in Sales : Convert(s))
+Spec == Init /\ [][Next]_vars /\ WF_vars(\E s \in Sales : Post(s))
+                              /\ WF_vars(\E s \in Sales : Convert(s))
                               /\ WF_vars(\E s \in Sales : Write(s))
 
 ----------------------------------------------------------------------------
@@ -141,8 +191,29 @@ WrittenMeansConverted ==
 (***************************************************************************)
 EverySaleIsEventuallyWritten == \A s \in Sales : <>(stage[s] = "written")
 
+(***************************************************************************)
+(* 4. ⭐ AND IT IS RELIEVED UNDER THE METHOD ITS OWN ENTRY NAMED.           *)
+(*                                                                         *)
+(*    The factor version above is a race. This one does not need a race to  *)
+(*    go wrong: an engine that resolves the method from anywhere other than *)
+(*    the entry's pin — the configuration in force now, or worse a constant *)
+(*    default — is wrong on every sale posted under a different one, and    *)
+(*    silent on all of them.                                               *)
+(*                                                                         *)
+(*    ⚠ NOTHING DOWNSTREAM CATCHES THIS EITHER. A reconciliation compares   *)
+(*    positions and cash, and both agree: the units left are right and the  *)
+(*    proceeds are right. What moves is the REALIZED GAIN, which has no     *)
+(*    counterparty to disagree with it.                                    *)
+(***************************************************************************)
+ReliefUsesTheMethodItPinned ==
+    \A s \in Sales : stage[s] = "written" => reliefUnder[s] = postedUnder[s]
+
 TypeOK ==
     /\ splits \in 0..MaxSplits
-    /\ \A s \in Sales : stage[s] \in {"new", "converted", "written"}
+    /\ configs \in 0..MaxConfigs
+    /\ \A s \in Sales :
+         stage[s] \in {"unposted", "new", "converted", "written"}
+    /\ \A s \in Sales :
+         postedUnder[s] \in (0..MaxConfigs) \cup {NotRead}
 
 =============================================================================

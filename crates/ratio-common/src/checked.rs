@@ -59,6 +59,20 @@ pub fn neg(a: i64, what: &str) -> Result<i64> {
     })
 }
 
+/// `Ratio.Bounded.sub`.
+///
+/// ⛔ NOT `add(a, -b)`, WHICH IS WHAT THIS EXISTS TO REPLACE. Writing a
+/// difference that way negates first, and `-b` is unguarded inside the call —
+/// so at `b == i64::MIN` it wraps before `add` is ever consulted, and `add`
+/// then cheerfully checks a number that is not the one that was meant.
+/// `Ratio.Bounded.routing_a_difference_through_negation_loses_an_answer` is the
+/// other half: even guarded, the composition declines differences that are
+/// perfectly representable — `-1 - i64::MIN` is exactly `i64::MAX`.
+pub fn sub(a: i64, b: i64, what: &str) -> Result<i64> {
+    a.checked_sub(b)
+        .ok_or_else(|| anyhow::anyhow!("{what}: {a} − {b} does not fit in 64 bits"))
+}
+
 /// `Ratio.Bounded.div`, Euclidean to match Lean's `Int`.
 ///
 /// ⛔ TWO WAYS TO FAIL, AND THEY MEAN DIFFERENT THINGS. A zero divisor is a
@@ -146,5 +160,33 @@ mod tests {
         // `Ratio.Bounded.the_one_division_that_does_not_fit`. Nothing about the
         // inputs looks unusual, and it panics with "divide with overflow".
         assert!(div_euclid(i64::MIN, -1, "x").is_err());
+    }
+
+    #[test]
+    fn a_difference_routed_through_negation_is_not_the_same_function() {
+        // ⛔ BOTH HALVES OF WHY `sub` EXISTS.
+        //
+        // First: `add(a, -b)` wraps BEFORE `add` is called. The negation is an
+        // ordinary expression in the argument list, so nothing checks it, and
+        // `add` is handed a number nobody asked for.
+        assert_eq!(i64::MIN.wrapping_neg(), i64::MIN, "the negation does not move it");
+        assert_eq!(
+            add(5, i64::MIN.wrapping_neg(), "x").unwrap(),
+            i64::MIN + 5,
+            "and `add` ANSWERS, having been asked the wrong question"
+        );
+        assert!(
+            sub(5, i64::MIN, "x").is_err(),
+            "while the difference actually meant does not fit at all — so the \
+             guarded-looking version returns a number where the honest one refuses"
+        );
+
+        // Second: even written guardedly, the composition is weaker. The
+        // difference is representable and the intermediate negation is not.
+        assert_eq!(sub(-1, i64::MIN, "x").unwrap(), i64::MAX);
+        assert!(neg(i64::MIN, "x").is_err(), "so `add(a, neg(b)?)` never gets to ask");
+
+        // And it still refuses what genuinely does not fit.
+        assert!(sub(i64::MIN, 1, "x").is_err());
     }
 }

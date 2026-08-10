@@ -512,8 +512,11 @@ mod tests {
         let d = tmp("valuable");
         generate(&d, Shape { securities: 20, currencies: 2, turnover: 3, lots_per: 10, open_actions: 6, capital_txns: 2, seed: 9 })
             .unwrap();
-        let entries = FileBook::open(&d).unwrap().entries().unwrap();
-        let p = ratio_project::Projection::rebuild(&entries);
+        // ⚠ Through `of_book` rather than `rebuild`, so the lots are relieved
+        // under the method the generated configuration DECLARES rather than one
+        // this test picked. A generator that writes `lot_method` and a test that
+        // folds under some other method measure two different books.
+        let p = ratio_project::Projection::of_book(&d).unwrap();
         for i in 0..20i64 {
             p.units_as_of(1, &ticker(i), "2026-06-30")
                 .unwrap_or_else(|e| panic!("{} cannot be valued: {e:#}", ticker(i)));

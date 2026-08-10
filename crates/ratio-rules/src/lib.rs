@@ -487,13 +487,18 @@ pub fn compile(rule: &Rule, event: &Event) -> Result<Vec<PostingRecord>> {
         RuleKind::Trade | RuleKind::Dividend | RuleKind::Mark => event.amount,
         RuleKind::Accrual => accrual_amount(rule, event)?,
     };
-    Ok(rule
-        .legs
+    rule.legs
         .iter()
         .map(|leg| {
             // `Ratio.Chart.applyTemplate`: weight × amount, per leg.
-            let value = leg.weight * amount;
-            match (leg.per_instrument, event.instrument.as_deref()) {
+            //
+            // ⛔ CHECKED, BECAUSE THIS IS THE PRODUCTION POSTING PATH. Every
+            // figure in every book comes through this multiply, and an
+            // overflowing product does not look wrong — it wraps to a plausible
+            // number of the other sign. The legs would still net to zero, so the
+            // door lets it through and the trial balance ties on it.
+            let value = ratio_common::checked::mul(leg.weight, amount, "a posting leg")?;
+            Ok(match (leg.per_instrument, event.instrument.as_deref()) {
                 (true, Some(i)) => PostingRecord::of(
                     leg.account,
                     value,
@@ -505,9 +510,9 @@ pub fn compile(rule: &Rule, event: &Event) -> Result<Vec<PostingRecord>> {
                     event.quantity.map(|q| if leg.weight < 0 { -q } else { q }),
                 ),
                 _ => PostingRecord::new(leg.account, value),
-            }
+            })
         })
-        .collect())
+        .collect()
 }
 
 /// The accrued amount: `basis × rate × days ÷ (10 000 × denominator)`.
@@ -729,6 +734,48 @@ weight = -1
         .unwrap();
         assert_eq!(out[0].amount, 1_690_421_107);
         assert_eq!(out[1].amount, -1_690_421_107);
+    }
+
+    #[test]
+    fn a_leg_whose_product_would_wrap_is_refused_rather_than_wrapped() {
+        // ⛔ THE PRODUCTION POSTING PATH, and it multiplied unguarded. The
+        // wrapped product is the failure this repo keeps finding: both legs
+        // wrap by the same magnitude in opposite directions, so they still net
+        // to zero, the door admits the entry, and the trial balance ties on a
+        // pair of figures with the wrong sign and the wrong size.
+        let set = RuleSet::from_toml(
+            r#"
+[[rule]]
+id = "buy"
+kind = "trade"
+[[rule.posting]]
+account = 1
+weight = 4
+[[rule.posting]]
+account = 2
+weight = -4
+"#,
+        )
+        .unwrap();
+        let huge = i64::MAX / 3;
+        let err = compile(
+            set.rule("buy").unwrap(),
+            &Event {
+                rule: "buy".into(),
+                id: "t1".into(),
+                amount: huge,
+                days: None,
+                memo: String::new(),
+                instrument: None,
+                quantity: None,
+            },
+        )
+        .unwrap_err();
+        assert!(format!("{err:#}").contains("a posting leg"), "{err:#}");
+
+        // And what the unguarded version would have produced: a number that is
+        // negative, plausible, and nowhere near four times the amount.
+        assert!(4i64.wrapping_mul(huge) < 0);
     }
 
     /// The property `Ratio.Chart.balanced_template_balances` states, exercised

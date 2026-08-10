@@ -86,7 +86,12 @@ impl Relieved {
     /// authority asks, which is why every guard in this module is about it
     /// rather than about conservation.
     pub fn gain(&self, proceeds: i64) -> Result<i64> {
-        ratio_common::checked::add(proceeds, -self.cost, "the realized gain")
+        // ⛔ `sub`, NOT `add(proceeds, -self.cost)`. The negation in that form
+        // is an ordinary expression in the argument list, so it wraps before
+        // anything checks it and `add` then verifies a number nobody asked for.
+        // `checked::a_difference_routed_through_negation_is_not_the_same_
+        // function` is the demonstration.
+        ratio_common::checked::sub(proceeds, self.cost, "the realized gain")
     }
 }
 
@@ -147,6 +152,28 @@ impl From<ratio_rules::LotMethod> for Method {
 }
 
 impl Method {
+    /// Whether this method needs to know when each lot was acquired.
+    pub fn needs_acquisition_dates(self) -> bool {
+        matches!(self, Method::LongestHeldFirst | Method::ShortestHeldFirst)
+    }
+
+    /// How this method takes a holding, in the words an operator would use.
+    ///
+    /// ⛔ FOR MESSAGES THAT WOULD OTHERWISE ASSERT A METHOD THEY DID NOT CHECK.
+    /// The lot-book drift break described every relief as "oldest-first"
+    /// regardless of what ran, so the one line pointing at a disagreement
+    /// misdescribed how the figure it was reporting had been produced.
+    pub fn describe(self) -> &'static str {
+        match self {
+            Method::Fifo => "oldest-first",
+            Method::Lifo => "newest-first",
+            Method::Hifo => "dearest-per-unit-first",
+            Method::Lofo => "cheapest-per-unit-first",
+            Method::LongestHeldFirst => "longest-held-first",
+            Method::ShortestHeldFirst => "shortest-held-first",
+        }
+    }
+
     /// Order a holding for this method.
     ///
     /// ⛔ THE TIEBREAK APPLIES ONLY ON A TIE. `dearer(a,b) || a.seq <= b.seq` is
@@ -155,11 +182,6 @@ impl Method {
     /// reported that theorem FALSE, which is the only reason it was caught: a
     /// test asserting "HIFO differs from LOFO" would have PASSED, because both
     /// were broken the same way in opposite directions.
-    /// Whether this method needs to know when each lot was acquired.
-    pub fn needs_acquisition_dates(self) -> bool {
-        matches!(self, Method::LongestHeldFirst | Method::ShortestHeldFirst)
-    }
-
     fn arrange(self, lots: &mut [Lot]) {
         // Dearer per unit, cross-multiplied. ⚠ Not `cost / units`: integer
         // division ties lots whose per-unit costs differ by less than a minor
@@ -317,7 +339,8 @@ pub fn sale_postings(
     proceeds: i64,
 ) -> Result<Vec<ratio_store::PostingRecord>> {
     roles.check()?;
-    let gain = ratio_common::checked::add(relieved, -proceeds, "the realized gain")?;
+    // ⛔ `sub` rather than a negation inside `add` — see `Relieved::gain`.
+    let gain = ratio_common::checked::sub(relieved, proceeds, "the realized gain")?;
     Ok(vec![
         ratio_store::PostingRecord {
             dim: roles.investments,
