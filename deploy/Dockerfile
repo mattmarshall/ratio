@@ -40,6 +40,17 @@ RUN chmod +x /usr/local/bin/ratio /usr/local/bin/entrypoint.sh
 # a blank ledger. Every signal was green. An assertion here turns a blank
 # screen in front of a customer into a red build — and printing the tree means
 # the next failure names itself instead of needing a bisect.
+#
+# ⚠ THE FUND COUNT IS EXACT, NOT A MINIMUM, AND THAT IS THE POINT — it has to be
+# edited deliberately when the demo changes. Adding a fourth fund turned this
+# red, which is the assertion working: the alternative is `-ge 3`, which would
+# have gone on passing while a fund silently vanished from the image.
+#
+# ⚠ AND THE ENTRY COUNT IS HERE FOR THE SAME REASON AS EVERYTHING ELSE ABOVE.
+# `//deploy:seed_test` asserts the seed SCRIPT produces a fund with lots; this
+# asserts the IMAGE contains one. The two are different failures — a correct
+# script whose output never reached the image is exactly the blank-ledger bug
+# this block was written for.
 RUN set -eu; \
     echo "== /opt/demo-book =="; \
     find /opt/demo-book -maxdepth 2 -print | sed 's|^|  |' || true; \
@@ -54,12 +65,14 @@ RUN set -eu; \
     echo "demo book ok: $(find /opt/demo-book -type f | wc -l) file(s)"; \
     echo "== /opt/demo-funds =="; \
     ls -1 /opt/demo-funds | sed 's|^|  |'; \
-    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 3 || { echo "FAIL: expected 3 funds"; exit 1; }; \
+    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 4 || { echo "FAIL: expected 4 funds"; exit 1; }; \
     for f in /opt/demo-funds/*/; do \
       test -s "$f/accounts.json" || { echo "FAIL: $f has no chart"; exit 1; }; \
     done; \
     test -s /opt/demo-funds/harbourline-global-value/NAVS || { echo "FAIL: no NAV struck"; exit 1; }; \
-    echo "demo funds ok"
+    ashcombe=$(wc -l < /opt/demo-funds/ashcombe-global-equity/journal.jsonl); \
+    test "$ashcombe" -gt 1000 || { echo "FAIL: the generated fund has $ashcombe entries — the demo shows no scale"; exit 1; }; \
+    echo "demo funds ok: 4, and $ashcombe entries on the generated one"
 
 # The adapter polls this until the server answers, so a cold start does not
 # race the first request.
