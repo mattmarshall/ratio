@@ -166,6 +166,21 @@ impl Rates {
         )
     }
 
+    /// The factor for a named currency, for a caller costing a translation
+    /// rather than performing one.
+    pub fn factor_of(&self, currency: &str) -> Option<i64> {
+        self.factor(Some(currency))
+    }
+
+    /// The factor for a posting's currency, `None` included.
+    ///
+    /// ⚠ For a caller doing its own fold — `ratio_nav::NavFold` — which must
+    /// translate exactly as `Projection::nav` does or the recorded NAV and the
+    /// maintained one disagree. They did.
+    pub fn factor_of_optional(&self, currency: Option<&str>) -> Option<i64> {
+        self.factor(currency)
+    }
+
     /// The factor for one posting's currency.
     ///
     /// ⛔ AN UNTYPED LEG TRANSLATES AT PAR, and that is a DIFFERENT decision
@@ -174,12 +189,6 @@ impl Rates {
     /// cannot be assumed to be any particular currency, so it groups alone; for
     /// translation, a book with no currencies in it is already in one
     /// denomination and there is nothing to translate.
-    /// The factor for a named currency, for a caller costing a translation
-    /// rather than performing one.
-    pub fn factor_of(&self, currency: &str) -> Option<i64> {
-        self.factor(Some(currency))
-    }
-
     fn factor(&self, currency: Option<&str>) -> Option<i64> {
         match currency {
             None => Some(RATE_SCALE),
@@ -262,7 +271,7 @@ impl Terms {
 /// Where a cold build's time actually went.
 ///
 /// ⛔ MEASURED, BECAUSE EVERY UNMEASURED ANSWER TODAY HAS BEEN WRONG AT LEAST
-/// ONCE. The cold build was believed to be O(entries) and labelled that way in
+/// ONCE. The cold build was believed to be O(entries) and labeled that way in
 /// two places; holding entries constant and raising fragmentation 4× more than
 /// doubled it, so a term proportional to entries × lots-per-position dominates.
 /// This says which line that term is on rather than leaving it to be reasoned
@@ -1173,6 +1182,29 @@ mod tests {
         d
     }
 
+    /// One currency's rate, in the shape `Rates::of_facts` reads.
+    fn rate_fact(currency: &str, minor: i64) -> ratio_ingest::Fact {
+        ratio_ingest::Fact {
+            id: format!("rate-{currency}"),
+            kind: "rate".into(),
+            reference: currency.into(),
+            entities: Default::default(),
+            values: [
+                ("currency".to_string(), ratio_ingest::Value::Text { text: currency.into() }),
+                ("rate".to_string(), ratio_ingest::Value::Decimal { minor }),
+            ]
+            .into_iter()
+            .collect(),
+            provenance: ratio_ingest::Provenance {
+                delivery: "test".into(),
+                row: 2,
+                template: "test".into(),
+                template_id: "test".into(),
+                received: 0,
+            },
+        }
+    }
+
     fn entries(d: &std::path::Path) -> Vec<JournalEntry> {
         FileBook::open(d).unwrap().entries().unwrap()
     }
@@ -1419,6 +1451,132 @@ mod tests {
         assert_eq!(got.value.0, want.net_asset_value, "the same NAV");
         assert_eq!(got.value.1, want.trial_balance_difference, "and the same difference");
         assert_eq!(got.prefix, want.journal_position, "over the same prefix");
+    }
+
+    #[test]
+    fn the_projection_and_the_recorded_strike_agree_across_currencies() {
+        // ⛔ THE TEST ABOVE PASSED THROUGH THE ENTIRE DEFECT, and the reason is
+        // the shape of its book: one currency, `Rates::none()`. `ratio strike`
+        // — the RECORDED nav, the figure a replay re-derives and somebody is
+        // paid on — never looked at `PostingRecord::currency` at all. It summed
+        // dollars, euros and pounds and labeled the total USD. On a
+        // twelve-security generated book it returned the IDENTICAL figure for
+        // one currency and for three, and it tied the whole way: trial balance
+        // 0, digest reproducible, replay reporting "reproduced".
+        //
+        // ⚠ SO THE BOOK HERE HOLDS A NON-BASE CURRENCY *OUTSIDE* THE NAV
+        // FILTER'S REACH ON ONE SIDE. The first draft of this test bought
+        // securities with cash — both legs assets — so every currency netted to
+        // zero and the NAV was zero under the fix AND under the bug. It went
+        // green on the defect it was written to catch, and only reintroducing
+        // the bug on purpose exposed it. Subscriptions are the shape that
+        // works: capital is EQUITY, the NAV filter excludes it, and the asset
+        // side is left holding 40.00 EUR whose value is 60.00 USD.
+        let d = tmp_root().join("ratio-project-navfx");
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+            Account { dim: 3, display_name: "Capital".into(), account_type: A::Equity },
+        ])
+        .unwrap();
+        b.append_record(ratio_store::Plane::Facts, &rate_fact("EUR", 150)).unwrap();
+        let c = b.put(b"rules = []\n").unwrap();
+        b.set_active(&c).unwrap();
+        // Each currency conserves on its own: `conserves_every_currency` would
+        // refuse anything else.
+        for (n, (cur, amount)) in [("USD", 100_00i64), ("EUR", 40_00)].iter().enumerate() {
+            b.append(&JournalEntry {
+                id: format!("fx{n}"),
+                memo: "subscription".into(),
+                config: c.clone(),
+                postings: vec![
+                    PostingRecord {
+                        dim: 2,
+                        amount: *amount,
+                        currency: Some((*cur).into()),
+                        instrument: None,
+                        quantity: None,
+                    },
+                    PostingRecord {
+                        dim: 3,
+                        amount: -*amount,
+                        currency: Some((*cur).into()),
+                        instrument: None,
+                        quantity: None,
+                    },
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap();
+        }
+
+        let rates = Rates::of_facts(
+            ratio_store::BASE_CURRENCY,
+            &b.records::<ratio_ingest::Fact>(ratio_store::Plane::Facts).unwrap(),
+        );
+        let p = Projection::rebuild(&entries(&d), FIFO);
+        let got = p.nav(&|dim| dim == 1 || dim == 2, &rates).unwrap();
+        let want = ratio_nav::strike(&d, 1_782_662_400, "e.marsh").unwrap();
+
+        assert_eq!(got.value.0, want.net_asset_value, "the same NAV, translated the same way");
+        assert_eq!(
+            got.value.1, want.trial_balance_difference,
+            "and the same difference"
+        );
+        // ⭐ AND THE NUMBER ITSELF, stated rather than merely agreed on. Two
+        // paths agreeing is worth nothing if they agree on 140.00 — the flat
+        // sum — so this pins the translated figure: $100.00 plus €40.00 at
+        // 1.50 is $160.00.
+        assert_eq!(got.value.0, 160_00, "USD 100.00 + EUR 40.00 at 1.50");
+    }
+
+    #[test]
+    fn a_strike_refuses_a_currency_it_has_no_rate_for() {
+        // ⛔ REFUSES RATHER THAN TREATING IT AS PAR — the same discipline
+        // `Rates::none` documents, now on the path that WRITES the number down.
+        // A missing rate silently taken as 1.00 reports a fund holding yen at
+        // its yen figure: off by two orders of magnitude and shaped like an
+        // ordinary number.
+        let d = tmp_root().join("ratio-project-navnorate");
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+        ])
+        .unwrap();
+        let c = b.put(b"rules = []\n").unwrap();
+        b.set_active(&c).unwrap();
+        b.append(&JournalEntry {
+            id: "jpy".into(),
+            memo: "buy".into(),
+            config: c,
+            postings: vec![
+                PostingRecord {
+                    dim: 1,
+                    amount: 100_00,
+                    currency: Some("JPY".into()),
+                    instrument: Some("vti".into()),
+                    quantity: Some(1),
+                },
+                PostingRecord {
+                    dim: 2,
+                    amount: -100_00,
+                    currency: Some("JPY".into()),
+                    instrument: None,
+                    quantity: None,
+                },
+            ],
+            trade_date: None,
+            announcement: None,
+        })
+        .unwrap();
+
+        let e = ratio_nav::strike(&d, 1_782_662_400, "e.marsh").unwrap_err().to_string();
+        assert!(e.contains("JPY"), "names the currency it has no rate for: {e}");
     }
 
     #[test]

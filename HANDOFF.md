@@ -228,6 +228,36 @@ this file was taken with `/usr/bin/time -l`; the ones marked `*` above are RSS
 and are not corrected. The lot data is written once and then cold, which is
 exactly what the OS compresses.
 
+⛔ **AND THE 12 µs IS WHY THE NEXT DEFECT WAS FOUND: THE RECORDED NAV DID NOT
+TRANSLATE CURRENCIES.** Disbelief in that number is what prompted checking it,
+and the check found something worse than a bad measurement. `ratio strike` — the
+*recorded* NAV, the one signed, digested, and re-derived by `ratio replay` — summed
+dollars, euros and pounds and labeled the total USD. On a twelve-security book it
+returned the **identical** figure for `--currencies 1` and `--currencies 3`,
+because it never read `PostingRecord::currency` at all.
+
+    flat sum (the bug)           133,915,377.28
+    ratio strike (fixed)         134,439,187.51
+    console GetFund              134,439,187.51
+    recomputed from the raw files 134,439,187.51
+
+**$523,810.23 on a $134M fund — 0.39%.** Small enough to read as a rounding
+difference, large enough to be the whole fee dispute. And it tied the entire way:
+trial balance 0, digest reproducible, `ratio replay` reporting *reproduced* — of
+the wrong figure, permanently. `Ratio.Chart.Dimensions.a_flat_total_hides_a_
+currency_mismatch` had proved this exact shape impossible-to-notice since the
+chart work landed; the proof was right and three Rust call sites ignored it.
+
+⚠ **THE TEST THAT SHOULD HAVE CAUGHT IT ALREADY EXISTED AND WAS VACUOUS.**
+`the_projection_strikes_the_same_nav_as_a_full_fold` compares the two NAV paths —
+over a one-currency book with `Rates::none()`. Its multi-currency replacement was
+*also* vacuous on the first attempt: buying securities with cash puts both legs
+in assets, so every currency nets to zero and both paths say 0. It went green
+against the bug on purpose-reintroduced code. **Subscriptions are the shape that
+works** — capital is equity, the NAV filter excludes it, and the asset side is
+left holding a non-base balance. ⛔ Negative-test every differential test; two
+paths agreeing is worth nothing until you have watched them disagree.
+
 ⚠ **`parse` IS 66% OF THE COLD BUILD AND INTERNING DOES NOT TOUCH IT.** Interning
 the config digest — 64 identical bytes on every one of 140 million lines, 22% of
 the file — measured 8.5/8.6/8.6 s against 8.2–8.6 s before it. A null result. The

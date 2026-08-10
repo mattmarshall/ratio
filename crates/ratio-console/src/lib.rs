@@ -428,17 +428,32 @@ impl Console {
         let net_asset_value = if req.validate_only {
             // Nothing was written, so the fund still reports the old figure.
             // Fold the proposed postings over it instead of reading it back.
-            let delta: i64 = postings
-                .iter()
-                .filter(|p| {
-                    matches!(
-                        chart.iter().find(|a| a.dim == p.dim).map(|a| a.account_type),
-                        Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
+            //
+            // ⛔ TRANSLATED, LIKE THE FIGURE IT IS ADDED TO. This summed
+            // `p.amount` raw, so a dry run of a EUR event moved the previewed
+            // NAV by its FACE value while `get_fund` — the figure it is added
+            // to, and the figure the user sees a moment later — reports the
+            // TRANSLATED one. The preview and the commit disagreed on the same
+            // event, and a preview that does not predict the commit is worse
+            // than no preview.
+            let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
+            let mut delta = 0i128;
+            for p in postings.iter().filter(|p| {
+                matches!(
+                    chart.iter().find(|a| a.dim == p.dim).map(|a| a.account_type),
+                    Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
+                )
+            }) {
+                let factor = rates.factor_of_optional(p.currency.as_deref()).with_context(|| {
+                    format!(
+                        "this event is in {} and the fund has no rate for it — a preview that \
+                         guesses a rate is a preview of a different event",
+                        p.currency.as_deref().unwrap_or("no currency")
                     )
-                })
-                .map(|p| p.amount)
-                .sum();
-            (previous.parse::<i64>().unwrap_or(0) + delta).to_string()
+                })?;
+                delta += p.amount as i128 * factor as i128 / ratio_project::RATE_SCALE as i128;
+            }
+            (previous.parse::<i128>().unwrap_or(0) + delta).to_string()
         } else {
             self.get_fund(&format!("funds/{fund}"))?.net_asset_value
         };
@@ -2282,7 +2297,7 @@ pub fn position_key(id: &str) -> Result<(i64, String)> {
 /// ⚠ HARDCODED, AND THAT IS A REAL LIMITATION rather than a placeholder to
 /// forget. A fund's reporting currency is a property of the fund, and when a
 /// second one arrives this becomes a field on the book.
-pub const FUND_CURRENCY: &str = "USD";
+pub use ratio_store::BASE_CURRENCY as FUND_CURRENCY;
 
 pub fn nested_id(name: &str, outer: &str, inner: &str) -> Result<(String, String)> {
     let parts: Vec<&str> = name.split('/').collect();

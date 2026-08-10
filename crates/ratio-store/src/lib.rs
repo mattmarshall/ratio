@@ -37,6 +37,19 @@ use ratio_kernel::{transaction_is_balanced, Transaction};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
+/// The currency a book reports in, and the base every other is translated into.
+///
+/// ⛔ ONE DEFINITION, BECAUSE IT WAS TWO ANSWERS TO ONE QUESTION AND THEY
+/// DISAGREED. `Fund.currency_code` labeled the console's figures USD while
+/// `ratio strike` — the RECORDED nav, the one a replay re-derives — summed
+/// dollars, euros and pounds without translating any of them. Both were "the
+/// base currency"; only one of them knew it.
+///
+/// ⚠ HARDCODED, AND THAT IS A REAL LIMITATION rather than a placeholder. A
+/// fund's reporting currency is a property of the fund, and when a second one
+/// arrives this becomes a field on the book.
+pub const BASE_CURRENCY: &str = "USD";
+
 /// A content address: the SHA-256 of some bytes, lowercase hex.
 ///
 /// Names the artifact by what it *is* rather than where it sits, which is what
