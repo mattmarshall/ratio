@@ -206,6 +206,24 @@ lean_emit(
 # The cost model. Emitted rather than rewritten because the whole value of the
 # answer is that it IS `Ratio.Closure` — a hand-written `nav_cost` in Rust would
 # be a claim about the proofs instead of the thing they are about.
+# What a sale PRODUCES, not just what it consumes.
+#
+# `Ratio.Lots` proves relief conserves and says nothing about the realized gain,
+# the method that chose the lots, or selling through open splits. All three are
+# things an engine needs and none of them follow from conservation — which is
+# equally true of a book that posted no gain at all.
+lean_test(
+    name = "lots_relief_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Actions.lean",
+        "Ratio/Actions/Factor.lean",
+        "Ratio/Lots.lean",
+        "Ratio/Lots/Relief.lean",
+    ],
+    entry = "Ratio/Lots/Relief.lean",
+)
+
 # Corporate actions read as factors: the PER-STEP guard, not a composed ratio.
 # `Ratio.Actions.Factor.a_factor_can_succeed_where_the_rewrite_refuses` is why —
 # composing 3-for-2 and 2-for-1 divides five units cleanly and silently swallows

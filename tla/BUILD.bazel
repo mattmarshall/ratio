@@ -253,3 +253,42 @@ tla_check(
     tags = ["manual"],
     deps = [":executor"],
 )
+
+# ⛔ Sales relieved while corporate actions keep arriving.
+#
+# `Ratio.Lots.Relief` proves what ONE relief computes; `//tla:lot_engine_check`
+# proves no lot is relieved twice. Neither covers a relief that SPANS TIME —
+# read the splits in force, convert the sale into stored units, then write.
+#
+# Under the factor representation nothing is rewritten, so a split landing
+# between the read and the write changes what a stored unit MEANS without
+# touching a lot. The relief then takes the wrong number of them, and the entry
+# BALANCES, because the cost it relieved is the cost of the lots it took.
+#
+# ⚠ Separate from the projection spec because the RESOLUTION differs. A strike
+# may be slightly behind and cite the prefix it read. A relief is a WRITE, and a
+# relief that is slightly behind puts the wrong number of units into the book
+# permanently — so it is refused and recomputed instead.
+tla_library(
+    name = "relief_engine",
+    srcs = ["ReliefEngine.tla"],
+)
+
+tla_check(
+    name = "relief_engine_check",
+    size = "medium",
+    config = "MCReliefEngine.cfg",
+    module = "MCReliefEngine.tla",
+    deps = [":relief_engine"],
+)
+
+# ⛔ Converted against the factor it read, written against whatever is current.
+# ReliefIsWrittenAgainstWhatItRead goes red.
+tla_check(
+    name = "stale_factor_relief_check",
+    size = "medium",
+    config = "StaleFactorRelief.cfg",
+    module = "StaleFactorRelief.tla",
+    tags = ["manual"],
+    deps = [":relief_engine"],
+)
