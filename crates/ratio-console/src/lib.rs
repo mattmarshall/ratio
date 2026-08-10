@@ -196,11 +196,12 @@ impl Console {
         let totals = b.balances_by_dim()?;
 
         let mut counts: BTreeMap<i64, i64> = BTreeMap::new();
-        for e in b.entries()? {
-            for p in e.postings {
+        b.for_each_entry_since(0, &mut |e| {
+            for p in &e.postings {
                 *counts.entry(p.dim).or_default() += 1;
             }
-        }
+            Ok(())
+        })?;
 
         Ok(b.accounts()?
             .into_iter()
@@ -235,7 +236,7 @@ impl Console {
 
         let mut running = 0i64;
         let mut out = Vec::new();
-        for entry in b.entries()? {
+        b.for_each_entry_since(0, &mut |entry| {
             // `leg` counts within the entry, so an entry that touches the same
             // account twice yields two citable postings rather than one name
             // for two lines.
@@ -253,7 +254,8 @@ impl Console {
                     config_digest: entry.config.as_str().to_string(),
                 });
             }
-        }
+            Ok(())
+        })?;
         Ok(pb::ListPostingsResponse { postings: out, next_page_token: String::new() })
     }
 
@@ -357,8 +359,20 @@ impl Console {
             .rule(&req.rule_id)
             .with_context(|| format!("no rule {:?} in the configuration in force", req.rule_id))?;
 
-        let existing = b.entries()?;
-        if existing.iter().any(|e| e.id == id) {
+        // ⛔ STREAMED, and it does not stop early — but it holds one bool
+        // rather than the journal.
+        // ⛔ STREAMED. One bool and one counter rather than the journal — and
+        // this is the WRITE path, so it runs on every event the console posts.
+        let mut seen = false;
+        let mut existing_len = 0usize;
+        b.for_each_entry_since(0, &mut |e| {
+            if e.id == id {
+                seen = true;
+            }
+            existing_len += 1;
+            Ok(())
+        })?;
+        if seen {
             bail!("{id:?} is already in this journal — an event is recorded once");
         }
 
@@ -370,11 +384,11 @@ impl Console {
         // part that does not heal itself. The deployment sets a ceiling; a
         // local run has none.
         if let Some(max) = self.max_entries {
-            if !req.validate_only && existing.len() >= max {
+            if !req.validate_only && existing_len >= max {
                 bail!(
                     "this book has {} entries, which is as many as the demo accepts; \
                      it resets on the next cold start",
-                    existing.len()
+                    existing_len
                 );
             }
         }
@@ -547,7 +561,18 @@ impl Console {
         // This is the system-level consequence of that allowance, and no
         // theorem about resolution could have shown it.
         let posted: std::collections::BTreeSet<String> =
-            b.entries()?.into_iter().map(|e| e.id).collect();
+            {
+                // ⚠ STREAMED, AND STILL O(entries) BY NATURE — this is a set of
+                // every id the journal holds. What it no longer holds is the
+                // ENTRIES behind them. The real fix is an index rather than a
+                // scan; noted rather than pretended away.
+                let mut ids: std::collections::BTreeSet<String> = Default::default();
+                b.for_each_entry_since(0, &mut |e| {
+                    ids.insert(e.id.clone());
+                    Ok(())
+                })?;
+                ids
+            };
 
         Ok(ratio_ingest::resolve_all(&facts, &master)
             .into_iter()
@@ -649,11 +674,11 @@ impl Console {
         // more thing that can disagree with the entries, and the entries are
         // the record.
         let mut marked: BTreeMap<String, String> = BTreeMap::new();
-        for e in b.entries()? {
-            let Some(rest) = e.id.strip_prefix("mark-") else { continue };
+        b.for_each_entry_since(0, &mut |e| {
+            let Some(rest) = e.id.strip_prefix("mark-") else { return Ok(()) };
             // `mark-<instrument>-<YYYY-MM-DD>`; the date is the last ten.
             if rest.len() < 11 {
-                continue;
+                return Ok(());
             }
             let (inst, day) = rest.split_at(rest.len() - 11);
             let day = &day[1..];
@@ -661,7 +686,8 @@ impl Console {
             if day > slot.as_str() {
                 *slot = day.to_string();
             }
-        }
+            Ok(())
+        })?;
 
         // The lot book, so a position can say how many lots stand behind it.
         // ⛔ `Ratio.Closure.factored_nav_never_reads_the_lots` is the claim that
@@ -872,12 +898,18 @@ impl Console {
         let b = FileBook::open(&path)?;
 
         // Where each action landed in the journal, if it landed at all.
-        let entries = b.entries()?;
-        let applied_at: BTreeMap<String, usize> = entries
-            .iter()
-            .enumerate()
-            .filter_map(|(i, e)| e.id.strip_prefix("action-").map(|a| (a.to_string(), i)))
-            .collect();
+        // ⛔ STREAMED. Bounded by the number of ACTIONS, not by the journal.
+        let mut applied_at: BTreeMap<String, usize> = BTreeMap::new();
+        {
+            let mut i = 0usize;
+            b.for_each_entry_since(0, &mut |e| {
+                if let Some(a) = e.id.strip_prefix("action-") {
+                    applied_at.insert(a.to_string(), i);
+                }
+                i += 1;
+                Ok(())
+            })?;
+        }
 
         let mut out = Vec::new();
         for (a, _) in self.announcements(fund)? {
@@ -939,7 +971,14 @@ impl Console {
         let digest = b.active()?.context("no configuration is in force")?;
 
         let entry_id = format!("action-{action_id}");
-        if b.entries()?.iter().any(|e| e.id == entry_id) {
+        let mut applied = false;
+        b.for_each_entry_since(0, &mut |e| {
+            if e.id == entry_id {
+                applied = true;
+            }
+            Ok(())
+        })?;
+        if applied {
             bail!(
                 "{action_id:?} has already been applied to this book. An action is not \
                  idempotent — applying it again would change the position while the trial \
@@ -1196,7 +1235,15 @@ impl Console {
         let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
         let resolved = ratio_ingest::resolve_all(&facts, &master);
         let posted: BTreeMap<String, ()> =
-            b.entries()?.into_iter().map(|e| (e.id, ())).collect();
+            {
+                // ⚠ As above: streamed, still O(distinct ids), wants an index.
+                let mut ids: BTreeMap<String, ()> = Default::default();
+                b.for_each_entry_since(0, &mut |e| {
+                    ids.insert(e.id.clone(), ());
+                    Ok(())
+                })?;
+                ids
+            };
 
         let (mut n, mut recorded) = (0usize, 0usize);
         let mut refused = Vec::new();
@@ -1366,8 +1413,13 @@ impl Console {
         // It blocks for the same reason and is counted with them.
         let pending = self.pending_of(&id)?;
 
-        let entries = b.entries()? as Vec<_>;
-        let state = if entries.is_empty() && pending.is_empty() {
+        // ⛔ COUNTED. `entry_count` below is the only thing this was for.
+        let mut entries_len = 0usize;
+        b.for_each_entry_since(0, &mut |_| {
+            entries_len += 1;
+            Ok(())
+        })?;
+        let state = if entries_len == 0 && pending.is_empty() {
             pb::fund::State::AwaitingPrices
         } else if !pending.is_empty()
             || open.iter().any(|k| k.severity == pb::Severity::High as i32)
@@ -1446,7 +1498,7 @@ impl Console {
             total_credit: tb.credits.to_string(),
             trial_balance_difference: (tb.debits - tb.credits).to_string(),
             open_difference: open_difference.to_string(),
-            entry_count: entries.len() as i64,
+            entry_count: entries_len as i64,
             open_break_count: open.len() as i64,
             config_digest: b.active()?.map(|d| d.as_str().to_string()).unwrap_or_default(),
         })
@@ -1714,12 +1766,18 @@ impl Console {
     fn announcements(&self, fund: &str) -> Result<Vec<(ratio_store::AnnouncementRecord, usize)>> {
         let path = self.book_path(fund)?;
         let b = FileBook::open(&path)?;
-        let mut out: Vec<(ratio_store::AnnouncementRecord, usize)> = b
-            .entries()?
-            .iter()
-            .enumerate()
-            .filter_map(|(i, e)| e.announcement.clone().map(|a| (a, i + 1)))
-            .collect();
+        // ⛔ STREAMED. Bounded by the number of ANNOUNCEMENTS.
+        let mut out: Vec<(ratio_store::AnnouncementRecord, usize)> = Vec::new();
+        {
+            let mut i = 0usize;
+            b.for_each_entry_since(0, &mut |e| {
+                i += 1;
+                if let Some(a) = &e.announcement {
+                    out.push((a.clone(), i));
+                }
+                Ok(())
+            })?;
+        }
 
         // Books written before announcements were journal entries.
         let known: BTreeSet<String> = out.iter().map(|(a, _)| a.id.clone()).collect();
@@ -1749,12 +1807,18 @@ impl Console {
 
         // Where each action landed, if it landed. Same derivation as
         // `stale_strikes` — one reading of the journal, not two conventions.
-        let entries = b.entries()?;
-        let applied_at: BTreeMap<String, usize> = entries
-            .iter()
-            .enumerate()
-            .filter_map(|(i, e)| e.id.strip_prefix("action-").map(|a| (a.to_string(), i)))
-            .collect();
+        // ⛔ STREAMED. Bounded by the number of ACTIONS, not by the journal.
+        let mut applied_at: BTreeMap<String, usize> = BTreeMap::new();
+        {
+            let mut i = 0usize;
+            b.for_each_entry_since(0, &mut |e| {
+                if let Some(a) = e.id.strip_prefix("action-") {
+                    applied_at.insert(a.to_string(), i);
+                }
+                i += 1;
+                Ok(())
+            })?;
+        }
 
         let strikes = ratio_nav::list(&path)?;
 
@@ -1894,7 +1958,29 @@ impl Console {
         let b = FileBook::open(book)?;
         let dims: BTreeMap<String, i64> =
             b.accounts()?.into_iter().map(|a| (a.display_name, a.dim)).collect();
-        let entries = b.entries()?;
+        // ⛔ ONE PASS, FOR THE DIMENSIONS THAT ACTUALLY HAVE BREAKS. This held
+        // the whole journal and re-filtered it once PER BREAK — O(breaks x
+        // entries) time on top of O(entries) memory. Streaming naively would be
+        // worse still: a fresh read of the journal per break.
+        let wanted: std::collections::BTreeSet<i64> = report
+            .breaks
+            .iter()
+            .map(|l| dims.get(&l.display_name).copied().unwrap_or(l.account))
+            .collect();
+        let mut by_dim: BTreeMap<i64, Vec<pb::BreakPosting>> = BTreeMap::new();
+        b.for_each_entry_since(0, &mut |e| {
+            for p in &e.postings {
+                if wanted.contains(&p.dim) {
+                    by_dim.entry(p.dim).or_default().push(pb::BreakPosting {
+                        entry_id: e.id.clone(),
+                        memo: e.memo.clone(),
+                        amount: p.amount.to_string(),
+                        config_digest: e.config.short().to_string(),
+                    });
+                }
+            }
+            Ok(())
+        })?;
 
         let mut out = Vec::new();
         for line in &report.breaks {
@@ -1908,17 +1994,8 @@ impl Console {
             };
             let dim = dims.get(&line.display_name).copied().unwrap_or(line.account);
 
-            let postings: Vec<pb::BreakPosting> = entries
-                .iter()
-                .flat_map(|e| e.postings.iter().map(move |p| (e, p)))
-                .filter(|(_, p)| p.dim == dim)
-                .map(|(e, p)| pb::BreakPosting {
-                    entry_id: e.id.clone(),
-                    memo: e.memo.clone(),
-                    amount: p.amount.to_string(),
-                    config_digest: e.config.short().to_string(),
-                })
-                .collect();
+            let postings: Vec<pb::BreakPosting> =
+                by_dim.get(&dim).cloned().unwrap_or_default();
 
             out.push(pb::Break {
                 // Derived from the dimension, so a break keeps the same URL
