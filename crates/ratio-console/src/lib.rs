@@ -57,6 +57,27 @@ pub struct Console {
     /// against every other test in the binary — which is exactly what it was
     /// when this lived in `apply_event`.
     max_entries: Option<usize>,
+
+    /// One projection per fund, kept across requests and brought up to date
+    /// rather than rebuilt.
+    ///
+    /// ⛔ THE CACHE IS THE POINT, NOT AN OPTIMIZATION ON TOP OF ONE.
+    /// `Projection::of_book` folds the whole journal — 546 ms on a
+    /// 140,000-entry book and growing with every trade ever made. `follow`
+    /// seeks to where it stopped, so an unchanged book costs a stat and a seek.
+    /// Without something holding the projection between calls, the incremental
+    /// read has nowhere to be incremental.
+    ///
+    /// ⚠ A `Mutex` and not a `RefCell`: `Console` is handed to a server that
+    /// may serve two requests at once, and the failure of getting that wrong is
+    /// a panic in production rather than a compile error here.
+    ///
+    /// ⚠ AND STALENESS IS SAFE, which is why this needs no invalidation
+    /// protocol. Every read returns `AsOf` carrying the prefix it folded, so a
+    /// figure built from a lagging projection cites the lagging prefix and
+    /// replays from it: `//tla:projection_check`. A cache that had to be
+    /// correct about freshness would be a cache that could be wrong about it.
+    projections: std::sync::Mutex<BTreeMap<String, ratio_project::Projection>>,
 }
 
 impl Console {
@@ -66,7 +87,31 @@ impl Console {
             max_entries: std::env::var("RATIO_MAX_API_ENTRIES")
                 .ok()
                 .and_then(|v| v.parse().ok()),
+            projections: Default::default(),
         }
+    }
+
+    /// This fund's projection, brought up to date with whatever has been
+    /// appended since it was last read.
+    ///
+    /// Returns a clone so the lock is not held across a caller's work. The
+    /// clone is of the folded TOTALS, not of the journal — a chart, not a
+    /// history.
+    pub fn projection(&self, fund: &str) -> Result<ratio_project::Projection> {
+        let path = self.book_path(fund)?;
+        let mut cache = self
+            .projections
+            .lock()
+            .map_err(|_| anyhow::anyhow!("the projection cache was poisoned by a panic"))?;
+        let p = cache.entry(fund.to_string()).or_default();
+        // ⛔ If the journal was REPLACED rather than appended to, `follow`
+        // refuses — an append-only log does not shrink, so a shorter file at
+        // this path is a different book. Start again rather than splice two
+        // histories together.
+        if p.follow(&path).is_err() {
+            *p = ratio_project::Projection::of_book(&path)?;
+        }
+        Ok(p.clone())
     }
 
     /// The same console with an explicit ceiling, for a caller that has one —
@@ -2014,6 +2059,93 @@ mod tests {
         post("c1", "capital in", vec![(2, 30_000_000), (20, -30_000_000)]);
         post("t1", "buy", vec![(1, 25_000_000), (2, -25_000_000)]);
         post("f1", "fee accrued", vec![(10, 100_000), (40, -100_000)]);
+    }
+
+    #[test]
+    fn the_projection_is_kept_between_calls_and_only_catches_up() {
+        // ⭐ WITHOUT THIS THE INCREMENTAL READ HAS NOWHERE TO BE INCREMENTAL.
+        // `Projection::of_book` folds the whole journal — 546 ms on a
+        // 140,000-entry book, growing with every trade ever made. The cache is
+        // what turns `follow` into maintenance rather than a stat before a
+        // rebuild.
+        let d = fresh("cached");
+        book(&d);
+        let c = Console::new(&d);
+
+        let first = c.projection("demo").unwrap();
+        assert_eq!(first.prefix(), 3);
+
+        // A second call must not re-fold. Asserted by the count `follow`
+        // returns rather than by timing: a rebuild fast enough to look
+        // incremental passes a stopwatch and fails this.
+        {
+            let mut cache = c.projections.lock().unwrap();
+            assert_eq!(
+                cache.get_mut("demo").unwrap().follow(&d).unwrap(),
+                0,
+                "nothing was appended, so nothing is folded"
+            );
+        }
+
+        // One arrives, and only it is folded.
+        {
+            use ratio_store::{JournalEntry, PostingRecord};
+            let mut b = FileBook::open(&d).unwrap();
+            let cfg = b.active().unwrap().unwrap();
+            b.append(&JournalEntry {
+                id: "t2".into(),
+                memo: "buy".into(),
+                config: cfg,
+                postings: vec![PostingRecord::new(1, 5_000_000), PostingRecord::new(2, -5_000_000)],
+                announcement: None,
+            })
+            .unwrap();
+        }
+        let after = c.projection("demo").unwrap();
+        assert_eq!(after.prefix(), 4, "caught up");
+
+        // And it agrees with a cold build, which is the only thing that makes
+        // the cache safe to have at all.
+        let cold = ratio_project::Projection::of_book(&d).unwrap();
+        let assets = |dim: i64| dim == 1 || dim == 2 || dim == 40;
+        assert_eq!(after.nav(&assets).value, cold.nav(&assets).value);
+        assert_eq!(after.positions().value, &cold.positions().value.clone());
+    }
+
+    #[test]
+    fn a_replaced_book_is_rebuilt_rather_than_spliced() {
+        // ⛔ An append-only log does not shrink, so a shorter file at the same
+        // path is a DIFFERENT BOOK. `follow` refuses it; the cache must start
+        // again rather than fold the new history onto the old totals.
+        let d = fresh("replaced");
+        book(&d);
+        let c = Console::new(&d);
+        assert_eq!(c.projection("demo").unwrap().prefix(), 3);
+
+        // Replace it with a shorter one.
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        {
+            use ratio_store::{Account, AccountTypeRecord as A, JournalEntry, PostingRecord};
+            let mut b = FileBook::open(&d).unwrap();
+            b.put_accounts(&[Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+                             Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset }])
+                .unwrap();
+            let cfg = b.put(b"rules = []\n").unwrap();
+            b.set_active(&cfg).unwrap();
+            b.append(&JournalEntry {
+                id: "only".into(),
+                memo: "one".into(),
+                config: cfg,
+                postings: vec![PostingRecord::new(1, 11), PostingRecord::new(2, -11)],
+                announcement: None,
+            })
+            .unwrap();
+        }
+
+        let p = c.projection("demo").unwrap();
+        assert_eq!(p.prefix(), 1, "rebuilt from the new book, not spliced onto the old");
+        assert_eq!(p.nav(&|dim| dim == 1).value.0, 11, "and the totals are the new book's");
     }
 
     #[test]
