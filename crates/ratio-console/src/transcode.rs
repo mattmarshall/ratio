@@ -414,7 +414,8 @@ impl JsonView for pb::Fund {
              \"entryCount\":{},\"openBreakCount\":{},\"pendingFactCount\":{},\
              \"configDigest\":{},\"lotMethod\":{},\"lotMethodDeclared\":{},\"realizedGain\":{},\
              \"basisRelieved\":{},\"shortTermGain\":{},\"longTermGain\":{},\
-             \"unclassifiedGain\":{},\"longTermDays\":{}}}",
+             \"unclassifiedGain\":{},\"longTermDays\":{},\"openLotCount\":{},\
+             \"positionCount\":{},\"navStrike\":{}}}",
             q(&self.name), q(&self.display_name), q(&self.currency_code),
             q(state_name(self.state)), q(&self.net_asset_value),
             q(&self.total_debit), q(&self.total_credit),
@@ -424,7 +425,9 @@ impl JsonView for pb::Fund {
             q(&self.lot_method), self.lot_method_declared,
             q(&self.realized_gain), q(&self.basis_relieved),
             q(&self.short_term_gain), q(&self.long_term_gain),
-            q(&self.unclassified_gain), q(&self.long_term_days.to_string())
+            q(&self.unclassified_gain), q(&self.long_term_days.to_string()),
+            q(&self.open_lot_count.to_string()), q(&self.position_count.to_string()),
+            duration_json(&self.nav_strike)
         )
     }
 }
@@ -607,6 +610,19 @@ impl JsonView for pb::IngestDeliveryResponse {
             self.pending.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
             self.validate_only
         )
+    }
+}
+
+/// proto3 canonical JSON renders a Duration as seconds with an `s` suffix and
+/// up to nine fractional digits — `"0.000005291s"`.
+///
+/// ⚠ FORMATTED, NOT DIVIDED. The seconds and the nanos are printed as digits and
+/// concatenated; going through a float to build the string would lose precision
+/// at exactly the scale this field is interesting at.
+fn duration_json(d: &Option<ratio_proto::duration_proto::google::protobuf::Duration>) -> String {
+    match d {
+        Some(d) => format!("\"{}.{:09}s\"", d.seconds, d.nanos.unsigned_abs()),
+        None => "null".into(),
     }
 }
 
