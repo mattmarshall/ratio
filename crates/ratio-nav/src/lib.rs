@@ -84,12 +84,23 @@ impl Replay {
 /// different memo encoding — is still visible. What is being attested is the
 /// record, not an interpretation of it.
 fn prefix_digest(entries: &[JournalEntry]) -> Result<String> {
-    let mut buf = Vec::new();
+    let mut d = ratio_store::DigestBuilder::new();
     for e in entries {
-        buf.extend_from_slice(serde_json::to_string(e).context("serializing an entry")?.as_bytes());
-        buf.push(b'\n');
+        feed(&mut d, e)?;
     }
-    Ok(Digest::of(&buf).as_str().to_string())
+    Ok(d.finish().as_str().to_string())
+}
+
+/// One entry's bytes, as the digest has always seen them.
+///
+/// ⛔ THE ONE PLACE THAT DECIDES WHAT A PREFIX DIGEST IS OVER. Two encoders for
+/// this would be two digests for one prefix, and the failure is a strike that
+/// cannot be replayed — which is the accusation this system exists to be able to
+/// make about itself.
+fn feed(d: &mut ratio_store::DigestBuilder, e: &JournalEntry) -> Result<()> {
+    d.update(serde_json::to_string(e).context("serializing an entry")?.as_bytes());
+    d.update(b"\n");
+    Ok(())
 }
 
 /// Net asset value over a set of entries: assets minus liabilities.
@@ -98,6 +109,64 @@ fn prefix_digest(entries: &[JournalEntry]) -> Result<String> {
 /// credit-normal, so summing them subtracts without a special case — and a sign
 /// error is invisible in a screenshot and wrong by twice the liability.
 fn fold_nav(book: &FileBook, entries: &[JournalEntry]) -> Result<(i64, i64)> {
+    let mut f = NavFold::new(book)?;
+    for e in entries {
+        f.push(e);
+    }
+    f.finish()
+}
+
+/// The NAV fold, one entry at a time.
+///
+/// ⛔ SO A STRIKE DOES NOT HOLD THE JOURNAL. `strike` read the whole log into a
+/// `Vec`, hashed a second `Vec` of every serialized entry, and folded the first
+/// — three copies of a thing that only ever needed to be walked once.
+struct NavFold {
+    types: std::collections::BTreeMap<i64, AccountTypeRecord>,
+    nav: i128,
+    debits: i128,
+    credits: i128,
+}
+
+impl NavFold {
+    fn new(book: &FileBook) -> Result<Self> {
+        Ok(Self {
+            types: book.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect(),
+            nav: 0,
+            debits: 0,
+            credits: 0,
+        })
+    }
+
+    fn push(&mut self, e: &JournalEntry) {
+        for p in &e.postings {
+            let a = p.amount as i128;
+            if matches!(
+                self.types.get(&p.dim),
+                Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
+            ) {
+                self.nav += a;
+            }
+            if a >= 0 {
+                self.debits += a;
+            } else {
+                self.credits += -a;
+            }
+        }
+    }
+
+    fn finish(self) -> Result<(i64, i64)> {
+        Ok((
+            i64::try_from(self.nav)
+                .map_err(|_| anyhow::anyhow!("this fund's net asset value does not fit in 64 bits"))?,
+            i64::try_from(self.debits - self.credits)
+                .map_err(|_| anyhow::anyhow!("the trial-balance difference does not fit in 64 bits"))?,
+        ))
+    }
+}
+
+#[allow(dead_code)]
+fn fold_nav_materialized(book: &FileBook, entries: &[JournalEntry]) -> Result<(i64, i64)> {
     let types: std::collections::BTreeMap<i64, AccountTypeRecord> =
         book.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
 
@@ -145,18 +214,37 @@ pub fn strike(book_path: &std::path::Path, valuation_time: i64, actor: &str) -> 
         bail!("a NAV is signed by somebody — pass --actor or set RATIO_ACTOR");
     }
     let book = FileBook::open(book_path)?;
-    let entries = book.entries()?;
-    if entries.is_empty() {
+    // ⛔ ONE WALK, NOT THREE COPIES. This read the journal into a `Vec`, then
+    // `prefix_digest` serialized every entry into a second `Vec`, then
+    // `fold_nav` walked the first — to produce two numbers and a hash.
+    let mut fold = NavFold::new(&book)?;
+    let mut hash = ratio_store::DigestBuilder::new();
+    let mut count = 0usize;
+    let mut last_config = String::new();
+    book.for_each_entry_since(0, &mut |e| {
+        fold.push(e);
+        feed(&mut hash, e)?;
+        count += 1;
+        // ⚠ Carried forward rather than looked up afterwards: the last entry is
+        // gone by the time the walk ends, and it is the one whose configuration
+        // was in force at the valuation point.
+        last_config.clear();
+        last_config.push_str(e.config.as_str());
+        Ok(())
+    })?;
+    if count == 0 {
         bail!("nothing to strike: this book has no entries");
     }
-    let (nav, tb) = fold_nav(&book, &entries)?;
+    let (nav, tb) = fold.finish()?;
+    let entries_len = count;
+    let journal_digest = hash.finish().as_str().to_string();
 
     Ok(Strike {
         id: id_for(valuation_time),
         valuation_time,
         actor: actor.to_string(),
-        journal_position: entries.len(),
-        journal_digest: prefix_digest(&entries)?,
+        journal_position: entries_len,
+        journal_digest,
         net_asset_value: nav,
         trial_balance_difference: tb,
         // The configuration the LAST entry was posted under, which is what was
@@ -164,22 +252,36 @@ pub fn strike(book_path: &std::path::Path, valuation_time: i64, actor: &str) -> 
         // force NOW, and a strike re-read after a later approval would silently
         // claim to have been computed under a configuration that did not exist
         // when it was taken.
-        config_digest: entries
-            .last()
-            .map(|e| e.config.as_str().to_string())
-            .unwrap_or_default(),
+        config_digest: last_config,
     })
 }
 
 /// Re-derive a strike and report what was found.
 pub fn replay(book_path: &std::path::Path, s: &Strike) -> Result<Replay> {
     let book = FileBook::open(book_path)?;
-    let all = book.entries()?;
+
+    // ⛔ ONE WALK, AND ONLY THE PREFIX IS FOLDED. This read the whole journal
+    // into a `Vec`, sliced it, and hashed a second `Vec` of the slice.
+    //
+    // ⚠ It still READS to the end, because a shorter journal than the strike
+    // recorded is the thing this has to detect and there is no way to know that
+    // without reaching the end. What it no longer does is HOLD it.
+    let mut fold = NavFold::new(&book)?;
+    let mut hash = ratio_store::DigestBuilder::new();
+    let mut seen = 0usize;
+    book.for_each_entry_since(0, &mut |e| {
+        if seen < s.journal_position {
+            fold.push(e);
+            feed(&mut hash, e)?;
+        }
+        seen += 1;
+        Ok(())
+    })?;
 
     // A journal that has since grown is normal and expected — a strike folds a
     // PREFIX. One that has SHRUNK cannot be reconciled with the strike at all,
     // and is reported as broken history rather than allowed to panic on a slice.
-    if all.len() < s.journal_position {
+    if seen < s.journal_position {
         return Ok(Replay {
             id: s.id.clone(),
             history_intact: false,
@@ -189,9 +291,8 @@ pub fn replay(book_path: &std::path::Path, s: &Strike) -> Result<Replay> {
         });
     }
 
-    let prefix = &all[..s.journal_position];
-    let digest = prefix_digest(prefix)?;
-    let (nav, tb) = fold_nav(&book, prefix)?;
+    let digest = hash.finish().as_str().to_string();
+    let (nav, tb) = fold.finish()?;
 
     Ok(Replay {
         id: s.id.clone(),
@@ -485,6 +586,36 @@ mod tests {
         let all = list(&d).unwrap();
         assert_eq!(all.len(), 2);
         assert!(all[0].valuation_time > all[1].valuation_time);
+    }
+
+    #[test]
+    fn a_streamed_digest_is_the_digest_it_replaces() {
+        // ⛔ A STRIKE TAKEN BEFORE THIS CHANGE MUST STILL REPLAY. The digest is
+        // what makes a figure re-derivable years later, and swapping a
+        // one-shot hash of a materialized buffer for an incremental one is only
+        // safe if the same bytes arrive in the same order. Asserted against the
+        // ORIGINAL construction rather than against itself.
+        let d = book("digest-stream");
+        let entries = FileBook::open(&d).unwrap().entries().unwrap();
+        assert!(!entries.is_empty());
+
+        // The construction this replaced: serialize every entry into one
+        // buffer, hash it once.
+        let mut buf = Vec::new();
+        for e in &entries {
+            buf.extend_from_slice(serde_json::to_string(e).unwrap().as_bytes());
+            buf.push(b'\n');
+        }
+        let materialized = ratio_store::Digest::of(&buf).as_str().to_string();
+
+        assert_eq!(prefix_digest(&entries).unwrap(), materialized);
+
+        // And an empty prefix hashes as an empty buffer, which is what a strike
+        // over no entries would have recorded.
+        assert_eq!(
+            prefix_digest(&[]).unwrap(),
+            ratio_store::Digest::of(&[]).as_str().to_string()
+        );
     }
 
     #[test]

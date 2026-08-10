@@ -322,7 +322,13 @@ fn terminal_json(book: &Path, body: &str) -> Result<String> {
 /// The trial balance as the CLI prints it, for the terminal.
 fn balance_text(book: &Path) -> Result<String> {
     let b = FileBook::open(book)?;
-    let entries = b.entries()?;
+    // ⛔ COUNTED, NOT COLLECTED — the whole journal was held resident to print
+    // one number in a header.
+    let mut entry_count = 0usize;
+    b.for_each_entry_since(0, &mut |_| {
+        entry_count += 1;
+        Ok(())
+    })?;
     let names: std::collections::BTreeMap<i64, String> = b
         .accounts()?
         .into_iter()
@@ -330,7 +336,7 @@ fn balance_text(book: &Path) -> Result<String> {
         .collect();
     let tb = b.trial_balance()?;
 
-    let mut out = format!("TRIAL BALANCE — {} entrie(s)\n", entries.len());
+    let mut out = format!("TRIAL BALANCE — {entry_count} entrie(s)\n");
     if let Some(c) = b.active()? {
         out.push_str(&format!("configuration  {c}\n"));
     }
@@ -400,7 +406,12 @@ fn chat_json(book: &Path, body: &str) -> Result<String> {
 /// should not meet a float in the last six inches of its journey.
 fn balance_json(book: &Path) -> Result<String> {
     let b = FileBook::open(book)?;
-    let entries = b.entries()?;
+    // ⛔ COUNTED, NOT COLLECTED — see the note on the screen above.
+    let mut entry_count = 0usize;
+    b.for_each_entry_since(0, &mut |_| {
+        entry_count += 1;
+        Ok(())
+    })?;
     let names: std::collections::BTreeMap<i64, ratio_store::Account> =
         b.accounts()?.into_iter().map(|a| (a.dim, a)).collect();
     let tb = b.trial_balance()?;
@@ -429,7 +440,7 @@ fn balance_json(book: &Path) -> Result<String> {
     Ok(format!(
         "{{\"entries\":{},\"config\":{},\"debits\":{},\"credits\":{},\
          \"difference\":{},\"ties\":{},\"rows\":[{}]}}",
-        entries.len(),
+        entry_count,
         match b.active()? {
             Some(c) => quote(c.as_str()),
             None => "null".to_string(),
@@ -454,7 +465,9 @@ fn postings_json(book: &Path, query: &str) -> Result<String> {
     let b = FileBook::open(book)?;
     let mut rows = Vec::new();
     let mut net = 0i64;
-    for e in b.entries()? {
+    // ⛔ STREAMED. Reading back the postings behind ONE account never needed the
+    // whole journal resident — and this is the book that grows forever.
+    b.for_each_entry_since(0, &mut |e| {
         for p in &e.postings {
             if p.dim == dim {
                 net += p.amount;
@@ -470,7 +483,8 @@ fn postings_json(book: &Path, query: &str) -> Result<String> {
                 ));
             }
         }
-    }
+        Ok(())
+    })?;
     // A demo book can hold ten thousand entries; sending all of them to draw a
     // drawer nobody scrolls is wasteful, and the count says what was cut.
     let total = rows.len();

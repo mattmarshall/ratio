@@ -257,7 +257,18 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
     // ~4 ms an entry, 549 seconds for 140,000, twenty-one hours for the twenty
     // million this system's central claim is about. Measured, not assumed.
     // `append_all` runs the same per-entry checks and shares one file handle.
-    let mut batch: Vec<JournalEntry> = Vec::new();
+    // ⛔ FLUSHED IN CHUNKS, NOT ACCUMULATED. This held every trading entry in
+    // memory before writing any of them — the same "materialize what you are
+    // folding" shape as the read path, on the write side. At the twenty-million
+    // lot book issue #6 asks for it is the generator, not the fold, that would
+    // run out of memory first.
+    //
+    // ⚠ `append_all` was already all-or-nothing on VALIDATION rather than on
+    // writing — "a mid-write failure leaves what was appended" — so chunking
+    // does not weaken a guarantee that was there. What it keeps is the one file
+    // handle per chunk, which is why `append_all` exists at all.
+    const FLUSH_EVERY: usize = 65_536;
+    let mut batch: Vec<JournalEntry> = Vec::with_capacity(FLUSH_EVERY);
     let mut memo = String::new();
     for i in 0..shape.securities {
         let t = ticker(i);
@@ -314,6 +325,10 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
             });
             written += 1;
             open.push_back((units, cost));
+            if batch.len() >= FLUSH_EVERY {
+                b.append_all(&batch)?;
+                batch.clear();
+            }
 
             if open.len() as i64 > keep {
                 let (u, c) = open.pop_front().expect("just checked");

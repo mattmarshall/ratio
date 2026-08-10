@@ -462,11 +462,15 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str)
     {
         let mut b = FileBook::open(&book)?;
         let announce_id = format!("announce-{id}");
-        let known = b
-            .entries()?
-            .iter()
-            .filter_map(|e| e.announcement.clone())
-            .any(|a| a.id == id);
+        // ⛔ STREAMED. Asking "has this action been announced?" does not need
+        // the journal in memory, and this book is the one that grows forever.
+        let mut known = false;
+        b.for_each_entry_since(0, &mut |e| {
+            if e.announcement.as_ref().is_some_and(|a| a.id == id) {
+                known = true;
+            }
+            Ok(())
+        })?;
         if !known {
             let cfg = b.active()?.context("no configuration is in force")?;
             b.append(&JournalEntry {
@@ -1219,13 +1223,19 @@ fn post(book: PathBuf, file: &str) -> Result<()> {
 
 fn balance(book: PathBuf) -> Result<()> {
     let b = FileBook::open(&book)?;
-    let entries = b.entries()?;
+    // ⛔ COUNTED, NOT COLLECTED. This held the whole journal in memory to print
+    // one number — 1.26 GB on a book whose trial balance is a dozen rows.
+    let mut entry_count = 0usize;
+    b.for_each_entry_since(0, &mut |_| {
+        entry_count += 1;
+        Ok(())
+    })?;
     let names: std::collections::BTreeMap<i64, Account> =
         b.accounts()?.into_iter().map(|a| (a.dim, a)).collect();
     let by_dim = b.balances_by_dim()?;
     let tb = b.trial_balance()?;
 
-    println!("TRIAL BALANCE — {} entrie(s)", entries.len());
+    println!("TRIAL BALANCE — {entry_count} entrie(s)");
     if let Some(c) = b.active()? {
         println!("configuration  {c}");
     }
@@ -1448,7 +1458,8 @@ fn explain(book: PathBuf, account: &str) -> Result<()> {
 
     let mut total = 0i64;
     let mut rows = Vec::new();
-    for entry in b.entries()? {
+    // ⛔ STREAMED — one account's postings, not the whole log.
+    b.for_each_entry_since(0, &mut |entry| {
         for p in &entry.postings {
             if p.dim == dim {
                 total += p.amount;
@@ -1464,7 +1475,8 @@ fn explain(book: PathBuf, account: &str) -> Result<()> {
                 ));
             }
         }
-    }
+        Ok(())
+    })?;
 
     if rows.is_empty() {
         println!("{name} has no postings.");
