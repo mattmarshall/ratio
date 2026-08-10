@@ -202,20 +202,39 @@ the conserved one, and the kernel never said it was.
 ## What the demo shows, and what it does not
 
 ```
-lots/sec   open lots      entries   COLD BUILD   NAV STRIKE      PEAK RSS
-     500      252843      1769907      11.4 s       403 µs             —   ← recorded
-     500      252843      1769907      12.3 s       385 µs         50 MB   ← now
-    2000     1022625      7158381      91.7 s       395 µs             —   ← recorded
-    2000     1022625      7158381      50.2 s       418 µs         51 MB   ← now
+lots/sec  open lots     entries   COLD BUILD   NAV STRIKE   PEAK FOOTPRINT
+     500     252843     1769907      11.4 s       403 µs         —   ← recorded
+     500     252843     1769907      12.5 s       385 µs     36 MB   ← now
+    2000    1022625     7158381      91.7 s       395 µs         —   ← recorded
+    2000    1022625     7158381      50.2 s       418 µs        51*  ← now
+    2000   20004324   140030274     995.0 s        12 µs   1.00 GB   ← ⭐ #6, MEASURED
 ```
 
-⭐ **51 MB FOR A MILLION OPEN LOTS**, and the strike is 9 µs at that size. The
-memory line is the one that was missing for months and it is the one that
-decides whether a book can be folded at all.
+⭐ **TWENTY MILLION TAX LOTS, STRUCK IN 12 µs, IN A GIGABYTE.** Issue #6 asked
+for this to stop being extrapolated. 140,030,274 entries, 20,004,324 open lots,
+trial balance 0. The fold takes 16.6 minutes and the strike off it is twelve
+microseconds — `Ratio.Closure.factored_nav_never_reads_the_lots`, at the size the
+claim was always about.
 
-⚠ `parse` is 34.1 s of that 50.2 s — 68%, and now the dominant term. The lever
-is deserialize-time interning: `config` alone is a 64-character digest allocated
-once per entry with the identical value every time, 22% of the file's bytes.
+    parse    655.2 s   reading and deserializing
+    fold     339.7 s     of which relieve  5.0 s  over 60,012,972 reliefs
+    mark      10.8 ms  10000 prices          fx  210 µs   2 rates, not 10000
+
+⛔ **QUOTE `peak memory footprint`, NOT `maximum resident set size`.** macOS RSS
+EXCLUDES COMPRESSED PAGES, and at this size it reports **52 MB** for a process
+whose real footprint is **1.00 GB** — a nineteen-fold understatement of the
+number that decides whether a book can be folded at all. Every memory figure in
+this file was taken with `/usr/bin/time -l`; the ones marked `*` above are RSS
+and are not corrected. The lot data is written once and then cold, which is
+exactly what the OS compresses.
+
+⚠ **`parse` IS 66% OF THE COLD BUILD AND INTERNING DOES NOT TOUCH IT.** Interning
+the config digest — 64 identical bytes on every one of 140 million lines, 22% of
+the file — measured 8.5/8.6/8.6 s against 8.2–8.6 s before it. A null result. The
+cost is serde tokenizing half a gigabyte of JSON, not allocating. The levers that
+remain are a faster parser (`simd-json`) or a denser format, and the format is a
+product decision: the journal is the system of record and its readability is part
+of what is being sold.
 
 `ratio bench` generates a fund and measures a period end. 100× the lots, NAV
 strike unchanged.
