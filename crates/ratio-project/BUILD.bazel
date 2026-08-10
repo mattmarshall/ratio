@@ -30,6 +30,7 @@ rust_library(
     deps = [
         "//crates/ratio-common",
         "//crates/ratio-ingest",
+        "//crates/ratio-rules",
         "//crates/ratio-store",
         "@crates//:anyhow",
     ],

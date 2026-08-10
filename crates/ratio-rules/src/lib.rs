@@ -143,6 +143,49 @@ pub struct Rule {
 pub struct RuleSet {
     #[serde(rename = "rule", default)]
     pub rules: Vec<Rule>,
+
+    /// Which lots a sale gives up.
+    ///
+    /// ⛔ A CONFIGURATION TERM, NOT A CODE CHOICE, and it belongs here for the
+    /// same reason every rule does: it is a term of an administration agreement,
+    /// it decides a figure somebody is taxed on, and changing it is an approval
+    /// rather than a deployment. `Ratio.Lots.Methods.the_method_decides_the_
+    /// taxable_gain` — the same holding and the same trade produce four
+    /// different taxable incomes across the four methods, with nothing on the
+    /// balance sheet moving.
+    ///
+    /// ⚠ AND CHANGING IT IS NOT RETROACTIVE. A strike pins the configuration in
+    /// force at the last entry it folded, so past reliefs stay computed under
+    /// the method that was agreed then. Re-running history under a new method
+    /// would restate every investor's tax position, which is exactly what
+    /// `Ratio.Period.one_answer_per_day` refuses.
+    ///
+    /// Defaults to FIFO because a fund with no declared method has one by
+    /// custom, not because the engine prefers it.
+    #[serde(default)]
+    pub lot_method: LotMethod,
+}
+
+/// Which lots a sale gives up. `Ratio.Lots.Methods.Order`.
+///
+/// ⚠ THESE ARE THE METHODS THAT ARE ORDERINGS. Specific identification is a
+/// SELECTION the client supplies per sale, and average cost pools the holding so
+/// there is no lot to give up — neither is a configuration setting of this
+/// shape, and `Ratio.Lots.Methods` models them separately so that adding them
+/// here as variants is visibly the wrong move.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LotMethod {
+    /// Oldest acquisition first.
+    #[default]
+    Fifo,
+    /// Newest first.
+    Lifo,
+    /// Dearest PER UNIT first — chosen to reduce a gain.
+    Hifo,
+    /// Cheapest per unit first — chosen to realize one deliberately, against a
+    /// capital-loss carryforward.
+    Lofo,
 }
 
 impl RuleSet {

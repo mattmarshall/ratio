@@ -154,6 +154,85 @@ theorem two_methods_can_agree_by_accident :
       = (relieveBy .hifo [⟨1, 1, 40⟩, ⟨2, 1, 10⟩] 1).map (fun r => takenCost r.1) := by
   decide
 
+/- ── Holding period, and the methods that need a price ────────────────── -/
+
+/-- How long a lot has been held, in days, at a valuation day.
+
+⛔ A LOT NEEDS AN ACQUISITION DATE, NOT AN ORDINAL. `Lot.seq` orders lots and
+says nothing about WHEN — two lots acquired a year apart may be adjacent
+ordinals, and the tax rate turns on the gap rather than the order. Modelled as a
+separate day here because adding it to `Lot` is a change to what a lot IS, and
+this file is about which one a sale takes. -/
+def heldDays (acquired asOf : Int) : Int := asOf - acquired
+
+/-- Whether a holding period is long-term.
+
+⚠ `365` IS A JURISDICTION'S NUMBER, NOT ARITHMETIC. The threshold is a term of
+the same agreement that names the method — a fund administered under different
+rules uses a different one, and hard-coding it here would make the engine wrong
+somewhere rather than configurable everywhere. -/
+def isLongTerm (threshold acquired asOf : Int) : Bool :=
+  decide (threshold ≤ heldDays acquired asOf)
+
+/-- What a realized gain costs in tax, with short-term weighted higher.
+
+A crude model — one rate against another — and deliberately so: the POINT is
+that the two rates differ, not what they are. -/
+def taxCost (shortWeight gain : Int) (short : Bool) : Int :=
+  if short then gain * shortWeight else gain
+
+/-- **⛔ A TAX-MINIMISING METHOD IS NOT A FUNCTION OF THE LOTS.**
+
+Every method above picks by looking at the holding. A method that minimises tax
+cannot: whether a lot yields a GAIN or a LOSS depends on the sale price, and a
+short-term LOSS is worth more than a long-term one while a short-term GAIN is
+worth less.
+
+The same two lots, the same holding periods, two different prices — and the
+right lot to give up is a different one:
+
+  lot A   basis 10, held SHORT
+  lot B   basis 12, held LONG
+
+  sold at 50   A realizes 40 short (cost 80); B realizes 38 long (cost 38).
+               ⇒ give up B.
+  sold at  5   A realizes −5 short (cost −10); B realizes −7 long (cost −7).
+               ⇒ give up A: the SMALLER loss is worth more, because a
+                 short-term loss offsets income taxed at the higher rate.
+
+⚠ THE BASES HAVE TO BE CLOSE FOR THE PREFERENCE TO FLIP, and I got that wrong
+first: at a basis of 40 lot B carries a loss so much larger that it wins at both
+prices, and the example proved nothing. `decide` reported the theorem false.
+
+⚠ SO THE METHOD CANNOT BE A SORT ON THE HOLDING, and an engine that models every
+method as an ordering has no place to put this one. That is the same shape as
+average cost not being a lot walk, and it is why `Order` is a closed enum of the
+methods that ARE orderings rather than an open list of "methods". -/
+theorem a_tax_minimising_method_is_not_a_function_of_the_lots :
+    (taxCost 2 (50 - 10) true > taxCost 2 (50 - 12) false)
+    ∧ (taxCost 2 (5 - 10) true < taxCost 2 (5 - 12) false) := by
+  constructor <;> decide
+
+/- ⚠ I wrote a second theorem here called `preferring_long_term_is_not_minimising
+_tax` and it was the SAME STATEMENT as the one above under a different name —
+the identical inequality, proved the identical way. Deleted rather than kept:
+two names for one fact inflates a file's theorem count while proving nothing new,
+and this project's whole argument is that the count means something.
+
+The distinction it was reaching for is real and belongs in prose: "prefer
+long-term" picks lot B at both prices, while "minimise tax" picks B then A. The
+theorem above already shows the flip, which is what makes them different
+methods. -/
+
+/-- **A lot acquired on the threshold day is long-term**, not short.
+
+The boundary, pinned. Off by one here moves a lot between tax rates, and the
+error is a rate rather than a rounding — nothing about the resulting figure looks
+unusual. -/
+theorem the_threshold_day_is_long_term :
+    isLongTerm 365 0 365 = true ∧ isLongTerm 365 0 364 = false := by
+  constructor <;> decide
+
 /- ── Specific identification ──────────────────────────────────────────── -/
 
 /-- **Specific identification is a SELECTION, not an ordering.**

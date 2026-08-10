@@ -95,6 +95,25 @@ pub enum Method {
     Lofo,
 }
 
+impl From<ratio_rules::LotMethod> for Method {
+    /// The configured method, as the engine's.
+    ///
+    /// ⛔ A CONVERSION RATHER THAN A SHARED TYPE, so the rules crate does not
+    /// depend on the engine and the engine does not depend on TOML. The two
+    /// enums are checked against each other by
+    /// `the_configured_method_reaches_the_engine`, because a silent mismatch
+    /// here would mean a fund declaring HIFO and being relieved FIFO — with
+    /// nothing anywhere reporting a difference.
+    fn from(m: ratio_rules::LotMethod) -> Self {
+        match m {
+            ratio_rules::LotMethod::Fifo => Method::Fifo,
+            ratio_rules::LotMethod::Lifo => Method::Lifo,
+            ratio_rules::LotMethod::Hifo => Method::Hifo,
+            ratio_rules::LotMethod::Lofo => Method::Lofo,
+        }
+    }
+}
+
 impl Method {
     /// Order a holding for this method.
     ///
@@ -287,6 +306,29 @@ mod tests {
         let r = relieve(&jumbled, 1).unwrap();
         assert_eq!(r.taken, vec![Taken { seq: 1, units: 1, cost: 10 }], "the OLDEST lot");
         assert_eq!(r.cost, 10, "not 90");
+    }
+
+    #[test]
+    fn the_configured_method_reaches_the_engine() {
+        // ⛔ EVERY VARIANT, AND THE GAIN IT PRODUCES. A mismatch in the mapping
+        // would mean a fund declaring HIFO and being relieved FIFO — the books
+        // would tie, the units would be right, and only the taxable gain would
+        // be wrong, which is the figure nobody reconciles.
+        use ratio_rules::LotMethod as L;
+        let lots = [l(1, 1, 10), l(2, 1, 40)];
+        for (declared, expect) in
+            [(L::Fifo, 10i64), (L::Lifo, 40), (L::Hifo, 40), (L::Lofo, 10)]
+        {
+            let m: Method = declared.into();
+            assert_eq!(
+                relieve_by(m, &lots, 1).unwrap().cost,
+                expect,
+                "{declared:?} did not reach the engine as itself"
+            );
+        }
+
+        // And the default a fund gets when it declares nothing.
+        assert_eq!(Method::from(L::default()), Method::Fifo);
     }
 
     #[test]
