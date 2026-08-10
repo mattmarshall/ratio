@@ -191,6 +191,22 @@ pub struct JournalEntry {
     /// The postings. Must net to zero on every dimension.
     pub postings: Vec<PostingRecord>,
 
+    /// The day the trade was struck, `YYYY-MM-DD`.
+    ///
+    /// ⛔ ON THE ENTRY, NOT THE POSTING. A trade date is a property of the
+    /// transaction; every leg of it happened on the same day, and putting it on
+    /// each posting would create the possibility of them disagreeing.
+    ///
+    /// ⚠ AND IT IS OPTIONAL BECAUSE EVERY EXISTING ENTRY LACKS ONE. A lot opened
+    /// by an entry with no date has no acquisition date, and the holding-period
+    /// methods REFUSE such a holding rather than guessing — both defaults are
+    /// wrong in the direction that matters. Defaulting to the epoch makes
+    /// everything long-term, which is the favourable rate on records that do not
+    /// support it; defaulting to today makes everything short-term, which is
+    /// punitive on a holding held for years.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trade_date: Option<String>,
+
     /// A corporate action being ANNOUNCED, if that is what this entry is.
     ///
     /// ⛔ AN ANNOUNCEMENT MOVES NO MONEY, so such an entry carries no postings
@@ -713,6 +729,7 @@ mod position_tests {
                 PostingRecord::new(2, -25_000_00),
             ],
         
+            trade_date: None,
             announcement: None,
         })
         .unwrap();
@@ -725,6 +742,7 @@ mod position_tests {
                 PostingRecord::new(2, -1_000_00),
             ],
         
+            trade_date: None,
             announcement: None,
         })
         .unwrap();
@@ -778,6 +796,7 @@ mod tests {
                 .iter()
                 .map(|(dim, amount)| PostingRecord::new(*dim, *amount))
                 .collect(),
+            trade_date: None,
             announcement: None,
         }
     }

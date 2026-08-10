@@ -444,6 +444,7 @@ mod tests {
                 config: c.clone(),
                 postings: vec![PostingRecord::new(1, 100), PostingRecord::new(2, -100)],
             
+                trade_date: None,
                 announcement: None,
             })
             .unwrap();

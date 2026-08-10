@@ -353,6 +353,12 @@ impl Projection {
                     seq: at as u64,
                     units: qty,
                     cost: p.amount,
+                    // ⛔ FROM THE ENTRY, AND `None` WHEN IT HAS NONE. Every
+                    // journal written before `trade_date` existed lacks one, and
+                    // the holding-period methods refuse such a lot rather than
+                    // defaulting — both defaults are wrong in opposite
+                    // directions.
+                    acquired: entry.trade_date.clone(),
                 });
                 continue;
             }
@@ -546,6 +552,7 @@ mod tests {
                     PostingRecord::new(2, -*cost),
                 ],
             
+                trade_date: None,
                 announcement: None,
             })
             .unwrap();
@@ -573,9 +580,71 @@ mod tests {
                 },
                 PostingRecord::new(2, cost),
             ],
+            trade_date: None,
             announcement: None,
         })
         .unwrap();
+    }
+
+    fn buy_dated(d: &std::path::Path, id: &str, inst: &str, units: i64, cost: i64, day: &str) {
+        let mut b = FileBook::open(d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        b.append(&JournalEntry {
+            id: id.into(),
+            memo: "buy".into(),
+            config: c,
+            postings: vec![
+                PostingRecord {
+                    dim: 1,
+                    amount: cost,
+                    instrument: Some(inst.into()),
+                    quantity: Some(units),
+                },
+                PostingRecord::new(2, -cost),
+            ],
+            trade_date: Some(day.into()),
+            announcement: None,
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn a_lot_carries_the_trade_date_of_the_entry_that_opened_it() {
+        // ⛔ THE PROPAGATION WAS UNTESTED. Every test here built undated
+        // entries, so a fold that dropped the date entirely would have passed
+        // the whole file — and the holding-period methods would then refuse
+        // every holding, or worse, be given `None` and silently fall back.
+        //
+        // Found by mutation: replacing `entry.trade_date.clone()` with `None`
+        // changed nothing.
+        let d = book("dates", &[]);
+        buy_dated(&d, "b1", "vti", 10, 100, "2024-03-01");
+        buy_dated(&d, "b2", "vti", 10, 400, "2026-01-15");
+        let p = Projection::of_book(&d).unwrap();
+
+        let lots = p.lots_of(1, "vti").value;
+        assert_eq!(lots.len(), 2);
+        assert_eq!(lots[0].acquired.as_deref(), Some("2024-03-01"));
+        assert_eq!(lots[1].acquired.as_deref(), Some("2026-01-15"));
+
+        // And a holding-period method can then be run against them: the older
+        // lot is given up first, which is the point of recording the date.
+        let r = relief::relieve_by(relief::Method::LongestHeldFirst, &lots, 10).unwrap();
+        assert_eq!(r.cost, 100, "the lot held longest, not the cheapest or the first");
+        assert_eq!(r.taken[0].acquired.as_deref(), Some("2024-03-01"), "and it says when");
+    }
+
+    #[test]
+    fn an_undated_holding_refuses_a_holding_period_method() {
+        // ⚠ Every book written before `trade_date` existed is this. The refusal
+        // is the honest outcome — a tax rate guessed from an absence is a claim
+        // the records do not support.
+        let d = book("undated", &[("vti", 100, 10)]);
+        let p = Projection::of_book(&d).unwrap();
+        let lots = p.lots_of(1, "vti").value;
+        assert!(lots[0].acquired.is_none());
+        assert!(relief::relieve_by(relief::Method::LongestHeldFirst, &lots, 5).is_err());
+        assert!(relief::relieve_by(relief::Method::Fifo, &lots, 5).is_ok(), "FIFO still works");
     }
 
     #[test]
@@ -823,6 +892,7 @@ mod tests {
                 PostingRecord { dim: 1, amount: 7, instrument: Some("vti".into()), quantity: Some(1) },
                 PostingRecord::new(2, -7),
             ],
+            trade_date: None,
             announcement: None,
         })
         .unwrap();
@@ -904,6 +974,7 @@ mod tests {
             memo: String::new(),
             config: cfg.clone(),
             postings: Vec::new(),
+            trade_date: None,
             announcement: Some(ratio_store::AnnouncementRecord {
                 id: id.into(),
                 instrument: inst.into(),
@@ -991,6 +1062,7 @@ mod tests {
                 instrument: Some("vti".into()),
                 quantity: Some(100),
             }],
+            trade_date: None,
             announcement: None,
         });
         let p = Projection::rebuild(&js);

@@ -27,21 +27,46 @@ use anyhow::{bail, Result};
 use crate::generated_lots::{lot_is_sound, partial_cost, partial_divides, takes_whole_lot};
 
 /// A tax lot: when it was acquired, what it holds, what it cost.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Lot {
     /// Acquisition ordinal. ⛔ FIFO IS THIS FIELD, not the order of the vector —
     /// `relieve` sorts by it rather than trusting what it was handed.
     pub seq: u64,
     pub units: i64,
     pub cost: i64,
+    /// The day it was acquired, `YYYY-MM-DD`.
+    ///
+    /// ⛔ OPTIONAL, AND ITS ABSENCE IS NOT A DEFAULT. A lot opened by an entry
+    /// with no trade date cannot be classified short- or long-term, and the two
+    /// obvious fallbacks are wrong in opposite directions: the epoch makes
+    /// everything long-term (the favourable rate, on records that do not support
+    /// it) and today makes everything short-term (punitive, on a holding held
+    /// for years). The holding-period methods REFUSE such a holding.
+    pub acquired: Option<String>,
 }
 
 /// What a sale took out of one lot.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Taken {
     pub seq: u64,
     pub units: i64,
     pub cost: i64,
+    /// The day the relieved lot was acquired, carried through from it.
+    ///
+    /// ⭐ WITHOUT THIS THE REALIZED GAIN CANNOT BE CLASSIFIED. Short- and
+    /// long-term gains are taxed differently, so a disposal that does not know
+    /// when the lot it gave up was acquired cannot be reported — and the whole
+    /// reason a fund chooses a holding-period method is to control that split.
+    /// A `Taken` carrying only a cost is enough for the books and not enough for
+    /// the return.
+    ///
+    /// ⛔ OPTIONAL, AND ITS ABSENCE IS NOT A DEFAULT. A lot opened by an entry
+    /// with no trade date cannot be classified short- or long-term, and the two
+    /// obvious fallbacks are wrong in opposite directions: the epoch makes
+    /// everything long-term (the favourable rate, on records that do not support
+    /// it) and today makes everything short-term (punitive, on a holding held
+    /// for years). The holding-period methods REFUSE such a holding.
+    pub acquired: Option<String>,
 }
 
 /// What a relief produced.
@@ -93,6 +118,11 @@ pub enum Method {
     /// Cheapest per unit first — chosen to REALIZE a gain deliberately, which a
     /// fund does against a capital-loss carryforward.
     Lofo,
+    /// Longest held first. ⛔ REFUSES a holding where any lot has no
+    /// acquisition date. `Ratio.Lots.Methods.a_missing_acquisition_date_refuses`.
+    LongestHeldFirst,
+    /// Shortest held first.
+    ShortestHeldFirst,
 }
 
 impl From<ratio_rules::LotMethod> for Method {
@@ -110,6 +140,8 @@ impl From<ratio_rules::LotMethod> for Method {
             ratio_rules::LotMethod::Lifo => Method::Lifo,
             ratio_rules::LotMethod::Hifo => Method::Hifo,
             ratio_rules::LotMethod::Lofo => Method::Lofo,
+            ratio_rules::LotMethod::LongestHeldFirst => Method::LongestHeldFirst,
+            ratio_rules::LotMethod::ShortestHeldFirst => Method::ShortestHeldFirst,
         }
     }
 }
@@ -123,6 +155,11 @@ impl Method {
     /// reported that theorem FALSE, which is the only reason it was caught: a
     /// test asserting "HIFO differs from LOFO" would have PASSED, because both
     /// were broken the same way in opposite directions.
+    /// Whether this method needs to know when each lot was acquired.
+    pub fn needs_acquisition_dates(self) -> bool {
+        matches!(self, Method::LongestHeldFirst | Method::ShortestHeldFirst)
+    }
+
     fn arrange(self, lots: &mut [Lot]) {
         // Dearer per unit, cross-multiplied. ⚠ Not `cost / units`: integer
         // division ties lots whose per-unit costs differ by less than a minor
@@ -136,6 +173,15 @@ impl Method {
             Method::Lifo => lots.sort_by_key(|l| std::cmp::Reverse(l.seq)),
             Method::Hifo => lots.sort_by(|a, b| dearer(b, a).then(a.seq.cmp(&b.seq))),
             Method::Lofo => lots.sort_by(|a, b| dearer(a, b).then(a.seq.cmp(&b.seq))),
+            // ⚠ ISO dates compare as strings in date order, which is the whole
+            // reason the format is fixed. A date held as `03/04/2026` would sort
+            // by month and nobody would see it in a total.
+            Method::LongestHeldFirst => {
+                lots.sort_by(|a, b| a.acquired.cmp(&b.acquired).then(a.seq.cmp(&b.seq)))
+            }
+            Method::ShortestHeldFirst => {
+                lots.sort_by(|a, b| b.acquired.cmp(&a.acquired).then(a.seq.cmp(&b.seq)))
+            }
         }
     }
 }
@@ -155,6 +201,18 @@ pub fn relieve(lots: &[Lot], want: i64) -> Result<Relieved> {
 pub fn relieve_by(method: Method, lots: &[Lot], want: i64) -> Result<Relieved> {
     if want < 0 {
         bail!("a relief of {want} units is not a relief; a negative sale is a purchase");
+    }
+    if method.needs_acquisition_dates() {
+        if let Some(l) = lots.iter().find(|l| l.acquired.is_none()) {
+            bail!(
+                "lot {} has no acquisition date, and {method:?} cannot classify it — \
+                 assuming the epoch would make it long-term at the favourable rate on \
+                 records that do not support the claim, and assuming today would make it \
+                 short-term on a holding that may have been held for years. Neither is \
+                 conservative; they are wrong in opposite directions",
+                l.seq
+            );
+        }
     }
     for l in lots {
         // ⛔ `Ratio.Lots.Edges.a_husk_is_refused`. A lot holding nothing and
@@ -188,7 +246,12 @@ pub fn relieve_by(method: Method, lots: &[Lot], want: i64) -> Result<Relieved> {
             break;
         }
         if takes_whole_lot(lot.units, remaining) {
-            taken.push(Taken { seq: lot.seq, units: lot.units, cost: lot.cost });
+            taken.push(Taken {
+                seq: lot.seq,
+                units: lot.units,
+                cost: lot.cost,
+                acquired: lot.acquired.clone(),
+            });
             cost = ratio_common::checked::add(cost, lot.cost, "the relieved cost")?;
             remaining -= lot.units;
             continue;
@@ -206,9 +269,19 @@ pub fn relieve_by(method: Method, lots: &[Lot], want: i64) -> Result<Relieved> {
             );
         }
         let part = partial_cost(lot.cost, remaining, lot.units);
-        taken.push(Taken { seq: lot.seq, units: remaining, cost: part });
+        taken.push(Taken {
+            seq: lot.seq,
+            units: remaining,
+            cost: part,
+            acquired: lot.acquired.clone(),
+        });
         cost = ratio_common::checked::add(cost, part, "the relieved cost")?;
-        left.push(Lot { seq: lot.seq, units: lot.units - remaining, cost: lot.cost - part });
+        left.push(Lot {
+            seq: lot.seq,
+            units: lot.units - remaining,
+            cost: lot.cost - part,
+            acquired: lot.acquired.clone(),
+        });
         remaining = 0;
     }
     left.extend(it);
@@ -228,7 +301,11 @@ mod tests {
     use super::*;
 
     fn l(seq: u64, units: i64, cost: i64) -> Lot {
-        Lot { seq, units, cost }
+        Lot { seq, units, cost, acquired: None }
+    }
+
+    fn dated(seq: u64, units: i64, cost: i64, day: &str) -> Lot {
+        Lot { seq, units, cost, acquired: Some(day.into()) }
     }
 
     #[test]
@@ -304,7 +381,7 @@ mod tests {
         // fund's tax position whatever the storage layer felt like.
         let jumbled = [l(9, 1, 90), l(1, 1, 10), l(5, 1, 50)];
         let r = relieve(&jumbled, 1).unwrap();
-        assert_eq!(r.taken, vec![Taken { seq: 1, units: 1, cost: 10 }], "the OLDEST lot");
+        assert_eq!(r.taken[0].seq, 1, "the OLDEST lot");
         assert_eq!(r.cost, 10, "not 90");
     }
 
@@ -329,6 +406,18 @@ mod tests {
 
         // And the default a fund gets when it declares nothing.
         assert_eq!(Method::from(L::default()), Method::Fifo);
+
+        // ⛔ EVERY VARIANT MAPS, including the two that need dates. A method
+        // declared in a configuration and silently dropped on the way to the
+        // engine would relieve FIFO while the agreement said otherwise.
+        let dated_lots = [dated(1, 1, 10, "2026-01-01"), dated(2, 1, 40, "2024-01-01")];
+        for (declared, expect) in
+            [(L::LongestHeldFirst, 40i64), (L::ShortestHeldFirst, 10)]
+        {
+            let m: Method = declared.into();
+            assert!(m.needs_acquisition_dates(), "{declared:?} needs dates");
+            assert_eq!(relieve_by(m, &dated_lots, 1).unwrap().cost, expect, "{declared:?}");
+        }
     }
 
     #[test]
@@ -388,6 +477,46 @@ mod tests {
                 assert_eq!(r.taken.iter().map(|t| t.units).sum::<i64>(), want, "{m:?}");
             }
         }
+    }
+
+    #[test]
+    fn a_holding_period_method_refuses_a_lot_with_no_date() {
+        // ⛔ `Ratio.Lots.Methods.a_missing_acquisition_date_refuses`. Not
+        // "assume long", not "assume short" — refuse. A tax rate is not a thing
+        // to guess at from an absence, and the two fallbacks are wrong in
+        // OPPOSITE directions, so neither is the conservative one.
+        let lots = [dated(1, 1, 10, "2024-01-01"), l(2, 1, 40)];
+        let err = relieve_by(Method::LongestHeldFirst, &lots, 1).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("no acquisition date"), "{msg}");
+        assert!(msg.contains("wrong in opposite directions"), "names why: {msg}");
+
+        // ⚠ And the methods that do NOT need dates still work on the same
+        // holding — the refusal is the method's, not the data's.
+        assert!(relieve_by(Method::Fifo, &lots, 1).is_ok());
+        assert!(relieve_by(Method::Hifo, &lots, 1).is_ok());
+    }
+
+    #[test]
+    fn holding_period_orders_by_date_not_by_sequence() {
+        // `Ratio.Lots.Methods.the_period_orders_it_not_the_sequence`. Lot 2 was
+        // acquired earlier despite the higher ordinal — a fund that migrated its
+        // records, or one that back-loaded a position, has exactly this shape.
+        let lots = [dated(1, 1, 10, "2026-01-01"), dated(2, 1, 40, "2024-01-01")];
+        let long = relieve_by(Method::LongestHeldFirst, &lots, 1).unwrap();
+        assert_eq!(long.taken[0].seq, 2, "the one held longest, not the first ordinal");
+        let short = relieve_by(Method::ShortestHeldFirst, &lots, 1).unwrap();
+        assert_eq!(short.taken[0].seq, 1);
+    }
+
+    #[test]
+    fn equal_dates_fall_back_to_acquisition_order() {
+        // ⚠ `Ratio.Lots.Methods.equal_periods_fall_back_to_acquisition_order`.
+        // Without a stable tiebreak, two runs of the same fund could produce two
+        // different tax figures from identical data.
+        let lots = [dated(2, 1, 40, "2025-06-01"), dated(1, 1, 10, "2025-06-01")];
+        let r = relieve_by(Method::LongestHeldFirst, &lots, 1).unwrap();
+        assert_eq!(r.taken[0].seq, 1);
     }
 
     #[test]

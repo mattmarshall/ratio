@@ -344,6 +344,7 @@ mod tests {
                 config: c.clone(),
                 postings: legs.into_iter().map(|(dim, amount)| PostingRecord::new(dim, amount)).collect(),
             
+                trade_date: None,
                 announcement: None,
             })
             .unwrap();
@@ -393,6 +394,7 @@ mod tests {
                 PostingRecord::new(2, -5_000_000),
             ],
         
+            trade_date: None,
             announcement: None,
         })
         .unwrap();

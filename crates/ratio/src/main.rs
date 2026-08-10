@@ -469,6 +469,7 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str)
                 memo: format!("announced {id}: {instrument} {ratio} ex {ex_date}"),
                 config: cfg,
                 postings: Vec::new(),
+                trade_date: None,
                 announcement: Some(ratio_store::AnnouncementRecord {
                     id: id.to_string(),
                     instrument: instrument.to_string(),
@@ -1065,6 +1066,7 @@ fn apply(book: PathBuf, file: &str) -> Result<()> {
             config: digest.clone(),
             postings,
         
+            trade_date: None,
             announcement: None,
         })?;
         posted += 1;
@@ -1092,6 +1094,7 @@ fn post(book: PathBuf, file: &str) -> Result<()> {
             config: config.clone(),
             postings: input.postings,
         
+            trade_date: None,
             announcement: None,
         };
         // The book refuses an unbalanced entry; report every one rather than

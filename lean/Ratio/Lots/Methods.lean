@@ -233,6 +233,64 @@ theorem the_threshold_day_is_long_term :
     isLongTerm 365 0 365 = true ∧ isLongTerm 365 0 364 = false := by
   constructor <;> decide
 
+/-- Order a holding by holding period, longest held first.
+
+⛔ THE DATE IS LOOKED UP, NOT STORED ON THE LOT. `Lot` is `seq`, `units`, `cost`
+and every theorem in `Ratio.Lots` is about that shape; adding a field would
+re-open seven proofs to answer a question about ordering. The lot book knows
+when each lot was acquired, so the method asks it.
+
+⛔ AND IT RETURNS AN OPTION. A lot with no recorded acquisition date cannot be
+classified, and the two obvious defaults are both wrong in the direction that
+matters:
+
+    default to the epoch    everything is LONG-term — the favourable rate, on
+                            a fund whose records do not support the claim.
+    default to today        everything is SHORT-term — the punitive rate, on a
+                            holding that may have been held for years.
+
+Neither is a conservative choice; they are wrong in opposite directions, and a
+method that silently picked either would produce a tax figure the records cannot
+substantiate. So it refuses. -/
+def longestHeldFirst (threshold asOf : Int) (acq : Nat → Option Int) :
+    List Lot → Option (List Lot)
+  | [] => some []
+  | ls =>
+    if ls.any (fun l => (acq l.seq).isNone) then none
+    else some (sortBy (fun a b =>
+      let la := (acq a.seq).getD asOf
+      let lb := (acq b.seq).getD asOf
+      thenBySeq (fun x y =>
+        decide (isLongTerm threshold ((acq x.seq).getD asOf) asOf = true
+                ∧ isLongTerm threshold ((acq y.seq).getD asOf) asOf = false)) a b
+        || (decide (la = lb) && decide (a.seq ≤ b.seq))) ls)
+
+/-- **⛔ A LOT WITH NO ACQUISITION DATE REFUSES THE METHOD.**
+
+Not "assume long", not "assume short" — refuse. The fund's records do not say
+how long it was held, and a tax rate is not a thing to guess at from an absence.
+-/
+theorem a_missing_acquisition_date_refuses :
+    longestHeldFirst 365 1000 (fun _ => none) [⟨1, 1, 10⟩] = none := by
+  decide
+
+/-- **And one that has them orders by period.** Lot 2 was acquired earlier and
+is long-term; lot 1 is recent and short. Longest held first takes lot 2, whatever
+the sequence says. -/
+theorem the_period_orders_it_not_the_sequence :
+    (longestHeldFirst 365 1000 (fun n => if n = 1 then some 900 else some 100)
+      [⟨1, 1, 10⟩, ⟨2, 1, 40⟩]).map (fun ls => ls.map (·.seq)) = some [2, 1] := by
+  decide
+
+/-- **⚠ AND A HOLDING WHERE EVERY LOT IS THE SAME AGE FALLS BACK TO SEQUENCE**,
+rather than to whatever the sort happened to do. A method that reordered
+equal-aged lots unpredictably would give two runs of the same fund two different
+tax figures. -/
+theorem equal_periods_fall_back_to_acquisition_order :
+    (longestHeldFirst 365 1000 (fun _ => some 100) [⟨2, 1, 40⟩, ⟨1, 1, 10⟩]).map
+        (fun ls => ls.map (·.seq)) = some [1, 2] := by
+  decide
+
 /- ── Specific identification ──────────────────────────────────────────── -/
 
 /-- **Specific identification is a SELECTION, not an ordering.**

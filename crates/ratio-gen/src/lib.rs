@@ -164,6 +164,7 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
             memo: "subscription".into(),
             config: cfg.clone(),
             postings: vec![PostingRecord::new(2, amount), PostingRecord::new(20, -amount)],
+            trade_date: None,
             announcement: None,
         })?;
         written += 1;
@@ -213,6 +214,7 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                     },
                     PostingRecord::new(2, -cost),
                 ],
+                trade_date: None,
                 announcement: None,
             });
             written += 1;
@@ -235,6 +237,7 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                         },
                         PostingRecord::new(2, c),
                     ],
+                    trade_date: None,
                     announcement: None,
                 });
                 written += 1;
@@ -271,6 +274,7 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
             memo: format!("announced ca-{k}"),
             config: cfg.clone(),
             postings: Vec::new(),
+            trade_date: None,
             announcement: Some(AnnouncementRecord {
                 id: format!("ca-{k}"),
                 instrument: ticker(i),

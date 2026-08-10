@@ -400,6 +400,7 @@ impl Console {
             config: digest.clone(),
             postings: postings.clone(),
         
+            trade_date: None,
             announcement: None,
         };
 
@@ -922,6 +923,7 @@ impl Console {
             // would see nothing happen.
             postings: vec![ratio_store::PostingRecord::of(dim_touched, 0, instrument, Some(moved))],
         
+            trade_date: None,
             announcement: None,
         })?;
         Ok((moved, dim_touched))
@@ -1047,6 +1049,7 @@ impl Console {
                                 },
                             )?,
                         
+                            trade_date: None,
                             announcement: None,
                         })?;
                     }
@@ -1225,6 +1228,7 @@ impl Console {
                     config: digest.clone(),
                     postings,
                 
+                    trade_date: None,
                     announcement: None,
                 })?;
             }
@@ -2052,6 +2056,7 @@ mod tests {
                 config: d.clone(),
                 postings: legs.into_iter().map(|(dim, amount)| PostingRecord::new(dim, amount)).collect(),
             
+                trade_date: None,
                 announcement: None,
             })
             .unwrap();
@@ -2097,6 +2102,7 @@ mod tests {
                 memo: "buy".into(),
                 config: cfg,
                 postings: vec![PostingRecord::new(1, 5_000_000), PostingRecord::new(2, -5_000_000)],
+                trade_date: None,
                 announcement: None,
             })
             .unwrap();
@@ -2138,6 +2144,7 @@ mod tests {
                 memo: "one".into(),
                 config: cfg,
                 postings: vec![PostingRecord::new(1, 11), PostingRecord::new(2, -11)],
+                trade_date: None,
                 announcement: None,
             })
             .unwrap();
@@ -2644,6 +2651,7 @@ mod tests {
                 PostingRecord::new(20, 500),
             ],
         
+            trade_date: None,
             announcement: None,
         })
         .unwrap();

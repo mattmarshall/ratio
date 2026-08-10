@@ -571,6 +571,7 @@ fn tool_post_events(book: &std::path::Path, args: &Value) -> Result<String> {
             config: digest.clone(),
             postings: compile(rule, event)?,
         
+            trade_date: None,
             announcement: None,
         })?;
         posted += 1;

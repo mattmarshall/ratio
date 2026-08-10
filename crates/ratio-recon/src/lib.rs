@@ -519,6 +519,7 @@ pub fn replay(events: &[Event], set: &RuleSet, config: &Digest) -> Result<Vec<Jo
             config: config.clone(),
             postings: compile(rule, e).with_context(|| format!("compiling {}", e.id))?,
         
+            trade_date: None,
             announcement: None,
         });
     }

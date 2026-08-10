@@ -186,6 +186,13 @@ pub enum LotMethod {
     /// Cheapest per unit first — chosen to realize one deliberately, against a
     /// capital-loss carryforward.
     Lofo,
+    /// Longest held first. ⛔ REFUSES a holding where any lot has no acquisition
+    /// date, rather than defaulting: the epoch makes everything long-term at the
+    /// favourable rate on records that do not support it, and today makes
+    /// everything short-term on a holding held for years.
+    LongestHeldFirst,
+    /// Shortest held first.
+    ShortestHeldFirst,
 }
 
 impl RuleSet {
