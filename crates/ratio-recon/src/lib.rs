@@ -833,6 +833,185 @@ pub fn render(r: &BreakReport) -> String {
     out
 }
 
+/// One account whose figure moved between two configurations.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Delta {
+    pub dim: i64,
+    pub account: String,
+    pub baseline: i64,
+    pub candidate: i64,
+}
+
+impl Delta {
+    pub fn difference(&self) -> i64 {
+        self.candidate - self.baseline
+    }
+}
+
+/// What changing the configuration did to the figures.
+#[derive(Clone, Debug)]
+pub struct Comparison {
+    pub baseline_digest: String,
+    pub candidate_digest: String,
+    pub scope: Scope,
+    pub transactions_replayed: i64,
+    pub deltas: Vec<Delta>,
+    pub rule_changes: Vec<String>,
+    pub exceptions: Vec<Exception>,
+    pub both_books_tie: bool,
+}
+
+impl Comparison {
+    /// True when the comparison was produced rather than refused.
+    pub fn was_compared(&self) -> bool {
+        self.exceptions.is_empty()
+    }
+
+    /// True when the configuration change moved no figure at all.
+    ///
+    /// ⚠ A REAL ANSWER, NOT AN ABSENCE OF ONE. "We changed the fee rule and
+    /// nothing moved" is what a customer wants to hear before promoting it, and
+    /// it is only trustworthy because the same events went through both sides.
+    pub fn is_quiet(&self) -> bool {
+        self.was_compared() && self.deltas.is_empty()
+    }
+}
+
+/// Replay one file through two configurations and report what moved.
+///
+/// ⛔ THE QUESTION THE WEDGE IS SOLD ON. A break report says whether Ratio
+/// agrees with an incumbent. This says what a decision of the CUSTOMER'S OWN
+/// cost them, over their own data, re-derivable from two digests they can name.
+///
+/// ⛔ THE SAME EVENTS THROUGH BOTH SIDES, never two runs over two files.
+/// Comparing figures built from different inputs would attribute to the rule
+/// change whatever the inputs happened to differ by — the false-break failure
+/// this crate is arranged to avoid, one layer up and harder to notice, because
+/// there is no incumbent figure to contradict it.
+///
+/// ⛔ AND EITHER SIDE REFUSING REFUSES THE WHOLE COMPARISON. A file one
+/// configuration covers and the other does not is not comparable: the
+/// difference would be the coverage gap wearing the rule change's name. That is
+/// the same asymmetry `reconcile` makes, for the same reason.
+pub fn compare_configs(
+    txns: &[Txn],
+    scope: &Scope,
+    baseline: (&RuleSet, &Digest),
+    candidate: (&RuleSet, &Digest),
+    chart: &[Account],
+) -> Result<Comparison> {
+    let (base_set, base_digest) = baseline;
+    let (cand_set, cand_digest) = candidate;
+
+    let mut refused = Vec::new();
+    let base_events = match cover(txns, scope, base_set) {
+        Ok(e) => Some(e),
+        Err(x) => {
+            refused.extend(x);
+            None
+        }
+    };
+    let cand_events = match cover(txns, scope, cand_set) {
+        Ok(e) => Some(e),
+        Err(x) => {
+            // ⚠ Deduplicated by row: a transaction both sides refuse is ONE
+            // problem with the file, and reporting it twice reads as two.
+            for e in x {
+                if !refused.iter().any(|r: &Exception| r.transaction_id == e.transaction_id) {
+                    refused.push(e);
+                }
+            }
+            None
+        }
+    };
+
+    let empty = Comparison {
+        baseline_digest: base_digest.as_str().to_string(),
+        candidate_digest: cand_digest.as_str().to_string(),
+        scope: scope.clone(),
+        transactions_replayed: 0,
+        deltas: Vec::new(),
+        rule_changes: rule_changes(base_set, cand_set),
+        exceptions: refused,
+        both_books_tie: true,
+    };
+    let (Some(base_events), Some(cand_events)) = (base_events, cand_events) else {
+        return Ok(empty);
+    };
+
+    let base_entries = replay(&base_events, base_set, base_digest)?;
+    let cand_entries = replay(&cand_events, cand_set, cand_digest)?;
+    let base = balances(&base_entries);
+    let cand = balances(&cand_entries);
+
+    let names: BTreeMap<i64, String> =
+        chart.iter().map(|a| (a.dim, a.display_name.clone())).collect();
+    let mut deltas: Vec<Delta> = base
+        .keys()
+        .chain(cand.keys())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter_map(|dim| {
+            let (b, c) = (base.get(dim).copied().unwrap_or(0), cand.get(dim).copied().unwrap_or(0));
+            (b != c).then(|| Delta {
+                dim: *dim,
+                account: names.get(dim).cloned().unwrap_or_else(|| format!("dimension {dim}")),
+                baseline: b,
+                candidate: c,
+            })
+        })
+        .collect();
+    // Largest movement first — the reason somebody opened this.
+    deltas.sort_by_key(|d| (-(d.difference().abs()), d.dim));
+
+    Ok(Comparison {
+        transactions_replayed: txns.len() as i64,
+        deltas,
+        both_books_tie: base.values().sum::<i64>() == 0 && cand.values().sum::<i64>() == 0,
+        ..empty
+    })
+}
+
+/// What differs between two rule sets, in words.
+///
+/// ⚠ REPORTED EVEN WHEN NO FIGURE MOVED. A rule that changed and moved nothing
+/// is a different fact from a rule that did not change, and a comparison that
+/// showed only figures could not tell them apart.
+fn rule_changes(a: &RuleSet, b: &RuleSet) -> Vec<String> {
+    let mut out = Vec::new();
+    let by_id = |s: &RuleSet| -> BTreeMap<String, ratio_rules::Rule> {
+        s.rules.iter().map(|r| (r.id.clone(), r.clone())).collect()
+    };
+    let (x, y) = (by_id(a), by_id(b));
+    for (id, rule) in &y {
+        match x.get(id) {
+            None => out.push(format!("{id}: added")),
+            Some(prev) if prev != rule => out.push(format!("{id}: changed")),
+            Some(_) => {}
+        }
+    }
+    for id in x.keys() {
+        if !y.contains_key(id) {
+            out.push(format!("{id}: removed"));
+        }
+    }
+    if a.effective_lot_method() != b.effective_lot_method() {
+        out.push(format!(
+            "lot method: {:?} to {:?}",
+            a.effective_lot_method(),
+            b.effective_lot_method()
+        ));
+    }
+    if a.long_term_days != b.long_term_days {
+        out.push(format!(
+            "long-term threshold: {} days to {}",
+            a.long_term_days, b.long_term_days
+        ));
+    }
+    out.sort();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1260,6 +1439,132 @@ weight = -1
             pb::Refusal::UnknownTransactionType as i32
         );
         assert_eq!(back.transactions_replayed, 0);
+    }
+
+    // -- comparing two configurations -------------------------------------
+
+    /// The same rules with the purchase posting to a different cash account —
+    /// a change that moves figures without changing coverage.
+    fn rules_v2() -> (RuleSet, Digest) {
+        let toml = RULES.replace(
+            "id = \"equity_purchase\"\nkind = \"trade\"\n[[rule.posting]]\naccount = 1\nweight = 1",
+            "id = \"equity_purchase\"\nkind = \"trade\"\n[[rule.posting]]\naccount = 1\nweight = 2",
+        );
+        (RuleSet::from_toml(&toml).unwrap(), Digest::of(toml.as_bytes()))
+    }
+
+    #[test]
+    fn comparing_a_configuration_against_itself_moves_nothing() {
+        // ⛔ THE CONTROL. If this reported movement, every other result from
+        // this function would be noise — and a comparison that finds
+        // differences where there are none is worse than none at all, for
+        // exactly the reason a false break is.
+        let txns = parse_transactions(
+            "id,date,type,amount,currency,basis\n\
+             t1,2026-01-02,buy,250000.00,USD,\n\
+             t2,2026-02-03,sell,95000.00,USD,80000.00\n",
+        )
+        .unwrap();
+        let (set, d) = (rules(), digest());
+        let c = compare_configs(&txns, &scope(), (&set, &d), (&set, &d), &chart()).unwrap();
+
+        assert!(c.was_compared(), "{:?}", c.exceptions);
+        assert!(c.is_quiet(), "moved: {:?}", c.deltas);
+        assert!(c.rule_changes.is_empty());
+        assert!(c.both_books_tie);
+        assert_eq!(c.transactions_replayed, 2);
+    }
+
+    #[test]
+    fn a_rule_change_reports_what_it_moved_and_by_how_much() {
+        let txns = parse_transactions(
+            "id,date,type,amount,currency\nt1,2026-01-02,buy,250000.00,USD\n",
+        )
+        .unwrap();
+        let (v2, d2) = rules_v2();
+        let c = compare_configs(&txns, &scope(), (&rules(), &digest()), (&v2, &d2), &chart())
+            .unwrap();
+
+        assert!(c.was_compared(), "{:?}", c.exceptions);
+        assert!(!c.is_quiet());
+        // Investments doubled; cash is unchanged, so it does not appear.
+        let d = c.deltas.iter().find(|d| d.dim == 1).expect("investments moved");
+        assert_eq!(d.baseline, 25_000_000);
+        assert_eq!(d.candidate, 50_000_000);
+        assert_eq!(d.difference(), 25_000_000);
+        assert!(c.deltas.iter().all(|d| d.dim != 2), "cash did not move: {:?}", c.deltas);
+        assert_eq!(c.rule_changes, vec!["equity_purchase: changed"]);
+
+        // ⚠ AND THE SECOND BOOK NO LONGER TIES, which is reported rather than
+        // hidden: a template whose weights do not net to zero is a defect in
+        // the CONFIGURATION, and a comparison that quietly showed its figures
+        // would be lending them credibility they have not got.
+        assert!(!c.both_books_tie);
+    }
+
+    #[test]
+    fn a_rule_change_that_moves_nothing_still_says_so() {
+        // ⚠ "We changed it and nothing moved" is a real answer, and the one a
+        // customer wants before promoting a configuration. It is only worth
+        // anything because the SAME events went through both sides.
+        let txns = parse_transactions(
+            "id,date,type,amount,currency\nt1,2026-01-02,buy,250000.00,USD\n",
+        )
+        .unwrap();
+        let renamed = RULES.replace("description = \"\"", "description = \"\"");
+        let mut set2 = RuleSet::from_toml(&renamed).unwrap();
+        set2.long_term_days = 730;
+        let d2 = Digest::of(b"v2-threshold-only");
+        let c = compare_configs(&txns, &scope(), (&rules(), &digest()), (&set2, &d2), &chart())
+            .unwrap();
+
+        assert!(c.is_quiet(), "no figure should move: {:?}", c.deltas);
+        assert_eq!(c.rule_changes, vec!["long-term threshold: 365 days to 730"]);
+    }
+
+    #[test]
+    fn a_file_one_side_cannot_cover_is_not_compared_at_all() {
+        // ⛔ THE GATE, ONE LAYER UP. If only the covering side ran, every figure
+        // it produced would read as a movement caused by the rule change, when
+        // what actually happened is that the other configuration cannot do the
+        // work. There is no incumbent figure to contradict that, so nothing
+        // downstream would catch it.
+        let txns = parse_transactions(
+            "id,date,type,amount,currency\nt1,2026-01-02,buy,250000.00,USD\n",
+        )
+        .unwrap();
+        let thin = "[[rule]]\nid = \"unrelated\"\nkind = \"trade\"\n\
+                    [[rule.posting]]\naccount = 1\nweight = 1\n\
+                    [[rule.posting]]\naccount = 2\nweight = -1\n";
+        let set2 = RuleSet::from_toml(thin).unwrap();
+        let d2 = Digest::of(thin.as_bytes());
+        let c = compare_configs(&txns, &scope(), (&rules(), &digest()), (&set2, &d2), &chart())
+            .unwrap();
+
+        assert!(!c.was_compared());
+        assert!(c.deltas.is_empty(), "a refused comparison carries no deltas");
+        assert_eq!(c.transactions_replayed, 0);
+        assert!(!c.exceptions.is_empty());
+    }
+
+    #[test]
+    fn a_row_both_sides_refuse_is_reported_once() {
+        // ⚠ One problem with the file, not two. Reporting it per side reads as
+        // twice as much wrong with the data as there is.
+        //
+        // ⚠ `split` because it is genuinely outside the scope — my first
+        // version used `dividend`, which the scope COVERS, so both sides
+        // succeeded and the test asserted nothing about deduplication.
+        let txns = parse_transactions(
+            "id,date,type,amount,currency\nt1,2026-01-02,split,0.00,USD\n",
+        )
+        .unwrap();
+        let (v2, d2) = rules_v2();
+        let c = compare_configs(&txns, &scope(), (&rules(), &digest()), (&v2, &d2), &chart())
+            .unwrap();
+
+        assert!(!c.was_compared());
+        assert_eq!(c.exceptions.len(), 1, "{:?}", c.exceptions);
     }
 
     #[test]

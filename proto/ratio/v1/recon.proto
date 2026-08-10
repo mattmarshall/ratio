@@ -180,3 +180,80 @@ message BreakReport {
   // cannot be false for a book the journal accepted.
   bool book_ties = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
+
+// One account whose figure moved between two configurations.
+//
+// ⛔ ONLY ACCOUNTS THAT MOVED APPEAR. A comparison listing every unchanged
+// account is a document nobody reads to the end, and the question being asked
+// is "what moved?" — so an empty list is the answer "nothing did", which is a
+// real and reassuring result rather than an absence of one.
+message ConfigDelta {
+  // The conserved dimension.
+  int64 account_dimension = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What the chart calls it, so the report reads without the chart to hand.
+  string account = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Minor units, as strings. The figure under each configuration, and the
+  // movement between them.
+  //
+  // ⚠ `baseline`/`candidate` rather than before/after: AIP-140 rejects a
+  // preposition in a field name, and the pair reads better for it — one
+  // configuration is what the fund runs on and the other is what it is
+  // considering, which is the actual relationship rather than an ordering.
+  string baseline_amount = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string candidate_amount = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string difference = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// What changing the configuration did to the figures.
+//
+// ⛔ THE QUESTION THE WEDGE IS ACTUALLY SOLD ON. "We changed the fee rule —
+// what moved?" A break report says whether Ratio agrees with an incumbent; this
+// says what a decision of the customer's own cost them, over their own data,
+// re-derivable from two digests they can name.
+//
+// ⚠ IT IS THE SAME EVENTS THROUGH TWO CONFIGURATIONS, never two runs over two
+// files. Comparing figures produced from different inputs would attribute to a
+// rule change whatever the inputs happened to differ by, which is the
+// false-break failure this whole crate is arranged to avoid — one layer up.
+message ConfigComparison {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/ConfigComparison"
+    pattern: "books/{book}/configComparisons/{config_comparison}"
+    singular: "configComparison"
+    plural: "configComparisons"
+  };
+
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The two configurations, by content address. Both are required and neither
+  // defaults: a comparison against "whatever is active" is not reproducible
+  // once something else is promoted.
+  string baseline_digest = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string candidate_digest = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What the run covered. The same scope for both sides — it describes the
+  // fund type, not the configuration.
+  Scope scope = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  int64 transactions_replayed = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Every account whose figure moved, largest movement first.
+  repeated ConfigDelta deltas = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What differs between the two rule sets, in words. ⛔ REPORTED EVEN WHEN NO
+  // FIGURE MOVED: a rule that changed and moved nothing is a different fact
+  // from a rule that did not change, and the first is worth knowing about.
+  repeated string rule_changes = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Rows either side refused. **If this is non-empty no comparison was
+  // produced.** A file one configuration covers and the other does not cannot
+  // be compared — the difference would be the coverage gap, reported as though
+  // it were the rule change.
+  repeated Exception exceptions = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // True when both replayed books tie. False is a defect in Ratio rather than
+  // a finding: the kernel refuses a non-conserving entry.
+  bool both_books_tie = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
