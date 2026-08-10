@@ -27,6 +27,9 @@ For detailed setup instructions and development environment configuration, see [
 
 ## Documentation
 
+- **[HANDOFF.md](HANDOFF.md)** - Where the work stands, what is load-bearing, and
+  the traps. Read before changing the lot engine, the projection, or anything
+  emitted from Lean.
 - **[DEVELOPING.md](DEVELOPING.md)** - Complete development guide, workflow, and spec-driven approach
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Guidelines for contributing to the project
 - **[CLINE.md](CLINE.md)** - Working with Cline and other LLMs on this project
