@@ -546,6 +546,7 @@ mod tests {
                     PostingRecord {
                         dim: 1,
                         amount: *cost,
+                        currency: None,
                         instrument: Some((*inst).into()),
                         quantity: Some(*qty),
                     },
@@ -575,6 +576,7 @@ mod tests {
                 PostingRecord {
                     dim: 1,
                     amount: -cost,
+                    currency: None,
                     instrument: Some(inst.into()),
                     quantity: Some(-units),
                 },
@@ -597,6 +599,7 @@ mod tests {
                 PostingRecord {
                     dim: 1,
                     amount: cost,
+                    currency: None,
                     instrument: Some(inst.into()),
                     quantity: Some(units),
                 },
@@ -889,7 +892,7 @@ mod tests {
             memo: "later".into(),
             config: c,
             postings: vec![
-                PostingRecord { dim: 1, amount: 7, instrument: Some("vti".into()), quantity: Some(1) },
+                PostingRecord { currency: None, dim: 1, amount: 7, instrument: Some("vti".into()), quantity: Some(1) },
                 PostingRecord::new(2, -7),
             ],
             trade_date: None,
@@ -1059,6 +1062,7 @@ mod tests {
             postings: vec![ratio_store::PostingRecord {
                 dim: 1,
                 amount: 0,
+                currency: None,
                 instrument: Some("vti".into()),
                 quantity: Some(100),
             }],

@@ -91,6 +91,24 @@ pub struct PostingRecord {
     pub dim: i64,
     pub amount: i64,
 
+    /// What this posting is denominated in.
+    ///
+    /// ⛔ THE CONSERVED DIMENSION. `Ratio.Chart.Dimensions` — currency is what
+    /// must net to zero, and two currencies are two INDEPENDENT conservation
+    /// laws rather than one law over a sum. Without this field the kernel could
+    /// only check the sum, and `[USD +100, EUR −100]` passed as balanced:
+    /// nothing exchanged, no rate recorded, each side out by a hundred.
+    ///
+    /// ⚠ `None` IS ITS OWN GROUP, NOT A DEFAULT TO THE BASE CURRENCY. Every
+    /// posting written before this field existed has `None`, so an untyped book
+    /// forms exactly one group and behaves precisely as it did. A book that
+    /// mixes typed and untyped postings has TWO groups and will refuse — which
+    /// is right: an entry that names a currency on one leg and not the other is
+    /// ambiguous, and guessing which base the untyped leg meant is how the hole
+    /// above got in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub currency: Option<String>,
+
     /// Which instrument this posting concerns, if any.
     ///
     /// An account does not name a conserved quantity — it PARTITIONS one. The
@@ -121,7 +139,7 @@ impl PostingRecord {
     /// A posting that concerns no particular instrument — a fee, a
     /// subscription, a transfer.
     pub fn new(dim: i64, amount: i64) -> Self {
-        PostingRecord { dim, amount, instrument: None, quantity: None }
+        PostingRecord { dim, amount, currency: None, instrument: None, quantity: None }
     }
 
     /// A posting against an instrument, with the quantity it moved.
@@ -129,6 +147,7 @@ impl PostingRecord {
         PostingRecord {
             dim,
             amount,
+            currency: None,
             instrument: Some(instrument.to_string()),
             quantity,
         }
@@ -145,6 +164,14 @@ impl From<&PostingRecord> for Posting {
         }
     }
 }
+
+/// Appended to a conservation error when the currencies are what failed.
+///
+/// ⚠ The flat total can be ZERO while this is the real fault — that is the
+/// whole point of the check — so the message has to say which law was broken.
+const CURRENCY_HINT: &str = " — and its currencies do not net independently. \
+A hundred dollars against a hundred euros sums to zero and exchanges nothing; \
+each currency is its own conservation law";
 
 /// A corporate action as announced, recorded IN THE JOURNAL.
 ///
@@ -228,9 +255,29 @@ impl JournalEntry {
         }
     }
 
+    /// Whether the entry conserves value, IN EVERY CURRENCY.
+    ///
+    /// ⛔ `Ratio.Chart.Dimensions.a_flat_total_hides_a_currency_mismatch`. A sum
+    /// over everything is one conservation law; a multi-currency book has one
+    /// PER CURRENCY, and `[USD +100, EUR −100]` satisfies the first and neither
+    /// of the second. Nothing was exchanged and no rate was recorded.
+    ///
+    /// ⚠ `None` is its own group, so a book whose postings predate the currency
+    /// field forms exactly one group and behaves as it always did. A book mixing
+    /// typed and untyped legs has two, and refuses — an entry naming a currency
+    /// on one leg and not the other is ambiguous, and guessing which base the
+    /// untyped leg meant is how the hole got in.
+    pub fn conserves_every_currency(&self) -> bool {
+        let mut nets: std::collections::BTreeMap<Option<&str>, i128> = Default::default();
+        for p in &self.postings {
+            *nets.entry(p.currency.as_deref()).or_default() += p.amount as i128;
+        }
+        nets.values().all(|n| *n == 0)
+    }
+
     /// Whether the entry conserves value.
     pub fn is_balanced(&self) -> bool {
-        transaction_is_balanced(&self.transaction())
+        transaction_is_balanced(&self.transaction()) && self.conserves_every_currency()
     }
 }
 
@@ -556,8 +603,9 @@ impl Journal for FileBook {
         if !entry.is_balanced() {
             let net: i128 = entry.postings.iter().map(|p| p.amount as i128).sum();
             return Err(anyhow!(
-                "entry {:?} does not conserve value: postings net to {net}, not 0",
-                entry.id
+                "entry {:?} does not conserve value: postings net to {net}, not 0{}",
+                entry.id,
+                if entry.conserves_every_currency() { "" } else { CURRENCY_HINT }
             ));
         }
         // The provenance has to resolve, or the entry is not reproducible.
@@ -611,8 +659,9 @@ impl Journal for FileBook {
                 // `i64` sum wraps and the message says "nets to 0".
                 let net: i128 = entry.postings.iter().map(|p| p.amount as i128).sum();
                 return Err(anyhow!(
-                    "entry {:?} does not conserve value: postings net to {net}, not 0",
-                    entry.id
+                    "entry {:?} does not conserve value: postings net to {net}, not 0{}",
+                    entry.id,
+                    if entry.conserves_every_currency() { "" } else { CURRENCY_HINT }
                 ));
             }
             if checked.insert(&entry.config) && self.get(&entry.config).is_err() {
@@ -799,6 +848,88 @@ mod tests {
             trade_date: None,
             announcement: None,
         }
+    }
+
+    fn in_ccy(dim: i64, amount: i64, ccy: &str) -> PostingRecord {
+        PostingRecord {
+            dim,
+            amount,
+            currency: Some(ccy.into()),
+            instrument: None,
+            quantity: None,
+        }
+    }
+
+    #[test]
+    fn a_flat_total_of_zero_across_two_currencies_is_refused() {
+        // ⛔ `Ratio.Chart.Dimensions.a_flat_total_hides_a_currency_mismatch`. A
+        // hundred dollars against a hundred euros sums to zero and exchanges
+        // NOTHING — no rate was recorded and each side is out by a hundred.
+        // This passed the door until the posting carried a currency.
+        let (mut b, cfg) = book();
+        let e = JournalEntry {
+            id: "fx".into(),
+            memo: "not an exchange".into(),
+            config: cfg,
+            postings: vec![in_ccy(1, 10_000, "USD"), in_ccy(2, -10_000, "EUR")],
+            trade_date: None,
+            announcement: None,
+        };
+        assert!(!e.conserves_every_currency());
+        let err = b.append(&e).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("own conservation law"), "names WHICH law: {msg}");
+    }
+
+    #[test]
+    fn a_real_exchange_conserves_both_sides() {
+        // ⚠ The same shape done properly needs four legs — the two sides of an
+        // actual exchange, at a rate somebody recorded.
+        let (mut b, cfg) = book();
+        assert!(b
+            .append(&JournalEntry {
+                id: "fx-ok".into(),
+                memo: "an exchange".into(),
+                config: cfg,
+                postings: vec![
+                    in_ccy(1, 10_000, "USD"),
+                    in_ccy(2, -10_000, "USD"),
+                    in_ccy(1, 9_000, "EUR"),
+                    in_ccy(2, -9_000, "EUR"),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .is_ok());
+    }
+
+    #[test]
+    fn an_untyped_book_behaves_exactly_as_it_did() {
+        // ⚠ THE MIGRATION. Every posting written before the currency field has
+        // `None`, so an untyped book forms exactly ONE group and the check is
+        // the one it always was. Nothing that balanced yesterday refuses today.
+        let (mut b, cfg) = book();
+        assert!(b
+            .append(&entry("plain", &cfg, &[(1, 500), (2, -500)]))
+            .is_ok());
+    }
+
+    #[test]
+    fn mixing_a_typed_leg_with_an_untyped_one_is_refused() {
+        // ⛔ TWO GROUPS, AND THAT IS RIGHT. An entry naming a currency on one
+        // leg and not the other is ambiguous, and guessing which base the
+        // untyped leg meant is exactly how the hole got in.
+        let (mut b, cfg) = book();
+        let e = JournalEntry {
+            id: "mixed".into(),
+            memo: "half-declared".into(),
+            config: cfg,
+            postings: vec![in_ccy(1, 500, "USD"), PostingRecord::new(2, -500)],
+            trade_date: None,
+            announcement: None,
+        };
+        assert!(!e.conserves_every_currency());
+        assert!(b.append(&e).is_err());
     }
 
     #[test]

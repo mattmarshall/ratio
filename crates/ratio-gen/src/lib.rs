@@ -209,6 +209,7 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                     PostingRecord {
                         dim: 1,
                         amount: cost,
+                        currency: None,
                         instrument: Some(t.clone()),
                         quantity: Some(units),
                     },
@@ -232,6 +233,7 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                         PostingRecord {
                             dim: 1,
                             amount: -c,
+                            currency: None,
                             instrument: Some(t.clone()),
                             quantity: Some(-u),
                         },
