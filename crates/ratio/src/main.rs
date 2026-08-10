@@ -637,10 +637,27 @@ fn bench(args: &[&str]) -> Result<()> {
     let strike_ns = t.elapsed().as_nanos() as i64;
 
     let open_positions = proj.positions().value.held.len() as i64;
+    let open_lots = proj.open_lots();
+    let breaks = proj.lot_breaks().len();
     let nav_ns = mark_ns + fx_ns + strike_ns;
     println!();
     println!("  {:<26}{:>14}", "journal entries", entries);
     println!("  {:<26}{:>14}   ⛔ steady state, not cumulative", "open positions", open_positions);
+    // ⛔ THE TWO NUMBERS THE SCALE ARGUMENT IS ACTUALLY ABOUT. Positions are a
+    // CHART — five hundred entries whatever the fund's history. Lots are a
+    // HISTORY, and this is where the memory is.
+    println!(
+        "  {:<26}{:>14}   ≈ {} MB resident at 40 bytes each",
+        "open tax lots",
+        open_lots,
+        open_lots * 40 / 1_048_576
+    );
+    if breaks > 0 {
+        println!("  {:<26}{:>14}   ⚠ sales that could not be relieved", "lot breaks", breaks);
+        for b in proj.lot_breaks().iter().take(2) {
+            println!("      {b}");
+        }
+    }
     println!();
     println!("  {:<26}{:>14}", "COLD BUILD  (O(journal))", ratio_nav::closure::human_nanos(cold_ns));
     println!("  {:<26}{:>14}   {marked} prices", "  mark", ratio_nav::closure::human_nanos(mark_ns));

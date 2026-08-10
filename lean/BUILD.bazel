@@ -246,6 +246,23 @@ lean_test(
     entry = "Ratio/Lots/Edges.lean",
 )
 
+# ⛔ WHICH lots a sale gives up, and why it is not a detail. The choice decides
+# the REALIZED GAIN — same holding, same trade, different taxable income, with
+# no figure on the balance sheet moving.
+#
+# And the space is not all orderings: FIFO/LIFO/HIFO/LOFO sort and walk;
+# SPECIFIC IDENTIFICATION is a selection that may take from the middle; AVERAGE
+# COST pools the holding and has no lot to give up at all.
+lean_test(
+    name = "lots_methods_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Lots.lean",
+        "Ratio/Lots/Methods.lean",
+    ],
+    entry = "Ratio/Lots/Methods.lean",
+)
+
 # What a sale PRODUCES, not just what it consumes.
 #
 # `Ratio.Lots` proves relief conserves and says nothing about the realized gain,

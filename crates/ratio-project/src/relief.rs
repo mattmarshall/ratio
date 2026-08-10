@@ -65,14 +65,75 @@ impl Relieved {
     }
 }
 
-/// Relieve `want` units, oldest lot first.
+/// Which lots a sale gives up.
 ///
-/// ⛔ SORTS BY `seq`. `Ratio.Lots.relieveFifo` takes the head of the list, so it
-/// is FIFO exactly when the caller handed it acquisition order — and a
-/// projection keyed by instrument does not. Naming a method and then trusting
+/// ⛔ A TERM OF AN ADMINISTRATION AGREEMENT, NOT AN IMPLEMENTATION CHOICE. The
+/// method decides the REALIZED GAIN — the same holding and the same trade
+/// produce different taxable income under each, with no figure on the balance
+/// sheet moving. `Ratio.Lots.Methods.the_method_decides_the_taxable_gain`.
+///
+/// ⚠ AND THE SPACE IS NOT ALL ORDERINGS. These four sort and walk. SPECIFIC
+/// IDENTIFICATION is a selection that may take from the middle of a holding, and
+/// AVERAGE COST pools the holding so there is no lot to give up at all — both
+/// are modelled in `Ratio.Lots.Methods` and neither belongs in this enum.
+/// Adding them here as variants is the mistake the Lean file exists to prevent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Method {
+    /// Oldest acquisition first.
+    #[default]
+    Fifo,
+    /// Newest first.
+    Lifo,
+    /// ⛔ Dearest PER UNIT first — the method chosen to reduce a gain.
+    /// `Ratio.Lots.Methods.hifo_is_per_unit_not_per_lot`: by TOTAL cost a large
+    /// cheap lot outranks a small dear one, and taking it shelters less. Getting
+    /// this wrong does not fail; it overstates the taxable gain, which is the
+    /// opposite of what the method was chosen for.
+    Hifo,
+    /// Cheapest per unit first — chosen to REALIZE a gain deliberately, which a
+    /// fund does against a capital-loss carryforward.
+    Lofo,
+}
+
+impl Method {
+    /// Order a holding for this method.
+    ///
+    /// ⛔ THE TIEBREAK APPLIES ONLY ON A TIE. `dearer(a,b) || a.seq <= b.seq` is
+    /// true whenever the sequence ascends, whatever the costs — so the tiebreak
+    /// overrides the method and HIFO quietly performs FIFO. Lean's `decide`
+    /// reported that theorem FALSE, which is the only reason it was caught: a
+    /// test asserting "HIFO differs from LOFO" would have PASSED, because both
+    /// were broken the same way in opposite directions.
+    fn arrange(self, lots: &mut [Lot]) {
+        // Dearer per unit, cross-multiplied. ⚠ Not `cost / units`: integer
+        // division ties lots whose per-unit costs differ by less than a minor
+        // unit, and a method that ties lots which are not tied picks by whatever
+        // the sort does next.
+        fn dearer(a: &Lot, b: &Lot) -> std::cmp::Ordering {
+            (b.units as i128 * a.cost as i128).cmp(&(a.units as i128 * b.cost as i128))
+        }
+        match self {
+            Method::Fifo => lots.sort_by_key(|l| l.seq),
+            Method::Lifo => lots.sort_by_key(|l| std::cmp::Reverse(l.seq)),
+            Method::Hifo => lots.sort_by(|a, b| dearer(b, a).then(a.seq.cmp(&b.seq))),
+            Method::Lofo => lots.sort_by(|a, b| dearer(a, b).then(a.seq.cmp(&b.seq))),
+        }
+    }
+}
+
+/// Relieve `want` units, oldest lot first.
+pub fn relieve(lots: &[Lot], want: i64) -> Result<Relieved> {
+    relieve_by(Method::Fifo, lots, want)
+}
+
+/// Relieve `want` units under a declared method.
+///
+/// ⛔ ORDERS THE HOLDING ITSELF. `Ratio.Lots.relieveFifo` takes the head of the
+/// list, so it is FIFO exactly when the caller handed it acquisition order — and
+/// a projection keyed by instrument does not. Naming a method and then trusting
 /// the caller to have implemented it is how a fund's tax position quietly
 /// becomes whatever the storage layer returned.
-pub fn relieve(lots: &[Lot], want: i64) -> Result<Relieved> {
+pub fn relieve_by(method: Method, lots: &[Lot], want: i64) -> Result<Relieved> {
     if want < 0 {
         bail!("a relief of {want} units is not a relief; a negative sale is a purchase");
     }
@@ -94,7 +155,7 @@ pub fn relieve(lots: &[Lot], want: i64) -> Result<Relieved> {
     }
 
     let mut ordered: Vec<Lot> = lots.to_vec();
-    ordered.sort_by_key(|l| l.seq);
+    method.arrange(&mut ordered);
 
     let mut taken = Vec::new();
     let mut cost = 0i64;
@@ -226,6 +287,65 @@ mod tests {
         let r = relieve(&jumbled, 1).unwrap();
         assert_eq!(r.taken, vec![Taken { seq: 1, units: 1, cost: 10 }], "the OLDEST lot");
         assert_eq!(r.cost, 10, "not 90");
+    }
+
+    #[test]
+    fn the_method_decides_the_taxable_gain() {
+        // ⭐ `Ratio.Lots.Methods.the_method_decides_the_taxable_gain`. Two
+        // one-unit lots at 10 and 40, a sale of one at 50. Four times the
+        // taxable income between HIFO and LOFO, and nothing on the balance
+        // sheet moves.
+        let lots = [l(1, 1, 10), l(2, 1, 40)];
+        let g = |m| relieve_by(m, &lots, 1).unwrap().gain(50).unwrap();
+        assert_eq!(g(Method::Fifo), 40, "gives up the OLD lot");
+        assert_eq!(g(Method::Lifo), 10, "gives up the NEW lot");
+        assert_eq!(g(Method::Hifo), 10, "gives up the DEAR lot — shelters the gain");
+        assert_eq!(g(Method::Lofo), 40, "gives up the CHEAP lot — realizes it");
+    }
+
+    #[test]
+    fn hifo_is_per_unit_not_per_lot() {
+        // ⛔ `Ratio.Lots.Methods.hifo_is_per_unit_not_per_lot`. A lot of 100
+        // units costing 1,000 is 10 each; a lot of 1 unit costing 50 is 50.
+        // By TOTAL cost the first is dearer; per UNIT the second is, by five
+        // times, and it is the one that shelters the most gain.
+        let lots = [l(1, 100, 1_000), l(2, 1, 50)];
+        let r = relieve_by(Method::Hifo, &lots, 1).unwrap();
+        assert_eq!(r.cost, 50, "the small DEAR lot, not the large cheap one");
+        assert_eq!(r.taken[0].seq, 2);
+    }
+
+    #[test]
+    fn the_tiebreak_does_not_override_the_method() {
+        // ⛔ THE BUG LEAN CAUGHT. `dearer(a,b) || a.seq <= b.seq` is true
+        // whenever the sequence ascends, so the tiebreak overrode the method
+        // and HIFO performed FIFO.
+        //
+        // ⚠ A test asserting "HIFO differs from LOFO" would have PASSED — both
+        // were broken the same way in opposite directions. This asserts the
+        // VALUE, which is the only thing that catches it.
+        let lots = [l(1, 1, 10), l(2, 1, 40)];
+        assert_eq!(relieve_by(Method::Hifo, &lots, 1).unwrap().cost, 40, "the dear lot");
+        assert_eq!(relieve_by(Method::Fifo, &lots, 1).unwrap().cost, 10, "the old lot");
+    }
+
+    #[test]
+    fn every_method_conserves_whatever_it_chooses() {
+        // `Ratio.Lots.Methods.every_ordering_method_conserves`. The invariant a
+        // new method must preserve — and the one whoever adds it will not think
+        // to check, because the gain is what the method is FOR.
+        let lots = [l(1, 10, 200), l(2, 5, 50), l(3, 8, 400)];
+        for m in [Method::Fifo, Method::Lifo, Method::Hifo, Method::Lofo] {
+            for want in 0..=23i64 {
+                let r = relieve_by(m, &lots, want).unwrap();
+                assert_eq!(
+                    r.cost + r.left.iter().map(|x| x.cost).sum::<i64>(),
+                    650,
+                    "{m:?} at want={want}"
+                );
+                assert_eq!(r.taken.iter().map(|t| t.units).sum::<i64>(), want, "{m:?}");
+            }
+        }
     }
 
     #[test]
