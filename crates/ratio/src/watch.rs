@@ -1796,6 +1796,11 @@ mod tests {
         // change it here too — that is the point, not an inconvenience.
         for needle in [
             "Lot method",
+            // ⛔ BOTH CLAIMS THE METHOD ROW CAN MAKE. Shipping only the first
+            // is what put "a term of the administration agreement" on three
+            // demo funds whose configuration declares no method at all.
+            "a term of the administration agreement",
+            "this configuration declares no method",
             "Realized gain",
             "Short-term",
             "Long-term",

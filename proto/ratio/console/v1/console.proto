@@ -431,6 +431,15 @@ message Fund {
   // beside the figures it decides rather than buried in a configuration screen.
   string lot_method = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
 
+  // Whether the configuration DECLARES that method, or merely gets it.
+  //
+  // ⛔ THE FIELD ABOVE CANNOT CARRY THIS AND MUST NOT BE ASKED TO. A rule set
+  // that says nothing about lots is relieved oldest-first by custom, not by
+  // election, and the two are indistinguishable once the absence is defaulted
+  // away. A client that reports `lot_method` as an agreed term without checking
+  // this asserts a decision nobody made — which is what happened.
+  bool lot_method_declared = 21 [(google.api.field_behavior) = OUTPUT_ONLY];
+
   // Realized gain since inception, in minor units.
   //
   // ⛔ CREDIT-NORMAL, SO A GAIN READS NEGATIVE. `Ratio.Lots.Posting` has the

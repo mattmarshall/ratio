@@ -948,10 +948,23 @@ function LotTerms({ fund }: { fund: Fund }) {
 
   return (
     <section className="lotterms" aria-label="Lot method and realized gain">
-      <div className="lt">
+      {/* ⛔ THE CAVEAT IS NOT COSMETIC. This row said "a term of the
+          administration agreement" whatever the configuration contained, and on
+          a book that declares no method it asserted an election nobody made —
+          the same conflation of "stored" with "read" that had the engine
+          relieving FIFO while the fund's config said HIFO. A method the engine
+          fell back to is still the method it used, so it is reported; what
+          changes is the claim made about it. */}
+      <div className={`lt${fund.lotMethodDeclared ? "" : " warn"}`}>
         <span className="ltk">Lot method</span>
-        <span className="ltv strong">{fund.lotMethod}</span>
-        <span className="at">a term of the administration agreement</span>
+        <span className={`ltv${fund.lotMethodDeclared ? " strong" : ""}`}>
+          {fund.lotMethod}
+        </span>
+        <span className="at">
+          {fund.lotMethodDeclared
+            ? "a term of the administration agreement"
+            : "by custom — this configuration declares no method"}
+        </span>
       </div>
       {known ? (
         <>

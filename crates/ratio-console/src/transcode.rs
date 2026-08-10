@@ -412,7 +412,7 @@ impl JsonView for pb::Fund {
              \"netAssetValue\":{},\"totalDebit\":{},\"totalCredit\":{},\
              \"trialBalanceDifference\":{},\"openDifference\":{},\
              \"entryCount\":{},\"openBreakCount\":{},\"pendingFactCount\":{},\
-             \"configDigest\":{},\"lotMethod\":{},\"realizedGain\":{},\
+             \"configDigest\":{},\"lotMethod\":{},\"lotMethodDeclared\":{},\"realizedGain\":{},\
              \"basisRelieved\":{},\"shortTermGain\":{},\"longTermGain\":{},\
              \"unclassifiedGain\":{},\"longTermDays\":{}}}",
             q(&self.name), q(&self.display_name), q(&self.currency_code),
@@ -421,7 +421,8 @@ impl JsonView for pb::Fund {
             q(&self.trial_balance_difference), q(&self.open_difference),
             q(&self.entry_count.to_string()), q(&self.open_break_count.to_string()),
             q(&self.pending_fact_count), q(&self.config_digest),
-            q(&self.lot_method), q(&self.realized_gain), q(&self.basis_relieved),
+            q(&self.lot_method), self.lot_method_declared,
+            q(&self.realized_gain), q(&self.basis_relieved),
             q(&self.short_term_gain), q(&self.long_term_gain),
             q(&self.unclassified_gain), q(&self.long_term_days.to_string())
         )

@@ -242,7 +242,7 @@ impl Terms {
     /// The terms a rule set sets.
     pub fn of(set: &ratio_rules::RuleSet) -> Self {
         Self {
-            method: set.lot_method.into(),
+            method: set.effective_lot_method().into(),
             roles: set.chart_roles,
             long_term_days: set.long_term_days,
         }

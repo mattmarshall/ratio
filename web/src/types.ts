@@ -51,6 +51,13 @@ export interface Fund {
    */
   lotMethod: string;
   /**
+   * ⛔ Whether the configuration DECLARES that method, or merely gets it. A rule
+   * set that says nothing is relieved oldest-first by custom, not by election —
+   * printing `lotMethod` as an agreed term without checking this asserts a
+   * decision nobody made.
+   */
+  lotMethodDeclared: boolean;
+  /**
    * ⛔ CREDIT-NORMAL — a gain reads NEGATIVE. Print it through `gainOf` and
    * never raw, or every profitable fund shows a minus sign.
    *
