@@ -177,7 +177,11 @@ the conserved one, and the kernel never said it was.
   structural insertion sort; `native_decide` is forbidden by
   `//lean:audit_proofs_test` and would trade a checked theorem for a trusted
   compiler.
-- ⚠ **zsh does not word-split `$var`.** `R="bazel run -- "; $R foo` fails.
+- ⛔ **zsh does not word-split `$var`, AND IT HAS COST THREE MISTAKES IN ONE
+  DAY.** `R="bazel run -- "; $R foo` fails; `for p in "500 500"; do set -- $p`
+  passes one argument, not two; and `for cmd in "strike --as-of X"; do ratio
+  $cmd` runs an unknown command — which I then TIMED and reported as a
+  measurement of `strike`. Use `${v%%:*}`/`${v##*:}` or write the calls out.
 - ⛔ **Two tests naming the same book wipe each other's directory.** Every helper
   begins with `remove_dir_all` and tests run in PARALLEL, so a duplicated name
   leaves ACTIVE pointing at a config blob that has just been deleted. It failed
@@ -198,21 +202,48 @@ the conserved one, and the kernel never said it was.
 ## What the demo shows, and what it does not
 
 ```
-lots/sec   open lots      entries      MB   COLD BUILD   NAV STRIKE
-      20        9684        67792       0     323.9 ms       414 µs      ← before
-     100       50213       351495       1        1.8 s       435 µs
-     500      252843      1769905       9       11.4 s       403 µs
-    2000     1022625      7158379      39       91.7 s       395 µs
-
-      20        9684        67792      19      497.8 ms       436 µs      ← now
-     100       50213       351495     ~99        3.0 s       409 µs
+lots/sec   open lots      entries   COLD BUILD   NAV STRIKE      PEAK RSS
+     500      252843      1769907      11.4 s       403 µs             —   ← recorded
+     500      252843      1769907      12.3 s       385 µs         50 MB   ← now
+    2000     1022625      7158381      91.7 s       395 µs             —   ← recorded
 ```
+
+⚠ THE 2000 ROW HAS NOT BEEN RE-MEASURED SINCE THE STREAMING CHANGE. Do not quote
+it. The last measurement of it was 178.8 s, before the relief walk and the
+streaming landed, and both cut the terms it was dominated by.
 
 `ratio bench` generates a fund and measures a period end. 100× the lots, NAV
 strike unchanged.
 
 ⛔ **It reports two curves and both must be quoted.** Folding the journal grows;
 only the strike off a maintained projection is flat.
+
+⛔ **AND THE REAL LIMIT WAS NEVER TIME, IT WAS MEMORY.** Every fold in this
+codebase materialized what it folded: 1.85 GB resident to fold 1.77M entries into
+a projection holding 8 MB of lots, and `ratio balance` — which prints a dozen
+rows — held 1.26 GB. At the ~80M entries a twenty-million-lot book implies, the
+`Vec<JournalEntry>` alone is about **eighty gigabytes**.
+
+| | before | after |
+|---|---|---|
+| `ratio balance` | 1.26 GB | **9 MB** |
+| `ratio bench` (generate AND fold) | 1.85 GB | **50 MB** |
+| console serving the book | — | 39 MB |
+
+`Journal::for_each_entry_since` is the streaming primitive. `entries()` and
+`entries_since()` still exist, expressed on top of it and documented as
+materializing — reach for them only on a book you know is small.
+
+⛔ **SO #6 WAS PLANNED AGAINST THE WRONG CONSTRAINT ENTIRELY.** "~25 minutes of
+generation, worth doing once" is a TIME estimate for something that would have
+died on memory, and no amount of extrapolating the time curve would have shown
+it. Re-plan it: the fold is now bounded by the projection (open lots), which at
+20M lots is ~640 MB.
+
+⚠ **TWO SITES ARE STILL O(entries) AND SAY SO IN THE CODE.** The console's
+`posted` set and the ingest duplicate check build a set of EVERY id in the
+journal. Streaming removed the entry bodies, not the set; the real fix is an
+index rather than a scan.
 
 ⭐ **AND THE FIRST CURVE IS NOW ACTUALLY O(entries), WHICH IT SAID FOR MONTHS
 AND WAS NOT.** A relief used to copy and sort the whole holding on every sale,
