@@ -41,6 +41,7 @@ pub mod relief;
 
 use anyhow::Result;
 use ratio_ingest::factor::Step;
+use ratio_common::intern::{Interner, Text};
 use ratio_store::{FileBook, Journal, JournalEntry};
 
 /// A value read from the projection, carrying the journal prefix it was folded
@@ -95,7 +96,7 @@ pub struct Totals {
     /// alone, which was harmless only for as long as no posting carried a
     /// currency — and the moment one did, every NAV would have been a mixture
     /// of denominations reported as one number.
-    pub by_dim: BTreeMap<(i64, Option<String>), i128>,
+    pub by_dim: BTreeMap<(i64, Option<Text>), i128>,
     pub debits: i128,
     pub credits: i128,
 }
@@ -194,7 +195,7 @@ impl Rates {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Positions {
     /// `(dim, instrument) -> (cost, quantity)`.
-    pub held: BTreeMap<(i64, String), (i64, i64)>,
+    pub held: BTreeMap<(i64, Text), (i64, i64)>,
     /// `dim -> amount`, for postings naming no instrument.
     pub rest: BTreeMap<i64, i64>,
 }
@@ -320,14 +321,14 @@ impl Realized {
 #[derive(Clone, Debug, Default)]
 struct LotBook {
     /// `(dim, instrument) -> open lots`, oldest first.
-    open: BTreeMap<(i64, String), Vec<relief::Lot>>,
+    open: BTreeMap<(i64, Text), Vec<relief::Lot>>,
     /// Cumulative cost given up by sales. ⛔ NOT the realized gain: that needs
     /// PROCEEDS, which is a property of the transaction rather than of the
     /// position, and the fold does not know which leg was the cash.
     ///
     /// ⛔ PER CURRENCY, like every other total here. A sum over denominations is
     /// not a figure.
-    relieved: BTreeMap<Option<String>, i128>,
+    relieved: BTreeMap<Option<Text>, i128>,
     /// The part of the realized gain a holding period could be established for.
     ///
     /// ⛔ ONLY THE CLASSIFIABLE PART IS ACCUMULATED HERE. The TOTAL is the
@@ -342,8 +343,8 @@ struct LotBook {
     /// then meant two unrelated things at once: disposals whose holding period
     /// was unknown, and an FX translation difference. A figure that means two
     /// things is the failure this whole file is about.
-    short_term: BTreeMap<Option<String>, i128>,
-    long_term: BTreeMap<Option<String>, i128>,
+    short_term: BTreeMap<Option<Text>, i128>,
+    long_term: BTreeMap<Option<Text>, i128>,
     /// ⛔ SALES THAT COULD NOT BE RELIEVED, named rather than propagated.
     ///
     /// A husk, a pro-rata split that will not divide, a holding that is short —
@@ -377,6 +378,14 @@ pub struct Projection {
     /// contents are folded twice is not detectably wrong — the number is simply
     /// too big.
     at: usize,
+    /// One copy of each instrument name and currency code this book mentions.
+    ///
+    /// ⛔ THE HOT PATH IS `key = (dim, instrument)`, BUILT PER POSTING. At four
+    /// thousand lots a security that is fourteen million `String` allocations
+    /// to look up rows that already exist. Interned, a key costs a refcount
+    /// bump — and the five hundred distinct names are stored once rather than
+    /// once per posting that mentions them.
+    names: ratio_common::intern::Interner,
     /// The relief method each configuration names, resolved once per digest.
     ///
     /// ⛔ CACHED BY DIGEST BECAUSE THE FOLD IS PER ENTRY. A book holds a handful
@@ -475,7 +484,11 @@ impl Projection {
             // ⚠ `-p.amount` is not the magnitude at the floor: `-i64::MIN`
             // overflows. Widened first, it does not.
             let amount = p.amount as i128;
-            *self.totals.by_dim.entry((p.dim, p.currency.clone())).or_default() += amount;
+            // ⛔ THE LAST PER-POSTING ALLOCATION. Five distinct currency codes
+            // across seven million entries; cloning the code to look up a row
+            // that already exists is the same waste the instrument key was.
+            let ccy = p.currency.as_deref().map(|c| self.names.intern(c));
+            *self.totals.by_dim.entry((p.dim, ccy)).or_default() += amount;
             if amount >= 0 {
                 self.totals.debits += amount;
             } else {
@@ -483,7 +496,8 @@ impl Projection {
             }
             match &p.instrument {
                 Some(i) => {
-                    let slot = self.positions.held.entry((p.dim, i.clone())).or_insert((0, 0));
+                    let key = (p.dim, self.names.intern(i));
+                    let slot = self.positions.held.entry(key).or_insert((0, 0));
                     slot.0 += p.amount;
                     slot.1 += p.quantity.unwrap_or(0);
                 }
@@ -585,7 +599,7 @@ impl Projection {
                 .positions
                 .held
                 .iter()
-                .filter(|((_, i), _)| i == instrument)
+                .filter(|((_, i), _)| &**i == instrument)
                 .map(|(_, (cost, _))| *cost)
                 .sum(),
             prefix: self.at,
@@ -622,6 +636,31 @@ impl Projection {
         // ⚠ Ambiguous entries are not dropped — they land in
         // `Realized::unclassified`, which is the total MINUS what was
         // classified, so nothing can go missing without showing up there.
+        // ⛔ PARSED ONCE PER ENTRY, NOT ONCE PER LOT AND AGAIN PER CLASSIFY. The
+        // date is stored on every lot this entry opens and read again by every
+        // disposal that relieves one, and it used to be an ISO string at both
+        // ends — so a book with a million open lots retained a million small
+        // allocations and re-parsed text to decide a holding period.
+        //
+        // ⚠ A DATE THAT WILL NOT PARSE IS A BREAK, NOT A SILENT ABSENCE. Left as
+        // `None` it is indistinguishable from an entry that never carried one,
+        // and the holding-period methods would refuse the holding without
+        // anybody learning why.
+        let trade_day: Option<relief::Day> = match entry.trade_date.as_deref() {
+            None => None,
+            Some(d) => match ratio_common::days_from_iso_date(d) {
+                Ok(n) => Some(n as relief::Day),
+                Err(e) => {
+                    self.lots.breaks.push(format!(
+                        "{}: trade date {d:?} is not a date — {e:#}. Lots it opens carry \
+                         no acquisition date, and the holding-period methods refuse them",
+                        entry.id
+                    ));
+                    None
+                }
+            },
+        };
+
         let sales = entry
             .postings
             .iter()
@@ -644,7 +683,7 @@ impl Projection {
             if qty == 0 {
                 continue;
             }
-            let key = (p.dim, inst.clone());
+            let key = (p.dim, self.names.intern(inst));
             if qty > 0 {
                 // A purchase opens a lot. `seq` is the journal position, which
                 // IS acquisition order — `relief::relieve` sorts by it rather
@@ -659,7 +698,7 @@ impl Projection {
                     // the holding-period methods refuse such a lot rather than
                     // defaulting — both defaults are wrong in opposite
                     // directions.
-                    acquired: entry.trade_date.clone(),
+                    acquired: trade_day,
                 });
                 continue;
             }
@@ -718,16 +757,16 @@ impl Projection {
                             -p.amount - r.cost
                         ));
                     }
-                    *self.lots.relieved.entry(p.currency.clone()).or_default() +=
-                        r.cost as i128;
+                    let ccy = p.currency.as_deref().map(|c| self.names.intern(c));
+                    *self.lots.relieved.entry(ccy.clone()).or_default() += r.cost as i128;
                     // Computed before `r.left` is moved out below, and as a free
                     // function because `held` still borrows the lot book.
                     let split = gain_leg
-                        .and_then(|g| classify(&r, g, entry.trade_date.as_deref(), terms));
+                        .and_then(|g| classify(&r, g, trade_day, terms));
                     *held = r.left;
                     if let Some((short, long)) = split {
-                        *self.lots.short_term.entry(p.currency.clone()).or_default() += short;
-                        *self.lots.long_term.entry(p.currency.clone()).or_default() += long;
+                        *self.lots.short_term.entry(ccy.clone()).or_default() += short;
+                        *self.lots.long_term.entry(ccy).or_default() += long;
                     }
                 }
                 Err(e) => self.lots.breaks.push(format!(
@@ -779,7 +818,12 @@ impl Projection {
             value: self
                 .lots
                 .open
-                .get(&(dim, instrument.to_string()))
+                // ⚠ Allocates, and that is fine HERE: this is a read for one
+                // position, not the per-posting key the fold builds. The tuple
+                // key cannot be borrowed as `(i64, &str)`, and a linear scan to
+                // avoid one malloc would trade nine comparisons for five
+                // hundred.
+                .get(&(dim, Text::from(instrument)))
                 .cloned()
                 .unwrap_or_default(),
             prefix: self.at,
@@ -903,7 +947,7 @@ impl Projection {
         let stored = self
             .positions
             .held
-            .get(&(dim, instrument.to_string()))
+            .get(&(dim, Text::from(instrument)))
             .map(|(_, q)| *q)
             .unwrap_or(0);
         Ok(AsOf {
@@ -928,7 +972,7 @@ impl Projection {
 /// keeps rather than the chart. Both exist because a total over denominations
 /// is not a figure, and the split has to be translated the same way as the
 /// total it is a part of or the two do not add up.
-fn convert(by_currency: &BTreeMap<Option<String>, i128>, rates: &Rates) -> Result<i128> {
+fn convert(by_currency: &BTreeMap<Option<Text>, i128>, rates: &Rates) -> Result<i128> {
     let mut total = 0i128;
     for (currency, amount) in by_currency {
         let factor = rates.factor(currency.as_deref()).ok_or_else(|| {
@@ -966,12 +1010,12 @@ fn convert(by_currency: &BTreeMap<Option<String>, i128>, rates: &Rates) -> Resul
 fn classify(
     r: &relief::Relieved,
     gain: i64,
-    disposed_on: Option<&str>,
+    disposed_on: Option<relief::Day>,
     terms: Terms,
 ) -> Option<(i128, i128)> {
     // `sale_postings` posts the gain credit-normal: `relieved − proceeds`.
     let proceeds = ratio_common::checked::sub(r.cost, gain, "proceeds").ok()?;
-    let day = ratio_common::days_from_iso_date(disposed_on?).ok()?;
+    let day = disposed_on? as i64;
     let units: i64 = r.taken.iter().map(|t| t.units).sum();
     if units <= 0 {
         return None;
@@ -984,7 +1028,7 @@ fn classify(
         if scaled.rem_euclid(units) != 0 {
             return None;
         }
-        let acquired = ratio_common::days_from_iso_date(t.acquired.as_deref()?).ok()?;
+        let acquired = t.acquired? as i64;
         let share = ratio_common::checked::sub(t.cost, scaled / units, "a lot's gain").ok()?;
         // `Ratio.Lots.Methods.isLongTerm`: the threshold day IS long-term.
         if day - acquired >= terms.long_term_days {
@@ -1000,6 +1044,11 @@ fn classify(
 mod tests {
     use super::*;
     use ratio_store::{Account, AccountTypeRecord as A, ConfigStore, PostingRecord};
+
+    /// An ISO date as the day number a lot now stores.
+    fn day(iso: &str) -> relief::Day {
+        ratio_common::days_from_iso_date(iso).unwrap() as relief::Day
+    }
 
     /// Where a test's book goes.
     ///
@@ -1136,14 +1185,14 @@ mod tests {
 
         let lots = p.lots_of(1, "vti").value;
         assert_eq!(lots.len(), 2);
-        assert_eq!(lots[0].acquired.as_deref(), Some("2024-03-01"));
-        assert_eq!(lots[1].acquired.as_deref(), Some("2026-01-15"));
+        assert_eq!(lots[0].acquired, Some(day("2024-03-01")));
+        assert_eq!(lots[1].acquired, Some(day("2026-01-15")));
 
         // And a holding-period method can then be run against them: the older
         // lot is given up first, which is the point of recording the date.
         let r = relief::relieve_by(relief::Method::LongestHeldFirst, &lots, 10).unwrap();
         assert_eq!(r.cost, 100, "the lot held longest, not the cheapest or the first");
-        assert_eq!(r.taken[0].acquired.as_deref(), Some("2024-03-01"), "and it says when");
+        assert_eq!(r.taken[0].acquired, Some(day("2024-03-01")), "and it says when");
     }
 
     #[test]
@@ -1280,7 +1329,17 @@ mod tests {
         let p = Projection::rebuild(&js, FIFO);
 
         let (held, rest) = FileBook::open(&d).unwrap().positions().unwrap();
-        assert_eq!(p.positions().value.held, held);
+        // ⚠ Normalized to compare across the key type. The projection interns
+        // its instrument names and `FileBook` — the slow fold this is checked
+        // against — does not; the KEYS must still agree, which is the point.
+        let projected: BTreeMap<(i64, String), (i64, i64)> = p
+            .positions()
+            .value
+            .held
+            .iter()
+            .map(|((d, i), v)| ((*d, i.to_string()), *v))
+            .collect();
+        assert_eq!(projected, held);
         assert_eq!(p.positions().value.rest, rest);
         assert_eq!(p.prefix(), 3);
     }
@@ -2076,6 +2135,78 @@ mod tests {
         let d = book("untyped-values", &[("vti", 10, 1)]);
         let p = Projection::of_book(&d).unwrap();
         assert!(p.nav(&|dim| dim == 1, &Rates::none()).is_ok());
+    }
+
+    #[test]
+    fn one_copy_of_each_name_however_many_postings_mention_it() {
+        // ⛔ THE PROPERTY, NOT THE MECHANISM. Asserting "we call intern()" would
+        // pass against an interner that returned a fresh allocation every time.
+        // What matters is that a hundred postings naming three instruments
+        // leave THREE strings behind, and that is what the fold was not doing:
+        // every posting cloned its instrument to build a map key, fourteen
+        // million times on the book `ratio bench` measures.
+        let d = book(
+            "interned",
+            &[("vti", 10, 1), ("voo", 20, 2), ("vti", 30, 3), ("bnd", 40, 4), ("vti", 50, 5)],
+        );
+        let p = Projection::of_book(&d).unwrap();
+
+        // Three instruments. The book's postings carry no currency, so the
+        // table holds instruments alone.
+        assert_eq!(p.names.len(), 3, "one entry per distinct instrument");
+
+        // ⭐ And the shared copy really is shared: the key in the position map
+        // and the key in the lot book are the same allocation, not two equal
+        // ones.
+        let pos_key = p.positions().value.held.keys().find(|(_, i)| &**i == "vti").unwrap();
+        let lot_key = p.lots.open.keys().find(|(_, i)| &**i == "vti").unwrap();
+        assert!(std::sync::Arc::ptr_eq(&pos_key.1, &lot_key.1));
+    }
+
+    #[test]
+    fn a_trade_date_that_is_not_a_date_is_a_break_rather_than_an_absence() {
+        // ⚠ LEFT AS `None` IT IS INDISTINGUISHABLE FROM AN ENTRY THAT NEVER
+        // CARRIED ONE. The holding-period methods would refuse the holding and
+        // nobody would learn why — a data defect wearing the costume of a
+        // book written before trade dates existed.
+        let d = tmp_root().join("ratio-project-bad-date");
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[Account {
+            dim: 1,
+            display_name: "Investments".into(),
+            account_type: A::Asset,
+        }])
+        .unwrap();
+        let c = b.put(b"rules = []\n").unwrap();
+        b.set_active(&c).unwrap();
+        b.append(&JournalEntry {
+            id: "b0".into(),
+            memo: "buy".into(),
+            config: c,
+            postings: vec![
+                PostingRecord {
+                    dim: 1,
+                    amount: 100,
+                    currency: None,
+                    instrument: Some("vti".into()),
+                    quantity: Some(1),
+                },
+                PostingRecord::new(2, -100),
+            ],
+            trade_date: Some("the fifth of March".into()),
+            announcement: None,
+        })
+        .unwrap();
+        drop(b);
+
+        let p = Projection::of_book(&d).unwrap();
+        let breaks = p.lot_breaks();
+        assert_eq!(breaks.len(), 1, "{breaks:?}");
+        assert!(breaks[0].contains("is not a date"), "{}", breaks[0]);
+        // And the lot is open with no acquisition date, which the
+        // holding-period methods refuse rather than guess about.
+        assert_eq!(p.lots_of(1, "vti").value[0].acquired, None);
     }
 
     #[test]
