@@ -206,11 +206,16 @@ lots/sec   open lots      entries   COLD BUILD   NAV STRIKE      PEAK RSS
      500      252843      1769907      11.4 s       403 µs             —   ← recorded
      500      252843      1769907      12.3 s       385 µs         50 MB   ← now
     2000     1022625      7158381      91.7 s       395 µs             —   ← recorded
+    2000     1022625      7158381      50.2 s       418 µs         51 MB   ← now
 ```
 
-⚠ THE 2000 ROW HAS NOT BEEN RE-MEASURED SINCE THE STREAMING CHANGE. Do not quote
-it. The last measurement of it was 178.8 s, before the relief walk and the
-streaming landed, and both cut the terms it was dominated by.
+⭐ **51 MB FOR A MILLION OPEN LOTS**, and the strike is 9 µs at that size. The
+memory line is the one that was missing for months and it is the one that
+decides whether a book can be folded at all.
+
+⚠ `parse` is 34.1 s of that 50.2 s — 68%, and now the dominant term. The lever
+is deserialize-time interning: `config` alone is a 64-character digest allocated
+once per entry with the identical value every time, 22% of the file's bytes.
 
 `ratio bench` generates a fund and measures a period end. 100× the lots, NAV
 strike unchanged.
