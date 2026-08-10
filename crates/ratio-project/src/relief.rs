@@ -385,7 +385,12 @@ mod tests {
     }
 
     const ROLES: ratio_rules::ChartRoles =
-        ratio_rules::ChartRoles { investments: 1, cash: 2, realized_gain: 30 };
+        ratio_rules::ChartRoles {
+        investments: 1,
+        cash: 2,
+        realized_gain: 30,
+        currency_conversion: None,
+    };
 
     #[test]
     fn a_sale_posts_three_legs_and_conserves() {
@@ -424,7 +429,12 @@ mod tests {
         // and realized gain on one dimension: the gain would net against the
         // disposal, the entry would conserve, the trial balance would tie, and
         // the taxable income would be nowhere.
-        let bad = ratio_rules::ChartRoles { investments: 1, cash: 2, realized_gain: 1 };
+        let bad = ratio_rules::ChartRoles {
+            investments: 1,
+            cash: 2,
+            realized_gain: 1,
+            currency_conversion: None,
+        };
         let err = sale_postings(bad, Some("USD"), "VTI", 10, 100, 150).unwrap_err();
         let msg = format!("{err:#}");
         assert!(msg.contains("net against the disposal"), "{msg}");

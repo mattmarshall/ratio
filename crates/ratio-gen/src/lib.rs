@@ -163,27 +163,79 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
         Account { dim: 2, display_name: "Cash and equivalents".into(), account_type: AccountTypeRecord::Asset },
         Account { dim: 20, display_name: "Capital".into(), account_type: AccountTypeRecord::Equity },
         Account { dim: 30, display_name: "Realized gain on investments".into(), account_type: AccountTypeRecord::Income },
+        Account { dim: 40, display_name: "Currency conversion".into(), account_type: AccountTypeRecord::Asset },
     ])?;
     // ⛔ THE CHART NAMES ITS ROLES. The engine cannot guess which dimension is
     // realized gain, and `Ratio.Lots.Posting.a_collided_chart_hides_the_gain`
     // is what happens if two roles collide — so the configuration says so, and
     // the rule set refuses a collision when it is read.
-    let cfg = b.put(
-        b"lot_method = \"fifo\"\nrules = []\n\n[chart_roles]\ninvestments = 1\ncash = 2\nrealized_gain = 30\n",
-    )?;
-    let roles = ratio_rules::ChartRoles { investments: 1, cash: 2, realized_gain: 30 };
+    const CONFIG: &str = "lot_method = \"fifo\"\nrules = []\n\n[chart_roles]\n\
+                          investments = 1\ncash = 2\nrealized_gain = 30\n\
+                          currency_conversion = 40\n";
+    let cfg = b.put(CONFIG.as_bytes())?;
+    // ⛔ READ BACK OUT OF THE CONFIGURATION, NOT WRITTEN TWICE. This used to be
+    // a Rust literal standing beside the TOML above with nothing checking the
+    // two agreed — so the generator could post through one chart while
+    // declaring another, and every figure would have tied.
+    //
+    // ⚠ And going through `from_toml` is what runs `ChartRoles::check`, which
+    // the literal skipped entirely.
+    let roles = ratio_rules::RuleSet::from_toml(CONFIG)?
+        .chart_roles
+        .expect("the configuration above declares chart roles");
     b.set_active(&cfg)?;
 
     let mut written = 0usize;
 
+    let base = currency_code(0);
+
     // Capital first: the fund has to be funded before it can buy anything.
+    // Subscribed in the base currency, because that is what an investor sends.
     for k in 0..shape.capital_txns {
         let amount = between(shape.seed, 7, k as u64, 10_000_000_00, 50_000_000_00);
         b.append(&JournalEntry {
             id: format!("cap-{k}"),
             memo: "subscription".into(),
             config: cfg.clone(),
-            postings: vec![PostingRecord::new(2, amount), PostingRecord::new(20, -amount)],
+            postings: vec![
+                PostingRecord::of_currency(2, amount, base),
+                PostingRecord::of_currency(20, -amount, base),
+            ],
+            trade_date: None,
+            announcement: None,
+        })?;
+        written += 1;
+    }
+
+    // ⛔ AND THEN THE FUND BUYS ITS FOREIGN CURRENCY, IN FOUR LEGS. A fund
+    // holding EUR securities needs EUR cash, and getting it is an EXCHANGE:
+    //
+    //     [USD −100.00, EUR +92.00]     sum 0, USD out by 100, EUR out by 92
+    //
+    // Two legs conserve neither currency — `Ratio.Chart.Dimensions.a_two_leg_
+    // exchange_conserves_neither_currency` — and the door refuses them, which
+    // is the whole point of the law. Four legs through the conversion account
+    // conserve both and leave the rate behind as the pair of figures sitting in
+    // that account: `an_exchange_conserves_and_leaves_the_rate_behind`.
+    let conversion = roles
+        .currency_conversion
+        .expect("the configuration above declares a conversion account");
+    for c in 1..shape.currencies {
+        let code = currency_code(c);
+        let rate = fx_rate(shape, c);
+        // Enough of each currency to buy in it, in the base currency's terms.
+        let spend = between(shape.seed, 19, c as u64, 5_000_000_00, 20_000_000_00);
+        let got = spend * rate / 100;
+        b.append(&JournalEntry {
+            id: format!("fx-{code}"),
+            memo: format!("buy {code}"),
+            config: cfg.clone(),
+            postings: vec![
+                PostingRecord::of_currency(2, -spend, base),
+                PostingRecord::of_currency(conversion, spend, base),
+                PostingRecord::of_currency(conversion, -got, code),
+                PostingRecord::of_currency(2, got, code),
+            ],
             trade_date: None,
             announcement: None,
         })?;
@@ -229,6 +281,7 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
         // no dates at all. Between 3 and 20 days against these ring sizes puts
         // securities on both sides of 365.
         let step = between(shape.seed, 17, i as u64, 3, 20);
+        let ccy = currency_of(i, shape.currencies);
         let mut open: std::collections::VecDeque<(i64, i64)> = Default::default();
         for l in 0..opened {
             // Twenty years of history, ending before the June 2026 valuation
@@ -246,11 +299,15 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                     PostingRecord {
                         dim: 1,
                         amount: cost,
-                        currency: None,
+                        // ⛔ THE SECURITY'S OWN CURRENCY, from the master, which
+                        // is the one authority on it. Both legs carry it, so the
+                        // entry conserves within that currency and no lot ever
+                        // changes denomination.
+                        currency: Some(ccy.to_string()),
                         instrument: Some(t.clone()),
                         quantity: Some(units),
                     },
-                    PostingRecord::new(2, -cost),
+                    PostingRecord::of_currency(2, -cost, ccy),
                 ],
                 trade_date: Some(day.clone()),
                 announcement: None,
@@ -274,7 +331,7 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                     config: cfg.clone(),
                     postings: ratio_project::relief::sale_postings(
                         roles,
-                        None,
+                        Some(ccy),
                         &t,
                         u,
                         c,
@@ -360,20 +417,68 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
     for i in 0..shape.securities {
         let t = ticker(i);
         let px = between(shape.seed, 11, i as u64, 5_00, 800_00);
-        b.append_record(ratio_store::Plane::Facts, &price_fact(&t, px, shape))?;
+        // ⛔ IN THE SECURITY'S OWN CURRENCY. Every price said "USD" while the
+        // entity master called one security in three EUR and one in three GBP —
+        // three statements of a fact, two of them disagreeing, and nothing
+        // reading both.
+        b.append_record(
+            ratio_store::Plane::Facts,
+            &price_fact(&t, px, currency_of(i, shape.currencies), shape),
+        )?;
     }
     for c in 1..shape.currencies {
-        let code = currency_code(c);
-        let rate = between(shape.seed, 12, c as u64, 70_00, 150_00);
-        b.append_record(ratio_store::Plane::Facts, &rate_fact(code, rate, shape))?;
+        b.append_record(
+            ratio_store::Plane::Facts,
+            &rate_fact(currency_code(c), fx_rate(shape, c), shape),
+        )?;
     }
 
     Ok(written)
 }
 
+/// What one unit of currency `c` is worth in the base, in hundredths.
+///
+/// ⛔ ONE FUNCTION, BECAUSE THE RATE IS ONE FACT. The exchange that buys the
+/// currency and the rate fact the valuation reads must be the same number — two
+/// expressions of it drifting apart would leave a fund whose books were bought
+/// at one rate and valued at another, with both figures internally consistent.
+fn fx_rate(shape: Shape, c: i64) -> i64 {
+    // ⛔ HUNDREDTHS — `ratio_project::RATE_SCALE`. 0.70 to 1.50 of the base per
+    // unit of the foreign currency, which is what an FX rate between developed
+    // currencies looks like.
+    //
+    // ⚠ THIS SAID `70_00, 150_00` AND NOTHING NOTICED. Read at a scale of 100
+    // that is 70.00 to 150.00 base per unit — seventy dollars to the euro — and
+    // it produced a fund whose realized gain was seventy times its basis. It
+    // survived because the only consumer was `ratio bench`'s FX phase, which
+    // multiplied by it and threw the answer away to time the multiplication:
+    // `let _ = gross.saturating_mul(rate) / 100`. A number nothing reads is a
+    // number nothing checks.
+    between(shape.seed, 12, c as u64, 70, 150)
+}
+
+/// The rates a book of this shape was generated at.
+///
+/// ⛔ EXPORTED SO A READER DOES NOT RE-DERIVE THEM. A NAV over a multi-currency
+/// book is meaningless without saying at what rate, and a caller inventing its
+/// own would value the fund at a rate it was never traded at — the books would
+/// still tie. In a real deployment these come from the rate FACTS in the data
+/// plane; here the generator and the reader share one function.
+pub fn rates(shape: Shape) -> ratio_project::Rates {
+    ratio_project::Rates::of(
+        currency_code(0),
+        (1..shape.currencies).map(|c| (currency_code(c).to_string(), fx_rate(shape, c))),
+    )
+}
+
 /// Which currency security `i` is denominated in.
 fn currency_of(i: i64, currencies: i64) -> &'static str {
     currency_code(if currencies <= 1 { 0 } else { i % currencies })
+}
+
+/// The ISO code for currency index `c`, for a caller that needs to name one.
+pub fn currency_code_of(c: i64) -> &'static str {
+    currency_code(c)
 }
 
 fn currency_code(c: i64) -> &'static str {
@@ -396,7 +501,7 @@ fn provenance(shape: Shape) -> ratio_ingest::Provenance {
     }
 }
 
-fn price_fact(ticker: &str, minor: i64, shape: Shape) -> ratio_ingest::Fact {
+fn price_fact(ticker: &str, minor: i64, currency: &str, shape: Shape) -> ratio_ingest::Fact {
     ratio_ingest::Fact {
         id: format!("px-{ticker}"),
         kind: "price".into(),
@@ -420,7 +525,7 @@ fn price_fact(ticker: &str, minor: i64, shape: Shape) -> ratio_ingest::Fact {
             ("asOf".to_string(), ratio_ingest::Value::Date { iso: "2026-06-30".into() }),
             (
                 "price".to_string(),
-                ratio_ingest::Value::Money { minor, currency: "USD".into() },
+                ratio_ingest::Value::Money { minor, currency: currency.into() },
             ),
         ]
         .into_iter()
@@ -548,9 +653,15 @@ mod tests {
         // unclassified — it passes whatever the threshold comparison does.
         let d = tmp("dated");
         generate(&d, Shape { securities: 20, lots_per: 40, ..Shape::default() }).unwrap();
-        let roles = ratio_rules::ChartRoles { investments: 1, cash: 2, realized_gain: 30 };
+        let shape = Shape { securities: 20, lots_per: 40, ..Shape::default() };
+        let roles = ratio_rules::RuleSet::from_toml(
+            &String::from_utf8_lossy(&FileBook::open(&d).unwrap().get(
+                &FileBook::open(&d).unwrap().active().unwrap().unwrap()).unwrap()))
+            .unwrap()
+            .chart_roles
+            .unwrap();
         let p = ratio_project::Projection::of_book(&d).unwrap();
-        let r = p.realized(Some(roles)).value.unwrap();
+        let r = p.realized(Some(roles), &rates(shape)).unwrap().value.unwrap();
 
         assert!(r.short_term < 0, "no short-term gains: {r:?}");
         assert!(r.long_term < 0, "no long-term gains: {r:?}");
@@ -559,7 +670,72 @@ mod tests {
             r.gain,
             "the split must partition the total"
         );
-        assert_eq!(r.unclassified(), 0, "every generated trade carries a date");
+        // ⚠ NOT EXACTLY ZERO, AND THE BOUND IS THE POINT. Every generated trade
+        // carries a date, so nothing is unclassified for want of a holding
+        // period. What is left is the translation residue: the total and the
+        // two parts are each translated from three currencies into the base,
+        // and integer division does not distribute over a sum. At most one
+        // minor unit per currency per bucket.
+        assert!(
+            r.unclassified().abs() <= 2 * shape.currencies as i128,
+            "every generated trade carries a date, so this should be a rounding \
+             residue and nothing more: {r:?}"
+        );
+    }
+
+    #[test]
+    fn the_generated_book_exercises_the_multi_currency_law() {
+        // ⛔ THE LAW WAS PROVED, ENFORCED AT THE DOOR, AND EXERCISED BY NOTHING.
+        // Every posting this generator wrote carried `currency: None`, so a book
+        // with three currencies in its entity master formed exactly ONE
+        // conservation group and behaved as it always had.
+        let d = tmp("multiccy");
+        generate(&d, Shape { securities: 6, lots_per: 4, ..Shape::default() }).unwrap();
+        let entries = FileBook::open(&d).unwrap().entries().unwrap();
+
+        let seen: std::collections::BTreeSet<Option<String>> = entries
+            .iter()
+            .flat_map(|e| e.postings.iter())
+            .map(|p| p.currency.clone())
+            .collect();
+        assert!(seen.len() >= 3, "every currency should appear: {seen:?}");
+        assert!(!seen.contains(&None), "no leg should be untyped: {seen:?}");
+
+        // ⛔ AND THE EXCHANGE HAS FOUR LEGS. Two would conserve neither currency
+        // — `Ratio.Chart.Dimensions.a_two_leg_exchange_conserves_neither_
+        // currency` — and the door would refuse the entry, which is the law
+        // doing its job.
+        let fx: Vec<_> = entries.iter().filter(|e| e.id.starts_with("fx-")).collect();
+        assert_eq!(fx.len(), 2, "one exchange per non-base currency");
+        for e in &fx {
+            assert_eq!(e.postings.len(), 4, "{}: {:?}", e.id, e.postings);
+            assert!(e.is_balanced(), "{} does not conserve", e.id);
+        }
+    }
+
+    #[test]
+    fn a_two_leg_exchange_is_refused_at_the_door() {
+        // The hole this closed, tried against a real book: numerically zero,
+        // and out by the whole amount in both currencies.
+        let d = tmp("twoleg");
+        generate(&d, Shape { securities: 2, lots_per: 2, ..Shape::default() }).unwrap();
+        let mut b = FileBook::open(&d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        let err = b
+            .append(&JournalEntry {
+                id: "bad-fx".into(),
+                memo: "an exchange that is not one".into(),
+                config: c,
+                postings: vec![
+                    PostingRecord::of_currency(2, -10_000, "USD"),
+                    PostingRecord::of_currency(2, 10_000, "EUR"),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("does not conserve"), "{msg}");
     }
 
     #[test]

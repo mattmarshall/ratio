@@ -60,6 +60,7 @@ usage:
                                        apply a split; refuses a second time
   ratio stale [--book DIR]             NAVs struck without an action since arrived
   ratio bench [--securities N] [--lots-per N] [--turnover N]
+        [--currencies N]
                                        generate a fund and measure a period end
   ratio closure [--securities N] [--currencies N] [--lots-per N]
         [--open-actions N] [--capital N]
@@ -546,6 +547,10 @@ fn bench(args: &[&str]) -> Result<()> {
         };
         match *flag {
             "--securities" => shape.securities = v()?,
+            // ⛔ A DIAL BENCH DID NOT HAVE, so the currency term of
+            // `Ratio.Closure.navCost` was fixed at three and the one-currency
+            // case — where translation is free — could not be measured at all.
+            "--currencies" => shape.currencies = v()?,
             "--lots-per" => shape.lots_per = v()?,
             "--turnover" => shape.turnover = v()?,
             "--open-actions" => shape.open_actions = v()?,
@@ -588,14 +593,10 @@ fn bench(args: &[&str]) -> Result<()> {
             Some((f.reference.clone(), f.values.get("price")?.as_minor()?))
         })
         .collect();
-    let rates: std::collections::BTreeMap<String, i64> = facts
-        .iter()
-        .filter(|f| f.kind == "rate")
-        .filter_map(|f| {
-            let c = f.values.get("currency")?.as_text()?.to_string();
-            Some((c, f.values.get("rate")?.as_minor()?))
-        })
-        .collect();
+    // ⛔ ONE READER OF THE RATE FACTS, shared with the console. Two would be two
+    // chances to disagree about which field is the rate, and the disagreement
+    // would surface as a fund valued at a number nobody chose.
+    let rates = ratio_project::Rates::of_facts(ratio_gen::currency_code_of(0), &facts);
 
     // MARK: one price per security, units read through any outstanding
     // corporate action. ⛔ THIS IS THE TERM `Ratio.Closure.markCost` NAMES, and
@@ -616,10 +617,18 @@ fn bench(args: &[&str]) -> Result<()> {
 
     // FX: one rate per CURRENCY, not one per position.
     // `Ratio.Closure.fx_does_not_grow_with_the_chart`.
+    //
+    // ⚠ THIS USED TO MEASURE A MULTIPLICATION AND THROW IT AWAY — `let _ =` —
+    // so the cost was honest and nothing was ever translated. The strike below
+    // now does the real translation through `Projection::nav`; what is timed
+    // here is the same arithmetic on the marked figure, which is the term
+    // `Ratio.Closure.fxCost` names.
     let t = Instant::now();
     let mut translated = 0i64;
-    for (_code, rate) in &rates {
-        let _ = gross.saturating_mul(*rate) / 100;
+    for c in 1..shape.currencies {
+        let code = ratio_gen::currency_code_of(c);
+        let rate = rates.factor_of(code).unwrap_or(ratio_project::RATE_SCALE);
+        let _ = gross.saturating_mul(rate) / ratio_project::RATE_SCALE;
         translated += 1;
     }
     let fx_ns = t.elapsed().as_nanos() as i64;
@@ -628,13 +637,16 @@ fn bench(args: &[&str]) -> Result<()> {
     let types: std::collections::BTreeMap<i64, ratio_store::AccountTypeRecord> =
         b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
     let t = Instant::now();
-    let struck = proj.nav(&|dim| {
+    let struck = proj.nav(
+        &|dim| {
         matches!(
             types.get(&dim),
             Some(ratio_store::AccountTypeRecord::Asset)
                 | Some(ratio_store::AccountTypeRecord::Liability)
-        )
-    })?;
+            )
+        },
+        &rates,
+    )?;
     let strike_ns = t.elapsed().as_nanos() as i64;
 
     let open_positions = proj.positions().value.held.len() as i64;
@@ -669,7 +681,7 @@ fn bench(args: &[&str]) -> Result<()> {
     // ⭐ THE FIGURE THIS ENGINE EXISTS FOR. Six lot methods, holding-period
     // classification and the whole relief layer decide it, and until the sale
     // posted three legs it was computed and discarded.
-    let realized = proj.nav(&|dim| dim == 30)?.value.0;
+    let realized = proj.nav(&|dim| dim == 30, &rates)?.value.0;
     println!("  net asset value {:>20}   over {} entries", struck.value.0, struck.prefix);
     println!(
         "  realized gain   {:>20}   credit-normal, so a gain reads negative",
