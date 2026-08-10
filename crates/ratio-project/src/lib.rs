@@ -33,6 +33,12 @@
 
 use std::collections::BTreeMap;
 
+/// The per-lot relief decisions, authored in Lean.
+mod generated_lots;
+
+/// Relieving tax lots — the walk, over decisions made in Lean.
+pub mod relief;
+
 use anyhow::Result;
 use ratio_ingest::factor::Step;
 use ratio_store::{FileBook, Journal, JournalEntry};

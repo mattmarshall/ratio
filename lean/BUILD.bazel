@@ -264,6 +264,17 @@ lean_test(
     entry = "Ratio/Lots/Relief.lean",
 )
 
+# The per-lot relief decisions. The WALK is a Rust fold — lots page out of a
+# store — and what is emitted is what the walk decides at each lot, which is
+# where a mistake would be invisible: the `<=` that keeps a whole sale from
+# leaving a husk, and the pro-rata split that refuses rather than rounding.
+lean_emit(
+    name = "ratio_lots_ast",
+    srcs = _BUILDER_SRCS + ["Ratio/Lots/Emit.lean"],
+    entry = "Ratio/Lots/Emit.lean",
+    out = "ratio_lots.ast.json",
+)
+
 # Corporate actions read as factors: the PER-STEP guard, not a composed ratio.
 # `Ratio.Actions.Factor.a_factor_can_succeed_where_the_rewrite_refuses` is why —
 # composing 3-for-2 and 2-for-1 divides five units cleanly and silently swallows
