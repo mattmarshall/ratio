@@ -18,6 +18,8 @@ rust_library(
     edition = "2021",
     deps = [
         "//crates/ratio-ingest",
+        "//crates/ratio-project",
+        "//crates/ratio-rules",
         "//crates/ratio-store",
         "@crates//:anyhow",
     ],
@@ -27,5 +29,5 @@ rust_test(
     name = "ratio-gen_test",
     crate = ":ratio-gen",
     edition = "2021",
-    deps = ["//crates/ratio-project"],
+    deps = [],
 )

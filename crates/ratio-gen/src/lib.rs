@@ -150,8 +150,16 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
         Account { dim: 1, display_name: "Investments at fair value".into(), account_type: AccountTypeRecord::Asset },
         Account { dim: 2, display_name: "Cash and equivalents".into(), account_type: AccountTypeRecord::Asset },
         Account { dim: 20, display_name: "Capital".into(), account_type: AccountTypeRecord::Equity },
+        Account { dim: 30, display_name: "Realized gain on investments".into(), account_type: AccountTypeRecord::Income },
     ])?;
-    let cfg = b.put(b"rules = []\n")?;
+    // ⛔ THE CHART NAMES ITS ROLES. The engine cannot guess which dimension is
+    // realized gain, and `Ratio.Lots.Posting.a_collided_chart_hides_the_gain`
+    // is what happens if two roles collide — so the configuration says so, and
+    // the rule set refuses a collision when it is read.
+    let cfg = b.put(
+        b"lot_method = \"fifo\"\nrules = []\n\n[chart_roles]\ninvestments = 1\ncash = 2\nrealized_gain = 30\n",
+    )?;
+    let roles = ratio_rules::ChartRoles { investments: 1, cash: 2, realized_gain: 30 };
     b.set_active(&cfg)?;
 
     let mut written = 0usize;
@@ -225,20 +233,24 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                 let (u, c) = open.pop_front().expect("just checked");
                 memo.clear();
                 let _ = write!(memo, "sell {t}");
+                // ⛔ THREE LEGS, AND THE PROCEEDS ARE NOT THE BASIS. This sold
+                // at cost until now, so every disposal realized nothing and the
+                // gain account never moved — which made the lot engine look
+                // correct while exercising none of it. A sale at a markup or a
+                // markdown is the case that tests it.
+                let swing = between(shape.seed, 13, (i * 4096 + l) as u64, -c / 5, c / 2);
                 batch.push(JournalEntry {
                     id: format!("s-{t}-{l}"),
                     memo: memo.clone(),
                     config: cfg.clone(),
-                    postings: vec![
-                        PostingRecord {
-                            dim: 1,
-                            amount: -c,
-                            currency: None,
-                            instrument: Some(t.clone()),
-                            quantity: Some(-u),
-                        },
-                        PostingRecord::new(2, c),
-                    ],
+                    postings: ratio_project::relief::sale_postings(
+                        roles,
+                        None,
+                        &t,
+                        u,
+                        c,
+                        c + swing,
+                    )?,
                     trade_date: None,
                     announcement: None,
                 });

@@ -666,7 +666,16 @@ fn bench(args: &[&str]) -> Result<()> {
     println!("  {:<26}{:>14}   off maintained totals", "  strike", ratio_nav::closure::human_nanos(strike_ns));
     println!("  {:<26}{:>14}", "NAV  (O(chart))", ratio_nav::closure::human_nanos(nav_ns));
     println!();
+    // ⭐ THE FIGURE THIS ENGINE EXISTS FOR. Six lot methods, holding-period
+    // classification and the whole relief layer decide it, and until the sale
+    // posted three legs it was computed and discarded.
+    let realized = proj.nav(&|dim| dim == 30)?.value.0;
     println!("  net asset value {:>20}   over {} entries", struck.value.0, struck.prefix);
+    println!(
+        "  realized gain   {:>20}   credit-normal, so a gain reads negative",
+        realized
+    );
+    println!("  basis relieved  {:>20}", proj.relieved_cost());
     println!("  trial balance   {:>20}", struck.value.1);
     println!();
     println!("⛔ Two curves, and only the second is flat in fragmentation. Folding");

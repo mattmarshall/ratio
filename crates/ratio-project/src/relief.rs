@@ -296,6 +296,59 @@ pub fn relieve_by(method: Method, lots: &[Lot], want: i64) -> Result<Relieved> {
     Ok(Relieved { taken, left, cost })
 }
 
+/// The legs of a sale. `Ratio.Lots.Posting.salePostings`.
+///
+/// ⛔ THE GAIN LEG IS DERIVED HERE AND NEVER SUPPLIED. It is `relieved −
+/// proceeds`, computed from the figures already present, so there is no second
+/// opinion for the relief to disagree with. A signature taking a gain as a
+/// parameter would be the drift written down as an API — and that drift is
+/// SILENT, because the gain leg absorbs whatever the other two legs leave: the
+/// books tie and the taxable income is wrong.
+///
+/// ⚠ Three legs even when the gain is zero. An implementation that omitted the
+/// leg at par would be right at par and wrong the moment it was not, and the
+/// omission would be invisible because a zero leg changes no total.
+pub fn sale_postings(
+    roles: ratio_rules::ChartRoles,
+    currency: Option<&str>,
+    instrument: &str,
+    units: i64,
+    relieved: i64,
+    proceeds: i64,
+) -> Result<Vec<ratio_store::PostingRecord>> {
+    roles.check()?;
+    let gain = ratio_common::checked::add(relieved, -proceeds, "the realized gain")?;
+    Ok(vec![
+        ratio_store::PostingRecord {
+            dim: roles.investments,
+            amount: -relieved,
+            currency: currency.map(str::to_string),
+            instrument: Some(instrument.to_string()),
+            // ⛔ The units leave with the value. A sale that moved cost without
+            // moving units would leave a position with basis and no holding —
+            // the husk `Ratio.Lots.Edges` is about, created by the posting
+            // rather than found in the data.
+            quantity: Some(-units),
+        },
+        ratio_store::PostingRecord {
+            dim: roles.cash,
+            amount: proceeds,
+            currency: currency.map(str::to_string),
+            instrument: None,
+            quantity: None,
+        },
+        // Credit-normal: a GAIN is negative here. An income account holding a
+        // positive number is a loss wearing a gain's name.
+        ratio_store::PostingRecord {
+            dim: roles.realized_gain,
+            amount: gain,
+            currency: currency.map(str::to_string),
+            instrument: None,
+            quantity: None,
+        },
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,6 +359,61 @@ mod tests {
 
     fn dated(seq: u64, units: i64, cost: i64, day: &str) -> Lot {
         Lot { seq, units, cost, acquired: Some(day.into()) }
+    }
+
+    const ROLES: ratio_rules::ChartRoles =
+        ratio_rules::ChartRoles { investments: 1, cash: 2, realized_gain: 30 };
+
+    #[test]
+    fn a_sale_posts_three_legs_and_conserves() {
+        // ⭐ `Ratio.Lots.Posting.a_sale_conserves_every_currency`. Sell a lot
+        // that cost 100 for 150: −100 investments, +150 cash, −50 gain.
+        let ps = sale_postings(ROLES, Some("USD"), "VTI", 10, 100, 150).unwrap();
+        assert_eq!(ps.len(), 3);
+        assert_eq!(ps.iter().map(|p| p.amount).sum::<i64>(), 0, "it conserves");
+        assert_eq!(ps[2].amount, -50, "the gain, credit-normal");
+        assert_eq!(ps[0].quantity, Some(-10), "the units leave with the value");
+
+        // ⛔ Two legs would be out by exactly the gain.
+        assert_eq!(ps[..2].iter().map(|p| p.amount).sum::<i64>(), 50);
+    }
+
+    #[test]
+    fn a_loss_needs_no_separate_account() {
+        // One formula, both directions. A system with a `realized_loss` role
+        // would have to choose between them from the sign of a number it had
+        // just computed.
+        let ps = sale_postings(ROLES, Some("USD"), "VTI", 10, 150, 100).unwrap();
+        assert_eq!(ps[2].amount, 50, "a debit, which is what a loss is");
+        assert_eq!(ps.iter().map(|p| p.amount).sum::<i64>(), 0);
+    }
+
+    #[test]
+    fn a_sale_at_cost_still_posts_three_legs() {
+        let ps = sale_postings(ROLES, Some("USD"), "VTI", 10, 100, 100).unwrap();
+        assert_eq!(ps.len(), 3);
+        assert_eq!(ps[2].amount, 0, "a zero leg, deliberately present");
+    }
+
+    #[test]
+    fn a_collided_chart_is_refused_before_it_posts() {
+        // ⛔ `Ratio.Lots.Posting.a_collided_chart_hides_the_gain`. Investments
+        // and realized gain on one dimension: the gain would net against the
+        // disposal, the entry would conserve, the trial balance would tie, and
+        // the taxable income would be nowhere.
+        let bad = ratio_rules::ChartRoles { investments: 1, cash: 2, realized_gain: 1 };
+        let err = sale_postings(bad, Some("USD"), "VTI", 10, 100, 150).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("net against the disposal"), "{msg}");
+    }
+
+    #[test]
+    fn every_leg_carries_the_currency_of_the_sale() {
+        // `Ratio.Lots.Posting.the_gain_is_in_the_currency_of_the_sale`, and the
+        // door now requires it: a gain posted without a currency beside legs
+        // that have one is two conservation groups, and refuses.
+        let ps = sale_postings(ROLES, Some("EUR"), "VWRL", 5, 100, 120).unwrap();
+        assert!(ps.iter().all(|p| p.currency.as_deref() == Some("EUR")));
     }
 
     #[test]

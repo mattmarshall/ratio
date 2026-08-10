@@ -28,7 +28,7 @@ pub use render::render;
 
 use std::collections::BTreeMap;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use ratio_kernel::{transaction_is_balanced, Posting, Transaction};
 use ratio_store::{Account, PostingRecord};
 use serde::{Deserialize, Serialize};
@@ -164,6 +164,60 @@ pub struct RuleSet {
     /// custom, not because the engine prefers it.
     #[serde(default)]
     pub lot_method: LotMethod,
+
+    /// Which dimensions play which part when the engine posts a sale.
+    ///
+    /// ⛔ CONFIGURATION, BECAUSE A CHART IS. The engine cannot guess which
+    /// dimension is realized gain — that is a decision about somebody's chart of
+    /// accounts, and `Ratio.Lots.Posting.a_collided_chart_hides_the_gain` is
+    /// what happens when two roles point at one dimension.
+    #[serde(default)]
+    pub chart_roles: Option<ChartRoles>,
+}
+
+/// The dimensions a sale posts to. `Ratio.Lots.Posting.Accounts`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChartRoles {
+    pub investments: i64,
+    pub cash: i64,
+    /// ⛔ Where the difference lands. A partition like any other — the gain is
+    /// not a fourth kind of thing, it is value sitting in a different account.
+    pub realized_gain: i64,
+}
+
+impl ChartRoles {
+    /// ⛔ THE THREE MUST BE DIFFERENT DIMENSIONS.
+    /// `Ratio.Lots.Posting.Accounts.distinct` — a hypothesis the proofs turned
+    /// out to need, and its absence is a real way a chart goes wrong. Map the
+    /// realized gain to the same dimension as investments and the gain NETS
+    /// AGAINST the disposal: the income account reports what is left over rather
+    /// than what was earned, the entry conserves, the trial balance ties, and the
+    /// taxable income is nowhere.
+    ///
+    /// ⚠ Checked when the configuration is READ, not when a sale is posted. A
+    /// chart that cannot express a gain is wrong the moment it is written down,
+    /// and finding out at the first disposal means finding out in production.
+    pub fn check(&self) -> Result<()> {
+        let named = [
+            ("investments", self.investments),
+            ("cash", self.cash),
+            ("realized gain", self.realized_gain),
+        ];
+        for (i, (an, a)) in named.iter().enumerate() {
+            for (bn, b) in named.iter().skip(i + 1) {
+                if a == b {
+                    bail!(
+                        "the chart maps {an} and {bn} to the same dimension ({a}). A sale would \
+                         post its gain into the account it relieved, so the gain would net \
+                         against the disposal and the income account would report what was \
+                         left over rather than what was earned — while the entry conserved and \
+                         the trial balance tied"
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Which lots a sale gives up. `Ratio.Lots.Methods.Order`.
@@ -202,7 +256,15 @@ impl RuleSet {
     /// That is deliberate: the schema makes a float inexpressible, so there is
     /// no separate "no floats" check to forget to run.
     pub fn from_toml(s: &str) -> Result<Self> {
-        toml::from_str(s).context("configuration is not valid TOML for a rule set")
+        let set: Self =
+            toml::from_str(s).context("configuration is not valid TOML for a rule set")?;
+        // ⛔ AT READ TIME. A chart that cannot express a gain is wrong the
+        // moment it is written down; finding out at the first disposal means
+        // finding out in production.
+        if let Some(r) = &set.chart_roles {
+            r.check()?;
+        }
+        Ok(set)
     }
 
     /// Serialize back to TOML — the canonical form that gets content-addressed.
