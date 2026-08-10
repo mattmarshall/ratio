@@ -44,6 +44,36 @@ use sha2::{Digest as _, Sha256};
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Digest(String);
 
+/// A digest computed over bytes that arrive a piece at a time.
+///
+/// ⛔ BECAUSE THE THING BEING HASHED IS A JOURNAL PREFIX. `prefix_digest` built
+/// a `Vec<u8>` of every serialized entry and hashed it in one call — about
+/// twenty-four gigabytes at the shape issue #6 asks for, to compute a hash that
+/// is streaming by construction.
+///
+/// ⚠ THE BYTES AND THEIR ORDER ARE THE CONTRACT, not this type. Feeding the
+/// same bytes in the same order gives the same digest as hashing them in one
+/// go, which is what makes a strike struck before this change still replay
+/// after it — asserted by `a_streamed_digest_is_the_digest_it_replaces`.
+#[derive(Default)]
+pub struct DigestBuilder {
+    hasher: Sha256,
+}
+
+impl DigestBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn update(&mut self, bytes: &[u8]) {
+        self.hasher.update(bytes);
+    }
+
+    pub fn finish(self) -> Digest {
+        Digest(format!("{:x}", self.hasher.finalize()))
+    }
+}
+
 impl Digest {
     /// The content address of `bytes`.
     pub fn of(bytes: &[u8]) -> Self {
@@ -364,6 +394,26 @@ pub trait Journal {
     /// nothing had changed — which is not maintenance, it is a rebuild with a
     /// cache in front of it.
     fn entries_since(&self, offset: u64) -> Result<(Vec<JournalEntry>, u64)>;
+
+    /// Hand every entry after `offset` to `f`, one at a time. Returns where the
+    /// journal now ends.
+    ///
+    /// ⛔ THE ONLY WAY TO READ A BIG JOURNAL. Everything else here MATERIALIZES:
+    /// `entries()` and `entries_since()` build a `Vec` of the whole log before
+    /// the caller sees the first row. Measured at 1.77M entries that is **1.85 GB
+    /// resident** to fold a journal whose projection is 8 MB of lots — and the
+    /// twenty-million-lot book issue #6 asks for is ~80M entries, where the
+    /// vector alone would be about eighty gigabytes. The fold was never going to
+    /// run out of time; it was going to run out of memory.
+    ///
+    /// ⚠ AND IT REUSES ONE LINE BUFFER. `BufReader::lines()` allocates a fresh
+    /// `String` per line — 1.8M allocations of ~295 bytes before serde is even
+    /// called.
+    fn for_each_entry_since(
+        &self,
+        offset: u64,
+        f: &mut dyn FnMut(&JournalEntry) -> Result<()>,
+    ) -> Result<u64>;
 }
 
 /// A book on disk.
@@ -503,12 +553,32 @@ impl FileBook {
     /// the fold (`Ratio.Core.ledger_conserves`), so total debits equal total
     /// credits by `Ratio.Chart.trial_balance_ties`.
     pub fn trial_balance(&self) -> Result<TrialBalance> {
-        let postings: Vec<Posting> = self
-            .entries()?
-            .iter()
-            .flat_map(|e| e.postings.iter().map(|p| Posting::from(p)))
-            .collect();
-        trial_balance(&postings)
+        // ⛔ STREAMED, AND IT USED TO MATERIALIZE TWICE — the whole journal into
+        // a `Vec<JournalEntry>`, and then every posting in it into a second
+        // `Vec<Posting>`. At the shape issue #6 asks for that is tens of
+        // gigabytes to add up two columns.
+        //
+        // ⚠ `i128` ACCUMULATORS, as `ratio_chart::debits`/`credits` use: these
+        // grow with HISTORY rather than with the fund, and an `i64` that wrapped
+        // would not look wrong — it would look like a trial balance.
+        let (mut debits, mut credits) = (0i128, 0i128);
+        self.for_each_entry_since(0, &mut |e| {
+            for p in &e.postings {
+                let a = p.amount as i128;
+                if a >= 0 {
+                    debits += a;
+                } else {
+                    credits += -a;
+                }
+            }
+            Ok(())
+        })?;
+        Ok(TrialBalance {
+            debits: i64::try_from(debits)
+                .map_err(|_| anyhow!("total debits do not fit in 64 bits"))?,
+            credits: i64::try_from(credits)
+                .map_err(|_| anyhow!("total credits do not fit in 64 bits"))?,
+        })
     }
 
     /// Value and quantity per (account, instrument), plus what is NOT
@@ -522,26 +592,30 @@ impl FileBook {
     pub fn positions(&self) -> Result<(BTreeMap<(i64, String), (i64, i64)>, BTreeMap<i64, i64>)> {
         let mut held: BTreeMap<(i64, String), (i64, i64)> = BTreeMap::new();
         let mut rest: BTreeMap<i64, i64> = BTreeMap::new();
-        for entry in self.entries()? {
-            for p in entry.postings {
-                match p.instrument {
+        // ⛔ STREAMED. This is bounded by the CHART — a few hundred positions —
+        // and used to hold the whole journal in memory to build it.
+        self.for_each_entry_since(0, &mut |entry| {
+            for p in &entry.postings {
+                match &p.instrument {
                     Some(i) => {
-                        let slot = held.entry((p.dim, i)).or_insert((0, 0));
+                        let slot = held.entry((p.dim, i.clone())).or_insert((0, 0));
                         slot.0 += p.amount;
                         slot.1 += p.quantity.unwrap_or(0);
                     }
                     None => *rest.entry(p.dim).or_default() += p.amount,
                 }
             }
-        }
+            Ok(())
+        })?;
         Ok((held, rest))
     }
 
     /// Debit and credit totals per dimension, for the report.
     pub fn balances_by_dim(&self) -> Result<BTreeMap<i64, (i64, i64)>> {
         let mut out: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
-        for entry in self.entries()? {
-            for p in entry.postings {
+        // ⛔ STREAMED. Bounded by the chart, not by the log it reads.
+        self.for_each_entry_since(0, &mut |entry| {
+            for p in &entry.postings {
                 let slot = out.entry(p.dim).or_insert((0, 0));
                 if p.amount >= 0 {
                     slot.0 += p.amount;
@@ -549,7 +623,8 @@ impl FileBook {
                     slot.1 += -p.amount;
                 }
             }
-        }
+            Ok(())
+        })?;
         Ok(out)
     }
 }
@@ -708,13 +783,30 @@ impl Journal for FileBook {
     }
 
     fn entries_since(&self, offset: u64) -> Result<(Vec<JournalEntry>, u64)> {
+        // ⚠ MATERIALIZES. Kept for callers that genuinely want the whole log —
+        // tests, and books small enough not to care. Anything folding a real
+        // journal wants `for_each_entry_since`; see the note on the trait.
+        let mut out = Vec::new();
+        let end = self.for_each_entry_since(offset, &mut |e| {
+            out.push(e.clone());
+            Ok(())
+        })?;
+        Ok((out, end))
+    }
+
+    fn for_each_entry_since(
+        &self,
+        offset: u64,
+        f: &mut dyn FnMut(&JournalEntry) -> Result<()>,
+    ) -> Result<u64> {
         use std::io::{BufRead, BufReader, Seek, SeekFrom};
         let path = self.journal_path();
         if !path.exists() {
-            return Ok((Vec::new(), 0));
+            return Ok(0);
         }
-        let mut f = fs::File::open(&path).with_context(|| format!("opening {}", path.display()))?;
-        let end = f.metadata()?.len();
+        let mut file =
+            fs::File::open(&path).with_context(|| format!("opening {}", path.display()))?;
+        let end = file.metadata()?.len();
 
         // ⚠ A SHORTER FILE THAN THE OFFSET MEANS THE JOURNAL WAS REPLACED, not
         // that nothing happened. An append-only log does not shrink, so this is
@@ -727,24 +819,32 @@ impl Journal for FileBook {
                 path.display()
             );
         }
-        f.seek(SeekFrom::Start(offset)).context("seeking the journal")?;
+        file.seek(SeekFrom::Start(offset)).context("seeking the journal")?;
 
-        let mut out = Vec::new();
+        let mut reader = BufReader::new(file);
+        // ⛔ ONE BUFFER, REUSED. `lines()` allocates a `String` per line.
+        let mut line = String::new();
         let mut consumed = offset;
-        for (i, line) in BufReader::new(f).lines().enumerate() {
-            let line = line.with_context(|| format!("{} after byte {offset}", path.display()))?;
-            let len = line.len() as u64 + 1; // the newline `lines()` stripped
+        let mut i = 0usize;
+        loop {
+            line.clear();
+            let n = reader
+                .read_line(&mut line)
+                .with_context(|| format!("{} after byte {offset}", path.display()))?;
+            if n == 0 {
+                break;
+            }
+            consumed += n as u64;
+            i += 1;
             if line.trim().is_empty() {
-                consumed += len;
                 continue;
             }
-            out.push(
-                serde_json::from_str(&line)
-                    .with_context(|| format!("{} line {} after byte {offset}", path.display(), i + 1))?,
-            );
-            consumed += len;
+            let entry: JournalEntry = serde_json::from_str(line.trim_end()).with_context(|| {
+                format!("{} line {} after byte {offset}", path.display(), i)
+            })?;
+            f(&entry)?;
         }
-        Ok((out, consumed))
+        Ok(consumed)
     }
 
     fn entries(&self) -> Result<Vec<JournalEntry>> {

@@ -568,33 +568,43 @@ impl Projection {
     /// fold the result as one.
     pub fn follow(&mut self, path: &std::path::Path) -> Result<usize> {
         let book = FileBook::open(path)?;
+
+        // ⛔ STREAMED, ONE ENTRY AT A TIME. `entries_since` returned a `Vec` of
+        // the whole journal — 1.85 GB resident to fold 1.77M entries into a
+        // projection holding 8 MB of lots, and about eighty gigabytes at the
+        // shape issue #6 asks for. The fold was never going to run out of time.
+        //
+        // ⚠ THE CONFIG RESOLUTION MOVED INSIDE THE WALK for the same reason: it
+        // used to pre-scan `fresh` for distinct digests, which needed `fresh` to
+        // exist. Resolving on first sight of a digest costs the same one read
+        // per configuration and needs nothing held.
         let started = std::time::Instant::now();
-        let (fresh, now) = book.entries_since(self.read_to)?;
-        self.cost.parse += started.elapsed();
-        let folding = std::time::Instant::now();
-        // ⛔ RESOLVE PER DISTINCT CONFIG, NOT PER ENTRY. Every entry names the
-        // digest it was posted under and millions of them name the same one;
-        // parsing that TOML per entry would put a config read on the hot path of
-        // the cold build. The cache is keyed on the digest, so this costs one
-        // read per configuration a book has ever promoted.
-        for entry in &fresh {
+        let mut n = 0usize;
+        let mut at = self.at;
+        let mut parse_and_fold = std::time::Duration::ZERO;
+        let now = book.for_each_entry_since(self.read_to, &mut |entry| {
+            let mark = std::time::Instant::now();
             if !self.terms.contains_key(&entry.config) {
                 let resolved = Self::terms_of(&book, &entry.config);
                 self.terms.insert(entry.config.clone(), resolved);
             }
-        }
-        let n = fresh.len();
-        for (i, entry) in fresh.iter().enumerate() {
-            // Present because the loop above inserted it.
             let terms = self.terms.get(&entry.config).cloned().unwrap_or_else(|| {
                 Err("the configuration was not resolved before folding".to_string())
             });
-            self.fold(self.at + i, entry, &terms);
-        }
-        self.at += n;
+            self.fold(at + n, entry, &terms);
+            n += 1;
+            parse_and_fold += mark.elapsed();
+            Ok(())
+        })?;
+        at += n;
+        self.at = at;
         self.read_to = now;
-        self.cost.fold += folding.elapsed();
+        // ⚠ `parse` is what the whole read cost MINUS the folding inside it,
+        // which is the only way to separate them when they interleave.
+        self.cost.fold += parse_and_fold;
+        self.cost.parse += started.elapsed().saturating_sub(parse_and_fold);
         Ok(n)
+
     }
 
     /// Where the cold build's time went.

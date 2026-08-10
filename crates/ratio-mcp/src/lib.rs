@@ -616,10 +616,19 @@ fn tool_trial_balance(book: &std::path::Path) -> Result<String> {
     // Cite the provenance. A figure a model reads back without saying what
     // produced it is a figure nobody can check, which is the failure this
     // whole system exists to prevent.
-    let entries = b.entries()?;
-    let configs: std::collections::BTreeSet<String> =
-        entries.iter().map(|e| e.config.as_str().to_string()).collect();
-    out.push_str(&format!("\n{} entrie(s)\n", entries.len()));
+    // ⛔ COUNTED AND SET-COLLECTED IN ONE PASS. This materialized the journal to
+    // learn two things: how many entries there are, and how many DISTINCT
+    // configurations they name — of which there are a handful.
+    let mut count = 0usize;
+    let mut configs: std::collections::BTreeSet<String> = Default::default();
+    b.for_each_entry_since(0, &mut |e| {
+        count += 1;
+        if !configs.contains(e.config.as_str()) {
+            configs.insert(e.config.as_str().to_string());
+        }
+        Ok(())
+    })?;
+    out.push_str(&format!("\n{count} entrie(s)\n"));
     match configs.len() {
         // Nothing posted yet: the active configuration is all there is to cite.
         0 => {
@@ -665,7 +674,8 @@ fn tool_explain_figure(book: &std::path::Path, args: &Value) -> Result<String> {
 
     let mut lines = Vec::new();
     let mut total = 0i64;
-    for entry in b.entries()? {
+    // ⛔ STREAMED — one account's postings, not the whole log.
+    b.for_each_entry_since(0, &mut |entry| {
         for p in &entry.postings {
             if p.dim == dim {
                 total += p.amount;
@@ -678,7 +688,8 @@ fn tool_explain_figure(book: &std::path::Path, args: &Value) -> Result<String> {
                 ));
             }
         }
-    }
+        Ok(())
+    })?;
     if lines.is_empty() {
         return Ok(format!("{name} has no postings."));
     }

@@ -258,7 +258,14 @@ pub fn measure(path: &Path) -> Result<Calibration> {
 
     // One pass to warm, then timed passes. An unwarmed first read measures the
     // filesystem, not the store.
-    let n = b.entries()?.len();
+    // ⛔ COUNTED, NOT COLLECTED — this warmed the cache by materializing the
+    // whole journal, which is what it was about to measure the cost of NOT
+    // doing.
+    let mut n = 0usize;
+    b.for_each_entry_since(0, &mut |_| {
+        n += 1;
+        Ok(())
+    })?;
     anyhow::ensure!(
         n > 0,
         "the journal at {} has no entries — there is nothing here to measure, and a \
@@ -278,7 +285,10 @@ pub fn measure(path: &Path) -> Result<Calibration> {
     let start = Instant::now();
     let mut read = 0usize;
     for _ in 0..PASSES {
-        read += b.entries()?.len();
+        b.for_each_entry_since(0, &mut |_| {
+            read += 1;
+            Ok(())
+        })?;
     }
     let elapsed = start.elapsed().as_nanos() as i64;
 
