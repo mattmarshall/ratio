@@ -123,12 +123,44 @@ struct Actions {
     rewritten: std::collections::BTreeSet<String>,
 }
 
+/// Open tax lots, per position, and what relieving them has cost.
+///
+/// ⛔ THE LOTS ARE MAINTAINED BY THE FOLD, not derived on demand. A buy opens a
+/// lot; a sale relieves oldest-first through `relief::relieve`, which is the
+/// walk `Ratio.Lots` proves. Deriving them on demand would mean re-walking the
+/// journal per query — the cost this whole crate exists to remove.
+///
+/// ⚠ AND THIS IS WHERE THE MEMORY IS. Positions are a chart: five hundred
+/// entries for an S&P tracker whatever its history. Lots are a HISTORY: twenty
+/// million of them is roughly 800 MB at 40 bytes each, which is the number the
+/// scale argument has to survive and the reason `//tla:lot_engine_check` models
+/// paging rather than assuming everything is resident.
+#[derive(Clone, Debug, Default)]
+struct LotBook {
+    /// `(dim, instrument) -> open lots`, oldest first.
+    open: BTreeMap<(i64, String), Vec<relief::Lot>>,
+    /// Cumulative cost given up by sales. ⛔ NOT the realized gain: that needs
+    /// PROCEEDS, which is a property of the transaction rather than of the
+    /// position, and the fold does not know which leg was the cash.
+    relieved: i128,
+    /// ⛔ SALES THAT COULD NOT BE RELIEVED, named rather than propagated.
+    ///
+    /// A husk, a pro-rata split that will not divide, a holding that is short —
+    /// each is a real refusal from `relief::relieve`, and each concerns ONE
+    /// position. A projection that refused to build because one instrument's
+    /// lots would not divide would take the whole fund down over a line item,
+    /// so these surface as breaks, which is already what this product calls a
+    /// thing an operator must look at.
+    breaks: Vec<String>,
+}
+
 /// The read model.
 #[derive(Clone, Debug, Default)]
 pub struct Projection {
     positions: Positions,
     totals: Totals,
     actions: Actions,
+    lots: LotBook,
     /// How far into the journal FILE this has read.
     ///
     /// ⛔ BYTES, NOT ENTRIES, and the two are not interchangeable. `at` says how
@@ -172,8 +204,8 @@ impl Projection {
     /// proves nothing. A maintained projection folds the DELTA; this is the
     /// number that says so.
     pub fn advance(&mut self, journal: &[JournalEntry]) -> usize {
-        for entry in journal.iter().skip(self.at) {
-            self.fold(entry);
+        for (i, entry) in journal.iter().enumerate().skip(self.at) {
+            self.fold(i, entry);
         }
         let folded = journal.len().saturating_sub(self.at);
         // ⛔ `max`, NOT `= journal.len()`. A SHORTER journal must not rewind the
@@ -198,7 +230,8 @@ impl Projection {
     /// would be two chances to disagree about what an entry means, and the
     /// disagreement would be a NAV that changed depending on how the projection
     /// happened to be brought up to date.
-    fn fold(&mut self, entry: &JournalEntry) {
+    fn fold(&mut self, at: usize, entry: &JournalEntry) {
+        self.fold_lots(at, entry);
         if let Some(a) = &entry.announcement {
             self.actions.announced.push((
                 a.instrument.clone(),
@@ -264,8 +297,8 @@ impl Projection {
     pub fn follow(&mut self, path: &std::path::Path) -> Result<usize> {
         let (fresh, now) = FileBook::open(path)?.entries_since(self.read_to)?;
         let n = fresh.len();
-        for entry in &fresh {
-            self.fold(entry);
+        for (i, entry) in fresh.iter().enumerate() {
+            self.fold(self.at + i, entry);
         }
         self.at += n;
         self.read_to = now;
@@ -292,6 +325,107 @@ impl Projection {
                 .sum(),
             prefix: self.at,
         }
+    }
+
+    /// Maintain the lot book for one entry.
+    /// ⛔ `at` IS THE ENTRY'S JOURNAL POSITION, and it is a parameter because
+    /// the obvious source was wrong. `self.at` does not move within a batch —
+    /// `advance` folds a whole slice before updating it — so every lot opened in
+    /// one call got the SAME ordinal. FIFO survived by accident, on the
+    /// stability of the sort, and the ordinals differed between a cold build and
+    /// an incremental one. `the_lot_book_advances_with_everything_else` caught
+    /// it; nothing else would have.
+    fn fold_lots(&mut self, at: usize, entry: &JournalEntry) {
+        for p in &entry.postings {
+            let (Some(inst), Some(qty)) = (&p.instrument, p.quantity) else {
+                continue;
+            };
+            if qty == 0 {
+                continue;
+            }
+            let key = (p.dim, inst.clone());
+            if qty > 0 {
+                // A purchase opens a lot. `seq` is the journal position, which
+                // IS acquisition order — `relief::relieve` sorts by it rather
+                // than trusting the vector, but giving it the honest ordinal
+                // costs nothing and makes the sort a check rather than a fix.
+                self.lots.open.entry(key).or_default().push(relief::Lot {
+                    seq: at as u64,
+                    units: qty,
+                    cost: p.amount,
+                });
+                continue;
+            }
+            // A sale relieves.
+            let held = self.lots.open.entry(key.clone()).or_default();
+            match relief::relieve(held, -qty) {
+                Ok(r) => {
+                    // ⛔ THE POSITION AND THE LOT BOOK ARE TWO INDEPENDENT
+                    // PATHS, AND NOTHING FORCES THEM TO AGREE. The aggregate
+                    // follows the amount the entry POSTED; the lots follow what
+                    // relieving them actually cost. An entry that posts a basis
+                    // FIFO does not agree with leaves the two drifting, and both
+                    // are internally consistent — the trial balance ties on the
+                    // posted figure and the lot book ties on the computed one.
+                    //
+                    // ⚠ `Ratio.Lots.aggregate_matches_scan` is the theorem that
+                    // they must agree. It is about one relief; this is the
+                    // system-level obligation, and a derived model cannot
+                    // enforce it — the journal is the record. What it can do is
+                    // notice, and say which figure it disagrees with.
+                    if -p.amount != r.cost {
+                        self.lots.breaks.push(format!(
+                            "{}: selling {} of {} posted {} of basis, and relieving the lots                              oldest-first costs {} — the position and the lot book will                              disagree by {}",
+                            entry.id,
+                            -qty,
+                            inst,
+                            -p.amount,
+                            r.cost,
+                            -p.amount - r.cost
+                        ));
+                    }
+                    *held = r.left;
+                    self.lots.relieved += r.cost as i128;
+                }
+                Err(e) => self.lots.breaks.push(format!(
+                    "{}: selling {} of {} could not be relieved — {e:#}",
+                    entry.id, -qty, inst
+                )),
+            }
+        }
+    }
+
+    /// The open lots of one position, oldest first.
+    pub fn lots_of(&self, dim: i64, instrument: &str) -> AsOf<Vec<relief::Lot>> {
+        AsOf {
+            value: self
+                .lots
+                .open
+                .get(&(dim, instrument.to_string()))
+                .cloned()
+                .unwrap_or_default(),
+            prefix: self.at,
+        }
+    }
+
+    /// How many open lots this fund holds, across every position.
+    ///
+    /// ⛔ THE NUMBER THE SCALE ARGUMENT IS ABOUT, and it is deliberately NOT in
+    /// `nav`. `Ratio.Closure.factored_nav_never_reads_the_lots` is the claim
+    /// that this figure does not appear in a NAV's cost, and having it available
+    /// here is what lets that be checked rather than asserted.
+    pub fn open_lots(&self) -> i64 {
+        self.lots.open.values().map(|v| v.len() as i64).sum()
+    }
+
+    /// Cumulative cost given up by sales.
+    pub fn relieved_cost(&self) -> i128 {
+        self.lots.relieved
+    }
+
+    /// Sales that could not be relieved, and why.
+    pub fn lot_breaks(&self) -> &[String] {
+        &self.lots.breaks
     }
 
     /// Net asset value and the trial-balance difference, off the maintained
@@ -421,6 +555,138 @@ mod tests {
 
     fn entries(d: &std::path::Path) -> Vec<JournalEntry> {
         FileBook::open(d).unwrap().entries().unwrap()
+    }
+
+    fn sell(d: &std::path::Path, id: &str, inst: &str, units: i64, cost: i64) {
+        let mut b = FileBook::open(d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        b.append(&JournalEntry {
+            id: id.into(),
+            memo: "sell".into(),
+            config: c,
+            postings: vec![
+                PostingRecord {
+                    dim: 1,
+                    amount: -cost,
+                    instrument: Some(inst.into()),
+                    quantity: Some(-units),
+                },
+                PostingRecord::new(2, cost),
+            ],
+            announcement: None,
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn buys_open_lots_and_sales_relieve_them_oldest_first() {
+        // ⭐ THE ENGINE ON A REAL BOOK. Two buys of one unit — 10 then 40 — and
+        // a sale of one. FIFO gives up the CHEAP lot, so 10 of basis leaves and
+        // the dear one remains. LIFO would have given up 40 and reported a
+        // quarter of the gain on the eventual sale.
+        let d = book("lotfold", &[("vti", 10, 1), ("vti", 40, 1)]);
+        sell(&d, "s1", "vti", 1, 10); // the cheap lot's basis, which is what FIFO gives up
+        let p = Projection::of_book(&d).unwrap();
+
+        assert_eq!(p.open_lots(), 1, "one lot left");
+        let left = p.lots_of(1, "vti");
+        assert_eq!(left.value[0].units, 1);
+        assert_eq!(left.value[0].cost, 40, "the DEAR lot survives, not the cheap one");
+        assert_eq!(p.relieved_cost(), 10, "and 10 of basis was given up");
+        assert!(p.lot_breaks().is_empty());
+    }
+
+    #[test]
+    fn an_entry_posting_a_basis_fifo_disagrees_with_is_a_break() {
+        // ⭐ THE FINDING THIS TEST SUITE PRODUCED. The position aggregate and
+        // the lot book are two independent paths — one follows the amount the
+        // entry POSTED, the other follows what relieving the lots actually
+        // costs — and nothing forces them to agree. Both stay internally
+        // consistent: the trial balance ties on the posted figure and the lot
+        // book ties on the computed one, so the drift is invisible to every
+        // check either side has.
+        //
+        // Two one-unit lots at 10 and 40; a sale posting 40 of basis. FIFO gives
+        // up the CHEAP lot, so the true basis is 10 and the books will disagree
+        // by 30 — which is also 30 of realized gain that will never be reported.
+        let d = book("drift", &[("vti", 10, 1), ("vti", 40, 1)]);
+        sell(&d, "s1", "vti", 1, 40);
+        let p = Projection::of_book(&d).unwrap();
+
+        assert_eq!(p.lot_breaks().len(), 1, "{:?}", p.lot_breaks());
+        let b = &p.lot_breaks()[0];
+        assert!(b.contains("posted 40 of basis"), "{b}");
+        assert!(b.contains("costs 10"), "{b}");
+        assert!(b.contains("disagree by 30"), "names the gap: {b}");
+
+        // ⚠ A derived model CANNOT enforce this — the journal is the record, and
+        // the posted figure is what the trial balance is built from. What it can
+        // do is notice, and say which figure it disagrees with.
+        assert!(p.nav(&|dim| dim == 1 || dim == 2).is_ok(), "and the fund still values");
+    }
+
+    #[test]
+    fn the_lots_reconcile_with_the_position_they_belong_to() {
+        // ⛔ THE CHECK THAT TIES THE TWO HALVES TOGETHER. The position is an
+        // aggregate maintained by one path; the lots are a history maintained by
+        // another. `Ratio.Lots.aggregate_matches_scan` is the theorem that they
+        // must agree, and nothing enforces it structurally — the fold could
+        // drift and every other test here would pass.
+        let d = book("recon", &[("vti", 100, 10), ("vti", 250, 20), ("voo", 60, 6)]);
+        sell(&d, "s1", "vti", 12, 125); // 10 units at 100, then 2 of 20 at 250 → 25
+        let p = Projection::of_book(&d).unwrap();
+
+        for (key, held) in &p.positions().value.held {
+            let lots = p.lots_of(key.0, &key.1);
+            assert_eq!(
+                lots.value.iter().map(|l| l.units).sum::<i64>(),
+                held.1,
+                "units disagree for {key:?}"
+            );
+            assert_eq!(
+                lots.value.iter().map(|l| l.cost).sum::<i64>(),
+                held.0,
+                "cost disagrees for {key:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_sale_that_cannot_be_relieved_is_a_break_not_a_failure() {
+        // ⛔ A projection that refused to BUILD because one instrument's lots
+        // would not divide would take the whole fund down over a line item. The
+        // refusal is real — `Ratio.Lots.partial_relief_is_exactly_pro_rata` —
+        // and it concerns one position, so it surfaces as a break.
+        let d = book("lotbreak", &[("vti", 100, 7)]);
+        sell(&d, "s1", "vti", 3, 45);
+        let p = Projection::of_book(&d).unwrap();
+
+        assert_eq!(p.lot_breaks().len(), 1, "{:?}", p.lot_breaks());
+        assert!(p.lot_breaks()[0].contains("administration agreement"), "{:?}", p.lot_breaks());
+        assert_eq!(p.open_lots(), 1, "and the lot is untouched, not half-relieved");
+        assert_eq!(p.lots_of(1, "vti").value[0].units, 7);
+
+        // ⚠ And the NAV still strikes. A break is something an operator looks
+        // at, not something that stops the fund being valued.
+        assert!(p.nav(&|dim| dim == 1 || dim == 2).is_ok());
+    }
+
+    #[test]
+    fn the_lot_book_advances_with_everything_else() {
+        // The incremental property, for lots specifically: catching up in pieces
+        // must land where a cold build would.
+        let d = book("lotincr", &[("vti", 10, 1), ("vti", 40, 1), ("voo", 20, 2)]);
+        sell(&d, "s1", "vti", 1, 50);
+        let js = entries(&d);
+
+        let mut piecemeal = Projection::new();
+        for n in 1..=js.len() {
+            piecemeal.advance(&js[..n]);
+        }
+        let cold = Projection::rebuild(&js);
+        assert_eq!(piecemeal.open_lots(), cold.open_lots());
+        assert_eq!(piecemeal.relieved_cost(), cold.relieved_cost());
+        assert_eq!(piecemeal.lots_of(1, "vti").value, cold.lots_of(1, "vti").value);
     }
 
     #[test]
