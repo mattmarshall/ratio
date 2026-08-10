@@ -538,7 +538,7 @@ impl Journal for FileBook {
         // so there is no state in which the book is out and somebody has to
         // find it.
         if !entry.is_balanced() {
-            let net: i64 = entry.postings.iter().map(|p| p.amount).sum();
+            let net: i128 = entry.postings.iter().map(|p| p.amount as i128).sum();
             return Err(anyhow!(
                 "entry {:?} does not conserve value: postings net to {net}, not 0",
                 entry.id
@@ -589,7 +589,11 @@ impl Journal for FileBook {
         let mut checked: std::collections::BTreeSet<&Digest> = Default::default();
         for entry in entries {
             if !entry.is_balanced() {
-                let net: i64 = entry.postings.iter().map(|p| p.amount).sum();
+                // ⛔ `i128`. Reporting the net of an entry that did not balance
+                // must not itself overflow — the whole reason it did not balance
+                // may be that the figures are enormous, which is exactly when an
+                // `i64` sum wraps and the message says "nets to 0".
+                let net: i128 = entry.postings.iter().map(|p| p.amount as i128).sum();
                 return Err(anyhow!(
                     "entry {:?} does not conserve value: postings net to {net}, not 0",
                     entry.id

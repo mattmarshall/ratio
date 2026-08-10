@@ -76,9 +76,15 @@ impl<T> AsOf<T> {
 pub struct Totals {
     /// Postings by dimension, whatever the account type. The NAV picks out
     /// assets and liabilities; the projection does not know the chart.
-    pub by_dim: BTreeMap<i64, i64>,
-    pub debits: i64,
-    pub credits: i64,
+    ///
+    /// ⛔ `i128`, LIKE `ratio_nav::fold_nav`. These accumulate over the whole
+    /// journal, so `debits` in particular grows with HISTORY rather than with
+    /// the fund — it adds the magnitude of every posting ever made. An `i64`
+    /// accumulator wraps, and a wrapped total does not look wrong; it looks
+    /// like a NAV.
+    pub by_dim: BTreeMap<i64, i128>,
+    pub debits: i128,
+    pub credits: i128,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -200,11 +206,14 @@ impl Projection {
             self.actions.rewritten.insert(id.to_string());
         }
         for p in &entry.postings {
-            *self.totals.by_dim.entry(p.dim).or_default() += p.amount;
-            if p.amount >= 0 {
-                self.totals.debits += p.amount;
+            // ⚠ `-p.amount` is not the magnitude at the floor: `-i64::MIN`
+            // overflows. Widened first, it does not.
+            let amount = p.amount as i128;
+            *self.totals.by_dim.entry(p.dim).or_default() += amount;
+            if amount >= 0 {
+                self.totals.debits += amount;
             } else {
-                self.totals.credits += -p.amount;
+                self.totals.credits += -amount;
             }
             match &p.instrument {
                 Some(i) => {
@@ -291,15 +300,28 @@ impl Projection {
     /// and liabilities subtracts without a special case — the same fold as
     /// `ratio_nav`, and a sign error here is invisible in a screenshot and wrong
     /// by twice the liability.
-    pub fn nav(&self, is_asset_or_liability: &dyn Fn(i64) -> bool) -> AsOf<(i64, i64)> {
-        let nav = self
+    pub fn nav(&self, is_asset_or_liability: &dyn Fn(i64) -> bool) -> Result<AsOf<(i64, i64)>> {
+        let nav: i128 = self
             .totals
             .by_dim
             .iter()
             .filter(|(dim, _)| is_asset_or_liability(**dim))
             .map(|(_, amount)| *amount)
             .sum();
-        AsOf { value: (nav, self.totals.debits - self.totals.credits), prefix: self.at }
+        // ⛔ A figure that cannot be represented is REFUSED rather than
+        // truncated. `Ratio.Bounded`: an operation agrees with the theorem or
+        // declines, and there is no third answer.
+        Ok(AsOf {
+            value: (
+                i64::try_from(nav).map_err(|_| {
+                    anyhow::anyhow!("this fund's net asset value does not fit in 64 bits")
+                })?,
+                i64::try_from(self.totals.debits - self.totals.credits).map_err(|_| {
+                    anyhow::anyhow!("this fund's trial-balance difference does not fit in 64 bits")
+                })?,
+            ),
+            prefix: self.at,
+        })
     }
 
     /// The splits an instrument's stored units must be read through, on a day.
@@ -425,7 +447,7 @@ mod tests {
         let p = Projection::rebuild(&js);
 
         // dims 1 and 2 are assets in `book()`; nothing else is.
-        let got = p.nav(&|dim| dim == 1 || dim == 2);
+        let got = p.nav(&|dim| dim == 1 || dim == 2).unwrap();
         let want = ratio_nav::strike(&d, 1_782_662_400, "e.marsh").unwrap();
 
         assert_eq!(got.value.0, want.net_asset_value, "the same NAV");
@@ -440,8 +462,8 @@ mod tests {
         // error this fold exists to avoid.
         let d = book("navdims", &[("vti", 25_000, 100)]);
         let p = Projection::rebuild(&entries(&d));
-        assert_eq!(p.nav(&|dim| dim == 1 || dim == 2).value.0, 0, "buy: asset in, cash out");
-        assert_eq!(p.nav(&|dim| dim == 1).value.0, 25_000, "investments alone");
+        assert_eq!(p.nav(&|dim| dim == 1 || dim == 2).unwrap().value.0, 0, "buy: asset in, cash out");
+        assert_eq!(p.nav(&|dim| dim == 1).unwrap().value.0, 25_000, "investments alone");
     }
 
     #[test]
@@ -456,7 +478,7 @@ mod tests {
             piecemeal.advance(&js[..n]);
         }
         let assets = |dim: i64| dim == 1 || dim == 2;
-        assert_eq!(piecemeal.nav(&assets), Projection::rebuild(&js).nav(&assets));
+        assert_eq!(piecemeal.nav(&assets).unwrap(), Projection::rebuild(&js).nav(&assets).unwrap());
     }
 
     #[test]
@@ -552,7 +574,7 @@ mod tests {
         // And it lands exactly where a cold build would.
         assert_eq!(p.positions().value, &Projection::of_book(&d).unwrap().positions().value.clone());
         let assets = |dim: i64| dim == 1 || dim == 2;
-        assert_eq!(p.nav(&assets).value, Projection::of_book(&d).unwrap().nav(&assets).value);
+        assert_eq!(p.nav(&assets).unwrap().value, Projection::of_book(&d).unwrap().nav(&assets).unwrap().value);
     }
 
     #[test]

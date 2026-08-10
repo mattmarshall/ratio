@@ -2108,7 +2108,7 @@ mod tests {
         // the cache safe to have at all.
         let cold = ratio_project::Projection::of_book(&d).unwrap();
         let assets = |dim: i64| dim == 1 || dim == 2 || dim == 40;
-        assert_eq!(after.nav(&assets).value, cold.nav(&assets).value);
+        assert_eq!(after.nav(&assets).unwrap().value, cold.nav(&assets).unwrap().value);
         assert_eq!(after.positions().value, &cold.positions().value.clone());
     }
 
@@ -2145,7 +2145,7 @@ mod tests {
 
         let p = c.projection("demo").unwrap();
         assert_eq!(p.prefix(), 1, "rebuilt from the new book, not spliced onto the old");
-        assert_eq!(p.nav(&|dim| dim == 1).value.0, 11, "and the totals are the new book's");
+        assert_eq!(p.nav(&|dim| dim == 1).unwrap().value.0, 11, "and the totals are the new book's");
     }
 
     #[test]

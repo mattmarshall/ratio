@@ -633,7 +633,7 @@ fn bench(args: &[&str]) -> Result<()> {
             Some(ratio_store::AccountTypeRecord::Asset)
                 | Some(ratio_store::AccountTypeRecord::Liability)
         )
-    });
+    })?;
     let strike_ns = t.elapsed().as_nanos() as i64;
 
     let open_positions = proj.positions().value.held.len() as i64;

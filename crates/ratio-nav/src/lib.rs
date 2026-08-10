@@ -101,25 +101,42 @@ fn fold_nav(book: &FileBook, entries: &[JournalEntry]) -> Result<(i64, i64)> {
     let types: std::collections::BTreeMap<i64, AccountTypeRecord> =
         book.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
 
-    let mut nav = 0i64;
-    let mut debits = 0i64;
-    let mut credits = 0i64;
+    // ⛔ ACCUMULATED IN `i128`, REPORTED IN `i64`. Summing a journal in `i64`
+    // wraps — `debits` in particular adds the magnitude of EVERY posting ever
+    // made, so it grows with history rather than with the fund, and it is the
+    // first of these to go. A wrapped total does not look wrong; it looks like a
+    // NAV.
+    //
+    // ⚠ And `-p.amount` is not always the magnitude: `-i64::MIN` overflows. In
+    // `i128` it does not, which is the second reason this is not just about
+    // headroom.
+    let mut nav = 0i128;
+    let mut debits = 0i128;
+    let mut credits = 0i128;
     for e in entries {
         for p in &e.postings {
-            if p.amount >= 0 {
-                debits += p.amount;
+            let amount = p.amount as i128;
+            if amount >= 0 {
+                debits += amount;
             } else {
-                credits += -p.amount;
+                credits += -amount;
             }
             if matches!(
                 types.get(&p.dim),
                 Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
             ) {
-                nav += p.amount;
+                nav += amount;
             }
         }
     }
-    Ok((nav, debits - credits))
+    // ⛔ The FIGURES must fit to be reported. A NAV that cannot be represented is
+    // refused rather than truncated — `Ratio.Bounded`: an operation either agrees
+    // with the theorem or declines, and there is no third answer.
+    let nav = i64::try_from(nav)
+        .map_err(|_| anyhow::anyhow!("this book's net asset value does not fit in 64 bits"))?;
+    let diff = i64::try_from(debits - credits)
+        .map_err(|_| anyhow::anyhow!("this book's trial-balance difference does not fit in 64 bits"))?;
+    Ok((nav, diff))
 }
 
 /// Strike a NAV over the whole journal as it stands.
