@@ -41,7 +41,7 @@ pub mod relief;
 
 use anyhow::Result;
 use ratio_ingest::factor::Step;
-use ratio_common::intern::{Interner, Text};
+use ratio_common::intern::Text;
 use ratio_store::{FileBook, Journal, JournalEntry};
 
 /// A value read from the projection, carrying the journal prefix it was folded
@@ -346,7 +346,7 @@ impl Realized {
 #[derive(Clone, Debug, Default)]
 struct LotBook {
     /// `(dim, instrument) -> open lots`, oldest first.
-    open: BTreeMap<(i64, Text), Vec<relief::Lot>>,
+    open: BTreeMap<(i64, Text), relief::Holding>,
     /// Cumulative cost given up by sales. ⛔ NOT the realized gain: that needs
     /// PROCEEDS, which is a property of the transaction rather than of the
     /// position, and the fold does not know which leg was the cash.
@@ -725,7 +725,7 @@ impl Projection {
                 // IS acquisition order — `relief::relieve` sorts by it rather
                 // than trusting the vector, but giving it the honest ordinal
                 // costs nothing and makes the sort a check rather than a fix.
-                self.lots.open.entry(key).or_default().push(relief::Lot {
+                let lot = relief::Lot {
                     seq: at as u64,
                     units: qty,
                     cost: p.amount,
@@ -735,7 +735,12 @@ impl Projection {
                     // defaulting — both defaults are wrong in opposite
                     // directions.
                     acquired: trade_day,
-                });
+                };
+                // ⛔ A HUSK IS REFUSED WHERE IT IS OFFERED, so the walk no longer
+                // rescans the whole holding on every sale looking for one.
+                if let Err(e) = self.lots.open.entry(key).or_default().push(lot) {
+                    self.lots.breaks.push(format!("{}: {e:#}", entry.id));
+                }
                 continue;
             }
             // A sale relieves — under the method this entry's configuration
@@ -760,7 +765,7 @@ impl Projection {
             let method = terms.method;
             let held = self.lots.open.entry(key.clone()).or_default();
             let relieving = std::time::Instant::now();
-            let relieved = relief::relieve_by(method, held, -qty);
+            let relieved = held.relieve(method, -qty);
             self.cost.relieve += relieving.elapsed();
             self.cost.reliefs += 1;
             match relieved {
@@ -803,7 +808,6 @@ impl Projection {
                     // function because `held` still borrows the lot book.
                     let split = gain_leg
                         .and_then(|g| classify(&r, g, trade_day, terms));
-                    *held = r.left;
                     if let Some((short, long)) = split {
                         *self.lots.short_term.entry(ccy.clone()).or_default() += short;
                         *self.lots.long_term.entry(ccy).or_default() += long;
@@ -864,7 +868,7 @@ impl Projection {
                 // avoid one malloc would trade nine comparisons for five
                 // hundred.
                 .get(&(dim, Text::from(instrument)))
-                .cloned()
+                .map(|h| h.lots())
                 .unwrap_or_default(),
             prefix: self.at,
         }
@@ -1048,7 +1052,7 @@ fn convert(by_currency: &BTreeMap<Option<Text>, i128>, rates: &Rates) -> Result<
 /// ⚠ Everything it declines stays in the total, and shows up in
 /// `Realized::unclassified` — which is the remainder, so nothing goes missing.
 fn classify(
-    r: &relief::Relieved,
+    r: &relief::Relief,
     gain: i64,
     disposed_on: Option<relief::Day>,
     terms: Terms,

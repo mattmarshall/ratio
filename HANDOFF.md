@@ -214,32 +214,24 @@ strike unchanged.
 ⛔ **It reports two curves and both must be quoted.** Folding the journal grows;
 only the strike off a maintained projection is flat.
 
-⛔ **AND THE FIRST CURVE IS NOT O(entries), THOUGH IT SAID SO HERE FOR MONTHS.**
-Holding entries constant at ~1.8M and raising fragmentation 500 → 1000 → 2000
-lots a position:
+⭐ **AND THE FIRST CURVE IS NOW ACTUALLY O(entries), WHICH IT SAID FOR MONTHS
+AND WAS NOT.** A relief used to copy and sort the whole holding on every sale,
+so the build scaled with FRAGMENTATION as well as with entries. Holding entries
+constant at ~1.8M and raising lots-per-position 4x:
 
-| lots/position | entries | reliefs | parse | relieve | COLD BUILD |
-|---|---|---|---|---|---|
-| 500 | 1,769,907 | 758,529 | 8.2 s | 7.4 s | 20.2 s |
-| 2000 | 1,838,024 | 787,722 | 8.5 s | 31.1 s | 44.5 s |
+| lots/position | parse | relieve | COLD BUILD |
+|---|---|---|---|
+| 500 → 2000, before | 8.2 → 8.5 s | 7.4 → **31.1 s** | 20.2 → **44.5 s** |
+| 500 → 2000, after | 8.2 → 8.6 s | 60.3 → **59.3 ms** | 12.6 → **12.8 s** |
 
-`parse` tracks ENTRIES. `relieve` tracks LOTS PER POSITION — 4× the
-fragmentation, 4.2× the time, over the SAME number of reliefs — because
-`relieve_by` does `lots.to_vec()` and sorts the whole holding on every sale.
+`relief::Holding` keeps the holding in the order its method gives lots up in, so
+a relief is a POP rather than a re-sort. `parse` is now 65% of the cold build and
+is the floor.
 
-⛔ **SO #6 IS PLANNED AGAINST A CURVE THAT DOES NOT HOLD.** Its "~25 minutes of
-generation" extrapolates linearly in entries. A 20M-lot book is both more
-entries AND more fragmented, and the second term is the one that runs away.
-
-⚠ **THE COLD BUILD GOT ~1.5× SLOWER AND THE ENTRY COUNT DID NOT MOVE.** Every
-entry now carries a `trade_date` and every posting a `currency`, so the journal
-is 294 bytes an entry where it was around 200 — the same entries, more bytes to
-parse. The strike is unaffected, which is the property that matters, and the
-`MB` column above is now the journal on disk rather than the estimate it was.
-
-⛔ **AND THE 500 AND 2000 ROWS HAVE NOT BEEN RE-MEASURED.** They are the old
-numbers and are now understated. Do not quote them. Re-measuring is cheap for
-500 and about two minutes for 2000; issue #6 is the 20M run.
+⛔ **THE LESSON IS THE LABEL, NOT THE FIX.** `O(journal)` was written down, was
+wrong, and nothing checked it — the same shape as every other defect here. What
+found it was holding one dial fixed and moving another, which is the cheapest
+experiment available and was never run.
 
 ⚠ The generator sold at cost until the gain posting landed, so every disposal
 realized nothing and the gain account never moved — six lot methods and the whole
