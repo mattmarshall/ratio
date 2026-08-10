@@ -139,7 +139,7 @@ pub struct Rule {
 }
 
 /// A configuration: the whole rule set, as promoted to the control plane.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuleSet {
     #[serde(rename = "rule", default)]
     pub rules: Vec<Rule>,
@@ -173,6 +173,43 @@ pub struct RuleSet {
     /// what happens when two roles point at one dimension.
     #[serde(default)]
     pub chart_roles: Option<ChartRoles>,
+
+    /// How long a holding must be held for its gain to be long-term, in days.
+    ///
+    /// ⛔ A JURISDICTION'S NUMBER, NOT ARITHMETIC — the same reason
+    /// `Ratio.Lots.Methods.isLongTerm` takes the threshold as a PARAMETER
+    /// rather than writing 365 into the definition. It is a term of the same
+    /// agreement that names the method, a fund administered under other rules
+    /// uses a different one, and hard-coding it makes the engine wrong
+    /// somewhere instead of configurable everywhere.
+    ///
+    /// ⚠ THE BOUNDARY IS ON THE DAY. A lot held exactly this many days is
+    /// long-term: `Ratio.Lots.Methods.the_threshold_day_is_long_term`. Off by
+    /// one moves a disposal between tax rates, and the resulting figure looks
+    /// entirely ordinary.
+    #[serde(default = "default_long_term_days")]
+    pub long_term_days: i64,
+}
+
+fn default_long_term_days() -> i64 {
+    365
+}
+
+/// ⛔ HAND-WRITTEN, NOT DERIVED, AND THAT IS THE POINT. `#[derive(Default)]`
+/// gives every field its type's default, so `long_term_days` would be **0**
+/// here while `#[serde(default = ...)]` makes it 365 on the way in from TOML.
+/// One fact with two answers, differing by which door the rule set came
+/// through — and a threshold of zero classifies every disposal ever made as
+/// long-term, at the favourable rate, silently.
+impl Default for RuleSet {
+    fn default() -> Self {
+        Self {
+            rules: Vec::new(),
+            lot_method: LotMethod::default(),
+            chart_roles: None,
+            long_term_days: default_long_term_days(),
+        }
+    }
 }
 
 /// The dimensions a sale posts to. `Ratio.Lots.Posting.Accounts`.
@@ -864,5 +901,19 @@ weight = -4
             .replace("account = 10", "account = 999");
         let f = check(&RuleSet::from_toml(&bad).unwrap(), &chart());
         assert!(f.len() >= 2, "{f:?}");
+    }
+
+    #[test]
+    fn the_holding_period_threshold_is_the_same_number_through_either_door() {
+        // ⛔ `#[derive(Default)]` WOULD HAVE MADE THIS 0. A rule set built in
+        // Rust and one parsed from TOML would then disagree about the threshold
+        // by 365 days, and a threshold of zero makes every disposal ever made
+        // long-term — the favourable rate, on every fund, silently.
+        assert_eq!(RuleSet::default().long_term_days, 365);
+        assert_eq!(RuleSet::from_toml("rules = []\n").unwrap().long_term_days, 365);
+
+        // And a fund administered under other rules says so.
+        let set = RuleSet::from_toml("rules = []\nlong_term_days = 730\n").unwrap();
+        assert_eq!(set.long_term_days, 730);
     }
 }
