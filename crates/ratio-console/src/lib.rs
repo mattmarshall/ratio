@@ -580,6 +580,45 @@ impl Console {
             .with_context(|| format!("no position {id:?}"))
     }
 
+    /// The open lots behind one position, oldest first.
+    ///
+    /// ⚠ THE ONE READ ON THIS SERVICE WHOSE COST GROWS WITH TRADING HISTORY
+    /// rather than with the chart, which is why it is reachable only through a
+    /// position. A fund's positions are five hundred lines whatever its age;
+    /// its lots are every purchase it still holds.
+    pub fn list_lots(&self, parent: &str) -> Result<pb::ListLotsResponse> {
+        let (fund, id) = nested_id(parent, "funds", "positions")?;
+        let (dim, instrument) = position_key(&id)?;
+        let proj = self.projection(&fund)?;
+        Ok(pb::ListLotsResponse {
+            lots: proj
+                .lots_of(dim, &instrument)
+                .value
+                .into_iter()
+                .map(|l| pb::Lot {
+                    name: format!("funds/{fund}/positions/{id}/lots/{}", l.seq),
+                    sequence: l.seq as i64,
+                    units: l.units.to_string(),
+                    cost: l.cost.to_string(),
+                    acquired: l.acquired.as_deref().and_then(iso_date),
+                })
+                .collect(),
+            next_page_token: String::new(),
+        })
+    }
+
+    pub fn get_lot(&self, name: &str) -> Result<pb::Lot> {
+        let parts: Vec<&str> = name.split('/').collect();
+        let ["funds", fund, "positions", pos, "lots", lot] = parts[..] else {
+            bail!("{name:?} is not a funds/*/positions/*/lots/* name");
+        };
+        self.list_lots(&format!("funds/{fund}/positions/{pos}"))?
+            .lots
+            .into_iter()
+            .find(|l| l.name.ends_with(&format!("/{lot}")))
+            .with_context(|| format!("no lot {lot:?} open in position {pos:?}"))
+    }
+
     fn positions_of(&self, fund: &str) -> Result<Vec<pb::Position>> {
         let path = self.book_path(fund)?;
         let b = FileBook::open(&path)?;
@@ -1317,12 +1356,41 @@ impl Console {
             pb::fund::State::Struck
         };
 
+        // ⛔ THE TERMS THE ACTIVE CONFIGURATION DECLARES, read rather than
+        // assumed. The lot method decides the realized gain
+        // (`the_method_decides_the_taxable_gain`) and the threshold decides
+        // which rate it is taxed at — so both are reported beside the figure
+        // rather than left as something a reader has to go and look up.
+        //
+        // ⚠ A book with no configuration, or one whose chart names no roles,
+        // reports EMPTY STRINGS rather than zeros. A fund that realized nothing
+        // and a fund whose engine cannot tell are different answers, and "0.00"
+        // is a claim about the first.
+        let set = match b.active()? {
+            Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?)).ok(),
+            None => None,
+        };
+        let realized = self
+            .projection(&id)
+            .ok()
+            .and_then(|p| p.realized(set.as_ref().and_then(|s| s.chart_roles)).value);
+
         Ok(pb::Fund {
             name: format!("funds/{id}"),
             display_name: display_name(&id),
             currency_code: "USD".into(),
             state: state as i32,
             net_asset_value: nav.to_string(),
+            lot_method: set
+                .as_ref()
+                .map(|s| ratio_project::relief::Method::from(s.lot_method).describe().to_string())
+                .unwrap_or_default(),
+            long_term_days: set.as_ref().map(|s| s.long_term_days).unwrap_or(0),
+            realized_gain: realized.map(|r| r.gain.to_string()).unwrap_or_default(),
+            basis_relieved: realized.map(|r| r.basis.to_string()).unwrap_or_default(),
+            short_term_gain: realized.map(|r| r.short_term.to_string()).unwrap_or_default(),
+            long_term_gain: realized.map(|r| r.long_term.to_string()).unwrap_or_default(),
+            unclassified_gain: realized.map(|r| r.unclassified().to_string()).unwrap_or_default(),
             // The same `tb` the difference below comes from, so the two
             // columns and their difference can never be computed from
             // different reads of the journal.
@@ -2063,6 +2131,22 @@ pub fn resource_id(name: &str, collection: &str) -> Result<String> {
 }
 
 /// `funds/a/breaks/b` → `("a", "b")`.
+/// A position id — `{dim}-{instrument}` — back into its parts.
+///
+/// ⛔ SPLITS ON THE FIRST HYPHEN ONLY. Tickers contain them (`BRK-B`), and
+/// splitting on the last or on all of them would resolve a real instrument to a
+/// different one — or to none, which at least fails loudly.
+pub fn position_key(id: &str) -> Result<(i64, String)> {
+    let (dim, instrument) = id
+        .split_once('-')
+        .with_context(|| format!("{id:?} is not a position id — expected {{dim}}-{{instrument}}"))?;
+    Ok((
+        dim.parse()
+            .with_context(|| format!("{id:?} does not begin with a dimension"))?,
+        instrument.to_string(),
+    ))
+}
+
 pub fn nested_id(name: &str, outer: &str, inner: &str) -> Result<(String, String)> {
     let parts: Vec<&str> = name.split('/').collect();
     if parts.len() != 4 || parts[0] != outer || parts[2] != inner {

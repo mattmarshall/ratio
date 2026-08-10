@@ -56,6 +56,26 @@ pub fn days_from_iso_date(s: &str) -> Result<i64> {
     Ok(era * 146_097 + doe - 719_468)
 }
 
+/// Days since 1970-01-01 back into an ISO date.
+///
+/// The inverse of [`days_from_iso_date`], and the two are tested by round trip
+/// as well as against fixed points — a pair of conversions that agree with each
+/// other and not with the calendar is the failure a single-direction test
+/// cannot see.
+pub fn iso_date_from_days(days: i64) -> String {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
 /// A decimal string as a person or a counterparty writes it — `"25,000.00"`,
 /// `"$1,204,880.11"`, `"-7"`, `".5"` — into minor units.
 ///
@@ -163,6 +183,29 @@ mod tests {
 
         for bad in ["", "2026-13-01", "2026-01-32", "2026-01", "not-a-date", "2026-xx-01"] {
             assert!(days_from_iso_date(bad).is_err(), "{bad:?} should not parse");
+        }
+    }
+
+    #[test]
+    fn the_two_date_conversions_agree_with_the_calendar_and_each_other() {
+        // ⛔ BOTH CHECKS, BECAUSE EITHER ALONE PASSES A BROKEN PAIR. Two
+        // conversions that are each other's exact inverse can still both be
+        // wrong about what day it is, and fixed points alone say nothing about
+        // whether one undoes the other.
+        for (s, n) in [
+            ("1970-01-01", 0),
+            ("2024-02-29", 19_782),
+            ("1900-03-01", -25_508),
+            ("2026-06-30", 20_634),
+        ] {
+            assert_eq!(days_from_iso_date(s).unwrap(), n, "{s}");
+            assert_eq!(iso_date_from_days(n), s, "{n}");
+        }
+
+        // Round trip across a leap day, a century, and the epoch.
+        for d in [-30_000i64, -1, 0, 1, 19_782, 20_634, 40_000] {
+            let s = iso_date_from_days(d);
+            assert_eq!(days_from_iso_date(&s).unwrap(), d, "{s} round-trips");
         }
     }
 }

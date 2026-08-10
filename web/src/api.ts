@@ -20,10 +20,12 @@ import type {
   ListCorporateActionsResponse,
   AdmitFactsResponse,
   IngestDeliveryRequest,
+  ListLotsResponse,
   ListPositionsResponse,
   MarkPositionsRequest,
   MarkPositionsResponse,
   ListTemplatesResponse,
+  Lot,
   Position,
   Template,
   IngestDeliveryResponse,
@@ -381,6 +383,28 @@ export function usePositions(
     queryFn: () => get<ListPositionsResponse>(`/${fund}/positions`),
     select: (r) => r.positions,
     enabled: !!fund,
+    ...LIVE,
+  });
+}
+
+/**
+ * The open tax lots behind one position.
+ *
+ * ⛔ ENABLED ONLY WHEN A POSITION IS NAMED, so this never fires as part of
+ * loading the positions screen. A position is one line and its lots are the
+ * whole history behind it; fetching them for every row would turn a chart-sized
+ * read into a history-sized one — the exact conflation
+ * `Ratio.Closure.factored_nav_never_reads_the_lots` exists to keep apart.
+ */
+export function useLots(
+  fund: string | undefined,
+  position: string | undefined,
+): UseQueryResult<Lot[], Error> {
+  return useQuery({
+    queryKey: [fund ?? "", "positions", position ?? "", "lots"],
+    queryFn: () => get<ListLotsResponse>(`/${fund}/positions/${position}/lots`),
+    select: (r) => r.lots,
+    enabled: !!fund && !!position,
     ...LIVE,
   });
 }

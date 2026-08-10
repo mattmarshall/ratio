@@ -1783,6 +1783,35 @@ mod tests {
     }
 
     #[test]
+    fn the_served_console_carries_the_lot_engine() {
+        // ⛔ AGAINST THE BYTES THE BINARY ACTUALLY SERVES, not against the
+        // TypeScript. The console is bundled by `//web:console_html` and
+        // embedded here at compile time, so a change to `web/src` that is never
+        // rebuilt into `//crates/ratio` typechecks, passes every other test,
+        // and serves the old page. That has happened: the corporate-actions
+        // screen was written, compiled, and absent, and what caught it was
+        // grepping the served HTML.
+        //
+        // ⚠ These are the strings a reader looks for. If the wording changes,
+        // change it here too — that is the point, not an inconvenience.
+        for needle in [
+            "Lot method",
+            "Realized gain",
+            "Short-term",
+            "Long-term",
+            "Unclassified",
+            "Basis relieved",
+            "no trade date",
+        ] {
+            assert!(
+                CONSOLE.contains(needle),
+                "the served console does not mention {needle:?} — \
+                 was //crates/ratio rebuilt after the web change?"
+            );
+        }
+    }
+
+    #[test]
     fn customer_text_never_becomes_markup() {
         // Account names, memos and refusal details all come from a customer's
         // file. Building the pages with the DOM rather than innerHTML is what

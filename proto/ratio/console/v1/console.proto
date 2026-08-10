@@ -235,6 +235,28 @@ service Console {
     option (google.api.method_signature) = "name";
   }
 
+  // The open tax lots behind one position, oldest first. (AIP-132)
+  //
+  // ⛔ A SUBCOLLECTION OF THE POSITION, not a screen of its own. A lot is only
+  // meaningful as part of the holding it belongs to — `Position.open_lot_count`
+  // is the count and this is what it counts — and the nesting is what says so.
+  //
+  // ⚠ THIS IS THE EXPENSIVE READ ON THIS SERVICE, and deliberately scoped so it
+  // stays affordable. A fund's lots are its whole trading HISTORY where its
+  // positions are a chart of five hundred lines; asking for one position's lots
+  // is bounded by that position, and there is deliberately no way to ask for
+  // every lot in the fund at once.
+  rpc ListLots(ListLotsRequest) returns (ListLotsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*/positions/*}/lots"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one open tax lot. (AIP-131)
+  rpc GetLot(GetLotRequest) returns (Lot) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/positions/*/lots/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
   // The trial balance: every account in the chart with what it holds.
   // (AIP-132)
   //
@@ -398,6 +420,50 @@ message Fund {
 
   // The configuration every figure above was produced under.
   string config_digest = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Which lots a sale gives up, as the active configuration declares it.
+  //
+  // ⛔ ON THE FUND BECAUSE IT IS A TERM OF AN ADMINISTRATION AGREEMENT, not an
+  // implementation detail of the engine. The same holding and the same trade
+  // produce four different taxable incomes under the four methods, with no
+  // figure on the balance sheet moving —
+  // `Ratio.Lots.Methods.the_method_decides_the_taxable_gain` — so it belongs
+  // beside the figures it decides rather than buried in a configuration screen.
+  string lot_method = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Realized gain since inception, in minor units.
+  //
+  // ⛔ CREDIT-NORMAL, SO A GAIN READS NEGATIVE. `Ratio.Lots.Posting` has the
+  // convention and why. This is the raw figure and a client that prints it
+  // unflipped shows every profitable fund with a minus sign.
+  //
+  // ⚠ SINCE INCEPTION, NOT FOR A PERIOD, and named that way deliberately: a
+  // fold gives what has happened, and a period figure needs a period start,
+  // which is a separate question `Ratio.Period` owns.
+  string realized_gain = 15 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Cost given up by sales, in minor units.
+  string basis_relieved = 16 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The part of `realized_gain` on holdings held less than the fund's
+  // threshold, and at least it. Same sign convention as `realized_gain`.
+  string short_term_gain = 17 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string long_term_gain = 18 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The rest of `realized_gain`: disposals no holding period could be
+  // established for.
+  //
+  // ⚠ REPORTED RATHER THAN HIDDEN. A lot opened before the journal carried
+  // trade dates has no acquisition date, and a disposal whose proceeds do not
+  // divide exactly across its lots is refused rather than rounded. The three
+  // parts sum to the total by construction — this one is the remainder.
+  string unclassified_gain = 19 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Days a holding must be held for its gain to be long-term.
+  //
+  // ⚠ A JURISDICTION'S NUMBER, which is why it is reported rather than assumed
+  // to be 365. `Ratio.Lots.Methods.isLongTerm` takes it as a parameter.
+  int64 long_term_days = 20 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // How serious an exception is, which is what the queue is ordered by.
@@ -1288,6 +1354,67 @@ message GetPositionRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference).type = "ratio.fastverk.dev/Position"
+  ];
+}
+
+// One open tax lot: what was bought, when, and what it cost.
+//
+// ⛔ THE THING A REALIZED GAIN IS COMPUTED FROM, and the reason the lot method
+// is a term of an agreement rather than a preference. A sale gives up some of
+// these and not others, and which ones decides the taxable income.
+message Lot {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Lot"
+    pattern: "funds/{fund}/positions/{position}/lots/{lot}"
+    singular: "lot"
+    plural: "lots"
+  };
+
+  // The resource name: `funds/{fund}/positions/{position}/lots/{lot}`, where
+  // the lot id is its journal position.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // Acquisition order, which is the journal position of the entry that opened
+  // it. ⛔ NOT A DATE: two lots acquired a year apart may be adjacent ordinals,
+  // and FIFO is this field while the holding period is the one below.
+  int64 sequence = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Units still open in this lot.
+  string units = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What those units cost, in minor units. ⛔ COST, NOT VALUE — a lot is never
+  // revalued. `//tla:valuation_check`'s `CostIsNeverRevalued`.
+  string cost = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The day it was acquired, ABSENT when the entry that opened it carried no
+  // trade date.
+  //
+  // ⛔ ABSENT RATHER THAN DEFAULTED, and the holding-period methods REFUSE such
+  // a holding rather than guessing. Both defaults are wrong in opposite
+  // directions: the epoch makes it long-term at the favourable rate on records
+  // that do not support the claim, and today makes it short-term on a holding
+  // that may have been held for years.
+  google.type.Date acquired = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListLotsRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Position"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListLotsResponse {
+  repeated Lot lots = 1;
+  string next_page_token = 2;
+}
+
+message GetLotRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Lot"
   ];
 }
 

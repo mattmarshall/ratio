@@ -22,6 +22,26 @@ export function count(n: string): string {
   return (neg ? "-" : "") + d.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
+/**
+ * A credit-normal figure, as a reader expects to see it.
+ *
+ * ⛔ A REALIZED GAIN READS NEGATIVE IN THE RAW FIGURE. `Ratio.Lots.Posting` has
+ * the convention: the gain leg is `relieved − proceeds`, so a profitable
+ * disposal credits income and the number carries a minus sign. A screen that
+ * prints it unflipped shows every profitable fund as a loss.
+ *
+ * ⚠ THE FLIP LIVES HERE, IN ONE FUNCTION, on purpose. Doing it at each call
+ * site is how a sign convention gets applied twice in one place and nowhere in
+ * another — and both mistakes produce a plausible number.
+ *
+ * Negating the string rather than the value, because nothing in this file is
+ * allowed to make an int64 a double.
+ */
+export function gain(minor: string): string {
+  if (minor === "" || minor === "0") return minor;
+  return money(minor.startsWith("-") ? minor.slice(1) : `-${minor}`);
+}
+
 /** Compare two minor-unit strings by magnitude, without parsing either. */
 export function absCompare(a: string, b: string): number {
   const x = a.replace("-", "").replace(/^0+/, "");

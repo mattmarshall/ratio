@@ -404,8 +404,40 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
    point — an unapplied action is the term that dominates the cost of a period
    end and the reason a NAV gets qualified. */
 /* The open-lot count beside a position's units. Quiet — it is context for the
-   figure, not a figure. */
-.lots{display:block;color:var(--muted);font-size:11px;font-weight:400;letter-spacing:.02em}
+   figure, not a figure — and now a control, because the lots behind it are
+   fetched on demand rather than with the list. */
+.lots{display:block;color:var(--muted);font-size:11px;font-weight:400;
+  letter-spacing:.02em;background:none;border:0;padding:2px 0 0;margin:0 0 0 auto;
+  cursor:pointer;font-family:inherit;text-align:right}
+.lots:hover{color:var(--accent)}
+.lots[aria-expanded="true"]{color:var(--accent);font-weight:600}
+.lots:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+
+/* The lot book behind one position. Indented and ruled off, because it is a
+   different KIND of thing from the row above it: that row is a chart entry and
+   these are its history. */
+.lotsbox{padding:2px 22px 12px 34px;border-left:2px solid var(--rule-2);
+  margin:0 22px 8px 22px;background:var(--raised)}
+.lotrow{display:grid;grid-template-columns:70px 100px 140px 1fr;gap:10px;
+  padding:4px 0;font-size:12px;font-variant-numeric:tabular-nums}
+.lothead{color:var(--muted);font-size:10.5px;letter-spacing:.07em;
+  text-transform:uppercase;border-bottom:1px solid var(--rule-2);padding-bottom:5px}
+.lotrow .num{text-align:right}
+.lotsbox em{color:var(--warn);font-style:normal}
+
+/* The terms the lot engine ran under, above the positions they decide. */
+.lotterms{display:grid;gap:1px;margin:0 0 14px;background:var(--rule-2);
+  border-radius:8px;overflow:hidden}
+.lt{display:grid;grid-template-columns:150px 170px 1fr;gap:12px;align-items:baseline;
+  padding:9px 16px;background:var(--raised);font-size:13px}
+.ltk{color:var(--muted);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.ltv{font-variant-numeric:tabular-nums}
+.ltv.num{text-align:right}
+.ltv.strong{font-weight:600;color:var(--accent)}
+/* ⚠ The unclassified row wears the attention colour, not the failure one.
+   Nothing is wrong — a holding period could not be established and the engine
+   said so instead of guessing, which is the whole point. */
+.lt.warn .ltk,.lt.warn .ltv{color:var(--warn)}
 
 .unapplied{color:var(--warn);font-size:12px;font-weight:600;letter-spacing:.04em}
 
