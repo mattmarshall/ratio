@@ -1,10 +1,29 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
-**State**: `main` at `f780f34`. 50 bazel tests green, 18 `lean_test`, 19
-`tla_check`. Nothing uncommitted, no branches outstanding.
+**State**: 51 bazel tests green, 18 `lean_test`, 20 `tla_check`, 13 `manual`
+probes all red for the reasons they name.
 
-Open work is in GitHub issues #4–#9. This file is the part that does not fit in
-an issue: what was learned, what is load-bearing, and what will bite.
+Issues #4 and #7 are closed. Open work is #5, #6, #8, #9. This file is the part
+that does not fit in an issue: what was learned, what is load-bearing, and what
+will bite.
+
+## ⛔ Both closed issues had a false premise, and finding it was most of the work
+
+**#4 said "the plumbing exists — this is rendering, not design".** It did not.
+`fold_lots` called `relief::relieve`, which is FIFO whatever the fund elected, so
+`RuleSet.lot_method` was parsed, stored, content-addressed, pinned by every
+journal entry — and read by nobody. Rendering the method on top of that would
+have put a screen behind a value the engine did not use.
+
+**#7 said "make the postings carry currency and the law starts doing work".**
+Carrying it was necessary and not sufficient: `Totals.by_dim` keyed on the
+dimension and dropped the currency, so the first multi-currency book would have
+had a NAV adding dollars to euros and reporting the result as USD.
+
+⚠ **The lesson is not "the issues were sloppy".** Both were written by someone
+who had just built the surrounding code. The premise that fails is the one
+nobody thought to check, and in both cases it was "the value I stored is the
+value that gets read".
 
 ---
 
@@ -22,6 +41,10 @@ the wrong answer, so nothing downstream reports anything.
 | HIFO silently performed FIFO — the tiebreak overrode the method | Lean's `decide` reporting a theorem FALSE |
 | A projection's lots and its positions drifted, each internally consistent | a reconciliation test between the two paths |
 | `[USD +100, EUR −100]` passed as balanced | `Ratio.Chart.Dimensions` |
+| A fund electing HIFO was relieved FIFO — the configuration was read by nobody | tracing a call site while planning to render it |
+| A NAV summed dollars and euros and called the answer USD | the same trace, one layer out |
+| An FX rate of "70.00 dollars to the euro" made a gain 70× its basis | translating for real; the only consumer had been discarding the result |
+| The console and the CLI reported different NAVs for one book, neither saying which | reading both on the same book |
 
 ⛔ **The realized gain is the figure with no counterparty.** A wrong NAV is caught
 by a reconciliation. A wrong gain is caught by nobody until a tax authority asks.
@@ -77,6 +100,32 @@ the conserved one, and the kernel never said it was.
 
 ## Load-bearing things a change could quietly break
 
+- **`Terms` is resolved PER ENTRY, from the config that entry pinned** — not once
+  per projection. The lot method, the chart roles and the holding-period
+  threshold are all terms of an administration agreement, and a fund that changes
+  method mid-year must not have its earlier sales restated.
+  `//tla:stale_method_relief_check`. Cached by digest, because a book has a
+  handful of configurations and millions of entries naming them.
+- **A config that cannot be read REFUSES the relief.** There is no fallback to
+  FIFO: FIFO is a method real funds elect, so a book relieved under it by
+  accident is indistinguishable from one relieved under it by agreement.
+- **`Totals.by_dim` keys on (dimension, currency).** A total over both is not a
+  figure — `a_flat_total_hides_a_currency_mismatch`. `nav` and `realized`
+  translate through an explicit `Rates` or refuse, and `Rates` carries its BASE
+  explicitly because there is no rate fact for it and "the one that is missing"
+  is not something to infer from a data file.
+- **`Realized::unclassified` is DERIVED, never accumulated** — `gain − short −
+  long`. That is what makes the three parts sum to the total by construction. It
+  absorbs the translation residue (at most one minor unit per currency; integer
+  translation does not distribute over a sum), and a fourth accumulator would put
+  that residue nowhere and leave four figures that do not add up.
+- **The credit-normal flip lives in `format.gain`, in one place.** Applied per
+  call site it gets applied twice somewhere and nowhere else, and both mistakes
+  produce a plausible number.
+- **`FUND_CURRENCY` is one constant** because it is two answers to one question
+  otherwise: what `Fund.currency_code` labels the figures, and the base `Rates`
+  translates into. A NAV translated into euros and labelled USD is wrong by the
+  rate and looks entirely ordinary.
 - **`AsOf<T>`** (`ratio-project`). Every read carries the journal prefix it was
   folded from, and there is no other way to get a number out — so a caller
   cannot pin the head while reading a lagging projection. `//tla:projection_
@@ -129,6 +178,20 @@ the conserved one, and the kernel never said it was.
   `//lean:audit_proofs_test` and would trade a checked theorem for a trusted
   compiler.
 - ⚠ **zsh does not word-split `$var`.** `R="bazel run -- "; $R foo` fails.
+- ⛔ **Two tests naming the same book wipe each other's directory.** Every helper
+  begins with `remove_dir_all` and tests run in PARALLEL, so a duplicated name
+  leaves ACTIVE pointing at a config blob that has just been deleted. It failed
+  about one run in three, in whichever test lost the race, reporting a
+  stored-config error unrelated to what either was testing. Book names must be
+  unique across the file; `tmp_root()` uses `TEST_TMPDIR` so a run cannot inherit
+  the previous one's wreckage either.
+- ⚠ **`--test_output=errors` hides a passing test's stdout, and a grep for
+  `"not found"` will not match `"not in types.ts"`.** Twice I read a test as
+  reporting less than it did. `//proto:mirrors_test` prints one line per
+  message; read the whole thing before concluding it missed something.
+- ⚠ **A number nothing reads is a number nothing checks.** `fx_rate` returned a
+  rate two orders of magnitude wrong for months. Its only consumer multiplied by
+  it and discarded the result to time the multiplication.
 
 ---
 
@@ -136,10 +199,13 @@ the conserved one, and the kernel never said it was.
 
 ```
 lots/sec   open lots      entries      MB   COLD BUILD   NAV STRIKE
-      20        9684        67792       0     323.9 ms       414 µs
+      20        9684        67792       0     323.9 ms       414 µs      ← before
      100       50213       351495       1        1.8 s       435 µs
      500      252843      1769905       9       11.4 s       403 µs
     2000     1022625      7158379      39       91.7 s       395 µs
+
+      20        9684        67792      19      497.8 ms       436 µs      ← now
+     100       50213       351495     ~99        3.0 s       409 µs
 ```
 
 `ratio bench` generates a fund and measures a period end. 100× the lots, NAV
@@ -149,10 +215,27 @@ strike unchanged.
 O(entries) and grows — an append-only log does not forget a closed lot. Only the
 strike off a maintained projection is flat.
 
+⚠ **THE COLD BUILD GOT ~1.5× SLOWER AND THE ENTRY COUNT DID NOT MOVE.** Every
+entry now carries a `trade_date` and every posting a `currency`, so the journal
+is 294 bytes an entry where it was around 200 — the same entries, more bytes to
+parse. The strike is unaffected, which is the property that matters, and the
+`MB` column above is now the journal on disk rather than the estimate it was.
+
+⛔ **AND THE 500 AND 2000 ROWS HAVE NOT BEEN RE-MEASURED.** They are the old
+numbers and are now understated. Do not quote them. Re-measuring is cheap for
+500 and about two minutes for 2000; issue #6 is the 20M run.
+
 ⚠ The generator sold at cost until the gain posting landed, so every disposal
 realized nothing and the gain account never moved — six lot methods and the whole
-relief layer running against a book where every gain was zero. If you add a
-scenario, check it exercises what you think it does.
+relief layer running against a book where every gain was zero.
+⚠ **It happened again, twice.** Trades carried no `trade_date`, so every lot had
+no acquisition date and the entire short/long split fell into `unclassified`;
+and every posting carried `currency: None`, so a book with three currencies in
+its entity master formed exactly one conservation group. Both features were
+built, shipped, and exercised by nothing. **If you add a scenario, check it
+exercises what you think it does** — and prefer a test that asserts BOTH sides
+appear, because a book that is entirely long-term tests the threshold no better
+than one that is entirely unclassified.
 
 ---
 
@@ -161,10 +244,30 @@ scenario, check it exercises what you think it does.
 | | |
 |---|---|
 | `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,Edges,Posting}`, `Actions/Factor`, `Closure`, `Exec` |
+| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days` — the administration agreement, as configuration |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
+| `crates/ratio-console` + `web/` | the console. ⛔ a web change needs `//crates/ratio` rebuilt |
 | `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9 |
+| `AGENTS.md` | the rules, for a person or a model. Replaces the two stale LLM guides |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.
+
+⛔ **AND A PROBE THAT GOES RED FOR THE WRONG REASON LOOKS IDENTICAL TO ONE DOING
+ITS JOB.** Adding a `CONSTANT` to `ReliefEngine.tla` made a neighbouring probe
+die with "the constant parameter MaxConfigs is not assigned a value" — still red,
+still passing as a probe, no longer reaching the model at all.
+
+    tla/probes.sh          runs all 13 and matches TLC's reason against the
+                           invariant each cfg claims. NOT a bazel test: each is
+                           a full model check, and 13 more on every commit is
+                           how a suite stops being run.
+    //tla:probes_test      the static half, and it DOES run in CI — every
+                           CONSTANT assigned, the claimed invariant named in the
+                           house form, listed so TLC is asked, and spelled the
+                           way the spec spells it.
+
+It found three probes that could not say what they claimed on its first run,
+including one naming an invariant that does not exist.
