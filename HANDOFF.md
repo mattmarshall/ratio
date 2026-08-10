@@ -211,9 +211,25 @@ lots/sec   open lots      entries      MB   COLD BUILD   NAV STRIKE
 `ratio bench` generates a fund and measures a period end. 100× the lots, NAV
 strike unchanged.
 
-⛔ **It reports two curves and both must be quoted.** Folding the journal is
-O(entries) and grows — an append-only log does not forget a closed lot. Only the
-strike off a maintained projection is flat.
+⛔ **It reports two curves and both must be quoted.** Folding the journal grows;
+only the strike off a maintained projection is flat.
+
+⛔ **AND THE FIRST CURVE IS NOT O(entries), THOUGH IT SAID SO HERE FOR MONTHS.**
+Holding entries constant at ~1.8M and raising fragmentation 500 → 1000 → 2000
+lots a position:
+
+| lots/position | entries | reliefs | parse | relieve | COLD BUILD |
+|---|---|---|---|---|---|
+| 500 | 1,769,907 | 758,529 | 8.2 s | 7.4 s | 20.2 s |
+| 2000 | 1,838,024 | 787,722 | 8.5 s | 31.1 s | 44.5 s |
+
+`parse` tracks ENTRIES. `relieve` tracks LOTS PER POSITION — 4× the
+fragmentation, 4.2× the time, over the SAME number of reliefs — because
+`relieve_by` does `lots.to_vec()` and sorts the whole holding on every sale.
+
+⛔ **SO #6 IS PLANNED AGAINST A CURVE THAT DOES NOT HOLD.** Its "~25 minutes of
+generation" extrapolates linearly in entries. A 20M-lot book is both more
+entries AND more fragmented, and the second term is the one that runs away.
 
 ⚠ **THE COLD BUILD GOT ~1.5× SLOWER AND THE ENTRY COUNT DID NOT MOVE.** Every
 entry now carries a `trade_date` and every posting a `currency`, so the journal

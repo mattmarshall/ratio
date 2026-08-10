@@ -259,6 +259,31 @@ impl Terms {
     }
 }
 
+/// Where a cold build's time actually went.
+///
+/// ⛔ MEASURED, BECAUSE EVERY UNMEASURED ANSWER TODAY HAS BEEN WRONG AT LEAST
+/// ONCE. The cold build was believed to be O(entries) and labelled that way in
+/// two places; holding entries constant and raising fragmentation 4× more than
+/// doubled it, so a term proportional to entries × lots-per-position dominates.
+/// This says which line that term is on rather than leaving it to be reasoned
+/// about.
+///
+/// ⚠ COARSE ON PURPOSE. `parse` and `fold` are timed once per `follow`, not per
+/// entry — seven million `Instant::now()` calls would be a measurement that
+/// changed what it measured. `relieve` is timed per SALE, which is the one
+/// place the extra resolution is worth its cost.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FoldCost {
+    /// Reading and deserializing the journal.
+    pub parse: std::time::Duration,
+    /// Folding the parsed entries into totals, positions, actions and lots.
+    pub fold: std::time::Duration,
+    /// Of `fold`, the part inside `relief::relieve_by`.
+    pub relieve: std::time::Duration,
+    /// How many reliefs that was.
+    pub reliefs: u64,
+}
+
 /// What a fund has realized, and how much of it is classified.
 ///
 /// ⛔ `unclassified` IS DERIVED, NOT ACCUMULATED: `gain − short − long`. The
@@ -378,6 +403,8 @@ pub struct Projection {
     /// contents are folded twice is not detectably wrong — the number is simply
     /// too big.
     at: usize,
+    /// Where the fold's time went. Accumulated across every `follow`.
+    cost: FoldCost,
     /// One copy of each instrument name and currency code this book mentions.
     ///
     /// ⛔ THE HOT PATH IS `key = (dim, instrument)`, BUILT PER POSTING. At four
@@ -541,7 +568,10 @@ impl Projection {
     /// fold the result as one.
     pub fn follow(&mut self, path: &std::path::Path) -> Result<usize> {
         let book = FileBook::open(path)?;
+        let started = std::time::Instant::now();
         let (fresh, now) = book.entries_since(self.read_to)?;
+        self.cost.parse += started.elapsed();
+        let folding = std::time::Instant::now();
         // ⛔ RESOLVE PER DISTINCT CONFIG, NOT PER ENTRY. Every entry names the
         // digest it was posted under and millions of them name the same one;
         // parsing that TOML per entry would put a config read on the hot path of
@@ -563,7 +593,13 @@ impl Projection {
         }
         self.at += n;
         self.read_to = now;
+        self.cost.fold += folding.elapsed();
         Ok(n)
+    }
+
+    /// Where the cold build's time went.
+    pub fn cost(&self) -> FoldCost {
+        self.cost
     }
 
     /// The terms a stored configuration sets for the lot engine.
@@ -723,7 +759,11 @@ impl Projection {
             };
             let method = terms.method;
             let held = self.lots.open.entry(key.clone()).or_default();
-            match relief::relieve_by(method, held, -qty) {
+            let relieving = std::time::Instant::now();
+            let relieved = relief::relieve_by(method, held, -qty);
+            self.cost.relieve += relieving.elapsed();
+            self.cost.reliefs += 1;
+            match relieved {
                 Ok(r) => {
                     // ⛔ THE POSITION AND THE LOT BOOK ARE TWO INDEPENDENT
                     // PATHS, AND NOTHING FORCES THEM TO AGREE. The aggregate
