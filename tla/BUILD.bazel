@@ -293,6 +293,30 @@ tla_check(
     deps = [":relief_engine"],
 )
 
+# ⛔ EVERY PROBE MUST BE ABLE TO SAY WHAT IT CLAIMS, and this is the only check
+# of that which runs in CI.
+#
+# A probe exists to FAIL, so a human reads FAILED as success — which means every
+# OTHER way of failing is indistinguishable from working. Adding a `CONSTANT` to
+# ReliefEngine.tla made StaleFactorRelief.cfg die with "the constant parameter
+# MaxConfigs is not assigned a value": still red, still looking like a probe
+# doing its job, and no longer reaching the model at all.
+#
+# ⚠ IT DOES NOT RUN TLC. It checks each probe assigns every constant, names the
+# invariant it breaks in the house form, lists that invariant so TLC is asked,
+# and spells it the way the spec does. Whether the flipped dial still CAUSES the
+# violation is `probes.sh`, which is a sweep somebody runs, not a test.
+sh_test(
+    name = "probes_test",
+    size = "small",
+    srcs = ["probes_test.sh"],
+    args = ["$(rootpath probes_test.py)", "$(rootpath BUILD.bazel)"],
+    data = ["BUILD.bazel", "probes_test.py"] + glob([
+        "*.tla",
+        "*.cfg",
+    ]),
+)
+
 # ⛔ The sale is relieved under the method in force when the engine reaches it,
 # rather than the one its own journal entry pinned. Unlike the factor probe
 # above this needs no race to go wrong — it is wrong on every sale posted under
