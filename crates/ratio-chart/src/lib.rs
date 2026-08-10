@@ -21,41 +21,62 @@ pub use generated::*;
 pub use ratio_kernel::*;
 
 /// Total debits over a transaction's postings (`Ratio.Chart.debits`).
-pub fn debits(postings: &[Posting]) -> i64 {
-    postings.iter().map(|p| pos_part(p.amount)).sum()
+///
+/// ⛔ ACCUMULATED IN `i128`. Two things wrap here and neither is exotic. The
+/// SUM adds one magnitude per posting, and `neg_part` is `-a`, which overflows
+/// at `i64::MIN` — `Ratio.Bounded.the_range_is_not_symmetric`, and there is
+/// exactly one input at which negation is not negation.
+///
+/// ⚠ The emitted `pos_part`/`neg_part` are still the proved functions and are
+/// still correct over `Int`. What is widened is the ACCUMULATION, which no
+/// theorem was ever about.
+pub fn debits(postings: &[Posting]) -> i128 {
+    postings.iter().map(|p| (p.amount as i128).max(0)).sum()
 }
 
 /// Total credits over a transaction's postings, as a positive number
 /// (`Ratio.Chart.credits`).
-pub fn credits(postings: &[Posting]) -> i64 {
-    postings.iter().map(|p| neg_part(p.amount)).sum()
+pub fn credits(postings: &[Posting]) -> i128 {
+    postings.iter().map(|p| -(p.amount as i128).min(0)).sum()
 }
 
 /// The trial balance of a transaction's postings.
-pub fn trial_balance(postings: &[Posting]) -> TrialBalance {
-    TrialBalance {
-        debits: debits(postings),
-        credits: credits(postings),
-    }
+///
+/// ⚠ REFUSES A FIGURE IT CANNOT REPORT rather than truncating one. A trial
+/// balance is read to decide whether a book ties; a truncated one could tie
+/// when the book does not, which is the same failure the kernel's balance check
+/// had.
+pub fn trial_balance(postings: &[Posting]) -> anyhow::Result<TrialBalance> {
+    Ok(TrialBalance {
+        debits: i64::try_from(debits(postings))
+            .map_err(|_| anyhow::anyhow!("total debits do not fit in 64 bits"))?,
+        credits: i64::try_from(credits(postings))
+            .map_err(|_| anyhow::anyhow!("total credits do not fit in 64 bits"))?,
+    })
 }
 
 /// The trial balance of a whole ledger — the monoidal fold of the log, summed
 /// per side. Conservation is closed under the fold (`Ratio.Core.ledger_conserves`),
 /// so if every transaction balances then so does this.
-pub fn ledger_trial_balance(log: &[Transaction]) -> TrialBalance {
-    log.iter().fold(
-        TrialBalance {
-            debits: 0,
-            credits: 0,
-        },
-        |acc, txn| {
-            let tb = trial_balance(&txn.postings);
-            TrialBalance {
-                debits: acc.debits + tb.debits,
-                credits: acc.credits + tb.credits,
-            }
-        },
-    )
+///
+/// ⛔ THIS IS THE ONE THAT ACTUALLY GOES. A per-transaction trial balance is
+/// bounded by one entry; this adds every posting in the LOG, so it grows with
+/// history rather than with the fund. Folding `i64` here wraps on a long-lived
+/// book, and a wrapped trial balance can TIE when the book does not — which is
+/// the same failure the kernel's balance check had, one level up.
+pub fn ledger_trial_balance(log: &[Transaction]) -> anyhow::Result<TrialBalance> {
+    let mut d: i128 = 0;
+    let mut c: i128 = 0;
+    for txn in log {
+        d += debits(&txn.postings);
+        c += credits(&txn.postings);
+    }
+    Ok(TrialBalance {
+        debits: i64::try_from(d)
+            .map_err(|_| anyhow::anyhow!("this ledger's total debits do not fit in 64 bits"))?,
+        credits: i64::try_from(c)
+            .map_err(|_| anyhow::anyhow!("this ledger's total credits do not fit in 64 bits"))?,
+    })
 }
 
 /// Whether a posting sits on the side its account type calls normal.
@@ -99,7 +120,7 @@ mod tests {
         assert!(transaction_is_balanced(&Transaction {
             postings: postings.clone()
         }));
-        let tb = trial_balance(&postings);
+        let tb = trial_balance(&postings).unwrap();
         assert_eq!(tb.debits, 500);
         assert_eq!(tb.credits, 500);
         assert!(trial_balance_ties(tb));
@@ -107,7 +128,7 @@ mod tests {
 
     #[test]
     fn an_empty_book_ties() {
-        assert!(trial_balance_ties(trial_balance(&[])));
+        assert!(trial_balance_ties(trial_balance(&[]).unwrap()));
     }
 
     #[test]
@@ -117,7 +138,7 @@ mod tests {
         assert!(transaction_is_balanced(&Transaction {
             postings: postings.clone()
         }));
-        assert!(trial_balance_ties(trial_balance(&postings)));
+        assert!(trial_balance_ties(trial_balance(&postings).unwrap()));
     }
 
     #[test]
@@ -128,7 +149,7 @@ mod tests {
         assert!(!transaction_is_balanced(&Transaction {
             postings: postings.clone()
         }));
-        assert!(!trial_balance_ties(trial_balance(&postings)));
+        assert!(!trial_balance_ties(trial_balance(&postings).unwrap()));
     }
 
     #[test]
@@ -145,7 +166,7 @@ mod tests {
                 postings: vec![p(3, 7), p(4, -3), p(5, -4)],
             },
         ];
-        let tb = ledger_trial_balance(&log);
+        let tb = ledger_trial_balance(&log).unwrap();
         assert_eq!(tb.debits, 1_257);
         assert_eq!(tb.credits, 1_257);
         assert!(trial_balance_ties(tb));

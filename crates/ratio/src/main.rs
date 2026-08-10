@@ -721,7 +721,7 @@ fn closure(book: PathBuf, args: &[&str]) -> Result<()> {
         Ok(c) => (c, None),
         Err(e) => (Calibration::measured(), Some(format!("{e:#}"))),
     };
-    let e = estimate(d, &cal);
+    let e = estimate(d, &cal)?;
 
     println!("A PERIOD END OF THIS SHAPE");
     println!();

@@ -29,7 +29,10 @@ rust_library(
     crate_name = "ratio_chart",
     crate_root = "src/lib.rs",
     edition = "2021",
-    deps = ["//crates/ratio-kernel"],
+    deps = [
+        "//crates/ratio-kernel",
+        "@crates//:anyhow",
+    ],
 )
 
 rust_test(

@@ -186,10 +186,31 @@ impl Estimate {
 }
 
 /// Cost a period end.
-pub fn estimate(d: Dials, c: &Calibration) -> Estimate {
+///
+/// ⚠ THE DIALS ARE BOUNDS-CHECKED, and this is the mildest of the overflow
+/// findings — deliberately noted as such. `lots` is `securities × lots_per` and
+/// `action_cost` is `open_actions × lots_per`, so a caller who types enough
+/// zeroes into `ratio closure` gets a wrapped product. A wrong answer here is
+/// an embarrassing ESTIMATE, not a wrong book, which is why it is guarded last
+/// and why the guard refuses rather than saturating: an estimate that silently
+/// clamps is one somebody quotes.
+pub fn estimate(d: Dials, c: &Calibration) -> Result<Estimate> {
+    use ratio_common::checked;
+    checked::mul(d.securities, d.lots_per, "open tax lots")?;
+    checked::mul(d.open_actions, d.lots_per, "the cost of the open actions")?;
+    checked::add(
+        checked::add(d.securities, d.currencies, "the chart and the currencies")?,
+        checked::add(
+            checked::mul(d.open_actions, d.lots_per, "the cost of the open actions")?,
+            d.capital_txns,
+            "the actions and the capital",
+        )?,
+        "what a period end reads",
+    )?;
+
     let reads = nav_cost(d);
     let factored = factor_nav_cost(d);
-    Estimate {
+    Ok(Estimate {
         dials: d,
         factored_reads: factored,
         factored_nanos: factored.saturating_mul(c.nanos_per_read),
@@ -201,7 +222,7 @@ pub fn estimate(d: Dials, c: &Calibration) -> Estimate {
         open_lots: lots(d),
         nanos: reads.saturating_mul(c.nanos_per_read),
         provenance: c.provenance.clone(),
-    }
+    })
 }
 
 /// Measure this machine's read rate against a real book.
@@ -351,12 +372,21 @@ mod tests {
     }
 
     #[test]
+    fn dials_that_would_wrap_are_refused_rather_than_estimated() {
+        // ⚠ The mildest of the overflow findings, and still worth refusing: an
+        // estimate that silently clamps is one somebody quotes.
+        let absurd = Dials { securities: i64::MAX / 2, lots_per: 4, ..TRACKER };
+        let err = estimate(absurd, &Calibration::measured()).unwrap_err();
+        assert!(format!("{err:#}").contains("64 bits"), "{err:#}");
+    }
+
+    #[test]
     fn on_a_quiet_day_the_two_models_agree_exactly() {
         // ⚠ The redesign removes a CLIFF, and a cliff is not a slope. Anyone
         // quoting it as "the NAV got faster" has it backwards.
         assert_eq!(nav_cost(TRACKER), factor_nav_cost(TRACKER));
 
-        let e = estimate(TRACKER, &Calibration::measured());
+        let e = estimate(TRACKER, &Calibration::measured()).unwrap();
         assert_eq!(e.reads, e.factored_reads);
         assert_eq!(e.nanos, e.factored_nanos);
     }
@@ -478,7 +508,7 @@ mod tests {
 
     #[test]
     fn an_estimate_carries_where_its_rate_came_from() {
-        let e = estimate(TRACKER, &Calibration::measured());
+        let e = estimate(TRACKER, &Calibration::measured()).unwrap();
         assert!(e.provenance.contains("FLOOR"), "a floor is named as a floor");
         // ⛔ 503 reads at 250ns is 126 µs. As `0 ms` it reads as broken.
         assert_eq!(e.nanos, 503 * 4_436);

@@ -426,7 +426,7 @@ impl FileBook {
             .iter()
             .flat_map(|e| e.postings.iter().map(|p| Posting::from(p)))
             .collect();
-        Ok(trial_balance(&postings))
+        trial_balance(&postings)
     }
 
     /// Value and quantity per (account, instrument), plus what is NOT
