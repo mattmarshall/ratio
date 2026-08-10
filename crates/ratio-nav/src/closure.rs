@@ -31,8 +31,38 @@ use std::time::Instant;
 
 pub use crate::generated::{
     action_cost, capital_cost, factor_action_cost, factor_nav_cost, fx_cost, lots, mark_cost,
-    nav_cost, per_share, Dials, PerShare,
+    nav_cost, Dials, PerShare,
 };
+
+/// Net asset value per unit in issue, and what the division left over.
+///
+/// ⛔ THE EMITTED `per_share` PANICS ON TWO INPUTS, MEASURED:
+///
+/// ```text
+/// per_share(100, 0)     PANIC — attempt to divide by zero
+/// per_share(MIN, -1)    PANIC — attempt to divide with overflow
+/// ```
+///
+/// Neither is exotic. A fund with no units in issue is every fund on the day it
+/// is established, and Rust's `div_euclid` panics on a zero divisor in EVERY
+/// build profile — so this was a crash on the NAV path, not a wrong number.
+///
+/// `Ratio.Closure.residual_is_accounted` is stated over `Int`, where both of
+/// these are ordinary questions with ordinary answers. That is the gap
+/// `Ratio.Bounded` names: the theorem was always assuming the operation
+/// answered at all, and nobody had written the hypothesis down.
+///
+/// ⚠ The emitted function is no longer re-exported. It is still the proved
+/// arithmetic and still correct under its precondition — but a caller reaching
+/// for `per_share` should get the one that cannot crash, and leaving both
+/// visible under one name is how the wrong one gets picked.
+pub fn per_share(nav: i64, units: i64) -> anyhow::Result<PerShare> {
+    use ratio_common::checked;
+    Ok(PerShare {
+        per_unit: checked::div_euclid(nav, units, "net asset value per unit")?,
+        residual: checked::rem_euclid(nav, units, "the per-unit residual")?,
+    })
+}
 
 /// Nanoseconds per read.
 ///
@@ -346,7 +376,7 @@ mod tests {
         // ⛔ THE ONE PLACE RUST AND LEAN DISAGREE BY DEFAULT, pinned on both
         // sides. `Ratio.Closure` has `perShare (-7) 3 = (-3, 2)`; Rust's own
         // `/` and `%` would give `(-2, -1)`.
-        let p = per_share(-7, 3);
+        let p = per_share(-7, 3).unwrap();
         assert_eq!((p.per_unit, p.residual), (-3, 2), "Euclidean, as Lean divides");
         assert_ne!((-7i64 / 3, -7i64 % 3), (p.per_unit, p.residual), "Rust's own operators differ");
 
@@ -356,8 +386,14 @@ mod tests {
         assert_eq!(3 * (-7i64 / 3) + (-7i64 % 3), -7);
 
         // A negative NAV is not hypothetical, and units in issue stay positive.
-        let ordinary = per_share(1000, 3);
+        let ordinary = per_share(1000, 3).unwrap();
         assert_eq!((ordinary.per_unit, ordinary.residual), (333, 1));
+
+        // ⛔ AND THE TWO THAT USED TO PANIC. `Ratio.Bounded.a_zero_divisor_is_
+        // refused` and `the_one_division_that_does_not_fit`.
+        let err = per_share(100, 0).unwrap_err();
+        assert!(format!("{err:#}").contains("no answer, not a large one"), "{err:#}");
+        assert!(per_share(i64::MIN, -1).is_err(), "the one division that does not fit");
     }
 
     pub(super) fn book_with(n: usize, name: &str) -> std::path::PathBuf {

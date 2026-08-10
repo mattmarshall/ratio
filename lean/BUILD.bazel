@@ -206,6 +206,25 @@ lean_emit(
 # The cost model. Emitted rather than rewritten because the whole value of the
 # answer is that it IS `Ratio.Closure` — a hand-written `nav_cost` in Rust would
 # be a claim about the proofs instead of the thing they are about.
+# ⛔ The hypothesis every theorem in this repo was assuming.
+#
+# Every proof here is over Lean's unbounded `Int`; every emitted function runs on
+# `i64`. Nothing had written down what happens in the gap, and the answer is
+# worse than a crash: 4e18 * 3 wraps NEGATIVE, and `rem_euclid 2` of the wrapped
+# value is 0 — so a divisibility guard says YES about a product that never
+# happened, and the proof cannot see it because in `Int` the multiplication
+# simply happened.
+#
+# Three are live on the emitted surface: `per_share(x, 0)` PANICS, `per_share(
+# MIN, -1)` PANICS, and `money_neg(MIN)` returns its argument unchanged in a
+# kernel whose subject is that debits and credits cancel.
+lean_test(
+    name = "bounded_proof_test",
+    size = "small",
+    srcs = ["Ratio/Bounded.lean"],
+    entry = "Ratio/Bounded.lean",
+)
+
 # The lots that are NOT ordinary.
 #
 # ⛔ A lot holding zero units and carrying cost is CONSUMED by `relieveFifo` —

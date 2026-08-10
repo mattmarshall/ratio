@@ -7,6 +7,10 @@
 //! (`//lean:money_proof_test`). Hand-written Rust (idiomatic wrappers, trait
 //! impls) belongs here in `lib.rs`, alongside the generated module.
 
+/// Arithmetic that agrees with the proof or declines to answer — the Rust side
+/// of `Ratio.Bounded`, and the hypothesis every theorem in this repo assumes.
+pub mod checked;
+
 mod generated;
 pub use generated::*;
 

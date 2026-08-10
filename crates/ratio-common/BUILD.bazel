@@ -22,6 +22,7 @@ rust_library(
     name = "ratio-common",
     srcs = [
         "src/lib.rs",
+        "src/checked.rs",
         ":generated_rs",
     ],
     crate_name = "ratio_common",
