@@ -117,6 +117,13 @@ pub struct Projection {
     positions: Positions,
     totals: Totals,
     actions: Actions,
+    /// How far into the journal FILE this has read.
+    ///
+    /// ⛔ BYTES, NOT ENTRIES, and the two are not interchangeable. `at` says how
+    /// many entries were folded; this says where to resume reading without
+    /// parsing what came before. A projection that tracked only `at` would have
+    /// to read and discard the whole journal to find entry `at + 1`.
+    read_to: u64,
     /// Entries folded so far.
     ///
     /// ⛔ PRIVATE, and there is no setter. `advance` moves it by exactly what
@@ -154,35 +161,7 @@ impl Projection {
     /// number that says so.
     pub fn advance(&mut self, journal: &[JournalEntry]) -> usize {
         for entry in journal.iter().skip(self.at) {
-            if let Some(a) = &entry.announcement {
-                self.actions.announced.push((
-                    a.instrument.clone(),
-                    a.ex_date.clone(),
-                    a.id.clone(),
-                    a.numerator,
-                    a.denominator,
-                ));
-            }
-            if let Some(id) = entry.id.strip_prefix("action-") {
-                self.actions.rewritten.insert(id.to_string());
-            }
-            for p in &entry.postings {
-                *self.totals.by_dim.entry(p.dim).or_default() += p.amount;
-                if p.amount >= 0 {
-                    self.totals.debits += p.amount;
-                } else {
-                    self.totals.credits += -p.amount;
-                }
-                match &p.instrument {
-                    Some(i) => {
-                        let slot =
-                            self.positions.held.entry((p.dim, i.clone())).or_insert((0, 0));
-                        slot.0 += p.amount;
-                        slot.1 += p.quantity.unwrap_or(0);
-                    }
-                    None => *self.positions.rest.entry(p.dim).or_default() += p.amount,
-                }
-            }
+            self.fold(entry);
         }
         let folded = journal.len().saturating_sub(self.at);
         // ⛔ `max`, NOT `= journal.len()`. A SHORTER journal must not rewind the
@@ -200,6 +179,44 @@ impl Projection {
         folded
     }
 
+    /// Fold ONE entry into the totals, the positions, and the action index.
+    ///
+    /// ⛔ THE ONLY PLACE AN ENTRY IS FOLDED. `advance` takes a slice and
+    /// `follow` reads bytes off disk, and both go through here — two folds
+    /// would be two chances to disagree about what an entry means, and the
+    /// disagreement would be a NAV that changed depending on how the projection
+    /// happened to be brought up to date.
+    fn fold(&mut self, entry: &JournalEntry) {
+        if let Some(a) = &entry.announcement {
+            self.actions.announced.push((
+                a.instrument.clone(),
+                a.ex_date.clone(),
+                a.id.clone(),
+                a.numerator,
+                a.denominator,
+            ));
+        }
+        if let Some(id) = entry.id.strip_prefix("action-") {
+            self.actions.rewritten.insert(id.to_string());
+        }
+        for p in &entry.postings {
+            *self.totals.by_dim.entry(p.dim).or_default() += p.amount;
+            if p.amount >= 0 {
+                self.totals.debits += p.amount;
+            } else {
+                self.totals.credits += -p.amount;
+            }
+            match &p.instrument {
+                Some(i) => {
+                    let slot = self.positions.held.entry((p.dim, i.clone())).or_insert((0, 0));
+                    slot.0 += p.amount;
+                    slot.1 += p.quantity.unwrap_or(0);
+                }
+                None => *self.positions.rest.entry(p.dim).or_default() += p.amount,
+            }
+        }
+    }
+
     /// Build from scratch.
     ///
     /// Discards everything first, so this is a rebuild rather than a second
@@ -212,7 +229,32 @@ impl Projection {
 
     /// Open a book and build a projection of it.
     pub fn of_book(path: &std::path::Path) -> Result<Self> {
-        Ok(Self::rebuild(&FileBook::open(path)?.entries()?))
+        let mut p = Self::new();
+        p.follow(path)?;
+        Ok(p)
+    }
+
+    /// Fold whatever has been appended since this last read. Returns how many.
+    ///
+    /// ⭐ THIS IS WHAT MAKES THE FLAT CURVE TRUE IN A RUNNING PROCESS. A
+    /// projection that called `entries()` would parse the whole journal on
+    /// every call just to learn nothing had changed; this seeks to where it
+    /// stopped and reads forward. Calling it on an unchanged book costs a
+    /// `stat` and a seek.
+    ///
+    /// ⚠ It can FAIL, and the failure is worth having. A journal shorter than
+    /// the offset means the file was replaced — a different book at the same
+    /// path — and resuming from a stale offset would splice two histories and
+    /// fold the result as one.
+    pub fn follow(&mut self, path: &std::path::Path) -> Result<usize> {
+        let (fresh, now) = FileBook::open(path)?.entries_since(self.read_to)?;
+        let n = fresh.len();
+        for entry in &fresh {
+            self.fold(entry);
+        }
+        self.at += n;
+        self.read_to = now;
+        Ok(n)
     }
 
     /// The positions, as of the prefix folded.
@@ -474,6 +516,60 @@ mod tests {
         grown.push(js[0].clone());
         assert_eq!(p.advance(&grown), 1, "only the new entry");
         assert_eq!(p.prefix(), 4);
+    }
+
+    fn append_one(d: &std::path::Path, id: &str) {
+        let mut b = FileBook::open(d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        b.append(&JournalEntry {
+            id: id.into(),
+            memo: "later".into(),
+            config: c,
+            postings: vec![
+                PostingRecord { dim: 1, amount: 7, instrument: Some("vti".into()), quantity: Some(1) },
+                PostingRecord::new(2, -7),
+            ],
+            announcement: None,
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn following_a_book_reads_only_what_was_appended() {
+        // ⭐ THE PIECE THAT MAKES MAINTENANCE REAL. `entries()` parses the whole
+        // journal, so a cached projection built on it pays O(journal) just to
+        // learn nothing changed — a rebuild with a cache in front of it.
+        // `follow` seeks to where it stopped.
+        let d = book("follow", &[("vti", 10, 1), ("voo", 20, 2)]);
+        let mut p = Projection::new();
+        assert_eq!(p.follow(&d).unwrap(), 2, "first pass folds both");
+        assert_eq!(p.follow(&d).unwrap(), 0, "an unchanged book folds nothing");
+
+        append_one(&d, "later-1");
+        assert_eq!(p.follow(&d).unwrap(), 1, "only the new entry");
+        assert_eq!(p.prefix(), 3);
+
+        // And it lands exactly where a cold build would.
+        assert_eq!(p.positions().value, &Projection::of_book(&d).unwrap().positions().value.clone());
+        let assets = |dim: i64| dim == 1 || dim == 2;
+        assert_eq!(p.nav(&assets).value, Projection::of_book(&d).unwrap().nav(&assets).value);
+    }
+
+    #[test]
+    fn a_journal_that_shrank_is_refused_rather_than_spliced() {
+        // ⛔ An append-only log does not shrink, so a shorter file at the same
+        // path is a DIFFERENT BOOK. Resuming from the stale offset would splice
+        // two histories and fold the result as one — every figure downstream
+        // would be built from a mixture nothing could reproduce.
+        let d = book("shrank", &[("vti", 10, 1), ("voo", 20, 2), ("bnd", 30, 3)]);
+        let mut p = Projection::new();
+        p.follow(&d).unwrap();
+
+        // A different, shorter book at the same path.
+        let _ = book("shrank", &[("vti", 10, 1)]);
+        let err = p.follow(&d).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("does not shrink"), "{msg}");
     }
 
     #[test]

@@ -273,6 +273,15 @@ pub trait Journal {
     fn append_all(&mut self, entries: &[JournalEntry]) -> Result<()>;
     /// Every entry, in the order they were posted.
     fn entries(&self) -> Result<Vec<JournalEntry>>;
+
+    /// Entries appended after `offset` bytes, and where the journal now ends.
+    ///
+    /// ⛔ THE POINT OF THE BYTE OFFSET IS THAT IT DOES NOT READ WHAT IT SKIPS.
+    /// `entries()` reads and parses the whole file, so a "maintained"
+    /// projection built on it would still pay O(journal) just to discover
+    /// nothing had changed — which is not maintenance, it is a rebuild with a
+    /// cache in front of it.
+    fn entries_since(&self, offset: u64) -> Result<(Vec<JournalEntry>, u64)>;
 }
 
 /// A book on disk.
@@ -608,6 +617,46 @@ impl Journal for FileBook {
             f.write_all(buf.as_bytes()).context("appending to journal")?;
         }
         Ok(())
+    }
+
+    fn entries_since(&self, offset: u64) -> Result<(Vec<JournalEntry>, u64)> {
+        use std::io::{BufRead, BufReader, Seek, SeekFrom};
+        let path = self.journal_path();
+        if !path.exists() {
+            return Ok((Vec::new(), 0));
+        }
+        let mut f = fs::File::open(&path).with_context(|| format!("opening {}", path.display()))?;
+        let end = f.metadata()?.len();
+
+        // ⚠ A SHORTER FILE THAN THE OFFSET MEANS THE JOURNAL WAS REPLACED, not
+        // that nothing happened. An append-only log does not shrink, so this is
+        // a different book at the same path — reading from the stale offset
+        // would splice two histories together and fold the result as one.
+        if offset > end {
+            bail!(
+                "the journal at {} is {end} bytes and was read to {offset} — an append-only \
+                 log does not shrink, so this is not the book that was read",
+                path.display()
+            );
+        }
+        f.seek(SeekFrom::Start(offset)).context("seeking the journal")?;
+
+        let mut out = Vec::new();
+        let mut consumed = offset;
+        for (i, line) in BufReader::new(f).lines().enumerate() {
+            let line = line.with_context(|| format!("{} after byte {offset}", path.display()))?;
+            let len = line.len() as u64 + 1; // the newline `lines()` stripped
+            if line.trim().is_empty() {
+                consumed += len;
+                continue;
+            }
+            out.push(
+                serde_json::from_str(&line)
+                    .with_context(|| format!("{} line {} after byte {offset}", path.display(), i + 1))?,
+            );
+            consumed += len;
+        }
+        Ok((out, consumed))
     }
 
     fn entries(&self) -> Result<Vec<JournalEntry>> {
