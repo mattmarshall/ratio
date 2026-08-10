@@ -1807,6 +1807,10 @@ mod tests {
             "Unclassified",
             "Basis relieved",
             "no trade date",
+            // ⛔ THE SCALE ARGUMENT. It is the strongest claim in the product
+            // and it lived only in a benchmark's terminal output.
+            "Tax lots",
+            "the fold that",
         ] {
             assert!(
                 CONSOLE.contains(needle),

@@ -444,3 +444,9 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .qual{margin-top:6px;padding:7px 10px;border-radius:7px;font-size:12px;
   line-height:1.5;color:var(--warn);background:var(--raised);
   box-shadow:inset 0 0 0 1px var(--warn)}
+
+/* The scale row: the two numbers the whole argument is, and the strike beside
+   them. Set apart from the terms above it because it is a MEASUREMENT, not a
+   term somebody agreed to. */
+.lt.scale{background:var(--accent-soft)}
+.lt.scale .ltv{color:var(--accent)}

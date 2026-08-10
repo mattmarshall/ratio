@@ -1340,7 +1340,15 @@ impl Console {
             )
         };
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
-        let nav: i64 = self.projection(&id)?.nav(&is_asset_or_liability, &rates)?.value.0;
+        let proj = self.projection(&id)?;
+        // ⛔ TIMED AROUND THE FOLD, NOT AROUND THE REQUEST. This is the same
+        // `Projection::nav` call `ratio bench` times, so what it reports is the
+        // maintained strike — O(chart) — and not the cold build, which is
+        // O(entries) and grows forever. A screen showing one as the other is
+        // the overclaim bench exists to make hard.
+        let struck_at = std::time::Instant::now();
+        let nav: i64 = proj.nav(&is_asset_or_liability, &rates)?.value.0;
+        let nav_strike = struck_at.elapsed();
 
         let breaks = self.breaks_for(&path, &id)?;
         let open: Vec<&pb::Break> = breaks.iter().filter(|k| !k.explained).collect();
@@ -1380,10 +1388,9 @@ impl Console {
         };
         // The same rates the NAV above was struck at — one read, so the two
         // figures on this screen cannot have been translated differently.
-        let realized = self
-            .projection(&id)
+        let realized = proj
+            .realized(set.as_ref().and_then(|s| s.chart_roles), &rates)
             .ok()
-            .and_then(|p| p.realized(set.as_ref().and_then(|s| s.chart_roles), &rates).ok())
             .and_then(|r| r.value);
 
         Ok(pb::Fund {
@@ -1407,6 +1414,18 @@ impl Console {
                 .unwrap_or_default(),
             lot_method_declared: set.as_ref().is_some_and(|s| s.lot_method.is_some()),
             long_term_days: set.as_ref().map(|s| s.long_term_days).unwrap_or(0),
+            // The scale argument, as two numbers a reader can put beside each
+            // other: what a NAV reads, and what it does not.
+            open_lot_count: proj.open_lots(),
+            position_count: proj.positions().value.held.len() as i64,
+            // The generated crate's own Duration, for the same reason
+            // `to_pb` uses the generated Timestamp: rules_rust_prost compiles
+            // the well-known types itself, so this and `prost_types::Duration`
+            // are distinct types with one name and one shape.
+            nav_strike: Some(ratio_proto::duration_proto::google::protobuf::Duration {
+                seconds: nav_strike.as_secs() as i64,
+                nanos: nav_strike.subsec_nanos() as i32,
+            }),
             realized_gain: realized.map(|r| r.gain.to_string()).unwrap_or_default(),
             basis_relieved: realized.map(|r| r.basis.to_string()).unwrap_or_default(),
             short_term_gain: realized.map(|r| r.short_term.to_string()).unwrap_or_default(),

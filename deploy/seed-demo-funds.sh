@@ -50,4 +50,23 @@ B="$OUT/northstar-multi-strategy"
 #    Which is every fund at nine in the morning.
 "$RATIO" init --book "$OUT/calderwood-income" >/dev/null
 
-echo "seeded 3 funds at $OUT"
+# ── 4. A fund with twenty years of trading behind it ───────────────────────
+#
+# ⛔ THE ONE THAT EXERCISES THE ENGINE, and until now nothing did. The three
+# books above are reconciliation books: a dozen entries each, three open tax
+# lots between them, no chart roles, one currency. Every figure the lot engine
+# produces — the method in force, the realized gain, its split by holding
+# period, the multi-currency NAV, the lots behind a position — was built,
+# deployed, and invisible on the demo, because no book on it had any lots.
+#
+# ⚠ AND THE SCALE ARGUMENT WAS UNSHOWABLE FOR THE SAME REASON. "A NAV does not
+# read the tax lots" is a claim about a fund with a lot of them.
+#
+# The dials are the ones `ratio bench` measures, so the fund on the screen and
+# the fund in the benchmark are the same fund. ⚠ Kept modest deliberately: the
+# journal is copied into a Lambda's /tmp on every cold start, and /tmp is 512 MB.
+"$RATIO" gen --book "$OUT/ashcombe-global-equity" \
+  --securities 20 --lots-per 40 --currencies 3 >/dev/null
+"$RATIO" strike --book "$OUT/ashcombe-global-equity" >/dev/null
+
+echo "seeded 4 funds at $OUT"

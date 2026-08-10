@@ -1,0 +1,23 @@
+package(default_visibility = ["//visibility:public"])
+
+# The demo has to exercise the engine.
+#
+# ⛔ IT DID NOT, AND NOTHING NOTICED. The seeded funds were three reconciliation
+# books with three open tax lots between them, no chart roles and one currency,
+# so every figure the lot engine produces was deployed and invisible. The deploy
+# smoke test passed the whole time — it checks that the site serves a book, not
+# that the book shows anything.
+#
+# ⚠ This asserts what the demo DEMONSTRATES. A seed script that exits 0 and
+# produces a fund with nothing in it is precisely how the gap opened.
+sh_test(
+    name = "seed_test",
+    size = "small",
+    srcs = ["seed_test.sh"],
+    args = ["$(rootpath //crates/ratio)"],
+    data = [
+        "seed-demo-book.sh",
+        "seed-demo-funds.sh",
+        "//crates/ratio",
+    ],
+)

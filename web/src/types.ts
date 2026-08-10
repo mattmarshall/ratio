@@ -73,6 +73,24 @@ export interface Fund {
   unclassifiedGain: Int64;
   /** Days held for a gain to be long-term. A jurisdiction's number, not 365. */
   longTermDays: Int64;
+  /**
+   * ⛔ THE SCALE ARGUMENT, AS TWO NUMBERS SIDE BY SIDE. A position is a chart
+   * entry and its lots are a trading history — striking a NAV touches the first
+   * and not the second, and a reader should be able to see that rather than be
+   * told it.
+   */
+  openLotCount: Int64;
+  positionCount: Int64;
+  /**
+   * How long the fold that strikes the NAV took — proto3 renders a Duration as
+   * seconds with an `s` suffix, e.g. `"0.000005291s"`.
+   *
+   * ⛔ THE FOLD, NOT THE WHOLE PERIOD END: it excludes marking to market, which
+   * grows with the chart. And the MAINTAINED fold, never the cold build — two
+   * curves, and quoting one as the other is the overclaim `ratio bench` exists
+   * to make hard. Measured on this request, so it carries live-process noise.
+   */
+  navStrike: string;
 }
 
 export interface BreakPosting {

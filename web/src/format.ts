@@ -42,6 +42,24 @@ export function gain(minor: string): string {
   return money(minor.startsWith("-") ? minor.slice(1) : `-${minor}`);
 }
 
+/**
+ * A proto3 Duration as a figure a person reads — `"412 µs"`, `"1.4 ms"`.
+ *
+ * ⚠ Parsed as a Number, unlike everything else here, and that is safe for the
+ * reason the rest is not: this is a DURATION, not money. It is already
+ * approximate, nobody is paid on it, and a nanosecond count stays exact in a
+ * double until well past a century.
+ */
+export function micros(duration: string): string {
+  // proto3 canonical JSON: seconds with an `s` suffix, e.g. "0.000005291s".
+  const n = Number(duration.replace(/s$/, "")) * 1_000_000_000;
+  if (!Number.isFinite(n) || n < 0) return "—";
+  if (n < 1_000) return `${n} ns`;
+  if (n < 1_000_000) return `${Math.round(n / 1_000)} µs`;
+  if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(1)} ms`;
+  return `${(n / 1_000_000_000).toFixed(1)} s`;
+}
+
 /** Compare two minor-unit strings by magnitude, without parsing either. */
 export function absCompare(a: string, b: string): number {
   const x = a.replace("-", "").replace(/^0+/, "");

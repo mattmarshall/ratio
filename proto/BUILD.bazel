@@ -23,6 +23,7 @@ aip_proto_library(
     # still needs a declared dep even though protoc bundles it.
     deps = [
         "@googleapis//google/type:date_proto",
+        "@protobuf//:duration_proto",
         "@protobuf//:timestamp_proto",
     ],
 )

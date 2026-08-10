@@ -34,6 +34,7 @@ import {
   STATE_LABEL,
   count,
   gain,
+  micros,
   money,
 } from "./format.js";
 import type {
@@ -945,9 +946,29 @@ function LotTerms({ fund }: { fund: Fund }) {
   // say what it realized, and zero is a claim that it realized nothing.
   if (!fund.lotMethod) return null;
   const known = fund.realizedGain !== "";
+  const lots = BigInt(fund.openLotCount);
 
   return (
     <section className="lotterms" aria-label="Lot method and realized gain">
+      {/* ⛔ THE SCALE ARGUMENT, WHERE SOMEBODY CAN SEE IT. `Ratio.Closure.
+          factored_nav_never_reads_the_lots` says striking a NAV touches the
+          chart and not the trading history. Until now the only place those two
+          numbers appeared together was a benchmark's terminal output, so the
+          claim could be read but not observed.
+
+          ⚠ The strike time is the maintained fold, NOT the cold build. Two
+          curves, and quoting one as the other is the overclaim `ratio bench` is
+          shaped to make hard — so the row says which it is. */}
+      {lots > 0n ? (
+        <div className="lt scale">
+          <span className="ltk">Tax lots</span>
+          <span className="ltv num strong">{count(fund.openLotCount)}</span>
+          <span className="at">
+            behind {count(fund.positionCount)} positions — and the fold that
+            strikes the NAV read none of them, in {micros(fund.navStrike)}
+          </span>
+        </div>
+      ) : null}
       {/* ⛔ THE CAVEAT IS NOT COSMETIC. This row said "a term of the
           administration agreement" whatever the configuration contained, and on
           a book that declares no method it asserted an election nobody made —

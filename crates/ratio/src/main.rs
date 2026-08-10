@@ -59,6 +59,9 @@ usage:
   ratio action ID INST N-for-M --ex-date YYYY-MM-DD
                                        apply a split; refuses a second time
   ratio stale [--book DIR]             NAVs struck without an action since arrived
+  ratio gen [--book DIR] [--securities N] [--lots-per N] [--turnover N]
+        [--currencies N] [--open-actions N] [--capital N] [--seed N]
+                                       generate a fund INTO a book, to serve
   ratio bench [--securities N] [--lots-per N] [--turnover N]
         [--currencies N]
                                        generate a fund and measure a period end
@@ -135,6 +138,7 @@ fn main() -> Result<()> {
         ["action", id, inst, r, "--ex-date", d] => action(book, id, inst, r, d),
         ["stale"] => stale(book),
         ["closure", rest @ ..] => closure(book, rest),
+        ["gen", rest @ ..] => gen(book, rest),
         ["bench", rest @ ..] => bench(rest),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
@@ -519,24 +523,18 @@ fn stale(book: PathBuf) -> Result<()> {
     Ok(())
 }
 
-/// Generate a fund and measure what a period end actually takes.
+/// The dials, parsed once, for every command that takes them.
 ///
-/// ⛔ IT REPORTS TWO CURVES BECAUSE THERE ARE TWO, and reporting one would be
-/// the easiest overclaim this repo has available:
+/// ⛔ ONE PARSER, BECAUSE `gen` AND `bench` MUST AGREE ABOUT WHAT A SHAPE IS.
+/// Two would drift — and the failure is that a book seeded for the demo and a
+/// book measured by the benchmark stop being the same book, while both commands
+/// go on reporting figures about "the twenty-security fund".
 ///
-///   COLD BUILD   folding the journal into a projection. O(entries), and the
-///                journal holds every buy AND every sale forever — an
-///                append-only log does not forget a closed lot. This grows.
-///   NAV STRIKE   reading the maintained projection. `Ratio.Closure.navCost` —
-///                one price per security, one rate per currency, and the tax
-///                lots nowhere in it. This does NOT grow.
-///
-/// "Twenty million lots are free" is true of the second and false of the first.
-fn bench(args: &[&str]) -> Result<()> {
-    use ratio_gen::Shape;
-    use std::time::Instant;
-
-    let mut shape = Shape::default();
+/// Returns the shape and anything that was not a dial, so a caller with its own
+/// flags (`--book`) can take them without this having to know about them.
+fn shape_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Shape, Vec<&'a str>)> {
+    let mut shape = ratio_gen::Shape::default();
+    let mut rest = Vec::new();
     let mut it = args.iter().peekable();
     while let Some(flag) = it.next() {
         let mut v = || -> Result<i64> {
@@ -554,9 +552,63 @@ fn bench(args: &[&str]) -> Result<()> {
             "--lots-per" => shape.lots_per = v()?,
             "--turnover" => shape.turnover = v()?,
             "--open-actions" => shape.open_actions = v()?,
-            other => bail!("{other:?} is not a dial — see `ratio help`"),
+            "--capital" => shape.capital_txns = v()?,
+            "--seed" => shape.seed = v()? as u64,
+            other => rest.push(other),
         }
     }
+    Ok((shape, rest))
+}
+
+/// Generate a fund into a book, so something other than a benchmark can read it.
+///
+/// ⛔ THE GENERATOR EXISTED AND NOTHING COULD SERVE WHAT IT MADE. `bench` wrote
+/// its fund to a temp directory, measured it and discarded it, so the only book
+/// exercising tax lots, holding periods and several currencies was one no screen
+/// could open. Everything the lot engine does was invisible on the demo for want
+/// of this command.
+fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
+    let (shape, rest) = shape_from(args)?;
+    // ⚠ `--book` NEVER REACHES HERE. `split_book_flag` pulls it out before
+    // dispatch, wherever it appears, and hands it in — so anything left over is
+    // a flag nobody defined. I wrote a second `--book` parser here first; it
+    // silently lost to the real one and generated a fund into `./book`.
+    if let Some(other) = rest.first() {
+        bail!("{other:?} is not a dial — see `ratio help`");
+    }
+
+    let entries = ratio_gen::generate(&book, shape)?;
+    let proj = ratio_project::Projection::of_book(&book)?;
+    println!("generated {} into {}", plural(entries as i64, "entry", "entries"), book.display());
+    println!("  {:<22}{:>12}", "securities", shape.securities);
+    println!("  {:<22}{:>12}", "currencies", shape.currencies);
+    println!("  {:<22}{:>12}", "open tax lots", proj.open_lots());
+    println!("  {:<22}{:>12}", "open positions", proj.positions().value.held.len());
+    Ok(())
+}
+
+/// `1 entry` / `2 entries`, because a demo script prints this.
+fn plural(n: i64, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// Generate a fund and measure what a period end actually takes.
+///
+/// ⛔ IT REPORTS TWO CURVES BECAUSE THERE ARE TWO, and reporting one would be
+/// the easiest overclaim this repo has available:
+///
+///   COLD BUILD   folding the journal into a projection. O(entries), and the
+///                journal holds every buy AND every sale forever — an
+///                append-only log does not forget a closed lot. This grows.
+///   NAV STRIKE   reading the maintained projection. `Ratio.Closure.navCost` —
+///                one price per security, one rate per currency, and the tax
+///                lots nowhere in it. This does NOT grow.
+///
+/// "Twenty million lots are free" is true of the second and false of the first.
+fn bench(args: &[&str]) -> Result<()> {
+    use std::time::Instant;
+
+    let (shape, _) = shape_from(args)?;
 
     println!("A FUND OF THIS SHAPE, GENERATED AND MEASURED");
     println!();
