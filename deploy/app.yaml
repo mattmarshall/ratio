@@ -18,6 +18,16 @@ Parameters:
       polls it to tell the new deployment from a warm container still running
       the previous image — "the URL returns 200" never meant "the URL runs what
       was just built".
+  DemoMember:
+    Type: String
+    Default: demo@ratio.fastverk.dev
+    Description: >
+      The identity every seeded fund is granted to in MEMBERSHIP.tsv. It MUST
+      equal the email the invited Cognito demo user is created with — the
+      tenant boundary matches a caller's verified email (or sub) against this,
+      so a mismatch signs the user in successfully and then shows an empty fund
+      rail. entrypoint.sh writes the grant from this on each start; see
+      deploy/README.md for creating the matching user.
   ReservedConcurrency:
     Type: Number
     Default: 0
@@ -71,15 +81,26 @@ Resources:
         Variables:
           RATIO_BOOK: /tmp/book
           RATIO_FUNDS: /tmp/funds
-          # The console's one write path is unauthenticated here, on purpose:
-          # a demo nobody can touch demonstrates nothing. Everything about the
-          # request is structured and validated, and the books are restored on
-          # every cold start — but the journal itself is the part that does not
-          # heal on its own, so it has a ceiling.
+          # The journal is the part that does not heal on a cold start, so the
+          # one write path has a ceiling even now that a caller must be signed
+          # in to reach it.
           RATIO_MAX_API_ENTRIES: "250"
           RATIO_BUILD: !Ref BuildSha
           AWS_LWA_PORT: "8080"
           AWS_LWA_READINESS_CHECK_PATH: /healthz
+          # ⛔ AUTH ACTIVATION. With RATIO_AUTH=required the server fails closed
+          # on any /v1 request the JWT authorizer did not verify, and tenancy at
+          # book_path then scopes each caller to the funds MEMBERSHIP grants
+          # them. The COGNITO_* values are the public client configuration the
+          # console serves at /authconfig.json to start the sign-in; the domain
+          # is also what the CSP admits to connect-src for the token exchange.
+          RATIO_AUTH: required
+          RATIO_COGNITO_ISSUER: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+          RATIO_COGNITO_CLIENT_ID: !Ref UserPoolClient
+          RATIO_COGNITO_DOMAIN: !Sub "ratio-demo-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com"
+          # Whom the seeded funds are granted to. entrypoint.sh writes
+          # MEMBERSHIP.tsv from this; it must equal the demo user's email.
+          RATIO_DEMO_MEMBER: !Ref DemoMember
       Tags:
         - Key: project
           Value: ratio
@@ -159,6 +180,85 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*"
 
+  # ── Identity ──────────────────────────────────────────────────────────────
+  #
+  # Cognito Hosted UI on the DEFAULT (cognito-prefix) domain — NOT a custom
+  # Hosted-UI domain, which provisions a CloudFront distribution this account
+  # refuses (see the Api comment). Invite-only: a demo has a known set of
+  # people, and public sign-up on an internet-facing pool is an abuse surface
+  # with no upside here.
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: ratio-demo
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+
+  # A PUBLIC client (no secret): a browser cannot keep one, which is why the
+  # console uses authorization-code + PKCE. The access token is what the
+  # authorizer validates — Cognito access tokens carry client_id rather than
+  # aud, so the audience below IS the client id.
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: ratio-console
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email]
+      SupportedIdentityProviders: [COGNITO]
+      ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
+      CallbackURLs:
+        - !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/app"
+      LogoutURLs:
+        - !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/app"
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      # Globally unique across all of Cognito; the account id makes it so.
+      Domain: !Sub "ratio-demo-${AWS::AccountId}"
+
+  # The gateway proves the token is real, unexpired and ours; the server
+  # (book_path) decides which funds it may open. The identity source is the
+  # bearer the console sends.
+  Authorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref Api
+      AuthorizerType: JWT
+      Name: cognito-jwt
+      IdentitySource: ["$request.header.Authorization"]
+      JwtConfiguration:
+        Audience: [!Ref UserPoolClient]
+        Issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+
+  # ⛔ A SECOND ROUTE, AND THE ONE EXCEPTION TO THE ONE-ROUTE RULE ABOVE. It is a
+  # COARSE prefix split, not a per-resource table: everything under /v1 requires
+  # a token, everything else ($default) stays public — /app, /version, /healthz,
+  # /mcp and /authconfig.json, which the unauthenticated console needs to start
+  # the login. Most-specific match wins, so /v1/* hits this and the rest falls
+  # through to $default.
+  ProtectedRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref Api
+      RouteKey: "ANY /v1/{proxy+}"
+      Target: !Sub "integrations/${Integration}"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref Authorizer
+
 Outputs:
   DemoUrl:
     Description: The demo. Screens at /, break report at /breaks, rules at /rules.
@@ -166,3 +266,12 @@ Outputs:
   McpEndpoint:
     Description: POST JSON-RPC here. Same tools as `ratio mcp`, same fence.
     Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/mcp"
+  UserPoolId:
+    Description: The Cognito pool. Create the demo user here (see deploy/README.md).
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: The public app client the console signs in with.
+    Value: !Ref UserPoolClient
+  HostedUiDomain:
+    Description: The Cognito Hosted UI domain the console signs in against.
+    Value: !Sub "ratio-demo-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com"

@@ -37,7 +37,7 @@ organization. Region `us-east-1`.
 | stack | what | deployed by |
 |---|---|---|
 | `ratio-demo-bootstrap` | ECR repository, GitHub OIDC provider, deploy role, execution role, budget | a human, once |
-| `ratio-demo-app` | the function, the HTTP API, the log group | CI, on every push |
+| `ratio-demo-app` | the function, the HTTP API, the log group, the Cognito pool + JWT authorizer | CI, on every push |
 
 ⛔ **Anything about the ACCOUNT rather than the demo lives in
 [`mattmarshall/cloud-org`](https://github.com/mattmarshall/cloud-org)**, not
@@ -110,6 +110,73 @@ deploy's smoke test fails if the live site does not serve six entries, a
 pending proposal, and that `2000.00` break. Both exist because an empty book
 shipped twice while every other signal stayed green.
 
+## Authentication and tenancy
+
+Every `/v1` route — the console's reads and its four writes — now requires a
+verified token. `/app`, `/version`, `/healthz`, `/mcp`, and the public
+`/authconfig.json` stay open, because the unauthenticated console has to be able
+to load and start the sign-in.
+
+The split of responsibility is the load-bearing decision:
+
+- **Authentication** — "the token is real, unexpired, ours" — is the API
+  Gateway JWT authorizer, backed by a Cognito user pool. The server does no
+  crypto. The authorizer puts the verified claims on the request context, which
+  the Lambda Web Adapter forwards as `x-amzn-request-context` — a header the
+  gateway synthesizes, so a client cannot forge its own claims.
+- **Authorization** — "this subject may open this fund" — is entirely in Rust,
+  at `Console::book_path`, where the test suite can break it. A fund a caller
+  may not see is refused with the *same* error as one that does not exist. With
+  `RATIO_AUTH=required` the server is fail-closed: a `/v1` request with no
+  verified claims is refused even if the authorizer were removed, so a
+  misconfigured gateway produces refusal, not open access.
+
+Membership is data, not an IdP group: `funds/MEMBERSHIP.tsv`, lines of
+`<subject>\t<fund-id>`, matched against a caller's verified `sub` **or** email.
+`entrypoint.sh` writes it on each start from `RATIO_DEMO_MEMBER` and the funds
+that actually exist.
+
+### Creating the invited demo user
+
+The pool is **invite-only** (`AllowAdminCreateUserOnly`) — a public sign-up form
+on an internet-facing pool is an abuse surface with no upside for a demo with a
+known audience. Create the one demo user by hand, with the email that
+`RATIO_DEMO_MEMBER` names (default `demo@ratio.fastverk.dev`):
+
+```sh
+POOL="$(aws cloudformation describe-stacks --stack-name ratio-demo-app \
+  --query 'Stacks[0].Outputs[?OutputKey==`UserPoolId`].OutputValue' --output text)"
+
+aws cognito-idp admin-create-user \
+  --user-pool-id "$POOL" \
+  --username demo@ratio.fastverk.dev \
+  --user-attributes Name=email,Value=demo@ratio.fastverk.dev Name=email_verified,Value=true \
+  --desired-delivery-mediums EMAIL
+```
+
+Cognito emails a temporary password; the first sign-in forces a reset. To skip
+the email (e.g. a shared demo credential), follow with
+`admin-set-user-password --permanent`.
+
+⛔ **The email must equal `RATIO_DEMO_MEMBER`.** The tenant boundary matches on
+it, so a mismatch signs the user in successfully and then shows an *empty* fund
+rail — a green sign-in that looks like a broken demo. If you invite a user under
+a different address, override the `DemoMember` parameter to match, or the grant
+names a subject who never signs in.
+
+### The smoke test after auth
+
+CI's smoke test asserts the boundary is *live* — `/v1/funds` without a token
+returns `401` — but it cannot assert `/v1` **content** (a held position, the
+three fund states, the NAV replay) without a token, and CI holds no user
+credential. Those checks moved out of the public smoke test. To exercise the
+authenticated path end to end, sign in through the Hosted UI on the live URL and
+confirm the fund rail shows the five seeded funds and the principal chip shows
+the signed-in email; or script an `initiate-auth` against the pool with a
+smoke user's permanent password and replay one `/v1/funds` call with the
+returned access token. The public `/balance.json` and `/breaks.json` checks
+still prove a real book shipped, so blank-book protection is intact.
+
 ## One-time setup
 
 Already done for this account. To recreate it elsewhere:
@@ -123,6 +190,12 @@ aws cloudformation deploy \
 ```
 
 Then update `ACCOUNT_ID` in `.github/workflows/deploy.yml` and push.
+
+⚠ **Re-run bootstrap after adding auth.** The deploy role gained
+`cognito-idp:*` on the demo pool (create/update/describe/delete pool, client,
+and domain) so CI can manage the authorizer's user pool. An account that
+provisioned bootstrap before this round must re-run the command above once, or
+the next app deploy fails with an access-denied creating the pool.
 
 ## How CI gets in
 

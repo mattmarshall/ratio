@@ -201,33 +201,24 @@ jobs:
           # 2000.00 is deploy/seed-demo-book.sh's number.
           want "the break"     '"difference":"2000.00"' "${URL}breaks.json"
 
-          # The console and its API.
-          want "the console shell" 'id="root"'        "${URL}app"
-          want "the fund list"     '"funds":[{'       "${URL}v1/funds"
-          # ⛔ A POSITION. The seeder shipped facts that had never been admitted
-          # once, so every row of the positions screen read "Not attributed" and
-          # marking had nothing to mark — with every other signal green. This is
-          # the assertion that would have caught it.
-          want "a held position" '"quantity":"1000"' \
-            "${URL}v1/funds/northstar-multi-strategy/positions"
-          # Three funds in three states, and a NAV that re-derives. The replay
-          # is the product's central claim; a demo that ships it broken ships
-          # nothing.
-          FUNDS="$(curl -sf "${URL}v1/funds")"
-          for st in AWAITING_PRICES BLOCKED STRUCK; do
-            case "$FUNDS" in
-              *"\"state\":\"$st\""*) ;;
-              *) echo "::error::no fund in state $st"; exit 1 ;;
-            esac
-          done
-          SN="$(curl -sf "${URL}v1/funds/harbourline-global-value/navStrikes" \
-                | sed -n 's/.*"name":"\([^"]*navStrikes[^"]*\)".*/\1/p' | head -1)"
-          [ -n "$SN" ] || { echo "::error::no NAV strike to replay"; exit 1; }
-          want "the NAV replay" '"historyIntact":true' "${URL}v1/${SN}:replay"
-          want "the NAV re-derived" '"reproduced":true' "${URL}v1/${SN}:replay"
-          # NAV as a JSON STRING is the one property a browser would otherwise
-          # silently violate: an int64 as a number is a double.
-          want "NAV as a string"   '"netAssetValue":"' "${URL}v1/funds"
+          # The console shell still renders (public), and the sign-in flow can
+          # bootstrap: /authconfig.json is public and names the identity provider.
+          want "the console shell" 'id="root"'            "${URL}app"
+          want "the auth config"   '"redirectPath":"/app"' "${URL}authconfig.json"
+
+          # ⛔ AUTH IS ON. Every /v1 route now requires a verified token, so an
+          # unauthenticated request is REFUSED rather than served — this is the
+          # assertion that proves the tenant boundary is live rather than merely
+          # merged. The /v1 CONTENT checks that used to live here (a held
+          # position, the three fund states, the NAV replay) move behind an
+          # authenticated smoke user; see deploy/README.md. The public
+          # /balance.json and /breaks.json above still prove a real book shipped,
+          # so blank-book protection is intact.
+          code="$(curl -s -o /dev/null -w '%{http_code}' "${URL}v1/funds")"
+          [ "$code" = "401" ] || {
+            echo "::error::/v1/funds returned $code, not 401 — auth is not enforced"
+            exit 1
+          }
 
           # MCP answers, and the fence still holds on a public endpoint.
           TOOLS="$(curl -sf -X POST "${URL}mcp" -H 'content-type: application/json' \
