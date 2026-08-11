@@ -435,6 +435,26 @@ impl Holding {
         out
     }
 
+    /// The lot this order would give up next, without giving it up.
+    ///
+    /// ⛔ FOR A WRITER, NOT A READER. `ratio-gen` builds a book by selling a
+    /// lot and posting the basis it gave up, and it chose that lot by popping
+    /// the OLDEST — hardcoded, whatever the configuration it had just written
+    /// declared. A book generated `--method hifo` therefore declared HIFO and
+    /// carried FIFO-computed gains, and the engine reading it back relieved
+    /// HIFO, disagreed with every posted sale, and reported 242 lot breaks with
+    /// 75% of the gain unclassifiable.
+    ///
+    /// ⚠ SELLING EXACTLY THIS LOT'S UNITS IS WHAT KEEPS RELIEF WHOLE. A partial
+    /// relief divides a lot's cost pro rata and REFUSES when that does not land
+    /// on a whole minor unit, so a writer that picks an arbitrary quantity
+    /// generates books that break for reasons that have nothing to do with what
+    /// is being demonstrated.
+    pub fn peek(&self) -> Option<&Lot> {
+        let next = if Self::reversed(self.order) { self.seq.back() } else { self.seq.front() };
+        next.or_else(|| self.ranked.first_key_value().map(|(_, l)| l))
+    }
+
     /// Take the next lot the order gives up, or `None` when empty.
     fn pop(&mut self) -> Option<Lot> {
         if Self::reversed(self.order) {

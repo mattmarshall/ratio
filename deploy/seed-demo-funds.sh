@@ -65,8 +65,28 @@ B="$OUT/northstar-multi-strategy"
 # The dials are the ones `ratio bench` measures, so the fund on the screen and
 # the fund in the benchmark are the same fund. ⚠ Kept modest deliberately: the
 # journal is copied into a Lambda's /tmp on every cold start, and /tmp is 512 MB.
-"$RATIO" gen --book "$OUT/ashcombe-global-equity" \
-  --securities 20 --lots-per 40 --currencies 3 >/dev/null
+SHAPE="--securities 20 --lots-per 40 --currencies 3 --seed 1"
+
+"$RATIO" gen --book "$OUT/ashcombe-global-equity" $SHAPE >/dev/null
 "$RATIO" strike --book "$OUT/ashcombe-global-equity" >/dev/null
 
-echo "seeded 4 funds at $OUT"
+# ── 5. The same fund, administered under a different agreement ─────────────
+#
+# ⛔ THE ONE FIGURE THE DEMO COULD NOT SHOW. Every fund above declared
+# `oldest-first`, so nothing on any screen demonstrated that the declared method
+# reaches the engine — the exact invisibility the wiring fix was made to end,
+# reproduced one layer out. A method that changes nothing observable is
+# indistinguishable from a method nobody reads.
+#
+# ⭐ SAME SEED, SAME SECURITIES, SAME TRADES, SAME HOLDINGS. The two books differ
+# in one line of configuration and roughly ten million dollars of taxable gain.
+# `Ratio.Lots.Relief.the_method_changes_the_gain` is the theorem; this is the
+# screen.
+#
+# ⚠ HIFO IS THE INTERESTING SIDE, not the flattering one: it gives up the
+# dearest lots, so it realizes the SMALLEST gain — a loss, on this book — which
+# is why a fund harvesting losses asks for it.
+"$RATIO" gen --book "$OUT/bellwether-tax-managed" $SHAPE --method hifo >/dev/null
+"$RATIO" strike --book "$OUT/bellwether-tax-managed" >/dev/null
+
+echo "seeded 5 funds at $OUT"
