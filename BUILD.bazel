@@ -8,3 +8,21 @@ alias(
     name = "ratio",
     actual = "//crates/ratio:ratio",
 )
+
+# PLAN.md refuses to build things. This checks it is still telling the truth.
+#
+# ⛔ IT WAS NOT. The refusal list had eleven entries on 2026-08-07 and four of
+# them were built on 08-09 and 08-10 with the list untouched. For two days the
+# plan and the repository disagreed about what the product is and nothing said
+# so — every individual commit was defensible, which is what made it invisible.
+#
+# ⚠ CI SKIPS `**/*.md`, so this does not run when someone edits the plan. It
+# runs when someone builds CODE, which is the right way round: the moment to
+# notice the contradiction is the commit that creates it.
+sh_test(
+    name = "plan_refusals_test",
+    size = "small",
+    srcs = ["plan_refusals_test.sh"],
+    args = ["$(location PLAN.md)"],
+    data = ["PLAN.md"],
+)

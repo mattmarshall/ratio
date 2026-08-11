@@ -315,13 +315,51 @@ Named so they stop being tempting. Every one of these is on the website as a
 destination, and none of them earns a dollar in the next six months:
 
 control-plane UI and epoch machinery beyond a version hash · the workload
-planner · anything GPU · multi-currency and FX · tax lots and cost basis ·
-corporate actions · performance reporting and attribution · the client portal ·
-CRM connectors · a rule language parser · Postgres · Kubernetes.
+planner · anything GPU · performance reporting and attribution · the client
+portal · CRM connectors · a rule language parser · Kubernetes.
 
 ⚠️ **The website describes the destination; the build is the first five per
 cent of it.** That is defensible — the roadmap page says so — but it means
 every claim on the site must stay in the future tense until it isn't.
+
+### ⛔ Four of these were built in the two days after this file was written
+
+This list had eleven entries on **2026-08-07**. Four of them shipped on
+**08-09 and 08-10**, and this file was not touched in between:
+
+| refused | built | where |
+|---|---|---|
+| tax lots and cost basis | 08-09 → 08-10 | six lot methods, holding-period split, `Ratio.Lots.*`, `//tla:relief_engine_check` |
+| multi-currency and FX | 08-10 | conservation per currency, translation on every read path, `Ratio.Chart.Dimensions` |
+| corporate actions | 08-09 | the factor representation — nothing is rewritten |
+| Postgres | 08-10 | spec only: `//tla:sql_projection_check`, no schema |
+
+That is 48 hours, not slow drift, and it deserves a decision rather than a
+footnote. **The list was either wrong on the day it was written, or the last two
+days were off-plan.** Both are live readings:
+
+- *The list was wrong.* The wedge sells independent verification of a fund's own
+  book. A fund holding three currencies with a twenty-year lot history is not an
+  edge case, it is the customer — and a shadow run that cannot relieve a lot or
+  translate a balance produces **false breaks**, which this file names as the
+  one failure that burns the whole proposition. On that reading these were
+  never optional and the refusal was a scoping error.
+- *The last two days were off-plan.* Ten hours a week does not survive four
+  refused features, however good the reasons felt at the time. **Coverage creep**
+  is named below as a risk, and this is exactly its shape — arriving from inside
+  rather than from a prospect, which is the harder direction to refuse.
+
+⚠️ **It is not all drift, and pretending otherwise would be its own distortion.**
+One of the wedge's two open gaps — comparing two runs under different
+configurations — closed in the same window (`ratio.v1.recon`, `baseline_*` /
+`candidate_*`). The remaining gap is the one that matters: **a real customer's
+period.** No amount of engine work substitutes for it, and none of the four
+above moves it.
+
+**The decision to take, explicitly:** either strike these from the refusal list
+and say the wedge needs them, or stop and go get a fund's file. Leaving the
+list as written meant the plan and the repository disagreed about what the
+product is, and the repository was winning without anyone saying so.
 
 ---
 
@@ -425,8 +463,15 @@ file cannot satisfy. Not before.
   after. This is the single risk that can retroactively destroy the asset, and
   it costs one conversation with a lawyer to close out.
 - **False breaks.** Covered above; the reason the first fund type is narrow.
-- **Coverage creep.** Every prospect will have one instrument that needs one
-  more feature. The discipline is to say no and pick a different prospect.
+- ⛔ **Coverage creep — this one has already happened.** The risk was written as
+  arriving from a prospect: one instrument that needs one more feature, and the
+  discipline is to say no and pick a different prospect. It arrived from
+  **inside** instead, which is the harder direction, because there is no
+  prospect to decline and every step is individually defensible. Four entries
+  left the refusal list in the 48 hours after this file was written. See
+  *Explicitly not building*; the mitigation is not "say no to prospects", it is
+  that this file gets edited in the same commit as the feature that contradicts
+  it.
 - **Solo bus factor.** At part-time, six months of elapsed work is a small
   amount of built work. The plan is only viable because the wedge is small; it
   stops being viable the moment the scope is the platform.
