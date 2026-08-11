@@ -202,15 +202,69 @@ the conserved one, and the kernel never said it was.
 ## What the demo shows, and what it does not
 
 ```
-lots/sec   open lots      entries   COLD BUILD   NAV STRIKE      PEAK RSS
-     500      252843      1769907      11.4 s       403 µs             —   ← recorded
-     500      252843      1769907      12.3 s       385 µs         50 MB   ← now
-    2000     1022625      7158381      91.7 s       395 µs             —   ← recorded
+lots/sec  open lots     entries   COLD BUILD   NAV STRIKE   PEAK FOOTPRINT
+     500     252843     1769907      11.4 s       403 µs         —   ← recorded
+     500     252843     1769907      12.5 s       385 µs     36 MB   ← now
+    2000    1022625     7158381      91.7 s       395 µs         —   ← recorded
+    2000    1022625     7158381      50.2 s       418 µs        51*  ← now
+    2000   20004324   140030274     995.0 s        12 µs   1.00 GB   ← ⭐ #6, MEASURED
 ```
 
-⚠ THE 2000 ROW HAS NOT BEEN RE-MEASURED SINCE THE STREAMING CHANGE. Do not quote
-it. The last measurement of it was 178.8 s, before the relief walk and the
-streaming landed, and both cut the terms it was dominated by.
+⭐ **TWENTY MILLION TAX LOTS, STRUCK IN 12 µs, IN A GIGABYTE.** Issue #6 asked
+for this to stop being extrapolated. 140,030,274 entries, 20,004,324 open lots,
+trial balance 0. The fold takes 16.6 minutes and the strike off it is twelve
+microseconds — `Ratio.Closure.factored_nav_never_reads_the_lots`, at the size the
+claim was always about.
+
+    parse    655.2 s   reading and deserializing
+    fold     339.7 s     of which relieve  5.0 s  over 60,012,972 reliefs
+    mark      10.8 ms  10000 prices          fx  210 µs   2 rates, not 10000
+
+⛔ **QUOTE `peak memory footprint`, NOT `maximum resident set size`.** macOS RSS
+EXCLUDES COMPRESSED PAGES, and at this size it reports **52 MB** for a process
+whose real footprint is **1.00 GB** — a nineteen-fold understatement of the
+number that decides whether a book can be folded at all. Every memory figure in
+this file was taken with `/usr/bin/time -l`; the ones marked `*` above are RSS
+and are not corrected. The lot data is written once and then cold, which is
+exactly what the OS compresses.
+
+⛔ **AND THE 12 µs IS WHY THE NEXT DEFECT WAS FOUND: THE RECORDED NAV DID NOT
+TRANSLATE CURRENCIES.** Disbelief in that number is what prompted checking it,
+and the check found something worse than a bad measurement. `ratio strike` — the
+*recorded* NAV, the one signed, digested, and re-derived by `ratio replay` — summed
+dollars, euros and pounds and labeled the total USD. On a twelve-security book it
+returned the **identical** figure for `--currencies 1` and `--currencies 3`,
+because it never read `PostingRecord::currency` at all.
+
+    flat sum (the bug)           133,915,377.28
+    ratio strike (fixed)         134,439,187.51
+    console GetFund              134,439,187.51
+    recomputed from the raw files 134,439,187.51
+
+**$523,810.23 on a $134M fund — 0.39%.** Small enough to read as a rounding
+difference, large enough to be the whole fee dispute. And it tied the entire way:
+trial balance 0, digest reproducible, `ratio replay` reporting *reproduced* — of
+the wrong figure, permanently. `Ratio.Chart.Dimensions.a_flat_total_hides_a_
+currency_mismatch` had proved this exact shape impossible-to-notice since the
+chart work landed; the proof was right and three Rust call sites ignored it.
+
+⚠ **THE TEST THAT SHOULD HAVE CAUGHT IT ALREADY EXISTED AND WAS VACUOUS.**
+`the_projection_strikes_the_same_nav_as_a_full_fold` compares the two NAV paths —
+over a one-currency book with `Rates::none()`. Its multi-currency replacement was
+*also* vacuous on the first attempt: buying securities with cash puts both legs
+in assets, so every currency nets to zero and both paths say 0. It went green
+against the bug on purpose-reintroduced code. **Subscriptions are the shape that
+works** — capital is equity, the NAV filter excludes it, and the asset side is
+left holding a non-base balance. ⛔ Negative-test every differential test; two
+paths agreeing is worth nothing until you have watched them disagree.
+
+⚠ **`parse` IS 66% OF THE COLD BUILD AND INTERNING DOES NOT TOUCH IT.** Interning
+the config digest — 64 identical bytes on every one of 140 million lines, 22% of
+the file — measured 8.5/8.6/8.6 s against 8.2–8.6 s before it. A null result. The
+cost is serde tokenizing half a gigabyte of JSON, not allocating. The levers that
+remain are a faster parser (`simd-json`) or a denser format, and the format is a
+product decision: the journal is the system of record and its readability is part
+of what is being sold.
 
 `ratio bench` generates a fund and measures a period end. 100× the lots, NAV
 strike unchanged.

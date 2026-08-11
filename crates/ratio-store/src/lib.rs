@@ -37,12 +37,76 @@ use ratio_kernel::{transaction_is_balanced, Transaction};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
+/// The currency a book reports in, and the base every other is translated into.
+///
+/// ⛔ ONE DEFINITION, BECAUSE IT WAS TWO ANSWERS TO ONE QUESTION AND THEY
+/// DISAGREED. `Fund.currency_code` labeled the console's figures USD while
+/// `ratio strike` — the RECORDED nav, the one a replay re-derives — summed
+/// dollars, euros and pounds without translating any of them. Both were "the
+/// base currency"; only one of them knew it.
+///
+/// ⚠ HARDCODED, AND THAT IS A REAL LIMITATION rather than a placeholder. A
+/// fund's reporting currency is a property of the fund, and when a second one
+/// arrives this becomes a field on the book.
+pub const BASE_CURRENCY: &str = "USD";
+
 /// A content address: the SHA-256 of some bytes, lowercase hex.
 ///
 /// Names the artifact by what it *is* rather than where it sits, which is what
 /// makes "which rules produced this figure?" answerable years later.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct Digest(String);
+/// ⛔ INTERNED, BECAUSE EVERY JOURNAL LINE CARRIES ONE AND THEY ARE NEARLY ALL
+/// THE SAME. A digest is 64 hex characters; a book with one configuration
+/// repeats those 64 bytes on every entry, which is **22% of the journal's bytes**
+/// and one heap allocation per line on the read path. At the shape issue #6 asks
+/// for that is 140 million allocations of a value that has one distinct
+/// instance.
+///
+/// `Text` is `Arc<str>`, so `Ord`, `Eq`, `Hash` and the serialized form are
+/// exactly what `String` gave — a clone is a refcount bump, and N copies become
+/// one.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Digest(ratio_common::intern::Text);
+
+thread_local! {
+    /// One table per thread. ⚠ It keeps every digest the thread has seen alive,
+    /// which is the right trade for a value with a handful of distinct
+    /// instances per book and one per line.
+    static DIGESTS: std::cell::RefCell<ratio_common::intern::Interner> =
+        std::cell::RefCell::new(ratio_common::intern::Interner::new());
+}
+
+fn intern_digest(s: &str) -> ratio_common::intern::Text {
+    DIGESTS.with(|d| d.borrow_mut().intern(s))
+}
+
+impl serde::Serialize for Digest {
+    /// ⛔ THE WIRE FORM IS UNCHANGED — a plain string, exactly as the derive
+    /// produced. Every journal ever written must still read, and every digest
+    /// ever computed must still compare equal.
+    fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        s.serialize_str(&self.0)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Digest {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        struct V;
+        impl serde::de::Visitor<'_> for V {
+            type Value = Digest;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a sha-256 hex digest")
+            }
+            /// ⭐ TAKES `&str`, SO A BORROWED INPUT NEVER BECOMES A `String`. A
+            /// hex digest contains no escapes, so `serde_json` hands the slice
+            /// straight out of the line buffer and this allocates nothing at
+            /// all after the first sight of a given digest.
+            fn visit_str<E: serde::de::Error>(self, s: &str) -> std::result::Result<Digest, E> {
+                Ok(Digest(intern_digest(s)))
+            }
+        }
+        d.deserialize_str(V)
+    }
+}
 
 /// A digest computed over bytes that arrive a piece at a time.
 ///
@@ -70,7 +134,7 @@ impl DigestBuilder {
     }
 
     pub fn finish(self) -> Digest {
-        Digest(format!("{:x}", self.hasher.finalize()))
+        Digest(intern_digest(&format!("{:x}", self.hasher.finalize())))
     }
 }
 
@@ -79,7 +143,7 @@ impl Digest {
     pub fn of(bytes: &[u8]) -> Self {
         let mut h = Sha256::new();
         h.update(bytes);
-        Digest(format!("{:x}", h.finalize()))
+        Digest(intern_digest(&format!("{:x}", h.finalize())))
     }
 
     /// The full hex digest.
@@ -100,7 +164,7 @@ impl Digest {
         if s.len() != 64 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
             bail!("not a sha-256 hex digest: {s:?}");
         }
-        Ok(Digest(s.to_ascii_lowercase()))
+        Ok(Digest(intern_digest(&s.to_ascii_lowercase())))
     }
 }
 
@@ -878,6 +942,38 @@ mod position_tests {
     /// account. My first check of this asserted the positions alone equalled
     /// the account and failed by 350,000 — I had forgotten the other half of
     /// the theorem I had just written.
+    #[test]
+    fn an_interned_digest_is_wire_identical_to_the_string_it_replaced() {
+        // ⛔ EVERY JOURNAL EVER WRITTEN MUST STILL READ. `Digest` held a
+        // `String` and derived its serde; it holds an `Arc<str>` now with
+        // hand-written impls, and the ONLY thing that makes that safe is that
+        // the bytes on the wire did not move.
+        let d = Digest::of(b"some configuration bytes");
+        let json = serde_json::to_string(&d).unwrap();
+
+        // A plain JSON string, quoted, 64 hex characters — what the derive
+        // produced.
+        assert_eq!(json, format!("\"{}\"", d.as_str()));
+        assert_eq!(d.as_str().len(), 64);
+
+        // And it round-trips to something equal, from a line it did not create.
+        let back: Digest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, d);
+        assert_eq!(back.as_str(), d.as_str());
+
+        // ⭐ THE POINT: two sightings of one digest share one allocation, which
+        // is what a journal repeating it on every line is for.
+        let a: Digest = serde_json::from_str(&json).unwrap();
+        let b: Digest = serde_json::from_str(&json).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&a.0, &b.0));
+
+        // ⚠ Ordering and equality are still by VALUE, not by pointer — a
+        // `BTreeMap` keyed on digests is consulted by content.
+        let other = Digest::of(b"different bytes");
+        assert_ne!(other, d);
+        assert_eq!(other.cmp(&d), other.as_str().cmp(d.as_str()));
+    }
+
     #[test]
     fn positions_and_what_they_do_not_attribute_equal_the_account() {
         let dir = std::env::temp_dir().join("ratio-store-positions");

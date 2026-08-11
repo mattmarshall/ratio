@@ -123,7 +123,24 @@ fn fold_nav(book: &FileBook, entries: &[JournalEntry]) -> Result<(i64, i64)> {
 /// — three copies of a thing that only ever needed to be walked once.
 struct NavFold {
     types: std::collections::BTreeMap<i64, AccountTypeRecord>,
-    nav: i128,
+    rates: ratio_project::Rates,
+    /// ⛔ PER CURRENCY. This was ONE `i128` and the bug is the whole reason this
+    /// comment exists: `ratio strike` — the RECORDED nav, the figure a replay
+    /// re-derives and somebody is paid on — added dollars, euros and pounds and
+    /// called the total USD. It returned the IDENTICAL number for a
+    /// one-currency and a three-currency book, because it never looked at the
+    /// currency at all. And it tied the whole way: trial balance 0, digest
+    /// reproducible, replay reporting "reproduced" — of the wrong figure,
+    /// forever. `Ratio.Chart.Dimensions.a_flat_total_hides_a_currency_mismatch`.
+    nav: std::collections::BTreeMap<Option<String>, i128>,
+    /// ⛔ `i128`, REPORTED IN `i64`. Summing a journal in `i64` wraps —
+    /// `debits` in particular adds the magnitude of EVERY posting ever made, so
+    /// it grows with HISTORY rather than with the fund, and it is the first of
+    /// these to go. A wrapped total does not look wrong; it looks like a NAV.
+    ///
+    /// ⚠ And `-p.amount` is not always the magnitude: `-i64::MIN` overflows. In
+    /// `i128` it does not, which is the second reason this is not just about
+    /// headroom.
     debits: i128,
     credits: i128,
 }
@@ -132,7 +149,11 @@ impl NavFold {
     fn new(book: &FileBook) -> Result<Self> {
         Ok(Self {
             types: book.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect(),
-            nav: 0,
+            rates: ratio_project::Rates::of_facts(
+                ratio_store::BASE_CURRENCY,
+                &book.records(ratio_store::Plane::Facts)?,
+            ),
+            nav: Default::default(),
             debits: 0,
             credits: 0,
         })
@@ -145,8 +166,13 @@ impl NavFold {
                 self.types.get(&p.dim),
                 Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
             ) {
-                self.nav += a;
+                *self.nav.entry(p.currency.clone()).or_default() += a;
             }
+            // ⚠ THE TRIAL-BALANCE DIFFERENCE IS SAFE TO SUM FLAT, and only that.
+            // Every currency nets to zero independently, so the flat total is
+            // zero too — the DIFFERENCE survives mixing even though the two
+            // column totals would not, and the difference is all `Strike`
+            // records.
             if a >= 0 {
                 self.debits += a;
             } else {
@@ -156,8 +182,19 @@ impl NavFold {
     }
 
     fn finish(self) -> Result<(i64, i64)> {
+        let mut nav = 0i128;
+        for (currency, amount) in &self.nav {
+            let factor = self.rates.factor_of_optional(currency.as_deref()).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "this fund holds {} and no rate for it was supplied — a NAV mixing \
+                     denominations is not a NAV",
+                    currency.as_deref().unwrap_or("an untyped balance")
+                )
+            })?;
+            nav += amount * factor as i128 / ratio_project::RATE_SCALE as i128;
+        }
         Ok((
-            i64::try_from(self.nav)
+            i64::try_from(nav)
                 .map_err(|_| anyhow::anyhow!("this fund's net asset value does not fit in 64 bits"))?,
             i64::try_from(self.debits - self.credits)
                 .map_err(|_| anyhow::anyhow!("the trial-balance difference does not fit in 64 bits"))?,
@@ -165,48 +202,6 @@ impl NavFold {
     }
 }
 
-#[allow(dead_code)]
-fn fold_nav_materialized(book: &FileBook, entries: &[JournalEntry]) -> Result<(i64, i64)> {
-    let types: std::collections::BTreeMap<i64, AccountTypeRecord> =
-        book.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
-
-    // ⛔ ACCUMULATED IN `i128`, REPORTED IN `i64`. Summing a journal in `i64`
-    // wraps — `debits` in particular adds the magnitude of EVERY posting ever
-    // made, so it grows with history rather than with the fund, and it is the
-    // first of these to go. A wrapped total does not look wrong; it looks like a
-    // NAV.
-    //
-    // ⚠ And `-p.amount` is not always the magnitude: `-i64::MIN` overflows. In
-    // `i128` it does not, which is the second reason this is not just about
-    // headroom.
-    let mut nav = 0i128;
-    let mut debits = 0i128;
-    let mut credits = 0i128;
-    for e in entries {
-        for p in &e.postings {
-            let amount = p.amount as i128;
-            if amount >= 0 {
-                debits += amount;
-            } else {
-                credits += -amount;
-            }
-            if matches!(
-                types.get(&p.dim),
-                Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
-            ) {
-                nav += amount;
-            }
-        }
-    }
-    // ⛔ The FIGURES must fit to be reported. A NAV that cannot be represented is
-    // refused rather than truncated — `Ratio.Bounded`: an operation either agrees
-    // with the theorem or declines, and there is no third answer.
-    let nav = i64::try_from(nav)
-        .map_err(|_| anyhow::anyhow!("this book's net asset value does not fit in 64 bits"))?;
-    let diff = i64::try_from(debits - credits)
-        .map_err(|_| anyhow::anyhow!("this book's trial-balance difference does not fit in 64 bits"))?;
-    Ok((nav, diff))
-}
 
 /// Strike a NAV over the whole journal as it stands.
 pub fn strike(book_path: &std::path::Path, valuation_time: i64, actor: &str) -> Result<Strike> {
