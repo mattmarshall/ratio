@@ -332,8 +332,12 @@ impl Console {
     /// after it.
     pub fn list_postings(&self, parent: &str) -> Result<pb::ListPostingsResponse> {
         let (fund, dim_str) = nested_id(parent, "funds", "accounts")?;
-        let dim: i64 = dim_str.parse().with_context(|| format!("{dim_str:?} is not a dimension"))?;
+        // ⛔ TENANCY BEFORE THE DIMENSION PARSE. A caller who may not see this
+        // fund is refused here — not after we have judged whether their account
+        // id was well-formed. The denial must not depend on the caller's input,
+        // or "no fund" and "not a dimension" tell an outsider which is which.
         let path = self.book_path(&fund)?;
+        let dim: i64 = dim_str.parse().with_context(|| format!("{dim_str:?} is not a dimension"))?;
         let b = FileBook::open(&path)?;
 
         let mut running = 0i64;
@@ -730,8 +734,12 @@ impl Console {
     /// its lots are every purchase it still holds.
     pub fn list_lots(&self, parent: &str) -> Result<pb::ListLotsResponse> {
         let (fund, id) = nested_id(parent, "funds", "positions")?;
-        let (dim, instrument) = position_key(&id)?;
+        // ⛔ TENANCY BEFORE THE POSITION-KEY PARSE. `projection` opens the book
+        // through `book_path`, so a caller who may not see this fund is refused
+        // before their position id is parsed — the denial does not depend on
+        // whether the id was well-formed.
         let proj = self.projection(&fund)?;
+        let (dim, instrument) = position_key(&id)?;
         Ok(pb::ListLotsResponse {
             lots: proj
                 .lots_of(dim, &instrument)
