@@ -458,3 +458,15 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
    term somebody agreed to. */
 .lt.scale{background:var(--accent-soft)}
 .lt.scale .ltv{color:var(--accent)}
+
+/* Sign-in: the whole console when there is no session, and the signed-in
+   principal's controls in the header. */
+.signout{margin-left:6px;padding:3px 9px;font:inherit;font-size:12px;cursor:pointer;
+  color:var(--text-2);background:var(--surface);border:1px solid var(--rule);border-radius:999px}
+.signout:hover{color:var(--text);border-color:var(--accent)}
+.signin-body{max-width:420px;margin:14vh auto 0;padding:0 20px;text-align:center}
+.signin-body h1{font-size:22px;margin:0 0 10px}
+.signin-body p{color:var(--muted);margin:0 0 22px;line-height:1.55}
+.signin-btn{padding:10px 22px;font:inherit;font-size:15px;font-weight:600;cursor:pointer;
+  color:var(--ground);background:var(--accent);border:0;border-radius:9px}
+.signin-btn:hover{filter:brightness(1.06)}

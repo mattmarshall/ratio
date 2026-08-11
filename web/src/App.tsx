@@ -27,7 +27,10 @@ import {
   useReplay,
   useRules,
   useTemplates,
+  AuthError,
 } from "./api.js";
+import { useQueryClient } from "@tanstack/react-query";
+import { beginSignIn, completeSignIn, principal, signOut } from "./auth.js";
 import {
   SEVERITY_CLASS,
   STATE_CLASS,
@@ -1335,8 +1338,48 @@ function MarkForm({ fund }: { fund: Fund | undefined }) {
   );
 }
 
+/** The whole console when there is no session: a prompt to sign in, not a wall
+ *  of refusals. The button hands off to the Cognito Hosted UI; the code that
+ *  comes back is exchanged by `completeSignIn` on the next load of `/app`. */
+function SignIn() {
+  return (
+    <div className="app signin">
+      <header className="top">
+        <span className="brand">
+          <svg viewBox="0 0 64 64" fill="currentColor" aria-hidden="true">
+            <rect x="8" y="19" width="16.34" height="10" rx="2" />
+            <rect x="29.34" y="19" width="26.66" height="10" rx="2" />
+            <rect x="8" y="35" width="48" height="10" rx="2" />
+          </svg>
+          ratio
+        </span>
+      </header>
+      <div className="signin-body">
+        <h1>Sign in</h1>
+        <p>This console shows only the funds you administer. Sign in to continue.</p>
+        <button type="button" className="signin-btn" onClick={() => void beginSignIn()}>
+          Sign in
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const funds = useFunds();
+  const qc = useQueryClient();
+  const me = principal();
+  // An OAuth callback (`?code=`) lands back on `/app`; exchange it once, then
+  // let the queries refetch under the new bearer.
+  useEffect(() => {
+    completeSignIn()
+      .then((done) => {
+        if (done) void qc.invalidateQueries();
+      })
+      .catch(() => {
+        /* a failed exchange falls through to the sign-in view */
+      });
+  }, [qc]);
   const [fundName, setFundName] = useState<string>();
   const [filter, setFilter] = useState<string>("");
   const [brkName, setBrkName] = useState<string>();
@@ -1372,6 +1415,13 @@ export default function App() {
   const selected = shown.find((b) => b.name === brkName) ?? shown[0];
   const rows = accounts.data ?? [];
   const account = rows.find((a) => a.name === acctName) ?? rows[0];
+
+  // The server refused for lack of a session: the whole console becomes a
+  // sign-in prompt rather than a wall of error rows. Only the deployed
+  // RATIO_AUTH=required surface 401s; a local run never reaches here.
+  if (funds.error instanceof AuthError) {
+    return <SignIn />;
+  }
 
   return (
     <div className="app">
@@ -1422,7 +1472,15 @@ export default function App() {
         </nav>
         <span className="spacer" />
         <span className="who">
-          <span className="avatar">OP</span>Operator
+          <span className="avatar">
+            {me ? (me.email || me.sub).slice(0, 2).toUpperCase() : "OP"}
+          </span>
+          {me ? me.email || me.sub : "Operator"}
+          {me ? (
+            <button type="button" className="signout" onClick={signOut}>
+              Sign out
+            </button>
+          ) : null}
         </span>
       </header>
 

@@ -148,7 +148,12 @@ fn read_request(reader: &mut impl BufRead) -> Result<Request> {
 /// A demo surface facing the internet should not depend on a browser's
 /// defaults. The headers below are cheap, static, and matter before there is a
 /// login form on the page.
-fn security_headers(content_type: &str, host: &str, canonical_host: Option<&str>) -> String {
+fn security_headers(
+    content_type: &str,
+    host: &str,
+    canonical_host: Option<&str>,
+    idp_domain: Option<&str>,
+) -> String {
     let csp = if content_type.starts_with("text/html") {
         // ⚠ 'unsafe-inline' FOR SCRIPT/STYLE, DELIBERATELY. The inline blocks
         // are compile-time constants, and every dynamic node the pages build is
@@ -159,15 +164,24 @@ fn security_headers(content_type: &str, host: &str, canonical_host: Option<&str>
         // `frame-ancestors` (clickjacking), `object-src`/`base-uri` (plugin and
         // base-tag hijacking), and `default-src 'self'` (no off-origin loads).
         // Hash-based tightening of script-src is a follow-on, gated on a browser
-        // check that the built React bundle needs no 'unsafe-eval'. When the
-        // Cognito sign-in flow lands, its pool domain joins connect-src and
-        // form-action for the OIDC round-trip.
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' \
-         'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'self'; \
-         frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
+        // check that the built React bundle needs no 'unsafe-eval'.
+        //
+        // ⛔ THE SIGN-IN FLOW FETCHES ITS TOKENS FROM THE COGNITO DOMAIN, so
+        // that origin joins connect-src when it is configured — without it the
+        // PKCE token exchange is blocked and sign-in silently fails. The
+        // authorize step is a top-level navigation, which CSP does not gate.
+        let idp = match idp_domain {
+            Some(d) if !d.is_empty() => format!(" https://{d}"),
+            _ => String::new(),
+        };
+        format!(
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' \
+             'unsafe-inline'; img-src 'self' data:; connect-src 'self'{idp}; form-action \
+             'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
+        )
     } else {
         // An API or a plain-text probe renders nothing and loads nothing.
-        "default-src 'none'; frame-ancestors 'none'"
+        "default-src 'none'; frame-ancestors 'none'".to_string()
     };
     let mut h = format!(
         "Content-Security-Policy: {csp}\r\n\
@@ -200,7 +214,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
                 "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain; charset=utf-8\r\n\
                  Content-Length: {}\r\n{}Connection: close\r\n\r\n{msg}",
                 msg.len(),
-                security_headers("text/plain; charset=utf-8", "", canonical.as_deref())
+                security_headers("text/plain; charset=utf-8", "", canonical.as_deref(), None)
             )?;
             return Ok(());
         }
@@ -352,10 +366,35 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             std::env::var("RATIO_BUILD").unwrap_or_else(|_| "dev".into()),
         ),
 
+        // The public OIDC client configuration the sign-in flow bootstraps from,
+        // read from the deployment's environment. Inherently public — a client
+        // id and a hosted-UI domain are not secrets — so it is served BEFORE
+        // authentication (it is one of the routes the gateway leaves open),
+        // which is what lets the unauthenticated console start the login. Empty
+        // strings on a local `ratio watch`, where none of these are set, so the
+        // console stays unauthenticated on loopback.
+        //
+        // ⚠ Not a `ratio.console.v1` resource: it is deployment configuration,
+        // not a fund's data, so it does not belong in the contract or its AIP
+        // surface. It is served here beside `/version` for the same reason —
+        // both describe the running process, not the book.
+        (_, "/authconfig.json") => (
+            "200 OK",
+            "application/json",
+            format!(
+                "{{\"issuer\":{},\"clientId\":{},\"domain\":{},\"scopes\":[\"openid\",\"email\"],\
+                 \"redirectPath\":\"/app\"}}",
+                quote(&std::env::var("RATIO_COGNITO_ISSUER").unwrap_or_default()),
+                quote(&std::env::var("RATIO_COGNITO_CLIENT_ID").unwrap_or_default()),
+                quote(&std::env::var("RATIO_COGNITO_DOMAIN").unwrap_or_default()),
+            ),
+        ),
+
         _ => ("404 Not Found", "text/plain; charset=utf-8", "no".to_string()),
     };
 
     let canonical = std::env::var("RATIO_CANONICAL_HOST").ok();
+    let idp = std::env::var("RATIO_COGNITO_DOMAIN").ok();
     write!(
         stream,
         "HTTP/1.1 {status}\r\n\
@@ -364,7 +403,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
          {}Cache-Control: no-store\r\n\
          Connection: close\r\n\r\n{body}",
         body.len(),
-        security_headers(content_type, &req.host, canonical.as_deref())
+        security_headers(content_type, &req.host, canonical.as_deref(), idp.as_deref())
     )?;
     Ok(())
 }
@@ -1549,7 +1588,7 @@ mod tests {
 
     #[test]
     fn html_gets_a_content_policy_and_an_api_loads_nothing() {
-        let html = security_headers("text/html; charset=utf-8", "x", None);
+        let html = security_headers("text/html; charset=utf-8", "x", None, None);
         for needle in [
             "Content-Security-Policy:",
             "frame-ancestors 'none'",
@@ -1562,9 +1601,18 @@ mod tests {
             assert!(html.contains(needle), "the html headers are missing {needle:?}");
         }
         // An API response renders nothing and loads nothing.
-        let json = security_headers("application/json", "x", None);
+        let json = security_headers("application/json", "x", None, None);
         assert!(json.contains("default-src 'none'"));
         assert!(!json.contains("'unsafe-inline'"), "an API response has no inline anything");
+        // ⛔ The Cognito domain joins connect-src so the PKCE token exchange is
+        // not blocked; without a configured IdP it stays 'self' only.
+        assert!(!html.contains("amazoncognito"), "no idp configured means no idp origin");
+        let with_idp =
+            security_headers("text/html", "x", None, Some("p.auth.us-east-1.amazoncognito.com"));
+        assert!(
+            with_idp.contains("connect-src 'self' https://p.auth.us-east-1.amazoncognito.com"),
+            "the token exchange origin must be allowed"
+        );
     }
 
     #[test]
@@ -1574,13 +1622,16 @@ mod tests {
         let shared = "abc123.execute-api.us-east-1.amazonaws.com";
         let ours = "ratio.fastverk.dev";
         assert!(
-            !security_headers("text/html", shared, Some(ours)).contains("Strict-Transport-Security"),
+            !security_headers("text/html", shared, Some(ours), None)
+                .contains("Strict-Transport-Security"),
             "HSTS must not ride the shared AWS host"
         );
-        assert!(security_headers("text/html", ours, Some(ours))
+        assert!(security_headers("text/html", ours, Some(ours), None)
             .contains("Strict-Transport-Security: max-age="));
         // A local run configures no canonical host, so never.
-        assert!(!security_headers("text/html", ours, None).contains("Strict-Transport-Security"));
+        assert!(
+            !security_headers("text/html", ours, None, None).contains("Strict-Transport-Security")
+        );
     }
 
     #[test]
