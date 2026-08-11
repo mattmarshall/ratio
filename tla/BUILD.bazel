@@ -368,3 +368,53 @@ tla_check(
     tags = ["manual"],
     deps = [":wash_restatement"],
 )
+
+# The projection as TABLES, and the figure that straddles two of them.
+#
+# ⛔ `projection_check` PROVES A SCALAR AND POSTGRES HAS A FUNCTION. That spec's
+# `projAt` is one position because the Rust projection is one object, and
+# `AsOf<T>` makes dropping it a type error. Split the projection into lots,
+# positions and aggregates — which is the whole point of issue #8 — and a figure
+# is a query across more than one table, each at its own prefix. A NAV folded
+# from positions at 100 and lots at 105 is internally consistent everywhere and
+# is a figure that never existed.
+#
+# ⚠ TWO INDEPENDENT DIALS, AND NEITHER ALONE IS ENOUGH — which is what a model
+# check says and reasoning does not. The two probes below go red on the SAME
+# invariant by different routes: one writes atomically and reads torn, the other
+# reads a perfect snapshot of tables that advanced independently.
+tla_library(
+    name = "sql_projection",
+    srcs = ["SqlProjection.tla"],
+)
+
+tla_check(
+    name = "sql_projection_check",
+    size = "medium",
+    config = "MCSqlProjection.cfg",
+    module = "MCSqlProjection.tla",
+    deps = [":sql_projection"],
+)
+
+# ⛔ A worker per table. Even a perfect snapshot sees two prefixes.
+# AFigureIsFoldedFromOnePrefix goes red.
+tla_check(
+    name = "torn_projector_write_check",
+    size = "medium",
+    config = "TornProjectorWrite.cfg",
+    module = "TornProjectorWrite.tla",
+    tags = ["manual"],
+    deps = [":sql_projection"],
+)
+
+# ⛔ Atomic writes, torn read. The projector commits between two statements of
+# one figure, so atomicity on the write side alone does not save it.
+# AFigureIsFoldedFromOnePrefix goes red.
+tla_check(
+    name = "torn_reader_straddle_check",
+    size = "medium",
+    config = "TornReaderStraddle.cfg",
+    module = "TornReaderStraddle.tla",
+    tags = ["manual"],
+    deps = [":sql_projection"],
+)
