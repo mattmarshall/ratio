@@ -28,7 +28,7 @@ pub use render::render;
 
 use std::collections::BTreeMap;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use ratio_kernel::{transaction_is_balanced, Posting, Transaction};
 use ratio_store::{Account, PostingRecord};
 use serde::{Deserialize, Serialize};
@@ -368,6 +368,47 @@ impl LotMethod {
     }
 }
 
+/// A method this engine knows about and deliberately does not offer as an
+/// ordering, with the reason.
+///
+/// ⛔ NAMED RATHER THAN GUESSED. This matches the declared value textually
+/// because by the time serde has failed there is no value left to inspect — and
+/// a substring search over the whole document would fire on a rule id that
+/// happens to contain the word.
+fn unsupported_method(toml_src: &str) -> Option<&'static str> {
+    let declared = toml_src.lines().find_map(|l| {
+        let (k, v) = l.split_once('=')?;
+        if k.trim() != "lot_method" {
+            return None;
+        }
+        Some(v.trim().trim_matches('"').to_string())
+    })?;
+    match declared.as_str() {
+        "min_tax" | "mintax" | "minimize_tax" | "tax_minimising" | "tax_minimizing" => Some(
+            "min-tax relief is not an ordering, so it is not a lot method: which lot costs \
+             least in tax depends on the SALE PRICE and not on the holding. A short-term LOSS \
+             is worth more than a long-term one while a short-term GAIN is worth less, so the \
+             same two lots invert between two prices. See \
+             Ratio.Lots.Methods.a_tax_minimising_method_is_not_a_function_of_the_lots, and \
+             issue #9 for the shape it needs instead",
+        ),
+        "specific_identification" | "specific_id" | "specid" => Some(
+            "specific identification is not an ordering, so it is not a lot method: the client \
+             names the lots PER SALE, possibly from the middle of a holding and possibly \
+             partially. It is an instruction carried on the disposal, not a term of the rule \
+             set. See Ratio.Lots.Methods.specific_identification_takes_from_the_middle",
+        ),
+        "average_cost" | "average" | "pooled" => Some(
+            "average cost is not an ordering, so it is not a lot method: it POOLS the holding, \
+             so which lot is given up is not a question it answers. It also divides — total \
+             cost over total units rarely lands on a whole minor unit — which is a rounding \
+             term no ordering method carries. See \
+             Ratio.Lots.Methods.average_cost_is_not_a_lot_walk",
+        ),
+        _ => None,
+    }
+}
+
 impl RuleSet {
     /// Parse a configuration from TOML.
     ///
@@ -375,8 +416,28 @@ impl RuleSet {
     /// That is deliberate: the schema makes a float inexpressible, so there is
     /// no separate "no floats" check to forget to run.
     pub fn from_toml(s: &str) -> Result<Self> {
-        let set: Self =
-            toml::from_str(s).context("configuration is not valid TOML for a rule set")?;
+        let set: Self = toml::from_str(s).map_err(|e| {
+            // ⛔ THE THREE THAT ARE NOT ORDERINGS GET THEIR OWN ANSWER. Serde
+            // refuses an unknown variant with "configuration is not valid TOML
+            // for a rule set", which is FALSE and unhelpful in the same breath:
+            // the TOML parsed fine, and the administrator wrote down a method
+            // their fund is genuinely administered under. Telling them their
+            // file is malformed sends them to look for a typo that is not
+            // there.
+            //
+            // ⚠ AND THESE ARE NOT MISSING FEATURES TO BE ADDED AS VARIANTS.
+            // `Ratio.Lots.Methods` proves each is a different SHAPE — a
+            // tax-minimising method is not a function of the lots (it needs the
+            // sale price), specific identification is a per-sale selection
+            // rather than a sort, and average cost pools the holding so "which
+            // lot" is not a question it answers. Issue #9 exists because adding
+            // one here is the natural and wrong move.
+            match unsupported_method(s) {
+                Some(m) => anyhow!("{}", m),
+                None => anyhow::Error::new(e)
+                    .context("configuration is not valid TOML for a rule set"),
+            }
+        })?;
         // ⛔ AT READ TIME. A chart that cannot express a gain is wrong the
         // moment it is written down; finding out at the first disposal means
         // finding out in production.
@@ -677,6 +738,45 @@ fn round_half_up(numerator: i128, denominator: i128) -> i128 {
 mod tests {
     use super::*;
     use ratio_store::AccountTypeRecord as A;
+
+    #[test]
+    fn the_three_that_are_not_orderings_are_refused_by_name() {
+        // ⛔ REFUSED WITH THE REASON, not with "your TOML is malformed". Serde
+        // rejects an unknown variant, so a fund administered under average cost
+        // was told its configuration file was invalid — which is false and
+        // unhelpful in the same breath. The TOML parsed; the method is a
+        // different SHAPE, and the message now says which and why.
+        //
+        // ⚠ AND THESE ARE NOT MISSING VARIANTS. `Ratio.Lots.Methods` proves
+        // each is a different shape, and issue #9 exists because adding one to
+        // `LotMethod` is the natural and wrong move.
+        for (name, must_say) in [
+            ("min_tax", "SALE PRICE"),
+            ("mintax", "SALE PRICE"),
+            ("specific_identification", "PER SALE"),
+            ("average_cost", "POOLS"),
+            ("pooled", "POOLS"),
+        ] {
+            let e = RuleSet::from_toml(&format!("lot_method = \"{name}\"\nrules = []\n"))
+                .expect_err("not an ordering, so it cannot be a lot method")
+                .to_string();
+            assert!(
+                e.contains(must_say),
+                "{name} is refused without saying why — a reader is sent to look for a typo \
+                 that is not there. Got: {e}"
+            );
+            assert!(
+                !e.contains("not valid TOML"),
+                "{name} is refused as malformed TOML, which it is not. Got: {e}"
+            );
+        }
+
+        // And an actual typo still reads as one.
+        let e = RuleSet::from_toml("lot_method = \"fifoo\"\nrules = []\n")
+            .expect_err("not a method")
+            .to_string();
+        assert!(e.contains("not valid TOML"), "a genuine typo should not be explained away: {e}");
+    }
 
     #[test]
     fn every_method_round_trips_through_its_declared_name() {
