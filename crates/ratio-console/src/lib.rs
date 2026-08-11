@@ -88,6 +88,13 @@ pub struct Console {
     /// tenant. `Some(set)` restricts, and an empty set is a real, valid answer
     /// (the operator is a member of nothing) rather than a refusal.
     allowed: Option<BTreeSet<String>>,
+
+    /// Who a write on this console is attributed to. A `Member`'s stable id, or
+    /// `RATIO_ACTOR` for the `Local` CLI/loopback console — resolved from the
+    /// subject once at construction, NEVER from a request body. `None` is a
+    /// genuine absence (a local run with no `RATIO_ACTOR`), recorded honestly as
+    /// an empty actor rather than a made-up one.
+    actor: Option<String>,
 }
 
 impl Console {
@@ -95,7 +102,10 @@ impl Console {
     /// which sees every book. `ratio watch --book`, `ratio-mcp` and the tests
     /// all reach the data this way, unchanged by the tenancy work.
     pub fn new(root: impl AsRef<Path>) -> Self {
-        Self::build(root.as_ref().to_path_buf(), None)
+        // The CLI/loopback console attributes writes to RATIO_ACTOR, the same
+        // string `ratio approve` and `ratio strike` record. Not authentication —
+        // there is none on a loopback surface — but the honest local identity.
+        Self::build(root.as_ref().to_path_buf(), None, std::env::var("RATIO_ACTOR").ok())
     }
 
     /// The console scoped to an authenticated subject: it sees only the funds
@@ -108,10 +118,16 @@ impl Console {
             Subject::Local => None,
             member => Some(auth::funds_for(&root, member)),
         };
-        Self::build(root, allowed)
+        // A Member's writes are signed with their verified id; a Local scoped
+        // console (unusual) falls back to RATIO_ACTOR like `new`.
+        let actor = match subject.actor() {
+            Some(a) => Some(a.to_string()),
+            None => std::env::var("RATIO_ACTOR").ok(),
+        };
+        Self::build(root, allowed, actor)
     }
 
-    fn build(root: PathBuf, allowed: Option<BTreeSet<String>>) -> Self {
+    fn build(root: PathBuf, allowed: Option<BTreeSet<String>>, actor: Option<String>) -> Self {
         Console {
             root,
             max_entries: std::env::var("RATIO_MAX_API_ENTRIES")
@@ -119,7 +135,46 @@ impl Console {
                 .and_then(|v| v.parse().ok()),
             projections: Default::default(),
             allowed,
+            actor,
         }
+    }
+
+    /// Append one line to the fund's audit log — who did what, when, to what,
+    /// under which configuration — as tab-separated
+    /// `epoch \t actor \t action \t subject \t config_digest`.
+    ///
+    /// ⛔ THE ACTOR IS `self.actor`, THE VERIFIED SUBJECT, NEVER THE REQUEST
+    /// BODY. Attribution to a name the caller chose is attribution to nobody,
+    /// and the product is that a figure is attributable to a named person. An
+    /// absent actor is recorded as empty rather than invented — an audit trail
+    /// that makes up a name is worse than one that admits a gap.
+    fn record_change(&self, book: &Path, action: &str, subject: &str, digest: &str) -> Result<()> {
+        use std::io::Write;
+        let when = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        // A tab or newline in any field would split the record. The actor is a
+        // Cognito id or email and the rest are ids/digests, none of which carry
+        // either, but a stray control character is dropped rather than trusted.
+        let clean = |s: &str| -> String {
+            s.chars().filter(|c| *c != '\t' && *c != '\n' && *c != '\r').collect()
+        };
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(book.join("CHANGELOG"))
+            .context("opening CHANGELOG")?;
+        writeln!(
+            f,
+            "{when}\t{}\t{}\t{}\t{}",
+            clean(self.actor.as_deref().unwrap_or("")),
+            clean(action),
+            clean(subject),
+            clean(digest)
+        )
+        .context("appending to CHANGELOG")?;
+        Ok(())
     }
 
     /// This fund's projection, brought up to date with whatever has been
@@ -529,6 +584,7 @@ impl Console {
         // does not conserve.
         if !req.validate_only {
             b.append(&entry)?;
+            self.record_change(&path, "posted", id, digest.as_str())?;
         }
 
         let net_asset_value = if req.validate_only {
@@ -976,6 +1032,7 @@ impl Console {
             for f in &fresh {
                 b.append_record(Plane::Facts, f)?;
             }
+            self.record_change(&path, "ingested", &delivery.digest, digest.as_str())?;
         }
 
         // Resolve against the master as it stands, so the preview shows what
@@ -1280,6 +1337,10 @@ impl Console {
             }
         }
 
+        if !req.validate_only && posted > 0 {
+            self.record_change(&path, "marked", &as_of, digest.as_str())?;
+        }
+
         let net_asset_value = if req.validate_only {
             previous.clone()
         } else {
@@ -1463,6 +1524,10 @@ impl Console {
                 })?;
             }
             n += 1;
+        }
+
+        if !req.validate_only && n > 0 {
+            self.record_change(&path, "admitted", &format!("{n} facts"), digest.as_str())?;
         }
 
         let net_asset_value = if req.validate_only {
@@ -1756,7 +1821,13 @@ impl Console {
         let mut promoted: BTreeMap<String, (i64, String, String)> = BTreeMap::new();
         for l in std::fs::read_to_string(path.join("CHANGELOG")).unwrap_or_default().lines() {
             let f: Vec<&str> = l.split('\t').collect();
-            if f.len() >= 5 {
+            // ⛔ ONLY AN "approved" LINE IS A PROMOTION. The CHANGELOG is the
+            // fund's whole audit trail — it also carries who posted, ingested,
+            // marked and admitted, each with a config digest in the last field.
+            // Without this filter a posted-event line, keyed by that digest,
+            // would overwrite the real promotion and report the last person who
+            // posted under a configuration as the one who approved it.
+            if f.len() >= 5 && f[2] == "approved" {
                 promoted.insert(
                     f[4].to_string(),
                     (f[0].parse().unwrap_or(0), f[1].to_string(), f[3].to_string()),
@@ -2578,6 +2649,43 @@ mod tests {
         assert!(transcode::serve(&console, "GET", "/v1/funds/b/accounts", "", "").is_ok());
         let funds = transcode::serve(&console, "GET", "/v1/funds", "", "").unwrap();
         assert!(funds.contains("funds/a") && funds.contains("funds/b"));
+    }
+
+    #[test]
+    fn a_write_is_attributed_to_the_verified_subject_and_does_not_pollute_config_versions() {
+        let root = fresh("attribution");
+        book(&root.join("a"));
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "signer-sub\ta\n").unwrap();
+        let console = Console::scoped(
+            &root,
+            Subject::Member { sub: "signer-sub".into(), email: "s@x.test".into(), groups: vec![] },
+        );
+        let book_a = root.join("a");
+        let digest = FileBook::open(&book_a).unwrap().active().unwrap().unwrap();
+
+        // What every write handler records after a successful append.
+        console.record_change(&book_a, "posted", "evt-1", digest.as_str()).unwrap();
+
+        // The change log shows it, attributed to the VERIFIED subject — the id
+        // resolved from the gateway's claims, never a string the caller chose.
+        let log = console.change_log_for(&book_a, "a").unwrap();
+        let posted = log.iter().find(|e| e.action == "posted").expect("the write is in the log");
+        assert_eq!(posted.actor.as_str(), "signer-sub");
+        assert_eq!(posted.subject.as_str(), "evt-1");
+        assert_eq!(posted.actor_kind, pb::ActorKind::Person as i32);
+
+        // ⛔ AND IT IS NOT MISREAD AS A CONFIG PROMOTION. `config_versions` keys
+        // on the digest in the last field; this posted-event line carries the
+        // same digest. `book` promoted that config with no "approved" line, so
+        // the version must carry an EMPTY actor. Drop the `action == "approved"`
+        // filter and this reads "signer-sub" — the last poster mistaken for the
+        // approver. That is the negative test.
+        let versions = console.config_versions("a").unwrap();
+        let v = versions
+            .iter()
+            .find(|v| v.digest.as_str() == digest.as_str())
+            .expect("the active config is a version");
+        assert_eq!(v.actor.as_str(), "", "a posted-event line must not be read as the approver");
     }
 
     #[test]
