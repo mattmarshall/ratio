@@ -72,6 +72,14 @@ struct Request {
     path: String,
     query: String,
     body: String,
+    /// The `x-amzn-request-context` header, verbatim, or empty if absent.
+    ///
+    /// On the deployed surface the Lambda Web Adapter puts the API Gateway
+    /// event's `requestContext` here as JSON, and a JWT authorizer's verified
+    /// claims ride inside it. Empty on a local `ratio watch` — there is no
+    /// gateway in front of it — which is how the `/v1` arm tells an
+    /// authenticated request from a developer's loopback one.
+    auth_context: String,
 }
 
 /// Read a request: the request line, the headers, and `Content-Length` bytes of
@@ -89,14 +97,20 @@ fn read_request(reader: &mut impl BufRead) -> Result<Request> {
     let target = parts.next().unwrap_or("/").to_string();
 
     let mut length = 0usize;
+    let mut auth_context = String::new();
     loop {
         let mut h = String::new();
         if reader.read_line(&mut h)? == 0 || h == "\r\n" || h == "\n" {
             break; // end of headers, or the peer hung up
         }
+        // `split_once` on the FIRST colon only — the request-context value is
+        // JSON and carries its own colons, which must stay in the value.
         if let Some((name, value)) = h.split_once(':') {
-            if name.trim().eq_ignore_ascii_case("content-length") {
+            let name = name.trim();
+            if name.eq_ignore_ascii_case("content-length") {
                 length = value.trim().parse().unwrap_or(0);
+            } else if name.eq_ignore_ascii_case("x-amzn-request-context") {
+                auth_context = value.trim().to_string();
             }
         }
     }
@@ -118,7 +132,7 @@ fn read_request(reader: &mut impl BufRead) -> Result<Request> {
         Some((p, q)) => (p.to_string(), q.to_string()),
         None => (target, String::new()),
     };
-    Ok(Request { method, path, query, body })
+    Ok(Request { method, path, query, body, auth_context })
 }
 
 fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
@@ -178,10 +192,36 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             // book. `RATIO_FUNDS` separates them, and defaults to the book so a
             // single-book deployment keeps working unchanged.
             let root = std::env::var("RATIO_FUNDS").ok();
-            let c = ratio_console::Console::new(
-                root.as_deref().map(std::path::Path::new).unwrap_or(book),
-            );
-            match ratio_console::transcode::serve(&c, m, p, &req.query, &req.body) {
+            let root = root.as_deref().map(std::path::Path::new).unwrap_or(book);
+
+            // Who is asking. On the deployed surface the gateway's JWT authorizer
+            // has already verified the token and the claims ride in the
+            // request-context header; here we only read them. A local `ratio
+            // watch` carries no such header, so `from_request_context` is `None`
+            // and the console runs unrestricted as `Local`.
+            let subject = ratio_console::auth::from_request_context(&req.auth_context);
+
+            // ⛔ FAIL CLOSED. `RATIO_AUTH=required` is set only in the deployed
+            // environment. When it is set and the gateway attached no verified
+            // identity, refuse — rather than fall back to the unrestricted
+            // `Local` console. So a removed or misconfigured authorizer produces
+            // refusal, not open access, and the boundary does not depend on a
+            // CloudFormation resource the test suite cannot see. Authorization
+            // (which funds this subject may open) stays in Rust, at `book_path`.
+            let auth_required = std::env::var("RATIO_AUTH").as_deref() == Ok("required");
+            if subject.is_none() && auth_required {
+                // A shape the SPA renders as a sign-in prompt, not a blank page.
+                (
+                    "401 Unauthorized",
+                    "application/json",
+                    r#"{"error":"sign in required","signIn":true}"#.to_string(),
+                )
+            } else {
+                let c = match subject {
+                    Some(s) => ratio_console::Console::scoped(root, s),
+                    None => ratio_console::Console::new(root),
+                };
+                match ratio_console::transcode::serve(&c, m, p, &req.query, &req.body) {
                 Ok(j) => ("200 OK", "application/json", j),
                 // A bad resource name is the caller's mistake and a missing
                 // fund is a 404; both are told apart by what the console said
@@ -203,6 +243,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
                         "400 Bad Request"
                     };
                     (status, "application/json", format!("{{\"error\":{}}}", quote(&msg)))
+                    }
                 }
             }
         }
