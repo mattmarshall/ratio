@@ -375,3 +375,22 @@ filegroup(
     name = "lean_srcs",
     srcs = _LEAN_SRCS,
 )
+
+# A loss the rule DEFERS, and the ways an engine removes it.
+#
+# ⛔ THE SECOND HALF OF THE RULE IS THE ONE THAT GETS DROPPED. Disallowing a loss
+# without attaching it to the replacement lot's basis does not partially
+# implement the rule — it permanently overtaxes the investor, and it does so
+# while cost is conserved, the trial balance ties and the digest reproduces. The
+# figure that goes wrong is the realized gain, which has no counterparty and so
+# no reconciliation reaches it.
+lean_test(
+    name = "lots_wash_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Lots.lean",
+        "Ratio/Lots/Methods.lean",
+        "Ratio/Lots/Wash.lean",
+    ],
+    entry = "Ratio/Lots/Wash.lean",
+)

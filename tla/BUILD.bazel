@@ -330,3 +330,41 @@ tla_check(
     tags = ["manual"],
     deps = [":relief_engine"],
 )
+
+# A loss disallowed by a repurchase that had not happened yet.
+#
+# ⛔ NOTHING IS STALE HERE, which is what makes it a different spec from
+# `relief_engine`. The strike read the whole journal, pinned its prefix and
+# computed the only correct answer available at the time; the figure moved
+# because a FUTURE event reached backwards, which is a property of the tax rule
+# rather than a defect in the engine.
+#
+# ⚠ SO THE OBLIGATION IS NOT "DO NOT LET IT CHANGE" — the rule genuinely reaches
+# back, and an engine that held March fixed would report a number the rule
+# disagrees with. It is that a figure somebody was paid on must not change
+# SILENTLY: qualified when struck with the window open, restated when a later
+# repurchase moves it.
+tla_library(
+    name = "wash_restatement",
+    srcs = ["WashRestatement.tla"],
+)
+
+tla_check(
+    name = "wash_restatement_check",
+    size = "medium",
+    config = "MCWashRestatement.cfg",
+    module = "MCWashRestatement.tla",
+    deps = [":wash_restatement"],
+)
+
+# ⛔ Struck clean, changed quietly. Two reproducible answers to one question and
+# no record that they differ.
+# AStruckGainThatMovedSaysSo goes red.
+tla_check(
+    name = "silent_wash_restatement_check",
+    size = "medium",
+    config = "SilentWashRestatement.cfg",
+    module = "SilentWashRestatement.tla",
+    tags = ["manual"],
+    deps = [":wash_restatement"],
+)
