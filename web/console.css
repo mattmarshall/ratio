@@ -376,6 +376,14 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .posacct{padding:11px 22px 3px;font-size:10.5px;letter-spacing:.07em;
   text-transform:uppercase;color:var(--muted)}
 .tbrow.static{cursor:default}
+/* The untranslated split beneath a translated account total. Indented and
+   quieter than the row it explains, because it is EVIDENCE for that row and
+   not another row like it. */
+.ccyrow{cursor:default;background:var(--sunken);border-bottom:1px solid var(--rule)}
+.ccyrow:hover{background:var(--sunken)}
+.ccyrow .at{padding-left:18px;font-size:11.5px;letter-spacing:.02em}
+.ccyrow .num{font-size:12px;color:var(--muted)}
+.ccyrow .rate{margin-left:8px;color:var(--muted);opacity:.8}
 .tbrow.static:hover{background:transparent}
 /* The unattributed row is dimmed, never hidden. It is the half of the theorem
    a screen is most tempted to drop. */

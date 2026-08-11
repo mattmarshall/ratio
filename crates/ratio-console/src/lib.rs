@@ -199,13 +199,14 @@ impl Console {
         // total that reported a NAV of 133,915,377.28 where the answer was
         // 134,439,187.51 — so the denominations are converted, not merged.
         //
-        // ⚠ THE PER-CURRENCY BREAKDOWN IS THE FULLER ANSWER and it is NOT here.
-        // `ratio balance`, the watch trial balance and the MCP `trial_balance`
-        // tool all show the split. Putting it on this resource means a repeated
-        // field, four mirrored files and a screen; it is worth doing and it is
-        // not this change.
+        // ⚠ AND THE UNTRANSLATED SPLIT IS CARRIED ALONGSIDE, in
+        // `Account.currency_totals`. The translated figure is a judgment about
+        // a rate; the denominations are a fact, and a reader checking the first
+        // needs the second. Every other surface shows the split, and the one
+        // screen a customer actually looks at was the one that could not.
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
         let mut totals: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
+        let mut split: BTreeMap<i64, Vec<pb::CurrencyTotal>> = BTreeMap::new();
         for ((dim, ccy), (debit, credit)) in b.balances_by_dim()? {
             let factor = rates.factor_of_optional(ccy.as_deref()).with_context(|| {
                 format!(
@@ -218,6 +219,20 @@ impl Console {
             let scale = ratio_project::RATE_SCALE as i128;
             s.0 += (debit as i128 * factor / scale) as i64;
             s.1 += (credit as i128 * factor / scale) as i64;
+            split.entry(dim).or_default().push(pb::CurrencyTotal {
+                currency_code: ccy.clone().unwrap_or_default(),
+                debit: debit.to_string(),
+                credit: credit.to_string(),
+                balance: (debit - credit).to_string(),
+                // ⛔ EMPTY FOR THE BASE AND FOR AN UNTYPED LEG, not "100".
+                // Both translate at par, and both do so WITHOUT a rate fact —
+                // printing a rate nobody recorded would invent the evidence the
+                // column exists to supply.
+                rate: match ccy.as_deref() {
+                    Some(c) if c != FUND_CURRENCY => factor.to_string(),
+                    _ => String::new(),
+                },
+            });
         }
 
         let mut counts: BTreeMap<i64, i64> = BTreeMap::new();
@@ -246,6 +261,13 @@ impl Console {
                     // one theorem per account type.
                     abnormal: !ratio_chart::is_normal_side(a.account_type.into(), balance),
                     posting_count: counts.get(&a.dim).copied().unwrap_or(0).to_string(),
+                    // ⚠ EMPTY WHEN THERE IS ONE DENOMINATION, because a split
+                    // into one row adds nothing and a screen that renders it
+                    // anyway says "USD 100 (of which USD 100)".
+                    currency_totals: match split.remove(&a.dim) {
+                        Some(v) if v.len() > 1 => v,
+                        _ => Vec::new(),
+                    },
                 }
             })
             .collect())

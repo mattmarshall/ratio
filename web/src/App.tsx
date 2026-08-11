@@ -5,7 +5,7 @@
 // five funds, this shows the funds that exist — which is one on the demo, and
 // however many books are on disk everywhere else.
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   useAccounts,
   useAdmit,
@@ -292,25 +292,47 @@ function Balance({
         <span role="columnheader" className="num">Balance</span>
       </div>
       {accounts.map((a) => (
-        <button
-          key={a.name}
-          className="tbrow"
-          role="row"
-          aria-current={a.name === selected}
-          onClick={() => onSelect(a.name)}
-        >
-          <span role="cell">
-            <span className="an">{a.displayName}</span>
-            <span className="at">
-              {a.type.toLowerCase()}
-              {/* An abnormal balance is legal. It is flagged, not scored. */}
-              {a.abnormal ? <b className="abn">abnormal side</b> : null}
+        <Fragment key={a.name}>
+          <button
+            className="tbrow"
+            role="row"
+            aria-current={a.name === selected}
+            onClick={() => onSelect(a.name)}
+          >
+            <span role="cell">
+              <span className="an">{a.displayName}</span>
+              <span className="at">
+                {a.type.toLowerCase()}
+                {/* An abnormal balance is legal. It is flagged, not scored. */}
+                {a.abnormal ? <b className="abn">abnormal side</b> : null}
+              </span>
             </span>
-          </span>
-          <span role="cell" className="num">{a.debit === "0" ? "—" : money(a.debit)}</span>
-          <span role="cell" className="num">{a.credit === "0" ? "—" : money(a.credit)}</span>
-          <span role="cell" className="num bal">{money(a.balance)}</span>
-        </button>
+            <span role="cell" className="num">{a.debit === "0" ? "—" : money(a.debit)}</span>
+            <span role="cell" className="num">{a.credit === "0" ? "—" : money(a.credit)}</span>
+            <span role="cell" className="num bal">{money(a.balance)}</span>
+          </button>
+          {/* ⛔ THE UNTRANSLATED FACT UNDER THE TRANSLATED FIGURE. The row above
+              is one number per account, so on a fund holding several currencies
+              it is a CONVERSION — a judgment about a rate. These are what was
+              actually held, before any rate touched it, so the figure above can
+              be checked rather than taken.
+
+              ⚠ SIBLINGS, NOT CHILDREN. The row is a `<button>`, and nesting
+              rows inside it would put content a screen reader announces as part
+              of the control's label. The server sends this only when there is
+              more than one denomination. */}
+          {a.currencyTotals.map((c) => (
+            <div className="tbrow ccyrow" role="row" key={a.name + c.currencyCode}>
+              <span role="cell" className="at">
+                {c.currencyCode || <em>no currency</em>}
+                {c.rate ? <span className="rate">@ {money(c.rate)}</span> : null}
+              </span>
+              <span role="cell" className="num">{c.debit === "0" ? "—" : money(c.debit)}</span>
+              <span role="cell" className="num">{c.credit === "0" ? "—" : money(c.credit)}</span>
+              <span role="cell" className="num bal">{money(c.balance)}</span>
+            </div>
+          ))}
+        </Fragment>
       ))}
       {/* The two columns that must agree, and the difference reported as a
           figure rather than as a green tick. */}

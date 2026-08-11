@@ -729,10 +729,22 @@ impl JsonView for pb::Account {
         format!(
             "{{\"name\":{},\"displayName\":{},\"dimension\":{},\"type\":{},\
              \"debit\":{},\"credit\":{},\"balance\":{},\"abnormal\":{},\
-             \"postingCount\":{}}}",
+             \"postingCount\":{},\"currencyTotals\":[{}]}}",
             q(&self.name), q(&self.display_name), q(&self.dimension),
             q(account_type_name(self.r#type)), q(&self.debit), q(&self.credit),
-            q(&self.balance), self.abnormal, q(&self.posting_count)
+            q(&self.balance), self.abnormal, q(&self.posting_count),
+            self.currency_totals.iter().map(|c| c.to_json()).collect::<Vec<_>>().join(",")
+        )
+    }
+}
+
+impl JsonView for pb::CurrencyTotal {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"currencyCode\":{},\"debit\":{},\"credit\":{},\"balance\":{},\
+             \"rate\":{}}}",
+            q(&self.currency_code), q(&self.debit), q(&self.credit),
+            q(&self.balance), q(&self.rate)
         )
     }
 }
