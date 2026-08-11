@@ -657,7 +657,11 @@ fn bench(args: &[&str]) -> Result<()> {
     // ⛔ ONE READER OF THE RATE FACTS, shared with the console. Two would be two
     // chances to disagree about which field is the rate, and the disagreement
     // would surface as a fund valued at a number nobody chose.
-    let rates = ratio_project::Rates::of_facts(ratio_gen::currency_code_of(0), &facts);
+    // ⛔ AND ONE DEFINITION OF THE BASE. This said `currency_code_of(0)` — the
+    // GENERATOR's idea of which currency is first — so `ratio bench` translated
+    // into whatever the generator happened to list first while every other
+    // reader used the fund's. They agree today and nothing made them.
+    let rates = ratio_project::Rates::of_facts(ratio_store::BASE_CURRENCY, &facts);
 
     // MARK: one price per security, units read through any outstanding
     // corporate action. ⛔ THIS IS THE TERM `Ratio.Closure.markCost` NAMES, and
@@ -1240,8 +1244,10 @@ fn balance(book: PathBuf) -> Result<()> {
         println!("configuration  {c}");
     }
     println!();
-    println!("{:<34}{:>18}{:>18}", "ACCOUNT", "DEBIT", "CREDIT");
-    for (dim, (debit, credit)) in &by_dim {
+    // ⛔ ONE ROW PER (ACCOUNT, CURRENCY) — see `Journal::balances_by_dim`. One
+    // row per account added dollars to euros under a currency-free header.
+    println!("{:<30}{:<5}{:>18}{:>18}", "ACCOUNT", "CCY", "DEBIT", "CREDIT");
+    for ((dim, ccy), (debit, credit)) in &by_dim {
         let label = match names.get(dim) {
             Some(a) => {
                 // Flag anything sitting on the side its type calls abnormal —
@@ -1255,29 +1261,35 @@ fn balance(book: PathBuf) -> Result<()> {
             None => format!("dim {dim}"),
         };
         println!(
-            "{:<34}{:>18}{:>18}",
+            "{:<30}{:<5}{:>18}{:>18}",
             label,
+            ccy.as_deref().unwrap_or("—"),
             minor(*debit),
             minor(*credit)
         );
     }
     println!("{}", "-".repeat(70));
+    // ⚠ THE TOTAL IS A SUM OF MAGNITUDES ACROSS CURRENCIES, so it is a number
+    // in no currency and it is labeled as one. What it is FOR is the
+    // difference: every entry conserved per currency on the way in
+    // (`conserves_every_currency`), so each denomination ties on its own and
+    // the aggregate ties as a consequence. Reading the total itself as money is
+    // the mistake the rows above now make impossible.
     println!(
-        "{:<34}{:>18}{:>18}",
+        "{:<30}{:<5}{:>18}{:>18}",
         "Total",
+        "all",
         minor(tb.debits),
         minor(tb.credits)
     );
     println!(
-        "{:<34}{:>18}{:>18}",
+        "{:<30}{:<5}{:>18}{:>18}",
         "Difference",
+        "",
         minor(tb.debits - tb.credits),
         minor(0)
     );
-    if by_dim.values().any(|(d, c)| {
-        let net = d - c;
-        net != 0
-    }) && names.is_empty()
+    if by_dim.values().any(|(d, c)| d - c != 0) && names.is_empty()
     {
         println!("\n(no chart of accounts — run `ratio init`)");
     }

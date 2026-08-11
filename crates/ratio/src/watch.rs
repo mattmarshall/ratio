@@ -340,11 +340,15 @@ fn balance_text(book: &Path) -> Result<String> {
     if let Some(c) = b.active()? {
         out.push_str(&format!("configuration  {c}\n"));
     }
-    out.push_str(&format!("\n{:<34}{:>16}{:>16}\n", "ACCOUNT", "DEBIT", "CREDIT"));
-    for (dim, (debit, credit)) in b.balances_by_dim()? {
+    // ⛔ ONE ROW PER (ACCOUNT, CURRENCY) — see `Journal::balances_by_dim`. A
+    // single row per account added dollars to euros under a currency-free
+    // header.
+    out.push_str(&format!("\n{:<30}{:<5}{:>16}{:>16}\n", "ACCOUNT", "CCY", "DEBIT", "CREDIT"));
+    for ((dim, ccy), (debit, credit)) in b.balances_by_dim()? {
         out.push_str(&format!(
-            "{:<34}{:>16}{:>16}\n",
+            "{:<30}{:<5}{:>16}{:>16}\n",
             names.get(&dim).cloned().unwrap_or_else(|| format!("dim {dim}")),
+            ccy.as_deref().unwrap_or("—"),
             crate::minor(debit),
             crate::minor(credit)
         ));
@@ -417,7 +421,7 @@ fn balance_json(book: &Path) -> Result<String> {
     let tb = b.trial_balance()?;
 
     let mut rows = Vec::new();
-    for (dim, (debit, credit)) in b.balances_by_dim()? {
+    for ((dim, ccy), (debit, credit)) in b.balances_by_dim()? {
         let (label, abnormal) = match names.get(&dim) {
             Some(a) => {
                 let net = debit - credit;
@@ -428,8 +432,17 @@ fn balance_json(book: &Path) -> Result<String> {
             }
             None => (format!("dim {dim}"), false),
         };
+        // ⛔ THE CURRENCY IS PART OF THE ROW'S IDENTITY, not decoration. Two
+        // rows now share an `account` and differ by `currency`; a consumer that
+        // keys on `account` alone will collide them — which is the bug this
+        // came from, moved to where it is visible.
         rows.push(format!(
-            "{{\"account\":{dim},\"label\":{},\"debit\":{},\"credit\":{},\"abnormal\":{}}}",
+            "{{\"account\":{dim},\"currency\":{},\"label\":{},\"debit\":{},\
+             \"credit\":{},\"abnormal\":{}}}",
+            match &ccy {
+                Some(c) => quote(c),
+                None => "null".to_string(),
+            },
             quote(&label),
             quote(&crate::minor(debit)),
             quote(&crate::minor(credit)),

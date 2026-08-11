@@ -596,11 +596,16 @@ fn tool_trial_balance(book: &std::path::Path) -> Result<String> {
         .map(|a| (a.dim, a.display_name))
         .collect();
     let tb = b.trial_balance()?;
-    let mut out = String::from("account                             debit           credit\n");
-    for (dim, (debit, credit)) in b.balances_by_dim()? {
+    // ⛔ ONE ROW PER (ACCOUNT, CURRENCY). This printed one row per account, so
+    // an account holding dollars and euros showed their SUM under a header
+    // that named no currency — a figure a model would read back and cite. A
+    // trial balance is struck per denomination or not at all.
+    let mut out = String::from("account                          ccy         debit           credit\n");
+    for ((dim, ccy), (debit, credit)) in b.balances_by_dim()? {
         out.push_str(&format!(
-            "{:<32}{:>12}{:>17}\n",
+            "{:<32}{:<5}{:>12}{:>17}\n",
             names.get(&dim).cloned().unwrap_or_else(|| format!("dim {dim}")),
+            ccy.as_deref().unwrap_or("—"),
             debit,
             credit
         ));

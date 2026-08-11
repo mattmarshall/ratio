@@ -193,7 +193,32 @@ impl Console {
     fn accounts_of(&self, fund: &str) -> Result<Vec<pb::Account>> {
         let path = self.book_path(fund)?;
         let b = FileBook::open(&path)?;
-        let totals = b.balances_by_dim()?;
+        // ⛔ TRANSLATED INTO THE FUND'S CURRENCY, because a `pb::Account` is
+        // ONE ROW PER DIMENSION and the fold underneath is one row per
+        // (dimension, currency). Summing the pairs raw is precisely the flat
+        // total that reported a NAV of 133,915,377.28 where the answer was
+        // 134,439,187.51 — so the denominations are converted, not merged.
+        //
+        // ⚠ THE PER-CURRENCY BREAKDOWN IS THE FULLER ANSWER and it is NOT here.
+        // `ratio balance`, the watch trial balance and the MCP `trial_balance`
+        // tool all show the split. Putting it on this resource means a repeated
+        // field, four mirrored files and a screen; it is worth doing and it is
+        // not this change.
+        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
+        let mut totals: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
+        for ((dim, ccy), (debit, credit)) in b.balances_by_dim()? {
+            let factor = rates.factor_of_optional(ccy.as_deref()).with_context(|| {
+                format!(
+                    "this fund holds {} and no rate for it was supplied — an account total \
+                     mixing denominations is not a total",
+                    ccy.as_deref().unwrap_or("an untyped balance")
+                )
+            })? as i128;
+            let s = totals.entry(dim).or_insert((0, 0));
+            let scale = ratio_project::RATE_SCALE as i128;
+            s.0 += (debit as i128 * factor / scale) as i64;
+            s.1 += (credit as i128 * factor / scale) as i64;
+        }
 
         let mut counts: BTreeMap<i64, i64> = BTreeMap::new();
         b.for_each_entry_since(0, &mut |e| {

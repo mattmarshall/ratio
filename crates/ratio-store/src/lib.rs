@@ -675,12 +675,23 @@ impl FileBook {
     }
 
     /// Debit and credit totals per dimension, for the report.
-    pub fn balances_by_dim(&self) -> Result<BTreeMap<i64, (i64, i64)>> {
-        let mut out: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
+    /// ⛔ KEYED BY `(dimension, currency)`, AND THE PAIR IS THE POINT. This
+    /// returned `BTreeMap<i64, _>` — it folded away the currency — and five
+    /// callers printed the result as a trial balance, adding dollars to euros
+    /// under one account label on every multi-currency book. `Projection::nav`
+    /// and `ratio strike` were both moved OFF this fold for exactly that reason
+    /// and the fold was left in place, still wrong, still called.
+    ///
+    /// ⚠ SO THE CURRENCY IS IN THE TYPE. A caller that wants one number per
+    /// account now has to say what it did with the denominations — translate
+    /// them, or show them apart — rather than getting a plausible total for
+    /// free. `Ratio.Chart.Dimensions.a_flat_total_hides_a_currency_mismatch`.
+    pub fn balances_by_dim(&self) -> Result<BTreeMap<(i64, Option<String>), (i64, i64)>> {
+        let mut out: BTreeMap<(i64, Option<String>), (i64, i64)> = BTreeMap::new();
         // ⛔ STREAMED. Bounded by the chart, not by the log it reads.
         self.for_each_entry_since(0, &mut |entry| {
             for p in &entry.postings {
-                let slot = out.entry(p.dim).or_insert((0, 0));
+                let slot = out.entry((p.dim, p.currency.clone())).or_insert((0, 0));
                 if p.amount >= 0 {
                     slot.0 += p.amount;
                 } else {
@@ -1015,7 +1026,8 @@ mod position_tests {
         assert_eq!(held[&(1, "inst-vti".to_string())], (25_000_00, 100));
         assert_eq!(rest[&1], 1_000_00);
 
-        let account: i64 = b.balances_by_dim().unwrap()[&1].0 - b.balances_by_dim().unwrap()[&1].1;
+        let bal = b.balances_by_dim().unwrap();
+        let account: i64 = bal[&(1, None)].0 - bal[&(1, None)].1;
         let attributed: i64 = held.iter().filter(|((d, _), _)| *d == 1).map(|(_, v)| v.0).sum();
         assert_eq!(
             attributed + rest[&1],
@@ -1062,6 +1074,14 @@ mod tests {
                 .collect(),
             trade_date: None,
             announcement: None,
+        }
+    }
+
+    /// The same entry, every leg in one currency.
+    fn entry_in(id: &str, cfg: &Digest, ccy: &str, postings: &[(i64, i64)]) -> JournalEntry {
+        JournalEntry {
+            postings: postings.iter().map(|(d, a)| in_ccy(*d, *a, ccy)).collect(),
+            ..entry(id, cfg, &[])
         }
     }
 
@@ -1255,9 +1275,24 @@ mod tests {
         b.append(&entry("a", &cfg, &[(1, 300), (2, -300)])).unwrap();
         b.append(&entry("b", &cfg, &[(1, 200), (3, -200)])).unwrap();
         let by = b.balances_by_dim().unwrap();
-        assert_eq!(by[&1], (500, 0));
-        assert_eq!(by[&2], (0, 300));
-        assert_eq!(by[&3], (0, 200));
+        assert_eq!(by[&(1, None)], (500, 0));
+        assert_eq!(by[&(2, None)], (0, 300));
+        assert_eq!(by[&(3, None)], (0, 200));
+    }
+
+    #[test]
+    fn balances_keep_the_currencies_apart() {
+        // ⛔ THE ROW THIS FOLD USED TO MERGE. Keyed on the dimension alone, one
+        // account holding 300 dollars and 200 euros reported "500" — a number
+        // in no currency, printed under a currency-free column header by five
+        // separate callers. Splitting the key is what makes that unsayable.
+        let (mut b, cfg) = book();
+        b.append(&entry_in("a", &cfg, "USD", &[(1, 300), (2, -300)])).unwrap();
+        b.append(&entry_in("b", &cfg, "EUR", &[(1, 200), (2, -200)])).unwrap();
+        let by = b.balances_by_dim().unwrap();
+        assert_eq!(by[&(1, Some("USD".into()))], (300, 0));
+        assert_eq!(by[&(1, Some("EUR".into()))], (200, 0));
+        assert_eq!(by.get(&(1, None)), None, "nothing lands in the untyped slot");
     }
 
     #[test]
