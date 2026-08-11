@@ -108,3 +108,18 @@ PY
     """,
     message = "Inlining the console",
 )
+
+# The console has to RENDER what it receives.
+#
+# ⛔ A FIELD CAN BE DECLARED, TRANSCODED, SERVED, TYPECHECKED AND MIRRORED WHILE
+# NO COMPONENT READS IT. `ts_typecheck_test` proves types.ts compiles and
+# `//proto:mirrors_test` proves it mirrors the proto; neither says anything
+# about whether a screen shows the value. That gap has already produced a bug,
+# and it was found by grepping the served HTML by hand.
+sh_test(
+    name = "rendered_test",
+    size = "small",
+    srcs = ["rendered_test.sh"],
+    args = ["$(location :console_html)"],
+    data = [":console_html"],
+)

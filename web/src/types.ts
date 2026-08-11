@@ -281,6 +281,34 @@ export interface Account {
   /** Sitting on the side its type calls abnormal. Legal, worth a look. */
   abnormal: boolean;
   postingCount: Int64;
+  /**
+   * The same account, one row per currency it actually holds — untranslated.
+   *
+   * `debit`/`credit`/`balance` above are ONE figure per account, so they are
+   * translated: an account holding dollars and euros reports their converted
+   * sum. The rate is a judgment; the denominations are a fact. Empty on a
+   * single-currency fund.
+   */
+  currencyTotals: CurrencyTotal[];
+}
+
+/** One account's activity in one denomination, before any translation. */
+export interface CurrencyTotal {
+  /**
+   * ISO 4217, or empty for a posting that named no currency. Empty is its own
+   * group and NOT the fund's currency.
+   */
+  currencyCode: string;
+  /** Minor units in THIS currency — not converted. */
+  debit: Int64;
+  credit: Int64;
+  /** Debits minus credits, in this currency. Signed, like `balance`. */
+  balance: Int64;
+  /**
+   * What this denomination was multiplied by to reach the translated figure,
+   * in hundredths. Empty for the fund's own currency, which has no rate fact.
+   */
+  rate: Int64;
 }
 
 export interface ListAccountsResponse {

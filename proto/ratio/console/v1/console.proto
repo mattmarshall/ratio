@@ -999,6 +999,49 @@ message Account {
   bool abnormal = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   string posting_count = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The same account, one row per currency it actually holds.
+  //
+  // The fields above are ONE figure per account, which means they are
+  // translated: an account holding dollars and euros reports their converted
+  // sum. That is the right thing for a chart row and it is not the whole
+  // truth, because the rate is a judgment and the denominations are a fact.
+  //
+  // A reader checking a figure needs the fact. `balances_by_dim` folded the
+  // currency away entirely and five surfaces printed the result as a trial
+  // balance, adding dollars to euros under one label; the fold now carries the
+  // currency and every other surface shows the split. This is the console
+  // catching up, so that the one screen a customer looks at is not the one
+  // that cannot show it.
+  //
+  // Empty on a single-currency fund: there is nothing a split would add.
+  repeated CurrencyTotal currency_totals = 10
+      [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One account's activity in one denomination, before any translation.
+//
+// This is the untranslated fact underneath `Account.debit`/`credit`, so a
+// reader can see what the rate did rather than take the converted figure on
+// trust.
+message CurrencyTotal {
+  // ISO 4217, or empty for a posting that named no currency. Empty is its own
+  // group and NOT the fund's currency: for conservation an untyped leg cannot
+  // be assumed to be any particular denomination, and quietly labeling it USD
+  // is how a mismatch becomes invisible.
+  string currency_code = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Minor units, as strings, in THIS currency — not converted.
+  string debit = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string credit = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Debits minus credits, in this currency. Signed, like `Account.balance`.
+  string balance = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What this denomination was multiplied by to reach the translated figure,
+  // in hundredths. Empty for the fund's own currency, which has no rate fact —
+  // a fund does not record what a dollar is worth in dollars.
+  string rate = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One line of one entry, as it lands on an account.
