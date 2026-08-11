@@ -558,6 +558,24 @@ fn shape_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Shape, Vec<&'a str>)> 
             "--open-actions" => shape.open_actions = v()?,
             "--capital" => shape.capital_txns = v()?,
             "--seed" => shape.seed = v()? as u64,
+            // ⛔ THE DIAL THE DEMO NEEDED. Two funds from one seed differing
+            // only in this produce different realized gains from identical
+            // holdings and identical trades — which is what "the method is a
+            // term of the agreement" looks like on a screen.
+            "--method" => {
+                let name = it.next().ok_or_else(|| anyhow::anyhow!("--method needs a name"))?;
+                shape.method = ratio_rules::LotMethod::ALL
+                    .into_iter()
+                    .find(|m| m.as_declared() == *name)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "{name:?} is not a lot method — one of {}",
+                            ratio_rules::LotMethod::ALL
+                                .map(|m| m.as_declared())
+                                .join(", ")
+                        )
+                    })?;
+            }
             other => rest.push(other),
         }
     }
@@ -1289,6 +1307,54 @@ fn balance(book: PathBuf) -> Result<()> {
         minor(tb.debits - tb.credits),
         minor(0)
     );
+    // ⛔ THE TAX POSITION, WHICH THIS COMMAND COULD NOT REPORT AT ALL. The
+    // console shows a fund's method, realized gain and holding-period split;
+    // `ratio balance` showed a trial balance and stopped, so the one figure six
+    // lot methods and the whole relief layer exist to decide was unreachable
+    // from the command line. `ratio bench` printed it — for a book it had just
+    // generated and was about to throw away.
+    //
+    // ⚠ TRANSLATED, so it is one number rather than one per denomination. The
+    // rows above are the untranslated fact underneath it.
+    if let Some(digest) = b.active()? {
+        let set = ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))?;
+        if let Some(roles) = set.chart_roles {
+            let rates = ratio_project::Rates::of_facts(
+                ratio_store::BASE_CURRENCY,
+                &b.records(ratio_store::Plane::Facts)?,
+            );
+            let proj = ratio_project::Projection::of_book(&book)?;
+            if let Some(r) = proj.realized(Some(roles), &rates)?.value {
+                println!();
+                println!("REALIZED, SINCE INCEPTION            {}", ratio_project::relief::Method::from(set.effective_lot_method()).describe());
+                // ⚠ A GAIN IS CREDIT-NORMAL, so the stored figure is negative
+                // when money was made. It is flipped HERE, once, at the render
+                // boundary — the same place `web/src/format.ts` flips it — and
+                // the convention is stated beside the number rather than left
+                // for a reader to infer from a minus sign.
+                println!("{:<30}{:>23}", "  gain", minor(i64::try_from(-r.gain).unwrap_or(0)));
+                println!("{:<30}{:>23}", "  basis relieved", minor(i64::try_from(r.basis).unwrap_or(0)));
+                println!("{:<30}{:>23}", "  short-term", minor(i64::try_from(-r.short_term).unwrap_or(0)));
+                println!("{:<30}{:>23}", "  long-term", minor(i64::try_from(-r.long_term).unwrap_or(0)));
+                // ⚠ NAMES BOTH CAUSES AND ASSERTS NEITHER. This said "⛔ lots
+                // with no acquisition date", which is one of the two things
+                // that land here — and on a three-currency book the OTHER one
+                // is always present: integer translation does not distribute
+                // over a sum, so up to one minor unit per currency falls out as
+                // a remainder. The demo showed a one-cent residue under a red
+                // warning about missing trade dates, which is a false alarm on
+                // the figure whose real alarms matter most.
+                if r.unclassified() != 0 {
+                    println!(
+                        "{:<30}{:>23}   undated lots, and ≤1 minor unit per currency of rounding",
+                        "  unclassified",
+                        minor(i64::try_from(-r.unclassified()).unwrap_or(0))
+                    );
+                }
+            }
+        }
+    }
+
     if by_dim.values().any(|(d, c)| d - c != 0) && names.is_empty()
     {
         println!("\n(no chart of accounts — run `ratio init`)");

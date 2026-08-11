@@ -332,6 +332,42 @@ pub enum LotMethod {
     ShortestHeldFirst,
 }
 
+impl LotMethod {
+    /// Every method, so a caller can offer them without listing them.
+    ///
+    /// ⛔ A LIST NOTHING CHECKS IS A LIST THAT GOES STALE, so
+    /// `every_method_round_trips_through_its_declared_name` walks this and
+    /// fails if a variant is added without being added here — which would
+    /// otherwise show up as a CLI that silently cannot select the new method.
+    pub const ALL: [LotMethod; 6] = [
+        LotMethod::Fifo,
+        LotMethod::Lifo,
+        LotMethod::Hifo,
+        LotMethod::Lofo,
+        LotMethod::LongestHeldFirst,
+        LotMethod::ShortestHeldFirst,
+    ];
+
+    /// The name this method is written as in a configuration.
+    ///
+    /// ⚠ THIS IS A SECOND SPELLING OF EVERY VARIANT, and serde owns the first.
+    /// They must agree: a fund declaring a method the writer spells differently
+    /// from the reader parses as the DEFAULT, silently, and is relieved FIFO
+    /// while its agreement says otherwise. `every_method_round_trips_through_
+    /// its_declared_name` is what makes the disagreement a build failure rather
+    /// than a tax position.
+    pub fn as_declared(self) -> &'static str {
+        match self {
+            LotMethod::Fifo => "fifo",
+            LotMethod::Lifo => "lifo",
+            LotMethod::Hifo => "hifo",
+            LotMethod::Lofo => "lofo",
+            LotMethod::LongestHeldFirst => "longest_held_first",
+            LotMethod::ShortestHeldFirst => "shortest_held_first",
+        }
+    }
+}
+
 impl RuleSet {
     /// Parse a configuration from TOML.
     ///
@@ -641,6 +677,36 @@ fn round_half_up(numerator: i128, denominator: i128) -> i128 {
 mod tests {
     use super::*;
     use ratio_store::AccountTypeRecord as A;
+
+    #[test]
+    fn every_method_round_trips_through_its_declared_name() {
+        // ⛔ TWO SPELLINGS OF EVERY VARIANT — serde's and `as_declared`'s — and
+        // a disagreement is silent in the worst way. TOML that names a method
+        // the reader does not recognize does not fail; `LotMethod` derives
+        // `Default`, so the fund is relieved FIFO while its agreement says
+        // HIFO, the trial balance ties, and only the taxable gain is somebody
+        // else's number.
+        //
+        // ⚠ AND WALKING `ALL` IS WHAT CATCHES AN ADDED VARIANT. A test naming
+        // the six by hand proves the six agree and says nothing about the
+        // seventh, which is the one that would be wrong.
+        for m in LotMethod::ALL {
+            let toml = format!("lot_method = \"{}\"\nrules = []\n", m.as_declared());
+            let back = RuleSet::from_toml(&toml)
+                .unwrap_or_else(|e| panic!("{:?} declares itself as {:?}, which does not parse: {e}", m, m.as_declared()))
+                .lot_method;
+            assert_eq!(back, Some(m), "{:?} does not survive its own declared name", m);
+        }
+        assert_eq!(
+            LotMethod::ALL.len(),
+            LotMethod::ALL
+                .iter()
+                .map(|m| m.as_declared())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            "ALL lists a method twice, or two methods share a declared name"
+        );
+    }
 
     fn chart() -> Vec<Account> {
         vec![

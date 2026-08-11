@@ -78,6 +78,16 @@ pub struct Shape {
     pub open_actions: i64,
     pub capital_txns: i64,
     pub seed: u64,
+    /// Which lots a sale gives up.
+    ///
+    /// ⛔ A DIAL, BECAUSE THE DEMO COULD NOT SHOW THE ONE THING THIS DECIDES.
+    /// The generator wrote `lot_method = "fifo"` as a literal, so every fund on
+    /// the demo declared the same method and no screen demonstrated that the
+    /// declaration reaches the engine at all — which is the state the engine
+    /// wiring fix was made to leave behind. Two funds from ONE seed differing
+    /// only in this produce different realized gains from identical holdings
+    /// and identical trades, which is the claim.
+    pub method: ratio_rules::LotMethod,
 }
 
 impl Default for Shape {
@@ -91,6 +101,7 @@ impl Default for Shape {
             open_actions: 0,
             capital_txns: 4,
             seed: 1,
+            method: ratio_rules::LotMethod::Fifo,
         }
     }
 }
@@ -169,10 +180,13 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
     // realized gain, and `Ratio.Lots.Posting.a_collided_chart_hides_the_gain`
     // is what happens if two roles collide — so the configuration says so, and
     // the rule set refuses a collision when it is read.
-    const CONFIG: &str = "lot_method = \"fifo\"\nrules = []\n\n[chart_roles]\n\
-                          investments = 1\ncash = 2\nrealized_gain = 30\n\
-                          currency_conversion = 40\n";
-    let cfg = b.put(CONFIG.as_bytes())?;
+    let owned = format!(
+        "lot_method = \"{}\"\nrules = []\n\n[chart_roles]\n\
+         investments = 1\ncash = 2\nrealized_gain = 30\ncurrency_conversion = 40\n",
+        shape.method.as_declared()
+    );
+    let config: &str = &owned;
+    let cfg = b.put(config.as_bytes())?;
     // ⛔ READ BACK OUT OF THE CONFIGURATION, NOT WRITTEN TWICE. This used to be
     // a Rust literal standing beside the TOML above with nothing checking the
     // two agreed — so the generator could post through one chart while
@@ -180,7 +194,7 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
     //
     // ⚠ And going through `from_toml` is what runs `ChartRoles::check`, which
     // the literal skipped entirely.
-    let roles = ratio_rules::RuleSet::from_toml(CONFIG)?
+    let roles = ratio_rules::RuleSet::from_toml(config)?
         .chart_roles
         .expect("the configuration above declares chart roles");
     b.set_active(&cfg)?;
@@ -293,7 +307,16 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
         // securities on both sides of 365.
         let step = between(shape.seed, 17, i as u64, 3, 20);
         let ccy = currency_of(i, shape.currencies);
-        let mut open: std::collections::VecDeque<(i64, i64)> = Default::default();
+        // ⛔ THE HOLDING IS RELIEVED BY THE METHOD THE CONFIGURATION DECLARES,
+        // and this was a `VecDeque` popped from the FRONT — hardcoded
+        // oldest-first, whatever had just been written to the config. A book
+        // generated `--method hifo` declared HIFO and carried FIFO-computed
+        // gains; the engine reading it back relieved HIFO, disagreed with every
+        // posted sale, and reported 242 lot breaks with 75% of the realized
+        // gain unclassifiable. Exactly the defect the engine wiring fixed,
+        // alive on the other side of the same seam.
+        let mut open = ratio_project::relief::Holding::new(shape.method.into());
+        let mut next_seq: u64 = 0;
         for l in 0..opened {
             // Twenty years of history, ending before the June 2026 valuation
             // date every measurement here strikes at.
@@ -324,14 +347,30 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                 announcement: None,
             });
             written += 1;
-            open.push_back((units, cost));
+            open.push(ratio_project::relief::Lot {
+                seq: next_seq,
+                units,
+                cost,
+                // ⚠ A DAY NUMBER, which the generator already has — the ISO
+                // string above is derived FROM it. Parsing that string back
+                // would be a round trip through the one representation that
+                // can fail.
+                acquired: Some((FIRST_TRADE_DAY + l * step) as i32),
+            })?;
+            next_seq += 1;
             if batch.len() >= FLUSH_EVERY {
                 b.append_all(&batch)?;
                 batch.clear();
             }
 
             if open.len() as i64 > keep {
-                let (u, c) = open.pop_front().expect("just checked");
+                // ⚠ SELL EXACTLY THE LOT THE METHOD WOULD GIVE UP, WHOLE. A
+                // partial relief divides a lot's cost pro rata and REFUSES when
+                // that does not land on a whole minor unit, so picking any
+                // other quantity generates books that break for reasons with
+                // nothing to do with the method being demonstrated.
+                let want = open.peek().expect("len > keep").units;
+                let (u, c) = (want, open.relieve(shape.method.into(), want)?.cost);
                 memo.clear();
                 let _ = write!(memo, "sell {t}");
                 // ⛔ THREE LEGS, AND THE PROCEEDS ARE NOT THE BASIS. This sold
@@ -339,7 +378,23 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                 // gain account never moved — which made the lot engine look
                 // correct while exercising none of it. A sale at a markup or a
                 // markdown is the case that tests it.
-                let swing = between(shape.seed, 13, (i * 4096 + l) as u64, -c / 5, c / 2);
+                //
+                // ⛔ AND THE PRICE IS PER UNIT AND INDEPENDENT OF THE LOT. The
+                // proceeds were `basis + swing`, derived from the cost of
+                // whichever lot was given up — so choosing a DEARER lot also
+                // fetched more, and HIFO came out with the LARGEST taxable gain
+                // of the four methods. Backwards, and backwards in the
+                // direction that would have been quoted: HIFO exists to reduce
+                // a gain. The market does not know your lot method.
+                //
+                // ⚠ THE BAND SITS ABOVE THE COST BAND, because twenty years of
+                // equity history that ends flat is not the fund anyone is
+                // demonstrating. Costs are drawn from 10.00–400.00, prices from
+                // 12.00–480.00 — a fifth higher, so the book carries a gain
+                // under most methods and a loss under the one chosen to harvest
+                // them.
+                let px = between(shape.seed, 13, (i * 4096 + l) as u64, 12_00, 480_00);
+                let proceeds = u * px;
                 batch.push(JournalEntry {
                     id: format!("s-{t}-{l}"),
                     memo: memo.clone(),
@@ -350,7 +405,7 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                         &t,
                         u,
                         c,
-                        c + swing,
+                        proceeds,
                     )?,
                     // The same day the buy that displaced it happened, so the
                     // holding period is exactly `keep` steps.
@@ -578,7 +633,7 @@ mod tests {
     fn the_same_shape_gives_the_same_book_byte_for_byte() {
         // ⛔ The property every measurement taken against this depends on. A
         // generator that drifted would make its own benchmarks unreproducible.
-        let s = Shape { securities: 12, currencies: 2, turnover: 3, lots_per: 6, open_actions: 2, capital_txns: 2, seed: 7 };
+        let s = Shape { securities: 12, currencies: 2, turnover: 3, lots_per: 6, open_actions: 2, capital_txns: 2, seed: 7, method: ratio_rules::LotMethod::Fifo };
         let a = tmp("det-a");
         let b = tmp("det-b");
         generate(&a, s).unwrap();
@@ -609,7 +664,7 @@ mod tests {
         // really asserting that the generator produced entries at all — but a
         // generator that wrote nothing would also produce a balanced book, so:
         let d = tmp("balanced");
-        let n = generate(&d, Shape { securities: 5, currencies: 2, turnover: 3, lots_per: 4, open_actions: 1, capital_txns: 2, seed: 3 }).unwrap();
+        let n = generate(&d, Shape { securities: 5, currencies: 2, turnover: 3, lots_per: 4, open_actions: 1, capital_txns: 2, seed: 3, method: ratio_rules::LotMethod::Fifo }).unwrap();
         let b = FileBook::open(&d).unwrap();
         let entries = b.entries().unwrap();
         assert_eq!(entries.len(), n);
@@ -623,7 +678,7 @@ mod tests {
         // hide `Ratio.Exec.the_slowest_partition_sets_the_pace` — the tail a
         // real planner has to survive.
         let d = tmp("varies");
-        generate(&d, Shape { securities: 30, currencies: 2, turnover: 3, lots_per: 20, open_actions: 0, capital_txns: 1, seed: 4 })
+        generate(&d, Shape { securities: 30, currencies: 2, turnover: 3, lots_per: 20, open_actions: 0, capital_txns: 1, seed: 4, method: ratio_rules::LotMethod::Fifo })
             .unwrap();
         let b = FileBook::open(&d).unwrap();
         let mut counts = std::collections::BTreeMap::<String, usize>::new();
@@ -644,7 +699,7 @@ mod tests {
         // ⛔ The case the redesign is about. An `action-{id}` entry here would
         // mean the lots had been walked, which is the cost being avoided.
         let d = tmp("open");
-        generate(&d, Shape { securities: 6, currencies: 2, turnover: 3, lots_per: 4, open_actions: 3, capital_txns: 1, seed: 5 })
+        generate(&d, Shape { securities: 6, currencies: 2, turnover: 3, lots_per: 4, open_actions: 3, capital_txns: 1, seed: 5, method: ratio_rules::LotMethod::Fifo })
             .unwrap();
         let entries = FileBook::open(&d).unwrap().entries().unwrap();
         assert_eq!(entries.iter().filter(|e| e.announcement.is_some()).count(), 3);
@@ -760,7 +815,7 @@ mod tests {
         // a gain and is a posting no configuration here declares. Generating
         // books that cannot be valued would measure nothing at all.
         let d = tmp("valuable");
-        generate(&d, Shape { securities: 20, currencies: 2, turnover: 3, lots_per: 10, open_actions: 6, capital_txns: 2, seed: 9 })
+        generate(&d, Shape { securities: 20, currencies: 2, turnover: 3, lots_per: 10, open_actions: 6, capital_txns: 2, seed: 9, method: ratio_rules::LotMethod::Fifo })
             .unwrap();
         // ⚠ Through `of_book` rather than `rebuild`, so the lots are relieved
         // under the method the generated configuration DECLARES rather than one

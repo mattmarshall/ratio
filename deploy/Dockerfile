@@ -65,7 +65,7 @@ RUN set -eu; \
     echo "demo book ok: $(find /opt/demo-book -type f | wc -l) file(s)"; \
     echo "== /opt/demo-funds =="; \
     ls -1 /opt/demo-funds | sed 's|^|  |'; \
-    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 4 || { echo "FAIL: expected 4 funds"; exit 1; }; \
+    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 5 || { echo "FAIL: expected 5 funds"; exit 1; }; \
     for f in /opt/demo-funds/*/; do \
       test -s "$f/accounts.json" || { echo "FAIL: $f has no chart"; exit 1; }; \
     done; \
