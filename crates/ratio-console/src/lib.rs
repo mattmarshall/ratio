@@ -21,7 +21,10 @@
 //! demo works unchanged and grows a fund list the moment a second book appears
 //! beside it.
 
+pub mod auth;
 pub mod transcode;
+
+pub use auth::Subject;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -78,16 +81,44 @@ pub struct Console {
     /// replays from it: `//tla:projection_check`. A cache that had to be
     /// correct about freshness would be a cache that could be wrong about it.
     projections: std::sync::Mutex<BTreeMap<String, ratio_project::Projection>>,
+
+    /// The funds the caller may open, resolved ONCE from `MEMBERSHIP.tsv` at
+    /// construction so `book_path` is a set lookup rather than a file read per
+    /// handler. `None` means unrestricted — the `Local` identity, which is not a
+    /// tenant. `Some(set)` restricts, and an empty set is a real, valid answer
+    /// (the operator is a member of nothing) rather than a refusal.
+    allowed: Option<BTreeSet<String>>,
 }
 
 impl Console {
+    /// The console as the CLI and loopback surfaces use it: `Subject::Local`,
+    /// which sees every book. `ratio watch --book`, `ratio-mcp` and the tests
+    /// all reach the data this way, unchanged by the tenancy work.
     pub fn new(root: impl AsRef<Path>) -> Self {
+        Self::build(root.as_ref().to_path_buf(), None)
+    }
+
+    /// The console scoped to an authenticated subject: it sees only the funds
+    /// `MEMBERSHIP.tsv` grants them, enforced at `book_path`. This is the only
+    /// constructor the network server uses; the membership set is resolved here,
+    /// once, from the funds root.
+    pub fn scoped(root: impl AsRef<Path>, subject: Subject) -> Self {
+        let root = root.as_ref().to_path_buf();
+        let allowed = match &subject {
+            Subject::Local => None,
+            member => Some(auth::funds_for(&root, member)),
+        };
+        Self::build(root, allowed)
+    }
+
+    fn build(root: PathBuf, allowed: Option<BTreeSet<String>>) -> Self {
         Console {
-            root: root.as_ref().to_path_buf(),
+            root,
             max_entries: std::env::var("RATIO_MAX_API_ENTRIES")
                 .ok()
                 .and_then(|v| v.parse().ok()),
             projections: Default::default(),
+            allowed,
         }
     }
 
@@ -126,16 +157,27 @@ impl Console {
     /// Sorted by id rather than by anything derived, so the list does not
     /// reorder under an operator between two glances at the same screen.
     fn fund_ids(&self) -> Result<Vec<String>> {
-        if self.root.join("accounts.json").is_file() {
-            return Ok(vec!["demo".to_string()]);
+        let mut ids: Vec<String> = if self.root.join("accounts.json").is_file() {
+            vec!["demo".to_string()]
+        } else {
+            let mut v: Vec<String> = std::fs::read_dir(&self.root)
+                .with_context(|| format!("reading {}", self.root.display()))?
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().join("accounts.json").is_file())
+                .filter_map(|e| e.file_name().into_string().ok())
+                .collect();
+            v.sort();
+            v
+        };
+        // ⛔ WHAT THE CALLER MAY SEE, not what is on disk. An operator restricted
+        // to some funds gets exactly those; an operator restricted to NONE gets
+        // an empty list — a valid answer, not a refusal, and the two must not
+        // look alike. `book_path` re-guards each id `list_funds` then reads, so
+        // this filter is the visible half of a boundary the storage layer
+        // enforces regardless of it.
+        if let Some(allowed) = &self.allowed {
+            ids.retain(|id| allowed.contains(id));
         }
-        let mut ids: Vec<String> = std::fs::read_dir(&self.root)
-            .with_context(|| format!("reading {}", self.root.display()))?
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().join("accounts.json").is_file())
-            .filter_map(|e| e.file_name().into_string().ok())
-            .collect();
-        ids.sort();
         Ok(ids)
     }
 
@@ -145,6 +187,19 @@ impl Console {
         // joined to a path.
         if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
             bail!("{id:?} is not a fund id");
+        }
+        // ⛔ TENANCY IS ENFORCED HERE, at the one place a fund id becomes a
+        // path — not in the handlers, which are one forgotten call away from
+        // bypassing it. A fund the caller may not see is refused with the SAME
+        // error as a fund that does not exist, and BEFORE the filesystem is
+        // touched, so a caller scoped to one fund can neither read another's
+        // book nor learn that it exists by watching which denial they get.
+        // `Local` (the CLI) is unrestricted; a person at a terminal is not a
+        // tenant. `allowed` is `None` for it and `Some(set)` for a `Member`.
+        if let Some(allowed) = &self.allowed {
+            if !allowed.contains(id) {
+                bail!("no fund {id:?}");
+            }
         }
         if self.root.join("accounts.json").is_file() {
             if id != "demo" {
@@ -2401,6 +2456,120 @@ mod tests {
         post("c1", "capital in", vec![(2, 30_000_000), (20, -30_000_000)]);
         post("t1", "buy", vec![(1, 25_000_000), (2, -25_000_000)]);
         post("f1", "fee accrued", vec![(10, 100_000), (40, -100_000)]);
+    }
+
+    /// Expand a route template to a concrete path for one fund.
+    /// `/v1/{parent=funds/*}/breaks` → `/v1/funds/<fund>/breaks`;
+    /// `/v1/{name=funds/*/accounts/*}` → `/v1/funds/<fund>/accounts/x`;
+    /// `/v1/{parent=funds/*}:applyEvent` → `/v1/funds/<fund>:applyEvent`.
+    /// The first `*` is the fund; every later one is a placeholder child id.
+    fn expand_template(template: &str, fund: &str) -> String {
+        let open = template.find('{').expect("a fund route carries a capture");
+        let close = template.find('}').expect("a capture closes");
+        let inside = &template[open + 1..close];
+        let pattern = inside.split_once('=').map(|(_, p)| p).unwrap_or(inside);
+        let expanded = format!("{}{}{}", &template[..open], pattern, &template[close + 1..]);
+        let mut out = String::new();
+        let mut n = 0;
+        for ch in expanded.chars() {
+            if ch == '*' {
+                out.push_str(if n == 0 { fund } else { "x" });
+                n += 1;
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
+    /// A body that parses for each write route, so the request reaches
+    /// `book_path` and the tenancy denial is what the route fails on — not a
+    /// malformed body, which would let the test pass without testing the guard.
+    fn post_body(template: &str) -> &'static str {
+        if template.ends_with(":mark") {
+            r#"{"valuationDate":{"year":2026,"month":1,"day":1}}"#
+        } else {
+            "{}"
+        }
+    }
+
+    #[test]
+    fn a_subject_scoped_to_one_fund_cannot_reach_another_through_any_route() {
+        // Two real funds under one root; the subject is granted only `a`. `b` is
+        // a book ON DISK — that is what makes this a real negative test. With the
+        // `book_path` guard removed, every route below would reach `b` and
+        // return its data, so these assertions go red for the right reason
+        // rather than because `b` happened not to exist (which the pre-existing
+        // "no fund" existence check would have reported anyway).
+        let root = fresh("tenancy");
+        book(&root.join("a"));
+        book(&root.join("b"));
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "S\ta\n").unwrap();
+
+        let console = Console::scoped(
+            &root,
+            Subject::Member { sub: "S".into(), email: "s@example.test".into(), groups: vec![] },
+        );
+
+        // Every route that names a fund, instantiated against `b`, is refused —
+        // and refused as "no fund", the same answer a nonexistent fund gets, so
+        // `b`'s existence does not leak. The list is the LIVE `ROUTES` slice, so
+        // a route added later is covered here without anyone remembering to.
+        let mut checked = 0;
+        for route in transcode::ROUTES {
+            if !route.template.contains("funds/*") {
+                continue; // /v1/funds is the enumeration, tested separately below.
+            }
+            let path = expand_template(route.template, "b");
+            let body = post_body(route.template);
+            let msg = match transcode::serve(&console, route.method, &path, "", body) {
+                Err(e) => format!("{e:#}"),
+                Ok(leaked) => panic!(
+                    "{} {} reached fund b — the tenant boundary is not enforced on \
+                     this route. Served: {leaked}",
+                    route.method, path
+                ),
+            };
+            assert!(
+                msg.contains("no fund"),
+                "{} {} failed, but not as a tenancy denial: {msg}",
+                route.method,
+                path
+            );
+            checked += 1;
+        }
+        assert!(checked >= 30, "expected every fund route covered, only saw {checked}");
+
+        // The guard admits what it should: the subject's OWN fund is readable.
+        // Without this the loop above could be passing because `a` was blocked
+        // too, which would be a different bug wearing the same green.
+        assert!(
+            transcode::serve(&console, "GET", "/v1/funds/a/accounts", "", "").is_ok(),
+            "the subject's own fund a must be readable"
+        );
+
+        // ListFunds returns what the caller may see: `a`, not `b`. An empty list
+        // and a refusal are different answers; here it is neither empty nor
+        // leaking.
+        let funds = transcode::serve(&console, "GET", "/v1/funds", "", "").unwrap();
+        assert!(funds.contains("funds/a"), "the subject's fund is missing: {funds}");
+        assert!(!funds.contains("funds/b"), "another tenant's fund leaked into the list: {funds}");
+    }
+
+    #[test]
+    fn the_local_console_is_unrestricted_and_sees_every_fund() {
+        // The CLI and `ratio watch --book` reach the data as `Local`, which is
+        // not a tenant. The tenancy work must not change what they see.
+        let root = fresh("tenancy-local");
+        book(&root.join("a"));
+        book(&root.join("b"));
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "S\ta\n").unwrap();
+
+        let console = Console::new(&root); // Subject::Local
+        assert!(transcode::serve(&console, "GET", "/v1/funds/a/accounts", "", "").is_ok());
+        assert!(transcode::serve(&console, "GET", "/v1/funds/b/accounts", "", "").is_ok());
+        let funds = transcode::serve(&console, "GET", "/v1/funds", "", "").unwrap();
+        assert!(funds.contains("funds/a") && funds.contains("funds/b"));
     }
 
     #[test]
