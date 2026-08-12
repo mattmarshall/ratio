@@ -53,7 +53,7 @@ import type {
   ListPostingsResponse,
   Posting,
 } from "./types.js";
-import { accessToken } from "./auth.js";
+import { bearerToken } from "./auth.js";
 
 /** Where the API lives, relative to wherever the console is served from. */
 const BASE = "../v1";
@@ -79,9 +79,10 @@ async function get<T>(path: string): Promise<T> {
 async function send<T>(path: string, body: unknown): Promise<T> {
   const headers: Record<string, string> = { accept: "application/json" };
   if (body !== undefined) headers["content-type"] = "application/json";
-  // The verified subject the server scopes and attributes by. Absent on a
-  // local run, where the server does not ask for one.
-  const token = accessToken();
+  // The verified subject the server scopes and attributes by — the id token,
+  // because only it carries the email the tenant boundary matches on (see
+  // bearerToken). Absent on a local run, where the server does not ask for one.
+  const token = bearerToken();
   if (token) headers.authorization = `Bearer ${token}`;
   const r = await fetch(`${BASE}${path}`, {
     method: body === undefined ? "GET" : "POST",

@@ -28,6 +28,23 @@ Parameters:
       so a mismatch signs the user in successfully and then shows an empty fund
       rail. entrypoint.sh writes the grant from this on each start; see
       deploy/README.md for creating the matching user.
+  GoogleClientId:
+    Type: String
+    Default: ""
+    Description: >
+      OAuth client id of the Google app that backs "Continue with Google". Empty
+      disables Google sign-in entirely (the pool keeps email/password), so this
+      template deploys the same with or without it — set the id and secret as
+      repository secrets and the next deploy lights Google up. Passed from CI, not
+      committed.
+  GoogleClientSecret:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: >
+      OAuth client secret paired with GoogleClientId. NoEcho so it is masked in
+      stack events and not returned by describe-stacks. Passed from a repository
+      secret; never committed.
   ReservedConcurrency:
     Type: Number
     Default: 0
@@ -46,6 +63,11 @@ Parameters:
 
 Conditions:
   ReserveConcurrency: !Not [!Equals [!Ref ReservedConcurrency, 0]]
+  # Google sign-in is added only when an id has been supplied. The client's
+  # provider list and the identity provider itself are both gated on this, so a
+  # deploy with no Google secrets set is a valid, working demo (email/password
+  # only) rather than a broken one.
+  HasGoogle: !Not [!Equals [!Ref GoogleClientId, ""]]
 
 Resources:
   # Created explicitly rather than left to Lambda, which creates log groups
@@ -203,12 +225,47 @@ Resources:
           RequireNumbers: true
           RequireSymbols: false
 
+  # "Continue with Google", added only when a client id is supplied. Google is a
+  # native Cognito social provider, so no shim is needed; the Hosted UI renders
+  # the button automatically once this exists and the app client lists it.
+  #
+  # ⚠ FEDERATION AUTO-PROVISIONS. AdminCreateUserOnly above blocks the Hosted
+  # UI's sign-up form, but a first Google sign-in still creates a pool user —
+  # federation does not consult that setting. That is not an open door to data:
+  # the tenant boundary at book_path scopes by email, so a Google account not in
+  # MEMBERSHIP.tsv signs in and sees an EMPTY rail, not another fund's book. Close
+  # it hard with a pre-sign-up trigger if the empty console itself must be private.
+  #
+  # ⚠ THE EMAIL IS MAPPED, and it is load-bearing: the console sends the id token
+  # and the server authorizes on its `email` claim, so a Google user is granted
+  # funds by the same MEMBERSHIP.tsv email as a native one.
+  GoogleIdp:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: HasGoogle
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: "openid email profile"
+      # Only the email is mapped — it is what the tenant boundary matches on, and
+      # it is what the id token must carry. (Mapping email_verified is a common
+      # source of first-deploy attribute errors and buys nothing here.)
+      AttributeMapping:
+        email: email
+
   # A PUBLIC client (no secret): a browser cannot keep one, which is why the
   # console uses authorization-code + PKCE. The access token is what the
   # authorizer validates — Cognito access tokens carry client_id rather than
   # aud, so the audience below IS the client id.
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
+    # The client lists Google by name (a string, not a ref), so nothing makes it
+    # wait for the provider to exist — this dependency does. When HasGoogle is
+    # false the provider is not created and CloudFormation ignores the DependsOn.
+    DependsOn: GoogleIdp
     Properties:
       UserPoolId: !Ref UserPool
       ClientName: ratio-console
@@ -216,7 +273,11 @@ Resources:
       AllowedOAuthFlowsUserPoolClient: true
       AllowedOAuthFlows: [code]
       AllowedOAuthScopes: [openid, email]
-      SupportedIdentityProviders: [COGNITO]
+      # COGNITO keeps the email/password form; Google is added when configured.
+      SupportedIdentityProviders: !If
+        - HasGoogle
+        - [COGNITO, Google]
+        - [COGNITO]
       ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
       CallbackURLs:
         - !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/app"

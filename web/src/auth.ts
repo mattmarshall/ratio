@@ -49,9 +49,19 @@ export async function authConfigured(): Promise<boolean> {
   return Boolean(c.domain && c.clientId);
 }
 
-/** The access token to send as a bearer, or null when not signed in. */
-export function accessToken(): string | null {
-  return sessionStorage.getItem(ACCESS_KEY);
+/** The token to send as the API bearer, or null when not signed in.
+ *
+ * ⛔ THE ID TOKEN, NOT THE ACCESS TOKEN. The gateway's JWT authorizer accepts
+ * either — an id token's `aud` is the client id, which is what the authorizer
+ * validates — but only the id token carries the `email` (and `cognito:groups`)
+ * claims the server authorizes on at `book_path`. A Cognito access token has
+ * `sub` and `client_id` and NO email, so scoping a caller to their funds by
+ * email would match nothing and every signed-in person would see an empty rail.
+ * A federated (Google) caller is the same story: their email arrives only in the
+ * id token. The access token is still kept (it is what an OAuth API bearer
+ * normally is) in case a future route wants its scopes. */
+export function bearerToken(): string | null {
+  return sessionStorage.getItem(ID_KEY);
 }
 
 /** The signed-in person, decoded from the id token, or null. */
