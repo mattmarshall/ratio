@@ -127,6 +127,28 @@ impl Console {
         Self::build(root, allowed, actor)
     }
 
+    /// The console for an OPEN, shared demo: any authenticated subject sees
+    /// every fund, while a write is still signed with their verified identity.
+    ///
+    /// ⛔ NOT THE TENANT PATH, AND DELIBERATELY SEPARATE FROM `scoped`. A demo
+    /// whose audience is not known ahead of time cannot be an allow-list of
+    /// emails; instead every signed-in caller is granted every fund
+    /// (`allowed = None`, exactly as `Local` is) while the subject's id is kept
+    /// as the actor — so "anyone who signs in sees the demo" costs nothing in
+    /// attribution and, crucially, nothing in the tenancy code: `funds_for`,
+    /// `book_path`'s membership check and their tests are untouched. The server
+    /// selects this only when `RATIO_DEMO_OPEN` is set; every real deployment
+    /// scopes. Sign-in is still required — this changes what an authenticated
+    /// caller may see, not whether one is needed.
+    pub fn open(root: impl AsRef<Path>, subject: Subject) -> Self {
+        let root = root.as_ref().to_path_buf();
+        let actor = match subject.actor() {
+            Some(a) => Some(a.to_string()),
+            None => std::env::var("RATIO_ACTOR").ok(),
+        };
+        Self::build(root, None, actor)
+    }
+
     fn build(root: PathBuf, allowed: Option<BTreeSet<String>>, actor: Option<String>) -> Self {
         Console {
             root,
@@ -2649,6 +2671,44 @@ mod tests {
         assert!(transcode::serve(&console, "GET", "/v1/funds/b/accounts", "", "").is_ok());
         let funds = transcode::serve(&console, "GET", "/v1/funds", "", "").unwrap();
         assert!(funds.contains("funds/a") && funds.contains("funds/b"));
+    }
+
+    #[test]
+    fn an_open_console_grants_a_member_every_fund_but_keeps_their_identity() {
+        // The open, shared demo: a demo whose audience is not known ahead of time
+        // cannot be an allow-list, so any authenticated caller sees every fund —
+        // yet the write is still attributed to their verified id. MEMBERSHIP here
+        // grants only `a`, and open mode ignores it on purpose; `scoped` on the
+        // SAME inputs refuses `b`, which is the boundary this does not touch.
+        let root = fresh("open-demo");
+        book(&root.join("a"));
+        book(&root.join("b"));
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "S\ta\n").unwrap();
+
+        let subject =
+            Subject::Member { sub: "S".into(), email: "s@x.test".into(), groups: vec![] };
+        let console = Console::open(&root, subject);
+
+        // `b` is granted by nobody and is seen anyway — the whole point. If open
+        // mode leaked into `scoped`, the tenancy test above would already be red.
+        assert!(transcode::serve(&console, "GET", "/v1/funds/a/accounts", "", "").is_ok());
+        assert!(
+            transcode::serve(&console, "GET", "/v1/funds/b/accounts", "", "").is_ok(),
+            "open mode must grant a fund MEMBERSHIP omits"
+        );
+        let funds = transcode::serve(&console, "GET", "/v1/funds", "", "").unwrap();
+        assert!(
+            funds.contains("funds/a") && funds.contains("funds/b"),
+            "open mode lists every fund: {funds}"
+        );
+
+        // But the identity is not lost: a write is signed by the subject, not by
+        // Local's RATIO_ACTOR. Open changes what is SEEN, never who ACTED.
+        let book_a = root.join("a");
+        let digest = FileBook::open(&book_a).unwrap().active().unwrap().unwrap();
+        console.record_change(&book_a, "posted", "evt-1", digest.as_str()).unwrap();
+        let log = std::fs::read_to_string(book_a.join("CHANGELOG")).unwrap();
+        assert!(log.contains("\tS\tposted\t"), "the write must be signed by the subject: {log}");
     }
 
     #[test]

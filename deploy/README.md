@@ -136,6 +136,22 @@ Membership is data, not an IdP group: `funds/MEMBERSHIP.tsv`, lines of
 `entrypoint.sh` writes it on each start from `RATIO_DEMO_MEMBER` and the funds
 that actually exist.
 
+### The demo is open (`RATIO_DEMO_OPEN`)
+
+A public demo's audience is not known ahead of time, so it cannot be an
+allow-list of emails. `RATIO_DEMO_OPEN=1` (set in `app.yaml`) makes the server
+grant **any authenticated caller every fund**, while a write is still signed with
+their verified id — so anyone may sign in (Google auto-provisions on first
+sign-in) and then everyone sees the demo.
+
+⚠ This is **not** a dropped boundary. Sign-in is still required (the 401 above is
+unchanged), and the change is in a separate `Console::open` path, so the tenant
+path (`Console::scoped`, matching `MEMBERSHIP.tsv`) and its isolation test are
+untouched. Unset `RATIO_DEMO_OPEN` and the demo scopes each caller to the funds
+`MEMBERSHIP.tsv` grants them, with no other change — that is the model a real
+tenant deployment runs, and the sections below (the invited user, `DEMO_MEMBERS`)
+describe it.
+
 ### Creating the invited demo user
 
 The pool is **invite-only** (`AllowAdminCreateUserOnly`) — a public sign-up form
