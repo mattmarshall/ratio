@@ -1,4 +1,7 @@
-![Ratio Logo](images/ratio.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/wordmark-ratio-dark.svg">
+  <img alt="ratio" src="images/wordmark-ratio-light.svg" width="260">
+</picture>
 
 **A fund accounting kernel whose core properties are machine-checked.**
 
@@ -39,7 +42,7 @@ bazel run //crates/ratio -- --help   # the CLI
 bazel run //crates/ratio -- bench --securities 20 --lots-per 40
 
 # Serve the operations console over a book, on loopback.
-bazel run //crates/ratio -- watch --book <dir>   # then open /app
+bazel run //crates/ratio -- watch --book <dir>   # then open / (the console)
 ```
 
 No database, no daemon, no container. The journal is a file; the configuration
@@ -101,7 +104,7 @@ requirement.
 | `crates/ratio-project` | the read model, the lot book, the relief engine |
 | `crates/ratio-rules` | posting rules: parsed, checked, compiled |
 | `crates/ratio-recon` | the shadow run — a prospect's file, reconciled |
-| `crates/ratio-console` + `web/` | the operations console and its backend-for-frontend — authenticated, with per-fund tenancy on the hosted demo |
+| `crates/ratio-console` + `web/` | the operations console (the demo's front door at /) and its backend-for-frontend — signed-in, with per-fund tenancy the demo runs open |
 | `crates/ratio-mcp` | the MCP server, with a fence between proposing and approving |
 | `crates/ratio-gen` | a fund with realistic shape, generated the same way every time |
 | `proto/` | the wire types. AIP-linted |
