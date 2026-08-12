@@ -1,0 +1,6 @@
+# The Python in this repository is build and test tooling — the marketing-site
+# generators (site/*.py) and the proto / TLA / console test harnesses — not
+# product code. The product is Lean (the proofs) and Rust (the runtime), with
+# TLA+ specs, protobuf, and TypeScript for the console. Keep the tooling out of
+# GitHub's language statistics so the bar reflects what Ratio actually is.
+*.py linguist-vendored
