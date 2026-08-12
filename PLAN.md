@@ -3,6 +3,19 @@
 **Written 2026-08-07.** Supersedes `specs/iterations/iteration-1-mvp.md`, which
 is an eight-week plan for a product nobody was buying.
 
+> **Amended 2026-08-11 — the auth, tenancy and hosting round.** Before a prospect
+> can be handed a login to their own book, the demo needed authentication (#22),
+> a tenant boundary that actually holds (#23), durable writes (#24) and a
+> Ratio-owned hostname (#25). None of these is on the *Explicitly not building*
+> list — the nearest, "the client portal", is a customer self-service product,
+> not authentication on the internal ops console — so this round adds no refused
+> feature and `//:plan_refusals_test` is untouched. ⚠️ **Stated plainly, as it
+> must be: none of this moves the wedge's one remaining open gap — a real
+> customer's period reconciling.** It is prerequisite to a paid pilot, not a
+> substitute for one. The tenancy, identity, attribution and security-header work
+> landed and is CI-verified; it *activates* on the live demo only when the
+> Cognito authorizer and durable store are deployed.
+
 Three constraints set everything below:
 
 | | |

@@ -42,4 +42,12 @@ present 'realizedGain' 'the realized gain is never read from the response'
 present 'historyIntact' 'the replay proof is not rendered'
 present 'qualification' 'a strike qualification would not be shown'
 
+# Identity is a READ field, not just a served one: the console must render who
+# is signed in (the principal chip) and offer the sign-in prompt when the server
+# refuses for lack of a session. Absent these, #22's "signed in as yourself" is
+# transcoded and typechecked but shows nothing — the exact gap this file exists
+# to catch.
+present 'signin-btn' 'the sign-in prompt is not rendered'
+present 'Sign out' 'the signed-in principal / sign-out control is not rendered'
+
 echo "  ok  the served console reads and renders every field checked"

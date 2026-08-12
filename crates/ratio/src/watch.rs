@@ -72,6 +72,18 @@ struct Request {
     path: String,
     query: String,
     body: String,
+    /// The `x-amzn-request-context` header, verbatim, or empty if absent.
+    ///
+    /// On the deployed surface the Lambda Web Adapter puts the API Gateway
+    /// event's `requestContext` here as JSON, and a JWT authorizer's verified
+    /// claims ride inside it. Empty on a local `ratio watch` — there is no
+    /// gateway in front of it — which is how the `/v1` arm tells an
+    /// authenticated request from a developer's loopback one.
+    auth_context: String,
+
+    /// The `Host` header, or empty. Only `Strict-Transport-Security` reads it:
+    /// HSTS is sent on our own canonical host and nowhere else.
+    host: String,
 }
 
 /// Read a request: the request line, the headers, and `Content-Length` bytes of
@@ -89,14 +101,23 @@ fn read_request(reader: &mut impl BufRead) -> Result<Request> {
     let target = parts.next().unwrap_or("/").to_string();
 
     let mut length = 0usize;
+    let mut auth_context = String::new();
+    let mut host = String::new();
     loop {
         let mut h = String::new();
         if reader.read_line(&mut h)? == 0 || h == "\r\n" || h == "\n" {
             break; // end of headers, or the peer hung up
         }
+        // `split_once` on the FIRST colon only — the request-context value is
+        // JSON and carries its own colons, which must stay in the value.
         if let Some((name, value)) = h.split_once(':') {
-            if name.trim().eq_ignore_ascii_case("content-length") {
+            let name = name.trim();
+            if name.eq_ignore_ascii_case("content-length") {
                 length = value.trim().parse().unwrap_or(0);
+            } else if name.eq_ignore_ascii_case("x-amzn-request-context") {
+                auth_context = value.trim().to_string();
+            } else if name.eq_ignore_ascii_case("host") {
+                host = value.trim().to_string();
             }
         }
     }
@@ -118,7 +139,65 @@ fn read_request(reader: &mut impl BufRead) -> Result<Request> {
         Some((p, q)) => (p.to_string(), q.to_string()),
         None => (target, String::new()),
     };
-    Ok(Request { method, path, query, body })
+    Ok(Request { method, path, query, body, auth_context, host })
+}
+
+/// The security headers for a response, chosen by content type and whether the
+/// request arrived on our own canonical host.
+///
+/// A demo surface facing the internet should not depend on a browser's
+/// defaults. The headers below are cheap, static, and matter before there is a
+/// login form on the page.
+fn security_headers(
+    content_type: &str,
+    host: &str,
+    canonical_host: Option<&str>,
+    idp_domain: Option<&str>,
+) -> String {
+    let csp = if content_type.starts_with("text/html") {
+        // ⚠ 'unsafe-inline' FOR SCRIPT/STYLE, DELIBERATELY. The inline blocks
+        // are compile-time constants, and every dynamic node the pages build is
+        // made with `textContent` / `createElement` — never `innerHTML`, which
+        // `//crates/ratio:ratio_test` enforces — so there is no reflected-
+        // injection vector a per-block hash would close here. The directives
+        // that DO matter on this surface are the strong ones below:
+        // `frame-ancestors` (clickjacking), `object-src`/`base-uri` (plugin and
+        // base-tag hijacking), and `default-src 'self'` (no off-origin loads).
+        // Hash-based tightening of script-src is a follow-on, gated on a browser
+        // check that the built React bundle needs no 'unsafe-eval'.
+        //
+        // ⛔ THE SIGN-IN FLOW FETCHES ITS TOKENS FROM THE COGNITO DOMAIN, so
+        // that origin joins connect-src when it is configured — without it the
+        // PKCE token exchange is blocked and sign-in silently fails. The
+        // authorize step is a top-level navigation, which CSP does not gate.
+        let idp = match idp_domain {
+            Some(d) if !d.is_empty() => format!(" https://{d}"),
+            _ => String::new(),
+        };
+        format!(
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' \
+             'unsafe-inline'; img-src 'self' data:; connect-src 'self'{idp}; form-action \
+             'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
+        )
+    } else {
+        // An API or a plain-text probe renders nothing and loads nothing.
+        "default-src 'none'; frame-ancestors 'none'".to_string()
+    };
+    let mut h = format!(
+        "Content-Security-Policy: {csp}\r\n\
+         X-Content-Type-Options: nosniff\r\n\
+         Referrer-Policy: no-referrer\r\n\
+         X-Frame-Options: DENY\r\n"
+    );
+    // ⛔ HSTS ONLY ON OUR OWN HOST. On the shared `*.execute-api.amazonaws.com`
+    // hostname it would poison HSTS for every other AWS API served from it, so
+    // it is sent only once traffic is on the canonical Ratio host.
+    if let Some(canonical) = canonical_host {
+        if !canonical.is_empty() && host.eq_ignore_ascii_case(canonical) {
+            h.push_str("Strict-Transport-Security: max-age=63072000; includeSubDomains\r\n");
+        }
+    }
+    h
 }
 
 fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
@@ -127,11 +206,15 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         Ok(r) => r,
         Err(e) => {
             let msg = format!("{e:#}");
+            // A malformed request never parsed a Host, so HSTS cannot apply; the
+            // rest of the headers do.
+            let canonical = std::env::var("RATIO_CANONICAL_HOST").ok();
             write!(
                 stream,
                 "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain; charset=utf-8\r\n\
-                 Content-Length: {}\r\nConnection: close\r\n\r\n{msg}",
-                msg.len()
+                 Content-Length: {}\r\n{}Connection: close\r\n\r\n{msg}",
+                msg.len(),
+                security_headers("text/plain; charset=utf-8", "", canonical.as_deref(), None)
             )?;
             return Ok(());
         }
@@ -178,10 +261,36 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             // book. `RATIO_FUNDS` separates them, and defaults to the book so a
             // single-book deployment keeps working unchanged.
             let root = std::env::var("RATIO_FUNDS").ok();
-            let c = ratio_console::Console::new(
-                root.as_deref().map(std::path::Path::new).unwrap_or(book),
-            );
-            match ratio_console::transcode::serve(&c, m, p, &req.query, &req.body) {
+            let root = root.as_deref().map(std::path::Path::new).unwrap_or(book);
+
+            // Who is asking. On the deployed surface the gateway's JWT authorizer
+            // has already verified the token and the claims ride in the
+            // request-context header; here we only read them. A local `ratio
+            // watch` carries no such header, so `from_request_context` is `None`
+            // and the console runs unrestricted as `Local`.
+            let subject = ratio_console::auth::from_request_context(&req.auth_context);
+
+            // ⛔ FAIL CLOSED. `RATIO_AUTH=required` is set only in the deployed
+            // environment. When it is set and the gateway attached no verified
+            // identity, refuse — rather than fall back to the unrestricted
+            // `Local` console. So a removed or misconfigured authorizer produces
+            // refusal, not open access, and the boundary does not depend on a
+            // CloudFormation resource the test suite cannot see. Authorization
+            // (which funds this subject may open) stays in Rust, at `book_path`.
+            let auth_required = std::env::var("RATIO_AUTH").as_deref() == Ok("required");
+            if subject.is_none() && auth_required {
+                // A shape the SPA renders as a sign-in prompt, not a blank page.
+                (
+                    "401 Unauthorized",
+                    "application/json",
+                    r#"{"error":"sign in required","signIn":true}"#.to_string(),
+                )
+            } else {
+                let c = match subject {
+                    Some(s) => ratio_console::Console::scoped(root, s),
+                    None => ratio_console::Console::new(root),
+                };
+                match ratio_console::transcode::serve(&c, m, p, &req.query, &req.body) {
                 Ok(j) => ("200 OK", "application/json", j),
                 // A bad resource name is the caller's mistake and a missing
                 // fund is a 404; both are told apart by what the console said
@@ -203,6 +312,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
                         "400 Bad Request"
                     };
                     (status, "application/json", format!("{{\"error\":{}}}", quote(&msg)))
+                    }
                 }
             }
         }
@@ -256,17 +366,44 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             std::env::var("RATIO_BUILD").unwrap_or_else(|_| "dev".into()),
         ),
 
+        // The public OIDC client configuration the sign-in flow bootstraps from,
+        // read from the deployment's environment. Inherently public — a client
+        // id and a hosted-UI domain are not secrets — so it is served BEFORE
+        // authentication (it is one of the routes the gateway leaves open),
+        // which is what lets the unauthenticated console start the login. Empty
+        // strings on a local `ratio watch`, where none of these are set, so the
+        // console stays unauthenticated on loopback.
+        //
+        // ⚠ Not a `ratio.console.v1` resource: it is deployment configuration,
+        // not a fund's data, so it does not belong in the contract or its AIP
+        // surface. It is served here beside `/version` for the same reason —
+        // both describe the running process, not the book.
+        (_, "/authconfig.json") => (
+            "200 OK",
+            "application/json",
+            format!(
+                "{{\"issuer\":{},\"clientId\":{},\"domain\":{},\"scopes\":[\"openid\",\"email\"],\
+                 \"redirectPath\":\"/app\"}}",
+                quote(&std::env::var("RATIO_COGNITO_ISSUER").unwrap_or_default()),
+                quote(&std::env::var("RATIO_COGNITO_CLIENT_ID").unwrap_or_default()),
+                quote(&std::env::var("RATIO_COGNITO_DOMAIN").unwrap_or_default()),
+            ),
+        ),
+
         _ => ("404 Not Found", "text/plain; charset=utf-8", "no".to_string()),
     };
 
+    let canonical = std::env::var("RATIO_CANONICAL_HOST").ok();
+    let idp = std::env::var("RATIO_COGNITO_DOMAIN").ok();
     write!(
         stream,
         "HTTP/1.1 {status}\r\n\
          Content-Type: {content_type}\r\n\
          Content-Length: {}\r\n\
-         Cache-Control: no-store\r\n\
+         {}Cache-Control: no-store\r\n\
          Connection: close\r\n\r\n{body}",
-        body.len()
+        body.len(),
+        security_headers(content_type, &req.host, canonical.as_deref(), idp.as_deref())
     )?;
     Ok(())
 }
@@ -1432,6 +1569,69 @@ mod tests {
             let r = parse(&format!("POST /mcp HTTP/1.1\r\n{name}: 2\r\n\r\nhi"));
             assert_eq!(r.body, "hi", "{name}");
         }
+    }
+
+    #[test]
+    fn the_gateway_context_and_host_headers_are_captured() {
+        // The verified claims (#22) and the Host (for HSTS) are the two headers
+        // this server reads beyond Content-Length.
+        let r = parse(
+            "GET /v1/funds HTTP/1.1\r\nHost: ratio.example\r\n\
+             x-amzn-request-context: {\"authorizer\":{\"jwt\":{\"claims\":{\"sub\":\"u1\"}}}}\r\n\r\n",
+        );
+        assert_eq!(r.host, "ratio.example");
+        // ⛔ The context value is JSON carrying its own colons; splitting on the
+        // FIRST colon must keep them in the value, or the claims are truncated.
+        assert!(r.auth_context.contains("\"sub\":\"u1\""));
+        assert!(r.auth_context.starts_with('{') && r.auth_context.ends_with('}'));
+    }
+
+    #[test]
+    fn html_gets_a_content_policy_and_an_api_loads_nothing() {
+        let html = security_headers("text/html; charset=utf-8", "x", None, None);
+        for needle in [
+            "Content-Security-Policy:",
+            "frame-ancestors 'none'",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "X-Content-Type-Options: nosniff",
+            "Referrer-Policy: no-referrer",
+            "X-Frame-Options: DENY",
+        ] {
+            assert!(html.contains(needle), "the html headers are missing {needle:?}");
+        }
+        // An API response renders nothing and loads nothing.
+        let json = security_headers("application/json", "x", None, None);
+        assert!(json.contains("default-src 'none'"));
+        assert!(!json.contains("'unsafe-inline'"), "an API response has no inline anything");
+        // ⛔ The Cognito domain joins connect-src so the PKCE token exchange is
+        // not blocked; without a configured IdP it stays 'self' only.
+        assert!(!html.contains("amazoncognito"), "no idp configured means no idp origin");
+        let with_idp =
+            security_headers("text/html", "x", None, Some("p.auth.us-east-1.amazoncognito.com"));
+        assert!(
+            with_idp.contains("connect-src 'self' https://p.auth.us-east-1.amazoncognito.com"),
+            "the token exchange origin must be allowed"
+        );
+    }
+
+    #[test]
+    fn hsts_is_sent_only_on_our_own_host() {
+        // ⛔ On the shared execute-api host, HSTS would poison HSTS state for
+        // every other AWS API served from it. It is gated on the canonical host.
+        let shared = "abc123.execute-api.us-east-1.amazonaws.com";
+        let ours = "ratio.fastverk.dev";
+        assert!(
+            !security_headers("text/html", shared, Some(ours), None)
+                .contains("Strict-Transport-Security"),
+            "HSTS must not ride the shared AWS host"
+        );
+        assert!(security_headers("text/html", ours, Some(ours), None)
+            .contains("Strict-Transport-Security: max-age="));
+        // A local run configures no canonical host, so never.
+        assert!(
+            !security_headers("text/html", ours, None, None).contains("Strict-Transport-Security")
+        );
     }
 
     #[test]

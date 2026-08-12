@@ -53,9 +53,21 @@ import type {
   ListPostingsResponse,
   Posting,
 } from "./types.js";
+import { accessToken } from "./auth.js";
 
 /** Where the API lives, relative to wherever the console is served from. */
 const BASE = "../v1";
+
+/** Thrown when the server refuses a `/v1` call for lack of a valid session, so
+ *  the app can render the sign-in view rather than a bare error string. The
+ *  server sends 401 only when `RATIO_AUTH=required` and no verified identity
+ *  arrived — a deployed, authenticated surface; a local run never 401s. */
+export class AuthError extends Error {
+  constructor() {
+    super("sign in required");
+    this.name = "AuthError";
+  }
+}
 
 async function get<T>(path: string): Promise<T> {
   return send<T>(path, undefined);
@@ -65,21 +77,26 @@ async function get<T>(path: string): Promise<T> {
 /// except `:applyEvent`, so the method follows from whether there is a body
 /// rather than being passed around.
 async function send<T>(path: string, body: unknown): Promise<T> {
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (body !== undefined) headers["content-type"] = "application/json";
+  // The verified subject the server scopes and attributes by. Absent on a
+  // local run, where the server does not ask for one.
+  const token = accessToken();
+  if (token) headers.authorization = `Bearer ${token}`;
   const r = await fetch(`${BASE}${path}`, {
     method: body === undefined ? "GET" : "POST",
-    headers: body === undefined
-      ? { accept: "application/json" }
-      : { accept: "application/json", "content-type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  if (r.status === 401) throw new AuthError();
   if (!r.ok) {
     // The BFF puts a sentence in `error`. Surfacing it beats "500" — the whole
     // point of the thing is that a figure can be accounted for, and that has
     // to include the figure not being there.
     let detail = `${r.status}`;
     try {
-      const body = (await r.json()) as { error?: string };
-      if (body.error) detail = body.error;
+      const errorBody = (await r.json()) as { error?: string };
+      if (errorBody.error) detail = errorBody.error;
     } catch {
       /* a non-JSON error body is still an error */
     }

@@ -418,3 +418,38 @@ tla_check(
     tags = ["manual"],
     deps = [":sql_projection"],
 )
+
+# The journal on an object store, one object per entry — issue #24's durable
+# replacement for the per-container `/tmp` that forks.
+#
+# ⛔ `executor_check` PROVES A CLAIM AND S3 HAS A CONDITIONAL PUT. That spec's
+# `ClaimBeforeWork` stops two workers taking one partition; here the same claim
+# is an `If-None-Match:*` PUT that stops two writers taking one sequence key.
+# The store is single, so the fork of #24 is gone — but a blind PUT to an
+# occupied key overwrites it, and the losing entry was acked and is gone. The
+# shortened journal ties, digests and replays, exactly like the double count.
+tla_library(
+    name = "s3_journal",
+    srcs = ["S3Journal.tla"],
+)
+
+tla_check(
+    name = "s3_journal_check",
+    size = "medium",
+    config = "MCS3Journal.cfg",
+    module = "MCS3Journal.tla",
+    deps = [":s3_journal"],
+)
+
+# ⛔ No condition on the PUT: two writers reserve one slot and the second
+# overwrites the first, so an acked entry vanishes and the journal is a prefix
+# short of the writes that believe they are in it.
+# NoWriteIsLost goes red.
+tla_check(
+    name = "lost_write_check",
+    size = "medium",
+    config = "LostWrite.cfg",
+    module = "LostWrite.tla",
+    tags = ["manual"],
+    deps = [":s3_journal"],
+)

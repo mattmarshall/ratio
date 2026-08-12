@@ -180,6 +180,31 @@ Resources:
                   - apigateway:DELETE
                   - apigateway:TagResource
                 Resource: !Sub "arn:aws:apigateway:${AWS::Region}::/apis*"
+              - Sid: ManageTheDemoUserPool
+                Effect: Allow
+                # Cognito's user-pool management actions do not support
+                # resource-level permissions — the pool ARN does not exist at
+                # CreateUserPool time — so these are scoped by action rather than
+                # by resource, the same shape as GetAuthorizationToken above. The
+                # JWT authorizer and its route are ordinary API-Gateway objects,
+                # already covered by the statement above.
+                Action:
+                  - cognito-idp:CreateUserPool
+                  - cognito-idp:UpdateUserPool
+                  - cognito-idp:DeleteUserPool
+                  - cognito-idp:DescribeUserPool
+                  - cognito-idp:GetUserPoolMfaConfig
+                  - cognito-idp:SetUserPoolMfaConfig
+                  - cognito-idp:CreateUserPoolClient
+                  - cognito-idp:UpdateUserPoolClient
+                  - cognito-idp:DeleteUserPoolClient
+                  - cognito-idp:DescribeUserPoolClient
+                  - cognito-idp:CreateUserPoolDomain
+                  - cognito-idp:DeleteUserPoolDomain
+                  - cognito-idp:DescribeUserPoolDomain
+                  - cognito-idp:TagResource
+                  - cognito-idp:UntagResource
+                Resource: "*"
               - Sid: TheFunctionsOwnLogGroup
                 Effect: Allow
                 Action:
