@@ -175,7 +175,7 @@ rail regardless of MEMBERSHIP. This is `bearerToken()` in `web/src/auth.ts`.
 Google is a native Cognito social provider, wired in `app.yaml` and gated on
 `GoogleClientId` being non-empty — so the pool ships email/password-only until
 you supply the credentials, then lights up "Continue with Google" on the next
-deploy. Three steps:
+deploy. Four steps:
 
 1. **Create a Google OAuth 2.0 "Web application" client** (Google Cloud console →
    APIs & Services → Credentials). Set:
@@ -187,7 +187,15 @@ deploy. Three steps:
    Secrets and variables → Actions): `GOOGLE_OAUTH_CLIENT_ID` and
    `GOOGLE_OAUTH_CLIENT_SECRET`. `deploy.yml` reads them as env vars and passes
    them to CloudFormation; they are never committed.
-3. **Grant the deploy role the identity-provider permissions** (once) and
+3. **Grant the Google account membership.** Google signs a user in as their real
+   email, and the tenant boundary matches on it — so that email must be a demo
+   member or the sign-in lands on an empty rail. Set the repository **variable**
+   (Settings → Secrets and variables → Actions → Variables) `DEMO_MEMBERS` to a
+   comma-separated list, e.g. `demo@ratio.fastverk.dev,you@gmail.com`. `deploy.yml`
+   passes it as the `DemoMember` parameter and `entrypoint.sh` grants each member
+   every seeded fund. A variable, not a secret — an email is not one — so no
+   address is committed. Unset keeps just the email/password demo user.
+4. **Grant the deploy role the identity-provider permissions** (once) and
    redeploy. The deploy role needs `cognito-idp:*IdentityProvider*` to create the
    Google provider — the same shape as the pool grant. Either re-run
    `bootstrap.yaml`, or extend the inline policy in CloudShell:
@@ -208,9 +216,8 @@ deploy. Three steps:
 
 ⚠ **Federation auto-provisions.** A first Google sign-in creates a pool user even
 though the pool is invite-only — federation ignores that setting. The tenant
-boundary still gates funds, so a Google account not in `MEMBERSHIP.tsv` signs in
-and sees an *empty* rail, never another fund's data. To let a Google user see the
-demo funds, its email must be `RATIO_DEMO_MEMBER` (or added to `MEMBERSHIP.tsv`).
+boundary still gates funds, so a Google account not in `DEMO_MEMBERS` signs in
+and sees an *empty* rail, never another fund's data.
 
 ### The smoke test after auth
 

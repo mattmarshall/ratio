@@ -24,19 +24,27 @@ fi
 
 # The tenant boundary (book_path / fund_ids) reads MEMBERSHIP.tsv from the funds
 # directory: lines of `<subject>\t<fund-id>`. With RATIO_AUTH=required every
-# signed-in visitor is the one invited demo user, so grant that identity every
-# seeded fund — otherwise an authenticated visitor signs in successfully and
-# sees an empty rail, which reads as "the demo is broken" rather than "you were
-# granted nothing". Regenerated on each start from RATIO_DEMO_MEMBER (the email
-# the Cognito user was created with; funds_for matches sub OR email) and the
-# fund directories that actually exist, so the grant can never name a fund that
-# is not there. Unset locally — where the caller is Subject::Local and
-# unrestricted — so no file is written and none is read.
+# signed-in visitor is a demo member, so grant each of them every seeded fund —
+# otherwise a visitor signs in successfully and sees an empty rail, which reads
+# as "the demo is broken" rather than "you were granted nothing". Regenerated on
+# each start from RATIO_DEMO_MEMBER and the fund directories that actually exist,
+# so the grant can never name a fund that is not there.
+#
+# ⚠ RATIO_DEMO_MEMBER MAY NAME SEVERAL MEMBERS, comma-separated: the
+# email/password demo user AND one or more federated (Google) emails. It has to,
+# because a Google sign-in arrives as the caller's real Google email — not
+# `demo@…` — and `funds_for` matches that email against this file. A single-value
+# RATIO_DEMO_MEMBER is just a list of one. Unset locally — where the caller is
+# Subject::Local and unrestricted — so no file is written and none is read.
 if [ -n "${RATIO_DEMO_MEMBER:-}" ] && [ -d "$FUNDS" ]; then
   : > "$FUNDS/MEMBERSHIP.tsv"
+  members="$(printf '%s' "$RATIO_DEMO_MEMBER" | tr ',' ' ')"
   for dir in "$FUNDS"/*/; do
     [ -f "$dir/accounts.json" ] || continue   # a fund is a book, not just a directory
-    printf '%s\t%s\n' "$RATIO_DEMO_MEMBER" "$(basename "$dir")" >> "$FUNDS/MEMBERSHIP.tsv"
+    fund="$(basename "$dir")"
+    for member in $members; do
+      printf '%s\t%s\n' "$member" "$fund" >> "$FUNDS/MEMBERSHIP.tsv"
+    done
   done
 fi
 

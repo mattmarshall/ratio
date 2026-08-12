@@ -22,12 +22,13 @@ Parameters:
     Type: String
     Default: demo@ratio.fastverk.dev
     Description: >
-      The identity every seeded fund is granted to in MEMBERSHIP.tsv. It MUST
-      equal the email the invited Cognito demo user is created with — the
-      tenant boundary matches a caller's verified email (or sub) against this,
-      so a mismatch signs the user in successfully and then shows an empty fund
-      rail. entrypoint.sh writes the grant from this on each start; see
-      deploy/README.md for creating the matching user.
+      Who every seeded fund is granted to in MEMBERSHIP.tsv, comma-separated. The
+      tenant boundary matches a caller's verified email (or sub) against this, so
+      each value MUST equal an email a member actually signs in as — the invited
+      Cognito user, and any Google account (whose email arrives from Google). A
+      mismatch signs the user in successfully and then shows an empty fund rail.
+      Set the list via the DEMO_MEMBERS repository variable; entrypoint.sh writes
+      the grant on each start. See deploy/README.md.
   GoogleClientId:
     Type: String
     Default: ""
