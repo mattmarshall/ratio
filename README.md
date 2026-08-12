@@ -45,6 +45,21 @@ bazel run //crates/ratio -- watch --book <dir>   # then open /app
 No database, no daemon, no container. The journal is a file; the configuration
 is content-addressed beside it. See [DEVELOPING.md](DEVELOPING.md).
 
+## The hosted console
+
+The same binary runs the public demo — `ratio watch` behind an HTTP API on AWS
+Lambda, so what ships is what is demoed rather than a Lambda-shaped port of it.
+It is **authenticated and multi-tenant**: a visitor signs in (Google or
+email/password, through a Cognito Hosted UI) and sees only the funds their
+membership grants. The tenant boundary is enforced in Rust at the one place a
+fund id becomes a path — where the test suite can break it — not in the gateway,
+and the server fails closed, so a removed authorizer refuses rather than opens.
+Every write is signed with the caller's verified identity, and the served page
+carries a content-security policy over its own inlined assets. The durable-journal
+work (an object store with conditional writes) is modelled in `tla/S3Journal.tla`
+ahead of the backend. [`deploy/README.md`](deploy/README.md) is the operator's
+guide: the stacks, the Cognito setup, and how sign-in is turned on.
+
 ## Documentation
 
 - **[HANDOFF.md](HANDOFF.md)** — where the work stands, what is load-bearing, and
@@ -81,7 +96,7 @@ requirement.
 | `crates/ratio-project` | the read model, the lot book, the relief engine |
 | `crates/ratio-rules` | posting rules: parsed, checked, compiled |
 | `crates/ratio-recon` | the shadow run — a prospect's file, reconciled |
-| `crates/ratio-console` + `web/` | the operations console and its backend-for-frontend |
+| `crates/ratio-console` + `web/` | the operations console and its backend-for-frontend — authenticated, with per-fund tenancy on the hosted demo |
 | `crates/ratio-mcp` | the MCP server, with a fence between proposing and approving |
 | `crates/ratio-gen` | a fund with realistic shape, generated the same way every time |
 | `proto/` | the wire types. AIP-linted |
