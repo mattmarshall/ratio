@@ -47,18 +47,22 @@ is content-addressed beside it. See [DEVELOPING.md](DEVELOPING.md).
 
 ## The hosted console
 
-The same binary runs the public demo — `ratio watch` behind an HTTP API on AWS
-Lambda, so what ships is what is demoed rather than a Lambda-shaped port of it.
-It is **authenticated and multi-tenant**: a visitor signs in (Google or
-email/password, through a Cognito Hosted UI) and sees only the funds their
-membership grants. The tenant boundary is enforced in Rust at the one place a
-fund id becomes a path — where the test suite can break it — not in the gateway,
-and the server fails closed, so a removed authorizer refuses rather than opens.
-Every write is signed with the caller's verified identity, and the served page
-carries a content-security policy over its own inlined assets. The durable-journal
-work (an object store with conditional writes) is modelled in `tla/S3Journal.tla`
-ahead of the backend. [`deploy/README.md`](deploy/README.md) is the operator's
-guide: the stacks, the Cognito setup, and how sign-in is turned on.
+Live at **<https://1h4q8av2gb.execute-api.us-east-1.amazonaws.com/>** — a raw
+execute-api host until the custom domain lands. The same binary runs it: `ratio
+watch` behind an HTTP API on AWS Lambda, so what ships is what is demoed rather
+than a Lambda-shaped port of it. A visitor signs in (Google or email/password,
+through a Cognito Hosted UI); the demo is **open**, so anyone who signs in sees
+it, while a write is still signed with their verified identity.
+
+The tenant machinery is real, and the same binary enforces it: authorization
+lives in Rust at the one place a fund id becomes a path — where the test suite
+can break it — not in the gateway, and the server fails closed, so a removed
+authorizer refuses rather than opens. Unset the open-demo flag and each caller is
+scoped to the funds their `MEMBERSHIP.tsv` grants, with no other change. Every
+served page carries a content-security policy over its own inlined assets, and
+the durable-journal work (an object store with conditional writes) is modelled in
+`tla/S3Journal.tla` ahead of the backend.
+[`deploy/README.md`](deploy/README.md) is the operator's guide.
 
 ## Documentation
 
@@ -74,8 +78,9 @@ guide: the stacks, the Cognito setup, and how sign-in is turned on.
 - **[Whitepaper](paper/)** — *Ratio: A Formally Grounded Accounting Kernel*.
   `bazel build //paper:ratio`.
 - **[Positioning brief](marketing/)** — `bazel build //marketing:positioning`.
-- **[Marketing site](site/)** — two self-contained HTML pages; `python3
-  site/build.py`. See [site/README.md](site/README.md) for why it is not Bazel.
+- **[Marketing site](https://mattmarshall.github.io/ratio/)** — self-contained
+  HTML, published to GitHub Pages; `python3 site/build.py`. See
+  [site/README.md](site/README.md) for why it is not Bazel.
 - **[Competitive specs](competitive/specs/)** — one per advertised wealth-tech
   component. `bazel build //competitive/specs:all_specs`.
 

@@ -136,6 +136,22 @@ Membership is data, not an IdP group: `funds/MEMBERSHIP.tsv`, lines of
 `entrypoint.sh` writes it on each start from `RATIO_DEMO_MEMBER` and the funds
 that actually exist.
 
+### The demo is open (`RATIO_DEMO_OPEN`)
+
+A public demo's audience is not known ahead of time, so it cannot be an
+allow-list of emails. `RATIO_DEMO_OPEN=1` (set in `app.yaml`) makes the server
+grant **any authenticated caller every fund**, while a write is still signed with
+their verified id — so anyone may sign in (Google auto-provisions on first
+sign-in) and then everyone sees the demo.
+
+⚠ This is **not** a dropped boundary. Sign-in is still required (the 401 above is
+unchanged), and the change is in a separate `Console::open` path, so the tenant
+path (`Console::scoped`, matching `MEMBERSHIP.tsv`) and its isolation test are
+untouched. Unset `RATIO_DEMO_OPEN` and the demo scopes each caller to the funds
+`MEMBERSHIP.tsv` grants them, with no other change — that is the model a real
+tenant deployment runs, and the sections below (the invited user, `DEMO_MEMBERS`)
+describe it.
+
 ### Creating the invited demo user
 
 The pool is **invite-only** (`AllowAdminCreateUserOnly`) — a public sign-up form
@@ -175,7 +191,7 @@ rail regardless of MEMBERSHIP. This is `bearerToken()` in `web/src/auth.ts`.
 Google is a native Cognito social provider, wired in `app.yaml` and gated on
 `GoogleClientId` being non-empty — so the pool ships email/password-only until
 you supply the credentials, then lights up "Continue with Google" on the next
-deploy. Three steps:
+deploy. Four steps:
 
 1. **Create a Google OAuth 2.0 "Web application" client** (Google Cloud console →
    APIs & Services → Credentials). Set:
@@ -187,7 +203,15 @@ deploy. Three steps:
    Secrets and variables → Actions): `GOOGLE_OAUTH_CLIENT_ID` and
    `GOOGLE_OAUTH_CLIENT_SECRET`. `deploy.yml` reads them as env vars and passes
    them to CloudFormation; they are never committed.
-3. **Grant the deploy role the identity-provider permissions** (once) and
+3. **Grant the Google account membership.** Google signs a user in as their real
+   email, and the tenant boundary matches on it — so that email must be a demo
+   member or the sign-in lands on an empty rail. Set the repository **variable**
+   (Settings → Secrets and variables → Actions → Variables) `DEMO_MEMBERS` to a
+   comma-separated list, e.g. `demo@ratio.fastverk.dev,you@gmail.com`. `deploy.yml`
+   passes it as the `DemoMember` parameter and `entrypoint.sh` grants each member
+   every seeded fund. A variable, not a secret — an email is not one — so no
+   address is committed. Unset keeps just the email/password demo user.
+4. **Grant the deploy role the identity-provider permissions** (once) and
    redeploy. The deploy role needs `cognito-idp:*IdentityProvider*` to create the
    Google provider — the same shape as the pool grant. Either re-run
    `bootstrap.yaml`, or extend the inline policy in CloudShell:
@@ -208,9 +232,8 @@ deploy. Three steps:
 
 ⚠ **Federation auto-provisions.** A first Google sign-in creates a pool user even
 though the pool is invite-only — federation ignores that setting. The tenant
-boundary still gates funds, so a Google account not in `MEMBERSHIP.tsv` signs in
-and sees an *empty* rail, never another fund's data. To let a Google user see the
-demo funds, its email must be `RATIO_DEMO_MEMBER` (or added to `MEMBERSHIP.tsv`).
+boundary still gates funds, so a Google account not in `DEMO_MEMBERS` signs in
+and sees an *empty* rail, never another fund's data.
 
 ### The smoke test after auth
 

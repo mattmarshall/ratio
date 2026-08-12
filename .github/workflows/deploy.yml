@@ -122,6 +122,11 @@ jobs:
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          # Who the seeded funds are granted to, comma-separated. A repository
+          # VARIABLE (not a secret — an email is not one) so the Google account
+          # you sign in with can be granted without committing it. Unset falls
+          # back to the app.yaml default, keeping the email/password demo user.
+          DEMO_MEMBERS: ${{ vars.DEMO_MEMBERS }}
         run: |
           aws cloudformation deploy \
             --template-file deploy/app.yaml \
@@ -132,7 +137,8 @@ jobs:
               ExecutionRoleArn="arn:aws:iam::${ACCOUNT_ID}:role/ratio-demo-execution" \
               BuildSha="${GITHUB_SHA}" \
               GoogleClientId="${GOOGLE_CLIENT_ID}" \
-              GoogleClientSecret="${GOOGLE_CLIENT_SECRET}"
+              GoogleClientSecret="${GOOGLE_CLIENT_SECRET}" \
+              DemoMember="${DEMO_MEMBERS:-demo@ratio.fastverk.dev}"
 
       - name: Smoke test the deployed demo
         run: |

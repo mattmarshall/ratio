@@ -22,12 +22,13 @@ Parameters:
     Type: String
     Default: demo@ratio.fastverk.dev
     Description: >
-      The identity every seeded fund is granted to in MEMBERSHIP.tsv. It MUST
-      equal the email the invited Cognito demo user is created with — the
-      tenant boundary matches a caller's verified email (or sub) against this,
-      so a mismatch signs the user in successfully and then shows an empty fund
-      rail. entrypoint.sh writes the grant from this on each start; see
-      deploy/README.md for creating the matching user.
+      Who every seeded fund is granted to in MEMBERSHIP.tsv, comma-separated. The
+      tenant boundary matches a caller's verified email (or sub) against this, so
+      each value MUST equal an email a member actually signs in as — the invited
+      Cognito user, and any Google account (whose email arrives from Google). A
+      mismatch signs the user in successfully and then shows an empty fund rail.
+      Set the list via the DEMO_MEMBERS repository variable; entrypoint.sh writes
+      the grant on each start. See deploy/README.md.
   GoogleClientId:
     Type: String
     Default: ""
@@ -120,8 +121,15 @@ Resources:
           RATIO_COGNITO_ISSUER: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
           RATIO_COGNITO_CLIENT_ID: !Ref UserPoolClient
           RATIO_COGNITO_DOMAIN: !Sub "ratio-demo-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com"
-          # Whom the seeded funds are granted to. entrypoint.sh writes
-          # MEMBERSHIP.tsv from this; it must equal the demo user's email.
+          # ⚠ AN OPEN DEMO. Its audience is not known ahead of time, so it cannot
+          # be an allow-list of emails: RATIO_DEMO_OPEN grants any AUTHENTICATED
+          # caller every fund, while the write stays signed with their id.
+          # Sign-in is still required (RATIO_AUTH above) — anyone may sign in
+          # (Google auto-provisions), and then everyone sees the demo. Unset this
+          # to restore per-fund scoping from MEMBERSHIP with no other change.
+          RATIO_DEMO_OPEN: "1"
+          # Still written (the fallback if RATIO_DEMO_OPEN is unset); ignored while
+          # the demo is open. entrypoint.sh seeds MEMBERSHIP.tsv from it.
           RATIO_DEMO_MEMBER: !Ref DemoMember
       Tags:
         - Key: project

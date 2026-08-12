@@ -286,7 +286,16 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
                     r#"{"error":"sign in required","signIn":true}"#.to_string(),
                 )
             } else {
+                // ⚠ AN OPEN DEMO, NOT A DROPPED BOUNDARY. `RATIO_DEMO_OPEN` (set
+                // only on the shared demo, whose audience is not known ahead of
+                // time) grants any AUTHENTICATED caller every fund, while the
+                // write stays signed with their id. Sign-in is still required —
+                // the 401 above is untouched — and the tenant path (`scoped`) and
+                // its tests are unchanged, so turning this off restores per-fund
+                // scoping with no other edit.
+                let open = std::env::var("RATIO_DEMO_OPEN").map(|v| !v.is_empty()).unwrap_or(false);
                 let c = match subject {
+                    Some(s) if open => ratio_console::Console::open(root, s),
                     Some(s) => ratio_console::Console::scoped(root, s),
                     None => ratio_console::Console::new(root),
                 };
