@@ -262,10 +262,6 @@ Resources:
   # aud, so the audience below IS the client id.
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
-    # The client lists Google by name (a string, not a ref), so nothing makes it
-    # wait for the provider to exist — this dependency does. When HasGoogle is
-    # false the provider is not created and CloudFormation ignores the DependsOn.
-    DependsOn: GoogleIdp
     Properties:
       UserPoolId: !Ref UserPool
       ClientName: ratio-console
@@ -274,9 +270,19 @@ Resources:
       AllowedOAuthFlows: [code]
       AllowedOAuthScopes: [openid, email]
       # COGNITO keeps the email/password form; Google is added when configured.
+      #
+      # ⛔ THE Google ENTRY IS `!Ref GoogleIdp`, NOT THE LITERAL "Google", AND THE
+      # DEPENDENCY THAT BUYS IS THE WHOLE POINT. A static `DependsOn: GoogleIdp`
+      # is rejected at validation when HasGoogle is false ("Unresolved resource
+      # dependencies [GoogleIdp]") because the provider is conditioned out. A
+      # `!Ref` inside the matching `!If` branch is evaluated ONLY when HasGoogle is
+      # true — so when Google is off this resolves to `[COGNITO]` with no dangling
+      # reference, and when Google is on the `!Ref` both yields the provider name
+      # and orders its creation before this client update. (Ref on a Cognito
+      # identity provider returns its ProviderName, i.e. "Google".)
       SupportedIdentityProviders: !If
         - HasGoogle
-        - [COGNITO, Google]
+        - [COGNITO, !Ref GoogleIdp]
         - [COGNITO]
       ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
       CallbackURLs:
