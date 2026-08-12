@@ -114,6 +114,14 @@ jobs:
           echo "Deploying $DIGEST"
 
       - name: Deploy
+        # The Google OAuth credentials come from repository secrets and are read
+        # here as env vars rather than interpolated into the command line, so the
+        # secret never lands in a process argument. Both are empty until the
+        # secrets are set, and app.yaml treats empty as "Google off" — so this
+        # deploys the same with or without them.
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
           aws cloudformation deploy \
             --template-file deploy/app.yaml \
@@ -122,7 +130,9 @@ jobs:
             --parameter-overrides \
               ImageUri='${{ steps.image.outputs.uri }}' \
               ExecutionRoleArn="arn:aws:iam::${ACCOUNT_ID}:role/ratio-demo-execution" \
-              BuildSha="${GITHUB_SHA}"
+              BuildSha="${GITHUB_SHA}" \
+              GoogleClientId="${GOOGLE_CLIENT_ID}" \
+              GoogleClientSecret="${GOOGLE_CLIENT_SECRET}"
 
       - name: Smoke test the deployed demo
         run: |

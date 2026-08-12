@@ -164,6 +164,54 @@ rail — a green sign-in that looks like a broken demo. If you invite a user und
 a different address, override the `DemoMember` parameter to match, or the grant
 names a subject who never signs in.
 
+⚠ **The console sends the *id* token as the API bearer, not the access token.**
+The gateway authorizer accepts either, but only the id token carries the `email`
+claim the tenant boundary matches on — a Cognito access token has `sub` and
+`client_id` and no email, which would leave every signed-in person on an empty
+rail regardless of MEMBERSHIP. This is `bearerToken()` in `web/src/auth.ts`.
+
+### Signing in with Google
+
+Google is a native Cognito social provider, wired in `app.yaml` and gated on
+`GoogleClientId` being non-empty — so the pool ships email/password-only until
+you supply the credentials, then lights up "Continue with Google" on the next
+deploy. Three steps:
+
+1. **Create a Google OAuth 2.0 "Web application" client** (Google Cloud console →
+   APIs & Services → Credentials). Set:
+   - Authorized redirect URI:
+     `https://ratio-demo-320473299741.auth.us-east-1.amazoncognito.com/oauth2/idpresponse`
+   - Authorized JavaScript origin:
+     `https://ratio-demo-320473299741.auth.us-east-1.amazoncognito.com`
+2. **Store the credentials as repository secrets** (GitHub → repo Settings →
+   Secrets and variables → Actions): `GOOGLE_OAUTH_CLIENT_ID` and
+   `GOOGLE_OAUTH_CLIENT_SECRET`. `deploy.yml` reads them as env vars and passes
+   them to CloudFormation; they are never committed.
+3. **Grant the deploy role the identity-provider permissions** (once) and
+   redeploy. The deploy role needs `cognito-idp:*IdentityProvider*` to create the
+   Google provider — the same shape as the pool grant. Either re-run
+   `bootstrap.yaml`, or extend the inline policy in CloudShell:
+
+   ```sh
+   aws iam put-role-policy --role-name ratio-demo-deploy \
+     --policy-name manage-the-demo-user-pool \
+     --policy-document "$(aws iam get-role-policy --role-name ratio-demo-deploy \
+        --policy-name manage-the-demo-user-pool --query PolicyDocument --output json \
+        | python3 -c 'import json,sys; d=json.load(sys.stdin); d["Statement"][0]["Action"] += [
+          "cognito-idp:CreateIdentityProvider","cognito-idp:UpdateIdentityProvider",
+          "cognito-idp:DeleteIdentityProvider","cognito-idp:DescribeIdentityProvider",
+          "cognito-idp:ListIdentityProviders"]; print(json.dumps(d))')"
+   ```
+
+   Then trigger a deploy (push, or run the `deploy` workflow) so CloudFormation
+   creates the provider.
+
+⚠ **Federation auto-provisions.** A first Google sign-in creates a pool user even
+though the pool is invite-only — federation ignores that setting. The tenant
+boundary still gates funds, so a Google account not in `MEMBERSHIP.tsv` signs in
+and sees an *empty* rail, never another fund's data. To let a Google user see the
+demo funds, its email must be `RATIO_DEMO_MEMBER` (or added to `MEMBERSHIP.tsv`).
+
 ### The smoke test after auth
 
 CI's smoke test asserts the boundary is *live* — `/v1/funds` without a token
