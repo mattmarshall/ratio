@@ -232,7 +232,10 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
     };
 
     let (status, content_type, body) = match (req.method.as_str(), req.path.as_str()) {
-        (_, "/") => ("200 OK", "text/html; charset=utf-8", page(CHAT_BODY, "chat")),
+        // The console is the demo's front door (also at /app, back-compat). The
+        // three public read-only screens stay reachable without signing in; the
+        // model-chat setup screen moves off / to make room for it.
+        (_, "/chat") => ("200 OK", "text/html; charset=utf-8", page(CHAT_BODY, "chat")),
         (_, "/balance") => ("200 OK", "text/html; charset=utf-8", page(BALANCE_BODY, "balance")),
         (_, "/breaks") => ("200 OK", "text/html; charset=utf-8", page(BREAKS_BODY, "breaks")),
         (_, "/rules") => ("200 OK", "text/html; charset=utf-8", page(RULES_BODY, "rules")),
@@ -248,7 +251,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         // The console. Embedded at compile time from //web:console_html, so the
         // binary that serves the API also serves the client and there is no
         // second artifact to deploy, version or get out of step.
-        (_, "/app") | (_, "/app/") => ("200 OK", "text/html; charset=utf-8", CONSOLE.to_string()),
+        (_, "/") | (_, "/app") | (_, "/app/") => ("200 OK", "text/html; charset=utf-8", CONSOLE.to_string()),
 
         // The console's API, transcoded from ratio.v1.Console's google.api.http
         // rules. //crates/ratio-console:transcode_test asserts these routes are
@@ -882,7 +885,7 @@ fn page(body: &str, current: &str) -> String {
     };
     format!(
         "{HEAD}<nav class=\"tabs\">{}{}{}{}</nav>{body}{FOOT}",
-        tab("chat", "/", "Set up the books"),
+        tab("chat", "/chat", "Set up the books"),
         tab("balance", "/balance", "Trial balance"),
         tab("breaks", "/breaks", "Break report"),
         tab("rules", "/rules", "Rules")
