@@ -110,11 +110,37 @@ in this repository that were green, covered the code, and tested nothing.
 
 ## Environment
 
+Two required, one optional.
+
 | | |
 |---|---|
-| `RATIO_API_ORIGIN` | where the API is. `http://127.0.0.1:7373` locally |
-| `RATIO_CONSOLE_ORIGIN` | this app's own origin, for the OAuth `redirect_uri`. ⛔ Never derived from the `Host` header — a forged one would choose where the code is delivered |
+| `RATIO_API_ORIGIN` | where the API is — **scheme and host, no path**. `http://127.0.0.1:7373` locally |
 | `RATIO_SESSION_KEYS` | comma-separated base64 32-byte keys, newest first. A keyring so rotation does not sign everyone out |
+| `RATIO_CONSOLE_ORIGIN` | *optional.* This app's own origin, for the OAuth `redirect_uri`. Only consulted when the API publishes none — which means local development |
+
+⛔ **The console origin comes from the API, not from here.** `deploy/app.yaml`
+builds the Cognito app client's callback URL and the API's `RATIO_CONSOLE_URL`
+out of one `ConsoleOrigin` parameter, and the API publishes it at
+`/authconfig.json` as `consoleOrigin`. That is the byte-identical string Cognito
+compares the `redirect_uri` against, so taking it from there means it cannot
+disagree. It once did: Vercel held `https://ratio-console.vercel.app` while
+Cognito had `https://ratio-ims.vercel.app`, and every sign-in failed. The
+variable survives as an override for `next dev`, where a local `ratio watch`
+publishes an empty origin because it has no console to point at.
+
+⛔ **Still never the `Host` header.** Whoever chooses this value chooses where an
+authorization code is delivered. `/authconfig.json` is the same TLS document
+already trusted for `issuer`, `clientId` and `domain` — a forged `domain` sends
+somebody to an attacker's hosted UI, which is worse than a forged redirect —
+so reading one more field of it adds no trust the console did not already extend.
+Deriving it from the request would have added one.
+
+⚠ **A wrong value fails the build, not the sign-in.** `pnpm build` runs
+`scripts/preflight.mjs` first: it fetches `${RATIO_API_ORIGIN}/authconfig.json`
+and exits non-zero on a 404 or a wrong shape, and checks the session keyring's
+length without printing it. A 5xx or an unreachable host only warns — transient
+is not misconfigured. **With `RATIO_API_ORIGIN` unset it skips everything**,
+which is what keeps CI hermetic and `next dev` offline.
 
 ⛔ **No refresh token in the cookie.** A Cognito refresh token is good for thirty
 days and a cookie is a bearer; id + refresh sealed also exceeds the 4096-byte

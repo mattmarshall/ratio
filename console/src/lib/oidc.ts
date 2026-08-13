@@ -24,6 +24,16 @@ export interface AuthConfig {
   domain: string;
   scopes: string[];
   redirectPath: string;
+  /**
+   * Where the console is served from, as the deployment declared it.
+   *
+   * ⛔ THIS IS THE STRING COGNITO REGISTERED, WHICH IS WHY IT IS WORTH FETCHING.
+   * `deploy/app.yaml` builds the app client's callback URL and this value out of
+   * one `ConsoleOrigin` parameter, so a `redirect_uri` taken from here cannot
+   * have drifted from the one the IdP will accept. Empty on a local `ratio
+   * watch`; see `app/api/auth/redirect.ts` for the fallback.
+   */
+  consoleOrigin: string;
 }
 
 let cached: Promise<AuthConfig> | null = null;

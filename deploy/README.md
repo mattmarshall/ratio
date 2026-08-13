@@ -40,6 +40,38 @@ hostname is not a secret, so a variable rather than a secret — same reasoning 
 and the demo still works: the three public screens, the API and MCP all serve,
 and `/` says what it serves instead of redirecting.
 
+⭐ **One parameter, three consumers, no second copy.** `ConsoleOrigin` becomes
+the Cognito `CallbackURLs` entry, the `RATIO_CONSOLE_URL` that makes `/` and
+`/app` redirect, **and** the `consoleOrigin` field in `/authconfig.json` that the
+console reads its OAuth `redirect_uri` back out of. The console does not hold its
+own copy, because it did once and the two disagreed — Vercel had
+`https://ratio-console.vercel.app` while Cognito had `https://ratio-ims.vercel.app`,
+and nothing compared them until somebody clicked Sign in. The deploy smoke test
+now asserts the published field equals `CONSOLE_ORIGIN`, so a typo here goes red
+in this workflow.
+
+### What Vercel needs
+
+Two variables, in **Production and Preview** (Settings → Environment Variables):
+
+| | |
+|---|---|
+| `RATIO_API_ORIGIN` | this stack's `DemoUrl`, **scheme and host, no path and no trailing slash** |
+| `RATIO_SESSION_KEYS` | `openssl rand -base64 32`. Comma-separated keyring, newest first — rotate by prepending |
+
+⛔ **Generate the session key yourself and paste it nowhere else.** It is the
+repository's only runtime secret; one that has been in a chat log or a plan file
+is a disclosed key. `console/scripts/preflight.mjs` checks its length and never
+prints it.
+
+⚠ `RATIO_CONSOLE_ORIGIN` is **not** in that table on purpose — it is a local
+development override and setting it on a deployment only creates the drift
+described above. The preflight warns when it disagrees with the published value.
+
+⚠ **Vercel reads these at build time**, so editing one changes nothing until you
+redeploy. A wrong `RATIO_API_ORIGIN` now fails that build rather than shipping a
+console nobody can sign into.
+
 ⛔ **VERCEL AUTHENTICATION HAS TO BE OFF ON THE CONSOLE PROJECT, AND IT IS ON BY
 DEFAULT.** The team default is `ssoProtection: all_except_custom_domains`, so
 every `*.vercel.app` URL sits behind Vercel's own login. That breaks this twice

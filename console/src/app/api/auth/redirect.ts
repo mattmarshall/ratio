@@ -1,6 +1,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { authConfig } from "@/lib/oidc";
 
 /**
  * A redirect to a page on this same server, with no host in it at all.
@@ -29,21 +30,75 @@ export function sameOrigin(path: string, status: 303 | 307 = 307): NextResponse 
 /**
  * The origin this console is served from.
  *
- * ⛔ AN ENVIRONMENT VARIABLE, NEVER THE `Host` HEADER. The value is used as an
- * OAuth `redirect_uri`, and Cognito matches it against a registered callback
- * exactly. Deriving it from the request would let a forged `Host` choose where
- * the code is delivered; declaring it means a mismatch is a refused sign-in,
- * which is a loud failure rather than a quiet one.
+ * ⛔ DECLARED BY THE DEPLOYMENT, NEVER TAKEN FROM THE `Host` HEADER. That rule
+ * has not moved and is the reason this function exists at all: the value is an
+ * OAuth `redirect_uri`, so whoever chooses it chooses where an authorization
+ * code is delivered. A forged `Host` must never get a vote.
  *
- * ⚠ Cognito accepts no wildcards, so exactly three values are registered in
- * `deploy/app.yaml`: production, one stable preview alias, and
- * `http://localhost:3000`. A preview deployment on its own generated hostname
- * cannot sign in, by design — previews run against `console/fixtures/`.
+ * ⭐ WHAT CHANGED IS *WHICH* DECLARATION IS AUTHORITATIVE, AND IT IS NOT THIS
+ * PROCESS'S ENVIRONMENT. `deploy/app.yaml` builds the Cognito app client's
+ * callback URL and the API's `RATIO_CONSOLE_URL` out of a single `ConsoleOrigin`
+ * parameter, and the API publishes it at `/authconfig.json`. Reading it there
+ * gets the byte-identical string the IdP will compare against. A second copy in
+ * `RATIO_CONSOLE_ORIGIN` was a value that could disagree, and on the first
+ * deployment that had both, it did — Vercel held `https://ratio-console.vercel.app`
+ * while Cognito had `https://ratio-ims.vercel.app` — which is the failure
+ * `watch.rs` names for the issuer and the client id: *two places that must agree
+ * is two places that will one day not.*
+ *
+ * ⛔ AND THIS IS NOT THE `Host` HEADER BY ANOTHER ROUTE. `/authconfig.json` is
+ * the same TLS document already trusted for `issuer`, `clientId` and `domain`,
+ * every one of which is worse to forge than a redirect target — a forged
+ * `domain` sends the person to an attacker's hosted UI. Trusting one more field
+ * of it adds no new trust. Deriving from the request would have added one.
+ *
+ * ⚠ Cognito accepts no wildcards, so `deploy/app.yaml` registers exactly two
+ * callbacks: `${ConsoleOrigin}` and `http://localhost:3000`. A preview
+ * deployment on its own generated hostname cannot sign in, by design — previews
+ * run against `console/fixtures/`.
  */
-export function consoleOrigin(): string {
-  const o = process.env.RATIO_CONSOLE_ORIGIN;
-  if (!o) throw new Error("RATIO_CONSOLE_ORIGIN is not set");
-  return o.replace(/\/+$/, "");
+export async function consoleOrigin(): Promise<string> {
+  const declared = process.env.RATIO_CONSOLE_ORIGIN?.replace(/\/+$/, "");
+
+  let published: string | undefined;
+  try {
+    published = (await authConfig()).consoleOrigin?.replace(/\/+$/, "");
+  } catch {
+    // An unreachable API is reported by whoever needed the config, not here.
+    // ⚠ `next dev` against a laptop with no server still has to get to the
+    // fallback below, and `authConfig()` throwing is the ordinary way that
+    // looks. Swallowing it here loses nothing: every caller of this function
+    // also calls `authConfig()` for the IdP domain moments later, and that call
+    // surfaces the same failure with the URL in it.
+  }
+
+  // ⚠ Empty is the local answer, not a missing field: a `ratio watch` on
+  // loopback publishes "" because it has no console to point at, and that is
+  // exactly when `RATIO_CONSOLE_ORIGIN` should win.
+  if (!published) {
+    if (!declared) {
+      throw new Error(
+        "no console origin: the API published none and RATIO_CONSOLE_ORIGIN is not set",
+      );
+    }
+    return declared;
+  }
+
+  // ⛔ THE PUBLISHED VALUE WINS A DISAGREEMENT, AND THE LOG SAYS SO. Cognito
+  // will accept exactly one of these two and refuse the other, and the one it
+  // accepts is the one it was configured from. Preferring the local copy would
+  // mean an operator's stale environment variable can only ever break the
+  // sign-in; preferring the published one means it cannot. It is still worth a
+  // line in the log, because a variable that no longer does anything is a trap
+  // for the next person who edits it expecting it to.
+  if (declared && declared !== published) {
+    console.warn(
+      `RATIO_CONSOLE_ORIGIN is ${declared} but the API publishes ${published}; ` +
+        `using the published value, which is the one Cognito registered. ` +
+        `Unset RATIO_CONSOLE_ORIGIN or correct it to match.`,
+    );
+  }
+  return published;
 }
 
 /**
