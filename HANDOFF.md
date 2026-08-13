@@ -170,12 +170,19 @@ the conserved one, and the kernel never said it was.
     console.yml` is a required check and `CONTRIBUTING.md` says so.
   - `//crates/ratio:ratio_test`'s `the_served_console_carries_the_lot_engine`
     is **deleted, not weakened**. All eleven of its literals moved to
-    `//console:fields_test`, and the screens that carry them are rendered
+    `console/scripts/fields_test.py`, and the screens that carry them are rendered
     against fixtures by `console/src/app/screens.test.tsx`.
-  - `//console:route_manifest_test` is the new load-bearing one: it asserts the
-    console calls exactly the contract's routes, **and** that no RPC goes unread
-    by any screen. That second direction is the old rendered-test defect one
-    level up.
+  - `console/scripts/route_manifest_test.py` is the new load-bearing one: it
+    asserts the console calls exactly the contract's routes, **and** that no RPC
+    goes unread by any screen. That second direction is the old rendered-test
+    defect one level up.
+  - ⚠ THOSE FIVE CHECKS RUN IN `console.yml`, NOT UNDER BAZEL. They were
+    `sh_test`s and went red twice on Bazel wiring rather than on anything they
+    check — a package-relative path that does not survive the runfiles root, then
+    a label its own `glob` already matched. Neither was reproducible in an
+    environment without Bazel, which is most of them. `console/BUILD.bazel` is
+    now one `exports_files`, and it is load-bearing: `//proto:mirrors_test` reads
+    the wire types through it.
   ⚠ The earlier version of this entry also said "`//web:console` and
   `//web:console_html` are different targets" — there was no `//web:console`
   target and there never was. Two wrong entries in one bullet; the lesson is the

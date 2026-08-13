@@ -1,125 +1,27 @@
 # The operations console.
 #
-# ⛔ BAZEL DOES NOT BUILD THIS, AND THAT IS DELIBERATE. The console is a Next.js
-# application built and deployed by Vercel; `.github/workflows/console.yml` runs
-# `tsc --noEmit`, the render suite and `next build` as a required check. Two
-# things follow, and both were the point:
+# ⛔ BAZEL DOES NOT BUILD OR TEST THIS, AND THIS FILE EXISTS FOR ONE LINE.
 #
-#   * Next's per-platform `@next/swc-*` binaries and their postinstalls never
-#     enter this build. `web/pnpm-workspace.yaml` existed to keep exactly that
-#     class of thing out, one package at a time; the whole JS toolchain —
-#     rules_js, rules_ts, rules_nodejs and npm_translate_lock — left MODULE.bazel
-#     when the console did.
-#   * `bazel test //...` still says something about the console, because the
-#     checks below read SOURCE TEXT and need no node at all. They are the same
-#     shape as //proto:mirrors_test and //:plan_refusals_test.
+# The console is a Next.js application built and deployed by Vercel, which runs
+# its ordinary `next build`. `.github/workflows/console.yml` is the required
+# check: `tsc --noEmit`, the render suite, `next build`, and the five source-text
+# checks in `scripts/`. None of them need Bazel, and they are green there.
 #
-# ⚠ `site/` is the precedent: a non-Bazel build path, verified by a Python
-# script that CI and a developer run identically. CONTRIBUTING.md was corrected
-# in the same commit, because "CI runs bazel build //... and bazel test //...,
-# and nothing else needs to pass" stopped being true.
+# ⚠ THEY USED TO BE `sh_test`s HERE, AND THE REASON THEY ARE NOT IS WORTH
+# KEEPING. Bazel could not build the app but could run the checks, so it did —
+# and they failed twice on Bazel wiring rather than on anything they were
+# checking: a package-relative path that does not survive the runfiles root, then
+# a label listed in `data` that its own `glob` already matched. Both were found
+# by CI because nothing else can run Bazel in the environments this repository is
+# usually edited from. A check that is green in one place and fragile in another
+# is worth having in one place.
+#
+# ⛔ THE EXPORT BELOW IS LOAD-BEARING. `//proto:mirrors_test` reads the wire
+# types by label to assert they still mirror `console.proto` field-for-field —
+# the hand-written mirror that "will happily promise a field the server never
+# sends". That is the one opinion Bazel still holds about the console, and
+# deleting this file would silently drop it.
 
 package(default_visibility = ["//visibility:public"])
 
-# ⛔ //proto:mirrors_test READS THIS BY LABEL. The wire types are a hand-written
-# mirror of console.proto, and moving the file without moving the label is a
-# test that silently stops running.
 exports_files(["src/wire/types.ts"])
-
-exports_files(["run_test.sh"])
-
-# The contract reaches every screen, and every screen exists.
-sh_test(
-    name = "route_manifest_test",
-    size = "small",
-    srcs = ["run_test.sh"],
-    args = [
-        "$(rootpath scripts/route_manifest_test.py)",
-        "$(rootpath //proto:ratio/console/v1/console.proto)",
-        "$(rootpath src/wire/client.ts)",
-        # ⛔ AN ANCHOR FILE, NOT A DIRECTORY, AND `rootpath` NOT `location`.
-        # A test runs from the RUNFILES ROOT, not from its package, so the
-        # first version of this passed a package-relative "src/app" and every
-        # route read as missing. `$(rootpath)` is defined as the path relative
-        # to that root — the same form //proto:mirrors_test uses — and the
-        # script derives `src/app` from where this file turned out to be.
-        "$(rootpath src/routes.ts)",
-    ],
-    data = [
-        "scripts/route_manifest_test.py",
-        "src/routes.ts",
-        "src/wire/client.ts",
-        "//proto:ratio/console/v1/console.proto",
-    ] + glob(["src/app/**/*.tsx"]),
-)
-
-# The screens still read the fields whose absence has shipped before.
-sh_test(
-    name = "fields_test",
-    size = "small",
-    srcs = ["run_test.sh"],
-    args = [
-        "$(rootpath scripts/fields_test.py)",
-        "$(rootpath src/routes.ts)",
-    ],
-    data = [
-        "scripts/fields_test.py",
-        "src/routes.ts",
-    ] + glob([
-        "src/**/*.ts",
-        "src/**/*.tsx",
-        "src/**/*.css",
-    ]),
-)
-
-# The render fixtures are shaped like the contract.
-sh_test(
-    name = "fixtures_test",
-    size = "small",
-    srcs = ["run_test.sh"],
-    args = [
-        "$(rootpath scripts/fixtures_test.py)",
-        "$(rootpath //proto:ratio/console/v1/console.proto)",
-        "$(rootpath fixtures/funds.json)",
-    ],
-    data = [
-        "scripts/fixtures_test.py",
-        "//proto:ratio/console/v1/console.proto",
-    ] + glob(["fixtures/*.json"]),
-)
-
-# One design system, not two.
-sh_test(
-    name = "tokens_test",
-    size = "small",
-    srcs = ["run_test.sh"],
-    args = [
-        "$(rootpath scripts/tokens_test.py)",
-        "$(rootpath //site:style.css)",
-        "$(rootpath src/app/globals.css)",
-    ],
-    data = [
-        "scripts/tokens_test.py",
-        "src/app/globals.css",
-        "//site:style.css",
-    ],
-)
-
-# Nothing that belongs in the environment is committed here.
-sh_test(
-    name = "no_secrets_test",
-    size = "small",
-    srcs = ["run_test.sh"],
-    args = [
-        "$(rootpath scripts/no_secrets_test.py)",
-        "$(rootpath src/routes.ts)",
-    ],
-    data = [
-        "scripts/no_secrets_test.py",
-        "src/routes.ts",
-    ] + glob([
-        "src/**/*.ts",
-        "src/**/*.tsx",
-        "src/**/*.css",
-    ]),
-)

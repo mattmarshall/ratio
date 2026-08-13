@@ -43,18 +43,23 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//crates/*:*_test` | the Rust |
 | `//proto:ratio_aip_lint`, `//proto:mirrors_test` | the wire contract, and its two hand-written mirrors |
 | `//crates/ratio-console:transcode_test` | the route table against the proto |
-| `//console:*` | five source-text checks over the console — no node needed |
 | `//demo:rehearse_test`, `//demo:shadow_run_test` | the demo and the shadow run, end to end |
 | `//marketing:language_test` | the licensing language sweep |
 
 `paths-ignore` covers `site/**` and `**/*.md` only. `marketing/`, `paper/` and
 `competitive/` are deliberately NOT ignored.
 
-`.github/workflows/console.yml` runs `tsc --noEmit`, the render suite and
-`next build` on any change under `console/` — and on a change to
-`console.proto`, because the wire types mirror it. `site.yml` re-runs
-`//console:tokens_test`'s script, because `site/**` is ignored above and a token
-changed there has to go red where it was changed.
+`.github/workflows/console.yml` runs `tsc --noEmit`, the render suite,
+`next build` and the five checks in `console/scripts/` on any change under
+`console/` — and on a change to `console.proto`, because the wire types mirror
+it. `site.yml` re-runs `tokens_test.py`, because `site/**` is ignored above and
+a token changed there has to go red where it was changed.
+
+⚠ **Bazel does not run those five.** They were `sh_test`s under `//console:` and
+failed twice on Bazel wiring rather than on anything they check — a
+package-relative path that does not survive the runfiles root, then a label its
+own `glob` already matched. They are green in `console.yml`, which is the one
+place they can be run by whoever is editing them.
 
 ### ⛔ What CI does not run
 
@@ -127,10 +132,11 @@ Adding a field to the API touches six files in order: `console.proto`,
 `console/src/app/` that reads it. Four tests turn an omission into a failing
 build rather than a 404: `//proto:mirrors_test` (the two hand-written mirrors),
 `//crates/ratio-console:transcode_test` (the route table), and
-`//console:route_manifest_test` — which asserts the console calls exactly the
-contract's routes **and** that no RPC goes unread by any screen.
+`console/scripts/route_manifest_test.py` — which asserts the console calls
+exactly the contract's routes **and** that no RPC goes unread by any screen.
+The first two run under Bazel; the third runs in `console.yml`.
 
-⚠ If the field is one a reader looks for, add it to `//console:fields_test` and
+⚠ If the field is one a reader looks for, add it to `console/scripts/fields_test.py` and
 give it a case in `console/src/app/screens.test.tsx`. Between them they are the
 successor to `//web:rendered_test` and to `ratio_test`'s
 `the_served_console_carries_the_lot_engine`, both of which existed because a

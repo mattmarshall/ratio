@@ -386,8 +386,9 @@ screen was a `useState` in an 1801-line file — so a break an operator found co
 be described and not sent. That is a strange thing for a product whose claim is
 that a figure cites the journal prefix it was folded from and the configuration
 it ran under. Every resource on `ratio.console.v1.Console` now has a URL, and
-`//console:route_manifest_test` holds it to that in both directions: the console
-calls exactly the contract's routes, and no RPC goes unread by a screen.
+`console/scripts/route_manifest_test.py` holds it to that in both directions:
+the console calls exactly the contract's routes, and no RPC goes unread by a
+screen. (It runs in `console.yml`; Bazel does not build or test the console.)
 
 What did NOT change, deliberately:
 

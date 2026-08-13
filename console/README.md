@@ -73,8 +73,8 @@ mistake would only surface the day tenancy is turned on for a real customer.
 same script — `.github/workflows/console.yml`, a required check, because
 `bazel test //...` has no JavaScript toolchain any more.
 
-Five more run under Bazel (`//console:*`) and need no node, because they read
-source text:
+`console.yml` also runs five checks in `scripts/`. They are plain Python over
+source text and need no node, so a developer can run any of them directly:
 
 | | |
 |---|---|
@@ -83,6 +83,12 @@ source text:
 | `fixtures_test` | every fixture is shaped like its message in `console.proto` |
 | `tokens_test` | the design tokens still agree with `site/style.css` |
 | `no_secrets_test` | nothing that belongs in the environment is committed |
+
+⚠ **These were Bazel `sh_test`s and are not any more.** They went red twice on
+Bazel wiring rather than on anything they check, and neither failure could be
+reproduced without Bazel — which most environments editing this directory do not
+have. ⛔ `console/BUILD.bazel` survives as a single `exports_files`, because
+`//proto:mirrors_test` reads `src/wire/types.ts` through it.
 
 ### The fixtures are captured, not written
 
