@@ -10,10 +10,23 @@ repository is written with LLM assistance and the rules there apply to everyone.
 git checkout -b <a-branch>
 bazel test //...        # ⛔ never `cargo test` — see DEVELOPING.md
 tla/probes.sh           # if you touched a spec
+cd console && pnpm check   # only if you touched console/
 ```
 
-Then a pull request. CI runs `bazel build //...` and `bazel test //...`, and
-nothing else needs to pass.
+Then a pull request. CI runs `bazel build //...` and `bazel test //...`, and —
+for a change under `console/` — `.github/workflows/console.yml`.
+
+⚠ **`bazel test //...` is no longer the whole gate, and it used to be.** The
+operations console is a Next.js application built by Vercel, so Bazel has no
+JavaScript toolchain any more (see the ⛔ in `MODULE.bazel`) and cannot see a
+type error in `console/`. `console.yml` is a required check for that reason.
+`site/` is the older precedent for a non-Bazel path.
+
+Bazel still says something about the console: `//console:*` is five checks over
+source text that need no node — the contract reaches every screen, the screens
+still read the fields whose absence has shipped before, the fixtures match the
+proto, the design tokens still agree with `site/style.css`, and nothing that
+belongs in the environment is committed.
 
 ## What a change looks like here
 

@@ -28,11 +28,21 @@ kernel is emitted from the Lean at build time.
 git clone https://github.com/mattmarshall/ratio.git && cd ratio
 
 bazel test //...                                 # the proofs, specs, crates, and demos
-bazel run //crates/ratio -- watch --book <dir>   # the console, on loopback — open /
+bazel run //crates/ratio -- watch --book <dir>   # the API and the screens — open /balance
 ```
 
 No database, no daemon, no container: the journal is a file and the
 configuration is content-addressed beside it.
+
+The **operations console** — the authenticated, multi-fund one, with a URL for
+every break, strike and configuration — is a separate Next.js application in
+[`console/`](console/), deployed to Vercel while the API keeps deploying to AWS.
+It runs against the loopback server above with no identity provider and no
+secrets:
+
+```bash
+cd console && pnpm install && pnpm dev          # then open http://localhost:3000
+```
 
 ## Documentation
 

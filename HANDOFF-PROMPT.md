@@ -1,5 +1,12 @@
 # Handoff — demo readiness, UI buildout, AWS hosting, login
 
+⚠ **HISTORY, NOT INSTRUCTIONS.** This is the prompt that opened the auth,
+hosting and console round (#22–#27); it is kept for the record. Parts of it are
+now wrong — in particular everything about `//web:console_html`, `//crates/
+ratio:console_rs` and rebuilding `//crates/ratio` for a console change. The
+console is a Next.js application in `console/`, deployed to Vercel, and Bazel
+does not build it. `DEVELOPING.md` and `HANDOFF.md` are the current documents.
+
 Paste the block below as the opening prompt of the new session.
 
 ---

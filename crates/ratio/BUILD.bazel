@@ -9,7 +9,6 @@ rust_binary(
     srcs = [
         "src/main.rs",
         "src/watch.rs",
-        "src/console_html.rs",
     ],
     edition = "2021",
     deps = [
@@ -44,19 +43,4 @@ rust_test(
     name = "ratio_test",
     crate = ":ratio",
     edition = "2021",
-)
-
-# The console, wrapped as a Rust source file.
-#
-# In THIS package, and with the output named `src/console_html.rs`, so it lands
-# next to watch.rs — `#[path]` resolves relative to the including file, and a
-# generated file in //web lands in bin/web, which is nowhere near
-# bin/crates/ratio/src. That mismatch cost two builds to see.
-genrule(
-    name = "console_rs",
-    srcs = ["//web:console_html"],
-    outs = ["src/console_html.rs"],
-    tools = ["//web:wrap_console.py"],
-    cmd = "python3 $(location //web:wrap_console.py) $(location //web:console_html) $@",
-    message = "Wrapping the console for Rust",
 )

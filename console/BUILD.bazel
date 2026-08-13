@@ -1,0 +1,114 @@
+# The operations console.
+#
+# ⛔ BAZEL DOES NOT BUILD THIS, AND THAT IS DELIBERATE. The console is a Next.js
+# application built and deployed by Vercel; `.github/workflows/console.yml` runs
+# `tsc --noEmit`, the render suite and `next build` as a required check. Two
+# things follow, and both were the point:
+#
+#   * Next's per-platform `@next/swc-*` binaries and their postinstalls never
+#     enter this build. `web/pnpm-workspace.yaml` existed to keep exactly that
+#     class of thing out, one package at a time; the whole JS toolchain —
+#     rules_js, rules_ts, rules_nodejs and npm_translate_lock — left MODULE.bazel
+#     when the console did.
+#   * `bazel test //...` still says something about the console, because the
+#     checks below read SOURCE TEXT and need no node at all. They are the same
+#     shape as //proto:mirrors_test and //:plan_refusals_test.
+#
+# ⚠ `site/` is the precedent: a non-Bazel build path, verified by a Python
+# script that CI and a developer run identically. CONTRIBUTING.md was corrected
+# in the same commit, because "CI runs bazel build //... and bazel test //...,
+# and nothing else needs to pass" stopped being true.
+
+package(default_visibility = ["//visibility:public"])
+
+# ⛔ //proto:mirrors_test READS THIS BY LABEL. The wire types are a hand-written
+# mirror of console.proto, and moving the file without moving the label is a
+# test that silently stops running.
+exports_files(["src/wire/types.ts"])
+
+exports_files(["run_test.sh"])
+
+# The contract reaches every screen, and every screen exists.
+sh_test(
+    name = "route_manifest_test",
+    size = "small",
+    srcs = ["run_test.sh"],
+    args = [
+        "$(location scripts/route_manifest_test.py)",
+        "$(location //proto:ratio/console/v1/console.proto)",
+        "$(location src/wire/client.ts)",
+        "$(location src/routes.ts)",
+        "src/app",
+    ],
+    data = [
+        "scripts/route_manifest_test.py",
+        "src/routes.ts",
+        "src/wire/client.ts",
+        "//proto:ratio/console/v1/console.proto",
+    ] + glob(["src/app/**/*.tsx"]),
+)
+
+# The screens still read the fields whose absence has shipped before.
+sh_test(
+    name = "fields_test",
+    size = "small",
+    srcs = ["run_test.sh"],
+    args = [
+        "$(location scripts/fields_test.py)",
+        "src",
+    ],
+    data = ["scripts/fields_test.py"] + glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.css",
+    ]),
+)
+
+# The render fixtures are shaped like the contract.
+sh_test(
+    name = "fixtures_test",
+    size = "small",
+    srcs = ["run_test.sh"],
+    args = [
+        "$(location scripts/fixtures_test.py)",
+        "$(location //proto:ratio/console/v1/console.proto)",
+        "fixtures",
+    ],
+    data = [
+        "scripts/fixtures_test.py",
+        "//proto:ratio/console/v1/console.proto",
+    ] + glob(["fixtures/*.json"]),
+)
+
+# One design system, not two.
+sh_test(
+    name = "tokens_test",
+    size = "small",
+    srcs = ["run_test.sh"],
+    args = [
+        "$(location scripts/tokens_test.py)",
+        "$(location //site:style.css)",
+        "$(location src/app/globals.css)",
+    ],
+    data = [
+        "scripts/tokens_test.py",
+        "src/app/globals.css",
+        "//site:style.css",
+    ],
+)
+
+# Nothing that belongs in the environment is committed here.
+sh_test(
+    name = "no_secrets_test",
+    size = "small",
+    srcs = ["run_test.sh"],
+    args = [
+        "$(location scripts/no_secrets_test.py)",
+        "src",
+    ],
+    data = ["scripts/no_secrets_test.py"] + glob([
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.css",
+    ]),
+)

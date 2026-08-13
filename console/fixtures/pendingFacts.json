@@ -1,0 +1,15 @@
+{
+  "pendingFacts": [
+    {
+      "name": "funds/harbourline-global-value/pendingFacts/pf-1",
+      "reference": "XS2434590128",
+      "kind": "position",
+      "blocker": "ABSENT",
+      "detail": "the instrument master has nothing under this identifier",
+      "deliveryDigest": "7c1e0d4488ab2f31",
+      "row": "9",
+      "templateId": "custodian-positions"
+    }
+  ],
+  "nextPageToken": ""
+}

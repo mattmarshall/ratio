@@ -1,16 +1,51 @@
 # Deploying the demo
 
-The three screens and the MCP endpoint, running on AWS as a Lambda behind an
-HTTP API. Live at the `DemoUrl` output of the `ratio-demo-app` stack.
+The three screens, the console's API and the MCP endpoint, running on AWS as a
+Lambda behind an HTTP API. Live at the `DemoUrl` output of the `ratio-demo-app`
+stack.
 
 ```
-  /               set up the books — a model driving the MCP tools
+  /               302 → the console (RATIO_CONSOLE_URL); 404 with a sentence if unset
+  /app            the same, for the old console's bookmarks and OAuth callback
   /balance        trial balance, with drill-down
   /breaks         break report
   /rules          rules and their checks
+  /chat           set up the books — a model driving the MCP tools
+  /v1/**          the console's API, JWT-authorized
   POST /mcp       the MCP tools — the same six as `ratio mcp`, same fence
   POST /chat.json one exchange with the model
 ```
+
+## ⛔ The console is not served from here any more
+
+It was compiled into the binary — one HTML document with the React bundle and
+the stylesheet inlined, embedded as a `&str`. It is a **Next.js application in
+`console/`, deployed to Vercel**, and this stack only points at it.
+
+Two things about that are load-bearing here:
+
+- **The browser never calls this API.** The console's server does, attaching the
+  id token from an httpOnly cookie. So `CorsConfiguration` is not consulted for
+  console traffic at all, and the **absence** of `authorization` from
+  `AllowHeaders` is now a fence rather than an oversight — it is what makes a
+  browser-direct call impossible. Do not add it.
+- **The Cognito callback moved to the console's origin.** `CallbackURLs` is
+  `${ConsoleOrigin}/api/auth/callback` plus `http://localhost:3000/...`, and
+  `/authconfig.json` advertises `"redirectPath":"/api/auth/callback"`. Those two
+  must agree or every sign-in is refused by the IdP.
+
+Set `ConsoleOrigin` through the **`CONSOLE_ORIGIN` repository variable** (a
+hostname is not a secret, so a variable rather than a secret — same reasoning as
+`DEMO_MEMBERS`). Leave it unset and the demo still works: the three public
+screens, the API and MCP all serve, and `/` says what it serves instead of
+redirecting.
+
+⛔ **Cognito accepts no wildcards in callback URLs.** A Vercel preview
+deployment on its own generated hostname cannot sign in. That is deliberate —
+previews render from `console/fixtures/`. If live preview data is ever needed,
+the pattern is a bounce through a registered origin carrying the preview host in
+the OAuth `state`, **with a server-side allowlist on the way back**; without one
+that is an open redirect on a route that carries tokens.
 
 ## ⛔ The chat screen needs a one-time console action
 
@@ -180,11 +215,18 @@ rail — a green sign-in that looks like a broken demo. If you invite a user und
 a different address, override the `DemoMember` parameter to match, or the grant
 names a subject who never signs in.
 
-⚠ **The console sends the *id* token as the API bearer, not the access token.**
+⛔ **The console sends the *id* token as the API bearer, not the access token.**
 The gateway authorizer accepts either, but only the id token carries the `email`
 claim the tenant boundary matches on — a Cognito access token has `sub` and
 `client_id` and no email, which would leave every signed-in person on an empty
-rail regardless of MEMBERSHIP. This is `bearerToken()` in `web/src/auth.ts`.
+rail regardless of MEMBERSHIP. It is `Caller.idToken` in
+`console/src/wire/client.ts`, and the token is now held server-side, so a reader
+who has both to hand will reach for the access token by reflex.
+
+⚠ **`RATIO_DEMO_OPEN=1` HIDES THAT MISTAKE COMPLETELY.** An open demo grants any
+authenticated caller every fund, so sending the wrong token still shows a full
+rail. It would surface the day tenancy is turned on for a real customer, which
+is the worst possible day to find it.
 
 ### Signing in with Google
 

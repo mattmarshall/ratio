@@ -1,0 +1,12 @@
+{
+  "templates": [
+    {
+      "name": "funds/harbourline-global-value/templates/custodian-positions",
+      "templateId": "custodian-positions",
+      "factKind": "position",
+      "form": "one row, one holding",
+      "posts": false
+    }
+  ],
+  "nextPageToken": ""
+}

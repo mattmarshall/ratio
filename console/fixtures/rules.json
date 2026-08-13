@@ -1,0 +1,17 @@
+{
+  "rules": [
+    {
+      "name": "funds/harbourline-global-value/rules/dividend",
+      "ruleId": "dividend",
+      "kind": "DIVIDEND",
+      "description": "Cross-border dividend, net of withholding",
+      "form": "credit dividend income net of withholding",
+      "accounts": [
+        "Cash and equivalents",
+        "Dividend income",
+        "Withholding tax receivable"
+      ]
+    }
+  ],
+  "nextPageToken": ""
+}

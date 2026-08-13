@@ -1,0 +1,32 @@
+{
+  "accounts": [
+    {
+      "name": "funds/harbourline-global-value/accounts/1010",
+      "displayName": "Cash and equivalents",
+      "dimension": "1010",
+      "type": "ASSET",
+      "debit": "35000000",
+      "credit": "1712000",
+      "balance": "33288000",
+      "abnormal": false,
+      "postingCount": "4",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "20000000",
+          "credit": "1712000",
+          "balance": "18288000",
+          "rate": "1000000"
+        },
+        {
+          "currencyCode": "EUR",
+          "debit": "15000000",
+          "credit": "0",
+          "balance": "15000000",
+          "rate": "1082400"
+        }
+      ]
+    }
+  ],
+  "nextPageToken": ""
+}

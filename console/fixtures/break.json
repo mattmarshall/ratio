@@ -1,0 +1,20 @@
+{
+  "name": "funds/harbourline-global-value/breaks/cash-usd-2026-02-26",
+  "account": "Cash and equivalents",
+  "accountDimension": "1010",
+  "severity": "HIGH",
+  "explained": false,
+  "cause": "the custodian statement and the journal disagree",
+  "ratioAmount": "33288000",
+  "reportedAmount": "33488000",
+  "difference": "200000",
+  "postings": [
+    {
+      "entryId": "e-0004",
+      "memo": "Purchase of 1,000 ACME",
+      "amount": "-33288000",
+      "configDigest": "9f2c1ab7de40551c"
+    }
+  ],
+  "configDigest": "9f2c1ab7de40551c"
+}

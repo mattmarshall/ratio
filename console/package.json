@@ -1,0 +1,36 @@
+{
+  "name": "@ratio/console",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.101.4",
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "0.0.1"
+  },
+  "pnpm": {
+    "//": "pnpm refuses to guess which packages may run lifecycle hooks, and it is right to: a postinstall is arbitrary code executing during an install. esbuild's downloads its platform binary and vitest needs it, so it is declared here explicitly rather than allowed globally. Same reasoning as the file this replaces, web/pnpm-workspace.yaml.",
+    "onlyBuiltDependencies": ["esbuild"]
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.0",
+    "@types/node": "22.18.11",
+    "@types/react": "19.2.8",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "5.0.4",
+    "jsdom": "26.1.0",
+    "typescript": "5.6.2",
+    "vitest": "3.2.4"
+  }
+}

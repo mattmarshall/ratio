@@ -160,14 +160,26 @@ the conserved one, and the kernel never said it was.
 - ⛔ **`bazel cquery --output=files` can hand back a stale binary.** Twice: an API
   returned an empty list and the code was right. Explicit `bazel build` first,
   then query.
-- ⛔ **A console change needs `//crates/ratio` rebuilt, not `//web:...`.** The
-  chain is `//web:console_html` → genrule `//crates/ratio:console_rs` →
-  `src/console_html.rs` → the binary, which embeds it as a `&str` at compile
-  time. Building anything under `//web:` alone refreshes nothing that is served.
-  ⚠ This entry used to say "`//web:console` and `//web:console_html` are
-  different targets" — there is no `//web:console` target and there never was.
-  `//crates/ratio:ratio_test` now greps the served HTML, so the trap fails
-  loudly instead of being remembered.
+- ⛔ **The console is not in the binary and Bazel does not build it.** This entry
+  used to say a console change needed `//crates/ratio` rebuilt, because
+  `//web:console_html` → `//crates/ratio:console_rs` → `src/console_html.rs`
+  embedded the whole page as a `&str` at compile time. `console/` is a Next.js
+  application deployed to Vercel; the JS toolchain left `MODULE.bazel` with it.
+  Three consequences worth knowing before you look for something that is gone:
+  - `bazel test //...` **is no longer the whole gate.** `.github/workflows/
+    console.yml` is a required check and `CONTRIBUTING.md` says so.
+  - `//crates/ratio:ratio_test`'s `the_served_console_carries_the_lot_engine`
+    is **deleted, not weakened**. All eleven of its literals moved to
+    `//console:fields_test`, and the screens that carry them are rendered
+    against fixtures by `console/src/app/screens.test.tsx`.
+  - `//console:route_manifest_test` is the new load-bearing one: it asserts the
+    console calls exactly the contract's routes, **and** that no RPC goes unread
+    by any screen. That second direction is the old rendered-test defect one
+    level up.
+  ⚠ The earlier version of this entry also said "`//web:console` and
+  `//web:console_html` are different targets" — there was no `//web:console`
+  target and there never was. Two wrong entries in one bullet; the lesson is the
+  one AGENTS.md already states, that a comment nothing tests will drift.
 - ⛔ **`append` and `append_all` are two doors with the same law**, with different
   indentation. A fix applied by string replace hits one.
 - ⛔ **Python edits collapse Rust `\` line continuations** into runs of spaces
@@ -341,7 +353,8 @@ than one that is entirely unclassified.
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
-| `crates/ratio-console` + `web/` | the console. ⛔ a web change needs `//crates/ratio` rebuilt |
+| `crates/ratio-console` | the console's BFF — 34 RPCs, transcoded onto `/v1` |
+| `console/` | the console itself. Next.js on Vercel; ⛔ Bazel does not build it |
 | `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9 |
 | `AGENTS.md` | the rules, for a person or a model. Replaces the two stale LLM guides |
 

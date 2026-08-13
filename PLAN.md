@@ -374,6 +374,41 @@ and say the wedge needs them, or stop and go get a fund's file. Leaving the
 list as written meant the plan and the repository disagreed about what the
 product is, and the repository was winning without anyone saying so.
 
+### Amendment, 2026-08-13 — the console moved off the binary, and nothing on the refusal list moved
+
+The operations console is a Next.js application in `console/`, deployed to
+Vercel while the API keeps deploying to AWS. **This adds nothing from the list
+above**, and it is worth saying why in the same place the list lives, because
+"an operations console" and "a portal" are one word apart.
+
+What changed is the ADDRESSING, not the surface. The console was one URL — every
+screen was a `useState` in an 1801-line file — so a break an operator found could
+be described and not sent. That is a strange thing for a product whose claim is
+that a figure cites the journal prefix it was folded from and the configuration
+it ran under. Every resource on `ratio.console.v1.Console` now has a URL, and
+`//console:route_manifest_test` holds it to that in both directions: the console
+calls exactly the contract's routes, and no RPC goes unread by a screen.
+
+What did NOT change, deliberately:
+
+- **No approve button.** `approve_rule` is absent from the model's tool list on
+  purpose and `//demo:rehearse_test` asserts it; approval is `ratio approve` at a
+  terminal. The rules screen shows active rules and unapproved drafts as two
+  lists that do not merge — the gap between them is what a person's approval
+  bought. A console offering a second way round the fence would make the fence
+  worth nothing, which is the argument the "three screens, not four" section
+  already makes.
+- **No control-plane UI, no configuration editor, no client portal.** The
+  configuration screens READ versions and diff them. Editing one is control-plane
+  UI and stays on the list.
+- **No new RPC.** `Console::apply_action` still has no route, `ratio strike` is
+  still CLI-only, and a proposal's rendered form still is not on the contract.
+  Each is a proto change and each was refused here rather than smuggled in as
+  page work.
+
+⚠️ The cost that was paid: `bazel test //...` stopped being the whole gate. See
+`CONTRIBUTING.md` and the ⛔ in `MODULE.bazel`.
+
 ---
 
 ## The control plane: geetch and crova

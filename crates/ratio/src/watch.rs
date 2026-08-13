@@ -152,7 +152,6 @@ fn security_headers(
     content_type: &str,
     host: &str,
     canonical_host: Option<&str>,
-    idp_domain: Option<&str>,
 ) -> String {
     let csp = if content_type.starts_with("text/html") {
         // ⚠ 'unsafe-inline' FOR SCRIPT/STYLE, DELIBERATELY. The inline blocks
@@ -164,21 +163,19 @@ fn security_headers(
         // `frame-ancestors` (clickjacking), `object-src`/`base-uri` (plugin and
         // base-tag hijacking), and `default-src 'self'` (no off-origin loads).
         // Hash-based tightening of script-src is a follow-on, gated on a browser
-        // check that the built React bundle needs no 'unsafe-eval'.
+        // check that the pages need no 'unsafe-eval'.
         //
-        // ⛔ THE SIGN-IN FLOW FETCHES ITS TOKENS FROM THE COGNITO DOMAIN, so
-        // that origin joins connect-src when it is configured — without it the
-        // PKCE token exchange is blocked and sign-in silently fails. The
-        // authorize step is a top-level navigation, which CSP does not gate.
-        let idp = match idp_domain {
-            Some(d) if !d.is_empty() => format!(" https://{d}"),
-            _ => String::new(),
-        };
-        format!(
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' \
-             'unsafe-inline'; img-src 'self' data:; connect-src 'self'{idp}; form-action \
-             'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
-        )
+        // ⚠ `connect-src 'self'` WITH NO EXCEPTION, WHERE THE COGNITO DOMAIN
+        // USED TO BE ADMITTED. The console ran authorization-code + PKCE in the
+        // tab and had to reach the IdP's token endpoint from it; that console is
+        // a Next.js application on its own origin now and runs the exchange on
+        // its server, so no page this binary serves talks to Cognito. The
+        // parameter went with the flow it existed for. The pages left here —
+        // /balance, /breaks, /rules, /chat — never signed anybody in.
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' \
+         'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action \
+         'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
+            .to_string()
     } else {
         // An API or a plain-text probe renders nothing and loads nothing.
         "default-src 'none'; frame-ancestors 'none'".to_string()
@@ -214,11 +211,48 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
                 "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain; charset=utf-8\r\n\
                  Content-Length: {}\r\n{}Connection: close\r\n\r\n{msg}",
                 msg.len(),
-                security_headers("text/plain; charset=utf-8", "", canonical.as_deref(), None)
+                security_headers("text/plain; charset=utf-8", "", canonical.as_deref())
             )?;
             return Ok(());
         }
     };
+
+    // ⛔ THE FRONT DOOR MOVED, AND IT REDIRECTS RATHER THAN 404s. This URL is
+    // the "Try the live demo" link in README.md and on the marketing site;
+    // whatever else happens to it, it must not become a dead link somebody
+    // clicks from a page we published. `/app` is here for the same reason —
+    // it is what the old console's OAuth callback returned to, so an
+    // in-flight bookmark lands somewhere useful rather than nowhere.
+    //
+    // ⚠ 302, not 301. A permanent redirect is cached by the browser forever and
+    // this destination is a deployment detail read from the environment.
+    if matches!(req.path.as_str(), "/" | "/app" | "/app/") {
+        let to = console_url();
+        let canonical = std::env::var("RATIO_CANONICAL_HOST").ok();
+        let headers = security_headers("text/plain; charset=utf-8", &req.host, canonical.as_deref());
+        if to.is_empty() {
+            // A local `ratio watch`. There is no console to point at, so say
+            // what this process does serve instead of bouncing to an empty URL.
+            let body = "The operations console is a separate application; this \
+                        process serves the API at /v1 and the screens at \
+                        /balance, /breaks, /rules and /chat.";
+            write!(
+                stream,
+                "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain; charset=utf-8\r\n\
+                 Content-Length: {}\r\n{headers}Cache-Control: no-store\r\n\
+                 Connection: close\r\n\r\n{body}",
+                body.len(),
+            )?;
+        } else {
+            write!(
+                stream,
+                "HTTP/1.1 302 Found\r\nLocation: {to}\r\nContent-Type: text/plain; charset=utf-8\r\n\
+                 Content-Length: 0\r\n{headers}Cache-Control: no-store\r\n\
+                 Connection: close\r\n\r\n",
+            )?;
+        }
+        return Ok(());
+    }
 
     let json = |r: Result<String>| match r {
         Ok(j) => ("200 OK", "application/json", j),
@@ -232,9 +266,12 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
     };
 
     let (status, content_type, body) = match (req.method.as_str(), req.path.as_str()) {
-        // The console is the demo's front door (also at /app, back-compat). The
-        // three public read-only screens stay reachable without signing in; the
-        // model-chat setup screen moves off / to make room for it.
+        // The three public read-only screens, reachable without signing in.
+        // ⚠ THESE STAY, AND THEY ARE WHY THE BINARY STILL HAS A BROWSER STORY
+        // WITHOUT NODE. They are Rust string literals with no build step, no
+        // bundler and no dependency — `bazel run //crates/ratio -- watch` still
+        // opens a book in a browser on loopback. What left is the authenticated
+        // multi-fund console, not this.
         (_, "/chat") => ("200 OK", "text/html; charset=utf-8", page(CHAT_BODY, "chat")),
         (_, "/balance") => ("200 OK", "text/html; charset=utf-8", page(BALANCE_BODY, "balance")),
         (_, "/breaks") => ("200 OK", "text/html; charset=utf-8", page(BREAKS_BODY, "breaks")),
@@ -243,15 +280,6 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         (_, "/postings.json") => json(postings_json(book, &req.query)),
         (_, "/breaks.json") => json(breaks_json(book)),
         (_, "/rules.json") => json(rules_json(book)),
-
-        // MCP over Streamable HTTP, so a model can reach the same tools the
-        // stdio transport exposes without a process on the caller's machine.
-        // The dispatcher is shared with `ratio mcp` — there is one tool list
-        // and one fence, not one per transport.
-        // The console. Embedded at compile time from //web:console_html, so the
-        // binary that serves the API also serves the client and there is no
-        // second artifact to deploy, version or get out of step.
-        (_, "/") | (_, "/app") | (_, "/app/") => ("200 OK", "text/html; charset=utf-8", CONSOLE.to_string()),
 
         // The console's API, transcoded from ratio.v1.Console's google.api.http
         // rules. //crates/ratio-console:transcode_test asserts these routes are
@@ -378,13 +406,23 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             std::env::var("RATIO_BUILD").unwrap_or_else(|_| "dev".into()),
         ),
 
-        // The public OIDC client configuration the sign-in flow bootstraps from,
-        // read from the deployment's environment. Inherently public — a client
-        // id and a hosted-UI domain are not secrets — so it is served BEFORE
-        // authentication (it is one of the routes the gateway leaves open),
-        // which is what lets the unauthenticated console start the login. Empty
-        // strings on a local `ratio watch`, where none of these are set, so the
-        // console stays unauthenticated on loopback.
+        // The public OIDC client configuration, read from the deployment's
+        // environment. Inherently public — a client id and a hosted-UI domain
+        // are not secrets — so it is served BEFORE authentication, and it is one
+        // of the routes the gateway leaves open. Empty strings on a local `ratio
+        // watch`, where none of these are set.
+        //
+        // ⭐ THE CONSOLE'S SERVER READS THIS, NOT THE CONSOLE'S BROWSER. That is
+        // the point of keeping it: `deploy/app.yaml` declares the pool, the
+        // client and the domain ONCE, and the Next.js application fetches them
+        // from here rather than carrying a second copy as Vercel environment
+        // variables. Two places that must agree about which pool a token comes
+        // from is two places that will one day not.
+        //
+        // ⚠ EMPTY MEANS "NO IDENTITY PROVIDER", AND THAT IS THE LOCAL STORY. The
+        // console skips its sign-in gate when these are blank, which is exactly
+        // when this process answers as `Subject::Local` — so `next dev` against
+        // a local book needs no Cognito, no secret and no network.
         //
         // ⚠ Not a `ratio.console.v1` resource: it is deployment configuration,
         // not a fund's data, so it does not belong in the contract or its AIP
@@ -394,8 +432,13 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             "200 OK",
             "application/json",
             format!(
+                // ⛔ `/api/auth/callback`, ON THE CONSOLE'S OWN ORIGIN. It used
+                // to be `/app` — this binary's own page — because the browser
+                // ran the code exchange. It does not: the console's server does,
+                // and this path must match a registered Cognito callback URL in
+                // deploy/app.yaml or the sign-in is refused by the IdP.
                 "{{\"issuer\":{},\"clientId\":{},\"domain\":{},\"scopes\":[\"openid\",\"email\"],\
-                 \"redirectPath\":\"/app\"}}",
+                 \"redirectPath\":\"/api/auth/callback\"}}",
                 quote(&std::env::var("RATIO_COGNITO_ISSUER").unwrap_or_default()),
                 quote(&std::env::var("RATIO_COGNITO_CLIENT_ID").unwrap_or_default()),
                 quote(&std::env::var("RATIO_COGNITO_DOMAIN").unwrap_or_default()),
@@ -406,7 +449,6 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
     };
 
     let canonical = std::env::var("RATIO_CANONICAL_HOST").ok();
-    let idp = std::env::var("RATIO_COGNITO_DOMAIN").ok();
     write!(
         stream,
         "HTTP/1.1 {status}\r\n\
@@ -415,7 +457,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
          {}Cache-Control: no-store\r\n\
          Connection: close\r\n\r\n{body}",
         body.len(),
-        security_headers(content_type, &req.host, canonical.as_deref(), idp.as_deref())
+        security_headers(content_type, &req.host, canonical.as_deref())
     )?;
     Ok(())
 }
@@ -865,15 +907,38 @@ fn quote(s: &str) -> String {
 // The pages
 // ---------------------------------------------------------------------------
 
-/// The operations console, built by //web:console_rs.
+/// Where the operations console lives, for the redirect at `/`.
 ///
-/// One string: the shell, its stylesheet and the React bundle, inlined. On
-/// Lambda a second request for a stylesheet is a second invocation and possibly
-/// a second cold start, and the whole page is smaller than the round trip it
-/// would save.
-#[path = "console_html.rs"]
-mod console_html;
-use console_html::CONSOLE;
+/// ⛔ THE CONSOLE IS NO LONGER IN THIS BINARY. It was a React bundle inlined
+/// into one HTML document and embedded here as a `&str` at compile time, which
+/// meant a stylesheet change needed an image build and a CloudFormation deploy,
+/// and meant the whole console was one URL — so a break an operator found could
+/// not be sent to anybody. It is a Next.js application deployed separately now,
+/// with a route per resource.
+///
+/// Empty on a local `ratio watch`, where there is nothing to redirect to and
+/// saying so beats bouncing somebody to an empty string.
+///
+/// ⚠ A VALUE WITH A CONTROL CHARACTER IN IT IS TREATED AS UNSET. This string is
+/// interpolated straight into a `Location:` header, and a CR or LF in it would
+/// end that header and start another — response splitting. It is operator
+/// configuration rather than caller input, so this is a guard against a typo in
+/// a CloudFormation template rather than against an attacker; it costs one line
+/// and removes the question.
+fn console_url() -> String {
+    // ⚠ The guard is a separate pure function so a test can reach it without
+    // `std::env::set_var`, which is a race against every other test in this
+    // binary.
+    safe_redirect(&std::env::var("RATIO_CONSOLE_URL").unwrap_or_default()).to_string()
+}
+
+/// The configured console URL, or "" if it could not safely be a `Location:`.
+fn safe_redirect(value: &str) -> &str {
+    if value.chars().any(|c| c.is_ascii_control()) {
+        return "";
+    }
+    value
+}
 
 /// Wrap a screen's body in the shared document, marking the current tab.
 fn page(body: &str, current: &str) -> String {
@@ -1600,7 +1665,7 @@ mod tests {
 
     #[test]
     fn html_gets_a_content_policy_and_an_api_loads_nothing() {
-        let html = security_headers("text/html; charset=utf-8", "x", None, None);
+        let html = security_headers("text/html; charset=utf-8", "x", None);
         for needle in [
             "Content-Security-Policy:",
             "frame-ancestors 'none'",
@@ -1613,18 +1678,20 @@ mod tests {
             assert!(html.contains(needle), "the html headers are missing {needle:?}");
         }
         // An API response renders nothing and loads nothing.
-        let json = security_headers("application/json", "x", None, None);
+        let json = security_headers("application/json", "x", None);
         assert!(json.contains("default-src 'none'"));
         assert!(!json.contains("'unsafe-inline'"), "an API response has no inline anything");
-        // ⛔ The Cognito domain joins connect-src so the PKCE token exchange is
-        // not blocked; without a configured IdP it stays 'self' only.
-        assert!(!html.contains("amazoncognito"), "no idp configured means no idp origin");
-        let with_idp =
-            security_headers("text/html", "x", None, Some("p.auth.us-east-1.amazoncognito.com"));
+        // ⛔ NO PAGE THIS BINARY SERVES TALKS TO AN IDENTITY PROVIDER, AND THE
+        // POLICY HAD BETTER NOT SAY OTHERWISE. The console used to run PKCE in
+        // the tab, so the Cognito origin joined connect-src; it is a Next.js
+        // application on its own origin now and exchanges the code on its
+        // server. The screens left here sign nobody in, so admitting an off-site
+        // origin would be widening the policy for a flow that no longer exists.
         assert!(
-            with_idp.contains("connect-src 'self' https://p.auth.us-east-1.amazoncognito.com"),
-            "the token exchange origin must be allowed"
+            html.contains("connect-src 'self';"),
+            "these pages talk to their own origin and nothing else"
         );
+        assert!(!html.contains("amazoncognito"), "no page here reaches the IdP");
     }
 
     #[test]
@@ -1634,16 +1701,30 @@ mod tests {
         let shared = "abc123.execute-api.us-east-1.amazonaws.com";
         let ours = "ratio.fastverk.dev";
         assert!(
-            !security_headers("text/html", shared, Some(ours), None)
+            !security_headers("text/html", shared, Some(ours))
                 .contains("Strict-Transport-Security"),
             "HSTS must not ride the shared AWS host"
         );
-        assert!(security_headers("text/html", ours, Some(ours), None)
+        assert!(security_headers("text/html", ours, Some(ours))
             .contains("Strict-Transport-Security: max-age="));
         // A local run configures no canonical host, so never.
         assert!(
-            !security_headers("text/html", ours, None, None).contains("Strict-Transport-Security")
+            !security_headers("text/html", ours, None).contains("Strict-Transport-Security")
         );
+    }
+
+    #[test]
+    fn a_console_url_with_a_newline_in_it_is_treated_as_unset() {
+        // ⛔ THIS VALUE IS INTERPOLATED INTO A `Location:` HEADER. A CR or LF in
+        // it ends that header and begins another, which is response splitting.
+        // It is operator configuration rather than caller input, so this guards
+        // a typo in a CloudFormation template — but the failure it prevents is
+        // the kind nobody notices until somebody is looking for it.
+        assert_eq!(safe_redirect("https://console.example/"), "https://console.example/");
+        assert_eq!(safe_redirect("https://x/\r\nSet-Cookie: a=b"), "");
+        assert_eq!(safe_redirect("https://x/\nLocation: elsewhere"), "");
+        // Unset stays unset, which is what makes `/` say what it does serve.
+        assert_eq!(safe_redirect(""), "");
     }
 
     #[test]
@@ -2021,43 +2102,26 @@ mod tests {
         assert!(terminal_json(&book, &cmd).is_err());
     }
 
-    #[test]
-    fn the_served_console_carries_the_lot_engine() {
-        // ⛔ AGAINST THE BYTES THE BINARY ACTUALLY SERVES, not against the
-        // TypeScript. The console is bundled by `//web:console_html` and
-        // embedded here at compile time, so a change to `web/src` that is never
-        // rebuilt into `//crates/ratio` typechecks, passes every other test,
-        // and serves the old page. That has happened: the corporate-actions
-        // screen was written, compiled, and absent, and what caught it was
-        // grepping the served HTML.
-        //
-        // ⚠ These are the strings a reader looks for. If the wording changes,
-        // change it here too — that is the point, not an inconvenience.
-        for needle in [
-            "Lot method",
-            // ⛔ BOTH CLAIMS THE METHOD ROW CAN MAKE. Shipping only the first
-            // is what put "a term of the administration agreement" on three
-            // demo funds whose configuration declares no method at all.
-            "a term of the administration agreement",
-            "this configuration declares no method",
-            "Realized gain",
-            "Short-term",
-            "Long-term",
-            "Unclassified",
-            "Basis relieved",
-            "no trade date",
-            // ⛔ THE SCALE ARGUMENT. It is the strongest claim in the product
-            // and it lived only in a benchmark's terminal output.
-            "Tax lots",
-            "the fold that",
-        ] {
-            assert!(
-                CONSOLE.contains(needle),
-                "the served console does not mention {needle:?} — \
-                 was //crates/ratio rebuilt after the web change?"
-            );
-        }
-    }
+    // ⛔ THE CONSOLE'S RENDER GUARD LIVES IN `//console:` NOW, AND IT HAD TO
+    // MOVE RATHER THAN GO.
+    //
+    // `the_served_console_carries_the_lot_engine` used to stand here and assert
+    // eleven literals against the console string compiled into this binary —
+    // "Lot method", "a term of the administration agreement", "this
+    // configuration declares no method", "Realized gain", "Short-term",
+    // "Long-term", "Unclassified", "Basis relieved", "no trade date", "Tax
+    // lots", "the fold that". It existed because the corporate-actions screen
+    // was once "written, compiled, and absent", and grepping the served HTML by
+    // hand was what caught it.
+    //
+    // There is no console in this binary to grep. Every one of those eleven
+    // needles is now asserted by `//console:fields_test`, and the screens that
+    // carry them are RENDERED against fixtures by
+    // `console/src/app/screens.test.tsx` — which is what the old test's own
+    // header said it wished it could do.
+    //
+    // ⚠ Do not restore this without restoring the console it read.
+
 
     #[test]
     fn customer_text_never_becomes_markup() {
