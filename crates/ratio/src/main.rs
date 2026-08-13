@@ -649,9 +649,21 @@ fn plural(n: i64, one: &str, many: &str) -> String {
 fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     use std::time::Instant;
 
+    // ⛔ ONE MEASUREMENT, TWO RENDERINGS — never two measurements. `--json` picks
+    // which of them is printed and changes nothing above it, so the figure a
+    // machine reads and the figure a person reads are the same figure computed
+    // once. Two code paths here would be the same defect `shape_from` exists to
+    // prevent, one layer up: two commands reporting about "the twenty-million lot
+    // fund" and disagreeing.
+    let json = args.contains(&"--json");
+    macro_rules! out {
+        ($($t:tt)*) => { if !json { println!($($t)*) } };
+    }
+
     let folding = args.contains(&"--fold");
     let (shape, dir) = if folding {
-        let rest: Vec<&str> = args.iter().copied().filter(|a| *a != "--fold").collect();
+        let rest: Vec<&str> =
+            args.iter().copied().filter(|a| *a != "--fold" && *a != "--json").collect();
         if let Some(other) = rest.first() {
             bail!(
                 "`--fold` measures the book at {}, so {other:?} would describe a fund that is \
@@ -665,29 +677,29 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     };
 
     if folding {
-        println!("A FUND OF THIS SHAPE, FOLDED FROM {}", dir.display());
+        out!("A FUND OF THIS SHAPE, FOLDED FROM {}", dir.display());
     } else {
-        println!("A FUND OF THIS SHAPE, GENERATED AND MEASURED");
+        out!("A FUND OF THIS SHAPE, GENERATED AND MEASURED");
     }
-    println!();
-    println!("  {:<22}{:>12}", "securities", shape.securities);
-    println!("  {:<22}{:>12}", "currencies", shape.currencies);
-    println!("  {:<22}{:>12}   at steady state", "open lots / security", shape.lots_per);
-    println!("  {:<22}{:>12}   opened per lot left open", "turnover", shape.turnover);
-    println!("  {:<22}{:>12}", "open corp. actions", shape.open_actions);
-    println!();
+    out!();
+    out!("  {:<22}{:>12}", "securities", shape.securities);
+    out!("  {:<22}{:>12}", "currencies", shape.currencies);
+    out!("  {:<22}{:>12}   at steady state", "open lots / security", shape.lots_per);
+    out!("  {:<22}{:>12}   opened per lot left open", "turnover", shape.turnover);
+    out!("  {:<22}{:>12}", "open corp. actions", shape.open_actions);
+    out!();
 
     let entries = if folding {
         // ⛔ NOT GENERATED, AND SAID SO RATHER THAN PRINTED AS ZERO. A `0` on the
         // generation line reads as "generating this fund was free", which is the
         // opposite of true — it is the line item this mode SKIPS.
-        println!("  generated {:>14}   ⛔ not generated here — folded as found", "—");
+        out!("  generated {:>14}   ⛔ not generated here — folded as found", "—");
         None
     } else {
         let t = Instant::now();
         let n = ratio_gen::generate(&dir, shape)?;
         let gen_ns = t.elapsed().as_nanos() as i64;
-        println!(
+        out!(
             "  generated {n} journal entries in {}",
             ratio_nav::closure::human_nanos(gen_ns)
         );
@@ -704,10 +716,17 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     let proj = if folding {
         use std::io::Write as _;
         ratio_project::Projection::of_book_with_progress(&dir, &mut |n| {
-            let _ = write!(std::io::stderr(), "\r  folding {n} entries…");
-            let _ = std::io::stderr().flush();
+            // ⚠ A LINE A MACHINE CAN READ UNDER `--json`, because whatever is
+            // watching a sixteen-minute fold is what needs the progress, and in
+            // a task it is not a person.
+            if json {
+                let _ = writeln!(std::io::stderr(), "{{\"folding\":{n}}}");
+            } else {
+                let _ = write!(std::io::stderr(), "\r  folding {n} entries…");
+                let _ = std::io::stderr().flush();
+            }
         })
-        .inspect(|_| eprintln!())?
+        .inspect(|_| if !json { eprintln!() })?
     } else {
         ratio_project::Projection::of_book(&dir)?
     };
@@ -790,72 +809,125 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     let open_lots = proj.open_lots();
     let breaks = proj.lot_breaks().len();
     let nav_ns = mark_ns + fx_ns + strike_ns;
-    println!();
-    println!("  {:<26}{:>14}", "journal entries", entries);
-    println!("  {:<26}{:>14}   ⛔ steady state, not cumulative", "open positions", open_positions);
+    out!();
+    out!("  {:<26}{:>14}", "journal entries", entries);
+    out!("  {:<26}{:>14}   ⛔ steady state, not cumulative", "open positions", open_positions);
     // ⛔ THE TWO NUMBERS THE SCALE ARGUMENT IS ACTUALLY ABOUT. Positions are a
     // CHART — five hundred entries whatever the fund's history. Lots are a
     // HISTORY, and this is where the memory is.
-    println!(
+    out!(
         "  {:<26}{:>14}   ≈ {} MB resident at 40 bytes each",
         "open tax lots",
         open_lots,
         open_lots * 40 / 1_048_576
     );
     if breaks > 0 {
-        println!("  {:<26}{:>14}   ⚠ sales that could not be relieved", "lot breaks", breaks);
+        out!("  {:<26}{:>14}   ⚠ sales that could not be relieved", "lot breaks", breaks);
         for b in proj.lot_breaks().iter().take(2) {
-            println!("      {b}");
+            out!("      {b}");
         }
     }
-    println!();
+    out!();
     // ⛔ THE LABEL WAS WRONG, AND IT IS THE ONE #6 EXTRAPOLATES FROM. Holding
     // entries constant at ~1.8M and raising fragmentation 500 → 1000 → 2000
     // lots a position took this from 20.7 s to 26.3 s to 44.1 s. That is not
     // O(entries): there is a term proportional to entries × LOTS PER POSITION,
     // and the breakdown below says which line carries it.
     let cost = proj.cost();
-    println!(
+    out!(
         "  {:<26}{:>14}   O(entries), and MEASURED to be",
         "COLD BUILD", ratio_nav::closure::human_nanos(cold_ns)
     );
-    println!(
+    out!(
         "  {:<26}{:>14}   reading and deserializing",
         "  parse", ratio_nav::closure::human_nanos(cost.parse.as_nanos() as i64)
     );
-    println!(
+    out!(
         "  {:<26}{:>14}   totals, positions, actions, lots",
         "  fold", ratio_nav::closure::human_nanos(cost.fold.as_nanos() as i64)
     );
-    println!(
+    out!(
         "  {:<26}{:>14}   of the fold, in {} reliefs",
         "    relieve",
         ratio_nav::closure::human_nanos(cost.relieve.as_nanos() as i64),
         cost.reliefs
     );
-    println!("  {:<26}{:>14}   {marked} prices", "  mark", ratio_nav::closure::human_nanos(mark_ns));
-    println!("  {:<26}{:>14}   {translated} rates, not {marked}", "  fx", ratio_nav::closure::human_nanos(fx_ns));
-    println!("  {:<26}{:>14}   off maintained totals", "  strike", ratio_nav::closure::human_nanos(strike_ns));
-    println!("  {:<26}{:>14}", "NAV  (O(chart))", ratio_nav::closure::human_nanos(nav_ns));
-    println!();
+    out!("  {:<26}{:>14}   {marked} prices", "  mark", ratio_nav::closure::human_nanos(mark_ns));
+    out!("  {:<26}{:>14}   {translated} rates, not {marked}", "  fx", ratio_nav::closure::human_nanos(fx_ns));
+    out!("  {:<26}{:>14}   off maintained totals", "  strike", ratio_nav::closure::human_nanos(strike_ns));
+    out!("  {:<26}{:>14}", "NAV  (O(chart))", ratio_nav::closure::human_nanos(nav_ns));
+    out!();
     // ⭐ THE FIGURE THIS ENGINE EXISTS FOR. Six lot methods, holding-period
     // classification and the whole relief layer decide it, and until the sale
     // posted three legs it was computed and discarded.
     let realized = proj.nav(&|dim| dim == 30, &rates)?.value.0;
-    println!("  net asset value {:>20}   over {} entries", struck.value.0, struck.prefix);
-    println!(
+    out!("  net asset value {:>20}   over {} entries", struck.value.0, struck.prefix);
+    out!(
         "  realized gain   {:>20}   credit-normal, so a gain reads negative",
         realized
     );
-    println!("  basis relieved  {:>20}", proj.relieved_cost());
-    println!("  trial balance   {:>20}", struck.value.1);
-    println!();
-    println!("⛔ Two curves, and only the second is flat in fragmentation. Folding");
-    println!("   the journal grows with every trade ever made — an append-only log");
-    println!("   does not forget a closed lot. Striking the NAV off the maintained");
-    println!("   projection does not: `Ratio.Closure.factored_nav_never_reads_the_");
-    println!("   lots`. Quoting the second as though it were the first is the");
-    println!("   overclaim this command exists to make hard.");
+    out!("  basis relieved  {:>20}", proj.relieved_cost());
+    out!("  trial balance   {:>20}", struck.value.1);
+    out!();
+    out!("⛔ Two curves, and only the second is flat in fragmentation. Folding");
+    out!("   the journal grows with every trade ever made — an append-only log");
+    out!("   does not forget a closed lot. Striking the NAV off the maintained");
+    out!("   projection does not: `Ratio.Closure.factored_nav_never_reads_the_");
+    out!("   lots`. Quoting the second as though it were the first is the");
+    out!("   overclaim this command exists to make hard.");
+
+    if json {
+        // ⛔ BOTH CURVES, OR NEITHER. The text report above cannot show the
+        // strike without the cold build beside it, and this must not be the
+        // rendering where that stops being true — a consumer that can read
+        // `strike_ns` without `cold_build_ns` is one screen away from publishing
+        // "twenty million lots, twelve microseconds" as though it were the whole
+        // story. They are siblings here for the same reason they are adjacent
+        // there.
+        //
+        // ⚠ NANOSECONDS, NOT the rendered strings. `human_nanos` rounds for
+        // reading; a consumer that parsed "12 µs" back into a number would be
+        // reading a figure through a display filter.
+        let cost = proj.cost();
+        let doc = serde_json::json!({
+            "shape": {
+                "securities": shape.securities,
+                "currencies": shape.currencies,
+                "lots_per": shape.lots_per,
+                "turnover": shape.turnover,
+                "open_actions": shape.open_actions,
+                "capital_txns": shape.capital_txns,
+                "seed": shape.seed,
+                "method": shape.method.as_declared(),
+            },
+            "generated": !folding,
+            "journal_entries": entries,
+            "open_positions": open_positions,
+            "open_lots": open_lots,
+            "lot_breaks": breaks,
+            // The growing curve.
+            "cold_build_ns": cold_ns,
+            "parse_ns": cost.parse.as_nanos() as i64,
+            "fold_ns": cost.fold.as_nanos() as i64,
+            "relieve_ns": cost.relieve.as_nanos() as i64,
+            "reliefs": cost.reliefs,
+            // The flat one.
+            "nav_ns": nav_ns,
+            "mark_ns": mark_ns,
+            "fx_ns": fx_ns,
+            "strike_ns": strike_ns,
+            "marks": marked,
+            "rates": translated,
+            // The figures, so a reader can check the run tied rather than
+            // trusting that it did.
+            "net_asset_value": struck.value.0,
+            "trial_balance": struck.value.1,
+            "realized_gain": realized,
+            "basis_relieved": proj.relieved_cost(),
+            "prefix": struck.prefix,
+        });
+        println!("{}", serde_json::to_string_pretty(&doc)?);
+    }
     Ok(())
 }
 
