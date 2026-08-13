@@ -38,18 +38,35 @@ let cached: Promise<AuthConfig> | null = null;
  * about which pool a token comes from, and nothing would notice when they
  * stopped agreeing.
  */
-export function authConfig(): Promise<AuthConfig> {
-  if (!cached) {
-    const origin = process.env.RATIO_API_ORIGIN;
-    if (!origin) throw new Error("RATIO_API_ORIGIN is not set");
-    cached = fetch(`${origin.replace(/\/+$/, "")}/authconfig.json`, {
-      cache: "no-store",
-    }).then((r) => {
-      if (!r.ok) throw new Error(`/authconfig.json returned ${r.status}`);
-      return r.json() as Promise<AuthConfig>;
-    });
-  }
-  return cached;
+export async function authConfig(): Promise<AuthConfig> {
+  if (cached) return cached;
+
+  const origin = process.env.RATIO_API_ORIGIN;
+  if (!origin) throw new Error("RATIO_API_ORIGIN is not set");
+  const url = `${origin.replace(/\/+$/, "")}/authconfig.json`;
+
+  const config = await fetch(url, { cache: "no-store" }).then((r) => {
+    if (r.ok) return r.json() as Promise<AuthConfig>;
+    // ⛔ NAME THE URL. The first version of this said only
+    // "/authconfig.json returned 404", which is true of every wrong value
+    // RATIO_API_ORIGIN can hold and tells you nothing about which one it is —
+    // the console's own origin 404s here, and so does the API with a path
+    // appended. An error about a misconfiguration that does not print the
+    // misconfiguration costs somebody an afternoon, and did.
+    throw new Error(
+      `${url} returned ${r.status}. RATIO_API_ORIGIN must be the API's ` +
+        `origin with no path — scheme and host only.`,
+    );
+  });
+
+  // ⛔ ONLY A SUCCESS IS CACHED, AND THE FIRST VERSION CACHED THE PROMISE.
+  // Assigning `cached` before awaiting means a REJECTED promise is memoized:
+  // one blip while the API rolls, and that lambda instance answers with the
+  // same stale failure for as long as it lives, with nothing to retry it. On a
+  // serverless runtime that is a fault which outlives its cause and looks
+  // permanent — a fixed deployment that keeps failing.
+  cached = Promise.resolve(config);
+  return config;
 }
 
 /**
