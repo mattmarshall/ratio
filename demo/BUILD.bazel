@@ -25,3 +25,14 @@ sh_test(
     args = ["$(rootpath //crates/ratio)"],
     data = ["//crates/ratio"],
 )
+
+# `ratio bench` renders one run as a report and as JSON. This holds the two to
+# the same figures — the defect it is for is a second MEASUREMENT rather than a
+# second rendering, which would give two answers that both tie and disagree.
+sh_test(
+    name = "bench_renderings_test",
+    size = "small",
+    srcs = ["bench-renderings.sh"],
+    args = ["$(rootpath //crates/ratio)"],
+    data = ["//crates/ratio"],
+)
