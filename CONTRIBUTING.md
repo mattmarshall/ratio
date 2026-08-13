@@ -10,10 +10,28 @@ repository is written with LLM assistance and the rules there apply to everyone.
 git checkout -b <a-branch>
 bazel test //...        # ⛔ never `cargo test` — see DEVELOPING.md
 tla/probes.sh           # if you touched a spec
+cd console && pnpm check   # only if you touched console/
 ```
 
-Then a pull request. CI runs `bazel build //...` and `bazel test //...`, and
-nothing else needs to pass.
+Then a pull request. CI runs `bazel build //...` and `bazel test //...`, and —
+for a change under `console/` — `.github/workflows/console.yml`.
+
+⚠ **`bazel test //...` is no longer the whole gate, and it used to be.** The
+operations console is a Next.js application built by Vercel, so Bazel has no
+JavaScript toolchain any more (see the ⛔ in `MODULE.bazel`) and cannot see a
+type error in `console/`. `console.yml` is a required check for that reason.
+`site/` is the older precedent for a non-Bazel path.
+
+`console.yml` runs `tsc --noEmit`, the render suite, `next build`, and five
+source-text checks — the contract reaches every screen, the screens still read
+the fields whose absence has shipped before, the fixtures match the proto, the
+design tokens still agree with `site/style.css`, and nothing that belongs in the
+environment is committed.
+
+⛔ **The one thing Bazel still asserts about the console is
+`//proto:mirrors_test`**, which reads `console/src/wire/types.ts` by label and
+holds it to `console.proto` field-for-field. Do not delete
+`console/BUILD.bazel`; it exists for that export.
 
 ## What a change looks like here
 

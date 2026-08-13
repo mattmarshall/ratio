@@ -1,0 +1,23 @@
+{
+  "changeLogEntries": [
+    {
+      "name": "funds/harbourline-global-value/changeLogEntries/proposal-perf_fee",
+      "actor": "Assistant",
+      "actorKind": "MODEL",
+      "action": "drafted",
+      "subject": "perf_fee",
+      "detail": "awaiting a person",
+      "configDigest": "proposal"
+    },
+    {
+      "name": "funds/harbourline-global-value/changeLogEntries/1",
+      "actor": "e.marsh",
+      "actorKind": "PERSON",
+      "action": "approved",
+      "subject": "dividend",
+      "detail": "",
+      "configDigest": "9f2c1ab7de40551c"
+    }
+  ],
+  "nextPageToken": ""
+}

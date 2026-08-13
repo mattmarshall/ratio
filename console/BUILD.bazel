@@ -1,0 +1,27 @@
+# The operations console.
+#
+# ⛔ BAZEL DOES NOT BUILD OR TEST THIS, AND THIS FILE EXISTS FOR ONE LINE.
+#
+# The console is a Next.js application built and deployed by Vercel, which runs
+# its ordinary `next build`. `.github/workflows/console.yml` is the required
+# check: `tsc --noEmit`, the render suite, `next build`, and the five source-text
+# checks in `scripts/`. None of them need Bazel, and they are green there.
+#
+# ⚠ THEY USED TO BE `sh_test`s HERE, AND THE REASON THEY ARE NOT IS WORTH
+# KEEPING. Bazel could not build the app but could run the checks, so it did —
+# and they failed twice on Bazel wiring rather than on anything they were
+# checking: a package-relative path that does not survive the runfiles root, then
+# a label listed in `data` that its own `glob` already matched. Both were found
+# by CI because nothing else can run Bazel in the environments this repository is
+# usually edited from. A check that is green in one place and fragile in another
+# is worth having in one place.
+#
+# ⛔ THE EXPORT BELOW IS LOAD-BEARING. `//proto:mirrors_test` reads the wire
+# types by label to assert they still mirror `console.proto` field-for-field —
+# the hand-written mirror that "will happily promise a field the server never
+# sends". That is the one opinion Bazel still holds about the console, and
+# deleting this file would silently drop it.
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["src/wire/types.ts"])

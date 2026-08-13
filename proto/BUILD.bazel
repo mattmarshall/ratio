@@ -82,7 +82,7 @@ aip_proto_lint(
 
 # ⛔ Both hand-written mirrors of the contract, checked against it.
 #
-# `web/src/types.ts` is what the client believes the wire looks like, and the
+# `console/src/wire/types.ts` is what the client believes the wire looks like, and the
 # `JsonView` impls in `transcode.rs` are what actually writes it. Either can
 # drift silently — and the encoder is the dangerous one, because types.ts will
 # happily promise a field the server never sends and TypeScript will not care.
@@ -93,13 +93,13 @@ sh_test(
     args = [
         "$(rootpath mirrors_test.py)",
         "$(rootpath ratio/console/v1/console.proto)",
-        "$(rootpath //web:src/types.ts)",
+        "$(rootpath //console:src/wire/types.ts)",
         "$(rootpath //crates/ratio-console:src/transcode.rs)",
     ],
     data = [
         "mirrors_test.py",
         "ratio/console/v1/console.proto",
         "//crates/ratio-console:src/transcode.rs",
-        "//web:src/types.ts",
+        "//console:src/wire/types.ts",
     ],
 )

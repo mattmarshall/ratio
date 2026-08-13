@@ -42,6 +42,17 @@ jobs:
       - name: Verify
         run: python3 site/verify.py _site
 
+      # ⛔ THE CONSOLE IS A CONSUMER OF THIS DESIGN SYSTEM, AND THAT CLAIM IS
+      # CHECKED FROM BOTH SIDES. `console/src/app/globals.css` opens by saying
+      # "site/style.css is the source; this page is a consumer of that system
+      # rather than a second one." `console.yml` asserts it on a console change
+      # — but it does not run on a `site/**` change, and neither does build.yml,
+      # which ignores this directory. A brand that means one green on a landing
+      # page and another in an operations console has to go red in the workflow
+      # that owns the change.
+      - name: The console's tokens still agree with this stylesheet
+        run: python3 console/scripts/tokens_test.py site/style.css console/src/app/globals.css
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

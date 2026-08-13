@@ -1,0 +1,14 @@
+{
+  "deliveries": [
+    {
+      "name": "funds/harbourline-global-value/deliveries/7c1e0d",
+      "digest": "7c1e0d4488ab2f31",
+      "origin": "custodian/positions-2026-02-26.csv",
+      "receiveTime": "2026-02-26T06:12:00Z",
+      "byteCount": "4820",
+      "factCount": "12",
+      "pendingFactCount": "1"
+    }
+  ],
+  "nextPageToken": ""
+}

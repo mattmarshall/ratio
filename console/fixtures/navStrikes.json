@@ -1,0 +1,18 @@
+{
+  "navStrikes": [
+    {
+      "name": "funds/harbourline-global-value/navStrikes/2026-02-26",
+      "valuationTime": "2026-02-26T21:00:00Z",
+      "actor": "e.marsh",
+      "journalPosition": "6",
+      "journalDigest": "4b81d0c7aa19e3f2",
+      "netAssetValue": "13443918751",
+      "trialBalanceDifference": "0",
+      "qualification": [
+        "a corporate action announced after this prefix is not applied"
+      ],
+      "configDigest": "9f2c1ab7de40551c"
+    }
+  ],
+  "nextPageToken": ""
+}

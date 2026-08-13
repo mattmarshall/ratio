@@ -1,0 +1,12 @@
+{
+  "baseDigest": "1a0f77c3be225d90",
+  "digest": "9f2c1ab7de40551c",
+  "changes": [
+    {
+      "ruleId": "dividend",
+      "kind": "CHANGED",
+      "baseForm": "credit dividend income in full",
+      "form": "credit dividend income net of withholding"
+    }
+  ]
+}

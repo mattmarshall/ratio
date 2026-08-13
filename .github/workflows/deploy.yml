@@ -28,8 +28,13 @@ on:
   push:
     branches: [main]
     paths:
+      # ⛔ `console/**` IS DELIBERATELY NOT HERE. The console is deployed by
+      # Vercel, and a stylesheet change must not rebuild an image, push it to
+      # ECR and roll a Lambda. That coupling is what this migration removed:
+      # `//web:console_html` was embedded in the binary, so every console edit
+      # WAS a backend deploy. Adding it back here would restore the cost
+      # without restoring the reason.
       - 'crates/**'
-      - 'web/**'
       - 'proto/**'
       - 'deploy/**'
       - 'lean/**'
@@ -69,7 +74,7 @@ jobs:
           path: |
             ~/.cache/bazel
             ~/.cache/bazelisk
-          key: bazel-deploy-${{ runner.os }}-${{ hashFiles('MODULE.bazel.lock', 'Cargo.lock', '.bazelrc', 'web/pnpm-lock.yaml') }}
+          key: bazel-deploy-${{ runner.os }}-${{ hashFiles('MODULE.bazel.lock', 'Cargo.lock', '.bazelrc') }}
           restore-keys: bazel-deploy-${{ runner.os }}-
 
       # Bazel only, never cargo — the same build the tests run against.
@@ -127,6 +132,12 @@ jobs:
           # you sign in with can be granted without committing it. Unset falls
           # back to the app.yaml default, keeping the email/password demo user.
           DEMO_MEMBERS: ${{ vars.DEMO_MEMBERS }}
+          # Where the console is served from. A repository VARIABLE, like
+          # DEMO_MEMBERS and for the same reason — a hostname is not a secret.
+          # Unset means "no console yet": `/` then says what this process serves
+          # instead of redirecting, and Cognito registers only the localhost
+          # callback. See the ⛔ on CallbackURLs in deploy/app.yaml.
+          CONSOLE_ORIGIN: ${{ vars.CONSOLE_ORIGIN }}
         run: |
           aws cloudformation deploy \
             --template-file deploy/app.yaml \
@@ -138,6 +149,7 @@ jobs:
               BuildSha="${GITHUB_SHA}" \
               GoogleClientId="${GOOGLE_CLIENT_ID}" \
               GoogleClientSecret="${GOOGLE_CLIENT_SECRET}" \
+              ConsoleOrigin="${CONSOLE_ORIGIN}" \
               DemoMember="${DEMO_MEMBERS:-demo@ratio.fastverk.dev}"
 
       - name: Smoke test the deployed demo
@@ -200,7 +212,14 @@ jobs:
           }
 
           # The plain screens still render.
-          want "the balance screen" "Trial balance" "$URL"
+          #
+          # ⛔ `${URL}balance`, NOT `$URL`. This asserted against `/` and passed,
+          # because `/` served the React console and "Trial balance" was one of
+          # its tab labels — so it was testing the console while claiming to test
+          # the screen. `/` is a redirect now and `curl -sf` does not follow one,
+          # so leaving it would have failed for the right reason by accident.
+          # These four screens are Rust string literals and have their own URLs.
+          want "the balance screen" "Trial balance" "${URL}balance"
 
           # And they render the demo BOOK, not an empty one. An image whose
           # book failed to ship starts cleanly, answers healthz, and serves a
@@ -217,10 +236,28 @@ jobs:
           # 2000.00 is deploy/seed-demo-book.sh's number.
           want "the break"     '"difference":"2000.00"' "${URL}breaks.json"
 
-          # The console shell still renders (public), and the sign-in flow can
-          # bootstrap: /authconfig.json is public and names the identity provider.
-          want "the console shell" 'id="root"'            "${URL}app"
-          want "the auth config"   '"redirectPath":"/app"' "${URL}authconfig.json"
+          # ⛔ THE CONSOLE IS NOT SERVED FROM HERE ANY MORE, so this no longer
+          # asserts a React shell at /app. What it asserts instead is that the
+          # front door is not a dead end: `/` either redirects to the console or
+          # says what this process does serve. Both are fine; a 404 with no body
+          # is not, because that URL is the "Try the live demo" link in
+          # README.md and on the marketing site.
+          #
+          # ⚠ `-o /dev/null` and NO `-L`: the point is the 302 itself, not what
+          # it lands on. Following it would test Vercel from a workflow that
+          # does not deploy Vercel.
+          front="$(curl -s -o /dev/null -w '%{http_code}' "${URL}")"
+          case "$front" in
+            302|404) echo "front door: $front" ;;
+            *) echo "::error::/ returned $front, neither a redirect nor a stated 404"; exit 1 ;;
+          esac
+
+          # The sign-in flow can still bootstrap: /authconfig.json is public and
+          # names the identity provider. ⛔ The path changed with the console —
+          # it is the console's own callback route now, and it MUST match a
+          # registered Cognito callback URL or every sign-in is refused by the
+          # IdP with an error the console cannot explain.
+          want "the auth config" '"redirectPath":"/api/auth/callback"' "${URL}authconfig.json"
 
           # ⛔ AUTH IS ON. Every /v1 route now requires a verified token, so an
           # unauthenticated request is REFUSED rather than served — this is the

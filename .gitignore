@@ -39,6 +39,9 @@ __pycache__/
 /deploy/ratio
 /deploy/demo-book/
 
-# pnpm's store, installed by rules_js into the workspace.
-/web/node_modules/
+# The console's dependencies and build output. Vercel builds this, not Bazel —
+# see the ⛔ in MODULE.bazel for why the JS toolchain is not in the Bazel graph.
+/console/node_modules/
+/console/.next/
+/console/*.tsbuildinfo
 /deploy/demo-funds/

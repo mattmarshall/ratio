@@ -1,0 +1,23 @@
+{
+  "lots": [
+    {
+      "name": "funds/harbourline-global-value/positions/ACME/lots/1",
+      "sequence": "1",
+      "units": "600",
+      "cost": "19800000",
+      "acquired": {
+        "year": 2025,
+        "month": 1,
+        "day": 14
+      }
+    },
+    {
+      "name": "funds/harbourline-global-value/positions/ACME/lots/2",
+      "sequence": "2",
+      "units": "400",
+      "cost": "13488000",
+      "acquired": null
+    }
+  ],
+  "nextPageToken": ""
+}

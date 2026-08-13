@@ -3,7 +3,7 @@
 
 Two mirrors exist, both deliberate and both dangerous:
 
-  * `web/src/types.ts` — the client's view of the wire types. Generating it
+  * `console/src/wire/types.ts` — the client's view of the wire types. Generating it
     would mean a second codegen toolchain (buf, protoc-gen-es) for a handful of
     messages that change when the product does.
   * `crates/ratio-console/src/transcode.rs` — the `JsonView` impls that

@@ -1329,7 +1329,7 @@ fn balance(book: PathBuf) -> Result<()> {
                 println!("REALIZED, SINCE INCEPTION            {}", ratio_project::relief::Method::from(set.effective_lot_method()).describe());
                 // ⚠ A GAIN IS CREDIT-NORMAL, so the stored figure is negative
                 // when money was made. It is flipped HERE, once, at the render
-                // boundary — the same place `web/src/format.ts` flips it — and
+                // boundary — the same place `console/src/lib/format.ts` flips it — and
                 // the convention is stated beside the number rather than left
                 // for a reader to infer from a minus sign.
                 println!("{:<30}{:>23}", "  gain", minor(i64::try_from(-r.gain).unwrap_or(0)));

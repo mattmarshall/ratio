@@ -29,6 +29,26 @@ Parameters:
       mismatch signs the user in successfully and then shows an empty fund rail.
       Set the list via the DEMO_MEMBERS repository variable; entrypoint.sh writes
       the grant on each start. See deploy/README.md.
+  ConsoleOrigin:
+    Type: String
+    Default: ""
+    Description: >
+      Where the operations console is served from, scheme and host, no trailing
+      slash — e.g. https://console.ratio.example. The console is a Next.js
+      application deployed to Vercel; this function no longer serves it. Two
+      things read this: the function redirects / and /app there (so the "Try the
+      live demo" links in README.md and on the marketing site keep working), and
+      the Cognito app client registers ${ConsoleOrigin}/api/auth/callback as a
+      callback URL.
+
+      ⛔ COGNITO ACCEPTS NO WILDCARDS. Every origin that must complete a sign-in
+      has to be listed on the client below, which is why exactly three are —
+      production, one stable preview alias, and localhost. A Vercel preview on
+      its own generated hostname cannot sign in, by design: previews render from
+      console/fixtures/ instead.
+
+      Empty leaves the demo with no console to point at. Set it via the
+      CONSOLE_ORIGIN repository variable.
   GoogleClientId:
     Type: String
     Default: ""
@@ -69,6 +89,10 @@ Conditions:
   # deploy with no Google secrets set is a valid, working demo (email/password
   # only) rather than a broken one.
   HasGoogle: !Not [!Equals [!Ref GoogleClientId, ""]]
+  # The console lives elsewhere, and might not be deployed yet. Same shape as
+  # HasGoogle and for the same reason: a stack with no console origin set is a
+  # working demo (the three public screens and the API) rather than a broken one.
+  HasConsole: !Not [!Equals [!Ref ConsoleOrigin, ""]]
 
 Resources:
   # Created explicitly rather than left to Lambda, which creates log groups
@@ -131,6 +155,13 @@ Resources:
           # Still written (the fallback if RATIO_DEMO_OPEN is unset); ignored while
           # the demo is open. entrypoint.sh seeds MEMBERSHIP.tsv from it.
           RATIO_DEMO_MEMBER: !Ref DemoMember
+          # ⛔ WHERE / AND /app REDIRECT. The console used to be compiled into
+          # this binary and served from here; it is a separate application now,
+          # and this URL is the only thing that keeps the demo link in README.md
+          # and on the marketing site from becoming a dead end. Empty is handled:
+          # the function then says what it does serve rather than bouncing
+          # somebody to an empty string.
+          RATIO_CONSOLE_URL: !Ref ConsoleOrigin
       Tags:
         - Key: project
           Value: ratio
@@ -157,6 +188,22 @@ Resources:
       Name: ratio-demo
       ProtocolType: HTTP
       Description: The three screens and the MCP endpoint.
+      # ⛔ `authorization` IS ABSENT FROM AllowHeaders, AND THAT IS NOW A FENCE
+      # RATHER THAN AN OVERSIGHT. The console is served from another origin, so
+      # the obvious thing to do is have the browser call /v1 directly with a
+      # bearer — and this omission makes that impossible, because the preflight
+      # refuses it. It has to be impossible: a browser that holds the id token
+      # holds it somewhere a script on the page can reach, which is exactly what
+      # moving the token into an httpOnly cookie on the console's server was for.
+      #
+      # The console's own requests never reach this configuration. They come
+      # from its server, and a server-to-server fetch sends no Origin, so CORS
+      # is not consulted at all. This block exists for /mcp, which is public and
+      # is called from browsers.
+      #
+      # ⚠ Do not "fix" this by adding authorization. Adding it re-opens the
+      # browser-direct path silently — nothing would fail, and the token would
+      # simply move back into the page.
       CorsConfiguration:
         AllowOrigins: ["*"]
         AllowMethods: [GET, POST, OPTIONS]
@@ -293,10 +340,35 @@ Resources:
         - [COGNITO, !Ref GoogleIdp]
         - [COGNITO]
       ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
-      CallbackURLs:
-        - !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/app"
-      LogoutURLs:
-        - !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/app"
+      # ⛔ THE CALLBACK IS ON THE CONSOLE'S ORIGIN NOW, NOT THIS API'S. The old
+      # console ran authorization-code + PKCE in the browser and came back to
+      # /app — a page this function served. The console is a Next.js application
+      # on its own host; it runs the exchange on its server and comes back to
+      # /api/auth/callback there. The path is also what /authconfig.json
+      # advertises as `redirectPath`, and the two must agree.
+      #
+      # ⛔ COGNITO ACCEPTS NO WILDCARDS, so every origin that must sign in is
+      # listed. localhost is registered because Cognito permits plain http for
+      # it and nowhere else, which is what makes `next dev` against the deployed
+      # pool possible at all. A Vercel preview on its own generated hostname is
+      # NOT here and cannot sign in — previews render from console/fixtures/,
+      # which is simpler than the alternative. The alternative, if it is ever
+      # needed, is a bounce through a registered origin carrying the preview's
+      # host in the OAuth `state`, WITH a server-side allowlist on the way back:
+      # without one that is an open redirect on a route that carries tokens.
+      CallbackURLs: !If
+        - HasConsole
+        - - !Sub "${ConsoleOrigin}/api/auth/callback"
+          - "http://localhost:3000/api/auth/callback"
+        # A client must have at least one callback URL, and until the console is
+        # deployed there is no real one — so this names the loopback developer
+        # flow rather than a URL that 404s.
+        - - "http://localhost:3000/api/auth/callback"
+      LogoutURLs: !If
+        - HasConsole
+        - - !Sub "${ConsoleOrigin}/signin"
+          - "http://localhost:3000/signin"
+        - - "http://localhost:3000/signin"
 
   UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
@@ -336,8 +408,15 @@ Resources:
 
 Outputs:
   DemoUrl:
-    Description: The demo. Screens at /, break report at /breaks, rules at /rules.
+    Description: >
+      The API and the three public screens. `/` and `/app` redirect to the
+      console; the break report is at /breaks and the rules at /rules.
     Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/"
+  ConsoleUrl:
+    Description: >
+      The operations console, deployed separately to Vercel. Empty until
+      ConsoleOrigin is set, which is also when `/` starts redirecting.
+    Value: !Ref ConsoleOrigin
   McpEndpoint:
     Description: POST JSON-RPC here. Same tools as `ratio mcp`, same fence.
     Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/mcp"

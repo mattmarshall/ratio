@@ -57,7 +57,7 @@ jobs:
           path: |
             ~/.cache/bazel
             ~/.cache/bazelisk
-          key: bazel-${{ runner.os }}-${{ hashFiles('MODULE.bazel.lock', 'Cargo.lock', '.bazelrc', 'web/pnpm-lock.yaml') }}
+          key: bazel-${{ runner.os }}-${{ hashFiles('MODULE.bazel.lock', 'Cargo.lock', '.bazelrc') }}
           restore-keys: |
             bazel-${{ runner.os }}-
 

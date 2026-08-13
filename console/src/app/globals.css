@@ -1,0 +1,490 @@
+
+:root{
+  /* The site's tokens, unchanged. site/style.css is the source; this page is a
+     consumer of that system rather than a second one. */
+  --ground:#FCFBF7; --surface:#E6EFE2; --raised:#FFFFFF; --block:#12291B;
+  --text:#0F2418; --text-2:#2B4436; --muted:#4C6053;
+  --rule:#C3D6BF; --rule-2:#679177;
+  --accent:#1B6440; --accent-soft:#E6EFE2;
+  /* Semantic, and deliberately NOT the accent. A console is read by state
+     before it is read by number, and "attention" must not be the same green
+     as "this is a link". */
+  --good:#1F6B45; --warn:#8A5A0B; --crit:#BC4A18;
+  --shadow:rgba(15,36,24,.10);
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#141816; --surface:#1C211E; --raised:#242A26; --block:#0D1512;
+    --text:#E8EAE8; --text-2:#B4BDB6; --muted:#8A938C;
+    --rule:#2F3733; --rule-2:#617068;
+    --accent:#7FC79D; --accent-soft:#1E2A24;
+    --good:#4CA87A; --warn:#C08A2E; --crit:#CE7A33;
+    --shadow:rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#141816; --surface:#1C211E; --raised:#242A26; --block:#0D1512;
+  --text:#E8EAE8; --text-2:#B4BDB6; --muted:#8A938C;
+  --rule:#2F3733; --rule-2:#617068;
+  --accent:#7FC79D; --accent-soft:#1E2A24;
+  --good:#4CA87A; --warn:#C08A2E; --crit:#CE7A33;
+  --shadow:rgba(0,0,0,.4);
+}
+:root[data-theme="light"]{
+  --ground:#FCFBF7; --surface:#E6EFE2; --raised:#FFFFFF; --block:#12291B;
+  --text:#0F2418; --text-2:#2B4436; --muted:#4C6053;
+  --rule:#C3D6BF; --rule-2:#679177;
+  --accent:#1B6440; --accent-soft:#E6EFE2;
+  --good:#1F6B45; --warn:#8A5A0B; --crit:#BC4A18;
+  --shadow:rgba(15,36,24,.10);
+}
+
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--text);
+  font:400 14px/1.5 ui-sans-serif,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.num{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-variant-numeric:tabular-nums}
+h1,h2,h3{margin:0;font-family:Georgia,'Times New Roman',serif;font-weight:600}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+/* ⛔ THE ROWS AND THE RAIL ARE LINKS, NOT BUTTONS, AND THAT IS THE MIGRATION.
+   `.fund` and `.row` were <button>s flipping a useState; each is now an <a> to
+   a URL a person can send someone. The reset above shaped a button; this shapes
+   the anchor that replaced it, so the styling below applies unchanged.
+   Underlines are dropped because these are whole rows, not runs of prose. */
+a.fund,a.row{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+/* ── the frame ─────────────────────────────────────────────────────────── */
+.app{display:grid;grid-template-rows:auto 1fr;height:100%;min-height:100vh}
+.top{display:flex;align-items:center;gap:18px;padding:0 18px;height:54px;
+  border-bottom:1px solid var(--rule);background:var(--raised)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em}
+.brand svg{width:22px;height:22px;color:var(--accent);flex:none}
+.crumb{color:var(--muted);font-size:13px;display:flex;gap:8px;align-items:center}
+.crumb b{color:var(--text);font-weight:600}
+.spacer{flex:1}
+/* The deadline is the single most load-bearing number on the page: it is what
+   makes an exception urgent rather than interesting. */
+.clock{display:flex;align-items:center;gap:9px;padding:5px 12px;border-radius:999px;
+  border:1px solid var(--warn);color:var(--warn);font-size:13px;font-weight:600}
+.clock .dot{width:7px;height:7px;border-radius:50%;background:var(--warn);
+  animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.clock .dot{animation:none}}
+.who{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2)}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--accent);
+  color:var(--raised);display:grid;place-items:center;font-size:11px;font-weight:600}
+
+.body{display:grid;grid-template-columns:264px minmax(0,1fr) 380px;min-height:0}
+@media (max-width:1180px){
+  .body{grid-template-columns:224px minmax(0,1fr)}
+  .detail{display:none}
+}
+@media (max-width:860px){
+  .body{grid-template-columns:1fr}
+  .funds{display:none}
+}
+
+/* ── funds ─────────────────────────────────────────────────────────────── */
+.funds{border-right:1px solid var(--rule);background:var(--raised);overflow-y:auto}
+.railhead{padding:16px 16px 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;display:flex;justify-content:space-between}
+.fund{width:100%;text-align:left;padding:11px 16px;border-left:3px solid transparent;
+  border-bottom:1px solid var(--rule);display:block}
+.fund:hover{background:var(--surface)}
+.fund[aria-current="page"]{background:var(--surface);border-left-color:var(--accent)}
+.fund .name{font-weight:600;font-size:13.5px;margin-bottom:3px}
+.fund .meta{display:flex;justify-content:space-between;align-items:center;
+  font-size:12px;color:var(--muted)}
+/* State is carried by a shape as well as a color, so it survives a printout,
+   a projector, and color blindness. */
+.state{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:11.5px}
+.state::before{content:"";width:8px;height:8px;flex:none}
+.state.struck{color:var(--good)}       .state.struck::before{background:var(--good);border-radius:50%}
+.state.blocked{color:var(--crit)}      .state.blocked::before{background:var(--crit);
+  clip-path:polygon(50% 0,100% 100%,0 100%)}
+.state.review{color:var(--warn)}       .state.review::before{background:var(--warn)}
+.state.waiting{color:var(--muted)}     .state.waiting::before{border:2px solid var(--muted);
+  border-radius:50%;background:none}
+
+/* ── queue ─────────────────────────────────────────────────────────────── */
+.queue{overflow-y:auto;min-width:0}
+.qhead{padding:18px 22px 12px;border-bottom:1px solid var(--rule);background:var(--ground);
+  position:sticky;top:0;z-index:2}
+.qhead h1{font-size:21px;letter-spacing:-.015em}
+.subhead{display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;margin-top:5px;
+  font-size:12.5px;color:var(--muted)}
+.subhead code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+/* The three figures that decide whether the NAV can be struck. */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+  background:var(--rule);border-block:1px solid var(--rule)}
+.stat{background:var(--raised);padding:13px 22px}
+.stat .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+  font-weight:600;margin-bottom:5px}
+.stat .v{font-size:22px;font-weight:600;letter-spacing:-.02em}
+.stat .v small{font-size:12px;color:var(--muted);font-weight:500;margin-left:5px}
+.stat.tied .v{color:var(--good)}
+.stat.at-risk .v{color:var(--crit)}
+
+.qbar{display:flex;gap:8px;align-items:center;padding:11px 22px;flex-wrap:wrap;
+  border-bottom:1px solid var(--rule)}
+.chip{padding:5px 11px;border-radius:999px;border:1px solid var(--rule);font-size:12.5px;
+  color:var(--text-2);background:var(--raised)}
+.chip[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);
+  background:var(--accent-soft);font-weight:600}
+.qbar .spacer{flex:1}
+.sortnote{font-size:12px;color:var(--muted)}
+
+.rows{list-style:none;margin:0;padding:0}
+.row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:start;
+  width:100%;text-align:left;padding:13px 22px;border-bottom:1px solid var(--rule)}
+.row:hover{background:var(--surface)}
+.row[aria-current="page"]{background:var(--surface);box-shadow:inset 3px 0 0 var(--accent)}
+.sev{width:8px;height:8px;margin-top:6px;flex:none}
+.sev.high{background:var(--crit);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.sev.med{background:var(--warn)}
+.sev.low{background:var(--muted);border-radius:50%}
+.row .title{font-weight:600;font-size:14px;margin-bottom:2px}
+.row .why{font-size:12.5px;color:var(--muted);line-height:1.45}
+.row .amt{text-align:right;font-size:15px;font-weight:600;white-space:nowrap}
+.row .amt small{display:block;font-size:11px;color:var(--muted);font-weight:500;
+  margin-top:2px;letter-spacing:.04em;text-transform:uppercase}
+.amt.pos{color:var(--crit)}
+.empty{padding:40px 22px;color:var(--muted);text-align:center}
+
+/* ── change log ────────────────────────────────────────────────────────── */
+/* The audit trail is not a settings page you visit; it is the bottom of the
+   screen you already live on. Every entry names a person, because every entry
+   required one. */
+.log{margin-top:26px;border-top:1px solid var(--rule)}
+.loghead{padding:14px 22px 8px;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);font-weight:600;
+  display:flex;justify-content:space-between;align-items:baseline}
+.loghead a{color:var(--accent);text-decoration:none;font-size:12px;
+  letter-spacing:0;text-transform:none;font-weight:500}
+.logrow{display:grid;grid-template-columns:64px 1fr auto;gap:14px;align-items:baseline;
+  padding:9px 22px;border-bottom:1px solid var(--rule);font-size:13px}
+.logrow .t{color:var(--muted);font-size:12px}
+.logrow .w{color:var(--text-2)}
+.logrow .w b{font-weight:600;color:var(--text)}
+.logrow .cfg{color:var(--muted);font-size:11.5px}
+.by{display:inline-flex;align-items:center;gap:5px}
+.by::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent);flex:none}
+.by.model::before{background:var(--muted)}
+
+/* ── detail ────────────────────────────────────────────────────────────── */
+.detail{border-left:1px solid var(--rule);background:var(--raised);overflow-y:auto;
+  display:flex;flex-direction:column}
+.dhead{padding:16px 18px 12px;border-bottom:1px solid var(--rule)}
+.dhead h2{font-size:16px;letter-spacing:-.01em;margin-bottom:4px}
+.dhead .sub{font-size:12.5px;color:var(--muted)}
+.dsec{padding:14px 18px;border-bottom:1px solid var(--rule)}
+.dsec h3{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+  margin-bottom:9px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:13px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;text-align:right;font-weight:500}
+.postings{font-size:12.5px}
+.posting{display:grid;grid-template-columns:1fr auto;gap:10px;padding:6px 0;
+  border-bottom:1px solid var(--rule)}
+.posting:last-child{border:0}
+.posting .p1{color:var(--text-2)}
+.posting .p2{color:var(--muted);font-size:11.5px}
+/* Provenance is the product. Every figure on this page can name the
+   configuration that produced it, which is what makes a disagreement a query
+   rather than an investigation. */
+.prov{background:var(--block);color:#E8EAE8;border-radius:8px;padding:11px 13px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.65}
+.prov .g{color:#7FC79D}
+.acts{display:flex;gap:8px;flex-wrap:wrap;padding:14px 18px}
+.act{padding:8px 14px;border-radius:8px;border:1px solid var(--rule);font-size:13px;
+  font-weight:600;color:var(--text-2);background:var(--ground)}
+.act:hover{border-color:var(--accent);color:var(--accent)}
+.act.primary{background:var(--accent);border-color:var(--accent);color:var(--ground)}
+.act.primary:hover{opacity:.9;color:var(--ground)}
+
+/* ── assistant ─────────────────────────────────────────────────────────── */
+.asst{margin-top:auto;border-top:1px solid var(--rule);background:var(--ground)}
+.asst-h{display:flex;align-items:center;gap:8px;padding:11px 18px 0;
+  font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+  font-weight:600}
+.asst-h .live{width:6px;height:6px;border-radius:50%;background:var(--good)}
+.msg{margin:9px 18px;padding:10px 13px;border-radius:9px;font-size:13px;line-height:1.55;
+  background:var(--raised);border:1px solid var(--rule)}
+.msg.you{background:var(--surface);border-color:var(--rule-2)}
+.msg .cite{display:block;margin-top:7px;font-size:11px;color:var(--muted);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.asst-in{display:flex;gap:8px;padding:0 18px 14px}
+.asst-in input{flex:1;padding:9px 12px;font:inherit;font-size:13px;color:var(--text);
+  background:var(--raised);border:1px solid var(--rule);border-radius:8px}
+.asst-in button{padding:0 14px;border-radius:8px;background:var(--accent);
+  color:var(--ground);font-weight:600;font-size:13px}
+/* The claim the whole product rests on, said where a model is answering. */
+.guard{margin:0 18px 14px;padding:9px 12px;border:1px dashed var(--rule-2);border-radius:8px;
+  font-size:11.5px;color:var(--muted);line-height:1.5}
+.guard b{color:var(--text-2)}
+
+.note{padding:10px 18px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--rule);
+  background:var(--surface)}
+
+/* Additions for the live console, which the concept did not need. */
+.empty.err{color:var(--crit)}
+.fund .meta .num{font-size:11.5px}
+.row .why{font-family:ui-sans-serif,system-ui,sans-serif}
+.logrow .t{font-size:11.5px}
+
+/* ── NAV strikes ─────────────────────────────────────────────────────────
+   A strike is a claim; the proof is one click away rather than printed
+   beside it. Asserting "verified" on page load would be the same rhetorical
+   move this product exists to refuse. */
+.logrow.strike{grid-template-columns:64px 1fr auto;align-items:start}
+.logrow.strike .w b{font-size:15px}
+.logrow.strike .act{padding:5px 11px;font-size:12px;border-radius:7px;
+  border:1px solid var(--rule);background:var(--ground);color:var(--text-2);
+  font-weight:600;cursor:pointer}
+.logrow.strike .act:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.logrow.strike .act:disabled{opacity:.55;cursor:default}
+.proof{margin-top:6px;padding:8px 11px;border-radius:7px;font-size:12px;
+  line-height:1.55;background:var(--block);color:#C6D3CB;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.proof.bad{color:#F0BFA0;box-shadow:inset 0 0 0 1px var(--crit)}
+
+/* A configuration version reads like a strike — the same "ask for it" shape —
+   but what it offers is a diff rather than a re-derivation. */
+.inforce{margin-left:7px;padding:1px 7px;border-radius:999px;font-size:11px;
+  font-weight:700;letter-spacing:.02em;color:var(--good);
+  box-shadow:inset 0 0 0 1px var(--good)}
+.chg + .chg{margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.07)}
+.chg b{color:var(--text);text-transform:uppercase;font-size:10.5px;
+  letter-spacing:.06em;margin-right:5px}
+/* The earlier form is struck through rather than merely dimmer: a rule that no
+   longer applies should not read as one that does. */
+.was,.now{white-space:pre-wrap}
+.was{color:var(--text-2);text-decoration:line-through;
+  text-decoration-color:var(--crit);opacity:.75}
+.now{color:#C6D3CB}
+
+/* The view switch. Two views over the same fund: the queue of what is wrong,
+   and the balance everything else is derived from.
+
+   ⛔ THESE ARE LINKS NOW, AND THE SELECTORS HAD TO LEARN IT. They were <button>
+   flipping a useState; every one is a URL. That is the whole point of this
+   console — a break an operator finds has to be a break they can send someone —
+   and a control that cannot be middle-clicked, opened in a new tab or copied
+   out of the address bar is not a link no matter what it looks like.
+
+   ⚠ AND `aria-pressed` BECAME `aria-current`. A link is not a toggle: pressed
+   describes a button that stays down, current describes the page you are on.
+   Both are matched below only because the trial-balance and break filters are
+   still genuine buttons — they narrow a list rather than navigate. */
+.views{display:flex;gap:2px;margin-left:14px;padding:2px;border-radius:9px;
+  background:var(--raised);border:1px solid var(--rule)}
+.views button,.views a{padding:4px 12px;border:0;border-radius:7px;
+  background:transparent;color:var(--text-2);font-size:12.5px;font-weight:600;
+  cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
+.views button:hover,.views a:hover{color:var(--text)}
+.views button[aria-pressed="true"],.views a[aria-current="page"]{
+  background:var(--surface);color:var(--text);box-shadow:0 1px 2px var(--shadow)}
+
+/* The trial balance.
+   A four-column grid rather than a <table>: the rows are buttons, and a button
+   cannot be a <tr>. ARIA roles carry the table semantics a screen reader needs.
+   `tabular-nums` because a column of figures that does not line up is harder to
+   read than one that does, and this is the screen where that matters most. */
+.tb{display:flex;flex-direction:column;overflow-x:auto}
+.tbhead,.tbrow,.tbfoot{display:grid;
+  grid-template-columns:minmax(220px,1fr) 130px 130px 150px;
+  gap:14px;padding:9px 22px;align-items:baseline;min-width:660px;text-align:left}
+.tbhead{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);border-bottom:1px solid var(--rule)}
+.tbrow{border:0;border-bottom:1px solid var(--rule);background:transparent;
+  color:var(--text);font:inherit;cursor:pointer}
+.tbrow:hover{background:var(--raised)}
+.tbrow[aria-current="true"]{background:var(--raised);
+  box-shadow:inset 3px 0 0 var(--accent)}
+.tbrow .an{display:block;font-size:13.5px}
+.tbrow .at{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+.tbrow .abn{margin-left:7px;color:var(--warn);font-weight:600}
+.tb .num{font-variant-numeric:tabular-nums}
+.tbrow .bal{font-weight:600}
+/* The two columns that must agree. Reported, not asserted. */
+.tbfoot{border-top:1px solid var(--rule-2);font-weight:600;font-size:13px;
+  background:var(--raised);color:var(--text)}
+.tbfoot small{display:block;font-size:10.5px;font-weight:500;color:var(--muted);
+  letter-spacing:.05em;text-transform:uppercase;margin-top:2px}
+.posting .num small{display:block;font-size:10.5px;color:var(--muted);
+  font-weight:500;margin-top:1px}
+.cap{font-size:11px;color:var(--muted);line-height:1.5;margin:-4px 0 9px}
+
+/* Recording an event.
+   The form is deliberately short: a rule, a reference, an amount. There is no
+   field for an account and none for a memo — the first is the configuration's
+   decision and the second would be free text on a journal other people read. */
+.rec{border-top:1px solid var(--rule)}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:12px;padding:13px 22px 4px}
+.form label{display:flex;flex-direction:column;gap:5px}
+.form label>span{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted)}
+.form input,.form select{padding:7px 10px;border-radius:8px;font:inherit;
+  font-size:13px;border:1px solid var(--rule);background:var(--ground);
+  color:var(--text)}
+.form input:focus-visible,.form select:focus-visible{outline:2px solid var(--accent);
+  outline-offset:1px;border-color:var(--accent)}
+.form .num{font-variant-numeric:tabular-nums}
+.ruleform{padding:2px 22px 0;font-size:12px;color:var(--muted);line-height:1.6}
+.ruleform b{color:var(--text-2);font-weight:600;display:block}
+
+/* The postings a preview would produce. Shown BEFORE anything is written,
+   because a figure you cannot inspect before committing is a figure you are
+   trusting rather than verifying. */
+.prev{margin:12px 22px 0;border:1px solid var(--rule);border-radius:10px;
+  padding:11px 14px;background:var(--raised)}
+.ph{display:flex;justify-content:space-between;font-size:10.5px;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--muted);
+  margin-bottom:7px}
+.ph span{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:0;text-transform:none}
+.prev .posting{font-size:12.5px}
+.navdelta{display:flex;justify-content:space-between;align-items:baseline;
+  margin-top:9px;padding-top:9px;border-top:1px solid var(--rule);
+  font-size:12.5px;color:var(--text-2)}
+.navdelta .num{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.navdelta b{color:var(--accent);font-weight:600}
+
+.formbar{display:flex;gap:9px;align-items:center;padding:13px 22px 16px}
+.formbar .sortnote{flex:1}
+.formbar .act:disabled{opacity:.45;cursor:default}
+
+/* The data plane. A pending fact is an exception, so it wears the same
+   severity stripe as a break — the remedy differs, not the seriousness. */
+.logrow.pend{grid-template-columns:3px 1fr;gap:12px;align-items:start;
+  padding-top:11px;padding-bottom:11px}
+.logrow.pend .sev{width:3px;border-radius:2px;align-self:stretch;min-height:34px}
+.logrow.pend .why{color:var(--text-2);font-size:12.5px;margin-top:3px;line-height:1.5}
+.logrow.pend .p2{color:var(--muted);font-size:11px;margin-top:3px}
+.tagx{font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);padding:1px 6px;border-radius:999px;
+  box-shadow:inset 0 0 0 1px var(--rule-2)}
+/* A count on the tab, because a blocking condition an operator only sees after
+   clicking is one they will miss. */
+.views .pip{margin-left:6px;padding:0 5px;border-radius:999px;font-size:10.5px;
+  font-weight:700;background:var(--warn);color:var(--ground)}
+/* The file itself. Monospace because what is pasted here is a machine's
+   output and a column that does not line up is harder to check. */
+.form textarea{padding:9px 11px;border-radius:8px;font-size:12px;line-height:1.5;
+  border:1px solid var(--rule);background:var(--ground);color:var(--text);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical;
+  min-height:78px}
+.form textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px;
+  border-color:var(--accent)}
+.form label:has(textarea){grid-column:1/-1}
+.prev .why{color:var(--text-2);font-size:12.5px;margin-bottom:7px}
+.prev .posting .p2{color:var(--muted);font-size:11px;margin-top:2px}
+
+/* Positions, grouped by the account they sit in — each group foots to that
+   account's own figure, so the breakdown and the trial balance are visibly one
+   number read two ways. */
+.posgroup{border-bottom:1px solid var(--rule-2)}
+.posgroup:last-child{border-bottom:0}
+.posacct{padding:11px 22px 3px;font-size:10.5px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted)}
+.tbrow.static{cursor:default}
+/* The untranslated split beneath a translated account total. Indented and
+   quieter than the row it explains, because it is EVIDENCE for that row and
+   not another row like it. */
+.ccyrow{cursor:default;background:var(--sunken);border-bottom:1px solid var(--rule)}
+.ccyrow:hover{background:var(--sunken)}
+.ccyrow .at{padding-left:18px;font-size:11.5px;letter-spacing:.02em}
+.ccyrow .num{font-size:12px;color:var(--muted)}
+.ccyrow .rate{margin-left:8px;color:var(--muted);opacity:.8}
+.tbrow.static:hover{background:transparent}
+/* The unattributed row is dimmed, never hidden. It is the half of the theorem
+   a screen is most tempted to drop. */
+.an.unattr{color:var(--text-2);font-style:italic}
+.posgroup .tbfoot{background:transparent;border-top:1px solid var(--rule)}
+
+/* Held at cost or at market. The same figure means different things in the two
+   cases, so they do not look the same. */
+.held{font-size:12px;font-weight:600}
+.held small{display:block;font-size:10.5px;font-weight:500;color:var(--muted);
+  margin-top:1px}
+.held.mkt{color:var(--good)}
+.held.cost{color:var(--warn)}
+/* ⚠ SCOPED to the positions table. Unscoped, this reshaped the trial balance
+   too — the two share `.tbrow` and the trial balance's columns are not these. */
+[aria-label="Positions"] .tbhead,
+[aria-label="Positions"] .tbrow,
+[aria-label="Positions"] .tbfoot{
+  grid-template-columns:minmax(200px,1fr) 100px 130px 150px}
+
+/* A NAV that cannot be read at face value says so on its own row. It is not an
+   error — the figure is what it is and will not be restated — so it wears the
+   attention color rather than the failure one. */
+/* An action that has not gone through the book. ⛔ It wears the attention
+   color, not the failure one: nothing is wrong yet, and that is exactly the
+   point — an unapplied action is the term that dominates the cost of a period
+   end and the reason a NAV gets qualified. */
+/* The open-lot count beside a position's units. Quiet — it is context for the
+   figure, not a figure — and now a control, because the lots behind it are
+   fetched on demand rather than with the list. */
+.lots{display:block;color:var(--muted);font-size:11px;font-weight:400;
+  letter-spacing:.02em;background:none;border:0;padding:2px 0 0;margin:0 0 0 auto;
+  cursor:pointer;font-family:inherit;text-align:right}
+.lots:hover{color:var(--accent)}
+.lots[aria-expanded="true"]{color:var(--accent);font-weight:600}
+.lots:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+
+/* The lot book behind one position. Indented and ruled off, because it is a
+   different KIND of thing from the row above it: that row is a chart entry and
+   these are its history. */
+.lotsbox{padding:2px 22px 12px 34px;border-left:2px solid var(--rule-2);
+  margin:0 22px 8px 22px;background:var(--raised)}
+.lotrow{display:grid;grid-template-columns:70px 100px 140px 1fr;gap:10px;
+  padding:4px 0;font-size:12px;font-variant-numeric:tabular-nums}
+.lothead{color:var(--muted);font-size:10.5px;letter-spacing:.07em;
+  text-transform:uppercase;border-bottom:1px solid var(--rule-2);padding-bottom:5px}
+.lotrow .num{text-align:right}
+.lotsbox em{color:var(--warn);font-style:normal}
+
+/* The terms the lot engine ran under, above the positions they decide. */
+.lotterms{display:grid;gap:1px;margin:0 0 14px;background:var(--rule-2);
+  border-radius:8px;overflow:hidden}
+.lt{display:grid;grid-template-columns:150px 170px 1fr;gap:12px;align-items:baseline;
+  padding:9px 16px;background:var(--raised);font-size:13px}
+.ltk{color:var(--muted);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.ltv{font-variant-numeric:tabular-nums}
+.ltv.num{text-align:right}
+.ltv.strong{font-weight:600;color:var(--accent)}
+/* ⚠ The unclassified row wears the attention color, not the failure one.
+   Nothing is wrong — a holding period could not be established and the engine
+   said so instead of guessing, which is the whole point. */
+.lt.warn .ltk,.lt.warn .ltv{color:var(--warn)}
+
+.unapplied{color:var(--warn);font-size:12px;font-weight:600;letter-spacing:.04em}
+
+.qual{margin-top:6px;padding:7px 10px;border-radius:7px;font-size:12px;
+  line-height:1.5;color:var(--warn);background:var(--raised);
+  box-shadow:inset 0 0 0 1px var(--warn)}
+
+/* The scale row: the two numbers the whole argument is, and the strike beside
+   them. Set apart from the terms above it because it is a MEASUREMENT, not a
+   term somebody agreed to. */
+.lt.scale{background:var(--accent-soft)}
+.lt.scale .ltv{color:var(--accent)}
+
+/* Sign-in: the whole console when there is no session, and the signed-in
+   principal's controls in the header. */
+.signout{margin-left:6px;padding:3px 9px;font:inherit;font-size:12px;cursor:pointer;
+  color:var(--text-2);background:var(--surface);border:1px solid var(--rule);border-radius:999px}
+.signout:hover{color:var(--text);border-color:var(--accent)}
+.signin-body{max-width:420px;margin:14vh auto 0;padding:0 20px;text-align:center}
+.signin-body h1{font-size:22px;margin:0 0 10px}
+.signin-body p{color:var(--muted);margin:0 0 22px;line-height:1.55}
+.signin-btn{padding:10px 22px;font:inherit;font-size:15px;font-weight:600;cursor:pointer;
+  color:var(--ground);background:var(--accent);border:0;border-radius:9px}
+.signin-btn:hover{filter:brightness(1.06)}

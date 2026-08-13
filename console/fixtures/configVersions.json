@@ -1,0 +1,20 @@
+{
+  "configVersions": [
+    {
+      "name": "funds/harbourline-global-value/configVersions/9f2c1ab7de40551c",
+      "digest": "9f2c1ab7de40551c",
+      "sequence": "3",
+      "active": true,
+      "actor": "e.marsh",
+      "approveTime": "2026-02-20T11:04:00Z",
+      "subject": "withholding on cross-border dividends",
+      "rules": [
+        "trade",
+        "dividend",
+        "accrual",
+        "mark"
+      ]
+    }
+  ],
+  "nextPageToken": ""
+}

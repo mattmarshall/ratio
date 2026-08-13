@@ -1,0 +1,95 @@
+name: console
+
+# The operations console — a Next.js application, built and deployed by Vercel.
+#
+# ⛔ THIS IS A REQUIRED CHECK, AND CONTRIBUTING.md HAD TO CHANGE TO SAY SO. Until
+# the console left the binary, "CI runs `bazel build //...` and `bazel test
+# //...`, and nothing else needs to pass" was true. It is not any more: Bazel no
+# longer has a JavaScript toolchain (see the ⛔ in MODULE.bazel), so a type error
+# or a broken build in `console/` is invisible to it.
+#
+# ⚠ WHY NOT PUT `next build` UNDER BAZEL. Next ships per-platform `@next/swc-*`
+# binaries with install hooks, and `pnpm`'s `onlyBuiltDependencies` exists to
+# keep exactly that out of a hermetic build. Fighting it would buy one green
+# checkmark in a different place. `site/` is the precedent: a non-Bazel path,
+# verified by a script that CI and a developer run identically.
+#
+# ⚠ AND `bazel test //...` STILL SAYS SOMETHING. `//console:*` is five checks
+# over source text — the contract reaches every screen, the screens still read
+# the fields whose absence has shipped before, the fixtures match the proto, the
+# design tokens still agree with site/style.css, and nothing that belongs in the
+# environment is committed. Those need no node and run in the main suite.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'console/**'
+      # The wire types are a mirror of this. A contract change that the console
+      # has not caught up with is exactly what this should go red on.
+      - 'proto/ratio/console/v1/console.proto'
+      - '.github/workflows/console.yml'
+  pull_request:
+    paths:
+      - 'console/**'
+      - 'proto/ratio/console/v1/console.proto'
+      - '.github/workflows/console.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: console-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: pnpm
+          cache-dependency-path: console/pnpm-lock.yaml
+
+      # ⛔ `--frozen-lockfile`. A lockfile the install is allowed to rewrite is a
+      # lockfile that proves nothing about what Vercel will build.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # ⛔ ONE SCRIPT, SO CI AND A DEVELOPER RUN THE SAME THING. site.yml's
+      # header records why: "All assertions live in site/verify.py so that CI and
+      # a developer run exactly the same checks — an inline shell version of them
+      # drifted from what ran locally."
+      - name: Check
+        run: pnpm check
+
+      # The hermetic checks, run here as well as under Bazel. A console-only
+      # push does not trigger build.yml, and a route added without a page or a
+      # field dropped from a screen should go red in the workflow that owns this
+      # directory rather than on somebody else's next commit.
+      - name: The contract reaches every screen
+        working-directory: .
+        run: |
+          # ⚠ Anchor FILES, not directories — the scripts derive the tree from
+          # them so they behave identically here and under Bazel, where a test
+          # runs from the runfiles root rather than from its package.
+          python3 console/scripts/route_manifest_test.py \
+            proto/ratio/console/v1/console.proto \
+            console/src/wire/client.ts console/src/routes.ts
+          python3 console/scripts/fixtures_test.py \
+            proto/ratio/console/v1/console.proto console/fixtures/funds.json
+          python3 console/scripts/fields_test.py console/src/routes.ts
+          python3 console/scripts/tokens_test.py site/style.css console/src/app/globals.css
+          python3 console/scripts/no_secrets_test.py console/src/routes.ts

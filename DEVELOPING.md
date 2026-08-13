@@ -30,7 +30,9 @@ nothing to run as a service.
 
 ## What runs in CI
 
-`bazel build //...` then `bazel test //...`, and nothing more. That covers:
+`bazel build //...` then `bazel test //...`, plus `console.yml` for a change
+under `console/`. ⚠ Bazel alone WAS the whole gate and no longer is — it has no
+JavaScript toolchain since the console left the binary. Bazel covers:
 
 | | |
 |---|---|
@@ -46,6 +48,18 @@ nothing to run as a service.
 
 `paths-ignore` covers `site/**` and `**/*.md` only. `marketing/`, `paper/` and
 `competitive/` are deliberately NOT ignored.
+
+`.github/workflows/console.yml` runs `tsc --noEmit`, the render suite,
+`next build` and the five checks in `console/scripts/` on any change under
+`console/` — and on a change to `console.proto`, because the wire types mirror
+it. `site.yml` re-runs `tokens_test.py`, because `site/**` is ignored above and
+a token changed there has to go red where it was changed.
+
+⚠ **Bazel does not run those five.** They were `sh_test`s under `//console:` and
+failed twice on Bazel wiring rather than on anything they check — a
+package-relative path that does not survive the runfiles root, then a label its
+own `glob` already matched. They are green in `console.yml`, which is the one
+place they can be run by whoever is editing them.
 
 ### ⛔ What CI does not run
 
@@ -69,9 +83,9 @@ lean/Ratio/       the proofs, and the Emit modules that author Rust from them
 tla/              the specs, their MC configs, and the failure-path probes
 crates/           the Rust. `ratio` is the binary; the rest are libraries
 proto/            the wire types, AIP-linted
-web/              the operations console (React + esbuild, one inlined bundle)
+console/          the operations console (Next.js, deployed to Vercel — NOT built by Bazel)
 demo/             the five-minute demo and the shadow run, as shell tests
-deploy/           the Lambda that serves the console and the API
+deploy/           the Lambda that serves the API and the three public screens
 site/ paper/ marketing/ competitive/   the written material
 specs/            ⚠ the ORIGINAL program's specs. History, not requirements.
 ```
@@ -89,24 +103,48 @@ Lean is `takes_whole_lot`, `partial_divides`, `partial_cost`, `lot_is_sound`.
 
 ## Console changes
 
-⛔ **Rebuild `//crates/ratio`, not `//web:...`.** The chain is
-`//web:console_html` → genrule `//crates/ratio:console_rs` →
-`src/console_html.rs` → the binary, which embeds the page as a `&str` at compile
-time. Building anything under `//web:` alone refreshes nothing that is served.
+⛔ **Bazel does not build the console, and there is no JavaScript toolchain in
+the Bazel graph any more.** It used to be `//web:console_html` → genrule
+`//crates/ratio:console_rs` → `src/console_html.rs` → the binary, which embedded
+the whole page as a `&str` at compile time — so a stylesheet change needed an
+image build and a CloudFormation deploy, and the entire console was one URL.
+
+`console/` is a Next.js application deployed to Vercel, with a route per
+resource. Two commands, not one:
 
 ```bash
-bazel build //crates/ratio
-bazel run //crates/ratio -- watch --book <dir>   # then open /app
+bazel run //crates/ratio -- watch --book <dir>   # the API on :7373
+cd console && pnpm dev                            # the console on :3000
 ```
+
+⭐ **A local run needs no Cognito, no secret and no network.** `ratio watch` sets
+none of the `RATIO_COGNITO_*` variables, so `/authconfig.json` answers with empty
+strings, the console skips its sign-in gate, and the server answers as
+`Subject::Local` — unrestricted, and not a tenant.
+
+```bash
+cd console && pnpm check    # tsc --noEmit, the render suite, next build
+```
+
+Adding a field to the API touches six files in order: `console.proto`,
+`transcode.rs` (route, dispatch arm, `JsonView`), `ratio-console/src/lib.rs`,
+`console/src/wire/types.ts`, `console/src/wire/client.ts`, and the page under
+`console/src/app/` that reads it. Four tests turn an omission into a failing
+build rather than a 404: `//proto:mirrors_test` (the two hand-written mirrors),
+`//crates/ratio-console:transcode_test` (the route table), and
+`console/scripts/route_manifest_test.py` — which asserts the console calls
+exactly the contract's routes **and** that no RPC goes unread by any screen.
+The first two run under Bazel; the third runs in `console.yml`.
+
+⚠ If the field is one a reader looks for, add it to `console/scripts/fields_test.py` and
+give it a case in `console/src/app/screens.test.tsx`. Between them they are the
+successor to `//web:rendered_test` and to `ratio_test`'s
+`the_served_console_carries_the_lot_engine`, both of which existed because a
+field has already been "declared, transcoded, served, typechecked and mirrored
+while no component reads it".
 
 ⚠ `bazel cquery --output=files` can hand back a stale binary. Build explicitly
 first, then query.
-
-Adding a field to the API touches seven files in order: `console.proto`,
-`transcode.rs` (route, dispatch arm, `JsonView`), `ratio-console/src/lib.rs`,
-`web/src/types.ts`, `web/src/api.ts`, `web/src/App.tsx`, `web/console.css`.
-`//proto:mirrors_test` and `//crates/ratio-console:transcode_test` turn any
-omission into a build failure rather than a 404.
 
 ## Adding a proof
 

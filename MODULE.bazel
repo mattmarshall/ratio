@@ -38,28 +38,27 @@ bazel_dep(name = "rules_rust_prost", version = "0.70.0")
 # Rust toolchain pinned to 1.85.0 to match the fastverk ecosystem (meridian),
 # so ratio's eventual @meridian//rust deps share one toolchain.
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
-# ── The console's web client ──────────────────────────────────────────────
-# Versions match mattmarshall/meridian, which is the fleet's existing TypeScript
-# build — not because this repo depends on it, but because two JS toolchains in
-# one estate is two sets of upgrade problems.
-bazel_dep(name = "aspect_rules_js", version = "3.1.2")
-bazel_dep(name = "aspect_rules_ts", version = "3.8.9")
-bazel_dep(name = "rules_nodejs", version = "6.7.4")
 
-node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node", dev_dependency = True)
-node.toolchain(node_version = "22.11.0")
-
-rules_ts_ext = use_extension("@aspect_rules_ts//ts:extensions.bzl", "ext")
-rules_ts_ext.deps(ts_version = "5.6.2")
-use_repo(rules_ts_ext, "npm_typescript")
-
-npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm", dev_dependency = True)
-npm.npm_translate_lock(
-    name = "npm",
-    pnpm_lock = "//web:pnpm-lock.yaml",
-    verify_node_modules_ignored = "//:.bazelignore",
-)
-use_repo(npm, "npm")
+# ── ⛔ THERE IS NO JAVASCRIPT TOOLCHAIN HERE ANY MORE ──────────────────────
+#
+# `aspect_rules_js`, `aspect_rules_ts`, `rules_nodejs`, a node toolchain and an
+# `npm_translate_lock` over `//web:pnpm-lock.yaml` all stood here, to compile a
+# React bundle that was inlined into one HTML document and embedded in the
+# `ratio` binary as a `&str`.
+#
+# The console is a Next.js application on its own origin now, built and deployed
+# by Vercel and gated by `.github/workflows/console.yml`. Bazel does not build
+# it, on purpose: Next ships per-platform `@next/swc-*` binaries with install
+# hooks, and `web/pnpm-workspace.yaml`'s `onlyBuiltDependencies` existed to keep
+# exactly that class of thing out of a hermetic build one package at a time.
+# Rather than fight that, the whole toolchain left with the thing it was for.
+#
+# ⚠ `bazel test //...` still says something about the console. `//console:*` is
+# five checks that read SOURCE TEXT and need no node — the contract reaches every
+# screen, the screens still read the fields whose absence has shipped before, the
+# fixtures are shaped like the proto, the design tokens still agree with
+# `site/style.css`, and nothing that belongs in the environment is committed.
+# `site/` is the precedent for a non-Bazel path verified this way.
 
 rust.toolchain(
     edition = "2021",

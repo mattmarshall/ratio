@@ -1,0 +1,24 @@
+{
+  "corporateActions": [
+    {
+      "name": "funds/harbourline-global-value/corporateActions/acme-3for2",
+      "instrument": "ACME",
+      "numerator": "3",
+      "denominator": "2",
+      "form": "3-for-2 split",
+      "exDate": {
+        "year": 2026,
+        "month": 2,
+        "day": 24
+      },
+      "announceTime": "2026-02-18T13:00:00Z",
+      "applied": false,
+      "journalPosition": "0",
+      "announcePosition": "5",
+      "qualifiedNavStrikes": [
+        "funds/harbourline-global-value/navStrikes/2026-02-26"
+      ]
+    }
+  ],
+  "nextPageToken": ""
+}
