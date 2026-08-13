@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { authorizeUrl, challengeFor, newVerifier } from "@/lib/oidc";
 import { writePending } from "@/lib/session";
-import { consoleOrigin, safeReturnTo } from "../redirect";
+import { consoleOrigin, safeReturnTo, sameOrigin } from "../redirect";
 
 export const dynamic = "force-dynamic";
 
@@ -24,14 +24,23 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const returnTo = safeReturnTo(req.nextUrl.searchParams.get("returnTo"));
 
+  // ⛔ THE FAILURE PATH STAYS ON THE HOST THE BROWSER IS ALREADY ON. It first
+  // redirected to `${consoleOrigin()}/signin?error=config`, which is exactly
+  // wrong: `RATIO_CONSOLE_ORIGIN` being wrong is one of the two failures this
+  // branch exists to report, so using it to build the error page's URL sends
+  // the reader to a hostname that may not resolve — and the message explaining
+  // the misconfiguration is never rendered. It happened, against a live
+  // deployment, to a value naming a host that did not exist.
+  //
+  // The absolute origin is load-bearing for the `redirect_uri` below, where
+  // Cognito compares it character for character. It is not load-bearing for a
+  // redirect to a page this same process serves. See `sameOrigin`.
   let origin: string;
   try {
     origin = consoleOrigin();
   } catch (e) {
     console.error("sign-in is not configured:", e);
-    // No console origin means no safe absolute URL to build, so this one is
-    // relative — the only branch here that cannot name its own host.
-    return NextResponse.redirect(new URL("/signin?error=config", req.url));
+    return sameOrigin("/signin?error=config");
   }
 
   try {
@@ -46,6 +55,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(url);
   } catch (e) {
     console.error("sign-in is not configured:", e);
-    return NextResponse.redirect(`${origin}/signin?error=config`);
+    return sameOrigin("/signin?error=config");
   }
 }

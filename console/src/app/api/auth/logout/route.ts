@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
 import { clearSession } from "@/lib/session";
-import { consoleOrigin } from "../redirect";
+import { sameOrigin } from "../redirect";
 
 export const dynamic = "force-dynamic";
 
@@ -15,8 +14,14 @@ export const dynamic = "force-dynamic";
  * means a redirect to the pool's `/logout`, which needs the console origin
  * registered as a `LogoutURL` — it is, in `deploy/app.yaml`, so this is a small
  * follow-on rather than a missing piece.
+ *
+ * ⚠ 303, not 307: the browser must follow this with GET. A 307 preserves the
+ * method and would re-POST to `/signin`.
  */
 export async function POST() {
   await clearSession();
-  return NextResponse.redirect(`${consoleOrigin()}/signin`, { status: 303 });
+  // Relative, so signing out works on a deployment whose declared origin is
+  // wrong. Being unable to sign *out* because of a configuration error is a
+  // worse failure than being unable to sign in.
+  return sameOrigin("/signin", 303);
 }
