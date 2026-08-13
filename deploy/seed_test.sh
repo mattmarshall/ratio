@@ -79,4 +79,46 @@ b=$(gain_of "$HIFO")
 awk -v a="$a" -v b="$b" 'BEGIN { exit !(b < a) }' \
   || fail "HIFO realized $b against FIFO's $a — the dearest-lot method should realize LESS"
 
-echo "  ok  5 funds, $lots open tax lots, FIFO $a vs HIFO $b from one seed"
+# ⛔ AND THE TWO BOOKS OF RECORD HAVE TO DISAGREE. One journal, two recognition
+# conventions, and if they land on the same NAV then nothing about the
+# settlement convention reached the fold — which is observationally identical to
+# not having built it. This is `bellwether-tax-managed`'s assertion one layer
+# out, and it is the ONLY thing on the demo that could fail if a view were
+# ignored.
+#
+# ⚠ THE TRAP HERE IS SHARPER THAN THE LOT-METHOD ONE. A purchase moves cash into
+# investments, both assets, so recognising it or not moves a NAV by ZERO — a
+# seed whose settlement tail holds only trades would agree while every line of
+# the engine ran. The tail carries SUBSCRIPTIONS, which is the shape that works;
+# HANDOFF.md records the multi-currency version being vacuous twice.
+DUAL="$OUT/marlowe-dual-basis"
+[ -d "$DUAL" ] || fail "the dual-basis fund is missing"
+
+nav_of() { "$RATIO" balance --book "$1" --view "$2" | awk '/^  net asset value / {gsub(/,/,"",$5); print $5}'; }
+abor=$(nav_of "$DUAL" abor)
+ibor=$(nav_of "$DUAL" ibor)
+[ -n "$abor" ] && [ -n "$ibor" ] || fail "no NAV figure on one of the two views"
+[ "$abor" != "$ibor" ] \
+  || fail "one journal, two settlement conventions, IDENTICAL NAV ($abor) — the view reaches nothing"
+
+# ⭐ AND THE DIFFERENCE HAS TO BE A LIST. `Ratio.Views.two_views_differ_by_
+# exactly_what_is_in_flight` says the entries one view recognises and the other
+# does not account for the gap EXACTLY — so a reconciliation whose entries do
+# not add to the difference is a screen showing arithmetic that is not true.
+rec=$("$RATIO" reconcile abor ibor --book "$DUAL")
+grep -q "in flight" <<<"$rec" || fail "the reconciliation lists no entries in flight"
+diff_line=$(awk '/^difference / {gsub(/,/,"",$2); print $2}' <<<"$rec")
+sum_line=$(awk '/^accounted for / {gsub(/,/,"",$3); print $3}' <<<"$rec")
+[ "$diff_line" = "$sum_line" ] \
+  || fail "the in-flight entries sum to $sum_line and the difference is $diff_line — the reconciliation does not tie"
+
+# ⛔ AND BOTH VIEWS STILL TIE. A view keeps or drops WHOLE entries and each entry
+# conserves, so `Ratio.Views.every_view_conserves` says the trial balance cannot
+# move. A view that unbalanced a book would be the one failure the whole design
+# forecloses.
+for v in abor ibor; do
+  "$RATIO" balance --book "$DUAL" --view "$v" | grep -q "difference *0" \
+    || fail "view $v does not tie — a view is a filter over whole entries and cannot unbalance a book"
+done
+
+echo "  ok  6 funds, $lots open tax lots, FIFO $a vs HIFO $b, ABOR $abor vs IBOR $ibor"

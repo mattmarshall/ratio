@@ -199,7 +199,122 @@ pub struct RuleSet {
     /// entirely ordinary.
     #[serde(default = "default_long_term_days")]
     pub long_term_days: i64,
+
+    /// The books of record this fund keeps.
+    ///
+    /// ⛔ IN THE CONFIGURATION DOCUMENT, WHICH IS WHAT MAKES A VIEW REPLAYABLE.
+    /// Every journal entry pins one config digest, so declaring the views here
+    /// means every entry pins EVERY view's terms — and a settlement date
+    /// re-derived years later is the one the agreement in force at the time
+    /// gives. A per-view chain with its own ACTIVE pointer would leave the
+    /// other views' terms pinned by nothing, which is
+    /// `Ratio.Actions.Factor.an_unpinned_announcement_changes_the_answer`
+    /// wearing a calendar. `//tla:calendar_in_side_file_check` is the run.
+    ///
+    /// ⚠ EMPTY MEANS ONE VIEW, NOT NO VIEWS. See [`effective_views`].
+    ///
+    /// [`effective_views`]: RuleSet::effective_views
+    #[serde(rename = "view", default, skip_serializing_if = "Vec::is_empty")]
+    pub views: Vec<View>,
+
+    /// The calendars a settlement view rolls over.
+    ///
+    /// ⛔ HERE FOR THE SAME REASON THE VIEWS ARE. A settlement date is a trade
+    /// date rolled forward over a calendar; if the calendar is not inside the
+    /// prefix a strike pins, the prefix does not determine the figure and a
+    /// replay answers differently the moment somebody declares a holiday. That
+    /// is worse than a restatement, because a restatement announces itself.
+    #[serde(rename = "calendar", default, skip_serializing_if = "Vec::is_empty")]
+    pub calendars: Vec<Calendar>,
 }
+
+/// How a view decides the day it recognises an entry on.
+///
+/// ⛔ THREE, AND THE FIRST IS NOT A CONVENTION. `Recorded` is the ABSENCE of an
+/// election — the journal's own order, consulting no date — which is what every
+/// book has always done and the only basis that answers over the entries
+/// carrying no `trade_date`, i.e. most of every book written so far. `Trade`
+/// and `Settlement` are elections: they read the record's dates and REFUSE an
+/// entry that cannot support them.
+///
+/// ⚠ COLLAPSING `Recorded` INTO `Settlement { settles_in: 0 }` IS THE MISTAKE
+/// THIS ENUM EXISTS TO PREVENT, and it is `lot_method: None` versus
+/// `Some(Fifo)` one layer out — a distinction that reached three live funds
+/// before it was given a field of its own.
+/// `Ratio.Views.nobody_said_is_not_a_settlement_convention`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Basis {
+    #[default]
+    Recorded,
+    Trade,
+    Settlement,
+}
+
+impl Basis {
+    /// Every basis, so a caller can offer them without listing them.
+    ///
+    /// ⛔ A LIST NOTHING CHECKS IS A LIST THAT GOES STALE — the same argument as
+    /// `LotMethod::ALL`, and `every_basis_round_trips_through_its_declared_name`
+    /// is what makes a variant added without being added here a build failure.
+    pub const ALL: [Basis; 3] = [Basis::Recorded, Basis::Trade, Basis::Settlement];
+
+    /// How it is written in a configuration.
+    pub fn as_declared(self) -> &'static str {
+        match self {
+            Basis::Recorded => "recorded",
+            Basis::Trade => "trade",
+            Basis::Settlement => "settlement",
+        }
+    }
+}
+
+/// One book of record over the shared journal.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct View {
+    /// Stable identifier. Becomes a URL segment and a `NAVS` field.
+    pub id: String,
+    /// What it is called on a screen. Defaults to the id.
+    #[serde(default)]
+    pub display_name: String,
+    pub basis: Basis,
+    /// Open days from trade to settlement. Required by `settlement`, and
+    /// meaningless on anything else.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settles_in: Option<i64>,
+    /// Names a `[[calendar]]` in the same document.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calendar: Option<String>,
+}
+
+/// The days a market is shut.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Calendar {
+    pub id: String,
+    /// ISO dates, `YYYY-MM-DD`.
+    #[serde(default)]
+    pub holidays: Vec<String>,
+    /// Weekday numbers the market is shut on, 0 = Sunday.
+    ///
+    /// ⚠ A LIST RATHER THAN A HARDCODED SATURDAY AND SUNDAY. Gulf funds settle
+    /// Sunday to Thursday, and a convention written into the code is a fund the
+    /// engine is wrong about instead of one it is configurable for — the same
+    /// argument `long_term_days` already makes about 365.
+    #[serde(default = "default_weekend")]
+    pub weekend: Vec<i64>,
+}
+
+fn default_weekend() -> Vec<i64> {
+    vec![0, 6]
+}
+
+/// The id a book with no declared views has.
+///
+/// ⛔ NOT `"abor"`, AND NOT ANYTHING THAT READS AS AN ELECTION. A book that
+/// declares nothing is not administered on a trade-date basis by agreement; it
+/// is folded in journal order by custom. Naming this `abor` would put a claim on
+/// a screen that no administration agreement supports.
+pub const UNDECLARED_VIEW: &str = "book";
 
 fn default_long_term_days() -> i64 {
     365
@@ -230,6 +345,169 @@ impl RuleSet {
     /// raw field is one reporting whether a fund actually elected a method.
     pub fn effective_lot_method(&self) -> LotMethod {
         self.lot_method.unwrap_or_default()
+    }
+
+    /// The views the engine folds: what was declared, or the one every book has.
+    ///
+    /// ⚠ THE `effective_lot_method` PAIR, EXACTLY. Every caller that needs to
+    /// FOLD something wants this; the only caller that wants the raw field is
+    /// one reporting whether a fund actually declared a book of record. A book
+    /// with no `[[view]]` still has one, it recognises entries in the journal's
+    /// own order, and it is not an election — [`views_declared`] is how a
+    /// screen tells the two apart.
+    ///
+    /// [`views_declared`]: RuleSet::views_declared
+    pub fn effective_views(&self) -> Vec<View> {
+        if self.views.is_empty() {
+            return vec![View {
+                id: UNDECLARED_VIEW.to_string(),
+                display_name: "Journal order".to_string(),
+                basis: Basis::Recorded,
+                settles_in: None,
+                calendar: None,
+            }];
+        }
+        self.views.clone()
+    }
+
+    /// Whether anyone declared a book of record, or whether it is the default.
+    pub fn views_declared(&self) -> bool {
+        !self.views.is_empty()
+    }
+
+    /// The view the console opens when it has no other reason to pick one.
+    ///
+    /// ⚠ THE FIRST DECLARED ONE, IN DOCUMENT ORDER, and that is a decision
+    /// rather than an accident: an administrator writing the configuration puts
+    /// the official book first, and inferring it from the basis would guess.
+    pub fn default_view(&self) -> String {
+        self.views
+            .first()
+            .map(|v| v.id.clone())
+            .unwrap_or_else(|| UNDECLARED_VIEW.to_string())
+    }
+
+    /// Find a calendar by id.
+    pub fn calendar(&self, id: &str) -> Option<&Calendar> {
+        self.calendars.iter().find(|c| c.id == id)
+    }
+}
+
+impl View {
+    /// What a screen calls this view.
+    pub fn label(&self) -> &str {
+        if self.display_name.is_empty() {
+            &self.id
+        } else {
+            &self.display_name
+        }
+    }
+
+    /// Whether a view is checkable at all, checked when the configuration is
+    /// READ.
+    ///
+    /// ⛔ AT READ TIME, FOR THE REASON `ChartRoles::check` IS. A view that names
+    /// a calendar nobody declared is wrong the moment it is written down;
+    /// finding out at the first settlement means finding out in production, on
+    /// a NAV day, against a figure somebody is about to be paid on.
+    pub fn check(&self, calendars: &[Calendar]) -> Result<()> {
+        // ⛔ THE ID REACHES A URL SEGMENT AND A TAB-SEPARATED FIELD IN `NAVS`.
+        // A tab or a newline would split the strike record in two, and a slash
+        // would make the resource name ambiguous — so the charset is narrow and
+        // the refusal is at authoring time rather than at write time.
+        if self.id.is_empty()
+            || !self
+                .id
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        {
+            bail!(
+                "view id {:?} is not usable: an id becomes a URL segment and a field in the \
+                 NAVS record, so it must be lowercase letters, digits and hyphens",
+                self.id
+            );
+        }
+
+        match self.basis {
+            Basis::Settlement => {
+                let days = self.settles_in.ok_or_else(|| {
+                    anyhow!(
+                        "view {:?} settles but does not say in how many days. Set \
+                         `settles_in` — a market settling two days after the trade is \
+                         `settles_in = 2`",
+                        self.id
+                    )
+                })?;
+                if !(0..=30).contains(&days) {
+                    bail!(
+                        "view {:?} settles in {days} days, which is not a settlement \
+                         convention any market uses. Nothing here rolls further than 30",
+                        self.id
+                    );
+                }
+                // ⚠ A CALENDAR IS REQUIRED, AND THE ABSENCE IS NOT "EVERY DAY IS
+                // A BUSINESS DAY". A settlement date computed over a calendar
+                // nobody wrote down is a date nobody agreed to, and it lands
+                // trades in the wrong period on every weekend of the year.
+                let named = self.calendar.as_deref().ok_or_else(|| {
+                    anyhow!(
+                        "view {:?} settles in {days} days and names no calendar. Which days \
+                         is the market shut? Declare a `[[calendar]]` and point `calendar` \
+                         at its id — rolling over an unstated calendar would settle trades \
+                         on weekends",
+                        self.id
+                    )
+                })?;
+                if !calendars.iter().any(|c| c.id == named) {
+                    bail!(
+                        "view {:?} rolls over calendar {named:?}, which this configuration \
+                         does not declare. Add a `[[calendar]]` with that id, or point the \
+                         view at one that exists",
+                        self.id
+                    );
+                }
+            }
+            Basis::Recorded | Basis::Trade => {
+                if self.settles_in.is_some() {
+                    bail!(
+                        "view {:?} is a {} view and carries `settles_in`, which only a \
+                         settlement view reads. Did you mean `basis = \"settlement\"`?",
+                        self.id,
+                        self.basis.as_declared()
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Calendar {
+    /// Checked when the configuration is read, for the same reason.
+    pub fn check(&self) -> Result<()> {
+        if self.weekend.iter().any(|d| !(0..=6).contains(d)) {
+            bail!(
+                "calendar {:?} names a weekend day outside 0..=6. Sunday is 0",
+                self.id
+            );
+        }
+        // ⛔ SEVEN CLOSED DAYS IS A MARKET THAT NEVER OPENS, and a roll over it
+        // would never terminate. `Ratio.Views.a_calendar_that_never_opens_
+        // refuses_rather_than_looping` makes the engine refuse rather than hang;
+        // this makes the configuration refuse rather than reach the engine.
+        if self.weekend.len() >= 7 {
+            bail!(
+                "calendar {:?} closes the market every day of the week, so no trade under it \
+                 would ever settle",
+                self.id
+            );
+        }
+        for d in &self.holidays {
+            ratio_common::days_from_iso_date(d).with_context(|| {
+                format!("calendar {:?} names a holiday that is not a date", self.id)
+            })?;
+        }
+        Ok(())
     }
 }
 
@@ -443,6 +721,33 @@ impl RuleSet {
         // finding out in production.
         if let Some(r) = &set.chart_roles {
             r.check()?;
+        }
+        // ⛔ AND THE VIEWS, FOR THE SAME REASON. A view naming a calendar
+        // nobody declared is wrong when it is written, not on the NAV day it
+        // first has to roll a trade over one.
+        for c in &set.calendars {
+            c.check()?;
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for v in &set.views {
+            v.check(&set.calendars)?;
+            // ⛔ TWO VIEWS WITH ONE ID ARE TWO ANSWERS UNDER ONE NAME. A strike
+            // recorded against the id could not be attributed to either, and the
+            // console would render whichever the iterator reached first.
+            if !seen.insert(v.id.clone()) {
+                bail!(
+                    "this configuration declares view {:?} twice. A figure recorded against \
+                     that id could not be attributed to either one",
+                    v.id
+                );
+            }
+            if v.id == UNDECLARED_VIEW {
+                bail!(
+                    "{UNDECLARED_VIEW:?} is the id a book with NO declared views has, so a \
+                     declared view cannot take it — the two would be indistinguishable, and \
+                     an election nobody made would read as one somebody did"
+                );
+            }
         }
         Ok(set)
     }
@@ -1143,6 +1448,184 @@ weight = -4
         let hifo = RuleSet::from_toml("rules = []\nlot_method = \"hifo\"\n").unwrap();
         assert_eq!(hifo.effective_lot_method(), LotMethod::Hifo);
         assert_eq!(RuleSet::default().lot_method, None);
+    }
+
+    const TWO_VIEWS: &str = r#"
+rules = []
+[[calendar]]
+id = "us-settlement"
+holidays = ["2026-01-01", "2026-12-25"]
+[[view]]
+id = "abor"
+display_name = "ABOR"
+basis = "trade"
+[[view]]
+id = "ibor"
+display_name = "IBOR"
+basis = "settlement"
+settles_in = 2
+calendar = "us-settlement"
+"#;
+
+    #[test]
+    fn a_silent_configuration_declares_no_views_but_still_has_one() {
+        // ⛔ THE DISTINCTION A DEFAULT DESTROYS, AND IT IS THE `lot_method` ONE
+        // EXACTLY. A book that says nothing about views is folded in journal
+        // order by CUSTOM; one that declares a trade-date view is folded that
+        // way by ELECTION. The engine does something in both cases, and only
+        // one of them is a term somebody agreed to.
+        //
+        // ⚠ AND `recorded` IS NOT `settlement 0`. The undeclared view consults
+        // no date at all, which is the only thing that answers over the entries
+        // carrying no trade date — most of every book written so far. A
+        // same-day settlement convention would refuse every one of them.
+        let silent = RuleSet::from_toml("rules = []\n").unwrap();
+        assert!(silent.views.is_empty(), "nobody said");
+        assert!(!silent.views_declared());
+        let one = silent.effective_views();
+        assert_eq!(one.len(), 1, "and it still folds");
+        assert_eq!(one[0].basis, Basis::Recorded);
+        assert_eq!(one[0].settles_in, None, "recorded consults no calendar");
+        assert_eq!(silent.default_view(), UNDECLARED_VIEW);
+
+        let declared = RuleSet::from_toml(TWO_VIEWS).unwrap();
+        assert!(declared.views_declared(), "somebody said");
+        assert_eq!(declared.effective_views().len(), 2);
+        assert_eq!(declared.default_view(), "abor");
+
+        // ⛔ BOTH FOLD, AND THEY ARE DIFFERENT TO A READER — which is the whole
+        // point. An assertion on the effective views alone passes whether or
+        // not the distinction survives.
+        assert!(!silent.effective_views().is_empty());
+        assert!(!declared.effective_views().is_empty());
+        assert_ne!(silent.views_declared(), declared.views_declared());
+    }
+
+    #[test]
+    fn a_declared_view_cannot_take_the_undeclared_id() {
+        // Otherwise a screen could not tell an election from its absence, which
+        // is the one thing `views_declared` exists to report.
+        let e = RuleSet::from_toml(&format!(
+            "rules = []\n[[view]]\nid = \"{UNDECLARED_VIEW}\"\nbasis = \"trade\"\n"
+        ))
+        .expect_err("the undeclared id is reserved")
+        .to_string();
+        assert!(e.contains("an election nobody made"), "{e}");
+    }
+
+    #[test]
+    fn every_basis_round_trips_through_its_declared_name() {
+        // ⛔ TWO SPELLINGS OF EVERY VARIANT — serde's and `as_declared`'s — and a
+        // disagreement is silent in the worst way: `Basis` derives `Default`, so
+        // a view declaring a basis the reader does not recognize would fold in
+        // journal order while its agreement says settlement, and only the timing
+        // of every figure would move.
+        for b in Basis::ALL {
+            let toml = format!(
+                "rules = []\n[[view]]\nid = \"v\"\nbasis = \"{}\"\n{}",
+                b.as_declared(),
+                if b == Basis::Settlement {
+                    "settles_in = 2\ncalendar = \"c\"\n[[calendar]]\nid = \"c\"\n"
+                } else {
+                    ""
+                }
+            );
+            let back = RuleSet::from_toml(&toml)
+                .unwrap_or_else(|e| panic!("{b:?} declares itself as {:?}: {e}", b.as_declared()))
+                .views[0]
+                .basis;
+            assert_eq!(back, b, "{b:?} does not survive its own declared name");
+        }
+        assert_eq!(
+            Basis::ALL.len(),
+            Basis::ALL.iter().map(|b| b.as_declared()).collect::<std::collections::BTreeSet<_>>().len(),
+            "ALL lists a basis twice, or two share a declared name"
+        );
+    }
+
+    #[test]
+    fn a_settlement_view_that_cannot_roll_is_refused_when_the_config_is_read() {
+        // ⛔ AT READ TIME, LIKE `ChartRoles::check`. Each of these is wrong the
+        // moment it is written down; finding out at the first settlement means
+        // finding out on a NAV day.
+        for (toml, must_say) in [
+            (
+                "rules = []\n[[view]]\nid = \"ibor\"\nbasis = \"settlement\"\n",
+                "in how many days",
+            ),
+            (
+                "rules = []\n[[view]]\nid = \"ibor\"\nbasis = \"settlement\"\nsettles_in = 2\n",
+                "names no calendar",
+            ),
+            (
+                "rules = []\n[[view]]\nid = \"ibor\"\nbasis = \"settlement\"\nsettles_in = 2\ncalendar = \"nope\"\n",
+                "does not declare",
+            ),
+            (
+                "rules = []\n[[view]]\nid = \"abor\"\nbasis = \"trade\"\nsettles_in = 2\n",
+                "only a settlement view reads",
+            ),
+            (
+                "rules = []\n[[view]]\nid = \"A BOR\"\nbasis = \"trade\"\n",
+                "URL segment",
+            ),
+        ] {
+            let e = RuleSet::from_toml(toml).expect_err(must_say).to_string();
+            assert!(e.contains(must_say), "expected {must_say:?}, got: {e}");
+        }
+    }
+
+    #[test]
+    fn a_calendar_that_never_opens_is_refused_rather_than_looping() {
+        // The configuration half of `Ratio.Views.a_calendar_that_never_opens_
+        // refuses_rather_than_looping`: the engine refuses instead of hanging,
+        // and this stops such a calendar reaching the engine at all.
+        let e = RuleSet::from_toml(
+            "rules = []\n[[calendar]]\nid = \"never\"\nweekend = [0, 1, 2, 3, 4, 5, 6]\n",
+        )
+        .expect_err("a market that never opens")
+        .to_string();
+        assert!(e.contains("would ever settle"), "{e}");
+
+        let e = RuleSet::from_toml(
+            "rules = []\n[[calendar]]\nid = \"c\"\nholidays = [\"the fifth of March\"]\n",
+        )
+        .expect_err("not a date")
+        .to_string();
+        assert!(e.contains("not a date"), "{e}");
+    }
+
+    #[test]
+    fn two_views_with_one_id_are_refused() {
+        let e = RuleSet::from_toml(
+            "rules = []\n[[view]]\nid = \"abor\"\nbasis = \"trade\"\n\
+             [[view]]\nid = \"abor\"\nbasis = \"recorded\"\n",
+        )
+        .expect_err("one id, two answers")
+        .to_string();
+        assert!(e.contains("twice"), "{e}");
+    }
+
+    #[test]
+    fn a_view_survives_a_round_trip_through_toml() {
+        let set = RuleSet::from_toml(TWO_VIEWS).unwrap();
+        let back = RuleSet::from_toml(&set.to_toml().unwrap()).unwrap();
+        assert_eq!(back, set);
+        assert_eq!(back.views[1].settles_in, Some(2));
+        assert_eq!(back.calendar("us-settlement").unwrap().holidays.len(), 2);
+        // The default weekend is a real answer and survives being unstated.
+        assert_eq!(back.calendar("us-settlement").unwrap().weekend, vec![0, 6]);
+    }
+
+    #[test]
+    fn a_configuration_with_no_views_serializes_without_the_section() {
+        // ⛔ SO NO EXISTING BOOK'S DIGEST MOVES. Every configuration in every
+        // book predates this field; emitting an empty `view = []` would change
+        // the canonical bytes, change the content address, and orphan every
+        // journal entry pinning the old one.
+        let toml = RuleSet::from_toml("rules = []\n").unwrap().to_toml().unwrap();
+        assert!(!toml.contains("view"), "{toml}");
+        assert!(!toml.contains("calendar"), "{toml}");
     }
 
     #[test]

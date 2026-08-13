@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Seed the demo with three funds in three different states.
+# Seed the demo with six funds, each showing something the others cannot.
 #
 # Each is a REAL book built through the same code path — same chart, same rules,
 # same recon, same striking. What differs is what HAPPENED to it, and the state
@@ -89,4 +89,37 @@ SHAPE="--securities 20 --lots-per 40 --currencies 3 --seed 1"
 "$RATIO" gen --book "$OUT/bellwether-tax-managed" $SHAPE --method hifo >/dev/null
 "$RATIO" strike --book "$OUT/bellwether-tax-managed" >/dev/null
 
-echo "seeded 5 funds at $OUT"
+# ── 6. One journal, two books of record ────────────────────────────────────
+#
+# ⛔ THE FIGURE THIS FEATURE EXISTS TO SHOW, AND THE DEMO IS THE ONLY PLACE IT
+# CAN BE SHOWN. `bellwether-tax-managed` above exists because a lot method that
+# changes nothing observable is indistinguishable from one nobody reads. A view
+# is the same defect one layer out: two books of record that agree on every
+# screen prove that the recognition convention is being ignored, not that it
+# works.
+#
+# ⭐ ONE JOURNAL. Not two books — the whole argument is that there is no second
+# store to keep in step with the first. ABOR recognises a trade the day it is
+# struck; IBOR recognises it two open days later, over a real calendar. The
+# reconciliation screen shows the difference entry by entry, and the entries sum
+# to it exactly because `Ratio.Views.two_views_differ_by_exactly_what_is_in_
+# flight` says they must.
+#
+# ⛔ AND THE STRADDLING ENTRIES MUST BE SUBSCRIPTIONS, NOT PURCHASES. A purchase
+# moves cash into investments — both assets — so recognising it or not moves the
+# NAV by ZERO, and the two views would agree while every line of the engine ran.
+# HANDOFF.md records the multi-currency version of this being written twice
+# before somebody noticed: "Subscriptions are the shape that works — capital is
+# equity, the NAV filter excludes it, and the asset side is left holding the
+# balance."
+#
+# ⚠ THE VALUATION POINT HAS TO FALL INSIDE THE SETTLEMENT TAIL. Folded to the
+# end of history every view agrees, because everything eventually settles —
+# `Ratio.Views.a_fold_with_no_cut_hides_the_settlement_gap`. A seed that strikes
+# after the last trade settles demonstrates nothing at all.
+"$RATIO" gen --book "$OUT/marlowe-dual-basis" $SHAPE \
+  --views abor,ibor:t+2 --settle-tail 3 --subscriptions-in-tail 2 >/dev/null
+"$RATIO" strike --book "$OUT/marlowe-dual-basis" --view abor >/dev/null
+"$RATIO" strike --book "$OUT/marlowe-dual-basis" --view ibor >/dev/null
+
+echo "seeded 6 funds at $OUT"
