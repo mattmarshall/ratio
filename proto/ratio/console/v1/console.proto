@@ -947,8 +947,8 @@ message NavStrike {
 
   // The view this NAV was struck in, as a view id.
   //
-  // ⛔ ON THE STRIKE, AND IT IS WHAT MAKES `Ratio.Period.one_answer_per_day`
-  // survive more than one view. A valuation point still has ONE answer — per
+  // ⛔ ON THE STRIKE, AND IT IS WHAT MAKES
+  // `Ratio.Period.one_answer_per_view_per_day` mean anything. A valuation point still has ONE answer — per
   // view. Two views striking the same day are two answers to two questions, and
   // neither restates the other; two answers to ONE question is the restatement
   // that theorem refuses. Without this field on the record they are
@@ -976,7 +976,8 @@ message NavStrike {
 
   // Why this figure cannot be read at face value, if it cannot.
   //
-  // ⛔ ON THE STRIKE, NOT BESIDE IT. `Ratio.Period.one_answer_per_day` refuses
+  // ⛔ ON THE STRIKE, NOT BESIDE IT.
+  // `Ratio.Period.one_answer_per_view_per_day` refuses
   // restatement — a valuation point has one answer and the first is what
   // somebody was paid on — so a corporate action arriving afterwards CANNOT
   // correct the NAVs it should have been in. The obligation that leaves is to

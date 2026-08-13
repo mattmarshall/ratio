@@ -18,7 +18,7 @@
 //! downstream can notice. The trial balance ties on whatever it is handed, the
 //! digest is well-formed, and `ratio replay` recomputes from the pinned prefix
 //! and disagrees — by which time the first number is what somebody was paid on
-//! and `Ratio.Period.one_answer_per_day` refuses to restate it.
+//! and `Ratio.Period.one_answer_per_view_per_day` refuses to restate it.
 //!
 //! ⭐ SO THE POSITION IS NOT A FIELD A CALLER LOOKS UP. Every read returns
 //! [`AsOf`], which carries the prefix it was folded from, and there is no other

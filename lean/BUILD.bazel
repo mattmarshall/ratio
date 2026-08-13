@@ -76,6 +76,13 @@ lean_test(
 # BEFORE any of it is built: the day only moves forward, moving on never erases
 # what a day held, a day is struck at most once, and a skipped day is a visible
 # gap rather than a silent zero.
+#
+# ⚠ `struck` IS INDEXED BY VIEW NOW. A fund keeps more than one book of record,
+# so a valuation point has one answer PER VIEW — a widening of
+# `one_answer_per_day`, not a weakening of it, and the file argues why at
+# length. Two facts come with it: striking a second view on a day the first has
+# already struck succeeds and disturbs nothing, and a view that has not struck a
+# day says so rather than borrowing its sibling's figure.
 lean_test(
     name = "period_proof_test",
     size = "small",

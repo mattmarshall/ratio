@@ -158,7 +158,7 @@ pub struct RuleSet {
     /// force at the last entry it folded, so past reliefs stay computed under
     /// the method that was agreed then. Re-running history under a new method
     /// would restate every investor's tax position, which is exactly what
-    /// `Ratio.Period.one_answer_per_day` refuses.
+    /// `Ratio.Period.one_answer_per_view_per_day` refuses.
     ///
     /// ⛔ `None` MEANS NOBODY SAID, AND THAT IS NOT THE SAME AS SAYING FIFO.
     /// A fund with no declared method is relieved oldest-first by custom rather

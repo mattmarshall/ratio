@@ -1086,7 +1086,8 @@ impl Console {
     /// Strikes that were taken without an action that should have been in them.
     ///
     /// ⛔ THE OBLIGATION THAT REFUSING RESTATEMENT CREATES.
-    /// `Ratio.Period.one_answer_per_day` says a valuation point is struck once
+    /// `Ratio.Period.one_answer_per_view_per_day` says a valuation point is struck
+    /// once IN EACH BOOK OF RECORD
     /// and never replaced — the first answer is what somebody was paid on. So
     /// an action arriving late CANNOT correct the NAVs it should have been in,
     /// and the only honest thing left is to be able to NAME them.
@@ -3309,7 +3310,8 @@ mod tests {
         assert_eq!(rows[0].1, "before");
         assert!(rows[0].2.contains("not applied"), "{}", rows[0].2);
 
-        // ⛔ AND THE STRIKE ITSELF IS UNTOUCHED. `Ratio.Period.one_answer_per_day`
+        // ⛔ AND THE STRIKE ITSELF IS UNTOUCHED.
+        // `Ratio.Period.one_answer_per_view_per_day`
         // refuses restatement, so naming a stale figure must not quietly change
         // it — the first answer is what somebody was paid on.
         let after = ratio_nav::list(&d).unwrap();
