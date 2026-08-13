@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { safeReturnTo, sameOrigin } from "./redirect";
 
 // The sign-in routes' redirect targets.
@@ -78,5 +78,100 @@ describe("safeReturnTo", () => {
       const loc = sameOrigin(safeReturnTo(hostile)).headers.get("location");
       expect(loc).toBe("/");
     }
+  });
+});
+
+// The OAuth `redirect_uri`, which is the one value here that a host is allowed
+// to appear in — and the one place a disagreement costs every sign-in.
+//
+// ⚠ EACH CASE RE-IMPORTS THE MODULE. `authConfig()` memoizes, deliberately, so
+// two cases sharing a module instance would test the first one's fetch twice.
+// `vi.resetModules()` is what makes each of these independent.
+async function originWith(opts: {
+  published?: string;
+  declared?: string;
+  apiUp?: boolean;
+}): Promise<string> {
+  vi.resetModules();
+  if (opts.declared === undefined) vi.stubEnv("RATIO_CONSOLE_ORIGIN", "");
+  else vi.stubEnv("RATIO_CONSOLE_ORIGIN", opts.declared);
+  vi.stubEnv("RATIO_API_ORIGIN", "https://api.example");
+  vi.stubGlobal("fetch", async () => {
+    if (opts.apiUp === false) throw new Error("connection refused");
+    return new Response(
+      JSON.stringify({
+        issuer: "https://issuer.example",
+        clientId: "cid",
+        domain: "idp.example",
+        scopes: ["openid", "email"],
+        redirectPath: "/api/auth/callback",
+        consoleOrigin: opts.published ?? "",
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  });
+  const mod = await import("./redirect");
+  return mod.consoleOrigin();
+}
+
+describe("consoleOrigin", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  // ⛔ THE WHOLE CLAIM OF THE CHANGE, IN ONE CASE. A stale Vercel variable used
+  // to decide the `redirect_uri`, and a wrong one meant Cognito refused every
+  // sign-in. The value the API publishes is the string Cognito was configured
+  // from, so it is the one that works — and it must win.
+  it("prefers what the API publishes over a stale environment variable", async () => {
+    expect(
+      await originWith({
+        published: "https://ratio-ims.vercel.app",
+        declared: "https://ratio-console.vercel.app",
+      }),
+    ).toBe("https://ratio-ims.vercel.app");
+  });
+
+  it("says so in the log, because a variable that does nothing is a trap", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await originWith({
+      published: "https://ratio-ims.vercel.app",
+      declared: "https://ratio-console.vercel.app",
+    });
+    expect(warn.mock.calls[0]?.[0]).toContain("ratio-console.vercel.app");
+    expect(warn.mock.calls[0]?.[0]).toContain("ratio-ims.vercel.app");
+    warn.mockRestore();
+  });
+
+  // ⚠ EMPTY IS THE LOCAL ANSWER, NOT A MISSING FIELD. A `ratio watch` on
+  // loopback has no console to point at and publishes "", which is exactly when
+  // the environment variable should decide — this is what keeps `next dev`
+  // working against a laptop with no Cognito.
+  it("falls back to the environment when the API publishes nothing", async () => {
+    expect(
+      await originWith({ published: "", declared: "http://localhost:3000" }),
+    ).toBe("http://localhost:3000");
+  });
+
+  it("falls back when the API cannot be reached at all", async () => {
+    expect(
+      await originWith({ apiUp: false, declared: "http://localhost:3000" }),
+    ).toBe("http://localhost:3000");
+  });
+
+  it("throws when neither has an answer, which the routes show as error=config", async () => {
+    await expect(originWith({ published: "" })).rejects.toThrow(
+      /no console origin/,
+    );
+  });
+
+  it("tolerates a trailing slash on either, since Cognito would not", async () => {
+    expect(await originWith({ published: "https://ratio-ims.vercel.app/" })).toBe(
+      "https://ratio-ims.vercel.app",
+    );
+    expect(
+      await originWith({ published: "", declared: "http://localhost:3000/" }),
+    ).toBe("http://localhost:3000");
   });
 });

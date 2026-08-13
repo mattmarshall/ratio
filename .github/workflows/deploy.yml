@@ -153,6 +153,11 @@ jobs:
               DemoMember="${DEMO_MEMBERS:-demo@ratio.fastverk.dev}"
 
       - name: Smoke test the deployed demo
+        env:
+          # ⛔ ASSERTED, NOT JUST PASSED. The step above hands this to
+          # CloudFormation; the step below reads it back out of the running
+          # process to prove it arrived. See the /authconfig.json check.
+          CONSOLE_ORIGIN: ${{ vars.CONSOLE_ORIGIN }}
         run: |
           set -euo pipefail
           URL="$(aws cloudformation describe-stacks --stack-name "$STACK" \
@@ -258,6 +263,23 @@ jobs:
           # registered Cognito callback URL or every sign-in is refused by the
           # IdP with an error the console cannot explain.
           want "the auth config" '"redirectPath":"/api/auth/callback"' "${URL}authconfig.json"
+
+          # ⛔ THE CONSOLE TAKES ITS OAuth `redirect_uri` FROM THIS FIELD, so a
+          # wrong value here refuses every sign-in — and refuses it at the IdP,
+          # with an error the console cannot explain because it never sees it.
+          # The field and the Cognito CallbackURLs are built from one
+          # ConsoleOrigin parameter, which is the point: this asserts the
+          # parameter arrived, not that two things agree.
+          #
+          # ⚠ Only when the variable is set. Unset is a supported state — no
+          # console to point at — and app.yaml registers just the localhost
+          # callback then.
+          if [ -n "${CONSOLE_ORIGIN:-}" ]; then
+            want "the console origin" "\"consoleOrigin\":\"${CONSOLE_ORIGIN}\"" \
+              "${URL}authconfig.json"
+          else
+            echo "CONSOLE_ORIGIN unset; skipping the console-origin assertion"
+          fi
 
           # ⛔ AUTH IS ON. Every /v1 route now requires a verified token, so an
           # unauthenticated request is REFUSED rather than served — this is the

@@ -431,17 +431,15 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         (_, "/authconfig.json") => (
             "200 OK",
             "application/json",
-            format!(
-                // ⛔ `/api/auth/callback`, ON THE CONSOLE'S OWN ORIGIN. It used
-                // to be `/app` — this binary's own page — because the browser
-                // ran the code exchange. It does not: the console's server does,
-                // and this path must match a registered Cognito callback URL in
-                // deploy/app.yaml or the sign-in is refused by the IdP.
-                "{{\"issuer\":{},\"clientId\":{},\"domain\":{},\"scopes\":[\"openid\",\"email\"],\
-                 \"redirectPath\":\"/api/auth/callback\"}}",
-                quote(&std::env::var("RATIO_COGNITO_ISSUER").unwrap_or_default()),
-                quote(&std::env::var("RATIO_COGNITO_CLIENT_ID").unwrap_or_default()),
-                quote(&std::env::var("RATIO_COGNITO_DOMAIN").unwrap_or_default()),
+            auth_config_json(
+                &std::env::var("RATIO_COGNITO_ISSUER").unwrap_or_default(),
+                &std::env::var("RATIO_COGNITO_CLIENT_ID").unwrap_or_default(),
+                &std::env::var("RATIO_COGNITO_DOMAIN").unwrap_or_default(),
+                // ⛔ THE SAME ACCESSOR THE `/` REDIRECT USES, NOT A FRESH
+                // `env::var`. `console_url()` applies `safe_redirect()`, so a
+                // control character in the CloudFormation value is stripped
+                // once, in one place, for both readers of it.
+                &console_url(),
             ),
         ),
 
@@ -930,6 +928,41 @@ fn console_url() -> String {
     // `std::env::set_var`, which is a race against every other test in this
     // binary.
     safe_redirect(&std::env::var("RATIO_CONSOLE_URL").unwrap_or_default()).to_string()
+}
+
+/// The public OIDC client configuration, as `/authconfig.json` serves it.
+///
+/// ⚠ A PURE FUNCTION SO A TEST CAN REACH IT, for the same reason `safe_redirect`
+/// is one: the alternative is `std::env::set_var`, which is a race against every
+/// other test in this binary.
+///
+/// ⛔ `consoleOrigin` IS HERE SO THERE IS ONE COPY OF IT, NOT TWO. Cognito
+/// registers `${ConsoleOrigin}/api/auth/callback` from `deploy/app.yaml`, and
+/// the console must send that byte-identical string as its OAuth `redirect_uri`
+/// or the IdP refuses the sign-in. It used to hold its own copy as a Vercel
+/// environment variable, and on the first deployment that had both, the two
+/// disagreed — `https://ratio-console.vercel.app` against
+/// `https://ratio-ims.vercel.app` — which is exactly the failure the comment on
+/// the `/authconfig.json` arm predicts for the issuer and the client id. The
+/// rule was already written down; this field applies it to the last value that
+/// was still escaping it.
+///
+/// Empty on a local `ratio watch`, where the console falls back to its own
+/// `RATIO_CONSOLE_ORIGIN` and signs in against `http://localhost:3000`.
+fn auth_config_json(issuer: &str, client_id: &str, domain: &str, console_origin: &str) -> String {
+    format!(
+        // ⛔ `/api/auth/callback`, ON THE CONSOLE'S OWN ORIGIN. It used to be
+        // `/app` — this binary's own page — because the browser ran the code
+        // exchange. It does not: the console's server does, and this path must
+        // match a registered Cognito callback URL in deploy/app.yaml or the
+        // sign-in is refused by the IdP.
+        "{{\"issuer\":{},\"clientId\":{},\"domain\":{},\"scopes\":[\"openid\",\"email\"],\
+         \"redirectPath\":\"/api/auth/callback\",\"consoleOrigin\":{}}}",
+        quote(issuer),
+        quote(client_id),
+        quote(domain),
+        quote(console_origin),
+    )
 }
 
 /// The configured console URL, or "" if it could not safely be a `Location:`.
@@ -1711,6 +1744,46 @@ mod tests {
         assert!(
             !security_headers("text/html", ours, None).contains("Strict-Transport-Security")
         );
+    }
+
+    #[test]
+    fn the_auth_config_publishes_the_origin_cognito_registered() {
+        // ⛔ THE CONSOLE READS ITS OWN `redirect_uri` FROM THIS FIELD, so this
+        // test is the thing standing between a rename and a sign-in that every
+        // account is refused from. `deploy/app.yaml` builds both the Cognito
+        // callback and `RATIO_CONSOLE_URL` out of one `ConsoleOrigin`
+        // parameter; the point of publishing it is that the console cannot then
+        // hold a copy that has drifted, which is precisely what happened when it
+        // did — `ratio-console.vercel.app` in Vercel against `ratio-ims` here.
+        let cfg = auth_config_json(
+            "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_ABC",
+            "clientid",
+            "ratio-demo-1.auth.us-east-1.amazoncognito.com",
+            "https://ratio-ims.vercel.app",
+        );
+        assert!(
+            cfg.contains(r#""consoleOrigin":"https://ratio-ims.vercel.app""#),
+            "the console origin must be published verbatim: {cfg}"
+        );
+        // The path is separate from the origin and the console joins the two.
+        assert!(cfg.contains(r#""redirectPath":"/api/auth/callback""#));
+
+        // ⚠ EMPTY IS A REAL ANSWER, NOT A MISSING FIELD. A local `ratio watch`
+        // sets no `RATIO_CONSOLE_URL`, and the console reads empty as "nothing
+        // published here" and falls back to its own environment — which is what
+        // makes `next dev` against a local book work with no Cognito at all. A
+        // field that vanished instead would be indistinguishable from an older
+        // server, and the console would have to guess which.
+        let local = auth_config_json("", "", "", "");
+        assert!(local.contains(r#""consoleOrigin":"""#), "{local}");
+
+        // ⛔ A CONTROL CHARACTER CANNOT BREAK OUT OF THE JSON STRING. The value
+        // reaches here through `console_url()`, which strips these already, so
+        // this is the second of two guards — but `quote` is what makes this
+        // function safe to call with anything, and a caller added later will
+        // not know about the first guard.
+        let hostile = auth_config_json("", "", "", "https://x/\"\r\n");
+        assert!(hostile.contains(r#""consoleOrigin":"https://x/\"\r\n""#), "{hostile}");
     }
 
     #[test]

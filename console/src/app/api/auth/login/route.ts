@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   // redirect to a page this same process serves. See `sameOrigin`.
   let origin: string;
   try {
-    origin = consoleOrigin();
+    origin = await consoleOrigin();
   } catch (e) {
     console.error("sign-in is not configured:", e);
     return sameOrigin("/signin?error=config");

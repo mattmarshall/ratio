@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     const t = await exchange(
       code,
       pending.verifier,
-      `${consoleOrigin()}/api/auth/callback`,
+      `${await consoleOrigin()}/api/auth/callback`,
     );
     const { sub, email } = claimsOf(t.idToken);
     await writeSession({

@@ -47,7 +47,19 @@ ALLOWED = re.compile(r"RATIO_SESSION_KEYS|RATIO_API_ORIGIN|RATIO_CONSOLE_ORIGIN"
 
 def main() -> None:
     root = Path(sys.argv[1]).parent
-    files = [p for p in root.rglob("*") if p.suffix in {".ts", ".tsx", ".css", ".json"}]
+    # ⛔ `scripts/` TOO, AND NOT ONLY `src/`. The build-time preflight reads all
+    # three of these variables, which makes it exactly the file somebody pastes
+    # a working default into "just to test the deploy". It sits outside `src/`,
+    # so scanning only there would have let the one file most likely to carry a
+    # value be the one file never looked at.
+    trees = [root, root.parent / "scripts"]
+    files = [
+        p
+        for t in trees
+        if t.is_dir()
+        for p in t.rglob("*")
+        if p.suffix in {".ts", ".tsx", ".css", ".json", ".mjs", ".js", ".sh"}
+    ]
     if not files:
         sys.exit("::error::no sources found — this would pass vacuously")
 
