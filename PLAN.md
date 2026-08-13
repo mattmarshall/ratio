@@ -282,11 +282,21 @@ books wrong.*
 
 ## The demo, deployed — ✅ LIVE
 
-`https://1h4q8av2gb.execute-api.us-east-1.amazonaws.com/` — the three screens,
-plus the MCP tools at `POST /mcp` so a model can reach them over the network
-rather than through a process on the caller's machine. Same six tools as the
-stdio transport, same dispatcher, same fence; a test asserts `approve_rule` is
-absent from the *public* endpoint's tool list.
+**Two surfaces now, on two clouds, and the split is deliberate.**
+
+`https://ratio-ims.vercel.app/` — the operations console. A Next.js application
+with a route per resource, so a break, a NAV strike or a configuration version
+can be sent to somebody rather than described. Sign-in is Cognito, open to
+anyone; the browser never calls AWS, because the console's own server holds the
+token and makes the call.
+
+`https://1h4q8av2gb.execute-api.us-east-1.amazonaws.com/` — the API the console
+reads, plus the three public screens (`/balance`, `/breaks`, `/rules`) and the
+chat page, which need no account and are Rust string literals with no build
+step. Plus the MCP tools at `POST /mcp` so a model can reach them over the
+network rather than through a process on the caller's machine. Same six tools as
+the stdio transport, same dispatcher, same fence; a test asserts `approve_rule`
+is absent from the *public* endpoint's tool list.
 
 AWS account `320473299741` (`ratio`), Platform OU. Lambda behind an HTTP API:
 nothing bills at rest, and a demo used a few times a week rounds to zero
