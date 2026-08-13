@@ -20,7 +20,14 @@ else in this repository would say a word.
 routes by directory, so `routes.ts` can name a screen that was never written and
 nothing at build time objects.
 
-Run: route_manifest_test.py <console.proto> <client.ts> <routes.ts> <app-dir>
+⛔ EVERY PATH IS DERIVED FROM A FILE, NEVER FROM THE WORKING DIRECTORY. Under
+Bazel a test runs from the runfiles root, not from its package, so a relative
+`console/src/app` resolves to nothing and every route reads as missing. The app
+directory is taken from `routes.ts`'s own location instead, which is right from
+any cwd — and the scripts must be runnable both ways, because CI runs them under
+Bazel and `console.yml` runs them directly.
+
+Run: route_manifest_test.py <console.proto> <client.ts> <routes.ts>
 """
 
 import re
@@ -91,8 +98,10 @@ def manifest(text: str) -> list[tuple[str, str, list[str]]]:
 def main() -> None:
     proto_text = Path(sys.argv[1]).read_text()
     client_text = Path(sys.argv[2]).read_text()
-    routes_text = Path(sys.argv[3]).read_text()
-    app_dir = Path(sys.argv[4])
+    routes = Path(sys.argv[3])
+    routes_text = routes.read_text()
+    # `src/routes.ts` sits beside `src/app/`. See the ⛔ above.
+    app_dir = routes.parent / "app"
 
     problems: list[str] = []
 

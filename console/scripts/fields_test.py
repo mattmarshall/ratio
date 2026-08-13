@@ -24,7 +24,12 @@ The needles come from two places, and both are inherited rather than invented:
     That test could not survive the console leaving the binary; its needles had
     to, so they are here.
 
-Run: fields_test.py <console-src-dir>
+⛔ THE PATH IS DERIVED FROM A FILE, NEVER FROM THE WORKING DIRECTORY. Under
+Bazel a test runs from the runfiles root rather than its package, so a relative
+`console/src` finds nothing — and "nothing" is how this test passes vacuously.
+The anchor is `src/routes.ts`; the tree scanned is its parent.
+
+Run: fields_test.py <console/src/routes.ts>
 """
 
 import sys
@@ -66,7 +71,7 @@ NEEDLES: list[tuple[str, str]] = [
 
 
 def main() -> None:
-    root = Path(sys.argv[1])
+    root = Path(sys.argv[1]).parent
     sources = [
         p
         for p in root.rglob("*")

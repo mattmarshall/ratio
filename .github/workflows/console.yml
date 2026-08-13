@@ -82,11 +82,14 @@ jobs:
       - name: The contract reaches every screen
         working-directory: .
         run: |
+          # ⚠ Anchor FILES, not directories — the scripts derive the tree from
+          # them so they behave identically here and under Bazel, where a test
+          # runs from the runfiles root rather than from its package.
           python3 console/scripts/route_manifest_test.py \
             proto/ratio/console/v1/console.proto \
-            console/src/wire/client.ts console/src/routes.ts console/src/app
+            console/src/wire/client.ts console/src/routes.ts
           python3 console/scripts/fixtures_test.py \
-            proto/ratio/console/v1/console.proto console/fixtures
-          python3 console/scripts/fields_test.py console/src
+            proto/ratio/console/v1/console.proto console/fixtures/funds.json
+          python3 console/scripts/fields_test.py console/src/routes.ts
           python3 console/scripts/tokens_test.py site/style.css console/src/app/globals.css
-          python3 console/scripts/no_secrets_test.py console/src
+          python3 console/scripts/no_secrets_test.py console/src/routes.ts

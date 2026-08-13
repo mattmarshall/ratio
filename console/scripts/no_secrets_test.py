@@ -15,7 +15,9 @@ deploy rather than an edit.
 ⚠ WHAT THIS CANNOT SEE is a secret in an environment variable set correctly,
 which is the whole intended path. It is a floor, not a proof.
 
-Run: no_secrets_test.py <console-src-dir>
+⛔ Anchored on a file, not a cwd-relative directory — see fields_test.py.
+
+Run: no_secrets_test.py <console/src/routes.ts>
 """
 
 import re
@@ -44,7 +46,7 @@ ALLOWED = re.compile(r"RATIO_SESSION_KEYS|RATIO_API_ORIGIN|RATIO_CONSOLE_ORIGIN"
 
 
 def main() -> None:
-    root = Path(sys.argv[1])
+    root = Path(sys.argv[1]).parent
     files = [p for p in root.rglob("*") if p.suffix in {".ts", ".tsx", ".css", ".json"}]
     if not files:
         sys.exit("::error::no sources found — this would pass vacuously")

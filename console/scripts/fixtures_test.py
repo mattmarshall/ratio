@@ -15,7 +15,9 @@ running `ratio watch` over `deploy/seed-demo-funds.sh`'s five funds, and that is
 the honest way to refresh them. This test is what keeps a hand-edit from
 silently inventing a field in the meantime.
 
-Run: fixtures_test.py <console.proto> <fixtures-dir>
+⛔ Anchored on a file, not a cwd-relative directory — see fields_test.py.
+
+Run: fixtures_test.py <console.proto> <console/fixtures/funds.json>
 """
 
 import json
@@ -114,7 +116,7 @@ def main() -> None:
     messages = proto_messages(Path(sys.argv[1]).read_text())
     if not messages:
         sys.exit("::error::no messages found in the proto — this would pass vacuously")
-    root = Path(sys.argv[2])
+    root = Path(sys.argv[2]).parent
 
     problems: list[str] = []
     seen = 0

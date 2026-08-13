@@ -34,11 +34,16 @@ sh_test(
     size = "small",
     srcs = ["run_test.sh"],
     args = [
-        "$(location scripts/route_manifest_test.py)",
-        "$(location //proto:ratio/console/v1/console.proto)",
-        "$(location src/wire/client.ts)",
-        "$(location src/routes.ts)",
-        "src/app",
+        "$(rootpath scripts/route_manifest_test.py)",
+        "$(rootpath //proto:ratio/console/v1/console.proto)",
+        "$(rootpath src/wire/client.ts)",
+        # ⛔ AN ANCHOR FILE, NOT A DIRECTORY, AND `rootpath` NOT `location`.
+        # A test runs from the RUNFILES ROOT, not from its package, so the
+        # first version of this passed a package-relative "src/app" and every
+        # route read as missing. `$(rootpath)` is defined as the path relative
+        # to that root — the same form //proto:mirrors_test uses — and the
+        # script derives `src/app` from where this file turned out to be.
+        "$(rootpath src/routes.ts)",
     ],
     data = [
         "scripts/route_manifest_test.py",
@@ -54,10 +59,13 @@ sh_test(
     size = "small",
     srcs = ["run_test.sh"],
     args = [
-        "$(location scripts/fields_test.py)",
-        "src",
+        "$(rootpath scripts/fields_test.py)",
+        "$(rootpath src/routes.ts)",
     ],
-    data = ["scripts/fields_test.py"] + glob([
+    data = [
+        "scripts/fields_test.py",
+        "src/routes.ts",
+    ] + glob([
         "src/**/*.ts",
         "src/**/*.tsx",
         "src/**/*.css",
@@ -70,9 +78,9 @@ sh_test(
     size = "small",
     srcs = ["run_test.sh"],
     args = [
-        "$(location scripts/fixtures_test.py)",
-        "$(location //proto:ratio/console/v1/console.proto)",
-        "fixtures",
+        "$(rootpath scripts/fixtures_test.py)",
+        "$(rootpath //proto:ratio/console/v1/console.proto)",
+        "$(rootpath fixtures/funds.json)",
     ],
     data = [
         "scripts/fixtures_test.py",
@@ -86,9 +94,9 @@ sh_test(
     size = "small",
     srcs = ["run_test.sh"],
     args = [
-        "$(location scripts/tokens_test.py)",
-        "$(location //site:style.css)",
-        "$(location src/app/globals.css)",
+        "$(rootpath scripts/tokens_test.py)",
+        "$(rootpath //site:style.css)",
+        "$(rootpath src/app/globals.css)",
     ],
     data = [
         "scripts/tokens_test.py",
@@ -103,10 +111,13 @@ sh_test(
     size = "small",
     srcs = ["run_test.sh"],
     args = [
-        "$(location scripts/no_secrets_test.py)",
-        "src",
+        "$(rootpath scripts/no_secrets_test.py)",
+        "$(rootpath src/routes.ts)",
     ],
-    data = ["scripts/no_secrets_test.py"] + glob([
+    data = [
+        "scripts/no_secrets_test.py",
+        "src/routes.ts",
+    ] + glob([
         "src/**/*.ts",
         "src/**/*.tsx",
         "src/**/*.css",
