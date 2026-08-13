@@ -56,7 +56,13 @@ use ratio_store::{
 };
 
 /// The shape of the fund to build. Mirrors `Ratio.Closure.Dials`.
-#[derive(Clone, Copy, Debug)]
+///
+/// ⛔ SERIALIZED INTO THE BOOK, because a generated book otherwise carries no
+/// record of what generated it. `ratio bench --fold` measures a period end using
+/// the shape — one mark per security, one rate per currency — so a caller who
+/// had to RESTATE the dials could describe a fund that is not the one on disk
+/// and get a confident report about it. `SHAPE` is read back instead.
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Shape {
     pub securities: i64,
     /// Currencies the chart is denominated in. `Ratio.Closure.fxCost` is one
@@ -503,7 +509,43 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
         )?;
     }
 
+    // ⛔ LAST, SO IT IS ONLY THERE IF EVERYTHING ABOVE SUCCEEDED. A book that
+    // failed halfway through generation must not read back as a complete fund of
+    // a declared shape; a missing `SHAPE` is the honest signal that this is not a
+    // generated book, and `shape_of` says so in those words.
+    put_shape(path, shape)?;
+
     Ok(written)
+}
+
+/// Where a generated book records the dials it was generated from.
+const SHAPE: &str = "SHAPE";
+
+fn put_shape(path: &std::path::Path, shape: Shape) -> Result<()> {
+    let json = serde_json::to_string_pretty(&shape).context("serializing the shape")?;
+    std::fs::write(path.join(SHAPE), json)
+        .with_context(|| format!("writing {}", path.join(SHAPE).display()))
+}
+
+/// The dials a generated book was generated from.
+///
+/// ⛔ THE ONLY WAY TO LEARN A BOOK'S SHAPE, and it refuses rather than guessing.
+/// A period end measured against restated dials is a report about a fund that
+/// may not be the one on disk — one mark per security and one rate per currency
+/// are read off this, so a wrong `securities` marks names that were never
+/// generated and a wrong `currencies` translates at rates nothing traded at.
+/// Both would tie, and both would be somebody else's fund.
+pub fn shape_of(path: &std::path::Path) -> Result<Shape> {
+    let p = path.join(SHAPE);
+    let raw = std::fs::read_to_string(&p).with_context(|| {
+        format!(
+            "{} has no {SHAPE}, so it did not come from `ratio gen` — there is nothing here \
+             that says how many securities or currencies it holds, and a period end measured \
+             against a shape somebody restated would be a report about a different fund",
+            path.display()
+        )
+    })?;
+    serde_json::from_str(&raw).with_context(|| format!("reading {}", p.display()))
 }
 
 /// What one unit of currency `c` is worth in the base, in hundredths.
@@ -826,5 +868,53 @@ mod tests {
             p.units_as_of(1, &ticker(i), "2026-06-30")
                 .unwrap_or_else(|e| panic!("{} cannot be valued: {e:#}", ticker(i)));
         }
+    }
+
+    #[test]
+    fn a_generated_book_says_what_generated_it() {
+        // ⛔ EVERY DIAL, NOT JUST THE TWO A HEADLINE QUOTES. `ratio bench --fold`
+        // marks one security at a time and translates one currency at a time off
+        // this record, and `method` decides the realized gain — so a field that
+        // failed to round-trip would produce a confident report about a fund
+        // nobody generated.
+        let s = Shape {
+            securities: 7,
+            currencies: 2,
+            turnover: 3,
+            lots_per: 5,
+            open_actions: 1,
+            capital_txns: 2,
+            seed: 42,
+            method: ratio_rules::LotMethod::Hifo,
+        };
+        let d = tmp("shape-roundtrip");
+        generate(&d, s).unwrap();
+        let back = shape_of(&d).unwrap();
+
+        assert_eq!(back.securities, s.securities);
+        assert_eq!(back.currencies, s.currencies);
+        assert_eq!(back.lots_per, s.lots_per);
+        assert_eq!(back.turnover, s.turnover);
+        assert_eq!(back.open_actions, s.open_actions);
+        assert_eq!(back.capital_txns, s.capital_txns);
+        assert_eq!(back.seed, s.seed);
+        // ⭐ The dial the demo exists to show: two funds from one seed differing
+        // only here realize different gains. A method that did not survive the
+        // round trip would fold the book back under FIFO and say so silently.
+        assert_eq!(back.method, s.method);
+    }
+
+    #[test]
+    fn a_book_nobody_generated_refuses_to_state_a_shape() {
+        // ⛔ REFUSES RATHER THAN DEFAULTING. `Shape::default()` is a real fund —
+        // 500 securities, three currencies — so a `unwrap_or_default` here would
+        // hand `bench --fold` a shape for a book that has none, and it would mark
+        // five hundred tickers that do not exist and report the result.
+        let d = tmp("no-shape");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let err = shape_of(&d).unwrap_err();
+        let said = format!("{err:#}");
+        assert!(said.contains("did not come from `ratio gen`"), "{said}");
     }
 }

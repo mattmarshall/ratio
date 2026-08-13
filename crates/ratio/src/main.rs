@@ -65,6 +65,8 @@ usage:
   ratio bench [--securities N] [--lots-per N] [--turnover N]
         [--currencies N]
                                        generate a fund and measure a period end
+  ratio bench --fold [--book DIR]      measure a period end over a book already
+                                       generated; takes no dials, reads the shape
   ratio closure [--securities N] [--currencies N] [--lots-per N]
         [--open-actions N] [--capital N]
                                        what a period end costs, before running it
@@ -139,7 +141,7 @@ fn main() -> Result<()> {
         ["stale"] => stale(book),
         ["closure", rest @ ..] => closure(book, rest),
         ["gen", rest @ ..] => gen(book, rest),
-        ["bench", rest @ ..] => bench(rest),
+        ["bench", rest @ ..] => bench(book, rest),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
         ["server"] => serve(),
@@ -632,12 +634,41 @@ fn plural(n: i64, one: &str, many: &str) -> String {
 ///                lots nowhere in it. This does NOT grow.
 ///
 /// "Twenty million lots are free" is true of the second and false of the first.
-fn bench(args: &[&str]) -> Result<()> {
+/// ⛔ `--fold` MEASURES A BOOK THAT IS ALREADY THERE, and it takes NO dials.
+/// The shape is read back from the book (`ratio_gen::shape_of`) rather than
+/// restated on the command line, because the mark and FX phases below are driven
+/// by the shape: a caller who typed `--fold --securities 500` at a twenty-security
+/// book would get a report naming four hundred and eighty tickers that do not
+/// exist in it. Refusing the dials outright is the only version of this that
+/// cannot be quietly wrong.
+///
+/// ⚠ AND IT IS OPT-IN RATHER THAN INFERRED FROM `--book`. `split_book_flag`
+/// defaults the book to `./book`, so "fold whatever is at the book path" would
+/// silently measure a book the caller never mentioned the moment they ran this
+/// from a directory that happens to have one.
+fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     use std::time::Instant;
 
-    let (shape, _) = shape_from(args)?;
+    let folding = args.contains(&"--fold");
+    let (shape, dir) = if folding {
+        let rest: Vec<&str> = args.iter().copied().filter(|a| *a != "--fold").collect();
+        if let Some(other) = rest.first() {
+            bail!(
+                "`--fold` measures the book at {}, so {other:?} would describe a fund that is \
+                 not the one being folded — the shape is read from the book",
+                book.display()
+            );
+        }
+        (ratio_gen::shape_of(&book)?, book)
+    } else {
+        (shape_from(args)?.0, std::env::temp_dir().join("ratio-bench-book"))
+    };
 
-    println!("A FUND OF THIS SHAPE, GENERATED AND MEASURED");
+    if folding {
+        println!("A FUND OF THIS SHAPE, FOLDED FROM {}", dir.display());
+    } else {
+        println!("A FUND OF THIS SHAPE, GENERATED AND MEASURED");
+    }
     println!();
     println!("  {:<22}{:>12}", "securities", shape.securities);
     println!("  {:<22}{:>12}", "currencies", shape.currencies);
@@ -646,19 +677,42 @@ fn bench(args: &[&str]) -> Result<()> {
     println!("  {:<22}{:>12}", "open corp. actions", shape.open_actions);
     println!();
 
-    let dir = std::env::temp_dir().join("ratio-bench-book");
-    let t = Instant::now();
-    let entries = ratio_gen::generate(&dir, shape)?;
-    let gen_ns = t.elapsed().as_nanos() as i64;
-    println!(
-        "  generated {entries} journal entries in {}",
-        ratio_nav::closure::human_nanos(gen_ns)
-    );
+    let entries = if folding {
+        // ⛔ NOT GENERATED, AND SAID SO RATHER THAN PRINTED AS ZERO. A `0` on the
+        // generation line reads as "generating this fund was free", which is the
+        // opposite of true — it is the line item this mode SKIPS.
+        println!("  generated {:>14}   ⛔ not generated here — folded as found", "—");
+        None
+    } else {
+        let t = Instant::now();
+        let n = ratio_gen::generate(&dir, shape)?;
+        let gen_ns = t.elapsed().as_nanos() as i64;
+        println!(
+            "  generated {n} journal entries in {}",
+            ratio_nav::closure::human_nanos(gen_ns)
+        );
+        Some(n)
+    };
 
     // COLD: fold the whole journal into a projection. O(entries).
+    //
+    // ⚠ THE TICKER GOES TO STDERR, NOT STDOUT. The report below is parsed by
+    // scripts; progress is for whoever is watching a fold that can run for
+    // sixteen minutes, and mixing the two would corrupt the first to serve the
+    // second.
     let t = Instant::now();
-    let proj = ratio_project::Projection::of_book(&dir)?;
+    let proj = if folding {
+        use std::io::Write as _;
+        ratio_project::Projection::of_book_with_progress(&dir, &mut |n| {
+            let _ = write!(std::io::stderr(), "\r  folding {n} entries…");
+            let _ = std::io::stderr().flush();
+        })
+        .inspect(|_| eprintln!())?
+    } else {
+        ratio_project::Projection::of_book(&dir)?
+    };
     let cold_ns = t.elapsed().as_nanos() as i64;
+    let entries = entries.unwrap_or(proj.prefix());
 
     // The prices and rates a NAV reads. `Ratio.Closure.navCost` is
     // `markCost + fxCost + ...` — one price per SECURITY, one rate per
