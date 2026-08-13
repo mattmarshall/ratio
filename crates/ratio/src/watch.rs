@@ -276,6 +276,8 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         (_, "/balance") => ("200 OK", "text/html; charset=utf-8", page(BALANCE_BODY, "balance")),
         (_, "/breaks") => ("200 OK", "text/html; charset=utf-8", page(BREAKS_BODY, "breaks")),
         (_, "/rules") => ("200 OK", "text/html; charset=utf-8", page(RULES_BODY, "rules")),
+        (_, "/scale") => ("200 OK", "text/html; charset=utf-8", page(SCALE_BODY, "scale")),
+        (_, "/scale.json") => json(scale_json(book, &req.query)),
         (_, "/balance.json") => json(balance_json(book)),
         (_, "/postings.json") => json(postings_json(book, &req.query)),
         (_, "/breaks.json") => json(breaks_json(book)),
@@ -656,6 +658,107 @@ fn balance_json(book: &Path) -> Result<String> {
 }
 
 /// The postings behind one account — the drill-down.
+/// This machine's read rate, measured ONCE.
+///
+/// ⛔ NOT PER REQUEST, AND THAT IS A SECURITY PROPERTY AS MUCH AS A CORRECTNESS
+/// ONE. `closure::measure` makes twenty full passes over the journal to average
+/// out the fixed cost of opening it. On a public endpoint that is a lever: a
+/// visitor who reloads a page would spend twenty journal reads of somebody
+/// else's CPU per reload, and the demo runs on a function with a concurrency
+/// limit of ten and a five-dollar monthly budget behind it.
+///
+/// ⚠ A rate is a property of the MACHINE, so measuring it repeatedly answers
+/// the same question at somebody's expense. Once per process is the honest
+/// frequency, and a Lambda cold start is where it lands.
+fn read_rate(book: &Path) -> &'static ratio_nav::closure::Calibration {
+    static RATE: std::sync::OnceLock<ratio_nav::closure::Calibration> = std::sync::OnceLock::new();
+    RATE.get_or_init(|| {
+        // ⛔ THE REASON IS KEPT RATHER THAN SWALLOWED. `Calibration::provenance`
+        // is rendered verbatim on the page, and "shipped" versus "measured here"
+        // is the difference between a number this machine stands behind and one
+        // taken off a laptop in August — a reader who cannot tell them apart
+        // will read the constant as a measurement.
+        match ratio_nav::closure::measure(book) {
+            Ok(c) => c,
+            Err(e) => {
+                let mut c = ratio_nav::closure::Calibration::measured();
+                c.provenance = format!("{} — not measured here: {e:#}", c.provenance);
+                c
+            }
+        }
+    })
+}
+
+/// What a period end of a given shape COSTS, before anyone runs one.
+///
+/// ⭐ THE ONLY HALF OF THE SCALE ARGUMENT THAT FITS IN A WEB REQUEST. Folding a
+/// twenty-million-lot journal takes 995 seconds and a gigabyte; this reads 503
+/// things and takes microseconds, because `Ratio.Closure.a_quiet_nav_never_
+/// reads_the_lots` says the lots are not among them. The dials are the visitor's;
+/// the arithmetic is emitted from the proof.
+///
+/// ⛔ IT IS THE FLAT CURVE, AND IT SAYS SO. `cold_build` is deliberately absent
+/// from this response rather than zero: a NAV strike costing microseconds over
+/// twenty million lots is true, and quoting it as what the whole book costs is
+/// the overclaim `ratio bench` exists to make hard. The page carries the other
+/// curve beside it.
+fn scale_json(book: &Path, query: &str) -> Result<String> {
+    use ratio_nav::closure::{estimate, Dials};
+
+    let dial = |name: &str, fallback: i64| -> Result<i64> {
+        match query.split('&').find_map(|kv| kv.strip_prefix(&format!("{name}="))) {
+            None => Ok(fallback),
+            Some(v) => {
+                let n: i64 = v.parse().with_context(|| format!("{name} must be a number"))?;
+                // ⛔ REFUSED, NOT CLAMPED. `estimate` bounds-checks its products
+                // and an estimate that silently clamped would be one somebody
+                // quotes. A ceiling here keeps the refusal cheap: the guard in
+                // `estimate` is about overflow, and this is about a caller who
+                // typed enough zeroes to make the page meaningless.
+                if !(0..=100_000_000).contains(&n) {
+                    bail!("{name} must be between 0 and 100,000,000 — {n} is not a fund");
+                }
+                Ok(n)
+            }
+        }
+    };
+
+    // An S&P tracker in its twentieth year: five hundred names, three
+    // currencies, twenty million open lots. The same default `ratio closure`
+    // takes, because it is the case worth arguing about.
+    let d = Dials {
+        securities: dial("securities", 500)?,
+        currencies: dial("currencies", 3)?,
+        lots_per: dial("lots-per", 40_000)?,
+        open_actions: dial("open-actions", 0)?,
+        capital_txns: dial("capital", 0)?,
+    };
+    let cal = read_rate(book);
+    let e = estimate(d, cal)?;
+
+    Ok(format!(
+        "{{\"securities\":{},\"currencies\":{},\"lots_per\":{},\"open_actions\":{},\
+         \"capital\":{},\"open_lots\":{},\"reads\":{},\"marks\":{},\"fx\":{},\
+         \"actions\":{},\"capital_reads\":{},\"nanos\":{},\"human\":{},\
+         \"nanos_per_read\":{},\"provenance\":{}}}",
+        d.securities,
+        d.currencies,
+        d.lots_per,
+        d.open_actions,
+        d.capital_txns,
+        e.open_lots,
+        e.reads,
+        e.marks,
+        e.fx,
+        e.actions,
+        e.capital,
+        e.nanos,
+        quote(&ratio_nav::closure::human_nanos(e.nanos)),
+        cal.nanos_per_read,
+        quote(&cal.provenance),
+    ))
+}
+
 fn postings_json(book: &Path, query: &str) -> Result<String> {
     let dim: i64 = query
         .split('&')
@@ -982,11 +1085,12 @@ fn page(body: &str, current: &str) -> String {
         )
     };
     format!(
-        "{HEAD}<nav class=\"tabs\">{}{}{}{}</nav>{body}{FOOT}",
+        "{HEAD}<nav class=\"tabs\">{}{}{}{}{}</nav>{body}{FOOT}",
         tab("chat", "/chat", "Set up the books"),
         tab("balance", "/balance", "Trial balance"),
         tab("breaks", "/breaks", "Break report"),
-        tab("rules", "/rules", "Rules")
+        tab("rules", "/rules", "Rules"),
+        tab("scale", "/scale", "Scale")
     )
 }
 
@@ -1523,6 +1627,175 @@ function head(title, ...chips) {
 </script>
 "##;
 
+/// The scale screen — what a period end costs, at a size you choose.
+///
+/// ⛔ TWO CURVES, SIDE BY SIDE, ALWAYS. The dial answers "what does the NAV
+/// read", which is flat in the tax lots and is the persuasive number. The panel
+/// beside it is the cold build, which is NOT flat and which nobody can run from
+/// a browser — 995 seconds and a gigabyte at twenty million lots. A screen
+/// showing only the first would be the overclaim `ratio bench` exists to make
+/// hard, published at a public URL.
+///
+/// ⚠ The recorded figures below are quoted from HANDOFF.md and labelled as
+/// recorded. They are a measurement taken on a named machine on a named day, not
+/// something this process did — and the page says which is which, because a
+/// reader who cannot tell them apart will take the recorded one for a live one.
+const SCALE_BODY: &str = r##"<div class="wrap">
+<h1>Twenty million tax lots</h1>
+<p class="lede">A NAV does not read the tax lots. That is a claim about a fund
+with a lot of them, so turn the dial and watch what a period end actually reads.
+The arithmetic is emitted from <code>Ratio.Closure</code> — it is the same
+function the kernel runs, not a model of it.</p>
+
+<!-- ⛔ A PLAIN DIV, NOT A FORM ELEMENT, AND THE FENCE IS WORTH MORE THAN THE
+     CONVENIENCE. No screen this binary serves has one: `approval_is_a_person_
+     typing_a_command_not_a_control` asserts it, because a form is how a page
+     grows a write. These dials only ever produce a query string on a GET, so
+     they need nothing of the kind — and widening that assertion to admit "a
+     read-only one" would remove the guard for every screen after this.
+     ⚠ The assertion is a grep over this source, so naming the tag here at all
+     would trip it. That is the check working, not a false alarm to route
+     around. -->
+
+<div id="dials" class="dials">
+  <label>Securities <input id="securities" type="number" min="0" max="100000000" value="500"></label>
+  <label>Currencies <input id="currencies" type="number" min="0" max="100000000" value="3"></label>
+  <label>Open lots per security <input id="lots-per" type="number" min="0" max="100000000" value="40000"></label>
+  <label>Open corporate actions <input id="open-actions" type="number" min="0" max="100000000" value="0"></label>
+</div>
+
+<div class="panels">
+  <section class="panel">
+    <h2>What the NAV reads <span class="flat">flat in the lots</span></h2>
+    <dl id="estimate"><dt>open tax lots</dt><dd>—</dd></dl>
+    <p class="prov" id="prov"></p>
+    <p class="note" id="cliff"></p>
+  </section>
+
+  <section class="panel warn">
+    <h2>What folding the journal costs <span class="grows">grows with every trade</span></h2>
+    <p>An append-only log does not forget a closed lot, so building a projection
+    from nothing is <em>O(entries)</em> and is the curve that does not flatten.
+    This is a recorded run, not this page:</p>
+    <table class="mini"><tbody>
+      <tr><th>open tax lots</th><td>20,004,324</td></tr>
+      <tr><th>journal entries</th><td>140,030,274</td></tr>
+      <tr><th>cold build</th><td>995.0 s</td></tr>
+      <tr><th class="sub">of which parse</th><td class="sub">655.2 s</td></tr>
+      <tr><th class="sub">of which fold</th><td class="sub">339.7 s</td></tr>
+      <tr><th>NAV strike off it</th><td>12 µs</td></tr>
+      <tr><th>peak memory footprint</th><td>1.00 GB</td></tr>
+      <tr><th>trial balance</th><td>0</td></tr>
+    </tbody></table>
+    <p class="note">⛔ <strong>Peak footprint, not resident set size.</strong> At
+    this size macOS reports 52 MB for a process whose real footprint is 1.00 GB,
+    because the lot data is written once and then cold, which is exactly what the
+    OS compresses. A nineteen-fold understatement of the number that decides
+    whether a book can be folded at all.</p>
+    <p class="note">Reproduce it with
+    <code>ratio bench --securities 500 --lots-per 40000 --currencies 3</code>,
+    or fold a book you already have with
+    <code>ratio bench --fold --book DIR</code>.</p>
+  </section>
+</div>
+
+<p class="note">⛔ <strong>Quoting the second curve as though it were the
+first is the overclaim this screen exists to make hard.</strong> "Twenty million
+lots are free" is true of the strike and false of the fold. Both are on this
+page for that reason.</p>
+</div>
+<style>
+.lede{color:var(--text-2);max-width:60ch}
+.dials{display:flex;gap:18px;flex-wrap:wrap;margin:22px 0;padding:16px;
+  background:var(--surface);border:1px solid var(--rule);border-radius:8px}
+.dials label{display:flex;flex-direction:column;gap:6px;font-size:13px;
+  font-weight:600;color:var(--muted)}
+.dials input{width:150px;padding:6px 8px;font:inherit;font-size:14px;
+  background:var(--raised);color:var(--text);border:1px solid var(--rule);
+  border-radius:6px}
+.panels{display:grid;grid-template-columns:1fr;gap:18px}
+@media(min-width:760px){.panels{grid-template-columns:1fr 1fr}}
+.panel{padding:16px;border:1px solid var(--rule);border-radius:8px;
+  background:var(--raised)}
+.panel h2{font-size:15px;margin:0 0 12px;display:flex;gap:8px;
+  align-items:baseline;flex-wrap:wrap}
+.flat,.grows{font-size:11px;font-weight:700;letter-spacing:.04em;
+  text-transform:uppercase;padding:2px 7px;border-radius:99px}
+.flat{background:var(--accent);color:var(--ground)}
+.grows{background:var(--warn);color:var(--ground)}
+#estimate{display:grid;grid-template-columns:1fr auto;gap:6px 16px;margin:0}
+#estimate dt{color:var(--muted);font-size:14px}
+#estimate dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;
+  font-weight:600}
+#estimate .big{font-size:22px;color:var(--accent)}
+.mini{width:100%;border-collapse:collapse;font-size:14px}
+.mini th{text-align:left;font-weight:400;color:var(--muted);padding:3px 0}
+.mini td{text-align:right;font-variant-numeric:tabular-nums;padding:3px 0}
+.mini .sub{padding-left:14px;color:var(--muted);font-size:13px}
+.prov{font-size:12px;color:var(--muted);margin:14px 0 0;font-style:italic}
+.note{font-size:13px;color:var(--muted);max-width:62ch}
+</style>
+<script>
+// ⛔ THE ARITHMETIC IS NOT HERE. Every figure below comes from /scale.json,
+// which calls `ratio_nav::closure::estimate` — emitted from `Ratio.Closure`. A
+// copy of the formula in JavaScript would be a second answer to a proved
+// question, and the two would drift the first time the proof changed.
+const fmt = n => n.toLocaleString('en-US');
+const DIALS = ['securities', 'currencies', 'lots-per', 'open-actions'];
+const dials = document.getElementById('dials');
+let pending = null;
+
+// ⛔ BUILT WITH THE DOM, NEVER innerHTML. Two of the strings rendered here are
+// not ours: a refusal quotes the caller's own dial back at them, and the
+// provenance carries a filesystem path. Assigning either as markup would turn a
+// query string into script, on a page served without a sign-in.
+function row(dl, label, value, big) {
+  const dt = document.createElement('dt');
+  dt.textContent = label;
+  const dd = document.createElement('dd');
+  dd.textContent = value;
+  if (big) dd.className = 'big';
+  dl.append(dt, dd);
+}
+
+async function tick() {
+  const q = new URLSearchParams();
+  for (const name of DIALS) q.set(name, document.getElementById(name).value);
+  const r = await fetch('/scale.json?' + q.toString());
+  const d = await r.json();
+  const est = document.getElementById('estimate');
+  est.replaceChildren();
+  if (d.error) { row(est, 'refused', d.error); return; }
+  row(est, 'open tax lots', fmt(d.open_lots));
+  row(est, 'marks — one per security', fmt(d.marks));
+  row(est, 'rates — one per currency', fmt(d.fx));
+  row(est, 'corporate actions', fmt(d.actions));
+  row(est, 'reads a period end makes', fmt(d.reads), true);
+  row(est, 'at this machine’s rate', d.human, true);
+  document.getElementById('prov').textContent =
+    d.nanos_per_read + ' ns per read — ' + d.provenance;
+  // ⭐ THE CLIFF. `Ratio.Closure.an_open_action_costs_the_lots_of_its_instrument`
+  // — one outstanding action makes the NAV read the lots of that one name, and
+  // the cost goes from the chart to the history. It is the single dial on this
+  // page that changes the shape of the answer rather than its size.
+  document.getElementById('cliff').textContent = d.open_actions > 0
+    ? 'With ' + fmt(d.open_actions) + ' action(s) outstanding the NAV reads '
+      + fmt(d.actions) + ' lots — the tax lots are in the total. That is the '
+      + 'cliff Ratio.Closure.the_cliff names, and it is why an action is carried '
+      + 'as a factor rather than applied by rewriting.'
+    : 'With nothing outstanding the tax lots are not in the total at all: '
+      + 'Ratio.Closure.a_quiet_nav_never_reads_the_lots. Raise the open actions '
+      + 'above zero to see what a rewrite would have cost.';
+}
+
+dials.addEventListener('input', () => {
+  clearTimeout(pending);
+  pending = setTimeout(tick, 150);
+});
+tick();
+</script>
+"##;
+
 const RULES_BODY: &str = r##"<div class="wrap">
   <h1>Rules and their checks</h1>
   <p class="meta">configuration <code id="config">—</code></p>
@@ -2008,11 +2281,16 @@ mod tests {
 
     // -- the pages ---------------------------------------------------------
 
-    const SCREENS: [(&str, &str); 4] = [
+    // ⛔ A PAGE MISSING FROM THIS LIST IS A PAGE NOTHING BELOW CHECKS, and the
+    // omission looks exactly like a suite that passes. Every screen the route
+    // table serves belongs here; `every_screen_the_router_serves_is_listed_here`
+    // is what stops the next one being forgotten.
+    const SCREENS: [(&str, &str); 5] = [
         ("chat", CHAT_BODY),
         ("balance", BALANCE_BODY),
         ("breaks", BREAKS_BODY),
         ("rules", RULES_BODY),
+        ("scale", SCALE_BODY),
     ];
 
     #[test]
@@ -2057,15 +2335,29 @@ mod tests {
     }
 
     #[test]
-    fn there_are_four_screens_and_no_fifth() {
+    fn there_are_five_screens_and_no_sixth() {
         // PLAN.md said "Three. Not four." The fourth is the MCP conversation
         // itself, which that rule assumed would happen in someone else's
         // client — "the MCP conversation IS the authoring interface". It still
         // is; this screen shows it rather than replacing it, and there is
         // still no portal, no dashboard, no settings and no rule editor.
+        //
+        // ⭐ THE FIFTH IS `scale`, AND IT IS A DELIBERATE ADDITION RATHER THAN
+        // DRIFT. `deploy/seed-demo-funds.sh` names the gap it closes in as many
+        // words — "THE SCALE ARGUMENT WAS UNSHOWABLE… 'A NAV does not read the
+        // tax lots' is a claim about a fund with a lot of them" — and the demo's
+        // largest fund holds eight hundred. The screen turns the dials of
+        // `Ratio.Closure` and shows the recorded cold build beside the answer,
+        // so the claim can be CHECKED rather than taken.
+        //
+        // ⛔ IT READS AND NOTHING ELSE. No portal, no dashboard, no settings, no
+        // rule editor, and no button that spends anybody's money — the tests
+        // above hold it to having no form and no write. This assertion is the
+        // moment to notice if that ever stops being true, which is why it counts
+        // rather than describes.
         let html = page(CHAT_BODY, "chat");
         let tabs = html.matches("<a href=").count();
-        assert_eq!(tabs, 4, "the nav offers {tabs} screens");
+        assert_eq!(tabs, 5, "the nav offers {tabs} screens");
     }
 
     #[test]
@@ -2195,6 +2487,60 @@ mod tests {
     //
     // ⚠ Do not restore this without restoring the console it read.
 
+
+    #[test]
+    fn every_screen_the_router_serves_is_listed_here() {
+        // ⛔ THE TEST THAT NEARLY WAS NOT WRITTEN, AND THE OMISSION IT IS FOR
+        // ACTUALLY HAPPENED. `SCALE_BODY` was added, routed, and served while
+        // `SCREENS` still listed four pages — so every hygiene test below ran
+        // over the old four and passed, and the new page went out unchecked by
+        // any of them. A suite that silently narrows its own scope is the exact
+        // failure mode this repository keeps finding.
+        //
+        // The router is the source of truth: a page is served iff `route` maps a
+        // path to `page(BODY, slug)`. This reads the router's own source for
+        // those calls and insists each one is listed above.
+        let router = include_str!("watch.rs");
+        let mut served: Vec<&str> = router
+            .lines()
+            // The route arms, not this test's own mention of them.
+            .filter(|l| l.contains("=> (\"200 OK\", \"text/html; charset=utf-8\", page("))
+            .filter_map(|l| l.split("page(").nth(1))
+            .filter_map(|rest| rest.split(',').next())
+            .map(|body| body.trim())
+            .collect();
+        served.sort_unstable();
+        served.dedup();
+
+        assert!(!served.is_empty(), "found no page routes at all — did the router change shape?");
+        for body in &served {
+            assert!(
+                SCREENS.iter().any(|(_, b)| std::ptr::eq(
+                    *b as *const str,
+                    match *body {
+                        "CHAT_BODY" => CHAT_BODY,
+                        "BALANCE_BODY" => BALANCE_BODY,
+                        "BREAKS_BODY" => BREAKS_BODY,
+                        "RULES_BODY" => RULES_BODY,
+                        "SCALE_BODY" => SCALE_BODY,
+                        other => panic!(
+                            "the router serves {other}, which this test does not know how to \
+                             resolve — add it to both SCREENS and this match"
+                        ),
+                    } as *const str
+                )),
+                "the router serves {body} but SCREENS does not list it, so every page \
+                 check below skips it"
+            );
+        }
+        assert_eq!(
+            served.len(),
+            SCREENS.len(),
+            "the router serves {} pages and SCREENS lists {} — they must be the same set",
+            served.len(),
+            SCREENS.len()
+        );
+    }
 
     #[test]
     fn customer_text_never_becomes_markup() {
