@@ -36,9 +36,21 @@ Two things about that are load-bearing here:
 
 Set `ConsoleOrigin` through the **`CONSOLE_ORIGIN` repository variable** (a
 hostname is not a secret, so a variable rather than a secret — same reasoning as
-`DEMO_MEMBERS`). Leave it unset and the demo still works: the three public
-screens, the API and MCP all serve, and `/` says what it serves instead of
-redirecting.
+`DEMO_MEMBERS`). It is currently `https://ratio-ims.vercel.app`. Leave it unset
+and the demo still works: the three public screens, the API and MCP all serve,
+and `/` says what it serves instead of redirecting.
+
+⛔ **VERCEL AUTHENTICATION HAS TO BE OFF ON THE CONSOLE PROJECT, AND IT IS ON BY
+DEFAULT.** The team default is `ssoProtection: all_except_custom_domains`, so
+every `*.vercel.app` URL sits behind Vercel's own login. That breaks this twice
+over: nobody outside the Vercel team can reach the console, and Vercel
+intercepts the return from Cognito before `/api/auth/callback` ever sees the
+`?code=` — which reads as a broken sign-in rather than as a protection setting.
+Vercel dashboard → the project → Settings → Deployment Protection → Vercel
+Authentication → Disabled. That is correct here: the console is *meant* to be a
+public sign-in page, Cognito is the real boundary, and `RATIO_AUTH=required`
+makes this API fail closed regardless. A custom domain would be exempt, which is
+the other way out once #25 lands.
 
 ⛔ **Cognito accepts no wildcards in callback URLs.** A Vercel preview
 deployment on its own generated hostname cannot sign in. That is deliberate —

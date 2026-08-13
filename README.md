@@ -14,10 +14,18 @@ and staleness arguments are TLA+, the running system is Rust — and parts of th
 Rust are **emitted from the Lean**, so the theorem and the code make the same
 decision.
 
-### ▶ [Try the live demo](https://1h4q8av2gb.execute-api.us-east-1.amazonaws.com/)
+### ▶ [Try the live demo](https://ratio-ims.vercel.app/)
 
-Sign in with Google or email and watch a real fund's books tie out. It is the
-same binary you build below, running on AWS Lambda.
+Sign in with Google or email and watch a real fund's books tie out — five
+seeded funds, one of them blocked by a break nobody has explained yet. Every
+break, NAV strike and configuration version has a URL, so a figure can be sent
+to somebody rather than described.
+
+The console is a Next.js application on Vercel; the API it reads is the same
+binary you build below, running on AWS Lambda. If you would rather see a book
+than a sign-in form, the
+[trial balance](https://1h4q8av2gb.execute-api.us-east-1.amazonaws.com/balance)
+is public and needs no account.
 
 ## Quickstart
 
