@@ -10,11 +10,11 @@ export const dynamic = "force-dynamic";
 export default async function LotDetail({
   params,
 }: {
-  params: Promise<{ fund: string; position: string; lot: string }>;
+  params: Promise<{ fund: string; view: string; position: string; lot: string }>;
 }) {
-  const { fund, position, lot } = await params;
+  const { fund, view, position, lot } = await params;
   const c = await caller();
-  const l = await or404(getLot(c, fund, position, lot));
+  const l = await or404(getLot(c, fund, view, position, lot));
 
   return (
     <aside className="detail" aria-label="Lot detail">

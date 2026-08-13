@@ -20,12 +20,12 @@ export const dynamic = "force-dynamic";
 export default async function AccountDetail({
   params,
 }: {
-  params: Promise<{ fund: string; account: string }>;
+  params: Promise<{ fund: string; view: string; account: string }>;
 }) {
-  const { fund, account } = await params;
+  const { fund, view, account } = await params;
   const c = await caller();
-  const a = await or404(getAccount(c, fund, account));
-  const { postings } = await listPostings(c, fund, account);
+  const a = await or404(getAccount(c, fund, view, account));
+  const { postings } = await listPostings(c, fund, view, account);
 
   return (
     <aside className="detail" aria-label="Account detail">
@@ -65,7 +65,7 @@ export default async function AccountDetail({
               <Link
                 className="posting"
                 key={p.name}
-                href={`/funds/${fund}/accounts/${account}/postings/${id}`}
+                href={`/funds/${fund}/views/${view}/accounts/${account}/postings/${id}`}
               >
                 <span>
                   <div className="p1">{p.memo || "—"}</div>

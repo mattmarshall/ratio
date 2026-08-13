@@ -31,27 +31,58 @@ export type Severity = "LOW" | "MEDIUM" | "HIGH" | "UNSPECIFIED";
 
 export type ActorKind = "PERSON" | "MODEL" | "UNSPECIFIED";
 
+/**
+ * How a view decides the day it recognises an entry on.
+ *
+ * ⛔ `RECORDED` IS NOT A SETTLEMENT CONVENTION. It is the journal's own
+ * order, consulting no date, which is what every book has always done — and
+ * rendering it as "T+0" asserts an election nobody made. `View.declared` is
+ * what separates the two.
+ */
+export type ViewBasis = "RECORDED" | "TRADE" | "SETTLEMENT" | "UNSPECIFIED";
+
 export interface Fund {
   name: string;
   displayName: string;
   currencyCode: string;
+  /**
+   * Where the fund is in its NAV day, and how many breaks are open — BOTH AS
+   * `defaultView` SEES THEM.
+   *
+   * ⛔ Both are view-dependent, and they answer for one view so the fund rail
+   * costs one call rather than one per fund. Never render either without
+   * `defaultView` beside it: a figure that depends on a recognition convention
+   * and does not name it is the defect the view split exists to prevent.
+   */
   state: FundState;
-  netAssetValue: Int64;
-  totalDebit: Int64;
-  totalCredit: Int64;
-  trialBalanceDifference: Int64;
-  openDifference: Int64;
-  entryCount: Int64;
   openBreakCount: Int64;
+  /**
+   * Debits minus credits — the same zero in EVERY view.
+   *
+   * ⭐ Fund-level, and that is the check that the line between Fund and View is
+   * drawn right. A view keeps or drops whole entries and each entry conserves,
+   * so the difference cannot move. The two COLUMN totals can, and live on
+   * `View`.
+   */
+  trialBalanceDifference: Int64;
+  entryCount: Int64;
   /** Facts read off a file that cannot post yet. Non-zero blocks the NAV. */
   pendingFactCount: Int64;
   configDigest: string;
+  /** The view `state` and `openBreakCount` answer for, as a view id. */
+  defaultView: string;
+  /** How many views this fund declares. Always at least one. */
+  viewCount: Int64;
   /**
    * Which lots a sale gives up, as the active configuration declares it.
    *
    * A term of an administration agreement: four methods give four different
    * taxable incomes from one holding and one trade, with nothing on the balance
    * sheet moving. Empty when the book has no configuration.
+   *
+   * ⚠ Fund-level, not per view — a view overrides TIMING only. Views still
+   * reach different realized gains under one election, because each has
+   * recognised a different set of open lots when a sale arrives.
    */
   lotMethod: string;
   /**
@@ -61,12 +92,52 @@ export interface Fund {
    * decision nobody made.
    */
   lotMethodDeclared: boolean;
+  /** Days held for a gain to be long-term. A jurisdiction's number, not 365. */
+  longTermDays: Int64;
+}
+
+/**
+ * One lens over one journal: which entries it recognises, and what follows.
+ *
+ * ⭐ A view is a recognition PREDICATE, not a second book. Every figure below
+ * depends on which entries are in scope, which is why none of them is on
+ * `Fund`.
+ */
+export interface View {
+  name: string;
+  displayName: string;
+  basis: ViewBasis;
+  /** Open days from trade to settlement. `"0"` unless `basis` is settlement. */
+  settlesIn: Int64;
+  calendar: string;
+  holidayCount: Int64;
+  /**
+   * ⛔ Whether the configuration DECLARES this view, or whether it is the one
+   * every book has by default. `BASIS_RECORDED` with `declared: false` is the
+   * absence of an election and must never be rendered as an agreed basis —
+   * the same trap as `lotMethodDeclared`.
+   */
+  declared: boolean;
+  /** `YYYY-MM-DD`. Empty on a recorded-basis view, which has no cut. */
+  recognisedThrough: string;
+  /**
+   * Entries this view cannot place: no trade date, or a pinned configuration
+   * that does not declare it. ⛔ Shown, never silently dropped.
+   */
+  unplaceableEntryCount: Int64;
+  netAssetValue: Int64;
+  /** ⚠ View-level, unlike `Fund.trialBalanceDifference` — fewer entries
+   * recognised means smaller columns, while the difference stays zero. */
+  totalDebit: Int64;
+  totalCredit: Int64;
+  openDifference: Int64;
+  openBreakCount: Int64;
+  state: FundState;
   /**
    * ⛔ CREDIT-NORMAL — a gain reads NEGATIVE. Print it through `gainOf` and
    * never raw, or every profitable fund shows a minus sign.
    *
-   * Empty (not "0") when the chart names no realized-gain role: a fund that
-   * realized nothing and a fund whose engine cannot tell are different answers.
+   * Empty (not "0") when the chart names no realized-gain role.
    */
   realizedGain: Int64;
   basisRelieved: Int64;
@@ -75,26 +146,37 @@ export interface Fund {
   longTermGain: Int64;
   /** Disposals no holding period could be established for. The remainder. */
   unclassifiedGain: Int64;
-  /** Days held for a gain to be long-term. A jurisdiction's number, not 365. */
-  longTermDays: Int64;
   /**
-   * ⛔ THE SCALE ARGUMENT, AS TWO NUMBERS SIDE BY SIDE. A position is a chart
-   * entry and its lots are a trading history — striking a NAV touches the first
-   * and not the second, and a reader should be able to see that rather than be
-   * told it.
+   * ⛔ THE SCALE ARGUMENT, AS TWO NUMBERS SIDE BY SIDE. Striking a NAV touches
+   * the first and not the second.
    */
   openLotCount: Int64;
   positionCount: Int64;
   /**
-   * How long the fold that strikes the NAV took — proto3 renders a Duration as
-   * seconds with an `s` suffix, e.g. `"0.000005291s"`.
+   * How long the fold that strikes this view's NAV took — proto3 renders a
+   * Duration as seconds with an `s` suffix, e.g. `"0.000005291s"`.
    *
-   * ⛔ THE FOLD, NOT THE WHOLE PERIOD END: it excludes marking to market, which
-   * grows with the chart. And the MAINTAINED fold, never the cold build — two
-   * curves, and quoting one as the other is the overclaim `ratio bench` exists
-   * to make hard. Measured on this request, so it carries live-process noise.
+   * ⛔ THE MAINTAINED FOLD, never the cold build. Two curves.
    */
   navStrike: string;
+  /**
+   * ⭐ The journal prefix every figure above was folded from — THE SAME NUMBER
+   * ON EVERY VIEW OF ONE FUND. One pass feeds them all, so two views put side
+   * by side differ by a recognition convention and never by staleness.
+   */
+  journalPosition: Int64;
+}
+
+/** One entry two views disagree about, and what it is worth. */
+export interface RecognitionDifference {
+  entryId: string;
+  memo: string;
+  /** `YYYY-MM-DD`. Empty when the record carries none. */
+  tradeDate: string;
+  /** The day each side recognises it on. Empty where that side cannot. */
+  recognisedHere: string;
+  recognisedThere: string;
+  netAssetValueEffect: Int64;
 }
 
 export interface BreakPosting {
@@ -130,6 +212,14 @@ export interface ChangeLogEntry {
 
 export interface NavStrike {
   name: string;
+  /**
+   * The view this NAV was struck in, as a view id.
+   *
+   * ⛔ A valuation point has ONE answer — per view. Two views striking one
+   * day are two answers to two questions; without this they are
+   * indistinguishable from a restatement, which is refused.
+   */
+  view: string;
   /** RFC 3339. proto3 renders a Timestamp as a string. */
   valuationTime: string;
   actor: string;
@@ -221,6 +311,35 @@ export interface ListNavStrikesResponse {
 export interface ListFundsResponse {
   funds: Fund[];
   nextPageToken: string;
+}
+export interface ListViewsResponse {
+  views: View[];
+  /** The view to open with no other reason to pick one. Same as `Fund.defaultView`. */
+  defaultView: string;
+  nextPageToken: string;
+}
+export interface ReconcileViewsResponse {
+  name: string;
+  against: string;
+  netAssetValue: Int64;
+  againstNetAssetValue: Int64;
+  /** This view's NAV minus the other's. */
+  difference: Int64;
+  /**
+   * ⭐ The entries each side recognises and the other does not. These two
+   * lists account for `difference` EXACTLY — that is a theorem
+   * (`Ratio.Views.two_views_differ_by_exactly_what_is_in_flight`), so a
+   * screen can show the arithmetic rather than assert it.
+   */
+  recognisedHere: RecognitionDifference[];
+  recognisedThere: RecognitionDifference[];
+  /**
+   * Entries NEITHER view can place. ⛔ Shown, not omitted: leaving them out
+   * makes a difference look fully explained when it is not.
+   */
+  unplaceable: RecognitionDifference[];
+  /** The prefix both sides were folded from. One number, one pass. */
+  journalPosition: Int64;
 }
 export interface ListBreaksResponse {
   breaks: Break[];

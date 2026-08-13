@@ -29,6 +29,9 @@ from pathlib import Path
 FIXTURES = {
     "funds.json": "ListFundsResponse",
     "fund.json": "Fund",
+    "views.json": "ListViewsResponse",
+    "view.json": "View",
+    "reconcile.json": "ReconcileViewsResponse",
     "breaks.json": "ListBreaksResponse",
     "break.json": "Break",
     "accounts.json": "ListAccountsResponse",

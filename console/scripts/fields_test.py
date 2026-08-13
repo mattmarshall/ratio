@@ -67,6 +67,27 @@ NEEDLES: list[tuple[str, str]] = [
     ("no trade date", "a lot that cannot be classified would show a guessed date"),
     ("Tax lots", "the lot book is gone"),
     ("the fold that", "the scale claim is gone — it lived only in a benchmark once"),
+    # ── multi-view books ────────────────────────────────────────────────────
+    # ⚠ Same discipline: these are the strings a reader looks for when asking
+    # WHICH BOOK OF RECORD a figure came from. A console that stops saying is
+    # the row already in HANDOFF.md's failure table — the console and the CLI
+    # reporting different NAVs for one book, neither saying which.
+    ("viewswitch", "the book-of-record switch is not rendered"),
+    ("Book of record", "the view switch has no accessible name"),
+    (
+        "default",
+        "an undeclared view would read as an elected basis — the lot-method trap again",
+    ),
+    ("journal order", "the recorded basis would print as a settlement convention"),
+    ("settled T+", "a settlement view never says how many days it settles in"),
+    ("Unplaceable", "entries a view cannot date would vanish from the screen"),
+    (
+        "Neither view can place these",
+        "the reconciliation would look fully explained when it is not",
+    ),
+    ("recognisedHere", "the in-flight entries are never read from the response"),
+    ("unplaceable", "the entries neither view can place are never read"),
+    ("Contributing", "the in-flight lists would not show that they add to the difference"),
 ]
 
 

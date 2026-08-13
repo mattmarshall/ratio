@@ -90,3 +90,27 @@ export const SEVERITY_CLASS: Record<string, string> = {
   LOW: "low",
   UNSPECIFIED: "low",
 };
+
+/**
+ * How a view's recognition basis reads on a screen.
+ *
+ * ⛔ `RECORDED` IS NOT "T+0" AND MUST NEVER BE PRINTED AS ONE. It is the
+ * journal's own order — no date consulted — which is what every book has always
+ * done. A same-day settlement convention is an ELECTION: it reads the calendar
+ * and refuses an entry with no trade date. Collapsing the two is
+ * `lotMethod: None` versus `Some(Fifo)` one layer out, and that one reached a
+ * live screen.
+ */
+export const BASIS_LABEL: Record<string, string> = {
+  RECORDED: "journal order",
+  TRADE: "trade date",
+  SETTLEMENT: "settled",
+  UNSPECIFIED: "—",
+};
+
+/** `settled T+2`, or the bare basis where no lag applies. */
+export function basisOf(basis: string, settlesIn: string): string {
+  return basis === "SETTLEMENT"
+    ? `settled T+${settlesIn}`
+    : (BASIS_LABEL[basis] ?? "—");
+}

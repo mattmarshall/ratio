@@ -1,7 +1,7 @@
 {
   "postings": [
     {
-      "name": "funds/harbourline-global-value/accounts/1010/postings/p-1",
+      "name": "funds/harbourline-global-value/views/abor/accounts/1010/postings/p-1",
       "entryId": "e-0004",
       "memo": "Purchase of 1,000 ACME",
       "amount": "-33288000",

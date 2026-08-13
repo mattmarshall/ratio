@@ -18,5 +18,8 @@ export default async function Home() {
   const { funds } = await listFunds(c);
   if (!funds.length) redirect("/funds");
   const first = funds.find((f) => f.state === "BLOCKED") ?? funds[0]!;
-  redirect(`/${first.name}/breaks`);
+  // ⚠ `state` IS THE DEFAULT VIEW'S, so the fund picked as blocked and the
+  // view landed on have to be the same one, or the operator arrives at a
+  // screen with nothing wrong on it.
+  redirect(`/${first.name}/views/${first.defaultView}/breaks`);
 }

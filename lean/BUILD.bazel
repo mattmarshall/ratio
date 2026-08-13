@@ -83,6 +83,23 @@ lean_test(
     entry = "Ratio/Period.lean",
 )
 
+# One journal, more than one answer. A view is a recognition PREDICATE — not a
+# conserved dimension, not a partition, not a second book — so it filters whole
+# entries and every view's books tie. The load-bearing pair is that two views
+# differ by exactly the entries in flight between them (which is what makes the
+# reconciliation a list rather than a hunt) and that a fold with no CUT hides
+# the whole difference (which is what makes a differential test over one
+# vacuous). Settled here before any of it is built.
+lean_test(
+    name = "views_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Core.lean",
+        "Ratio/Views.lean",
+    ],
+    entry = "Ratio/Views.lean",
+)
+
 # Tax lots at scale. Every optimization a twenty-million-lot book needs — an
 # index, a cached aggregate, a partition — is a claim of equality with the naive
 # fold, and each is proved here rather than hoped for. The load-bearing one is
