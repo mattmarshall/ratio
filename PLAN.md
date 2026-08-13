@@ -415,10 +415,42 @@ What did NOT change, deliberately:
 - **No new RPC.** `Console::apply_action` still has no route, `ratio strike` is
   still CLI-only, and a proposal's rendered form still is not on the contract.
   Each is a proto change and each was refused here rather than smuggled in as
-  page work.
+  page work. ⚠️ **This stopped being true on 2026-08-13** — see the amendment
+  below, which adds three.
 
 ⚠️ The cost that was paid: `bazel test //...` stopped being the whole gate. See
 `CONTRIBUTING.md` and the ⛔ in `MODULE.bazel`.
+
+### Amended 2026-08-13 — multi-view books
+
+A fund keeps more than one book of record. The accounting book recognises a
+trade when it is struck; a settlement book recognises it when cash and stock
+move, T+1 or T+2 later. Both are the fund's books, and until now this system
+could hold only one of them.
+
+**What changed.** A view is declared in the same content-addressed TOML the
+rules are, and it overrides one thing: WHEN an entry is recognised. One journal,
+folded more than one way, in one pass, from one prefix. The console grew a
+book-of-record switch beside the currency, a `views/{view}` layer in every URL
+that names a folded figure, and a reconciliation screen that shows what two
+views disagree about entry by entry.
+
+**What this is NOT, because two entries on the refusal list are adjacent to it
+and both still stand:**
+
+- Not **performance reporting and attribution**. A settlement-basis NAV is the
+  same fold under a different recognition convention. Attribution is a return
+  decomposed against a benchmark, and nothing here computes a return at all.
+- Not **control-plane UI**. A view is declared in the configuration document a
+  person already writes and `ratio approve` already promotes. There is still no
+  editor, and the configuration screens still only READ.
+
+**What it cost.** Three new RPCs — `ListViews`, `GetView`, `ReconcileViews` —
+so the bullet above is now wrong and says so. Eleven figures moved off `Fund`
+onto `View`, because a NAV that does not name its recognition convention is a
+figure that does not say which question it answers. And the twenty-million-lot
+memory figures in `HANDOFF.md` became ONE-VIEW figures: each view carries its
+own lot book, and nothing has re-measured two.
 
 ---
 

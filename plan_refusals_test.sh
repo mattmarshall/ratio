@@ -42,6 +42,13 @@ BUILT=(
   "multi-currency and FX"
   "corporate actions"
   "Postgres"
+  # ⚠ ADDED WITH THE FEATURE, WHICH IS THE WHOLE PROTOCOL. Multi-view books are
+  # not on the refusal list, so this check would have stayed green whatever was
+  # built — it cross-checks two DECLARED lists and scans no tree, and says so
+  # above. What the entry buys is that the day somebody adds "multi-view books"
+  # to the refusal list, this goes red instead of the two documents quietly
+  # disagreeing. The sentence it matches is in the 2026-08-13 amendment.
+  "multi-view books"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

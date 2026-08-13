@@ -152,6 +152,36 @@ the conserved one, and the kernel never said it was.
 - **`ChartRoles` are checked when the configuration is READ.** A chart that
   cannot express a gain is wrong the moment it is written down; finding out at
   the first disposal means finding out in production.
+- **EVERY VIEW FOLDS ONE PREFIX, IN ONE PASS.** A book keeps more than one book
+  of record — ABOR recognises a trade when it is struck, a settlement view when
+  cash and stock move — and they are N folds inside ONE `Projection` with one
+  `at` and one `read_to`. A projection per view is `//tla:sql_projection_check`'s
+  `AFigureIsFoldedFromOnePrefix` with views where that spec has tables: both
+  folds correct, both books tying, and the difference between them partly a
+  settlement convention and partly one of them being three entries behind, in
+  one number, with nothing saying which part is which.
+  `//tla:views_at_two_prefixes_check`. It also pays `parse` once, which at 65%
+  of the cold build is the difference between N views and N × the build.
+- **`recorded` IS NOT `settlement 0`.** A book that declares no view has one,
+  and it consults no date — which is the only thing that answers over the
+  entries carrying no `trade_date`, i.e. most of every book written so far. A
+  same-day settlement convention reads the calendar and REFUSES such an entry.
+  `Ratio.Views.nobody_said_is_not_a_settlement_convention`; `View.declared` is
+  the field that keeps the two apart, for the reason `lot_method_declared`
+  exists.
+- **The view SET comes from ACTIVE; the CONVENTION comes from the digest the
+  entry pinned.** Which views exist is a question about now. How an entry is
+  recognised is a term of the agreement in force when it was posted — `Terms`'
+  rule, one level out. ⛔ An entry whose pinned configuration does not declare a
+  view must be REFUSED by it and reported, never folded as `recorded`: that is
+  the no-fallback-to-FIFO argument with a date instead of a lot method.
+- ⛔ **A DIFFERENTIAL TEST BETWEEN TWO VIEWS THAT DOES NOT CUT IS VACUOUS.**
+  Folded to the end of history every view agrees, because everything eventually
+  settles — `Ratio.Views.a_fold_with_no_cut_hides_the_settlement_gap` is the
+  theorem, written down before anybody fell into it. And the second trap is
+  sharper: a PURCHASE moves cash into investments, both assets, so recognising
+  it or not moves a NAV by ZERO. **Subscriptions are the shape that works**,
+  exactly as they were for the multi-currency version that was vacuous twice.
 
 ---
 
@@ -303,6 +333,15 @@ rows — held 1.26 GB. At the ~80M entries a twenty-million-lot book implies, th
 | `ratio bench` (generate AND fold) | 1.85 GB | **50 MB** |
 | console serving the book | — | 39 MB |
 
+⛔ **AND EVERY MEMORY FIGURE ABOVE IS A ONE-VIEW FIGURE.** Multi-view books
+landed after these were taken. Each view carries its own lot book — a settlement
+view has recognised a different set of open lots when a sale arrives, which is
+the feature working — so the projection is roughly linear in views where the
+fold is not. At the twenty-million-lot shape that is ~640 MB per view against a
+1.00 GB peak, and NOBODY HAS MEASURED TWO. `ratio bench` needs a views dial
+before the ⭐ claim below is quoted about a fund keeping an ABOR and an IBOR.
+Quote `peak memory footprint`, not RSS: at that size RSS understates by 19×.
+
 `Journal::for_each_entry_since` is the streaming primitive. `entries()` and
 `entries_since()` still exist, expressed on top of it and documented as
 materializing — reach for them only on a book you know is small.
@@ -357,6 +396,8 @@ than one that is entirely unclassified.
 |---|---|
 | `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,Edges,Posting}`, `Actions/Factor`, `Closure`, `Exec` |
 | `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days` — the administration agreement, as configuration |
+| `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
+| `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
