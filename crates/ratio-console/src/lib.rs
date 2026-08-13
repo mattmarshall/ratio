@@ -1897,7 +1897,7 @@ impl Console {
     }
 
     pub fn list_nav_strikes(&self, parent: &str) -> Result<pb::ListNavStrikesResponse> {
-        let id = resource_id(parent, "funds").context("bad parent")?;
+        let (id, view) = view_scoped_parent(parent).context("bad parent")?;
         let path = self.book_path(&id)?;
         Ok(pb::ListNavStrikesResponse {
             nav_strikes: {
@@ -1905,7 +1905,7 @@ impl Console {
                 // `stale_strikes`: a strike pins a journal position and an
                 // applied action is a journal entry, so nothing is stored.
                 let stale = self.stale_strikes(&id).unwrap_or_default();
-                ratio_nav::list(&path)?
+                ratio_nav::list_in(&path, &view)?
                     .into_iter()
                     .map(|s| {
                         let why: Vec<String> = stale
@@ -1922,9 +1922,10 @@ impl Console {
     }
 
     pub fn get_nav_strike(&self, name: &str) -> Result<pb::NavStrike> {
-        let (fund, id) = nested_id(name, "funds", "navStrikes").context("bad name")?;
+        let (fund, view, id) =
+            view_scoped_id(name, "navStrikes").context("bad name")?;
         let path = self.book_path(&fund)?;
-        let s = ratio_nav::get(&path, &id)?;
+        let s = ratio_nav::get(&path, &view, &id)?;
         // Getting one strike qualifies it the same way listing them does — a
         // figure fetched on its own must not look sounder than the same figure
         // in a list.
@@ -2091,9 +2092,14 @@ impl Console {
 
     /// Re-derive a strike. Read-only: it folds a journal prefix and compares.
     pub fn replay_nav_strike(&self, name: &str) -> Result<pb::ReplayNavStrikeResponse> {
-        let (fund, id) = nested_id(name, "funds", "navStrikes").context("bad name")?;
+        let (fund, view, id) =
+            view_scoped_id(name, "navStrikes").context("bad name")?;
         let path = self.book_path(&fund)?;
-        let s = ratio_nav::get(&path, &id)?;
+        let s = ratio_nav::get(&path, &view, &id)?;
+        // ⛔ AND THE REPLAY RESOLVES THE VIEW'S TERMS FROM THE DIGEST EACH ENTRY
+        // PINNED, which `NavFold::def_for` does — never from ACTIVE. A calendar
+        // amended since would otherwise re-derive a different settlement date,
+        // and this endpoint would report a sound strike as unreproducible.
         let r = ratio_nav::replay(&path, &s)?;
         Ok(pb::ReplayNavStrikeResponse {
             name: name.to_string(),
@@ -2298,7 +2304,12 @@ impl Console {
 
 fn to_pb(fund: &str, s: &ratio_nav::Strike, why: &[String]) -> pb::NavStrike {
     pb::NavStrike {
-        name: format!("funds/{fund}/navStrikes/{}", s.id),
+        // ⛔ THE VIEW IS IN THE NAME, NOT ONLY IN THE FIELD. `id_for` derives the
+        // id from the valuation time alone, so two views striking one moment
+        // share it — and a resource name that did not carry the view would name
+        // two different figures.
+        name: format!("funds/{fund}/views/{}/navStrikes/{}", s.view, s.id),
+        view: s.view.clone(),
         // The generated crate's own Timestamp, re-exported by ratio_proto — NOT
         // `prost_types::Timestamp`. rules_rust_prost compiles the well-known
         // types itself, so the two are distinct types with the same name and
@@ -2502,6 +2513,29 @@ pub fn position_key(id: &str) -> Result<(i64, String)> {
 /// forget. A fund's reporting currency is a property of the fund, and when a
 /// second one arrives this becomes a field on the book.
 pub use ratio_store::BASE_CURRENCY as FUND_CURRENCY;
+
+/// `funds/a/views/v` → `("a", "v")`.
+///
+/// ⛔ A VIEW IS NOT A TENANCY BOUNDARY, and this deliberately does not check
+/// one. `book_path` remains the single place a fund id becomes a path; adding a
+/// second check here would be a second place to forget it, and the id it
+/// returns still has to go through that door.
+pub fn view_scoped_parent(parent: &str) -> Result<(String, String)> {
+    let parts: Vec<&str> = parent.split('/').collect();
+    if parts.len() != 4 || parts[0] != "funds" || parts[2] != "views" {
+        bail!("{parent:?} is not a funds/*/views/* name");
+    }
+    Ok((parts[1].to_string(), parts[3].to_string()))
+}
+
+/// `funds/a/views/v/navStrikes/s` → `("a", "v", "s")`.
+pub fn view_scoped_id(name: &str, collection: &str) -> Result<(String, String, String)> {
+    let parts: Vec<&str> = name.split('/').collect();
+    if parts.len() != 6 || parts[0] != "funds" || parts[2] != "views" || parts[4] != collection {
+        bail!("{name:?} is not a funds/*/views/*/{collection}/* name");
+    }
+    Ok((parts[1].to_string(), parts[3].to_string(), parts[5].to_string()))
+}
 
 pub fn nested_id(name: &str, outer: &str, inner: &str) -> Result<(String, String)> {
     let parts: Vec<&str> = name.split('/').collect();
