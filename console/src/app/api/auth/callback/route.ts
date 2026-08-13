@@ -1,7 +1,7 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest } from "next/server";
 import { claimsOf, exchange } from "@/lib/oidc";
 import { clearPending, readPending, writeSession } from "@/lib/session";
-import { consoleOrigin, safeReturnTo } from "../redirect";
+import { consoleOrigin, safeReturnTo, sameOrigin } from "../redirect";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,14 @@ export const dynamic = "force-dynamic";
  * is a top-level navigation from a different site; `Strict` would withhold the
  * pending cookie on exactly this request and the failure would read like a PKCE
  * bug rather than a cookie one.
+ *
+ * ⛔ EVERY EXIT FROM HERE IS RELATIVE EXCEPT THE ONE COGNITO READS. The
+ * `redirect_uri` sent to the token endpoint must equal the one the code was
+ * issued against, character for character, so that one is built from
+ * `consoleOrigin()`. The rest are pages this same process serves, and building
+ * *those* from a declared origin used to mean a wrong or missing
+ * `RATIO_CONSOLE_ORIGIN` turned a refused sign-in — which has a page that
+ * explains itself — into a 500 or a redirect to nowhere.
  */
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
@@ -21,13 +29,13 @@ export async function GET(req: NextRequest) {
 
   // The IdP refused, or somebody arrived here without starting a sign-in.
   if (!code || !pending) {
-    return NextResponse.redirect(`${consoleOrigin()}/signin?error=1`);
+    return sameOrigin("/signin?error=1");
   }
   // ⛔ CSRF. A callback that does not carry the state we issued is not the flow
   // this browser started, and exchanging its code would sign this session in as
   // whoever produced it.
   if (params.get("state") !== pending.state) {
-    return NextResponse.redirect(`${consoleOrigin()}/signin?error=1`);
+    return sameOrigin("/signin?error=1");
   }
 
   try {
@@ -43,13 +51,14 @@ export async function GET(req: NextRequest) {
       email,
       expiresAt: t.expiresAt,
     });
-  } catch {
-    return NextResponse.redirect(`${consoleOrigin()}/signin?error=1`);
+  } catch (e) {
+    console.error("sign-in did not complete:", e);
+    return sameOrigin("/signin?error=1");
   }
 
   // Checked again on the way out, not only on the way in: the cookie is sealed,
-  // but a redirect target is worth refusing twice.
-  return NextResponse.redirect(
-    `${consoleOrigin()}${safeReturnTo(pending.returnTo)}`,
-  );
+  // but a redirect target is worth refusing twice — and with a relative
+  // `Location` this guard is the only thing standing between a tampered
+  // `returnTo` and another origin.
+  return sameOrigin(safeReturnTo(pending.returnTo));
 }

@@ -1,5 +1,31 @@
 import "server-only";
 
+import { NextResponse } from "next/server";
+
+/**
+ * A redirect to a page on this same server, with no host in it at all.
+ *
+ * ⛔ THE ONE PLACE THE ABSOLUTE ORIGIN IS LOAD-BEARING IS THE `redirect_uri`,
+ * AND EVERY OTHER USE OF IT WAS A LIABILITY. `consoleOrigin()` is a declared
+ * value that can be wrong or missing, and both of those are failures the
+ * sign-in routes have to *report* — so building the error page's URL out of it
+ * meant the report was delivered to a hostname that might not resolve, or threw
+ * and became a 500. A live deployment held `https://ratio-console.vercel.app`,
+ * which does not exist, and the page saying so was never reachable.
+ *
+ * A relative `Location` (RFC 7231 §7.1.2) is resolved by the browser against
+ * the URL it actually requested. No environment variable, no `Host` header, no
+ * forwarded-header question behind a proxy — for a page served by this same
+ * process there is nothing to get wrong.
+ *
+ * ⚠ Callers pass a rooted path. `safeReturnTo` is what makes an untrusted one
+ * safe to pass, and a relative Location makes its guard load-bearing rather
+ * than belt-and-braces: `//evil.example` resolves to another origin.
+ */
+export function sameOrigin(path: string, status: 303 | 307 = 307): NextResponse {
+  return new NextResponse(null, { status, headers: { location: path } });
+}
+
 /**
  * The origin this console is served from.
  *
