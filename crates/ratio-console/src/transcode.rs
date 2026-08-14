@@ -550,8 +550,8 @@ impl JsonView for pb::PlanNode {
     fn to_json(&self) -> String {
         format!(
             "{{\"id\":{},\"operator\":{},\"detail\":{},\"group\":{},\"role\":{},\
-             \"cites\":{},\"note\":[{}],\"estimatedReads\":{},\"estimatedNanos\":{},\
-             \"actualRows\":{},\"actualNanos\":{}}}",
+             \"cites\":{},\"note\":[{}],\"estimatedReads\":{},\
+             \"estimatedDuration\":{},\"actualRows\":{},\"actualDuration\":{}}}",
             q(&self.id), q(&self.operator), q(&self.detail),
             q(plan_group_name(self.group)), q(plan_role_name(self.role)),
             q(&self.cites), strings(&self.note),
@@ -559,8 +559,8 @@ impl JsonView for pb::PlanNode {
             // as one because `ratio_nav::explain` carries these as `Option`.
             // Rendering an unmeasured step as `0` would read as "instant" and a
             // step nothing costs as "free"; both are claims nobody made.
-            q(&self.estimated_reads), q(&self.estimated_nanos),
-            q(&self.actual_rows), q(&self.actual_nanos)
+            q(&self.estimated_reads), duration_json(&self.estimated_duration),
+            q(&self.actual_rows), duration_json(&self.actual_duration)
         )
     }
 }

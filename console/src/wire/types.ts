@@ -329,10 +329,15 @@ export interface PlanNode {
   note: string[];
   /** From the proved model or the strike's record. Empty where nothing costs it. */
   estimatedReads: Int64;
-  estimatedNanos: Int64;
-  /** What an instrumented re-fold saw. Empty unless the plan was analyzed. */
+  /**
+   * `estimatedReads` times the calibrated rate, as a proto3 Duration —
+   * `"0.000004436s"`. ⛔ `null` where nothing costs the step: a Duration is a
+   * message, so absence is structural here rather than an empty string.
+   */
+  estimatedDuration: string | null;
+  /** What an instrumented re-fold saw. Empty / null unless the plan was analyzed. */
   actualRows: Int64;
-  actualNanos: Int64;
+  actualDuration: string | null;
 }
 
 export interface PlanEdge {

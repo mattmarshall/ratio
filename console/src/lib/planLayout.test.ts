@@ -16,9 +16,9 @@ const node = (id: string, over: Partial<PlanNode> = {}): PlanNode => ({
   cites: "a theorem",
   note: [],
   estimatedReads: "",
-  estimatedNanos: "",
+  estimatedDuration: null,
   actualRows: "",
-  actualNanos: "",
+  actualDuration: null,
   ...over,
 });
 

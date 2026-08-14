@@ -1321,11 +1321,25 @@ message PlanNode {
 
   // `estimated_reads` times the calibrated rate. The measured half of an
   // estimate whose other half is proved, kept apart from it on purpose.
-  string estimated_nanos = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+  //
+  // ⛔ A DURATION, AND NOT NAMED `estimated_nanos`. `core::0142::time-field-type`
+  // flags any field whose last underscore-separated token is a time unit —
+  // `nanos`, `millis`, `seconds`, `time` — and it accepts ONLY Timestamp, Date,
+  // DateTime and TimeOfDay. A `google.protobuf.Duration` called `_nanos` fails
+  // it just as a string does; what fixes it is the NAME. `View.nav_strike` is
+  // the precedent: a Duration named for what it measures rather than for its
+  // unit.
+  //
+  // ⭐ AND THE TYPE BUYS SOMETHING THE STRING DID NOT — real presence. Absent
+  // renders as JSON `null`, so "nothing costed this step" stops relying on the
+  // empty-string convention the counts still use.
+  google.protobuf.Duration estimated_duration = 9
+      [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // What an instrumented re-fold actually saw. EMPTY unless `analyzed`.
+  // What an instrumented re-fold actually saw. EMPTY / null unless `analyzed`.
   string actual_rows = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
-  string actual_nanos = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Duration actual_duration = 11
+      [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // An edge of the plan.

@@ -13,9 +13,9 @@
                 "The strike used to read the journal into a `Vec`, hash a second `Vec` of every serialized entry, and fold the first \u2014 three copies of a thing that only ever needed to be walked once."
             ],
             "estimatedReads": "1",
-            "estimatedNanos": "4436",
+            "estimatedDuration": "0.000004436s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "chart",
@@ -28,9 +28,9 @@
                 "Which dimensions are assets and liabilities. The NAV filter is a question about the chart, and the projection deliberately does not know the chart."
             ],
             "estimatedReads": "8",
-            "estimatedNanos": "35488",
+            "estimatedDuration": "0.000035488s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "rates",
@@ -44,9 +44,9 @@
                 "\u26a0 THE MEASURED COUNT IS ONE LOWER THAN THE ESTIMATE, ON EVERY BOOK, AND THAT IS THE MODEL BEING RIGHT. The base currency has no rate fact \u2014 a fund does not record what a dollar is worth in dollars \u2014 so three currencies are two rows. The estimate counts the denominations; the measurement counts the facts read."
             ],
             "estimatedReads": "3",
-            "estimatedNanos": "13308",
+            "estimatedDuration": "0.000013308s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "scan",
@@ -60,9 +60,9 @@
                 "Streaming. `entries()` materializes and is documented as doing so; at the twenty-million-lot shape the `Vec<JournalEntry>` alone would be about eighty gigabytes."
             ],
             "estimatedReads": "6",
-            "estimatedNanos": "26616",
+            "estimatedDuration": "0.000026616s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "terms",
@@ -76,9 +76,9 @@
                 "\u26a0 Not estimable. How many distinct configurations a book names is a property of the book, not a term of the model \u2014 it is measured or it is blank."
             ],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "place",
@@ -91,9 +91,9 @@
                 "A date that will not parse is unplaceable and named, never a silent absence."
             ],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "recognise",
@@ -106,9 +106,9 @@
                 "\u26d4 THE CUT IS DERIVED FROM THE VALUATION POINT, not carried beside it. Folded to the end of history every view agrees, because everything eventually settles."
             ],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "classify",
@@ -121,9 +121,9 @@
                 "A liability nets negative because it is credit-normal, so summing assets and liabilities subtracts without a special case."
             ],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "accumulate",
@@ -136,9 +136,9 @@
                 "\u26d4 PER CURRENCY. This was one accumulator, and the strike added dollars, euros and pounds and called the total USD \u2014 returning the identical figure for a one-currency and a three-currency book. It tied the whole way: trial balance 0, digest reproducible, replay reporting reproduced, of the wrong figure."
             ],
             "estimatedReads": "3",
-            "estimatedNanos": "13308",
+            "estimatedDuration": "0.000013308s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "digest",
@@ -151,9 +151,9 @@
                 "\u26d4 RECOGNISED OR NOT. The digest covers every entry in the prefix, because a replay has to be able to notice that an entry this view DECLINED was edited afterwards."
             ],
             "estimatedReads": "6",
-            "estimatedNanos": "26616",
+            "estimatedDuration": "0.000026616s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "translate",
@@ -166,9 +166,9 @@
                 "\u26a0 Translation rounds and relief does not. A translated figure has no exact answer at any rate with finitely many digits, so refusing would refuse every foreign holding."
             ],
             "estimatedReads": "3",
-            "estimatedNanos": "13308",
+            "estimatedDuration": "0.000013308s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "nav",
@@ -179,9 +179,9 @@
             "cites": "the figure this strike recorded",
             "note": [],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "trialbalance",
@@ -194,9 +194,9 @@
                 "\u26a0 The DIFFERENCE is safe to sum flat and only the difference. Every currency nets to zero independently, so the flat total is zero too \u2014 the two column totals would not survive mixing."
             ],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "journaldigest",
@@ -207,9 +207,9 @@
             "cites": "what makes a rewritten history visible",
             "note": [],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "refuse-unplaceable",
@@ -222,9 +222,9 @@
                 "\u26d4 REFUSED, NEVER SILENTLY DROPPED. An entry left out of a figure nobody was told about is value leaving a book whose trial balance goes on tying."
             ],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "refuse-rate",
@@ -237,9 +237,9 @@
                 "Skipping the leg reports a fund that does not hold what it holds; translating at par reports yen as though it were dollars. Neither looks wrong on the page."
             ],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "totals",
@@ -253,9 +253,9 @@
                 "\u26d4 Keyed on (dimension, currency). A total over both is not a figure."
             ],
             "estimatedReads": "12",
-            "estimatedNanos": "53232",
+            "estimatedDuration": "0.000053232s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "factors",
@@ -269,9 +269,9 @@
                 "\u26a0 Not free in general \u2014 each lot READ must still check that every step divided, which is O(splits) on the lots actually touched. A sale relieving five lots pays for five. A NAV pays for none."
             ],
             "estimatedReads": "0",
-            "estimatedNanos": "0",
+            "estimatedDuration": "0.000000000s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "capital",
@@ -284,9 +284,9 @@
                 "\u26d4 NOT ESTIMATED, AND NOT ZERO EITHER. Counting subscriptions and redemptions needs the chart roles, and the maintained projection deliberately does not know the chart. A zero here would be a guess wearing a decimal point, so the term is left blank and the totals beside it say they exclude it."
             ],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "filter",
@@ -297,9 +297,9 @@
             "cites": "Projection::translate",
             "note": [],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "translate-2",
@@ -310,9 +310,9 @@
             "cites": "Ratio.Closure.fxCost",
             "note": [],
             "estimatedReads": "3",
-            "estimatedNanos": "13308",
+            "estimatedDuration": "0.000013308s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "nav-2",
@@ -325,9 +325,9 @@
                 "\u2b50 Flat in fragmentation. A fund's twentieth year strikes as fast as its first \u2014 and it is a theorem rather than a hope, because the maintained totals stand in for the lots."
             ],
             "estimatedReads": "",
-            "estimatedNanos": "",
+            "estimatedDuration": null,
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "scan-lots",
@@ -340,9 +340,9 @@
                 "Always right, and its cost is the number of lots \u2014 which for a fund that has traded for years is millions. The aggregate plan gives the same answer for the securities."
             ],
             "estimatedReads": "252843",
-            "estimatedNanos": "1121611548",
+            "estimatedDuration": "1.121611548s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "rewrite",
@@ -356,9 +356,9 @@
                 "\u26a0 `lots_per` here is an average, derived by dividing the open lots by the securities. The model's own term wants the fragmentation of the instrument the action touches, and this fund's is not uniform."
             ],
             "estimatedReads": "21070",
-            "estimatedNanos": "93466520",
+            "estimatedDuration": "0.093466520s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         },
         {
             "id": "unread-lots",
@@ -371,9 +371,9 @@
                 "\u2b50 THE CLAIM THE WHOLE SYSTEM RESTS ON, DRAWN. Fragmentation is not in the cost of a NAV at all. This zero is proved, not unmeasured."
             ],
             "estimatedReads": "0",
-            "estimatedNanos": "0",
+            "estimatedDuration": "0.000000000s",
             "actualRows": "",
-            "actualNanos": ""
+            "actualDuration": null
         }
     ],
     "edges": [

@@ -3122,6 +3122,22 @@ fn figure(v: Option<i64>) -> String {
     v.map(|n| n.to_string()).unwrap_or_default()
 }
 
+/// A duration, or the absence of one.
+///
+/// ⛔ `None` BECOMES JSON `null`, WHICH IS THE POINT OF THE TYPE. A step nothing
+/// measured has no duration, and the wire says so structurally rather than by a
+/// convention a reader has to know. The COUNTS beside it still use the empty
+/// string, because they are int64s and every int64 on this contract is a string.
+///
+/// ⚠ Non-negative by construction — these are elapsed times and read counts
+/// multiplied by a rate — so the truncating division is the right one.
+fn duration(ns: Option<i64>) -> Option<ratio_proto::duration_proto::google::protobuf::Duration> {
+    ns.map(|n| ratio_proto::duration_proto::google::protobuf::Duration {
+        seconds: n / 1_000_000_000,
+        nanos: (n % 1_000_000_000) as i32,
+    })
+}
+
 /// A plan, as the contract carries it.
 ///
 /// ⚠ ONE BUILDER, AND IT IS A PLAIN MAPPING. Every judgement about what a step
@@ -3152,9 +3168,9 @@ fn plan_pb(p: &ratio_nav::explain::Plan) -> pb::ExplainNavStrikeResponse {
                 cites: n.cites.clone(),
                 note: n.note.clone(),
                 estimated_reads: figure(n.estimated_reads),
-                estimated_nanos: figure(n.estimated_nanos),
+                estimated_duration: duration(n.estimated_duration),
                 actual_rows: figure(n.actual_rows),
-                actual_nanos: figure(n.actual_nanos),
+                actual_duration: duration(n.actual_duration),
             })
             .collect(),
         edges: p

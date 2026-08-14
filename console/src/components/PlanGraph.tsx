@@ -1,4 +1,4 @@
-import { nanos, reads } from "@/lib/format";
+import { elapsed, reads } from "@/lib/format";
 import { NODE_H, NODE_W, layout, share } from "@/lib/planLayout";
 import type { ExplainNavStrikeResponse, PlanNode } from "@/wire/types";
 
@@ -159,7 +159,7 @@ function Group({
                       rx="1"
                     />
                     <text className="pn-act-fig" x={n.x + NODE_W - 12} y={n.y + 60} textAnchor="end">
-                      {nanos(n.actualNanos)}
+                      {elapsed(n.actualDuration)}
                     </text>
                   </>
                 ) : null}
@@ -182,11 +182,11 @@ function Group({
             <span className="plr">{ROLE_WORD[n.role] ?? n.role}</span>
             <span className="plf">
               estimated {reads(n.estimatedReads)} reads
-              {n.estimatedNanos ? ` · ${nanos(n.estimatedNanos)}` : ""}
+              {n.estimatedDuration ? ` · ${elapsed(n.estimatedDuration)}` : ""}
             </span>
             <span className="plf">
               {plan.analyzed
-                ? `measured ${reads(n.actualRows)} rows · ${nanos(n.actualNanos)}`
+                ? `measured ${reads(n.actualRows)} rows · ${elapsed(n.actualDuration)}`
                 : "not measured"}
             </span>
             <span className="plc">{n.cites}</span>

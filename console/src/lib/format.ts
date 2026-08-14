@@ -74,7 +74,22 @@ export function reads(n: string): string {
 }
 
 /**
+ * A duration that may be absent, as a figure a person reads.
+ *
+ * ⛔ `null` IS "NOT MEASURED" AND A REAL ZERO IS `0 ns`, and keeping them apart
+ * is the whole reason the wire carries a Duration message here rather than a
+ * count. `micros` does the formatting; this does the distinction.
+ */
+export function elapsed(d: string | null): string {
+  return d === null ? "—" : micros(d);
+}
+
+/**
  * A bare nanosecond count as a figure a person reads.
+ *
+ * ⚠ For `nanosPerRead`, which is a RATE and not a duration — nanoseconds per
+ * read is not a length of time, so it is an int64 like every other count on
+ * that message and `elapsed` above does not apply to it.
  *
  * ⛔ NOT ALWAYS MILLISECONDS — `ratio_nav::closure::human_nanos` says why: a
  * small period end lands in microseconds, and printing that as `0 ms` reads as
