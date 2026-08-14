@@ -28,7 +28,12 @@ use std::collections::BTreeSet;
 
 use ratio_rules::{Basis, Calendar, RuleSet, UNDECLARED_VIEW};
 
-use crate::relief::Day;
+/// ⛔ RE-EXPORTED, AND THE SAME `Day` THE LOT BOOK USES. A holding period and a
+/// settlement date are both counted in days since the epoch, and two aliases
+/// would be two types the compiler happily converts between — so a lot's
+/// acquisition day could be compared against a settlement cut with nobody
+/// noticing. `ratio-nav` names it `views::Day`, which is why this is `pub`.
+pub use crate::relief::Day;
 
 /// How far a roll will look for an open day before giving up.
 ///

@@ -212,7 +212,7 @@ theorem the_recorded_basis_folds_the_whole_journal {Dim : Type}
     foldIn { basis := Basis.recorded, lag := lag, holiday := holiday } fuel asOf l = fold l := by
   induction l with
   | nil => rfl
-  | cons e es ih => simp [foldIn, foldWhere, inScope, placement, fold] at *; exact ih
+  | cons e es ih => simp [foldIn, foldWhere, inScope, placement, fold] at *; rw [ih]
 
 /-- **Every view's books tie.**
 
@@ -263,7 +263,7 @@ theorem nothing_is_dropped_without_being_reported {Dim : Type} (c : Convention)
         cases hx : placement c fuel x with
         | «always» => simpa [hx] using this
         | on d => simpa [hx] using this
-        | unplaceable => simp [hx]; exact Or.inr this
+        | unplaceable => simp; exact Or.inr this
 
 /- ── What a view leaves behind ─────────────────────────────────────────── -/
 
@@ -375,7 +375,14 @@ theorem a_calendar_that_never_opens_refuses_rather_than_looping (fuel : Nat) (d 
 
 /- ── What a view cannot do to a date ───────────────────────────────────── -/
 
-/-- The next open day is strictly later. -/
+/-- The next open day is strictly later.
+
+⚠ EVERY FACT BELOW IS STATED AT `Int`, NOT AT `Day`, and that is not decoration.
+`Day` abbreviates `Int`, and `omega` still reported "no usable constraints"
+against hypotheses carrying the abbreviated type — it reads arithmetic, not
+synonyms for it. The annotation is the whole fix. Note the `omega` calls further
+up this file, over `Vec Dim d`, need no such thing: those terms are already
+`Int`, which is what makes this the difference rather than a guess. -/
 theorem nextOpenDay_moves_forward (h : Day → Bool) :
     ∀ (fuel : Nat) (d r : Day), nextOpenDay h fuel d = some r → d < r := by
   intro fuel
@@ -386,11 +393,11 @@ theorem nextOpenDay_moves_forward (h : Day → Bool) :
       unfold nextOpenDay at hr
       by_cases hh : h (d + 1) = true
       · rw [if_pos hh] at hr
-        have := ih (d + 1) r hr
+        have hlt : (d : Int) + 1 < (r : Int) := ih (d + 1) r hr
         omega
       · simp only [Bool.not_eq_true] at hh
         rw [if_neg (by simp [hh])] at hr
-        have : d + 1 = r := by injection hr
+        have heq : (d : Int) + 1 = (r : Int) := by injection hr
         omega
 
 /-- Rolling over a calendar never goes backwards. -/
@@ -400,7 +407,7 @@ theorem openDaysAfter_never_goes_back (h : Day → Bool) (fuel : Nat) :
   induction n with
   | zero =>
       intro d r hr
-      have : d = r := by injection hr
+      have heq : (d : Int) = (r : Int) := by injection hr
       omega
   | succ m ih =>
       intro d r hr
@@ -409,8 +416,8 @@ theorem openDaysAfter_never_goes_back (h : Day → Bool) (fuel : Nat) :
       | none => rw [hn] at hr; exact absurd hr (by simp)
       | some d' =>
           rw [hn] at hr
-          have h1 : d < d' := nextOpenDay_moves_forward h fuel d d' hn
-          have h2 : d' ≤ r := ih d' r hr
+          have h1 : (d : Int) < (d' : Int) := nextOpenDay_moves_forward h fuel d d' hn
+          have h2 : (d' : Int) ≤ (r : Int) := ih d' r hr
           omega
 
 /-- **A settlement date is never before the trade that produced it.**
