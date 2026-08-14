@@ -122,7 +122,15 @@ ibor=$(nav_of "$DUAL" ibor)
 # it here asserts the thing that is actually claimed — that the difference is
 # view-invariant, which is why it stayed on `Fund` when the two column totals
 # moved to `View`.
-"$RATIO" balance --book "$DUAL" | grep -qE "^Difference .* 0\.00 *$" \
+#
+# ⛔ CAPTURED FIRST, NOT PIPED INTO `grep -q`, and every other check in this file
+# already does it this way. `grep -q` exits the moment it matches, which closes
+# the pipe; `ratio` restores SIG_DFL for SIGPIPE on purpose so that
+# `ratio balance | head` does not panic, so it then dies with 141 — and under
+# `set -o pipefail` the pipeline fails EVEN THOUGH GREP MATCHED. This check
+# reported that the book did not tie while it was tying perfectly well.
+dual_bal=$("$RATIO" balance --book "$DUAL")
+grep -qE "^Difference .* 0\.00 *$" <<<"$dual_bal" \
   || fail "the dual-basis book does not tie — a view is a filter over whole entries and cannot unbalance one"
 
 # ⛔ OWED, AND NOT ASSERTED HERE BECAUSE IT CANNOT YET BE. The difference between
