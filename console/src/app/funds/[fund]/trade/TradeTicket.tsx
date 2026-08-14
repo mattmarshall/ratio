@@ -16,6 +16,7 @@ import {
   signature,
   suggestedReference,
   TRADE_DATE,
+  wholeUnits,
 } from "@/lib/trade";
 import type { Position, Rule } from "@/wire/types";
 import { place, type TradeResult } from "./actions";
@@ -82,6 +83,11 @@ export function TradeTicket({
   const label = held?.instrumentLabel || instrument;
 
   const worth = units && price ? consideration(units, price) : null;
+  // ⛔ WHOLE UNITS, BECAUSE A LOT IS KEPT IN THEM. `apply_event` refuses a
+  // fractional quantity rather than carrying it as none — the drop is what
+  // produced a lot-less entry before — so the form refuses it here rather than
+  // collecting the refusal a round trip after computing a consideration.
+  const qty = units ? wholeUnits(units) : null;
   const rule = rules.find((r) => r.ruleId === ruleId) ?? null;
 
   // The reference the operator has not overridden. Typing one wins; leaving it
@@ -105,6 +111,7 @@ export function TradeTicket({
     Boolean(ruleId) &&
     Boolean(ref) &&
     TRADE_DATE.test(tradeDate) &&
+    qty?.ok === true &&
     worth?.ok === true;
 
   const now = signature({
@@ -208,8 +215,8 @@ export function TradeTicket({
   );
 
   const worthBlock = <Consideration units={units} price={price} worth={worth} />;
-  const notCarried = (
-    <NotCarried side={side} label={label || instrument} date={tradeDate} />
+  const carried = (
+    <WillCarry side={side} label={label || instrument} date={tradeDate} />
   );
 
   const steps: Step[] = [
@@ -249,10 +256,13 @@ export function TradeTicket({
         "Whole units, or hundredths of one.",
         "A measure, not a conserved quantity: buying 100 shares creates 100 in the book.",
       ],
-      answer: units && worth?.ok !== false ? units : null,
+      answer: qty?.ok && worth?.ok !== false ? units : null,
       body: (
         <>
-          <Field name="Units" value={units} onValue={setUnits} mode="decimal" hint="1000" />
+          <Field name="Units" value={units} onValue={setUnits} mode="numeric" hint="1000" />
+          {qty && !qty.ok ? (
+            <Derived k="Units" v="—" bad from={qty.error} />
+          ) : null}
           {worthBlock}
         </>
       ),
@@ -331,7 +341,7 @@ export function TradeTicket({
       body: (
         <>
           {worthBlock}
-          {notCarried}
+          {carried}
         </>
       ),
     },
@@ -377,8 +387,9 @@ export function TradeTicket({
           </div>
           {holding}
           {rule ? <RuleForm rule={rule} /> : null}
+          {qty && !qty.ok ? <Derived k="Units" v="—" bad from={qty.error} /> : null}
           {worthBlock}
-          {notCarried}
+          {carried}
         </>
       }
       actions={
@@ -476,26 +487,22 @@ function Consideration({
 }
 
 /**
- * The three fields this write cannot carry, and what that costs.
+ * What the entry will carry, and what still turns on the operator getting it
+ * right.
  *
- * ⛔ BEFORE THE PREVIEW, NOT INSIDE IT. This is a property of the METHOD, not of
- * the response: `ApplyEventRequest` has no field for an instrument, a quantity
- * or a trade date, so the answer is the same every time and is known before the
- * server is asked. Behind a preview it would be invisible to anybody who posts
- * without previewing, and "preview first" is a discipline the console asks for
- * rather than one the contract enforces.
+ * ⭐ THIS PANEL USED TO BE AN APOLOGY. `ApplyEventRequest` carried a rule, an id
+ * and an amount, so a trade recorded here opened no tax lot and relieved none —
+ * the entry balanced, the trial balance tied, the NAV moved by the right amount,
+ * and the position's unit count was somebody else's. The screen's job was to
+ * admit that. The contract carries the instrument, the units and the day now, so
+ * the panel says what happens instead.
  *
- * ⚠ TWO LINES, AND THE ARGUMENT BEHIND A DISCLOSURE. This was eight lines of
- * prose in a bordered box followed by six more underneath, which is a wall — and
- * a wall is skipped, so the paragraph that mattered most was the one least
- * likely to be read. The claim is always on screen; the reasoning is one click
- * away, the same move the NAV strikes make.
- *
- * ⚠ AND IT WEARS THE ATTENTION COLOUR, NOT THE FAILURE ONE. Nothing has gone
- * wrong. The entry balances, the trial balance ties, the NAV moves by the right
- * amount — which is exactly the failure shape AGENTS.md puts first.
+ * ⚠ IT DOES NOT BECOME A TICK. Two things still decide whether the lot is right,
+ * and both are the operator's: the instrument has to be the one the master
+ * knows, and the day has to be the day it was dealt. Neither is checkable from
+ * here, and the second is the one that decides a holding period.
  */
-function NotCarried({
+function WillCarry({
   side,
   label,
   date,
@@ -507,40 +514,27 @@ function NotCarried({
   const it = label || "the holding";
   return (
     <div className="qual">
-      <b>Not carried:</b> instrument, units, trade date.{" "}
+      <b>Carried:</b> instrument, units, trade date.{" "}
       {side === "sell"
-        ? "No lot is relieved, so no basis is given up."
-        : "No tax lot opens, so a later sale has nothing to relieve."}
+        ? `Lots of ${it} are relieved under the fund's elected method, and the gain is proceeds less the basis given up.`
+        : `A tax lot opens against ${it}, dated ${date || "the day you name"}.`}
       <details className="more">
-        <summary>What that costs</summary>
+        <summary>What still turns on you</summary>
         <ul className="pts">
           <li>
-            No instrument on the postings, so the value sits in the
-            account&rsquo;s unattributed row rather than against {it}.
+            The identifier has to be the one the entity master knows. Two
+            spellings of one security are two positions, and the books tie
+            either way.
           </li>
-          <li>No quantity, so {it}&rsquo;s unit count does not move.</li>
           <li>
-            No trade date. {date || "The day"} reaches the journal inside the
-            reference, where a person can read it and{" "}
-            <code>Ratio.Lots.Relief</code> cannot.
+            The day is the day it was <b>dealt</b>. It is what the
+            holding-period methods read, so a month out is a short-term gain
+            reported as long-term — and nothing reconciles a gain.
           </li>
-          {side === "sell" ? (
-            <li>
-              So the realized gain is what this rule&rsquo;s weights make of the
-              consideration, not proceeds less cost — and it lands in{" "}
-              <b>Unclassified</b>. A wrong NAV meets a reconciliation; this meets
-              nobody until a tax authority asks.
-            </li>
-          ) : (
-            <li>
-              And a lot with <b>no trade date</b> is refused by the
-              holding-period methods rather than guessed at — both defaults are
-              wrong in opposite directions.
-            </li>
-          )}
           <li>
-            To carry all three: the data plane, where a template declares them as
-            fields of a fact — or <code>ApplyEventRequest</code> grows them.
+            Whole units only. A fractional quantity is refused rather than
+            dropped, because dropping it is what produced a lot-less entry
+            before.
           </li>
         </ul>
       </details>

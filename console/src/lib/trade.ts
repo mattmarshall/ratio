@@ -116,6 +116,44 @@ export function decimalOf(minor: bigint): string {
 /** `2026-02-26` — a calendar day, which is what a trade date is. */
 export const TRADE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Units as a whole number, which is what a tax lot is kept in.
+ *
+ * ⛔ REFUSED HERE BECAUSE IT IS REFUSED THERE. `ApplyEventRequest.quantity`
+ * takes whole units; `Console::apply_event` bails on anything else rather than
+ * carrying it as no quantity, which is what the data plane does for a file
+ * nobody read. A form that let a fractional quantity through would collect the
+ * refusal a round trip later, having already computed a consideration from it.
+ */
+export function wholeUnits(units: string): Derived {
+  const q = hundredths(units, "a quantity");
+  if (!q.ok) return q;
+  if (q.minor < 0n) {
+    return { ok: false, error: "A quantity is not negative — the side says which way it goes." };
+  }
+  if (q.minor % 100n !== 0n) {
+    return {
+      ok: false,
+      error:
+        "A lot is kept in whole units, so a fractional quantity has to arrive " +
+        "on the data plane rather than through this form.",
+    };
+  }
+  return { ok: true, minor: q.minor / 100n };
+}
+
+/** `2026-02-26` → the `CalendarDate` the contract asks for, or null. */
+export function calendarDate(
+  iso: string,
+): { year: number; month: number; day: number } | null {
+  if (!TRADE_DATE.test(iso)) return null;
+  return {
+    year: Number(iso.slice(0, 4)),
+    month: Number(iso.slice(5, 7)),
+    day: Number(iso.slice(8, 10)),
+  };
+}
+
 /** The seven inputs that decide what a ticket posts. */
 export interface TicketInputs {
   readonly side: string;

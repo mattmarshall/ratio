@@ -59,6 +59,12 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
       eventId,
       amount,
       days,
+      // ⚠ EMPTY ON PURPOSE, AND NOT AN OVERSIGHT. This screen records an event
+      // of any kind — a fee, a subscription, an accrual — and most of them
+      // concern no instrument. `/trade` is the screen that fills these in.
+      instrument: "",
+      quantity: "",
+      tradeDate: null,
       validateOnly,
     });
     if (!validateOnly) {

@@ -2,7 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { caller } from "@/lib/caller";
-import { consideration, decimalOf, signature, TRADE_DATE } from "@/lib/trade";
+import {
+  calendarDate,
+  consideration,
+  decimalOf,
+  signature,
+  TRADE_DATE,
+  wholeUnits,
+} from "@/lib/trade";
 import { applyEvent, AuthError, Refused } from "@/wire/client";
 import type { ApplyEventResponse } from "@/wire/types";
 
@@ -81,6 +88,13 @@ export async function place(
   }
   const amount = decimalOf(c.minor);
 
+  // ⛔ WHOLE UNITS, CHECKED HERE AS WELL AS THERE. `Console::apply_event` bails
+  // on a fractional quantity rather than carrying it as none, and a form that
+  // sent one would collect that refusal a round trip after computing a
+  // consideration from it.
+  const q = wholeUnits(units);
+  if (!q.ok) return { ok: false, error: q.error };
+
   try {
     const who = await caller();
     const response = await applyEvent(who, fund, {
@@ -94,6 +108,13 @@ export async function place(
       // books every trade a hundred times too large, and it balances.
       amount,
       days: "",
+      // ⭐ THE THREE THAT MAKE THIS A TRADE RATHER THAN A MOVEMENT OF VALUE.
+      // Without them the postings name accounts and nothing else, the walk
+      // skips them, and no lot opens or is relieved — while the entry balances
+      // and the trial balance ties.
+      instrument,
+      quantity: q.minor.toString(),
+      tradeDate: calendarDate(tradeDate),
       validateOnly,
     });
     if (!validateOnly) {

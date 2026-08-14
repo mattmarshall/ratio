@@ -279,6 +279,17 @@ fn apply_event_request(parent: &str, body: &str) -> Result<pb::ApplyEventRequest
         event_id: text("eventId")?,
         amount: text("amount")?,
         days: text("days")?,
+        // ⛔ THE THREE THAT MAKE AN EVENT A TRADE. Absent, an event moves value
+        // and opens no lot — see the fields' own comments in console.proto. A
+        // transcoder that read the contract's other fields and quietly dropped
+        // these would put the defect back with the contract looking correct,
+        // which is the failure `transcode_test` exists to catch.
+        instrument: text("instrument")?,
+        quantity: text("quantity")?,
+        // ⚠ `None` when the key is absent, NOT a zeroed Date. `0000-00-00`
+        // would parse as a trade date nobody supplied, and the holding-period
+        // methods would classify against it rather than refusing.
+        trade_date: v.get("tradeDate").filter(|d| !d.is_null()).and_then(date_from_json),
         validate_only: matches!(v.get("validateOnly"), Some(serde_json::Value::Bool(true))),
     })
 }

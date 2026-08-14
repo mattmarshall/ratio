@@ -1858,6 +1858,40 @@ message ApplyEventRequest {
 
   // Compute the entry and the resulting NAV, and write NOTHING. (AIP-163)
   bool validate_only = 6 [(google.api.field_behavior) = OPTIONAL];
+
+  // The instrument this event concerns, as the entity master names it.
+  //
+  // ⛔ WITHOUT IT AN EVENT MOVES VALUE AND NOTHING ELSE. `ratio_project`'s walk
+  // skips any posting that does not carry BOTH an instrument and a quantity, so
+  // a trade recorded without them opens no tax lot and relieves none — while the
+  // entry balances, the trial balance ties and the NAV moves by the right
+  // amount. That is why the gap survived: nothing downstream objects, and the
+  // position's unit count is simply somebody else's.
+  //
+  // ⚠ Only legs that declare `per_instrument` carry it; the rest are unchanged.
+  string instrument = 7 [(google.api.field_behavior) = OPTIONAL];
+
+  // Whole units moved, as a decimal string.
+  //
+  // ⛔ POSITIVE ON BOTH SIDES. A sale is not a purchase with a minus in front of
+  // it: `Ratio.Chart.applyTemplate` takes the quantity's sign from the LEG, so a
+  // purchase debits investments and adds units while the disposal leg credits
+  // and removes them. Sending a negative here would add units on a sale.
+  //
+  // ⚠ Refused rather than rounded when it is not whole. Fractional units are a
+  // real thing and this field cannot express one; carrying it as no quantity —
+  // which is what the data plane does — would silently produce the lot-less
+  // entry this field exists to prevent.
+  string quantity = 8 [(google.api.field_behavior) = OPTIONAL];
+
+  // The day this was dealt.
+  //
+  // ⛔ A CALENDAR DAY, NOT AN INSTANT, and it is what a lot's holding period is
+  // established from. `Ratio.Lots.Relief`'s methods REFUSE a lot that carries
+  // none rather than defaulting, because both defaults are wrong in opposite
+  // directions — so an entry without this opens lots no method will classify,
+  // and the gain lands in the unclassified residue.
+  google.type.Date trade_date = 9 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message ApplyEventResponse {

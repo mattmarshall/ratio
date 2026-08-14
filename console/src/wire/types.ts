@@ -674,6 +674,19 @@ export interface ApplyEventRequest {
   eventId: string;
   amount: string;
   days: string;
+  /**
+   * ⛔ WITHOUT THESE THREE AN EVENT MOVES VALUE AND NOTHING ELSE. The
+   * projection's walk skips any posting that does not carry BOTH an instrument
+   * and a quantity, so a trade sent without them opens no tax lot and relieves
+   * none — while the entry balances, the trial balance ties, and the NAV moves
+   * by the right amount. Nothing downstream objects; the position's unit count
+   * is simply somebody else's.
+   */
+  instrument: string;
+  /** Whole units. ⛔ POSITIVE on both sides — the rule decides the direction. */
+  quantity: string;
+  /** The day it was dealt. ⛔ What a lot's holding period is established from. */
+  tradeDate: CalendarDate | null;
   validateOnly: boolean;
 }
 
