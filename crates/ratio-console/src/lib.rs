@@ -681,19 +681,17 @@ impl Console {
             None => None,
             Some(d) => {
                 let iso = format!("{:04}-{:02}-{:02}", d.year, d.month, d.day);
-                // ⛔ ROUND-TRIPPED, BECAUSE THE PARSE ALONE IS NOT A CALENDAR.
-                // `days_from_iso_date` range-checks the month at 1..=12 and the
-                // day at 1..=31 and then does civil-days arithmetic, so
-                // `2026-02-30` does not fail — it silently becomes the 2nd of
-                // March. A lot dated two days after the trade is a holding
-                // period two days long that nobody typed, and the entry is
-                // append-only by then. Converting back and comparing is the
-                // cheap way to ask the calendar rather than the range.
-                let days = ratio_common::days_from_iso_date(&iso)
+                // ⭐ THE CALENDAR CHECK IS THE PARSER'S, NOT THIS DOOR'S. This
+                // used to convert back and compare here, because
+                // `days_from_iso_date` range-checked the day at 1..=31 and then
+                // let the civil arithmetic carry `2026-02-30` into the 2nd of
+                // March. That check now lives inside the parser, where every
+                // caller gets it — a market calendar's holidays are read
+                // through the same function, with `filter_map(…ok())`, and a
+                // date that silently succeeds there moves every T+n settlement
+                // computed from it.
+                ratio_common::days_from_iso_date(&iso)
                     .with_context(|| format!("{iso:?} is not a trade date"))?;
-                if ratio_common::iso_date_from_days(days) != iso {
-                    bail!("{iso:?} is not a day in the calendar");
-                }
                 Some(iso)
             }
         };
