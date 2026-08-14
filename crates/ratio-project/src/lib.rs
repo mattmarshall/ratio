@@ -941,6 +941,17 @@ impl Projection {
                     vid
                 )),
             },
+            // ⚠ AN UNREADABLE CONFIG REFUSES A DECLARED VIEW AND NOT THE
+            // UNDECLARED ONE, and the asymmetry is the point. A settlement
+            // date is a term of the pinned agreement — no readable config, no
+            // calendar, no date. Journal order is a term of NOTHING: it is the
+            // custom every book has, `ViewDef::undeclared` answers over every
+            // book ever written, and an entry with a broken config still
+            // FOLDED before views existed — only its RELIEF refused, per sale,
+            // with a break naming why. Refusing the whole entry here turned
+            // `a_configuration_that_is_not_a_rule_set_refuses_the_relief`'s
+            // one lot break into an empty book.
+            Some(Err(_)) if vid == ratio_rules::UNDECLARED_VIEW => views::Placement::Always,
             Some(Err(why)) => views::Placement::Unplaceable(format!(
                 "{}: the configuration this entry pinned ({}) could not be read — \
                  {why}",
