@@ -178,6 +178,13 @@ reads = "csv"
   by = "side"
   amount = "consideration"
   rules = { buy = "equity_purchase", sell = "disposal_proceeds" }
+  # ⛔ WHICH FIELD IS THE DAY IT WAS DEALT, declared rather than inferred. It
+  # becomes the entry's trade date, which is what a lot's holding period is
+  # established from — so it decides whether a gain is short-term or long-term.
+  # Without it every lot this file opens is refused by every holding-period
+  # method and the fund's whole realized gain lands in the unclassified residue,
+  # with the books tying throughout.
+  dated = "traded"
 
   # Prices. REFERENCE DATA: no `posts` block, so these are recorded, resolved
   # and citable, and never touch the books until a valuation uses them.

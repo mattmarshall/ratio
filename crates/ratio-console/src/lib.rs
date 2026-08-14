@@ -1723,8 +1723,17 @@ impl Console {
                     ),
                     config: digest.clone(),
                     postings,
-                
-                    trade_date: None,
+                    // ⛔ THE DAY THE TEMPLATE SAYS THIS HAPPENED. This was
+                    // `None` while the trade template beside it declared a
+                    // `traded` date and read it into every fact — so a delivery
+                    // posted lots with no acquisition date, every
+                    // holding-period method refused them, and the whole of that
+                    // fund's realized gain fell into the unclassified residue.
+                    // The books tied throughout.
+                    //
+                    // ⚠ STILL `None` FOR A TEMPLATE THAT DECLARES NO DATE, which
+                    // is the honest answer for a file that carries none.
+                    trade_date: ratio_ingest::dated_of(t, &r.fact).map(str::to_string),
                     announcement: None,
                 })?;
             }
