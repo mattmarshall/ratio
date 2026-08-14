@@ -99,7 +99,16 @@ DUAL="$OUT/marlowe-dual-basis"
 # struck both views; `ratio navs --view` lists what was WRITTEN, so this checks
 # the figures a person would actually be shown rather than ones this script
 # derived for itself.
-nav_of() { "$RATIO" navs --book "$1" --view "$2" | awk 'NR > 1 { print $3; exit }'; }
+# ⚠ THE FIGURE WITH A DECIMAL POINT, NOT THE THIRD COLUMN. A positional read
+# took the ENTRY COUNT here — `rfc3339` is exactly 20 characters and the column
+# was 20 wide, so the timestamp ran into the view with no space and every field
+# shifted by one. Both views fold one journal, so the entry count is IDENTICAL
+# by construction and the assertion below fired on a figure that could never
+# have differed. Minor units are the only field on the row carrying a `.`.
+nav_of() {
+  "$RATIO" navs --book "$1" --view "$2" \
+    | awk 'NR > 1 { for (i = 1; i <= NF; i++) if ($i ~ /^-?[0-9]+\.[0-9][0-9]$/) { print $i; exit } }'
+}
 abor=$(nav_of "$DUAL" abor)
 ibor=$(nav_of "$DUAL" ibor)
 [ -n "$abor" ] && [ -n "$ibor" ] || fail "no NAV figure on one of the two views"

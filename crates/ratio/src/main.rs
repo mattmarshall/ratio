@@ -1641,13 +1641,18 @@ fn navs(book: PathBuf, view: Option<&str>) -> Result<()> {
     }
     // ⛔ THE VIEW IS A COLUMN, NOT A FOOTNOTE. Two rows can carry the same
     // valuation point and the same id and be different figures.
+    // ⛔ TWENTY-TWO, NOT TWENTY. `rfc3339` is EXACTLY 20 characters, so a
+    // 20-wide column padded it to nothing and the timestamp ran straight into
+    // the view beside it — `2026-08-14T12:43:44Zabor`. The header was padded
+    // from five and looked fine, which is why it survived: the columns only
+    // collide on rows with data in them.
     println!(
-        "{:<20}{:<12}{:>18}{:>10}  {:<10}{}",
+        "{:<22}{:<12}{:>18}{:>10}  {:<10}{}",
         "AS OF", "VIEW", "NAV", "ENTRIES", "CONFIG", "BY"
     );
     for s in &all {
         println!(
-            "{:<20}{:<12}{:>18}{:>10}  {:<10}{}",
+            "{:<22}{:<12}{:>18}{:>10}  {:<10}{}",
             ratio_nav::rfc3339(s.valuation_time),
             s.view,
             minor(s.net_asset_value),
