@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Seed the demo with three funds in three different states.
+# Seed the demo with six funds, each in a state the console has to render.
 #
 # Each is a REAL book built through the same code path — same chart, same rules,
 # same recon, same striking. What differs is what HAPPENED to it, and the state

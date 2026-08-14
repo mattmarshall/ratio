@@ -277,11 +277,18 @@ the conserved one, and the kernel never said it was.
 - ⚠ **`console/scripts/capture_fixtures.sh` takes `navStrikes.json` and
   `replay.json` from `RATIO_FIXTURE_STRUCK_FUND`, not from `RATIO_FIXTURE_FUND`.**
   The fixture fund is the BLOCKED book on purpose, and a blocked book now has no
-  strikes, so `id navStrikes.json` would index an empty list. ⚠ The fixtures are
-  stale in their VALUES — `break.json`'s name predates names being derived from
-  the dimension — and `fixtures_test.py` cannot see it, because it checks field
-  sets. The capture path is verified working; refreshing the data is its own
-  change.
+  strikes, so `id navStrikes.json` would index an empty list.
+- ⛔ **THE COMMITTED FIXTURES CORRESPOND TO NO SINGLE SEEDED FUND, so a
+  wholesale re-capture is not a refresh — it is a rewrite that breaks nine
+  render tests.** `capture_fixtures.sh` pulls every file from one `$FUND`, but
+  `screens.test.tsx` asserts two currencies, forty open lots, a realized gain
+  and a declared lot method — `ashcombe`-shaped data — while the default
+  fixture fund is the blocked reconciliation book, which has none of it. Tried
+  it; reverted it. ⚠ So `fixtures_test.py` passing means the FIELD SETS match
+  the contract and nothing more, and the values are a hand-maintained
+  composite. Refreshing them honestly means either capturing per-fixture from
+  the fund that can produce it, or accepting new expected values in the render
+  tests. Either is its own change.
 - ⚠ **`vi.mock`'s factory SPREADS the `wire` object, so reassigning
   `wire.getBreak` inside a test does nothing.** The mock captured the function
   values when it ran. A case that needs different data needs a different

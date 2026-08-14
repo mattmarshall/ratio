@@ -328,7 +328,7 @@ returns `401` — but it cannot assert `/v1` **content** (a held position, the
 three fund states, the NAV replay) without a token, and CI holds no user
 credential. Those checks moved out of the public smoke test. To exercise the
 authenticated path end to end, sign in through the Hosted UI on the live URL and
-confirm the fund rail shows the five seeded funds and the principal chip shows
+confirm the fund rail shows the six seeded funds and the principal chip shows
 the signed-in email; or script an `initiate-auth` against the pool with a
 smoke user's permanent password and replay one `/v1/funds` call with the
 returned access token. The public `/balance.json` and `/breaks.json` checks

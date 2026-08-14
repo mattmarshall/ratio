@@ -3,7 +3,7 @@
   "account": "Cash and equivalents",
   "accountDimension": "1010",
   "severity": "HIGH",
-  "explained": false,
+  "explained": true,
   "cause": "the custodian statement and the journal disagree",
   "ratioAmount": "33288000",
   "reportedAmount": "33488000",
