@@ -333,6 +333,13 @@ impl Default for RuleSet {
             lot_method: None,
             chart_roles: None,
             long_term_days: default_long_term_days(),
+            // ⛔ EMPTY IS NOT ZERO VIEWS. `effective_views` turns this into the
+            // one view every book has, recognising in journal order — and
+            // `views_declared` reports that nobody chose it. Seeding a view
+            // here would make silence look like an election, which is the
+            // failure the whole `declared` distinction exists for.
+            views: Vec::new(),
+            calendars: Vec::new(),
         }
     }
 }

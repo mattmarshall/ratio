@@ -2812,9 +2812,13 @@ mod tests {
         // `b`'s existence does not leak. The list is the LIVE `ROUTES` slice, so
         // a route added later is covered here without anyone remembering to.
         let mut checked = 0;
+        let mut view_scoped = 0;
         for route in transcode::ROUTES {
             if !route.template.contains("funds/*") {
                 continue; // /v1/funds is the enumeration, tested separately below.
+            }
+            if route.template.contains("views/*") {
+                view_scoped += 1;
             }
             let path = expand_template(route.template, "b");
             let body = post_body(route.template);
@@ -2834,7 +2838,19 @@ mod tests {
             );
             checked += 1;
         }
-        assert!(checked >= 30, "expected every fund route covered, only saw {checked}");
+        assert!(checked >= 36, "expected every fund route covered, only saw {checked}");
+
+        // ⛔ AND THE VIEW-SCOPED ONES ARE AMONG THEM. Fifteen routes now carry a
+        // `views/{view}` segment, and `expand_template` fills the second `*`
+        // with a placeholder id — so a boundary enforced only on `funds/*` and
+        // forgotten one level in is what this second floor catches. Drop the
+        // segment from the templates and `checked` still clears its floor while
+        // this drops to zero, which is the failure that would otherwise be
+        // invisible.
+        assert!(
+            view_scoped >= 15,
+            "expected the view-scoped routes covered too, only saw {view_scoped}"
+        );
 
         // The guard admits what it should: the subject's OWN fund is readable.
         // Without this the loop above could be passing because `a` was blocked
