@@ -1,7 +1,14 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Commit, Field, Picker, Ticket, type Step } from "@/components/Ticket";
+import {
+  Commit,
+  Derived,
+  Field,
+  Picker,
+  Ticket,
+  type Step,
+} from "@/components/Ticket";
 import { count, money } from "@/lib/format";
 import type { Template } from "@/wire/types";
 import { admit, read, type AdmitResult, type ReadResult } from "./actions";
@@ -135,27 +142,24 @@ export function IngestForm({
       why: "Reading records facts. Nothing reaches the journal until they are admitted, which is the step below.",
       answer: null,
       body: r ? (
-        <div className="lotterms">
-          <div className="lt">
-            <span className="ltk">Rows</span>
-            <span className="ltv num strong">{count(r.rowCount)}</span>
-            <span className="ltv">read out of the file</span>
-          </div>
-          <div className="lt">
-            <span className="ltk">Ready to post</span>
-            <span className="ltv num">{count(r.readyCount)}</span>
-            <span className="ltv">of {count(r.factCount)} facts, {count(r.newFactCount)} new</span>
-          </div>
-          <div className={`lt${r.rejected.length ? " warn" : ""}`}>
-            <span className="ltk">Rejected</span>
-            <span className="ltv num">{r.rejected.length}</span>
-            {/* ⛔ PER ROW, NEVER PER FILE. A read that reports only its successes
-                looks identical to one that dropped half the file. */}
-            <span className="ltv">
-              {r.rejected.length ? "rows the template could not map" : "every row mapped"}
-            </span>
-          </div>
-        </div>
+        <>
+          <Derived k="Rows" v={count(r.rowCount)} from="read out of the file" />
+          <Derived
+            k="Ready to post"
+            v={count(r.readyCount)}
+            from={`of ${count(r.factCount)} facts, ${count(r.newFactCount)} new`}
+          />
+          {/* ⛔ PER ROW, NEVER PER FILE. A read that reports only its successes
+              looks identical to one that dropped half the file. */}
+          {r.rejected.length ? (
+            <Derived
+              k="Rejected"
+              v={String(r.rejected.length)}
+              bad
+              from="rows the template could not map"
+            />
+          ) : null}
+        </>
       ) : (
         <p className="why">Preview to see what the template makes of it.</p>
       ),
@@ -166,7 +170,6 @@ export function IngestForm({
     <>
       <Ticket
         title="Read a file"
-        note="preview, then read"
         summary={
           templateId && content
             ? `Read ${content.split("\n").length} lines under ${templateId}.`

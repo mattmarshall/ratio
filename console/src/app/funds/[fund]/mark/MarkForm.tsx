@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Commit, Field, Ticket, type Step } from "@/components/Ticket";
+import { Commit, Derived, Field, Ticket, type Step } from "@/components/Ticket";
 import { count, money } from "@/lib/format";
 import { isoDate } from "@/lib/dates";
 import { TRADE_DATE } from "@/lib/trade";
@@ -66,7 +66,6 @@ export function MarkForm({ fund }: { fund: string }) {
   return (
     <Ticket
       title="Mark to market"
-      note="preview, then post"
       summary={
         day
           ? `Mark every position this fund holds as at ${isoDate(day)}.`
@@ -106,24 +105,23 @@ function Marks({
 }) {
   if (!detail) {
     return (
-      <div className="lotterms">
-        <div className="lt">
-          <span className="ltk">Marks</span>
-          <span className="ltv num strong">{r.marks.length}</span>
-          <span className="ltv">positions with a price on or before the date</span>
-        </div>
-        <div className={`lt${r.unpriced.length ? " warn" : ""}`}>
-          <span className="ltk">Unpriced</span>
-          <span className="ltv num">{r.unpriced.length}</span>
-          <span className="ltv">
-            {/* ⛔ NOT MARKED AT ZERO. Zero says "worth what it cost"; these are
-                unvalued, and they block. */}
-            {r.unpriced.length
-              ? "not marked at zero — unvalued, and they block the NAV"
-              : "every position had a price"}
-          </span>
-        </div>
-      </div>
+      <>
+        <Derived
+          k="Marks"
+          v={String(r.marks.length)}
+          from="priced on or before the date"
+        />
+        {/* ⛔ NOT MARKED AT ZERO. Zero says "worth what it cost"; these are
+            unvalued, and they block the NAV. */}
+        {r.unpriced.length ? (
+          <Derived
+            k="Unpriced"
+            v={String(r.unpriced.length)}
+            bad
+            from="not marked at zero — unvalued, and they block the NAV"
+          />
+        ) : null}
+      </>
     );
   }
 

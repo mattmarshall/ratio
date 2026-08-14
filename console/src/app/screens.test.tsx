@@ -420,10 +420,14 @@ describe("the write screens", () => {
     // them, so the answer is known before the server is asked — and an operator
     // who posts without previewing would otherwise never see it.
     await asForm();
-    for (const field of ["Instrument.", "Units.", "Trade date."]) {
-      expect(screen.getByText(field)).toBeDefined();
-    }
-    expect(screen.getByText("no tax lot")).toBeDefined();
+    expect(screen.getByText("Not carried:")).toBeDefined();
+    expect(
+      screen.getByText(/instrument, units, trade date/),
+    ).toBeDefined();
+    // The consequence is on the same line as the claim; the argument for it is
+    // one click away, which is where the eight lines of prose went.
+    expect(screen.getByText(/No tax lot opens/)).toBeDefined();
+    expect(screen.getByText("What that costs")).toBeDefined();
     expect(screen.getByText("no trade date")).toBeDefined();
   });
 
@@ -433,8 +437,9 @@ describe("the write screens", () => {
     // ⛔ THE WORSE HALF. A purchase that opens no lot is a lot missing; a
     // disposal that relieves no lot reports a realized gain computed against no
     // basis — the figure with no counterparty, which nobody catches.
-    expect(screen.getByText("no lot")).toBeDefined();
+    expect(screen.getByText(/No lot is relieved/)).toBeDefined();
     expect(screen.getByText("Unclassified")).toBeDefined();
+    expect(screen.queryByText(/No tax lot opens/)).toBeNull();
   });
 
   it("sends every field the action reads", async () => {

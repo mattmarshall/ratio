@@ -1,7 +1,14 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Commit, Field, Picker, Ticket, type Step } from "@/components/Ticket";
+import {
+  Commit,
+  Derived,
+  Field,
+  Picker,
+  Ticket,
+  type Step,
+} from "@/components/Ticket";
 import { money } from "@/lib/format";
 import { hundredths } from "@/lib/trade";
 import type { Rule } from "@/wire/types";
@@ -100,33 +107,21 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
   // ⛔ THE FIGURE READ BACK AS THE SERVER WILL READ IT, in both views. A refusal
   // or a hundredfold that only appears on a review step is one the compact form
   // posts without ever showing.
+  // ⛔ THE FIGURE READ BACK AS THE SERVER WILL READ IT, in both views. A
+  // refusal or a hundredfold that only appears on a review step is one the
+  // compact form posts without ever showing.
   const echo = parsed ? (
-    parsed.ok ? (
-      <div className="lotterms">
-        <div className="lt">
-          <span className="ltk">{accrual ? "Basis" : "Amount"}</span>
-          <span className="ltv num strong">{money(parsed.minor.toString())}</span>
-          <span className="ltv">as the server will parse it</span>
-        </div>
-        {accrual ? (
-          <div className="lt">
-            <span className="ltk">Days</span>
-            <span className="ltv num">{days || "—"}</span>
-            <span className="ltv">
-              the rule&rsquo;s rate and convention decide the rest
-            </span>
-          </div>
-        ) : null}
-      </div>
-    ) : (
-      <div className="lotterms">
-        <div className="lt warn">
-          <span className="ltk">Amount</span>
-          <span className="ltv num">—</span>
-          <span className="ltv">{parsed.error}</span>
-        </div>
-      </div>
-    )
+    <>
+      <Derived
+        k={accrual ? "Basis" : "Amount"}
+        v={parsed.ok ? money(parsed.minor.toString()) : "—"}
+        bad={!parsed.ok}
+        from={parsed.ok ? "as the server will parse it" : parsed.error}
+      />
+      {accrual && parsed.ok ? (
+        <Derived k="Days" v={days || "—"} from="at the rule's own rate" />
+      ) : null}
+    </>
   ) : null;
 
   const steps: Step[] = [
@@ -201,7 +196,7 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
       id: "review",
       label: "Review",
       ask: "What this would do.",
-      why: "Preview runs the identical code path on the server and records nothing.",
+      // ⚠ No `why` — the bar under the button already says it.
       answer: null,
       body: (
         <>
@@ -215,7 +210,6 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
   return (
     <Ticket
       title="Record an event"
-      note="preview, then post"
       summary={
         complete && parsed?.ok ? (
           <>

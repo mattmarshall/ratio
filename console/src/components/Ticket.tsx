@@ -53,7 +53,6 @@ export interface Step {
 
 export function Ticket({
   title,
-  note,
   summary,
   steps,
   compact,
@@ -61,9 +60,7 @@ export function Ticket({
   children,
 }: {
   title: string;
-  /** The right-hand side of the section head. */
-  note?: string;
-  /** The ticket said back as a sentence. Shown in both views. */
+  /** The ticket said back as a sentence. ⚠ Form view only — see below. */
   summary?: ReactNode;
   /** In order. The last one is the review. */
   steps: readonly Step[];
@@ -95,7 +92,6 @@ export function Ticket({
       <div className="loghead">
         <span>{title}</span>
         <span className="hd">
-          {note ? <span className="sortnote">{note}</span> : null}
           {/* ⚠ BUTTONS AND `aria-pressed`, NOT LINKS AND `aria-current`. These
               narrow what is on screen rather than navigate, and a half-typed
               ticket is not a URL anybody should be sent. The view tabs above are
@@ -110,8 +106,6 @@ export function Ticket({
           </div>
         </span>
       </div>
-
-      {summary ? <p className="cap">{summary}</p> : null}
 
       {guided ? (
         <div className="ticket">
@@ -149,8 +143,20 @@ export function Ticket({
           {step ? (
             <div className="step">
               <h3>{step.ask}</h3>
-              {step.why ? <p className="why">{step.why}</p> : null}
               {step.body}
+              {/* ⭐ THE REASON IS ONE CLICK AWAY, NOT PRINTED BESIDE THE FIELD.
+                  The NAV strikes above already work this way — "a strike is a
+                  claim; the proof is one click away rather than printed beside
+                  it" — and a form that argues with you at every step is a form
+                  people stop reading, which costs more than the paragraph
+                  saved. The question and the control are the screen; why it is
+                  asked is there for the first time somebody meets it. */}
+              {step.why ? (
+                <details className="more">
+                  <summary>Why this is asked</summary>
+                  <div className="txt">{step.why}</div>
+                </details>
+              ) : null}
             </div>
           ) : null}
 
@@ -181,7 +187,13 @@ export function Ticket({
           </div>
         </div>
       ) : (
-        <div className="ticket compact">{compact}</div>
+        <div className="ticket compact">
+          {/* ⚠ ONLY HERE. In Guided the tree already says what has been
+              answered, and a sentence repeating it is the second copy of the
+              same thing on one screen. */}
+          {summary ? <p className="cap">{summary}</p> : null}
+          {compact}
+        </div>
       )}
 
       {/* ⚠ ON THE LAST STEP ONLY, in Guided. Putting a commit button beside
@@ -277,6 +289,38 @@ export function Picker({
         ))}
       </select>
     </label>
+  );
+}
+
+/**
+ * A figure the screen worked out, on one line.
+ *
+ * ⚠ THIS REPLACED THREE COLUMNS OF PROSE. Each derived figure used to carry a
+ * sentence saying how it was derived — that the arithmetic is exact integers,
+ * that it travels as a decimal string, that an unpriced position is not marked
+ * at zero. All true, all already written where the work happens, and none of it
+ * something an operator on their fortieth ticket needs read to them again. The
+ * figure and what it came from are the line; the exception is what earns words,
+ * so `bad` is the only case that gets a sentence.
+ */
+export function Derived({
+  k,
+  v,
+  from,
+  bad,
+}: {
+  k: string;
+  v: string;
+  /** What it was derived from, or — when `bad` — why there is no figure. */
+  from?: ReactNode;
+  bad?: boolean;
+}) {
+  return (
+    <div className={bad ? "derived bad" : "derived"}>
+      <span className="dk">{k}</span>
+      <span className="dv num">{v}</span>
+      {from ? <span className={bad ? "dx" : "dw"}>{from}</span> : null}
+    </div>
   );
 }
 

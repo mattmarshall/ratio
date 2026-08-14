@@ -1,7 +1,14 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Commit, Field, Picker, Ticket, type Step } from "@/components/Ticket";
+import {
+  Commit,
+  Derived,
+  Field,
+  Picker,
+  Ticket,
+  type Step,
+} from "@/components/Ticket";
 import { count, money } from "@/lib/format";
 import { isoDate } from "@/lib/dates";
 import {
@@ -285,8 +292,10 @@ export function TradeTicket({
     {
       id: "review",
       label: "Review",
-      ask: "What this would do, and what it will not do.",
-      why: "Preview runs the identical code path on the server and writes nothing, so what it shows is what lands.",
+      ask: "What this would do.",
+      // ⚠ NO `why` HERE. It said preview runs the identical code path and writes
+      // nothing, which is what the bar under the button already says — and the
+      // same sentence twice on one screen is one of them being ignored.
       answer: null,
       body: (
         <>
@@ -300,7 +309,6 @@ export function TradeTicket({
   return (
     <Ticket
       title="Place a trade"
-      note="preview, then post"
       summary={
         complete && worth?.ok ? (
           <>
@@ -402,7 +410,16 @@ function RuleForm({ rule }: { rule: Rule }) {
   );
 }
 
-/** Units × price, derived, and refused rather than rounded. */
+/**
+ * Units × price, derived, and refused rather than rounded.
+ *
+ * ⚠ ONE LINE. This was a three-column block explaining that the arithmetic is
+ * exact integers mirroring `ratio_ingest::posting_for` and that the figure
+ * travels as a decimal string — both true, both already said in the code that
+ * does it, and neither of them something an operator placing their fortieth
+ * ticket needs read to them again. What is on screen is the figure and what it
+ * came from. The refusal, when there is one, is the exception that earns words.
+ */
 function Consideration({
   units,
   price,
@@ -412,51 +429,39 @@ function Consideration({
   price: string;
   worth: ReturnType<typeof consideration> | null;
 }) {
+  const bad = worth !== null && !worth.ok;
   return (
-    <div className="lotterms">
-      <div className="lt">
-        <span className="ltk">Units × price</span>
-        <span className="ltv num">
-          {units || "—"} × {price || "—"}
-        </span>
-        <span className="ltv">
-          exact integer arithmetic, mirroring{" "}
-          <code>ratio_ingest::posting_for</code>
-        </span>
-      </div>
-      <div className={`lt${worth && !worth.ok ? " warn" : ""}`}>
-        <span className="ltk">Consideration</span>
-        <span className="ltv num strong">
-          {worth?.ok ? money(worth.minor.toString()) : "—"}
-        </span>
-        {/* ⛔ REFUSED, NOT ROUNDED. Which way to round is a term of an
-            administration agreement and the configuration has not declared one,
-            so the data plane refuses this — and the ticket refuses it in the
-            same words rather than booking a figure a file could not. */}
-        <span className="ltv">
-          {worth && !worth.ok
-            ? worth.error
-            : "sent as a decimal string in major units, and parsed on the server"}
-        </span>
-      </div>
-    </div>
+    <Derived
+      k="Consideration"
+      v={worth?.ok ? money(worth.minor.toString()) : "—"}
+      bad={bad}
+      // ⛔ REFUSED, NOT ROUNDED, and in the data plane's own words. Which way to
+      // round is a term of an administration agreement and the configuration
+      // has not declared one.
+      from={bad && !worth.ok ? worth.error : `${units || "—"} × ${price || "—"}`}
+    />
   );
 }
 
 /**
- * The three fields this write cannot carry, and what each one costs.
+ * The three fields this write cannot carry, and what that costs.
  *
  * ⛔ BEFORE THE PREVIEW, NOT INSIDE IT. This is a property of the METHOD, not of
  * the response: `ApplyEventRequest` has no field for an instrument, a quantity
  * or a trade date, so the answer is the same every time and is known before the
- * server is asked. Putting it behind a preview would mean an operator who posts
- * without previewing never learns any of it, and "preview first" is a discipline
- * the console asks for rather than one the contract enforces.
+ * server is asked. Behind a preview it would be invisible to anybody who posts
+ * without previewing, and "preview first" is a discipline the console asks for
+ * rather than one the contract enforces.
  *
- * ⚠ IT WEARS THE ATTENTION COLOUR, NOT THE FAILURE ONE. Nothing has gone wrong.
- * The entry balances, the trial balance ties, the NAV moves by the right amount,
- * and this is exactly the failure shape AGENTS.md puts first — the one that
- * surfaces years later in somebody's taxable income.
+ * ⚠ TWO LINES, AND THE ARGUMENT BEHIND A DISCLOSURE. This was eight lines of
+ * prose in a bordered box followed by six more underneath, which is a wall — and
+ * a wall is skipped, so the paragraph that mattered most was the one least
+ * likely to be read. The claim is always on screen; the reasoning is one click
+ * away, the same move the NAV strikes make.
+ *
+ * ⚠ AND IT WEARS THE ATTENTION COLOUR, NOT THE FAILURE ONE. Nothing has gone
+ * wrong. The entry balances, the trial balance ties, the NAV moves by the right
+ * amount — which is exactly the failure shape AGENTS.md puts first.
  */
 function NotCarried({
   side,
@@ -469,43 +474,45 @@ function NotCarried({
 }) {
   const it = label || "the holding";
   return (
-    <>
-      <div className="qual">
-        <b>Instrument.</b> ApplyEvent takes a rule and an amount, so the postings
-        name accounts and nothing else. The value sits in the account&rsquo;s
-        unattributed row rather than against {it}.<br />
-        <b>Units.</b> No quantity moves, so {it}&rsquo;s unit count is unchanged
-        and the cost per unit the book implies is now somebody else&rsquo;s.
-        <br />
-        <b>Trade date.</b> The entry carries none. {date || "The date"} reaches
-        the journal inside the reference, where a person can read it and{" "}
-        <code>Ratio.Lots.Relief</code> cannot.
-      </div>
-      <p className="cap">
-        {side === "sell" ? (
-          <>
-            A disposal recorded this way relieves <b>no lot</b>. No basis is
-            given up, so the realized gain is whatever this rule&rsquo;s own
-            weights make of the consideration rather than proceeds less cost —
-            and with no attributable sale in the entry it lands in{" "}
-            <b>Unclassified</b>. The realized gain is the figure with no
-            counterparty: a wrong NAV meets a reconciliation, and this meets
-            nobody until a tax authority asks.
-          </>
-        ) : (
-          <>
-            A purchase recorded this way opens <b>no tax lot</b>. There is
-            nothing for a later sale to relieve, and a lot opened by an entry
-            with no trade date has <b>no trade date</b> — which the
-            holding-period methods refuse rather than guess at, because both
-            defaults are wrong in opposite directions.
-          </>
-        )}{" "}
-        To carry all three, the trade has to arrive on the data plane, where a
-        template declares the instrument, the quantity and the day as fields of a
-        fact — or `ApplyEventRequest` has to grow the three fields.
-      </p>
-    </>
+    <div className="qual">
+      <b>Not carried:</b> instrument, units, trade date.{" "}
+      {side === "sell"
+        ? "No lot is relieved, so no basis is given up."
+        : "No tax lot opens, so a later sale has nothing to relieve."}
+      <details className="more">
+        <summary>What that costs</summary>
+        <div className="txt">
+          ApplyEvent takes a rule and an amount, so the postings name accounts
+          and nothing else: the value sits in the account&rsquo;s unattributed
+          row rather than against {it}, {it}&rsquo;s unit count does not move,
+          and the entry carries no trade date — {date || "the day"} reaches the
+          journal inside the reference, where a person can read it and{" "}
+          <code>Ratio.Lots.Relief</code> cannot.
+          <br />
+          <br />
+          {side === "sell" ? (
+            <>
+              So the realized gain is whatever this rule&rsquo;s own weights make
+              of the consideration rather than proceeds less cost, and with no
+              attributable sale in the entry it lands in <b>Unclassified</b>. The
+              realized gain is the figure with no counterparty: a wrong NAV meets
+              a reconciliation, and this meets nobody until a tax authority asks.
+            </>
+          ) : (
+            <>
+              And a lot opened by an entry with no trade date has{" "}
+              <b>no trade date</b>, which the holding-period methods refuse
+              rather than guess at — both defaults are wrong in opposite
+              directions.
+            </>
+          )}{" "}
+          To carry all three, the trade has to arrive on the data plane, where a
+          template declares the instrument, the quantity and the day as fields of
+          a fact — or <code>ApplyEventRequest</code> has to grow the three
+          fields.
+        </div>
+      </details>
+    </div>
   );
 }
 
