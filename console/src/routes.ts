@@ -43,76 +43,115 @@ export const ROUTES: readonly Route[] = [
   {
     path: "(layout)/funds/[fund]",
     file: "funds/[fund]/layout.tsx",
+    reads: ["getFund", "listViews"],
+  },
+  // The view layer. ⛔ A LITERAL `views` SEGMENT, not `/funds/[fund]/[view]`.
+  // Next resolves static segments before dynamic ones, so a view a fund happens
+  // to name `config` or `rules` would silently shadow that screen — and it
+  // makes the URL character-for-character the resource name, which is what this
+  // file exists to argue for.
+  {
+    path: "(layout)/funds/[fund]/views/[view]",
+    file: "funds/[fund]/views/[view]/layout.tsx",
+    reads: ["getView"],
+  },
+  // ⚠ Where the view-dependent screens USED to live. A redirect, not a
+  // deletion: these URLs have been sent to people, and the whole argument for
+  // this console is that a figure can be sent rather than described.
+  {
+    path: "/funds/[fund]/breaks",
+    file: "funds/[fund]/views/[view]/breaks/page.tsx",
     reads: ["getFund"],
+  },
+  {
+    path: "/funds/[fund]/accounts",
+    file: "funds/[fund]/views/[view]/accounts/page.tsx",
+    reads: ["getFund"],
+  },
+  {
+    path: "/funds/[fund]/positions",
+    file: "funds/[fund]/views/[view]/positions/page.tsx",
+    reads: ["getFund"],
+  },
+  {
+    path: "/funds/[fund]/strikes",
+    file: "funds/[fund]/views/[view]/strikes/page.tsx",
+    reads: ["getFund"],
+  },
+  // What two books of record over one journal disagree about, entry by entry.
+  {
+    path: "/funds/[fund]/views/[view]/reconcile",
+    file: "funds/[fund]/views/[view]/reconcile/page.tsx",
+    reads: ["reconcileViews"],
   },
   {
     path: "/funds/[fund]",
     file: "funds/[fund]/page.tsx",
-    reads: ["getFund", "listChangeLogEntries"],
+    reads: ["getFund", "getView", "listChangeLogEntries"],
   },
 
   // ── Exceptions ───────────────────────────────────────────────────────────
   {
     path: "/funds/[fund]/breaks",
-    file: "funds/[fund]/breaks/page.tsx",
+    file: "funds/[fund]/views/[view]/breaks/page.tsx",
     reads: ["listBreaks"],
   },
   {
-    path: "/funds/[fund]/breaks/[break]",
-    file: "funds/[fund]/breaks/[break]/page.tsx",
+    path: "/funds/[fund]/views/[view]/breaks/[break]",
+    file: "funds/[fund]/views/[view]/breaks/[break]/page.tsx",
     reads: ["getBreak"],
   },
 
   // ── The chart ────────────────────────────────────────────────────────────
   {
     path: "/funds/[fund]/accounts",
-    file: "funds/[fund]/accounts/page.tsx",
+    file: "funds/[fund]/views/[view]/accounts/page.tsx",
     reads: ["listAccounts"],
   },
   {
-    path: "/funds/[fund]/accounts/[account]",
-    file: "funds/[fund]/accounts/[account]/page.tsx",
+    path: "/funds/[fund]/views/[view]/accounts/[account]",
+    file: "funds/[fund]/views/[view]/accounts/[account]/page.tsx",
     reads: ["getAccount", "listPostings"],
   },
   {
-    path: "/funds/[fund]/accounts/[account]/postings/[posting]",
-    file: "funds/[fund]/accounts/[account]/postings/[posting]/page.tsx",
+    path: "/funds/[fund]/views/[view]/accounts/[account]/postings/[posting]",
+    file: "funds/[fund]/views/[view]/accounts/[account]/postings/[posting]/page.tsx",
     reads: ["getPosting"],
   },
 
   // ── Positions ────────────────────────────────────────────────────────────
   {
     path: "/funds/[fund]/positions",
-    file: "funds/[fund]/positions/page.tsx",
+    file: "funds/[fund]/views/[view]/positions/page.tsx",
     reads: ["listPositions"],
   },
   {
-    path: "/funds/[fund]/positions/[position]",
-    file: "funds/[fund]/positions/[position]/page.tsx",
+    path: "/funds/[fund]/views/[view]/positions/[position]",
+    file: "funds/[fund]/views/[view]/positions/[position]/page.tsx",
     reads: ["getPosition", "listLots"],
   },
   {
-    path: "/funds/[fund]/positions/[position]/lots/[lot]",
-    file: "funds/[fund]/positions/[position]/lots/[lot]/page.tsx",
+    path: "/funds/[fund]/views/[view]/positions/[position]/lots/[lot]",
+    file: "funds/[fund]/views/[view]/positions/[position]/lots/[lot]/page.tsx",
     reads: ["getLot"],
   },
 
   // ── NAV ──────────────────────────────────────────────────────────────────
   {
     path: "/funds/[fund]/strikes",
-    file: "funds/[fund]/strikes/page.tsx",
+    file: "funds/[fund]/views/[view]/strikes/page.tsx",
     reads: ["listNavStrikes"],
   },
   {
-    path: "/funds/[fund]/strikes/[strike]",
-    file: "funds/[fund]/strikes/[strike]/page.tsx",
+    path: "/funds/[fund]/views/[view]/strikes/[strike]",
+    file: "funds/[fund]/views/[view]/strikes/[strike]/page.tsx",
     reads: ["getNavStrike"],
   },
   // A URL for a proof. The replay folds the prefix the strike pinned and says
   // whether the history is intact — that is a citation, not a page state.
   {
-    path: "/funds/[fund]/strikes/[strike]/replay",
-    file: "funds/[fund]/strikes/[strike]/replay/page.tsx",
+    path: "/funds/[fund]/views/[view]/strikes/[strike]/replay",
+    file: "funds/[fund]/views/[view]/strikes/[strike]/replay/page.tsx",
     reads: ["getNavStrike", "replayNavStrike"],
   },
 
@@ -221,6 +260,6 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/funds/[fund]/mark",
     file: "funds/[fund]/mark/page.tsx",
-    reads: ["listPositions", "markPositions"],
+    reads: ["getFund", "listPositions", "markPositions"],
   },
 ];

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { funds as fundsForRequest } from "@/lib/data";
-import { count, money, STATE_CLASS, STATE_LABEL } from "@/lib/format";
+import { count, STATE_CLASS, STATE_LABEL } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -43,9 +43,16 @@ export default async function Funds() {
                     {f.configDigest ? f.configDigest.slice(0, 7) : "none"}
                   </div>
                 </span>
+                {/* ⛔ NOT A NAV. A net asset value depends on which entries
+                    are recognised, so it belongs to a view and this row has no
+                    view selected. Printing one here would be a figure that
+                    does not say which question it answers — which is exactly
+                    the failure this split was made to prevent. */}
                 <span className="amt num">
-                  {money(f.netAssetValue)}
-                  <small>{f.currencyCode}</small>
+                  {count(f.openBreakCount)}
+                  <small>
+                    open in {f.defaultView || "the only view"}
+                  </small>
                 </span>
               </Link>
             </li>

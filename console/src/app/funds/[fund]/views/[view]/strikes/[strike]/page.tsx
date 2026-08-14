@@ -10,11 +10,11 @@ export const dynamic = "force-dynamic";
 export default async function StrikeDetail({
   params,
 }: {
-  params: Promise<{ fund: string; strike: string }>;
+  params: Promise<{ fund: string; view: string; strike: string }>;
 }) {
-  const { fund, strike } = await params;
+  const { fund, view, strike } = await params;
   const c = await caller();
-  const s = await or404(getNavStrike(c, fund, strike));
+  const s = await or404(getNavStrike(c, fund, view, strike));
 
   return (
     <aside className="detail" aria-label="NAV strike">
@@ -59,7 +59,7 @@ export default async function StrikeDetail({
           Replaying is something you ask for — a page that asserted the proof on
           load would be asserting it rather than offering it.
         </p>
-        <Link className="signin-btn" href={`/funds/${fund}/strikes/${strike}/replay`}>
+        <Link className="signin-btn" href={`/funds/${fund}/views/${view}/strikes/${strike}/replay`}>
           Replay this strike
         </Link>
       </div>

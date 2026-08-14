@@ -43,10 +43,11 @@ usage:
   ratio post FILE [--book DIR]         post entries directly; refuses unbalanced
   ratio balance [--book DIR]           print the trial balance
   ratio explain ACCOUNT [--book DIR]   read back the postings behind a figure
-  ratio strike [--as-of YYYY-MM-DD]    strike a NAV, pinned to the journal
+  ratio views [--book DIR]             the books of record this fund keeps
+  ratio strike [--as-of D] [--view V]  strike a NAV, pinned to the journal
         [--book DIR]                   with --as-of it REFUSES an unpriced position
-  ratio navs [--book DIR]              every NAV struck on this book
-  ratio replay STRIKE-ID [--book DIR]  re-derive a strike and prove it again
+  ratio navs [--view V]                every NAV struck on this book
+  ratio replay ID [--view V]           re-derive a strike and prove it again
   ratio recon TXNS.csv POSITIONS.csv   shadow-run a period and report breaks
         [--book DIR] [--out FILE.pb] [--post]
   ratio watch [--book DIR] [--port N]  live trial balance in a browser
@@ -61,6 +62,7 @@ usage:
   ratio stale [--book DIR]             NAVs struck without an action since arrived
   ratio gen [--book DIR] [--securities N] [--lots-per N] [--turnover N]
         [--currencies N] [--open-actions N] [--capital N] [--seed N]
+        [--views abor,ibor:t+2] [--settle-tail N] [--subscriptions-in-tail N]
                                        generate a fund INTO a book, to serve
   ratio bench [--securities N] [--lots-per N] [--turnover N]
         [--currencies N]
@@ -80,6 +82,30 @@ The book defaults to ./book, or $RATIO_BOOK if set.
 
 mod scale;
 mod watch;
+
+/// `--name value` pairs, for verbs that carry more than one.
+///
+/// ⛔ REFUSES AN UNKNOWN FLAG RATHER THAN IGNORING IT. A mistyped `--veiw` that
+/// parsed as nothing would strike in whichever view the book defaults to, print
+/// a figure, and be wrong in a way the output does not show. The whole point of
+/// naming the view is that a figure says which question it answers.
+fn flags(rest: &[&str]) -> Result<std::collections::BTreeMap<String, String>> {
+    const KNOWN: [&str; 2] = ["--as-of", "--view"];
+    let mut out = std::collections::BTreeMap::new();
+    let mut it = rest.iter();
+    while let Some(k) = it.next() {
+        if !KNOWN.contains(k) {
+            bail!("unrecognized flag {k:?} — this verb takes {}", KNOWN.join(" or "));
+        }
+        let v = it
+            .next()
+            .with_context(|| format!("{k} needs a value"))?;
+        if out.insert(k.to_string(), v.to_string()).is_some() {
+            bail!("{k} given twice");
+        }
+    }
+    Ok(out)
+}
 
 fn main() -> Result<()> {
     // Restore the default SIGPIPE behavior that Rust turns off at startup.
@@ -113,11 +139,20 @@ fn main() -> Result<()> {
         ["apply", file] => apply(book, file),
         ["post", file] => post(book, file),
         ["balance"] => balance(book),
+        ["views"] => views_cmd(book),
         ["explain", account] => explain(book, account),
-        ["strike"] => strike(book, None),
-        ["strike", "--as-of", d] => strike(book, Some(d)),
-        ["navs"] => navs(book),
-        ["replay", id] => replay_strike(book, id),
+        ["strike", rest @ ..] => {
+            let f = flags(rest)?;
+            strike(book, f.get("--as-of").map(String::as_str), f.get("--view").map(String::as_str))
+        }
+        ["navs", rest @ ..] => {
+            let f = flags(rest)?;
+            navs(book, f.get("--view").map(String::as_str))
+        }
+        ["replay", id, rest @ ..] => {
+            let f = flags(rest)?;
+            replay_strike(book, id, f.get("--view").map(String::as_str))
+        }
         ["recon", txns, positions] => recon(book, txns, positions, None, false),
         ["recon", txns, positions, "--post"] => recon(book, txns, positions, None, true),
         ["recon", txns, positions, "--out", out] => {
@@ -599,6 +634,7 @@ fn shape_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Shape, Vec<&'a str>)> 
 /// of this command.
 fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
     let (shape, rest) = shape_from(args)?;
+    let (books, rest) = books_from(&rest)?;
     // ⚠ `--book` NEVER REACHES HERE. `split_book_flag` pulls it out before
     // dispatch, wherever it appears, and hands it in — so anything left over is
     // a flag nobody defined. I wrote a second `--book` parser here first; it
@@ -607,7 +643,7 @@ fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
         bail!("{other:?} is not a dial — see `ratio help`");
     }
 
-    let entries = ratio_gen::generate(&book, shape)?;
+    let entries = ratio_gen::generate_books(&book, shape, &books)?;
     let proj = ratio_project::Projection::of_book(&book)?;
     println!("generated {} into {}", plural(entries as i64, "entry", "entries"), book.display());
     println!("  {:<22}{:>12}", "securities", shape.securities);
@@ -620,6 +656,74 @@ fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
 /// `1 entry` / `2 entries`, because a demo script prints this.
 fn plural(n: i64, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// The books of record a generated fund keeps, from the dials that name them.
+///
+/// ⛔ SEPARATE FROM `shape_from`, AND NOT BY ACCIDENT. `Shape` is what
+/// `ratio bench` prints as a cost table — securities, lots, currencies — and a
+/// recognition convention is not a dimension of a fund's size. Putting `--views`
+/// there would make it appear in a benchmark that has no use for it.
+///
+/// ⚠ AND THIS IS WHERE THE WALL CLOCK ENTERS. `ratio-gen` has no `now` and is
+/// not getting one: it exists to produce the same book from the same dials. But
+/// `ratio strike` values at NOW, and a settlement tail that has already settled
+/// by then demonstrates nothing — `Ratio.Views.a_fold_with_no_cut_hides_the_
+/// settlement_gap` — so the tail is anchored to today, here, at the edge. The
+/// twenty years of history above it stay fixed.
+fn books_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Books, Vec<&'a str>)> {
+    let mut books = ratio_gen::Books::default();
+    let mut rest = Vec::new();
+    let mut it = args.iter().peekable();
+    while let Some(flag) = it.next() {
+        match *flag {
+            // `abor,ibor:t+2` — a bare id recognises on the trade date, and
+            // `:t+n` settles n open days after it.
+            "--views" => {
+                let spec = it.next().ok_or_else(|| anyhow::anyhow!("--views needs a list"))?;
+                for one in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+                    let (id, settles_in) = match one.split_once(':') {
+                        None => (one, None),
+                        Some((id, lag)) => {
+                            let n = lag
+                                .trim()
+                                .strip_prefix("t+")
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "{lag:?} is not a settlement convention — write \
+                                         `{id}:t+2` for two open days after the trade"
+                                    )
+                                })?
+                                .parse::<i64>()
+                                .with_context(|| format!("{lag:?} is not `t+<days>`"))?;
+                            (id, Some(n))
+                        }
+                    };
+                    books.views.push(ratio_gen::GenView { id: id.to_string(), settles_in });
+                }
+            }
+            "--settle-tail" => {
+                books.settle_tail = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--settle-tail needs a number of days"))?
+                    .parse()
+                    .context("--settle-tail needs a number of days")?;
+            }
+            "--subscriptions-in-tail" => {
+                books.subscriptions_in_tail = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--subscriptions-in-tail needs a number"))?
+                    .parse()
+                    .context("--subscriptions-in-tail needs a number")?;
+            }
+            other => rest.push(other),
+        }
+    }
+    books.tail_ends = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64 / 86_400)
+        .unwrap_or(0);
+    Ok((books, rest))
 }
 
 /// Generate a fund and measure what a period end actually takes.
@@ -1563,7 +1667,7 @@ fn book_label(book: &std::path::Path) -> String {
 /// The valuation point is now. A real system takes it from the fund's calendar
 /// — 16:00 New York for a US mutual fund — and that belongs in configuration
 /// rather than in a flag, so it is deliberately not one.
-fn strike(book: PathBuf, as_of: Option<&str>) -> Result<()> {
+fn strike(book: PathBuf, as_of: Option<&str>, view: Option<&str>) -> Result<()> {
     // ⛔ A NAV struck over a position nobody has priced is a number with a hole
     // in it, and the hole is invisible in the figure. With a valuation date,
     // that is a refusal.
@@ -1587,14 +1691,18 @@ fn strike(book: PathBuf, as_of: Option<&str>) -> Result<()> {
             bail!("the NAV was not struck");
         }
     }
+    // ⛔ RESOLVED BEFORE ANYTHING IS WRITTEN. On a book keeping more than one
+    // book of record an unnamed view is refused, because a NAV recorded under a
+    // convention nobody chose is the failure this whole feature is about.
+    let view = view_or_refuse(&book, view)?;
     let actor = actor_name();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let s = ratio_nav::strike_and_record(&book, now, &actor)?;
+    let s = ratio_nav::strike_and_record(&book, &view, now, &actor)?;
 
-    println!("struck {}", s.id);
+    println!("struck {} in {}", s.id, s.view);
     println!("  NAV        {}", minor(s.net_asset_value));
     println!("  difference {}", minor(s.trial_balance_difference));
     println!("  journal    {} entrie(s)", s.journal_position);
@@ -1602,22 +1710,113 @@ fn strike(book: PathBuf, as_of: Option<&str>) -> Result<()> {
     println!("  config     {}", &s.config_digest[..7.min(s.config_digest.len())]);
     println!("  by         {}", s.actor);
     println!();
-    println!("Re-derive it any time with:  ratio replay {}", s.id);
+    println!("Re-derive it any time with:  ratio replay {} --view {}", s.id, s.view);
+    Ok(())
+}
+
+/// Which book of record a verb is about.
+///
+/// ⛔ ON A BOOK KEEPING MORE THAN ONE, AN UNNAMED VIEW IS REFUSED RATHER THAN
+/// DEFAULTED. Picking one for the caller would put a figure on a terminal under
+/// a recognition convention nobody chose — which is the row already in
+/// HANDOFF.md's failure table, with the console and the CLI reporting different
+/// NAVs for one book and neither saying which. On a book with exactly one view
+/// there is no question to answer, so none is asked.
+fn view_or_refuse(book: &std::path::Path, asked: Option<&str>) -> Result<String> {
+    let declared = declared_views(book)?;
+    match asked {
+        Some(v) => {
+            if !declared.iter().any(|d| d == v) {
+                bail!(
+                    "this book declares no view {v:?}. It keeps: {}",
+                    declared.join(", ")
+                );
+            }
+            Ok(v.to_string())
+        }
+        None if declared.len() == 1 => Ok(declared[0].clone()),
+        None => bail!(
+            "this book keeps {} books of record — {} — so a figure has to say which. \
+             Pass --view",
+            declared.len(),
+            declared.join(", ")
+        ),
+    }
+}
+
+/// The views the ACTIVE configuration declares.
+///
+/// ⚠ ACTIVE, AND ONLY FOR THIS. Which views EXIST is a question about now; how
+/// an entry is RECOGNISED comes from the digest that entry pinned, which
+/// `NavFold` resolves per entry. Conflating the two is `Terms`' mistake one
+/// level out.
+fn declared_views(book: &std::path::Path) -> Result<Vec<String>> {
+    let b = FileBook::open(book)?;
+    let set = match b.active()? {
+        Some(d) => RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))?,
+        None => RuleSet::default(),
+    };
+    Ok(set.effective_views().into_iter().map(|v| v.id).collect())
+}
+
+/// Every book of record this fund keeps.
+fn views_cmd(book: PathBuf) -> Result<()> {
+    let b = FileBook::open(&book)?;
+    let set = match b.active()? {
+        Some(d) => RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))?,
+        None => RuleSet::default(),
+    };
+    println!("{:<14}{:<26}{}", "ID", "NAME", "RECOGNISES");
+    for v in set.effective_views() {
+        let how = match v.basis {
+            ratio_rules::Basis::Recorded => "in journal order".to_string(),
+            ratio_rules::Basis::Trade => "on the trade date".to_string(),
+            ratio_rules::Basis::Settlement => format!(
+                "{} open days after the trade, over {}",
+                v.settles_in.unwrap_or(0),
+                v.calendar.as_deref().unwrap_or("no calendar")
+            ),
+        };
+        println!("{:<14}{:<26}{}", v.id, v.label(), how);
+    }
+    // ⛔ AND WHETHER ANYBODY CHOSE THEM. A book declaring nothing has one view
+    // and it is not an election; reporting it as one asserts a decision nobody
+    // made, which is what happened with the lot method on three live funds.
+    if !set.views_declared() {
+        println!();
+        println!("This configuration declares no views, so the book has one and it");
+        println!("recognises entries in the journal's own order. That is a custom,");
+        println!("not a term anybody agreed to.");
+    }
     Ok(())
 }
 
 /// Every NAV struck on this book.
-fn navs(book: PathBuf) -> Result<()> {
-    let all = ratio_nav::list(&book)?;
+fn navs(book: PathBuf, view: Option<&str>) -> Result<()> {
+    let all = match view {
+        Some(v) => ratio_nav::list_in(&book, &view_or_refuse(&book, Some(v))?)?,
+        None => ratio_nav::list(&book)?,
+    };
     if all.is_empty() {
         println!("No NAV has been struck on this book. `ratio strike` takes one.");
         return Ok(());
     }
-    println!("{:<20}{:>18}{:>10}  {:<10}{}", "AS OF", "NAV", "ENTRIES", "CONFIG", "BY");
+    // ⛔ THE VIEW IS A COLUMN, NOT A FOOTNOTE. Two rows can carry the same
+    // valuation point and the same id and be different figures.
+    // ⛔ TWENTY-TWO, NOT TWENTY. `rfc3339` is EXACTLY 20 characters, so a
+    // 20-wide column padded it to nothing and the timestamp ran straight into
+    // the view beside it — `2026-08-14T12:43:44Zabor`. The header was padded
+    // from five and looked fine, which is why it survived: the columns only
+    // collide on rows with data in them.
+    println!(
+        "{:<22}{:<12}{:>18}{:>10}  {:<10}{}",
+        "AS OF", "VIEW", "NAV", "ENTRIES", "CONFIG", "BY"
+    );
     for s in &all {
         println!(
-            "{:<20}{:>18}{:>10}  {:<10}{}",
+            "{:<22}{:<12}{:>18}{:>10}  {:<10}{}",
             ratio_nav::rfc3339(s.valuation_time),
+            s.view,
             minor(s.net_asset_value),
             s.journal_position,
             &s.config_digest[..7.min(s.config_digest.len())],
@@ -1631,11 +1830,11 @@ fn navs(book: PathBuf) -> Result<()> {
 ///
 /// Exits non-zero when either check fails. A replay that reports a broken NAV
 /// on stdout and exits 0 is a replay nothing can be built on.
-fn replay_strike(book: PathBuf, id: &str) -> Result<()> {
-    let s = ratio_nav::get(&book, id)?;
+fn replay_strike(book: PathBuf, id: &str, view: Option<&str>) -> Result<()> {
+    let s = ratio_nav::get(&book, &view_or_refuse(&book, view)?, id)?;
     let r = ratio_nav::replay(&book, &s)?;
 
-    println!("replaying {}", s.id);
+    println!("replaying {} in {}", s.id, s.view);
     println!("  struck     {} by {}", ratio_nav::rfc3339(s.valuation_time), s.actor);
     println!("  folding    {} entrie(s) of the journal", s.journal_position);
     println!();

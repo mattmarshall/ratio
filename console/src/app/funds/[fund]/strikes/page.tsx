@@ -1,58 +1,27 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 import { caller } from "@/lib/caller";
-import { money } from "@/lib/format";
-import { listNavStrikes } from "@/wire/client";
+import { getFund } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
 
-/** Every NAV this fund has struck, newest first. */
-export default async function Strikes({
+/**
+ * Where `/funds/<fund>/strikes` used to be.
+ *
+ * ⛔ A REDIRECT RATHER THAN A DELETION, BECAUSE THESE URLS HAVE BEEN SENT TO
+ * PEOPLE. The whole argument for this console is that a figure can be sent
+ * rather than described — a link that 404s a month later argues against the
+ * product more effectively than the screen argues for it.
+ *
+ * ⚠ IT CANNOT BE A `next.config.ts` REDIRECT: the destination depends on the
+ * fund's default view, which is a value only the API knows.
+ */
+export default async function Legacystrikes({
   params,
 }: {
   params: Promise<{ fund: string }>;
 }) {
   const { fund } = await params;
   const c = await caller();
-  const { navStrikes } = await listNavStrikes(c, fund);
-
-  return (
-    <section className="log" aria-label="NAV strikes">
-      <div className="loghead">
-        <span>NAV strikes</span>
-        <span className="sortnote">
-          {navStrikes.length ? "each one re-derivable" : ""}
-        </span>
-      </div>
-      {navStrikes.length === 0 ? (
-        <div className="empty">
-          No NAV struck yet. <code>ratio strike</code> takes one.
-        </div>
-      ) : null}
-      {navStrikes.map((s) => {
-        const id = s.name.split("/").pop()!;
-        return (
-          <Link className="logrow strike" key={s.name} href={`/funds/${fund}/strikes/${id}`}>
-            <span className="t num">{s.journalDigest.slice(0, 7)}</span>
-            <span className="w">
-              <b>{money(s.netAssetValue)}</b>
-              <div className="cfg">
-                {s.valuationTime.slice(0, 16).replace("T", " ")} · {s.actor} ·
-                journal position {s.journalPosition}
-              </div>
-              {/* ⛔ THE QUALIFICATION BEFORE THE FIGURE IS READ, NOT BEHIND A
-                  CLICK. A qualification a reader reaches only by opening the
-                  strike is one they will read the figure without. */}
-              {s.qualification.length ? (
-                <div className="why">{s.qualification.join(" · ")}</div>
-              ) : null}
-            </span>
-            <span className="amt num">
-              {money(s.trialBalanceDifference)}
-              <small>difference</small>
-            </span>
-          </Link>
-        );
-      })}
-    </section>
-  );
+  const f = await getFund(c, fund);
+  redirect(`/funds/${fund}/views/${f.defaultView}/strikes`);
 }

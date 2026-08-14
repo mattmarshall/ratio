@@ -63,16 +63,51 @@ service Console {
     option (google.api.method_signature) = "name";
   }
 
+  // Lists the views declared on a fund. (AIP-132)
+  //
+  // ⛔ A FUND ALWAYS HAS AT LEAST ONE, AND A BOOK THAT DECLARES NOTHING HAS
+  // EXACTLY ONE. That one recognises entries in the journal's own order, which
+  // is what every book has always done — see `View.declared`.
+  rpc ListViews(ListViewsRequest) returns (ListViewsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/views"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one view, with the figures it recognises. (AIP-131)
+  rpc GetView(GetViewRequest) returns (View) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // What two views over one journal disagree about, entry by entry. (AIP-136)
+  //
+  // GET, like `:replay` and `:diff` above: it folds a journal prefix and writes
+  // nothing, so a verb implying mutation would be a lie about a method that
+  // cannot.
+  //
+  // ⭐ THE DIFFERENCE IS A LIST, NOT A DISCREPANCY.
+  // `Ratio.Views.two_views_differ_by_exactly_what_is_in_flight` — each view is
+  // the other plus the entries the other has not recognised yet. That is what
+  // makes this a derivation rather than a reconciliation somebody performs.
+  rpc ReconcileViews(ReconcileViewsRequest) returns (ReconcileViewsResponse) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*}:reconcile"};
+
+    // ⚠ BOTH, because both are REQUIRED. A signature naming only `name` would
+    // generate a binding that cannot be called — there is no second view to
+    // compare against — and `client-libraries::4232` says so at lint time.
+    option (google.api.method_signature) = "name,against";
+  }
+
   // Lists a fund's open breaks, ordered by money at risk. (AIP-132)
   rpc ListBreaks(ListBreaksRequest) returns (ListBreaksResponse) {
-    option (google.api.http) = {get: "/v1/{parent=funds/*}/breaks"};
+    option (google.api.http) = {get: "/v1/{parent=funds/*/views/*}/breaks"};
     option (google.api.method_signature) = "parent";
   }
 
   // Gets one break, with the postings behind Ratio's figure and the
   // configuration that produced it. (AIP-131)
   rpc GetBreak(GetBreakRequest) returns (Break) {
-    option (google.api.http) = {get: "/v1/{name=funds/*/breaks/*}"};
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*/breaks/*}"};
     option (google.api.method_signature) = "name";
   }
 
@@ -226,13 +261,13 @@ service Console {
   // does not attribute disagrees with the trial balance by exactly the amount
   // it hid. In the list, the rows sum to the accounts by construction.
   rpc ListPositions(ListPositionsRequest) returns (ListPositionsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=funds/*}/positions"};
+    option (google.api.http) = {get: "/v1/{parent=funds/*/views/*}/positions"};
     option (google.api.method_signature) = "parent";
   }
 
   // Gets one position. (AIP-131)
   rpc GetPosition(GetPositionRequest) returns (Position) {
-    option (google.api.http) = {get: "/v1/{name=funds/*/positions/*}"};
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*/positions/*}"};
     option (google.api.method_signature) = "name";
   }
 
@@ -248,13 +283,13 @@ service Console {
   // is bounded by that position, and there is deliberately no way to ask for
   // every lot in the fund at once.
   rpc ListLots(ListLotsRequest) returns (ListLotsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=funds/*/positions/*}/lots"};
+    option (google.api.http) = {get: "/v1/{parent=funds/*/views/*/positions/*}/lots"};
     option (google.api.method_signature) = "parent";
   }
 
   // Gets one open tax lot. (AIP-131)
   rpc GetLot(GetLotRequest) returns (Lot) {
-    option (google.api.http) = {get: "/v1/{name=funds/*/positions/*/lots/*}"};
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*/positions/*/lots/*}"};
     option (google.api.method_signature) = "name";
   }
 
@@ -265,13 +300,13 @@ service Console {
   // these figures, and until you can open one there is no difference between
   // a proved ledger and a confident one.
   rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=funds/*}/accounts"};
+    option (google.api.http) = {get: "/v1/{parent=funds/*/views/*}/accounts"};
     option (google.api.method_signature) = "parent";
   }
 
   // Gets one account with its balance. (AIP-131)
   rpc GetAccount(GetAccountRequest) returns (Account) {
-    option (google.api.http) = {get: "/v1/{name=funds/*/accounts/*}"};
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*/accounts/*}"};
     option (google.api.method_signature) = "name";
   }
 
@@ -281,27 +316,27 @@ service Console {
   // The same answer `ratio explain` gives at a terminal. A figure that cannot
   // name the lines behind it is a claim; this is what makes it a derivation.
   rpc ListPostings(ListPostingsRequest) returns (ListPostingsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=funds/*/accounts/*}/postings"};
+    option (google.api.http) = {get: "/v1/{parent=funds/*/views/*/accounts/*}/postings"};
     option (google.api.method_signature) = "parent";
   }
 
   // Gets one posting. (AIP-131)
   rpc GetPosting(GetPostingRequest) returns (Posting) {
     option (google.api.http) = {
-      get: "/v1/{name=funds/*/accounts/*/postings/*}"
+      get: "/v1/{name=funds/*/views/*/accounts/*/postings/*}"
     };
     option (google.api.method_signature) = "name";
   }
 
   // Lists a fund's NAV strikes, newest first. (AIP-132)
   rpc ListNavStrikes(ListNavStrikesRequest) returns (ListNavStrikesResponse) {
-    option (google.api.http) = {get: "/v1/{parent=funds/*}/navStrikes"};
+    option (google.api.http) = {get: "/v1/{parent=funds/*/views/*}/navStrikes"};
     option (google.api.method_signature) = "parent";
   }
 
   // Gets one NAV strike. (AIP-131)
   rpc GetNavStrike(GetNavStrikeRequest) returns (NavStrike) {
-    option (google.api.http) = {get: "/v1/{name=funds/*/navStrikes/*}"};
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*/navStrikes/*}"};
     option (google.api.method_signature) = "name";
   }
 
@@ -313,7 +348,7 @@ service Console {
   // writes nothing, and a method that cannot change anything should not need a
   // verb that says it might.
   rpc ReplayNavStrike(ReplayNavStrikeRequest) returns (ReplayNavStrikeResponse) {
-    option (google.api.http) = {get: "/v1/{name=funds/*/navStrikes/*}:replay"};
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*/navStrikes/*}:replay"};
     option (google.api.method_signature) = "name";
   }
 
@@ -384,43 +419,53 @@ message Fund {
   // ISO 4217.
   string currency_code = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  State state = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
-
-  // Minor units, as a string. Never a float and never a JSON number: a figure
-  // that has been exact all the way through the kernel should not become a
-  // double in the last hop to a browser.
-  string net_asset_value = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
-
-  // The two column totals of the trial balance, in minor units. Equal for any
-  // book the journal accepted.
-  //
-  // On the fund rather than on ListAccountsResponse: they are properties of
-  // the book, not of a page of accounts, and AIP-132 is right that a list
-  // response carrying its own summary is a page whose meaning changes with
-  // page_size.
-  // Facts read off a delivered file that cannot post yet. Non-zero blocks the
-  // NAV, exactly as an open break does.
-  string pending_fact_count = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
-
-  string total_debit = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
-  string total_credit = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
-
   // Debits minus credits. Zero for any book the journal accepted — it is
   // reported as a figure rather than a green tick because it is a proved
   // property of the kernel, not a check that happened to pass.
+  //
+  // ⭐ AND ON THE FUND RATHER THAN ON THE VIEW, WHICH IS THE CHECK THAT THE
+  // LINE BETWEEN THEM IS DRAWN IN THE RIGHT PLACE. A view keeps or drops WHOLE
+  // entries and each entry conserves on its own, so every view's difference is
+  // the same zero — `Ratio.Views.every_view_conserves`. The two COLUMN totals
+  // are not like that: a settlement view folds fewer entries, so its columns
+  // are smaller. They live on `View`, and putting them here would have been one
+  // figure quietly answering for several.
   string trial_balance_difference = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // The total unresolved difference across open breaks, in minor units. Named
-  // for the quantity rather than the phrase "amount at risk", which AIP-140
-  // rejects for its preposition and which is vaguer anyway.
-  string open_difference = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Facts read off a delivered file that cannot post yet. Non-zero blocks the
+  // NAV, exactly as an open break does.
+  //
+  // ⚠ FUND-LEVEL, because a pending fact has not posted: it is in no view's
+  // fold, and it blocks all of them.
+  string pending_fact_count = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   int64 entry_count = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
 
+  // Where the fund is in its NAV day, and how many breaks are open — BOTH AS
+  // THE DEFAULT VIEW SEES THEM.
+  //
+  // ⛔ A DELIBERATE TRADE, STATED RATHER THAN HIDDEN. Both are view-dependent,
+  // and the honest alternatives were to drop them from `ListFunds` — which
+  // would cost the fund rail a call per fund — or to answer for one view
+  // without saying which, which is the failure HANDOFF.md already records: the
+  // console and the CLI reported different NAVs for one book, neither saying
+  // which. So they answer for `default_view`, and `default_view` sits beside
+  // them so a client cannot render either without the label to hand.
+  State state = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
   int64 open_break_count = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // The configuration every figure above was produced under.
   string config_digest = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The view `state` and `open_break_count` above answer for, as a view id.
+  //
+  // ⛔ WITHOUT THIS THOSE TWO FIELDS ARE UNREADABLE. A number that depends on a
+  // recognition convention and does not name it is the defect this whole
+  // resource split exists to prevent.
+  string default_view = 25 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How many views this fund declares. Always at least one.
+  int64 view_count = 26 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Which lots a sale gives up, as the active configuration declares it.
   //
@@ -430,6 +475,12 @@ message Fund {
   // figure on the balance sheet moving —
   // `Ratio.Lots.Methods.the_method_decides_the_taxable_gain` — so it belongs
   // beside the figures it decides rather than buried in a configuration screen.
+  //
+  // ⚠ AND IT IS FUND-LEVEL, NOT PER VIEW, BECAUSE A VIEW OVERRIDES TIMING ONLY.
+  // Every view relieves under the same election. They still reach DIFFERENT
+  // realized gains, because a settlement view has recognised a different set of
+  // open lots when a sale arrives — which is the feature working, not two
+  // elections.
   string lot_method = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Whether the configuration DECLARES that method, or merely gets it.
@@ -441,76 +492,203 @@ message Fund {
   // this asserts a decision nobody made — which is what happened.
   bool lot_method_declared = 21 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // Realized gain since inception, in minor units.
-  //
-  // ⛔ CREDIT-NORMAL, SO A GAIN READS NEGATIVE. `Ratio.Lots.Posting` has the
-  // convention and why. This is the raw figure and a client that prints it
-  // unflipped shows every profitable fund with a minus sign.
-  //
-  // ⚠ SINCE INCEPTION, NOT FOR A PERIOD, and named that way deliberately: a
-  // fold gives what has happened, and a period figure needs a period start,
-  // which is a separate question `Ratio.Period` owns.
-  string realized_gain = 15 [(google.api.field_behavior) = OUTPUT_ONLY];
-
-  // Cost given up by sales, in minor units.
-  string basis_relieved = 16 [(google.api.field_behavior) = OUTPUT_ONLY];
-
-  // The part of `realized_gain` on holdings held less than the fund's
-  // threshold, and at least it. Same sign convention as `realized_gain`.
-  string short_term_gain = 17 [(google.api.field_behavior) = OUTPUT_ONLY];
-  string long_term_gain = 18 [(google.api.field_behavior) = OUTPUT_ONLY];
-
-  // The rest of `realized_gain`: disposals no holding period could be
-  // established for.
-  //
-  // ⚠ REPORTED RATHER THAN HIDDEN. A lot opened before the journal carried
-  // trade dates has no acquisition date, and a disposal whose proceeds do not
-  // divide exactly across its lots is refused rather than rounded. The three
-  // parts sum to the total by construction — this one is the remainder.
-  string unclassified_gain = 19 [(google.api.field_behavior) = OUTPUT_ONLY];
-
   // Days a holding must be held for its gain to be long-term.
   //
   // ⚠ A JURISDICTION'S NUMBER, which is why it is reported rather than assumed
   // to be 365. `Ratio.Lots.Methods.isLongTerm` takes it as a parameter.
   int64 long_term_days = 20 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // Open tax lots across the whole fund, and the positions they stand behind.
-  //
-  // ⛔ THE TWO NUMBERS THE SCALE ARGUMENT IS, side by side. A position is a
-  // chart entry and its lots are a trading history: a fund holds a few hundred
-  // positions whatever its age, and as many lots as it has ever bought and not
-  // yet sold. `Ratio.Closure.factored_nav_never_reads_the_lots` says striking a
-  // NAV touches the first and not the second — which is a claim a reader should
-  // be able to SEE rather than be told, and could not, because the only place
-  // these appeared together was `ratio bench`'s terminal output.
-  int64 open_lot_count = 22 [(google.api.field_behavior) = OUTPUT_ONLY];
-  int64 position_count = 23 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // ⛔ MOVED TO `View`, NOT DELETED, AND RESERVED SO THE NUMBERS CANNOT COME
+  // BACK MEANING SOMETHING ELSE. Every one of these depends on WHICH ENTRIES
+  // ARE RECOGNISED, so a fund-level answer is an answer for a view it does not
+  // name. A reused field number would let an old client read a new figure as an
+  // old one, which is the same defect with a wire format in front of it.
+  reserved 5, 7, 11, 12, 15, 16, 17, 18, 19, 22, 23, 24;
+  reserved "net_asset_value", "open_difference", "total_debit", "total_credit",
+    "realized_gain", "basis_relieved", "short_term_gain", "long_term_gain",
+    "unclassified_gain", "open_lot_count", "position_count", "nav_strike";
+}
 
-  // How long the fold that strikes the NAV took.
+// One lens over one journal: which entries it recognises, and the figures that
+// follow.
+//
+// ⭐ A VIEW IS A RECOGNITION PREDICATE, NOT A SECOND BOOK. `Ratio.Views`
+// classifies it against the three kinds of label a posting carries — conserved,
+// partitioning, measured — and it is none of them: it does not say how much
+// value there is or where it sits, it says WHICH ENTRIES ARE IN SCOPE AS OF A
+// DAY. So there is one journal, folded more than one way, and no second store
+// to keep in step with the first.
+message View {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/View"
+    pattern: "funds/{fund}/views/{view}"
+    singular: "view"
+    plural: "views"
+  };
+
+  // How a view decides the day it recognises an entry on.
+  enum Basis {
+    BASIS_UNSPECIFIED = 0;
+
+    // The journal's own order. Consults no date, so it answers over every book
+    // ever written — including the ones whose entries carry no trade date.
+    //
+    // ⛔ THIS IS THE ABSENCE OF AN ELECTION, NOT A SAME-DAY CONVENTION. See
+    // `declared` below and `Ratio.Views.nobody_said_is_not_a_settlement_
+    // convention`.
+    BASIS_RECORDED = 1;
+
+    // The day the trade was struck. Refuses an entry carrying no trade date.
+    BASIS_TRADE = 2;
+
+    // The trade date rolled forward `settlement_open_days` over `calendar`.
+    BASIS_SETTLEMENT = 3;
+  }
+
+  // The resource name: `funds/{fund}/views/{view}`.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  string display_name = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  Basis basis = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Open days from trade to settlement. Zero unless `basis` is settlement.
   //
-  // ⚠ A `Duration`, NOT AN `int64` OF NANOSECONDS. AIP-142 reads a `_nanos`
-  // field as a TIMESTAMP and says so — and it is right that the unit does not
-  // belong in the name. This is a duration; the well-known type is the one that
-  // says that.
+  // ⚠ SPELLED `settles_in` IN THE CONFIGURATION, which is the word a person
+  // writing a TOML wants; AIP-140 refuses a preposition in a wire field name,
+  // so the contract spells the same number out. `ratio-rules` owns the former
+  // and neither name is a second source of truth for the other.
+  int64 settlement_open_days = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The calendar the roll skips days on, and how many days it names.
+  string calendar = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 holiday_count = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether the configuration DECLARES this view, or whether it is the one
+  // every book has by default.
   //
-  // ⚠ THE FOLD, NOT THE WHOLE PERIOD END. It excludes marking positions to
-  // market, which is `Ratio.Closure.markCost` and grows with the CHART. This is
-  // the term that grows with NOTHING, and it corresponds to `ratio bench`'s
-  // `strike` line rather than its `NAV` line — 3 µs against 378 µs on the same
-  // book, because one of them prices five hundred securities first.
+  // ⛔ THE SAME FIELD, FOR THE SAME REASON, AS `Fund.lot_method_declared`. A
+  // book that says nothing about views has exactly one, recognising entries in
+  // the journal's own order — and reporting that as an elected trade-date or
+  // same-day-settlement basis asserts a decision nobody made. That is not
+  // hypothetical: it is what the console did with the lot method, on three live
+  // funds, until the distinction was given a field of its own.
+  bool declared = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The last day this view has recognised entries through. Absent on a
+  // recorded-basis view, which does not recognise by date at all — and absent
+  // is the honest answer there, not the epoch.
+  google.type.Date recognised_through = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Entries this view cannot place at all — no trade date, or a configuration
+  // that does not declare this view.
   //
-  // ⛔ AND THE MAINTAINED FOLD ONLY — NOT THE COLD BUILD. Two curves, and quoting
+  // ⛔ REPORTED, NEVER SILENTLY DROPPED. An entry a view cannot date is a
+  // refusal in the sense `Ratio.Valuation.strike_refuses_exactly_when_something_
+  // is_unpriced` means it, and hiding it would remove value from a book whose
+  // trial balance went on tying.
+  int64 unplaceable_entry_count = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Minor units, as a string. Never a float and never a JSON number: a figure
+  // that has been exact all the way through the kernel should not become a
+  // double in the last hop to a browser.
+  string net_asset_value = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The two column totals of the trial balance, in minor units.
+  //
+  // ⚠ VIEW-LEVEL, unlike `Fund.trial_balance_difference`. A view that has not
+  // recognised a trade has folded neither of its legs, so both columns are
+  // smaller — while their DIFFERENCE is the same zero in every view, because
+  // conservation is per entry.
+  string total_debit = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string total_credit = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The total unresolved difference across this view's open breaks, in minor
+  // units, and how many there are.
+  string open_difference = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 open_break_count = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  Fund.State state = 15 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Realized gain since inception, in minor units.
+  //
+  // ⛔ CREDIT-NORMAL, SO A GAIN READS NEGATIVE. `Ratio.Lots.Posting` has the
+  // convention and why. This is the raw figure and a client that prints it
+  // unflipped shows every profitable fund with a minus sign.
+  //
+  // ⚠ AND IT DIFFERS BETWEEN VIEWS EVEN THOUGH THE LOT METHOD DOES NOT. A view
+  // overrides timing only, so every view relieves under the same election — but
+  // a settlement view has recognised a different set of OPEN LOTS when a sale
+  // arrives, so the same election gives up different lots. That is the feature
+  // working, and it is the figure with no counterparty.
+  string realized_gain = 16 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Cost given up by sales, in minor units.
+  string basis_relieved = 17 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The part of `realized_gain` on holdings held less than the fund's
+  // threshold, and at least it. Same sign convention as `realized_gain`.
+  string short_term_gain = 18 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string long_term_gain = 19 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The rest of `realized_gain`: disposals no holding period could be
+  // established for. The three parts sum to the total by construction — this
+  // one is the remainder.
+  string unclassified_gain = 20 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Open tax lots this view holds, and the positions they stand behind.
+  //
+  // ⛔ THE TWO NUMBERS THE SCALE ARGUMENT IS, side by side.
+  // `Ratio.Closure.factored_nav_never_reads_the_lots` says striking a NAV
+  // touches the first and not the second.
+  int64 open_lot_count = 21 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 position_count = 22 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How long the fold that strikes this view's NAV took.
+  //
+  // ⛔ THE MAINTAINED FOLD ONLY — NOT THE COLD BUILD. Two curves, and quoting
   // this one as though it were both is the overclaim `ratio bench` is shaped to
-  // make hard: folding a journal is O(entries) and grows forever, while this is
-  // O(chart) and does not. A client showing this beside `open_lot_count` must
-  // say which it is.
+  // make hard.
+  google.protobuf.Duration nav_strike = 23 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The journal prefix every figure above was folded from.
   //
-  // ⚠ MEASURED, NOT MODELLED, and measured on this request — so it carries the
-  // noise of a live process. It is the same `Projection::nav` call the CLI
-  // times; it is not a benchmark, and `ratio bench` remains the place figures
-  // are quoted from.
-  google.protobuf.Duration nav_strike = 24 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // ⭐ THE SAME NUMBER ON EVERY VIEW OF ONE FUND, AND THAT IS THE POINT. One
+  // pass over the journal feeds every view, so a client can put two of them
+  // side by side and know the difference is a recognition convention rather
+  // than one of them being three entries behind. `//tla:views_check`'s
+  // `EveryViewFoldsTheSamePrefix`, and `views_at_two_prefixes_check` is what it
+  // looks like when this stops being true.
+  int64 journal_position = 24 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One entry that two views disagree about, and what it is worth.
+message RecognitionDifference {
+  // The journal entry, and what it says it is.
+  string entry_id = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string memo = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Absent when the record carries none, which is why a view may be unable to
+  // place it.
+  //
+  // ⚠ A DATE, NOT A TIMESTAMP, for the reason `Mark.price_date` is: a trade
+  // date that moves by a day depending on where the reader is sitting is a
+  // different trade date. Absent and "1970-01-01" must not be the same value.
+  google.type.Date trade_date = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The day each side recognises it on. Absent where that side cannot place it.
+  google.type.Date recognised_here = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.type.Date recognised_there = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What this entry contributes to `ReconcileViewsResponse.difference`, in
+  // minor units.
+  //
+  // ⛔ TO THE DIFFERENCE, NOT TO EITHER NAV, and the sign follows from which
+  // list it is in. An entry only the read view recognises adds its own effect;
+  // one only the other view recognises subtracts it. So the two lists sum to
+  // `difference` by construction and a client can render the arithmetic rather
+  // than assert it — which is the whole reason this is a list and not a number.
+  string net_asset_value_effect = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // How serious an exception is, which is what the queue is ordered by.
@@ -558,7 +736,7 @@ message BreakPosting {
 message Break {
   option (google.api.resource) = {
     type: "ratio.fastverk.dev/Break"
-    pattern: "funds/{fund}/breaks/{break}"
+    pattern: "funds/{fund}/views/{view}/breaks/{break}"
     singular: "break"
     plural: "breaks"
   };
@@ -653,10 +831,90 @@ message GetFundRequest {
   ];
 }
 
-message ListBreaksRequest {
+message ListViewsRequest {
+  // `funds/{fund}`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// ⚠ NO `default_view` HERE, THOUGH THE CONSOLE WANTS ONE. AIP-132 admits only
+// the resource list, `next_page_token`, `total_size` and `unreachable` in a
+// List response, and `Fund.default_view` already carries it — a second copy on
+// the collection is a second thing to keep in step with the first, which is the
+// whole argument views are one journal and not two books.
+message ListViewsResponse {
+  repeated View views = 1;
+  string next_page_token = 2;
+}
+
+message GetViewRequest {
+  // `funds/{fund}/views/{view}`.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+  ];
+}
+
+message ReconcileViewsRequest {
+  // `funds/{fund}/views/{view}` — the view being read.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+  ];
+
+  // The view id to compare it against.
+  //
+  // ⚠ A QUERY PARAMETER, like `DiffConfigVersions.base`. The resource being
+  // read is one view; the other is an argument to the question, not a second
+  // subject of it.
+  string against = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ReconcileViewsResponse {
+  // The two views compared, as resource names.
+  string name = 1;
+  string against = 2;
+
+  // Their net asset values, and this view's minus the other's. Minor units.
+  string net_asset_value = 3;
+  string against_net_asset_value = 4;
+  string difference = 5;
+
+  // The entries this view recognises and the other does not, and the reverse.
+  //
+  // ⭐ THESE ARE WHY THE DIFFERENCE IS NOT A DISCREPANCY.
+  // `Ratio.Views.two_views_differ_by_exactly_what_is_in_flight` — each view is
+  // the other plus what the other has not recognised yet, so these two lists
+  // account for `difference` exactly, and a client can show the arithmetic
+  // rather than assert it.
+  repeated RecognitionDifference recognised_here = 6;
+  repeated RecognitionDifference recognised_there = 7;
+
+  // Entries NEITHER view can place: no trade date, or a pinned configuration
+  // that does not declare one of them.
+  //
+  // ⛔ SHOWN, NOT OMITTED. These contribute to neither figure, so leaving them
+  // out makes a difference look fully explained when it is not — which is the
+  // shape of every defect in HANDOFF.md's table.
+  repeated RecognitionDifference unplaceable = 8;
+
+  // The journal prefix both sides were folded from. One number, because one
+  // pass feeds every view.
+  int64 journal_position = 9;
+}
+
+message ListBreaksRequest {
+  // ⛔ A VIEW, NOT A FUND. Which breaks are open depends on which entries are
+  // recognised, so the collection hangs off the view — and `core::0127` refuses
+  // a `funds/*/views/*` URL whose `parent` claims to name a `Fund`, which is
+  // exactly the confusion it would be if this said `Fund`.
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -704,13 +962,23 @@ message GetChangeLogEntryRequest {
 message NavStrike {
   option (google.api.resource) = {
     type: "ratio.fastverk.dev/NavStrike"
-    pattern: "funds/{fund}/navStrikes/{nav_strike}"
+    pattern: "funds/{fund}/views/{view}/navStrikes/{nav_strike}"
     singular: "navStrike"
     plural: "navStrikes"
   };
 
-  // The resource name: `funds/{fund}/navStrikes/{nav_strike}`.
+  // The resource name: `funds/{fund}/views/{view}/navStrikes/{nav_strike}`.
   string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The view this NAV was struck in, as a view id.
+  //
+  // ⛔ ON THE STRIKE, AND IT IS WHAT MAKES
+  // `Ratio.Period.one_answer_per_view_per_day` mean anything. A valuation point still has ONE answer — per
+  // view. Two views striking the same day are two answers to two questions, and
+  // neither restates the other; two answers to ONE question is the restatement
+  // that theorem refuses. Without this field on the record they are
+  // indistinguishable, and the id is derived from the valuation time alone.
+  string view = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // The valuation point — not the moment the command ran. Those differ whenever
   // a strike is taken late, which is most of the time.
@@ -733,7 +1001,8 @@ message NavStrike {
 
   // Why this figure cannot be read at face value, if it cannot.
   //
-  // ⛔ ON THE STRIKE, NOT BESIDE IT. `Ratio.Period.one_answer_per_day` refuses
+  // ⛔ ON THE STRIKE, NOT BESIDE IT.
+  // `Ratio.Period.one_answer_per_view_per_day` refuses
   // restatement — a valuation point has one answer and the first is what
   // somebody was paid on — so a corporate action arriving afterwards CANNOT
   // correct the NAVs it should have been in. The obligation that leaves is to
@@ -956,7 +1225,7 @@ message DiffConfigVersionsResponse {
 message Account {
   option (google.api.resource) = {
     type: "ratio.fastverk.dev/Account"
-    pattern: "funds/{fund}/accounts/{account}"
+    pattern: "funds/{fund}/views/{view}/accounts/{account}"
     singular: "account"
     plural: "accounts"
   };
@@ -1048,7 +1317,7 @@ message CurrencyTotal {
 message Posting {
   option (google.api.resource) = {
     type: "ratio.fastverk.dev/Posting"
-    pattern: "funds/{fund}/accounts/{account}/postings/{posting}"
+    pattern: "funds/{fund}/views/{view}/accounts/{account}/postings/{posting}"
     singular: "posting"
     plural: "postings"
   };
@@ -1075,9 +1344,10 @@ message Posting {
 }
 
 message ListAccountsRequest {
+  // A view. See `ListBreaksRequest.parent`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -1375,7 +1645,7 @@ message GetPendingFactRequest {
 message Position {
   option (google.api.resource) = {
     type: "ratio.fastverk.dev/Position"
-    pattern: "funds/{fund}/positions/{position}"
+    pattern: "funds/{fund}/views/{view}/positions/{position}"
     singular: "position"
     plural: "positions"
   };
@@ -1427,9 +1697,10 @@ message Position {
 }
 
 message ListPositionsRequest {
+  // A view. See `ListBreaksRequest.parent`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -1455,7 +1726,7 @@ message GetPositionRequest {
 message Lot {
   option (google.api.resource) = {
     type: "ratio.fastverk.dev/Lot"
-    pattern: "funds/{fund}/positions/{position}/lots/{lot}"
+    pattern: "funds/{fund}/views/{view}/positions/{position}/lots/{lot}"
     singular: "lot"
     plural: "lots"
   };
@@ -1679,9 +1950,10 @@ message AdmitFactsResponse {
 }
 
 message ListNavStrikesRequest {
+  // A view. See `ListBreaksRequest.parent`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];

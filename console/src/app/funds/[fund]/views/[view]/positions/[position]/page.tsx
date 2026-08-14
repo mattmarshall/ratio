@@ -11,11 +11,11 @@ export const dynamic = "force-dynamic";
 export default async function PositionDetail({
   params,
 }: {
-  params: Promise<{ fund: string; position: string }>;
+  params: Promise<{ fund: string; view: string; position: string }>;
 }) {
-  const { fund, position } = await params;
+  const { fund, view, position } = await params;
   const c = await caller();
-  const p = await or404(getPosition(c, fund, position));
+  const p = await or404(getPosition(c, fund, view, position));
 
   return (
     <aside className="detail" aria-label="Position detail">
@@ -50,7 +50,7 @@ export default async function PositionDetail({
         </p>
         {/* ⛔ The unbounded read, held behind the shell. See LotBook. */}
         <Suspense fallback={<div className="empty">Reading the lot book…</div>}>
-          <LotBook fund={fund} position={position} />
+          <LotBook fund={fund} view={view} position={position} />
         </Suspense>
       </div>
     </aside>

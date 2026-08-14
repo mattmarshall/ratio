@@ -1,7 +1,7 @@
 {
   "positions": [
     {
-      "name": "funds/harbourline-global-value/positions/ACME",
+      "name": "funds/harbourline-global-value/views/abor/positions/ACME",
       "account": "1200",
       "accountLabel": "Investments at fair value",
       "instrument": "ACME",

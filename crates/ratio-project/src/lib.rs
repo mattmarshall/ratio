@@ -18,7 +18,7 @@
 //! downstream can notice. The trial balance ties on whatever it is handed, the
 //! digest is well-formed, and `ratio replay` recomputes from the pinned prefix
 //! and disagrees — by which time the first number is what somebody was paid on
-//! and `Ratio.Period.one_answer_per_day` refuses to restate it.
+//! and `Ratio.Period.one_answer_per_view_per_day` refuses to restate it.
 //!
 //! ⭐ SO THE POSITION IS NOT A FIELD A CALLER LOOKS UP. Every read returns
 //! [`AsOf`], which carries the prefix it was folded from, and there is no other
@@ -38,6 +38,10 @@ mod generated_lots;
 
 /// Relieving tax lots — the walk, over decisions made in Lean.
 pub mod relief;
+
+/// Recognising an entry, under one book of record — the walk, over decisions
+/// `Ratio.Views` proves.
+pub mod views;
 
 use anyhow::Result;
 use ratio_ingest::factor::Step;
@@ -1503,7 +1507,7 @@ mod tests {
 
         // dims 1 and 2 are assets in `book()`; nothing else is.
         let got = p.nav(&|dim| dim == 1 || dim == 2, &Rates::none()).unwrap();
-        let want = ratio_nav::strike(&d, 1_782_662_400, "e.marsh").unwrap();
+        let want = ratio_nav::strike(&d, ratio_rules::UNDECLARED_VIEW, 1_782_662_400, "e.marsh").unwrap();
 
         assert_eq!(got.value.0, want.net_asset_value, "the same NAV");
         assert_eq!(got.value.1, want.trial_balance_difference, "and the same difference");
@@ -1576,7 +1580,7 @@ mod tests {
         );
         let p = Projection::rebuild(&entries(&d), FIFO);
         let got = p.nav(&|dim| dim == 1 || dim == 2, &rates).unwrap();
-        let want = ratio_nav::strike(&d, 1_782_662_400, "e.marsh").unwrap();
+        let want = ratio_nav::strike(&d, ratio_rules::UNDECLARED_VIEW, 1_782_662_400, "e.marsh").unwrap();
 
         assert_eq!(got.value.0, want.net_asset_value, "the same NAV, translated the same way");
         assert_eq!(
@@ -1632,7 +1636,7 @@ mod tests {
         })
         .unwrap();
 
-        let e = ratio_nav::strike(&d, 1_782_662_400, "e.marsh").unwrap_err().to_string();
+        let e = ratio_nav::strike(&d, ratio_rules::UNDECLARED_VIEW, 1_782_662_400, "e.marsh").unwrap_err().to_string();
         assert!(e.contains("JPY"), "names the currency it has no rate for: {e}");
     }
 
