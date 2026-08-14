@@ -2,6 +2,7 @@ import { caller } from "@/lib/caller";
 import { money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { getNavStrike, replayNavStrike } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export const dynamic = "force-dynamic";
  * DOES. Two 15-second ceilings stack behind it. That is the cost of it being
  * real rather than asserted.
  */
-export default async function Replay({
+async function Replay({
   params,
 }: {
   params: Promise<{ fund: string; view: string; strike: string }>;
@@ -79,3 +80,5 @@ export default async function Replay({
     </aside>
   );
 }
+
+export default withRefusal(Replay);

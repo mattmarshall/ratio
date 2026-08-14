@@ -94,16 +94,31 @@ vi.mock("@/wire/client", async () => {
   const actual = await vi.importActual<typeof import("@/wire/client")>(
     "@/wire/client",
   );
-  return { ...actual, ...wire };
+  // ⚠ LATE-BOUND, NOT SPREAD. `{ ...wire }` copies the function references the
+  // moment the first test imports the wire, so a test that swaps one out —
+  // the refusal tests below — would mutate an object nobody reads. Each key
+  // delegates on CALL, so the current `wire.foo` is always the one invoked.
+  const late = Object.fromEntries(
+    Object.keys(wire).map((k) => [
+      k,
+      (...args: unknown[]) =>
+        (wire as unknown as Record<string, (...a: unknown[]) => unknown>)[k]!(
+          ...args,
+        ),
+    ]),
+  );
+  return { ...actual, ...late };
 });
 
 const FUND = "harbourline-global-value";
 const VIEW = "abor";
 const params = <T,>(v: T) => Promise.resolve(v);
 
-/** Render an async server component by awaiting the element it returns. */
-async function renderAsync(el: Promise<React.ReactElement>) {
-  render(await el);
+/** Render an async server component by awaiting the element it returns.
+ *  `ReactNode`, because a page wrapped in `withRefusal` is typed to return
+ *  whichever of the page and the refusal it resolves to. */
+async function renderAsync(el: Promise<React.ReactNode>) {
+  render((await el) as React.ReactElement);
 }
 
 describe("the trial balance", () => {
@@ -896,5 +911,54 @@ describe("sign-in", () => {
     await renderAsync(Who());
     expect(screen.getByText("e.marsh@example.com")).toBeDefined();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeDefined();
+  });
+});
+
+describe("a refusal", () => {
+  // ⛔ THE SENTENCE, NOT A DIGEST. A refusal thrown out of a server component
+  // reaches production as `Minified React error #441` and an opaque number —
+  // Next redacts server errors — so the API's one explanatory sentence was
+  // exactly what got hidden, on every view screen of the dual-basis demo fund.
+  // These assert the sentence ARRIVES, which only holds while the pages treat
+  // a `Refused` as a value rather than throwing it.
+  const SENTENCE =
+    'view "ibor" recognises entries by date, and the maintained projection behind this screen folds the whole journal with no cut';
+
+  it("renders the sentence the API wrote on a list screen", async () => {
+    const real = wire.listBreaks;
+    wire.listBreaks = (async () => {
+      const { Refused } = await import("@/wire/client");
+      throw new Refused(400, SENTENCE);
+    }) as typeof wire.listBreaks;
+    try {
+      const Breaks = (await import("./funds/[fund]/views/[view]/breaks/page")).default;
+      await renderAsync(
+        Breaks({ params: params({ fund: FUND, view: "ibor" }), searchParams: params({}) }),
+      );
+      expect(screen.getByRole("status").textContent).toContain(
+        "recognises entries by date",
+      );
+    } finally {
+      wire.listBreaks = real;
+    }
+  });
+
+  it("renders the sentence on the layout, which gates every view screen", async () => {
+    const real = wire.getView;
+    wire.getView = (async () => {
+      const { Refused } = await import("@/wire/client");
+      throw new Refused(400, SENTENCE);
+    }) as typeof wire.getView;
+    try {
+      const Layout = (await import("./funds/[fund]/views/[view]/layout")).default;
+      await renderAsync(
+        Layout({ children: null, params: params({ fund: FUND, view: "ibor" }) }),
+      );
+      expect(screen.getByRole("status").textContent).toContain(
+        "recognises entries by date",
+      );
+    } finally {
+      wire.getView = real;
+    }
   });
 });

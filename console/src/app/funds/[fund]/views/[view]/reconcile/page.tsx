@@ -4,6 +4,7 @@ import { money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { reconcileViews } from "@/wire/client";
 import type { RecognitionDifference } from "@/wire/types";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export const dynamic = "force-dynamic";
  * view being behind, in one number, with nothing saying which part is which.
  * `//tla:views_at_two_prefixes_check` is that failure as a model run.
  */
-export default async function Reconcile({
+async function Reconcile({
   params,
   searchParams,
 }: {
@@ -135,3 +136,5 @@ function Rows({
     </>
   );
 }
+
+export default withRefusal(Reconcile);

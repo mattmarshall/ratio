@@ -3,11 +3,12 @@ import { caller } from "@/lib/caller";
 import { count, money } from "@/lib/format";
 import { isoDate } from "@/lib/dates";
 import { listPositions } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
 /** What the fund holds, grouped by the account the value sits in. */
-export default async function Positions({
+async function Positions({
   params,
 }: {
   params: Promise<{ fund: string; view: string }>;
@@ -79,3 +80,5 @@ export default async function Positions({
     </>
   );
 }
+
+export default withRefusal(Positions);

@@ -5,6 +5,7 @@ import { count, money, nanos, reads } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { visible } from "@/lib/planLayout";
 import { explainNavStrike, getNavStrike } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ export const dynamic = "force-dynamic";
  * sub-graphs and never the comparison — the strip below renders whatever the
  * dials say.
  */
-export default async function Plan({
+async function Plan({
   params,
   searchParams,
 }: {
@@ -150,3 +151,5 @@ export default async function Plan({
     </aside>
   );
 }
+
+export default withRefusal(Plan);

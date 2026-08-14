@@ -594,7 +594,11 @@ fn fold_and_measure<S: Store>(store: &S, size: &str, book_root: &Path) -> Result
     let cold_ns = started.elapsed().as_nanos() as i64;
 
     let entries = proj.prefix() as i64;
-    let open_lots = proj.open_lots();
+    // ⚠ THE UNDECLARED VIEW, BY CONSTRUCTION NOT BY DEFAULT: `ratio gen`
+    // writes no `[[view]]`, so the benched book keeps exactly one book of
+    // record. If the generator ever grows a views dial here, this read refuses
+    // rather than quietly benching one view of several.
+    let open_lots = proj.open_lots(ratio_rules::UNDECLARED_VIEW)?;
     let cost = proj.cost();
     // ⛔ BOTH CURVES, OR NEITHER. The growing one and the flat one travel
     // together everywhere in this repository; a published result carrying only

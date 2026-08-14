@@ -460,14 +460,15 @@ pub fn analyze(book_path: &std::path::Path, s: &Strike) -> Result<explain::Measu
 /// copy alive to answer one request.
 pub fn shape_of(
     proj: &ratio_project::Projection,
+    view: &str,
     accounts: i64,
     cal: &closure::Calibration,
 ) -> Result<explain::Shape> {
-    let securities = proj.positions().value.held.len() as i64;
-    let open_lots = proj.open_lots();
+    let securities = proj.positions(view)?.value.held.len() as i64;
+    let open_lots = proj.open_lots(view)?;
     let dials = closure::Dials {
         securities,
-        currencies: proj.currency_count(),
+        currencies: proj.currency_count(view)?,
         // ⚠ AN AVERAGE, AND THE MODEL'S WORST TERM MULTIPLIES IT. `actionCost`
         // wants the fragmentation of the ONE instrument a split touches, and a
         // real book's is not uniform — so the action term is this fund's
@@ -490,7 +491,7 @@ pub fn shape_of(
     Ok(explain::Shape {
         estimate: closure::estimate(dials, cal)?,
         accounts,
-        total_rows: proj.total_rows(),
+        total_rows: proj.total_rows(view)?,
         open_lots_held: open_lots,
     })
 }

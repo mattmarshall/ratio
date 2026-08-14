@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import { Refusal } from "@/components/Refusal";
 import { Stat } from "@/components/Stat";
 import { caller } from "@/lib/caller";
 import { basisOf, count, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
+import { orRefused } from "@/lib/refusal";
 import { getView } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +33,17 @@ export default async function ViewLayout({
 }) {
   const { fund, view } = await params;
   const c = await caller();
-  const v = await or404(getView(c, fund, view));
+  // ⛔ A REFUSAL RENDERS ITS SENTENCE, AND THE CHILDREN DO NOT FETCH. Thrown,
+  // this reached production as `Minified React error #441` and a digest — the
+  // API's one explanatory sentence redacted to a number, on every screen of
+  // the dual-basis demo fund. The layout is the gate: if the view itself
+  // refuses, every child's fetch would refuse identically, so answering here
+  // once is both the fix and the cheaper page.
+  const r = await orRefused(or404(getView(c, fund, view)));
+  if (r.refused !== null) {
+    return <Refusal why={r.refused} />;
+  }
+  const v = r.value;
   const basis = basisOf(v.basis, v.settlementOpenDays);
 
   return (

@@ -3,11 +3,12 @@ import { count, money } from "@/lib/format";
 import { isoDate } from "@/lib/dates";
 import { or404 } from "@/lib/or404";
 import { getLot } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
 /** One tax lot: what was bought, when, and at what cost. */
-export default async function LotDetail({
+async function LotDetail({
   params,
 }: {
   params: Promise<{ fund: string; view: string; position: string; lot: string }>;
@@ -45,3 +46,5 @@ export default async function LotDetail({
     </aside>
   );
 }
+
+export default withRefusal(LotDetail);

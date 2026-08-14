@@ -1055,7 +1055,7 @@ mod tests {
             .chart_roles
             .unwrap();
         let p = ratio_project::Projection::of_book(&d).unwrap();
-        let r = p.realized(Some(roles), &rates(shape)).unwrap().value.unwrap();
+        let r = p.realized(ratio_rules::UNDECLARED_VIEW, Some(roles), &rates(shape)).unwrap().value.unwrap();
 
         assert!(r.short_term < 0, "no short-term gains: {r:?}");
         assert!(r.long_term < 0, "no long-term gains: {r:?}");
@@ -1147,7 +1147,7 @@ mod tests {
         // folds under some other method measure two different books.
         let p = ratio_project::Projection::of_book(&d).unwrap();
         for i in 0..20i64 {
-            p.units_as_of(1, &ticker(i), "2026-06-30")
+            p.units_as_of(ratio_rules::UNDECLARED_VIEW, 1, &ticker(i), "2026-06-30")
                 .unwrap_or_else(|e| panic!("{} cannot be valued: {e:#}", ticker(i)));
         }
     }

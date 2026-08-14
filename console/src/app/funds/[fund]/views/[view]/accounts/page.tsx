@@ -3,6 +3,7 @@ import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import { money } from "@/lib/format";
 import { listAccounts } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ const FILTERS: readonly Filter[] = [
 ];
 
 /** The trial balance: every account, whether or not anything touched it. */
-export default async function Accounts({
+async function Accounts({
   params,
   searchParams,
 }: {
@@ -97,3 +98,5 @@ export default async function Accounts({
     </>
   );
 }
+
+export default withRefusal(Accounts);

@@ -163,12 +163,25 @@ dual_bal=$("$RATIO" balance --book "$DUAL")
 grep -qE "^Difference .* 0\.00 *$" <<<"$dual_bal" \
   || fail "the dual-basis book does not tie — a view is a filter over whole entries and cannot unbalance one"
 
-# ⛔ OWED, AND NOT ASSERTED HERE BECAUSE IT CANNOT YET BE. The difference between
+# ⛔ AND THE DIFFERENCE IS ACCOUNTED FOR, ENTRY BY ENTRY. The difference between
 # two views is a LIST — `Ratio.Views.two_views_differ_by_exactly_what_is_in_
-# flight` — and `ratio reconcile` is what will show it. It waits on the
-# projection folding per view; until then the console's reconciliation screen
-# REFUSES rather than subtracting two figures, and this script checks the NAVs
-# differ rather than checking what accounts for the difference. That is a weaker
-# claim and is written down as one.
+# flight` — and `ratio reconcile` shows it. The load-bearing half of this check
+# is the EXIT CODE: `reconcile` itself refuses when the in-flight entries do not
+# sum to the NAV difference exactly, so a zero exit IS the sum tying. The greps
+# then pin what a person would read: a non-zero difference, and at least one
+# entry in flight accounting for it.
+rec=$("$RATIO" reconcile abor ibor --book "$DUAL") \
+  || fail "reconcile refused on the dual-basis fund: $rec"
+grep -qE "^difference +-?[0-9,.]+" <<<"$rec" \
+  || fail "reconcile prints no difference line"
+grep -qE "^difference +0\.00$" <<<"$rec" \
+  && fail "reconcile reports a ZERO difference — the tail is not in flight and the demo shows nothing"
+grep -q "RECOGNISED IN abor, NOT YET IN ibor" <<<"$rec" \
+  || fail "reconcile does not show the in-flight list"
+# ⚠ ONLY THE LINE AFTER THE abor HEADER. "nothing in flight" is the RIGHT
+# answer for the reverse direction — abor recognises everything ibor does — so
+# a scan over the whole output would fail on the section that is behaving.
+awk '/RECOGNISED IN abor, NOT YET IN ibor/{getline; if ($0 ~ /nothing in flight/) exit 1; exit 0}' <<<"$rec" \
+  || fail "abor recognises the settlement tail and ibor does not — that list cannot be empty"
 
-echo "  ok  7 funds, $lots open tax lots, FIFO $a vs HIFO $b, ABOR $abor vs IBOR $ibor, blocked refuses and explained strikes"
+echo "  ok  7 funds, $lots open tax lots, FIFO $a vs HIFO $b, ABOR $abor vs IBOR $ibor, reconciled entry by entry, blocked refuses and explained strikes"

@@ -3,6 +3,7 @@ import { isMoneyBreak } from "@/lib/breaks";
 import { caller } from "@/lib/caller";
 import { money } from "@/lib/format";
 import { getBreak, NotFound } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
  * was asking a reader to take the citation on trust — which is the one thing
  * this product is not for.
  */
-export default async function BreakDetail({
+async function BreakDetail({
   params,
 }: {
   params: Promise<{ fund: string; view: string; break: string }>;
@@ -138,3 +139,5 @@ export default async function BreakDetail({
     </aside>
   );
 }
+
+export default withRefusal(BreakDetail);

@@ -3,11 +3,12 @@ import { caller } from "@/lib/caller";
 import { money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { getNavStrike } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
 /** One strike, and the journal prefix it was folded from. */
-export default async function StrikeDetail({
+async function StrikeDetail({
   params,
 }: {
   params: Promise<{ fund: string; view: string; strike: string }>;
@@ -84,3 +85,5 @@ export default async function StrikeDetail({
     </aside>
   );
 }
+
+export default withRefusal(StrikeDetail);
