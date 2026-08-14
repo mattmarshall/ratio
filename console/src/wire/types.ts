@@ -317,8 +317,13 @@ export interface PlanNode {
 }
 
 export interface PlanEdge {
-  from: string;
-  to: string;
+  /**
+   * ⛔ `source`/`target`, not `from`/`to`. `from` is on AIP-140's reserved-word
+   * list, so the contract cannot spell it that way — and the Rust model spells
+   * it the same, so nothing in between has to translate.
+   */
+  source: string;
+  target: string;
   kind: PlanEdgeKind;
   /** Rows that travelled it. Empty when nothing measured them. */
   rows: Int64;
@@ -345,8 +350,14 @@ export interface PlanDials {
   openLots: Int64;
 }
 
-/** How a NAV strike is computed, and what the alternatives would have cost. */
-export interface NavStrikePlan {
+/**
+ * How a NAV strike is computed, and what the alternatives would have cost.
+ *
+ * ⚠ Named for the method rather than for itself: AIP-136 requires a custom
+ * method's response to be `<Rpc>Response` or the resource it operates on, and
+ * the resource here is `NavStrike`.
+ */
+export interface ExplainNavStrikeResponse {
   name: string;
   view: string;
   nodes: PlanNode[];

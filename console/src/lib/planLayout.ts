@@ -1,4 +1,4 @@
-import type { NavStrikePlan, PlanEdge, PlanNode } from "@/wire/types";
+import type { ExplainNavStrikeResponse, PlanEdge, PlanNode } from "@/wire/types";
 
 // Where the boxes go.
 //
@@ -67,11 +67,11 @@ function ranks(nodes: PlanNode[], edges: PlanEdge[]): Map<string, number> {
   for (let pass = 0; pass < nodes.length; pass++) {
     let moved = false;
     for (const e of edges) {
-      const from = rank.get(e.from);
-      const to = rank.get(e.to);
+      const from = rank.get(e.source);
+      const to = rank.get(e.target);
       if (from === undefined || to === undefined) continue;
       if (to < from + 1) {
-        rank.set(e.to, from + 1);
+        rank.set(e.target, from + 1);
         moved = true;
       }
     }
@@ -88,7 +88,7 @@ function ranks(nodes: PlanNode[], edges: PlanEdge[]): Map<string, number> {
  */
 export function layout(nodes: PlanNode[], edges: PlanEdge[]): Layout {
   const ids = new Set(nodes.map((n) => n.id));
-  const inner = edges.filter((e) => ids.has(e.from) && ids.has(e.to));
+  const inner = edges.filter((e) => ids.has(e.source) && ids.has(e.target));
   const rank = ranks(nodes, inner);
 
   const column = new Map<number, PlanNode[]>();
@@ -115,8 +115,8 @@ export function layout(nodes: PlanNode[], edges: PlanEdge[]): Layout {
 
   const routed: Routed[] = [];
   for (const e of inner) {
-    const a = at.get(e.from);
-    const b = at.get(e.to);
+    const a = at.get(e.source);
+    const b = at.get(e.target);
     if (!a || !b) continue;
     const x1 = a.x + NODE_W;
     const y1 = a.y + NODE_H / 2;
@@ -143,13 +143,16 @@ export function layout(nodes: PlanNode[], edges: PlanEdge[]): Layout {
 /**
  * The steps a reader has asked to see.
  *
- * ⛔ THIS HIDES SUB-GRAPHS, NEVER THE COMPARISON. `NavStrikePlan.chosenReads`,
+ * ⛔ THIS HIDES SUB-GRAPHS, NEVER THE COMPARISON. `ExplainNavStrikeResponse.chosenReads`,
  * `rewriteReads` and `scanReads` are rendered whatever this returns, because
  * `ratio bench` "reports two curves and both must be quoted" and a plan screen
  * showing only the flat one would be that overclaim drawn as a diagram. What
  * collapsing buys is a smaller picture, not a friendlier number.
  */
-export function visible(plan: NavStrikePlan, rejected: boolean): PlanNode[] {
+export function visible(
+  plan: ExplainNavStrikeResponse,
+  rejected: boolean,
+): PlanNode[] {
   return plan.nodes.filter((n) => rejected || n.role !== "REJECTED");
 }
 

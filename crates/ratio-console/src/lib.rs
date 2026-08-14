@@ -2302,7 +2302,11 @@ impl Console {
     /// ⚠ AND `analyze` STILL WORKS FOR SUCH A VIEW, because the fold DOES cut.
     /// So the screen can be empty of estimates and full of measurements, which
     /// is an honest state and not a broken one.
-    pub fn explain_nav_strike(&self, name: &str, analyze: bool) -> Result<pb::NavStrikePlan> {
+    pub fn explain_nav_strike(
+        &self,
+        name: &str,
+        analyze: bool,
+    ) -> Result<pb::ExplainNavStrikeResponse> {
         let (fund, view, id) = view_scoped_id(name, "navStrikes").context("bad name")?;
         let path = self.book_path(&fund)?;
         let s = ratio_nav::get(&path, &view, &id)?;
@@ -2322,7 +2326,7 @@ impl Console {
         };
 
         // ⛔ MEASURED NOW, RE-DERIVING THE PINNED PREFIX — NOT WHAT THE ORIGINAL
-        // STRIKE COST. Nothing was recorded at strike time. `NavStrikePlan
+        // STRIKE COST. Nothing was recorded at strike time. `ExplainNavStrikeResponse
         // .analyzed` is what lets the screen say so, and it says so beside every
         // actual rather than once at the bottom.
         let measured = if analyze { Some(ratio_nav::analyze(&path, &s)?) } else { None };
@@ -2785,9 +2789,9 @@ fn figure(v: Option<i64>) -> String {
 /// ⚠ ONE BUILDER, AND IT IS A PLAIN MAPPING. Every judgement about what a step
 /// costs was made in `ratio_nav::explain`, where it is tested; anything decided
 /// here would be a second opinion in the layer with no tests over it.
-fn plan_pb(p: &ratio_nav::explain::Plan) -> pb::NavStrikePlan {
+fn plan_pb(p: &ratio_nav::explain::Plan) -> pb::ExplainNavStrikeResponse {
     use ratio_nav::explain::{EdgeKind, Group, Role};
-    pb::NavStrikePlan {
+    pb::ExplainNavStrikeResponse {
         name: p.name.clone(),
         view: p.view.clone(),
         nodes: p
@@ -2819,8 +2823,8 @@ fn plan_pb(p: &ratio_nav::explain::Plan) -> pb::NavStrikePlan {
             .edges
             .iter()
             .map(|e| pb::PlanEdge {
-                from: e.from.clone(),
-                to: e.to.clone(),
+                source: e.source.clone(),
+                target: e.target.clone(),
                 kind: match e.kind {
                     EdgeKind::Flow => pb::plan_edge::Kind::Flow,
                     EdgeKind::Refusal => pb::plan_edge::Kind::Refusal,

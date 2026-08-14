@@ -36,6 +36,7 @@ import type {
   CorporateAction,
   Delivery,
   DiffConfigVersionsResponse,
+  ExplainNavStrikeResponse,
   Fund,
   IngestDeliveryRequest,
   IngestDeliveryResponse,
@@ -58,7 +59,6 @@ import type {
   MarkPositionsRequest,
   MarkPositionsResponse,
   NavStrike,
-  NavStrikePlan,
   PendingFact,
   Position,
   Posting,
@@ -396,7 +396,7 @@ export const explainNavStrike = (
   id: string,
   analyze?: boolean,
 ) =>
-  send<NavStrikePlan>(
+  send<ExplainNavStrikeResponse>(
     c,
     `/funds/${fund}/views/${view}/navStrikes/${id}:explain${q({
       analyze: analyze ? "true" : undefined,

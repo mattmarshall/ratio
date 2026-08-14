@@ -376,7 +376,7 @@ service Console {
   // API does and a page that measured on load would spend a period end's work on
   // somebody who wanted to look at a diagram — the argument `:replay` already
   // makes about asserting a proof rather than offering it.
-  rpc ExplainNavStrike(ExplainNavStrikeRequest) returns (NavStrikePlan) {
+  rpc ExplainNavStrike(ExplainNavStrikeRequest) returns (ExplainNavStrikeResponse) {
     option (google.api.http) = {get: "/v1/{name=funds/*/views/*/navStrikes/*}:explain"};
     option (google.api.method_signature) = "name";
   }
@@ -1242,8 +1242,12 @@ message PlanEdge {
     KIND_UNREAD = 3;
   }
 
-  string from = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
-  string to = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // ⛔ `source`/`target`, NOT `from`/`to`. `from` is on AIP-140's reserved-word
+  // list because it is a Python keyword, and `//proto:ratio_aip_lint` runs with
+  // every rule but one enabled. The internal model in `ratio_nav::explain`
+  // spells them the same way, so no layer has to translate.
+  string source = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string target = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
   Kind kind = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Rows that travelled it. Empty when nothing measured them.
@@ -1284,7 +1288,12 @@ message PlanDials {
 }
 
 // How a NAV strike is computed, and what the alternatives would have cost.
-message NavStrikePlan {
+//
+// ⚠ NAMED FOR THE METHOD RATHER THAN FOR ITSELF. `NavStrikePlan` reads better
+// and AIP-136 refuses it: a custom method's response must be `<Rpc>Response` or
+// the resource being operated on, and the resource here is `NavStrike`.
+// `ReplayNavStrikeResponse` above is the same concession for the same reason.
+message ExplainNavStrikeResponse {
   // The strike this explains.
   string name = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
   string view = 2 [(google.api.field_behavior) = OUTPUT_ONLY];

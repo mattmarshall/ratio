@@ -1,6 +1,6 @@
 import { nanos, reads } from "@/lib/format";
 import { NODE_H, NODE_W, layout, share } from "@/lib/planLayout";
-import type { NavStrikePlan, PlanNode } from "@/wire/types";
+import type { ExplainNavStrikeResponse, PlanNode } from "@/wire/types";
 
 // The plan, drawn.
 //
@@ -51,7 +51,7 @@ function Group({
   title: string;
   blurb: string;
   nodes: PlanNode[];
-  plan: NavStrikePlan;
+  plan: ExplainNavStrikeResponse;
   total: number;
 }) {
   if (!nodes.length) return null;
@@ -87,7 +87,7 @@ function Group({
           </defs>
 
           {l.edges.map((e) => (
-            <g key={`${e.from}-${e.to}`} className={`pe pe-${e.kind.toLowerCase()}`}>
+            <g key={`${e.source}-${e.target}`} className={`pe pe-${e.kind.toLowerCase()}`}>
               <path
                 d={e.d}
                 markerEnd={`url(#arrow-${title.replace(/\W+/g, "")})`}
@@ -220,7 +220,7 @@ export function PlanGraph({
   plan,
   nodes,
 }: {
-  plan: NavStrikePlan;
+  plan: ExplainNavStrikeResponse;
   nodes: PlanNode[];
 }) {
   const recorded = nodes.filter((n) => n.group === "RECORDED");

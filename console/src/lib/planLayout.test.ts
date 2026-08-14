@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { NODE_H, NODE_W, layout, share, visible } from "./planLayout";
-import type { NavStrikePlan, PlanEdge, PlanNode } from "@/wire/types";
+import type { ExplainNavStrikeResponse, PlanEdge, PlanNode } from "@/wire/types";
 
 // ⛔ NEGATIVE-TEST EVERY CASE HERE. Break the property and watch it go red
 // before believing it — CONTRIBUTING.md records three suites in this repository
@@ -22,9 +22,9 @@ const node = (id: string, over: Partial<PlanNode> = {}): PlanNode => ({
   ...over,
 });
 
-const edge = (from: string, to: string): PlanEdge => ({
-  from,
-  to,
+const edge = (source: string, target: string): PlanEdge => ({
+  source,
+  target,
   kind: "FLOW",
   rows: "",
 });
@@ -45,7 +45,7 @@ describe("the plan layout", () => {
     const edges = [edge("a", "b"), edge("b", "c"), edge("c", "d"), edge("a", "d")];
     const l = layout(nodes, edges);
     const x = (id: string) => l.nodes.find((n) => n.id === id)!.x;
-    for (const e of edges) expect(x(e.to)).toBeGreaterThan(x(e.from));
+    for (const e of edges) expect(x(e.target)).toBeGreaterThan(x(e.source));
   });
 
   it("gives the same coordinates for the same input, every time", () => {
@@ -104,7 +104,7 @@ describe("what a reader has asked to see", () => {
       node("unread-lots", { role: "UNREAD" }),
       node("refuse", { role: "REFUSAL" }),
     ],
-  } as NavStrikePlan;
+  } as ExplainNavStrikeResponse;
 
   it("hides the rejected steps by default and shows them when asked", () => {
     expect(visible(plan, false).map((n) => n.id)).toEqual([

@@ -568,8 +568,9 @@ impl JsonView for pb::PlanNode {
 impl JsonView for pb::PlanEdge {
     fn to_json(&self) -> String {
         format!(
-            "{{\"from\":{},\"to\":{},\"kind\":{},\"rows\":{}}}",
-            q(&self.from), q(&self.to), q(plan_edge_kind_name(self.kind)), q(&self.rows)
+            "{{\"source\":{},\"target\":{},\"kind\":{},\"rows\":{}}}",
+            q(&self.source), q(&self.target), q(plan_edge_kind_name(self.kind)),
+            q(&self.rows)
         )
     }
 }
@@ -586,7 +587,7 @@ impl JsonView for pb::PlanDials {
     }
 }
 
-impl JsonView for pb::NavStrikePlan {
+impl JsonView for pb::ExplainNavStrikeResponse {
     fn to_json(&self) -> String {
         format!(
             "{{\"name\":{},\"view\":{},\"nodes\":[{}],\"edges\":[{}],\"dials\":{},\

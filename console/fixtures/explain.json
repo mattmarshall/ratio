@@ -378,152 +378,152 @@
     ],
     "edges": [
         {
-            "from": "open",
-            "to": "chart",
+            "source": "open",
+            "target": "chart",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "open",
-            "to": "rates",
+            "source": "open",
+            "target": "rates",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "open",
-            "to": "scan",
+            "source": "open",
+            "target": "scan",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "scan",
-            "to": "terms",
+            "source": "scan",
+            "target": "terms",
             "kind": "FLOW",
             "rows": "6"
         },
         {
-            "from": "scan",
-            "to": "digest",
+            "source": "scan",
+            "target": "digest",
             "kind": "FLOW",
             "rows": "6"
         },
         {
-            "from": "digest",
-            "to": "journaldigest",
+            "source": "digest",
+            "target": "journaldigest",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "terms",
-            "to": "place",
+            "source": "terms",
+            "target": "place",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "place",
-            "to": "recognise",
+            "source": "place",
+            "target": "recognise",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "place",
-            "to": "refuse-unplaceable",
+            "source": "place",
+            "target": "refuse-unplaceable",
             "kind": "REFUSAL",
             "rows": ""
         },
         {
-            "from": "recognise",
-            "to": "classify",
+            "source": "recognise",
+            "target": "classify",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "chart",
-            "to": "classify",
+            "source": "chart",
+            "target": "classify",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "classify",
-            "to": "accumulate",
+            "source": "classify",
+            "target": "accumulate",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "accumulate",
-            "to": "translate",
+            "source": "accumulate",
+            "target": "translate",
             "kind": "FLOW",
             "rows": "3"
         },
         {
-            "from": "accumulate",
-            "to": "trialbalance",
+            "source": "accumulate",
+            "target": "trialbalance",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "rates",
-            "to": "translate",
+            "source": "rates",
+            "target": "translate",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "translate",
-            "to": "nav",
+            "source": "translate",
+            "target": "nav",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "translate",
-            "to": "refuse-rate",
+            "source": "translate",
+            "target": "refuse-rate",
             "kind": "REFUSAL",
             "rows": ""
         },
         {
-            "from": "factors",
-            "to": "totals",
+            "source": "factors",
+            "target": "totals",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "totals",
-            "to": "filter",
+            "source": "totals",
+            "target": "filter",
             "kind": "FLOW",
             "rows": "18"
         },
         {
-            "from": "filter",
-            "to": "translate-2",
+            "source": "filter",
+            "target": "translate-2",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "translate-2",
-            "to": "nav-2",
+            "source": "translate-2",
+            "target": "nav-2",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "capital",
-            "to": "nav-2",
+            "source": "capital",
+            "target": "nav-2",
             "kind": "FLOW",
             "rows": ""
         },
         {
-            "from": "scan-lots",
-            "to": "filter",
+            "source": "scan-lots",
+            "target": "filter",
             "kind": "FLOW",
             "rows": "252843"
         },
         {
-            "from": "rewrite",
-            "to": "totals",
+            "source": "rewrite",
+            "target": "totals",
             "kind": "FLOW",
             "rows": "21070"
         },
         {
-            "from": "unread-lots",
-            "to": "totals",
+            "source": "unread-lots",
+            "target": "totals",
             "kind": "UNREAD",
             "rows": "0"
         }

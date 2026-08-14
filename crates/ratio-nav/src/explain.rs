@@ -148,8 +148,12 @@ pub struct Node {
 /// An edge of the plan.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Edge {
-    pub from: String,
-    pub to: String,
+    /// ⚠ `source`/`target`, NOT `from`/`to`, ALL THE WAY DOWN. The contract
+    /// cannot spell it `from` — `from` is a reserved word in AIP-140's list
+    /// because it is a Python keyword — and carrying one vocabulary here and
+    /// another on the wire is how a mapping layer acquires a bug nobody reads.
+    pub source: String,
+    pub target: String,
     pub kind: EdgeKind,
     /// Rows that travelled it, when something measured them.
     pub rows: Option<i64>,
@@ -305,10 +309,10 @@ impl<'a> Build<'a> {
         });
     }
 
-    fn edge(&mut self, from: &str, to: &str, kind: EdgeKind, rows: Option<i64>) {
+    fn edge(&mut self, source: &str, target: &str, kind: EdgeKind, rows: Option<i64>) {
         self.edges.push(Edge {
-            from: from.to_string(),
-            to: to.to_string(),
+            source: source.to_string(),
+            target: target.to_string(),
             kind,
             rows,
         });
@@ -1073,16 +1077,16 @@ mod tests {
         // a list would quietly straighten: the digest covers entries the view
         // DECLINED, so it cannot be downstream of the filter that declined them.
         let p = plan(0);
-        assert!(p.edges.iter().any(|e| e.from == "scan" && e.to == "digest"));
-        assert!(!p.edges.iter().any(|e| e.to == "digest" && e.from == "recognise"));
+        assert!(p.edges.iter().any(|e| e.source == "scan" && e.target == "digest"));
+        assert!(!p.edges.iter().any(|e| e.target == "digest" && e.source == "recognise"));
     }
 
     #[test]
     fn every_edge_names_a_node_that_exists() {
         let p = plan(1);
         for e in &p.edges {
-            assert!(p.nodes.iter().any(|n| n.id == e.from), "no node {}", e.from);
-            assert!(p.nodes.iter().any(|n| n.id == e.to), "no node {}", e.to);
+            assert!(p.nodes.iter().any(|n| n.id == e.source), "no node {}", e.source);
+            assert!(p.nodes.iter().any(|n| n.id == e.target), "no node {}", e.target);
         }
     }
 
