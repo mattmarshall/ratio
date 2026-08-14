@@ -615,6 +615,33 @@ in both states, and the case was negative-tested by gating it on the toggle.
 
 ---
 
+### Amendment, 2026-08-15 — the demo page becomes the front door, and captures a lead
+
+`/scale` left the operator nav and became a standalone lead-gen page: one claim
+("twenty million tax lots, folded cold in seventeen minutes, struck in twelve
+microseconds"), an email gate, one button. A prospect who leaves an address gets
+the fold run for them and a follow-up email whose permalink —
+`/scale/runs/{id}` — shows every figure from THEIR run and the `ratio bench`
+line that reproduces it byte for byte.
+
+**Why this is not on the refusal list, said precisely because it is two words
+away from two entries:**
+
+- **Not "the client portal."** That entry is a customer self-service product —
+  a signed-in surface where a CLIENT operates on their own fund. This is a
+  marketing page with a mailing-list gate; nothing behind it belongs to the
+  visitor, nothing authenticates, and the run report is a public read-only
+  permalink. The 2026-08-11 amendment drew the same line for the ops console's
+  auth, in the same words.
+- **Not "CRM connectors."** The mailing list is objects under the demo's own S3
+  prefix, written by the same `Store` the run lock uses — no Mailchimp, no
+  HubSpot, no third-party anything. SES sends one transactional report per run,
+  capped in code. Export is `aws s3 ls`; a CRM integration remains refused.
+
+⚠️ The standing caveat, restated: none of this moves the wedge's one open gap —
+a real customer's period reconciling. It widens the funnel's mouth; the funnel
+still ends at a conversation, not a sign-up.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

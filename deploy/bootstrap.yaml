@@ -540,6 +540,20 @@ Resources:
                 Condition:
                   StringLike:
                     s3:prefix: "runs/*"
+              # A lead who arrives during a cooldown is emailed the LATEST run's
+              # report immediately — no task exists to send it later, so the
+              # function sends it. ⛔ Scoped exactly as the task role's grant is:
+              # one SendEmail, and only AS an address under the demo's own
+              # domain. A public endpoint with an unscoped mail permission is a
+              # phishing kit with a budget.
+              - Sid: SendTheReplayReportEmail
+                Effect: Allow
+                Action:
+                  - ses:SendEmail
+                Resource: "*"
+                Condition:
+                  StringLike:
+                    ses:FromAddress: "*@ratio.msoftware.co"
 
   # ⛔ NO BUDGET HERE. mattmarshall/cloud-org owns budgets for every account in
   # the organization, at the payer, filtered by LinkedAccount — including this

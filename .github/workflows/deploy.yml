@@ -151,6 +151,10 @@ jobs:
           # instead of redirecting, and Cognito registers only the localhost
           # callback. See the ⛔ on CallbackURLs in deploy/app.yaml.
           CONSOLE_ORIGIN: ${{ vars.CONSOLE_ORIGIN }}
+          # The verified SES identity the report email sends from. A repository
+          # VARIABLE like the others — an address is not a secret. Unset means
+          # no email, which is the correct state until SES verifies.
+          SCALE_SENDER: ${{ vars.SCALE_SENDER }}
         run: |
           # ⛔ CAPABILITY_NAMED_IAM, BECAUSE THE STACK CREATES TWO NAMED ROLES.
           # The scale runner's task role and task execution role are named
@@ -171,7 +175,8 @@ jobs:
               GoogleClientId="${GOOGLE_CLIENT_ID}" \
               GoogleClientSecret="${GOOGLE_CLIENT_SECRET}" \
               ConsoleOrigin="${CONSOLE_ORIGIN}" \
-              DemoMember="${DEMO_MEMBERS:-demo@ratio.fastverk.dev}"
+              DemoMember="${DEMO_MEMBERS:-demo@ratio.fastverk.dev}" \
+              ScaleSender="${SCALE_SENDER}"
 
       - name: Smoke test the deployed demo
         env:
@@ -179,6 +184,10 @@ jobs:
           # CloudFormation; the step below reads it back out of the running
           # process to prove it arrived. See the /authconfig.json check.
           CONSOLE_ORIGIN: ${{ vars.CONSOLE_ORIGIN }}
+          # The verified SES identity the report email sends from. A repository
+          # VARIABLE like the others — an address is not a secret. Unset means
+          # no email, which is the correct state until SES verifies.
+          SCALE_SENDER: ${{ vars.SCALE_SENDER }}
         run: |
           set -euo pipefail
           URL="$(aws cloudformation describe-stacks --stack-name "$STACK" \
@@ -289,6 +298,12 @@ jobs:
           # fold has run on a fresh deploy, and a smoke test that waited for one
           # would wait sixteen minutes.
           want "the scale screen" "Twenty million tax lots" "${URL}scale"
+          # The funnel: the gate is on the page, and the run-report shell
+          # serves for any well-formed id — a bad one 404s at the JSON, which
+          # is what the page's own script renders as a sentence.
+          want "the email gate" "Unlock the demo" "${URL}scale"
+          want "the report shell" "A fold, and the figures it struck" "${URL}scale/runs/full-1"
+          deny "a traversal id reaching a key" '"open_lots"' "${URL}scale/runs/..%2fcurrent.json"
           want "the recorded cold build" "995.0 s" "${URL}scale"
           want "the shapes it can fold" '"size":"full"' "${URL}scale-runs.json"
           # ⛔ AND THE RUNNER IS WIRED. `"runner":null` means the function has no
