@@ -300,8 +300,9 @@ impl Console {
     /// an empty chart and a complete one look the same. `filter=posted` is
     /// there for when you want only what moved.
     pub fn list_accounts(&self, parent: &str, filter: &str) -> Result<pb::ListAccountsResponse> {
-        let fund = resource_id(parent, "funds")?;
-        let accounts = self.accounts_of(&fund)?;
+        let (fund, view) = view_scoped_parent(parent)?;
+        self.view_the_projection_can_answer(&fund, &view)?;
+        let accounts = self.accounts_of(&fund, &view)?;
         let keep: Vec<pb::Account> = accounts
             .into_iter()
             .filter(|a| match filter {
@@ -314,15 +315,16 @@ impl Console {
     }
 
     pub fn get_account(&self, name: &str) -> Result<pb::Account> {
-        let (fund, dim) = nested_id(name, "funds", "accounts")?;
-        self.accounts_of(&fund)?
+        let (fund, view, dim) = view_scoped_id(name, "accounts")?;
+        self.view_the_projection_can_answer(&fund, &view)?;
+        self.accounts_of(&fund, &view)?
             .into_iter()
             .find(|a| a.dimension == dim)
             .with_context(|| format!("no account {dim:?} in {fund}"))
     }
 
     /// Every account in a fund's chart, with its debit and credit totals.
-    fn accounts_of(&self, fund: &str) -> Result<Vec<pb::Account>> {
+    fn accounts_of(&self, fund: &str, view: &str) -> Result<Vec<pb::Account>> {
         let path = self.book_path(fund)?;
         let b = FileBook::open(&path)?;
         // ⛔ TRANSLATED INTO THE FUND'S CURRENCY, because a `pb::Account` is
@@ -381,7 +383,7 @@ impl Console {
                 let (debit, credit) = totals.get(&a.dim).copied().unwrap_or((0, 0));
                 let balance = debit - credit;
                 pb::Account {
-                    name: format!("funds/{fund}/accounts/{}", a.dim),
+                    name: format!("funds/{fund}/views/{view}/accounts/{}", a.dim),
                     display_name: a.display_name,
                     dimension: a.dim.to_string(),
                     r#type: account_type(a.account_type) as i32,
@@ -408,7 +410,8 @@ impl Console {
     /// Every posting on one account, in journal order, each with the balance
     /// after it.
     pub fn list_postings(&self, parent: &str) -> Result<pb::ListPostingsResponse> {
-        let (fund, dim_str) = nested_id(parent, "funds", "accounts")?;
+        let (fund, view, dim_str) = view_scoped_id(parent, "accounts")?;
+        self.view_the_projection_can_answer(&fund, &view)?;
         // ⛔ TENANCY BEFORE THE DIMENSION PARSE. A caller who may not see this
         // fund is refused here — not after we have judged whether their account
         // id was well-formed. The denial must not depend on the caller's input,
@@ -429,7 +432,7 @@ impl Console {
                 }
                 running += p.amount;
                 out.push(pb::Posting {
-                    name: format!("funds/{fund}/accounts/{dim}/postings/{}.{leg}", entry.id),
+                    name: format!("funds/{fund}/views/{view}/accounts/{dim}/postings/{}.{leg}", entry.id),
                     entry_id: entry.id.clone(),
                     memo: entry.memo.clone(),
                     amount: p.amount.to_string(),
@@ -651,7 +654,7 @@ impl Console {
                 postings: postings
                     .iter()
                     .map(|p| pb::EntryPosting {
-                        account: format!("funds/{fund}/accounts/{}", p.dim),
+                        account: format!("funds/{fund}/views/{view}/accounts/{}", p.dim),
                         display_name: chart
                             .iter()
                             .find(|a| a.dim == p.dim)
@@ -789,16 +792,18 @@ impl Console {
     /// hid. In the list, the rows sum to the accounts by construction, which is
     /// `Ratio.Ingest.positions_roll_up` made structural rather than remembered.
     pub fn list_positions(&self, parent: &str) -> Result<pb::ListPositionsResponse> {
-        let fund = resource_id(parent, "funds")?;
+        let (fund, view) = view_scoped_parent(parent)?;
+        self.view_the_projection_can_answer(&fund, &view)?;
         Ok(pb::ListPositionsResponse {
-            positions: self.positions_of(&fund)?,
+            positions: self.positions_of(&fund, &view)?,
             next_page_token: String::new(),
         })
     }
 
     pub fn get_position(&self, name: &str) -> Result<pb::Position> {
-        let (fund, id) = nested_id(name, "funds", "positions")?;
-        self.positions_of(&fund)?
+        let (fund, view, id) = view_scoped_id(name, "positions")?;
+        self.view_the_projection_can_answer(&fund, &view)?;
+        self.positions_of(&fund, &view)?
             .into_iter()
             .find(|p| p.name.ends_with(&format!("/{id}")))
             .with_context(|| format!("no position {id:?}"))
@@ -811,7 +816,8 @@ impl Console {
     /// position. A fund's positions are five hundred lines whatever its age;
     /// its lots are every purchase it still holds.
     pub fn list_lots(&self, parent: &str) -> Result<pb::ListLotsResponse> {
-        let (fund, id) = nested_id(parent, "funds", "positions")?;
+        let (fund, view, id) = view_scoped_id(parent, "positions")?;
+        self.view_the_projection_can_answer(&fund, &view)?;
         // ⛔ TENANCY BEFORE THE POSITION-KEY PARSE. `projection` opens the book
         // through `book_path`, so a caller who may not see this fund is refused
         // before their position id is parsed — the denial does not depend on
@@ -824,7 +830,7 @@ impl Console {
                 .value
                 .into_iter()
                 .map(|l| pb::Lot {
-                    name: format!("funds/{fund}/positions/{id}/lots/{}", l.seq),
+                    name: format!("funds/{fund}/views/{view}/positions/{id}/lots/{}", l.seq),
                     sequence: l.seq as i64,
                     units: l.units.to_string(),
                     cost: l.cost.to_string(),
@@ -847,14 +853,14 @@ impl Console {
         let ["funds", fund, "positions", pos, "lots", lot] = parts[..] else {
             bail!("{name:?} is not a funds/*/positions/*/lots/* name");
         };
-        self.list_lots(&format!("funds/{fund}/positions/{pos}"))?
+        self.list_lots(&format!("funds/{fund}/views/{view}/positions/{pos}"))?
             .lots
             .into_iter()
             .find(|l| l.name.ends_with(&format!("/{lot}")))
             .with_context(|| format!("no lot {lot:?} open in position {pos:?}"))
     }
 
-    fn positions_of(&self, fund: &str) -> Result<Vec<pb::Position>> {
+    fn positions_of(&self, fund: &str, view: &str) -> Result<Vec<pb::Position>> {
         let path = self.book_path(fund)?;
         let b = FileBook::open(&path)?;
         let (held, rest) = b.positions()?;
@@ -904,8 +910,8 @@ impl Console {
                     .as_ref()
                     .map(|p| p.lots_of(dim, &instrument).value.len() as i64)
                     .unwrap_or(0),
-                name: format!("funds/{fund}/positions/{dim}-{instrument}"),
-                account: format!("funds/{fund}/accounts/{dim}"),
+                name: format!("funds/{fund}/views/{view}/positions/{dim}-{instrument}"),
+                account: format!("funds/{fund}/views/{view}/accounts/{dim}"),
                 account_label: label(dim),
                 instrument_label: names
                     .get(&instrument)
@@ -923,8 +929,8 @@ impl Console {
                 continue;
             }
             out.push(pb::Position {
-                name: format!("funds/{fund}/positions/{dim}-unattributed"),
-                account: format!("funds/{fund}/accounts/{dim}"),
+                name: format!("funds/{fund}/views/{view}/positions/{dim}-unattributed"),
+                account: format!("funds/{fund}/views/{view}/accounts/{dim}"),
                 account_label: label(dim),
                 instrument: String::new(),
                 instrument_label: "Not attributed".into(),
@@ -1577,49 +1583,79 @@ impl Console {
         Ok(pb::ListFundsResponse { funds, next_page_token: String::new() })
     }
 
+    /// Check a view exists on this fund, and that the projection can answer for
+    /// it.
+    ///
+    /// ⛔ A REFUSAL RATHER THAN THE SAME NUMBERS UNDER A SECOND LABEL. The
+    /// projection folds the WHOLE journal — it has no cut — so it can answer for
+    /// a `recorded` view, which recognises entries in the journal's own order
+    /// and consults no date. It cannot yet answer for a trade-date or
+    /// settlement view, because those differ from `recorded` only AT A CUT, and
+    /// serving one without a cut would return figures identical to the other's
+    /// under a different name. That is exactly the defect this whole feature
+    /// exists to prevent: a figure that does not say which question it answers,
+    /// or worse, says the wrong one.
+    ///
+    /// ⚠ `ratio strike` DOES cut — it derives the day from the valuation point —
+    /// so the RECORDED NAV is already per view. It is the maintained projection
+    /// behind these screens that is not, and the gap is named here rather than
+    /// hidden behind an equal number.
+    fn view_the_projection_can_answer(&self, fund: &str, view: &str) -> Result<()> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        let set = match b.active()? {
+            Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))
+                .unwrap_or_default(),
+            None => ratio_rules::RuleSet::default(),
+        };
+        let declared = set.effective_views();
+        let Some(v) = declared.iter().find(|v| v.id == view) else {
+            bail!(
+                "no view {view:?} on this fund. It keeps: {}",
+                declared.iter().map(|v| v.id.as_str()).collect::<Vec<_>>().join(", ")
+            );
+        };
+        if v.basis != ratio_rules::Basis::Recorded {
+            bail!(
+                "view {view:?} recognises entries by date, and the maintained projection \
+                 behind this screen folds the whole journal with no cut — so it would \
+                 return the same figures as every other view rather than that view's. \
+                 `ratio strike --view {view}` and `ratio navs --view {view}` do cut and \
+                 are correct; these screens are not, and refusing is the honest answer \
+                 until the projection folds per view"
+            );
+        }
+        Ok(())
+    }
+
     pub fn get_fund(&self, name: &str) -> Result<pb::Fund> {
         let id = resource_id(name, "funds").context("bad fund name")?;
         let path = self.book_path(&id)?;
         let b = FileBook::open(&path)?;
-        let accounts = b.accounts()?;
-        let by_dim: BTreeMap<i64, AccountTypeRecord> =
-            accounts.iter().map(|a| (a.dim, a.account_type)).collect();
         let tb = b.trial_balance()?;
 
-        // NAV is assets minus liabilities, and both are the same fold: a
-        // liability's net is negative because it is credit-normal, so summing
-        // the two families subtracts one from the other without a special case.
-        //
-        // ⛔ THROUGH THE PROJECTION, WHICH TRANSLATES. This summed
-        // `balances_by_dim` — a fold that keys on the dimension and drops the
-        // currency — so on a multi-currency book it added dollars to euros and
-        // reported the result as USD. The same book gave 16,899,685,259 here
-        // and 17,835,336,781 from `ratio bench`, and neither screen said which
-        // one it was: `Ratio.Chart.Dimensions.a_flat_total_hides_a_currency_
-        // mismatch` is about exactly that sum.
-        //
-        // ⚠ A book whose currencies have no rates now REFUSES rather than
-        // answering, which is the right failure and a visible one.
-        let is_asset_or_liability = |d: i64| {
-            matches!(
-                by_dim.get(&d),
-                Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
-            )
+        // ⛔ THE TERMS THE ACTIVE CONFIGURATION DECLARES, read rather than
+        // assumed. The lot method decides the realized gain
+        // (`the_method_decides_the_taxable_gain`) and the threshold decides
+        // which rate it is taxed at — so both are reported beside the figure
+        // rather than left as something a reader has to go and look up.
+        let set = match b.active()? {
+            Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?)).ok(),
+            None => None,
         };
-        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
-        let proj = self.projection(&id)?;
-        // ⛔ TIMED AROUND THE FOLD, NOT AROUND THE REQUEST. This is the same
-        // `Projection::nav` call `ratio bench` times, so what it reports is the
-        // maintained strike — O(chart) — and not the cold build, which is
-        // O(entries) and grows forever. A screen showing one as the other is
-        // the overclaim bench exists to make hard.
-        let struck_at = std::time::Instant::now();
-        let nav: i64 = proj.nav(&is_asset_or_liability, &rates)?.value.0;
-        let nav_strike = struck_at.elapsed();
+        // ⭐ WHICH BOOKS OF RECORD THIS FUND KEEPS. From ACTIVE, because that is
+        // a question about NOW — how an ENTRY is recognised comes from the
+        // digest that entry pinned, which the fold resolves per entry.
+        let effective = set.clone().unwrap_or_default();
+        let default_view = effective.default_view();
+        let view_count = effective.effective_views().len();
 
-        let breaks = self.breaks_for(&path, &id)?;
+        // ⚠ AND THE BREAKS BELOW ARE THE DEFAULT VIEW'S, which is what
+        // `Fund.state` and `Fund.open_break_count` say they are. A client that
+        // renders either without `default_view` beside it is asserting a figure
+        // it cannot qualify.
+        let breaks = self.breaks_for(&path, &id, &default_view)?;
         let open: Vec<&pb::Break> = breaks.iter().filter(|k| !k.explained).collect();
-        let open_difference: i64 = open.iter().filter_map(|k| k.difference.parse::<i64>().ok().map(i64::abs)).sum();
 
         // A fact that cannot resolve is an exception in the same sense a
         // reconciliation break is: a figure missing an input is not a figure.
@@ -1644,38 +1680,28 @@ impl Console {
             pb::fund::State::Struck
         };
 
-        // ⛔ THE TERMS THE ACTIVE CONFIGURATION DECLARES, read rather than
-        // assumed. The lot method decides the realized gain
-        // (`the_method_decides_the_taxable_gain`) and the threshold decides
-        // which rate it is taxed at — so both are reported beside the figure
-        // rather than left as something a reader has to go and look up.
-        //
-        // ⚠ A book with no configuration, or one whose chart names no roles,
-        // reports EMPTY STRINGS rather than zeros. A fund that realized nothing
-        // and a fund whose engine cannot tell are different answers, and "0.00"
-        // is a claim about the first.
-        let set = match b.active()? {
-            Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?)).ok(),
-            None => None,
-        };
-        // The same rates the NAV above was struck at — one read, so the two
-        // figures on this screen cannot have been translated differently.
-        let realized = proj
-            .realized(set.as_ref().and_then(|s| s.chart_roles), &rates)
-            .ok()
-            .and_then(|r| r.value);
-
         Ok(pb::Fund {
             name: format!("funds/{id}"),
             display_name: display_name(&id),
             currency_code: FUND_CURRENCY.into(),
+            // ⛔ THE DEFAULT VIEW'S, AND `default_view` SITS BESIDE THEM SO A
+            // CLIENT CANNOT RENDER EITHER WITHOUT THE LABEL. Both depend on
+            // which entries are recognised; answering for one view without
+            // saying which is the row already in HANDOFF.md's failure table.
             state: state as i32,
-            net_asset_value: nav.to_string(),
+            open_break_count: open.len() as i64,
+            default_view: default_view.clone(),
+            view_count: view_count as i64,
             // ⛔ THE METHOD THE ENGINE USED, AND SEPARATELY WHETHER ANYONE CHOSE
             // IT. Reporting only the first made the console assert an election
             // nobody had made: the seeded demo books declare no method, are
             // relieved oldest-first by custom, and the screen called that "a
             // term of the administration agreement".
+            //
+            // ⚠ STILL FUND-LEVEL, because a view overrides TIMING only. Every
+            // view relieves under the same election and they still reach
+            // different realized gains, because each has recognised a different
+            // set of open lots by the time a sale arrives.
             lot_method: set
                 .as_ref()
                 .map(|s| {
@@ -1686,41 +1712,149 @@ impl Console {
                 .unwrap_or_default(),
             lot_method_declared: set.as_ref().is_some_and(|s| s.lot_method.is_some()),
             long_term_days: set.as_ref().map(|s| s.long_term_days).unwrap_or(0),
-            // The scale argument, as two numbers a reader can put beside each
-            // other: what a NAV reads, and what it does not.
-            open_lot_count: proj.open_lots(),
-            position_count: proj.positions().value.held.len() as i64,
-            // The generated crate's own Duration, for the same reason
-            // `to_pb` uses the generated Timestamp: rules_rust_prost compiles
-            // the well-known types itself, so this and `prost_types::Duration`
-            // are distinct types with one name and one shape.
-            nav_strike: Some(ratio_proto::duration_proto::google::protobuf::Duration {
-                seconds: nav_strike.as_secs() as i64,
-                nanos: nav_strike.subsec_nanos() as i32,
-            }),
-            realized_gain: realized.map(|r| r.gain.to_string()).unwrap_or_default(),
-            basis_relieved: realized.map(|r| r.basis.to_string()).unwrap_or_default(),
-            short_term_gain: realized.map(|r| r.short_term.to_string()).unwrap_or_default(),
-            long_term_gain: realized.map(|r| r.long_term.to_string()).unwrap_or_default(),
-            unclassified_gain: realized.map(|r| r.unclassified().to_string()).unwrap_or_default(),
-            // The same `tb` the difference below comes from, so the two
-            // columns and their difference can never be computed from
-            // different reads of the journal.
             pending_fact_count: pending.len().to_string(),
-            total_debit: tb.debits.to_string(),
-            total_credit: tb.credits.to_string(),
+            // ⭐ THE ONE TRIAL-BALANCE FIGURE THAT IS NOT VIEW-DEPENDENT, AND ITS
+            // STAYING HERE IS THE CHECK THAT THE LINE IS DRAWN RIGHT. A view
+            // keeps or drops WHOLE entries and each entry conserves, so the
+            // difference cannot move — `Ratio.Views.every_view_conserves`. The
+            // two COLUMN totals can, and they live on `View`.
             trial_balance_difference: (tb.debits - tb.credits).to_string(),
-            open_difference: open_difference.to_string(),
             entry_count: entries_len as i64,
-            open_break_count: open.len() as i64,
             config_digest: b.active()?.map(|d| d.as_str().to_string()).unwrap_or_default(),
         })
     }
 
-    pub fn list_breaks(&self, parent: &str, filter: &str) -> Result<pb::ListBreaksResponse> {
+    /// The books of record this fund keeps.
+    pub fn list_views(&self, parent: &str) -> Result<pb::ListViewsResponse> {
         let id = resource_id(parent, "funds").context("bad parent")?;
         let path = self.book_path(&id)?;
-        let mut breaks = self.breaks_for(&path, &id)?;
+        let b = FileBook::open(&path)?;
+        let set = match b.active()? {
+            Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))
+                .unwrap_or_default(),
+            None => ratio_rules::RuleSet::default(),
+        };
+        let mut views = Vec::new();
+        for v in set.effective_views() {
+            // ⚠ THE LIST IS CHEAP AND THE FIGURES ARE NOT. A rail rendering six
+            // funds would fold six journals if this filled every view in full;
+            // the switcher needs the id, the basis and whether anybody declared
+            // it, and `GetView` is where a figure comes from.
+            views.push(view_pb(&id, &set, &v));
+        }
+        Ok(pb::ListViewsResponse {
+            default_view: set.default_view(),
+            views,
+            next_page_token: String::new(),
+        })
+    }
+
+    /// One book of record, with the figures it recognises.
+    pub fn get_view(&self, name: &str) -> Result<pb::View> {
+        let (id, view) = view_scoped_parent(name).context("bad view name")?;
+        let path = self.book_path(&id)?;
+        let b = FileBook::open(&path)?;
+        let set = match b.active()? {
+            Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))
+                .unwrap_or_default(),
+            None => ratio_rules::RuleSet::default(),
+        };
+        let def = set
+            .effective_views()
+            .into_iter()
+            .find(|v| v.id == view)
+            .with_context(|| format!("no view {view:?} on this fund"))?;
+        let mut out = view_pb(&id, &set, &def);
+
+        // ⛔ THE FIGURES CAME OFF `Fund`, AND THEY LAND HERE RATHER THAN
+        // NOWHERE. Every one depends on which entries are recognised, so this is
+        // where they belong — but the maintained projection still folds the
+        // whole journal with no cut, so it can only answer for a view that
+        // recognises in journal order. Anything else refuses, loudly, rather
+        // than returning the recorded view's numbers under another name.
+        self.view_the_projection_can_answer(&id, &view)?;
+
+        let accounts = b.accounts()?;
+        let by_dim: BTreeMap<i64, AccountTypeRecord> =
+            accounts.iter().map(|a| (a.dim, a.account_type)).collect();
+        let is_asset_or_liability = |d: i64| {
+            matches!(
+                by_dim.get(&d),
+                Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
+            )
+        };
+        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
+        let proj = self.projection(&id)?;
+        // ⛔ TIMED AROUND THE FOLD, NOT AROUND THE REQUEST. The same
+        // `Projection::nav` call `ratio bench` times, so it reports the
+        // maintained strike — O(chart) — and not the cold build.
+        let struck_at = std::time::Instant::now();
+        let nav: i64 = proj.nav(&is_asset_or_liability, &rates)?.value.0;
+        let nav_strike = struck_at.elapsed();
+        let realized = proj
+            .realized(set.chart_roles, &rates)
+            .ok()
+            .and_then(|r| r.value);
+
+        let breaks = self.breaks_for(&path, &id, &view)?;
+        let open: Vec<&pb::Break> = breaks.iter().filter(|k| !k.explained).collect();
+        let tb = b.trial_balance()?;
+
+        out.net_asset_value = nav.to_string();
+        out.total_debit = tb.debits.to_string();
+        out.total_credit = tb.credits.to_string();
+        out.open_difference = open
+            .iter()
+            .filter_map(|k| k.difference.parse::<i64>().ok().map(i64::abs))
+            .sum::<i64>()
+            .to_string();
+        out.open_break_count = open.len() as i64;
+        out.state = self.get_fund(&format!("funds/{id}"))?.state;
+        out.realized_gain = realized.map(|r| r.gain.to_string()).unwrap_or_default();
+        out.basis_relieved = realized.map(|r| r.basis.to_string()).unwrap_or_default();
+        out.short_term_gain = realized.map(|r| r.short_term.to_string()).unwrap_or_default();
+        out.long_term_gain = realized.map(|r| r.long_term.to_string()).unwrap_or_default();
+        out.unclassified_gain =
+            realized.map(|r| r.unclassified().to_string()).unwrap_or_default();
+        out.open_lot_count = proj.open_lots();
+        out.position_count = proj.positions().value.held.len() as i64;
+        out.journal_position = proj.prefix() as i64;
+        out.nav_strike = Some(ratio_proto::duration_proto::google::protobuf::Duration {
+            seconds: nav_strike.as_secs() as i64,
+            nanos: nav_strike.subsec_nanos() as i32,
+        });
+        Ok(out)
+    }
+
+    /// What two books of record over one journal disagree about.
+    ///
+    /// ⛔ REFUSES RATHER THAN SUBTRACTING TWO FIGURES. The difference between
+    /// two views is a LIST OF ENTRIES — `Ratio.Views.two_views_differ_by_
+    /// exactly_what_is_in_flight` — and producing that list needs a fold that
+    /// knows which entries each view recognised. The maintained projection does
+    /// not have one yet. Differencing two NAVs and calling the result a
+    /// reconciliation would show a number with nothing behind it, which is the
+    /// one thing this screen exists not to do.
+    pub fn reconcile_views(&self, name: &str, against: &str) -> Result<pb::ReconcileViewsResponse> {
+        let (id, view) = view_scoped_parent(name).context("bad view name")?;
+        let _ = self.book_path(&id)?;
+        if against.is_empty() {
+            bail!("reconciling is a question about two views — name the other with ?against=");
+        }
+        bail!(
+            "cannot reconcile {view:?} against {against:?} yet: the difference between two \
+             books of record is the entries one recognises and the other does not, and the \
+             maintained projection folds the whole journal with no cut, so it cannot say \
+             which those are. `ratio strike --view` already cuts and is correct; this \
+             screen waits on the projection folding per view"
+        );
+    }
+
+    pub fn list_breaks(&self, parent: &str, filter: &str) -> Result<pb::ListBreaksResponse> {
+        let (id, view) = view_scoped_parent(parent).context("bad parent")?;
+        self.view_the_projection_can_answer(&id, &view)?;
+        let path = self.book_path(&id)?;
+        let mut breaks = self.breaks_for(&path, &id, &view)?;
         breaks.retain(|k| match filter {
             "blocking" => k.severity == pb::Severity::High as i32,
             "unexplained" => !k.explained,
@@ -1730,9 +1864,10 @@ impl Console {
     }
 
     pub fn get_break(&self, name: &str) -> Result<pb::Break> {
-        let (fund, brk) = nested_id(name, "funds", "breaks").context("bad break name")?;
+        let (fund, view, brk) = view_scoped_id(name, "breaks").context("bad break name")?;
+        self.view_the_projection_can_answer(&fund, &view)?;
         let path = self.book_path(&fund)?;
-        self.breaks_for(&path, &fund)?
+        self.breaks_for(&path, &fund, &view)?
             .into_iter()
             .find(|k| k.name.ends_with(&format!("/breaks/{brk}")))
             .with_context(|| format!("no break {brk:?} on {fund:?}"))
@@ -2058,7 +2193,7 @@ impl Console {
                         day >= a.ex_date.as_str()
                             && !at.is_some_and(|i| i < s.journal_position)
                     })
-                    .map(|s| format!("funds/{fund}/navStrikes/{}", s.id))
+                    .map(|s| format!("funds/{fund}/views/{}/navStrikes/{}", s.view, s.id))
                     .collect();
 
                 Ok(pb::CorporateAction {
@@ -2157,7 +2292,7 @@ impl Console {
             .iter()
             .enumerate()
             .map(|(i, why)| pb::Break {
-                name: format!("funds/{fund}/breaks/lot-{}", i + 1),
+                name: format!("funds/{fund}/views/{view}/breaks/lot-{}", i + 1),
                 account: "Tax lots".into(),
                 account_dimension: 0,
                 severity: pb::Severity::High as i32,
@@ -2172,7 +2307,7 @@ impl Console {
             .collect())
     }
 
-    fn breaks_for(&self, book: &Path, fund: &str) -> Result<Vec<pb::Break>> {
+    fn breaks_for(&self, book: &Path, fund: &str, view: &str) -> Result<Vec<pb::Break>> {
         let Some(report) = newest_report(book)? else {
             // ⚠ STILL RETURNS THE LOT BREAKS. A fund with no reconciliation
             // report has no recon breaks, and used to have no breaks at all —
@@ -2227,7 +2362,7 @@ impl Console {
                 // across two runs of the same period. A name that moved every
                 // time the report was regenerated would make every link in an
                 // email dead by morning.
-                name: format!("funds/{fund}/breaks/{dim}"),
+                name: format!("funds/{fund}/views/{view}/breaks/{dim}"),
                 account: line.display_name.clone(),
                 account_dimension: dim,
                 severity: severity as i32,
@@ -2513,6 +2648,31 @@ pub fn position_key(id: &str) -> Result<(i64, String)> {
 /// forget. A fund's reporting currency is a property of the fund, and when a
 /// second one arrives this becomes a field on the book.
 pub use ratio_store::BASE_CURRENCY as FUND_CURRENCY;
+
+
+/// A view's declared terms, as the contract carries them.
+///
+/// ⛔ ONE BUILDER FOR BOTH `ListViews` AND `GetView`. Two would be two answers
+/// to what a view IS, differing in whichever field somebody added to one.
+fn view_pb(fund: &str, set: &ratio_rules::RuleSet, v: &ratio_rules::View) -> pb::View {
+    let cal = v.calendar.as_deref().and_then(|c| set.calendar(c));
+    pb::View {
+        name: format!("funds/{fund}/views/{}", v.id),
+        display_name: v.label().to_string(),
+        basis: match v.basis {
+            ratio_rules::Basis::Recorded => pb::view::Basis::Recorded,
+            ratio_rules::Basis::Trade => pb::view::Basis::Trade,
+            ratio_rules::Basis::Settlement => pb::view::Basis::Settlement,
+        } as i32,
+        settles_in: v.settles_in.unwrap_or(0),
+        calendar: v.calendar.clone().unwrap_or_default(),
+        holiday_count: cal.map(|c| c.holidays.len() as i64).unwrap_or(0),
+        // ⛔ WHETHER ANYBODY CHOSE IT. A book declaring nothing has one view and
+        // it is not an election; the same trap `lot_method_declared` exists for.
+        declared: set.views_declared(),
+        ..Default::default()
+    }
+}
 
 /// `funds/a/views/v` → `("a", "v")`.
 ///

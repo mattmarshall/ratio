@@ -175,6 +175,21 @@ the conserved one, and the kernel never said it was.
   rule, one level out. ⛔ An entry whose pinned configuration does not declare a
   view must be REFUSED by it and reported, never folded as `recorded`: that is
   the no-fallback-to-FIFO argument with a date instead of a lot method.
+- ⚠ **THE MAINTAINED PROJECTION DOES NOT FOLD PER VIEW YET, AND THE BFF REFUSES
+  RATHER THAN PRETENDING.** `ratio strike` cuts — it derives the day from the
+  valuation point — so the RECORDED NAV is already per view and correct. The
+  projection behind the console's screens folds the whole journal with no cut,
+  so it can only answer for a `recorded` view; `Console::view_the_projection_
+  can_answer` refuses anything else, and `ReconcileViews` refuses outright.
+  ⛔ THE REFUSAL IS THE POINT. Serving a trade-date or settlement view off a
+  cut-less fold would return the recorded view's figures under another name —
+  two labels, one number, and nothing saying so. That is the defect the whole
+  feature exists to prevent, not a rough edge in it.
+  ⚠ AND `console/fixtures/reconcile.json` DESCRIBES A SHAPE NOTHING SERVES.
+  The render test is green against it; the endpoint 400s. The fixture documents
+  the intended response and the screen shows the server's refusal prose, which
+  is honest — but a fixture that outlives the gap it was written for is how a
+  captured fixture stops being a capture.
 - ⛔ **A DIFFERENTIAL TEST BETWEEN TWO VIEWS THAT DOES NOT CUT IS VACUOUS.**
   Folded to the end of history every view agrees, because everything eventually
   settles — `Ratio.Views.a_fold_with_no_cut_hides_the_settlement_gap` is the
