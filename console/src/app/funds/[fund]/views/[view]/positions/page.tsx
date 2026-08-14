@@ -30,7 +30,7 @@ export default async function Positions({
             journal and a view is a lens over it, so neither write belongs under
             `views/[view]/`. */}
         <span className="sortnote">
-          <Link href={`/funds/${fund}/trade`}>Place a trade</Link>
+          <Link href={`/funds/${fund}/trade?view=${view}`}>Place a trade</Link>
         </span>
         <span className="sortnote">
           <Link href={`/funds/${fund}/mark`}>Mark to market</Link>

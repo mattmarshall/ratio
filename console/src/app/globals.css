@@ -506,7 +506,7 @@ a.fund,a.row{color:inherit;text-decoration:none}
 .rec .lt .ltv:last-child{color:var(--muted);font-size:12px}
 /* The section head carries the view switch as well as its note. */
 .loghead .hd{display:flex;align-items:center;gap:10px}
-.loghead .views{text-transform:none;letter-spacing:0}
+.loghead .viewswitch{text-transform:none;letter-spacing:0}
 
 /* The step tree — the control that makes a stepper honest. What has been
    answered is legible without clicking back to find out, and every step is the
@@ -646,6 +646,19 @@ a.fund,a.row{color:inherit;text-decoration:none}
 .viewswitch a:hover{color:var(--text)}
 .viewswitch a[aria-current="page"]{background:var(--surface);color:var(--text);
   box-shadow:0 1px 2px var(--shadow)}
+/* ⚠ AND BUTTONS, WHICH THIS CONTROL LOST WHEN IT WAS RENAMED. It was `.views`
+   and it styled both, with a note saying why: a LINK navigates and takes
+   `aria-current="page"`, a BUTTON narrows what is already on screen and takes
+   `aria-pressed`. The book-of-record switch is links — a view is a URL somebody
+   should be able to send. The write screens' Guided/Form toggle is buttons: it
+   changes how a half-typed ticket is laid out, which is not a URL anybody should
+   be sent. Both are the same control to look at, so both are styled here. */
+.viewswitch button{padding:3px 10px;border-radius:7px;color:var(--text-2);
+  font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;
+  text-transform:none;letter-spacing:0}
+.viewswitch button:hover{color:var(--text)}
+.viewswitch button[aria-pressed="true"]{background:var(--surface);
+  color:var(--text);box-shadow:0 1px 2px var(--shadow)}
 .viewswitch .pip{background:transparent;color:var(--text-2);
   border:1px solid var(--rule);font-weight:500}
 

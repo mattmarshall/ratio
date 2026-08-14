@@ -9,7 +9,7 @@ import {
   Ticket,
   type Step,
 } from "@/components/Ticket";
-import { money } from "@/lib/format";
+import { count, money } from "@/lib/format";
 import { isoDate } from "@/lib/dates";
 import {
   consideration,
@@ -17,8 +17,11 @@ import {
   suggestedReference,
   TRADE_DATE,
 } from "@/lib/trade";
-import type { Rule } from "@/wire/types";
+import type { Position, Rule } from "@/wire/types";
 import { place, type TradeResult } from "./actions";
+
+/** The picker's value for an instrument the fund does not hold. */
+const NOT_HELD = "not-held";
 
 /**
  * A trade ticket: what happened, how it books, what it would do, then post.
@@ -41,13 +44,26 @@ import { place, type TradeResult } from "./actions";
  * the failure shape AGENTS.md puts first, and a screen that produced it
  * silently would be the strongest available argument against this product.
  */
-export function TradeTicket({ fund, rules }: { fund: string; rules: Rule[] }) {
+export function TradeTicket({
+  fund,
+  rules,
+  positions,
+  view,
+}: {
+  fund: string;
+  rules: Rule[];
+  /** What the fund holds in `view`. Empty when no view was named — see page. */
+  positions: Position[];
+  /** The view the holdings were read in, or "" when none was named. */
+  view: string;
+}) {
   const [result, action, pending] = useActionState<TradeResult, FormData>(
     place,
     null,
   );
 
   const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [picked, setPicked] = useState("");
   const [typed, setTyped] = useState("");
   const [units, setUnits] = useState("");
   const [price, setPrice] = useState("");
@@ -55,8 +71,15 @@ export function TradeTicket({ fund, rules }: { fund: string; rules: Rule[] }) {
   const [ruleId, setRuleId] = useState("");
   const [reference, setReference] = useState("");
 
-  const instrument = typed.trim();
-  const label = instrument;
+  // ⚠ THE PICKER IS AN AFFORDANCE, THE TEXT FIELD IS THE CONTRACT. With no view
+  // named there are no holdings to choose from, so the field is all there is —
+  // and a trade in something the fund does not hold yet has to be typeable in
+  // either case.
+  const offered = positions.filter((p) => p.instrument);
+  const choosing = offered.length > 0 && picked !== NOT_HELD;
+  const instrument = choosing ? picked : typed.trim();
+  const held = offered.find((p) => p.instrument === instrument) ?? null;
+  const label = held?.instrumentLabel || instrument;
 
   const worth = units && price ? consideration(units, price) : null;
   const rule = rules.find((r) => r.ruleId === ruleId) ?? null;
@@ -128,13 +151,48 @@ export function TradeTicket({ fund, rules }: { fund: string; rules: Rule[] }) {
   );
 
   const instrumentField = (
-    <Field
-      name="Instrument"
-      value={typed}
-      onValue={setTyped}
-      hint="as the instrument master names it"
-    />
+    <>
+      {offered.length ? (
+        <Picker
+          name="Instrument"
+          value={picked}
+          onValue={setPicked}
+          empty="Choose an instrument"
+          options={[
+            ...offered.map((p) => ({
+              value: p.instrument,
+              label: `${p.instrumentLabel || p.instrument} · ${count(p.quantity)} held`,
+            })),
+            { value: NOT_HELD, label: "Something not held yet…" },
+          ]}
+        />
+      ) : null}
+      {choosing ? null : (
+        <Field
+          name={offered.length ? "Its identifier" : "Instrument"}
+          value={typed}
+          onValue={setTyped}
+          hint="as the instrument master names it"
+        />
+      )}
+    </>
   );
+
+  // ⚠ WHAT A SALE WOULD GIVE UP, BEFORE IT GIVES IT UP — AND WHICH BOOK SAYS SO.
+  // The engine relieves against open lots, so somebody selling more than the
+  // book holds should learn it here rather than from a break. ⛔ Both figures
+  // are view-dependent, so the view is named beside them: a quantity that
+  // depends on a recognition convention and does not say which is the defect the
+  // view split exists to prevent.
+  const holding = held ? (
+    <p className="ruleform">
+      <b>{label}</b>
+      {count(held.quantity)} units across {count(held.openLotCount)} open lot
+      {held.openLotCount === "1" ? "" : "s"}, carried at{" "}
+      <span className="num">{money(held.value)}</span> — as{" "}
+      <code>{view}</code> recognises it.
+    </p>
+  ) : null;
 
   const booksPicker = (
     <Picker
@@ -176,7 +234,12 @@ export function TradeTicket({ fund, rules }: { fund: string; rules: Rule[] }) {
         "A disposal of something the book does not hold has no basis to give up.",
       ],
       answer: instrument || null,
-      body: instrumentField,
+      body: (
+        <>
+          {instrumentField}
+          {holding}
+        </>
+      ),
     },
     {
       id: "units",
@@ -312,6 +375,7 @@ export function TradeTicket({ fund, rules }: { fund: string; rules: Rule[] }) {
               hint={suggested || "the counterparty's reference"}
             />
           </div>
+          {holding}
           {rule ? <RuleForm rule={rule} /> : null}
           {worthBlock}
           {notCarried}

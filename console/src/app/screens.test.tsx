@@ -469,9 +469,22 @@ describe("the write screens", () => {
     accounts: ["Investments at fair value", "Cash and equivalents"],
   };
 
-  async function ticket(rules = [TRADE_RULE]) {
+  /** ⚠ `view: ""` and no holdings is the cold-landing case — see the page. */
+  async function ticket(rules = [TRADE_RULE], positions = [], view = "") {
     const { TradeTicket } = await import("./funds/[fund]/trade/TradeTicket");
-    render(<TradeTicket fund={FUND} rules={rules} />);
+    render(
+      <TradeTicket
+        fund={FUND}
+        rules={rules}
+        positions={positions}
+        view={view}
+      />,
+    );
+  }
+
+  /** Arrived from a view's positions screen, so the holdings came with it. */
+  async function ticketInView() {
+    await ticket([TRADE_RULE], positionsFixture.positions as never, "abor");
   }
 
   /** The same ticket with every field on screen at once. */
@@ -514,13 +527,25 @@ describe("the write screens", () => {
       ],
       [
         "trade",
-        <TradeTicket key="t" fund={FUND} rules={[TRADE_RULE]} />,
+        <TradeTicket
+          key="t"
+          fund={FUND}
+          rules={[TRADE_RULE]}
+          positions={[]}
+          view=""
+        />,
       ],
     ] as const) {
       const { unmount } = render(el);
       // The tree, the two views, and a way forward — the same three on each.
       expect(document.querySelector(".steps"), what).not.toBeNull();
-      expect(screen.getByRole("button", { name: "Guided" }), what).toBeDefined();
+      // ⛔ THE SAME CLASS AS THE BOOK-OF-RECORD SWITCH, AND A RENAME BROKE IT
+      // ONCE. This control was `.views`; when that became `.viewswitch` the
+      // toggle kept the dead name and rendered as two words of plain text — the
+      // screen still worked and stopped looking like a control. Both switches
+      // look identical on purpose, so both name one class.
+      const guided = screen.getByRole("button", { name: "Guided" });
+      expect(guided.closest(".viewswitch"), what).not.toBeNull();
       expect(screen.getByRole("button", { name: "Form" }), what).toBeDefined();
       expect(screen.getByRole("button", { name: "Next" }), what).toBeDefined();
       unmount();
@@ -614,12 +639,80 @@ describe("the write screens", () => {
 
   // ── the trade ticket ───────────────────────────────────────────────────
 
+  it("offers what the fund holds once a view says which book to read", async () => {
+    await ticketInView();
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    const picker = screen.getByLabelText<HTMLSelectElement>("Instrument");
+    expect([...picker.options].map((o) => o.textContent)).toContain(
+      "Acme Corporation · 1,000 held",
+    );
+    fireEvent.change(picker, { target: { value: "ACME" } });
+    // ⛔ AND THE VIEW IS NAMED BESIDE THE FIGURES. Quantity and carrying value
+    // depend on which entries a view recognises; printing either without saying
+    // which book is the defect the view split exists to prevent.
+    expect(screen.getByText(/1,000 units across 40 open lots/)).toBeDefined();
+    expect(screen.getByText("abor")).toBeDefined();
+  });
+
+  it("does not offer the unattributed row as something to trade", async () => {
+    // ⛔ AN EMPTY `instrument` IS A REAL ROW, NOT A MISSING ONE — value in the
+    // account attributed to no instrument, which the rows sum to and the trial
+    // balance agrees with. It is a holding of nothing, so it cannot be sold, and
+    // an empty option in the picker is a ticket nobody could read.
+    const unattributed = {
+      ...positionsFixture.positions[0],
+      name: `funds/${FUND}/views/abor/positions/-`,
+      instrument: "",
+      instrumentLabel: "",
+    };
+    await ticket(
+      [TRADE_RULE],
+      [...positionsFixture.positions, unattributed] as never,
+      "abor",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    const picker = screen.getByLabelText<HTMLSelectElement>("Instrument");
+    expect([...picker.options].map((o) => o.value)).toEqual([
+      "",
+      "ACME",
+      "not-held",
+    ]);
+  });
+
+  it("shows no holding figures at all when no view was named", async () => {
+    // ⭐ THE HONEST DEGRADATION. Landing on `/trade` with no `?view=` — a
+    // bookmark, a typed URL — means nothing said which book to read units and
+    // values from, so the instrument is a plain field and no figure is offered.
+    await ticket();
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    expect(screen.getByLabelText("Instrument").tagName).toBe("INPUT");
+    expect(screen.queryByText(/units across/)).toBeNull();
+  });
+
+  it("still lets a trade be placed in something the fund does not hold", async () => {
+    await ticketInView();
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    fireEvent.change(screen.getByLabelText("Instrument"), {
+      target: { value: "not-held" },
+    });
+    // The picker is an affordance; the text field is the contract.
+    fireEvent.change(screen.getByLabelText("Its identifier"), {
+      target: { value: "NEWCO" },
+    });
+    const form = document.querySelector("form")!;
+    expect(Object.fromEntries(new FormData(form).entries())).toMatchObject({
+      instrument: "NEWCO",
+    });
+  });
+
   it("says so when the configuration in force declares no trade rule", async () => {
     // ⛔ AND OFFERS NOTHING INSTEAD. A rule is authored and approved at a
     // terminal; a screen that let one be chosen from somewhere else, or invented
     // a default, would be a way round the fence `ratio approve` is.
     const Trade = (await import("./funds/[fund]/trade/page")).default;
-    await renderAsync(Trade({ params: params({ fund: FUND }) }));
+    await renderAsync(
+      Trade({ params: params({ fund: FUND }), searchParams: params({}) }),
+    );
     expect(screen.getByText(/declares no trade rule/)).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Form" }));
     // Both ways of writing are shut, not just the second: with no rule to book
