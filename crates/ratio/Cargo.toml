@@ -30,3 +30,17 @@ toml = "0.8"
 # The `server` subcommand: a tonic gRPC server on a tokio runtime.
 tonic = "0.12"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# The scale screen's button: start one Fargate task, and keep the run record.
+#
+# ⛔ Same shape as ratio-agent's Bedrock client — default-features off, the
+# rustls-based https client, and no extra runtime. `aws-config` resolves the
+# function's execution-role credentials, so there is no key in the image.
+aws-config = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+aws-sdk-ecs = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+# ⛔ PINNED BELOW 1.9, AND NOT BY PREFERENCE. `aws-sdk-s3` pulls `crc-fast`
+# through `aws-smithy-checksums`, and from 1.9 it uses `stdarch_x86_avx512` —
+# a NIGHTLY library feature. This workspace is on stable 1.85 (MODULE.bazel),
+# so the newer versions simply do not compile here. Declared directly because
+# a constraint on a transitive dependency has nowhere else to live.
+crc-fast = "~1.8"
