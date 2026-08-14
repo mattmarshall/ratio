@@ -9,6 +9,10 @@ extension system that are not there.
 
 Read [HANDOFF.md](HANDOFF.md) first. It is the accurate document.
 
+This file is rules for working on the repository with an LLM. For where
+*production* agents sit relative to the proofs — the fence, the proposal
+plane, and what stays human — read [ORCHESTRATION.md](ORCHESTRATION.md).
+
 ## What this actually is
 
 A fund accounting kernel. An append-only journal of conserved postings, with the

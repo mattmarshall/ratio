@@ -751,8 +751,15 @@ message Break {
 
   Severity severity = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // True when a person has recorded why this difference is acceptable. An
-  // unexplained difference is work; an explained one is a note.
+  // True when a person has recorded why this difference is acceptable, AND
+  // that explanation is still current. An unexplained difference is work; an
+  // explained one is a note.
+  //
+  // DERIVED, NOT STORED. An explanation is a claim about a FIGURE — "the
+  // 2,000.00 is the custodian's unsettled dividend" — so it holds exactly as
+  // long as the figure it was written about. A reconciliation that moves the
+  // difference retires it, with nothing to remember to invalidate. See
+  // `explanation.qualification` for the one that moved.
   bool explained = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // What is different, in words a fund accountant would use.
@@ -770,6 +777,91 @@ message Break {
   // not checkable, which is the only thing that makes it worth more than the
   // other one.
   string config_digest = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The bounds this break's severity was graded against.
+  //
+  // ON THE BREAK, NOT BESIDE IT, for the reason `NavStrike.qualification`
+  // gives: a grade whose terms a caller has to go and look up is a grade a
+  // caller takes on trust. Absent on a break the tolerance did not decide —
+  // a lot break, which is graded by what it means rather than by how much.
+  Tolerance tolerance = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What somebody recorded about this difference, current or not.
+  //
+  // Present even when stale, because a stale explanation is evidence: it says
+  // what a person believed, when, and about which figure. Absent when nobody
+  // has explained it.
+  BreakExplanation explanation = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// Why a person decided a difference was acceptable.
+//
+// A PERSON'S VERB, RECORDED. A model may draft the words — that is what
+// ORCHESTRATION.md calls the explanation disposition — but the act of accepting
+// one has a name on it, and that name comes from the authenticated subject
+// rather than from anything the caller sent. There is no RPC that writes this:
+// acceptance is `ratio accept` at a terminal, for the same reason approval is
+// `ratio approve` at a terminal.
+message BreakExplanation {
+  // What was written.
+  string text = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Who accepted it. Named to match `ChangeLogEntry.actor` and
+  // `NavStrike.actor` rather than inventing a second word for the same idea.
+  string actor = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  google.protobuf.Timestamp accept_time = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The difference this was written about, in minor units.
+  //
+  // THE CURRENCY TEST, AND THE REASON THERE IS NO STATE MACHINE. An
+  // explanation is a claim about a figure; when a later reconciliation reports
+  // a different one, the claim is about something that is no longer there.
+  string difference = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The configuration the explained break was graded under. The other half of
+  // the currency test: the same number under different terms is a different
+  // statement.
+  string config_digest = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How much of the journal the accepter had in front of them.
+  //
+  // AUDIT, NOT CURRENCY. These say what somebody was looking at; they
+  // deliberately do NOT decide whether the explanation still holds. Pinning
+  // currency to the journal prefix would retire every explanation on the next
+  // posting, which on a NAV morning is a gate nobody can ever clear —
+  // `//tla:explanation_pinned_to_the_prefix_check` is that design, model
+  // checked, deadlocking.
+  int64 journal_position = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string journal_digest = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Empty when the explanation still stands. Otherwise what moved.
+  //
+  // ON THE EXPLANATION, NOT BESIDE IT — `NavStrike.qualification`'s argument.
+  // A reader who is shown the words without being shown that the figure has
+  // changed underneath them is being told something that was true last week.
+  repeated string qualification = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// How big a difference has to be before it stops the NAV.
+//
+// A TERM OF AN ADMINISTRATION AGREEMENT, which is why it travels with the
+// break rather than being a property of the software: two funds looking at the
+// same difference disagree about whether it matters, and both are right.
+// `Ratio.Tolerance` is the proof side, and the boundary is inclusive — a
+// difference of exactly `blocks_nav` blocks.
+message Tolerance {
+  // Minor units, as strings.
+  string below_notice = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string blocks_nav = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether the configuration DECLARES these bounds, or merely gets them.
+  //
+  // A rule set that says nothing about tolerance is graded at 5.00 and
+  // 1,000.00 by custom, not by election, and the two are different facts. The
+  // same distinction `lot_method_declared` keeps, after a screen reported the
+  // default as a term of the agreement on funds that had agreed nothing.
+  bool declared = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // Whether a person or a model did something.

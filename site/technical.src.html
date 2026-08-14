@@ -306,6 +306,20 @@ __STYLE__
         end-of-day pass to absorb drift. The number is the number.</p>
       </div>
       <div class="r-row">
+        <h3>The other tolerance, and where it lives</h3>
+        <p>Materiality against an outside source shares the word and is a
+        different question: how far this fund's figure may sit from the
+        custodian's before a difference stops the NAV. That is a term of an
+        administration agreement, not a property of the arithmetic, so it is a
+        <code>[tolerance]</code> in the fund's rule set rather than a constant in
+        the engine — declared, or taken by custom, and every difference reports
+        which of the two it was measured under. The boundary is inclusive and
+        proved to be: <code>Ratio.Tolerance.a_difference_at_the_threshold_blocks_the_nav</code>,
+        because one minor unit either side of that line is the difference between
+        a close that stops and one that does not, and neither figure looks
+        unusual.</p>
+      </div>
+      <div class="r-row">
         <h3>Reproducibility you can hand to an auditor</h3>
         <p>Inputs are immutable and rules are pinned by content hash, so any prior
         state replays bit-for-bit. “Show me exactly how this figure was computed,
@@ -571,16 +585,22 @@ __STYLE__
         <p class="r-col-tag pos">Above the boundary — what a model may do</p>
         <p>Translate an advisor's plain-language intent into a precise, typed
         specification. Draft client-ready explanations of a position, a fee, or a
-        performance result. Propose posting rules, mappings, and reconciliations
-        for human review.</p>
+        performance result. Propose posting rules and mappings for human review —
+        and, once built, draft the explanation of a reconciliation difference for
+        a person to accept. That last one is specified, not shipped, and is named
+        here as such.</p>
       </div>
       <div>
         <p class="r-col-tag neg">Below it — what no model can do</p>
-        <p>Write an entry that violates conservation. Every proposal is compiled
-        and checked against the kernel's invariant before it can affect a ledger;
-        anything that fails to conserve value is rejected at the boundary. The
-        worst case for a hallucination is a discarded suggestion — never an
-        unbalanced book.</p>
+        <p>Write an entry that violates conservation. Decide that a difference
+        against a custodian is acceptable. Every proposal is compiled and checked
+        against the kernel's invariant before it can affect a ledger; anything
+        that fails to conserve value is rejected at the boundary. The second one
+        is refused more bluntly: there is no RPC and no screen that accepts an
+        explanation, and the contract's route tests fail if one is ever added,
+        because a write route has to be reachable from a screen to exist at all.
+        The worst case for a hallucination is a discarded suggestion — never an
+        unbalanced book, and never a closed period.</p>
       </div>
     </div>
 

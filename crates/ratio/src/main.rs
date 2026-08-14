@@ -75,6 +75,8 @@ usage:
   ratio scale-run --size NAME          fold one declared shape and publish it
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
+  ratio accept BREAK --because TEXT    record why a difference is acceptable
+        [--book DIR] [--view NAME]     — humans only, like approve
   ratio server                         serve the Ledger gRPC API
 
 The book defaults to ./book, or $RATIO_BOOK if set.
@@ -185,6 +187,16 @@ fn main() -> Result<()> {
         ["scale-run", "--size", size] => scale_run(size),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
+        // ⚠ SPELLED OUT RATHER THAN PUT THROUGH `flags`, because `--because`
+        // takes free text and `flags`' KNOWN list is shared with every other
+        // verb — adding it there would make `ratio strike --because "…"` parse
+        // and be ignored. The `recon` arms above enumerate their orderings for
+        // the same reason.
+        ["accept", brk, "--because", why] => accept(book, brk, None, why),
+        ["accept", brk, "--because", why, "--view", v]
+        | ["accept", brk, "--view", v, "--because", why] => {
+            accept(book, brk, Some(v), why)
+        }
         ["server"] => serve(),
         other => {
             eprint!("{USAGE}");
@@ -1668,29 +1680,12 @@ fn book_label(book: &std::path::Path) -> String {
 /// — 16:00 New York for a US mutual fund — and that belongs in configuration
 /// rather than in a flag, so it is deliberately not one.
 fn strike(book: PathBuf, as_of: Option<&str>, view: Option<&str>) -> Result<()> {
-    // ⛔ A NAV struck over a position nobody has priced is a number with a hole
-    // in it, and the hole is invisible in the figure. With a valuation date,
-    // that is a refusal.
-    //
-    // Without one it is not checked — because "unpriced" is not a well-formed
-    // question until somebody says as of WHEN, and a book does not know what
-    // day it is. That is the honest limit of this check, not an oversight.
-    if let Some(day) = as_of {
-        if day.split('-').count() != 3 {
-            bail!("{day:?} is not a date — YYYY-MM-DD");
-        }
-        let blocked = ratio_console::Console::new(&book).unpriced_at("demo", day)?;
-        if !blocked.is_empty() {
-            println!("REFUSED — {} position(s) have no price on or before {day}:", blocked.len());
-            for (name, units) in &blocked {
-                println!("  {name:<38}{units:>10} units");
-            }
-            println!();
-            println!("These are not held at zero; they are unvalued. Deliver a price");
-            println!("file and `ratio mark --as-of {day}`, then strike.");
-            bail!("the NAV was not struck");
-        }
-    }
+    // ⛔ ONE REFUSAL, LISTING EVERYTHING. The unpriced-position check used to
+    // live inline here and was the only thing consulted; `refuse_if_blocked`
+    // subsumes it, and adds the breaks nobody has explained and the facts that
+    // do not resolve. Clearing one obstacle only to be shown the next is the
+    // shape this replaces.
+    refuse_if_blocked(&book, as_of)?;
     // ⛔ RESOLVED BEFORE ANYTHING IS WRITTEN. On a book keeping more than one
     // book of record an unnamed view is refused, because a NAV recorded under a
     // convention nobody chose is the failure this whole feature is about.
@@ -1789,6 +1784,112 @@ fn views_cmd(book: PathBuf) -> Result<()> {
         println!("not a term anybody agreed to.");
     }
     Ok(())
+}
+
+/// Everything standing between this book and a NAV, reported at once.
+///
+/// ⛔ ONE REFUSAL, THE WHOLE LIST, AND ONE `bail!`. An operator who clears the
+/// breaks and runs it again must not then discover the pending facts, and after
+/// those the unpriced positions. "The refusal is exactly the list" is doctrine
+/// in three places already: `Ratio.Valuation.strike_refuses_exactly_when_
+/// something_is_unpriced`, the recon scope gate producing NO breaks at all and
+/// only exceptions, and `MarkPositionsResponse.unpriced`. Three round trips to
+/// learn three things is how a person stops reading the message.
+///
+/// ⛔ AND IT FIRES ON A BARE `ratio strike`, unconditionally. The unpriced half
+/// is conditional on `--as-of` for a reason the code gives — "unpriced" is not
+/// a well-formed question until somebody says as of when — but a break needs no
+/// date, and a gate the common invocation walks past is a fence with a door.
+/// `Fund.state` reported BLOCKED for months and nothing consulted it; this is
+/// the enforcement, and it is below the fence rather than in anybody's
+/// judgment.
+fn refuse_if_blocked(book: &std::path::Path, as_of: Option<&str>) -> Result<()> {
+    match blocking_text(book, as_of)? {
+        None => Ok(()),
+        Some(message) => {
+            print!("{message}");
+            bail!("the NAV was not struck")
+        }
+    }
+}
+
+/// The refusal itself, returning what it would have printed.
+///
+/// Split out for the reason `approve_text` is: a test that asserts on the
+/// message has to read the message, and capturing stdout to do it would be
+/// testing a second thing. `None` means nothing blocks.
+fn blocking_text(book: &std::path::Path, as_of: Option<&str>) -> Result<Option<String>> {
+    use std::fmt::Write;
+
+    let c = ratio_console::Console::new(book);
+    let blocking = c.blocking_at("demo")?;
+
+    // ⛔ WITHOUT A VALUATION DATE THE UNPRICED CHECK DOES NOT RUN, and that is
+    // the honest limit rather than an oversight: "unpriced" is not a well-formed
+    // question until somebody says as of WHEN, and a book does not know what day
+    // it is. The breaks and the facts above have no such dependency, so they are
+    // checked either way.
+    let unpriced = match as_of {
+        Some(day) => {
+            if day.split('-').count() != 3 {
+                bail!("{day:?} is not a date — YYYY-MM-DD");
+            }
+            c.unpriced_at("demo", day)?
+        }
+        None => Vec::new(),
+    };
+
+    if blocking.is_empty() && unpriced.is_empty() {
+        return Ok(None);
+    }
+
+    let mut m = String::new();
+    writeln!(m, "REFUSED — this fund is not ready to strike a NAV.")?;
+
+    if !blocking.breaks.is_empty() {
+        writeln!(m)?;
+        writeln!(m, "{} break(s) nobody has explained:", blocking.breaks.len())?;
+        for k in &blocking.breaks {
+            let id = k.name.rsplit('/').next().unwrap_or(&k.name);
+            writeln!(m, "  {:<32}{:>16}  {}", k.account, minor_str(&k.difference), k.cause)?;
+            if k.name.contains("/breaks/lot-") {
+                writeln!(m, "      corrected by an entry, not a note — the lot book and the")?;
+                writeln!(m, "      position disagree, and that corrupts the realized gain")?;
+            } else {
+                writeln!(m, "      ratio accept {id} --because \"…\"")?;
+            }
+        }
+    }
+
+    if !blocking.pending.is_empty() {
+        writeln!(m)?;
+        writeln!(m, "{} fact(s) that do not resolve:", blocking.pending.len())?;
+        for f in &blocking.pending {
+            writeln!(m, "  {:<32}{}", f.reference, f.detail)?;
+        }
+        writeln!(m)?;
+        writeln!(m, "  Add the record to the master, then `ratio admit`.")?;
+    }
+
+    if !unpriced.is_empty() {
+        let day = as_of.unwrap_or("");
+        writeln!(m)?;
+        writeln!(m, "{} position(s) with no price on or before {day}:", unpriced.len())?;
+        for (name, units) in &unpriced {
+            writeln!(m, "  {name:<38}{units:>10} units")?;
+        }
+        writeln!(m)?;
+        writeln!(m, "  These are not held at zero; they are unvalued. Deliver a price")?;
+        writeln!(m, "  file and `ratio mark --as-of {day}`.")?;
+    }
+
+    writeln!(m)?;
+    Ok(Some(m))
+}
+
+/// A minor-unit figure that arrived as a string, printed the way money is.
+fn minor_str(s: &str) -> String {
+    s.parse::<i64>().map(minor).unwrap_or_else(|_| s.to_string())
 }
 
 /// Every NAV struck on this book.
@@ -2066,6 +2167,56 @@ fn approve(book: PathBuf, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Record why a difference is acceptable.
+///
+/// ⛔ A PERSON'S VERB, AT A TERMINAL, FOR THE SAME REASON `approve` IS. A model
+/// may draft the words — ORCHESTRATION.md calls that the explanation
+/// disposition and it is the whole point of the exercise — but accepting one
+/// says a fund may close over this difference, and that is not something the
+/// drafter gets to do. There is no RPC and no button; the console displays what
+/// was accepted and offers no way to accept.
+///
+/// ⚠ AND A BREAK IS NEVER CLEARED, ONLY EXPLAINED. It keeps its URL, its
+/// figures and its place in the queue, with a name and a date against it. The
+/// alternative — making it disappear — is the thing
+/// `crates/ratio-console/src/lib.rs` refuses in the comment beside
+/// `explained`: a break the software decided was fine.
+fn accept(book: PathBuf, brk: &str, view: Option<&str>, why: &str) -> Result<()> {
+    let fund = book_fund_id(&book);
+    // A person types the id off a screen; the full resource name is what a link
+    // gives them. Accept either.
+    //
+    // ⚠ THE SHORT FORM STILL HAS TO NAME A VIEW, so it goes through
+    // `view_or_refuse` like every other figure-bearing verb: a book keeping two
+    // books of record is asked which, rather than being given the first one.
+    let name = if brk.starts_with("funds/") {
+        brk.to_string()
+    } else {
+        let view = view_or_refuse(&book, view)?;
+        format!("funds/{fund}/views/{view}/breaks/{brk}")
+    };
+    let actor = actor_name();
+    let e = ratio_console::Console::new(&book)
+        .as_actor(&actor)
+        .accept_explanation(&name, why)?;
+
+    println!("accepted {name}");
+    println!("  {}", e.text);
+    println!("  by {actor}, against a difference of {}", e.difference);
+    println!();
+    println!("The break stays on the queue, explained rather than gone. A later");
+    println!("reconciliation reporting a different figure retires this note.");
+    Ok(())
+}
+
+/// The fund id a loopback book answers to.
+///
+/// A root that is itself a book is the single fund `demo` — the same convention
+/// `mark`, `admit` and `strike` already use when they call the console.
+fn book_fund_id(_book: &std::path::Path) -> &'static str {
+    "demo"
+}
+
 /// The approval itself, returning what it would have printed.
 ///
 /// Split out so the demo's terminal runs THIS rather than a second
@@ -2079,6 +2230,30 @@ pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
     let proposed = std::fs::read_to_string(&path)
         .with_context(|| format!("no proposal {id} — expected {}", path.display()))?;
     let incoming = RuleSet::from_toml(&proposed)?;
+
+    // ⛔ A PROPOSED TOLERANCE IS REFUSED, NOT MERGED, AND NOT DROPPED.
+    //
+    // `replace_sections` below lifts the `rule` and `template` keys out of the
+    // merged document and leaves everything else in the previous configuration
+    // alone — which is what stops an approval deleting the templates beside it,
+    // and which means a `[tolerance]` arriving in a proposal would serialize,
+    // be discarded, and approve cleanly having changed nothing. That is the
+    // same silent-drop this function was written to fix, one section along.
+    //
+    // ⚠ AND IT IS NOT MERELY A PLUMBING GAP. How big a difference has to be
+    // before it stops the NAV is the kind of term ORCHESTRATION.md names as the
+    // residual risk of an agent: not writing to the journal, which the door
+    // refuses, but supplying a POLICY INPUT, where the books tie and the number
+    // is somebody else's. Moving it is a person promoting a configuration they
+    // read, not a merge nobody watched.
+    if incoming.tolerance.is_some() {
+        bail!(
+            "proposal {id} declares a tolerance, and tolerance is not something a proposal \
+             moves.\nHow big a difference has to be before it stops the NAV is a term of the \
+             administration agreement — change it by editing the configuration and running \
+             `ratio config set <file>`, so the whole document is what somebody approved."
+        );
+    }
 
     // Re-check at approval time. The chart may have moved since the proposal
     // was made, and approving something that no longer passes would put a bad
@@ -2337,6 +2512,235 @@ weight = -1
         // simply stop writing.
         let set = RuleSet::from_toml(&after).unwrap();
         assert!(!set.rules.is_empty(), "the approved rule should be in force");
+    }
+
+    /// A book with a chart, a declared tolerance, one posted entry, and a
+    /// reconciliation report carrying one break of `difference`.
+    fn book_with_a_break(name: &str, difference: i64) -> PathBuf {
+        use prost::Message;
+        use ratio_store::{Account, AccountTypeRecord as A, JournalEntry, PostingRecord};
+
+        let dir = std::env::temp_dir().join(format!("ratio-gate-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone()).unwrap();
+
+        let cfg = dir.join("rules.toml");
+        std::fs::write(&cfg, "rules = []\n[tolerance]\nbelow_notice = 500\nblocks_nav = 100000\n")
+            .unwrap();
+        config_set(dir.clone(), cfg.to_str().unwrap()).unwrap();
+
+        let mut b = FileBook::open(&dir).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments at fair value".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash and equivalents".into(), account_type: A::Asset },
+        ])
+        .unwrap();
+        let d = b.active().unwrap().unwrap();
+        // ⚠ The buy carries an INSTRUMENT and a quantity, so the book holds a
+        // position. Without one there is nothing for the unpriced check to be
+        // about, and a test of "everything at once" would quietly be a test of
+        // one thing.
+        b.append(&JournalEntry {
+            id: "t1".into(),
+            memo: "buy".into(),
+            config: d.clone(),
+            postings: vec![
+                PostingRecord {
+                    dim: 1,
+                    amount: 25_000_000,
+                    currency: None,
+                    instrument: Some("VTI".into()),
+                    quantity: Some(1_000),
+                },
+                PostingRecord::new(2, -25_000_000),
+            ],
+            trade_date: None,
+            announcement: None,
+        })
+        .unwrap();
+
+        let report = ratio_proto::ratio::v1::BreakReport {
+            name: "books/demo/breakReports/r".into(),
+            config_digest: d.as_str().to_string(),
+            scope: None,
+            transactions_replayed: 1,
+            entries_posted: 1,
+            breaks: vec![ratio_proto::ratio::v1::BreakLine {
+                account: 1,
+                display_name: "Investments at fair value".into(),
+                ratio_amount: 25_000_000,
+                reported_amount: 25_000_000 - difference,
+                difference,
+                cause: ratio_proto::ratio::v1::Cause::AmountDiffers as i32,
+                ratio_basis: "1".into(),
+            }],
+            exceptions: vec![],
+            book_ties: true,
+        };
+        std::fs::create_dir_all(dir.join("reports")).unwrap();
+        std::fs::write(dir.join("reports/r.pb"), report.encode_to_vec()).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_fund_with_an_unexplained_blocking_break_refuses_its_own_nav() {
+        // ⛔ THE SEAM THIS CLOSES. `Fund.state` reported BLOCKED for months and
+        // nothing consulted it before striking, so the screen and the command
+        // disagreed about whether the fund was ready — the screen being right.
+        let book = book_with_a_break("refuses", 200_000);
+        let e = strike(book.clone(), None, None).unwrap_err().to_string();
+        assert!(e.contains("the NAV was not struck"), "{e}");
+    }
+
+    #[test]
+    fn and_a_refused_strike_leaves_no_nav_behind() {
+        // ⭐ ASSERT THE SIDE EFFECT DID NOT HAPPEN, not merely that the call
+        // errored. A refusal that bails after `strike_and_record` has already
+        // appended has recorded a NAV nobody can see and cannot take back —
+        // `Ratio.Period.one_answer_per_day` means the valuation point is spent.
+        let book = book_with_a_break("norecord", 200_000);
+        assert!(strike(book.clone(), None, None).is_err());
+        assert!(ratio_nav::list(&book).unwrap().is_empty(), "a refused strike recorded a NAV");
+    }
+
+    #[test]
+    fn a_break_below_the_declared_tolerance_does_not_refuse_the_nav() {
+        // ⚠ THE ANTI-VACUITY TEST. A gate that refuses everything satisfies
+        // every assertion above and is useless, so one break has to get
+        // through — and which one is a term of the agreement, not a constant.
+        let book = book_with_a_break("under", 100);
+        assert!(strike(book, None, None).is_ok(), "100 is beneath notice and blocks nothing");
+    }
+
+    #[test]
+    fn explaining_the_break_lets_the_nav_be_struck() {
+        // ⭐ THE WHOLE POINT. A refusal whose remedy does not exist is a wall,
+        // so the gate and the verb that clears it ship together and this is
+        // what joins them.
+        let book = book_with_a_break("cleared", 200_000);
+        assert!(strike(book.clone(), None, None).is_err(), "blocked to begin with");
+
+        accept(book.clone(), "1", None, "the custodian's unsettled dividend, clears T+2").unwrap();
+
+        assert!(strike(book.clone(), None, None).is_ok(), "and struck once somebody explained it");
+        assert_eq!(ratio_nav::list(&book).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_stale_explanation_does_not_clear_the_gate() {
+        // A note about a figure that has since moved is not a note about this
+        // one. The fund goes back to blocked, and the words stay visible.
+        let book = book_with_a_break("stalegate", 200_000);
+        accept(book.clone(), "1", None, "about the old number").unwrap();
+        assert!(strike(book.clone(), None, None).is_ok(), "explained, so strikeable");
+
+        // A later run reports a different figure for the same break.
+        let mut b = FileBook::open(&book).unwrap();
+        let d = b.active().unwrap().unwrap();
+        drop(b);
+        let report = ratio_proto::ratio::v1::BreakReport {
+            name: "books/demo/breakReports/r2".into(),
+            config_digest: d.as_str().to_string(),
+            scope: None,
+            transactions_replayed: 1,
+            entries_posted: 1,
+            breaks: vec![ratio_proto::ratio::v1::BreakLine {
+                account: 1,
+                display_name: "Investments at fair value".into(),
+                ratio_amount: 25_000_000,
+                reported_amount: 24_725_000,
+                difference: 275_000,
+                cause: ratio_proto::ratio::v1::Cause::AmountDiffers as i32,
+                ratio_basis: "1".into(),
+            }],
+            exceptions: vec![],
+            book_ties: true,
+        };
+        // ⚠ `newest_report` picks by mtime; a second inside the same timestamp
+        // orders arbitrarily.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(book.join("reports/r2.pb"), {
+            use prost::Message;
+            report.encode_to_vec()
+        })
+        .unwrap();
+
+        let e = strike(book.clone(), None, None).unwrap_err().to_string();
+        assert!(e.contains("the NAV was not struck"), "a moved figure is unexplained again: {e}");
+    }
+
+    #[test]
+    fn the_refusal_names_the_verb_that_clears_it() {
+        // `unpriced_at`'s discipline: a refusal that does not say what to do
+        // next sends somebody to read the source.
+        let book = book_with_a_break("names", 200_000);
+        let m = blocking_text(&book, None).unwrap().expect("this fund is blocked");
+        assert!(m.contains("ratio accept 1 --because"), "{m}");
+        assert!(m.contains("nobody has explained"), "{m}");
+        assert!(m.contains("2000.00"), "and the figure that blocks: {m}");
+    }
+
+    #[test]
+    fn the_refusal_lists_everything_at_once_rather_than_one_thing_at_a_time() {
+        // ⛔ An operator who clears the breaks must not THEN discover the
+        // unpriced positions. "The refusal is exactly the list" is doctrine in
+        // three places already, and three round trips to learn three things is
+        // how somebody stops reading the message.
+        let book = book_with_a_break("everything", 200_000);
+        let m = blocking_text(&book, Some("2026-02-26")).unwrap().expect("blocked");
+        assert!(m.contains("nobody has explained"), "the break: {m}");
+        assert!(m.contains("no price on or before"), "and the unpriced position: {m}");
+    }
+
+    #[test]
+    fn a_proposal_that_declares_a_tolerance_is_refused_rather_than_silently_dropped() {
+        // ⛔ THE SILENT DROP THIS PREVENTS. `replace_sections` lifts only the
+        // `rule` and `template` keys, so a `[tolerance]` in a proposal would
+        // serialize, be discarded, and approve CLEANLY — the changelog
+        // recording an approval that changed nothing anybody asked for. That is
+        // the same shape as approving a rule deleting the templates beside it,
+        // which is what that function was written to fix.
+        let book = book_with_a_proposal("tolerancedrop");
+        std::fs::write(
+            book.join("proposals").join("p2.toml"),
+            "rules = []\n[tolerance]\nbelow_notice = 1\nblocks_nav = 2\n",
+        )
+        .unwrap();
+
+        let e = approve(book.clone(), "p2").unwrap_err().to_string();
+        assert!(e.contains("not something a proposal moves"), "{e}");
+        assert!(e.contains("ratio config set"), "the refusal names the human path: {e}");
+
+        // And nothing moved: no new configuration was promoted.
+        let b = FileBook::open(&book).unwrap();
+        let active = String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap())
+            .into_owned();
+        assert!(!active.contains("tolerance"), "a refused proposal changed the configuration");
+    }
+
+    #[test]
+    fn approving_a_rule_does_not_delete_the_tolerance_beside_it() {
+        // The twin of the template test. A fund that declared its bands must
+        // not lose them because somebody approved an unrelated fee rule.
+        let book = book_with_a_proposal("keepstolerance");
+        let mut b = FileBook::open(&book).unwrap();
+        let before = String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap())
+            .into_owned();
+        let with_tolerance =
+            format!("{before}\n[tolerance]\nbelow_notice = 100\nblocks_nav = 250\n");
+        let d = b.put(with_tolerance.as_bytes()).unwrap();
+        b.set_active(&d).unwrap();
+        drop(b);
+
+        approve(book.clone(), "p1").unwrap();
+
+        let set = active_rules(&book);
+        assert_eq!(
+            set.tolerance,
+            Some(ratio_rules::Tolerance { below_notice: 100, blocks_nav: 250 }),
+            "approving a rule dropped the tolerance beside it",
+        );
+        assert!(!set.rules.is_empty(), "and the approved rule is still in force");
     }
 
     #[test]

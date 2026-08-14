@@ -149,6 +149,69 @@ the conserved one, and the kernel never said it was.
 - **The gain leg is derived, never supplied.** A parameter for it would be drift
   written down as an API, and the drift is silent because the gain leg absorbs
   whatever the other two legs leave.
+- **A break is graded by the configuration ITS REPORT NAMES**, resolved once in
+  `breaks_for` and never from `active()`. A severity is part of a comparison
+  between two figures produced under one agreement; regrading a stored report
+  because somebody promoted a new rule set changes an answer whose inputs never
+  moved — `an_unpinned_announcement_changes_the_answer`, applied to a grade.
+  `a_break_is_graded_by_the_configuration_its_report_names_not_the_one_in_
+  force_now` is the only thing standing there, and pointing this at `active()`
+  passes every other test in the file.
+- ⛔ **What the grader cannot read grades HIGH, and that is the design.** An
+  unparseable digest, bytes the book does not hold, bytes that are not a rule
+  set — all blocking, none defaulting. The temptation is to "fix" it to the
+  custom bands because grading everything HIGH looks like a bug; doing that
+  certifies a difference as small using a tolerance nobody could read, on a book
+  that ties. `Tolerance` is `None` on such a break rather than claiming bounds.
+- ⭐ **`Console::blocking_at` IS THE ONE FOLD OF WHAT BLOCKS, AND BOTH THE BADGE
+  AND THE REFUSAL READ IT.** `get_fund` derives `STATE_BLOCKED` from it and
+  `ratio strike` refuses on it. Two folds would be individually plausible,
+  independently maintained, and one field apart within a month — which is
+  exactly what the seam WAS: a screen saying BLOCKED and a command that never
+  asked. `the_gate_and_the_fund_state_are_one_derivation` holds them together.
+- ⛔ **AN EXPLANATION IS KEYED BY THE BREAK'S ID WITHIN ITS BOOK, NOT BY THE
+  RESOURCE NAME.** The fund half of `funds/{fund}/breaks/{id}` says how the book
+  is being SERVED — the same directory is `demo` on loopback and
+  `pennington-select-income` under a funds root — so a note written by the
+  seeder never matched the break the console showed. The explanation sat on
+  disk, the break sat on screen, and nothing connected them.
+  ⚠ **No unit test could have caught it**: every one of them uses a
+  root-that-is-a-book, where the fund is always `demo`. The seeded demo found
+  it, which is the argument for `//deploy:seed_test` asserting what the demo
+  DEMONSTRATES.
+- ⭐ **AN EXPLANATION'S CURRENCY TEST IS `(difference, config_digest)` AND
+  DELIBERATELY NOT THE JOURNAL POSITION.** Both directions are a real failure and
+  both are negative-tested. Add the prefix to the test and every explanation
+  retires on the next posting — on a NAV morning that is a gate nobody can ever
+  clear, which looks like the software being careful
+  (`posting_an_entry_does_not_unexplain_a_break`). Drop the figure and
+  explanations become eternal, so a fund is struck on a difference somebody
+  explained in February (`a_reconciliation_that_moves_the_figure_retires_the_
+  explanation_and_says_what_moved`). The position and digest ARE recorded — they
+  say what the accepter was looking at — and nothing reads them to decide
+  currency.
+- **`Plane::Explanations` is beside the journal, and that is the opposite call
+  from `Plane::Actions`.** An announcement changes what the books say once it is
+  applied, so a side plane left it pinned by no strike; an explanation changes
+  no figure at all, only whether the break is worked. ⚠ The moment something
+  lets one move a number, it belongs in the journal with everything else that
+  does.
+- **`ratio accept` writes `accepted` to CHANGELOG, and `config_versions` filters
+  on `approved`.** That filter exists because a line keyed by the same digest
+  under a different verb would report the last person who did something under a
+  configuration as the one who approved it. `an_accepted_line_is_not_read_as_a_
+  configuration_promotion` holds it.
+- **A lot break cannot be explained.** Its name is `lot-{n}` — a POSITION IN A
+  LIST — so an explanation keyed on one would follow the position rather than
+  the sale the moment an earlier lot break clears, with every citation still
+  resolving and the words attached to a different disposal. Making those names
+  durable is a `ratio-project` change; until then `accept_explanation` refuses
+  and names the correcting entry instead.
+- **`Break.tolerance` is null on a lot break ON PURPOSE.** Lot breaks are HIGH
+  by what they mean — the lot book and the position disagreeing corrupts the
+  realized gain, which no reconciliation reaches — so reporting bounds beside
+  one would suggest some other number would have graded it differently. None
+  would.
 - **`ChartRoles` are checked when the configuration is READ.** A chart that
   cannot express a gain is wrong the moment it is written down; finding out at
   the first disposal means finding out in production.
@@ -246,6 +309,53 @@ the conserved one, and the kernel never said it was.
   `//web:console_html` are different targets" — there was no `//web:console`
   target and there never was. Two wrong entries in one bullet; the lesson is the
   one AGENTS.md already states, that a comment nothing tests will drift.
+- ⛔ **`replace_sections` LIFTS ONLY `rule` AND `template`, so a fifth `RuleSet`
+  field is silently dropped at approval.** It round-trips the previous
+  configuration through a generic `toml::Table` and replaces those two keys —
+  which is what stops an approval deleting the templates beside it, and which
+  means a `[tolerance]` in a proposal would serialize, be discarded, and approve
+  cleanly having changed nothing. That is the same silent drop the function was
+  written to fix, one section along. `ratio approve` now REFUSES a proposal
+  declaring one; any future top-level key faces the same choice, and choosing
+  "merge it" means adding an arm rather than assuming one is there.
+- ⚠ **`ratio config set` does not parse what it promotes**, and the seed scripts
+  use it for the opening configuration. A malformed `[tolerance]` is therefore
+  caught at the first READ — `get_fund`, `list_breaks` — rather than at the
+  promotion that introduced it.
+- ⛔ **`route_manifest_test.py` MAKES ANY NEW CONSOLE RPC DEMAND A SCREEN.**
+  Check 1 is bidirectional between the contract's http rules and `client.ts`,
+  and check 3 refuses an RPC no screen reads. So adding an
+  `AcceptBreakExplanation` "just for the API" forces the write screen the fence
+  forbids — which is why acceptance is a CLI verb. The mechanism protecting the
+  buttonless console is that test, not discipline.
+- ⚠ **`ratio strike` STILL TAKES ITS VALUATION POINT FROM `SystemTime::now()`,
+  EVEN WITH `--as-of`.** The flag is only a gate parameter; a strike labelled
+  as-of a past day is stamped today. Surfaced while building the gate and
+  deliberately not fixed there — it changes the strike id, the `NAVS` ledger's
+  meaning and `one_answer_per_day`'s subject, and belongs in its own commit.
+- ⚠ **`console/scripts/capture_fixtures.sh` takes `navStrikes.json` and
+  `replay.json` from `RATIO_FIXTURE_STRUCK_FUND`, not from `RATIO_FIXTURE_FUND`.**
+  The fixture fund is the BLOCKED book on purpose, and a blocked book now has no
+  strikes, so `id navStrikes.json` would index an empty list.
+- ⛔ **THE COMMITTED FIXTURES CORRESPOND TO NO SINGLE SEEDED FUND, so a
+  wholesale re-capture is not a refresh — it is a rewrite that breaks nine
+  render tests.** `capture_fixtures.sh` pulls every file from one `$FUND`, but
+  `screens.test.tsx` asserts two currencies, forty open lots, a realized gain
+  and a declared lot method — `ashcombe`-shaped data — while the default
+  fixture fund is the blocked reconciliation book, which has none of it. Tried
+  it; reverted it. ⚠ So `fixtures_test.py` passing means the FIELD SETS match
+  the contract and nothing more, and the values are a hand-maintained
+  composite. Refreshing them honestly means either capturing per-fixture from
+  the fund that can produce it, or accepting new expected values in the render
+  tests. Either is its own change.
+- ⚠ **`vi.mock`'s factory SPREADS the `wire` object, so reassigning
+  `wire.getBreak` inside a test does nothing.** The mock captured the function
+  values when it ran. A case that needs different data needs a different
+  fixture, not a mutated stub — one afternoon went into a render test that was
+  passing the same fixture back to itself.
+- ⚠ **`//proto:ratio_aip_lint` bans prepositions in field names** (only
+  `core::0192::has-comments` is disabled). `explained_at_position` fails;
+  `journal_position` does not. Verified by adding one and watching it go red.
 - ⛔ **`append` and `append_all` are two doors with the same law**, with different
   indentation. A fix applied by string replace hits one.
 - ⛔ **Python edits collapse Rust `\` line continuations** into runs of spaces
@@ -467,7 +577,7 @@ than one that is entirely unclassified.
 | | |
 |---|---|
 | `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,Edges,Posting}`, `Actions/Factor`, `Closure`, `Exec` |
-| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days` — the administration agreement, as configuration |
+| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `tolerance` — the administration agreement, as configuration |
 | `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |

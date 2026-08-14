@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import accountsFixture from "../../fixtures/accounts.json";
 import breakFixture from "../../fixtures/break.json";
+import breaksFixture from "../../fixtures/breaks.json";
 import changeLogFixture from "../../fixtures/changeLogEntries.json";
 import fundFixture from "../../fixtures/fund.json";
 import lotsFixture from "../../fixtures/lots.json";
@@ -69,6 +70,7 @@ const wire = {
   listViews: async () => viewsFixture,
   reconcileViews: async () => reconcileFixture,
   getBreak: async () => breakFixture,
+  listBreaks: async () => breaksFixture,
   listAccounts: async () => accountsFixture,
   listPositions: async () => positionsFixture,
   listLots: async () => lotsFixture,
@@ -265,6 +267,55 @@ describe("a break", () => {
     // 2,000.00 is deploy/seed-demo-book.sh's number.
     expect(screen.getByText("2,000.00")).toBeDefined();
   });
+
+  it("names the bounds the severity was graded against", async () => {
+    // A grade whose terms a reader has to go and look up is a grade a reader
+    // takes on trust — which is the one thing this product is not for.
+    const Detail = (await import("./funds/[fund]/views/[view]/breaks/[break]/page"))
+      .default;
+    await renderAsync(
+      Detail({
+        params: params({ fund: FUND, view: VIEW, break: "cash-usd-2026-02-26" }),
+      }),
+    );
+    expect(screen.getByText(/graded at/)).toBeDefined();
+    expect(screen.getByText(/1,000\.00 blocks/)).toBeDefined();
+    expect(screen.getByText(/declared/)).toBeDefined();
+  });
+
+  it("shows an accepted explanation with the name on it", async () => {
+    const Detail = (await import("./funds/[fund]/views/[view]/breaks/[break]/page"))
+      .default;
+    await renderAsync(
+      Detail({
+        params: params({ fund: FUND, view: VIEW, break: "cash-usd-2026-02-26" }),
+      }),
+    );
+    expect(screen.getByText("Why this is acceptable")).toBeDefined();
+    expect(screen.getByText(/unsettled dividend/)).toBeDefined();
+    expect(screen.getByText(/accepted by/)).toBeDefined();
+    // ⛔ AND NO WAY TO ACCEPT ONE. The fence is that the screen displays and
+    // does not decide — the same assertion the rules screen makes about
+    // approval.
+    expect(screen.queryByRole("button", { name: /accept/i })).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("reads a stale explanation as neither explained nor open", async () => {
+    // ⛔ THREE READINGS, NOT TWO. A break somebody explained and a break whose
+    // explanation a later figure overtook are both "not open", and showing
+    // them alike is how the second gets closed without anybody looking at
+    // what moved.
+    const Queue = (await import("./funds/[fund]/views/[view]/breaks/page")).default;
+    await renderAsync(
+      Queue({
+        params: params({ fund: FUND, view: VIEW }),
+        searchParams: params({}),
+      }),
+    );
+    expect(screen.getByText("stale")).toBeDefined();
+  });
+
 });
 
 describe("rules", () => {
