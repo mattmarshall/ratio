@@ -41,9 +41,45 @@ src/lib/session.ts   the httpOnly cookie the id token lives in
 src/lib/oidc.ts      authorization-code + PKCE, run on the SERVER
 src/routes.ts        every screen, and which RPCs it reads
 src/app/             the screens
+src/components/      what more than one screen renders — including `Ticket`
 fixtures/            one captured response per RPC, for the render suite
 scripts/             the checks Bazel runs, and the fixture capture
 ```
+
+### The screens that write
+
+There are five routes over four writes — `/record`, `/ingest`, `/mark`, and
+`/trade`, which is `ApplyEvent` again in the terms a trade actually happens in.
+They were four forms doing the same thing four ways, each a stack of unstyled
+`<label>`s none of which used the form styling `globals.css` had been carrying
+since the concept. They are now one pattern, `components/Ticket.tsx`, and each
+offers both ways through:
+
+- **Guided** — a tree of the steps carrying the answers so far, and one question
+  on screen at a time. The tree is what makes a stepper honest: what has been
+  answered is legible without clicking back to find out, and a step is reachable
+  only when every step before it has an answer.
+- **Form** — every field at once, compact, for the fortieth ticket of the day.
+
+⛔ **Two renderings of one state, never two forms.** The screen owns the state
+and hands `Ticket` two views of it, so switching mid-ticket keeps every answer.
+Two components each holding half of them is how a compact mode comes to silently
+drop the field the other one had.
+
+⛔ **And "preview, then post" is enforced rather than printed.** Every one of
+these screens said it and not one made it so: you could preview, change a
+figure, and commit the changed one with the old preview still on screen
+describing what the button was about to do. Each action now returns the inputs
+it answers for, and the commit stays shut until they match what the screen
+holds.
+
+⚠ **No control of a ticket is inside its `<form>`.** React resets a form after a
+`<form action>` submission. A controlled `<input>` is put back by the next
+render because its `value` prop is reapplied; a controlled `<select>` is not,
+because the prop has not changed, so React writes nothing and the element keeps
+the reset. Both of the trade ticket's selects fell back to "Choose…" the moment
+a preview returned, while the state behind them still said otherwise. The form
+carries hidden inputs off state, and state is the one source of truth.
 
 ### The browser never calls AWS
 

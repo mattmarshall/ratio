@@ -208,10 +208,22 @@ export const ROUTES: readonly Route[] = [
   },
 
   // ── The four writes ──────────────────────────────────────────────────────
+  //
+  // ⚠ AND ONE OF THEM TWICE. `/record` is `ApplyEvent` with the contract's own
+  // shape — a rule and an amount — and `/trade` is the same RPC asked for in
+  // the terms a trade actually happens in: an instrument, units, a price and a
+  // day, with the consideration derived. Two screens over one method is a
+  // deliberate trade: the primitive stays reachable for the kinds of event that
+  // have no better form, and the one an operator does daily gets a workflow.
   {
     path: "/funds/[fund]/record",
     file: "funds/[fund]/record/page.tsx",
     reads: ["listRules", "applyEvent"],
+  },
+  {
+    path: "/funds/[fund]/trade",
+    file: "funds/[fund]/trade/page.tsx",
+    reads: ["listRules", "listPositions", "applyEvent"],
   },
   {
     path: "/funds/[fund]/ingest",

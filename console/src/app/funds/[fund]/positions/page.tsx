@@ -27,6 +27,9 @@ export default async function Positions({
       <div className="qbar" role="group" aria-label="Positions">
         <span className="spacer" />
         <span className="sortnote">
+          <Link href={`/funds/${fund}/trade`}>Place a trade</Link>
+        </span>
+        <span className="sortnote">
           <Link href={`/funds/${fund}/mark`}>Mark to market</Link>
         </span>
       </div>
