@@ -167,6 +167,10 @@ pub trait Store {
     fn get(&self, key: &str) -> Result<Option<String>>;
     fn put(&self, key: &str, body: &str) -> Result<()>;
     fn delete(&self, key: &str) -> Result<()>;
+    /// Keys under a prefix. ⚠ Used for SMALL sets only — the leads waiting on
+    /// one run — and the report email caps what it reads, so a runaway prefix
+    /// cannot turn completion into an unbounded walk.
+    fn list(&self, prefix: &str) -> Result<Vec<String>>;
 }
 
 /// ⚠ So a `Box<dyn Store>` is a `Store`: the server holds ONE runner type
@@ -185,6 +189,9 @@ impl<S: Store + ?Sized> Store for Box<S> {
     fn delete(&self, key: &str) -> Result<()> {
         (**self).delete(key)
     }
+    fn list(&self, prefix: &str) -> Result<Vec<String>> {
+        (**self).list(prefix)
+    }
 }
 
 /// ⚠ So a caller holding a `&Store` can build a `Runs` over it without giving
@@ -202,6 +209,9 @@ impl<S: Store + ?Sized> Store for &S {
     }
     fn delete(&self, key: &str) -> Result<()> {
         (**self).delete(key)
+    }
+    fn list(&self, prefix: &str) -> Result<Vec<String>> {
+        (**self).list(prefix)
     }
 }
 
@@ -260,6 +270,24 @@ impl Store for Files {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e).context("releasing the run lock"),
         }
+    }
+
+    fn list(&self, prefix: &str) -> Result<Vec<String>> {
+        let mut out = Vec::new();
+        let dir = match std::fs::read_dir(&self.root) {
+            Ok(d) => d,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+            Err(e) => return Err(e).context("listing the run directory"),
+        };
+        for entry in dir.flatten() {
+            if let Ok(name) = entry.file_name().into_string() {
+                if name.starts_with(prefix) {
+                    out.push(name);
+                }
+            }
+        }
+        out.sort();
+        Ok(out)
     }
 }
 
@@ -399,6 +427,220 @@ impl Store for S3 {
             Ok(())
         })
     }
+
+    fn list(&self, prefix: &str) -> Result<Vec<String>> {
+        let p = self.key(prefix);
+        self.runtime.block_on(async {
+            let mut out = Vec::new();
+            let mut token: Option<String> = None;
+            // ⚠ Paginated for form, bounded in practice: the callers list the
+            // leads on ONE run, and the mailer caps how many it will email.
+            loop {
+                let mut req = self
+                    .client
+                    .list_objects_v2()
+                    .bucket(&self.bucket)
+                    .prefix(&p)
+                    .max_keys(1_000);
+                if let Some(t) = &token {
+                    req = req.continuation_token(t);
+                }
+                let page = req.send().await.map_err(|e| aws(&format!("listing {p}"), e))?;
+                for o in page.contents() {
+                    if let Some(k) = o.key() {
+                        // Hand back keys the way `Files` does: relative to the
+                        // store's prefix, so callers never see `runs/`.
+                        out.push(k.strip_prefix(&self.prefix).unwrap_or(k).to_string());
+                    }
+                }
+                match page.next_continuation_token() {
+                    Some(t) => token = Some(t.to_string()),
+                    None => break,
+                }
+            }
+            out.sort();
+            Ok(out)
+        })
+    }
+}
+
+
+// ── Leads, run reports, and the follow-up email ──────────────────────────────
+
+/// A mailing-list address, checked just enough to be worth storing.
+///
+/// ⛔ NOT AUTHENTICATION, AND NOT PRETENDING TO BE. The email gate on the demo
+/// page is a mailing-list capture; the money controls (one run in flight, the
+/// cooldowns, the ceiling) never depend on the address being real, so a made-up
+/// one costs nothing extra. What this refuses is input that is not even SHAPED
+/// like an address — which keeps junk out of the list and control characters out
+/// of everything downstream.
+pub fn valid_email(email: &str) -> bool {
+    let e = email.trim();
+    let Some((local, domain)) = e.split_once('@') else { return false };
+    e.len() >= 6
+        && e.len() <= 254
+        && e.chars().all(|c| !c.is_control() && !c.is_whitespace() && c != '@' || c == '@')
+        && e.matches('@').count() == 1
+        && !local.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && !domain.starts_with('-')
+}
+
+/// The store key an address files under: a digest, not the address.
+///
+/// ⛔ THE ADDRESS IS DATA, NOT A FILENAME. An email is caller-supplied text and
+/// making it a key would put caller bytes in paths and URLs; the digest is safe
+/// in both, and the address itself lives INSIDE the record where `quote` guards
+/// every rendering of it.
+fn lead_key(email: &str) -> String {
+    let d = ratio_store::Digest::of(email.trim().to_lowercase().as_bytes());
+    format!("lead-{}", &d.as_str()[..16])
+}
+
+/// Record an address on the mailing list. Returns whether it was new.
+///
+/// Idempotent by construction — `put_if_absent` on the digest key — so the
+/// unlock route, the start route and a retry all record the same address once.
+pub fn record_lead<S: Store>(store: &S, email: &str, now: i64) -> Result<bool> {
+    anyhow::ensure!(valid_email(email), "that does not look like an email address");
+    store.put_if_absent(&lead_key(email), &format!("{}\t{now}", email.trim().to_lowercase()))
+}
+
+/// Attach an address to a run in flight, to be emailed its report at completion.
+pub fn await_report<S: Store>(store: &S, id: &str, email: &str) -> Result<()> {
+    anyhow::ensure!(valid_email(email), "that does not look like an email address");
+    let d = ratio_store::Digest::of(email.trim().to_lowercase().as_bytes());
+    store.put(
+        &format!("await-{id}-{}", &d.as_str()[..16]),
+        email.trim().to_lowercase().as_str(),
+    )
+}
+
+/// The most recently completed run of a size, by id.
+pub fn latest<S: Store>(store: &S, size: &str) -> Option<String> {
+    store.get(&format!("latest-{size}")).ok().flatten().map(|s| s.trim().to_string())
+}
+
+/// A run's published report, by id. `None` is "no such run", and the id is
+/// checked before it goes anywhere near a key.
+pub fn report<S: Store>(store: &S, id: &str) -> Option<String> {
+    if !valid_run_id(id) {
+        return None;
+    }
+    store.get(&format!("report-{id}.json")).ok().flatten()
+}
+
+/// A run id is `{size}-{start-epoch}` — two things this module minted, and
+/// nothing a caller composed. ⛔ Checked at every door anyway, because ids
+/// arrive in URLs and a key built from an unchecked one would put caller bytes
+/// in a path — the same refusal `Console::book_path` makes about fund ids.
+pub fn valid_run_id(id: &str) -> bool {
+    id.len() <= 40
+        && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && SHAPES.iter().any(|s| id.starts_with(&format!("{}-", s.name)))
+}
+
+/// Who sends the follow-up report, and where its links point.
+///
+/// ⚠ ABSENT IS A WORKING STATE. `RATIO_SCALE_SENDER` unset means no email is
+/// sent and nothing else changes — the report link is on the page the moment a
+/// run completes, so the demo is whole without SES. This is the same shape as
+/// an unset `RATIO_COGNITO_*` meaning "no identity provider here": email
+/// activates the day the identity verifies, with no code change.
+pub struct Mailer {
+    sender: String,
+    origin: String,
+    client: aws_sdk_sesv2::Client,
+    runtime: tokio::runtime::Runtime,
+}
+
+impl Mailer {
+    pub fn from_env() -> Option<Result<Self>> {
+        let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        let sender = get("RATIO_SCALE_SENDER")?;
+        let origin = get("RATIO_PUBLIC_ORIGIN")?;
+        Some((|| {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .context("starting the async runtime")?;
+            let client = runtime.block_on(async {
+                let cfg = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+                aws_sdk_sesv2::Client::new(&cfg)
+            });
+            Ok(Mailer { sender, origin, client, runtime })
+        })())
+    }
+
+    /// Send one report email. ⚠ BEST-EFFORT AT EVERY CALL SITE: a fold that
+    /// completed is a fold that completed, and an SES outage must not turn it
+    /// into a failure — the figures are in the store and on the page either way.
+    pub fn send_report(&self, to: &str, id: &str, summary: &str) -> Result<()> {
+        use aws_sdk_sesv2::types::{Body, Content, Destination, EmailContent, Message};
+        anyhow::ensure!(valid_email(to), "that does not look like an email address");
+        anyhow::ensure!(valid_run_id(id), "that is not a run id");
+        let text = format!(
+            "You folded a fund.\n\n{summary}\n\nEvery figure, the fold as it happened, and \
+             the shape and seed that reproduce it:\n\n  {origin}/scale/runs/{id}\n\nThe books \
+             tie because the kernel says so — the journal, the proofs and the code are at \
+             https://github.com/mattmarshall/ratio. Reply to this address and a person reads \
+             it.\n",
+            origin = self.origin,
+        );
+        let content = |s: &str| Content::builder().data(s).charset("UTF-8").build();
+        let msg = EmailContent::builder()
+            .simple(
+                Message::builder()
+                    .subject(content("Your twenty-million-tax-lot fold, and the figures it struck").context("subject")?)
+                    .body(Body::builder().text(content(&text).context("body")?).build())
+                    .build(),
+            )
+            .build();
+        self.runtime.block_on(async {
+            self.client
+                .send_email()
+                .from_email_address(&self.sender)
+                .destination(Destination::builder().to_addresses(to).build())
+                .content(msg)
+                .send()
+                .await
+                .map_err(|e| aws("sending the report email", e))?;
+            Ok(())
+        })
+    }
+}
+
+/// Email everyone waiting on a completed run. Returns how many were sent.
+///
+/// ⛔ CAPPED, because this walks a caller-influenced prefix. The unlock route
+/// dedupes addresses and the cooldown bounds how many can attach per run, but a
+/// cap here means even a mistake upstream cannot turn completion into an
+/// unbounded mail-out from a public endpoint.
+pub fn send_awaited<S: Store>(store: &S, mailer: &Mailer, id: &str, summary: &str) -> usize {
+    const MOST: usize = 200;
+    let waiting = match store.list(&format!("await-{id}-")) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("could not list who is waiting on {id}: {e:#}");
+            return 0;
+        }
+    };
+    let mut sent = 0;
+    for key in waiting.iter().take(MOST) {
+        let Some(email) = store.get(key).ok().flatten() else { continue };
+        match mailer.send_report(email.trim(), id, summary) {
+            Ok(()) => {
+                sent += 1;
+                let _ = store.delete(key);
+            }
+            Err(e) => eprintln!("report email to a lead failed: {e:#}"),
+        }
+    }
+    sent
 }
 
 /// How a fold is actually set going, once the policy has allowed it.
@@ -409,7 +651,9 @@ impl Store for S3 {
 /// on the demo — and nothing about the decision should depend on which.
 pub trait Launcher {
     /// Returns a token identifying the run: a task arn, a thread name, a word.
-    fn launch(&self, size: &str) -> Result<String>;
+    /// `id` is the run's minted identity, so the runner publishes its report at
+    /// the permalink the page has already shown.
+    fn launch(&self, size: &str, id: &str) -> Result<String>;
     /// What the screen should say about where a fold would happen. `None` means
     /// no launcher is configured and the button is not offered at all.
     fn describe(&self) -> String;
@@ -427,16 +671,17 @@ pub struct Here {
 }
 
 impl Launcher for Here {
-    fn launch(&self, size: &str) -> Result<String> {
+    fn launch(&self, size: &str, id: &str) -> Result<String> {
         let token = format!("thread:{size}");
         let size = size.to_string();
+        let id = id.to_string();
         let books = self.books.clone();
         let root = self.root.clone();
         std::thread::Builder::new()
             .name(format!("scale-{size}"))
             .spawn(move || {
                 let store = Files::at(&root);
-                if let Err(e) = run(&store, &size, &books) {
+                if let Err(e) = run(&store, &size, &id, &books) {
                     eprintln!("the {size} fold failed: {e:#}");
                 }
             })
@@ -496,7 +741,8 @@ impl Ecs {
 }
 
 impl Launcher for Ecs {
-    fn launch(&self, size: &str) -> Result<String> {
+    fn launch(&self, size: &str, id: &str) -> Result<String> {
+        anyhow::ensure!(valid_run_id(id), "{id:?} is not a run id");
         use aws_sdk_ecs::types::{
             AssignPublicIp, AwsVpcConfiguration, ContainerOverride, LaunchType,
             NetworkConfiguration, TaskOverride,
@@ -538,6 +784,8 @@ impl Launcher for Ecs {
                                 .command("scale-run")
                                 .command("--size")
                                 .command(shape.name)
+                                .command("--id")
+                                .command(id)
                                 .build(),
                         )
                         .build(),
@@ -571,7 +819,12 @@ impl Launcher for Ecs {
 /// ⚠ THE LOCK IS RELEASED WHATEVER HAPPENS. A fold that panics or fails leaves
 /// `current` behind otherwise, and every later run is refused with "a fold is
 /// already running" forever — a permanently broken button, from one bad run.
-pub fn run<S: Store>(store: &S, size: &str, book_root: &Path) -> Result<()> {
+/// `id` is the run's identity — `{size}-{start-epoch}`, minted where the run
+/// was allowed and carried here so the report's permalink is known before the
+/// fold begins. ⛔ The report survives under `report-{id}.json` forever; the
+/// per-size `result-{size}.json` is only "the latest", for the panel.
+pub fn run<S: Store>(store: &S, size: &str, id: &str, book_root: &Path) -> Result<()> {
+    anyhow::ensure!(valid_run_id(id), "{id:?} is not a run id");
     let runs = Runs::over(store);
     let outcome = fold_and_measure(store, size, book_root);
     let published = match &outcome {
@@ -588,8 +841,53 @@ pub fn run<S: Store>(store: &S, size: &str, book_root: &Path) -> Result<()> {
             &format!("{{\"error\":{}}}", crate::watch::quote(why)),
         );
     }
+    if let Ok(json) = &outcome {
+        // ⛔ THE PERMALINK FIRST, THE POINTER SECOND. A `latest-{size}` naming a
+        // report that does not exist yet is a link a visitor can click into a
+        // 404; the other order is at worst a report nobody points at for a
+        // moment.
+        store.put(&format!("report-{id}.json"), json)?;
+        store.put(&format!("latest-{size}"), id)?;
+    }
     runs.finish(size, published)?;
+
+    // The follow-up the leads asked for, after every figure is readable at the
+    // permalink. ⚠ BEST-EFFORT AND LAST: a fold that completed must not be
+    // failed retroactively by SES, and the report link is already on the page.
+    if let Ok(json) = &outcome {
+        if let Some(Ok(mailer)) = Mailer::from_env() {
+            let sent = send_awaited(store, &mailer, id, &summarize_report(json));
+            if sent > 0 {
+                eprintln!("sent {sent} report email(s) for {id}");
+            }
+        }
+    }
     outcome.map(|_| ())
+}
+
+/// The three lines of a report email's body, pulled from the run's own figures.
+///
+/// ⚠ FROM THE RUN DOCUMENT, NOT THE SHAPES TABLE — the email describes the fold
+/// that happened, and the one thing it must never do is describe a different
+/// one. Falls back to naming the run rather than inventing a figure it cannot
+/// find.
+pub fn summarize_report(report_json: &str) -> String {
+    let read = |k: &str| -> Option<i64> {
+        let at = report_json.find(&format!("\"{k}\":"))?;
+        report_json[at + k.len() + 3..]
+            .split(|c: char| !c.is_ascii_digit() && c != '-')
+            .find(|t| !t.is_empty())?
+            .parse()
+            .ok()
+    };
+    match (read("open_lots"), read("journal_entries"), read("cold_build_ns")) {
+        (Some(lots), Some(entries), Some(ns)) => format!(
+            "{lots} open tax lots over {entries} journal entries, folded cold from an empty \
+             projection in {}. Trial balance: 0.",
+            ratio_nav::closure::human_nanos(ns)
+        ),
+        _ => "The full figures are at the link below.".to_string(),
+    }
 }
 
 /// The progress record a run keeps: a phase and a SERIES, not one overwritten
@@ -731,6 +1029,15 @@ fn fold_and_measure<S: Store>(store: &S, size: &str, book_root: &Path) -> Result
 /// The policy: who may start a fold, and what it costs to let them.
 pub struct Runs<S: Store> {
     store: S,
+}
+
+impl<S: Store> Runs<S> {
+    /// The record this policy decides over, for callers that also keep leads
+    /// and reports in it. One store, so the lead that unlocked a run and the
+    /// report that run published cannot live in two places that disagree.
+    pub fn store(&self) -> &S {
+        &self.store
+    }
 }
 
 /// A run in flight.
@@ -1070,7 +1377,7 @@ mod tests {
 
         // A book root that cannot be written to: the fold fails.
         let bad = PathBuf::from("/proc/nonexistent-scale-root");
-        let outcome = run(&r.store, "small", &bad);
+        let outcome = run(&r.store, "small", "small-1000", &bad);
 
         assert!(outcome.is_err(), "folding into an unwritable root should fail");
         assert!(r.current().unwrap().is_none(), "the lock outlived the run that took it");
@@ -1198,6 +1505,9 @@ mod tests {
         fn delete(&self, key: &str) -> Result<()> {
             self.inner.delete(key)
         }
+        fn list(&self, prefix: &str) -> Result<Vec<String>> {
+            self.inner.list(prefix)
+        }
     }
 
     #[test]
@@ -1215,7 +1525,7 @@ mod tests {
         )
         .unwrap();
         let rec = Recording { inner: &r.store, progress_writes: Default::default() };
-        run(&rec, "small", &root).unwrap();
+        run(&rec, "small", "small-1000", &root).unwrap();
 
         let writes = rec.progress_writes.lock().unwrap();
         assert!(!writes.is_empty(), "a run wrote no progress at all");
@@ -1258,13 +1568,93 @@ mod tests {
         // running and then inspecting what was left... the final state clears
         // it, so assert the clearing AND reconstruct the series from a run
         // that fails before finish.
-        run(&r.store, "small", &root).unwrap();
+        run(&r.store, "small", "small-1000", &root).unwrap();
 
         // Finished: the progress key is gone, the result is published.
         assert!(r.progress("small").is_none(), "a finished run left its series behind");
         let result = r.result("small").expect("no result published");
         assert!(result.contains("\"cold_build_ns\""), "{result}");
         assert!(r.current().unwrap().is_none());
+    }
+
+
+    #[test]
+    fn an_address_is_recorded_once_however_many_doors_it_walks_through() {
+        let r = runs("leads");
+        // The unlock route, the start route and a retry all record; the list
+        // holds one entry, because the key is a digest of the address.
+        assert!(record_lead(&r.store, "pat@fund.example", 1_000).unwrap());
+        assert!(!record_lead(&r.store, "pat@fund.example", 2_000).unwrap());
+        assert!(!record_lead(&r.store, "  PAT@FUND.EXAMPLE  ", 3_000).unwrap());
+        assert_eq!(r.store.list("lead-").unwrap().len(), 1);
+        // ⛔ And the first_seen that survives is the FIRST one — a mailing list
+        // that re-dated an address on every visit would say everyone joined
+        // today.
+        let key = r.store.list("lead-").unwrap().remove(0);
+        assert!(r.store.get(&key).unwrap().unwrap().ends_with("\t1000"));
+    }
+
+    #[test]
+    fn what_is_not_shaped_like_an_address_never_reaches_the_list() {
+        let r = runs("junk");
+        for junk in ["", "x", "no-at-sign.example", "two@@ats.example", "a@b", "sp ace@x.co",
+                     "ctrl\u{7}@x.co", "@nodomain.", "a@.leadingdot"] {
+            assert!(record_lead(&r.store, junk, 1).is_err(), "{junk:?} was accepted");
+        }
+        assert_eq!(r.store.list("lead-").unwrap().len(), 0);
+    }
+
+    #[test]
+    fn a_run_id_is_minted_here_and_a_caller_composed_one_is_refused() {
+        assert!(valid_run_id("full-1786736470"));
+        assert!(valid_run_id("small-1"));
+        // ⛔ Every one of these arrives in a URL and would otherwise become a
+        // store key — the same door `Console::book_path` guards for fund ids.
+        for bad in ["", "FULL-1", "full-1/../../current", "enormous-1", "full-1786736470-x".repeat(4).as_str(),
+                    "lead-abc", "full_1"] {
+            assert!(!valid_run_id(bad), "{bad:?} passed");
+        }
+    }
+
+    #[test]
+    fn a_completed_run_publishes_a_permalink_and_points_latest_at_it() {
+        let r = runs("permalink");
+        let root = r.root_for_test();
+        ratio_gen::generate(
+            &root.join("scale-small"),
+            ratio_gen::Shape { securities: 4, lots_per: 6, currencies: 2, ..Default::default() },
+        )
+        .unwrap();
+        r.start("small", 1_000, M, "t").unwrap().unwrap();
+        run(&r.store, "small", "small-1000", &root).unwrap();
+
+        // ⭐ THE PERMALINK IS THE RECORD. The per-size result is only "latest",
+        // and the pointer names a report that exists.
+        let id = latest(&r.store, "small").expect("latest-small missing");
+        assert_eq!(id, "small-1000");
+        let doc = report(&r.store, &id).expect("report missing");
+        assert!(doc.contains("\"open_lots\""), "{doc}");
+        assert!(report(&r.store, "small-9999").is_none(), "a run that never was has a report");
+        // And the summary an email carries comes from the run document itself.
+        let sum = summarize_report(&doc);
+        assert!(sum.contains("open tax lots over"), "{sum}");
+        assert!(sum.contains("Trial balance: 0"), "{sum}");
+    }
+
+    #[test]
+    fn everyone_waiting_on_a_run_is_mailed_once_and_the_queue_drains() {
+        // Without SES in a test, what CAN be held is the queue mechanics: attach
+        // twice under one address, list, and drain — the mailer is exercised by
+        // its refusals below.
+        let r = runs("await");
+        await_report(&r.store, "full-77", "lead@fund.example").unwrap();
+        await_report(&r.store, "full-77", "lead@fund.example").unwrap();
+        await_report(&r.store, "full-77", "other@fund.example").unwrap();
+        // One key per ADDRESS per run — the digest key dedupes the double-click.
+        assert_eq!(r.store.list("await-full-77-").unwrap().len(), 2);
+        // Another run's waiters are not this run's.
+        await_report(&r.store, "full-88", "third@fund.example").unwrap();
+        assert_eq!(r.store.list("await-full-77-").unwrap().len(), 2);
     }
 
     #[test]

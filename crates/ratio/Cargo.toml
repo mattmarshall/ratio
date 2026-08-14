@@ -38,6 +38,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 aws-config = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
 aws-sdk-ecs = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
 aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
+# The follow-up report a lead is emailed when their fold completes.
+aws-sdk-sesv2 = { version = "1", default-features = false, features = ["rt-tokio", "default-https-client"] }
 # ⛔ PINNED BELOW 1.9, AND NOT BY PREFERENCE. `aws-sdk-s3` pulls `crc-fast`
 # through `aws-smithy-checksums`, and from 1.9 it uses `stdarch_x86_avx512` —
 # a NIGHTLY library feature. This workspace is on stable 1.85 (MODULE.bazel),
