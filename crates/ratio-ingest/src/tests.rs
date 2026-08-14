@@ -63,6 +63,7 @@ reads = "csv"
   by = "side"
   amount = "consideration"
   rules = { buy = "equity_purchase", sell = "disposal_proceeds" }
+  dated = "traded"
 "#;
     let set = TemplateSet::from_toml(toml).expect("the template should parse");
     set.template("gs_equity_trades").expect("by id").clone()
@@ -332,9 +333,28 @@ fn a_template_renders_the_way_it_reads() {
         "by     isin   from \"ISIN\"",
         "or     ticker from \"Symbol\" within exchange from \"Exch\"",
         "absent   pend",
+        // ⛔ THE JOURNAL-FACING HALF. This form is what the console prints as
+        // `Template.form`, and it used to stop at the values — so the block
+        // deciding which rule each row posts under, and whether its lots get an
+        // acquisition date, was invisible to the person asked to trust it.
+        "posts      by \"side\"",
+        "amount      consideration",
+        "dated       traded",
+        "buy         -> equity_purchase",
+        "sell        -> disposal_proceeds",
     ] {
         assert!(r.contains(expected), "missing {expected:?} in:\n{r}");
     }
+
+    // ⛔ AND A TEMPLATE THAT DECLARES NO DATE SAYS SO, rather than leaving the
+    // reader to notice a missing line.
+    let mut undated = template();
+    undated.fact.posts.as_mut().unwrap().dated = None;
+    assert!(
+        undated.render().contains("no acquisition date"),
+        "an undated template should say what that costs:\n{}",
+        undated.render(),
+    );
 }
 
 #[test]
@@ -464,6 +484,68 @@ fn a_posts_declaration_that_names_a_field_the_fact_never_reads_is_caught() {
         t.check().iter().any(|p| p.contains("neither a field")),
         "{:?}",
         t.check(),
+    );
+}
+
+#[test]
+fn a_posting_fact_is_dated_by_the_field_the_template_names() {
+    // ⭐ THE FIGURE THIS DECIDES HAS NO COUNTERPARTY. `dated` becomes the
+    // entry's trade date, which is what a lot's holding period is established
+    // from — so it decides short-term against long-term. A wrong NAV meets a
+    // reconciliation; a gain classified against the wrong day meets nobody.
+    let t = template();
+    let facts = facts();
+    let first = facts.iter().find(|f| f.reference == "T-1").unwrap();
+
+    // ⛔ ISO, and converted by the template's declared `MM/DD/YYYY` rather than
+    // read off the file. `01/14/2026` is the 14th of January in that format and
+    // would be an invalid month in the other one.
+    assert_eq!(dated_of(&t, first), Some("2026-01-14"));
+}
+
+#[test]
+fn a_template_that_declares_no_date_dates_nothing() {
+    // ⚠ ABSENT IS ABSENT, NOT INFERRED. The tempting inference is "the fact's
+    // only date", and it is wrong the moment a counterparty sends a settlement
+    // date beside the trade date — the holding period would come out short by
+    // the settlement lag and every lot would be classified against it.
+    let mut t = template();
+    t.fact.posts.as_mut().unwrap().dated = None;
+    let facts = facts();
+    let first = facts.iter().find(|f| f.reference == "T-1").unwrap();
+
+    // The fact still CARRIES the day — it is declared as a value — and nothing
+    // reads it onto the entry, so the lots this opens have no acquisition date
+    // and every holding-period method refuses them rather than guessing.
+    assert!(first.values.contains_key("traded"), "the value is still read");
+    assert_eq!(dated_of(&t, first), None);
+}
+
+#[test]
+fn a_date_that_is_not_declared_as_one_is_refused_at_approval() {
+    // ⛔ NOT AT THE FIRST FILE, AND NOT SILENTLY. Pointed at a text column the
+    // accessor answers `None`, so the entry would quietly carry no trade date
+    // and the lots it opened would be refused by every method — a silent return
+    // to the behaviour this declaration exists to end. `check` runs before a
+    // template maps anything, which is the right end.
+    let mut t = template();
+    t.fact.posts.as_mut().unwrap().dated = Some("side".into());
+    let found = t.check();
+    assert!(
+        found.iter().any(|m| m.contains("not declared as a date")),
+        "a non-date field should be refused: {found:?}",
+    );
+
+    // And a field the fact does not read at all is the other way to get it wrong.
+    t.fact.posts.as_mut().unwrap().dated = Some("settled".into());
+    assert!(t.check().iter().any(|m| m.contains("does not read")));
+
+    // The template as it stands declares a real date, and passes.
+    let clean = template();
+    assert!(
+        !clean.check().iter().any(|m| m.contains("dated by")),
+        "the fixture template should be clean: {:?}",
+        clean.check(),
     );
 }
 

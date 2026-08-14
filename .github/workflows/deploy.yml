@@ -90,8 +90,15 @@ jobs:
       # Refuse to ship an image whose contents were never checked. The deploy
       # workflow runs on the same push as build.yml but not after it, so
       # without this a red test suite and a green deploy can happen at once.
+      #
+      # ⛔ THE NINETEEN PDFs, AND NOTHING ELSE — see the note above `PDF_FREE` in
+      # build.yml for why they cannot be built here. Same pattern, same reason:
+      # tectonic reaches relay.fullyjustified.net at action time, and a release
+      # path must not run through somebody else's CDN.
       - name: Test
-        run: bazel test --lockfile_mode=error --test_output=errors //...
+        run: |
+          bazel test --lockfile_mode=error --test_output=errors -- \
+            //... -//marketing:positioning -//paper:ratio -//competitive/specs:all
 
       - name: Seed the demo book
         run: |

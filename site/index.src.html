@@ -213,7 +213,7 @@ __STYLE__
 <section class="r-section">
   <div class="r-wrap">
     <p class="r-eyebrow">What changes</p>
-    <h2 class="r-claim">Five things that stop being your problem</h2>
+    <h2 class="r-claim">Eight things that stop being your problem</h2>
     <p class="r-lede">Ratio is not a reporting layer on top of the same kind of
     engine. It replaces the engine, and these follow from that.</p>
 
@@ -234,7 +234,34 @@ __STYLE__
         <h3>No rounding differences to absorb</h3>
         <p>Amounts are held exactly, in whole cents, and never as decimals a
         computer has to approximate. Totals do not drift with the order things
-        were added in. There is no tolerance to set and no plug to book.</p>
+        were added in. There is no rounding tolerance to set and no plug to
+        book.</p>
+      </div>
+      <div class="r-row">
+        <h3>What counts as material is your term, not ours</h3>
+        <p>Rounding is one kind of tolerance. The other is how far Ratio's figure
+        may sit from the custodian's before the close stops, and that one is a
+        term of your administration agreement — written into your fund's rules,
+        approved by name, and reported on every difference it grades. Two funds
+        looking at the same $800 can disagree about whether it matters, and both
+        are right.</p>
+      </div>
+      <div class="r-row">
+        <h3>A difference you explained stays explained</h3>
+        <p>Somebody still decides a difference is acceptable; that judgment is
+        not one to hand to software. What changes is that the reason is kept
+        against it — who gave it, the date, and the figure they were looking at —
+        so next month it is answered rather than worked again. If a later
+        reconciliation moves the number, the note steps aside and says what
+        moved.</p>
+      </div>
+      <div class="r-row">
+        <h3>A fund that is not ready will not strike</h3>
+        <p>While a difference that matters has no explanation, a trade cannot be
+        identified, or a position has no price, the NAV is refused rather than
+        published. You get the whole list at once, each item with the step that
+        clears it — not one obstacle, and then another after you have cleared
+        it.</p>
       </div>
       <div class="r-row">
         <h3>The audit request is a query</h3>
@@ -512,16 +539,27 @@ __STYLE__
         <p>Turns a plain-language request into a precise instruction you can read
         before it runs. Drafts the client-facing explanation of a position, a fee
         or a performance figure. Suggests how an unusual transaction should be
-        posted, and how a break might be resolved — as a proposal, for you to
-        approve.</p>
+        posted — as a proposal, for you to approve.</p>
       </div>
       <div>
         <p class="r-col-tag neg">What it cannot do</p>
-        <p>Post an entry. Everything the assistant produces is checked against the
-        same rules as any other entry before it can affect the books, and anything
-        that does not balance is refused. The worst outcome from a bad suggestion
-        is a suggestion you decline.</p>
+        <p>Post an entry. Decide that a difference is acceptable. Everything the
+        assistant produces is checked against the same rules as any other entry
+        before it can affect the books, and anything that does not balance is
+        refused. Accepting a difference is typed by a person, under their own
+        name, and there is no button that does it for them. The worst outcome
+        from a bad suggestion is a suggestion you decline.</p>
       </div>
+    </div>
+
+    <div class="r-note">
+      <p><strong>One half of this is designed and not built.</strong> Having the
+      assistant draft the wording of an explanation — for a person to read,
+      change and put their name to — is specified and not yet implemented, and
+      this page will say so until it is. The other half is not waiting its turn:
+      an assistant accepting a difference is refused permanently. Deciding that
+      a fund may close over one is a person's decision, and there is no version
+      of this where it is not.</p>
     </div>
   </div>
 </section>
@@ -579,16 +617,29 @@ __STYLE__
           rather than merely tested.</li>
           <li>Exact amounts throughout, held in whole cents, with totals that do
           not depend on the order things were entered.</li>
+          <li>More than one currency, tax lots under the cost-basis method your
+          agreement names, and corporate actions.</li>
           <li>A documented interface other systems can read from and write to.</li>
+          <li>Reconciliation against a counterparty file, with every difference
+          measured against the tolerance your fund declares — and each one
+          naming the figures it was measured against.</li>
+          <li>Differences a person can explain, carrying the name, the date and
+          the figure the explanation was given against — and stepping aside when
+          a later reconciliation moves the number.</li>
+          <li>A fund that refuses to strike its NAV while something is
+          unexplained, unidentified or unpriced, and lists everything in the way
+          at once. All three are in the live demo linked at the top of this
+          page.</li>
         </ul>
       </div>
       <div class="r-spec">
         <p class="r-col-tag neg">Not built yet</p>
         <ul>
-          <li>Custodian feeds, performance reporting, the client portal and the
-          day-to-day screens your team would work in.</li>
-          <li>Multi-currency, tax lots and corporate actions — designed and
-          specified, not yet implemented.</li>
+          <li>Custodian feeds, performance reporting and the client portal.</li>
+          <li>Most of the day-to-day surface. There are screens for the
+          exception queue, for a single difference at its own address, and for
+          whether a fund is ready to close. That is all of them, and your team
+          would need considerably more.</li>
           <li>Fee billing, compliance and the rest of the surface the incumbents
           have spent twenty years accumulating.</li>
         </ul>

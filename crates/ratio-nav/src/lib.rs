@@ -36,6 +36,14 @@ mod generated;
 /// well as in reads.
 pub mod closure;
 
+/// What a strike DOES, written down as a plan — the steps below, the same
+/// question answered off the maintained totals, and the plans not taken.
+///
+/// ⛔ A DESCRIPTION OF THIS FILE, NOT A PLANNER OVER IT. Nothing chooses; a
+/// caller picks a plan by calling `strike` or `Projection::nav`. See the module
+/// header, which says so before it says anything else.
+pub mod explain;
+
 use anyhow::{bail, Context, Result};
 use ratio_project::views;
 use ratio_store::{AccountTypeRecord, ConfigStore, Digest, FileBook, Journal, JournalEntry};
@@ -163,16 +171,39 @@ struct NavFold {
     /// nobody was told about is value leaving a book whose trial balance goes on
     /// tying, which is the shape of every defect in HANDOFF.md's table.
     unplaceable: Vec<String>,
+    /// What this fold saw, for `explain`.
+    ///
+    /// ⛔ ON THE FOLD ITSELF, NOT IN A SECOND COPY OF IT. The instrumented walk
+    /// and the real one have to be the same code or the measurement is of
+    /// something else — and HANDOFF.md already records what two doors with one
+    /// law cost here: "`append` and `append_all` are two doors with the same
+    /// law, with different indentation. A fix applied by string replace hits
+    /// one."
+    ///
+    /// ⚠ COUNTERS ONLY, NEVER A CLOCK. Every field below is incremented on a
+    /// branch this fold was already taking. The timings live in `refold`, which
+    /// takes four `Instant`s around whole phases — `FoldCost`'s comment in
+    /// `ratio-project` is the precedent: seven million `Instant::now()` calls
+    /// would be a measurement that changed what it measured.
+    measured: explain::Measured,
 }
 
 impl NavFold {
     fn new(book: &FileBook, view: &str, as_of: Option<views::Day>) -> Result<Self> {
+        let types: std::collections::BTreeMap<i64, AccountTypeRecord> =
+            book.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
+        let rates = ratio_project::Rates::of_facts(
+            ratio_store::BASE_CURRENCY,
+            &book.records(ratio_store::Plane::Facts)?,
+        );
         Ok(Self {
-            types: book.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect(),
-            rates: ratio_project::Rates::of_facts(
-                ratio_store::BASE_CURRENCY,
-                &book.records(ratio_store::Plane::Facts)?,
-            ),
+            measured: explain::Measured {
+                accounts_read: types.len() as i64,
+                rates_read: rates.len() as i64,
+                ..Default::default()
+            },
+            types,
+            rates,
             nav: Default::default(),
             debits: 0,
             credits: 0,
@@ -181,6 +212,19 @@ impl NavFold {
             defs: Default::default(),
             unplaceable: Vec::new(),
         })
+    }
+
+    /// What this fold has seen so far.
+    ///
+    /// ⚠ Taken BEFORE `finish`, which consumes the fold. The currency count is
+    /// read off the accumulator rather than counted per posting, because the
+    /// accumulator is already keyed by currency and counting again in the hot
+    /// path would be paying twice for a number that is sitting there.
+    fn measured(&self) -> explain::Measured {
+        explain::Measured {
+            currencies_accumulated: self.nav.len() as i64,
+            ..self.measured.clone()
+        }
     }
 
     /// The view definition the entry's OWN configuration declares.
@@ -199,9 +243,15 @@ impl NavFold {
     /// admitted, and the figure would tie the whole way — the same argument
     /// that stops an unreadable config falling back to FIFO.
     fn def_for(&mut self, book: &FileBook, digest: &ratio_store::Digest) -> Option<views::ViewDef> {
+        self.measured.config_lookups += 1;
         if let Some(d) = self.defs.get(digest) {
             return d.clone();
         }
+        // ⛔ THE MISS IS WHAT THE CACHE IS WORTH, and counting only the lookups
+        // would report this step as one TOML read per entry — which is what the
+        // code would do if the cache were deleted, and nothing else would
+        // notice.
+        self.measured.config_misses += 1;
         let resolved = (|| {
             let bytes = book.get(digest).ok()?;
             let set = ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&bytes)).ok()?;
@@ -235,12 +285,15 @@ impl NavFold {
             .map(|n| n as views::Day);
         let placement = def.placement(&e.id, traded);
         if let views::Placement::Unplaceable(why) = &placement {
+            self.measured.unplaceable += 1;
             self.unplaceable.push(why.clone());
             return false;
         }
+        self.measured.placed += 1;
         if !def.recognises(&placement, self.as_of) {
             return false;
         }
+        self.measured.recognised += 1;
         self.push(e);
         true
     }
@@ -377,6 +430,84 @@ pub fn strike(
 
 /// Re-derive a strike and report what was found.
 pub fn replay(book_path: &std::path::Path, s: &Strike) -> Result<Replay> {
+    Ok(refold(book_path, s)?.0)
+}
+
+/// Re-derive a strike and report what the fold COST, step by step.
+///
+/// ⛔ WHAT THIS MEASURES IS THIS MACHINE, NOW, RE-DERIVING THE SAME PREFIX — NOT
+/// WHAT THE ORIGINAL RUN COST. Nothing was recorded at strike time, and a
+/// duration presented as the strike's own would be a fabrication of exactly the
+/// kind `Calibration::provenance` exists to prevent. Every caller has to say so
+/// beside the figure.
+///
+/// ⚠ AND IT IS A FOLD, WHICH IS THE SLOWEST THING THIS SYSTEM DOES. Asking for
+/// it is the point: a screen that measured on load would be spending a period
+/// end's worth of work on somebody who wanted to look at a diagram.
+pub fn analyze(book_path: &std::path::Path, s: &Strike) -> Result<explain::Measured> {
+    Ok(refold(book_path, s)?.1)
+}
+
+/// The dials this fund actually turns, read off a projection somebody is
+/// already holding.
+///
+/// ⛔ OFF THE BOOK, NEVER TYPED IN. `/scale` offers dials because it argues
+/// about funds that do not exist. This explains one that does, and a dial here
+/// would let a reader produce any figure they liked and read it as this fund's.
+///
+/// ⚠ TAKES THE PROJECTION RATHER THAN FOLDING ONE, for the reason `nav_from`
+/// does: a fund holding a quarter of a million open lots does not want a second
+/// copy alive to answer one request.
+pub fn shape_of(
+    proj: &ratio_project::Projection,
+    accounts: i64,
+    cal: &closure::Calibration,
+) -> Result<explain::Shape> {
+    let securities = proj.positions().value.held.len() as i64;
+    let open_lots = proj.open_lots();
+    let dials = closure::Dials {
+        securities,
+        currencies: proj.currency_count(),
+        // ⚠ AN AVERAGE, AND THE MODEL'S WORST TERM MULTIPLIES IT. `actionCost`
+        // wants the fragmentation of the ONE instrument a split touches, and a
+        // real book's is not uniform — so the action term is this fund's
+        // average rather than its actual, and the node that carries it says so.
+        // Integer division, which rounds DOWN: the estimate understates.
+        //
+        // ⛔ AND `securities == 0` IS NOT HYPOTHETICAL — it is every fund on the
+        // day it is established, and the same input that made `per_share(x, 0)`
+        // a panic on the NAV path.
+        lots_per: if securities > 0 { open_lots / securities } else { 0 },
+        open_actions: proj.open_action_count(),
+        // ⛔ NOT A COUNT, AND NOT A CLAIM THAT THERE WERE NONE. Counting
+        // subscriptions and redemptions needs the chart roles, and a projection
+        // deliberately does not know the chart. The model needs an `i64` here,
+        // so the term is passed as zero and the step that reports it carries no
+        // estimate at all — a rendered zero would be a guess wearing a decimal
+        // point, which is the failure `Calibration::provenance` exists for.
+        capital_txns: 0,
+    };
+    Ok(explain::Shape {
+        estimate: closure::estimate(dials, cal)?,
+        accounts,
+        total_rows: proj.total_rows(),
+        open_lots_held: open_lots,
+    })
+}
+
+/// The one re-derivation, behind both of its questions.
+///
+/// ⛔ ONE DOOR. `replay` asks whether the figure reproduces and `analyze` asks
+/// what reproducing it cost; two walks would be two folds that have to stay
+/// identical, and HANDOFF.md already records what that costs here — "`append`
+/// and `append_all` are two doors with the same law, with different
+/// indentation. A fix applied by string replace hits one."
+///
+/// ⚠ FOUR `Instant`s, ALL OUTSIDE THE LOOP. `replay` pays for them too and they
+/// are unmeasurable against a fold; per-entry timing is the thing that would
+/// change what it measured.
+fn refold(book_path: &std::path::Path, s: &Strike) -> Result<(Replay, explain::Measured)> {
+    let setup = std::time::Instant::now();
     let book = FileBook::open(book_path)?;
 
     // ⛔ ONE WALK, AND ONLY THE PREFIX IS FOLDED. This read the whole journal
@@ -392,40 +523,63 @@ pub fn replay(book_path: &std::path::Path, s: &Strike) -> Result<Replay> {
     // declared a holiday, and report the strike as unreproducible when nothing
     // about it had changed.
     let mut fold = NavFold::new(&book, &s.view, Some(day_of(s.valuation_time)))?;
+    let setup_nanos = setup.elapsed().as_nanos() as i64;
+
     let mut hash = ratio_store::DigestBuilder::new();
     let mut seen = 0usize;
+    let mut folded = 0i64;
+    let walk = std::time::Instant::now();
     book.for_each_entry_since(0, &mut |e| {
         if seen < s.journal_position {
             fold.consider(&book, e);
             feed(&mut hash, e)?;
+            folded += 1;
         }
         seen += 1;
         Ok(())
     })?;
+    let walk_nanos = walk.elapsed().as_nanos() as i64;
+
+    let mut m = fold.measured();
+    m.setup_nanos = setup_nanos;
+    m.walk_nanos = walk_nanos;
+    m.entries_walked = folded;
+    // ⛔ THE DIGEST COVERS THE WHOLE PREFIX, RECOGNISED OR NOT, which is why it
+    // is counted here beside the walk rather than off `recognised`. A replay has
+    // to be able to notice that an entry this view DECLINED was edited.
+    m.digest_fed = folded;
 
     // A journal that has since grown is normal and expected — a strike folds a
     // PREFIX. One that has SHRUNK cannot be reconciled with the strike at all,
     // and is reported as broken history rather than allowed to panic on a slice.
     if seen < s.journal_position {
-        return Ok(Replay {
-            id: s.id.clone(),
-            history_intact: false,
-            reproduced: false,
-            net_asset_value: 0,
-            journal_digest: String::new(),
-        });
+        return Ok((
+            Replay {
+                id: s.id.clone(),
+                history_intact: false,
+                reproduced: false,
+                net_asset_value: 0,
+                journal_digest: String::new(),
+            },
+            m,
+        ));
     }
 
+    let finish = std::time::Instant::now();
     let digest = hash.finish().as_str().to_string();
     let (nav, tb) = fold.finish()?;
+    m.finish_nanos = finish.elapsed().as_nanos() as i64;
 
-    Ok(Replay {
-        id: s.id.clone(),
-        history_intact: digest == s.journal_digest,
-        reproduced: nav == s.net_asset_value && tb == s.trial_balance_difference,
-        net_asset_value: nav,
-        journal_digest: digest,
-    })
+    Ok((
+        Replay {
+            id: s.id.clone(),
+            history_intact: digest == s.journal_digest,
+            reproduced: nav == s.net_asset_value && tb == s.trial_balance_difference,
+            net_asset_value: nav,
+            journal_digest: digest,
+        },
+        m,
+    ))
 }
 
 /// The civil day a valuation point falls on, as `Ratio.Views.Day`.

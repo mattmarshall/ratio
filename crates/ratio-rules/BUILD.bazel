@@ -4,9 +4,20 @@ package(default_visibility = ["//visibility:public"])
 
 exports_files(["Cargo.toml"])
 
+# The grading decision, Lean-authored (//lean:Ratio/Tolerance/Emit.lean). The
+# WALK over a report's lines is the console's; what is emitted is what it decides
+# about each difference, and whether a declared tolerance is usable at all.
+genrule(
+    name = "generated_tolerance_rs",
+    srcs = ["//lean:ratio_tolerance_ast"],
+    outs = ["src/generated_tolerance.rs"],
+    cmd = "$(execpath //rust/json_to_rust:json_to_rust) $(execpath //lean:ratio_tolerance_ast) > $@",
+    tools = ["//rust/json_to_rust:json_to_rust"],
+)
+
 rust_library(
     name = "ratio-rules",
-    srcs = glob(["src/*.rs"]),
+    srcs = glob(["src/*.rs"]) + [":generated_tolerance_rs"],
     crate_name = "ratio_rules",
     crate_root = "src/lib.rs",
     edition = "2021",

@@ -23,11 +23,11 @@ rm -rf "$OUT"
 
 fail() { echo "  x $*" >&2; exit 1; }
 
-# Six funds — four states, a fifth that differs from one of them by one line of
-# configuration, and a sixth that differs from itself: one journal read under
-# two books of record.
+# Seven funds — four states, a fifth that differs from one of them by one line
+# of configuration, a sixth that differs from another by one person's act, and a
+# seventh that differs from itself: one journal read under two books of record.
 n=$(find "$OUT" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')
-[ "$n" -eq 6 ] || fail "expected 6 funds, found $n"
+[ "$n" -eq 7 ] || fail "expected 7 funds, found $n"
 
 GEN="$OUT/ashcombe-global-equity"
 [ -d "$GEN" ] || fail "the generated fund is missing"
@@ -79,6 +79,36 @@ b=$(gain_of "$HIFO")
 # a wiring that changes the number without changing it correctly.
 awk -v a="$a" -v b="$b" 'BEGIN { exit !(b < a) }' \
   || fail "HIFO realized $b against FIFO's $a — the dearest-lot method should realize LESS"
+
+# ⛔ AND A BLOCKED FUND REFUSES ITS OWN NAV. This is the seam the demo used to
+# contradict: the seeder declared harbourline blocked and then struck it, which
+# is a screen saying one thing and a command doing another. `ratio strike` now
+# refuses, and the assertion is on BOTH halves — the command failing, and no NAV
+# left behind by the attempt. A refusal that bails after recording has spent the
+# valuation point, and `Ratio.Period.one_answer_per_day` means it cannot be
+# taken back.
+BLOCKED="$OUT/harbourline-global-value"
+if "$RATIO" strike --book "$BLOCKED" >/dev/null 2>&1; then
+  fail "a blocked fund struck a NAV"
+fi
+[ ! -s "$BLOCKED/NAVS" ] || fail "a refused strike left a NAV behind on $BLOCKED"
+
+# And the refusal says what to do about it, in both directions it can block.
+msg=$("$RATIO" strike --book "$BLOCKED" 2>&1 || true)
+grep -q "ratio accept" <<<"$msg" || fail "the refusal does not name the verb that clears a break"
+grep -q "ratio admit" <<<"$msg" || fail "the refusal does not name what clears a pending fact"
+
+# ⭐ AND THE SAME BREAK, EXPLAINED, LETS THE NAV THROUGH. Two books from one
+# seeder differing in one person's act — the shape this file already uses for
+# the lot method. Without it the gate is demonstrated only by refusing, and a
+# gate nobody has watched open is indistinguishable from one that is stuck.
+EXPLAINED="$OUT/pennington-select-income"
+[ -d "$EXPLAINED" ] || fail "the explained fund is missing"
+[ -s "$EXPLAINED/NAVS" ] || fail "the explained fund has no NAV — the gate did not open"
+grep -q "accepted" "$EXPLAINED/CHANGELOG" || fail "no acceptance recorded on $EXPLAINED"
+# ⚠ EXPLAINED, NOT CLEARED. The break is still there, with a name against it.
+grep -q "clears T+2" "$EXPLAINED/explanations.jsonl" \
+  || fail "the explanation is not on $EXPLAINED"
 
 # ⛔ AND THE TWO BOOKS OF RECORD HAVE TO DISAGREE. One journal, two recognition
 # conventions, and if they land on the same NAV then nothing about the
@@ -141,4 +171,4 @@ grep -qE "^Difference .* 0\.00 *$" <<<"$dual_bal" \
 # differ rather than checking what accounts for the difference. That is a weaker
 # claim and is written down as one.
 
-echo "  ok  6 funds, $lots open tax lots, FIFO $a vs HIFO $b, ABOR $abor vs IBOR $ibor"
+echo "  ok  7 funds, $lots open tax lots, FIFO $a vs HIFO $b, ABOR $abor vs IBOR $ibor, blocked refuses and explained strikes"

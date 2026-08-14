@@ -45,6 +45,11 @@ NEEDLES: list[tuple[str, str]] = [
     ("realizedGain", "the realized gain is never read from the response"),
     ("historyIntact", "the replay proof is not rendered"),
     ("qualification", "a strike qualification would not be shown"),
+    ("blocksNav", "the bounds a break's severity was graded against are never read"),
+    ("graded at", "a severity would be shown with nothing behind it"),
+    ("Why this is acceptable", "an accepted explanation is never shown"),
+    ("accepted by", "an explanation would appear with no name on it"),
+    ("no longer stands", "a stale explanation would read as a current one"),
     ("signin-btn", "the sign-in prompt is not rendered"),
     ("Sign out", "the signed-in principal / sign-out control is not rendered"),
     # ── from //crates/ratio:ratio_test, whose console is gone ────────────────
@@ -88,6 +93,53 @@ NEEDLES: list[tuple[str, str]] = [
     ("recognisedHere", "the in-flight entries are never read from the response"),
     ("unplaceable", "the entries neither view can place are never read"),
     ("Contributing", "the in-flight lists would not show that they add to the difference"),
+    # ── the plan ────────────────────────────────────────────────────────────
+    # ⚠ Every needle here is a phrase whose ABSENCE would leave a figure on the
+    # screen with nothing qualifying it. A plan is a picture, and a picture is
+    # exactly the kind of thing that keeps rendering after the sentence beside it
+    # has been edited away.
+    (
+        "The strike as recorded",
+        "the growing curve is gone — the plan would quote only the flat one, "
+        "which is the overclaim `ratio bench` exists to make hard",
+    ),
+    (
+        "The same figure off the maintained totals",
+        "the flat curve is gone, and with it the whole scale argument",
+    ),
+    (
+        "Folding every open tax lot",
+        "the plan not taken stops being priced, so the chosen one has nothing to "
+        "be cheaper THAN",
+    ),
+    (
+        "Applying the open actions by rewriting the lots",
+        "`Ratio.Closure.the_cliff` is gone — an outstanding action would look free "
+        "under both plans",
+    ),
+    (
+        "not measured",
+        "an unmeasured step would render as a figure, and a reader cannot tell an "
+        "estimate from a measurement",
+    ),
+    (
+        "Nothing here has been measured",
+        "the unanalyzed plan stops saying so, and its estimates read as timings",
+    ),
+    (
+        "Open lots per security",
+        "the fragmentation dial is gone — 500 x 40,000 and 10,000 x 2,000 are both "
+        "twenty million lots and are not the same fund",
+    ),
+    (
+        "planlist",
+        "the plan exists only as a diagram, and a diagram nothing can read aloud "
+        "is a figure that cannot be cited",
+    ),
+    (
+        "prefers-reduced-motion",
+        "the edge animation stops honouring a reader who asked for less motion",
+    ),
 ]
 
 

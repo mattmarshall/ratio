@@ -26,6 +26,9 @@
 mod render;
 pub use render::render;
 
+/// The grading decision, authored in Lean.
+mod generated_tolerance;
+
 use std::collections::BTreeMap;
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -200,6 +203,24 @@ pub struct RuleSet {
     #[serde(default = "default_long_term_days")]
     pub long_term_days: i64,
 
+    /// How big a difference has to be before it stops the NAV.
+    ///
+    /// ⛔ `None` MEANS NOBODY SAID, AND THAT IS NOT THE SAME AS SAYING 5.00 AND
+    /// 1,000.00. A fund with no declared tolerance has its breaks graded by
+    /// custom rather than by agreement, and the two are indistinguishable once
+    /// the absence has been defaulted away — the same distinction
+    /// [`lot_method`] keeps, and for the same reason: a screen calling the
+    /// grading "a term of the administration agreement" would be asserting an
+    /// agreement nobody made.
+    ///
+    /// Use [`effective_tolerance`] for what the grader should USE, and this
+    /// field for whether anyone chose it.
+    ///
+    /// [`lot_method`]: RuleSet::lot_method
+    /// [`effective_tolerance`]: RuleSet::effective_tolerance
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tolerance: Option<Tolerance>,
+
     /// The books of record this fund keeps.
     ///
     /// ⛔ IN THE CONFIGURATION DOCUMENT, WHICH IS WHAT MAKES A VIEW REPLAYABLE.
@@ -333,6 +354,7 @@ impl Default for RuleSet {
             lot_method: None,
             chart_roles: None,
             long_term_days: default_long_term_days(),
+            tolerance: None,
             // ⛔ EMPTY IS NOT ZERO VIEWS. `effective_views` turns this into the
             // one view every book has, recognising in journal order — and
             // `views_declared` reports that nobody chose it. Seeding a view
@@ -345,6 +367,15 @@ impl Default for RuleSet {
 }
 
 impl RuleSet {
+    /// The grading the console should USE: what was declared, or the custom
+    /// bands.
+    ///
+    /// ⚠ BY CUSTOM, NOT BECAUSE THE ENGINE PREFERS THESE NUMBERS. Every caller
+    /// that needs to GRADE something wants this; the only caller that wants the
+    /// raw field is one reporting whether a fund actually chose.
+    pub fn effective_tolerance(&self) -> Tolerance {
+        self.tolerance.unwrap_or_default()
+    }
     /// The method the engine relieves under: what was declared, or FIFO.
     ///
     /// ⚠ FIFO BY CUSTOM, NOT BECAUSE THE ENGINE PREFERS IT. Every caller that
@@ -515,6 +546,99 @@ impl Calendar {
             })?;
         }
         Ok(())
+    }
+}
+
+/// How serious one difference is. `Ratio.Tolerance.Severity`.
+///
+/// ⛔ THE CODES ARE THE WIRE'S. 1, 2, 3 are `ratio.console.v1.Severity`'s LOW,
+/// MEDIUM and HIGH; its 0 is UNSPECIFIED and is not a grade anything returns.
+/// The emitted `severity_of` answers in those numbers so there is no second
+/// table for the order to be wrong in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Severity {
+    /// Beneath notice.
+    Low,
+    /// Worth reporting, and not blocking.
+    Medium,
+    /// Stops the NAV.
+    High,
+}
+
+/// How big a difference has to be before it stops the NAV.
+///
+/// ⛔ A TERM OF AN AGREEMENT, NOT A PROPERTY OF THE SOFTWARE, and it belongs
+/// here for the same reason the lot method does: two funds looking at the same
+/// break disagree about whether it matters and both are right, changing it is
+/// an approval rather than a deployment, and it decides whether somebody's
+/// close stops. `Ratio.Tolerance` is the proof side.
+///
+/// ⚠ MINOR UNITS. A tolerance of 1,000.00 is `100_000`; a fractional one is
+/// inexpressible rather than rejected by a check somebody might forget to run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Tolerance {
+    /// At or above this, a difference is worth reporting.
+    pub below_notice: i64,
+    /// At or above this, a difference stops the NAV.
+    ///
+    /// ⚠ THE BOUNDARY IS ON THE AMOUNT. A difference of exactly this blocks:
+    /// `Ratio.Tolerance.a_difference_at_the_threshold_blocks_the_nav`. Off by
+    /// one moves a break between stopping the close and waiting until tomorrow,
+    /// and neither figure looks unusual on a screen.
+    pub blocks_nav: i64,
+}
+
+/// ⛔ THE CUSTOM GRADING, AND IT IS NOT A `Default` DERIVE. See the note on
+/// [`RuleSet::default`]: a derived one gives `blocks_nav` of **0**, and
+/// `Ratio.Tolerance.a_tolerance_of_zero_blocks_on_everything` is what that
+/// makes of every fund — every difference, including a difference of nothing,
+/// grading as one that stops the NAV.
+impl Default for Tolerance {
+    fn default() -> Self {
+        Self { below_notice: 500, blocks_nav: 100_000 }
+    }
+}
+
+impl Tolerance {
+    /// ⛔ CHECKED WHEN THE CONFIGURATION IS READ, not when a break is graded.
+    /// Bounds the wrong way round are not a strict tolerance or a lenient one:
+    /// they leave a grade nothing can ever be —
+    /// `Ratio.Tolerance.an_inverted_tolerance_makes_the_middle_band_unreachable`
+    /// — so the queue offers "in review" and no difference can reach it. A
+    /// chart that cannot express a gain is refused on the way in for exactly
+    /// this reason; so is this.
+    pub fn check(&self) -> Result<()> {
+        if !generated_tolerance::tolerance_is_well_formed(self.below_notice, self.blocks_nav) {
+            bail!(
+                "tolerance is not usable as written: below_notice {} and blocks_nav {} must \
+                 both be at least zero, and below_notice must not exceed blocks_nav. As \
+                 written, nothing can be reportable-and-not-blocking.",
+                self.below_notice,
+                self.blocks_nav
+            );
+        }
+        Ok(())
+    }
+
+    /// What one difference grades as.
+    ///
+    /// ⛔ THE MAGNITUDE IS TAKEN HERE, BEFORE THE EMITTED CODE IS ASKED
+    /// ANYTHING. `Ratio.Tolerance.severity` reads a size, and taking one means
+    /// negating — the single operation in this path that `i64` cannot always
+    /// do. `i64::MIN` has no positive counterpart, `abs()` panics on it, and a
+    /// wrapping negation would hand the grader a difference that never
+    /// happened. So it is `checked_abs`, and a difference with no representable
+    /// magnitude grades HIGH: see [`Self::severity`]'s caller contract in
+    /// `ratio-console`, and `Ratio.Bounded` for the general shape.
+    pub fn severity(&self, difference: i64) -> Severity {
+        let Some(magnitude) = difference.checked_abs() else {
+            return Severity::High;
+        };
+        match generated_tolerance::severity_of(magnitude, self.below_notice, self.blocks_nav) {
+            3 => Severity::High,
+            2 => Severity::Medium,
+            _ => Severity::Low,
+        }
     }
 }
 
@@ -728,6 +852,13 @@ impl RuleSet {
         // finding out in production.
         if let Some(r) = &set.chart_roles {
             r.check()?;
+        }
+        // ⛔ SAME PLACEMENT, SAME REASON. A tolerance whose bounds are the wrong
+        // way round has a grade nothing can ever be, and finding that out means
+        // noticing that a category on the exceptions screen is always empty —
+        // which nobody does.
+        if let Some(t) = &set.tolerance {
+            t.check()?;
         }
         // ⛔ AND THE VIEWS, FOR THE SAME REASON. A view naming a calendar
         // nobody declared is wrong when it is written, not on the NAV day it
@@ -1647,5 +1778,116 @@ calendar = "us-settlement"
         // And a fund administered under other rules says so.
         let set = RuleSet::from_toml("rules = []\nlong_term_days = 730\n").unwrap();
         assert_eq!(set.long_term_days, 730);
+    }
+
+    #[test]
+    fn a_tolerance_nobody_declared_is_absent_rather_than_zero() {
+        // ⛔ THE SAME DISTINCTION `lot_method` KEEPS. A fund that said nothing
+        // is graded by custom; a fund that wrote these two numbers down is
+        // graded by agreement. Collapsing them lets a screen report a term
+        // nobody agreed to — which is exactly what happened with the lot method
+        // on the seeded books.
+        let silent = RuleSet::from_toml("rules = []\n").unwrap();
+        assert_eq!(silent.tolerance, None, "nobody said");
+        assert_eq!(
+            silent.effective_tolerance(),
+            Tolerance { below_notice: 500, blocks_nav: 100_000 },
+            "and it still grades"
+        );
+
+        let declared =
+            RuleSet::from_toml("rules = []\n[tolerance]\nbelow_notice = 100\nblocks_nav = 250\n")
+                .unwrap();
+        assert_eq!(declared.tolerance, Some(Tolerance { below_notice: 100, blocks_nav: 250 }));
+    }
+
+    #[test]
+    fn the_tolerance_bands_are_the_same_numbers_through_either_door() {
+        // ⛔ `#[derive(Default)]` WOULD HAVE MADE `blocks_nav` 0, and
+        // `Ratio.Tolerance.a_tolerance_of_zero_blocks_on_everything` says what
+        // that grades: everything, including a difference of nothing at all.
+        // Every fund blocked, on every close, depending on which door its
+        // configuration came through.
+        assert_eq!(RuleSet::default().effective_tolerance(), Tolerance::default());
+        assert_eq!(
+            RuleSet::from_toml("rules = []\n").unwrap().effective_tolerance(),
+            Tolerance::default()
+        );
+        assert_eq!(Tolerance::default().blocks_nav, 100_000);
+        assert_ne!(Tolerance::default().blocks_nav, 0, "the derive would have said 0");
+    }
+
+    #[test]
+    fn a_tolerance_whose_bands_are_inverted_fails_the_parse() {
+        // ⛔ NOT A STRICTER TOLERANCE — one with a grade nothing can be.
+        // `Ratio.Tolerance.an_inverted_tolerance_makes_the_middle_band_
+        // unreachable`. Caught when the configuration is READ, because the
+        // symptom otherwise is a category on the exceptions screen that is
+        // always empty, and nobody notices an absence.
+        let e = RuleSet::from_toml(
+            "rules = []\n[tolerance]\nbelow_notice = 100000\nblocks_nav = 500\n",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("not usable as written"), "{e}");
+        assert!(e.contains("reportable-and-not-blocking"), "says what is lost: {e}");
+    }
+
+    #[test]
+    fn a_negative_tolerance_fails_the_parse() {
+        // A magnitude is never negative, so a negative bound is not a lenient
+        // tolerance either — it is one every difference is at or above.
+        let e =
+            RuleSet::from_toml("rules = []\n[tolerance]\nbelow_notice = -1\nblocks_nav = 500\n")
+                .unwrap_err()
+                .to_string();
+        assert!(e.contains("not usable as written"), "{e}");
+    }
+
+    #[test]
+    fn a_fractional_tolerance_cannot_be_expressed() {
+        // Minor units, like every other money figure here. The schema refuses
+        // it; no check has to remember to.
+        assert!(RuleSet::from_toml(
+            "rules = []\n[tolerance]\nbelow_notice = 5.00\nblocks_nav = 1000.00\n"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn a_difference_exactly_at_the_threshold_blocks_the_nav() {
+        // ⚠ THE BOUNDARY IS ON THE AMOUNT.
+        // `Ratio.Tolerance.a_difference_at_the_threshold_blocks_the_nav`. One
+        // minor unit either side of this line is the difference between a close
+        // that stops and one that does not, and both figures look ordinary.
+        let t = Tolerance { below_notice: 500, blocks_nav: 100_000 };
+        assert_eq!(t.severity(100_000), Severity::High, "exactly at it blocks");
+        assert_eq!(t.severity(99_999), Severity::Medium, "one under does not");
+        assert_eq!(t.severity(500), Severity::Medium, "exactly at notice is reportable");
+        assert_eq!(t.severity(499), Severity::Low, "one under is beneath notice");
+    }
+
+    #[test]
+    fn a_credit_break_grades_the_same_as_a_debit_of_the_same_size() {
+        // `Ratio.Tolerance.severity_reads_only_the_magnitude`. Our figure being
+        // under theirs is exactly as serious as being over, and a grading that
+        // read the sign would let half of every category through ungraded.
+        let t = Tolerance::default();
+        for d in [1i64, 499, 500, 99_999, 100_000, 250_000] {
+            assert_eq!(t.severity(d), t.severity(-d), "{d} and -{d} grade alike");
+        }
+    }
+
+    #[test]
+    fn the_smallest_difference_an_i64_can_hold_grades_rather_than_panics() {
+        // ⛔ `Ratio.Bounded`, in miniature. The theorem is over `Int`, where
+        // negation always exists; the running code is `i64`, where `i64::MIN`
+        // has no positive counterpart. `abs()` PANICS on it and a wrapping
+        // negation would hand the grader a difference that never happened, so
+        // the magnitude is taken with `checked_abs` and an unrepresentable one
+        // grades HIGH — the direction that costs a look rather than a NAV.
+        let t = Tolerance::default();
+        assert_eq!(t.severity(i64::MIN), Severity::High);
+        assert_eq!(t.severity(i64::MAX), Severity::High);
     }
 }

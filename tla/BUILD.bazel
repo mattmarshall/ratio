@@ -454,6 +454,64 @@ tla_check(
     deps = [":s3_journal"],
 )
 
+# ⛔ A NAV struck over a difference nobody has explained.
+#
+# `Ratio.Tolerance` proves which differences block. It cannot say what a
+# SEQUENCE does — a reconciliation reporting a figure, a person explaining it,
+# the journal growing, somebody striking — and the console reported
+# `STATE_BLOCKED` for months with nothing consulting it before a strike.
+#
+# ⭐ The property worth the spec is `PostingDoesNotUnexplainABreak`. Pinning an
+# explanation to the journal prefix its accepter read is the obvious design and
+# it deadlocks: every note retired by the next posting, on the one morning a
+# book posts constantly.
+tla_library(
+    name = "close_gate",
+    srcs = ["CloseGate.tla"],
+)
+
+tla_check(
+    name = "close_gate_check",
+    size = "medium",
+    config = "MCCloseGate.cfg",
+    module = "MCCloseGate.tla",
+    deps = [":close_gate"],
+)
+
+# ⛔ The gate the screen reported and the command never asked about.
+# AStrikeIsNotTakenOverABlockingBreak goes red.
+tla_check(
+    name = "unexplained_high_strikes_check",
+    size = "medium",
+    config = "UnexplainedHighStrikes.cfg",
+    module = "UnexplainedHighStrikes.tla",
+    tags = ["manual"],
+    deps = [":close_gate"],
+)
+
+# ⛔ A note that outlives the figure it was written about.
+# ANewFigureRetiresItsExplanation goes red.
+tla_check(
+    name = "stale_explanation_unblocks_check",
+    size = "medium",
+    config = "StaleExplanationUnblocks.cfg",
+    module = "StaleExplanationUnblocks.tla",
+    tags = ["manual"],
+    deps = [":close_gate"],
+)
+
+# ⭐ THE DESIGN THAT WAS NOT SHIPPED, demonstrated to deadlock. Pin the note to
+# the prefix and a fund that posts on the morning of its close can never strike.
+# PostingDoesNotUnexplainABreak goes red.
+tla_check(
+    name = "explanation_pinned_to_the_prefix_check",
+    size = "medium",
+    config = "ExplanationPinnedToThePrefix.cfg",
+    module = "ExplanationPinnedToThePrefix.tla",
+    tags = ["manual"],
+    deps = [":close_gate"],
+)
+
 # ⛔ More than one view over ONE journal, and the two ways that goes silently
 # wrong.
 #

@@ -16,8 +16,9 @@ decision.
 
 ### ▶ [Try the live demo](https://ratio-ims.vercel.app/)
 
-Sign in with Google or email and watch a real fund's books tie out — five
-seeded funds, one of them blocked by a break nobody has explained yet. Every
+Sign in with Google or email and watch a real fund's books tie out — seven
+seeded funds, one blocked by a break nobody has explained, one struck because
+somebody did, and one keeping two books of record over a single journal. Every
 break, NAV strike and configuration version has a URL, so a figure can be sent
 to somebody rather than described.
 
