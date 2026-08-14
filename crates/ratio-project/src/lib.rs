@@ -1078,7 +1078,8 @@ impl Projection {
     /// through the base — so leaving it out would report a fund with fewer
     /// denominations than it has.
     pub fn currency_count(&self) -> i64 {
-        self.totals
+        self.only()
+            .totals
             .by_dim
             .keys()
             .map(|(_, c)| c.clone())
@@ -1093,7 +1094,7 @@ impl Projection {
     /// as the other is how an estimate stops being checkable against the thing
     /// it estimates — which is the only reason to have both numbers.
     pub fn total_rows(&self) -> i64 {
-        self.totals.by_dim.len() as i64
+        self.only().totals.by_dim.len() as i64
     }
 
     /// Corporate actions announced inside this prefix and not yet rewritten.
@@ -1215,6 +1216,7 @@ impl Projection {
     /// `Ratio.Actions.Factor.a_factor_can_succeed_where_the_rewrite_refuses`.
     pub fn units_as_of(&self, dim: i64, instrument: &str, day: &str) -> Result<AsOf<i64>> {
         let stored = self
+            .only()
             .positions
             .held
             .get(&(dim, Text::from(instrument)))
@@ -2598,7 +2600,7 @@ mod tests {
         // and the key in the lot book are the same allocation, not two equal
         // ones.
         let pos_key = p.positions().value.held.keys().find(|(_, i)| &**i == "vti").unwrap();
-        let lot_key = p.lots.open.keys().find(|(_, i)| &**i == "vti").unwrap();
+        let lot_key = p.only().lots.open.keys().find(|(_, i)| &**i == "vti").unwrap();
         assert!(std::sync::Arc::ptr_eq(&pos_key.1, &lot_key.1));
     }
 
