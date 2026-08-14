@@ -11,7 +11,9 @@ export async function Who() {
   return (
     <span className="who">
       <span className="avatar">{label.slice(0, 2).toUpperCase()}</span>
-      {label}
+      {/* Wrapped so a phone can drop the words while keeping the avatar — and
+          so a long email shrinks to an ellipsis instead of widening the header. */}
+      <span className="wholabel">{label}</span>
       {me ? (
         <form action="/api/auth/logout" method="post">
           <button type="submit" className="signout">

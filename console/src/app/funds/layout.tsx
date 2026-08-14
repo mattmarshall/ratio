@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Brand } from "@/components/Brand";
 import { CommandHint } from "@/components/CommandHint";
@@ -33,7 +34,11 @@ export default async function FundsLayout({
     <Palette funds={funds}>
       <div className="app">
         <header className="top">
-          <Brand />
+          {/* The way back to the fund list. Below 860px the rail is hidden, so
+              without this the only route out of a fund is the palette. */}
+          <Link href="/funds" className="brandlink" aria-label="Your funds">
+            <Brand />
+          </Link>
           <span className="crumb">
             Operations <span aria-hidden="true">/</span> <b>NAV</b>
           </span>
