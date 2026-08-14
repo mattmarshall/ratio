@@ -1519,7 +1519,6 @@ fn view_or_refuse(book: &std::path::Path, asked: Option<&str>) -> Result<String>
 /// `NavFold` resolves per entry. Conflating the two is `Terms`' mistake one
 /// level out.
 fn declared_views(book: &std::path::Path) -> Result<Vec<String>> {
-    use ratio_store::ConfigStore;
     let b = FileBook::open(book)?;
     let set = match b.active()? {
         Some(d) => RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))?,
@@ -1530,7 +1529,6 @@ fn declared_views(book: &std::path::Path) -> Result<Vec<String>> {
 
 /// Every book of record this fund keeps.
 fn views_cmd(book: PathBuf) -> Result<()> {
-    use ratio_store::ConfigStore;
     let b = FileBook::open(&book)?;
     let set = match b.active()? {
         Some(d) => RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))?,

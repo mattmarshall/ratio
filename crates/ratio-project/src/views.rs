@@ -114,8 +114,9 @@ impl ViewDef {
             .map(|v| {
                 let cal: Option<&Calendar> =
                     v.calendar.as_deref().and_then(|id| set.calendar(id));
+                let label = v.label().to_string();
                 ViewDef {
-                    display_name: v.label().to_string(),
+                    display_name: label,
                     id: v.id,
                     basis: v.basis,
                     settles_in: v.settles_in.unwrap_or(0),
