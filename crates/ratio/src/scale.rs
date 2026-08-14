@@ -842,11 +842,22 @@ pub fn run<S: Store>(store: &S, size: &str, id: &str, book_root: &Path) -> Resul
         );
     }
     if let Ok(json) = &outcome {
+        // ⛔ THE REPORT CARRIES ITS OWN COPY OF THE FOLD'S SERIES. The progress
+        // document lives under a per-SIZE key and the next run of this size
+        // overwrites it — so a permalink that read it live would show every old
+        // run redrawn as the newest one's curve. Embedded, the chart a lead is
+        // emailed is the fold THEY watched, forever.
+        let series = store
+            .get(&format!("progress-{size}"))
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "null".to_string());
+        let report = format!("{{\"id\":{},\"run\":{json},\"progress\":{series}}}", crate::watch::quote(id));
         // ⛔ THE PERMALINK FIRST, THE POINTER SECOND. A `latest-{size}` naming a
         // report that does not exist yet is a link a visitor can click into a
         // 404; the other order is at worst a report nobody points at for a
         // moment.
-        store.put(&format!("report-{id}.json"), json)?;
+        store.put(&format!("report-{id}.json"), &report)?;
         store.put(&format!("latest-{size}"), id)?;
     }
     runs.finish(size, published)?;

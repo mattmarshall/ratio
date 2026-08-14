@@ -278,7 +278,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         (_, "/balance") => ("200 OK", "text/html; charset=utf-8", page(BALANCE_BODY, "balance")),
         (_, "/breaks") => ("200 OK", "text/html; charset=utf-8", page(BREAKS_BODY, "breaks")),
         (_, "/rules") => ("200 OK", "text/html; charset=utf-8", page(RULES_BODY, "rules")),
-        (_, "/scale") => ("200 OK", "text/html; charset=utf-8", page(SCALE_BODY, "scale")),
+        (_, "/scale") => ("200 OK", "text/html; charset=utf-8", lead_page(SCALE_BODY)),
         (_, "/scale.json") => json(scale_json(book, &req.query)),
         (_, "/scale-runs.json") => json(scale_runs_json()),
         ("POST", "/scale/start") => json(scale_start(&req.body)),
@@ -301,6 +301,14 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         // The console's API, transcoded from ratio.v1.Console's google.api.http
         // rules. //crates/ratio-console:transcode_test asserts these routes are
         // exactly the ones the contract declares.
+        // The report page a lead's email links to. The id is read by the page's
+        // own script from its URL and fetched as JSON below — the HTML is one
+        // static shell for every run, so a bad id 404s at the fetch, rendered
+        // as a sentence rather than a broken page.
+        (_, p) if p.starts_with("/scale/runs/") && !p.ends_with(".json") => {
+            ("200 OK", "text/html; charset=utf-8", lead_page(REPORT_BODY))
+        }
+
         // A run's published report — the permalink a lead's email points into.
         // ⛔ The id is validated before it goes near a store key; an invalid one
         // is a 404, indistinguishable from a run that never happened.
@@ -1348,6 +1356,18 @@ fn safe_redirect(value: &str) -> &str {
 }
 
 /// Wrap a screen's body in the shared document, marking the current tab.
+/// A page served WITHOUT the operator nav — the lead-gen surfaces.
+///
+/// ⛔ SAME HEAD, SAME FOOT, NO TABS, and that is a product decision recorded in
+/// PLAN.md: a prospect landing on the demo should meet one claim and one
+/// button, not an operator's tab bar. The operator screens keep their nav;
+/// `/scale` and the run reports stand alone. Everything the hygiene tests hold
+/// a page to — self-contained, both themes, no external URL, no form element,
+/// no innerHTML — applies unchanged, because these bodies stay in `SCREENS`.
+fn lead_page(body: &str) -> String {
+    format!("{HEAD}{body}{FOOT}")
+}
+
 fn page(body: &str, current: &str) -> String {
     let tab = |slug: &str, href: &str, label: &str| {
         format!(
@@ -1356,12 +1376,11 @@ fn page(body: &str, current: &str) -> String {
         )
     };
     format!(
-        "{HEAD}<nav class=\"tabs\">{}{}{}{}{}</nav>{body}{FOOT}",
+        "{HEAD}<nav class=\"tabs\">{}{}{}{}</nav>{body}{FOOT}",
         tab("chat", "/chat", "Set up the books"),
         tab("balance", "/balance", "Trial balance"),
         tab("breaks", "/breaks", "Break report"),
-        tab("rules", "/rules", "Rules"),
-        tab("scale", "/scale", "Scale")
+        tab("rules", "/rules", "Rules")
     )
 }
 
@@ -1911,12 +1930,203 @@ function head(title, ...chips) {
 /// recorded. They are a measurement taken on a named machine on a named day, not
 /// something this process did — and the page says which is which, because a
 /// reader who cannot tell them apart will take the recorded one for a live one.
+
+/// The report a lead's email links to: one run, every figure, the fold as it
+/// happened.
+///
+/// ⛔ ONE STATIC SHELL FOR EVERY RUN. The id comes from the URL in the page's
+/// own script and the document from `/scale/runs/{id}.json` — so nothing a
+/// caller typed is ever interpolated into HTML on the server, and a bad id is a
+/// sentence, not a broken page. Built with the DOM throughout, same as every
+/// screen: the document under it embeds strings this server did not write.
+const REPORT_BODY: &str = r##"<div class="wrap">
+<header class="hero">
+  <p class="brand">ratio</p>
+  <h1 id="r-title">A fold, and the figures it struck</h1>
+  <p class="lede" id="r-sub">Reading the run…</p>
+</header>
+
+<div class="panels">
+  <section class="panel warn">
+    <h2>The cold build <span class="grows">grows with every trade</span></h2>
+    <dl id="r-cold" class="rep"></dl>
+  </section>
+  <section class="panel">
+    <h2>What it proves <span class="flat">flat in the lots</span></h2>
+    <dl id="r-flat" class="rep"></dl>
+    <p class="note">⛔ Two curves, deliberately side by side. Folding the journal
+    is O(entries) and grows forever; the NAV struck off the finished projection
+    reads one price per security and one rate per currency, and the tax lots are
+    not among them — <code>Ratio.Closure.factored_nav_never_reads_the_lots</code>.</p>
+  </section>
+</div>
+
+<figure class="livefig">
+  <svg id="r-chart" viewBox="0 0 640 200" role="img"
+       aria-label="Entries processed against elapsed seconds, as this run happened"></svg>
+  <figcaption class="note" id="r-cap">The fold as it happened — entries read
+  against elapsed seconds, from the run's own progress record.</figcaption>
+</figure>
+
+<section class="gate">
+  <h2>Reproduce it, or run your own</h2>
+  <p class="note" id="r-repro"></p>
+  <p class="note"><a href="/scale">Run the demo yourself</a> ·
+  <a href="/">open the operations console</a> ·
+  the code and the proofs: <code>github.com/mattmarshall/ratio</code></p>
+</section>
+</div>
+<style>
+.hero{margin:8px 0 26px}
+.hero .brand{font-size:13px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+.hero h1{font-size:30px;line-height:1.15;margin:0 0 12px;max-width:24ch}
+.lede{color:var(--text-2);max-width:60ch}
+.panels{display:grid;grid-template-columns:1fr;gap:18px}
+@media(min-width:760px){.panels{grid-template-columns:1fr 1fr}}
+.panel{padding:16px;border:1px solid var(--rule);border-radius:8px;
+  background:var(--raised)}
+.panel h2{font-size:15px;margin:0 0 12px;display:flex;gap:8px;
+  align-items:baseline;flex-wrap:wrap}
+.flat,.grows{font-size:11px;font-weight:700;letter-spacing:.04em;
+  text-transform:uppercase;padding:2px 7px;border-radius:99px}
+.flat{background:var(--accent);color:var(--ground)}
+.grows{background:var(--warn);color:var(--ground)}
+.rep{display:grid;grid-template-columns:1fr auto;gap:6px 16px;margin:0}
+.rep dt{color:var(--muted);font-size:14px}
+.rep dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.rep .big{font-size:20px;color:var(--accent)}
+.livefig{margin:20px 0 0}
+#r-chart{width:100%;height:auto;display:block}
+.gate{padding:16px;border:1px solid var(--rule);border-radius:8px;
+  background:var(--raised);margin:22px 0 0}
+.gate h2{font-size:15px;margin:0 0 8px}
+.gate a{color:var(--accent)}
+.note{font-size:13px;color:var(--muted);max-width:62ch}
+</style>
+<script>
+const fmt = n => n.toLocaleString('en-US');
+const ms = n => n >= 1000 ? (n / 1000).toFixed(1) + ' s' : n + ' ms';
+
+function row(dl, label, value, big) {
+  const dt = document.createElement('dt');
+  dt.textContent = label;
+  const dd = document.createElement('dd');
+  dd.textContent = value;
+  if (big) dd.className = 'big';
+  dl.append(dt, dd);
+}
+
+// The run's own series, redrawn from its embedded record — never from the live
+// progress key, which the next run of this size overwrites.
+function draw(samples, expected) {
+  const svg = document.getElementById('r-chart');
+  const NS = 'http://www.w3.org/2000/svg';
+  svg.replaceChildren();
+  if (!samples || samples.length < 2) return;
+  const W = 640, H = 200, PAD = 34;
+  const tMax = Math.max(samples[Math.max(samples.length - 1, 0)][0], 1);
+  const nMax = Math.max(expected || 0, samples[samples.length - 1][1], 1);
+  const x = t => PAD + (W - 2 * PAD) * t / tMax;
+  const y = n => H - PAD - (H - 2 * PAD) * n / nMax;
+  const el = (k, at) => {
+    const e = document.createElementNS(NS, k);
+    for (const [a, v] of Object.entries(at)) e.setAttribute(a, v);
+    svg.append(e);
+    return e;
+  };
+  el('line', {x1: PAD, y1: H - PAD, x2: W - PAD, y2: H - PAD,
+              stroke: 'var(--rule)', 'stroke-width': 1});
+  el('line', {x1: PAD, y1: PAD, x2: PAD, y2: H - PAD,
+              stroke: 'var(--rule)', 'stroke-width': 1});
+  el('path', {
+    d: samples.map((p, i) => (i ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + y(p[1]).toFixed(1)).join(' '),
+    fill: 'none', stroke: 'var(--warn)', 'stroke-width': 2,
+  });
+  const label = el('text', {x: W - PAD, y: PAD - 6, 'text-anchor': 'end',
+    'font-size': 11, fill: 'var(--muted)'});
+  label.textContent = fmt(samples[samples.length - 1][1]) + ' entries over '
+    + samples[samples.length - 1][0] + ' s';
+}
+
+async function load() {
+  // ⛔ THE ID NEVER TOUCHES MARKUP. It rides only in the fetch URL, and the
+  // server validates it again before it goes near a store key.
+  const id = location.pathname.split('/').pop();
+  const sub = document.getElementById('r-sub');
+  const r = await fetch('/scale/runs/' + encodeURIComponent(id) + '.json');
+  if (!r.ok) {
+    sub.textContent = 'No run is published under this id. Runs expire from '
+      + 'nobody\u2019s hands — this link never existed.';
+    return;
+  }
+  const d = await r.json();
+  const run = d.run || {};
+  sub.textContent = fmt(run.open_lots || 0) + ' open tax lots over '
+    + fmt(run.journal_entries || 0) + ' journal entries, folded cold from an '
+    + 'empty projection. Trial balance: ' + fmt(run.trial_balance || 0)
+    + '. Build ' + String(run.build || '').slice(0, 12) + '.';
+
+  const cold = document.getElementById('r-cold');
+  row(cold, 'cold build', ms(Math.round((run.cold_build_ns || 0) / 1e6)), true);
+  row(cold, 'of which parse', ms(Math.round((run.parse_ns || 0) / 1e6)));
+  row(cold, 'of which fold', ms(Math.round((run.fold_ns || 0) / 1e6)));
+  row(cold, 'reliefs', fmt(run.reliefs || 0));
+  row(cold, 'recorded run of this shape', ms(run.recorded_cold_build_ms || 0));
+
+  const flat = document.getElementById('r-flat');
+  row(flat, 'open tax lots', fmt(run.open_lots || 0), true);
+  row(flat, 'journal entries', fmt(run.journal_entries || 0));
+  row(flat, 'trial balance', fmt(run.trial_balance || 0), true);
+  row(flat, 'securities', fmt(run.securities || 0));
+  row(flat, 'lots per security', fmt(run.lots_per || 0));
+
+  document.getElementById('r-repro').textContent =
+    'This book is a pure function of its dials and seed \u2014 '
+    + 'ratio bench --securities ' + (run.securities || 0)
+    + ' --lots-per ' + (run.lots_per || 0)
+    + ' --currencies 3 --seed 1 reproduces these figures on your machine, '
+    + 'byte for byte.';
+
+  const prog = d.progress || {};
+  draw(prog.samples || [], prog.expected || run.journal_entries || 0);
+}
+load();
+</script>
+"##;
+
 const SCALE_BODY: &str = r##"<div class="wrap">
-<h1>Twenty million tax lots</h1>
-<p class="lede">A NAV does not read the tax lots. That is a claim about a fund
-with a lot of them, so turn the dial and watch what a period end actually reads.
-The arithmetic is emitted from <code>Ratio.Closure</code> — it is the same
-function the kernel runs, not a model of it.</p>
+<header class="hero">
+  <p class="brand">ratio</p>
+  <h1>Twenty million tax lots.<br>Folded cold in seventeen minutes.<br>
+  <span class="accent">Struck in twelve microseconds.</span></h1>
+  <p class="lede">A brand-new fund — 140 million journal entries, three
+  currencies, every lot dated — generated from a seed, folded from an empty
+  projection on real hardware, and the trial balance ties at zero. Not a video,
+  not a mock: the button below runs it, and you watch both curves happen.</p>
+  <p class="lede">The seventeen minutes is the recorded cold build. The NAV
+  struck off the finished projection is <strong>microseconds</strong>, because a
+  NAV never reads the tax lots — that is the theorem, and this page is where you
+  check it rather than take it.</p>
+</header>
+
+<!-- The mailing-list gate. ⛔ AN AFFORDANCE, NOT A BOUNDARY, and the comment in
+     `scale_unlock` says so in the same words: skipping it starts the same fold
+     under the same money controls; what it earns is the follow-up report with
+     the permalink to every figure. -->
+<section class="gate" id="gate">
+  <h2>Run it, and keep the figures</h2>
+  <p class="note">Leave an email and the demo unlocks. When your fold lands you
+  get the report — every figure, the fold as it happened, and the shape and seed
+  that reproduce it. No account, no card; you are joining the mailing list, and
+  that is the whole trade.</p>
+  <div class="gaterow">
+    <input id="lead-email" type="email" autocomplete="email"
+           placeholder="you@fund.example" aria-label="Work email">
+    <button class="fold" id="unlock">Unlock the demo</button>
+  </div>
+  <p class="note" id="gate-note"></p>
+</section>
 
 <!-- ⛔ A PLAIN DIV, NOT A FORM ELEMENT, AND THE FENCE IS WORTH MORE THAN THE
      CONVENIENCE. No screen this binary serves has one: `approval_is_a_person_
@@ -1927,6 +2137,9 @@ function the kernel runs, not a model of it.</p>
      ⚠ The assertion is a grep over this source, so naming the tag here at all
      would trip it. That is the check working, not a false alarm to route
      around. -->
+
+<details class="depth">
+<summary>The arithmetic, if you want to turn the dials yourself</summary>
 
 <div id="dials" class="dials">
   <label>Securities <input id="securities" type="number" min="0" max="100000000" value="500"></label>
@@ -1969,9 +2182,10 @@ function the kernel runs, not a model of it.</p>
     <code>ratio bench --fold --book DIR</code>.</p>
   </section>
 </div>
+</details>
 
 <section class="runs">
-  <h2>Fold one yourself</h2>
+  <h2>Run it now</h2>
   <p class="note" id="runner-note"></p>
   <table class="mini runs-table">
     <thead><tr><th>Shape</th><th class="n">Open lots</th><th class="n">Recorded</th><th class="n">This run</th><th></th></tr></thead>
@@ -2010,6 +2224,19 @@ function the kernel runs, not a model of it.</p>
 first is the overclaim this screen exists to make hard.</strong> "Twenty million
 lots are free" is true of the strike and false of the fold. Both are on this
 page for that reason.</p>
+
+<footer class="tail">
+  <p>Ratio keeps a fund's books as an append-only journal of conserved postings
+  and proves what must be true of them. The proofs are Lean 4, the model checks
+  are TLA+, the kernel is Rust emitted from the Lean.</p>
+  <!-- ⛔ NO EXTERNAL URL ON ANY SCREEN — `every_page_is_self_contained` is
+       blunt on purpose. The console link is `/`, which already redirects
+       there; the repository is cited as text, and the follow-up email carries
+       the clickable link. -->
+  <p><a href="/">Open the operations console</a> ·
+  <a href="/balance">See a live trial balance</a> ·
+  the code and the proofs: <code>github.com/mattmarshall/ratio</code></p>
+</footer>
 </div>
 <style>
 .lede{color:var(--text-2);max-width:60ch}
@@ -2065,6 +2292,24 @@ button.fold[disabled]{background:transparent;color:var(--muted);
 .livefig{margin:12px 0 0}
 #live-chart{width:100%;height:auto;display:block}
 .note{font-size:13px;color:var(--muted);max-width:62ch}
+.hero{margin:8px 0 26px}
+.hero .brand{font-size:13px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+.hero h1{font-size:34px;line-height:1.15;margin:0 0 14px;max-width:22ch}
+.hero .accent{color:var(--accent)}
+.gate{padding:16px;border:1px solid var(--accent);border-radius:8px;
+  background:var(--raised);margin:0 0 20px}
+.gate h2{font-size:15px;margin:0 0 8px}
+.gaterow{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 6px}
+.gaterow input{flex:1;min-width:220px;padding:8px 10px;font:inherit;
+  font-size:14px;background:var(--surface);color:var(--text);
+  border:1px solid var(--rule);border-radius:6px}
+.depth{margin:20px 0}
+.depth>summary{cursor:pointer;font-size:14px;font-weight:600;
+  color:var(--muted);padding:6px 0}
+.tail{margin:30px 0 0;padding-top:16px;border-top:1px solid var(--rule);
+  font-size:13px;color:var(--muted)}
+.tail a{color:var(--accent)}
 </style>
 <script>
 // ⛔ THE ARITHMETIC IS NOT HERE. Every figure below comes from /scale.json,
@@ -2072,6 +2317,11 @@ button.fold[disabled]{background:transparent;color:var(--muted);
 // copy of the formula in JavaScript would be a second answer to a proved
 // question, and the two would drift the first time the proof changed.
 const fmt = n => n.toLocaleString('en-US');
+// ⛔ localStorage HOLDS ONLY WHAT THE VISITOR TYPED ABOUT THEMSELVES, and it is
+// a convenience, not a session: the server re-validates the address on every
+// call and the money controls never read it.
+const LEAD = 'ratio-lead-email';
+const lead = () => localStorage.getItem(LEAD) || '';
 const DIALS = ['securities', 'currencies', 'lots-per', 'open-actions'];
 const dials = document.getElementById('dials');
 let pending = null;
@@ -2118,6 +2368,31 @@ async function tick() {
       + 'Ratio.Closure.a_quiet_nav_never_reads_the_lots. Raise the open actions '
       + 'above zero to see what a rewrite would have cost.';
 }
+
+// ── the gate ────────────────────────────────────────────────────────────
+function gatePaint() {
+  const has = !!lead();
+  document.getElementById('gate-note').textContent = has
+    ? 'Unlocked for ' + lead() + ' — your report lands when the fold does.'
+    : '';
+  document.getElementById('gate').classList.toggle('open', has);
+  return has;
+}
+
+document.getElementById('unlock').addEventListener('click', async () => {
+  const email = document.getElementById('lead-email').value.trim();
+  const note = document.getElementById('gate-note');
+  const r = await (await fetch('/scale/unlock', {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({email}),
+  })).json();
+  if (r.error) { note.textContent = r.error; return; }
+  localStorage.setItem(LEAD, email);
+  gatePaint();
+  runs();
+});
+gatePaint();
 
 // ── the runs panel ──────────────────────────────────────────────────────
 const ms = n => n >= 1000 ? (n / 1000).toFixed(1) + ' s' : n + ' ms';
@@ -2298,14 +2573,15 @@ async function runs() {
     b.className = 'fold';
     b.textContent = running ? 'running' : 'Fold it';
     const cooling = s.again_at > d.now;
-    b.disabled = !d.runner || !!d.running || cooling;
+    b.disabled = !d.runner || !!d.running || cooling || !lead();
+    if (!lead()) b.title = 'Unlock the demo above first';
     if (cooling && !d.running) b.textContent = 'cooling';
     b.addEventListener('click', async () => {
       b.disabled = true;
       const r = await (await fetch('/scale/start', {
         method: 'POST',
         headers: {'content-type': 'application/json'},
-        body: JSON.stringify({size: s.size}),
+        body: JSON.stringify({size: s.size, email: lead()}),
       })).json();
       if (r.error || r.why) note.textContent = r.error || r.why;
       runs();
@@ -2829,12 +3105,13 @@ mod tests {
     // omission looks exactly like a suite that passes. Every screen the route
     // table serves belongs here; `every_screen_the_router_serves_is_listed_here`
     // is what stops the next one being forgotten.
-    const SCREENS: [(&str, &str); 5] = [
+    const SCREENS: [(&str, &str); 6] = [
         ("chat", CHAT_BODY),
         ("balance", BALANCE_BODY),
         ("breaks", BREAKS_BODY),
         ("rules", RULES_BODY),
         ("scale", SCALE_BODY),
+        ("report", REPORT_BODY),
     ];
 
     #[test]
@@ -2870,6 +3147,11 @@ mod tests {
     #[test]
     fn the_nav_marks_exactly_the_current_screen() {
         for (name, body) in SCREENS {
+            // ⚠ The lead pages are served WITHOUT the nav — `lead_page` — so
+            // "which tab is current" is a question they never answer.
+            if name == "scale" || name == "report" {
+                continue;
+            }
             let html = page(body, name);
             // Count inside the nav only — the stylesheet mentions the same
             // attribute in a selector, and counting the whole document made
@@ -2884,32 +3166,25 @@ mod tests {
     }
 
     #[test]
-    fn there_are_five_screens_and_no_sixth() {
-        // PLAN.md said "Three. Not four." The fourth is the MCP conversation
-        // itself, which that rule assumed would happen in someone else's
-        // client — "the MCP conversation IS the authoring interface". It still
-        // is; this screen shows it rather than replacing it, and there is
-        // still no portal, no dashboard, no settings and no rule editor.
-        //
-        // ⭐ THE FIFTH IS `scale`, AND IT IS A DELIBERATE ADDITION RATHER THAN
-        // DRIFT. `deploy/seed-demo-funds.sh` names the gap it closes in as many
-        // words — "THE SCALE ARGUMENT WAS UNSHOWABLE… 'A NAV does not read the
-        // tax lots' is a claim about a fund with a lot of them" — and the demo's
-        // largest fund holds eight hundred. The screen turns the dials of
-        // `Ratio.Closure` and shows the recorded cold build beside the answer,
-        // so the claim can be CHECKED rather than taken.
-        //
-        // ⛔ IT READS AND NOTHING ELSE. No portal, no dashboard, no settings, no
-        // rule editor, and no button that spends anybody's money — the tests
-        // above hold it to having no form and no write. This assertion is the
-        // moment to notice if that ever stops being true, which is why it counts
-        // rather than describes.
+    fn the_nav_has_four_tabs_and_the_lead_pages_stand_alone() {
+        // PLAN.md said "Three. Not four." The fourth is the MCP conversation.
+        // The fifth screen — scale — was in this nav for one release and LEFT
+        // it deliberately: it became the lead-gen front door, and a prospect
+        // landing there should meet one claim and one button, not an operator's
+        // tab bar. It and the run reports are served by `lead_page`, WITHOUT
+        // the nav, and are still held to every page fence because they stay in
+        // SCREENS. This assertion is the moment to notice if the nav grows —
+        // or if the lead page quietly rejoins it.
         let html = page(CHAT_BODY, "chat");
         let tabs = html.matches("<a href=").count();
-        assert_eq!(tabs, 5, "the nav offers {tabs} screens");
+        assert_eq!(tabs, 4, "the nav offers {tabs} screens");
+        // And the standalone wrapper really is nav-free: a lead page with a tab
+        // bar is an operator screen again.
+        assert!(!lead_page(SCALE_BODY).contains("<nav"), "the lead page grew the nav");
+        assert!(!lead_page(REPORT_BODY).contains("<nav"), "the report page grew the nav");
     }
 
-    #[test]
+#[test]
     fn the_chat_screen_says_what_the_model_cannot_do() {
         // The fence is invisible unless something names it. A viewer who never
         // asks the model to approve should still leave knowing it cannot.
@@ -3053,10 +3328,20 @@ mod tests {
         let mut served: Vec<&str> = router
             .lines()
             // The route arms, not this test's own mention of them.
-            .filter(|l| l.contains("=> (\"200 OK\", \"text/html; charset=utf-8\", page("))
+            // ⛔ ROUTE ARMS ONLY, for both wrappers. A bare `lead_page(` match
+            // also catches this test's own assertions and the wrapper's
+            // definition — include_str! reads the whole file, tests included —
+            // and the first version of this branch did exactly that.
+            .filter(|l| {
+                l.contains("text/html; charset=utf-8\", page(")
+                    || l.contains("text/html; charset=utf-8\", lead_page(")
+            })
             .filter_map(|l| l.split("page(").nth(1))
             .filter_map(|rest| rest.split(',').next())
-            .map(|body| body.trim())
+            // ⚠ A `lead_page(BODY))` arm carries no `, "slug"` tail, so the
+            // token keeps the closing parens; a `page(BODY, "slug")` one does
+            // not. Trim both to the bare const name.
+            .map(|body| body.trim().trim_end_matches(')'))
             .collect();
         served.sort_unstable();
         served.dedup();
@@ -3072,6 +3357,7 @@ mod tests {
                         "BREAKS_BODY" => BREAKS_BODY,
                         "RULES_BODY" => RULES_BODY,
                         "SCALE_BODY" => SCALE_BODY,
+                        "REPORT_BODY" => REPORT_BODY,
                         other => panic!(
                             "the router serves {other}, which this test does not know how to \
                              resolve — add it to both SCREENS and this match"
