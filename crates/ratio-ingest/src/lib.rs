@@ -184,6 +184,18 @@ impl Value {
             _ => None,
         }
     }
+    /// The ISO day, and ONLY from a value the template declared as a date.
+    ///
+    /// ⛔ NOT `as_text`, WHICH ANSWERS FOR BOTH. A `Text` column holding
+    /// `03/04/2026` would come back from that one unparsed, and whatever read it
+    /// would be reading the wrong one of March and April. A `Date` has already
+    /// been through the template's declared format and is ISO by construction.
+    pub fn as_date(&self) -> Option<&str> {
+        match self {
+            Value::Date { iso } => Some(iso),
+            _ => None,
+        }
+    }
 }
 
 /// A canonical fact: what a row asserted, before anything was resolved.
@@ -446,6 +458,24 @@ pub struct PostsDecl {
     /// mini-language in a mapping file is a second thing to get wrong, and
     /// every counterparty file this has met needs one of these two.
     pub amount: String,
+
+    /// The field carrying the day the event happened, which becomes the
+    /// entry's trade date.
+    ///
+    /// ⛔ DECLARED, NEVER INFERRED, AND THAT IS THE WHOLE POINT OF PUTTING IT
+    /// HERE. Which column is the trade date is a mapping decision exactly like
+    /// which rule a `B` means. The tempting inference is "the fact's only date",
+    /// and it is wrong the moment a counterparty sends a settlement date beside
+    /// the trade date: the holding period would come out short by the settlement
+    /// lag, every lot would be classified against it, and nothing downstream
+    /// would object.
+    ///
+    /// ⚠ ABSENT IS ALLOWED AND MEANS ABSENT. The entry then carries no trade
+    /// date, the lots it opens carry none, and the holding-period methods refuse
+    /// them rather than guessing — which is what every template did before this
+    /// existed. A price file has no trade date and should not pretend to.
+    #[serde(default)]
+    pub dated: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -533,6 +563,22 @@ impl Template {
             if p.rules.is_empty() {
                 out.push("posts declares no rules, so nothing would ever post".into());
             }
+            // ⛔ AND IT HAS TO BE A DATE, not merely a field that exists. Pointed
+            // at a text column the accessor answers `None`, so the entry would
+            // quietly carry no trade date and the lots it opened would be
+            // refused by every holding-period method — a silent return to the
+            // behaviour this declaration exists to end.
+            if let Some(d) = &p.dated {
+                match self.fact.values.iter().find(|v| &v.field == d) {
+                    None => out.push(format!(
+                        "posts is dated by `{d}`, which the fact does not read"
+                    )),
+                    Some(f) if !matches!(f.value, ValueDecl::Date { .. }) => out.push(format!(
+                        "posts is dated by `{d}`, which is not declared as a date"
+                    )),
+                    Some(_) => {}
+                }
+            }
         }
         if self.fact.reference.is_empty() {
             out.push("the fact has no reference column, so its rows cannot be cited".into());
@@ -594,6 +640,32 @@ impl Template {
                 s.push_str(" optional");
             }
             s.push('\n');
+        }
+        // ⛔ THE JOURNAL-FACING HALF, WHICH THIS FORM DID NOT SHOW AT ALL. The
+        // rendered template is what the console's template screen prints as
+        // `Template.form` — "the template as a person reads it" — and it stopped
+        // at the values, so the block deciding WHICH RULE each row posts under
+        // was invisible to the person being asked to trust it. Reference data
+        // and a file that books trades read identically.
+        if let Some(p) = &self.fact.posts {
+            s.push_str(&format!("\n  posts      by \"{}\"\n", p.discriminator));
+            s.push_str(&format!("    {:<12}{}\n", "amount", p.amount));
+            // ⚠ NAMED EVEN WHEN ABSENT, because absent is a decision with a
+            // consequence: the lots this file opens carry no acquisition date
+            // and every holding-period method refuses them.
+            s.push_str(&format!(
+                "    {:<12}{}\n",
+                "dated",
+                p.dated.as_deref().unwrap_or("nothing — its lots get no acquisition date"),
+            ));
+            for (value, rule) in &p.rules {
+                s.push_str(&format!("    {value:<12}-> {rule}\n"));
+            }
+        } else {
+            // ⛔ A MODE, NOT A GAP, and the form says which. Reporting the design
+            // as an omission is how a demo comes to show red for the thing
+            // working.
+            s.push_str("\n  posts      nothing — reference data, recorded and never booked\n");
         }
         s.push_str("}\n");
         s
@@ -794,6 +866,22 @@ fn project_row(
             received: delivery.received,
         },
     })
+}
+
+/// The day an admitted fact happened, as the template declares it.
+///
+/// ⛔ THE FIGURE THIS DECIDES IS THE ONE WITH NO COUNTERPARTY. It becomes
+/// `JournalEntry::trade_date`, which is what `Ratio.Lots.Relief` establishes a
+/// holding period from — so it decides whether a gain is short-term or
+/// long-term. A wrong NAV meets a reconciliation; a gain classified against the
+/// wrong day meets nobody until a tax authority asks.
+///
+/// `None` when the template declares no dated field, or when the fact does not
+/// carry it. Both mean the lots this opens have no acquisition date, and every
+/// holding-period method refuses such a lot rather than defaulting.
+pub fn dated_of<'a>(template: &Template, fact: &'a Fact) -> Option<&'a str> {
+    let field = template.fact.posts.as_ref()?.dated.as_ref()?;
+    fact.values.get(field)?.as_date()
 }
 
 /// What an admitted fact posts as: a rule id and an amount in minor units.
