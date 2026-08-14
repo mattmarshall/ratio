@@ -197,6 +197,20 @@ the conserved one, and the kernel never said it was.
   sharper: a PURCHASE moves cash into investments, both assets, so recognising
   it or not moves a NAV by ZERO. **Subscriptions are the shape that works**,
   exactly as they were for the multi-currency version that was vacuous twice.
+- ⚠ **WHAT `//deploy:seed_test` ACTUALLY PROVES, WHICH IS LESS THAN IT LOOKS.**
+  It checks the two views' recorded NAVs DIFFER and that the book ties. It does
+  NOT check that the entries in flight account for the difference, because
+  `ratio reconcile` does not exist and waits on the same per-view fold the BFF
+  does. The stronger claim — `Ratio.Views.two_views_differ_by_exactly_what_is_
+  in_flight` — is proved in Lean and asserted nowhere in the demo. ⛔ The gap is
+  written into the script rather than left to be inferred from its absence.
+- ⚠ **THE GENERATOR'S SETTLEMENT TAIL IS ANCHORED TO THE DAY IT RUNS, AND ONLY
+  IT.** `FIRST_TRADE_DAY` is a constant so that every measurement taken against
+  a generated book is reproducible, and that stays true: `--settle-tail` writes
+  the ONLY entries dated from a day the caller passes in. It has to be, because
+  `ratio strike` values at NOW and a tail that has already settled by then makes
+  the two views agree. So `ratio gen` with no `--views` is still byte-identical
+  run to run, and `ratio gen --settle-tail` deliberately is not.
 
 ---
 
