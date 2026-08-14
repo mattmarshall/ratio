@@ -2944,7 +2944,7 @@ mod tests {
         // Without this the loop above could be passing because `a` was blocked
         // too, which would be a different bug wearing the same green.
         assert!(
-            transcode::serve(&console, "GET", "/v1/funds/a/accounts", "", "").is_ok(),
+            transcode::serve(&console, "GET", "/v1/funds/a/views/book/accounts", "", "").is_ok(),
             "the subject's own fund a must be readable"
         );
 
@@ -2966,8 +2966,8 @@ mod tests {
         std::fs::write(root.join("MEMBERSHIP.tsv"), "S\ta\n").unwrap();
 
         let console = Console::new(&root); // Subject::Local
-        assert!(transcode::serve(&console, "GET", "/v1/funds/a/accounts", "", "").is_ok());
-        assert!(transcode::serve(&console, "GET", "/v1/funds/b/accounts", "", "").is_ok());
+        assert!(transcode::serve(&console, "GET", "/v1/funds/a/views/book/accounts", "", "").is_ok());
+        assert!(transcode::serve(&console, "GET", "/v1/funds/b/views/book/accounts", "", "").is_ok());
         let funds = transcode::serve(&console, "GET", "/v1/funds", "", "").unwrap();
         assert!(funds.contains("funds/a") && funds.contains("funds/b"));
     }
@@ -2990,9 +2990,9 @@ mod tests {
 
         // `b` is granted by nobody and is seen anyway — the whole point. If open
         // mode leaked into `scoped`, the tenancy test above would already be red.
-        assert!(transcode::serve(&console, "GET", "/v1/funds/a/accounts", "", "").is_ok());
+        assert!(transcode::serve(&console, "GET", "/v1/funds/a/views/book/accounts", "", "").is_ok());
         assert!(
-            transcode::serve(&console, "GET", "/v1/funds/b/accounts", "", "").is_ok(),
+            transcode::serve(&console, "GET", "/v1/funds/b/views/book/accounts", "", "").is_ok(),
             "open mode must grant a fund MEMBERSHIP omits"
         );
         let funds = transcode::serve(&console, "GET", "/v1/funds", "", "").unwrap();
@@ -3275,18 +3275,42 @@ mod tests {
         use crate::transcode::JsonView;
         let d = fresh("wireints");
         book(&d);
-        let f = Console::new(&d).get_fund("funds/demo").unwrap().to_json();
-        for field in ["entryCount", "openBreakCount", "netAssetValue",
-                      "trialBalanceDifference", "openDifference"] {
+        let c = Console::new(&d);
+        let f = c.get_fund("funds/demo").unwrap().to_json();
+        for field in ["entryCount", "openBreakCount", "trialBalanceDifference",
+                      "pendingFactCount", "viewCount", "longTermDays"] {
             assert!(
                 f.contains(&format!("\"{field}\":\"")),
                 "{field} is not a string in {f}"
             );
         }
-        // And enums cross as their names, not their numbers.
-        assert!(f.contains("\"state\":\"BLOCKED\"") || f.contains("\"state\":\"STRUCK\"")
-                || f.contains("\"state\":\"IN_REVIEW\"") || f.contains("\"state\":\"AWAITING_PRICES\""),
-                "state is not a canonical enum name: {f}");
+
+        // ⛔ AND THE VIEW, WHICH IS WHERE THE MONEY WENT. Eleven figures moved
+        // off `Fund` onto `View`, and checking only the fund would leave the
+        // message carrying almost every int64 on this service unchecked — the
+        // test would have gone on passing while saying less each time a field
+        // moved.
+        let v = c.get_view(&demo_view()).unwrap().to_json();
+        for field in ["netAssetValue", "totalDebit", "totalCredit", "openDifference",
+                      "openBreakCount", "openLotCount", "positionCount",
+                      "journalPosition", "settlementOpenDays", "holidayCount",
+                      "unplaceableEntryCount"] {
+            assert!(
+                v.contains(&format!("\"{field}\":\"")),
+                "{field} is not a string in {v}"
+            );
+        }
+
+        // And enums cross as their names, not their numbers — on both, since
+        // both carry the same `Fund.State`.
+        for json in [&f, &v] {
+            assert!(json.contains("\"state\":\"BLOCKED\"") || json.contains("\"state\":\"STRUCK\"")
+                    || json.contains("\"state\":\"IN_REVIEW\"")
+                    || json.contains("\"state\":\"AWAITING_PRICES\""),
+                    "state is not a canonical enum name: {json}");
+        }
+        assert!(v.contains("\"basis\":\"RECORDED\""),
+                "a book declaring no views recognises in journal order: {v}");
     }
 
     #[test]
@@ -3380,7 +3404,7 @@ mod tests {
 
         let c = Console::new(&d);
         let listed = c.list_breaks(&demo_view(), "").unwrap().breaks;
-        assert_eq!(listed[0].name, "funds/demo/breaks/1",
+        assert_eq!(listed[0].name, "funds/demo/views/book/breaks/1",
             "the name must name the fund that was asked for, not the report's book");
         assert!(c.get_break(&listed[0].name).is_ok(), "the listed name did not fetch");
     }
@@ -3406,7 +3430,7 @@ mod tests {
         std::fs::write(d.join("reports/b.pb"), mk("b").encode_to_vec()).unwrap();
         let second = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks[0].name.clone();
         assert_eq!(first, second);
-        assert_eq!(first, "funds/demo/breaks/1");
+        assert_eq!(first, "funds/demo/views/book/breaks/1");
         // And it is fetchable by that name.
         assert!(Console::new(&d).get_break(&first).is_ok());
     }
@@ -3721,7 +3745,7 @@ mod tests {
         drop(b);
 
         let c = Console::new(&d);
-        let cash = c.get_account("funds/demo/accounts/2").unwrap();
+        let cash = c.get_account(&format!("{}/accounts/2", demo_view())).unwrap();
         assert_eq!(cash.balance, "-500");
         assert!(cash.abnormal, "an asset with a credit balance sits on the abnormal side");
 

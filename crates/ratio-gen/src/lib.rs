@@ -146,6 +146,92 @@ fn between(seed: u64, a: u64, b: u64, lo: i64, hi: i64) -> i64 {
 /// in this crate.
 const FIRST_TRADE_DAY: i64 = 13_151;
 
+/// One book of record a generated fund keeps.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GenView {
+    pub id: String,
+    /// `None` recognises on the trade date. `Some(n)` settles `n` open days
+    /// after it, over the calendar this generator declares.
+    pub settles_in: Option<i64>,
+}
+
+/// The books of record a generated fund keeps, and the tail that makes them
+/// disagree.
+///
+/// ⛔ NOT PART OF `Shape`, WHICH MIRRORS `Ratio.Closure.Dials`. A view is not a
+/// dimension of a fund's SIZE; it is a term of its administration. Putting it in
+/// `Shape` would put it in `ratio bench`'s cost table, where it would sit beside
+/// `securities` and `lots_per` meaning nothing.
+#[derive(Clone, Debug, Default)]
+pub struct Books {
+    /// An empty list declares no `[[view]]` section at all, which is what every
+    /// fund generated before this looked like and must go on looking like.
+    pub views: Vec<GenView>,
+
+    /// The last trading day of the tail, as days since the epoch.
+    ///
+    /// ⛔ PASSED IN, NOT READ FROM A CLOCK. This crate has no `now` and is not
+    /// getting one: it exists to produce the same book from the same dials, and
+    /// the seam where the wall clock enters belongs at the CLI — the same place
+    /// `strike` takes its valuation point.
+    ///
+    /// ⚠ AND A CALLER WANTING THE TAIL TO STRADDLE A VALUATION POINT MUST PASS
+    /// THAT POINT'S DAY. `ratio strike` values at NOW, so `deploy` passes today.
+    /// Folded to the end of history every view agrees, because everything
+    /// eventually settles — `Ratio.Views.a_fold_with_no_cut_hides_the_
+    /// settlement_gap` — so a tail that has already settled demonstrates
+    /// nothing at all.
+    pub tail_ends: i64,
+
+    /// Trading days at the end of the journal the tail is spread over.
+    pub settle_tail: i64,
+
+    /// How many entries in that tail are SUBSCRIPTIONS.
+    ///
+    /// ⛔ SUBSCRIPTIONS, BECAUSE A PURCHASE MOVES A NAV BY ZERO. Cash and
+    /// investments are both assets, so recognising a trade or not leaves the
+    /// figure identical — two views would agree while every line of the engine
+    /// ran. A subscription credits equity, which the NAV filter excludes, so the
+    /// asset side is left holding the balance and the figure MOVES. HANDOFF.md
+    /// records the multi-currency version of this being written vacuously twice.
+    pub subscriptions_in_tail: i64,
+}
+
+impl Books {
+    /// Whether this fund declares any views at all.
+    pub fn declared(&self) -> bool {
+        !self.views.is_empty()
+    }
+
+    /// The `[[calendar]]` and `[[view]]` sections, appended to the generated
+    /// configuration. Empty when nothing is declared, so a fund generated
+    /// without views produces byte-identical TOML to one generated before views
+    /// existed.
+    fn toml(&self) -> String {
+        if !self.declared() {
+            return String::new();
+        }
+        // ⚠ ONE CALENDAR, NAMED, AND EVERY SETTLEMENT VIEW POINTS AT IT.
+        // `View::check` refuses a settlement view naming a calendar nobody
+        // declared, at READ time — so emitting the view without the calendar
+        // would produce a configuration this generator could not read back.
+        let mut s = String::from("\n[[calendar]]\nid = \"settlement\"\n");
+        for v in &self.views {
+            s.push_str("\n[[view]]\n");
+            s.push_str(&format!("id = \"{}\"\n", v.id));
+            match v.settles_in {
+                None => s.push_str("basis = \"trade\"\n"),
+                Some(n) => {
+                    s.push_str("basis = \"settlement\"\n");
+                    s.push_str(&format!("settles_in = {n}\n"));
+                    s.push_str("calendar = \"settlement\"\n");
+                }
+            }
+        }
+        s
+    }
+}
+
 /// Ticker for security `i`. Deterministic, and shaped like a real one.
 pub fn ticker(i: i64) -> String {
     let letters = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
