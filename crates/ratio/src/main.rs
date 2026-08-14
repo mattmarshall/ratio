@@ -77,6 +77,7 @@ usage:
 The book defaults to ./book, or $RATIO_BOOK if set.
 ";
 
+mod scale;
 mod watch;
 
 fn main() -> Result<()> {

@@ -8,6 +8,7 @@ rust_binary(
     name = "ratio",
     srcs = [
         "src/main.rs",
+        "src/scale.rs",
         "src/watch.rs",
     ],
     edition = "2021",
