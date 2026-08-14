@@ -51,6 +51,19 @@ RUN chmod +x /usr/local/bin/ratio /usr/local/bin/entrypoint.sh
 # asserts the IMAGE contains one. The two are different failures — a correct
 # script whose output never reached the image is exactly the blank-ledger bug
 # this block was written for.
+#
+# ⛔ THE BLOCKED FUND MUST HAVE NO `NAVS`, AND THAT IS NOT A TYPO. This used to
+# assert the opposite, because the seeder used to declare harbourline blocked
+# and then strike it anyway. `ratio strike` now refuses a fund with an
+# unexplained blocking break or an unresolved fact, so the image asserts the
+# refusal held — and asserts, on the sixth fund, that explaining the break lets
+# the NAV through. A gate nobody has watched open is indistinguishable from one
+# that is stuck. `deploy/seed_test.sh` makes the same pair of assertions against
+# the script; these two files have to move together.
+#
+# ⚠ NOTHING ON A PULL REQUEST RUNS THIS FILE. `deploy.yml` fires on push to
+# main, so a stale assertion here is invisible until it is merged and the deploy
+# goes red. Edit it in the commit that changes the seeder, not afterwards.
 RUN set -eu; \
     echo "== /opt/demo-book =="; \
     find /opt/demo-book -maxdepth 2 -print | sed 's|^|  |' || true; \
@@ -65,14 +78,18 @@ RUN set -eu; \
     echo "demo book ok: $(find /opt/demo-book -type f | wc -l) file(s)"; \
     echo "== /opt/demo-funds =="; \
     ls -1 /opt/demo-funds | sed 's|^|  |'; \
-    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 5 || { echo "FAIL: expected 5 funds"; exit 1; }; \
+    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 7 || { echo "FAIL: expected 7 funds"; exit 1; }; \
     for f in /opt/demo-funds/*/; do \
       test -s "$f/accounts.json" || { echo "FAIL: $f has no chart"; exit 1; }; \
     done; \
-    test -s /opt/demo-funds/harbourline-global-value/NAVS || { echo "FAIL: no NAV struck"; exit 1; }; \
+    test ! -s /opt/demo-funds/harbourline-global-value/NAVS || { echo "FAIL: a blocked fund struck a NAV"; exit 1; }; \
+    test -s /opt/demo-funds/pennington-select-income/NAVS || { echo "FAIL: the explained fund has no NAV — the gate did not open"; exit 1; }; \
+    test -s /opt/demo-funds/pennington-select-income/explanations.jsonl || { echo "FAIL: no explanation on the explained fund"; exit 1; }; \
+    test -s /opt/demo-funds/marlowe-dual-basis/NAVS || { echo "FAIL: the dual-basis fund has no NAV"; exit 1; }; \
+    test "$(wc -l < /opt/demo-funds/marlowe-dual-basis/NAVS)" -ge 2 || { echo "FAIL: the dual-basis fund struck fewer than two views"; exit 1; }; \
     ashcombe=$(wc -l < /opt/demo-funds/ashcombe-global-equity/journal.jsonl); \
     test "$ashcombe" -gt 1000 || { echo "FAIL: the generated fund has $ashcombe entries — the demo shows no scale"; exit 1; }; \
-    echo "demo funds ok: 4, and $ashcombe entries on the generated one"
+    echo "demo funds ok: 7, and $ashcombe entries on the generated one"
 
 # The adapter polls this until the server answers, so a cold start does not
 # race the first request.

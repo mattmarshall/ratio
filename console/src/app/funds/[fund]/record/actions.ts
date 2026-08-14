@@ -2,17 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { caller } from "@/lib/caller";
+import { hundredths } from "@/lib/trade";
 import { applyEvent, AuthError, Refused } from "@/wire/client";
 import type { ApplyEventResponse } from "@/wire/types";
 
 /** What a form gets back. ⛔ Never a thrown error — see `submit`. */
 export type Result =
-  | { ok: true; response: ApplyEventResponse }
+  | { ok: true; response: ApplyEventResponse; signature: string }
   | { ok: false; error: string }
   | null;
-
-/** A whole number of minor units, with an optional sign. */
-const AMOUNT = /^-?\d+$/;
 
 /**
  * Record an event, or preview what recording it would do.
@@ -25,10 +23,17 @@ const AMOUNT = /^-?\d+$/;
  * figure can be accounted for, which has to include the figure not being there.
  * A digest is the opposite of that.
  *
- * ⛔ AND THE AMOUNT IS VALIDATED AS A STRING. It is minor units as an int64,
- * sent as a string precisely so nothing makes it a double; `parseFloat` here to
- * "check it is a number" would undo that in one character, on the one screen
- * where the value becomes a journal entry.
+ * ⛔ AND THE AMOUNT IS VALIDATED AS A STRING, BY THE PARSER THE SERVER USES.
+ * It is a decimal in MAJOR units — `"250000.00"` — and the server reads it by
+ * splitting on the point; `parseFloat` here to "check it is a number" would undo
+ * that in one character, on the one screen where the value becomes a journal
+ * entry.
+ *
+ * ⚠ THIS USED TO REFUSE THE CONTRACT'S OWN FORMAT. The check was `^-?\d+$` and
+ * the field was labelled "minor units", so `"250000.00"` was rejected outright
+ * and `"25000000"` — what the label asked for — reached the journal as twenty-
+ * five million POUNDS. The entry balanced, the trial balance tied, and the
+ * figure was a hundred times too large.
  */
 export async function submit(_prev: Result, form: FormData): Promise<Result> {
   const fund = String(form.get("fund") ?? "");
@@ -41,9 +46,8 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
   const validateOnly = form.get("commit") === null;
 
   if (!ruleId) return { ok: false, error: "Choose a rule." };
-  if (!AMOUNT.test(amount)) {
-    return { ok: false, error: "The amount is minor units, as whole digits." };
-  }
+  const parsed = hundredths(amount, "an amount");
+  if (!parsed.ok) return { ok: false, error: parsed.error };
   if (days && !/^\d+$/.test(days)) {
     return { ok: false, error: "Days is a whole number." };
   }
@@ -55,6 +59,12 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
       eventId,
       amount,
       days,
+      // ⚠ EMPTY ON PURPOSE, AND NOT AN OVERSIGHT. This screen records an event
+      // of any kind — a fee, a subscription, an accrual — and most of them
+      // concern no instrument. `/trade` is the screen that fills these in.
+      instrument: "",
+      quantity: "",
+      tradeDate: null,
       validateOnly,
     });
     if (!validateOnly) {
@@ -64,7 +74,14 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
       // `invalidateQueries({ queryKey: [fund] })`, and it has to stay a prefix.
       revalidatePath(`/funds/${fund}`, "layout");
     }
-    return { ok: true, response };
+    // ⭐ THE INPUTS THIS ANSWERS FOR, so the commit button can stay shut until a
+    // preview has come back for exactly them. Otherwise "preview, then post" is
+    // a sentence on the screen rather than a property of it.
+    return {
+      ok: true,
+      response,
+      signature: [ruleId, amount, days, eventId].map((s) => s.trim()).join(" "),
+    };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: "Sign in required." };
     if (e instanceof Refused) return { ok: false, error: e.message };

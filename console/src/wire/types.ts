@@ -211,6 +211,25 @@ export interface Break {
   difference: Int64;
   postings: BreakPosting[];
   configDigest: string;
+  tolerance: Tolerance | null;
+  explanation: BreakExplanation | null;
+}
+
+export interface BreakExplanation {
+  text: string;
+  actor: string;
+  acceptTime: string;
+  difference: Int64;
+  configDigest: string;
+  journalPosition: Int64;
+  journalDigest: string;
+  qualification: string[];
+}
+
+export interface Tolerance {
+  belowNotice: Int64;
+  blocksNav: Int64;
+  declared: boolean;
 }
 
 export interface ChangeLogEntry {
@@ -261,6 +280,143 @@ export interface ReplayNavStrikeResponse {
   reproduced: boolean;
   netAssetValue: Int64;
   journalDigest: string;
+}
+
+/**
+ * Which of the two answers to "what is this fund worth" a step belongs to.
+ *
+ * `RECORDED` is the fold that produced the strike and grows with the journal;
+ * `MAINTAINED` is the same figure off totals somebody keeps, and is flat in
+ * fragmentation. ⛔ Both are always on the page: `ratio bench` reports two
+ * curves and both must be quoted.
+ */
+export type PlanGroup = "UNSPECIFIED" | "RECORDED" | "MAINTAINED";
+
+/**
+ * ⛔ `UNREAD` IS NOT `REJECTED`. A rejected step would have worked and cost
+ * more. An unread one is never touched — twenty million tax lots are not in a
+ * NAV's cost at all — and a client that renders them alike loses the only claim
+ * on this screen that is a theorem.
+ */
+export type PlanRole =
+  | "UNSPECIFIED"
+  | "CHOSEN"
+  | "REJECTED"
+  | "REFUSAL"
+  | "UNREAD";
+
+export type PlanEdgeKind = "UNSPECIFIED" | "FLOW" | "REFUSAL" | "UNREAD";
+
+/**
+ * One step of a NAV strike's plan.
+ *
+ * ⛔ EVERY FIGURE IS AN `Int64`, AND AN EMPTY ONE MEANS THERE IS NO FIGURE —
+ * never "0". `realizedGain` above carries the same convention. Here it is
+ * load-bearing twice: an unmeasured step rendered as `0` reads as "instant",
+ * and a step nothing costs rendered as `0` reads as "free".
+ */
+export interface PlanNode {
+  id: string;
+  /** What the step does, in the operator style EXPLAIN uses. */
+  operator: string;
+  /** The one line that qualifies it — the equivalent of an index name. */
+  detail: string;
+  group: PlanGroup;
+  role: PlanRole;
+  /** The theorem or the function this cost comes from. Never empty. */
+  cites: string;
+  /** Why it costs what it costs. Rendered, not decoration. */
+  note: string[];
+  /** From the proved model or the strike's record. Empty where nothing costs it. */
+  estimatedReads: Int64;
+  /**
+   * `estimatedReads` times the calibrated rate, as a proto3 Duration —
+   * `"0.000004436s"`. ⛔ `null` where nothing costs the step: a Duration is a
+   * message, so absence is structural here rather than an empty string.
+   */
+  estimatedDuration: string | null;
+  /** What an instrumented re-fold saw. Empty / null unless the plan was analyzed. */
+  actualRows: Int64;
+  actualDuration: string | null;
+}
+
+export interface PlanEdge {
+  /**
+   * ⛔ `source`/`target`, not `from`/`to`. `from` is on AIP-140's reserved-word
+   * list, so the contract cannot spell it that way — and the Rust model spells
+   * it the same, so nothing in between has to translate.
+   */
+  source: string;
+  target: string;
+  kind: PlanEdgeKind;
+  /** Rows that travelled it. Empty when nothing measured them. */
+  rows: Int64;
+}
+
+/**
+ * The fund's shape, as the estimate was taken over it.
+ *
+ * ⛔ `securities` AND `lotsPer` ARE SEPARATE AND MUST STAY SO. 500 × 40,000 and
+ * 10,000 × 2,000 are both twenty million open lots and are not the same fund —
+ * one price is read per SECURITY, so they differ twentyfold in the term that
+ * grows with the chart.
+ */
+export interface PlanDials {
+  securities: Int64;
+  currencies: Int64;
+  /** ⚠ An average, rounded down. The action term multiplies it. */
+  lotsPer: Int64;
+  /** Announced and not yet rewritten. */
+  openActions: Int64;
+  accounts: Int64;
+  /** One per (dimension, currency) — NOT one per security. */
+  totalRows: Int64;
+  openLots: Int64;
+}
+
+/**
+ * How a NAV strike is computed, and what the alternatives would have cost.
+ *
+ * ⚠ Named for the method rather than for itself: AIP-136 requires a custom
+ * method's response to be `<Rpc>Response` or the resource it operates on, and
+ * the resource here is `NavStrike`.
+ */
+export interface ExplainNavStrikeResponse {
+  name: string;
+  view: string;
+  nodes: PlanNode[];
+  edges: PlanEdge[];
+  /** Null when `estimateRefusal` is set. */
+  dials: PlanDials | null;
+  /**
+   * Why there is no estimate, when there is none.
+   *
+   * ⛔ The maintained projection folds the whole journal with no cut, so it
+   * cannot supply a shape for a trade- or settlement-basis view. Rendering the
+   * recorded view's shape under another view's name is what this refuses.
+   */
+  estimateRefusal: string;
+  /**
+   * ⛔ When true, the actuals are this machine re-deriving the prefix NOW — not
+   * what the original strike cost. Nothing was recorded at strike time.
+   */
+  analyzed: boolean;
+  nanosPerRead: Int64;
+  /** Where that rate came from. Rendered verbatim beside any duration. */
+  provenance: string;
+  /**
+   * ⛔ ALL THREE, ALWAYS, EVEN WHEN THE REJECTED STEPS ARE COLLAPSED.
+   * `chosenReads` is the flattering number and showing it alone is the
+   * overclaim `ratio bench` exists to make hard.
+   *
+   * ⚠ None of them includes the capital term, which cannot be counted without
+   * the chart roles.
+   */
+  chosenReads: Int64;
+  /** The same period end with its open actions applied by rewriting the lots. */
+  rewriteReads: Int64;
+  /** Folding every open lot instead of reading the maintained totals. */
+  scanReads: Int64;
 }
 
 /**
@@ -518,6 +674,19 @@ export interface ApplyEventRequest {
   eventId: string;
   amount: string;
   days: string;
+  /**
+   * ⛔ WITHOUT THESE THREE AN EVENT MOVES VALUE AND NOTHING ELSE. The
+   * projection's walk skips any posting that does not carry BOTH an instrument
+   * and a quantity, so a trade sent without them opens no tax lot and relieves
+   * none — while the entry balances, the trial balance ties, and the NAV moves
+   * by the right amount. Nothing downstream objects; the position's unit count
+   * is simply somebody else's.
+   */
+  instrument: string;
+  /** Whole units. ⛔ POSITIVE on both sides — the rule decides the direction. */
+  quantity: string;
+  /** The day it was dealt. ⛔ What a lot's holding period is established from. */
+  tradeDate: CalendarDate | null;
   validateOnly: boolean;
 }
 

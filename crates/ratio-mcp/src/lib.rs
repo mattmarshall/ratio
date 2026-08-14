@@ -208,7 +208,12 @@ fn tools_list() -> Value {
                          map = { B = \"buy\", S = \"sell\" }.\n\n\
                          Add [template.fact.posts] ONLY if this file should reach the \
                          journal: by = \"<field>\", amount = \"consideration\" (quantity x \
-                         price) or a money field name, rules = { <value> = \"<rule id>\" }. \
+                         price) or a money field name, rules = { <value> = \"<rule id>\" }, \
+                         and dated = \"<a date field>\" naming the day the event happened. \
+                         Omitting dated is not neutral: the entry then carries no trade \
+                         date, every lot it opens has no acquisition date, and the \
+                         holding-period methods refuse them — the whole realized gain \
+                         lands in the unclassified residue while the books tie. \
                          Reference data — prices, FX, a security master — has no posts \
                          block and is recorded without posting."},
                     "sample": {"type": "string", "description":

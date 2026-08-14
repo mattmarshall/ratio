@@ -116,6 +116,45 @@ def main(app_path, bootstrap_path, workflow_path):
             else:
                 print(f"  ok  {role}: named in the app stack and grantable by CI")
 
+    # ⛔ PERMISSIONS THE TEMPLATE NEEDS THAT NO RESOURCE TYPE NAMES.
+    #
+    # This check exists because the first deploy of the scale runner failed on
+    # exactly this and nothing here saw it coming:
+    #
+    #   ScaleSubnet CREATE_FAILED  AccessDenied. User doesn't have permission
+    #   to call ec2:DescribeAvailabilityZones
+    #
+    # `!GetAZs ""` needs that call. It is an INTRINSIC FUNCTION, not a resource,
+    # so the service-prefix check above passed happily — `ec2` was granted, and
+    # the one verb the template actually required was not. The cost of finding
+    # out was a Bazel build, the whole test suite, a docker build, an ECR push
+    # and a stack rollback.
+    #
+    # ⚠ Each entry is a thing the TEMPLATE does, mapped to the permission the
+    # DEPLOYER needs for it. Add a row whenever a template starts using an
+    # intrinsic that reaches an API.
+    NEEDS = [
+        ("!GetAZs", "ec2:DescribeAvailabilityZones", "resolving !GetAZs"),
+    ]
+    for marker, action, why in NEEDS:
+        if marker not in app:
+            continue
+        svc, verb = action.split(":")
+        # A wildcard grant covers it: `ec2:Describe*` is how this one is fixed,
+        # and enumerating read-only actions is what failed in the first place.
+        covered = any(
+            g == action or (g.endswith("*") and verb.startswith(g.split(":")[1].rstrip("*")))
+            for g in re.findall(rf"^\s+-\s+({re.escape(svc)}:[A-Za-z*]+)", deploy_block, re.M)
+        )
+        if not covered:
+            fail(
+                f"{app_path} uses {marker} ({why}) which calls {action}, and the deploy "
+                f"role grants no such action — the stack will roll back at the resource "
+                f"that uses it, not at deploy time"
+            )
+        else:
+            print(f"  ok  {marker} needs {action}, and the deploy role has it")
+
     # ⭐ THE ONE THAT WOULD BE SILENT. A role the app stack creates for ECS must
     # be passable TO ecs, or RunTask is refused at the moment a visitor presses
     # the button — long after every deploy has gone green.

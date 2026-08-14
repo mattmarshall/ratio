@@ -63,6 +63,24 @@ export default async function StrikeDetail({
           Replay this strike
         </Link>
       </div>
+
+      {/* ⛔ THE DERIVATION IS A SECOND CITATION, AND A DIFFERENT ONE. A replay
+          says the figure re-derives; this says what deriving it DOES — which
+          steps ran, what each one read, and what the plans not taken would have
+          cost. A number that reproduces and a number somebody can follow are
+          two separate things to be able to send. */}
+      <div className="dsec">
+        <h3>The derivation</h3>
+        <p className="note">
+          A NAV is not read off the tax lots — it is folded from a journal
+          prefix, and answered again off totals somebody maintains. Both costs
+          are on the plan, because quoting only the flat one is the overclaim{" "}
+          <code>ratio bench</code> exists to make hard.
+        </p>
+        <Link className="signin-btn" href={`/funds/${fund}/views/${view}/strikes/${strike}/plan`}>
+          How this NAV was computed
+        </Link>
+      </div>
     </aside>
   );
 }

@@ -39,14 +39,57 @@ use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::RuleSet;
 use ratio_store::{AccountTypeRecord, ConfigStore, FileBook, Journal, Plane};
 
-/// Above this, a difference blocks the NAV. Below the lower one, it is noise.
+/// What stands between a fund and a NAV.
 ///
-/// Both are in minor units and are the demo's stand-in for a real tolerance
-/// policy, which belongs in the configuration rather than in a constant — a
-/// fund's tolerance is a term of its administration agreement, not a property
-/// of the software. Named here so that is visible rather than buried.
-const BLOCKS_NAV: i64 = 100_000; // 1,000.00
-const BELOW_NOTICE: i64 = 500; //     5.00
+/// Two lists rather than one count, because they are cleared by different
+/// people doing different things — an unexplained blocking break wants
+/// somebody's judgment, a pending fact wants a record in the master — and a
+/// refusal that said only "3 things" would send an operator looking for the
+/// wrong three.
+pub struct Blocking {
+    /// Unexplained breaks the tolerance grades as blocking.
+    pub breaks: Vec<pb::Break>,
+    /// Facts read out of a delivery that do not resolve yet.
+    pub pending: Vec<pb::PendingFact>,
+}
+
+impl Blocking {
+    pub fn is_empty(&self) -> bool {
+        self.breaks.is_empty() && self.pending.is_empty()
+    }
+}
+
+/// One record in `explanations.jsonl`: why somebody decided a difference was
+/// acceptable.
+///
+/// ⛔ APPEND-ONLY, NEWEST WINS, AND A CORRECTION IS A NEW RECORD. The same law
+/// as every other plane here. An explanation somebody later thought better of
+/// is part of what happened on that fund, and editing it away would leave the
+/// change log saying a person accepted something that is no longer there.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct BreakExplanation {
+    /// The break's id WITHIN THIS BOOK — the account dimension, or `lot-{n}`.
+    ///
+    /// ⛔ NOT THE RESOURCE NAME, AND THE DIFFERENCE COST A DEMO. A break is
+    /// named `funds/{fund}/breaks/{id}`, and the fund half is a property of how
+    /// the book is being SERVED, not of the book: the same directory is fund
+    /// `demo` on loopback and `pennington-select-income` under a funds root.
+    /// Keying a note by the full name meant one written by the seeder never
+    /// matched the break the console showed — the explanation on disk, the
+    /// break on screen, and nothing connecting them.
+    pub break_id: String,
+    pub text: String,
+    /// ⛔ THE VERIFIED SUBJECT, never anything a caller sent.
+    pub actor: String,
+    pub accept_time: i64,
+    /// The figure this was written about. Half the currency test.
+    pub difference: i64,
+    /// The terms it was graded under. The other half.
+    pub config_digest: String,
+    /// What the accepter had in front of them. Audit, not currency.
+    pub journal_position: u64,
+    pub journal_digest: String,
+}
 
 /// The books this console serves.
 pub struct Console {
@@ -106,6 +149,24 @@ impl Console {
         // string `ratio approve` and `ratio strike` record. Not authentication —
         // there is none on a loopback surface — but the honest local identity.
         Self::build(root.as_ref().to_path_buf(), None, std::env::var("RATIO_ACTOR").ok())
+    }
+
+    /// The same console, attributing writes to a name the caller has already
+    /// resolved.
+    ///
+    /// ⛔ FOR THE CLI ONLY, AND IT IS NOT A WAY TO SET AN ACTOR ON THE NETWORK.
+    /// `ratio accept` resolves `RATIO_ACTOR` ‖ `USER` ‖ `operator` before it
+    /// gets here, which is one fallback more than [`Console::new`] does, and
+    /// recording an empty actor for somebody who has a name is a worse audit
+    /// trail than the one this exists to write. The authenticated constructors
+    /// take their subject from the gateway and nothing may override it — see
+    /// `record_change`, where the actor is `self.actor` and never a request
+    /// body.
+    pub fn as_actor(mut self, name: &str) -> Self {
+        if !name.is_empty() {
+            self.actor = Some(name.to_string());
+        }
+        self
     }
 
     /// The console scoped to an authenticated subject: it sees only the funds
@@ -542,6 +603,101 @@ impl Console {
             Some(req.days.trim().parse::<i64>().context("days must be a whole number")?)
         };
 
+        // ── what makes this a trade rather than a movement of value ─────────
+        //
+        // ⛔ THESE THREE ARE WHY A LOT OPENS. Until they were carried, this
+        // method built its event with `instrument: None, quantity: None` and
+        // its entry with `trade_date: None` — and `Projection::walk` skips any
+        // posting lacking BOTH an instrument and a quantity, so every trade
+        // recorded here opened no lot and relieved none. The entry balanced,
+        // the trial balance tied, the NAV moved by the right amount, and the
+        // position's unit count was somebody else's. HANDOFF.md's table calls
+        // that shape "the books tie and the number is wrong"; the realized gain
+        // is the figure with no counterparty, and nobody catches it.
+        let instrument = req.instrument.trim();
+        let instrument = if instrument.is_empty() {
+            None
+        } else {
+            // The same charset as the event id, and for the same reason: this
+            // reaches a position's resource name, a URL, and a screen other
+            // people read.
+            if instrument.len() > 64
+                || !instrument
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+            {
+                bail!(
+                    "{:?} is not an instrument identifier — letters, digits, - _ . \
+                     and at most 64 of them",
+                    req.instrument
+                );
+            }
+            Some(instrument.to_string())
+        };
+
+        // ⛔ WHOLE UNITS, REFUSED RATHER THAN ROUNDED. `parse_minor` gives
+        // hundredths, so a fractional quantity is expressible here and NOT on
+        // `PostingRecord::quantity`, which is whole units. The data plane
+        // carries such a fact as no quantity at all; doing that here would
+        // silently produce exactly the lot-less entry these fields exist to
+        // prevent, on the one screen where a person typed the number.
+        let quantity = if req.quantity.trim().is_empty() {
+            None
+        } else {
+            let hundredths = ratio_common::parse_minor(&req.quantity)
+                .context("the quantity is a number of units")?;
+            if hundredths % 100 != 0 {
+                bail!(
+                    "{:?} is not a whole number of units, and a lot is kept in whole \
+                     units — a fractional quantity has to arrive on the data plane",
+                    req.quantity
+                );
+            }
+            if hundredths < 0 {
+                bail!(
+                    "a quantity is not negative — the RULE decides the direction, and a \
+                     leg's own sign moves the units the right way"
+                );
+            }
+            Some(hundredths / 100)
+        };
+
+        // ⛔ ONE WITHOUT THE OTHER IS THE DEFECT WEARING A DISGUISE. A posting
+        // that names an instrument and no quantity is skipped by the walk just
+        // as surely as one that names neither, so accepting half of this would
+        // report a trade as attributed while it opened nothing.
+        if instrument.is_some() != quantity.is_some() {
+            bail!(
+                "an instrument and a quantity go together: with one of them the posting \
+                 carries no lot, which is the same as sending neither"
+            );
+        }
+
+        // ⚠ VALIDATED HERE, NOT WHERE IT IS READ. A date that will not parse is
+        // recorded as a BREAK by the projection rather than an absence — it has
+        // to be, because a journal is append-only and the lots it opened are
+        // already wrong. Refusing it at the door is the only place it is free.
+        let trade_date = match &req.trade_date {
+            None => None,
+            Some(d) => {
+                let iso = format!("{:04}-{:02}-{:02}", d.year, d.month, d.day);
+                // ⛔ ROUND-TRIPPED, BECAUSE THE PARSE ALONE IS NOT A CALENDAR.
+                // `days_from_iso_date` range-checks the month at 1..=12 and the
+                // day at 1..=31 and then does civil-days arithmetic, so
+                // `2026-02-30` does not fail — it silently becomes the 2nd of
+                // March. A lot dated two days after the trade is a holding
+                // period two days long that nobody typed, and the entry is
+                // append-only by then. Converting back and comparing is the
+                // cheap way to ask the calendar rather than the range.
+                let days = ratio_common::days_from_iso_date(&iso)
+                    .with_context(|| format!("{iso:?} is not a trade date"))?;
+                if ratio_common::iso_date_from_days(days) != iso {
+                    bail!("{iso:?} is not a day in the calendar");
+                }
+                Some(iso)
+            }
+        };
+
         let mut b = FileBook::open(&path)?;
         let digest = b.active()?.context("no configuration is in force on this fund")?;
         let chart = b.accounts()?;
@@ -589,7 +745,10 @@ impl Console {
             id: id.to_string(),
             amount,
             days,
-            memo: String::new(), instrument: None, quantity: None };
+            memo: String::new(),
+            instrument,
+            quantity,
+        };
         let postings = ratio_rules::compile(rule, &event)?;
 
         // The memo is COMPOSED from what the rule and the event say, never
@@ -609,8 +768,7 @@ impl Console {
             memo: memo.clone(),
             config: digest.clone(),
             postings: postings.clone(),
-        
-            trade_date: None,
+            trade_date,
             announcement: None,
         };
 
@@ -1565,8 +1723,17 @@ impl Console {
                     ),
                     config: digest.clone(),
                     postings,
-                
-                    trade_date: None,
+                    // ⛔ THE DAY THE TEMPLATE SAYS THIS HAPPENED. This was
+                    // `None` while the trade template beside it declared a
+                    // `traded` date and read it into every fact — so a delivery
+                    // posted lots with no acquisition date, every
+                    // holding-period method refused them, and the whole of that
+                    // fund's realized gain fell into the unclassified residue.
+                    // The books tied throughout.
+                    //
+                    // ⚠ STILL `None` FOR A TEMPLATE THAT DECLARES NO DATE, which
+                    // is the honest answer for a file that carries none.
+                    trade_date: ratio_ingest::dated_of(t, &r.fact).map(str::to_string),
                     announcement: None,
                 })?;
             }
@@ -1721,11 +1888,14 @@ impl Console {
             entries_len += 1;
             Ok(())
         })?;
+        // ⛔ THE SAME PREDICATE `ratio strike` REFUSES ON. Derived here from
+        // `blocking_at` rather than restated, so the badge and the refusal are
+        // one derivation — two folds of "what blocks" would be plausible,
+        // independently maintained, and one field apart within a month.
+        let blocking = self.blocking_at(&id)?;
         let state = if entries_len == 0 && pending.is_empty() {
             pb::fund::State::AwaitingPrices
-        } else if !pending.is_empty()
-            || open.iter().any(|k| k.severity == pb::Severity::High as i32)
-        {
+        } else if !blocking.is_empty() {
             pb::fund::State::Blocked
         } else if !breaks.is_empty() {
             pb::fund::State::InReview
@@ -2290,6 +2460,60 @@ impl Console {
         })
     }
 
+    /// What this strike did, step by step, and what the alternatives cost.
+    ///
+    /// ⛔ THE ESTIMATE IS GATED BY THE SAME PREDICATE `GetView` USES, AND ITS
+    /// REFUSAL IS CARRIED RATHER THAN SWALLOWED. The maintained projection folds
+    /// the whole journal with no cut, so it cannot supply a shape for a trade-
+    /// or settlement-basis view; returning the recorded view's securities,
+    /// currencies and lots under another view's name is the exact defect
+    /// multi-view books exist to prevent, one layer out from `ReconcileViews`.
+    ///
+    /// ⚠ AND `analyze` STILL WORKS FOR SUCH A VIEW, because the fold DOES cut.
+    /// So the screen can be empty of estimates and full of measurements, which
+    /// is an honest state and not a broken one.
+    ///
+    /// ⛔ NO BLOCKED-FUND GATE, AND THAT MATCHES `get_nav_strike` AND
+    /// `replay_nav_strike` RATHER THAN DIVERGING FROM THEM. `refuse_if_blocked`
+    /// guards STRIKING — taking a new figure while something is unpriced or a
+    /// break is unexplained. This reads a strike somebody already took and
+    /// signed. A blocked fund has no strike to explain, so `ratio_nav::get`
+    /// refuses first and for the right reason; adding a second gate here would
+    /// be a third answer to "may this fund's figures be read", which is the
+    /// disagreement `blocking_at` exists to make impossible.
+    pub fn explain_nav_strike(
+        &self,
+        name: &str,
+        analyze: bool,
+    ) -> Result<pb::ExplainNavStrikeResponse> {
+        let (fund, view, id) = view_scoped_id(name, "navStrikes").context("bad name")?;
+        let path = self.book_path(&fund)?;
+        let s = ratio_nav::get(&path, &view, &id)?;
+        let cal = ratio_nav::closure::rate_for(&path);
+
+        let (shape, refusal) = match self.view_the_projection_can_answer(&fund, &view) {
+            Ok(()) => {
+                let b = FileBook::open(&path)?;
+                let accounts = b.accounts()?.len() as i64;
+                let proj = self.projection(&fund)?;
+                (Some(ratio_nav::shape_of(&proj, accounts, cal)?), String::new())
+            }
+            // ⛔ `{e:#}` — the WHOLE chain. The refusal's prose is the answer
+            // this endpoint gives, and truncating it to the outermost line
+            // would leave a screen saying "cannot" without saying why.
+            Err(e) => (None, format!("{e:#}")),
+        };
+
+        // ⛔ MEASURED NOW, RE-DERIVING THE PINNED PREFIX — NOT WHAT THE ORIGINAL
+        // STRIKE COST. Nothing was recorded at strike time. `ExplainNavStrikeResponse
+        // .analyzed` is what lets the screen say so, and it says so beside every
+        // actual rather than once at the bottom.
+        let measured = if analyze { Some(ratio_nav::analyze(&path, &s)?) } else { None };
+
+        let plan = ratio_nav::explain::plan_of(name, &s, shape.as_ref(), &refusal, measured.as_ref(), cal);
+        Ok(plan_pb(&plan))
+    }
+
     pub fn list_change_log_entries(&self, parent: &str) -> Result<pb::ListChangeLogEntriesResponse> {
         let id = resource_id(parent, "funds").context("bad parent")?;
         let path = self.book_path(&id)?;
@@ -2348,8 +2572,221 @@ impl Console {
                 difference: "0".into(),
                 postings: Vec::new(),
                 config_digest: String::new(),
+                // ⚠ NO TOLERANCE, BECAUSE NO TOLERANCE DECIDED THIS. A lot
+                // break is HIGH by what it means, not by how much, so reporting
+                // bounds beside it would suggest a different number would have
+                // graded it differently. None ever would.
+                tolerance: None,
+                // ⚠ And a lot break never gains one: `accept_explanation`
+                // refuses them, because their names are positions in a list.
+                explanation: None,
             })
             .collect())
+    }
+
+    /// Everything standing between this fund and a NAV.
+    ///
+    /// ⛔ ONE DERIVATION, READ BY BOTH THE SCREEN AND THE REFUSAL. `get_fund`
+    /// computes `STATE_BLOCKED` from this and `ratio strike` refuses on it, so
+    /// the badge an operator is looking at and the reason their command was
+    /// declined cannot come to disagree. That is the property
+    /// `unpriced_at`'s doc comment names — the message and the decision being
+    /// one derivation — and the failure it prevents is the ordinary one: two
+    /// folds of "what blocks", both plausible, drifting a field apart.
+    ///
+    /// ⚠ THE PENDING FOLD HAS TO BE THIS ONE. `pending_of` drops facts already
+    /// posted to the journal, a filter that exists because a duplicate
+    /// identifier arriving later would otherwise re-block a NAV that was
+    /// already struck — found by `//tla:control_plane_check`. The CLI's own
+    /// `pending` screen does not filter, so reaching for it here would refuse
+    /// strikes for a reason the console never shows.
+    ///
+    /// ⚠ THE DEFAULT VIEW'S BREAKS, because that is what `Fund.state` reports
+    /// and what `ratio strike` refuses over. Taking a view parameter would let
+    /// a caller ask whether some OTHER book of record is ready and get an answer
+    /// the badge contradicts — the disagreement this whole method exists to make
+    /// impossible. A per-view gate is a real question and a later one; it needs
+    /// the screen to say which view it refused for.
+    pub fn blocking_at(&self, fund: &str) -> Result<Blocking> {
+        let path = self.book_path(fund)?;
+        let view = self.default_view_of(fund)?;
+        let breaks = self.breaks_for(&path, fund, &view)?;
+        Ok(Blocking {
+            breaks: breaks
+                .into_iter()
+                .filter(|k| !k.explained && k.severity == pb::Severity::High as i32)
+                .collect(),
+            pending: self.pending_of(fund)?,
+        })
+    }
+
+    /// The newest explanation recorded for each break on this fund.
+    ///
+    /// A fold over the plane, newest wins. Nothing is indexed and nothing is
+    /// retracted: a correction is a later record for the same break name.
+    fn explanations_of(&self, book: &Path) -> Result<BTreeMap<String, BreakExplanation>> {
+        let b = FileBook::open(book)?;
+        let mut out: BTreeMap<String, BreakExplanation> = BTreeMap::new();
+        for e in b.records::<BreakExplanation>(Plane::Explanations)? {
+            out.insert(e.break_id.clone(), e);
+        }
+        Ok(out)
+    }
+
+    /// Record why a difference is acceptable.
+    ///
+    /// ⛔ THE ONE IMPLEMENTATION. `ratio accept` calls this; a second copy for
+    /// the CLI would be a second set of decisions about what counts as
+    /// explaining something.
+    ///
+    /// ⛔ AND THERE IS NO RPC FOR IT, DELIBERATELY. Acceptance is a verb that
+    /// changes what a fund is allowed to do, and this console offers no way to
+    /// perform one — the same fence that keeps `approve_rule` off the model's
+    /// tool list and the approve button off the rules screen. The mechanism
+    /// enforcing it is not discipline: `console/scripts/route_manifest_test.py`
+    /// requires every contract route to be called by the client and every
+    /// client call to be read by a screen, so an `AcceptBreakExplanation` RPC
+    /// would DEMAND the write screen that must not exist.
+    pub fn accept_explanation(&self, break_name: &str, text: &str) -> Result<pb::BreakExplanation> {
+        // ⛔ THE VIEW-SCOPED NAME, BECAUSE THAT IS THE ONE A PERSON HAS. Both
+        // the refusal `ratio strike` prints and the console's URL are
+        // `funds/*/views/*/breaks/*`; accepting the shorter form would mean the
+        // name somebody was shown is not the name this verb takes.
+        let (fund, view, want) =
+            view_scoped_id(break_name, "breaks").context("bad break name")?;
+        let path = self.book_path(&fund)?;
+
+        let text = text.trim();
+        if text.is_empty() {
+            bail!("an explanation with no words in it explains nothing");
+        }
+
+        // ⛔ THE BREAK HAS TO BE THERE. An explanation naming nothing is a
+        // citation that does not resolve, and ORCHESTRATION.md's proposal shape
+        // requires those to fail before a person reads them — here, before one
+        // is recorded at all.
+        let breaks = self.breaks_for(&path, &fund, &view)?;
+        let Some(brk) = breaks.iter().find(|k| break_id_of(&k.name) == want.as_str()) else {
+            bail!(
+                "no break {break_name} on this fund — the breaks it does have are listed by \
+                 `ratio watch` and on the exceptions screen"
+            );
+        };
+
+        // ⚠ A LOT BREAK CANNOT BE EXPLAINED, AND THE REFUSAL NAMES WHAT DOES
+        // CLEAR IT. Lot break names are `lot-{n}` — a POSITION IN A LIST — so an
+        // explanation keyed on one would follow the position rather than the
+        // sale the moment an earlier lot break clears: every citation still
+        // resolves, the books still tie, and the words are attached to a
+        // different disposal. Making those names durable is a `ratio-project`
+        // change and its own commit.
+        if brk.tolerance.is_none() && brk.name.contains("/breaks/lot-") {
+            bail!(
+                "a lot break is not explained, it is corrected. The lot book and the position \
+                 disagree, which corrupts the realized gain — the figure with no counterparty — \
+                 and what closes it is an entry that makes them agree, not a note saying the \
+                 difference is acceptable."
+            );
+        }
+
+        let b = FileBook::open(&path)?;
+        let mut position = 0u64;
+        b.for_each_entry_since(0, &mut |_| {
+            position += 1;
+            Ok(())
+        })?;
+
+        let record = BreakExplanation {
+            break_id: want.to_string(),
+            text: text.to_string(),
+            actor: self.actor.clone().unwrap_or_default(),
+            accept_time: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0),
+            difference: brk.difference.parse().unwrap_or(0),
+            config_digest: brk.config_digest.clone(),
+            journal_position: position,
+            journal_digest: String::new(),
+        };
+
+        let mut w = FileBook::open(&path)?;
+        w.append_record(Plane::Explanations, &record)?;
+        self.record_change(&path, "accepted", break_name, &record.config_digest)?;
+        Ok(to_pb_explanation(&record))
+    }
+
+    /// The tolerance a report's breaks are graded against, or `None` when the
+    /// question cannot be answered.
+    ///
+    /// ⛔ AND `None` MEANS BLOCKING, NOT DEFAULT. Three things reach it: a
+    /// digest that is not a digest, one naming bytes the book does not hold,
+    /// and bytes that are not a rule set. In every one of them the honest
+    /// statement is "this difference was not graded" — and the whole product
+    /// argument is that a figure nobody could check is not a figure. Falling
+    /// back to the custom bands would certify a break as small using a
+    /// tolerance nobody could read, on a book that ties, which is the failure
+    /// this repository exists not to have. Erring towards blocking costs an
+    /// operator a look; erring the other way costs a NAV.
+    ///
+    /// ⚠ IT DOES NOT ERROR. A fund whose oldest report names a configuration
+    /// that has since been pruned should still show its breaks — as blocking —
+    /// rather than turning the whole screen into a stack trace.
+    fn tolerance_of(&self, b: &FileBook, digest: &str) -> Option<(ratio_rules::Tolerance, bool)> {
+        let d = ratio_store::Digest::parse(digest).ok()?;
+        let bytes = b.get(&d).ok()?;
+        let set = RuleSet::from_toml(&String::from_utf8_lossy(&bytes)).ok()?;
+        Some((set.effective_tolerance(), set.tolerance.is_some()))
+    }
+
+    /// Attach whatever somebody recorded about each break, and decide whether
+    /// it still stands.
+    ///
+    /// ⭐ AN EXPLANATION IS CURRENT WHEN THE BREAK IT NAMES STILL SHOWS THE
+    /// SAME DIFFERENCE UNDER THE SAME CONFIGURATION. That sentence is the whole
+    /// staleness design, and both halves of it were chosen against a specific
+    /// failure:
+    ///
+    /// ⛔ POSTING AN ENTRY MUST NOT UN-EXPLAIN A BREAK. The obvious rule —
+    /// an explanation names the journal prefix it read, so a longer journal
+    /// makes it stale — retires every explanation on the next posting. On a NAV
+    /// morning the journal grows constantly, so the gate becomes one nobody can
+    /// ever clear, in a way that looks like the software being careful.
+    /// `//tla:explanation_pinned_to_the_prefix_check` is that design, model
+    /// checked, deadlocking.
+    ///
+    /// ⛔ AND A NEW FIGURE MUST RETIRE THE OLD EXPLANATION. "The 2,000.00 is
+    /// the custodian's unsettled dividend" is a claim about 2,000.00. When the
+    /// next reconciliation reports 2,750.00, the words are about something that
+    /// is no longer there — and an explanation that outlived its figure is how
+    /// a fund gets struck on a difference nobody has actually looked at.
+    /// `//tla:stale_explanation_unblocks_check` is that one.
+    ///
+    /// Nothing about staleness is stored. It is two values compared, both of
+    /// which are already on the record — the same arrangement `Plane::Actions`
+    /// uses to identify a strike taken before an action without storing
+    /// anything either.
+    fn explain(&self, breaks: &mut [pb::Break], recorded: &BTreeMap<String, BreakExplanation>) {
+        for k in breaks.iter_mut() {
+            let Some(e) = recorded.get(break_id_of(&k.name)) else { continue };
+            let same_figure = e.difference.to_string() == k.difference;
+            let same_terms = e.config_digest == k.config_digest;
+            k.explained = same_figure && same_terms;
+            k.explanation = Some(to_pb_explanation(e));
+            if !k.explained {
+                let why = if !same_figure {
+                    format!(
+                        "explained against a difference of {}; this report shows {}",
+                        e.difference, k.difference
+                    )
+                } else {
+                    "explained under a different configuration".to_string()
+                };
+                if let Some(x) = k.explanation.as_mut() {
+                    x.qualification = vec![why];
+                }
+            }
+        }
     }
 
     fn breaks_for(&self, book: &Path, fund: &str, view: &str) -> Result<Vec<pb::Break>> {
@@ -2387,15 +2824,27 @@ impl Console {
             Ok(())
         })?;
 
+        // ⛔ GRADED BY THE CONFIGURATION THE REPORT NAMES, NOT THE ONE IN FORCE
+        // NOW, and resolved once rather than per line. A break is a comparison
+        // between two figures produced under one configuration; the tolerance
+        // agreed then is the term that applies to it. Reading `active()` here
+        // would regrade a report whose bytes have not changed the moment
+        // somebody promotes a new rule set — the shape
+        // `an_unpinned_announcement_changes_the_answer` is about, applied to a
+        // severity instead of a factor.
+        let graded_under = self.tolerance_of(&b, &report.config_digest);
         let mut out = Vec::new();
         for line in &report.breaks {
             let diff: i64 = line.difference;
-            let severity = if diff.abs() >= BLOCKS_NAV {
-                pb::Severity::High
-            } else if diff.abs() >= BELOW_NOTICE {
-                pb::Severity::Medium
-            } else {
-                pb::Severity::Low
+            let severity = match graded_under {
+                Some((t, _)) => match t.severity(diff) {
+                    ratio_rules::Severity::High => pb::Severity::High,
+                    ratio_rules::Severity::Medium => pb::Severity::Medium,
+                    ratio_rules::Severity::Low => pb::Severity::Low,
+                },
+                // ⛔ ANYTHING THE GRADER COULD NOT ANSWER GRADES HIGH. See
+                // `tolerance_of`.
+                None => pb::Severity::High,
             };
             let dim = dims.get(&line.display_name).copied().unwrap_or(line.account);
 
@@ -2411,9 +2860,12 @@ impl Console {
                 account: line.display_name.clone(),
                 account_dimension: dim,
                 severity: severity as i32,
-                // Nothing records an explanation yet, so nothing claims one.
-                // A break the software decided was fine is exactly the kind of
-                // thing this product exists not to do.
+                // ⚠ FALSE HERE, AND SET BY `explain` BELOW IF SOMEBODY WROTE
+                // ONE. The default is the honest one: a break the software
+                // decided was fine, with no person's words behind it, is
+                // exactly the thing this product exists not to do. Only a
+                // recorded explanation moves it, and only while it still names
+                // this figure under these terms.
                 explained: false,
                 cause: cause_text(line.cause),
                 ratio_amount: line.ratio_amount.to_string(),
@@ -2421,6 +2873,12 @@ impl Console {
                 difference: diff.to_string(),
                 postings,
                 config_digest: report.config_digest.clone(),
+                tolerance: graded_under.map(|(t, declared)| pb::Tolerance {
+                    below_notice: t.below_notice.to_string(),
+                    blocks_nav: t.blocks_nav.to_string(),
+                    declared,
+                }),
+                explanation: None,
             });
         }
         // Largest first: the queue is ordered by money, because that is the
@@ -2428,6 +2886,9 @@ impl Console {
         out.sort_by_key(|k| -k.difference.parse::<i64>().unwrap_or(0).abs());
         // ⛔ And the lot engine's, in the same list.
         out.extend(self.lot_breaks_for(fund, view)?);
+        // What anybody has recorded about them, and whether it still stands.
+        let recorded = self.explanations_of(book)?;
+        self.explain(&mut out, &recorded);
         Ok(out)
     }
 
@@ -2529,6 +2990,34 @@ fn newest_report(book: &Path) -> Result<Option<kernel::BreakReport>> {
             kernel::BreakReport::decode(&std::fs::read(p)?[..])
                 .with_context(|| format!("reading {}", p.display()))?,
         )),
+    }
+}
+
+/// A break's id within its book: the last segment of its resource name.
+///
+/// ⛔ The fund half of a break name says how the book is being served, not
+/// what it is. See `BreakExplanation::break_id`.
+fn break_id_of(name: &str) -> &str {
+    name.rsplit('/').next().unwrap_or(name)
+}
+
+/// A stored explanation as the contract shows it.
+///
+/// The qualification is left empty and filled in by the caller, which is the
+/// only place that knows what moved underneath it.
+fn to_pb_explanation(e: &BreakExplanation) -> pb::BreakExplanation {
+    pb::BreakExplanation {
+        text: e.text.clone(),
+        actor: e.actor.clone(),
+        accept_time: Some(ratio_proto::timestamp_proto::google::protobuf::Timestamp {
+            seconds: e.accept_time,
+            nanos: 0,
+        }),
+        difference: e.difference.to_string(),
+        config_digest: e.config_digest.clone(),
+        journal_position: e.journal_position as i64,
+        journal_digest: e.journal_digest.clone(),
+        qualification: Vec::new(),
     }
 }
 
@@ -2727,6 +3216,109 @@ fn nav_from(
     Ok((nav, struck_at.elapsed()))
 }
 
+/// A figure, or the absence of one.
+///
+/// ⛔ THE EMPTY STRING IS NOT `"0"`, AND THIS FUNCTION EXISTS SO THE TWO CANNOT
+/// BE TYPED INTERCHANGEABLY. `View.realized_gain` already carries the same
+/// convention — empty when the chart names no realized-gain role — and on a plan
+/// the distinction is the whole point: a step nothing measured rendering as `0`
+/// reads as "instant", and a step nothing costs rendering as `0` reads as
+/// "free". Neither is a claim anybody made.
+fn figure(v: Option<i64>) -> String {
+    v.map(|n| n.to_string()).unwrap_or_default()
+}
+
+/// A duration, or the absence of one.
+///
+/// ⛔ `None` BECOMES JSON `null`, WHICH IS THE POINT OF THE TYPE. A step nothing
+/// measured has no duration, and the wire says so structurally rather than by a
+/// convention a reader has to know. The COUNTS beside it still use the empty
+/// string, because they are int64s and every int64 on this contract is a string.
+///
+/// ⚠ Non-negative by construction — these are elapsed times and read counts
+/// multiplied by a rate — so the truncating division is the right one.
+fn duration(ns: Option<i64>) -> Option<ratio_proto::duration_proto::google::protobuf::Duration> {
+    ns.map(|n| ratio_proto::duration_proto::google::protobuf::Duration {
+        seconds: n / 1_000_000_000,
+        nanos: (n % 1_000_000_000) as i32,
+    })
+}
+
+/// A plan, as the contract carries it.
+///
+/// ⚠ ONE BUILDER, AND IT IS A PLAIN MAPPING. Every judgement about what a step
+/// costs was made in `ratio_nav::explain`, where it is tested; anything decided
+/// here would be a second opinion in the layer with no tests over it.
+fn plan_pb(p: &ratio_nav::explain::Plan) -> pb::ExplainNavStrikeResponse {
+    use ratio_nav::explain::{EdgeKind, Group, Role};
+    pb::ExplainNavStrikeResponse {
+        name: p.name.clone(),
+        view: p.view.clone(),
+        nodes: p
+            .nodes
+            .iter()
+            .map(|n| pb::PlanNode {
+                id: n.id.clone(),
+                operator: n.operator.clone(),
+                detail: n.detail.clone(),
+                group: match n.group {
+                    Group::Recorded => pb::plan_node::Group::Recorded,
+                    Group::Maintained => pb::plan_node::Group::Maintained,
+                } as i32,
+                role: match n.role {
+                    Role::Chosen => pb::plan_node::Role::Chosen,
+                    Role::Rejected => pb::plan_node::Role::Rejected,
+                    Role::Refusal => pb::plan_node::Role::Refusal,
+                    Role::Unread => pb::plan_node::Role::Unread,
+                } as i32,
+                cites: n.cites.clone(),
+                note: n.note.clone(),
+                estimated_reads: figure(n.estimated_reads),
+                // ⚠ `_nanos` ON THE MODEL, `_duration` ON THE WIRE, AND THAT
+                // MISMATCH IS DELIBERATE — unlike `source`/`target`, which had
+                // to agree because both sides carry the same string. These are
+                // different TYPES: an `Option<i64>` of nanoseconds becomes a
+                // `google.protobuf.Duration`, and `duration` is the conversion.
+                // Naming the integer `_duration` would hide that a conversion
+                // happens; naming the message `_nanos` fails the AIP linter.
+                estimated_duration: duration(n.estimated_nanos),
+                actual_rows: figure(n.actual_rows),
+                actual_duration: duration(n.actual_nanos),
+            })
+            .collect(),
+        edges: p
+            .edges
+            .iter()
+            .map(|e| pb::PlanEdge {
+                source: e.source.clone(),
+                target: e.target.clone(),
+                kind: match e.kind {
+                    EdgeKind::Flow => pb::plan_edge::Kind::Flow,
+                    EdgeKind::Refusal => pb::plan_edge::Kind::Refusal,
+                    EdgeKind::Unread => pb::plan_edge::Kind::Unread,
+                } as i32,
+                rows: figure(e.rows),
+            })
+            .collect(),
+        dials: p.shape.as_ref().map(|s| pb::PlanDials {
+            securities: s.estimate.dials.securities.to_string(),
+            currencies: s.estimate.dials.currencies.to_string(),
+            lots_per: s.estimate.dials.lots_per.to_string(),
+            open_actions: s.estimate.dials.open_actions.to_string(),
+            accounts: s.accounts.to_string(),
+            total_rows: s.total_rows.to_string(),
+            open_lots: s.open_lots_held.to_string(),
+        }),
+        estimate_refusal: p.estimate_refusal.clone(),
+        analyzed: p.analyzed,
+        nanos_per_read: p.nanos_per_read.to_string(),
+        provenance: p.provenance.clone(),
+        chosen_reads: figure(p.chosen_reads),
+        rewrite_reads: figure(p.rewrite_reads),
+        scan_reads: figure(p.scan_reads),
+    }
+}
+
 /// A view's declared terms, as the contract carries them.
 ///
 /// ⛔ ONE BUILDER FOR BOTH `ListViews` AND `GetView`. Two would be two answers
@@ -2797,6 +3389,12 @@ mod tests {
         format!("funds/demo/views/{}", ratio_rules::UNDECLARED_VIEW)
     }
 
+    /// A break's full resource name on the seeded book — the name `ratio
+    /// accept` takes and the console's URL carries.
+    fn demo_break(id: &str) -> String {
+        format!("{}/breaks/{id}", demo_view())
+    }
+
     fn fresh(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("ratio-console-{name}"));
         let _ = std::fs::remove_dir_all(&d);
@@ -2840,6 +3438,24 @@ mod tests {
         post("c1", "capital in", vec![(2, 30_000_000), (20, -30_000_000)]);
         post("t1", "buy", vec![(1, 25_000_000), (2, -25_000_000)]);
         post("f1", "fee accrued", vec![(10, 100_000), (40, -100_000)]);
+    }
+
+    /// Store a configuration declaring a tolerance and return its digest, so a
+    /// report can name it.
+    ///
+    /// ⛔ THE DIGEST IS THE POINT. A report grades against the configuration IT
+    /// NAMES, so a test that wants to assert a grade has to put the bands
+    /// somewhere the book can actually read them back from. The earlier version
+    /// of these tests wrote `config_digest: "abc123"` and asserted severities
+    /// that came from two constants — true by coincidence, and it stayed true
+    /// when the constants were the only thing deciding.
+    fn config_with_tolerance(at: &Path, below_notice: i64, blocks_nav: i64) -> String {
+        let mut b = FileBook::open(at).unwrap();
+        let toml = format!(
+            "rules = []\n[tolerance]\nbelow_notice = {below_notice}\nblocks_nav = {blocks_nav}\n"
+        );
+        let d = b.put(toml.as_bytes()).unwrap();
+        d.as_str().to_string()
     }
 
     /// Expand a route template to a concrete path for one fund.
@@ -3338,9 +3954,14 @@ mod tests {
     fn breaks_are_ordered_by_money_and_severity_follows_the_tolerance() {
         let d = fresh("breaks");
         book(&d);
+        // The bands this report is graded against, stored so the book can read
+        // them back. 5.00 and 1,000.00 — the custom numbers, but DECLARED here,
+        // which is what makes the assertions below about a term of an agreement
+        // rather than about two constants.
+        let digest = config_with_tolerance(&d, 500, 100_000);
         let report = kernel::BreakReport {
             name: "books/demo/breakReports/r".into(),
-            config_digest: "abc123".into(),
+            config_digest: digest,
             scope: None,
             transactions_replayed: 2,
             entries_posted: 2,
@@ -3367,6 +3988,12 @@ mod tests {
         assert_eq!(ks[0].postings.len(), 1);
         assert_eq!(ks[0].postings[0].entry_id, "t1");
         assert!(!ks[0].config_digest.is_empty(), "a break must cite its configuration");
+        // And the terms it was graded against travel with it, so a reader does
+        // not have to go and look them up to know what the grade meant.
+        let t = ks[0].tolerance.as_ref().expect("a graded break names its bounds");
+        assert_eq!(t.blocks_nav, "100000");
+        assert_eq!(t.below_notice, "500");
+        assert!(t.declared, "this configuration says so rather than getting it by custom");
         // Nothing has explained anything, and nothing pretends otherwise.
         assert!(ks.iter().all(|k| !k.explained));
 
@@ -3380,6 +4007,495 @@ mod tests {
         // `state` and `open_break_count` stay on `Fund` and answer for the
         // DEFAULT view, which is what their comments in the contract promise.
         assert_eq!(c.get_view(&demo_view()).unwrap().open_difference, "1000100");
+    }
+
+    #[test]
+    fn a_break_is_graded_by_the_configuration_its_report_names_not_the_one_in_force_now() {
+        // ⭐ THE LOAD-BEARING ONE. A break is a comparison between two figures
+        // produced under one configuration, and the tolerance agreed then is
+        // the term that applies to it. Reading the ACTIVE configuration instead
+        // would regrade a report whose bytes have not changed the moment
+        // somebody promotes a new rule set — February's break silently graded
+        // under June's agreement, on a book that still ties and still replays.
+        let d = fresh("gradedbyreport");
+        book(&d);
+        // Reconciled under bands that make 1,000.00 merely reportable.
+        let loose = config_with_tolerance(&d, 500, 500_000);
+        let report = kernel::BreakReport {
+            name: "books/demo/breakReports/r".into(),
+            config_digest: loose,
+            scope: None,
+            transactions_replayed: 1,
+            entries_posted: 1,
+            breaks: vec![kernel::BreakLine {
+                account: 1, display_name: "Investments at fair value".into(),
+                ratio_amount: 25_000_000, reported_amount: 24_900_000, difference: 100_000,
+                cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into(),
+            }],
+            exceptions: vec![],
+            book_ties: true,
+        };
+        std::fs::create_dir_all(d.join("reports")).unwrap();
+        std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
+
+        let before = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert_eq!(before[0].severity, pb::Severity::Medium as i32, "reportable under those bands");
+
+        // Now the fund tightens its tolerance and promotes it. The report is
+        // untouched — same bytes, same figures, same digest.
+        let mut b = FileBook::open(&d).unwrap();
+        let tight = b
+            .put(b"rules = []\n[tolerance]\nbelow_notice = 100\nblocks_nav = 1000\n")
+            .unwrap();
+        b.set_active(&tight).unwrap();
+
+        let after = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert_eq!(
+            after[0].severity,
+            pb::Severity::Medium as i32,
+            "still graded under the terms the reconciliation ran on"
+        );
+        assert_eq!(after[0].tolerance.as_ref().unwrap().blocks_nav, "500000");
+    }
+
+    #[test]
+    fn a_report_naming_a_configuration_that_is_not_stored_grades_every_break_high() {
+        // ⛔ AND THAT IS THE DESIGN, NOT A BUG TO BE FIXED BY DEFAULTING. The
+        // honest statement about a difference nobody can grade is that it was
+        // not graded — and a product whose claim is that a figure can be
+        // checked cannot answer "small" using a tolerance it could not read.
+        // Erring towards blocking costs an operator a look; erring the other
+        // way costs a NAV.
+        let d = fresh("ungradable");
+        book(&d);
+        let report = kernel::BreakReport {
+            name: "books/demo/breakReports/r".into(),
+            // Well-formed, and naming bytes this book does not hold.
+            config_digest: "0".repeat(64),
+            scope: None,
+            transactions_replayed: 1,
+            entries_posted: 1,
+            breaks: vec![kernel::BreakLine {
+                account: 40, display_name: "Management fee payable".into(),
+                ratio_amount: 1, reported_amount: 0, difference: 1,
+                cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into(),
+            }],
+            exceptions: vec![],
+            book_ties: true,
+        };
+        std::fs::create_dir_all(d.join("reports")).unwrap();
+        std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
+
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert_eq!(ks[0].severity, pb::Severity::High as i32, "one minor unit, and it blocks");
+        assert!(ks[0].tolerance.is_none(), "and it does not claim bounds it could not read");
+        // The screen still renders rather than erroring: a pruned configuration
+        // must not turn the exceptions queue into a stack trace.
+        assert_eq!(ks.len(), 1);
+    }
+
+    /// A book with one 1,000.00 break, graded under declared bands.
+    fn book_with_a_break(name: &str, difference: i64) -> std::path::PathBuf {
+        let d = fresh(name);
+        book(&d);
+        let digest = config_with_tolerance(&d, 500, 100_000);
+        write_report(&d, &digest, difference);
+        d
+    }
+
+    fn write_report(d: &Path, digest: &str, difference: i64) {
+        let report = kernel::BreakReport {
+            name: "books/demo/breakReports/r".into(),
+            config_digest: digest.to_string(),
+            scope: None,
+            transactions_replayed: 1,
+            entries_posted: 1,
+            breaks: vec![kernel::BreakLine {
+                account: 1,
+                display_name: "Investments at fair value".into(),
+                ratio_amount: 25_000_000,
+                reported_amount: 25_000_000 - difference,
+                difference,
+                cause: kernel::Cause::AmountDiffers as i32,
+                ratio_basis: "1".into(),
+            }],
+            exceptions: vec![],
+            book_ties: true,
+        };
+        std::fs::create_dir_all(d.join("reports")).unwrap();
+        // ⚠ A DISTINCT NAME PER REPORT. `newest_report` picks by mtime, and two
+        // written inside one filesystem timestamp order arbitrarily.
+        let n = std::fs::read_dir(d.join("reports")).map(|r| r.count()).unwrap_or(0);
+        std::fs::write(d.join(format!("reports/r{n}.pb")), report.encode_to_vec()).unwrap();
+    }
+
+    #[test]
+    fn a_break_with_an_accepted_explanation_reports_explained() {
+        let d = book_with_a_break("explained", 200_000);
+        let c = Console::new(&d).as_actor("e.marsh");
+        c.accept_explanation(&demo_break("1"), "the custodian's unsettled dividend")
+            .unwrap();
+
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert!(ks[0].explained, "a person recorded why, and the break says so");
+        let e = ks[0].explanation.as_ref().unwrap();
+        assert_eq!(e.text, "the custodian's unsettled dividend");
+        assert_eq!(e.actor, "e.marsh");
+        assert!(e.qualification.is_empty(), "nothing has moved under it");
+        // ⛔ EXPLAINED, NOT GONE. It keeps its place in the queue.
+        assert_eq!(ks.len(), 1, "an explained break is still a break");
+    }
+
+    #[test]
+    fn posting_an_entry_does_not_unexplain_a_break() {
+        // ⭐ THE ANTI-DEADLOCK TEST, and the reason the currency test is the
+        // FIGURE rather than the journal prefix. The obvious design — an
+        // explanation names the prefix it read, so a longer journal makes it
+        // stale — retires every explanation on the next posting. A NAV morning
+        // posts constantly, so the gate becomes one nobody can ever clear while
+        // looking like the software being careful.
+        let d = book_with_a_break("stillexplained", 200_000);
+        let c = Console::new(&d).as_actor("e.marsh");
+        c.accept_explanation(&demo_break("1"), "clears T+2").unwrap();
+
+        let mut b = FileBook::open(&d).unwrap();
+        let cfg = b.active().unwrap().unwrap();
+        b.append(&ratio_store::JournalEntry {
+            id: "later".into(),
+            memo: "an unrelated accrual, on the same morning".into(),
+            config: cfg,
+            postings: vec![
+                ratio_store::PostingRecord::new(10, 1_000),
+                ratio_store::PostingRecord::new(40, -1_000),
+            ],
+            trade_date: None,
+            announcement: None,
+        })
+        .unwrap();
+        drop(b);
+
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert!(ks[0].explained, "the journal grew; the figure did not");
+        assert!(ks[0].explanation.as_ref().unwrap().qualification.is_empty());
+    }
+
+    #[test]
+    fn a_reconciliation_that_moves_the_figure_retires_the_explanation_and_says_what_moved() {
+        // ⭐ THE OTHER SIDE. "The 2,000.00 is the custodian's unsettled
+        // dividend" is a claim about 2,000.00. When the next run reports
+        // 2,750.00 the words are about something that is no longer there, and
+        // an explanation that outlived its figure is how a fund gets struck on
+        // a difference nobody has actually looked at.
+        let d = book_with_a_break("retired", 200_000);
+        let digest = {
+            let b = FileBook::open(&d).unwrap();
+            b.records::<ratio_ingest::Fact>(Plane::Facts).ok();
+            newest_report(&d).unwrap().unwrap().config_digest
+        };
+        Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation(&demo_break("1"), "clears T+2")
+            .unwrap();
+
+        // A later run, same terms, different figure.
+        write_report(&d, &digest, 275_000);
+
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert!(!ks[0].explained, "the note was about a figure that has moved");
+        let e = ks[0].explanation.as_ref().unwrap();
+        assert_eq!(e.text, "clears T+2", "and the note is still visible as evidence");
+        assert_eq!(e.difference, "200000", "carrying the figure it was written about");
+        assert_eq!(e.qualification.len(), 1, "and saying what moved");
+        assert!(e.qualification[0].contains("275000"), "{:?}", e.qualification);
+    }
+
+    #[test]
+    fn an_explanation_written_about_a_different_figure_does_not_explain_this_one() {
+        // The same property stated over two breaks rather than two runs: an
+        // explanation is keyed to a break AND a figure, so it cannot drift onto
+        // a difference nobody wrote it about.
+        let d = book_with_a_break("wrongfigure", 200_000);
+        Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation(&demo_break("1"), "about the old number")
+            .unwrap();
+
+        // Same break name, same configuration, a different difference.
+        let digest = newest_report(&d).unwrap().unwrap().config_digest;
+        write_report(&d, &digest, 1);
+
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert!(!ks[0].explained);
+    }
+
+    #[test]
+    fn the_newest_explanation_wins_and_the_earlier_one_is_still_on_disk() {
+        // Append-only, like every plane here. A correction is a new record; the
+        // one somebody thought better of is part of what happened.
+        let d = book_with_a_break("corrected", 200_000);
+        let c = Console::new(&d).as_actor("e.marsh");
+        c.accept_explanation(&demo_break("1"), "first thought").unwrap();
+        c.accept_explanation(&demo_break("1"), "second thought").unwrap();
+
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert_eq!(ks[0].explanation.as_ref().unwrap().text, "second thought");
+
+        let raw = std::fs::read_to_string(d.join("explanations.jsonl")).unwrap();
+        assert_eq!(raw.lines().count(), 2, "the first is still on disk");
+        assert!(raw.contains("first thought"));
+    }
+
+    #[test]
+    fn an_explanation_is_recorded_against_the_verified_actor_not_the_text() {
+        // ⛔ `record_change`'s law, applied to the new verb: the actor is the
+        // console's own, never anything a caller supplied. An audit trail that
+        // takes the author's word for who the author is records nothing.
+        let d = book_with_a_break("actor", 200_000);
+        Console::new(&d)
+            .as_actor("k.oyelaran")
+            .accept_explanation(&demo_break("1"), "signed by somebody else, allegedly")
+            .unwrap();
+
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert_eq!(ks[0].explanation.as_ref().unwrap().actor, "k.oyelaran");
+
+        let log = std::fs::read_to_string(d.join("CHANGELOG")).unwrap();
+        let line = log.lines().find(|l| l.contains("accepted")).expect("an accepted line");
+        let f: Vec<&str> = line.split('\t').collect();
+        assert_eq!(f.len(), 5, "five tab-separated fields");
+        assert_eq!(f[1], "k.oyelaran");
+        assert_eq!(f[2], "accepted");
+        assert_eq!(f[3], demo_break("1"));
+    }
+
+    #[test]
+    fn a_break_that_is_not_there_cannot_be_explained() {
+        // ORCHESTRATION.md's proposal shape requires a citation that does not
+        // resolve to fail before a person reads it. Here it fails before one is
+        // recorded at all.
+        let d = book_with_a_break("nosuch", 200_000);
+        let e = Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation(&demo_break("999"), "about nothing")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("no break"), "{e}");
+        assert!(!d.join("explanations.jsonl").exists(), "and nothing was written");
+    }
+
+    #[test]
+    fn an_explanation_with_no_words_in_it_is_refused() {
+        let d = book_with_a_break("empty", 200_000);
+        let e = Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation(&demo_break("1"), "   ")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("explains nothing"), "{e}");
+    }
+
+    #[test]
+    fn the_unexplained_filter_hides_a_break_a_person_explained() {
+        // ⚠ This test could not have failed before: `explained` was a constant,
+        // so `unexplained` returned everything and agreed with every assertion
+        // anybody made about it.
+        let d = book_with_a_break("filterexplained", 200_000);
+        let c = Console::new(&d);
+        assert_eq!(c.list_breaks(&demo_view(), "unexplained").unwrap().breaks.len(), 1);
+
+        Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation(&demo_break("1"), "known and accepted")
+            .unwrap();
+
+        assert_eq!(
+            c.list_breaks(&demo_view(), "unexplained").unwrap().breaks.len(),
+            0,
+            "explained is not unexplained"
+        );
+        assert_eq!(c.list_breaks(&demo_view(), "").unwrap().breaks.len(), 1, "and it is still there");
+    }
+
+    #[test]
+    fn an_explanation_survives_the_book_being_served_under_another_fund_name() {
+        // ⛔ THE BUG THIS EXISTS FOR, AND ONLY THE SEEDED DEMO FOUND IT. A note
+        // was keyed by the break's RESOURCE NAME, whose fund half is a property
+        // of how the book is served rather than of the book: the seeder writes
+        // one against `funds/demo/views/book/breaks/1` on a loopback book, and
+        // the same directory under a funds root serves that break as
+        // `funds/pennington-select-income/views/book/breaks/1`. It sat on
+        // disk, the break sat on screen, and nothing connected them — so a fund
+        // seeded as explained came up BLOCKED with the note invisible.
+        //
+        // ⚠ NO UNIT TEST COULD HAVE SEEN IT: every one of them uses a
+        // root-that-is-a-book, where the fund is always `demo`.
+        let root = fresh("servedelsewhere");
+        let inner = root.join("pennington-select-income");
+        std::fs::create_dir_all(&inner).unwrap();
+        book(&inner);
+        let digest = config_with_tolerance(&inner, 500, 100_000);
+        write_report(&inner, &digest, 200_000);
+
+        // Accepted the way the seeder does it: against the book directly,
+        // where the fund is `demo`.
+        Console::new(&inner)
+            .as_actor("e.marsh")
+            .accept_explanation(&demo_break("1"), "known and accepted")
+            .unwrap();
+
+        // Read the way the console serves it: as one fund among several.
+        let served = Console::new(&root)
+            .list_breaks(
+                &format!(
+                    "funds/pennington-select-income/views/{}",
+                    ratio_rules::UNDECLARED_VIEW
+                ),
+                "",
+            )
+            .unwrap()
+            .breaks;
+        assert!(
+            served[0].explained,
+            "the note followed the book, not the name it is served under",
+        );
+        assert_eq!(served[0].explanation.as_ref().unwrap().actor, "e.marsh");
+    }
+
+    #[test]
+    fn the_gate_and_the_fund_state_are_one_derivation() {
+        // ⭐ THE PROPERTY THAT STOPS THE SCREEN AND THE REFUSAL DRIFTING. The
+        // console reported BLOCKED for months while `ratio strike` never asked,
+        // and the fix is not "make the command check too" — it is that there is
+        // one fold of what blocks and both read it. Two plausible folds,
+        // independently maintained, are one field apart within a month.
+        let d = book_with_a_break("onederivation", 200_000);
+        let c = Console::new(&d);
+
+        let blocked_now = |c: &Console| {
+            c.get_fund("funds/demo").unwrap().state == pb::fund::State::Blocked as i32
+        };
+
+        // Blocking, on both readings.
+        assert!(!c.blocking_at("demo").unwrap().is_empty());
+        assert!(blocked_now(&c));
+
+        // Explained: neither reading blocks.
+        Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation(&demo_break("1"), "known and accepted")
+            .unwrap();
+        assert!(c.blocking_at("demo").unwrap().is_empty());
+        assert!(!blocked_now(&c), "the badge agrees with the gate");
+
+        // And a fund below its own tolerance blocks on neither.
+        let e = book_with_a_break("onederivationlow", 100);
+        let c2 = Console::new(&e);
+        assert!(c2.blocking_at("demo").unwrap().is_empty());
+        assert!(!blocked_now(&c2));
+    }
+
+    #[test]
+    fn an_accepted_line_is_not_read_as_a_configuration_promotion() {
+        // ⛔ `config_versions` FILTERS CHANGELOG ON `approved`, and it does that
+        // because a line keyed by the same digest under a different verb would
+        // report the last person who did something under a configuration as the
+        // one who approved it. `accepted` is a new verb writing the break's
+        // config digest into that same column.
+        let d = book_with_a_break("changelogverbs", 200_000);
+        let before = Console::new(&d).list_config_versions("funds/demo").unwrap().config_versions;
+
+        Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation(&demo_break("1"), "known and accepted")
+            .unwrap();
+
+        let after = Console::new(&d).list_config_versions("funds/demo").unwrap().config_versions;
+        assert_eq!(after.len(), before.len(), "an acceptance is not a promotion");
+        for v in &after {
+            assert_ne!(v.actor, "e.marsh", "and it did not sign one: {v:?}");
+        }
+    }
+
+    #[test]
+    fn a_lot_break_is_not_explained_it_is_corrected() {
+        // ⚠ THE NAME IS A POSITION IN A LIST. `lot-1` is the first lot break
+        // this projection reports, so an explanation keyed on it would follow
+        // the position rather than the sale the moment an earlier one clears —
+        // every citation still resolving, the books still tying, the words
+        // attached to a different disposal. And what closes a lot break is an
+        // entry that makes the lot book and the position agree, not a note.
+        let d = fresh("lotaccept");
+        book(&d);
+        {
+            use ratio_store::{JournalEntry, PostingRecord};
+            let mut b = FileBook::open(&d).unwrap();
+            let cfg = b.active().unwrap().unwrap();
+            // Seven units in, three out — a pro-rata split that will not divide.
+            b.append(&JournalEntry {
+                id: "buy".into(),
+                memo: "buy".into(),
+                config: cfg.clone(),
+                postings: vec![
+                    PostingRecord { dim: 1, amount: 100, currency: None, instrument: Some("VTI".into()), quantity: Some(7) },
+                    PostingRecord::new(2, -100),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap();
+            b.append(&JournalEntry {
+                id: "sell".into(),
+                memo: "sell".into(),
+                config: cfg,
+                postings: vec![
+                    PostingRecord { dim: 1, amount: -45, currency: None, instrument: Some("VTI".into()), quantity: Some(-3) },
+                    PostingRecord::new(2, 45),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap();
+        }
+
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        let lot = ks
+            .iter()
+            .find(|k| k.name.contains("/breaks/lot-"))
+            .expect("this shape produces a lot break");
+        let e = Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation(&lot.name, "looks fine to me")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("not explained, it is corrected"), "{e}");
+        assert!(e.contains("realized gain"), "the refusal says what is at stake: {e}");
+    }
+
+    #[test]
+    fn a_lot_break_carries_no_tolerance_because_it_was_not_graded_by_one() {
+        // A lot break is HIGH by what it MEANS — the lot book and the position
+        // disagreeing corrupts the realized gain, which no reconciliation
+        // reaches. Reporting bounds beside it would suggest some other number
+        // would have graded it differently. None would.
+        let d = fresh("lottolerance");
+        book(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        let cfg = b.active().unwrap().unwrap();
+        b.append(&ratio_store::JournalEntry {
+            id: "s1".into(),
+            memo: "sell with no basis anybody can relieve".into(),
+            config: cfg,
+            postings: vec![ratio_store::PostingRecord::new(1, -1_000_000)],
+            trade_date: None,
+            announcement: None,
+        })
+        .unwrap_err();
+
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        for k in ks.iter().filter(|k| k.name.contains("/breaks/lot-")) {
+            assert_eq!(k.severity, pb::Severity::High as i32);
+            assert!(k.tolerance.is_none(), "graded by meaning, not by amount");
+        }
     }
 
     #[test]
@@ -3494,6 +4610,9 @@ mod tests {
             event_id: "acc-1".into(),
             amount: "1000000.00".into(),
             days: "30".into(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: None,
             validate_only,
         };
 
@@ -3561,6 +4680,9 @@ mod tests {
             event_id: id.into(),
             amount: "100.00".into(),
             days: "1".into(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: None,
             validate_only,
         };
 
@@ -3581,6 +4703,165 @@ mod tests {
         assert!(c.apply_event(&req("over-1", false)).is_ok());
     }
 
+    /// A purchase: investments up and attributed, cash down and not.
+    const TRADE: &str = "[[rule]]\nid = \"buy\"\nkind = \"trade\"\n\
+                         [[rule.posting]]\naccount = 1\nweight = 1\nper_instrument = true\n\
+                         [[rule.posting]]\naccount = 2\nweight = -1\n";
+
+    /// The request a trade ticket sends, with everything filled in.
+    fn trade_req(id: &str) -> pb::ApplyEventRequest {
+        pb::ApplyEventRequest {
+            parent: "funds/demo".into(),
+            rule_id: "buy".into(),
+            event_id: id.into(),
+            amount: "341750.00".into(),
+            days: String::new(),
+            instrument: "ACME".into(),
+            quantity: "1000".into(),
+            trade_date: Some(ratio_proto::date_proto::google::r#type::Date {
+                year: 2026,
+                month: 2,
+                day: 26,
+            }),
+            validate_only: false,
+        }
+    }
+
+    #[test]
+    fn a_recorded_trade_carries_the_instrument_the_units_and_the_day() {
+        // ⭐ THE WHOLE POINT OF THE THREE FIELDS. Before them this method built
+        // its event with `instrument: None, quantity: None` and its entry with
+        // `trade_date: None`, and `Projection::walk` skips any posting lacking
+        // BOTH an instrument and a quantity — so every trade the console
+        // recorded opened no lot and relieved none, while the entry balanced and
+        // the trial balance tied. Nothing downstream said a word.
+        let d = fresh("tradefields");
+        book(&d);
+        promote(&d, TRADE, "e.marsh", "buy");
+        Console::new(&d).apply_event(&trade_req("trd-1")).unwrap();
+
+        let entries = FileBook::open(&d).unwrap().entries().unwrap();
+        let e = entries.iter().find(|e| e.id == "trd-1").expect("the trade was written");
+
+        // ⛔ THE DAY IS ON THE ENTRY, which is where `Ratio.Lots.Relief` reads a
+        // holding period from. A lot opened by an entry without one is refused
+        // by every method rather than defaulted.
+        assert_eq!(e.trade_date.as_deref(), Some("2026-02-26"));
+
+        // ⛔ AND ONLY THE `per_instrument` LEG IS ATTRIBUTED. The cash leg names
+        // no instrument, because cash is not held in one.
+        let inv = e.postings.iter().find(|p| p.dim == 1).expect("the investments leg");
+        let cash = e.postings.iter().find(|p| p.dim == 2).expect("the cash leg");
+        assert_eq!(inv.instrument.as_deref(), Some("ACME"));
+        assert_eq!(inv.quantity, Some(1_000), "a purchase adds units");
+        assert_eq!(cash.instrument, None);
+        assert_eq!(cash.quantity, None);
+    }
+
+    #[test]
+    fn a_sale_gives_up_units_without_the_caller_negating_anything() {
+        // ⛔ A SIDE IS A RULE, NOT A SIGN. The quantity is positive on both
+        // sides and `compile` takes the direction from the LEG'S weight, so a
+        // disposal removes units. A caller that negated the quantity itself
+        // would ADD units on a sale, and the entry would still balance.
+        let sell = "[[rule]]\nid = \"sell\"\nkind = \"trade\"\n\
+                    [[rule.posting]]\naccount = 2\nweight = 1\n\
+                    [[rule.posting]]\naccount = 1\nweight = -1\nper_instrument = true\n";
+        let d = fresh("tradesell");
+        book(&d);
+        promote(&d, sell, "e.marsh", "sell");
+        let mut req = trade_req("trd-sell");
+        req.rule_id = "sell".into();
+        Console::new(&d).apply_event(&req).unwrap();
+
+        let entries = FileBook::open(&d).unwrap().entries().unwrap();
+        let e = entries.iter().find(|e| e.id == "trd-sell").unwrap();
+        let inv = e.postings.iter().find(|p| p.dim == 1).unwrap();
+        assert_eq!(inv.quantity, Some(-1_000), "a disposal gives units up");
+    }
+
+    #[test]
+    fn a_fractional_quantity_is_refused_rather_than_carried_as_none() {
+        // ⛔ THE DATA PLANE DROPS IT; THIS MUST NOT. `admit_facts` carries a
+        // non-whole quantity as `None`, which is defensible for a file nobody
+        // read — and indefensible here, where a person typed the number and
+        // would be handed back the lot-less entry these fields exist to prevent.
+        let d = fresh("tradefrac");
+        book(&d);
+        promote(&d, TRADE, "e.marsh", "buy");
+        let c = Console::new(&d);
+
+        let mut req = trade_req("trd-frac");
+        req.quantity = "10.5".into();
+        let r = c.apply_event(&req);
+        assert!(r.is_err(), "a fractional quantity must be refused");
+        assert!(
+            format!("{:#}", r.unwrap_err()).contains("whole number of units"),
+            "and must say why",
+        );
+
+        // ⛔ AND NEGATIVE IS THE OTHER WAY TO BOOK A TRADE BACKWARDS.
+        let mut req = trade_req("trd-neg");
+        req.quantity = "-1000".into();
+        assert!(c.apply_event(&req).is_err(), "a negative quantity must be refused");
+    }
+
+    #[test]
+    fn an_instrument_without_a_quantity_is_refused() {
+        // ⛔ HALF OF IT IS THE DEFECT WEARING A DISGUISE. `walk` needs BOTH, so
+        // a posting naming an instrument and no units opens no lot either — and
+        // reports itself as attributed while doing it.
+        let d = fresh("tradehalf");
+        book(&d);
+        promote(&d, TRADE, "e.marsh", "buy");
+        let c = Console::new(&d);
+
+        for (instrument, quantity) in [("ACME", ""), ("", "1000")] {
+            let mut req = trade_req("trd-half");
+            req.instrument = instrument.into();
+            req.quantity = quantity.into();
+            let r = c.apply_event(&req);
+            assert!(r.is_err(), "{instrument:?}/{quantity:?} should be refused");
+            assert!(format!("{:#}", r.unwrap_err()).contains("go together"));
+        }
+
+        // Neither is still fine: that is a movement of value, and some events
+        // genuinely are one.
+        let mut req = trade_req("trd-none");
+        req.instrument = String::new();
+        req.quantity = String::new();
+        assert!(c.apply_event(&req).is_ok(), "an event with no instrument is still an event");
+    }
+
+    #[test]
+    fn a_trade_date_that_is_not_a_date_is_refused_at_the_door() {
+        // ⚠ THE ONLY PLACE IT IS FREE. A journal is append-only, so a date the
+        // projection cannot parse is recorded as a BREAK and the lots it opened
+        // are already wrong. `ratio_project` has the test for that shape; this
+        // is the door it should never have got through.
+        let d = fresh("tradedate");
+        book(&d);
+        promote(&d, TRADE, "e.marsh", "buy");
+        let c = Console::new(&d);
+
+        for bad in [(2026, 13, 1), (2026, 2, 30), (0, 0, 0)] {
+            let mut req = trade_req("trd-baddate");
+            req.trade_date = Some(ratio_proto::date_proto::google::r#type::Date {
+                year: bad.0,
+                month: bad.1,
+                day: bad.2,
+            });
+            assert!(c.apply_event(&req).is_err(), "{bad:?} should not be a trade date");
+        }
+
+        // ⚠ And ABSENT is not the same as invalid. An event that names no day is
+        // accepted; the lot it opens carries none, and the holding-period
+        // methods refuse THAT rather than guessing.
+        let mut req = trade_req("trd-nodate");
+        req.trade_date = None;
+        assert!(c.apply_event(&req).is_ok());
+    }
+
     #[test]
     fn an_event_id_that_is_not_an_id_is_refused() {
         let d = fresh("eventid");
@@ -3596,6 +4877,9 @@ mod tests {
                 event_id: bad.into(),
                 amount: "1.00".into(),
                 days: "1".into(),
+                instrument: String::new(),
+                quantity: String::new(),
+                trade_date: None,
                 validate_only: false,
             });
             assert!(r.is_err(), "{bad:?} should not be accepted as an event id");
@@ -3607,6 +4891,9 @@ mod tests {
             event_id: "acc-2".into(),
             amount: "1000.00".into(),
             days: "1".into(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: None,
             validate_only: true,
         })
         .unwrap();
@@ -3929,8 +5216,14 @@ mod tests {
     fn filters_are_the_three_the_console_offers() {
         let d = fresh("filter");
         book(&d);
+        // ⚠ A REAL DIGEST, BECAUSE `blocking` NOW DEPENDS ON ONE. With an
+        // unreadable configuration every break grades HIGH and this test would
+        // have gone on passing while asserting nothing about the filter —
+        // `blocking` returning "all of them" looks identical to `blocking`
+        // working when everything happens to block.
+        let digest = config_with_tolerance(&d, 500, 100_000);
         let report = kernel::BreakReport {
-            name: "books/demo/breakReports/r".into(), config_digest: "c".into(), scope: None,
+            name: "books/demo/breakReports/r".into(), config_digest: digest, scope: None,
             transactions_replayed: 1, entries_posted: 1,
             breaks: vec![
                 kernel::BreakLine { account: 1, display_name: "Investments at fair value".into(),

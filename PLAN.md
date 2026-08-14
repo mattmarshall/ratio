@@ -562,6 +562,57 @@ all of which take `UNDECLARED_VIEW` because the seeded books declare none.
 `the_pending_queue_is_bounded_by_the_settlement_lag_not_by_the_journal`, which is
 the paragraph above as an assertion.
 
+### Amendment, 2026-08-14 — a plan screen, and the thirty-sixth RPC
+
+The console can show how a NAV was computed: `/funds/{fund}/views/{view}/
+strikes/{strike}/plan` draws the strike's steps, what each one reads, and what
+the plans not taken would have cost. ⭐ `ExplainNavStrike`, and it is a custom
+method on GET for the reason `:replay` already is.
+
+**The premise this was asked under was false, and finding that out was the first
+half of the work.** The request was to visualize "the nav strike query plan and
+optimization" — and there is no query planner in this repository. No plan node
+type, no rewrite registry, nothing that chooses a plan at runtime:
+`ratio_nav::strike` folds the journal, `Projection::nav` reads maintained
+totals, and a caller picks one by CALLING it. `Ratio.Plan` proves the two agree
+and is not emitted into Rust at all. So this screen does not render a plan the
+engine built; it writes down what the two paths already do and attaches the cost
+the model proves or the fold measures. **That distinction is on the screen in as
+many words**, because a diagram implying a planner that does not exist would be
+checked by nothing and believed anyway — which is the shape of both false
+premises `HANDOFF.md` opens with.
+
+**What it cost.** One RPC, so the "No new RPC" bullet in the 08-13 amendment
+above is wrong for the second time and says so here rather than in a test diff.
+Four messages (`NavStrikePlan`, `PlanNode`, `PlanEdge`, `PlanDials`), three
+accessors on `Projection`, and a counters struct on `NavFold`.
+
+**What it is NOT, because the adjacent refusal is one word away:**
+
+- **Not "the workload planner"** from the list below. That entry means
+  scheduling compute across workers — `crates/ratio-exec`, a proved crate
+  nothing in this repository depends on, and this change leaves it unwired.
+  This is an EXPLAIN of one figure's derivation, which is the category
+  `ratio explain ACCOUNT` and the `explain_figure` MCP tool have been in since
+  before that list was written.
+- **Not performance reporting and attribution.** The `/scale` amendment already
+  drew this line: that entry means *investment* performance. This is the
+  engine's own cost.
+- **No write, no form, no button that spends money.** The two dials are a
+  `router.replace` producing a query string on a GET — the same shape `/scale`
+  used precisely so the no-forms fence did not have to be widened.
+- **No new dependency.** The layout is arithmetic and the diagram is inline SVG
+  over the design tokens `site/style.css` already publishes. A graph library
+  would have been a client-only package in a five-package application whose
+  colours would still have to be forced back through `tokens_test`.
+
+⛔ **BOTH CURVES ARE ON IT AND STAY ON IT WHEN THE REJECTED STEPS COLLAPSE.**
+The plans not taken are hidden by default — they are noise on a first read — but
+the three costs are rendered whatever the dials say. `ratio bench` "reports two
+curves and both must be quoted", and a plan screen showing only the flat one
+would be that overclaim drawn as a diagram. `screens.test.tsx` asserts the strip
+in both states, and the case was negative-tested by gating it on the toggle.
+
 ---
 
 ## The control plane: geetch and crova
