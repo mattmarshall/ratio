@@ -76,11 +76,35 @@ lean_test(
 # BEFORE any of it is built: the day only moves forward, moving on never erases
 # what a day held, a day is struck at most once, and a skipped day is a visible
 # gap rather than a silent zero.
+#
+# ⚠ `struck` IS INDEXED BY VIEW NOW. A fund keeps more than one book of record,
+# so a valuation point has one answer PER VIEW — a widening of
+# `one_answer_per_day`, not a weakening of it, and the file argues why at
+# length. Two facts come with it: striking a second view on a day the first has
+# already struck succeeds and disturbs nothing, and a view that has not struck a
+# day says so rather than borrowing its sibling's figure.
 lean_test(
     name = "period_proof_test",
     size = "small",
     srcs = ["Ratio/Period.lean"],
     entry = "Ratio/Period.lean",
+)
+
+# One journal, more than one answer. A view is a recognition PREDICATE — not a
+# conserved dimension, not a partition, not a second book — so it filters whole
+# entries and every view's books tie. The load-bearing pair is that two views
+# differ by exactly the entries in flight between them (which is what makes the
+# reconciliation a list rather than a hunt) and that a fold with no CUT hides
+# the whole difference (which is what makes a differential test over one
+# vacuous). Settled here before any of it is built.
+lean_test(
+    name = "views_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Core.lean",
+        "Ratio/Views.lean",
+    ],
+    entry = "Ratio/Views.lean",
 )
 
 # Tax lots at scale. Every optimization a twenty-million-lot book needs — an
@@ -163,6 +187,20 @@ lean_test(
     size = "small",
     srcs = ["Ratio/Exec.lean"],
     entry = "Ratio/Exec.lean",
+)
+
+# ⛔ How big a difference has to be before it stops the NAV — a term of an
+# administration agreement, not a property of the software. Two funds looking at
+# the same break disagree about whether it matters and both are right.
+#
+# The theorem worth knowing about is `an_inverted_tolerance_makes_the_middle_
+# band_unreachable`: bounds the wrong way round leave a grade nothing can ever
+# be, which is why `wellFormed` is checked when the configuration is READ.
+lean_test(
+    name = "tolerance_proof_test",
+    size = "small",
+    srcs = ["Ratio/Tolerance.lean"],
+    entry = "Ratio/Tolerance.lean",
 )
 
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
@@ -350,6 +388,21 @@ lean_emit(
     srcs = _BUILDER_SRCS + ["Ratio/Exec.lean", "Ratio/Exec/Emit.lean"],
     entry = "Ratio/Exec/Emit.lean",
     out = "ratio_exec.ast.json",
+)
+
+# ⛔ The grading decision, so the console's loop over a report's lines and the
+# theorems about severity cannot come to disagree — `Ratio.Tolerance.the_three_
+# bands_partition_every_difference` is the bridge. ⚠ The magnitude is a
+# PARAMETER: negation is the one operation here that can fail on `i64`, so the
+# Rust takes a checked absolute value before it asks anything.
+lean_emit(
+    name = "ratio_tolerance_ast",
+    srcs = _BUILDER_SRCS + [
+        "Ratio/Tolerance.lean",
+        "Ratio/Tolerance/Emit.lean",
+    ],
+    entry = "Ratio/Tolerance/Emit.lean",
+    out = "ratio_tolerance.ast.json",
 )
 
 lean_emit(

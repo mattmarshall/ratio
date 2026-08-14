@@ -36,7 +36,10 @@ export function FundRail({ funds }: { funds: Fund[] }) {
         return (
           <Link
             key={f.name}
-            href={`/funds/${id}/breaks`}
+            // Straight to the fund's default view rather than through the
+            // legacy redirect: the rail is the commonest way in, and a
+            // redirect on every click is a round trip nobody needs.
+            href={`/funds/${id}/views/${f.defaultView}/breaks`}
             className="fund"
             aria-current={id === open ? "page" : undefined}
           >

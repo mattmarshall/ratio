@@ -2,7 +2,7 @@ import Link from "next/link";
 import { caller } from "@/lib/caller";
 import { count, gain, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
-import { getFund, listChangeLogEntries } from "@/wire/client";
+import { getFund, getView, listChangeLogEntries } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +23,13 @@ export default async function FundOverview({
   const { fund } = await params;
   const c = await caller();
   const f = await or404(getFund(c, fund));
+  // ⛔ THREE UPSTREAM CALLS, WHICH IS THE CEILING `route_manifest_test`
+  // ENFORCES, and the third is here because a realized gain is a VIEW's figure.
+  // The lot method is a term of the administration agreement and is the same
+  // whichever way entries are recognised; the gain it produces is not, because
+  // each view has recognised a different set of open lots by the time a sale
+  // arrives. Same election, different lots given up.
+  const v = await or404(getView(c, fund, f.defaultView));
   const { changeLogEntries } = await listChangeLogEntries(c, fund);
 
   return (
@@ -47,22 +54,22 @@ export default async function FundOverview({
                 : " this configuration declares no method"}
             </span>
           </dd>
-          <dt>Realized gain</dt>
+          <dt>Realized gain, in {f.defaultView}</dt>
           {/* Credit-normal: `gain` flips the sign in exactly one place, because
               applied per call site it gets applied twice somewhere and nowhere
               else — and both mistakes produce a plausible number. */}
-          <dd className="num">{gain(f.realizedGain)}</dd>
+          <dd className="num">{gain(v.realizedGain)}</dd>
           <dt>Short-term</dt>
-          <dd className="num">{gain(f.shortTermGain)}</dd>
+          <dd className="num">{gain(v.shortTermGain)}</dd>
           <dt>Long-term</dt>
-          <dd className="num">{gain(f.longTermGain)}</dd>
+          <dd className="num">{gain(v.longTermGain)}</dd>
           <dt>Unclassified</dt>
-          <dd className="num">{gain(f.unclassifiedGain)}</dd>
+          <dd className="num">{gain(v.unclassifiedGain)}</dd>
           <dt>Basis relieved</dt>
-          <dd className="num">{money(f.basisRelieved)}</dd>
+          <dd className="num">{money(v.basisRelieved)}</dd>
           <dt>Tax lots</dt>
           <dd className="num">
-            {count(f.openLotCount)} open over {count(f.positionCount)} positions
+            {count(v.openLotCount)} open over {count(v.positionCount)} positions
           </dd>
         </dl>
         <p className="note">

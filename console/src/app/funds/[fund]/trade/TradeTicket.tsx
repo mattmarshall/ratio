@@ -9,7 +9,7 @@ import {
   Ticket,
   type Step,
 } from "@/components/Ticket";
-import { count, money } from "@/lib/format";
+import { money } from "@/lib/format";
 import { isoDate } from "@/lib/dates";
 import {
   consideration,
@@ -17,11 +17,8 @@ import {
   suggestedReference,
   TRADE_DATE,
 } from "@/lib/trade";
-import type { Position, Rule } from "@/wire/types";
+import type { Rule } from "@/wire/types";
 import { place, type TradeResult } from "./actions";
-
-/** The picker's value for an instrument the fund does not hold yet. */
-const NEW_HOLDING = "not-held";
 
 /**
  * A trade ticket: what happened, how it books, what it would do, then post.
@@ -44,22 +41,13 @@ const NEW_HOLDING = "not-held";
  * the failure shape AGENTS.md puts first, and a screen that produced it
  * silently would be the strongest available argument against this product.
  */
-export function TradeTicket({
-  fund,
-  rules,
-  positions,
-}: {
-  fund: string;
-  rules: Rule[];
-  positions: Position[];
-}) {
+export function TradeTicket({ fund, rules }: { fund: string; rules: Rule[] }) {
   const [result, action, pending] = useActionState<TradeResult, FormData>(
     place,
     null,
   );
 
   const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [picked, setPicked] = useState("");
   const [typed, setTyped] = useState("");
   const [units, setUnits] = useState("");
   const [price, setPrice] = useState("");
@@ -67,9 +55,8 @@ export function TradeTicket({
   const [ruleId, setRuleId] = useState("");
   const [reference, setReference] = useState("");
 
-  const instrument = picked === NEW_HOLDING ? typed.trim() : picked;
-  const held = positions.find((p) => p.instrument === instrument) ?? null;
-  const label = held?.instrumentLabel || instrument;
+  const instrument = typed.trim();
+  const label = instrument;
 
   const worth = units && price ? consideration(units, price) : null;
   const rule = rules.find((r) => r.ruleId === ruleId) ?? null;
@@ -140,32 +127,13 @@ export function TradeTicket({
     </div>
   );
 
-  const instrumentPicker = (
-    <>
-      <Picker
-        name="Instrument"
-        value={picked}
-        onValue={setPicked}
-        empty="Choose an instrument"
-        options={[
-          ...positions
-            .filter((p) => p.instrument)
-            .map((p) => ({
-              value: p.instrument,
-              label: `${p.instrumentLabel || p.instrument} · ${count(p.quantity)} held`,
-            })),
-          { value: NEW_HOLDING, label: "Something not held yet…" },
-        ]}
-      />
-      {picked === NEW_HOLDING ? (
-        <Field
-          name="Its identifier"
-          value={typed}
-          onValue={setTyped}
-          hint="as the instrument master names it"
-        />
-      ) : null}
-    </>
+  const instrumentField = (
+    <Field
+      name="Instrument"
+      value={typed}
+      onValue={setTyped}
+      hint="as the instrument master names it"
+    />
   );
 
   const booksPicker = (
@@ -207,24 +175,8 @@ export function TradeTicket({
         "What the fund holds is offered first.",
         "A disposal of something the book does not hold has no basis to give up.",
       ],
-      answer: instrument ? label : null,
-      body: (
-        <>
-          {instrumentPicker}
-          {/* ⚠ WHAT A SALE WOULD BE GIVING UP, BEFORE IT GIVES IT UP. The engine
-              relieves against open lots, and somebody selling more than the book
-              holds should learn it here rather than from a break. */}
-          {held ? (
-            <p className="ruleform">
-              <b>{label}</b>
-              {count(held.quantity)} units held across{" "}
-              {count(held.openLotCount)} open lot
-              {held.openLotCount === "1" ? "" : "s"}, carried at{" "}
-              <span className="num">{money(held.value)}</span>.
-            </p>
-          ) : null}
-        </>
-      ),
+      answer: instrument || null,
+      body: instrumentField,
     },
     {
       id: "units",
@@ -342,7 +294,7 @@ export function TradeTicket({
         <>
           {sideChips}
           <div className="form">
-            {instrumentPicker}
+            {instrumentField}
             <Field name="Units" value={units} onValue={setUnits} mode="decimal" hint="1000" />
             <Field name="Price" value={price} onValue={setPrice} mode="decimal" hint="341.75" />
             <Field

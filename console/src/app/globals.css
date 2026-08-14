@@ -268,8 +268,10 @@ a.fund,a.row{color:inherit;text-decoration:none}
   text-decoration-color:var(--crit);opacity:.75}
 .now{color:#C6D3CB}
 
-/* The view switch. Two views over the same fund: the queue of what is wrong,
-   and the balance everything else is derived from.
+/* The screen tabs. ⛔ `.screens`, NOT `.views` — a view is now a book of
+   record (ABOR, IBOR) and these are the screens under one of them. Two things
+   under one word in one header is how a console starts lying about which
+   figure it is showing.
 
    ⛔ THESE ARE LINKS NOW, AND THE SELECTORS HAD TO LEARN IT. They were <button>
    flipping a useState; every one is a URL. That is the whole point of this
@@ -281,13 +283,13 @@ a.fund,a.row{color:inherit;text-decoration:none}
    describes a button that stays down, current describes the page you are on.
    Both are matched below only because the trial-balance and break filters are
    still genuine buttons — they narrow a list rather than navigate. */
-.views{display:flex;gap:2px;margin-left:14px;padding:2px;border-radius:9px;
+.screens{display:flex;gap:2px;margin-left:14px;padding:2px;border-radius:9px;
   background:var(--raised);border:1px solid var(--rule)}
-.views button,.views a{padding:4px 12px;border:0;border-radius:7px;
+.screens button,.screens a{padding:4px 12px;border:0;border-radius:7px;
   background:transparent;color:var(--text-2);font-size:12.5px;font-weight:600;
   cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
-.views button:hover,.views a:hover{color:var(--text)}
-.views button[aria-pressed="true"],.views a[aria-current="page"]{
+.screens button:hover,.screens a:hover{color:var(--text)}
+.screens button[aria-pressed="true"],.screens a[aria-current="page"]{
   background:var(--surface);color:var(--text);box-shadow:0 1px 2px var(--shadow)}
 
 /* The trial balance.
@@ -372,7 +374,7 @@ a.fund,a.row{color:inherit;text-decoration:none}
   box-shadow:inset 0 0 0 1px var(--rule-2)}
 /* A count on the tab, because a blocking condition an operator only sees after
    clicking is one they will miss. */
-.views .pip{margin-left:6px;padding:0 5px;border-radius:999px;font-size:10.5px;
+.screens .pip{margin-left:6px;padding:0 5px;border-radius:999px;font-size:10.5px;
   font-weight:700;background:var(--warn);color:var(--ground)}
 /* The file itself. Monospace because what is pasted here is a machine's
    output and a column that does not line up is harder to check. */
@@ -631,3 +633,27 @@ a.fund,a.row{color:inherit;text-decoration:none}
 .signin-btn{padding:10px 22px;font:inherit;font-size:15px;font-weight:600;cursor:pointer;
   color:var(--ground);background:var(--accent);border:0;border-radius:9px}
 .signin-btn:hover{filter:brightness(1.06)}
+
+/* Which book of record the figures come from. Sits beside the currency in the
+   fund header, because a view qualifies a figure the same way a currency does:
+   `134,439,187.51 USD` is not an answer until you also know whether the trades
+   settling on Tuesday are in it. */
+.viewswitch{display:inline-flex;gap:2px;padding:2px;border-radius:9px;
+  background:var(--raised);border:1px solid var(--rule)}
+.viewswitch a{padding:3px 10px;border-radius:7px;color:var(--text-2);
+  font-size:12px;font-weight:600;text-decoration:none;display:inline-flex;
+  align-items:center;gap:6px}
+.viewswitch a:hover{color:var(--text)}
+.viewswitch a[aria-current="page"]{background:var(--surface);color:var(--text);
+  box-shadow:0 1px 2px var(--shadow)}
+.viewswitch .pip{background:transparent;color:var(--text-2);
+  border:1px solid var(--rule);font-weight:500}
+
+/* The reconciliation. The arithmetic is rendered rather than asserted: a screen
+   that shows a difference it cannot itemize is one to distrust, and the two
+   lists below it add to this line by theorem. */
+.recsum{display:flex;align-items:baseline;gap:10px;padding:12px 14px;
+  border-bottom:1px solid var(--rule);font-variant-numeric:tabular-nums}
+.recsum .op{color:var(--text-2)}
+.recsum b{color:var(--text)}
+.recfoot{background:var(--raised)}

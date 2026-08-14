@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { caller } from "@/lib/caller";
-import { listPositions, listRules } from "@/wire/client";
+import { listRules } from "@/wire/client";
 import { TradeTicket } from "./TradeTicket";
 
 export const dynamic = "force-dynamic";
@@ -8,13 +8,21 @@ export const dynamic = "force-dynamic";
 /**
  * Place a trade by hand.
  *
- * ⚠ TWO READS, AND BOTH ARE THE TICKET'S. The rules in force are what a trade
- * can book under, and the positions are what it can be a trade IN — a picker
- * over the instrument master would be a third call this page has no budget for,
- * and what the fund holds is the better default anyway. With `applyEvent` that
- * is three against the ceiling `//console:route_manifest_test` enforces, which
- * is why the fund header and its four tiles are the layout's `GetFund` and not
- * repeated here.
+ * ⚠ NO POSITION PICKER, AND THAT IS THE VIEW SPLIT'S DOING. The instrument used
+ * to be chosen from what the fund holds, with the units and carrying value of a
+ * sale's holding shown beside it. `listPositions` is now view-scoped — quantity
+ * and value depend on which entries a view recognises — so those figures cannot
+ * be shown without naming the view they were read in, and naming it costs a
+ * `getFund` for the default. That is four upstream calls against the ceiling of
+ * three `//console:route_manifest_test` enforces, and the ceiling is the right
+ * one: two 15-second timeouts stack behind every call.
+ *
+ * ⛔ AND THE WRITE IS NOT VIEW-SCOPED, so this screen must not move under
+ * `views/[view]/` to get one for free. An entry goes to the journal; a view is a
+ * lens over the journal. `/record`, `/ingest` and `/mark` are all fund-level for
+ * the same reason. The way back to a picker is a `<Suspense>` child segment that
+ * reads the default view for itself — worth doing, and not worth blocking a
+ * first cut on.
  */
 export default async function Trade({
   params,
@@ -23,10 +31,7 @@ export default async function Trade({
 }) {
   const { fund } = await params;
   const c = await caller();
-  const [{ rules }, { positions }] = await Promise.all([
-    listRules(c, fund),
-    listPositions(c, fund),
-  ]);
+  const { rules } = await listRules(c, fund);
 
   // ⛔ TRADE RULES ONLY, AND THE FILTER IS THE CONTRACT'S OWN. `Rule.Kind` says
   // what an event of each kind NEEDS, "which fixes what a caller must supply":
@@ -45,7 +50,7 @@ export default async function Trade({
         </span>
       </div>
 
-      <TradeTicket fund={fund} rules={tradeRules} positions={positions} />
+      <TradeTicket fund={fund} rules={tradeRules} />
     </>
   );
 }

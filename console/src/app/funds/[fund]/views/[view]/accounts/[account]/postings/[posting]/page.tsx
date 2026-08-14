@@ -9,11 +9,11 @@ export const dynamic = "force-dynamic";
 export default async function PostingDetail({
   params,
 }: {
-  params: Promise<{ fund: string; account: string; posting: string }>;
+  params: Promise<{ fund: string; view: string; account: string; posting: string }>;
 }) {
-  const { fund, account, posting } = await params;
+  const { fund, view, account, posting } = await params;
   const c = await caller();
-  const p = await or404(getPosting(c, fund, account, posting));
+  const p = await or404(getPosting(c, fund, view, account, posting));
 
   return (
     <aside className="detail" aria-label="Posting detail">

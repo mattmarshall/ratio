@@ -21,12 +21,12 @@ export const dynamic = "force-dynamic";
 export default async function Replay({
   params,
 }: {
-  params: Promise<{ fund: string; strike: string }>;
+  params: Promise<{ fund: string; view: string; strike: string }>;
 }) {
-  const { fund, strike } = await params;
+  const { fund, view, strike } = await params;
   const c = await caller();
-  const s = await or404(getNavStrike(c, fund, strike));
-  const r = await replayNavStrike(c, fund, strike);
+  const s = await or404(getNavStrike(c, fund, view, strike));
+  const r = await replayNavStrike(c, fund, view, strike);
 
   const agrees = r.netAssetValue === s.netAssetValue;
 

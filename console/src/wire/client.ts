@@ -53,6 +53,7 @@ import type {
   ListPostingsResponse,
   ListRulesResponse,
   ListTemplatesResponse,
+  ListViewsResponse,
   Lot,
   MarkPositionsRequest,
   MarkPositionsResponse,
@@ -60,9 +61,11 @@ import type {
   PendingFact,
   Position,
   Posting,
+  ReconcileViewsResponse,
   ReplayNavStrikeResponse,
   Rule,
   Template,
+  View,
 } from "./types.js";
 
 /**
@@ -181,13 +184,48 @@ export const listFunds = (c: Caller) =>
 export const getFund = (c: Caller, fund: string) =>
   send<Fund>(c, `/funds/${fund}`);
 
+// ── Views ──────────────────────────────────────────────────────────────────
+// GET /v1/{parent=funds/*}/views
+export const listViews = (c: Caller, fund: string) =>
+  send<ListViewsResponse>(c, `/funds/${fund}/views`);
+// GET /v1/{name=funds/*/views/*}
+export const getView = (c: Caller, fund: string, view: string) =>
+  send<View>(c, `/funds/${fund}/views/${view}`);
+/**
+ * What two views over one journal disagree about, entry by entry.
+ *
+ * ⭐ ONE CALL, NOT TWO SUBTRACTED. Both sides are folded from one prefix on the
+ * server; a client that fetched two views and differenced them would be
+ * comparing figures at two positions, which is the failure
+ * `//tla:views_at_two_prefixes_check` exists to name.
+ */
+// GET /v1/{name=funds/*/views/*}:reconcile
+export const reconcileViews = (
+  c: Caller,
+  fund: string,
+  view: string,
+  against: string,
+) =>
+  send<ReconcileViewsResponse>(
+    c,
+    `/funds/${fund}/views/${view}:reconcile${q({ against })}`,
+  );
+
 // ── Breaks ─────────────────────────────────────────────────────────────────
-// GET /v1/{parent=funds/*}/breaks
-export const listBreaks = (c: Caller, fund: string, filter?: string) =>
-  send<ListBreaksResponse>(c, `/funds/${fund}/breaks${q({ filter })}`);
-// GET /v1/{name=funds/*/breaks/*}
-export const getBreak = (c: Caller, fund: string, id: string) =>
-  send<Break>(c, `/funds/${fund}/breaks/${id}`);
+// GET /v1/{parent=funds/*/views/*}/breaks
+export const listBreaks = (
+  c: Caller,
+  fund: string,
+  view: string,
+  filter?: string,
+) =>
+  send<ListBreaksResponse>(
+    c,
+    `/funds/${fund}/views/${view}/breaks${q({ filter })}`,
+  );
+// GET /v1/{name=funds/*/views/*/breaks/*}
+export const getBreak = (c: Caller, fund: string, view: string, id: string) =>
+  send<Break>(c, `/funds/${fund}/views/${view}/breaks/${id}`);
 
 // ── Configuration ──────────────────────────────────────────────────────────
 // GET /v1/{parent=funds/*}/configVersions
@@ -237,12 +275,16 @@ export const getPendingFact = (c: Caller, fund: string, id: string) =>
   send<PendingFact>(c, `/funds/${fund}/pendingFacts/${id}`);
 
 // ── Positions and lots ─────────────────────────────────────────────────────
-// GET /v1/{parent=funds/*}/positions
-export const listPositions = (c: Caller, fund: string) =>
-  send<ListPositionsResponse>(c, `/funds/${fund}/positions`);
-// GET /v1/{name=funds/*/positions/*}
-export const getPosition = (c: Caller, fund: string, id: string) =>
-  send<Position>(c, `/funds/${fund}/positions/${id}`);
+// GET /v1/{parent=funds/*/views/*}/positions
+export const listPositions = (c: Caller, fund: string, view: string) =>
+  send<ListPositionsResponse>(c, `/funds/${fund}/views/${view}/positions`);
+// GET /v1/{name=funds/*/views/*/positions/*}
+export const getPosition = (
+  c: Caller,
+  fund: string,
+  view: string,
+  id: string,
+) => send<Position>(c, `/funds/${fund}/views/${view}/positions/${id}`);
 /**
  * The open tax lots behind one position.
  *
@@ -253,44 +295,91 @@ export const getPosition = (c: Caller, fund: string, id: string) =>
  * Callers MUST put this behind a `<Suspense>` child segment so the page shell
  * renders without waiting for it — see `positions/[position]/page.tsx`.
  */
-// GET /v1/{parent=funds/*/positions/*}/lots
-export const listLots = (c: Caller, fund: string, position: string) =>
-  send<ListLotsResponse>(c, `/funds/${fund}/positions/${position}/lots`);
-// GET /v1/{name=funds/*/positions/*/lots/*}
-export const getLot = (c: Caller, fund: string, position: string, id: string) =>
-  send<Lot>(c, `/funds/${fund}/positions/${position}/lots/${id}`);
+// GET /v1/{parent=funds/*/views/*/positions/*}/lots
+export const listLots = (
+  c: Caller,
+  fund: string,
+  view: string,
+  position: string,
+) =>
+  send<ListLotsResponse>(
+    c,
+    `/funds/${fund}/views/${view}/positions/${position}/lots`,
+  );
+// GET /v1/{name=funds/*/views/*/positions/*/lots/*}
+export const getLot = (
+  c: Caller,
+  fund: string,
+  view: string,
+  position: string,
+  id: string,
+) =>
+  send<Lot>(c, `/funds/${fund}/views/${view}/positions/${position}/lots/${id}`);
 
 // ── The chart ──────────────────────────────────────────────────────────────
-// GET /v1/{parent=funds/*}/accounts
-export const listAccounts = (c: Caller, fund: string, filter?: string) =>
-  send<ListAccountsResponse>(c, `/funds/${fund}/accounts${q({ filter })}`);
-// GET /v1/{name=funds/*/accounts/*}
-export const getAccount = (c: Caller, fund: string, id: string) =>
-  send<Account>(c, `/funds/${fund}/accounts/${id}`);
+// GET /v1/{parent=funds/*/views/*}/accounts
+export const listAccounts = (
+  c: Caller,
+  fund: string,
+  view: string,
+  filter?: string,
+) =>
+  send<ListAccountsResponse>(
+    c,
+    `/funds/${fund}/views/${view}/accounts${q({ filter })}`,
+  );
+// GET /v1/{name=funds/*/views/*/accounts/*}
+export const getAccount = (c: Caller, fund: string, view: string, id: string) =>
+  send<Account>(c, `/funds/${fund}/views/${view}/accounts/${id}`);
 /** The lines behind one figure. ⛔ Unbounded — see `listLots`. */
-// GET /v1/{parent=funds/*/accounts/*}/postings
-export const listPostings = (c: Caller, fund: string, account: string) =>
-  send<ListPostingsResponse>(c, `/funds/${fund}/accounts/${account}/postings`);
-// GET /v1/{name=funds/*/accounts/*/postings/*}
+// GET /v1/{parent=funds/*/views/*/accounts/*}/postings
+export const listPostings = (
+  c: Caller,
+  fund: string,
+  view: string,
+  account: string,
+) =>
+  send<ListPostingsResponse>(
+    c,
+    `/funds/${fund}/views/${view}/accounts/${account}/postings`,
+  );
+// GET /v1/{name=funds/*/views/*/accounts/*/postings/*}
 export const getPosting = (
   c: Caller,
   fund: string,
+  view: string,
   account: string,
   id: string,
-) => send<Posting>(c, `/funds/${fund}/accounts/${account}/postings/${id}`);
+) =>
+  send<Posting>(
+    c,
+    `/funds/${fund}/views/${view}/accounts/${account}/postings/${id}`,
+  );
 
 // ── NAV ────────────────────────────────────────────────────────────────────
-// GET /v1/{parent=funds/*}/navStrikes
-export const listNavStrikes = (c: Caller, fund: string) =>
-  send<ListNavStrikesResponse>(c, `/funds/${fund}/navStrikes`);
-// GET /v1/{name=funds/*/navStrikes/*}
-export const getNavStrike = (c: Caller, fund: string, id: string) =>
-  send<NavStrike>(c, `/funds/${fund}/navStrikes/${id}`);
+// GET /v1/{parent=funds/*/views/*}/navStrikes
+export const listNavStrikes = (c: Caller, fund: string, view: string) =>
+  send<ListNavStrikesResponse>(c, `/funds/${fund}/views/${view}/navStrikes`);
+// GET /v1/{name=funds/*/views/*/navStrikes/*}
+export const getNavStrike = (
+  c: Caller,
+  fund: string,
+  view: string,
+  id: string,
+) => send<NavStrike>(c, `/funds/${fund}/views/${view}/navStrikes/${id}`);
 /** Re-derive a strike from the journal prefix it pinned. A proof does not go
  *  stale: the same prefix always folds to the same answer. */
-// GET /v1/{name=funds/*/navStrikes/*}:replay
-export const replayNavStrike = (c: Caller, fund: string, id: string) =>
-  send<ReplayNavStrikeResponse>(c, `/funds/${fund}/navStrikes/${id}:replay`);
+// GET /v1/{name=funds/*/views/*/navStrikes/*}:replay
+export const replayNavStrike = (
+  c: Caller,
+  fund: string,
+  view: string,
+  id: string,
+) =>
+  send<ReplayNavStrikeResponse>(
+    c,
+    `/funds/${fund}/views/${view}/navStrikes/${id}:replay`,
+  );
 
 // ── Corporate actions ──────────────────────────────────────────────────────
 // GET /v1/{parent=funds/*}/corporateActions

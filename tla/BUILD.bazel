@@ -453,3 +453,118 @@ tla_check(
     tags = ["manual"],
     deps = [":s3_journal"],
 )
+
+# ⛔ A NAV struck over a difference nobody has explained.
+#
+# `Ratio.Tolerance` proves which differences block. It cannot say what a
+# SEQUENCE does — a reconciliation reporting a figure, a person explaining it,
+# the journal growing, somebody striking — and the console reported
+# `STATE_BLOCKED` for months with nothing consulting it before a strike.
+#
+# ⭐ The property worth the spec is `PostingDoesNotUnexplainABreak`. Pinning an
+# explanation to the journal prefix its accepter read is the obvious design and
+# it deadlocks: every note retired by the next posting, on the one morning a
+# book posts constantly.
+tla_library(
+    name = "close_gate",
+    srcs = ["CloseGate.tla"],
+)
+
+tla_check(
+    name = "close_gate_check",
+    size = "medium",
+    config = "MCCloseGate.cfg",
+    module = "MCCloseGate.tla",
+    deps = [":close_gate"],
+)
+
+# ⛔ The gate the screen reported and the command never asked about.
+# AStrikeIsNotTakenOverABlockingBreak goes red.
+tla_check(
+    name = "unexplained_high_strikes_check",
+    size = "medium",
+    config = "UnexplainedHighStrikes.cfg",
+    module = "UnexplainedHighStrikes.tla",
+    tags = ["manual"],
+    deps = [":close_gate"],
+)
+
+# ⛔ A note that outlives the figure it was written about.
+# ANewFigureRetiresItsExplanation goes red.
+tla_check(
+    name = "stale_explanation_unblocks_check",
+    size = "medium",
+    config = "StaleExplanationUnblocks.cfg",
+    module = "StaleExplanationUnblocks.tla",
+    tags = ["manual"],
+    deps = [":close_gate"],
+)
+
+# ⭐ THE DESIGN THAT WAS NOT SHIPPED, demonstrated to deadlock. Pin the note to
+# the prefix and a fund that posts on the morning of its close can never strike.
+# PostingDoesNotUnexplainABreak goes red.
+tla_check(
+    name = "explanation_pinned_to_the_prefix_check",
+    size = "medium",
+    config = "ExplanationPinnedToThePrefix.cfg",
+    module = "ExplanationPinnedToThePrefix.tla",
+    tags = ["manual"],
+    deps = [":close_gate"],
+)
+
+# ⛔ More than one view over ONE journal, and the two ways that goes silently
+# wrong.
+#
+# `Ratio.Views` proves what a view IS — a recognition predicate, so every view's
+# books tie and two views differ by exactly the entries in flight between them.
+# That is a statement about functions. It cannot say where the views ARE when
+# somebody asks, and two folds maintained over one growing journal are two
+# pieces of state whose disagreement no downstream check can see: both conserve,
+# both trial balances tie, and the difference between them is partly a
+# settlement convention and partly one of them being behind.
+#
+# It also carries the calendar question. A settlement date is a trade date
+# rolled over a calendar, so if that calendar is not inside the configuration
+# the entry pinned, the prefix does not determine the figure — the same argument
+# `projection_check` makes about an announcement in a side log, one input over.
+tla_library(
+    name = "views",
+    srcs = ["Views.tla"],
+)
+
+tla_check(
+    name = "views_check",
+    size = "medium",
+    config = "MCViews.cfg",
+    module = "MCViews.tla",
+    deps = [":views"],
+)
+
+# ⛔ A projection per view, advanced when its own view is asked — cheaper to
+# write, indistinguishable in every test that reads ONE view, and wrong exactly
+# when somebody puts two of them side by side. This is
+# `sql_projection_check`'s AFigureIsFoldedFromOnePrefix with views where that
+# spec has tables.
+# AReconciliationComparesOnePrefix goes red.
+tla_check(
+    name = "views_at_two_prefixes_check",
+    size = "medium",
+    config = "ViewsAtTwoPrefixes.cfg",
+    module = "ViewsAtTwoPrefixes.tla",
+    tags = ["manual"],
+    deps = [":views"],
+)
+
+# ⛔ The settlement calendar in a side file rather than in the pinned
+# configuration. The same trade rolls to a different day once a holiday is
+# declared, so a recorded NAV re-derives to a different figure as the world
+# tells us more.
+# ReplayReproducesUnderEveryView goes red.
+tla_check(
+    name = "calendar_in_side_file_check",
+    size = "medium",
+    config = "CalendarInSideFile.cfg",
+    module = "CalendarInSideFile.tla",
+    tags = ["manual"],
+    deps = [":views"],
+)

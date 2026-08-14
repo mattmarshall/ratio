@@ -84,6 +84,16 @@ __STYLE__
           proved rather than assumed.</li>
           <li>A linted service contract, and a server that refuses any
           transaction which fails to balance.</li>
+          <li>Reconciliation against a counterparty file, with each difference
+          measured against the fund's declared threshold.</li>
+          <li>That threshold as a term of the configuration rather than a
+          constant in the software — declared or taken by custom, and the
+          reconciliation reports which.</li>
+          <li>Explanations recorded by a person, attributed, and retired when a
+          later reconciliation moves the figure.</li>
+          <li>The gate on a close: a fund refuses its own NAV while a difference
+          that matters is unexplained, a trade does not resolve, or a position is
+          unpriced.</li>
         </ul>
       </div>
       <div class="r-spec">
@@ -95,7 +105,9 @@ __STYLE__
           <li>Every one of the sixteen capability areas below, at varying
           depths of specification.</li>
           <li>The workload planner, the authoring assistant, and every interface
-          shown anywhere on this site.</li>
+          shown anywhere on this site apart from one: an operations console
+          exists, and it is narrow — the exception queue, a difference at its own
+          address, and whether a fund can close.</li>
         </ul>
       </div>
     </div>
@@ -225,16 +237,22 @@ __STYLE__
       </div>
       <p>The month a fund accountant actually lives in. This is the phase where
       Ratio becomes usable rather than merely correct, and where a shadow run
-      starts producing something worth comparing.</p>
+      starts producing something worth comparing. Three lines below are already
+      delivered, out of order and deliberately — the exception queue and the gate
+      on a close were what a demo needed before it was worth looking at. Neither
+      brings the rest of the phase any closer than it is.</p>
       <ul class="r-deliver">
-        <li class="o">Reconciliation and exception handling</li>
+        <li class="d">Exception handling: differences measured against a declared threshold, explained by a person, retired when the figure moves</li>
+        <li class="o">Reconciliation against live custodian feeds, at a fund's volume</li>
+        <li class="d">The gate on a close: a fund refuses its own NAV while something is unexplained, unidentified or unpriced</li>
         <li class="o">NAV calculation and period close</li>
         <li class="o">Fee accrual and billing rules</li>
         <li class="o">Restatement and point-in-time reporting</li>
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="o">Operations interface for the above</li>
+        <li class="d">Operations console: the exception queue, a difference at its own address, a fund's state</li>
+        <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue
       management</em>, the record-keeping half of <em>compliance and

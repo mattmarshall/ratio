@@ -1,7 +1,7 @@
 {
   "breaks": [
     {
-      "name": "funds/harbourline-global-value/breaks/cash-usd-2026-02-26",
+      "name": "funds/harbourline-global-value/views/abor/breaks/cash-usd-2026-02-26",
       "account": "Cash and equivalents",
       "accountDimension": "1010",
       "severity": "HIGH",
@@ -18,10 +18,27 @@
           "configDigest": "9f2c1ab7de40551c"
         }
       ],
-      "configDigest": "9f2c1ab7de40551c"
+      "configDigest": "9f2c1ab7de40551c",
+      "tolerance": {
+        "belowNotice": "500",
+        "blocksNav": "100000",
+        "declared": true
+      },
+      "explanation": {
+        "text": "The custodian's unsettled dividend on VWRL; it clears T+2.",
+        "actor": "e.marsh",
+        "acceptTime": "2026-02-26T18:10:00Z",
+        "difference": "200000",
+        "configDigest": "9f2c1ab7de40551c",
+        "journalPosition": "6",
+        "journalDigest": "",
+        "qualification": [
+          "explained against a difference of 200000; this report shows 275000"
+        ]
+      }
     },
     {
-      "name": "funds/harbourline-global-value/breaks/lot-acme-2026-02-26",
+      "name": "funds/harbourline-global-value/views/abor/breaks/lot-acme-2026-02-26",
       "account": "Investments at fair value",
       "accountDimension": "1200",
       "severity": "HIGH",
@@ -31,7 +48,9 @@
       "reportedAmount": "0",
       "difference": "0",
       "postings": [],
-      "configDigest": "9f2c1ab7de40551c"
+      "configDigest": "9f2c1ab7de40551c",
+      "tolerance": null,
+      "explanation": null
     }
   ],
   "nextPageToken": ""

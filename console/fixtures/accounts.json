@@ -1,7 +1,7 @@
 {
   "accounts": [
     {
-      "name": "funds/harbourline-global-value/accounts/1010",
+      "name": "funds/harbourline-global-value/views/abor/accounts/1010",
       "displayName": "Cash and equivalents",
       "dimension": "1010",
       "type": "ASSET",
