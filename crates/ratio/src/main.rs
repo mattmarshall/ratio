@@ -70,6 +70,7 @@ usage:
   ratio closure [--securities N] [--currencies N] [--lots-per N]
         [--open-actions N] [--capital N]
                                        what a period end costs, before running it
+  ratio scale-run --size NAME          fold one declared shape and publish it
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio server                         serve the Ledger gRPC API
@@ -143,6 +144,10 @@ fn main() -> Result<()> {
         ["closure", rest @ ..] => closure(book, rest),
         ["gen", rest @ ..] => gen(book, rest),
         ["bench", rest @ ..] => bench(book, rest),
+        // ⛔ WHAT THE FARGATE TASK RUNS, and the same `scale::run` a laptop
+        // calls on a thread. Two implementations would be two answers to "what
+        // did the fold cost", and the one nobody ran locally would be quoted.
+        ["scale-run", "--size", size] => scale_run(size),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
         ["server"] => serve(),
@@ -1832,6 +1837,19 @@ fn recon(
 /// Note what this cannot do: promote a rule. `approve` below is a CLI command
 /// and is not exposed as a tool, so a proposal becomes policy only when a
 /// person runs it. See `ratio-mcp`'s module docs.
+/// Fold one declared shape and publish the figures. Run by the scale task.
+///
+/// ⚠ THE RECORD IS S3 AND THE SCRATCH IS LOCAL DISK. The task has 100 GiB of
+/// ephemeral storage for a ~40 GB journal; the figures and the lock have to
+/// outlive the container, so they go to the bucket the function also reads.
+fn scale_run(size: &str) -> Result<()> {
+    let bucket = std::env::var("RATIO_SCALE_BUCKET")
+        .context("RATIO_SCALE_BUCKET is unset, so there is nowhere to publish the result")?;
+    let books = std::env::var("RATIO_SCALE_BOOKS").unwrap_or_else(|_| "/tmp/scale".into());
+    let store = scale::S3::open(bucket, "runs/")?;
+    scale::run(&store, size, std::path::Path::new(&books))
+}
+
 fn mcp(book: PathBuf) -> Result<()> {
     FileBook::open(&book)?; // fail here rather than mid-conversation
     let stdin = std::io::stdin();

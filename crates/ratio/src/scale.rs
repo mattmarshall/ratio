@@ -365,6 +365,165 @@ impl Store for S3 {
     }
 }
 
+/// How a fold is actually set going, once the policy has allowed it.
+///
+/// ⛔ SEPARATE FROM THE POLICY ON PURPOSE. Whether a visitor MAY start a fold is
+/// decided by `Runs::start` over a `Store`, and both are testable. WHERE the
+/// fold then happens is a deployment fact — a thread on a laptop, a Fargate task
+/// on the demo — and nothing about the decision should depend on which.
+pub trait Launcher {
+    /// Returns a token identifying the run: a task arn, a thread name, a word.
+    fn launch(&self, size: &str) -> Result<String>;
+    /// What the screen should say about where a fold would happen. `None` means
+    /// no launcher is configured and the button is not offered at all.
+    fn describe(&self) -> String;
+}
+
+/// Fold on a thread, in this process. `ratio watch` on a laptop.
+///
+/// ⚠ NOT WHAT THE DEMO USES, and it must not become so by accident. The full
+/// shape needs ~40 GB of scratch and sixteen minutes; a function with 512 MB of
+/// /tmp and a fifteen-SECOND timeout would fail in a way that looks like the
+/// book being wrong rather than the host being too small.
+pub struct Here {
+    pub books: PathBuf,
+    pub root: PathBuf,
+}
+
+impl Launcher for Here {
+    fn launch(&self, size: &str) -> Result<String> {
+        let token = format!("thread:{size}");
+        let size = size.to_string();
+        let books = self.books.clone();
+        let root = self.root.clone();
+        std::thread::Builder::new()
+            .name(format!("scale-{size}"))
+            .spawn(move || {
+                let store = Files::at(&root);
+                if let Err(e) = run(&store, &size, &books) {
+                    eprintln!("the {size} fold failed: {e:#}");
+                }
+            })
+            .context("starting the fold")?;
+        Ok(token)
+    }
+
+    fn describe(&self) -> String {
+        "this process".into()
+    }
+}
+
+/// Fold in a one-shot Fargate task. What the demo uses.
+pub struct Ecs {
+    pub cluster: String,
+    pub task: String,
+    pub subnet: String,
+    pub security_group: String,
+    client: aws_sdk_ecs::Client,
+    runtime: tokio::runtime::Runtime,
+}
+
+impl Ecs {
+    /// Built from the environment `deploy/app.yaml` sets. ⚠ `None` when any of
+    /// it is missing, which is a VALID state — a local run configures none of
+    /// this, and the screen then serves its estimate and its recorded figures
+    /// with no button, exactly as an unset `RATIO_COGNITO_*` means "no identity
+    /// provider here" rather than "misconfigured".
+    pub fn from_env() -> Option<Result<Self>> {
+        let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        let (cluster, task, subnet, sg) = (
+            get("RATIO_SCALE_CLUSTER")?,
+            get("RATIO_SCALE_TASK")?,
+            get("RATIO_SCALE_SUBNET")?,
+            get("RATIO_SCALE_SECURITY_GROUP")?,
+        );
+        Some((|| {
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .context("starting the async runtime")?;
+            let client = runtime.block_on(async {
+                let cfg = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+                aws_sdk_ecs::Client::new(&cfg)
+            });
+            Ok(Ecs {
+                cluster,
+                task,
+                subnet,
+                security_group: sg,
+                client,
+                runtime,
+            })
+        })())
+    }
+}
+
+impl Launcher for Ecs {
+    fn launch(&self, size: &str) -> Result<String> {
+        use aws_sdk_ecs::types::{
+            AssignPublicIp, AwsVpcConfiguration, ContainerOverride, LaunchType,
+            NetworkConfiguration, TaskOverride,
+        };
+        // ⛔ THE COMMAND IS BUILT FROM A SHAPE NAME THE ROUTE ALREADY MATCHED
+        // EXHAUSTIVELY, never from anything a caller typed. `terminal_json` sets
+        // the standard for this binary: a public endpoint that dispatches on a
+        // string the caller controls is a remote-execution seam wearing a demo
+        // costume. By here `size` is one of three literals.
+        let shape = shape(size).ok_or_else(|| anyhow::anyhow!("{size:?} is not a shape"))?;
+        self.runtime.block_on(async {
+            let out = self
+                .client
+                .run_task()
+                .cluster(&self.cluster)
+                .task_definition(&self.task)
+                .launch_type(LaunchType::Fargate)
+                .network_configuration(
+                    NetworkConfiguration::builder()
+                        .awsvpc_configuration(
+                            AwsVpcConfiguration::builder()
+                                .subnets(&self.subnet)
+                                .security_groups(&self.security_group)
+                                // ⛔ A PUBLIC IP, BECAUSE THERE IS NO NAT. The
+                                // task reaches ECR, S3 and CloudWatch over the
+                                // internet gateway; a NAT would be ~$32/month
+                                // standing against a $5 budget.
+                                .assign_public_ip(AssignPublicIp::Enabled)
+                                .build()
+                                .context("the task's network configuration")?,
+                        )
+                        .build(),
+                )
+                .overrides(
+                    TaskOverride::builder()
+                        .container_overrides(
+                            ContainerOverride::builder()
+                                .name("ratio")
+                                .command("scale-run")
+                                .command("--size")
+                                .command(shape.name)
+                                .build(),
+                        )
+                        .build(),
+                )
+                .send()
+                .await
+                .map_err(|e| anyhow::anyhow!("starting the fold task: {e}"))?;
+            let arn = out
+                .tasks()
+                .first()
+                .and_then(|t| t.task_arn())
+                .unwrap_or("started")
+                .to_string();
+            Ok(arn)
+        })
+    }
+
+    fn describe(&self) -> String {
+        format!("a one-shot task on {}", self.cluster)
+    }
+}
+
 /// Generate the book if it is not already there, fold it cold, publish both
 /// curves, and release the lock.
 ///
@@ -598,6 +757,15 @@ impl<S: Store> Runs<S> {
         S: AsRef<Files>,
     {
         self.store.as_ref().root.clone()
+    }
+
+    /// How far a fold has got, as the runner last wrote it.
+    ///
+    /// ⚠ A COUNT OF ENTRIES, NOT A PERCENTAGE. A journal does not know its own
+    /// length without reading it, and reading it twice to print a fraction would
+    /// double the cost of the thing being reported on.
+    pub fn progress(&self, size: &str) -> Option<String> {
+        self.store.get(&format!("progress-{size}")).ok().flatten()
     }
 
     pub fn result(&self, size: &str) -> Option<String> {

@@ -276,6 +276,19 @@ jobs:
           # it is the console's own callback route now, and it MUST match a
           # registered Cognito callback URL or every sign-in is refused by the
           # IdP with an error the console cannot explain.
+          # The scale screen is public and must stay that way — it is the one
+          # place the twenty-million-lot claim can be checked by somebody with
+          # no account. ⚠ Asserting the RECORDED figure, not a live one: no
+          # fold has run on a fresh deploy, and a smoke test that waited for one
+          # would wait sixteen minutes.
+          want "the scale screen" "Twenty million tax lots" "${URL}scale"
+          want "the recorded cold build" "995.0 s" "${URL}scale"
+          want "the shapes it can fold" '"size":"full"' "${URL}scale-runs.json"
+          # ⛔ AND THE RUNNER IS WIRED. `"runner":null` means the function has no
+          # cluster to start a fold on — which is a valid LOCAL state and a
+          # broken deployed one, so the deploy is where it must be caught.
+          deny "an unwired scale runner" '"runner":null' "${URL}scale-runs.json"
+
           want "the auth config" '"redirectPath":"/api/auth/callback"' "${URL}authconfig.json"
 
           # ⛔ THE CONSOLE TAKES ITS OAuth `redirect_uri` FROM THIS FIELD, so a

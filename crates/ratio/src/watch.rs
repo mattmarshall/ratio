@@ -29,6 +29,8 @@ use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
+
+use crate::scale::{self, Launcher as _};
 use prost::Message;
 use ratio_chart::{normal_side, Side};
 use ratio_proto::ratio::console::v1 as pb;
@@ -278,6 +280,13 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         (_, "/rules") => ("200 OK", "text/html; charset=utf-8", page(RULES_BODY, "rules")),
         (_, "/scale") => ("200 OK", "text/html; charset=utf-8", page(SCALE_BODY, "scale")),
         (_, "/scale.json") => json(scale_json(book, &req.query)),
+        (_, "/scale-runs.json") => json(scale_runs_json()),
+        ("POST", "/scale/start") => json(scale_start(&req.body)),
+        (_, "/scale/start") => (
+            "405 Method Not Allowed",
+            "application/json",
+            "{\"error\":\"starting a fold is a POST\"}".to_string(),
+        ),
         (_, "/balance.json") => json(balance_json(book)),
         (_, "/postings.json") => json(postings_json(book, &req.query)),
         (_, "/breaks.json") => json(breaks_json(book)),
@@ -658,6 +667,168 @@ fn balance_json(book: &Path) -> Result<String> {
 }
 
 /// The postings behind one account — the drill-down.
+/// The run record and the launcher, resolved ONCE from the environment.
+///
+/// ⛔ NOT PER REQUEST. `Ecs::from_env` builds a tokio runtime and an SDK client;
+/// doing that on every button press would be a fresh thread pool per visitor.
+///
+/// ⚠ `None` IS A VALID, WORKING STATE, not a misconfiguration. `ratio watch` on
+/// a laptop sets none of `RATIO_SCALE_*`, so there is no bucket to keep a record
+/// in and no cluster to run on — the screen then serves its estimate and its
+/// recorded figures, and offers no button. Same shape as an unset
+/// `RATIO_COGNITO_*` meaning "no identity provider here".
+type Scale = (scale::Runs<scale::S3>, scale::Ecs);
+
+fn scale_runner() -> Option<&'static Scale> {
+    static SCALE: std::sync::OnceLock<Option<Scale>> = std::sync::OnceLock::new();
+    SCALE
+        .get_or_init(|| {
+            let bucket = std::env::var("RATIO_SCALE_BUCKET").ok().filter(|b| !b.is_empty())?;
+            let ecs = match scale::Ecs::from_env()? {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("the scale runner is configured but unusable: {e:#}");
+                    return None;
+                }
+            };
+            match scale::S3::open(bucket, "runs/") {
+                Ok(s) => Some((scale::Runs::over(s), ecs)),
+                Err(e) => {
+                    eprintln!("the scale record is configured but unusable: {e:#}");
+                    None
+                }
+            }
+        })
+        .as_ref()
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// The calendar month, as `YYYYMM`, for the spend counter.
+///
+/// ⚠ DERIVED FROM THE EPOCH RATHER THAN A DATE LIBRARY, because the only
+/// property needed is that it CHANGES once a month and never goes backwards.
+/// Which day a month turns over on is not a figure anybody is paid on.
+fn this_month(now: i64) -> i64 {
+    let days = now / 86_400;
+    let years = days / 365;
+    1970 * 100 + years * 100 + ((days % 365) / 31) + 1
+}
+
+/// Start a fold, or say why not.
+///
+/// ⛔ A SHAPE NAME FROM A FIXED SET, MATCHED EXHAUSTIVELY — never dials, never a
+/// path, never anything a caller composes. `terminal_json` sets the standard in
+/// this file and its reason applies unchanged: "anything that dispatches on a
+/// string the caller controls without an exhaustive match is a remote-execution
+/// seam wearing a demo costume". The only thing a caller supplies here is which
+/// of three words they want, and `scale::shape` refuses everything else.
+fn scale_start(body: &str) -> Result<String> {
+    let Some((runs, launcher)) = scale_runner() else {
+        bail!(
+            "this server has no scale runner configured, so there is nothing to start — the \
+             estimate and the recorded run above need none"
+        );
+    };
+    let req: serde_json::Value = serde_json::from_str(body).context("that is not JSON")?;
+    let asked = req["size"].as_str().unwrap_or("");
+    let Some(shape) = scale::shape(asked) else {
+        bail!("{}", scale::Refusal::NoSuchShape);
+    };
+
+    let now = now_secs();
+    match runs.start(shape.name, now, this_month(now), "pending")? {
+        Err(refusal) => Ok(format!(
+            "{{\"started\":false,\"why\":{}}}",
+            quote(&refusal.to_string())
+        )),
+        Ok(_) => {
+            // ⛔ THE LOCK IS TAKEN BEFORE THE TASK IS ASKED FOR, and released if
+            // asking fails. The other order would let two visitors both reach
+            // RunTask while neither holds anything.
+            match launcher.launch(shape.name) {
+                Ok(token) => Ok(format!(
+                    "{{\"started\":true,\"size\":{},\"where\":{},\"token\":{}}}",
+                    quote(shape.name),
+                    quote(&launcher.describe()),
+                    quote(&token)
+                )),
+                Err(e) => {
+                    let _ = runs.finish(shape.name, None);
+                    Err(e).context("the fold was allowed but could not be started")
+                }
+            }
+        }
+    }
+}
+
+/// What has run, what is running, and what each shape costs to run.
+///
+/// ⛔ EVERY SHAPE IS LISTED WHETHER OR NOT IT HAS EVER RUN. A screen that only
+/// showed shapes with results would be empty on a cold bucket and would look
+/// broken rather than idle.
+fn scale_runs_json() -> Result<String> {
+    let runner = scale_runner();
+    let now = now_secs();
+    let current = match runner {
+        Some((runs, _)) => runs.current()?,
+        None => None,
+    };
+    let mut rows = Vec::new();
+    for s in scale::SHAPES.iter() {
+        let (result, progress, last) = match runner {
+            Some((runs, _)) => (
+                runs.result(s.name),
+                runs.progress(s.name),
+                runs.last_started(s.name),
+            ),
+            None => (None, None, 0),
+        };
+        rows.push(format!(
+            "{{\"size\":{},\"securities\":{},\"lots_per\":{},\"open_lots\":{},\"entries\":{},\
+             \"recorded_cold_build_ms\":{},\"cents\":{},\"cooldown\":{},\"again_at\":{},\
+             \"progress\":{},\"result\":{}}}",
+            quote(s.name),
+            s.securities,
+            s.lots_per,
+            s.open_lots,
+            s.entries,
+            s.recorded_cold_build_ms,
+            s.cents,
+            s.cooldown,
+            if last > 0 { last + s.cooldown } else { 0 },
+            match &progress {
+                Some(p) => quote(p),
+                None => "null".to_string(),
+            },
+            result.unwrap_or_else(|| "null".to_string()),
+        ));
+    }
+    Ok(format!(
+        "{{\"now\":{now},\"runner\":{},\"running\":{},\"shapes\":[{}]}}",
+        match runner {
+            Some((_, l)) => quote(&l.describe()),
+            // ⚠ `null`, and the page turns the button off rather than offering
+            // one that cannot work.
+            None => "null".to_string(),
+        },
+        match &current {
+            Some(c) => format!(
+                "{{\"size\":{},\"started\":{}}}",
+                quote(&c.size),
+                c.started
+            ),
+            None => "null".to_string(),
+        },
+        rows.join(","),
+    ))
+}
+
 /// This machine's read rate, measured ONCE.
 ///
 /// ⛔ NOT PER REQUEST, AND THAT IS A SECURITY PROPERTY AS MUCH AS A CORRECTNESS
@@ -1699,6 +1870,24 @@ function the kernel runs, not a model of it.</p>
   </section>
 </div>
 
+<section class="runs">
+  <h2>Fold one yourself</h2>
+  <p class="note" id="runner-note"></p>
+  <table class="mini runs-table">
+    <thead><tr><th>Shape</th><th class="n">Open lots</th><th class="n">Recorded</th><th class="n">This run</th><th></th></tr></thead>
+    <tbody id="runs-body"></tbody>
+  </table>
+  <p class="note">⛔ <strong>Both curves, always.</strong> "This run" is the cold
+  build — folding the journal from nothing, which grows with every trade ever
+  made. The NAV strike off the finished projection is the flat one, and it is the
+  panel above. Quoting the second as though it were the first is the overclaim
+  this screen exists to make hard.</p>
+  <p class="note">⚠ A fold runs on somebody's money, so there is one at a time,
+  a cooldown per shape and a monthly ceiling. A second visitor arriving mid-run
+  <em>joins</em> it — the book is generated from a seed, so it is the same fold
+  they would have started.</p>
+</section>
+
 <p class="note">⛔ <strong>Quoting the second curve as though it were the
 first is the overclaim this screen exists to make hard.</strong> "Twenty million
 lots are free" is true of the strike and false of the fold. Both are on this
@@ -1733,6 +1922,18 @@ page for that reason.</p>
 .mini td{text-align:right;font-variant-numeric:tabular-nums;padding:3px 0}
 .mini .sub{padding-left:14px;color:var(--muted);font-size:13px}
 .prov{font-size:12px;color:var(--muted);margin:14px 0 0;font-style:italic}
+.runs{margin:26px 0 0;padding:16px;border:1px solid var(--rule);border-radius:8px;
+  background:var(--raised)}
+.runs h2{font-size:15px;margin:0 0 10px}
+.runs-table th.n,.runs-table td{text-align:right}
+.runs-table thead th{font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.runs-table td:first-child,.runs-table th:first-child{text-align:left}
+.runs-table tbody td{padding:6px 0;border-top:1px solid var(--rule)}
+button.fold{font:inherit;font-size:13px;font-weight:600;padding:5px 12px;
+  border-radius:6px;border:1px solid var(--accent);background:var(--accent);
+  color:var(--ground);cursor:pointer}
+button.fold[disabled]{background:transparent;color:var(--muted);
+  border-color:var(--rule);cursor:not-allowed}
 .note{font-size:13px;color:var(--muted);max-width:62ch}
 </style>
 <script>
@@ -1787,6 +1988,74 @@ async function tick() {
       + 'Ratio.Closure.a_quiet_nav_never_reads_the_lots. Raise the open actions '
       + 'above zero to see what a rewrite would have cost.';
 }
+
+// ── the runs panel ──────────────────────────────────────────────────────
+const ms = n => n >= 1000 ? (n / 1000).toFixed(1) + ' s' : n + ' ms';
+
+function cell(row, text, cls) {
+  const td = document.createElement('td');
+  td.textContent = text;
+  if (cls) td.className = cls;
+  row.append(td);
+  return td;
+}
+
+async function runs() {
+  const d = await (await fetch('/scale-runs.json')).json();
+  const body = document.getElementById('runs-body');
+  const note = document.getElementById('runner-note');
+  body.replaceChildren();
+
+  // ⚠ NO RUNNER IS A WORKING STATE, NOT AN ERROR. A local `ratio watch`
+  // configures none of RATIO_SCALE_*, and the screen says so rather than
+  // offering a button that cannot do anything.
+  note.textContent = d.runner
+    ? 'A fold runs as ' + d.runner + '.'
+    : 'This server has no runner configured, so the shapes below are the '
+      + 'recorded figures only. The estimate above is live either way.';
+
+  for (const s of d.shapes) {
+    const tr = document.createElement('tr');
+    cell(tr, s.size);
+    cell(tr, fmt(s.open_lots));
+    cell(tr, ms(s.recorded_cold_build_ms));
+
+    // ⛔ THE COLD BUILD, NOT THE STRIKE. The flat curve is the panel above;
+    // putting it here unlabelled beside "recorded" would invite reading one
+    // as the other.
+    const mine = d.running && d.running.size === s.size
+      ? (s.progress || 'starting…')
+      : (s.result ? ms(Math.round(s.result.cold_build_ns / 1e6)) : '—');
+    cell(tr, mine);
+
+    const td = document.createElement('td');
+    const b = document.createElement('button');
+    b.className = 'fold';
+    b.textContent = d.running && d.running.size === s.size ? 'running' : 'Fold it';
+    const cooling = s.again_at > d.now;
+    b.disabled = !d.runner || !!d.running || cooling;
+    if (cooling && !d.running) b.textContent = 'cooling';
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      const r = await (await fetch('/scale/start', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({size: s.size}),
+      })).json();
+      if (r.error || r.why) note.textContent = r.error || r.why;
+      runs();
+    });
+    td.append(b);
+    tr.append(td);
+    body.append(tr);
+  }
+}
+
+// ⚠ Slower than the trial balance's 400 ms tick. A fold is minutes long, and
+// polling it four times a second would be four times the requests for a number
+// that changes every five seconds.
+setInterval(runs, 3000);
+runs();
 
 dials.addEventListener('input', () => {
   clearTimeout(pending);
