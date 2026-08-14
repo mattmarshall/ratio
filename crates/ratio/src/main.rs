@@ -1706,6 +1706,30 @@ pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
         .with_context(|| format!("no proposal {id} — expected {}", path.display()))?;
     let incoming = RuleSet::from_toml(&proposed)?;
 
+    // ⛔ A PROPOSED TOLERANCE IS REFUSED, NOT MERGED, AND NOT DROPPED.
+    //
+    // `replace_sections` below lifts the `rule` and `template` keys out of the
+    // merged document and leaves everything else in the previous configuration
+    // alone — which is what stops an approval deleting the templates beside it,
+    // and which means a `[tolerance]` arriving in a proposal would serialize,
+    // be discarded, and approve cleanly having changed nothing. That is the
+    // same silent-drop this function was written to fix, one section along.
+    //
+    // ⚠ AND IT IS NOT MERELY A PLUMBING GAP. How big a difference has to be
+    // before it stops the NAV is the kind of term ORCHESTRATION.md names as the
+    // residual risk of an agent: not writing to the journal, which the door
+    // refuses, but supplying a POLICY INPUT, where the books tie and the number
+    // is somebody else's. Moving it is a person promoting a configuration they
+    // read, not a merge nobody watched.
+    if incoming.tolerance.is_some() {
+        bail!(
+            "proposal {id} declares a tolerance, and tolerance is not something a proposal \
+             moves.\nHow big a difference has to be before it stops the NAV is a term of the \
+             administration agreement — change it by editing the configuration and running \
+             `ratio config set <file>`, so the whole document is what somebody approved."
+        );
+    }
+
     // Re-check at approval time. The chart may have moved since the proposal
     // was made, and approving something that no longer passes would put a bad
     // template into production with a human's name on it.
@@ -1963,6 +1987,57 @@ weight = -1
         // simply stop writing.
         let set = RuleSet::from_toml(&after).unwrap();
         assert!(!set.rules.is_empty(), "the approved rule should be in force");
+    }
+
+    #[test]
+    fn a_proposal_that_declares_a_tolerance_is_refused_rather_than_silently_dropped() {
+        // ⛔ THE SILENT DROP THIS PREVENTS. `replace_sections` lifts only the
+        // `rule` and `template` keys, so a `[tolerance]` in a proposal would
+        // serialize, be discarded, and approve CLEANLY — the changelog
+        // recording an approval that changed nothing anybody asked for. That is
+        // the same shape as approving a rule deleting the templates beside it,
+        // which is what that function was written to fix.
+        let book = book_with_a_proposal("tolerancedrop");
+        std::fs::write(
+            book.join("proposals").join("p2.toml"),
+            "rules = []\n[tolerance]\nbelow_notice = 1\nblocks_nav = 2\n",
+        )
+        .unwrap();
+
+        let e = approve(book.clone(), "p2").unwrap_err().to_string();
+        assert!(e.contains("not something a proposal moves"), "{e}");
+        assert!(e.contains("ratio config set"), "the refusal names the human path: {e}");
+
+        // And nothing moved: no new configuration was promoted.
+        let b = FileBook::open(&book).unwrap();
+        let active = String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap())
+            .into_owned();
+        assert!(!active.contains("tolerance"), "a refused proposal changed the configuration");
+    }
+
+    #[test]
+    fn approving_a_rule_does_not_delete_the_tolerance_beside_it() {
+        // The twin of the template test. A fund that declared its bands must
+        // not lose them because somebody approved an unrelated fee rule.
+        let book = book_with_a_proposal("keepstolerance");
+        let mut b = FileBook::open(&book).unwrap();
+        let before = String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap())
+            .into_owned();
+        let with_tolerance =
+            format!("{before}\n[tolerance]\nbelow_notice = 100\nblocks_nav = 250\n");
+        let d = b.put(with_tolerance.as_bytes()).unwrap();
+        b.set_active(&d).unwrap();
+        drop(b);
+
+        approve(book.clone(), "p1").unwrap();
+
+        let set = active_rules(&book);
+        assert_eq!(
+            set.tolerance,
+            Some(ratio_rules::Tolerance { below_notice: 100, blocks_nav: 250 }),
+            "approving a rule dropped the tolerance beside it",
+        );
+        assert!(!set.rules.is_empty(), "and the approved rule is still in force");
     }
 
     #[test]

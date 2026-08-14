@@ -149,6 +149,25 @@ the conserved one, and the kernel never said it was.
 - **The gain leg is derived, never supplied.** A parameter for it would be drift
   written down as an API, and the drift is silent because the gain leg absorbs
   whatever the other two legs leave.
+- **A break is graded by the configuration ITS REPORT NAMES**, resolved once in
+  `breaks_for` and never from `active()`. A severity is part of a comparison
+  between two figures produced under one agreement; regrading a stored report
+  because somebody promoted a new rule set changes an answer whose inputs never
+  moved — `an_unpinned_announcement_changes_the_answer`, applied to a grade.
+  `a_break_is_graded_by_the_configuration_its_report_names_not_the_one_in_
+  force_now` is the only thing standing there, and pointing this at `active()`
+  passes every other test in the file.
+- ⛔ **What the grader cannot read grades HIGH, and that is the design.** An
+  unparseable digest, bytes the book does not hold, bytes that are not a rule
+  set — all blocking, none defaulting. The temptation is to "fix" it to the
+  custom bands because grading everything HIGH looks like a bug; doing that
+  certifies a difference as small using a tolerance nobody could read, on a book
+  that ties. `Tolerance` is `None` on such a break rather than claiming bounds.
+- **`Break.tolerance` is null on a lot break ON PURPOSE.** Lot breaks are HIGH
+  by what they mean — the lot book and the position disagreeing corrupts the
+  realized gain, which no reconciliation reaches — so reporting bounds beside
+  one would suggest some other number would have graded it differently. None
+  would.
 - **`ChartRoles` are checked when the configuration is READ.** A chart that
   cannot express a gain is wrong the moment it is written down; finding out at
   the first disposal means finding out in production.
@@ -187,6 +206,22 @@ the conserved one, and the kernel never said it was.
   `//web:console_html` are different targets" — there was no `//web:console`
   target and there never was. Two wrong entries in one bullet; the lesson is the
   one AGENTS.md already states, that a comment nothing tests will drift.
+- ⛔ **`replace_sections` LIFTS ONLY `rule` AND `template`, so a fifth `RuleSet`
+  field is silently dropped at approval.** It round-trips the previous
+  configuration through a generic `toml::Table` and replaces those two keys —
+  which is what stops an approval deleting the templates beside it, and which
+  means a `[tolerance]` in a proposal would serialize, be discarded, and approve
+  cleanly having changed nothing. That is the same silent drop the function was
+  written to fix, one section along. `ratio approve` now REFUSES a proposal
+  declaring one; any future top-level key faces the same choice, and choosing
+  "merge it" means adding an arm rather than assuming one is there.
+- ⚠ **`ratio config set` does not parse what it promotes**, and the seed scripts
+  use it for the opening configuration. A malformed `[tolerance]` is therefore
+  caught at the first READ — `get_fund`, `list_breaks` — rather than at the
+  promotion that introduced it.
+- ⚠ **`//proto:ratio_aip_lint` bans prepositions in field names** (only
+  `core::0192::has-comments` is disabled). `explained_at_position` fails;
+  `journal_position` does not. Verified by adding one and watching it go red.
 - ⛔ **`append` and `append_all` are two doors with the same law**, with different
   indentation. A fix applied by string replace hits one.
 - ⛔ **Python edits collapse Rust `\` line continuations** into runs of spaces
@@ -356,7 +391,7 @@ than one that is entirely unclassified.
 | | |
 |---|---|
 | `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,Edges,Posting}`, `Actions/Factor`, `Closure`, `Exec` |
-| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days` — the administration agreement, as configuration |
+| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `tolerance` — the administration agreement, as configuration |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |

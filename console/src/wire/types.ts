@@ -116,6 +116,13 @@ export interface Break {
   difference: Int64;
   postings: BreakPosting[];
   configDigest: string;
+  tolerance: Tolerance | null;
+}
+
+export interface Tolerance {
+  belowNotice: Int64;
+  blocksNav: Int64;
+  declared: boolean;
 }
 
 export interface ChangeLogEntry {

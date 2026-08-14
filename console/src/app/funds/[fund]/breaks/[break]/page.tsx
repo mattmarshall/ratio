@@ -91,6 +91,19 @@ export default async function BreakDetail({
           <br />
           account dimension {brk.accountDimension}
           <br />
+          {/* The bands the severity came from, beside the severity. A grade
+              whose terms a reader has to go and look up is a grade a reader
+              takes on trust. */}
+          {brk.tolerance ? (
+            <>
+              graded at {money(brk.tolerance.blocksNav)} blocks,{" "}
+              {money(brk.tolerance.belowNotice)} notice
+              {brk.tolerance.declared ? " — declared" : " — by custom, not declared"}
+            </>
+          ) : (
+            <>graded by what it means, not by how much</>
+          )}
+          <br />
           replays identically under this configuration
         </div>
       </div>

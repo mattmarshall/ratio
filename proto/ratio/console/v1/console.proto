@@ -592,6 +592,35 @@ message Break {
   // not checkable, which is the only thing that makes it worth more than the
   // other one.
   string config_digest = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The bounds this break's severity was graded against.
+  //
+  // ON THE BREAK, NOT BESIDE IT, for the reason `NavStrike.qualification`
+  // gives: a grade whose terms a caller has to go and look up is a grade a
+  // caller takes on trust. Absent on a break the tolerance did not decide —
+  // a lot break, which is graded by what it means rather than by how much.
+  Tolerance tolerance = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// How big a difference has to be before it stops the NAV.
+//
+// A TERM OF AN ADMINISTRATION AGREEMENT, which is why it travels with the
+// break rather than being a property of the software: two funds looking at the
+// same difference disagree about whether it matters, and both are right.
+// `Ratio.Tolerance` is the proof side, and the boundary is inclusive — a
+// difference of exactly `blocks_nav` blocks.
+message Tolerance {
+  // Minor units, as strings.
+  string below_notice = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string blocks_nav = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether the configuration DECLARES these bounds, or merely gets them.
+  //
+  // A rule set that says nothing about tolerance is graded at 5.00 and
+  // 1,000.00 by custom, not by election, and the two are different facts. The
+  // same distinction `lot_method_declared` keeps, after a screen reported the
+  // default as a term of the agreement on funds that had agreed nothing.
+  bool declared = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // Whether a person or a model did something.

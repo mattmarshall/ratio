@@ -312,14 +312,31 @@ secondary source or with the news, *as narration attached to the fact*,
 deciding nothing; drafting a fair-value policy change for approval.
 **Refused:** an agent supplying the winning price, and "dynamic tolerance
 bands." Which source wins, and how much movement is tolerable, are terms of
-an agreement — configuration a person approved. Candor requires a note here:
-today tolerance is two hardcoded constants
-(`crates/ratio-console/src/lib.rs:48`), and the comment beside them already
-says they belong in configuration. The honest sequence is: move tolerance
-into the config digest first, then let agents *propose* tolerance changes
-through the existing control plane. "Dynamic" is refused; "proposed,
-versioned, approved" is the translation. **No substrate:** derivative
-pricing, Greeks, credit events.
+an agreement — configuration a person approved. "Dynamic" is refused;
+"proposed, versioned, approved" is the translation. **No substrate:**
+derivative pricing, Greeks, credit events.
+
+⭐ **Amended 2026-08-14 — the first half of that sequence landed.** This
+section used to say tolerance was two hardcoded constants and that the honest
+order was to move it into the config digest before letting anything propose
+changes to it. It is now a `[tolerance]` on the rule set, beside the lot
+method and the holding-period threshold; `Ratio.Tolerance` is the proof side,
+and the grading decision is emitted from it. A break is graded by the
+configuration **its report names**, not the one in force now — a severity is
+part of a comparison, and regrading a report whose bytes never changed is the
+same failure as an unpinned announcement. What the grader cannot read grades
+HIGH, deliberately: a tolerance nobody could read cannot certify a difference
+as small.
+
+⛔ **And the second half is still refused, now mechanically rather than by
+absence.** `ratio approve` REFUSES a proposal that declares a tolerance and
+names `ratio config set` instead. The reason is this document's own boundary
+claim: the dangerous verb is not writing to the journal, it is supplying a
+policy input, and how big a difference has to be before it stops the NAV is
+exactly that. Letting a drafted proposal move it — through a merge that,
+before this, would have dropped it silently — is the shape to avoid. When
+agents do propose tolerance changes, it will be through the control plane with
+a person reading the whole document, and it will be its own change.
 
 ### The close — transaction close, valuation close, NAV validation, audit close
 

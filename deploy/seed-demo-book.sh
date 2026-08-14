@@ -104,6 +104,21 @@ per_instrument = true
 account = 21
 weight = -1
 
+# ── how big a difference has to be before it stops the NAV ────────────────
+#
+# In the same configuration, and for the same reason: a fund's tolerance is a
+# term of its administration agreement, not a property of the software, and a
+# break cites the digest it was graded under. DECLARED rather than left out, so
+# the console reports a term somebody agreed to instead of the numbers a book
+# gets by custom — the distinction `lot_method` already keeps.
+#
+# ⚠ 100000 IS LOAD-BEARING FOR THE DEMO. positions.csv below is deliberately
+# 2,000.00 light, which is 200000 minor units; raising this above that would
+# leave the blocked fund unblocked and the whole story without its exception.
+[tolerance]
+below_notice = 500
+blocks_nav = 100000
+
 # ── the mapping, in the SAME configuration as the rules above ─────────────
 #
 # That is the claim, made real: one digest fixes how a file becomes an event

@@ -16,5 +16,10 @@
       "configDigest": "9f2c1ab7de40551c"
     }
   ],
-  "configDigest": "9f2c1ab7de40551c"
+  "configDigest": "9f2c1ab7de40551c",
+  "tolerance": {
+    "belowNotice": "500",
+    "blocksNav": "100000",
+    "declared": true
+  }
 }

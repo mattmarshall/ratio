@@ -180,6 +180,18 @@ describe("a break", () => {
     // 2,000.00 is deploy/seed-demo-book.sh's number.
     expect(screen.getByText("2,000.00")).toBeDefined();
   });
+
+  it("names the bounds the severity was graded against", async () => {
+    // A grade whose terms a reader has to go and look up is a grade a reader
+    // takes on trust — which is the one thing this product is not for.
+    const Detail = (await import("./funds/[fund]/breaks/[break]/page")).default;
+    await renderAsync(
+      Detail({ params: params({ fund: FUND, break: "cash-usd-2026-02-26" }) }),
+    );
+    expect(screen.getByText(/graded at/)).toBeDefined();
+    expect(screen.getByText(/1,000\.00 blocks/)).toBeDefined();
+    expect(screen.getByText(/declared/)).toBeDefined();
+  });
 });
 
 describe("rules", () => {

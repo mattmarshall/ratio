@@ -39,15 +39,6 @@ use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::RuleSet;
 use ratio_store::{AccountTypeRecord, ConfigStore, FileBook, Journal, Plane};
 
-/// Above this, a difference blocks the NAV. Below the lower one, it is noise.
-///
-/// Both are in minor units and are the demo's stand-in for a real tolerance
-/// policy, which belongs in the configuration rather than in a constant — a
-/// fund's tolerance is a term of its administration agreement, not a property
-/// of the software. Named here so that is visible rather than buried.
-const BLOCKS_NAV: i64 = 100_000; // 1,000.00
-const BELOW_NOTICE: i64 = 500; //     5.00
-
 /// The books this console serves.
 pub struct Console {
     root: PathBuf,
@@ -2161,8 +2152,36 @@ impl Console {
                 difference: "0".into(),
                 postings: Vec::new(),
                 config_digest: String::new(),
+                // ⚠ NO TOLERANCE, BECAUSE NO TOLERANCE DECIDED THIS. A lot
+                // break is HIGH by what it means, not by how much, so reporting
+                // bounds beside it would suggest a different number would have
+                // graded it differently. None ever would.
+                tolerance: None,
             })
             .collect())
+    }
+
+    /// The tolerance a report's breaks are graded against, or `None` when the
+    /// question cannot be answered.
+    ///
+    /// ⛔ AND `None` MEANS BLOCKING, NOT DEFAULT. Three things reach it: a
+    /// digest that is not a digest, one naming bytes the book does not hold,
+    /// and bytes that are not a rule set. In every one of them the honest
+    /// statement is "this difference was not graded" — and the whole product
+    /// argument is that a figure nobody could check is not a figure. Falling
+    /// back to the custom bands would certify a break as small using a
+    /// tolerance nobody could read, on a book that ties, which is the failure
+    /// this repository exists not to have. Erring towards blocking costs an
+    /// operator a look; erring the other way costs a NAV.
+    ///
+    /// ⚠ IT DOES NOT ERROR. A fund whose oldest report names a configuration
+    /// that has since been pruned should still show its breaks — as blocking —
+    /// rather than turning the whole screen into a stack trace.
+    fn tolerance_of(&self, b: &FileBook, digest: &str) -> Option<(ratio_rules::Tolerance, bool)> {
+        let d = ratio_store::Digest::parse(digest).ok()?;
+        let bytes = b.get(&d).ok()?;
+        let set = RuleSet::from_toml(&String::from_utf8_lossy(&bytes)).ok()?;
+        Some((set.effective_tolerance(), set.tolerance.is_some()))
     }
 
     fn breaks_for(&self, book: &Path, fund: &str) -> Result<Vec<pb::Break>> {
@@ -2200,15 +2219,27 @@ impl Console {
             Ok(())
         })?;
 
+        // ⛔ GRADED BY THE CONFIGURATION THE REPORT NAMES, NOT THE ONE IN FORCE
+        // NOW, and resolved once rather than per line. A break is a comparison
+        // between two figures produced under one configuration; the tolerance
+        // agreed then is the term that applies to it. Reading `active()` here
+        // would regrade a report whose bytes have not changed the moment
+        // somebody promotes a new rule set — the shape
+        // `an_unpinned_announcement_changes_the_answer` is about, applied to a
+        // severity instead of a factor.
+        let graded_under = self.tolerance_of(&b, &report.config_digest);
         let mut out = Vec::new();
         for line in &report.breaks {
             let diff: i64 = line.difference;
-            let severity = if diff.abs() >= BLOCKS_NAV {
-                pb::Severity::High
-            } else if diff.abs() >= BELOW_NOTICE {
-                pb::Severity::Medium
-            } else {
-                pb::Severity::Low
+            let severity = match graded_under {
+                Some((t, _)) => match t.severity(diff) {
+                    ratio_rules::Severity::High => pb::Severity::High,
+                    ratio_rules::Severity::Medium => pb::Severity::Medium,
+                    ratio_rules::Severity::Low => pb::Severity::Low,
+                },
+                // ⛔ ANYTHING THE GRADER COULD NOT ANSWER GRADES HIGH. See
+                // `tolerance_of`.
+                None => pb::Severity::High,
             };
             let dim = dims.get(&line.display_name).copied().unwrap_or(line.account);
 
@@ -2234,6 +2265,11 @@ impl Console {
                 difference: diff.to_string(),
                 postings,
                 config_digest: report.config_digest.clone(),
+                tolerance: graded_under.map(|(t, declared)| pb::Tolerance {
+                    below_notice: t.below_notice.to_string(),
+                    blocks_nav: t.blocks_nav.to_string(),
+                    declared,
+                }),
             });
         }
         // Largest first: the queue is ordered by money, because that is the
@@ -2557,6 +2593,24 @@ mod tests {
         post("c1", "capital in", vec![(2, 30_000_000), (20, -30_000_000)]);
         post("t1", "buy", vec![(1, 25_000_000), (2, -25_000_000)]);
         post("f1", "fee accrued", vec![(10, 100_000), (40, -100_000)]);
+    }
+
+    /// Store a configuration declaring a tolerance and return its digest, so a
+    /// report can name it.
+    ///
+    /// ⛔ THE DIGEST IS THE POINT. A report grades against the configuration IT
+    /// NAMES, so a test that wants to assert a grade has to put the bands
+    /// somewhere the book can actually read them back from. The earlier version
+    /// of these tests wrote `config_digest: "abc123"` and asserted severities
+    /// that came from two constants — true by coincidence, and it stayed true
+    /// when the constants were the only thing deciding.
+    fn config_with_tolerance(at: &Path, below_notice: i64, blocks_nav: i64) -> String {
+        let mut b = FileBook::open(at).unwrap();
+        let toml = format!(
+            "rules = []\n[tolerance]\nbelow_notice = {below_notice}\nblocks_nav = {blocks_nav}\n"
+        );
+        let d = b.put(toml.as_bytes()).unwrap();
+        d.as_str().to_string()
     }
 
     /// Expand a route template to a concrete path for one fund.
@@ -3007,9 +3061,14 @@ mod tests {
     fn breaks_are_ordered_by_money_and_severity_follows_the_tolerance() {
         let d = fresh("breaks");
         book(&d);
+        // The bands this report is graded against, stored so the book can read
+        // them back. 5.00 and 1,000.00 — the custom numbers, but DECLARED here,
+        // which is what makes the assertions below about a term of an agreement
+        // rather than about two constants.
+        let digest = config_with_tolerance(&d, 500, 100_000);
         let report = kernel::BreakReport {
             name: "books/demo/breakReports/r".into(),
-            config_digest: "abc123".into(),
+            config_digest: digest,
             scope: None,
             transactions_replayed: 2,
             entries_posted: 2,
@@ -3036,6 +3095,12 @@ mod tests {
         assert_eq!(ks[0].postings.len(), 1);
         assert_eq!(ks[0].postings[0].entry_id, "t1");
         assert!(!ks[0].config_digest.is_empty(), "a break must cite its configuration");
+        // And the terms it was graded against travel with it, so a reader does
+        // not have to go and look them up to know what the grade meant.
+        let t = ks[0].tolerance.as_ref().expect("a graded break names its bounds");
+        assert_eq!(t.blocks_nav, "100000");
+        assert_eq!(t.below_notice, "500");
+        assert!(t.declared, "this configuration says so rather than getting it by custom");
         // Nothing has explained anything, and nothing pretends otherwise.
         assert!(ks.iter().all(|k| !k.explained));
 
@@ -3044,6 +3109,118 @@ mod tests {
         assert_eq!(f.state, pb::fund::State::Blocked as i32);
         assert_eq!(f.open_break_count, 2);
         assert_eq!(f.open_difference, "1000100");
+    }
+
+    #[test]
+    fn a_break_is_graded_by_the_configuration_its_report_names_not_the_one_in_force_now() {
+        // ⭐ THE LOAD-BEARING ONE. A break is a comparison between two figures
+        // produced under one configuration, and the tolerance agreed then is
+        // the term that applies to it. Reading the ACTIVE configuration instead
+        // would regrade a report whose bytes have not changed the moment
+        // somebody promotes a new rule set — February's break silently graded
+        // under June's agreement, on a book that still ties and still replays.
+        let d = fresh("gradedbyreport");
+        book(&d);
+        // Reconciled under bands that make 1,000.00 merely reportable.
+        let loose = config_with_tolerance(&d, 500, 500_000);
+        let report = kernel::BreakReport {
+            name: "books/demo/breakReports/r".into(),
+            config_digest: loose,
+            scope: None,
+            transactions_replayed: 1,
+            entries_posted: 1,
+            breaks: vec![kernel::BreakLine {
+                account: 1, display_name: "Investments at fair value".into(),
+                ratio_amount: 25_000_000, reported_amount: 24_900_000, difference: 100_000,
+                cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into(),
+            }],
+            exceptions: vec![],
+            book_ties: true,
+        };
+        std::fs::create_dir_all(d.join("reports")).unwrap();
+        std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
+
+        let before = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        assert_eq!(before[0].severity, pb::Severity::Medium as i32, "reportable under those bands");
+
+        // Now the fund tightens its tolerance and promotes it. The report is
+        // untouched — same bytes, same figures, same digest.
+        let mut b = FileBook::open(&d).unwrap();
+        let tight = b
+            .put(b"rules = []\n[tolerance]\nbelow_notice = 100\nblocks_nav = 1000\n")
+            .unwrap();
+        b.set_active(&tight).unwrap();
+
+        let after = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        assert_eq!(
+            after[0].severity,
+            pb::Severity::Medium as i32,
+            "still graded under the terms the reconciliation ran on"
+        );
+        assert_eq!(after[0].tolerance.as_ref().unwrap().blocks_nav, "500000");
+    }
+
+    #[test]
+    fn a_report_naming_a_configuration_that_is_not_stored_grades_every_break_high() {
+        // ⛔ AND THAT IS THE DESIGN, NOT A BUG TO BE FIXED BY DEFAULTING. The
+        // honest statement about a difference nobody can grade is that it was
+        // not graded — and a product whose claim is that a figure can be
+        // checked cannot answer "small" using a tolerance it could not read.
+        // Erring towards blocking costs an operator a look; erring the other
+        // way costs a NAV.
+        let d = fresh("ungradable");
+        book(&d);
+        let report = kernel::BreakReport {
+            name: "books/demo/breakReports/r".into(),
+            // Well-formed, and naming bytes this book does not hold.
+            config_digest: "0".repeat(64),
+            scope: None,
+            transactions_replayed: 1,
+            entries_posted: 1,
+            breaks: vec![kernel::BreakLine {
+                account: 40, display_name: "Management fee payable".into(),
+                ratio_amount: 1, reported_amount: 0, difference: 1,
+                cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into(),
+            }],
+            exceptions: vec![],
+            book_ties: true,
+        };
+        std::fs::create_dir_all(d.join("reports")).unwrap();
+        std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
+
+        let ks = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        assert_eq!(ks[0].severity, pb::Severity::High as i32, "one minor unit, and it blocks");
+        assert!(ks[0].tolerance.is_none(), "and it does not claim bounds it could not read");
+        // The screen still renders rather than erroring: a pruned configuration
+        // must not turn the exceptions queue into a stack trace.
+        assert_eq!(ks.len(), 1);
+    }
+
+    #[test]
+    fn a_lot_break_carries_no_tolerance_because_it_was_not_graded_by_one() {
+        // A lot break is HIGH by what it MEANS — the lot book and the position
+        // disagreeing corrupts the realized gain, which no reconciliation
+        // reaches. Reporting bounds beside it would suggest some other number
+        // would have graded it differently. None would.
+        let d = fresh("lottolerance");
+        book(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        let cfg = b.active().unwrap().unwrap();
+        b.append(&ratio_store::JournalEntry {
+            id: "s1".into(),
+            memo: "sell with no basis anybody can relieve".into(),
+            config: cfg,
+            postings: vec![ratio_store::PostingRecord::new(1, -1_000_000)],
+            trade_date: None,
+            announcement: None,
+        })
+        .unwrap_err();
+
+        let ks = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        for k in ks.iter().filter(|k| k.name.contains("/breaks/lot-")) {
+            assert_eq!(k.severity, pb::Severity::High as i32);
+            assert!(k.tolerance.is_none(), "graded by meaning, not by amount");
+        }
     }
 
     #[test]
@@ -3580,8 +3757,14 @@ mod tests {
     fn filters_are_the_three_the_console_offers() {
         let d = fresh("filter");
         book(&d);
+        // ⚠ A REAL DIGEST, BECAUSE `blocking` NOW DEPENDS ON ONE. With an
+        // unreadable configuration every break grades HIGH and this test would
+        // have gone on passing while asserting nothing about the filter —
+        // `blocking` returning "all of them" looks identical to `blocking`
+        // working when everything happens to block.
+        let digest = config_with_tolerance(&d, 500, 100_000);
         let report = kernel::BreakReport {
-            name: "books/demo/breakReports/r".into(), config_digest: "c".into(), scope: None,
+            name: "books/demo/breakReports/r".into(), config_digest: digest, scope: None,
             transactions_replayed: 1, entries_posted: 1,
             breaks: vec![
                 kernel::BreakLine { account: 1, display_name: "Investments at fair value".into(),

@@ -45,6 +45,8 @@ NEEDLES: list[tuple[str, str]] = [
     ("realizedGain", "the realized gain is never read from the response"),
     ("historyIntact", "the replay proof is not rendered"),
     ("qualification", "a strike qualification would not be shown"),
+    ("blocksNav", "the bounds a break's severity was graded against are never read"),
+    ("graded at", "a severity would be shown with nothing behind it"),
     ("signin-btn", "the sign-in prompt is not rendered"),
     ("Sign out", "the signed-in principal / sign-out control is not rendered"),
     # ── from //crates/ratio:ratio_test, whose console is gone ────────────────

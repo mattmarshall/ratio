@@ -18,7 +18,12 @@
           "configDigest": "9f2c1ab7de40551c"
         }
       ],
-      "configDigest": "9f2c1ab7de40551c"
+      "configDigest": "9f2c1ab7de40551c",
+      "tolerance": {
+        "belowNotice": "500",
+        "blocksNav": "100000",
+        "declared": true
+      }
     },
     {
       "name": "funds/harbourline-global-value/breaks/lot-acme-2026-02-26",
@@ -31,7 +36,8 @@
       "reportedAmount": "0",
       "difference": "0",
       "postings": [],
-      "configDigest": "9f2c1ab7de40551c"
+      "configDigest": "9f2c1ab7de40551c",
+      "tolerance": null
     }
   ],
   "nextPageToken": ""
