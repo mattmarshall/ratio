@@ -1561,12 +1561,8 @@ fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
     // projection. `--view` reads the maintained per-view fold, because a
     // settlement view's trial balance excludes what it has not recognised —
     // and the header says which book of record the rows are.
-    let (by_dim, tb_debits, tb_credits, through) = match view {
-        None => {
-            let by_dim = b.balances_by_dim()?;
-            let tb = b.trial_balance()?;
-            (by_dim, tb.debits, tb.credits, None)
-        }
+    let (by_dim, tb, through) = match view {
+        None => (b.balances_by_dim()?, b.trial_balance()?, None),
         Some(v) => {
             let proj = ratio_project::Projection::of_book(&book)?;
             let bal = proj.balances(v)?;
@@ -1586,7 +1582,11 @@ fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
             let (d, c) = rows.values().fold((0i64, 0i64), |(d, c), (rd, rc)| {
                 (d.saturating_add(*rd), c.saturating_add(*rc))
             });
-            (rows, d, c, bal.through)
+            // The same emitted checker the whole-journal path runs at the
+            // bottom of this function: a view keeps or drops WHOLE entries, so
+            // its columns tie by `Ratio.Views.every_view_conserves` — and if
+            // they ever do not, the bail below says so instead of printing.
+            (rows, ratio_chart::TrialBalance { debits: d, credits: c }, bal.through)
         }
     };
 
@@ -1639,14 +1639,14 @@ fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
         "{:<30}{:<5}{:>18}{:>18}",
         "Total",
         "all",
-        minor(tb_debits),
-        minor(tb_credits)
+        minor(tb.debits),
+        minor(tb.credits)
     );
     println!(
         "{:<30}{:<5}{:>18}{:>18}",
         "Difference",
         "",
-        minor(tb_debits - tb_credits),
+        minor(tb.debits - tb.credits),
         minor(0)
     );
     // ⛔ THE TAX POSITION, WHICH THIS COMMAND COULD NOT REPORT AT ALL. The
