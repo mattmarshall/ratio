@@ -751,31 +751,50 @@ describe("the write screens", () => {
     expect(screen.getByText(/not a whole number of minor units/)).toBeDefined();
   });
 
-  it("names the three things this write cannot carry, before it is written", async () => {
-    // ⛔ NOT BEHIND THE PREVIEW. `ApplyEventRequest` has no field for any of
-    // them, so the answer is known before the server is asked — and an operator
-    // who posts without previewing would otherwise never see it.
+  it("sends the instrument, the units and the day, so a lot opens", async () => {
+    // ⭐ THE FIELDS THIS SCREEN EXISTED WITHOUT. `ApplyEventRequest` carried a
+    // rule, an id and an amount, and `Projection::walk` skips any posting
+    // lacking BOTH an instrument and a quantity — so every trade recorded here
+    // opened no tax lot and relieved none, while the entry balanced, the trial
+    // balance tied and the NAV moved by the right amount. Nothing objected.
     await asForm();
-    expect(screen.getByText("Not carried:")).toBeDefined();
-    expect(
-      screen.getByText(/instrument, units, trade date/),
-    ).toBeDefined();
-    // The consequence is on the same line as the claim; the argument for it is
-    // one click away, which is where the eight lines of prose went.
-    expect(screen.getByText(/No tax lot opens/)).toBeDefined();
-    expect(screen.getByText("What that costs")).toBeDefined();
-    expect(screen.getByText("no trade date")).toBeDefined();
+    fill();
+    const form = document.querySelector("form")!;
+    expect(Object.fromEntries(new FormData(form).entries())).toMatchObject({
+      instrument: "ACME",
+      units: "1000",
+      tradeDate: "2026-02-26",
+    });
+    // And the screen says what that produces rather than what it cannot do.
+    expect(screen.getByText("Carried:")).toBeDefined();
+    expect(screen.getByText(/A tax lot opens against/)).toBeDefined();
   });
 
-  it("says what a disposal gives up, which is not what a purchase does", async () => {
+  it("refuses a fractional quantity rather than dropping it", async () => {
+    // ⛔ THE DATA PLANE DROPS IT AND THIS MUST NOT. `admit_facts` carries a
+    // non-whole quantity as no quantity, which is defensible for a file nobody
+    // read and indefensible where a person typed the number — it is exactly how
+    // the lot-less entry got made before.
+    await asForm();
+    fill();
+    fireEvent.change(screen.getByLabelText("Units"), {
+      target: { value: "10.5" },
+    });
+    expect(screen.getByText(/whole units/)).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Preview" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("says what a disposal does, which is not what a purchase does", async () => {
     await asForm();
     fireEvent.click(screen.getByRole("button", { name: "Sell" }));
-    // ⛔ THE WORSE HALF. A purchase that opens no lot is a lot missing; a
-    // disposal that relieves no lot reports a realized gain computed against no
-    // basis — the figure with no counterparty, which nobody catches.
-    expect(screen.getByText(/No lot is relieved/)).toBeDefined();
-    expect(screen.getByText("Unclassified")).toBeDefined();
-    expect(screen.queryByText(/No tax lot opens/)).toBeNull();
+    // ⛔ THE HALF THAT COSTS MORE. A purchase that opens no lot is a lot
+    // missing; a disposal that relieves none reports a realized gain against no
+    // basis — the figure with no counterparty. Both now happen properly, and
+    // the screen distinguishes them because the operator's obligations differ.
+    expect(screen.getByText(/Lots of .* are relieved/)).toBeDefined();
+    expect(screen.queryByText(/A tax lot opens against/)).toBeNull();
   });
 
   it("sends every field the action reads", async () => {

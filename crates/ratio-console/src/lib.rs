@@ -603,6 +603,101 @@ impl Console {
             Some(req.days.trim().parse::<i64>().context("days must be a whole number")?)
         };
 
+        // ── what makes this a trade rather than a movement of value ─────────
+        //
+        // ⛔ THESE THREE ARE WHY A LOT OPENS. Until they were carried, this
+        // method built its event with `instrument: None, quantity: None` and
+        // its entry with `trade_date: None` — and `Projection::walk` skips any
+        // posting lacking BOTH an instrument and a quantity, so every trade
+        // recorded here opened no lot and relieved none. The entry balanced,
+        // the trial balance tied, the NAV moved by the right amount, and the
+        // position's unit count was somebody else's. HANDOFF.md's table calls
+        // that shape "the books tie and the number is wrong"; the realized gain
+        // is the figure with no counterparty, and nobody catches it.
+        let instrument = req.instrument.trim();
+        let instrument = if instrument.is_empty() {
+            None
+        } else {
+            // The same charset as the event id, and for the same reason: this
+            // reaches a position's resource name, a URL, and a screen other
+            // people read.
+            if instrument.len() > 64
+                || !instrument
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+            {
+                bail!(
+                    "{:?} is not an instrument identifier — letters, digits, - _ . \
+                     and at most 64 of them",
+                    req.instrument
+                );
+            }
+            Some(instrument.to_string())
+        };
+
+        // ⛔ WHOLE UNITS, REFUSED RATHER THAN ROUNDED. `parse_minor` gives
+        // hundredths, so a fractional quantity is expressible here and NOT on
+        // `PostingRecord::quantity`, which is whole units. The data plane
+        // carries such a fact as no quantity at all; doing that here would
+        // silently produce exactly the lot-less entry these fields exist to
+        // prevent, on the one screen where a person typed the number.
+        let quantity = if req.quantity.trim().is_empty() {
+            None
+        } else {
+            let hundredths = ratio_common::parse_minor(&req.quantity)
+                .context("the quantity is a number of units")?;
+            if hundredths % 100 != 0 {
+                bail!(
+                    "{:?} is not a whole number of units, and a lot is kept in whole \
+                     units — a fractional quantity has to arrive on the data plane",
+                    req.quantity
+                );
+            }
+            if hundredths < 0 {
+                bail!(
+                    "a quantity is not negative — the RULE decides the direction, and a \
+                     leg's own sign moves the units the right way"
+                );
+            }
+            Some(hundredths / 100)
+        };
+
+        // ⛔ ONE WITHOUT THE OTHER IS THE DEFECT WEARING A DISGUISE. A posting
+        // that names an instrument and no quantity is skipped by the walk just
+        // as surely as one that names neither, so accepting half of this would
+        // report a trade as attributed while it opened nothing.
+        if instrument.is_some() != quantity.is_some() {
+            bail!(
+                "an instrument and a quantity go together: with one of them the posting \
+                 carries no lot, which is the same as sending neither"
+            );
+        }
+
+        // ⚠ VALIDATED HERE, NOT WHERE IT IS READ. A date that will not parse is
+        // recorded as a BREAK by the projection rather than an absence — it has
+        // to be, because a journal is append-only and the lots it opened are
+        // already wrong. Refusing it at the door is the only place it is free.
+        let trade_date = match &req.trade_date {
+            None => None,
+            Some(d) => {
+                let iso = format!("{:04}-{:02}-{:02}", d.year, d.month, d.day);
+                // ⛔ ROUND-TRIPPED, BECAUSE THE PARSE ALONE IS NOT A CALENDAR.
+                // `days_from_iso_date` range-checks the month at 1..=12 and the
+                // day at 1..=31 and then does civil-days arithmetic, so
+                // `2026-02-30` does not fail — it silently becomes the 2nd of
+                // March. A lot dated two days after the trade is a holding
+                // period two days long that nobody typed, and the entry is
+                // append-only by then. Converting back and comparing is the
+                // cheap way to ask the calendar rather than the range.
+                let days = ratio_common::days_from_iso_date(&iso)
+                    .with_context(|| format!("{iso:?} is not a trade date"))?;
+                if ratio_common::iso_date_from_days(days) != iso {
+                    bail!("{iso:?} is not a day in the calendar");
+                }
+                Some(iso)
+            }
+        };
+
         let mut b = FileBook::open(&path)?;
         let digest = b.active()?.context("no configuration is in force on this fund")?;
         let chart = b.accounts()?;
@@ -650,7 +745,10 @@ impl Console {
             id: id.to_string(),
             amount,
             days,
-            memo: String::new(), instrument: None, quantity: None };
+            memo: String::new(),
+            instrument,
+            quantity,
+        };
         let postings = ratio_rules::compile(rule, &event)?;
 
         // The memo is COMPOSED from what the rule and the event say, never
@@ -670,8 +768,7 @@ impl Console {
             memo: memo.clone(),
             config: digest.clone(),
             postings: postings.clone(),
-        
-            trade_date: None,
+            trade_date,
             announcement: None,
         };
 
@@ -4504,6 +4601,9 @@ mod tests {
             event_id: "acc-1".into(),
             amount: "1000000.00".into(),
             days: "30".into(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: None,
             validate_only,
         };
 
@@ -4571,6 +4671,9 @@ mod tests {
             event_id: id.into(),
             amount: "100.00".into(),
             days: "1".into(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: None,
             validate_only,
         };
 
@@ -4591,6 +4694,165 @@ mod tests {
         assert!(c.apply_event(&req("over-1", false)).is_ok());
     }
 
+    /// A purchase: investments up and attributed, cash down and not.
+    const TRADE: &str = "[[rule]]\nid = \"buy\"\nkind = \"trade\"\n\
+                         [[rule.posting]]\naccount = 1\nweight = 1\nper_instrument = true\n\
+                         [[rule.posting]]\naccount = 2\nweight = -1\n";
+
+    /// The request a trade ticket sends, with everything filled in.
+    fn trade_req(id: &str) -> pb::ApplyEventRequest {
+        pb::ApplyEventRequest {
+            parent: "funds/demo".into(),
+            rule_id: "buy".into(),
+            event_id: id.into(),
+            amount: "341750.00".into(),
+            days: String::new(),
+            instrument: "ACME".into(),
+            quantity: "1000".into(),
+            trade_date: Some(ratio_proto::date_proto::google::r#type::Date {
+                year: 2026,
+                month: 2,
+                day: 26,
+            }),
+            validate_only: false,
+        }
+    }
+
+    #[test]
+    fn a_recorded_trade_carries_the_instrument_the_units_and_the_day() {
+        // ⭐ THE WHOLE POINT OF THE THREE FIELDS. Before them this method built
+        // its event with `instrument: None, quantity: None` and its entry with
+        // `trade_date: None`, and `Projection::walk` skips any posting lacking
+        // BOTH an instrument and a quantity — so every trade the console
+        // recorded opened no lot and relieved none, while the entry balanced and
+        // the trial balance tied. Nothing downstream said a word.
+        let d = fresh("tradefields");
+        book(&d);
+        promote(&d, TRADE, "e.marsh", "buy");
+        Console::new(&d).apply_event(&trade_req("trd-1")).unwrap();
+
+        let entries = FileBook::open(&d).unwrap().entries().unwrap();
+        let e = entries.iter().find(|e| e.id == "trd-1").expect("the trade was written");
+
+        // ⛔ THE DAY IS ON THE ENTRY, which is where `Ratio.Lots.Relief` reads a
+        // holding period from. A lot opened by an entry without one is refused
+        // by every method rather than defaulted.
+        assert_eq!(e.trade_date.as_deref(), Some("2026-02-26"));
+
+        // ⛔ AND ONLY THE `per_instrument` LEG IS ATTRIBUTED. The cash leg names
+        // no instrument, because cash is not held in one.
+        let inv = e.postings.iter().find(|p| p.dim == 1).expect("the investments leg");
+        let cash = e.postings.iter().find(|p| p.dim == 2).expect("the cash leg");
+        assert_eq!(inv.instrument.as_deref(), Some("ACME"));
+        assert_eq!(inv.quantity, Some(1_000), "a purchase adds units");
+        assert_eq!(cash.instrument, None);
+        assert_eq!(cash.quantity, None);
+    }
+
+    #[test]
+    fn a_sale_gives_up_units_without_the_caller_negating_anything() {
+        // ⛔ A SIDE IS A RULE, NOT A SIGN. The quantity is positive on both
+        // sides and `compile` takes the direction from the LEG'S weight, so a
+        // disposal removes units. A caller that negated the quantity itself
+        // would ADD units on a sale, and the entry would still balance.
+        let sell = "[[rule]]\nid = \"sell\"\nkind = \"trade\"\n\
+                    [[rule.posting]]\naccount = 2\nweight = 1\n\
+                    [[rule.posting]]\naccount = 1\nweight = -1\nper_instrument = true\n";
+        let d = fresh("tradesell");
+        book(&d);
+        promote(&d, sell, "e.marsh", "sell");
+        let mut req = trade_req("trd-sell");
+        req.rule_id = "sell".into();
+        Console::new(&d).apply_event(&req).unwrap();
+
+        let entries = FileBook::open(&d).unwrap().entries().unwrap();
+        let e = entries.iter().find(|e| e.id == "trd-sell").unwrap();
+        let inv = e.postings.iter().find(|p| p.dim == 1).unwrap();
+        assert_eq!(inv.quantity, Some(-1_000), "a disposal gives units up");
+    }
+
+    #[test]
+    fn a_fractional_quantity_is_refused_rather_than_carried_as_none() {
+        // ⛔ THE DATA PLANE DROPS IT; THIS MUST NOT. `admit_facts` carries a
+        // non-whole quantity as `None`, which is defensible for a file nobody
+        // read — and indefensible here, where a person typed the number and
+        // would be handed back the lot-less entry these fields exist to prevent.
+        let d = fresh("tradefrac");
+        book(&d);
+        promote(&d, TRADE, "e.marsh", "buy");
+        let c = Console::new(&d);
+
+        let mut req = trade_req("trd-frac");
+        req.quantity = "10.5".into();
+        let r = c.apply_event(&req);
+        assert!(r.is_err(), "a fractional quantity must be refused");
+        assert!(
+            format!("{:#}", r.unwrap_err()).contains("whole number of units"),
+            "and must say why",
+        );
+
+        // ⛔ AND NEGATIVE IS THE OTHER WAY TO BOOK A TRADE BACKWARDS.
+        let mut req = trade_req("trd-neg");
+        req.quantity = "-1000".into();
+        assert!(c.apply_event(&req).is_err(), "a negative quantity must be refused");
+    }
+
+    #[test]
+    fn an_instrument_without_a_quantity_is_refused() {
+        // ⛔ HALF OF IT IS THE DEFECT WEARING A DISGUISE. `walk` needs BOTH, so
+        // a posting naming an instrument and no units opens no lot either — and
+        // reports itself as attributed while doing it.
+        let d = fresh("tradehalf");
+        book(&d);
+        promote(&d, TRADE, "e.marsh", "buy");
+        let c = Console::new(&d);
+
+        for (instrument, quantity) in [("ACME", ""), ("", "1000")] {
+            let mut req = trade_req("trd-half");
+            req.instrument = instrument.into();
+            req.quantity = quantity.into();
+            let r = c.apply_event(&req);
+            assert!(r.is_err(), "{instrument:?}/{quantity:?} should be refused");
+            assert!(format!("{:#}", r.unwrap_err()).contains("go together"));
+        }
+
+        // Neither is still fine: that is a movement of value, and some events
+        // genuinely are one.
+        let mut req = trade_req("trd-none");
+        req.instrument = String::new();
+        req.quantity = String::new();
+        assert!(c.apply_event(&req).is_ok(), "an event with no instrument is still an event");
+    }
+
+    #[test]
+    fn a_trade_date_that_is_not_a_date_is_refused_at_the_door() {
+        // ⚠ THE ONLY PLACE IT IS FREE. A journal is append-only, so a date the
+        // projection cannot parse is recorded as a BREAK and the lots it opened
+        // are already wrong. `ratio_project` has the test for that shape; this
+        // is the door it should never have got through.
+        let d = fresh("tradedate");
+        book(&d);
+        promote(&d, TRADE, "e.marsh", "buy");
+        let c = Console::new(&d);
+
+        for bad in [(2026, 13, 1), (2026, 2, 30), (0, 0, 0)] {
+            let mut req = trade_req("trd-baddate");
+            req.trade_date = Some(ratio_proto::date_proto::google::r#type::Date {
+                year: bad.0,
+                month: bad.1,
+                day: bad.2,
+            });
+            assert!(c.apply_event(&req).is_err(), "{bad:?} should not be a trade date");
+        }
+
+        // ⚠ And ABSENT is not the same as invalid. An event that names no day is
+        // accepted; the lot it opens carries none, and the holding-period
+        // methods refuse THAT rather than guessing.
+        let mut req = trade_req("trd-nodate");
+        req.trade_date = None;
+        assert!(c.apply_event(&req).is_ok());
+    }
+
     #[test]
     fn an_event_id_that_is_not_an_id_is_refused() {
         let d = fresh("eventid");
@@ -4606,6 +4868,9 @@ mod tests {
                 event_id: bad.into(),
                 amount: "1.00".into(),
                 days: "1".into(),
+                instrument: String::new(),
+                quantity: String::new(),
+                trade_date: None,
                 validate_only: false,
             });
             assert!(r.is_err(), "{bad:?} should not be accepted as an event id");
@@ -4617,6 +4882,9 @@ mod tests {
             event_id: "acc-2".into(),
             amount: "1000.00".into(),
             days: "1".into(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: None,
             validate_only: true,
         })
         .unwrap();
