@@ -29,6 +29,22 @@ use anyhow::{Context, Result};
 #[derive(Debug)]
 pub struct Shape {
     pub name: &'static str,
+    /// ⛔ THE DIALS THE RECORDED ROW USED, NOT THE ONES `ratio closure` DEFAULTS
+    /// TO. The measured twenty-million-lot run is 10,000 securities x 2,000
+    /// lots; the estimate panel dials 500 x 40,000. Both are twenty million open
+    /// tax lots and they are NOT the same fund — one price is read per SECURITY,
+    /// so the recorded shape marks ten thousand names and the dialled one marks
+    /// five hundred. `//:scale_shapes_test` holds these to HANDOFF's table.
+    pub securities: i64,
+    pub lots_per: i64,
+    /// What the generator settles at. Deterministic, so a fact rather than an
+    /// estimate.
+    pub open_lots: i64,
+    pub entries: i64,
+    /// The cold build HANDOFF.md records, in milliseconds. ⚠ Taken on a named
+    /// machine on a named day; a run started from the screen happens elsewhere,
+    /// and the page says which is which.
+    pub recorded_cold_build_ms: i64,
     /// How long before this shape may be run again.
     pub cooldown: i64,
     /// Rounded-up estimate of what one run costs, in cents.
@@ -39,9 +55,40 @@ pub struct Shape {
 /// a run, daily is ~$2.40 a month against a $5 ceiling that also has to cover
 /// the small runs, the function, the gateway and the storage.
 pub const SHAPES: [Shape; 3] = [
-    Shape { name: "small", cooldown: 10 * 60, cents: 1 },
-    Shape { name: "medium", cooldown: 60 * 60, cents: 2 },
-    Shape { name: "full", cooldown: 24 * 60 * 60, cents: 8 },
+    Shape {
+        name: "small",
+        securities: 500,
+        lots_per: 500,
+        open_lots: 252_843,
+        entries: 1_769_907,
+        recorded_cold_build_ms: 12_500,
+        cooldown: 10 * 60,
+        cents: 1,
+    },
+    Shape {
+        name: "medium",
+        securities: 500,
+        lots_per: 2_000,
+        open_lots: 1_022_625,
+        entries: 7_158_381,
+        recorded_cold_build_ms: 50_200,
+        cooldown: 60 * 60,
+        cents: 2,
+    },
+    // ⛔ THE ONLY SHAPE THAT CANNOT RUN WHERE THE OTHERS DO. Its journal is
+    // ~291 bytes x 140 million lines ~ 40 GB, against a Lambda's 512 MB of /tmp
+    // and a GitHub runner's ~14 GB of free disk. That asymmetry is why the small
+    // ones could be measured while writing this and this one could not.
+    Shape {
+        name: "full",
+        securities: 10_000,
+        lots_per: 2_000,
+        open_lots: 20_004_324,
+        entries: 140_030_274,
+        recorded_cold_build_ms: 995_000,
+        cooldown: 24 * 60 * 60,
+        cents: 8,
+    },
 ];
 
 /// What the account will let this demo spend on folds in a calendar month.
@@ -122,10 +169,34 @@ pub trait Store {
     fn delete(&self, key: &str) -> Result<()>;
 }
 
+/// ⚠ So a caller holding a `&Store` can build a `Runs` over it without giving
+/// the store away. `run` needs both — the policy to release the lock, and the
+/// store to write progress — over one record.
+impl<S: Store + ?Sized> Store for &S {
+    fn put_if_absent(&self, key: &str, body: &str) -> Result<bool> {
+        (**self).put_if_absent(key, body)
+    }
+    fn get(&self, key: &str) -> Result<Option<String>> {
+        (**self).get(key)
+    }
+    fn put(&self, key: &str, body: &str) -> Result<()> {
+        (**self).put(key, body)
+    }
+    fn delete(&self, key: &str) -> Result<()> {
+        (**self).delete(key)
+    }
+}
+
 /// The record as a directory. Used by `ratio watch` on a laptop, and by every
 /// test in this file.
 pub struct Files {
     root: PathBuf,
+}
+
+impl AsRef<Files> for Files {
+    fn as_ref(&self) -> &Files {
+        self
+    }
 }
 
 impl Files {
@@ -294,6 +365,101 @@ impl Store for S3 {
     }
 }
 
+/// Generate the book if it is not already there, fold it cold, publish both
+/// curves, and release the lock.
+///
+/// ⛔ ONE FUNCTION, TWO WAYS TO REACH IT. On a laptop `ratio watch` calls this
+/// on a thread; on the demo a Fargate task calls it as `ratio scale-run --size
+/// N`. Two implementations would be two answers to "what did the fold cost",
+/// and the one nobody ran locally would be the one quoted.
+///
+/// ⚠ THE LOCK IS RELEASED WHATEVER HAPPENS. A fold that panics or fails leaves
+/// `current` behind otherwise, and every later run is refused with "a fold is
+/// already running" forever — a permanently broken button, from one bad run.
+pub fn run<S: Store>(store: &S, size: &str, book_root: &Path) -> Result<()> {
+    let runs = Runs::over(store);
+    let outcome = fold_and_measure(store, size, book_root);
+    let published = match &outcome {
+        Ok(json) => Some(json.as_str()),
+        // ⛔ A FAILURE IS PUBLISHED TOO, AND AS A FIGURE-SHAPED THING. A run
+        // that vanished would leave the screen showing the PREVIOUS run's
+        // numbers with nothing saying this one died.
+        Err(_) => None,
+    };
+    let failure = outcome.as_ref().err().map(|e| format!("{e:#}"));
+    if let Some(why) = &failure {
+        let _ = store.put(
+            &format!("failed-{size}.json"),
+            &format!("{{\"error\":{}}}", crate::watch::quote(why)),
+        );
+    }
+    runs.finish(size, published)?;
+    outcome.map(|_| ())
+}
+
+fn fold_and_measure<S: Store>(store: &S, size: &str, book_root: &Path) -> Result<String> {
+    let shape = shape(size).ok_or_else(|| anyhow::anyhow!("{size:?} is not a shape"))?;
+    let dir = book_root.join(format!("scale-{size}"));
+
+    // ⛔ THE BOOK IS BUILT ONCE AND KEPT, WHICH IS MEASURED RATHER THAN
+    // PREFERRED. Generating costs MORE than the cold build it feeds — 28.6 s
+    // against 24.0 s at 500x500, 115.8 s against 94.7 s at 500x2000. A runner
+    // that regenerated every time would spend most of its life rebuilding
+    // something byte-identical to last time, and `ratio-gen` is deterministic
+    // precisely so it does not have to.
+    if ratio_gen::shape_of(&dir).is_err() {
+        store.put(&format!("progress-{size}"), "generating")?;
+        let dials = ratio_gen::Shape {
+            securities: shape.securities,
+            lots_per: shape.lots_per,
+            currencies: 3,
+            ..Default::default()
+        };
+        ratio_gen::generate(&dir, dials).context("generating the book")?;
+    }
+
+    store.put(&format!("progress-{size}"), "folding 0")?;
+    let started = std::time::Instant::now();
+    // ⚠ THE PROGRESS WRITE IS THROTTLED, and the reason is the one
+    // `of_book_with_progress` states: whatever the callback does is charged to
+    // the cold build. A `PutObject` every 65,536 entries is 2,136 writes at the
+    // full shape — enough to bill for and enough to distort what it reports.
+    let mut last = std::time::Instant::now();
+    let proj = ratio_project::Projection::of_book_with_progress(&dir, &mut |n| {
+        if last.elapsed() >= std::time::Duration::from_secs(5) {
+            last = std::time::Instant::now();
+            let _ = store.put(&format!("progress-{size}"), &format!("folding {n}"));
+        }
+    })
+    .context("folding the book")?;
+    let cold_ns = started.elapsed().as_nanos() as i64;
+
+    let entries = proj.prefix() as i64;
+    let open_lots = proj.open_lots();
+    let cost = proj.cost();
+    // ⛔ BOTH CURVES, OR NEITHER. The growing one and the flat one travel
+    // together everywhere in this repository; a published result carrying only
+    // the strike would be the overclaim `ratio bench` exists to make hard,
+    // arriving by a different route.
+    Ok(format!(
+        "{{\"size\":{},\"securities\":{},\"lots_per\":{},\"open_lots\":{},\
+         \"journal_entries\":{},\"cold_build_ns\":{},\"parse_ns\":{},\"fold_ns\":{},\
+         \"relieve_ns\":{},\"reliefs\":{},\"recorded_cold_build_ms\":{},\"build\":{}}}",
+        crate::watch::quote(size),
+        shape.securities,
+        shape.lots_per,
+        open_lots,
+        entries,
+        cold_ns,
+        cost.parse.as_nanos() as i64,
+        cost.fold.as_nanos() as i64,
+        cost.relieve.as_nanos() as i64,
+        cost.reliefs,
+        shape.recorded_cold_build_ms,
+        crate::watch::quote(&std::env::var("RATIO_BUILD").unwrap_or_else(|_| "dev".into())),
+    ))
+}
+
 /// The policy: who may start a fold, and what it costs to let them.
 pub struct Runs<S: Store> {
     store: S,
@@ -425,6 +591,15 @@ impl<S: Store> Runs<S> {
     }
 
     /// The last completed result for a shape, as the runner wrote it.
+    /// The record's directory, for tests that need to put a book beside it.
+    #[cfg(test)]
+    pub fn root_for_test(&self) -> PathBuf
+    where
+        S: AsRef<Files>,
+    {
+        self.store.as_ref().root.clone()
+    }
+
     pub fn result(&self, size: &str) -> Option<String> {
         self.store.get(&format!("result-{size}.json")).ok().flatten()
     }
@@ -571,6 +746,80 @@ mod tests {
         assert!(r.current().unwrap().is_none());
         assert_eq!(r.result("small").as_deref(), Some(r#"{"open_lots":252843}"#));
         assert!(r.result("full").is_none());
+    }
+
+    #[test]
+    fn a_failed_fold_still_releases_the_lock() {
+        // ⛔ THE FAILURE THAT BREAKS THE BUTTON FOREVER. A run that dies with
+        // `current` still set means every later start is refused with "a fold is
+        // already running" — for a fold that is not running and never will be.
+        // One bad run would take the feature down permanently, and the symptom
+        // is indistinguishable from a very slow fold.
+        let r = runs("failed");
+        r.start("small", 1_000, M, "t").unwrap().unwrap();
+        assert!(r.current().unwrap().is_some());
+
+        // A book root that cannot be written to: the fold fails.
+        let bad = PathBuf::from("/proc/nonexistent-scale-root");
+        let outcome = run(&r.store, "small", &bad);
+
+        assert!(outcome.is_err(), "folding into an unwritable root should fail");
+        assert!(r.current().unwrap().is_none(), "the lock outlived the run that took it");
+        // ⚠ And the failure is visible rather than silent, so the screen does
+        // not go on showing the previous run's figures as though nothing
+        // happened.
+        assert!(r.store.get("failed-small.json").unwrap().is_some());
+    }
+
+    #[test]
+    fn a_run_folds_the_book_it_finds_and_publishes_both_curves() {
+        // ⭐ THE SAME FUNCTION A FARGATE TASK CALLS, doing the real work: it
+        // folds a book off disk and reports what the projection says. What it
+        // must NOT be is a stub writing plausible figures, so every assertion
+        // below is on the fold's own output.
+        //
+        // ⚠ A TINY BOOK AT THE `small` PATH. Generating the real small shape is
+        // 1.7M entries and ~50 s, far too slow for this suite — but
+        // `fold_and_measure` skips generation when the book already says what
+        // generated it, which is the path every run after the first takes. So
+        // this exercises the fold with a book it can fold in milliseconds. The
+        // dials in SHAPES are checked against HANDOFF by `//:scale_shapes_test`;
+        // this checks the folding.
+        let r = runs("endtoend");
+        let root = r.root_for_test();
+        ratio_gen::generate(
+            &root.join("scale-small"),
+            ratio_gen::Shape { securities: 4, lots_per: 6, currencies: 2, ..Default::default() },
+        )
+        .unwrap();
+
+        let json = fold_and_measure(&r.store, "small", &root).unwrap();
+        let got = |k: &str| -> i64 {
+            let at = json.find(&format!("\"{k}\":")).unwrap_or_else(|| panic!("{k} missing from {json}"));
+            json[at + k.len() + 3..]
+                .split(|c: char| !c.is_ascii_digit() && c != '-')
+                .find(|s| !s.is_empty())
+                .unwrap()
+                .parse()
+                .unwrap()
+        };
+
+        // ⛔ BOTH CURVES. The growing one and the flat one travel together
+        // everywhere in this repository, and a published result carrying only
+        // one would be the overclaim `ratio bench` exists to make hard,
+        // arriving by a different route.
+        assert!(got("cold_build_ns") > 0, "the cold build was not measured: {json}");
+        assert!(got("parse_ns") > 0, "parse was not measured: {json}");
+        assert!(got("recorded_cold_build_ms") == 12_500, "the recorded row is not carried");
+
+        // And the figures are the BOOK's, not the table's — the tiny book has
+        // nothing like the small shape's entry count.
+        let entries = got("journal_entries");
+        assert!(entries > 0 && entries < 100_000, "folded {entries} entries, expected the tiny book");
+        assert!(got("open_lots") > 0, "no lots came out of the fold: {json}");
+
+        // ⛔ An undeclared shape folds nothing at all.
+        assert!(fold_and_measure(&r.store, "enormous", &root).is_err());
     }
 
     #[test]
