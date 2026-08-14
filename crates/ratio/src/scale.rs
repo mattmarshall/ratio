@@ -2,8 +2,8 @@
 //!
 //! The scale screen has a button on a PUBLIC url that spends real money on real
 //! compute. This module is the part that decides whether pressing it does
-//! anything, and it is deliberately plain Rust over a directory rather than
-//! anything AWS-shaped — the same judgement `Console::book_path` makes about
+//! anything, and the policy is plain Rust over a small `Store` interface rather
+//! than anything AWS-shaped — the same judgement `Console::book_path` makes about
 //! tenancy: *"Authorization is entirely in Rust, where the test suite can break
 //! it."* A control that only exists in a CloudFormation template is a control
 //! nothing can test.
@@ -100,16 +100,203 @@ impl std::fmt::Display for Refusal {
     }
 }
 
-/// The record of what is running and what has run.
+/// Where the run record is kept.
 ///
-/// ⛔ A DIRECTORY, AND THE LOCK IS `create_new`. That is not a placeholder for
-/// something better: it is the same primitive S3 offers as a conditional
-/// `PutObject` with `If-None-Match`, so the local implementation and the
-/// deployed one make the same guarantee by the same argument. A lock built here
-/// out of "read, then write" would pass every test on one machine and admit two
-/// runs on the day it mattered.
-pub struct Runs {
+/// ⛔ THIS IS AN INTERFACE BECAUSE A FILESYSTEM LOCK ON LAMBDA IS NOT A LOCK.
+/// `/tmp` is per-INSTANCE and this account allows ten concurrent executions, so
+/// ten visitors pressing the button reach ten different filesystems, each of
+/// which happily reports that nothing is running. The policy above would be
+/// perfectly correct and would start ten folds.
+///
+/// So the record lives in one place all instances share, and the only operation
+/// that must be atomic is `put_if_absent` — `create_new` on a file, a
+/// conditional `PutObject` with `If-None-Match` on S3. ⚠ Both are genuinely
+/// atomic. A lock built out of "read, then write" would pass every test on one
+/// machine and admit two runs on the day it mattered.
+pub trait Store {
+    /// Create the key with these bytes, or report that somebody already has.
+    /// ⛔ MUST BE ATOMIC. Everything else here rests on it.
+    fn put_if_absent(&self, key: &str, body: &str) -> Result<bool>;
+    fn get(&self, key: &str) -> Result<Option<String>>;
+    fn put(&self, key: &str, body: &str) -> Result<()>;
+    fn delete(&self, key: &str) -> Result<()>;
+}
+
+/// The record as a directory. Used by `ratio watch` on a laptop, and by every
+/// test in this file.
+pub struct Files {
     root: PathBuf,
+}
+
+impl Files {
+    pub fn at(root: impl AsRef<Path>) -> Self {
+        Files { root: root.as_ref().to_path_buf() }
+    }
+
+    fn path(&self, key: &str) -> PathBuf {
+        self.root.join(key)
+    }
+}
+
+impl Store for Files {
+    fn put_if_absent(&self, key: &str, body: &str) -> Result<bool> {
+        std::fs::create_dir_all(&self.root).context("creating the run directory")?;
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(self.path(key)) {
+            Ok(mut f) => {
+                use std::io::Write as _;
+                write!(f, "{body}").context("writing the run record")?;
+                Ok(true)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+            Err(e) => Err(e).context("taking the run lock"),
+        }
+    }
+
+    fn get(&self, key: &str) -> Result<Option<String>> {
+        match std::fs::read_to_string(self.path(key)) {
+            Ok(s) => Ok(Some(s)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e).context("reading the run record"),
+        }
+    }
+
+    fn put(&self, key: &str, body: &str) -> Result<()> {
+        std::fs::create_dir_all(&self.root).context("creating the run directory")?;
+        std::fs::write(self.path(key), body).context("writing the run record")
+    }
+
+    fn delete(&self, key: &str) -> Result<()> {
+        match std::fs::remove_file(self.path(key)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e).context("releasing the run lock"),
+        }
+    }
+}
+
+/// The record in S3, which is what the deployed demo uses.
+///
+/// ⛔ ONE BUCKET, ONE PREFIX, AND THE LOCK IS A CONDITIONAL PUT. S3 has offered
+/// `If-None-Match: *` on `PutObject` since 2024: the write succeeds only if the
+/// key does not exist, and returns 412 to everybody else. That is the same
+/// guarantee `create_new` makes on a file, from a place all ten concurrent
+/// function instances can see — which a Lambda's `/tmp` is not.
+///
+/// ⚠ ONE RUNTIME, BUILT ONCE. `ratio-agent` does the same for Bedrock. Building
+/// a tokio runtime per call would be a fresh thread pool for every button press.
+pub struct S3 {
+    bucket: String,
+    prefix: String,
+    client: aws_sdk_s3::Client,
+    runtime: tokio::runtime::Runtime,
+}
+
+impl S3 {
+    pub fn open(bucket: impl Into<String>, prefix: impl Into<String>) -> Result<Self> {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .context("starting the async runtime")?;
+        let client = runtime.block_on(async {
+            let cfg = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+            aws_sdk_s3::Client::new(&cfg)
+        });
+        Ok(S3 { bucket: bucket.into(), prefix: prefix.into(), client, runtime })
+    }
+
+    fn key(&self, key: &str) -> String {
+        format!("{}{key}", self.prefix)
+    }
+}
+
+impl Store for S3 {
+    fn put_if_absent(&self, key: &str, body: &str) -> Result<bool> {
+        let k = self.key(key);
+        self.runtime.block_on(async {
+            let r = self
+                .client
+                .put_object()
+                .bucket(&self.bucket)
+                .key(&k)
+                // ⛔ THIS HEADER IS THE ENTIRE DOS CONTROL. Without it the call
+                // is an ordinary overwrite and every concurrent caller "wins".
+                .if_none_match("*")
+                .body(body.as_bytes().to_vec().into())
+                .send()
+                .await;
+            match r {
+                Ok(_) => Ok(true),
+                // ⚠ 412 IS THE EXPECTED ANSWER, NOT AN ERROR. Somebody else
+                // holds the lock; the caller joins their run.
+                Err(e) if format!("{e:?}").contains("PreconditionFailed") => Ok(false),
+                Err(e) if matches!(e.raw_response().map(|r| r.status().as_u16()), Some(412)) => {
+                    Ok(false)
+                }
+                Err(e) => Err(anyhow::anyhow!("taking the run lock in S3: {e}")),
+            }
+        })
+    }
+
+    fn get(&self, key: &str) -> Result<Option<String>> {
+        let k = self.key(key);
+        self.runtime.block_on(async {
+            match self.client.get_object().bucket(&self.bucket).key(&k).send().await {
+                Ok(o) => {
+                    let bytes = o
+                        .body
+                        .collect()
+                        .await
+                        .map_err(|e| anyhow::anyhow!("reading {k}: {e}"))?
+                        .into_bytes();
+                    Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+                }
+                Err(e) if e.as_service_error().map(|s| s.is_no_such_key()).unwrap_or(false) => {
+                    Ok(None)
+                }
+                // ⚠ A MISSING KEY CAN ALSO ARRIVE AS A BARE 404, when the caller
+                // may not `s3:ListBucket` the prefix. Both mean "not there".
+                Err(e) if matches!(e.raw_response().map(|r| r.status().as_u16()), Some(404)) => {
+                    Ok(None)
+                }
+                Err(e) => Err(anyhow::anyhow!("reading {k}: {e}")),
+            }
+        })
+    }
+
+    fn put(&self, key: &str, body: &str) -> Result<()> {
+        let k = self.key(key);
+        self.runtime.block_on(async {
+            self.client
+                .put_object()
+                .bucket(&self.bucket)
+                .key(&k)
+                .body(body.as_bytes().to_vec().into())
+                .send()
+                .await
+                .map_err(|e| anyhow::anyhow!("writing {k}: {e}"))?;
+            Ok(())
+        })
+    }
+
+    fn delete(&self, key: &str) -> Result<()> {
+        let k = self.key(key);
+        self.runtime.block_on(async {
+            self.client
+                .delete_object()
+                .bucket(&self.bucket)
+                .key(&k)
+                .send()
+                .await
+                .map_err(|e| anyhow::anyhow!("releasing {k}: {e}"))?;
+            Ok(())
+        })
+    }
+}
+
+/// The policy: who may start a fold, and what it costs to let them.
+pub struct Runs<S: Store> {
+    store: S,
 }
 
 /// A run in flight.
@@ -121,30 +308,14 @@ pub struct Current {
     pub token: String,
 }
 
-impl Runs {
-    pub fn at(root: impl AsRef<Path>) -> Self {
-        Runs { root: root.as_ref().to_path_buf() }
-    }
-
-    fn current_path(&self) -> PathBuf {
-        self.root.join("current")
-    }
-
-    fn spend_path(&self) -> PathBuf {
-        self.root.join("spent")
-    }
-
-    fn last_path(&self, size: &str) -> PathBuf {
-        self.root.join(format!("last-{size}"))
+impl<S: Store> Runs<S> {
+    pub fn over(store: S) -> Self {
+        Runs { store }
     }
 
     /// What is running, if anything.
     pub fn current(&self) -> Result<Option<Current>> {
-        let raw = match std::fs::read_to_string(self.current_path()) {
-            Ok(s) => s,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(e).context("reading the run in flight"),
-        };
+        let Some(raw) = self.store.get("current")? else { return Ok(None) };
         let mut it = raw.trim().splitn(3, '\t');
         let size = it.next().unwrap_or_default().to_string();
         let started: i64 = it.next().unwrap_or("0").parse().unwrap_or(0);
@@ -158,8 +329,10 @@ impl Runs {
     /// visitor start a twenty-minute fold, wait for it, and start another —
     /// spending twice the estimate inside one cooldown window.
     pub fn last_started(&self, size: &str) -> i64 {
-        std::fs::read_to_string(self.last_path(size))
+        self.store
+            .get(&format!("last-{size}"))
             .ok()
+            .flatten()
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0)
     }
@@ -171,10 +344,7 @@ impl Runs {
     /// resets when the month it names stops being the current one, which needs
     /// nothing to run at all.
     pub fn spent(&self, month: i64) -> i64 {
-        let raw = match std::fs::read_to_string(self.spend_path()) {
-            Ok(s) => s,
-            Err(_) => return 0,
-        };
+        let Ok(Some(raw)) = self.store.get("spent") else { return 0 };
         let mut it = raw.trim().splitn(2, '\t');
         let stored: i64 = it.next().unwrap_or("0").parse().unwrap_or(0);
         let cents: i64 = it.next().unwrap_or("0").parse().unwrap_or(0);
@@ -222,32 +392,23 @@ impl Runs {
             return Ok(Err(Refusal::Spent { cents: spent, ceiling: CEILING_CENTS }));
         }
 
-        std::fs::create_dir_all(&self.root).context("creating the run directory")?;
-
-        // ⛔ `create_new` IS THE LOCK. Two callers racing here both try to create
-        // the same path and exactly one wins; the loser reads the winner's record
-        // and joins it. This is the local shape of S3's `If-None-Match`, and it
-        // is why the deployed version does not need a different argument.
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(self.current_path()) {
-            Ok(mut f) => {
-                use std::io::Write as _;
-                write!(f, "{size}\t{now}\t{token}").context("recording the run in flight")?;
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                let c = self.current()?.unwrap_or(Current {
-                    size: size.to_string(),
-                    started: now,
-                    token: String::new(),
-                });
-                return Ok(Err(Refusal::Joined { size: c.size, started: c.started }));
-            }
-            Err(e) => return Err(e).context("taking the run lock"),
+        // ⛔ `put_if_absent` IS THE LOCK, and it is the ONLY atomic operation
+        // this policy needs. Two callers racing here both attempt the same key
+        // and exactly one wins; the loser reads the winner's record and joins
+        // it. Nothing above this line is a check the winner relies on — the
+        // `current()` test earlier is a courtesy that saves a round trip, not
+        // the guarantee.
+        if !self.store.put_if_absent("current", &format!("{size}\t{now}\t{token}"))? {
+            let c = self.current()?.unwrap_or(Current {
+                size: size.to_string(),
+                started: now,
+                token: String::new(),
+            });
+            return Ok(Err(Refusal::Joined { size: c.size, started: c.started }));
         }
 
-        std::fs::write(self.last_path(size), now.to_string())
-            .context("recording when this shape last started")?;
-        std::fs::write(self.spend_path(), format!("{month}\t{}", spent + shape.cents))
-            .context("charging the run")?;
+        self.store.put(&format!("last-{size}"), &now.to_string())?;
+        self.store.put("spent", &format!("{month}\t{}", spent + shape.cents))?;
         Ok(Ok(shape))
     }
 
@@ -258,19 +419,14 @@ impl Runs {
     /// money back for it would let a failing run be retried without limit.
     pub fn finish(&self, size: &str, result: Option<&str>) -> Result<()> {
         if let Some(r) = result {
-            std::fs::write(self.root.join(format!("result-{size}.json")), r)
-                .context("recording the result")?;
+            self.store.put(&format!("result-{size}.json"), r)?;
         }
-        match std::fs::remove_file(self.current_path()) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(e).context("releasing the run lock"),
-        }
+        self.store.delete("current")
     }
 
     /// The last completed result for a shape, as the runner wrote it.
     pub fn result(&self, size: &str) -> Option<String> {
-        std::fs::read_to_string(self.root.join(format!("result-{size}.json"))).ok()
+        self.store.get(&format!("result-{size}.json")).ok().flatten()
     }
 }
 
@@ -278,14 +434,14 @@ impl Runs {
 mod tests {
     use super::*;
 
-    fn runs(name: &str) -> Runs {
+    fn runs(name: &str) -> Runs<Files> {
         let d = match std::env::var_os("TEST_TMPDIR") {
             Some(t) => PathBuf::from(t),
             None => std::env::temp_dir(),
         }
         .join(format!("scale-{name}"));
         let _ = std::fs::remove_dir_all(&d);
-        Runs::at(d)
+        Runs::over(Files::at(d))
     }
 
     const M: i64 = 202608;
@@ -317,7 +473,6 @@ mod tests {
         use std::sync::{Arc, Barrier};
 
         let r = Arc::new(runs("race"));
-        std::fs::create_dir_all(&r.root).unwrap();
         let gate = Arc::new(Barrier::new(8));
 
         let winners: Vec<_> = (0..8)
@@ -370,8 +525,7 @@ mod tests {
     fn the_month_stops_paying_before_the_budget_does() {
         let r = runs("ceiling");
         // Spend the month down to less than a full fold's estimate.
-        std::fs::create_dir_all(&r.root).unwrap();
-        std::fs::write(r.spend_path(), format!("{M}\t{}", CEILING_CENTS - 1)).unwrap();
+        r.store.put("spent", &format!("{M}\t{}", CEILING_CENTS - 1)).unwrap();
 
         let no = r.start("full", 1_000, M, "t").unwrap().unwrap_err();
         assert_eq!(no, Refusal::Spent { cents: CEILING_CENTS - 1, ceiling: CEILING_CENTS });
@@ -385,8 +539,7 @@ mod tests {
     #[test]
     fn a_new_month_starts_from_nothing_with_nobody_resetting_it() {
         let r = runs("rollover");
-        std::fs::create_dir_all(&r.root).unwrap();
-        std::fs::write(r.spend_path(), format!("{M}\t{CEILING_CENTS}")).unwrap();
+        r.store.put("spent", &format!("{M}\t{CEILING_CENTS}")).unwrap();
         assert_eq!(r.spent(M), CEILING_CENTS);
         // The stored month is not this one, so the figure is not this month's.
         assert_eq!(r.spent(M + 1), 0);

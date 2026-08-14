@@ -30,6 +30,9 @@ rust_binary(
         "//crates/ratio-tui",
         "//proto:ratio_rust_proto",  # LedgerServer (ratio_proto)
         "@crates//:anyhow",
+        "@crates//:aws-config",
+        "@crates//:aws-sdk-ecs",
+        "@crates//:aws-sdk-s3",
         "@crates//:libc",
         "@crates//:prost",
         "@crates//:serde",
