@@ -21,5 +21,15 @@
     "belowNotice": "500",
     "blocksNav": "100000",
     "declared": true
+  },
+  "explanation": {
+    "text": "The custodian's unsettled dividend on VWRL; it clears T+2.",
+    "actor": "e.marsh",
+    "acceptTime": "2026-02-26T18:10:00Z",
+    "difference": "200000",
+    "configDigest": "9f2c1ab7de40551c",
+    "journalPosition": "6",
+    "journalDigest": "",
+    "qualification": []
   }
 }

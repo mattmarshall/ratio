@@ -39,6 +39,31 @@ use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::RuleSet;
 use ratio_store::{AccountTypeRecord, ConfigStore, FileBook, Journal, Plane};
 
+/// One record in `explanations.jsonl`: why somebody decided a difference was
+/// acceptable.
+///
+/// ⛔ APPEND-ONLY, NEWEST WINS, AND A CORRECTION IS A NEW RECORD. The same law
+/// as every other plane here. An explanation somebody later thought better of
+/// is part of what happened on that fund, and editing it away would leave the
+/// change log saying a person accepted something that is no longer there.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct BreakExplanation {
+    /// `funds/{fund}/breaks/{break}` — derived from the account dimension, so
+    /// it survives the report being regenerated.
+    pub break_name: String,
+    pub text: String,
+    /// ⛔ THE VERIFIED SUBJECT, never anything a caller sent.
+    pub actor: String,
+    pub accept_time: i64,
+    /// The figure this was written about. Half the currency test.
+    pub difference: i64,
+    /// The terms it was graded under. The other half.
+    pub config_digest: String,
+    /// What the accepter had in front of them. Audit, not currency.
+    pub journal_position: u64,
+    pub journal_digest: String,
+}
+
 /// The books this console serves.
 pub struct Console {
     root: PathBuf,
@@ -97,6 +122,24 @@ impl Console {
         // string `ratio approve` and `ratio strike` record. Not authentication —
         // there is none on a loopback surface — but the honest local identity.
         Self::build(root.as_ref().to_path_buf(), None, std::env::var("RATIO_ACTOR").ok())
+    }
+
+    /// The same console, attributing writes to a name the caller has already
+    /// resolved.
+    ///
+    /// ⛔ FOR THE CLI ONLY, AND IT IS NOT A WAY TO SET AN ACTOR ON THE NETWORK.
+    /// `ratio accept` resolves `RATIO_ACTOR` ‖ `USER` ‖ `operator` before it
+    /// gets here, which is one fallback more than [`Console::new`] does, and
+    /// recording an empty actor for somebody who has a name is a worse audit
+    /// trail than the one this exists to write. The authenticated constructors
+    /// take their subject from the gateway and nothing may override it — see
+    /// `record_change`, where the actor is `self.actor` and never a request
+    /// body.
+    pub fn as_actor(mut self, name: &str) -> Self {
+        if !name.is_empty() {
+            self.actor = Some(name.to_string());
+        }
+        self
     }
 
     /// The console scoped to an authenticated subject: it sees only the funds
@@ -2157,8 +2200,102 @@ impl Console {
                 // bounds beside it would suggest a different number would have
                 // graded it differently. None ever would.
                 tolerance: None,
+                // ⚠ And a lot break never gains one: `accept_explanation`
+                // refuses them, because their names are positions in a list.
+                explanation: None,
             })
             .collect())
+    }
+
+    /// The newest explanation recorded for each break on this fund.
+    ///
+    /// A fold over the plane, newest wins. Nothing is indexed and nothing is
+    /// retracted: a correction is a later record for the same break name.
+    fn explanations_of(&self, book: &Path) -> Result<BTreeMap<String, BreakExplanation>> {
+        let b = FileBook::open(book)?;
+        let mut out: BTreeMap<String, BreakExplanation> = BTreeMap::new();
+        for e in b.records::<BreakExplanation>(Plane::Explanations)? {
+            out.insert(e.break_name.clone(), e);
+        }
+        Ok(out)
+    }
+
+    /// Record why a difference is acceptable.
+    ///
+    /// ⛔ THE ONE IMPLEMENTATION. `ratio accept` calls this; a second copy for
+    /// the CLI would be a second set of decisions about what counts as
+    /// explaining something.
+    ///
+    /// ⛔ AND THERE IS NO RPC FOR IT, DELIBERATELY. Acceptance is a verb that
+    /// changes what a fund is allowed to do, and this console offers no way to
+    /// perform one — the same fence that keeps `approve_rule` off the model's
+    /// tool list and the approve button off the rules screen. The mechanism
+    /// enforcing it is not discipline: `console/scripts/route_manifest_test.py`
+    /// requires every contract route to be called by the client and every
+    /// client call to be read by a screen, so an `AcceptBreakExplanation` RPC
+    /// would DEMAND the write screen that must not exist.
+    pub fn accept_explanation(&self, break_name: &str, text: &str) -> Result<pb::BreakExplanation> {
+        let (fund, _) = nested_id(break_name, "funds", "breaks").context("bad break name")?;
+        let path = self.book_path(&fund)?;
+
+        let text = text.trim();
+        if text.is_empty() {
+            bail!("an explanation with no words in it explains nothing");
+        }
+
+        // ⛔ THE BREAK HAS TO BE THERE. An explanation naming nothing is a
+        // citation that does not resolve, and ORCHESTRATION.md's proposal shape
+        // requires those to fail before a person reads them — here, before one
+        // is recorded at all.
+        let breaks = self.breaks_for(&path, &fund)?;
+        let Some(brk) = breaks.iter().find(|k| k.name == break_name) else {
+            bail!(
+                "no break {break_name} on this fund — the breaks it does have are listed by \
+                 `ratio watch` and on the exceptions screen"
+            );
+        };
+
+        // ⚠ A LOT BREAK CANNOT BE EXPLAINED, AND THE REFUSAL NAMES WHAT DOES
+        // CLEAR IT. Lot break names are `lot-{n}` — a POSITION IN A LIST — so an
+        // explanation keyed on one would follow the position rather than the
+        // sale the moment an earlier lot break clears: every citation still
+        // resolves, the books still tie, and the words are attached to a
+        // different disposal. Making those names durable is a `ratio-project`
+        // change and its own commit.
+        if brk.tolerance.is_none() && brk.name.contains("/breaks/lot-") {
+            bail!(
+                "a lot break is not explained, it is corrected. The lot book and the position \
+                 disagree, which corrupts the realized gain — the figure with no counterparty — \
+                 and what closes it is an entry that makes them agree, not a note saying the \
+                 difference is acceptable."
+            );
+        }
+
+        let b = FileBook::open(&path)?;
+        let mut position = 0u64;
+        b.for_each_entry_since(0, &mut |_| {
+            position += 1;
+            Ok(())
+        })?;
+
+        let record = BreakExplanation {
+            break_name: break_name.to_string(),
+            text: text.to_string(),
+            actor: self.actor.clone().unwrap_or_default(),
+            accept_time: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0),
+            difference: brk.difference.parse().unwrap_or(0),
+            config_digest: brk.config_digest.clone(),
+            journal_position: position,
+            journal_digest: String::new(),
+        };
+
+        let mut w = FileBook::open(&path)?;
+        w.append_record(Plane::Explanations, &record)?;
+        self.record_change(&path, "accepted", break_name, &record.config_digest)?;
+        Ok(to_pb_explanation(&record))
     }
 
     /// The tolerance a report's breaks are graded against, or `None` when the
@@ -2182,6 +2319,56 @@ impl Console {
         let bytes = b.get(&d).ok()?;
         let set = RuleSet::from_toml(&String::from_utf8_lossy(&bytes)).ok()?;
         Some((set.effective_tolerance(), set.tolerance.is_some()))
+    }
+
+    /// Attach whatever somebody recorded about each break, and decide whether
+    /// it still stands.
+    ///
+    /// ⭐ AN EXPLANATION IS CURRENT WHEN THE BREAK IT NAMES STILL SHOWS THE
+    /// SAME DIFFERENCE UNDER THE SAME CONFIGURATION. That sentence is the whole
+    /// staleness design, and both halves of it were chosen against a specific
+    /// failure:
+    ///
+    /// ⛔ POSTING AN ENTRY MUST NOT UN-EXPLAIN A BREAK. The obvious rule —
+    /// an explanation names the journal prefix it read, so a longer journal
+    /// makes it stale — retires every explanation on the next posting. On a NAV
+    /// morning the journal grows constantly, so the gate becomes one nobody can
+    /// ever clear, in a way that looks like the software being careful.
+    /// `//tla:explanation_pinned_to_the_prefix_check` is that design, model
+    /// checked, deadlocking.
+    ///
+    /// ⛔ AND A NEW FIGURE MUST RETIRE THE OLD EXPLANATION. "The 2,000.00 is
+    /// the custodian's unsettled dividend" is a claim about 2,000.00. When the
+    /// next reconciliation reports 2,750.00, the words are about something that
+    /// is no longer there — and an explanation that outlived its figure is how
+    /// a fund gets struck on a difference nobody has actually looked at.
+    /// `//tla:stale_explanation_unblocks_check` is that one.
+    ///
+    /// Nothing about staleness is stored. It is two values compared, both of
+    /// which are already on the record — the same arrangement `Plane::Actions`
+    /// uses to identify a strike taken before an action without storing
+    /// anything either.
+    fn explain(&self, breaks: &mut [pb::Break], recorded: &BTreeMap<String, BreakExplanation>) {
+        for k in breaks.iter_mut() {
+            let Some(e) = recorded.get(&k.name) else { continue };
+            let same_figure = e.difference.to_string() == k.difference;
+            let same_terms = e.config_digest == k.config_digest;
+            k.explained = same_figure && same_terms;
+            k.explanation = Some(to_pb_explanation(e));
+            if !k.explained {
+                let why = if !same_figure {
+                    format!(
+                        "explained against a difference of {}; this report shows {}",
+                        e.difference, k.difference
+                    )
+                } else {
+                    "explained under a different configuration".to_string()
+                };
+                if let Some(x) = k.explanation.as_mut() {
+                    x.qualification = vec![why];
+                }
+            }
+        }
     }
 
     fn breaks_for(&self, book: &Path, fund: &str) -> Result<Vec<pb::Break>> {
@@ -2270,6 +2457,7 @@ impl Console {
                     blocks_nav: t.blocks_nav.to_string(),
                     declared,
                 }),
+                explanation: None,
             });
         }
         // Largest first: the queue is ordered by money, because that is the
@@ -2277,6 +2465,9 @@ impl Console {
         out.sort_by_key(|k| -k.difference.parse::<i64>().unwrap_or(0).abs());
         // ⛔ And the lot engine's, in the same list.
         out.extend(self.lot_breaks_for(fund)?);
+        // What anybody has recorded about them, and whether it still stands.
+        let recorded = self.explanations_of(book)?;
+        self.explain(&mut out, &recorded);
         Ok(out)
     }
 
@@ -2373,6 +2564,26 @@ fn newest_report(book: &Path) -> Result<Option<kernel::BreakReport>> {
             kernel::BreakReport::decode(&std::fs::read(p)?[..])
                 .with_context(|| format!("reading {}", p.display()))?,
         )),
+    }
+}
+
+/// A stored explanation as the contract shows it.
+///
+/// The qualification is left empty and filled in by the caller, which is the
+/// only place that knows what moved underneath it.
+fn to_pb_explanation(e: &BreakExplanation) -> pb::BreakExplanation {
+    pb::BreakExplanation {
+        text: e.text.clone(),
+        actor: e.actor.clone(),
+        accept_time: Some(ratio_proto::timestamp_proto::google::protobuf::Timestamp {
+            seconds: e.accept_time,
+            nanos: 0,
+        }),
+        difference: e.difference.to_string(),
+        config_digest: e.config_digest.clone(),
+        journal_position: e.journal_position as i64,
+        journal_digest: e.journal_digest.clone(),
+        qualification: Vec::new(),
     }
 }
 
@@ -3194,6 +3405,305 @@ mod tests {
         // The screen still renders rather than erroring: a pruned configuration
         // must not turn the exceptions queue into a stack trace.
         assert_eq!(ks.len(), 1);
+    }
+
+    /// A book with one 1,000.00 break, graded under declared bands.
+    fn book_with_a_break(name: &str, difference: i64) -> std::path::PathBuf {
+        let d = fresh(name);
+        book(&d);
+        let digest = config_with_tolerance(&d, 500, 100_000);
+        write_report(&d, &digest, difference);
+        d
+    }
+
+    fn write_report(d: &Path, digest: &str, difference: i64) {
+        let report = kernel::BreakReport {
+            name: "books/demo/breakReports/r".into(),
+            config_digest: digest.to_string(),
+            scope: None,
+            transactions_replayed: 1,
+            entries_posted: 1,
+            breaks: vec![kernel::BreakLine {
+                account: 1,
+                display_name: "Investments at fair value".into(),
+                ratio_amount: 25_000_000,
+                reported_amount: 25_000_000 - difference,
+                difference,
+                cause: kernel::Cause::AmountDiffers as i32,
+                ratio_basis: "1".into(),
+            }],
+            exceptions: vec![],
+            book_ties: true,
+        };
+        std::fs::create_dir_all(d.join("reports")).unwrap();
+        // ⚠ A DISTINCT NAME PER REPORT. `newest_report` picks by mtime, and two
+        // written inside one filesystem timestamp order arbitrarily.
+        let n = std::fs::read_dir(d.join("reports")).map(|r| r.count()).unwrap_or(0);
+        std::fs::write(d.join(format!("reports/r{n}.pb")), report.encode_to_vec()).unwrap();
+    }
+
+    #[test]
+    fn a_break_with_an_accepted_explanation_reports_explained() {
+        let d = book_with_a_break("explained", 200_000);
+        let c = Console::new(&d).as_actor("e.marsh");
+        c.accept_explanation("funds/demo/breaks/1", "the custodian's unsettled dividend")
+            .unwrap();
+
+        let ks = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        assert!(ks[0].explained, "a person recorded why, and the break says so");
+        let e = ks[0].explanation.as_ref().unwrap();
+        assert_eq!(e.text, "the custodian's unsettled dividend");
+        assert_eq!(e.actor, "e.marsh");
+        assert!(e.qualification.is_empty(), "nothing has moved under it");
+        // ⛔ EXPLAINED, NOT GONE. It keeps its place in the queue.
+        assert_eq!(ks.len(), 1, "an explained break is still a break");
+    }
+
+    #[test]
+    fn posting_an_entry_does_not_unexplain_a_break() {
+        // ⭐ THE ANTI-DEADLOCK TEST, and the reason the currency test is the
+        // FIGURE rather than the journal prefix. The obvious design — an
+        // explanation names the prefix it read, so a longer journal makes it
+        // stale — retires every explanation on the next posting. A NAV morning
+        // posts constantly, so the gate becomes one nobody can ever clear while
+        // looking like the software being careful.
+        let d = book_with_a_break("stillexplained", 200_000);
+        let c = Console::new(&d).as_actor("e.marsh");
+        c.accept_explanation("funds/demo/breaks/1", "clears T+2").unwrap();
+
+        let mut b = FileBook::open(&d).unwrap();
+        let cfg = b.active().unwrap().unwrap();
+        b.append(&ratio_store::JournalEntry {
+            id: "later".into(),
+            memo: "an unrelated accrual, on the same morning".into(),
+            config: cfg,
+            postings: vec![
+                ratio_store::PostingRecord::new(10, 1_000),
+                ratio_store::PostingRecord::new(40, -1_000),
+            ],
+            trade_date: None,
+            announcement: None,
+        })
+        .unwrap();
+        drop(b);
+
+        let ks = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        assert!(ks[0].explained, "the journal grew; the figure did not");
+        assert!(ks[0].explanation.as_ref().unwrap().qualification.is_empty());
+    }
+
+    #[test]
+    fn a_reconciliation_that_moves_the_figure_retires_the_explanation_and_says_what_moved() {
+        // ⭐ THE OTHER SIDE. "The 2,000.00 is the custodian's unsettled
+        // dividend" is a claim about 2,000.00. When the next run reports
+        // 2,750.00 the words are about something that is no longer there, and
+        // an explanation that outlived its figure is how a fund gets struck on
+        // a difference nobody has actually looked at.
+        let d = book_with_a_break("retired", 200_000);
+        let digest = {
+            let b = FileBook::open(&d).unwrap();
+            b.records::<ratio_ingest::Fact>(Plane::Facts).ok();
+            newest_report(&d).unwrap().unwrap().config_digest
+        };
+        Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation("funds/demo/breaks/1", "clears T+2")
+            .unwrap();
+
+        // A later run, same terms, different figure.
+        write_report(&d, &digest, 275_000);
+
+        let ks = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        assert!(!ks[0].explained, "the note was about a figure that has moved");
+        let e = ks[0].explanation.as_ref().unwrap();
+        assert_eq!(e.text, "clears T+2", "and the note is still visible as evidence");
+        assert_eq!(e.difference, "200000", "carrying the figure it was written about");
+        assert_eq!(e.qualification.len(), 1, "and saying what moved");
+        assert!(e.qualification[0].contains("275000"), "{:?}", e.qualification);
+    }
+
+    #[test]
+    fn an_explanation_written_about_a_different_figure_does_not_explain_this_one() {
+        // The same property stated over two breaks rather than two runs: an
+        // explanation is keyed to a break AND a figure, so it cannot drift onto
+        // a difference nobody wrote it about.
+        let d = book_with_a_break("wrongfigure", 200_000);
+        Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation("funds/demo/breaks/1", "about the old number")
+            .unwrap();
+
+        // Same break name, same configuration, a different difference.
+        let digest = newest_report(&d).unwrap().unwrap().config_digest;
+        write_report(&d, &digest, 1);
+
+        let ks = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        assert!(!ks[0].explained);
+    }
+
+    #[test]
+    fn the_newest_explanation_wins_and_the_earlier_one_is_still_on_disk() {
+        // Append-only, like every plane here. A correction is a new record; the
+        // one somebody thought better of is part of what happened.
+        let d = book_with_a_break("corrected", 200_000);
+        let c = Console::new(&d).as_actor("e.marsh");
+        c.accept_explanation("funds/demo/breaks/1", "first thought").unwrap();
+        c.accept_explanation("funds/demo/breaks/1", "second thought").unwrap();
+
+        let ks = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        assert_eq!(ks[0].explanation.as_ref().unwrap().text, "second thought");
+
+        let raw = std::fs::read_to_string(d.join("explanations.jsonl")).unwrap();
+        assert_eq!(raw.lines().count(), 2, "the first is still on disk");
+        assert!(raw.contains("first thought"));
+    }
+
+    #[test]
+    fn an_explanation_is_recorded_against_the_verified_actor_not_the_text() {
+        // ⛔ `record_change`'s law, applied to the new verb: the actor is the
+        // console's own, never anything a caller supplied. An audit trail that
+        // takes the author's word for who the author is records nothing.
+        let d = book_with_a_break("actor", 200_000);
+        Console::new(&d)
+            .as_actor("k.oyelaran")
+            .accept_explanation("funds/demo/breaks/1", "signed by somebody else, allegedly")
+            .unwrap();
+
+        let ks = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        assert_eq!(ks[0].explanation.as_ref().unwrap().actor, "k.oyelaran");
+
+        let log = std::fs::read_to_string(d.join("CHANGELOG")).unwrap();
+        let line = log.lines().find(|l| l.contains("accepted")).expect("an accepted line");
+        let f: Vec<&str> = line.split('\t').collect();
+        assert_eq!(f.len(), 5, "five tab-separated fields");
+        assert_eq!(f[1], "k.oyelaran");
+        assert_eq!(f[2], "accepted");
+        assert_eq!(f[3], "funds/demo/breaks/1");
+    }
+
+    #[test]
+    fn a_break_that_is_not_there_cannot_be_explained() {
+        // ORCHESTRATION.md's proposal shape requires a citation that does not
+        // resolve to fail before a person reads it. Here it fails before one is
+        // recorded at all.
+        let d = book_with_a_break("nosuch", 200_000);
+        let e = Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation("funds/demo/breaks/999", "about nothing")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("no break"), "{e}");
+        assert!(!d.join("explanations.jsonl").exists(), "and nothing was written");
+    }
+
+    #[test]
+    fn an_explanation_with_no_words_in_it_is_refused() {
+        let d = book_with_a_break("empty", 200_000);
+        let e = Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation("funds/demo/breaks/1", "   ")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("explains nothing"), "{e}");
+    }
+
+    #[test]
+    fn the_unexplained_filter_hides_a_break_a_person_explained() {
+        // ⚠ This test could not have failed before: `explained` was a constant,
+        // so `unexplained` returned everything and agreed with every assertion
+        // anybody made about it.
+        let d = book_with_a_break("filterexplained", 200_000);
+        let c = Console::new(&d);
+        assert_eq!(c.list_breaks("funds/demo", "unexplained").unwrap().breaks.len(), 1);
+
+        Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation("funds/demo/breaks/1", "known and accepted")
+            .unwrap();
+
+        assert_eq!(
+            c.list_breaks("funds/demo", "unexplained").unwrap().breaks.len(),
+            0,
+            "explained is not unexplained"
+        );
+        assert_eq!(c.list_breaks("funds/demo", "").unwrap().breaks.len(), 1, "and it is still there");
+    }
+
+    #[test]
+    fn an_accepted_line_is_not_read_as_a_configuration_promotion() {
+        // ⛔ `config_versions` FILTERS CHANGELOG ON `approved`, and it does that
+        // because a line keyed by the same digest under a different verb would
+        // report the last person who did something under a configuration as the
+        // one who approved it. `accepted` is a new verb writing the break's
+        // config digest into that same column.
+        let d = book_with_a_break("changelogverbs", 200_000);
+        let before = Console::new(&d).list_config_versions("funds/demo").unwrap().config_versions;
+
+        Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation("funds/demo/breaks/1", "known and accepted")
+            .unwrap();
+
+        let after = Console::new(&d).list_config_versions("funds/demo").unwrap().config_versions;
+        assert_eq!(after.len(), before.len(), "an acceptance is not a promotion");
+        for v in &after {
+            assert_ne!(v.actor, "e.marsh", "and it did not sign one: {v:?}");
+        }
+    }
+
+    #[test]
+    fn a_lot_break_is_not_explained_it_is_corrected() {
+        // ⚠ THE NAME IS A POSITION IN A LIST. `lot-1` is the first lot break
+        // this projection reports, so an explanation keyed on it would follow
+        // the position rather than the sale the moment an earlier one clears —
+        // every citation still resolving, the books still tying, the words
+        // attached to a different disposal. And what closes a lot break is an
+        // entry that makes the lot book and the position agree, not a note.
+        let d = fresh("lotaccept");
+        book(&d);
+        {
+            use ratio_store::{JournalEntry, PostingRecord};
+            let mut b = FileBook::open(&d).unwrap();
+            let cfg = b.active().unwrap().unwrap();
+            // Seven units in, three out — a pro-rata split that will not divide.
+            b.append(&JournalEntry {
+                id: "buy".into(),
+                memo: "buy".into(),
+                config: cfg.clone(),
+                postings: vec![
+                    PostingRecord { dim: 1, amount: 100, currency: None, instrument: Some("VTI".into()), quantity: Some(7) },
+                    PostingRecord::new(2, -100),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap();
+            b.append(&JournalEntry {
+                id: "sell".into(),
+                memo: "sell".into(),
+                config: cfg,
+                postings: vec![
+                    PostingRecord { dim: 1, amount: -45, currency: None, instrument: Some("VTI".into()), quantity: Some(-3) },
+                    PostingRecord::new(2, 45),
+                ],
+                trade_date: None,
+                announcement: None,
+            })
+            .unwrap();
+        }
+
+        let ks = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        let lot = ks
+            .iter()
+            .find(|k| k.name.contains("/breaks/lot-"))
+            .expect("this shape produces a lot break");
+        let e = Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation(&lot.name, "looks fine to me")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("not explained, it is corrected"), "{e}");
+        assert!(e.contains("realized gain"), "the refusal says what is at stake: {e}");
     }
 
     #[test]

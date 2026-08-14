@@ -292,10 +292,45 @@ conduct must replay from the journal and the config alone — and because
 cross-client resolution history crosses the tenant boundary the auth round
 just built.
 
-**Greenfield:** the explain verb itself. `explained: false` is hardcoded;
-there is no explanation store, no state machine, no RPC. This is the single
-most load-bearing gap in the whole mapping, and the nearest one to the
-wedge.
+**Greenfield:** the explain verb itself. This was the single most load-bearing
+gap in the whole mapping, and the nearest one to the wedge.
+
+⭐ **Amended 2026-08-14 — it is built, and it is a person's verb.**
+`ratio accept <break> --because "…"` records why a difference is acceptable;
+`Plane::Explanations` stores it; `Break.explanation` carries it; the change log
+gains an `accepted` line with the accepter's name. A break becomes *explained*,
+never *gone* — it keeps its URL, its figures and its place in the queue, which
+is what the comment beside the old hardcoded flag was protecting.
+
+⛔ **There is no RPC, and the absence is enforced by the contract's own
+tests.** `console/scripts/route_manifest_test.py` requires every route in the
+contract to be called by the client and every client call to be read by a
+screen, so an `AcceptBreakExplanation` RPC would *demand* a write screen — the
+one `routes.ts` and `screens.test.tsx` exist to forbid. A reader who finds the
+missing RPC and reads it as an oversight should read this instead: acceptance
+is `ratio accept` at a terminal for the same reason approval is `ratio
+approve` at a terminal, and putting it on the wire is how the fence would be
+lost on a technicality.
+
+⭐ **The staleness rule, which was the hardest thing here.** *An explanation is
+current when the break it names still shows the same difference under the same
+configuration.* Both halves were chosen against a specific failure. Pinning
+currency to the journal prefix — the obvious reading of "a proposal is as-of" —
+retires every explanation on the next posting, so on a NAV morning the gate
+becomes one nobody can ever clear while looking like the software being
+careful. Ignoring the figure instead makes explanations eternal, so a fund gets
+struck on a difference somebody explained in February and nobody has looked at
+since. The prefix and digest the accepter read are still recorded — they are
+the audit trail of what a person was looking at — but they deliberately do not
+decide currency.
+
+**Still greenfield, and deliberately:** the model-drafted half. A
+`propose_explanation` tool needs the whole proposal shape this document
+specifies — a durable subject, the prefix and digest it read, citations that
+resolve mechanically or fail before a human sees them, and a dry run in the
+`propose_template` shape. That is its own change, and doing it half-way would
+set the precedent this document was written to prevent. The person-typed
+explanation is the wedge-serving half and it works today.
 
 ### Pricing — asset pricing, and the challenger role
 

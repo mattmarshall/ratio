@@ -117,6 +117,18 @@ export interface Break {
   postings: BreakPosting[];
   configDigest: string;
   tolerance: Tolerance | null;
+  explanation: BreakExplanation | null;
+}
+
+export interface BreakExplanation {
+  text: string;
+  actor: string;
+  acceptTime: string;
+  difference: Int64;
+  configDigest: string;
+  journalPosition: Int64;
+  journalDigest: string;
+  qualification: string[];
 }
 
 export interface Tolerance {

@@ -503,9 +503,9 @@ pub struct FileBook {
 
 /// An append-only plane beside the journal.
 ///
-/// Named rather than free-form: these are the three logs the data plane keeps,
-/// and a store that would append to any filename a caller passed is a store
-/// that will one day append to `journal.jsonl`.
+/// Named rather than free-form: these are the logs the data plane keeps, and a
+/// store that would append to any filename a caller passed is a store that will
+/// one day append to `journal.jsonl`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Plane {
     /// Files received, by content digest.
@@ -521,6 +521,20 @@ pub enum Plane {
     /// through — which is how a strike taken before it can be identified
     /// afterwards without storing anything about staleness.
     Actions,
+    /// Why somebody decided a difference was acceptable.
+    ///
+    /// ⛔ BESIDE THE JOURNAL AND NOT IN IT, which is the opposite of the call
+    /// made for `Actions` and rests on the difference between them. An
+    /// announcement changes what the books SAY once it is applied, so a side
+    /// plane left it pinned by no strike and a replay answered differently as
+    /// the world told us more. An explanation changes no figure at all: the
+    /// difference is the same size after somebody explains it, and the NAV is
+    /// the same NAV. What it changes is whether the break is WORKED.
+    ///
+    /// ⚠ SO NOTHING DOWNSTREAM MAY LET ONE MOVE A NUMBER. The moment an
+    /// explanation adjusts a figure rather than annotating one, it belongs in
+    /// the journal with everything else that does.
+    Explanations,
 }
 
 impl Plane {
@@ -530,6 +544,7 @@ impl Plane {
             Plane::Entities => "entities.jsonl",
             Plane::Facts => "facts.jsonl",
             Plane::Actions => "actions.jsonl",
+            Plane::Explanations => "explanations.jsonl",
         }
     }
 }

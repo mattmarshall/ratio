@@ -282,6 +282,24 @@ CSV
 # default positions that is the run we want.
 "$RATIO" recon txns.csv "${POSITIONS:-positions.csv}" --book "$OUT" --post >/dev/null || true
 
+# ── and, on a book that asks for it, somebody explains the break ──────────
+#
+# ⚠ THE CALLER'S CHOICE, for the same reason `LEAVE_ONE_PENDING` is. A fund
+# where every break is explained and one where none is are two different
+# stories, and a seeder that told only one of them would leave the console with
+# no way to show what accepting an explanation does. Chosen per fund in
+# seed-demo-funds.sh.
+#
+# ⛔ The break is EXPLAINED, NOT CLEARED. It keeps its URL, its figures and its
+# place in the queue, with a name against it — which is the whole distinction
+# `ratio accept` exists to draw.
+if [ -n "${EXPLAIN_THE_BREAK:-}" ]; then
+  RATIO_ACTOR="${RATIO_ACTOR:-e.marsh}" "$RATIO" accept 1 \
+    --because "Custodian has not settled the 26 Feb dividend; it clears T+2 and \
+was confirmed by their operations desk on the phone." \
+    --book "$OUT" >/dev/null
+fi
+
 # ── the data plane, with a gap in the master on purpose ───────────────────
 #
 # Three trades arrive from the prime broker.

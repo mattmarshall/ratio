@@ -70,6 +70,8 @@ usage:
                                        what a period end costs, before running it
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
+  ratio accept BREAK --because TEXT    record why a difference is acceptable
+        [--book DIR]                   — humans only, like approve
   ratio server                         serve the Ledger gRPC API
 
 The book defaults to ./book, or $RATIO_BOOK if set.
@@ -142,6 +144,7 @@ fn main() -> Result<()> {
         ["bench", rest @ ..] => bench(rest),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
+        ["accept", brk, "--because", why] => accept(book, brk, why),
         ["server"] => serve(),
         other => {
             eprint!("{USAGE}");
@@ -1690,6 +1693,51 @@ fn mcp(book: PathBuf) -> Result<()> {
 fn approve(book: PathBuf, id: &str) -> Result<()> {
     print!("{}", approve_text(&book, id)?);
     Ok(())
+}
+
+/// Record why a difference is acceptable.
+///
+/// ⛔ A PERSON'S VERB, AT A TERMINAL, FOR THE SAME REASON `approve` IS. A model
+/// may draft the words — ORCHESTRATION.md calls that the explanation
+/// disposition and it is the whole point of the exercise — but accepting one
+/// says a fund may close over this difference, and that is not something the
+/// drafter gets to do. There is no RPC and no button; the console displays what
+/// was accepted and offers no way to accept.
+///
+/// ⚠ AND A BREAK IS NEVER CLEARED, ONLY EXPLAINED. It keeps its URL, its
+/// figures and its place in the queue, with a name and a date against it. The
+/// alternative — making it disappear — is the thing
+/// `crates/ratio-console/src/lib.rs` refuses in the comment beside
+/// `explained`: a break the software decided was fine.
+fn accept(book: PathBuf, brk: &str, why: &str) -> Result<()> {
+    let fund = book_fund_id(&book);
+    // A person types the id off a screen; the full resource name is what a link
+    // gives them. Accept either.
+    let name = if brk.starts_with("funds/") {
+        brk.to_string()
+    } else {
+        format!("funds/{fund}/breaks/{brk}")
+    };
+    let actor = actor_name();
+    let e = ratio_console::Console::new(&book)
+        .as_actor(&actor)
+        .accept_explanation(&name, why)?;
+
+    println!("accepted {name}");
+    println!("  {}", e.text);
+    println!("  by {actor}, against a difference of {}", e.difference);
+    println!();
+    println!("The break stays on the queue, explained rather than gone. A later");
+    println!("reconciliation reporting a different figure retires this note.");
+    Ok(())
+}
+
+/// The fund id a loopback book answers to.
+///
+/// A root that is itself a book is the single fund `demo` — the same convention
+/// `mark`, `admit` and `strike` already use when they call the console.
+fn book_fund_id(_book: &std::path::Path) -> &'static str {
+    "demo"
 }
 
 /// The approval itself, returning what it would have printed.

@@ -1522,6 +1522,7 @@ dependencies = [
  "ratio-nav",
  "ratio-rules",
  "ratio-store",
+ "serde",
  "serde_json",
 ]
 

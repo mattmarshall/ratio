@@ -163,6 +163,34 @@ the conserved one, and the kernel never said it was.
   custom bands because grading everything HIGH looks like a bug; doing that
   certifies a difference as small using a tolerance nobody could read, on a book
   that ties. `Tolerance` is `None` on such a break rather than claiming bounds.
+- ⭐ **AN EXPLANATION'S CURRENCY TEST IS `(difference, config_digest)` AND
+  DELIBERATELY NOT THE JOURNAL POSITION.** Both directions are a real failure and
+  both are negative-tested. Add the prefix to the test and every explanation
+  retires on the next posting — on a NAV morning that is a gate nobody can ever
+  clear, which looks like the software being careful
+  (`posting_an_entry_does_not_unexplain_a_break`). Drop the figure and
+  explanations become eternal, so a fund is struck on a difference somebody
+  explained in February (`a_reconciliation_that_moves_the_figure_retires_the_
+  explanation_and_says_what_moved`). The position and digest ARE recorded — they
+  say what the accepter was looking at — and nothing reads them to decide
+  currency.
+- **`Plane::Explanations` is beside the journal, and that is the opposite call
+  from `Plane::Actions`.** An announcement changes what the books say once it is
+  applied, so a side plane left it pinned by no strike; an explanation changes
+  no figure at all, only whether the break is worked. ⚠ The moment something
+  lets one move a number, it belongs in the journal with everything else that
+  does.
+- **`ratio accept` writes `accepted` to CHANGELOG, and `config_versions` filters
+  on `approved`.** That filter exists because a line keyed by the same digest
+  under a different verb would report the last person who did something under a
+  configuration as the one who approved it. `an_accepted_line_is_not_read_as_a_
+  configuration_promotion` holds it.
+- **A lot break cannot be explained.** Its name is `lot-{n}` — a POSITION IN A
+  LIST — so an explanation keyed on one would follow the position rather than
+  the sale the moment an earlier lot break clears, with every citation still
+  resolving and the words attached to a different disposal. Making those names
+  durable is a `ratio-project` change; until then `accept_explanation` refuses
+  and names the correcting entry instead.
 - **`Break.tolerance` is null on a lot break ON PURPOSE.** Lot breaks are HIGH
   by what they mean — the lot book and the position disagreeing corrupts the
   realized gain, which no reconciliation reaches — so reporting bounds beside
@@ -219,6 +247,17 @@ the conserved one, and the kernel never said it was.
   use it for the opening configuration. A malformed `[tolerance]` is therefore
   caught at the first READ — `get_fund`, `list_breaks` — rather than at the
   promotion that introduced it.
+- ⛔ **`route_manifest_test.py` MAKES ANY NEW CONSOLE RPC DEMAND A SCREEN.**
+  Check 1 is bidirectional between the contract's http rules and `client.ts`,
+  and check 3 refuses an RPC no screen reads. So adding an
+  `AcceptBreakExplanation` "just for the API" forces the write screen the fence
+  forbids — which is why acceptance is a CLI verb. The mechanism protecting the
+  buttonless console is that test, not discipline.
+- ⚠ **`vi.mock`'s factory SPREADS the `wire` object, so reassigning
+  `wire.getBreak` inside a test does nothing.** The mock captured the function
+  values when it ran. A case that needs different data needs a different
+  fixture, not a mutated stub — one afternoon went into a render test that was
+  passing the same fixture back to itself.
 - ⚠ **`//proto:ratio_aip_lint` bans prepositions in field names** (only
   `core::0192::has-comments` is disabled). `explained_at_position` fails;
   `journal_position` does not. Verified by adding one and watching it go red.

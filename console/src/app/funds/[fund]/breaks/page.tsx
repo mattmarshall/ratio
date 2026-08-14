@@ -69,7 +69,18 @@ export default async function Breaks({
                 </span>
                 <span className={`amt num${b.explained ? "" : " pos"}`}>
                   {isMoneyBreak(b) ? money(b.difference) : "—"}
-                  <small>{b.explained ? "explained" : "open"}</small>
+                  {/* Three readings, not two. A break somebody explained and a
+                      break whose explanation has been overtaken by a later
+                      figure are both "not open", and telling a reader they are
+                      the same thing is how the second one gets closed without
+                      anybody looking at what moved. */}
+                  <small>
+                    {b.explained
+                      ? "explained"
+                      : b.explanation
+                        ? "stale"
+                        : "open"}
+                  </small>
                 </span>
               </Link>
             </li>
