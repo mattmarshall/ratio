@@ -22,7 +22,13 @@ name: deploy
 #     --template-file deploy/bootstrap.yaml \
 #     --stack-name ratio-demo-bootstrap \
 #     --capabilities CAPABILITY_NAMED_IAM \
-#     --parameter-overrides GitHubRepo=mattmarshall/ratio BudgetEmail=you@example.com
+#     --parameter-overrides GitHubRepo=mattmarshall/ratio
+#
+# ⚠ `BudgetEmail` used to be listed here and is not a parameter of that
+# template — the budget lives in `mattmarshall/cloud-org`, at the payer. Passing
+# it fails the command outright with "Parameter values specified for a template
+# which does not require them", which is a confusing first thing to meet when
+# setting this account up for the first time.
 
 on:
   push:
