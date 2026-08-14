@@ -301,6 +301,36 @@ pub fn measure(path: &Path) -> Result<Calibration> {
     })
 }
 
+/// This process's read rate, measured once against a real book.
+///
+/// ⛔ ONCE PER PROCESS, AND ONE IMPLEMENTATION OF IT. `measure` makes twenty
+/// full passes over the journal, so measuring per request answers the same
+/// question repeatedly at somebody's expense — and a rate is a property of the
+/// MACHINE, not of the request. A Lambda cold start is where this lands.
+///
+/// ⛔ AND THE REASON IS KEPT RATHER THAN SWALLOWED. `provenance` is rendered
+/// verbatim wherever a duration derived from this appears, because "shipped"
+/// versus "measured here" is the difference between a number this machine
+/// stands behind and one taken off a laptop in August. A reader who cannot tell
+/// them apart will read the constant as a measurement — which is exactly what
+/// happened when the shipped constant was 250 and the real figure was 4,436.
+///
+/// ⚠ TWO CALLERS AND ONE DOOR: `/scale.json` in the binary and
+/// `Console::explain_nav_strike`. Both quote the rate beside a duration, and two
+/// memoized copies would be two answers to "how fast is this machine" that could
+/// differ by whichever book each was first asked about.
+pub fn rate_for(book: &Path) -> &'static Calibration {
+    static RATE: std::sync::OnceLock<Calibration> = std::sync::OnceLock::new();
+    RATE.get_or_init(|| match measure(book) {
+        Ok(c) => c,
+        Err(e) => {
+            let mut c = Calibration::measured();
+            c.provenance = format!("{} — not measured here: {e:#}", c.provenance);
+            c
+        }
+    })
+}
+
 use ratio_store::{FileBook, Journal};
 
 #[cfg(test)]

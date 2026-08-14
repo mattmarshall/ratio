@@ -60,6 +60,42 @@ export function micros(duration: string): string {
   return `${(n / 1_000_000_000).toFixed(1)} s`;
 }
 
+/**
+ * A count of reads, or the absence of one.
+ *
+ * ⛔ `—` FOR EMPTY, `0` FOR ZERO, AND THEY ARE NOT THE SAME CLAIM. On a plan a
+ * step that nothing costed renders empty; a step proved to cost nothing renders
+ * `0`, and that zero is `Ratio.Closure.factored_nav_never_reads_the_lots`. A
+ * formatter that printed both as `0` would delete the theorem, and one that
+ * printed both as `—` would delete it just as thoroughly.
+ */
+export function reads(n: string): string {
+  return n === "" ? "—" : count(n);
+}
+
+/**
+ * A bare nanosecond count as a figure a person reads.
+ *
+ * ⛔ NOT ALWAYS MILLISECONDS — `ratio_nav::closure::human_nanos` says why: a
+ * small period end lands in microseconds, and printing that as `0 ms` reads as
+ * "instant" or "broken" rather than as a small number.
+ *
+ * ⚠ Unlike `micros`, this takes a plain integer count rather than a proto3
+ * Duration, because a plan's figures are `Int64` like everything else on that
+ * message. Parsed as a Number for the reason `micros` is: it is a duration,
+ * nobody is paid on it, and a nanosecond count stays exact in a double for
+ * about a century.
+ */
+export function nanos(n: string): string {
+  if (n === "") return "—";
+  const v = Number(n);
+  if (!Number.isFinite(v) || v < 0) return "—";
+  if (v < 1_000) return `${v} ns`;
+  if (v < 1_000_000) return `${Math.round(v / 1_000)} µs`;
+  if (v < 1_000_000_000) return `${(v / 1_000_000).toFixed(1)} ms`;
+  return `${(v / 1_000_000_000).toFixed(1)} s`;
+}
+
 /** Compare two minor-unit strings by magnitude, without parsing either. */
 export function absCompare(a: string, b: string): number {
   const x = a.replace("-", "").replace(/^0+/, "");

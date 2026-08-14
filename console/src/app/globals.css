@@ -514,3 +514,74 @@ a.fund,a.row{color:inherit;text-decoration:none}
 .recsum .op{color:var(--text-2)}
 .recsum b{color:var(--text)}
 .recfoot{background:var(--raised)}
+
+/* The plan. How a NAV was computed, drawn.
+
+   ⛔ NO NEW TOKENS. Every colour below is one this stylesheet already declares
+   and `tokens_test.py` already holds to `site/style.css`. A plan screen is not
+   a reason for a second palette, and the semantic three — `--good`, `--warn`,
+   `--crit` — already mean what this screen needs them to mean.
+
+   ⛔ AND SHAPE CARRIES THE MEANING AS WELL AS COLOUR, the same rule `.state`
+   and `.sev` follow above, so it survives a printout, a projector, and colour
+   blindness: a step that runs is a solid box, a plan not taken is dashed, a
+   refusal carries a triangle, and the lots nothing reads are dotted. */
+.plangroup{padding:14px 22px;border-top:1px solid var(--rule)}
+.plangroup h3{margin:0 0 4px;font-size:12px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--muted)}
+
+/* ⛔ THE DIAGRAM SCROLLS, THE PAGE DOES NOT. A plan is wider than a detail
+   rail and always will be; letting it push the body sideways would move every
+   other figure on the screen. */
+.planscroll{overflow-x:auto;margin:10px 0 4px;padding-bottom:4px}
+.plansvg{display:block;max-width:none}
+
+.pn-box{fill:var(--raised);stroke:var(--rule-2);stroke-width:1}
+.pn-op{fill:var(--text);font-size:11.5px;font-weight:600}
+.pn-detail{fill:var(--muted);font-size:10px}
+.pn-fig,.pn-act-fig{font-size:10px;font-family:ui-monospace,SFMono-Regular,Menlo,
+  Consolas,monospace;fill:var(--text-2)}
+.pn-track{fill:var(--surface)}
+.pn-est{fill:var(--accent)}
+/* The measurement sits ON the estimate, thinner and darker, so a step that cost
+   more than the model said is visible as an overhang rather than as two bars a
+   reader has to compare by eye. */
+.pn-act{fill:var(--text-2)}
+.pn-mark{fill:var(--crit)}
+
+.pn-rejected .pn-box{fill:none;stroke:var(--muted);stroke-dasharray:5 4}
+.pn-rejected .pn-op{fill:var(--text-2)}
+.pn-rejected .pn-est{fill:var(--warn)}
+.pn-refusal .pn-box{stroke:var(--crit)}
+.pn-refusal .pn-op{fill:var(--crit)}
+/* ⛔ NOT THE SAME AS REJECTED, AND DRAWN SO. A plan not taken would have
+   worked and cost more; this is a thing the chosen plan never touches at all —
+   `Ratio.Closure.factored_nav_never_reads_the_lots`, which is the claim the
+   whole system rests on. */
+.pn-unread .pn-box{fill:none;stroke:var(--accent);stroke-dasharray:2 4}
+.pn-unread .pn-op{fill:var(--accent)}
+.pn-unread .pn-est{fill:none}
+
+.pe path{stroke:var(--rule-2);stroke-width:1.4}
+.pe-head{fill:var(--rule-2)}
+.pe-rows{fill:var(--muted);font-size:9.5px;font-family:ui-monospace,
+  SFMono-Regular,Menlo,Consolas,monospace}
+.pe-refusal path{stroke:var(--crit);stroke-dasharray:4 3}
+.pe-unread path{stroke:var(--accent);stroke-dasharray:1 5}
+
+/* Rows moving along an edge. Slow, low-contrast, and off entirely for anybody
+   who has asked for less motion — `.clock .dot` above is the precedent. */
+.pe-flow path{stroke-dasharray:3 5;animation:planflow 3s linear infinite}
+@keyframes planflow{to{stroke-dashoffset:-16}}
+@media (prefers-reduced-motion:reduce){.pe-flow path{animation:none;
+  stroke-dasharray:none}}
+
+/* ⛔ THE SAME PLAN, IN WORDS, AND NOT DELETED. Clipped from sight, not from a
+   screen reader: a diagram nothing can read aloud is a figure that cannot be
+   cited, which is the defect this console exists to fix one level up. */
+.planlist{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* The three costs, side by side. ⛔ Rendered whatever the dials say: hiding the
+   plans not taken hides sub-graphs, never the comparison. */
+.plancompare dd.good{color:var(--good)}

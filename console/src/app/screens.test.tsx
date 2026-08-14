@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import accountsFixture from "../../fixtures/accounts.json";
 import breakFixture from "../../fixtures/break.json";
 import changeLogFixture from "../../fixtures/changeLogEntries.json";
+import explainFixture from "../../fixtures/explain.json";
 import fundFixture from "../../fixtures/fund.json";
 import lotsFixture from "../../fixtures/lots.json";
 import navStrikesFixture from "../../fixtures/navStrikes.json";
@@ -75,6 +76,7 @@ const wire = {
   listNavStrikes: async () => navStrikesFixture,
   getNavStrike: async () => navStrikesFixture.navStrikes[0],
   replayNavStrike: async () => replayFixture,
+  explainNavStrike: async () => explainFixture,
   listRules: async () => rulesFixture,
   listChangeLogEntries: async () => changeLogFixture,
 };
@@ -251,6 +253,116 @@ describe("a NAV strike", () => {
     // restatement goes unnoticed.
     expect(screen.getByText("History intact")).toBeDefined();
     expect(screen.getByText("Reproduced")).toBeDefined();
+  });
+});
+
+describe("how a NAV was computed", () => {
+  const Plan = async () =>
+    (await import("./funds/[fund]/views/[view]/strikes/[strike]/plan/page")).default;
+  const show = async (qs: { analyze?: string; rejected?: string }) => {
+    const P = await Plan();
+    await renderAsync(
+      P({
+        params: params({ fund: FUND, view: VIEW, strike: "2026-02-26" }),
+        searchParams: params(qs),
+      }),
+    );
+  };
+
+  it("draws both curves, because quoting only the flat one is the overclaim", async () => {
+    // ⛔ `ratio bench` "reports two curves and both must be quoted". The fold
+    // grows with the journal and the maintained read does not, and a plan screen
+    // carrying only the second would be that overclaim drawn as a diagram.
+    await show({});
+    expect(screen.getByText("The strike as recorded")).toBeDefined();
+    expect(screen.getByText("The same figure off the maintained totals")).toBeDefined();
+  });
+
+  it("keeps the three costs on the page when the plans not taken are hidden", async () => {
+    // ⛔ COLLAPSING BUYS A SMALLER PICTURE, NOT A FRIENDLIER NUMBER. This is the
+    // whole reason hiding rejected steps by default is safe.
+    await show({});
+    expect(screen.queryByText("Scan Open Lots")).toBeNull();
+    // ⚠ ASSERTED AGAINST THE STRIP ITSELF, not against the page. Every one of
+    // these figures also appears on a box or an edge, so `getByText` would pass
+    // on a page whose comparison had been deleted entirely.
+    const strip = screen.getByText("Folding every open tax lot").closest("dl")!;
+    const row = (label: string) =>
+      [...strip.children].find((e) => e.textContent === label)?.nextElementSibling
+        ?.textContent;
+    // 252,843 lots and 21,085 rewrite-reads against 15 — `Ratio.Closure.the_cliff`.
+    expect(row("This plan")).toBe("15");
+    expect(row("Applying the open actions by rewriting the lots")).toBe("21,085");
+    expect(row("Folding every open tax lot")).toBe("252,843");
+  });
+
+  it("shows the plans not taken when asked for them", async () => {
+    await show({ rejected: "true" });
+    expect(screen.getAllByText("Scan Open Lots").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Apply Open Actions by Rewrite").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the unread lots on the page even with the plans not taken hidden", async () => {
+    // ⛔ `UNREAD` IS NOT `REJECTED`. Twenty million tax lots costing nothing is
+    // `Ratio.Closure.factored_nav_never_reads_the_lots` — the only claim on this
+    // screen that is a theorem — and collapsing it with the plans not taken
+    // would delete it from the default view.
+    await show({});
+    expect(screen.getAllByText("Open Tax Lots").length).toBeGreaterThan(0);
+    expect(screen.getByText(/never read/)).toBeDefined();
+  });
+
+  it("says a step was not measured rather than showing it as zero", async () => {
+    // ⛔ THE NEGATIVE CASE THAT MATTERS. A rendered `0` that nothing measured
+    // reads as "instant"; `fx_rate` was two orders of magnitude wrong for months
+    // because its only consumer discarded it, and this is that facing the other
+    // way. The captured fixture is deliberately the UNANALYZED plan.
+    await show({});
+    expect(screen.getAllByText("not measured").length).toBeGreaterThan(0);
+    expect(screen.getByText(/Nothing here has been measured/)).toBeDefined();
+  });
+
+  it("reports a proved zero as a zero, beside the steps that carry no figure", async () => {
+    // The other half of the same distinction: the unread lots cost `0` reads and
+    // that zero is a theorem, while a step the model does not cost is `—`.
+    await show({});
+    // ⚠ Each operator name appears twice — once in the drawn box and once in
+    // the written-out plan beside it — so the row is picked out rather than
+    // assumed unique.
+    const step = (operator: string) =>
+      screen
+        .getAllByText(operator)
+        .map((e) => e.closest("li"))
+        .find(Boolean)!.textContent!;
+    // The unread lots: a zero that `factored_nav_never_reads_the_lots` proves.
+    expect(step("Open Tax Lots")).toContain("estimated 0 reads");
+    // A step the model does not cost: blank, and never the same character.
+    expect(step("Capital Activity")).toContain("estimated — reads");
+    expect(step("Capital Activity")).not.toContain("estimated 0 reads");
+  });
+
+  it("carries the rate's provenance beside the durations it produced", async () => {
+    // ⛔ Reads are proved; seconds are a property of a machine on a day. The
+    // shipped rate was 250 until somebody measured it and found 4,436.
+    await show({});
+    expect(screen.getByText(/a FLOOR, not a typical rate/)).toBeDefined();
+  });
+
+  it("names the securities and the lots per security separately", async () => {
+    // ⛔ 500 × 40,000 and 10,000 × 2,000 are both twenty million open lots and
+    // are not the same fund. One price is read per SECURITY, so a single lot
+    // count hides a twentyfold difference in the term that grows with the chart.
+    await show({});
+    expect(screen.getByText("Securities")).toBeDefined();
+    expect(screen.getByText("Open lots per security")).toBeDefined();
+  });
+
+  it("cites something for every step it draws", async () => {
+    await show({ rejected: "true" });
+    expect(screen.getAllByText(/Ratio\.Closure\.factored_nav_never_reads_the_lots/).length)
+      .toBeGreaterThan(0);
+    expect(screen.getAllByText(/Ratio\.Plan\.aggregate_cost_is_the_securities/).length)
+      .toBeGreaterThan(0);
   });
 });
 

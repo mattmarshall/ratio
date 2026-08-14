@@ -58,6 +58,7 @@ import type {
   MarkPositionsRequest,
   MarkPositionsResponse,
   NavStrike,
+  NavStrikePlan,
   PendingFact,
   Position,
   Posting,
@@ -379,6 +380,27 @@ export const replayNavStrike = (
   send<ReplayNavStrikeResponse>(
     c,
     `/funds/${fund}/views/${view}/navStrikes/${id}:replay`,
+  );
+/** What this strike DID, step by step, beside what the same question costs off
+ *  the maintained totals — and what the plans not taken would have cost.
+ *
+ *  ⛔ `analyze` RE-DERIVES THE STRIKE. It is the slowest thing this API does,
+ *  and what it measures is this machine folding the pinned prefix NOW, not what
+ *  the original run cost. Default off, for the reason the replay screen is a
+ *  link rather than something the page asserts on load. */
+// GET /v1/{name=funds/*/views/*/navStrikes/*}:explain
+export const explainNavStrike = (
+  c: Caller,
+  fund: string,
+  view: string,
+  id: string,
+  analyze?: boolean,
+) =>
+  send<NavStrikePlan>(
+    c,
+    `/funds/${fund}/views/${view}/navStrikes/${id}:explain${q({
+      analyze: analyze ? "true" : undefined,
+    })}`,
   );
 
 // ── Corporate actions ──────────────────────────────────────────────────────

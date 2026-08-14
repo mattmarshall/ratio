@@ -170,6 +170,23 @@ impl Rates {
         )
     }
 
+    /// How many rate FACTS this carries.
+    ///
+    /// ⛔ THE FACTS, NOT THE CURRENCIES, AND THE TWO DIFFER BY EXACTLY ONE. The
+    /// base has no rate fact — a fund does not record what a dollar is worth in
+    /// dollars — so a book holding three currencies carries two rows here.
+    /// `Ratio.Closure.fxCost` counts the CURRENCIES. A caller quoting this as
+    /// that would be one short on every book, and short by precisely the
+    /// denomination the figure is reported in, which is the one nobody checks.
+    pub fn len(&self) -> usize {
+        self.per.len()
+    }
+
+    /// Whether any rate was supplied. `Rates::none()` is empty and refuses.
+    pub fn is_empty(&self) -> bool {
+        self.per.is_empty()
+    }
+
     /// The factor for a named currency, for a caller costing a translation
     /// rather than performing one.
     pub fn factor_of(&self, currency: &str) -> Option<i64> {
@@ -962,6 +979,51 @@ impl Projection {
     /// here is what lets that be checked rather than asserted.
     pub fn open_lots(&self) -> i64 {
         self.lots.open.values().map(|v| v.len() as i64).sum()
+    }
+
+    /// Distinct currencies this book's totals are keyed by.
+    ///
+    /// ⛔ THE FX TERM'S DIAL, AND IT IS NOT THE POSITION COUNT.
+    /// `Ratio.Closure.fx_does_not_grow_with_the_chart`: translation applies to
+    /// per-currency SUBTOTALS, so a fund holding five hundred names in three
+    /// currencies does three translations rather than five hundred. A caller
+    /// costing a period end off `positions()` would charge the wrong term.
+    ///
+    /// ⚠ COUNTS THE UNTYPED BALANCE AS ONE. A posting carrying no currency is a
+    /// conservation group of its own — `Rates::factor_of_optional` translates it
+    /// through the base — so leaving it out would report a fund with fewer
+    /// denominations than it has.
+    pub fn currency_count(&self) -> i64 {
+        self.totals
+            .by_dim
+            .keys()
+            .map(|(_, c)| c.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len() as i64
+    }
+
+    /// Rows the maintained NAV actually walks: one per (dimension, currency).
+    ///
+    /// ⛔ NOT `Ratio.Closure.markCost`, WHICH IS THE SECURITIES. The model
+    /// charges one read per security; `translate` walks this map. Quoting either
+    /// as the other is how an estimate stops being checkable against the thing
+    /// it estimates — which is the only reason to have both numbers.
+    pub fn total_rows(&self) -> i64 {
+        self.totals.by_dim.len() as i64
+    }
+
+    /// Corporate actions announced inside this prefix and not yet rewritten.
+    ///
+    /// ⛔ OPEN, NOT ANNOUNCED-EVER, and `Ratio.Closure` is explicit about why:
+    /// an action already applied by rewriting has been paid for, so a count of
+    /// every action a book has ever seen is not a dial at all. This is the
+    /// number `actionCost` multiplies, and the one `the_cliff` is about.
+    pub fn open_action_count(&self) -> i64 {
+        self.actions
+            .announced
+            .iter()
+            .filter(|(_, _, id, _, _)| !self.actions.rewritten.contains(id))
+            .count() as i64
     }
 
     /// Cumulative cost given up by sales.

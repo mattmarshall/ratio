@@ -90,6 +90,31 @@ reproduced without Bazel — which most environments editing this directory do n
 have. ⛔ `console/BUILD.bazel` survives as a single `exports_files`, because
 `//proto:mirrors_test` reads `src/wire/types.ts` through it.
 
+## The plan screen
+
+`/funds/{fund}/views/{view}/strikes/{strike}/plan` draws how a NAV was computed.
+
+⛔ **IT IS A DESCRIPTION OF TWO CODE PATHS, NOT A PLAN THE ENGINE CHOSE**, and
+the screen says so. Nothing in Ratio selects between them: `ratio_nav::strike`
+folds the journal, `Projection::nav` reads maintained totals, and a caller picks
+one by calling it. `Ratio.Plan` proves the two agree and is not emitted into
+Rust at all. A diagram that implied a planner would be checked by nothing.
+
+⛔ **BOTH GROUPS ARE ALWAYS ON THE PAGE, AND SO ARE THE THREE COSTS.** The fold
+grows with the journal; the maintained read does not. Hiding the plans not taken
+(the default) collapses sub-graphs and never the comparison — `ratio bench`
+"reports two curves and both must be quoted", and this is the same rule.
+
+⚠ **`?analyze=true` RE-FOLDS THE JOURNAL.** It is the slowest thing the API
+does, which is why it is a control rather than something the page asserts on
+load — the argument the replay screen already makes. What it measures is this
+machine re-deriving the pinned prefix now, never what the original strike cost.
+
+The diagram is inline SVG over the existing design tokens, laid out by
+`src/lib/planLayout.ts` — pure arithmetic, no DOM measurement, so the server's
+render and the browser's are the same. There is no charting library here and
+this was not the place to add the first one.
+
 ### The fixtures are captured, not written
 
 ```bash

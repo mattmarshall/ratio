@@ -28,6 +28,19 @@ API="${RATIO_API_ORIGIN:-http://127.0.0.1:7373}"
 FUND="${RATIO_FIXTURE_FUND:-harbourline-global-value}"
 OUT="$(cd "$(dirname "$0")/../fixtures" && pwd)"
 
+# ⛔ `explain.json` HAS NEVER BEEN CAPTURED, AND IT IS THE ONE FIXTURE IN THIS
+# DIRECTORY THAT IS NOT A RECORDING. It was emitted by `ratio_nav::explain::
+# plan_of` directly — the real builder, so every step, citation, note and
+# modelled figure is what the server would compute — with the encoding copied
+# from `transcode.rs` and the fund's SHAPE chosen to agree with `view.json`
+# (twelve positions, 252,843 open lots, prefix 6). What has never been checked is
+# whether this book's real dials are those.
+#
+# ⚠ THAT IS EXACTLY THE THING THIS SCRIPT'S HEADER WARNS ABOUT, so it is written
+# down rather than left to be discovered. Run the capture below and commit
+# whatever comes back, even if nothing else changed: a fixture that outlives the
+# gap it was written for is how a captured fixture stops being a capture, which
+# HANDOFF.md already records happening to `reconcile.json`.
 get() { # get <file> <path>
   local body
   body="$(curl -sf "${API}/v1/$2")" || {
@@ -61,6 +74,11 @@ get break.json      "funds/${FUND}/breaks/$(id breaks.json breaks)"
 get postings.json   "funds/${FUND}/accounts/$(id accounts.json accounts)/postings"
 get lots.json       "funds/${FUND}/positions/$(id positions.json positions)/lots"
 get replay.json     "funds/${FUND}/navStrikes/$(id navStrikes.json navStrikes):replay"
+# ⚠ WITHOUT `?analyze=true`, deliberately. The render suite's default case is the
+# unmeasured plan, and it asserts that every actual is BLANK rather than zero —
+# capturing an analyzed one would make that case pass against a fixture that
+# could not fail it.
+get explain.json    "funds/${FUND}/navStrikes/$(id navStrikes.json navStrikes):explain"
 get diff.json       "funds/${FUND}/configVersions/$(id configVersions.json configVersions):diff"
 
 echo "captured into $OUT — now run: python3 console/scripts/fixtures_test.py \\"

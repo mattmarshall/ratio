@@ -2290,6 +2290,47 @@ impl Console {
         })
     }
 
+    /// What this strike did, step by step, and what the alternatives cost.
+    ///
+    /// ⛔ THE ESTIMATE IS GATED BY THE SAME PREDICATE `GetView` USES, AND ITS
+    /// REFUSAL IS CARRIED RATHER THAN SWALLOWED. The maintained projection folds
+    /// the whole journal with no cut, so it cannot supply a shape for a trade-
+    /// or settlement-basis view; returning the recorded view's securities,
+    /// currencies and lots under another view's name is the exact defect
+    /// multi-view books exist to prevent, one layer out from `ReconcileViews`.
+    ///
+    /// ⚠ AND `analyze` STILL WORKS FOR SUCH A VIEW, because the fold DOES cut.
+    /// So the screen can be empty of estimates and full of measurements, which
+    /// is an honest state and not a broken one.
+    pub fn explain_nav_strike(&self, name: &str, analyze: bool) -> Result<pb::NavStrikePlan> {
+        let (fund, view, id) = view_scoped_id(name, "navStrikes").context("bad name")?;
+        let path = self.book_path(&fund)?;
+        let s = ratio_nav::get(&path, &view, &id)?;
+        let cal = ratio_nav::closure::rate_for(&path);
+
+        let (shape, refusal) = match self.view_the_projection_can_answer(&fund, &view) {
+            Ok(()) => {
+                let b = FileBook::open(&path)?;
+                let accounts = b.accounts()?.len() as i64;
+                let proj = self.projection(&fund)?;
+                (Some(ratio_nav::shape_of(&proj, accounts, cal)?), String::new())
+            }
+            // ⛔ `{e:#}` — the WHOLE chain. The refusal's prose is the answer
+            // this endpoint gives, and truncating it to the outermost line
+            // would leave a screen saying "cannot" without saying why.
+            Err(e) => (None, format!("{e:#}")),
+        };
+
+        // ⛔ MEASURED NOW, RE-DERIVING THE PINNED PREFIX — NOT WHAT THE ORIGINAL
+        // STRIKE COST. Nothing was recorded at strike time. `NavStrikePlan
+        // .analyzed` is what lets the screen say so, and it says so beside every
+        // actual rather than once at the bottom.
+        let measured = if analyze { Some(ratio_nav::analyze(&path, &s)?) } else { None };
+
+        let plan = ratio_nav::explain::plan_of(name, &s, shape.as_ref(), &refusal, measured.as_ref(), cal);
+        Ok(plan_pb(&plan))
+    }
+
     pub fn list_change_log_entries(&self, parent: &str) -> Result<pb::ListChangeLogEntriesResponse> {
         let id = resource_id(parent, "funds").context("bad parent")?;
         let path = self.book_path(&id)?;
@@ -2725,6 +2766,86 @@ fn nav_from(
     let struck_at = std::time::Instant::now();
     let nav = proj.nav(&is_asset_or_liability, rates)?.value.0;
     Ok((nav, struck_at.elapsed()))
+}
+
+/// A figure, or the absence of one.
+///
+/// ⛔ THE EMPTY STRING IS NOT `"0"`, AND THIS FUNCTION EXISTS SO THE TWO CANNOT
+/// BE TYPED INTERCHANGEABLY. `View.realized_gain` already carries the same
+/// convention — empty when the chart names no realized-gain role — and on a plan
+/// the distinction is the whole point: a step nothing measured rendering as `0`
+/// reads as "instant", and a step nothing costs rendering as `0` reads as
+/// "free". Neither is a claim anybody made.
+fn figure(v: Option<i64>) -> String {
+    v.map(|n| n.to_string()).unwrap_or_default()
+}
+
+/// A plan, as the contract carries it.
+///
+/// ⚠ ONE BUILDER, AND IT IS A PLAIN MAPPING. Every judgement about what a step
+/// costs was made in `ratio_nav::explain`, where it is tested; anything decided
+/// here would be a second opinion in the layer with no tests over it.
+fn plan_pb(p: &ratio_nav::explain::Plan) -> pb::NavStrikePlan {
+    use ratio_nav::explain::{EdgeKind, Group, Role};
+    pb::NavStrikePlan {
+        name: p.name.clone(),
+        view: p.view.clone(),
+        nodes: p
+            .nodes
+            .iter()
+            .map(|n| pb::PlanNode {
+                id: n.id.clone(),
+                operator: n.operator.clone(),
+                detail: n.detail.clone(),
+                group: match n.group {
+                    Group::Recorded => pb::plan_node::Group::Recorded,
+                    Group::Maintained => pb::plan_node::Group::Maintained,
+                } as i32,
+                role: match n.role {
+                    Role::Chosen => pb::plan_node::Role::Chosen,
+                    Role::Rejected => pb::plan_node::Role::Rejected,
+                    Role::Refusal => pb::plan_node::Role::Refusal,
+                    Role::Unread => pb::plan_node::Role::Unread,
+                } as i32,
+                cites: n.cites.clone(),
+                note: n.note.clone(),
+                estimated_reads: figure(n.estimated_reads),
+                estimated_nanos: figure(n.estimated_nanos),
+                actual_rows: figure(n.actual_rows),
+                actual_nanos: figure(n.actual_nanos),
+            })
+            .collect(),
+        edges: p
+            .edges
+            .iter()
+            .map(|e| pb::PlanEdge {
+                from: e.from.clone(),
+                to: e.to.clone(),
+                kind: match e.kind {
+                    EdgeKind::Flow => pb::plan_edge::Kind::Flow,
+                    EdgeKind::Refusal => pb::plan_edge::Kind::Refusal,
+                    EdgeKind::Unread => pb::plan_edge::Kind::Unread,
+                } as i32,
+                rows: figure(e.rows),
+            })
+            .collect(),
+        dials: p.shape.as_ref().map(|s| pb::PlanDials {
+            securities: s.estimate.dials.securities.to_string(),
+            currencies: s.estimate.dials.currencies.to_string(),
+            lots_per: s.estimate.dials.lots_per.to_string(),
+            open_actions: s.estimate.dials.open_actions.to_string(),
+            accounts: s.accounts.to_string(),
+            total_rows: s.total_rows.to_string(),
+            open_lots: s.open_lots_held.to_string(),
+        }),
+        estimate_refusal: p.estimate_refusal.clone(),
+        analyzed: p.analyzed,
+        nanos_per_read: p.nanos_per_read.to_string(),
+        provenance: p.provenance.clone(),
+        chosen_reads: figure(p.chosen_reads),
+        rewrite_reads: figure(p.rewrite_reads),
+        scan_reads: figure(p.scan_reads),
+    }
 }
 
 /// A view's declared terms, as the contract carries them.
