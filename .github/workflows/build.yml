@@ -13,7 +13,34 @@ name: build
 # marketing/, paper/ and competitive/ are deliberately NOT path-ignored: they
 # carry //marketing:language_test, the licensing sweep, and ignoring them would
 # mean the one change that reintroduces "open source" is the one change that
-# skips the check.
+# skips the check. That still holds — the sweep runs on every push here, and
+# `PDF_FREE` below is written specifically so it keeps running.
+#
+# ⛔ WHAT `PDF_FREE` EXCLUDES, AND WHY IT IS NOT "SKIP THE MARKETING TREE".
+# The nineteen `tectonic_pdf` targets — `//marketing:positioning`,
+# `//paper:ratio`, and the seventeen `//competitive/specs:*` — run tectonic,
+# which despite marketing/BUILD.bazel calling it "one hermetic tectonic action"
+# fetches its TeX bundle from relay.fullyjustified.net AT ACTION TIME. That is a
+# network call in the middle of the build, and when it fails the build fails.
+#
+# ⚠ IT IS A TRAP, NOT A FLAKE, WHICH IS WHY RE-RUNNING NEVER CLEARED IT. The
+# cache key holds `MODULE.bazel.lock` and `Cargo.lock`, so any dependency change
+# mints a cold key. A cold cache actually EXECUTES tectonic rather than replaying
+# a cached action. Tectonic fails. The job dies before `Post Cache Bazel`, so
+# nothing is saved — and the next run is cold again. Five consecutive runs across
+# this workflow and deploy.yml died in that loop; the last green one was simply
+# the last whose cache was still warm.
+#
+# ⭐ AND THE EXCLUSION COSTS NOTHING MEASURABLE. It names the PDF RULES, not the
+# directories, so `tests(PDF_FREE)` is all 86 tests — the same set as `//...` —
+# and `//marketing:language_test` is still among them. `tex_section`,
+# `tex_figure`, the puml diagram and `//marketing:all_tex` carry no tectonic
+# dependency and still build. What stops being checked here is whether the briefs
+# still TYPESET; what keeps being checked is everything they say.
+#
+# Making tectonic genuinely hermetic — a pinned bundle instead of a fetch — is
+# the real repair and belongs in its own change. Until then this is what lets a
+# verified fix reach main and the demo.
 #
 # Bazel is the only build path — never cargo. The lockfiles are committed, so
 # a build that needs `CARGO_BAZEL_REPIN=1` is a change somebody forgot to
@@ -61,13 +88,25 @@ jobs:
           restore-keys: |
             bazel-${{ runner.os }}-
 
+      # ⚠ THE PATTERN IS WRITTEN OUT IN BOTH STEPS RATHER THAN SET ONCE IN AN
+      # ENV VAR, and the duplication is the safer half of the trade. A variable
+      # that failed to get set expands to nothing, `bazel build --` then builds
+      # NOTHING and exits 0, and the "What ran" step below still prints all 86
+      # tests — a green run that checked zero targets, which is precisely the
+      # failure that step exists to make visible. Two literal lines cannot do
+      # that. Keep them in step.
       - name: Build
-        run: bazel build --lockfile_mode=error //...
+        run: |
+          bazel build --lockfile_mode=error -- \
+            //... -//marketing:positioning -//paper:ratio -//competitive/specs:all
 
-      # `bazel test //...` covers the Lean proof tests, the emitted-artifact
-      # diff tests, the sorry audit, every Rust crate, and both demo scripts.
+      # This covers the Lean proof tests, the emitted-artifact diff tests, the
+      # sorry audit, every Rust crate, and both demo scripts — all 86 tests
+      # `//...` would run, the licensing sweep included.
       - name: Test
-        run: bazel test --lockfile_mode=error --test_output=errors //...
+        run: |
+          bazel test --lockfile_mode=error --test_output=errors -- \
+            //... -//marketing:positioning -//paper:ratio -//competitive/specs:all
 
       # Surface which targets ran, so a silently-empty test set cannot pass as
       # a green build. A run that tests nothing looks identical to a run that
