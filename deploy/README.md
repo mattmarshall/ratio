@@ -366,6 +366,19 @@ docker build and an ECR push. `//deploy:iac_test` checks the two templates agree
 about what may be created, but it cannot check that the account has caught up —
 only running this can.
 
+⛔ **AND ONCE MORE AFTER THAT, IF YOU APPLIED IT BEFORE 2026-08-14.** The first
+version of the grant enumerated five `ec2:Describe*` actions — the ones matching
+resources the template creates — and the deploy died on a sixth:
+
+    ScaleSubnet CREATE_FAILED  AccessDenied. User doesn't have permission
+    to call ec2:DescribeAvailabilityZones
+
+`!GetAZs ""` needs it, and nothing about a subnet's resource type says so. The
+read-only actions are wildcards now (`ec2:Describe*`, `s3:Get*`), which narrows
+nothing that was ever narrow — those calls take no resource ARN — and removes a
+whole class of deploy that fails after the image is already pushed.
+`//deploy:iac_test` now fails on the exact grant that shipped.
+
 ## How CI gets in
 
 GitHub's OIDC provider, no long-lived key. The trust policy is scoped to
