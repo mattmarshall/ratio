@@ -114,7 +114,7 @@ export function Ticket({
               narrow what is on screen rather than navigate, and a half-typed
               ticket is not a URL anybody should be sent. The view tabs above are
               links for exactly the opposite reason. */}
-          <div className="views" role="group" aria-label="How to fill this in">
+          <div className="viewswitch" role="group" aria-label="How to fill this in">
             <button type="button" aria-pressed={guided} onClick={() => setGuided(true)}>
               Guided
             </button>

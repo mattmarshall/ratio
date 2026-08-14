@@ -278,10 +278,14 @@ export const ROUTES: readonly Route[] = [
     file: "funds/[fund]/record/page.tsx",
     reads: ["listRules", "applyEvent"],
   },
+  // ⚠ AT THE CEILING, AND `?view=` IS WHY IT FITS. The holdings panel needs to
+  // know which book its units and carrying values were read in; taking that from
+  // the query rather than from the fund's default saves the `getFund` that would
+  // make this four.
   {
     path: "/funds/[fund]/trade",
     file: "funds/[fund]/trade/page.tsx",
-    reads: ["listRules", "applyEvent"],
+    reads: ["listRules", "listPositions", "applyEvent"],
   },
   {
     path: "/funds/[fund]/ingest",
