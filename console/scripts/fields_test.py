@@ -140,6 +140,65 @@ NEEDLES: list[tuple[str, str]] = [
         "prefers-reduced-motion",
         "the edge animation stops honouring a reader who asked for less motion",
     ),
+    # ── the command palette ─────────────────────────────────────────────────
+    # ⚠ Same discipline as the rest: each is a control or a phrase whose absence
+    # would leave the palette looking like it works. A palette is especially
+    # exposed to this — it renders nothing until somebody presses a key, so a
+    # screen test that never opens it sees a perfectly healthy console.
+    # ⚠ A CLASS NAME ALONE IS NOT ENOUGH HERE, AND WORKING OUT WHY IS WORTH
+    # KEEPING. `cmdk` and `cmdrow` appear in BOTH the component and globals.css,
+    # so deleting the component leaves the needle satisfied by the stylesheet —
+    # the rule outlives the markup. Every control below therefore also carries a
+    # needle that exists in its `.tsx` and nowhere else, which is the one that
+    # actually goes red. (The same weakness applies to the older class needles
+    # above; this is not a new problem, and these are the first ones written with
+    # it in mind.)
+    (
+        "cmdk",
+        "the ⌘K hint is gone from the header — a palette nobody is told about is "
+        "a palette nobody opens, and nothing else on the screen mentions it",
+    ),
+    # ⚠ THE VALUE, NOT THE ATTRIBUTE NAME. `aria-keyshortcuts` alone also matches
+    # the comment in `CommandHint.tsx` that explains why the attribute is there —
+    # so deleting the attribute and keeping the prose passed. A needle satisfied
+    # by the sentence describing the control is the purest form of the vacuous
+    # green this file is against.
+    (
+        "Meta+K Control+K",
+        "the hint stops announcing the chord, so the palette is discoverable by "
+        "sight and by nothing else",
+    ),
+    ("cmdrow", "the palette renders no results"),
+    (
+        "Command palette",
+        "the palette's dialog has no accessible name — kbar names neither it nor "
+        "the input, so both are this console's job",
+    ),
+    (
+        "Open by id",
+        "the deep-link tier is gone, and a pasted break id matches nothing",
+    ),
+    # ⚠ THE FULL STOP IS LOAD-BEARING. The palette says "Nothing matches." and the
+    # exceptions queue says "Nothing matches this filter." — so the phrase without
+    # its period is satisfied by the queue, and the case would stay green with the
+    # palette's empty state deleted. With it, this matches one file.
+    (
+        "Nothing matches.",
+        "an empty palette reads as a broken one rather than as an answer",
+    ),
+    # ⛔ AND NO `startTransition` NEEDLE, THOUGH THE PALETTE NEEDS ONE AS MUCH AS
+    # `FilterChips` DOES. Both that file and `PlanControls` already contain the
+    # literal, so the case would pass with the palette's transition dropped — the
+    # vacuous green this script exists to refuse. Nothing observable from the DOM
+    # distinguishes a transitioned navigation from a bare one either, so this
+    # property is held by the ⛔ in `usePaletteNavigator` and by review, and it is
+    # better to say so than to add a check that reports on somebody else's file.
+    # ⛔ AND NOT A `navStrikes` NEEDLE, THOUGH IT IS THE TEMPTING ONE. The wire
+    # client already contains that literal, so the case would stay green with the
+    # palette's collection→segment table deleted. `src/lib/deeplink.test.ts` holds
+    # the rename instead, where an assertion can see it — and note that a needle
+    # placed in THAT file would pass vacuously too, because the exclusion below is
+    # `.test.tsx` only.
 ]
 
 

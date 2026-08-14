@@ -207,26 +207,20 @@ a.fund,a.row{color:inherit;text-decoration:none}
 .act.primary{background:var(--accent);border-color:var(--accent);color:var(--ground)}
 .act.primary:hover{opacity:.9;color:var(--ground)}
 
-/* ── assistant ─────────────────────────────────────────────────────────── */
-.asst{margin-top:auto;border-top:1px solid var(--rule);background:var(--ground)}
-.asst-h{display:flex;align-items:center;gap:8px;padding:11px 18px 0;
-  font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
-  font-weight:600}
-.asst-h .live{width:6px;height:6px;border-radius:50%;background:var(--good)}
-.msg{margin:9px 18px;padding:10px 13px;border-radius:9px;font-size:13px;line-height:1.55;
-  background:var(--raised);border:1px solid var(--rule)}
-.msg.you{background:var(--surface);border-color:var(--rule-2)}
-.msg .cite{display:block;margin-top:7px;font-size:11px;color:var(--muted);
-  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.asst-in{display:flex;gap:8px;padding:0 18px 14px}
-.asst-in input{flex:1;padding:9px 12px;font:inherit;font-size:13px;color:var(--text);
-  background:var(--raised);border:1px solid var(--rule);border-radius:8px}
-.asst-in button{padding:0 14px;border-radius:8px;background:var(--accent);
-  color:var(--ground);font-weight:600;font-size:13px}
-/* The claim the whole product rests on, said where a model is answering. */
-.guard{margin:0 18px 14px;padding:9px 12px;border:1px dashed var(--rule-2);border-radius:8px;
-  font-size:11.5px;color:var(--muted);line-height:1.5}
-.guard b{color:var(--text-2)}
+/* ⚠ THE `.asst` BLOCK WAS HERE AND IS GONE. It styled an assistant panel — a
+   message list, an input, a disclaimer — that no component has ever rendered:
+   markup from the concept that arrived with the stylesheet and never got a
+   component. Every occurrence of `.asst`, `.msg` and `.guard` in `src/` was
+   inside this file.
+
+   It was removed when the command palette landed, and by this file's own
+   argument. Two collisions are already recorded above — `.body`, where "sixty
+   lines up, `.body` is the app's three-column layout grid, so every run of text
+   became a grid item", and `.pts li`, "the second time one stylesheet made
+   running text into grid items" — and both conclude that a generic class name in
+   a single stylesheet is a collision waiting for whoever picks it second. `.msg`
+   and `.guard` are exactly that shape, and the palette is a panel with a text
+   input in it: the next component that would have wanted one. */
 
 .note{padding:10px 18px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--rule);
   background:var(--surface)}
@@ -728,3 +722,79 @@ a.fund,a.row{color:inherit;text-decoration:none}
 /* The three costs, side by side. ⛔ Rendered whatever the dials say: hiding the
    plans not taken hides sub-graphs, never the comparison. */
 .plancompare dd.good{color:var(--good)}
+
+/* ── the command palette ───────────────────────────────────────────────────
+   ⌘K over the screens, the funds, the books of record and the four tickets.
+
+   ⛔ THE PANEL IS OURS, AND kbar SHIPS TWO COMPONENTS THIS CONSOLE DOES NOT USE.
+   `KBarAnimator` renders its outer element with an inline `opacity:0` and becomes
+   visible only once `Element.animate(…, {fill:"forwards"})` has run — so anywhere
+   the Web Animations API is missing, including the render suite, it draws a
+   palette that is present, focusable and invisible. It also constructs a
+   `ResizeObserver` unguarded. `KBarPositioner` is typed to take `className` and
+   `style` and nothing else, so `role="dialog"` on it does not compile. What the
+   two bought was an entrance and close-on-outer-click: the first is the nine
+   lines below, the second is three in `Palette.tsx`.
+
+   ⭐ AND THE ENTRANCE BEING CSS IS WHY `prefers-reduced-motion` CAN REACH IT.
+   kbar animates with the Web Animations API, which a media query cannot touch;
+   the guard below works because this file owns the animation. */
+
+.cmdscrim{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-start;
+  justify-content:center;padding:14vh 16px 16px;
+  /* ⚠ NO NEW TOKEN FOR THE DIM. `--block` is the near-black BOTH themes already
+     declare, so mixing it down follows the theme for free — and
+     `//console:tokens_test` has nothing new to hold against site/style.css. */
+  background:color-mix(in srgb,var(--block) 55%,transparent)}
+.cmdbox{width:min(620px,100%);border-radius:12px;overflow:hidden;
+  background:var(--raised);border:1px solid var(--rule-2);
+  box-shadow:0 18px 44px var(--shadow);animation:cmdopen 120ms ease-out}
+@keyframes cmdopen{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.cmdbox{animation:none}}
+
+/* Unringed deliberately: nothing else in the dialog can take focus, so the
+   global outline would draw a box just inside another box. */
+.cmdin{width:100%;padding:15px 18px;font:inherit;font-size:15px;color:var(--text);
+  background:transparent;border:0;border-bottom:1px solid var(--rule)}
+.cmdin:focus{outline:none}
+.cmdin::placeholder{color:var(--muted)}
+
+/* ⚠ A HEADING SITS INSIDE A `role="option"` WRAPPER THIS FILE CANNOT REACH.
+   `KBarResults` gives every item in its flat list the same wrapper, section
+   headings included, so a screen reader counts them among the options. Arrow
+   keys skip them — kbar guarantees that and `Palette.test.tsx` asserts it —
+   which is the half that can be checked. Recorded rather than papered over. */
+.cmdsec{padding:11px 18px 4px;font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);font-weight:600}
+
+.cmdrow{display:flex;align-items:center;gap:12px;padding:9px 18px;
+  border-left:3px solid transparent}
+.cmdrow .k{flex:1;min-width:0;font-size:13.5px;font-weight:600;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+/* The URL the row would go to. ⛔ Shown, not asserted: nothing in the palette has
+   checked that a pasted id names anything, so the reader gets the destination
+   rather than a claim about the book. */
+.cmdrow .s{flex:none;max-width:46%;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;color:var(--muted);font-size:11.5px;font-weight:400}
+/* ⛔ NOT `:focus-visible`. Focus never leaves the input — kbar points at the
+   active row with `aria-activedescendant` — so the row cannot borrow the global
+   outline, and wears the marker `.row[aria-current="page"]` wears instead. */
+.cmdrow.on{background:var(--accent-soft);border-left-color:var(--accent)}
+.cmdrow.on .k{color:var(--text)}
+
+.cmdempty{margin:0;padding:22px 18px;text-align:center;font-size:13px;color:var(--muted)}
+
+/* ⛔ A BUTTON, NOT A LABEL. A shortcut printed where it cannot be clicked tells
+   somebody with a pointer what they are missing and gives them no way to have it.
+   Shaped like `.clock`, which is the other pill in this header. */
+.cmdk{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;
+  border-radius:999px;border:1px solid var(--rule);background:var(--ground);
+  color:var(--muted);font-size:12.5px}
+.cmdk:hover{border-color:var(--accent);color:var(--accent)}
+/* ⚠ `min-width` BECAUSE THE MODIFIER LANDS AFTER MOUNT. There is no platform to
+   read on the server, so `CommandHint` renders the chip empty for one frame
+   rather than guessing and mismatching. Without a floor the header jumps. */
+.kbd{min-width:34px;text-align:center;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;
+  font-weight:600;padding:2px 6px;border-radius:5px;color:var(--text-2);
+  background:var(--ground);box-shadow:inset 0 0 0 1px var(--rule-2)}

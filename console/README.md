@@ -40,11 +40,56 @@ src/wire/client.ts   ⛔ server-only. One typed fn per google.api.http rule
 src/lib/session.ts   the httpOnly cookie the id token lives in
 src/lib/oidc.ts      authorization-code + PKCE, run on the SERVER
 src/routes.ts        every screen, and which RPCs it reads
+src/lib/screens.ts   the eight screens under a fund — read by the tabs AND ⌘K
+src/lib/deeplink.ts  a pasted resource name → a URL here, or a refusal
 src/app/             the screens
 src/components/      what more than one screen renders — including `Ticket`
 fixtures/            one captured response per RPC, for the render suite
 scripts/             the checks Bazel runs, and the fixture capture
 ```
+
+### ⌘K
+
+Thirty-nine screens across eight tabs, two books of record and four tickets, and
+until now the only ways in were the rail, the tabs and the address bar. The
+palette — [kbar](https://github.com/timc1/kbar), the one UI library in this tree
+— makes the route tree this console already publishes reachable by typing.
+
+⛔ **It navigates and it never writes.** Every action ends in a `router.push`.
+"Preview, then post" is enforced on the screen that owns each write, and an
+action that could submit from a command palette would be a second way round that
+fence. ⛔ **And it holds no figure**: a palette that accumulated filters or
+selections would be the 1801-line `useState` coming back through a door marked
+convenience.
+
+⭐ **It costs no upstream call.** `KBarProvider` mounts in `funds/layout.tsx`,
+which has already awaited the fund list for the rail; `FundActions` registers the
+screens, books of record and tickets from `funds/[fund]/layout.tsx`, which has
+already awaited `GetFund` and `ListViews`. Nothing new is fetched, and nothing is
+fetched from the browser at all — there is no search RPC in the contract, and
+`connect-src 'self'` means the tab could not call the API if there were.
+
+⛔ **So a pasted id offers every route it could name and guesses none.** The id
+namespaces collide and it is not close: a break is `cash-usd-2026-02-26`, a NAV
+strike is `2026-02-26`, an account is `1010` and so is a lot. Nothing here can
+look any of them up, so `deeplink.ts` offers all eleven under *Open by id* and
+shows the URL each would go to. A palette that picked one would be the console
+asserting a fact it has not checked. A pasted *resource name* is different — the
+string says which resource it is, so that resolves to exactly one URL, through the
+one table in this codebase that translates a whole name. ⚠ Seven of its fifteen
+collections are spelled differently on the two sides (`navStrikes` → `strikes`,
+`changeLogEntries` → `changes`, and five more), which is why the table exists and
+why `deeplink.test.ts` pins every one.
+
+⚠ **Two contract resources have no screen, and the palette is where that showed
+up**: `funds/{fund}/entries/{entry}` (#52) and `funds/{fund}/views/{view}` (#53).
+`hrefForResourceName` refuses the first and lands the second on its queue, both
+with the issue number at the line that does it.
+
+⚠ **kbar's `KBarAnimator` and `KBarPositioner` are not used**, and that is
+deliberate — the animator is invisible without the Web Animations API and builds
+an unguarded `ResizeObserver`, and the positioner's type accepts no `role`. The
+panel is nine lines of CSS in `globals.css` and a `role="dialog"` here.
 
 ### The screens that write
 
