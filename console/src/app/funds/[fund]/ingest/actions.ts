@@ -6,7 +6,7 @@ import { admitFacts, AuthError, ingestDelivery, Refused } from "@/wire/client";
 import type { AdmitFactsResponse, IngestDeliveryResponse } from "@/wire/types";
 
 export type ReadResult =
-  | { ok: true; response: IngestDeliveryResponse }
+  | { ok: true; response: IngestDeliveryResponse; signature: string }
   | { ok: false; error: string }
   | null;
 
@@ -41,7 +41,10 @@ export async function read(_prev: ReadResult, form: FormData): Promise<ReadResul
       validateOnly,
     });
     if (!validateOnly) revalidatePath(`/funds/${fund}`, "layout");
-    return { ok: true, response };
+    // ⭐ THE INPUTS THIS ANSWERS FOR, so `Read` stays shut until a preview has
+    // come back for exactly them — otherwise the counts on screen can describe
+    // one file while the button reads another.
+    return { ok: true, response, signature: [templateId, origin.trim(), content].join(" ") };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: "Sign in required." };
     if (e instanceof Refused) return { ok: false, error: e.message };
