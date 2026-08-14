@@ -507,6 +507,61 @@ figure that does not say which question it answers. And the twenty-million-lot
 memory figures in `HANDOFF.md` became ONE-VIEW figures: each view carries its
 own lot book, and nothing has re-measured two.
 
+**What it did NOT buy, and this is the honest half of the entry.** The console's
+maintained projection still folds the whole journal with no cut, so ten
+view-scoped screens and `ReconcileViews` REFUSE for anything but a `recorded`
+view. `ratio strike --view` cuts and is correct; the screens are not. Merged in
+that state deliberately — a refusal that names the gap is a smaller lie than the
+recorded view's figures under another name.
+
+#### The per-view fold, and the one decision it turns on
+
+Written down before the code, because this split was started once and reverted:
+a pending queue is easy to describe and the hard part is what BOUNDS it.
+
+A settlement figure is determined by **three** things — the journal prefix, the
+view, and the DAY. `AsOf<T>` carries one of them today. That is the whole
+difficulty: a projection has no clock, so it cannot decide on its own whether a
+trade placed on Tuesday has been recognised yet.
+
+Three designs, and what kills two of them:
+
+1. **Fold every view to the head, no cut.** ⛔ Vacuous.
+   `Ratio.Views.a_fold_with_no_cut_hides_the_settlement_gap` — folded to the end
+   of history every view agrees, because everything eventually settles. This is
+   what the projection does today and why it must refuse rather than answer.
+2. **Retain the entries and filter by recognition day on read.** ⛔ Reintroduces
+   holding the journal, which `follow`'s one streaming pass exists to avoid — it
+   was three copies of a thing that only ever needed walking once.
+3. **A monotonic cut per view, and a band of what is not yet recognised.** ⭐ The
+   one that survives. Each `ViewFold` carries `recognised_through` and a
+   `BTreeMap<Day, Vec<PendingEntry>>` of entries placed after it. A read at day
+   `d` drains the band up to `d` and advances the cut; `d` earlier than the cut
+   REFUSES rather than unfolding, which is `advance` using `max` one layer out.
+
+⛔ **And what bounds the band is not the settlement lag on its own.** The lag
+bounds it only once the cut is moving. A cold build over twenty years starting
+from a cut of zero would put the WHOLE JOURNAL in the band — the failure mode
+design 2 was rejected for, arrived at by a different road. So the fold advances
+`recognised_through` to the highest recognition day it has SEEN as it reads, and
+the band holds only what is placed beyond that. A journal is roughly
+chronological, so that is days of trades rather than years.
+
+`AsOf<T>` gains `view` and `through`, which is a compile-error-driven sweep
+across four crates and is the point: with two views, `nav("abor")` and
+`nav("ibor")` are otherwise structurally interchangeable.
+
+Measured surface, so this is planned against the real thing: 24 field touches in
+`fold` (`:504`), `positions` (`:707`), `fold_lots` (`:741`), `realized`
+(`:922`), the accessors (`:940`–`:963`) and `nav` (`:989`); ~39 test call sites,
+all of which take `UNDECLARED_VIEW` because the seeded books declare none.
+
+⛔ The test that decides whether it is real is
+`the_recorded_view_folds_exactly_what_the_projection_used_to`, compared against
+`ratio_nav::strike`'s independent fold rather than against itself. And
+`the_pending_queue_is_bounded_by_the_settlement_lag_not_by_the_journal`, which is
+the paragraph above as an assertion.
+
 ---
 
 ## The control plane: geetch and crova
