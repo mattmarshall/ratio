@@ -1742,11 +1742,11 @@ impl Console {
             // it, and `GetView` is where a figure comes from.
             views.push(view_pb(&id, &set, &v));
         }
-        Ok(pb::ListViewsResponse {
-            default_view: set.default_view(),
-            views,
-            next_page_token: String::new(),
-        })
+        // ⚠ NO `default_view` ON THE COLLECTION. AIP-132 admits only the list
+        // and its page token, and `Fund.default_view` already answers it — a
+        // second copy is a second thing to keep in step, which is the argument
+        // views exist to avoid.
+        Ok(pb::ListViewsResponse { views, next_page_token: String::new() })
     }
 
     /// One book of record, with the figures it recognises.
@@ -2664,7 +2664,7 @@ fn view_pb(fund: &str, set: &ratio_rules::RuleSet, v: &ratio_rules::View) -> pb:
             ratio_rules::Basis::Trade => pb::view::Basis::Trade,
             ratio_rules::Basis::Settlement => pb::view::Basis::Settlement,
         } as i32,
-        settles_in: v.settles_in.unwrap_or(0),
+        settlement_open_days: v.settles_in.unwrap_or(0),
         calendar: v.calendar.clone().unwrap_or_default(),
         holiday_count: cal.map(|c| c.holidays.len() as i64).unwrap_or(0),
         // ⛔ WHETHER ANYBODY CHOSE IT. A book declaring nothing has one view and

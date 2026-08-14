@@ -1,4 +1,5 @@
 import { caller } from "@/lib/caller";
+import { isoDate } from "@/lib/dates";
 import { money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { reconcileViews } from "@/wire/client";
@@ -109,11 +110,14 @@ function Rows({
       ) : null}
       {rows.map((r) => (
         <div className="logrow" key={r.entryId}>
-          <span className="t num">{r.tradeDate || "no trade date"}</span>
+          <span className="t num">
+            {r.tradeDate ? isoDate(r.tradeDate) : "no trade date"}
+          </span>
           <span className="w">
             <b>{r.memo || r.entryId}</b>
             <div className="cfg">
-              here {r.recognisedHere || "—"} · there {r.recognisedThere || "—"}
+              here {isoDate(r.recognisedHere)} · there{" "}
+              {isoDate(r.recognisedThere)}
             </div>
           </span>
           <span className="amt num">{money(r.netAssetValueEffect)}</span>

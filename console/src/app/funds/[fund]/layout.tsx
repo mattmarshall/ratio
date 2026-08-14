@@ -35,7 +35,12 @@ export default async function FundLayout({
   const { fund } = await params;
   const c = await caller();
   const f = await getFund(c, fund);
-  const { views, defaultView } = await listViews(c, fund);
+  const { views } = await listViews(c, fund);
+
+  // ⛔ THE FUND SAYS WHICH VIEW IS DEFAULT, NOT THE COLLECTION. `ListViews`
+  // used to answer both; AIP-132 admits only the list, and one source for a
+  // fact is the point of the whole feature.
+  const defaultView = f.defaultView;
 
   return (
     <main className="queue">

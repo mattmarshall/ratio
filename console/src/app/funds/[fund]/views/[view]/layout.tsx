@@ -32,7 +32,7 @@ export default async function ViewLayout({
   const { fund, view } = await params;
   const c = await caller();
   const v = await or404(getView(c, fund, view));
-  const basis = basisOf(v.basis, v.settlesIn);
+  const basis = basisOf(v.basis, v.settlementOpenDays);
 
   return (
     <>

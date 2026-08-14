@@ -451,7 +451,7 @@ impl JsonView for pb::Fund {
 impl JsonView for pb::View {
     fn to_json(&self) -> String {
         format!(
-            "{{\"name\":{},\"displayName\":{},\"basis\":{},\"settlesIn\":{},\
+            "{{\"name\":{},\"displayName\":{},\"basis\":{},\"settlementOpenDays\":{},\
              \"calendar\":{},\"holidayCount\":{},\"declared\":{},\
              \"recognisedThrough\":{},\"unplaceableEntryCount\":{},\
              \"netAssetValue\":{},\"totalDebit\":{},\"totalCredit\":{},\
@@ -460,9 +460,10 @@ impl JsonView for pb::View {
              \"longTermGain\":{},\"unclassifiedGain\":{},\"openLotCount\":{},\
              \"positionCount\":{},\"navStrike\":{},\"journalPosition\":{}}}",
             q(&self.name), q(&self.display_name), q(basis_name(self.basis)),
-            q(&self.settles_in.to_string()), q(&self.calendar),
+            q(&self.settlement_open_days.to_string()), q(&self.calendar),
             q(&self.holiday_count.to_string()), self.declared,
-            q(&self.recognised_through), q(&self.unplaceable_entry_count.to_string()),
+            date_json(&self.recognised_through),
+            q(&self.unplaceable_entry_count.to_string()),
             q(&self.net_asset_value), q(&self.total_debit), q(&self.total_credit),
             q(&self.open_difference), q(&self.open_break_count.to_string()),
             q(state_name(self.state)),
@@ -478,9 +479,8 @@ impl JsonView for pb::View {
 impl JsonView for pb::ListViewsResponse {
     fn to_json(&self) -> String {
         format!(
-            "{{\"views\":[{}],\"defaultView\":{},\"nextPageToken\":{}}}",
+            "{{\"views\":[{}],\"nextPageToken\":{}}}",
             self.views.iter().map(|v| v.to_json()).collect::<Vec<_>>().join(","),
-            q(&self.default_view),
             q(&self.next_page_token)
         )
     }
@@ -492,8 +492,8 @@ impl JsonView for pb::RecognitionDifference {
             "{{\"entryId\":{},\"memo\":{},\"tradeDate\":{},\
              \"recognisedHere\":{},\"recognisedThere\":{},\
              \"netAssetValueEffect\":{}}}",
-            q(&self.entry_id), q(&self.memo), q(&self.trade_date),
-            q(&self.recognised_here), q(&self.recognised_there),
+            q(&self.entry_id), q(&self.memo), date_json(&self.trade_date),
+            date_json(&self.recognised_here), date_json(&self.recognised_there),
             q(&self.net_asset_value_effect)
         )
     }

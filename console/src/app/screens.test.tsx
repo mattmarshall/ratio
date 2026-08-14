@@ -162,17 +162,25 @@ describe("views", () => {
     // lists account for it exactly.
     expect(screen.getByText("134,439,187.51")).toBeDefined();
     expect(screen.getByText("134,102,187.51")).toBeDefined();
-    expect(screen.getByText("337,000.00")).toBeDefined();
+
+    // ⭐ TWICE ON THE SCREEN, AND THAT IS THE ASSERTION RATHER THAN AN
+    // ACCIDENT. The headline difference and the subtotal of the entries listed
+    // under it are the same figure — a trade-date view recognises no later than
+    // a T+2 one, so nothing is in flight the other way and the one list
+    // accounts for the whole gap. If the screen ever showed a difference its
+    // rows did not add to, this drops to one.
+    expect(screen.getAllByText("337,000.00").length).toBe(2);
 
     // And the lists really do add to it: 300,000.00 + 40,000.00 − 3,000.00.
-    const here = reconcileFixture.recognisedHere.reduce(
-      (n, r) => n + BigInt(r.netAssetValueEffect),
-      0n,
-    );
-    const there = reconcileFixture.recognisedThere.reduce(
-      (n, r) => n + BigInt(r.netAssetValueEffect),
-      0n,
-    );
+    //
+    // ⚠ BOTH LISTS, THOUGH ONE IS EMPTY HERE. A trade-date view recognises no
+    // later than a T+2 one, so nothing is in flight the other way round for
+    // THIS pair — but a recorded view against a trade-date one puts entries in
+    // both, and a sum that read only one list would be right by accident.
+    const sum = (rows: { netAssetValueEffect: string }[]) =>
+      rows.reduce((n, r) => n + BigInt(r.netAssetValueEffect), 0n);
+    const here = sum(reconcileFixture.recognisedHere);
+    const there = sum(reconcileFixture.recognisedThere);
     expect((here + there).toString()).toBe(reconcileFixture.difference);
 
     // ⛔ AND THE ENTRIES NEITHER VIEW CAN PLACE ARE ON THE SCREEN. Hiding them

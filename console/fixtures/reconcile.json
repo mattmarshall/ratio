@@ -8,37 +8,36 @@
     {
       "entryId": "sub-2026-02-26-01",
       "memo": "Subscription, Meridian Pension",
-      "tradeDate": "2026-02-26",
-      "recognisedHere": "2026-02-26",
-      "recognisedThere": "2026-03-02",
+      "tradeDate": { "year": 2026, "month": 2, "day": 26 },
+      "recognisedHere": { "year": 2026, "month": 2, "day": 26 },
+      "recognisedThere": { "year": 2026, "month": 3, "day": 2 },
       "netAssetValueEffect": "30000000"
     },
     {
       "entryId": "sub-2026-02-25-02",
       "memo": "Subscription, Calder Family Office",
-      "tradeDate": "2026-02-25",
-      "recognisedHere": "2026-02-25",
-      "recognisedThere": "2026-02-27",
+      "tradeDate": { "year": 2026, "month": 2, "day": 25 },
+      "recognisedHere": { "year": 2026, "month": 2, "day": 25 },
+      "recognisedThere": { "year": 2026, "month": 2, "day": 27 },
       "netAssetValueEffect": "4000000"
-    }
-  ],
-  "recognisedThere": [
+    },
     {
-      "entryId": "red-2026-02-20-01",
+      "entryId": "red-2026-02-23-01",
       "memo": "Redemption, Ashgrove Trust",
-      "tradeDate": "2026-02-20",
-      "recognisedHere": "2026-02-20",
-      "recognisedThere": "2026-02-24",
+      "tradeDate": { "year": 2026, "month": 2, "day": 23 },
+      "recognisedHere": { "year": 2026, "month": 2, "day": 23 },
+      "recognisedThere": { "year": 2026, "month": 2, "day": 25 },
       "netAssetValueEffect": "-300000"
     }
   ],
+  "recognisedThere": [],
   "unplaceable": [
     {
       "entryId": "open-1970-01-01-01",
       "memo": "Opening balance, migrated book",
-      "tradeDate": "",
-      "recognisedHere": "",
-      "recognisedThere": "",
+      "tradeDate": null,
+      "recognisedHere": null,
+      "recognisedThere": null,
       "netAssetValueEffect": "0"
     }
   ],

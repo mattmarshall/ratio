@@ -91,7 +91,11 @@ service Console {
   // makes this a derivation rather than a reconciliation somebody performs.
   rpc ReconcileViews(ReconcileViewsRequest) returns (ReconcileViewsResponse) {
     option (google.api.http) = {get: "/v1/{name=funds/*/views/*}:reconcile"};
-    option (google.api.method_signature) = "name";
+
+    // ⚠ BOTH, because both are REQUIRED. A signature naming only `name` would
+    // generate a binding that cannot be called — there is no second view to
+    // compare against — and `client-libraries::4232` says so at lint time.
+    option (google.api.method_signature) = "name,against";
   }
 
   // Lists a fund's open breaks, ordered by money at risk. (AIP-132)
@@ -537,7 +541,7 @@ message View {
     // The day the trade was struck. Refuses an entry carrying no trade date.
     BASIS_TRADE = 2;
 
-    // The trade date rolled forward `settles_in` open days over `calendar`.
+    // The trade date rolled forward `settlement_open_days` over `calendar`.
     BASIS_SETTLEMENT = 3;
   }
 
@@ -549,7 +553,12 @@ message View {
   Basis basis = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Open days from trade to settlement. Zero unless `basis` is settlement.
-  int64 settles_in = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  //
+  // ⚠ SPELLED `settles_in` IN THE CONFIGURATION, which is the word a person
+  // writing a TOML wants; AIP-140 refuses a preposition in a wire field name,
+  // so the contract spells the same number out. `ratio-rules` owns the former
+  // and neither name is a second source of truth for the other.
+  int64 settlement_open_days = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // The calendar the roll skips days on, and how many days it names.
   string calendar = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
@@ -566,9 +575,10 @@ message View {
   // funds, until the distinction was given a field of its own.
   bool declared = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // The last day this view has recognised entries through, `YYYY-MM-DD`. Empty
-  // on a recorded-basis view, which does not recognise by date at all.
-  string recognised_through = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // The last day this view has recognised entries through. Absent on a
+  // recorded-basis view, which does not recognise by date at all — and absent
+  // is the honest answer there, not the epoch.
+  google.type.Date recognised_through = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Entries this view cannot place at all — no trade date, or a configuration
   // that does not declare this view.
@@ -658,15 +668,26 @@ message RecognitionDifference {
   string entry_id = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
   string memo = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // `YYYY-MM-DD`. Empty when the record carries none, which is why a view may
-  // be unable to place it.
-  string trade_date = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Absent when the record carries none, which is why a view may be unable to
+  // place it.
+  //
+  // ⚠ A DATE, NOT A TIMESTAMP, for the reason `Mark.price_date` is: a trade
+  // date that moves by a day depending on where the reader is sitting is a
+  // different trade date. Absent and "1970-01-01" must not be the same value.
+  google.type.Date trade_date = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // The day each side recognises it on. Empty where that side cannot place it.
-  string recognised_here = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
-  string recognised_there = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // The day each side recognises it on. Absent where that side cannot place it.
+  google.type.Date recognised_here = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.type.Date recognised_there = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // What recognising it contributes to the NAV, in minor units.
+  // What this entry contributes to `ReconcileViewsResponse.difference`, in
+  // minor units.
+  //
+  // ⛔ TO THE DIFFERENCE, NOT TO EITHER NAV, and the sign follows from which
+  // list it is in. An entry only the read view recognises adds its own effect;
+  // one only the other view recognises subtracts it. So the two lists sum to
+  // `difference` by construction and a client can render the arithmetic rather
+  // than assert it — which is the whole reason this is a list and not a number.
   string net_asset_value_effect = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
@@ -814,25 +835,27 @@ message ListViewsRequest {
   // `funds/{fund}`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {child_type: "ratio.fastverk.dev/View"}
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
   ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
 }
 
+// ⚠ NO `default_view` HERE, THOUGH THE CONSOLE WANTS ONE. AIP-132 admits only
+// the resource list, `next_page_token`, `total_size` and `unreachable` in a
+// List response, and `Fund.default_view` already carries it — a second copy on
+// the collection is a second thing to keep in step with the first, which is the
+// whole argument views are one journal and not two books.
 message ListViewsResponse {
   repeated View views = 1;
-
-  // The view a client should open when it has no other reason to pick one, as
-  // a view id. The same value as `Fund.default_view`.
-  string default_view = 2;
-
-  string next_page_token = 3;
+  string next_page_token = 2;
 }
 
 message GetViewRequest {
   // `funds/{fund}/views/{view}`.
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "ratio.fastverk.dev/View"}
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
   ];
 }
 
@@ -840,7 +863,7 @@ message ReconcileViewsRequest {
   // `funds/{fund}/views/{view}` — the view being read.
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "ratio.fastverk.dev/View"}
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
   ];
 
   // The view id to compare it against.
@@ -885,9 +908,13 @@ message ReconcileViewsResponse {
 }
 
 message ListBreaksRequest {
+  // ⛔ A VIEW, NOT A FUND. Which breaks are open depends on which entries are
+  // recognised, so the collection hangs off the view — and `core::0127` refuses
+  // a `funds/*/views/*` URL whose `parent` claims to name a `Fund`, which is
+  // exactly the confusion it would be if this said `Fund`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -1317,9 +1344,10 @@ message Posting {
 }
 
 message ListAccountsRequest {
+  // A view. See `ListBreaksRequest.parent`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -1669,9 +1697,10 @@ message Position {
 }
 
 message ListPositionsRequest {
+  // A view. See `ListBreaksRequest.parent`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -1921,9 +1950,10 @@ message AdmitFactsResponse {
 }
 
 message ListNavStrikesRequest {
+  // A view. See `ListBreaksRequest.parent`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];

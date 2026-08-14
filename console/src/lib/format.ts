@@ -109,8 +109,8 @@ export const BASIS_LABEL: Record<string, string> = {
 };
 
 /** `settled T+2`, or the bare basis where no lag applies. */
-export function basisOf(basis: string, settlesIn: string): string {
+export function basisOf(basis: string, settlementOpenDays: string): string {
   return basis === "SETTLEMENT"
-    ? `settled T+${settlesIn}`
+    ? `settled T+${settlementOpenDays}`
     : (BASIS_LABEL[basis] ?? "—");
 }

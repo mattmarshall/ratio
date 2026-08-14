@@ -4,11 +4,11 @@
       "name": "funds/harbourline-global-value/views/abor",
       "displayName": "ABOR",
       "basis": "TRADE",
-      "settlesIn": "0",
+      "settlementOpenDays": "0",
       "calendar": "",
       "holidayCount": "0",
       "declared": true,
-      "recognisedThrough": "2026-02-26",
+      "recognisedThrough": { "year": 2026, "month": 2, "day": 26 },
       "unplaceableEntryCount": "0",
       "netAssetValue": "13443918751",
       "totalDebit": "20155000",
@@ -30,11 +30,11 @@
       "name": "funds/harbourline-global-value/views/ibor",
       "displayName": "IBOR",
       "basis": "SETTLEMENT",
-      "settlesIn": "2",
+      "settlementOpenDays": "2",
       "calendar": "us-settlement",
       "holidayCount": "11",
       "declared": true,
-      "recognisedThrough": "2026-02-24",
+      "recognisedThrough": { "year": 2026, "month": 2, "day": 24 },
       "unplaceableEntryCount": "0",
       "netAssetValue": "13410218751",
       "totalDebit": "19155000",
@@ -53,6 +53,5 @@
       "journalPosition": "6"
     }
   ],
-  "defaultView": "abor",
   "nextPageToken": ""
 }

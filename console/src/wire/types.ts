@@ -107,8 +107,13 @@ export interface View {
   name: string;
   displayName: string;
   basis: ViewBasis;
-  /** Open days from trade to settlement. `"0"` unless `basis` is settlement. */
-  settlesIn: Int64;
+  /**
+   * Open days from trade to settlement. `"0"` unless `basis` is settlement.
+   *
+   * ⚠ The configuration spells this `settles_in`; AIP-140 refuses a preposition
+   * in a wire field name, so the contract spells it out. Same number.
+   */
+  settlementOpenDays: Int64;
   calendar: string;
   holidayCount: Int64;
   /**
@@ -118,8 +123,9 @@ export interface View {
    * the same trap as `lotMethodDeclared`.
    */
   declared: boolean;
-  /** `YYYY-MM-DD`. Empty on a recorded-basis view, which has no cut. */
-  recognisedThrough: string;
+  /** `null` on a recorded-basis view, which has no cut — and null is the
+   * honest answer there, not the epoch. */
+  recognisedThrough: CalendarDate | null;
   /**
    * Entries this view cannot place: no trade date, or a pinned configuration
    * that does not declare it. ⛔ Shown, never silently dropped.
@@ -171,11 +177,18 @@ export interface View {
 export interface RecognitionDifference {
   entryId: string;
   memo: string;
-  /** `YYYY-MM-DD`. Empty when the record carries none. */
-  tradeDate: string;
-  /** The day each side recognises it on. Empty where that side cannot. */
-  recognisedHere: string;
-  recognisedThere: string;
+  /** `null` when the record carries none — which is why a view may be unable
+   * to place it. */
+  tradeDate: CalendarDate | null;
+  /** The day each side recognises it on. `null` where that side cannot. */
+  recognisedHere: CalendarDate | null;
+  recognisedThere: CalendarDate | null;
+  /**
+   * ⛔ What this entry contributes to `difference` — NOT to either NAV. The
+   * sign follows from which list it is in, so the two lists sum to `difference`
+   * by construction and the screen renders the arithmetic instead of asserting
+   * it.
+   */
   netAssetValueEffect: Int64;
 }
 
@@ -312,10 +325,13 @@ export interface ListFundsResponse {
   funds: Fund[];
   nextPageToken: string;
 }
+/**
+ * ⚠ No `defaultView` here — AIP-132 admits only the list and its page token in
+ * a List response, and `Fund.defaultView` already carries it. A caller that
+ * needs both already has the fund in hand.
+ */
 export interface ListViewsResponse {
   views: View[];
-  /** The view to open with no other reason to pick one. Same as `Fund.defaultView`. */
-  defaultView: string;
   nextPageToken: string;
 }
 export interface ReconcileViewsResponse {
