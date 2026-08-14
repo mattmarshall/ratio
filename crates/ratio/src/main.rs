@@ -673,7 +673,25 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
         }
         (ratio_gen::shape_of(&book)?, book)
     } else {
-        (shape_from(args)?.0, std::env::temp_dir().join("ratio-bench-book"))
+        // ⛔ ONE DIRECTORY PER PROCESS, AND THE FIXED NAME COST A MEASUREMENT.
+        // This was `ratio-bench-book` for every run, and `ratio_gen::generate`
+        // opens with `remove_dir_all`. Two benches at once therefore delete each
+        // other's book: the second wipes the directory the first is halfway
+        // through folding, and the first goes on to report a cold build over
+        // whatever survived.
+        //
+        // ⚠ AND THE WRONG ANSWER TIED. A 500 × 2000 run measured 1,022,625 open
+        // lots over 94.7 s on its own, and 224,852 over 20.7 s beside a small
+        // one — 22% of the lots in 22% of the time, trial balance 0, entry count
+        // correct, no error anywhere. It reads exactly like a fund with less
+        // fragmentation than expected. HANDOFF names this trap for TESTS ("two
+        // tests naming the same book wipe each other's directory"); it was in
+        // the benchmark the whole time, where a wrong number gets published.
+        //
+        // The pid is enough: the collision is between concurrent processes, and
+        // a run still leaves its book behind for inspection afterwards.
+        let dir = std::env::temp_dir().join(format!("ratio-bench-book-{}", std::process::id()));
+        (shape_from(args)?.0, dir)
     };
 
     if folding {
@@ -689,21 +707,29 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     out!("  {:<22}{:>12}", "open corp. actions", shape.open_actions);
     out!();
 
-    let entries = if folding {
+    // ⭐ GENERATION IS TIMED AND REPORTED, AND IT IS NOT A FOOTNOTE. Measured at
+    // 500 securities × 500 lots: **28.6 s to generate, 24.0 s to fold**. Building
+    // the book costs MORE than the cold build it exists to feed, which is the
+    // opposite of what everything about this command's shape implies — the two
+    // curves it argues about are both downstream of a third that nobody timed.
+    // Anything deciding where a large book should come from needs this number,
+    // so `--json` carries it rather than the report alone.
+    let (entries, gen_ns) = if folding {
         // ⛔ NOT GENERATED, AND SAID SO RATHER THAN PRINTED AS ZERO. A `0` on the
         // generation line reads as "generating this fund was free", which is the
-        // opposite of true — it is the line item this mode SKIPS.
+        // opposite of true — it is the line item this mode SKIPS, and per the
+        // measurement above it is the most expensive one.
         out!("  generated {:>14}   ⛔ not generated here — folded as found", "—");
-        None
+        (None, None)
     } else {
         let t = Instant::now();
         let n = ratio_gen::generate(&dir, shape)?;
-        let gen_ns = t.elapsed().as_nanos() as i64;
+        let ns = t.elapsed().as_nanos() as i64;
         out!(
             "  generated {n} journal entries in {}",
-            ratio_nav::closure::human_nanos(gen_ns)
+            ratio_nav::closure::human_nanos(ns)
         );
-        Some(n)
+        (Some(n), Some(ns))
     };
 
     // COLD: fold the whole journal into a projection. O(entries).
@@ -901,6 +927,10 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
                 "method": shape.method.as_declared(),
             },
             "generated": !folding,
+            // ⛔ `null` WHEN FOLDING, NEVER 0. Zero would say this book cost
+            // nothing to build; null says this run did not build it, which is a
+            // different claim and the true one.
+            "generate_ns": gen_ns,
             "journal_entries": entries,
             "open_positions": open_positions,
             "open_lots": open_lots,

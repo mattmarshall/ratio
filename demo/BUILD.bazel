@@ -36,3 +36,14 @@ sh_test(
     args = ["$(rootpath //crates/ratio)"],
     data = ["//crates/ratio"],
 )
+
+# Two benchmarks at once used to delete each other's book, and the wrong answer
+# tied — 22% of the lots in 22% of the time, trial balance 0. `medium` because
+# it runs three benches, two of them concurrently.
+sh_test(
+    name = "bench_concurrent_test",
+    size = "medium",
+    srcs = ["bench-concurrent.sh"],
+    args = ["$(rootpath //crates/ratio)"],
+    data = ["//crates/ratio"],
+)

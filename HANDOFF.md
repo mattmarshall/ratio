@@ -291,6 +291,49 @@ strike unchanged.
 ⛔ **It reports two curves and both must be quoted.** Folding the journal grows;
 only the strike off a maintained projection is flat.
 
+⛔ **AND THERE IS A THIRD CURVE, LARGER THAN EITHER, THAT NOTHING TIMED UNTIL
+NOW: GENERATING THE BOOK.** Measured on one Linux machine, both shapes:
+
+| shape | generate | COLD BUILD | ratio |
+|---|---|---|---|
+| 500 × 500 | 28.6 s | 24.0 s | 1.19 |
+| 500 × 2000 | 115.8 s | 94.7 s | 1.22 |
+
+**Building the fund costs more than the cold build it exists to feed**, and
+consistently so. Everything about this command's shape implies the two curves it
+argues about are the expensive ones; they are downstream of a third that is
+bigger than both. At the twenty-million-lot shape that is roughly twenty minutes
+of generation before a fold that takes sixteen — so **a book that size is built
+once and kept, never regenerated per run**, and any plan that assumes otherwise
+has budgeted for a third of the work. `--json` now carries `generate_ns` (null,
+never 0, when folding) so this cannot go untimed again.
+
+⛔ **TWO BENCHMARKS AT ONCE DELETED EACH OTHER'S BOOK, AND THE WRONG ANSWER
+TIED.** `bench` generated into `$TMPDIR/ratio-bench-book` — one fixed name for
+every run — and `ratio_gen::generate` opens with `remove_dir_all`. A second run
+starting while a first was folding wiped the directory under it. A 500 × 2000
+run measured:
+
+    alone      1,022,625 open lots   94.7 s   trial balance 0
+    concurrent   224,852 open lots   20.7 s   trial balance 0
+
+**22% of the lots in 22% of the time**, entry count correct, nothing on stderr.
+It does not read as a broken run; it reads as a fund with less fragmentation than
+expected, which is a thing funds are. This file already named the trap for TESTS
+— "two tests naming the same book wipe each other's directory" — and it was in
+the benchmark the whole time, which is the one place a number gets published.
+The directory now carries the pid, and `//demo:bench_concurrent_test` fails if it
+stops doing so.
+
+⚠ **THE 20M ROW IS 10,000 SECURITIES × 2,000 LOTS, NOT 500 × 40,000.** Both are
+twenty million open tax lots; they are not the same fund. The mark phase reads
+one price per SECURITY (`Ratio.Closure.markCost`), so the recorded shape marks
+ten thousand names and `ratio closure`'s default dial marks five hundred — a
+twentyfold difference in the term that grows with the chart. Estimating one and
+running the other, both captioned "twenty million tax lots", gives two figures
+that each tie and describe different books. `//:scale_shapes_test` holds the
+shapes the scale screen offers to the rows in this table.
+
 ⛔ **AND THE REAL LIMIT WAS NEVER TIME, IT WAS MEMORY.** Every fold in this
 codebase materialized what it folded: 1.85 GB resident to fold 1.77M entries into
 a projection holding 8 MB of lots, and `ratio balance` — which prints a dozen
