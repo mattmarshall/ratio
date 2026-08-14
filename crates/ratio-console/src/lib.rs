@@ -2786,6 +2786,17 @@ pub fn nested_id(name: &str, outer: &str, inner: &str) -> Result<(String, String
 mod tests {
     use super::*;
 
+    /// The demo book's one view, as a resource name — which is also the parent
+    /// every view-scoped read below takes.
+    ///
+    /// ⛔ `book`, NOT `abor`, AND THAT IS THE ASSERTION. Every seeded test book
+    /// declares no views, so it has exactly one and nobody elected it. Naming
+    /// it after a real basis here would let a bug that treated silence as an
+    /// election pass every test in this file.
+    fn demo_view() -> String {
+        format!("funds/demo/views/{}", ratio_rules::UNDECLARED_VIEW)
+    }
+
     fn fresh(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("ratio-console-{name}"));
         let _ = std::fs::remove_dir_all(&d);
@@ -3165,7 +3176,7 @@ mod tests {
         }
 
         let c = Console::new(&d);
-        let breaks = c.list_breaks("funds/demo", "").unwrap().breaks;
+        let breaks = c.list_breaks(&demo_view(), "").unwrap().breaks;
         let lot: Vec<_> = breaks.iter().filter(|b| b.name.contains("lot-")).collect();
         assert_eq!(lot.len(), 1, "{:?}", breaks.iter().map(|b| &b.cause).collect::<Vec<_>>());
         assert!(lot[0].cause.contains("administration agreement"), "{}", lot[0].cause);
@@ -3177,7 +3188,7 @@ mod tests {
 
         // And it survives the blocking filter, which is what an operator uses
         // to find the things that stop a NAV.
-        let blocking = c.list_breaks("funds/demo", "blocking").unwrap().breaks;
+        let blocking = c.list_breaks(&demo_view(), "blocking").unwrap().breaks;
         assert!(blocking.iter().any(|b| b.name.contains("lot-")));
     }
 
@@ -3295,7 +3306,7 @@ mod tests {
         // A NAV morning before the first reconciliation is a normal state.
         let d = fresh("noreport");
         book(&d);
-        let r = Console::new(&d).list_breaks("funds/demo", "").unwrap();
+        let r = Console::new(&d).list_breaks(&demo_view(), "").unwrap();
         assert!(r.breaks.is_empty());
     }
 
@@ -3323,7 +3334,7 @@ mod tests {
         std::fs::create_dir_all(d.join("reports")).unwrap();
         std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
 
-        let ks = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks;
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
         assert_eq!(ks.len(), 2);
         assert_eq!(ks[0].difference, "1000000", "largest first");
         assert_eq!(ks[0].severity, pb::Severity::High as i32, "1,000,000 blocks the NAV");
@@ -3336,10 +3347,15 @@ mod tests {
         assert!(ks.iter().all(|k| !k.explained));
 
         // A blocking break makes the fund blocked.
-        let f = Console::new(&d).get_fund("funds/demo").unwrap();
+        let c = Console::new(&d);
+        let f = c.get_fund("funds/demo").unwrap();
         assert_eq!(f.state, pb::fund::State::Blocked as i32);
         assert_eq!(f.open_break_count, 2);
-        assert_eq!(f.open_difference, "1000100");
+        // ⛔ THE UNRESOLVED TOTAL IS THE VIEW'S. Which breaks are open depends
+        // on which entries are recognised, so it moved to `View` — while
+        // `state` and `open_break_count` stay on `Fund` and answer for the
+        // DEFAULT view, which is what their comments in the contract promise.
+        assert_eq!(c.get_view(&demo_view()).unwrap().open_difference, "1000100");
     }
 
     #[test]
@@ -3363,7 +3379,7 @@ mod tests {
         std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
 
         let c = Console::new(&d);
-        let listed = c.list_breaks("funds/demo", "").unwrap().breaks;
+        let listed = c.list_breaks(&demo_view(), "").unwrap().breaks;
         assert_eq!(listed[0].name, "funds/demo/breaks/1",
             "the name must name the fund that was asked for, not the report's book");
         assert!(c.get_break(&listed[0].name).is_ok(), "the listed name did not fetch");
@@ -3385,10 +3401,10 @@ mod tests {
             exceptions: vec![], book_ties: true };
         std::fs::create_dir_all(d.join("reports")).unwrap();
         std::fs::write(d.join("reports/a.pb"), mk("a").encode_to_vec()).unwrap();
-        let first = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks[0].name.clone();
+        let first = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks[0].name.clone();
         std::thread::sleep(std::time::Duration::from_millis(1100));
         std::fs::write(d.join("reports/b.pb"), mk("b").encode_to_vec()).unwrap();
-        let second = Console::new(&d).list_breaks("funds/demo", "").unwrap().breaks[0].name.clone();
+        let second = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks[0].name.clone();
         assert_eq!(first, second);
         assert_eq!(first, "funds/demo/breaks/1");
         // And it is fetchable by that name.
@@ -3581,7 +3597,9 @@ mod tests {
         let d = fresh("stale");
         book(&d);
         // A NAV, struck before anybody heard about the action.
-        let s = ratio_nav::strike_and_record(&d, 1_780_000_000, "e.marsh").unwrap();
+        let s =
+            ratio_nav::strike_and_record(&d, ratio_rules::UNDECLARED_VIEW, 1_780_000_000, "e.marsh")
+                .unwrap();
         let day = ratio_nav::rfc3339(s.valuation_time)[..10].to_string();
 
         let mut b = FileBook::open(&d).unwrap();
@@ -3643,25 +3661,31 @@ mod tests {
         }
 
         let c = Console::new(&d);
-        let rows = c.list_accounts("funds/demo", "").unwrap().accounts;
+        let rows = c.list_accounts(&demo_view(), "").unwrap().accounts;
 
         assert_eq!(rows.len(), 6, "every account in the chart, posted to or not");
         let idle = rows.iter().find(|a| a.dimension == "3").expect("the untouched account is a row");
         assert_eq!(idle.posting_count, "0");
         assert_eq!(idle.balance, "0");
         // …and `posted` is what drops it.
-        assert_eq!(c.list_accounts("funds/demo", "posted").unwrap().accounts.len(), 5);
+        assert_eq!(c.list_accounts(&demo_view(), "posted").unwrap().accounts.len(), 5);
 
         let debit: i64 = rows.iter().map(|a| a.debit.parse::<i64>().unwrap()).sum();
         let credit: i64 = rows.iter().map(|a| a.credit.parse::<i64>().unwrap()).sum();
         assert_eq!(debit, credit, "the two columns must agree");
 
-        // And the fund reports the same two figures — they must come from one
+        // And the view reports the same two figures — they must come from one
         // read of the journal, not two.
-        let f = c.get_fund("funds/demo").unwrap();
-        assert_eq!(f.total_debit, debit.to_string());
-        assert_eq!(f.total_credit, credit.to_string());
-        assert_eq!(f.trial_balance_difference, "0");
+        //
+        // ⚠ THE COLUMNS ARE THE VIEW'S AND THE DIFFERENCE IS THE FUND'S, which
+        // is the line this feature draws. A view that has not recognised a
+        // trade has folded neither of its legs, so both columns shrink — while
+        // their difference is the same zero in every view, because conservation
+        // is per entry. `Ratio.Views.every_view_conserves`.
+        let v = c.get_view(&demo_view()).unwrap();
+        assert_eq!(v.total_debit, debit.to_string());
+        assert_eq!(v.total_credit, credit.to_string());
+        assert_eq!(c.get_fund("funds/demo").unwrap().trial_balance_difference, "0");
     }
 
     #[test]
@@ -3707,7 +3731,7 @@ mod tests {
         assert_eq!(equity.balance, "500");
         assert!(equity.abnormal, "equity holding a DEBIT balance is the abnormal one");
 
-        let flagged = c.list_accounts("funds/demo", "abnormal").unwrap().accounts;
+        let flagged = c.list_accounts(&demo_view(), "abnormal").unwrap().accounts;
         assert_eq!(flagged.len(), 2, "the filter returns exactly what is flagged");
     }
 
@@ -3717,7 +3741,7 @@ mod tests {
         book(&d);
         let c = Console::new(&d);
 
-        for a in c.list_accounts("funds/demo", "posted").unwrap().accounts {
+        for a in c.list_accounts(&demo_view(), "posted").unwrap().accounts {
             let lines = c.list_postings(&a.name).unwrap().postings;
             assert!(!lines.is_empty(), "{} was filtered as posted-to", a.name);
             // The whole claim of the screen: the lines add up to the figure.
@@ -3896,8 +3920,8 @@ mod tests {
         std::fs::create_dir_all(d.join("reports")).unwrap();
         std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
         let c = Console::new(&d);
-        assert_eq!(c.list_breaks("funds/demo", "").unwrap().breaks.len(), 2);
-        assert_eq!(c.list_breaks("funds/demo", "blocking").unwrap().breaks.len(), 1);
-        assert_eq!(c.list_breaks("funds/demo", "unexplained").unwrap().breaks.len(), 2);
+        assert_eq!(c.list_breaks(&demo_view(), "").unwrap().breaks.len(), 2);
+        assert_eq!(c.list_breaks(&demo_view(), "blocking").unwrap().breaks.len(), 1);
+        assert_eq!(c.list_breaks(&demo_view(), "unexplained").unwrap().breaks.len(), 2);
     }
 }
