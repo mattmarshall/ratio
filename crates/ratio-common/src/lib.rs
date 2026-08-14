@@ -46,17 +46,54 @@ pub fn days_from_iso_date(s: &str) -> Result<i64> {
     if !(1..=31).contains(&d) {
         bail!("{s:?} names day {d}");
     }
+    // ⛔ THE YEAR IS BOUNDED BECAUSE THE ARITHMETIC BELOW IS NOT CHECKED.
+    // `era * 146_097` overflows an `i64` somewhere past year 6×10¹³, which
+    // panics in a debug build and wraps in a release one — in a function that
+    // parses whatever a delivered file or a typed URL happened to contain.
+    // `0..=9999` is ISO 8601's own range for a date written without the `+`
+    // expanded-year prefix, which is the only shape this parser accepts.
+    if !(0..=9999).contains(&y) {
+        bail!("{s:?} names year {y}, outside 0000-9999");
+    }
 
     // Howard Hinnant's `days_from_civil`, the inverse of the `civil_from_unix`
     // in `ratio_nav`. ⚠ `div_euclid`, not `/`: before the epoch a truncating
     // division rounds toward zero and the era comes out one too high.
+    let written = y;
     let y = y - i64::from(m <= 2);
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
     let mp = if m > 2 { m - 3 } else { m + 9 };
     let doy = (153 * mp + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    Ok(era * 146_097 + doe - 719_468)
+    let days = era * 146_097 + doe - 719_468;
+
+    // ⛔ CHECKED AGAINST THE CALENDAR, NOT MERELY AGAINST A RANGE. The bounds
+    // above accept day 31 in every month, so `2026-02-30` got past them and the
+    // arithmetic turned it into the 2nd of March — a real day, silently, with
+    // no error anywhere. What that costs depends on which caller asked:
+    //
+    //   * a TRADE DATE becomes a lot acquired two days after it was bought, so
+    //     its holding period is two days somebody typed by accident, and the
+    //     journal it is on is append-only;
+    //   * a CALENDAR HOLIDAY becomes a holiday on a different day, and every
+    //     T+n settlement date computed through that calendar moves with it —
+    //     `views.rs` reads them with `filter_map(…ok())`, so a date that
+    //     silently succeeds is a date silently believed.
+    //
+    // ⭐ ASKED OF THE INVERSE RATHER THAN OF A DAYS-IN-MONTH TABLE. A table
+    // needs its own leap-year rule, which is a second place to get the same
+    // thing wrong; `iso_date_from_days` already exists, is already tested
+    // against this function by round trip, and disagrees with exactly the
+    // inputs that are not days.
+    //
+    // ⚠ COMPARED ON THE PARSED COMPONENTS, NOT THE INPUT STRING. `2026-2-3` is
+    // accepted above and is a real day; comparing against the raw text would
+    // reject it for its padding.
+    if iso_date_from_days(days) != format!("{written:04}-{m:02}-{d:02}") {
+        bail!("{s:?} is not a day in the calendar");
+    }
+    Ok(days)
 }
 
 /// Days since 1970-01-01 back into an ISO date.
@@ -187,6 +224,72 @@ mod tests {
         for bad in ["", "2026-13-01", "2026-01-32", "2026-01", "not-a-date", "2026-xx-01"] {
             assert!(days_from_iso_date(bad).is_err(), "{bad:?} should not parse");
         }
+    }
+
+    #[test]
+    fn a_date_in_range_that_is_not_a_day_is_refused_rather_than_moved() {
+        // ⛔ THE FAILURE THIS TEST EXISTS FOR IS SILENT. `1..=31` accepts day 31
+        // in February, and the civil arithmetic below it does not object — it
+        // carries into the next month and returns a real day. `2026-02-30`
+        // became the 2nd of March, and nothing anywhere said so.
+        //
+        // ⚠ NEGATIVE-TEST THIS. Delete the round-trip guard in
+        // `days_from_iso_date` and every assertion here goes red; delete the
+        // `1..=12` bound instead and none of them do, which is the point — the
+        // range check and the calendar check catch different things.
+        for (bad, would_have_been) in [
+            ("2026-02-30", "2026-03-02"),
+            ("2026-02-29", "2026-03-01"), // 2026 is not a leap year
+            ("2026-04-31", "2026-05-01"),
+            ("2026-06-31", "2026-07-01"),
+            ("2026-09-31", "2026-10-01"),
+            ("2026-11-31", "2026-12-01"),
+            ("2023-02-29", "2023-03-01"),
+            ("1900-02-29", "1900-03-01"), // divisible by 100, not by 400
+        ] {
+            let r = days_from_iso_date(bad);
+            assert!(
+                r.is_err(),
+                "{bad:?} is not a day — it silently became {would_have_been}"
+            );
+            let said = r.unwrap_err().to_string();
+            assert!(said.contains("not a day in the calendar"), "{bad:?} said {said:?}");
+        }
+
+        // ⭐ AND THE DAYS THAT ARE DAYS STILL ARE. A guard that refuses real
+        // leap days is a worse defect than the one it replaced: it would reject
+        // a trade date an operator typed correctly, on a day the market was
+        // open, with no way to book it.
+        for good in [
+            "2024-02-29", // divisible by 4
+            "2000-02-29", // divisible by 400
+            "2026-01-31",
+            "2026-02-28",
+            "2026-12-31",
+            "2026-04-30",
+        ] {
+            assert!(days_from_iso_date(good).is_ok(), "{good:?} is a day");
+        }
+
+        // ⚠ AND UNPADDED COMPONENTS ARE STILL A DATE. The guard compares the
+        // PARSED components against the inverse, not the input text — otherwise
+        // it would reject `2026-2-3` for its formatting rather than for being
+        // an impossible day, and `2026-2-3` is the 3rd of February.
+        assert_eq!(
+            days_from_iso_date("2026-2-3").unwrap(),
+            days_from_iso_date("2026-02-03").unwrap()
+        );
+
+        // ⛔ AND A YEAR THAT WOULD OVERFLOW THE ARITHMETIC IS REFUSED BEFORE IT
+        // REACHES IT. This assertion is the reason the bound exists: without
+        // it, `era * 146_097` panics here in a debug build — a parser that
+        // takes down the process on a string somebody typed. The bound is ISO
+        // 8601's own, so the ends of it are days.
+        for bad in ["99999999999999-01-01", "-0001-01-01", "10000-01-01"] {
+            assert!(days_from_iso_date(bad).is_err(), "{bad:?} should not parse");
+        }
+        assert!(days_from_iso_date("0001-01-01").is_ok(), "the bottom of the range");
+        assert!(days_from_iso_date("9999-12-31").is_ok(), "the top of it");
     }
 
     #[test]
