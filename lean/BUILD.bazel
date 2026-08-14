@@ -189,6 +189,20 @@ lean_test(
     entry = "Ratio/Exec.lean",
 )
 
+# ⛔ How big a difference has to be before it stops the NAV — a term of an
+# administration agreement, not a property of the software. Two funds looking at
+# the same break disagree about whether it matters and both are right.
+#
+# The theorem worth knowing about is `an_inverted_tolerance_makes_the_middle_
+# band_unreachable`: bounds the wrong way round leave a grade nothing can ever
+# be, which is why `wellFormed` is checked when the configuration is READ.
+lean_test(
+    name = "tolerance_proof_test",
+    size = "small",
+    srcs = ["Ratio/Tolerance.lean"],
+    entry = "Ratio/Tolerance.lean",
+)
+
 # ─── Lean → Rust emit pipeline ─────────────────────────────────────────────
 # Each `Ratio.*.Emit` builds its crate's items as a syn-serde JSON `syn::File`
 # via the vendored `Polyglot.Rust` builders. These `lean_emit` targets produce
@@ -374,6 +388,21 @@ lean_emit(
     srcs = _BUILDER_SRCS + ["Ratio/Exec.lean", "Ratio/Exec/Emit.lean"],
     entry = "Ratio/Exec/Emit.lean",
     out = "ratio_exec.ast.json",
+)
+
+# ⛔ The grading decision, so the console's loop over a report's lines and the
+# theorems about severity cannot come to disagree — `Ratio.Tolerance.the_three_
+# bands_partition_every_difference` is the bridge. ⚠ The magnitude is a
+# PARAMETER: negation is the one operation here that can fail on `i64`, so the
+# Rust takes a checked absolute value before it asks anything.
+lean_emit(
+    name = "ratio_tolerance_ast",
+    srcs = _BUILDER_SRCS + [
+        "Ratio/Tolerance.lean",
+        "Ratio/Tolerance/Emit.lean",
+    ],
+    entry = "Ratio/Tolerance/Emit.lean",
+    out = "ratio_tolerance.ast.json",
 )
 
 lean_emit(

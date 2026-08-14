@@ -6,7 +6,7 @@ import { AuthError, markPositions, Refused } from "@/wire/client";
 import type { MarkPositionsResponse } from "@/wire/types";
 
 export type MarkResult =
-  | { ok: true; response: MarkPositionsResponse }
+  | { ok: true; response: MarkPositionsResponse; signature: string }
   | { ok: false; error: string }
   | null;
 
@@ -42,7 +42,11 @@ export async function mark(
       validateOnly,
     });
     if (!validateOnly) revalidatePath(`/funds/${fund}`, "layout");
-    return { ok: true, response };
+    // ⭐ THE INPUT THIS ANSWERS FOR, so the commit stays shut until a preview
+    // has come back for exactly it. Otherwise "preview, then post" is a
+    // sentence on the screen rather than a property of it: preview one date,
+    // type another, and the marks on screen describe neither.
+    return { ok: true, response, signature: raw };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: "Sign in required." };
     if (e instanceof Refused) return { ok: false, error: e.message };

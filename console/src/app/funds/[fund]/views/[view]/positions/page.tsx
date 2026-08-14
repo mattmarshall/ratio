@@ -26,6 +26,12 @@ export default async function Positions({
     <>
       <div className="qbar" role="group" aria-label="Positions">
         <span className="spacer" />
+        {/* ⚠ BOTH FUND-LEVEL, from a view-level screen. An entry goes to the
+            journal and a view is a lens over it, so neither write belongs under
+            `views/[view]/`. */}
+        <span className="sortnote">
+          <Link href={`/funds/${fund}/trade`}>Place a trade</Link>
+        </span>
         <span className="sortnote">
           <Link href={`/funds/${fund}/mark`}>Mark to market</Link>
         </span>

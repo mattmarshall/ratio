@@ -998,17 +998,44 @@ impl JsonView for pb::BreakPosting {
     }
 }
 
+impl JsonView for pb::Tolerance {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"belowNotice\":{},\"blocksNav\":{},\"declared\":{}}}",
+            q(&self.below_notice), q(&self.blocks_nav), self.declared
+        )
+    }
+}
+
+impl JsonView for pb::BreakExplanation {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"text\":{},\"actor\":{},\"acceptTime\":{},\"difference\":{},\
+             \"configDigest\":{},\"journalPosition\":{},\"journalDigest\":{},\
+             \"qualification\":[{}]}}",
+            q(&self.text), q(&self.actor),
+            q(&ratio_nav::rfc3339(self.accept_time.as_ref().map(|t| t.seconds).unwrap_or(0))),
+            q(&self.difference), q(&self.config_digest),
+            q(&self.journal_position.to_string()), q(&self.journal_digest),
+            self.qualification.iter().map(|s| q(s)).collect::<Vec<_>>().join(",")
+        )
+    }
+}
+
 impl JsonView for pb::Break {
     fn to_json(&self) -> String {
         format!(
             "{{\"name\":{},\"account\":{},\"accountDimension\":{},\"severity\":{},\
              \"explained\":{},\"cause\":{},\"ratioAmount\":{},\"reportedAmount\":{},\
-             \"difference\":{},\"postings\":[{}],\"configDigest\":{}}}",
+             \"difference\":{},\"postings\":[{}],\"configDigest\":{},\"tolerance\":{},\
+             \"explanation\":{}}}",
             q(&self.name), q(&self.account), q(&self.account_dimension.to_string()),
             q(severity_name(self.severity)), self.explained, q(&self.cause),
             q(&self.ratio_amount), q(&self.reported_amount), q(&self.difference),
             self.postings.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
-            q(&self.config_digest)
+            q(&self.config_digest),
+            self.tolerance.as_ref().map(|t| t.to_json()).unwrap_or_else(|| "null".into()),
+            self.explanation.as_ref().map(|e| e.to_json()).unwrap_or_else(|| "null".into())
         )
     }
 }

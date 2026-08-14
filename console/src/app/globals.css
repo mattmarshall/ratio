@@ -479,6 +479,149 @@ a.fund,a.row{color:inherit;text-decoration:none}
 .lt.scale{background:var(--accent-soft)}
 .lt.scale .ltv{color:var(--accent)}
 
+/* ── the write screens ───────────────────────────────────────────────────
+   One pattern for all four of them — see `components/Ticket.tsx`. Almost every
+   class below this point already existed: `.form`, `.prev`, `.formbar`, `.act`,
+   `.ruleform` and `.lotterms` were written for the concept's record form and
+   then used by nothing, while the four real write screens each grew their own
+   stack of unstyled `<label>`s. What is genuinely new is the step tree.
+
+   ⚠ NO NEW TOKENS. `//console:tokens_test` holds the shared ones to
+   site/style.css, and a control that needed a colour the design system does not
+   have would be a control the design system does not want. */
+
+/* The concept's blocks were written for the detail rail, where the inset came
+   from the `.dsec` around them. On a full-width screen they sit flush against
+   the rule while every heading beside them is inset 22px, and a form whose
+   blocks do not share one left edge reads as several forms. */
+.rec .cap{padding-inline:22px}
+.rec .lotterms,
+.rec .qual{margin-inline:22px}
+/* `.cap`'s -4px pulls it up under a heading, which is where it was written.
+   Under a bordered box it pulls it THROUGH the border. */
+.rec .qual + .cap{margin-top:9px}
+/* Three columns of prose rather than the lot engine's three of figures: a term,
+   the figure derived from it, and the sentence saying where that came from. */
+.rec .lt{grid-template-columns:150px minmax(120px,auto) 1fr}
+.rec .lt .ltv:last-child{color:var(--muted);font-size:12px}
+/* The section head carries the view switch as well as its note. */
+.loghead .hd{display:flex;align-items:center;gap:10px}
+.loghead .views{text-transform:none;letter-spacing:0}
+
+/* The step tree — the control that makes a stepper honest. What has been
+   answered is legible without clicking back to find out, and every step is the
+   way back to that step.
+
+   ⚠ THE VALUE CARRIES THE WEIGHT, NOT THE LABEL. It was the other way round: an
+   uppercase bold SIDE over a plain "Buy", so the eye landed on seven words the
+   reader already knows instead of on the answers they came to check.
+
+   ⚠ STATE IS A GLYPH — a tick against a digit — so it survives a printout, a
+   projector and colour blindness without a coloured dot of its own beside every
+   step. The digit carries the count, which is why nothing says "step 4 of 7".
+
+   ⚠ AND NO CONNECTORS. With seven steps that was six more marks on a row whose
+   order is already given by reading left to right. */
+.steps{display:flex;list-style:none;margin:0;gap:2px;padding:8px 16px;
+  overflow-x:auto;border-bottom:1px solid var(--rule)}
+.steps li{display:flex;flex:none}
+.stepbtn{display:flex;align-items:center;gap:9px;padding:6px 10px;
+  border-radius:8px;text-align:left;min-width:0}
+.stepbtn:hover:not(:disabled){background:var(--surface)}
+.stepbtn:disabled{opacity:.4;cursor:default}
+.sn{flex:none;width:19px;height:19px;border-radius:50%;display:grid;
+  place-items:center;font-size:10.5px;font-weight:700;color:var(--muted);
+  box-shadow:inset 0 0 0 1px var(--rule-2)}
+.stepbtn.done .sn{color:var(--good);box-shadow:inset 0 0 0 1px var(--good)}
+.stepbtn[aria-current="step"] .sn{color:var(--ground);background:var(--accent);
+  box-shadow:none}
+.st{display:flex;flex-direction:column;min-width:0}
+.st .sk{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);line-height:1.4}
+.st .sv{font-size:13px;font-weight:600;color:var(--text-2);max-width:150px;
+  line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-variant-numeric:tabular-nums}
+.stepbtn[aria-current="step"]{background:var(--accent-soft)}
+.stepbtn[aria-current="step"] .sv{color:var(--text)}
+
+/* The one question with focus: a heading, a control, and nothing else unless
+   the answer produces something. */
+.step{padding:18px 22px 8px;display:grid;gap:12px;justify-items:start}
+.step h3{font-size:16px;letter-spacing:-.01em}
+.step label{display:flex;flex-direction:column;gap:5px;width:min(340px,100%)}
+.step label>span{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted)}
+.step input,.step select,.step textarea{padding:8px 11px;border-radius:8px;
+  font:inherit;font-size:13.5px;border:1px solid var(--rule);
+  background:var(--ground);color:var(--text)}
+.step textarea{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:12px;resize:vertical}
+.step label:has(textarea){width:100%}
+.step input:focus-visible,.step select:focus-visible,
+.step textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px;
+  border-color:var(--accent)}
+.step .why{margin:0;font-size:12.5px;line-height:1.55;color:var(--muted)}
+.step>.qbar,.step>.ruleform,.step>.qual{justify-self:stretch;
+  margin-inline:-22px;padding-inline:22px}
+.step>.qual{margin-inline:0;padding-inline:11px}
+.step .ruleform{padding-block:0}
+
+/* A figure the screen worked out. One line: the key, the figure, and what it
+   came from — quietly, because it is context for the figure and not a figure. */
+.derived{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.derived .dk{font-size:10.5px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted);min-width:88px}
+.derived .dv{font-size:18px;font-weight:600;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums}
+.derived .dw{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.derived.bad .dv{color:var(--warn)}
+.derived .dx{font-size:12px;line-height:1.5;color:var(--warn);max-width:62ch}
+
+/* The reason, one click away rather than printed beside the field — the same
+   move the NAV strikes make with their proof. A form that argues with you at
+   every step is a form people stop reading, which costs more than it saves. */
+.more{margin:0}
+.more summary{display:inline-flex;align-items:center;gap:5px;cursor:pointer;
+  font-size:11.5px;color:var(--muted);list-style:none}
+.more summary::-webkit-details-marker{display:none}
+.more summary::before{content:"▸";font-size:9px;line-height:1}
+.more[open] summary::before{content:"▾"}
+.more summary:hover{color:var(--accent)}
+/* ⭐ POINTS, NOT PROSE, AND THE TYPE ENFORCES IT — `Step.why` is an array. Every
+   one of these started as a paragraph and every one of them grew; by the third
+   pass a step carried four lines arguing with the person filling it in.
+
+   ⛔ AND NOT `.body`, WHICH IS TAKEN. This markup was briefly `<div class="body">`
+   — sixty lines up, `.body` is the app's three-column layout grid, so every run
+   of text became a grid item in its own cell and overlapped the last. A generic
+   class name in a single stylesheet is a collision waiting for whoever picks it
+   second. */
+.pts{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:5px;
+  font-size:12px;line-height:1.55;color:var(--muted);max-width:76ch}
+/* ⛔ A HANGING INDENT, NOT A GRID ROW. This was `display:grid` with a 11px
+   marker column, and a grid container makes a grid item of every child — so an
+   inline `<code>` or `<b>` in the middle of a sentence was placed in its own
+   cell and overlapped the words around it. The second time one stylesheet made
+   running text into grid items; both looked fine until something was emphasised
+   mid-sentence. */
+.pts li{position:relative;padding-left:14px}
+.pts li::before{content:"–";position:absolute;left:0;top:0;color:var(--rule-2)}
+.pts code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+.qual .more{margin-top:7px}
+.qual .more .pts{color:inherit;opacity:.92}
+
+/* Form: every field at once, for the fortieth ticket of the day. Tighter
+   columns and smaller controls than the guided view — the same fields, sized
+   for somebody who already knows which is which. */
+.compact .form{gap:9px;padding:12px 22px 2px;
+  grid-template-columns:repeat(auto-fit,minmax(132px,1fr))}
+.compact .form input,.compact .form select{padding:6px 9px;font-size:12.5px}
+.compact .form textarea{font-size:11.5px;min-height:64px}
+.compact .qbar{padding-block:9px}
+.compact .derived{padding:8px 22px 0}
+.compact .ruleform{padding-top:8px}
+.compact .qual{margin-block:10px}
+
 /* Sign-in: the whole console when there is no session, and the signed-in
    principal's controls in the header. */
 .signout{margin-left:6px;padding:3px 9px;font:inherit;font-size:12px;cursor:pointer;

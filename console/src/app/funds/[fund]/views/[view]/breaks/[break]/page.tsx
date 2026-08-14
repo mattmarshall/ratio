@@ -82,6 +82,34 @@ export default async function BreakDetail({
         )}
       </div>
 
+      {/* What somebody decided about it, if anybody has.
+          ⛔ THERE IS NO FORM HERE. Accepting an explanation is `ratio accept`
+          at a terminal, for the same reason approving a rule is `ratio
+          approve` — a screen offering a second way round the fence would make
+          the fence worth nothing. This displays; it does not decide. */}
+      {brk.explanation ? (
+        <div className="dsec">
+          <h3>Why this is acceptable</h3>
+          {/* The qualification comes FIRST when there is one. A reader shown
+              the words before being told the figure moved underneath them has
+              been told something that was true last week. */}
+          {brk.explanation.qualification.length > 0 && (
+            <p className="qual">
+              This note no longer stands: {brk.explanation.qualification.join("; ")}.
+            </p>
+          )}
+          <p>{brk.explanation.text}</p>
+          <div className="prov">
+            accepted by <span className="g">{brk.explanation.actor || "—"}</span>
+            <br />
+            against a difference of {money(brk.explanation.difference)}
+            <br />
+            {brk.explanation.journalPosition} entries had been posted when it was
+            accepted
+          </div>
+        </div>
+      ) : null}
+
       {/* Provenance is the product: a figure that cannot name what produced it
           is worth no more than the one it disagrees with. */}
       <div className="dsec">
@@ -90,6 +118,19 @@ export default async function BreakDetail({
           configuration <span className="g">{brk.configDigest.slice(0, 12)}…</span>
           <br />
           account dimension {brk.accountDimension}
+          <br />
+          {/* The bands the severity came from, beside the severity. A grade
+              whose terms a reader has to go and look up is a grade a reader
+              takes on trust. */}
+          {brk.tolerance ? (
+            <>
+              graded at {money(brk.tolerance.blocksNav)} blocks,{" "}
+              {money(brk.tolerance.belowNotice)} notice
+              {brk.tolerance.declared ? " — declared" : " — by custom, not declared"}
+            </>
+          ) : (
+            <>graded by what it means, not by how much</>
+          )}
           <br />
           replays identically under this configuration
         </div>

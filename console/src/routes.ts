@@ -10,7 +10,13 @@
 // `//console:route_manifest_test` holds this file to that from both sides:
 //
 //   * every route named here has a `page.tsx` (or `layout.tsx`) on disk, and
-//   * every one of the 35 RPCs in console.proto is read by something here.
+//   * every one of the 38 RPCs in console.proto is read by something here.
+//
+// ⚠ THAT COUNT IS PROSE AND NOTHING CHECKS IT, WHICH IS WHY IT WAS WRONG BY
+// THREE. It read 34 while the contract carried 37 — the RPCs arrived, the test
+// went on enforcing the property in both directions, and only the sentence
+// drifted. AGENTS.md's "a comment nothing tests will drift" with a number in it.
+// The test below is the thing that matters; this line is a reader's orientation.
 //
 // ⚠ THE SECOND DIRECTION IS THE ONE THAT MATTERS. `//web:rendered_test` existed
 // because "a field can be declared, transcoded, served, typechecked and mirrored
@@ -260,9 +266,21 @@ export const ROUTES: readonly Route[] = [
   },
 
   // ── The four writes ──────────────────────────────────────────────────────
+  //
+  // ⚠ AND ONE OF THEM TWICE. `/record` is `ApplyEvent` with the contract's own
+  // shape — a rule and an amount — and `/trade` is the same RPC asked for in
+  // the terms a trade actually happens in: an instrument, units, a price and a
+  // day, with the consideration derived. Two screens over one method is a
+  // deliberate trade: the primitive stays reachable for the kinds of event that
+  // have no better form, and the one an operator does daily gets a workflow.
   {
     path: "/funds/[fund]/record",
     file: "funds/[fund]/record/page.tsx",
+    reads: ["listRules", "applyEvent"],
+  },
+  {
+    path: "/funds/[fund]/trade",
+    file: "funds/[fund]/trade/page.tsx",
     reads: ["listRules", "applyEvent"],
   },
   {

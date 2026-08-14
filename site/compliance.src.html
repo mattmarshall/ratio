@@ -175,7 +175,7 @@ __STYLE__
 <section class="r-section">
   <div class="r-wrap">
     <p class="r-eyebrow">What changes</p>
-    <h2 class="r-claim">Four properties, and every one of them is structural</h2>
+    <h2 class="r-claim">Five properties, and every one of them is structural</h2>
     <p class="r-lede">None of these are compliance features bolted on. They fall
     out of decisions made for other reasons — which is why they cannot be
     switched off, forgotten, or configured wrong.</p>
@@ -183,9 +183,12 @@ __STYLE__
     <div class="r-rows">
       <div class="r-row">
         <h3>Every figure names the rules that made it</h3>
-        <p>Each posting, position and NAV carries the hash of the configuration
-        version it was produced under. "Which rules generated this number?" is a
-        lookup against an immutable artifact, not an investigation.</p>
+        <p>Each posting, position, NAV and reconciliation difference carries the
+        hash of the configuration version it was produced under, and for a
+        difference that includes the threshold it was measured against — so "was
+        this material?" resolves the same way "which rules generated this
+        number?" does. A difference is measured against the configuration its
+        reconciliation ran under, not against whatever is in force today.</p>
       </div>
       <div class="r-row">
         <h3>Every rule change is a signed, checked commit</h3>
@@ -207,6 +210,16 @@ __STYLE__
         provenance and its own timestamp, sitting alongside what it corrects. There
         is no edit path to audit, because there is no edit.</p>
       </div>
+      <div class="r-row">
+        <h3>An accepted difference is a record, not a deletion</h3>
+        <p>When somebody decides a reconciliation difference is acceptable, the
+        reason is recorded against it with their name, the date, the figure it
+        was about and the threshold it was measured against. The item keeps its
+        address and its place in the queue, marked explained. If a later
+        reconciliation reports a different figure the note steps aside and says
+        what moved, so an explanation cannot outlive the number it was given
+        about.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -217,7 +230,7 @@ __STYLE__
 <section class="r-section">
   <div class="r-wrap">
     <p class="r-eyebrow">Show, don't tell</p>
-    <h2 class="r-claim">Five questions an examiner actually asks</h2>
+    <h2 class="r-claim">Six questions an examiner actually asks</h2>
     <p class="r-lede">Not paraphrases — these are the shapes that turn into
     six-week exercises. Each one resolves against the record rather than against
     somebody's reconstruction of it.</p>
@@ -336,6 +349,33 @@ __STYLE__
           </ul>
         </div>
       </div>
+
+      <div class="r-stage">
+        <div class="r-stage-lede">
+          <span class="r-stage-num">Question six</span>
+          <h3>“This difference was accepted. On whose authority, and against what
+          figure?”</h3>
+        </div>
+        <div class="r-panel">
+          <div class="r-panel-head"><span>reconciliation difference</span><b>still on the queue</b></div>
+<pre class="r-panel-body"><code>funds/LUX-EQ-I/breaks/cash-usd    <span class="k">explained</span>
+
+  difference        <span class="s">2,000.00</span>
+  measured against  config@6b0d41f  <span class="c">1,000.00 stops the close, declared</span>
+  accepted by       J. Okafor <span class="c">(controller)</span>   2026-07-01
+  because           "custodian has not settled the 26 Jun dividend;
+                     it clears T+2, confirmed by their operations desk"
+
+  <span class="k">re-reconciled</span> 2026-07-04
+  difference        <span class="chg">2,750.00</span>
+  <span class="c">explained against a difference of 2,000.00; this run shows</span>
+  <span class="c">2,750.00 — the note no longer stands</span></code></pre>
+          <p class="r-panel-foot">Nothing was cleared, so nothing has to be
+          reconstructed. The item kept its address, its figures and its place in
+          the queue, and the note against it stopped applying the moment the
+          number moved rather than when somebody noticed.</p>
+        </div>
+      </div>
     </div>
 
     <div class="r-callout">
@@ -446,8 +486,11 @@ __STYLE__
     <div class="r-note">
       <p>And the largest limit of all: most of what this page describes is
       <strong>designed and specified rather than built</strong>. The balancing
-      proof and the engine that enforces it exist today; the control plane,
-      replay tooling and every interface shown here do not. See the
+      proof and the engine that enforces it exist today, and so does the
+      reconciliation record in question six — differences measured against a
+      declared threshold, explanations recorded by name, and a fund that refuses
+      its own NAV while one is unexplained. The control plane, replay tooling and
+      most of the interfaces shown here do not. See the
       <a href="roadmap.html">roadmap</a> for exactly what is where.</p>
     </div>
   </div>

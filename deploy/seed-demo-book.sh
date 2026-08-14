@@ -104,6 +104,21 @@ per_instrument = true
 account = 21
 weight = -1
 
+# ── how big a difference has to be before it stops the NAV ────────────────
+#
+# In the same configuration, and for the same reason: a fund's tolerance is a
+# term of its administration agreement, not a property of the software, and a
+# break cites the digest it was graded under. DECLARED rather than left out, so
+# the console reports a term somebody agreed to instead of the numbers a book
+# gets by custom — the distinction `lot_method` already keeps.
+#
+# ⚠ 100000 IS LOAD-BEARING FOR THE DEMO. positions.csv below is deliberately
+# 2,000.00 light, which is 200000 minor units; raising this above that would
+# leave the blocked fund unblocked and the whole story without its exception.
+[tolerance]
+below_notice = 500
+blocks_nav = 100000
+
 # ── the mapping, in the SAME configuration as the rules above ─────────────
 #
 # That is the claim, made real: one digest fixes how a file becomes an event
@@ -266,6 +281,24 @@ CSV
 # `|| true` because a run that finds breaks exits 2 by design, and for the
 # default positions that is the run we want.
 "$RATIO" recon txns.csv "${POSITIONS:-positions.csv}" --book "$OUT" --post >/dev/null || true
+
+# ── and, on a book that asks for it, somebody explains the break ──────────
+#
+# ⚠ THE CALLER'S CHOICE, for the same reason `LEAVE_ONE_PENDING` is. A fund
+# where every break is explained and one where none is are two different
+# stories, and a seeder that told only one of them would leave the console with
+# no way to show what accepting an explanation does. Chosen per fund in
+# seed-demo-funds.sh.
+#
+# ⛔ The break is EXPLAINED, NOT CLEARED. It keeps its URL, its figures and its
+# place in the queue, with a name against it — which is the whole distinction
+# `ratio accept` exists to draw.
+if [ -n "${EXPLAIN_THE_BREAK:-}" ]; then
+  RATIO_ACTOR="${RATIO_ACTOR:-e.marsh}" "$RATIO" accept 1 \
+    --because "Custodian has not settled the 26 Feb dividend; it clears T+2 and \
+was confirmed by their operations desk on the phone." \
+    --book "$OUT" >/dev/null
+fi
 
 # ── the data plane, with a gap in the master on purpose ───────────────────
 #
