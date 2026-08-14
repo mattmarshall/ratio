@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { FundActions } from "@/components/FundActions";
 import { ScreenTabs } from "@/components/ScreenTabs";
 import { ViewSwitch } from "@/components/ViewSwitch";
 import { caller } from "@/lib/caller";
@@ -44,6 +45,11 @@ export default async function FundLayout({
 
   return (
     <main className="queue">
+      {/* ⚠ RENDERS NOTHING. It registers this fund's screens, books of record,
+          tickets and id deep-links with the palette that `funds/layout.tsx`
+          mounts one level up — which is where the provider has to be, and this is
+          where `listViews` has already been called. Neither costs a request. */}
+      <FundActions fund={fund} views={views} defaultView={defaultView} />
       <div className="qhead">
         <h1>{f.displayName}</h1>
         <div className="subhead">
