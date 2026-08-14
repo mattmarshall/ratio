@@ -23,10 +23,11 @@ rm -rf "$OUT"
 
 fail() { echo "  x $*" >&2; exit 1; }
 
-# Five funds — four states, plus a fifth that differs from one of them by one
-# line of configuration.
+# Six funds — four states, a fifth that differs from one of them by one line of
+# configuration, and a sixth that differs from itself: one journal read under
+# two books of record.
 n=$(find "$OUT" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')
-[ "$n" -eq 5 ] || fail "expected 5 funds, found $n"
+[ "$n" -eq 6 ] || fail "expected 6 funds, found $n"
 
 GEN="$OUT/ashcombe-global-equity"
 [ -d "$GEN" ] || fail "the generated fund is missing"

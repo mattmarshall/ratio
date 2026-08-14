@@ -827,6 +827,106 @@ mod tests {
     }
 
     #[test]
+    fn every_entry_a_generated_fund_writes_carries_a_trade_date() {
+        // ⛔ THE PROPERTY THAT WAS BROKEN, AND IT WAS INVISIBLE. Trades were
+        // dated and capital, FX and announcements were not — which no test
+        // noticed, because the only view any generated fund had recognised in
+        // journal order and consults no date at all. The moment one declared a
+        // settlement basis it refused the whole book.
+        //
+        // ⚠ ASSERTED OVER A SHAPE THAT WRITES ALL FOUR KINDS. `open_actions` and
+        // `currencies > 1` are what put an announcement and an exchange in the
+        // journal; at the defaults for either, this test would pass over a book
+        // that contains neither.
+        let d = tmp("dated");
+        let n = generate(
+            &d,
+            Shape {
+                securities: 4,
+                currencies: 3,
+                lots_per: 3,
+                turnover: 2,
+                open_actions: 2,
+                capital_txns: 2,
+                seed: 5,
+                method: ratio_rules::LotMethod::Fifo,
+            },
+        )
+        .unwrap();
+        let entries = FileBook::open(&d).unwrap().entries().unwrap();
+        assert_eq!(entries.len(), n);
+        assert!(entries.iter().any(|e| e.id.starts_with("cap-")), "no capital entry");
+        assert!(entries.iter().any(|e| e.id.starts_with("fx-")), "no exchange");
+        assert!(entries.iter().any(|e| e.announcement.is_some()), "no announcement");
+        let undated: Vec<&str> =
+            entries.iter().filter(|e| e.trade_date.is_none()).map(|e| e.id.as_str()).collect();
+        assert!(undated.is_empty(), "a settlement view would refuse these: {undated:?}");
+    }
+
+    #[test]
+    fn two_declared_views_land_in_the_configuration_every_entry_pins() {
+        // ⭐ ONE JOURNAL, AND THE VIEWS TRAVEL IN THE SAME CONFIGURATION THE
+        // RULES DO. A per-view side file would leave the views unpinned while
+        // the rules were pinned, and a calendar amended later would move a NAV
+        // already struck — `//tla:calendar_in_side_file_check`.
+        let d = tmp("twoviews");
+        let books = Books {
+            views: vec![
+                GenView { id: "abor".into(), settles_in: None },
+                GenView { id: "ibor".into(), settles_in: Some(2) },
+            ],
+            tail_ends: 20_600,
+            settle_tail: 3,
+            subscriptions_in_tail: 2,
+        };
+        generate_books(&d, Shape { securities: 3, lots_per: 2, ..Shape::default() }, &books)
+            .unwrap();
+
+        let b = FileBook::open(&d).unwrap();
+        let digest = b.active().unwrap().expect("a generated book has an active configuration");
+        let set =
+            ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest).unwrap()))
+                .expect("the generated configuration reads back");
+        let views = set.effective_views();
+        assert_eq!(views.len(), 2, "{views:?}");
+        assert!(set.views_declared(), "these were elected, and the fund should say so");
+        assert_eq!(views[0].id, "abor");
+        assert_eq!(views[0].basis, ratio_rules::Basis::Trade);
+        assert_eq!(views[1].basis, ratio_rules::Basis::Settlement);
+        assert_eq!(views[1].settles_in, Some(2));
+        // ⛔ AND THE CALENDAR IT NAMES IS DECLARED. `View::check` refuses a
+        // settlement view pointing at one nobody wrote down, at READ time — so
+        // a generator emitting the view without the calendar would produce a
+        // configuration it could not read back.
+        assert!(set.calendar(views[1].calendar.as_deref().unwrap()).is_some());
+
+        // The tail is where the two views disagree, so it has to be there.
+        let entries = b.entries().unwrap();
+        let tail: Vec<_> = entries.iter().filter(|e| e.id.starts_with("sub-tail-")).collect();
+        assert_eq!(tail.len(), 2, "the settlement tail is missing");
+        for e in &tail {
+            let day = ratio_common::days_from_iso_date(e.trade_date.as_deref().unwrap()).unwrap();
+            assert!(day <= 20_600, "a tail entry traded after the day the tail ends");
+            assert!(day > 20_600 - 3, "a tail entry fell outside the tail");
+        }
+    }
+
+    #[test]
+    fn a_tail_longer_than_its_days_is_refused_rather_than_doubled_up() {
+        // ⛔ Doubling up would leave the LAST day of the tail empty, and that is
+        // the day most likely to straddle the valuation point — a demo that
+        // quietly generated a fund the two views agree about.
+        let e = generate_books(
+            &tmp("tail-overflow"),
+            Shape::default(),
+            &Books { tail_ends: 20_600, settle_tail: 2, subscriptions_in_tail: 5, ..Default::default() },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("will not fit"), "{e}");
+    }
+
+    #[test]
     fn a_different_seed_gives_a_different_book() {
         // Otherwise the previous test passes on a generator that ignores its
         // inputs entirely.
