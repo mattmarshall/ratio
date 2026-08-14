@@ -191,7 +191,11 @@ export function TradeTicket({
       id: "side",
       label: "Side",
       ask: "Is this a purchase or a disposal?",
-      why: "⛔ A side is a rule, not a sign. Both send a positive consideration and the configuration decides which accounts move and in which direction — a purchase rule handed a negative amount posts a purchase backwards, and the entry balances.",
+      why: [
+        "A side is a rule, not a sign: both send a positive consideration.",
+        "The configuration decides which accounts move, and which way.",
+        "A purchase rule handed a negative amount posts a purchase backwards — and balances.",
+      ],
       answer: side === "buy" ? "Buy" : "Sell",
       body: sideChips,
     },
@@ -199,7 +203,10 @@ export function TradeTicket({
       id: "instrument",
       label: "Instrument",
       ask: "What was traded?",
-      why: "What the fund already holds is offered first, because a disposal of something the book does not hold has no basis to give up.",
+      why: [
+        "What the fund holds is offered first.",
+        "A disposal of something the book does not hold has no basis to give up.",
+      ],
       answer: instrument ? label : null,
       body: (
         <>
@@ -223,7 +230,10 @@ export function TradeTicket({
       id: "units",
       label: "Units",
       ask: "How many units?",
-      why: "Whole units, or hundredths of one. A measure rather than a conserved quantity — buying 100 shares creates 100 in the book.",
+      why: [
+        "Whole units, or hundredths of one.",
+        "A measure, not a conserved quantity: buying 100 shares creates 100 in the book.",
+      ],
       answer: units && worth?.ok !== false ? units : null,
       body: (
         <>
@@ -236,7 +246,10 @@ export function TradeTicket({
       id: "price",
       label: "Price",
       ask: "At what price?",
-      why: "Per unit, as it was dealt. The consideration follows from this and is never typed.",
+      why: [
+        "Per unit, as it was dealt.",
+        "The consideration follows from it and is never typed.",
+      ],
       answer: price && worth?.ok !== false ? price : null,
       body: (
         <>
@@ -249,7 +262,10 @@ export function TradeTicket({
       id: "date",
       label: "Trade date",
       ask: "On what day?",
-      why: "A day in the fund's own calendar, not an instant — a trade date that moves by one depending on where the reader is sitting is a different trade date.",
+      why: [
+        "A day in the fund's calendar, not an instant.",
+        "A date that shifts with the reader's timezone is a different trade date.",
+      ],
       answer: day ? isoDate(day) : null,
       body: (
         <Field
@@ -265,16 +281,16 @@ export function TradeTicket({
       id: "rule",
       label: "Books under",
       ask: "How does it book?",
-      why: (
+      why: [
+        "A rule of the configuration in force, approved by a person at a terminal.",
         <>
-          A rule of the configuration in force, and this console does not guess
-          which one a side means. On the data plane that mapping is declared in
-          the template — <code>rules = {"{"} buy = &quot;equity_purchase&quot;{" "}
-          {"}"}</code> — because which rule a counterparty&rsquo;s{" "}
-          <code>B</code> means is a mapping decision. Nothing on this request
-          carries such a declaration, so it is made here and can be read back.
-        </>
-      ),
+          This console does not guess which rule a side means. On the data plane
+          that mapping is declared — <code>rules = {"{"} buy ={" "}
+          &quot;equity_purchase&quot; {"}"}</code> — because it is a mapping
+          decision.
+        </>,
+        "Nothing on this request carries such a declaration, so it is made here and can be read back.",
+      ],
       answer: ruleId || null,
       body: (
         <>
@@ -481,36 +497,36 @@ function NotCarried({
         : "No tax lot opens, so a later sale has nothing to relieve."}
       <details className="more">
         <summary>What that costs</summary>
-        <div className="txt">
-          ApplyEvent takes a rule and an amount, so the postings name accounts
-          and nothing else: the value sits in the account&rsquo;s unattributed
-          row rather than against {it}, {it}&rsquo;s unit count does not move,
-          and the entry carries no trade date — {date || "the day"} reaches the
-          journal inside the reference, where a person can read it and{" "}
-          <code>Ratio.Lots.Relief</code> cannot.
-          <br />
-          <br />
+        <ul className="pts">
+          <li>
+            No instrument on the postings, so the value sits in the
+            account&rsquo;s unattributed row rather than against {it}.
+          </li>
+          <li>No quantity, so {it}&rsquo;s unit count does not move.</li>
+          <li>
+            No trade date. {date || "The day"} reaches the journal inside the
+            reference, where a person can read it and{" "}
+            <code>Ratio.Lots.Relief</code> cannot.
+          </li>
           {side === "sell" ? (
-            <>
-              So the realized gain is whatever this rule&rsquo;s own weights make
-              of the consideration rather than proceeds less cost, and with no
-              attributable sale in the entry it lands in <b>Unclassified</b>. The
-              realized gain is the figure with no counterparty: a wrong NAV meets
-              a reconciliation, and this meets nobody until a tax authority asks.
-            </>
+            <li>
+              So the realized gain is what this rule&rsquo;s weights make of the
+              consideration, not proceeds less cost — and it lands in{" "}
+              <b>Unclassified</b>. A wrong NAV meets a reconciliation; this meets
+              nobody until a tax authority asks.
+            </li>
           ) : (
-            <>
-              And a lot opened by an entry with no trade date has{" "}
-              <b>no trade date</b>, which the holding-period methods refuse
-              rather than guess at — both defaults are wrong in opposite
-              directions.
-            </>
-          )}{" "}
-          To carry all three, the trade has to arrive on the data plane, where a
-          template declares the instrument, the quantity and the day as fields of
-          a fact — or <code>ApplyEventRequest</code> has to grow the three
-          fields.
-        </div>
+            <li>
+              And a lot with <b>no trade date</b> is refused by the
+              holding-period methods rather than guessed at — both defaults are
+              wrong in opposite directions.
+            </li>
+          )}
+          <li>
+            To carry all three: the data plane, where a template declares them as
+            fields of a fact — or <code>ApplyEventRequest</code> grows them.
+          </li>
+        </ul>
       </details>
     </div>
   );

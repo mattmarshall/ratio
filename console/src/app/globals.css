@@ -506,30 +506,41 @@ a.fund,a.row{color:inherit;text-decoration:none}
 .loghead .hd{display:flex;align-items:center;gap:10px}
 .loghead .views{text-transform:none;letter-spacing:0}
 
-/* The step tree. It is the control that makes a stepper honest: what has been
-   answered is legible without clicking back to find out, and every step on it is
-   the way back to that step.
+/* The step tree — the control that makes a stepper honest. What has been
+   answered is legible without clicking back to find out, and every step is the
+   way back to that step.
 
-   ⚠ NO CONNECTORS BETWEEN THE STEPS. There were little rules joining them, and
-   with seven steps that is six more marks on a screen whose order is already
-   given by reading left to right. Horizontally scrollable rather than wrapped,
-   because a tree that reflows to two rows stops reading as one. */
-.steps{display:flex;align-items:stretch;list-style:none;margin:0;gap:2px;
-  padding:9px 16px;overflow-x:auto;border-bottom:1px solid var(--rule)}
+   ⚠ THE VALUE CARRIES THE WEIGHT, NOT THE LABEL. It was the other way round: an
+   uppercase bold SIDE over a plain "Buy", so the eye landed on seven words the
+   reader already knows instead of on the answers they came to check.
+
+   ⚠ STATE IS A GLYPH — a tick against a digit — so it survives a printout, a
+   projector and colour blindness without a coloured dot of its own beside every
+   step. The digit carries the count, which is why nothing says "step 4 of 7".
+
+   ⚠ AND NO CONNECTORS. With seven steps that was six more marks on a row whose
+   order is already given by reading left to right. */
+.steps{display:flex;list-style:none;margin:0;gap:2px;padding:8px 16px;
+  overflow-x:auto;border-bottom:1px solid var(--rule)}
 .steps li{display:flex;flex:none}
-.stepbtn{display:flex;flex-direction:column;gap:2px;align-items:flex-start;
-  padding:5px 10px;border-radius:8px;text-align:left;min-width:0}
+.stepbtn{display:flex;align-items:center;gap:9px;padding:6px 10px;
+  border-radius:8px;text-align:left;min-width:0}
 .stepbtn:hover:not(:disabled){background:var(--surface)}
-.stepbtn:disabled{opacity:.45;cursor:default}
-.stepbtn .sk{display:flex;align-items:center;gap:6px;font-size:10.5px;
-  font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
-.stepbtn .sk .state{gap:0}
-.stepbtn .sv{font-size:12.5px;color:var(--text-2);max-width:140px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+.stepbtn:disabled{opacity:.4;cursor:default}
+.sn{flex:none;width:19px;height:19px;border-radius:50%;display:grid;
+  place-items:center;font-size:10.5px;font-weight:700;color:var(--muted);
+  box-shadow:inset 0 0 0 1px var(--rule-2)}
+.stepbtn.done .sn{color:var(--good);box-shadow:inset 0 0 0 1px var(--good)}
+.stepbtn[aria-current="step"] .sn{color:var(--ground);background:var(--accent);
+  box-shadow:none}
+.st{display:flex;flex-direction:column;min-width:0}
+.st .sk{font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);line-height:1.4}
+.st .sv{font-size:13px;font-weight:600;color:var(--text-2);max-width:150px;
+  line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   font-variant-numeric:tabular-nums}
 .stepbtn[aria-current="step"]{background:var(--accent-soft)}
-.stepbtn[aria-current="step"] .sk{color:var(--accent)}
-.stepbtn[aria-current="step"] .sv{color:var(--text);font-weight:600}
+.stepbtn[aria-current="step"] .sv{color:var(--text)}
 
 /* The one question with focus: a heading, a control, and nothing else unless
    the answer produces something. */
@@ -574,17 +585,28 @@ a.fund,a.row{color:inherit;text-decoration:none}
 .more summary::before{content:"▸";font-size:9px;line-height:1}
 .more[open] summary::before{content:"▾"}
 .more summary:hover{color:var(--accent)}
-/* ⛔ `.txt`, NOT `.body`. `.body` is the app's three-column layout grid, sixty
-   lines up — reusing the name here put the disclosure's prose into
-   `grid-template-columns:264px minmax(0,1fr) 380px` and every run of text
-   became a grid item in its own cell, overlapping the last. A generic class
-   name in one stylesheet is a collision waiting for whoever picks it second. */
-.more .txt{margin-top:8px;font-size:12px;line-height:1.65;color:var(--muted);
-  max-width:74ch}
-.more .txt code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-  font-size:11px}
+/* ⭐ POINTS, NOT PROSE, AND THE TYPE ENFORCES IT — `Step.why` is an array. Every
+   one of these started as a paragraph and every one of them grew; by the third
+   pass a step carried four lines arguing with the person filling it in.
+
+   ⛔ AND NOT `.body`, WHICH IS TAKEN. This markup was briefly `<div class="body">`
+   — sixty lines up, `.body` is the app's three-column layout grid, so every run
+   of text became a grid item in its own cell and overlapped the last. A generic
+   class name in a single stylesheet is a collision waiting for whoever picks it
+   second. */
+.pts{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:5px;
+  font-size:12px;line-height:1.55;color:var(--muted);max-width:76ch}
+/* ⛔ A HANGING INDENT, NOT A GRID ROW. This was `display:grid` with a 11px
+   marker column, and a grid container makes a grid item of every child — so an
+   inline `<code>` or `<b>` in the middle of a sentence was placed in its own
+   cell and overlapped the words around it. The second time one stylesheet made
+   running text into grid items; both looked fine until something was emphasised
+   mid-sentence. */
+.pts li{position:relative;padding-left:14px}
+.pts li::before{content:"–";position:absolute;left:0;top:0;color:var(--rule-2)}
+.pts code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
 .qual .more{margin-top:7px}
-.qual .more .txt{color:inherit;opacity:.9}
+.qual .more .pts{color:inherit;opacity:.92}
 
 /* Form: every field at once, for the fortieth ticket of the day. Tighter
    columns and smaller controls than the guided view — the same fields, sized

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * The shape every write screen in this console has.
@@ -37,8 +37,16 @@ export interface Step {
   readonly label: string;
   /** The question, asked as a question. */
   readonly ask: string;
-  /** Why it is asked, or what will be done with it. */
-  readonly why?: ReactNode;
+  /**
+   * Why it is asked, as points.
+   *
+   * ⭐ AN ARRAY, NOT A PARAGRAPH, AND THAT IS THE POINT OF THE TYPE. Every one of
+   * these started as prose and every one of them grew: by the third pass a step
+   * carried four lines arguing with the person filling it in. A list of short
+   * points is the same information in a shape that makes the long version
+   * awkward to write.
+   */
+  readonly why?: readonly ReactNode[];
   /**
    * What the tree shows for this step, or null when it is unanswered.
    *
@@ -73,6 +81,16 @@ export function Ticket({
 }) {
   const [guided, setGuided] = useState(true);
   const [at, setAt] = useState(steps[0]?.id ?? "");
+
+  // ⚠ THE TREE SCROLLS RATHER THAN WRAPS, so the step with focus can be off the
+  // right-hand end — which is where a seven-step ticket puts it on a laptop.
+  // A progress indicator that has to be scrolled to find is worse than none.
+  // ⚠ Optional-called: jsdom does not implement `scrollIntoView`, and the render
+  // suite should not need a polyfill to exercise a stepper.
+  const hereRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    hereRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [at]);
 
   const index = Math.max(
     0,
@@ -109,35 +127,43 @@ export function Ticket({
 
       {guided ? (
         <div className="ticket">
+          {/* ⚠ THE VALUE IS THE THING, AND IT USED TO BE THE QUIETER HALF. The
+              label was uppercase and bold over a plain value, so the eye landed
+              on SIDE / INSTRUMENT / UNITS — seven words the reader already knows
+              — instead of on Buy / Acme Corporation / 1000, which is what they
+              came to check. The weighting is the other way round now.
+
+              ⚠ AND STATE IS A GLYPH, NOT A DOT. A tick for answered against a
+              digit for not is a difference that survives a printout, a projector
+              and colour blindness, and it costs one character where the dot cost
+              a mark of its own beside every step. The digit carries the count
+              too, so the bar below no longer says "Step 4 of 7". */}
           <ol className="steps" aria-label="Steps">
-            {steps.map((s, i) => (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  className="stepbtn"
-                  aria-current={s.id === step?.id ? "step" : undefined}
-                  disabled={!reachable(i)}
-                  onClick={() => setAt(s.id)}
-                >
-                  <span className="sk">
-                    {/* ⚠ A SHAPE AS WELL AS A COLOUR, which is the rule the fund
-                        rail and the severity stripes already follow — so state
-                        survives a printout, a projector and colour blindness. */}
-                    <span
-                      className={`state ${
-                        s.id === step?.id
-                          ? "review"
-                          : s.answer !== null
-                            ? "struck"
-                            : "waiting"
-                      }`}
-                    />
-                    {s.label}
-                  </span>
-                  <span className="sv">{s.answer ?? "—"}</span>
-                </button>
-              </li>
-            ))}
+            {steps.map((s, i) => {
+              const here = s.id === step?.id;
+              const done = s.answer !== null && !here;
+              return (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    className={done ? "stepbtn done" : "stepbtn"}
+                    ref={here ? hereRef : undefined}
+                    aria-current={here ? "step" : undefined}
+                    aria-label={`${s.label}: ${s.answer ?? "not answered"}`}
+                    disabled={!reachable(i)}
+                    onClick={() => setAt(s.id)}
+                  >
+                    <span className="sn" aria-hidden="true">
+                      {done ? "✓" : i + 1}
+                    </span>
+                    <span className="st">
+                      <span className="sk">{s.label}</span>
+                      <span className="sv">{s.answer ?? "—"}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ol>
 
           {step ? (
@@ -151,10 +177,14 @@ export function Ticket({
                   people stop reading, which costs more than the paragraph
                   saved. The question and the control are the screen; why it is
                   asked is there for the first time somebody meets it. */}
-              {step.why ? (
+              {step.why?.length ? (
                 <details className="more">
                   <summary>Why this is asked</summary>
-                  <div className="txt">{step.why}</div>
+                  <ul className="pts">
+                    {step.why.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
                 </details>
               ) : null}
             </div>
@@ -162,9 +192,7 @@ export function Ticket({
 
           <div className="formbar">
             <span className="sortnote">
-              {step && step.answer === null && !last
-                ? "Answer this to go on."
-                : `Step ${index + 1} of ${steps.length}`}
+              {step && step.answer === null && !last ? "Answer this to go on." : ""}
             </span>
             <button
               className="act"

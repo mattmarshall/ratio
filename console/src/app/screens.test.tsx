@@ -321,7 +321,9 @@ describe("the write screens", () => {
       [...document.querySelectorAll(".steps .stepbtn")].map((b) => ({
         label: b.querySelector(".sk")?.textContent,
         value: b.querySelector(".sv")?.textContent,
-        done: b.querySelector(".state")?.className.includes("struck"),
+        // ⚠ A tick against a digit, so the state reads on a printout too.
+        done: b.classList.contains("done"),
+        mark: b.querySelector(".sn")?.textContent,
       }));
 
     // Unanswered steps read as an em dash, not as a blank that looks answered.
@@ -350,6 +352,10 @@ describe("the write screens", () => {
     // marked current rather than done. Both are true of it and current is the
     // one worth showing.
     expect(tree().slice(1, 6).every((s) => s.done)).toBe(true);
+    expect(tree().slice(1, 6).map((s) => s.mark)).toEqual(["✓", "✓", "✓", "✓", "✓"]);
+    // The step with focus and the ones still to come keep their number.
+    expect(tree()[0]?.mark).toBe("1");
+    expect(tree()[6]?.mark).toBe("7");
     expect(
       screen.getByRole("button", { name: /Review/ }).hasAttribute("disabled"),
     ).toBe(false);

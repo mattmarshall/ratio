@@ -92,14 +92,14 @@ export function IngestForm({
       id: "template",
       label: "Template",
       ask: "Which mapping does this file arrive under?",
-      why: (
+      why: [
+        "The template says what each column means.",
         <>
-          The template says what each column means and, for a file that posts,
-          which rule each row falls under — because which rule a counterparty&rsquo;s{" "}
-          <code>B</code> means is a mapping decision and belongs with the rest of
-          the mapping.
-        </>
-      ),
+          For a file that posts, it also says which rule each row falls under —
+          which rule a counterparty&rsquo;s <code>B</code> means is a mapping
+          decision, and belongs with the rest of the mapping.
+        </>,
+      ],
       answer: templateId || null,
       body: (
         <>
@@ -123,7 +123,10 @@ export function IngestForm({
       id: "origin",
       label: "Origin",
       ask: "Where did it come from?",
-      why: "Carried as provenance on every fact the file produces, so a figure can name the delivery it was read out of.",
+      why: [
+        "Carried as provenance on every fact the file produces.",
+        "So a figure can name the delivery it was read out of.",
+      ],
       answer: origin.trim() || null,
       body: originField,
     },
@@ -131,7 +134,10 @@ export function IngestForm({
       id: "content",
       label: "Content",
       ask: "The file itself.",
-      why: "Monospace because what goes here is a machine's output, and a column that does not line up is harder to check.",
+      why: [
+        "A machine's output, so it is set in monospace.",
+        "A column that does not line up is harder to check.",
+      ],
       answer: content ? `${content.split("\n").length} lines` : null,
       body: contentField,
     },
@@ -139,7 +145,10 @@ export function IngestForm({
       id: "review",
       label: "Review",
       ask: "What this would produce.",
-      why: "Reading records facts. Nothing reaches the journal until they are admitted, which is the step below.",
+      why: [
+        "Reading records facts and nothing more.",
+        "Nothing reaches the journal until they are admitted, which is the step below.",
+      ],
       answer: null,
       body: r ? (
         <>

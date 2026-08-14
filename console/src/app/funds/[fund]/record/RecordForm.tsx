@@ -129,14 +129,11 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
       id: "rule",
       label: "Rule",
       ask: "Which rule does this event fall under?",
-      why: (
-        <>
-          The rule decides which accounts move and in which direction — recording
-          an event asserts that something happened, it does not decide how it is
-          booked. That is why this can be a write at all while approving a rule
-          stays a person at a terminal.
-        </>
-      ),
+      why: [
+        "The rule decides which accounts move, and in which direction.",
+        "Recording an event asserts that something happened; it does not decide how it books.",
+        "Which is why this can be a write at all while approving a rule stays a person at a terminal.",
+      ],
       answer: ruleId || null,
       body: (
         <>
@@ -149,16 +146,17 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
       id: "amount",
       label: "Amount",
       ask: accrual ? "What basis does the rate apply to?" : "For how much?",
-      why: (
+      why: [
         <>
           Major units, with a point — <code>250000.00</code>, not{" "}
-          <code>25000000</code>. It is parsed on the server by splitting on the
-          point, never by parsing a float, because{" "}
-          <code>parseFloat(&quot;1.005&quot;) * 100</code> is 100.49999999999999
-          and a product whose whole claim is exactness cannot lose it at the
-          boundary where the numbers come in.
-        </>
-      ),
+          <code>25000000</code>.
+        </>,
+        "Parsed on the server by splitting on the point, never by parsing a float.",
+        <>
+          <code>parseFloat(&quot;1.005&quot;) * 100</code> is 100.49999999999999,
+          and a product whose claim is exactness cannot lose it at the boundary.
+        </>,
+      ],
       answer: parsed?.ok ? money(parsed.minor.toString()) : null,
       body: (
         <>
@@ -176,7 +174,11 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
             id: "days",
             label: "Days",
             ask: "How many days of the period does this cover?",
-            why: "The amount above is the basis; the rule's own rate and day-count convention turn the two into a figure. A convention is an enum in the configuration, so the denominator can never be a float.",
+            why: [
+              "The amount above is the basis.",
+              "The rule's own rate and day-count convention turn the two into a figure.",
+              "A convention is an enum in the configuration, so the denominator can never be a float.",
+            ],
             answer: /^\d+$/.test(days) ? days : null,
             body: daysField,
           } satisfies Step,
@@ -186,7 +188,11 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
       id: "id",
       label: "Event id",
       ask: "What is this event called?",
-      why: "Carried onto the journal entry so it can be traced back to what caused it, and it is what makes recording the same event twice a refusal rather than a second entry. Letters, digits, - _ . and at most sixty-four of them; left blank, the server names it.",
+      why: [
+        "Carried onto the journal entry, so it can be traced back to what caused it.",
+        "It is what makes recording the same event twice a refusal rather than a second entry.",
+        "Letters, digits, - _ . and at most sixty-four of them. Left blank, the server names it.",
+      ],
       // ⚠ Optional, so it is answered even when empty — otherwise the tree
       // would block a ticket on a field the server fills in.
       answer: eventId.trim() || "the server names it",
