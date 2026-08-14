@@ -377,14 +377,20 @@ theorem a_calendar_that_never_opens_refuses_rather_than_looping (fuel : Nat) (d 
 
 /-- The next open day is strictly later.
 
-⚠ EVERY FACT BELOW IS STATED AT `Int`, NOT AT `Day`, and that is not decoration.
-`Day` abbreviates `Int`, and `omega` still reported "no usable constraints"
-against hypotheses carrying the abbreviated type — it reads arithmetic, not
-synonyms for it. The annotation is the whole fix. Note the `omega` calls further
-up this file, over `Vec Dim d`, need no such thing: those terms are already
-`Int`, which is what makes this the difference rather than a guess. -/
+⚠ THE TWO THEOREMS BELOW BIND THEIR DAYS AS `Int` RATHER THAN `Day`, AND IT IS
+`omega` THAT NEEDS IT. `Day` abbreviates `Int`, so the two are the same type —
+but a comparison written about variables declared `Day` carries `Day` as the
+implicit type argument of `<`, and `omega` matches that argument syntactically.
+It reported "no usable constraints found" against a context holding exactly the
+inequality it needed. Annotating the expressions does NOT fix it: `(d : Int)`
+elaborates to `d`, whose type is still `Day`, and unification puts `Day` back.
+Only the binder does.
+
+⭐ `Ratio.Valuation` is the precedent and the reason this is a diagnosis rather
+than a shot in the dark: `Observation.onDay` is declared `Int` outright, and
+every `omega` about it in that file has always worked. -/
 theorem nextOpenDay_moves_forward (h : Day → Bool) :
-    ∀ (fuel : Nat) (d r : Day), nextOpenDay h fuel d = some r → d < r := by
+    ∀ (fuel : Nat) (d r : Int), nextOpenDay h fuel d = some r → d < r := by
   intro fuel
   induction fuel with
   | zero => intro d r hr; simp [nextOpenDay] at hr
@@ -393,21 +399,25 @@ theorem nextOpenDay_moves_forward (h : Day → Bool) :
       unfold nextOpenDay at hr
       by_cases hh : h (d + 1) = true
       · rw [if_pos hh] at hr
-        have hlt : (d : Int) + 1 < (r : Int) := ih (d + 1) r hr
+        have hlt : d + 1 < r := ih (d + 1) r hr
         omega
       · simp only [Bool.not_eq_true] at hh
         rw [if_neg (by simp [hh])] at hr
-        have heq : (d : Int) + 1 = (r : Int) := by injection hr
+        -- `injection … with` names the equality and `subst` uses it, rather
+        -- than leaving `omega` to find a fact whose type it cannot read.
+        injection hr with heq
+        subst heq
         omega
 
 /-- Rolling over a calendar never goes backwards. -/
 theorem openDaysAfter_never_goes_back (h : Day → Bool) (fuel : Nat) :
-    ∀ (n : Nat) (d r : Day), openDaysAfter h fuel n d = some r → d ≤ r := by
+    ∀ (n : Nat) (d r : Int), openDaysAfter h fuel n d = some r → d ≤ r := by
   intro n
   induction n with
   | zero =>
       intro d r hr
-      have heq : (d : Int) = (r : Int) := by injection hr
+      injection hr with heq
+      subst heq
       omega
   | succ m ih =>
       intro d r hr
@@ -416,9 +426,13 @@ theorem openDaysAfter_never_goes_back (h : Day → Bool) (fuel : Nat) :
       | none => rw [hn] at hr; exact absurd hr (by simp)
       | some d' =>
           rw [hn] at hr
-          have h1 : (d : Int) < (d' : Int) := nextOpenDay_moves_forward h fuel d d' hn
-          have h2 : (d' : Int) ≤ (r : Int) := ih d' r hr
-          omega
+          -- ⚠ `d'` comes out of the `Option Day` and so is `Day`-typed whatever
+          -- these binders say. Both facts about it are `Int` comparisons —
+          -- their type argument comes from the theorems above — so it is only
+          -- ever an atom, which is the part `omega` does not care about.
+          have h1 : d < d' := nextOpenDay_moves_forward h fuel d d' hn
+          have h2 : d' ≤ r := ih d' r hr
+          exact Int.le_trans (Int.le_of_lt h1) h2
 
 /-- **A settlement date is never before the trade that produced it.**
 
