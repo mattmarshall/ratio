@@ -3168,9 +3168,16 @@ fn plan_pb(p: &ratio_nav::explain::Plan) -> pb::ExplainNavStrikeResponse {
                 cites: n.cites.clone(),
                 note: n.note.clone(),
                 estimated_reads: figure(n.estimated_reads),
-                estimated_duration: duration(n.estimated_duration),
+                // ⚠ `_nanos` ON THE MODEL, `_duration` ON THE WIRE, AND THAT
+                // MISMATCH IS DELIBERATE — unlike `source`/`target`, which had
+                // to agree because both sides carry the same string. These are
+                // different TYPES: an `Option<i64>` of nanoseconds becomes a
+                // `google.protobuf.Duration`, and `duration` is the conversion.
+                // Naming the integer `_duration` would hide that a conversion
+                // happens; naming the message `_nanos` fails the AIP linter.
+                estimated_duration: duration(n.estimated_nanos),
                 actual_rows: figure(n.actual_rows),
-                actual_duration: duration(n.actual_duration),
+                actual_duration: duration(n.actual_nanos),
             })
             .collect(),
         edges: p
