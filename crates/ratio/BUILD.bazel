@@ -33,6 +33,7 @@ rust_binary(
         "@crates//:aws-config",
         "@crates//:aws-sdk-ecs",
         "@crates//:aws-sdk-s3",
+        "@crates//:aws-sdk-sesv2",
         "@crates//:libc",
         "@crates//:prost",
         "@crates//:serde",

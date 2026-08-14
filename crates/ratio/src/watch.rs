@@ -282,6 +282,12 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         (_, "/scale.json") => json(scale_json(book, &req.query)),
         (_, "/scale-runs.json") => json(scale_runs_json()),
         ("POST", "/scale/start") => json(scale_start(&req.body)),
+        ("POST", "/scale/unlock") => json(scale_unlock(&req.body)),
+        (_, "/scale/unlock") => (
+            "405 Method Not Allowed",
+            "application/json",
+            "{\"error\":\"unlocking is a POST\"}".to_string(),
+        ),
         (_, "/scale/start") => (
             "405 Method Not Allowed",
             "application/json",
@@ -295,6 +301,17 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         // The console's API, transcoded from ratio.v1.Console's google.api.http
         // rules. //crates/ratio-console:transcode_test asserts these routes are
         // exactly the ones the contract declares.
+        // A run's published report — the permalink a lead's email points into.
+        // ⛔ The id is validated before it goes near a store key; an invalid one
+        // is a 404, indistinguishable from a run that never happened.
+        (_, p) if p.starts_with("/scale/runs/") && p.ends_with(".json") => {
+            let id = p.trim_start_matches("/scale/runs/").trim_end_matches(".json");
+            match scale_runner().and_then(|(r, _)| scale::report(r.store(), id)) {
+                Some(doc) => ("200 OK", "application/json", doc),
+                None => ("404 Not Found", "application/json", "{\"error\":\"no such run\"}".to_string()),
+            }
+        }
+
         (m, p) if p.starts_with("/v1/") => {
             // The console reads a FUNDS ROOT — a directory of books — while
             // every other screen, the MCP tools and the terminal operate on one
@@ -763,20 +780,61 @@ fn scale_start(body: &str) -> Result<String> {
         bail!("{}", scale::Refusal::NoSuchShape);
     };
 
+    // ⛔ THE EMAIL IS A MAILING-LIST ENTRY, NEVER A CONTROL. It is recorded and
+    // it earns the follow-up report; whether the fold may START is decided
+    // entirely by the lock, the cooldown and the ceiling, exactly as before —
+    // so a fabricated address buys nothing that costs money. Optional, because
+    // the gate is a page affordance: a caller who skips it just gets no email.
+    let email = req["email"].as_str().unwrap_or("").trim().to_string();
+    if !email.is_empty() {
+        if !scale::valid_email(&email) {
+            bail!("that does not look like an email address");
+        }
+        let _ = scale::record_lead(runs.store(), &email, now_secs());
+    }
+
     let now = now_secs();
     match runs.start(shape.name, now, this_month(now), "pending")? {
-        Err(refusal) => Ok(format!(
-            "{{\"started\":false,\"why\":{}}}",
-            quote(&refusal.to_string())
-        )),
+        Err(refusal) => {
+            // ⭐ A LEAD WHO ARRIVES DURING THE COOLDOWN STILL GETS THE REPORT.
+            // The latest run of this shape is the same fold they asked for —
+            // deterministic book, same dials, same seed — so the follow-up
+            // email cites it, sent now because no task exists to send it later.
+            let replay = scale::latest(runs.store(), shape.name);
+            if let (false, Some(id)) = (email.is_empty(), &replay) {
+                if let Some(Ok(mailer)) = scale::Mailer::from_env() {
+                    let summary = scale::report(runs.store(), id)
+                        .map(|j| scale::summarize_report(&j))
+                        .unwrap_or_default();
+                    if let Err(e) = mailer.send_report(&email, id, &summary) {
+                        eprintln!("replay report email failed: {e:#}");
+                    }
+                }
+            }
+            Ok(format!(
+                "{{\"started\":false,\"why\":{},\"report\":{}}}",
+                quote(&refusal.to_string()),
+                match &replay {
+                    Some(id) => quote(id),
+                    None => "null".to_string(),
+                }
+            ))
+        }
         Ok(_) => {
+            // The run's identity, minted here so the page can show the
+            // permalink before the fold begins and the task publishes to it.
+            let id = format!("{}-{now}", shape.name);
+            if !email.is_empty() {
+                let _ = scale::await_report(runs.store(), &id, &email);
+            }
             // ⛔ THE LOCK IS TAKEN BEFORE THE TASK IS ASKED FOR, and released if
             // asking fails. The other order would let two visitors both reach
             // RunTask while neither holds anything.
-            match launcher.launch(shape.name) {
+            match launcher.launch(shape.name, &id) {
                 Ok(token) => Ok(format!(
-                    "{{\"started\":true,\"size\":{},\"where\":{},\"token\":{}}}",
+                    "{{\"started\":true,\"size\":{},\"id\":{},\"where\":{},\"token\":{}}}",
                     quote(shape.name),
+                    quote(&id),
                     quote(&launcher.describe()),
                     quote(&token)
                 )),
@@ -791,6 +849,26 @@ fn scale_start(body: &str) -> Result<String> {
             }
         }
     }
+}
+
+/// Register an address on the mailing list, unlocking the demo button.
+///
+/// ⛔ THE UNLOCK IS A PAGE AFFORDANCE, NOT A BOUNDARY. Skipping this route and
+/// POSTing /scale/start directly starts the same fold under the same money
+/// controls — what a skipper forfeits is the report email. Pretending this were
+/// authentication would be the lie; recording the list here and at start is the
+/// honest shape.
+fn scale_unlock(body: &str) -> Result<String> {
+    let Some((runs, _)) = scale_runner() else {
+        bail!("this server has no scale runner configured, so there is no demo to unlock");
+    };
+    let req: serde_json::Value = serde_json::from_str(body).context("that is not JSON")?;
+    let email = req["email"].as_str().unwrap_or("").trim();
+    if !scale::valid_email(email) {
+        bail!("that does not look like an email address");
+    }
+    let new = scale::record_lead(runs.store(), email, now_secs())?;
+    Ok(format!("{{\"unlocked\":true,\"new\":{new}}}"))
 }
 
 /// What has run, what is running, and what each shape costs to run.
