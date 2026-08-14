@@ -1216,6 +1216,7 @@ impl Projection {
     /// `Ratio.Actions.Factor.a_factor_can_succeed_where_the_rewrite_refuses`.
     pub fn units_as_of(&self, dim: i64, instrument: &str, day: &str) -> Result<AsOf<i64>> {
         let stored = self
+            .only()
             .positions
             .held
             .get(&(dim, Text::from(instrument)))
