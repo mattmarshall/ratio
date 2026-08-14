@@ -39,6 +39,26 @@ use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::RuleSet;
 use ratio_store::{AccountTypeRecord, ConfigStore, FileBook, Journal, Plane};
 
+/// What stands between a fund and a NAV.
+///
+/// Two lists rather than one count, because they are cleared by different
+/// people doing different things — an unexplained blocking break wants
+/// somebody's judgment, a pending fact wants a record in the master — and a
+/// refusal that said only "3 things" would send an operator looking for the
+/// wrong three.
+pub struct Blocking {
+    /// Unexplained breaks the tolerance grades as blocking.
+    pub breaks: Vec<pb::Break>,
+    /// Facts read out of a delivery that do not resolve yet.
+    pub pending: Vec<pb::PendingFact>,
+}
+
+impl Blocking {
+    pub fn is_empty(&self) -> bool {
+        self.breaks.is_empty() && self.pending.is_empty()
+    }
+}
+
 /// One record in `explanations.jsonl`: why somebody decided a difference was
 /// acceptable.
 ///
@@ -48,9 +68,16 @@ use ratio_store::{AccountTypeRecord, ConfigStore, FileBook, Journal, Plane};
 /// change log saying a person accepted something that is no longer there.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct BreakExplanation {
-    /// `funds/{fund}/breaks/{break}` — derived from the account dimension, so
-    /// it survives the report being regenerated.
-    pub break_name: String,
+    /// The break's id WITHIN THIS BOOK — the account dimension, or `lot-{n}`.
+    ///
+    /// ⛔ NOT THE RESOURCE NAME, AND THE DIFFERENCE COST A DEMO. A break is
+    /// named `funds/{fund}/breaks/{id}`, and the fund half is a property of how
+    /// the book is being SERVED, not of the book: the same directory is fund
+    /// `demo` on loopback and `pennington-select-income` under a funds root.
+    /// Keying a note by the full name meant one written by the seeder never
+    /// matched the break the console showed — the explanation on disk, the
+    /// break on screen, and nothing connecting them.
+    pub break_id: String,
     pub text: String,
     /// ⛔ THE VERIFIED SUBJECT, never anything a caller sent.
     pub actor: String,
@@ -1665,11 +1692,14 @@ impl Console {
             entries_len += 1;
             Ok(())
         })?;
+        // ⛔ THE SAME PREDICATE `ratio strike` REFUSES ON. Derived here from
+        // `blocking_at` rather than restated, so the badge and the refusal are
+        // one derivation — two folds of "what blocks" would be plausible,
+        // independently maintained, and one field apart within a month.
+        let blocking = self.blocking_at(&id)?;
         let state = if entries_len == 0 && pending.is_empty() {
             pb::fund::State::AwaitingPrices
-        } else if !pending.is_empty()
-            || open.iter().any(|k| k.severity == pb::Severity::High as i32)
-        {
+        } else if !blocking.is_empty() {
             pb::fund::State::Blocked
         } else if !breaks.is_empty() {
             pb::fund::State::InReview
@@ -2207,6 +2237,34 @@ impl Console {
             .collect())
     }
 
+    /// Everything standing between this fund and a NAV.
+    ///
+    /// ⛔ ONE DERIVATION, READ BY BOTH THE SCREEN AND THE REFUSAL. `get_fund`
+    /// computes `STATE_BLOCKED` from this and `ratio strike` refuses on it, so
+    /// the badge an operator is looking at and the reason their command was
+    /// declined cannot come to disagree. That is the property
+    /// `unpriced_at`'s doc comment names — the message and the decision being
+    /// one derivation — and the failure it prevents is the ordinary one: two
+    /// folds of "what blocks", both plausible, drifting a field apart.
+    ///
+    /// ⚠ THE PENDING FOLD HAS TO BE THIS ONE. `pending_of` drops facts already
+    /// posted to the journal, a filter that exists because a duplicate
+    /// identifier arriving later would otherwise re-block a NAV that was
+    /// already struck — found by `//tla:control_plane_check`. The CLI's own
+    /// `pending` screen does not filter, so reaching for it here would refuse
+    /// strikes for a reason the console never shows.
+    pub fn blocking_at(&self, fund: &str) -> Result<Blocking> {
+        let path = self.book_path(fund)?;
+        let breaks = self.breaks_for(&path, fund)?;
+        Ok(Blocking {
+            breaks: breaks
+                .into_iter()
+                .filter(|k| !k.explained && k.severity == pb::Severity::High as i32)
+                .collect(),
+            pending: self.pending_of(fund)?,
+        })
+    }
+
     /// The newest explanation recorded for each break on this fund.
     ///
     /// A fold over the plane, newest wins. Nothing is indexed and nothing is
@@ -2215,7 +2273,7 @@ impl Console {
         let b = FileBook::open(book)?;
         let mut out: BTreeMap<String, BreakExplanation> = BTreeMap::new();
         for e in b.records::<BreakExplanation>(Plane::Explanations)? {
-            out.insert(e.break_name.clone(), e);
+            out.insert(e.break_id.clone(), e);
         }
         Ok(out)
     }
@@ -2235,7 +2293,7 @@ impl Console {
     /// client call to be read by a screen, so an `AcceptBreakExplanation` RPC
     /// would DEMAND the write screen that must not exist.
     pub fn accept_explanation(&self, break_name: &str, text: &str) -> Result<pb::BreakExplanation> {
-        let (fund, _) = nested_id(break_name, "funds", "breaks").context("bad break name")?;
+        let (fund, want) = nested_id(break_name, "funds", "breaks").context("bad break name")?;
         let path = self.book_path(&fund)?;
 
         let text = text.trim();
@@ -2248,7 +2306,7 @@ impl Console {
         // requires those to fail before a person reads them — here, before one
         // is recorded at all.
         let breaks = self.breaks_for(&path, &fund)?;
-        let Some(brk) = breaks.iter().find(|k| k.name == break_name) else {
+        let Some(brk) = breaks.iter().find(|k| break_id_of(&k.name) == want) else {
             bail!(
                 "no break {break_name} on this fund — the breaks it does have are listed by \
                  `ratio watch` and on the exceptions screen"
@@ -2279,7 +2337,7 @@ impl Console {
         })?;
 
         let record = BreakExplanation {
-            break_name: break_name.to_string(),
+            break_id: want.to_string(),
             text: text.to_string(),
             actor: self.actor.clone().unwrap_or_default(),
             accept_time: std::time::SystemTime::now()
@@ -2350,7 +2408,7 @@ impl Console {
     /// anything either.
     fn explain(&self, breaks: &mut [pb::Break], recorded: &BTreeMap<String, BreakExplanation>) {
         for k in breaks.iter_mut() {
-            let Some(e) = recorded.get(&k.name) else { continue };
+            let Some(e) = recorded.get(break_id_of(&k.name)) else { continue };
             let same_figure = e.difference.to_string() == k.difference;
             let same_terms = e.config_digest == k.config_digest;
             k.explained = same_figure && same_terms;
@@ -2565,6 +2623,14 @@ fn newest_report(book: &Path) -> Result<Option<kernel::BreakReport>> {
                 .with_context(|| format!("reading {}", p.display()))?,
         )),
     }
+}
+
+/// A break's id within its book: the last segment of its resource name.
+///
+/// ⛔ The fund half of a break name says how the book is being served, not
+/// what it is. See `BreakExplanation::break_id`.
+fn break_id_of(name: &str) -> &str {
+    name.rsplit('/').next().unwrap_or(name)
 }
 
 /// A stored explanation as the contract shows it.
@@ -3627,6 +3693,78 @@ mod tests {
             "explained is not unexplained"
         );
         assert_eq!(c.list_breaks("funds/demo", "").unwrap().breaks.len(), 1, "and it is still there");
+    }
+
+    #[test]
+    fn an_explanation_survives_the_book_being_served_under_another_fund_name() {
+        // ⛔ THE BUG THIS EXISTS FOR, AND ONLY THE SEEDED DEMO FOUND IT. A note
+        // was keyed by the break's RESOURCE NAME, whose fund half is a property
+        // of how the book is served rather than of the book: the seeder writes
+        // one against `funds/demo/breaks/1` on a loopback book, and the same
+        // directory under a funds root serves that break as
+        // `funds/pennington-select-income/breaks/1`. The explanation sat on
+        // disk, the break sat on screen, and nothing connected them — so a fund
+        // seeded as explained came up BLOCKED with the note invisible.
+        //
+        // ⚠ NO UNIT TEST COULD HAVE SEEN IT: every one of them uses a
+        // root-that-is-a-book, where the fund is always `demo`.
+        let root = fresh("servedelsewhere");
+        let inner = root.join("pennington-select-income");
+        std::fs::create_dir_all(&inner).unwrap();
+        book(&inner);
+        let digest = config_with_tolerance(&inner, 500, 100_000);
+        write_report(&inner, &digest, 200_000);
+
+        // Accepted the way the seeder does it: against the book directly,
+        // where the fund is `demo`.
+        Console::new(&inner)
+            .as_actor("e.marsh")
+            .accept_explanation("funds/demo/breaks/1", "known and accepted")
+            .unwrap();
+
+        // Read the way the console serves it: as one fund among several.
+        let served = Console::new(&root)
+            .list_breaks("funds/pennington-select-income", "")
+            .unwrap()
+            .breaks;
+        assert!(
+            served[0].explained,
+            "the note followed the book, not the name it is served under",
+        );
+        assert_eq!(served[0].explanation.as_ref().unwrap().actor, "e.marsh");
+    }
+
+    #[test]
+    fn the_gate_and_the_fund_state_are_one_derivation() {
+        // ⭐ THE PROPERTY THAT STOPS THE SCREEN AND THE REFUSAL DRIFTING. The
+        // console reported BLOCKED for months while `ratio strike` never asked,
+        // and the fix is not "make the command check too" — it is that there is
+        // one fold of what blocks and both read it. Two plausible folds,
+        // independently maintained, are one field apart within a month.
+        let d = book_with_a_break("onederivation", 200_000);
+        let c = Console::new(&d);
+
+        let blocked_now = |c: &Console| {
+            c.get_fund("funds/demo").unwrap().state == pb::fund::State::Blocked as i32
+        };
+
+        // Blocking, on both readings.
+        assert!(!c.blocking_at("demo").unwrap().is_empty());
+        assert!(blocked_now(&c));
+
+        // Explained: neither reading blocks.
+        Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation("funds/demo/breaks/1", "known and accepted")
+            .unwrap();
+        assert!(c.blocking_at("demo").unwrap().is_empty());
+        assert!(!blocked_now(&c), "the badge agrees with the gate");
+
+        // And a fund below its own tolerance blocks on neither.
+        let e = book_with_a_break("onederivationlow", 100);
+        let c2 = Console::new(&e);
+        assert!(c2.blocking_at("demo").unwrap().is_empty());
+        assert!(!blocked_now(&c2));
     }
 
     #[test]

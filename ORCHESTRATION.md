@@ -399,6 +399,31 @@ enforcement below the fence — a kernel-side refusal like the unpriced one —
 and never an agent's judgment layered on an unenforced gate, which would
 launder the gap into prose.
 
+⭐ **Amended 2026-08-14 — the seam is closed, and it closed where this
+paragraph said it should.** `ratio strike` refuses a fund with an unexplained
+blocking break or a pending fact, in the shape the unpriced list already had:
+the whole list at once, each entry naming the verb that clears it, one
+`bail!`, and nothing recorded. It fires on a bare `ratio strike` rather than
+only with `--as-of` — the unpriced half is conditional for a principled reason
+that does not apply to a break, and a gate the common invocation walks past is
+a fence with a door.
+
+⭐ **`Console::blocking_at` is one derivation, and `get_fund` reads it too.**
+The BLOCKED badge and the refusal are now the same fold, so the screen an
+operator is looking at and the reason their command was declined cannot come
+to disagree — which is the failure this seam WAS: two plausible answers, one
+enforced by nothing. `//tla:close_gate_check` holds the sequence properties,
+and three probes hold the designs that fail: striking anyway, a stale note
+clearing the gate, and — the one that earned the spec —
+`ExplanationPinnedToThePrefix`, where retiring a note on every posting
+deadlocks a fund that posts on the morning of its close.
+
+⚠ **And the demo stopped contradicting itself.** The seeder used to declare
+harbourline blocked and then strike it. It no longer strikes it, because it
+no longer can; a sixth fund carries the same break with somebody's name
+against it and strikes cleanly. Two books from one seeder differing in one
+person's act.
+
 **No substrate, and human where it exists:** dissemination to exchanges and
 vendors, and rate confirmation to a transfer agency, do not exist here. The
 roadmap's own concession — final release approval is "regulatory, likely

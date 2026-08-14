@@ -163,6 +163,22 @@ the conserved one, and the kernel never said it was.
   custom bands because grading everything HIGH looks like a bug; doing that
   certifies a difference as small using a tolerance nobody could read, on a book
   that ties. `Tolerance` is `None` on such a break rather than claiming bounds.
+- ⭐ **`Console::blocking_at` IS THE ONE FOLD OF WHAT BLOCKS, AND BOTH THE BADGE
+  AND THE REFUSAL READ IT.** `get_fund` derives `STATE_BLOCKED` from it and
+  `ratio strike` refuses on it. Two folds would be individually plausible,
+  independently maintained, and one field apart within a month — which is
+  exactly what the seam WAS: a screen saying BLOCKED and a command that never
+  asked. `the_gate_and_the_fund_state_are_one_derivation` holds them together.
+- ⛔ **AN EXPLANATION IS KEYED BY THE BREAK'S ID WITHIN ITS BOOK, NOT BY THE
+  RESOURCE NAME.** The fund half of `funds/{fund}/breaks/{id}` says how the book
+  is being SERVED — the same directory is `demo` on loopback and
+  `pennington-select-income` under a funds root — so a note written by the
+  seeder never matched the break the console showed. The explanation sat on
+  disk, the break sat on screen, and nothing connected them.
+  ⚠ **No unit test could have caught it**: every one of them uses a
+  root-that-is-a-book, where the fund is always `demo`. The seeded demo found
+  it, which is the argument for `//deploy:seed_test` asserting what the demo
+  DEMONSTRATES.
 - ⭐ **AN EXPLANATION'S CURRENCY TEST IS `(difference, config_digest)` AND
   DELIBERATELY NOT THE JOURNAL POSITION.** Both directions are a real failure and
   both are negative-tested. Add the prefix to the test and every explanation
@@ -253,6 +269,19 @@ the conserved one, and the kernel never said it was.
   `AcceptBreakExplanation` "just for the API" forces the write screen the fence
   forbids — which is why acceptance is a CLI verb. The mechanism protecting the
   buttonless console is that test, not discipline.
+- ⚠ **`ratio strike` STILL TAKES ITS VALUATION POINT FROM `SystemTime::now()`,
+  EVEN WITH `--as-of`.** The flag is only a gate parameter; a strike labelled
+  as-of a past day is stamped today. Surfaced while building the gate and
+  deliberately not fixed there — it changes the strike id, the `NAVS` ledger's
+  meaning and `one_answer_per_day`'s subject, and belongs in its own commit.
+- ⚠ **`console/scripts/capture_fixtures.sh` takes `navStrikes.json` and
+  `replay.json` from `RATIO_FIXTURE_STRUCK_FUND`, not from `RATIO_FIXTURE_FUND`.**
+  The fixture fund is the BLOCKED book on purpose, and a blocked book now has no
+  strikes, so `id navStrikes.json` would index an empty list. ⚠ The fixtures are
+  stale in their VALUES — `break.json`'s name predates names being derived from
+  the dimension — and `fixtures_test.py` cannot see it, because it checks field
+  sets. The capture path is verified working; refreshing the data is its own
+  change.
 - ⚠ **`vi.mock`'s factory SPREADS the `wire` object, so reassigning
   `wire.getBreak` inside a test does nothing.** The mock captured the function
   values when it ran. A case that needs different data needs a different

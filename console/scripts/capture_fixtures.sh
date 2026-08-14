@@ -26,6 +26,13 @@ set -euo pipefail
 
 API="${RATIO_API_ORIGIN:-http://127.0.0.1:7373}"
 FUND="${RATIO_FIXTURE_FUND:-harbourline-global-value}"
+# ⛔ THE STRIKE FIXTURES COME FROM A FUND THAT HAS ONE. `$FUND` is the blocked
+# book on purpose — it carries the break, the pending fact and the explanation
+# state the screens are about — and a blocked fund now REFUSES its own NAV, so
+# it has no strikes to capture and `id navStrikes.json` below would index an
+# empty list. Which is the demo working: a fund that says BLOCKED and shows a
+# NAV is a screen nobody should believe.
+STRUCK="${RATIO_FIXTURE_STRUCK_FUND:-northstar-multi-strategy}"
 OUT="$(cd "$(dirname "$0")/../fixtures" && pwd)"
 
 get() { # get <file> <path>
@@ -44,7 +51,7 @@ get fund.json               "funds/${FUND}"
 get breaks.json             "funds/${FUND}/breaks"
 get accounts.json           "funds/${FUND}/accounts"
 get positions.json          "funds/${FUND}/positions"
-get navStrikes.json         "funds/${FUND}/navStrikes"
+get navStrikes.json         "funds/${STRUCK}/navStrikes"
 get configVersions.json     "funds/${FUND}/configVersions"
 get rules.json              "funds/${FUND}/rules"
 get templates.json          "funds/${FUND}/templates"
@@ -60,7 +67,7 @@ id() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d[sys.
 get break.json      "funds/${FUND}/breaks/$(id breaks.json breaks)"
 get postings.json   "funds/${FUND}/accounts/$(id accounts.json accounts)/postings"
 get lots.json       "funds/${FUND}/positions/$(id positions.json positions)/lots"
-get replay.json     "funds/${FUND}/navStrikes/$(id navStrikes.json navStrikes):replay"
+get replay.json     "funds/${STRUCK}/navStrikes/$(id navStrikes.json navStrikes):replay"
 get diff.json       "funds/${FUND}/configVersions/$(id configVersions.json configVersions):diff"
 
 echo "captured into $OUT — now run: python3 console/scripts/fixtures_test.py \\"

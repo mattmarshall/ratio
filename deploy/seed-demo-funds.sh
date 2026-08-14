@@ -38,8 +38,15 @@ CSV
 # This one carries the data-plane gap as well as the break: an instrument the
 # master does not know, so a fact pends and the NAV is blocked for two
 # independent reasons — which is what a real morning looks like.
+#
+# ⛔ AND IT IS NOT STRUCK, WHICH IS THE POINT OF THE FUND. It used to be: the
+# seeder declared this book blocked and then took a NAV on it, which is the
+# contradiction seed-demo-book.sh's own comment apologises for one file over.
+# `ratio strike` now refuses a blocked fund, so striking here would fail the
+# script — and the honest demo is better anyway. A fund that says BLOCKED and
+# has no NAV is the product working; a fund that says BLOCKED and shows one is
+# a screen nobody should believe.
 LEAVE_ONE_PENDING=1 "$HERE/seed-demo-book.sh" "$RATIO" "$OUT/harbourline-global-value" >/dev/null
-"$RATIO" strike --book "$OUT/harbourline-global-value" >/dev/null
 
 # ── 2. Struck: the same book, reconciled against figures that agree ────────
 B="$OUT/northstar-multi-strategy"
@@ -89,4 +96,18 @@ SHAPE="--securities 20 --lots-per 40 --currencies 3 --seed 1"
 "$RATIO" gen --book "$OUT/bellwether-tax-managed" $SHAPE --method hifo >/dev/null
 "$RATIO" strike --book "$OUT/bellwether-tax-managed" >/dev/null
 
-echo "seeded 5 funds at $OUT"
+# ── 6. The same break as fund 1, and somebody explained it ─────────────────
+#
+# ⭐ THE ONLY PLACE THE CLEARED GATE IS VISIBLE. Fund 1 has a 2,000.00 break and
+# cannot strike; this book has the SAME 2,000.00 break, a person's note against
+# it, and a NAV. One act separates them, which is the shape seed_test.sh already
+# uses for the lot method: two books from one seeder differing in one line.
+#
+# ⚠ AND THE BREAK IS STILL THERE. It is explained, not cleared — same URL, same
+# figures, same place in the queue, with a name and a reason against it. A demo
+# where accepting an explanation made the exception disappear would be showing
+# the one behaviour this product refuses.
+EXPLAIN_THE_BREAK=1 "$HERE/seed-demo-book.sh" "$RATIO" "$OUT/pennington-select-income" >/dev/null
+RATIO_ACTOR=e.marsh "$RATIO" strike --book "$OUT/pennington-select-income" >/dev/null
+
+echo "seeded 6 funds at $OUT"
