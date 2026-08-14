@@ -677,27 +677,49 @@ fn balance_json(book: &Path) -> Result<String> {
 /// in and no cluster to run on — the screen then serves its estimate and its
 /// recorded figures, and offers no button. Same shape as an unset
 /// `RATIO_COGNITO_*` meaning "no identity provider here".
-type Scale = (scale::Runs<scale::S3>, scale::Ecs);
+type DynStore = Box<dyn scale::Store + Send + Sync>;
+type Scale = (scale::Runs<DynStore>, Box<dyn scale::Launcher + Send + Sync>);
 
 fn scale_runner() -> Option<&'static Scale> {
     static SCALE: std::sync::OnceLock<Option<Scale>> = std::sync::OnceLock::new();
     SCALE
         .get_or_init(|| {
-            let bucket = std::env::var("RATIO_SCALE_BUCKET").ok().filter(|b| !b.is_empty())?;
-            let ecs = match scale::Ecs::from_env()? {
-                Ok(e) => e,
-                Err(e) => {
-                    eprintln!("the scale runner is configured but unusable: {e:#}");
-                    return None;
-                }
-            };
-            match scale::S3::open(bucket, "runs/") {
-                Ok(s) => Some((scale::Runs::over(s), ecs)),
-                Err(e) => {
-                    eprintln!("the scale record is configured but unusable: {e:#}");
-                    None
-                }
+            // The deployed shape: the record in S3, the fold in a Fargate task.
+            if let Some(bucket) =
+                std::env::var("RATIO_SCALE_BUCKET").ok().filter(|b| !b.is_empty())
+            {
+                let ecs = match scale::Ecs::from_env()? {
+                    Ok(e) => e,
+                    Err(e) => {
+                        eprintln!("the scale runner is configured but unusable: {e:#}");
+                        return None;
+                    }
+                };
+                return match scale::S3::open(bucket, "runs/") {
+                    Ok(s) => Some((
+                        scale::Runs::over(Box::new(s) as DynStore),
+                        Box::new(ecs) as Box<dyn scale::Launcher + Send + Sync>,
+                    )),
+                    Err(e) => {
+                        eprintln!("the scale record is configured but unusable: {e:#}");
+                        None
+                    }
+                };
             }
+
+            // ⚠ THE LOCAL SHAPE IS OPT-IN, NOT INFERRED. `RATIO_SCALE_LOCAL=<dir>`
+            // folds on a thread in this process with the record on disk — which
+            // is how the progress UI is watched working before a deploy. It is
+            // NOT the default for a bare `ratio watch`, because the full shape
+            // generates a ~40 GB journal, and a button that can do that to a
+            // laptop must be asked for in the environment, not offered by one.
+            let dir = std::env::var("RATIO_SCALE_LOCAL").ok().filter(|d| !d.is_empty())?;
+            let dir = std::path::PathBuf::from(dir);
+            Some((
+                scale::Runs::over(Box::new(scale::Files::at(dir.join("runs"))) as DynStore),
+                Box::new(scale::Here { books: dir.join("books"), root: dir.join("runs") })
+                    as Box<dyn scale::Launcher + Send + Sync>,
+            ))
         })
         .as_ref()
 }
@@ -759,7 +781,11 @@ fn scale_start(body: &str) -> Result<String> {
                     quote(&token)
                 )),
                 Err(e) => {
-                    let _ = runs.finish(shape.name, None);
+                    // ⛔ `abandon`, NOT `finish`. No compute happened — the task
+                    // was refused before it existed — so the cooldown and the
+                    // charge are walked back with the lock. `finish` here left
+                    // the deployed demo cooling for a run that never ran.
+                    let _ = runs.abandon(shape.name, this_month(now));
                     Err(e).context("the fold was allowed but could not be started")
                 }
             }
@@ -802,9 +828,15 @@ fn scale_runs_json() -> Result<String> {
             s.cents,
             s.cooldown,
             if last > 0 { last + s.cooldown } else { 0 },
+            // ⚠ EMBEDDED RAW, BECAUSE IT IS A DOCUMENT NOW — a phase and a
+            // sample series, not a display string. The `starts_with` guard is
+            // for a stale key written by the previous format; quoting a JSON
+            // document would hand the page a string it then had to parse out of
+            // a string, and embedding a NON-document raw would corrupt the
+            // whole response.
             match &progress {
-                Some(p) => quote(p),
-                None => "null".to_string(),
+                Some(p) if p.starts_with('{') => p.clone(),
+                _ => "null".to_string(),
             },
             result.unwrap_or_else(|| "null".to_string()),
         ));
@@ -1876,6 +1908,24 @@ function the kernel runs, not a model of it.</p>
   a cooldown per shape and a monthly ceiling. A second visitor arriving mid-run
   <em>joins</em> it — the book is generated from a seed, so it is the same fold
   they would have started.</p>
+
+  <div id="live" hidden>
+    <h3 id="live-title"></h3>
+    <div class="meter"><div id="live-bar"></div></div>
+    <dl class="readout">
+      <div><dt>entries</dt><dd id="live-n">—</dd></div>
+      <div><dt>rate</dt><dd id="live-rate">—</dd></div>
+      <div><dt>eta</dt><dd id="live-eta">—</dd></div>
+      <div><dt>elapsed</dt><dd id="live-t">—</dd></div>
+    </dl>
+    <figure class="livefig">
+      <svg id="live-chart" viewBox="0 0 640 200" role="img"
+           aria-label="Entries processed against elapsed seconds, drawn as the run happens"></svg>
+      <figcaption class="note">⛔ This is the GROWING curve — the journal being
+      read from nothing. The flat one is the strike in the panel above, and the
+      dashes mark where the recorded run of this shape finished.</figcaption>
+    </figure>
+  </div>
 </section>
 
 <p class="note">⛔ <strong>Quoting the second curve as though it were the
@@ -1924,6 +1974,18 @@ button.fold{font:inherit;font-size:13px;font-weight:600;padding:5px 12px;
   color:var(--ground);cursor:pointer}
 button.fold[disabled]{background:transparent;color:var(--muted);
   border-color:var(--rule);cursor:not-allowed}
+#live{margin-top:18px;padding-top:14px;border-top:1px solid var(--rule)}
+#live h3{font-size:14px;margin:0 0 8px}
+.meter{height:10px;border-radius:99px;background:var(--surface);overflow:hidden}
+#live-bar{height:100%;width:0%;background:var(--accent);border-radius:99px;
+  transition:width .8s linear}
+.readout{display:flex;gap:26px;margin:10px 0 4px;flex-wrap:wrap}
+.readout div{display:flex;flex-direction:column}
+.readout dt{font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted)}
+.readout dd{margin:0;font-variant-numeric:tabular-nums;font-weight:600}
+.livefig{margin:12px 0 0}
+#live-chart{width:100%;height:auto;display:block}
 .note{font-size:13px;color:var(--muted);max-width:62ch}
 </style>
 <script>
@@ -1981,6 +2043,7 @@ async function tick() {
 
 // ── the runs panel ──────────────────────────────────────────────────────
 const ms = n => n >= 1000 ? (n / 1000).toFixed(1) + ' s' : n + ' ms';
+const secs = t => t >= 90 ? Math.round(t / 60) + ' min' : Math.round(t) + ' s';
 
 function cell(row, text, cls) {
   const td = document.createElement('td');
@@ -1988,6 +2051,139 @@ function cell(row, text, cls) {
   if (cls) td.className = cls;
   row.append(td);
   return td;
+}
+
+// SVG built with the DOM, like everything else on these screens — the chart is
+// data plus two labels, and none of it may pass through markup.
+const SVG = 'http://www.w3.org/2000/svg';
+function el(name, attrs, parent) {
+  const e = document.createElementNS(SVG, name);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  parent.append(e);
+  return e;
+}
+
+// The rate over a trailing window, never since the start: parse and fold move
+// at different speeds, and generation at a third, so a cumulative average is
+// wrong in every phase.
+function windowed(samples) {
+  if (samples.length < 2) return 0;
+  const last = samples[samples.length - 1];
+  let i = samples.length - 2;
+  while (i > 0 && last[0] - samples[i][0] < 30) i--;
+  const dt = last[0] - samples[i][0];
+  return dt > 0 ? (last[1] - samples[i][1]) / dt : 0;
+}
+
+// Entries against elapsed seconds, with the recorded run's finish as a dashed
+// vertical marker. ⚠ A MARKER, NOT A PROJECTED LINE: the recorded run left one
+// number — where it ended — and drawing a slope to it would claim a trajectory
+// nobody measured.
+function drawChart(svg, samples, expected, recordedS) {
+  svg.replaceChildren();
+  const W = 640, H = 200, L = 46, R = 12, T = 12, B = 24;
+  const last = samples[samples.length - 1] || [0, 0];
+  const xMax = Math.max(last[0] * 1.15, recordedS * 1.05, 10);
+  const yMax = Math.max(expected, last[1]);
+  const px = t => L + (W - L - R) * (t / xMax);
+  const py = n => H - B - (H - T - B) * (n / yMax);
+
+  // Recessive grid: three lines, no box.
+  for (const f of [0.25, 0.5, 0.75, 1]) {
+    el('line', {x1: L, x2: W - R, y1: py(yMax * f), y2: py(yMax * f),
+      stroke: 'var(--rule)', 'stroke-width': 1}, svg);
+  }
+  el('line', {x1: L, x2: W - R, y1: py(0), y2: py(0),
+    stroke: 'var(--muted)', 'stroke-width': 1}, svg);
+
+  // Axis extents in text tokens — the only numbers on the frame.
+  const label = (x, y, text, anchor) => {
+    const t = el('text', {x, y, 'text-anchor': anchor, fill: 'var(--muted)',
+      'font-size': 11}, svg);
+    t.textContent = text;
+    return t;
+  };
+  label(L - 6, py(yMax) + 4, fmt(yMax), 'end');
+  label(L - 6, py(0) + 4, '0', 'end');
+  label(W - R, H - 6, secs(xMax), 'end');
+  label(L, H - 6, '0', 'start');
+
+  // Where the recorded run of this shape FINISHED.
+  if (recordedS <= xMax) {
+    el('line', {x1: px(recordedS), x2: px(recordedS), y1: py(yMax), y2: py(0),
+      stroke: 'var(--muted)', 'stroke-width': 1.5,
+      'stroke-dasharray': '5 4'}, svg);
+    label(px(recordedS), H - 6, 'recorded ' + secs(recordedS), 'middle');
+  }
+
+  // The series: one line, the page's accent, 2px.
+  if (samples.length > 1) {
+    el('polyline', {
+      points: samples.map(([t, n]) => px(t) + ',' + py(n)).join(' '),
+      fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2,
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round'}, svg);
+  }
+  const dot = el('circle', {cx: px(last[0]), cy: py(last[1]), r: 4,
+    fill: 'var(--accent)'}, svg);
+
+  // The hover layer: nearest sample under the pointer, as a crosshair + text.
+  const hoverLine = el('line', {y1: py(yMax), y2: py(0), stroke: 'var(--text-2)',
+    'stroke-width': 1, visibility: 'hidden'}, svg);
+  const hoverText = el('text', {fill: 'var(--text-2)', 'font-size': 11,
+    'text-anchor': 'middle', visibility: 'hidden'}, svg);
+  const overlay = el('rect', {x: L, y: T, width: W - L - R, height: H - T - B,
+    fill: 'transparent'}, svg);
+  overlay.addEventListener('mousemove', ev => {
+    const box = svg.getBoundingClientRect();
+    const t = ((ev.clientX - box.left) * (W / box.width) - L) / (W - L - R) * xMax;
+    let best = samples[0];
+    for (const s of samples) if (Math.abs(s[0] - t) < Math.abs(best[0] - t)) best = s;
+    if (!best) return;
+    hoverLine.setAttribute('x1', px(best[0]));
+    hoverLine.setAttribute('x2', px(best[0]));
+    hoverText.setAttribute('x', px(best[0]));
+    hoverText.setAttribute('y', Math.max(py(best[1]) - 8, T + 10));
+    hoverText.textContent = fmt(best[1]) + ' @ ' + secs(best[0]);
+    hoverLine.setAttribute('visibility', 'visible');
+    hoverText.setAttribute('visibility', 'visible');
+  });
+  overlay.addEventListener('mouseleave', () => {
+    hoverLine.setAttribute('visibility', 'hidden');
+    hoverText.setAttribute('visibility', 'hidden');
+  });
+  svg.append(dot, hoverLine, hoverText, overlay);
+}
+
+function showLive(d) {
+  const live = document.getElementById('live');
+  if (!d.running) { live.hidden = true; return false; }
+  const s = d.shapes.find(x => x.size === d.running.size);
+  const p = s && s.progress;
+  live.hidden = false;
+  const phase = p ? p.phase : 'starting';
+  document.getElementById('live-title').textContent =
+    'The ' + d.running.size + ' fold, ' + phase;
+  if (!p || !p.samples || !p.samples.length) return true;
+
+  const last = p.samples[p.samples.length - 1];
+  const frac = p.expected > 0 ? last[1] / p.expected : 0;
+  // ⚠ CLAMPED: `expected` is the DECLARED entry count, and if the generator
+  // ever drifted from the table a bar past 100% would be the symptom. The
+  // chart deliberately does not clamp, so the drift stays visible somewhere.
+  document.getElementById('live-bar').style.width =
+    Math.min(100, frac * 100).toFixed(1) + '%';
+  document.getElementById('live-n').textContent =
+    fmt(last[1]) + ' / ' + fmt(p.expected);
+  document.getElementById('live-t').textContent = secs(last[0]);
+  const rate = windowed(p.samples);
+  document.getElementById('live-rate').textContent =
+    rate > 0 ? fmt(Math.round(rate)) + '/s' : '—';
+  document.getElementById('live-eta').textContent =
+    rate > 0 && p.expected > last[1]
+      ? '~' + secs((p.expected - last[1]) / rate) : '—';
+  drawChart(document.getElementById('live-chart'), p.samples, p.expected,
+    s.recorded_cold_build_ms / 1000);
+  return true;
 }
 
 async function runs() {
@@ -2013,15 +2209,16 @@ async function runs() {
     // ⛔ THE COLD BUILD, NOT THE STRIKE. The flat curve is the panel above;
     // putting it here unlabelled beside "recorded" would invite reading one
     // as the other.
-    const mine = d.running && d.running.size === s.size
-      ? (s.progress || 'starting…')
+    const running = d.running && d.running.size === s.size;
+    const mine = running
+      ? (s.progress ? s.progress.phase + '…' : 'starting…')
       : (s.result ? ms(Math.round(s.result.cold_build_ns / 1e6)) : '—');
     cell(tr, mine);
 
     const td = document.createElement('td');
     const b = document.createElement('button');
     b.className = 'fold';
-    b.textContent = d.running && d.running.size === s.size ? 'running' : 'Fold it';
+    b.textContent = running ? 'running' : 'Fold it';
     const cooling = s.again_at > d.now;
     b.disabled = !d.runner || !!d.running || cooling;
     if (cooling && !d.running) b.textContent = 'cooling';
@@ -2039,13 +2236,23 @@ async function runs() {
     tr.append(td);
     body.append(tr);
   }
+
+  return showLive(d);
 }
 
-// ⚠ Slower than the trial balance's 400 ms tick. A fold is minutes long, and
-// polling it four times a second would be four times the requests for a number
-// that changes every five seconds.
-setInterval(runs, 3000);
-runs();
+// ⚠ Two speeds: a run in flight redraws every 2 s off samples that move every
+// 5, and an idle panel asks every 10 — a fold is minutes long, and there is no
+// third state worth a third speed. (No SSE and no streaming: this API sits
+// behind a gateway and an adapter that give both up, so polling is the whole
+// option space.)
+let timer = null;
+function pace(active) {
+  const want = active ? 2000 : 10000;
+  if (timer && timer.want === want) return;
+  if (timer) clearInterval(timer.id);
+  timer = {want, id: setInterval(async () => pace(await runs()), want)};
+}
+runs().then(pace);
 
 dials.addEventListener('input', () => {
   clearTimeout(pending);
@@ -2558,8 +2765,13 @@ mod tests {
         // subresource would render an unstyled page in front of a customer.
         for (name, body) in SCREENS {
             let html = page(body, name);
-            // The SVG xmlns is a namespace identifier, not a fetch.
-            let stripped = html.replace("http%3A//www.w3.org/2000/svg", "");
+            // The SVG xmlns is a namespace identifier, not a fetch — in the
+            // favicon's URL-encoded form and in `createElementNS`'s plain one.
+            // ⚠ Stripping exactly these two strings is the point: anything else
+            // that looks like a URL is still an external reference.
+            let stripped = html
+                .replace("http%3A//www.w3.org/2000/svg", "")
+                .replace("http://www.w3.org/2000/svg", "");
             assert!(!stripped.contains("http://"), "{name}: external reference");
             assert!(!stripped.contains("https://"), "{name}: external reference");
             assert!(html.contains("<!doctype html>"), "{name}");

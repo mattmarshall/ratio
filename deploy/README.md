@@ -379,6 +379,14 @@ nothing that was ever narrow — those calls take no resource ARN — and remove
 whole class of deploy that fails after the image is already pushed.
 `//deploy:iac_test` now fails on the exact grant that shipped.
 
+⛔ **And a third time, for the ECS service-linked role.** The first real button
+press failed with the IAM simulator saying `ecs:RunTask` was ALLOWED — because
+the role ECS itself assumes, `AWSServiceRoleForECS`, had never been created in
+this account. AWS creates it on first cluster creation only when the creating
+principal may `iam:CreateServiceLinkedRole`, which the deploy role deliberately
+may not. Bootstrap now declares it (`AWS::IAM::ServiceLinkedRole`), and
+`//deploy:iac_test` refuses an app stack that runs ECS tasks without it.
+
 ## How CI gets in
 
 GitHub's OIDC provider, no long-lived key. The trust policy is scoped to

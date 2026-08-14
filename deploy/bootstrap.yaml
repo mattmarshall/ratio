@@ -15,6 +15,26 @@ Parameters:
     Description: owner/repo allowed to assume the deploy role.
 
 Resources:
+  # ── What ECS itself needs, once per account ─────────────────────────────
+  #
+  # ⛔ WITHOUT THIS, EVERY RunTask IN THE ACCOUNT IS REFUSED, AND NOTHING IN
+  # ANY TEMPLATE SAYS SO. ECS manages the network interfaces of awsvpc tasks
+  # through its service-linked role, which AWS creates automatically the first
+  # time a cluster is made — IF the principal making it may
+  # iam:CreateServiceLinkedRole. The scale cluster was created by CloudFormation
+  # under the deploy role above, which deliberately may not. So the cluster
+  # existed, the IAM simulator said RunTask was allowed, PassRole was allowed —
+  # and the first button press on the deployed demo failed anyway, because the
+  # role ECS ITSELF assumes was never born.
+  #
+  # ⚠ ACCOUNT-SINGLETON. This is the one place it can live: bootstrap is the
+  # stack for things that exist once per account and are applied by a human
+  # with admin. It costs nothing and AWS manages its policy.
+  EcsServiceLinkedRole:
+    Type: AWS::IAM::ServiceLinkedRole
+    Properties:
+      AWSServiceName: ecs.amazonaws.com
+
   # ── The registry ────────────────────────────────────────────────────────
   Repository:
     Type: AWS::ECR::Repository

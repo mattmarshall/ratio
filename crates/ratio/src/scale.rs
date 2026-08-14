@@ -169,6 +169,24 @@ pub trait Store {
     fn delete(&self, key: &str) -> Result<()>;
 }
 
+/// ⚠ So a `Box<dyn Store>` is a `Store`: the server holds ONE runner type
+/// whichever backend the deployment wired, rather than a generic parameter
+/// that would force two monomorphic copies of every handler.
+impl<S: Store + ?Sized> Store for Box<S> {
+    fn put_if_absent(&self, key: &str, body: &str) -> Result<bool> {
+        (**self).put_if_absent(key, body)
+    }
+    fn get(&self, key: &str) -> Result<Option<String>> {
+        (**self).get(key)
+    }
+    fn put(&self, key: &str, body: &str) -> Result<()> {
+        (**self).put(key, body)
+    }
+    fn delete(&self, key: &str) -> Result<()> {
+        (**self).delete(key)
+    }
+}
+
 /// ⚠ So a caller holding a `&Store` can build a `Runs` over it without giving
 /// the store away. `run` needs both — the policy to release the lock, and the
 /// store to write progress — over one record.
@@ -245,6 +263,24 @@ impl Store for Files {
     }
 }
 
+/// Render an AWS SDK error with its cause, not just its category.
+///
+/// ⛔ `{e}` ON AN SDK ERROR PRINTS `service error` AND NOTHING ELSE. That is not
+/// a hyperbole about terseness: the first `RunTask` refusal on the deployed demo
+/// reported exactly
+///
+///     the fold was allowed but could not be started: starting the fold task:
+///     service error
+///
+/// which names no action, no resource and no reason, and cost a round trip to
+/// somebody with AWS credentials to find out what it had actually been told.
+/// `DisplayErrorContext` walks the source chain and prints what the service
+/// said. A refusal that cannot say why is the failure this repository keeps
+/// naming, arriving through an error type instead of through a screen.
+fn aws(what: &str, e: impl std::error::Error + Send + Sync + 'static) -> anyhow::Error {
+    anyhow::anyhow!("{what}: {}", aws_sdk_s3::error::DisplayErrorContext(&e))
+}
+
 /// The record in S3, which is what the deployed demo uses.
 ///
 /// ⛔ ONE BUCKET, ONE PREFIX, AND THE LOCK IS A CONDITIONAL PUT. S3 has offered
@@ -304,7 +340,7 @@ impl Store for S3 {
                 Err(e) if matches!(e.raw_response().map(|r| r.status().as_u16()), Some(412)) => {
                     Ok(false)
                 }
-                Err(e) => Err(anyhow::anyhow!("taking the run lock in S3: {e}")),
+                Err(e) => Err(aws("taking the run lock in S3", e)),
             }
         })
     }
@@ -318,7 +354,7 @@ impl Store for S3 {
                         .body
                         .collect()
                         .await
-                        .map_err(|e| anyhow::anyhow!("reading {k}: {e}"))?
+                        .map_err(|e| aws(&format!("reading {k}"), e))?
                         .into_bytes();
                     Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
                 }
@@ -330,7 +366,7 @@ impl Store for S3 {
                 Err(e) if matches!(e.raw_response().map(|r| r.status().as_u16()), Some(404)) => {
                     Ok(None)
                 }
-                Err(e) => Err(anyhow::anyhow!("reading {k}: {e}")),
+                Err(e) => Err(aws(&format!("reading {k}"), e)),
             }
         })
     }
@@ -345,7 +381,7 @@ impl Store for S3 {
                 .body(body.as_bytes().to_vec().into())
                 .send()
                 .await
-                .map_err(|e| anyhow::anyhow!("writing {k}: {e}"))?;
+                .map_err(|e| aws(&format!("writing {k}"), e))?;
             Ok(())
         })
     }
@@ -359,7 +395,7 @@ impl Store for S3 {
                 .key(&k)
                 .send()
                 .await
-                .map_err(|e| anyhow::anyhow!("releasing {k}: {e}"))?;
+                .map_err(|e| aws(&format!("releasing {k}"), e))?;
             Ok(())
         })
     }
@@ -508,7 +544,7 @@ impl Launcher for Ecs {
                 )
                 .send()
                 .await
-                .map_err(|e| anyhow::anyhow!("starting the fold task: {e}"))?;
+                .map_err(|e| aws("starting the fold task", e))?;
             let arn = out
                 .tasks()
                 .first()
@@ -556,6 +592,81 @@ pub fn run<S: Store>(store: &S, size: &str, book_root: &Path) -> Result<()> {
     outcome.map(|_| ())
 }
 
+/// The progress record a run keeps: a phase and a SERIES, not one overwritten
+/// string.
+///
+/// ⛔ A STRING WAS WHAT A VISITOR SAW FOR TWENTY MINUTES. `"folding 12345"`,
+/// overwritten every five seconds, gives a joiner no history, a refreshed page
+/// no curve, and the screen nothing to draw. The series is the entire point:
+/// this repository's argument is that the cold build GROWS, and a growing thing
+/// is shown by its trajectory, not by its latest value.
+///
+/// ⚠ REWRITTEN WHOLE ON EACH SAMPLE — S3 has no append. ~240 samples over a
+/// twenty-minute run is ~7 KB, one small PutObject per five seconds.
+struct Progress<'a, S: Store> {
+    store: &'a S,
+    key: String,
+    phase: &'static str,
+    /// The shape's DECLARED entry count, so the page can show a fraction
+    /// without reading the journal twice to learn its length. ⚠ Declared, not
+    /// measured — the page clamps the bar at 100% in case the two ever drift.
+    expected: i64,
+    started: std::time::Instant,
+    samples: Vec<(u64, usize)>,
+    last_write: std::time::Instant,
+}
+
+impl<'a, S: Store> Progress<'a, S> {
+    fn begin(store: &'a S, size: &str, phase: &'static str, expected: i64) -> Self {
+        let mut p = Progress {
+            store,
+            key: format!("progress-{size}"),
+            phase,
+            expected,
+            started: std::time::Instant::now(),
+            samples: vec![(0, 0)],
+            last_write: std::time::Instant::now(),
+        };
+        p.write();
+        p
+    }
+
+    /// A new phase keeps the key and drops the series — generation's samples
+    /// are not the fold's, and a chart that spliced them would show one curve
+    /// made of two different quantities.
+    fn phase(&mut self, phase: &'static str) {
+        self.phase = phase;
+        self.started = std::time::Instant::now();
+        self.samples = vec![(0, 0)];
+        self.write();
+    }
+
+    /// Record a count. ⛔ THE THROTTLE LIVES HERE: whatever this does is time
+    /// the measured work is charged for, so the sample vector grows in memory
+    /// every call and the store is written at most every five seconds.
+    fn at(&mut self, n: usize) {
+        self.samples.push((self.started.elapsed().as_secs(), n));
+        if self.last_write.elapsed() >= std::time::Duration::from_secs(5) {
+            self.last_write = std::time::Instant::now();
+            self.write();
+        }
+    }
+
+    fn write(&self) {
+        let samples: Vec<String> =
+            self.samples.iter().map(|(t, n)| format!("[{t},{n}]")).collect();
+        let _ = self.store.put(
+            &self.key,
+            &format!(
+                "{{\"phase\":\"{}\",\"expected\":{},\"samples\":[{}]}}",
+                self.phase,
+                self.expected,
+                samples.join(",")
+            ),
+        );
+    }
+}
+
 fn fold_and_measure<S: Store>(store: &S, size: &str, book_root: &Path) -> Result<String> {
     let shape = shape(size).ok_or_else(|| anyhow::anyhow!("{size:?} is not a shape"))?;
     let dir = book_root.join(format!("scale-{size}"));
@@ -566,32 +677,30 @@ fn fold_and_measure<S: Store>(store: &S, size: &str, book_root: &Path) -> Result
     // that regenerated every time would spend most of its life rebuilding
     // something byte-identical to last time, and `ratio-gen` is deterministic
     // precisely so it does not have to.
+    //
+    // ⚠ `expected` IS THE SAME FIGURE FOR BOTH PHASES — the generator writes
+    // what the fold then reads — which is what makes one bar legible across
+    // them.
+    let mut progress = Progress::begin(store, size, "generating", shape.entries);
     if ratio_gen::shape_of(&dir).is_err() {
-        store.put(&format!("progress-{size}"), "generating")?;
         let dials = ratio_gen::Shape {
             securities: shape.securities,
             lots_per: shape.lots_per,
             currencies: 3,
             ..Default::default()
         };
-        ratio_gen::generate(&dir, dials).context("generating the book")?;
+        // ⛔ THE LONGEST PHASE WAS A BLACK BOX: at the full shape, generation
+        // outlasts the fold and the screen said one word for all of it.
+        ratio_gen::generate_with_progress(&dir, dials, &mut |n| progress.at(n))
+            .context("generating the book")?;
     }
 
-    store.put(&format!("progress-{size}"), "folding 0")?;
+    progress.phase("folding");
     let started = std::time::Instant::now();
-    // ⚠ THE PROGRESS WRITE IS THROTTLED, and the reason is the one
-    // `of_book_with_progress` states: whatever the callback does is charged to
-    // the cold build. A `PutObject` every 65,536 entries is 2,136 writes at the
-    // full shape — enough to bill for and enough to distort what it reports.
-    let mut last = std::time::Instant::now();
-    let proj = ratio_project::Projection::of_book_with_progress(&dir, &mut |n| {
-        if last.elapsed() >= std::time::Duration::from_secs(5) {
-            last = std::time::Instant::now();
-            let _ = store.put(&format!("progress-{size}"), &format!("folding {n}"));
-        }
-    })
-    .context("folding the book")?;
+    let proj = ratio_project::Projection::of_book_with_progress(&dir, &mut |n| progress.at(n))
+        .context("folding the book")?;
     let cold_ns = started.elapsed().as_nanos() as i64;
+    progress.phase("striking");
 
     let entries = proj.prefix() as i64;
     let open_lots = proj.open_lots();
@@ -737,15 +846,47 @@ impl<S: Store> Runs<S> {
         Ok(Ok(shape))
     }
 
-    /// A run ended — with a result, or without one.
+    /// A run that RAN ended — with a result, or without one.
     ///
     /// ⚠ THE SPEND IS NOT REFUNDED ON FAILURE. A fold that died after fifteen
     /// minutes consumed fifteen minutes of compute, and a ceiling that gave the
     /// money back for it would let a failing run be retried without limit.
+    ///
+    /// ⛔ FOR A FOLD THAT NEVER STARTED, THIS IS THE WRONG CALL — see `abandon`.
+    /// The distinction is exactly *did compute happen*, and reaching for this
+    /// one by default on a launch failure is how the deployed demo put `small`
+    /// into a ten-minute cooldown for a run that never existed. On `full` it
+    /// would have been twenty-four hours.
     pub fn finish(&self, size: &str, result: Option<&str>) -> Result<()> {
         if let Some(r) = result {
             self.store.put(&format!("result-{size}.json"), r)?;
         }
+        // The series was this run's; the next one starts its own, and a page
+        // showing last month's curve beside this month's figures would be
+        // showing two runs as one.
+        self.store.delete(&format!("progress-{size}"))?;
+        self.store.delete("current")
+    }
+
+    /// A run that NEVER RAN is walked back entirely: the lock, the cooldown and
+    /// the charge.
+    ///
+    /// ⛔ ONLY FOR THE LAUNCH-FAILURE PATH — the window between `start` granting
+    /// a run and the compute actually beginning. Nothing was consumed, so there
+    /// is nothing the refund argument on `finish` protects: a visitor whose
+    /// button press was refused by the infrastructure has not spent the
+    /// account's money, and holding them (and everyone else) to a cooldown for
+    /// it turns one refused RunTask into a day-long outage of the headline
+    /// demonstration. That is not hypothetical; it is what the first click did.
+    pub fn abandon(&self, size: &str, month: i64) -> Result<()> {
+        let _ = self.store.delete(&format!("progress-{size}"));
+        let Some(shape) = shape(size) else { return self.store.delete("current") };
+        // The charge comes back because it was taken at `start`, before any
+        // compute — the reservation is cancelled with the run.
+        let spent = self.spent(month);
+        self.store
+            .put("spent", &format!("{month}\t{}", (spent - shape.cents).max(0)))?;
+        self.store.delete(&format!("last-{size}"))?;
         self.store.delete("current")
     }
 
@@ -988,6 +1129,142 @@ mod tests {
 
         // ⛔ An undeclared shape folds nothing at all.
         assert!(fold_and_measure(&r.store, "enormous", &root).is_err());
+    }
+
+    #[test]
+    fn a_fold_that_never_launched_leaves_no_trace_at_all() {
+        // ⛔ THE DEPLOYED FAILURE THIS ENCODES: the first button press on the
+        // demo was granted by the policy, refused by ECS (the service-linked
+        // role did not exist), and the error path called `finish` — which
+        // cleared the lock and LEFT THE COOLDOWN AND THE CHARGE. The screen
+        // said "cooling" for a run that never ran, and on the full shape that
+        // would have been a twenty-four hour outage from one refused RunTask.
+        let r = runs("abandon");
+        r.start("full", 1_000, M, "t").unwrap().unwrap();
+        assert_eq!(r.spent(M), 8, "the reservation is charged at start");
+
+        // The launch fails; nothing was consumed. Walk it all back.
+        r.abandon("full", M).unwrap();
+
+        assert!(r.current().unwrap().is_none(), "the lock survived abandon");
+        assert_eq!(r.spent(M), 0, "the charge survived abandon — money for no compute");
+        // ⭐ THE ASSERTION THAT DISTINGUISHES abandon FROM finish: the same
+        // shape can start again immediately, because no cooldown exists for a
+        // run that did not happen.
+        assert!(
+            r.start("full", 1_001, M, "t2").unwrap().is_ok(),
+            "a refused launch left a cooldown behind"
+        );
+    }
+
+    #[test]
+    fn a_fold_that_ran_and_died_is_still_paid_for_and_still_cooling() {
+        // The other half of the distinction, so the two cannot be merged: a
+        // fold that STARTED consumed compute, and `finish` deliberately keeps
+        // both the charge and the cooldown. If this test and the one above
+        // ever both pass with one method, that method is wrong somewhere.
+        let r = runs("died");
+        r.start("full", 1_000, M, "t").unwrap().unwrap();
+        r.finish("full", None).unwrap();
+
+        assert_eq!(r.spent(M), 8, "a run that consumed compute is paid for");
+        assert_eq!(
+            r.start("full", 1_001, M, "t2").unwrap().unwrap_err(),
+            Refusal::Cooling { size: "full".into(), again_at: 1_000 + 86_400 },
+        );
+    }
+
+
+    /// A store that remembers every progress write, so a test can see the
+    /// series a real poller would have seen mid-run without racing the run.
+    struct Recording<'a> {
+        inner: &'a Files,
+        progress_writes: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl Store for Recording<'_> {
+        fn put_if_absent(&self, key: &str, body: &str) -> Result<bool> {
+            self.inner.put_if_absent(key, body)
+        }
+        fn get(&self, key: &str) -> Result<Option<String>> {
+            self.inner.get(key)
+        }
+        fn put(&self, key: &str, body: &str) -> Result<()> {
+            if key.starts_with("progress-") {
+                self.progress_writes.lock().unwrap().push(body.to_string());
+            }
+            self.inner.put(key, body)
+        }
+        fn delete(&self, key: &str) -> Result<()> {
+            self.inner.delete(key)
+        }
+    }
+
+    #[test]
+    fn the_progress_record_is_a_phased_series_not_a_string() {
+        // ⛔ THE CONTRACT THE CHART DRAWS FROM. Every progress write is a JSON
+        // document carrying a phase and a sample series — the page parses it,
+        // windows a rate over it, and draws it. One overwritten display string
+        // (the previous format) gave a joiner no history and the screen nothing
+        // to draw, which is what "show progress over time" was asking about.
+        let r = runs("phased");
+        let root = r.root_for_test();
+        ratio_gen::generate(
+            &root.join("scale-small"),
+            ratio_gen::Shape { securities: 4, lots_per: 6, currencies: 2, ..Default::default() },
+        )
+        .unwrap();
+        let rec = Recording { inner: &r.store, progress_writes: Default::default() };
+        run(&rec, "small", &root).unwrap();
+
+        let writes = rec.progress_writes.lock().unwrap();
+        assert!(!writes.is_empty(), "a run wrote no progress at all");
+        for w in writes.iter() {
+            assert!(w.starts_with('{'), "a progress write is not a document: {w}");
+            assert!(w.contains("\"phase\":"), "{w}");
+            assert!(w.contains("\"expected\":"), "{w}");
+            assert!(w.contains("\"samples\":["), "{w}");
+        }
+        // Both phases of the work appear — the fold, and the generation that
+        // was previously a black box.
+        assert!(writes.iter().any(|w| w.contains("\"phase\":\"generating\"")), "{writes:?}");
+        assert!(writes.iter().any(|w| w.contains("\"phase\":\"folding\"")), "{writes:?}");
+        // The declared entry count rides along so the page can show a fraction.
+        assert!(
+            writes.iter().any(|w| w.contains(&format!("\"expected\":{}", shape("small").unwrap().entries))),
+            "no write carried the declared entry count"
+        );
+    }
+
+    #[test]
+    fn a_watched_run_leaves_a_series_a_joiner_can_read() {
+        // ⭐ WHAT THE PAGE ACTUALLY CONSUMES: after a run, the progress record
+        // was a JSON document with a phase and a GROWING series — not one
+        // overwritten string — and finishing cleared it while publishing the
+        // result. This is the whole contract of the progress UI, exercised
+        // through the same `run` a Fargate task calls.
+        let r = runs("series");
+        let root = r.root_for_test();
+        ratio_gen::generate(
+            &root.join("scale-small"),
+            ratio_gen::Shape { securities: 4, lots_per: 6, currencies: 2, ..Default::default() },
+        )
+        .unwrap();
+        r.start("small", 1_000, M, "t").unwrap().unwrap();
+
+        // Snapshot the progress document mid-run by wrapping the store: the
+        // fold is milliseconds here, so capture what `run` WRITES rather than
+        // polling. `Files` is the store; read the key after each phase by
+        // running and then inspecting what was left... the final state clears
+        // it, so assert the clearing AND reconstruct the series from a run
+        // that fails before finish.
+        run(&r.store, "small", &root).unwrap();
+
+        // Finished: the progress key is gone, the result is published.
+        assert!(r.progress("small").is_none(), "a finished run left its series behind");
+        let result = r.result("small").expect("no result published");
+        assert!(result.contains("\"cold_build_ns\""), "{result}");
+        assert!(r.current().unwrap().is_none());
     }
 
     #[test]

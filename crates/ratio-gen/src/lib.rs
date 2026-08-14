@@ -268,12 +268,43 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
     generate_books(path, shape, &Books::default())
 }
 
+/// `generate`, reporting entries written as it goes.
+///
+/// ⛔ BECAUSE THE LONGEST PHASE OF A SCALE RUN WAS A BLACK BOX. Generating the
+/// twenty-million-lot book takes LONGER than the cold build it feeds — measured
+/// at 1.2x at two sizes — and until this, anything watching a run saw the one
+/// word "generating" for all of it. Mirrors `Projection::of_book_with_progress`
+/// exactly: the plain call delegates with a no-op closure, the callback fires on
+/// the `FLUSH_EVERY` batch boundary the writer already has, and a final report
+/// carries the total so a book smaller than one batch still reports.
+///
+/// ⚠ WHATEVER THE CALLBACK DOES IS TIME THE GENERATION IS CHARGED FOR. The
+/// caller throttles; this reports.
+pub fn generate_with_progress(
+    path: &std::path::Path,
+    shape: Shape,
+    on: &mut dyn FnMut(usize),
+) -> Result<usize> {
+    generate_books_with_progress(path, shape, &Books::default(), on)
+}
+
 /// The same fund, keeping the books of record `books` declares.
 ///
 /// ⚠ `generate` IS THIS WITH NOTHING DECLARED, and that case must stay
 /// byte-identical to what this crate produced before views existed — every
 /// measurement in HANDOFF.md was taken against one.
 pub fn generate_books(path: &std::path::Path, shape: Shape, books: &Books) -> Result<usize> {
+    generate_books_with_progress(path, shape, books, &mut |_| {})
+}
+
+/// See `generate_with_progress`. The count reported is entries WRITTEN so far —
+/// the same figure `Ok(written)` returns at the end.
+pub fn generate_books_with_progress(
+    path: &std::path::Path,
+    shape: Shape,
+    books: &Books,
+    on: &mut dyn FnMut(usize),
+) -> Result<usize> {
     if books.subscriptions_in_tail > 0 {
         if books.settle_tail <= 0 {
             bail!(
@@ -510,6 +541,10 @@ pub fn generate_books(path: &std::path::Path, shape: Shape, books: &Books) -> Re
             if batch.len() >= FLUSH_EVERY {
                 b.append_all(&batch)?;
                 batch.clear();
+                // ⚠ ON THE BATCH BOUNDARY, NOT PER ENTRY — the same judgement
+                // `of_book_with_progress` makes about its chunk size, on the
+                // writing side.
+                on(written);
             }
 
             if open.len() as i64 > keep {
@@ -697,6 +732,7 @@ pub fn generate_books(path: &std::path::Path, shape: Shape, books: &Books) -> Re
     // generated book, and `shape_of` says so in those words.
     put_shape(path, shape)?;
 
+    on(written);
     Ok(written)
 }
 
@@ -1150,6 +1186,33 @@ mod tests {
             p.units_as_of(1, &ticker(i), "2026-06-30")
                 .unwrap_or_else(|e| panic!("{} cannot be valued: {e:#}", ticker(i)));
         }
+    }
+
+    #[test]
+    fn watching_a_generation_does_not_change_what_it_generates() {
+        // ⛔ THE PROPERTY THAT MAKES THE HOOK SAFE TO ADD, same as the fold's
+        // `watching_a_cold_build_does_not_change_what_it_builds`: `generate` now
+        // routes through `generate_with_progress`, so a watched book and a
+        // quiet one must be byte-identical — otherwise instrumenting the
+        // generator would break the determinism claim this whole crate is
+        // built on, silently.
+        let s = Shape { securities: 9, currencies: 2, turnover: 3, lots_per: 8, open_actions: 1, capital_txns: 2, seed: 5, method: ratio_rules::LotMethod::Fifo };
+        let quiet = tmp("watch-quiet");
+        let watched = tmp("watch-loud");
+        let mut reports = Vec::new();
+        generate(&quiet, s).unwrap();
+        generate_with_progress(&watched, s, &mut |n| reports.push(n)).unwrap();
+
+        assert_eq!(
+            std::fs::read(quiet.join("journal.jsonl")).unwrap(),
+            std::fs::read(watched.join("journal.jsonl")).unwrap(),
+            "watching a generation changed its bytes"
+        );
+        // The reports arrive, they only grow, and the last one is the total.
+        let total = std::fs::read_to_string(watched.join("journal.jsonl")).unwrap().lines().count();
+        assert!(!reports.is_empty(), "a watched generation reported nothing");
+        assert!(reports.windows(2).all(|w| w[0] <= w[1]), "reports went backwards: {reports:?}");
+        assert_eq!(*reports.last().unwrap(), total, "the last report is not the total");
     }
 
     #[test]
