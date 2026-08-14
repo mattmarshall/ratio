@@ -46,11 +46,11 @@ sh_test(
     size = "small",
     srcs = ["scale_shapes_test.sh"],
     args = [
-        "$(location //crates/ratio:src/watch.rs)",
+        "$(location //crates/ratio:src/scale.rs)",
         "$(location HANDOFF.md)",
     ],
     data = [
         "HANDOFF.md",
-        "//crates/ratio:src/watch.rs",
+        "//crates/ratio:src/scale.rs",
     ],
 )

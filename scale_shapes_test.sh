@@ -22,12 +22,12 @@
 # the entry counts exactly, because ratio-gen is deterministic.
 set -euo pipefail
 
-WATCH="$1"
+SHAPES_RS="$1"
 HANDOFF="$2"
 
 fail() { echo "  x $*" >&2; exit 1; }
 
-[ -f "$WATCH" ] || fail "no watch.rs at $WATCH"
+[ -f "$SHAPES_RS" ] || fail "no scale.rs at $SHAPES_RS"
 [ -f "$HANDOFF" ] || fail "no HANDOFF.md at $HANDOFF"
 
 # The measurement table in HANDOFF, flattened. Each row is
@@ -51,23 +51,23 @@ done < <(
   # Pull the SHAPES table out of watch.rs: name, securities, lots_per,
   # open_lots, entries — in declaration order.
   awk '
-    /^const SHAPES/       { inside = 1 }
+    /^(pub )?const SHAPES/ { inside = 1 }
     inside && /name: "/   { gsub(/.*name: "|".*/, ""); n = $0 }
     inside && /securities:/ { gsub(/[^0-9]/, ""); s = $0 }
     inside && /lots_per:/   { gsub(/[^0-9]/, ""); l = $0 }
     inside && /open_lots:/  { gsub(/[^0-9]/, ""); o = $0 }
     inside && /entries:/    { gsub(/[^0-9]/, ""); e = $0; print n, s, l, o, e }
     inside && /^\];/      { exit }
-  ' "$WATCH"
+  ' "$SHAPES_RS"
 )
 
-[ "$checked" -eq 3 ] || fail "read $checked shapes out of watch.rs, expected 3 — \
+[ "$checked" -eq 3 ] || fail "read $checked shapes out of $SHAPES_RS, expected 3 — \
 the table moved and this check stopped seeing it, which is how a check like this \
 stops working"
 
 # ⭐ THE ONE THAT IS NOT INTERCHANGEABLE. The full shape must be the RECORDED
 # twenty-million-lot fund, not the dialled one — 10,000 securities, not 500.
-grep -A 8 'name: "full"' "$WATCH" | grep -q 'securities: 10_000' \
+grep -A 8 'name: "full"' "$SHAPES_RS" | grep -q 'securities: 10_000' \
   || fail "the full shape is not 10,000 securities — that is ratio closure's \
 500 x 40,000 dial, which is the same lot count and a twentieth of the mark cost"
 
