@@ -165,10 +165,12 @@ impl ViewDef {
                 }
                 fuel -= 1;
                 // ⛔ CHECKED, BECAUSE A DAY IS AN `i32` AND THE PROOF IS OVER
-                // `Int`. A trade date read out of a delivered file is whatever
-                // the file said; `days_from_iso_date` accepts any year that
-                // parses, so this can be asked about a day near the end of the
-                // range and wrap into the past.
+                // `Int`. `days_from_iso_date` now bounds the year at 9999, so a
+                // day that came from parsing a delivered file cannot itself be
+                // near the ceiling — but a `Day` is a bare `i32` and nothing in
+                // the type says where it came from. Wrapping here rolls a
+                // settlement date into the past, which reads as an ordinary
+                // date and sorts correctly.
                 at = at.checked_add(1)?;
                 if self.is_open(at) {
                     break;

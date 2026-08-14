@@ -278,10 +278,16 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         (_, "/balance") => ("200 OK", "text/html; charset=utf-8", page(BALANCE_BODY, "balance")),
         (_, "/breaks") => ("200 OK", "text/html; charset=utf-8", page(BREAKS_BODY, "breaks")),
         (_, "/rules") => ("200 OK", "text/html; charset=utf-8", page(RULES_BODY, "rules")),
-        (_, "/scale") => ("200 OK", "text/html; charset=utf-8", page(SCALE_BODY, "scale")),
+        (_, "/scale") => ("200 OK", "text/html; charset=utf-8", lead_page(SCALE_BODY)),
         (_, "/scale.json") => json(scale_json(book, &req.query)),
         (_, "/scale-runs.json") => json(scale_runs_json()),
         ("POST", "/scale/start") => json(scale_start(&req.body)),
+        ("POST", "/scale/unlock") => json(scale_unlock(&req.body)),
+        (_, "/scale/unlock") => (
+            "405 Method Not Allowed",
+            "application/json",
+            "{\"error\":\"unlocking is a POST\"}".to_string(),
+        ),
         (_, "/scale/start") => (
             "405 Method Not Allowed",
             "application/json",
@@ -295,6 +301,25 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
         // The console's API, transcoded from ratio.v1.Console's google.api.http
         // rules. //crates/ratio-console:transcode_test asserts these routes are
         // exactly the ones the contract declares.
+        // The report page a lead's email links to. The id is read by the page's
+        // own script from its URL and fetched as JSON below — the HTML is one
+        // static shell for every run, so a bad id 404s at the fetch, rendered
+        // as a sentence rather than a broken page.
+        (_, p) if p.starts_with("/scale/runs/") && !p.ends_with(".json") => {
+            ("200 OK", "text/html; charset=utf-8", lead_page(REPORT_BODY))
+        }
+
+        // A run's published report — the permalink a lead's email points into.
+        // ⛔ The id is validated before it goes near a store key; an invalid one
+        // is a 404, indistinguishable from a run that never happened.
+        (_, p) if p.starts_with("/scale/runs/") && p.ends_with(".json") => {
+            let id = p.trim_start_matches("/scale/runs/").trim_end_matches(".json");
+            match scale_runner().and_then(|(r, _)| scale::report(r.store(), id)) {
+                Some(doc) => ("200 OK", "application/json", doc),
+                None => ("404 Not Found", "application/json", "{\"error\":\"no such run\"}".to_string()),
+            }
+        }
+
         (m, p) if p.starts_with("/v1/") => {
             // The console reads a FUNDS ROOT — a directory of books — while
             // every other screen, the MCP tools and the terminal operate on one
@@ -677,27 +702,49 @@ fn balance_json(book: &Path) -> Result<String> {
 /// in and no cluster to run on — the screen then serves its estimate and its
 /// recorded figures, and offers no button. Same shape as an unset
 /// `RATIO_COGNITO_*` meaning "no identity provider here".
-type Scale = (scale::Runs<scale::S3>, scale::Ecs);
+type DynStore = Box<dyn scale::Store + Send + Sync>;
+type Scale = (scale::Runs<DynStore>, Box<dyn scale::Launcher + Send + Sync>);
 
 fn scale_runner() -> Option<&'static Scale> {
     static SCALE: std::sync::OnceLock<Option<Scale>> = std::sync::OnceLock::new();
     SCALE
         .get_or_init(|| {
-            let bucket = std::env::var("RATIO_SCALE_BUCKET").ok().filter(|b| !b.is_empty())?;
-            let ecs = match scale::Ecs::from_env()? {
-                Ok(e) => e,
-                Err(e) => {
-                    eprintln!("the scale runner is configured but unusable: {e:#}");
-                    return None;
-                }
-            };
-            match scale::S3::open(bucket, "runs/") {
-                Ok(s) => Some((scale::Runs::over(s), ecs)),
-                Err(e) => {
-                    eprintln!("the scale record is configured but unusable: {e:#}");
-                    None
-                }
+            // The deployed shape: the record in S3, the fold in a Fargate task.
+            if let Some(bucket) =
+                std::env::var("RATIO_SCALE_BUCKET").ok().filter(|b| !b.is_empty())
+            {
+                let ecs = match scale::Ecs::from_env()? {
+                    Ok(e) => e,
+                    Err(e) => {
+                        eprintln!("the scale runner is configured but unusable: {e:#}");
+                        return None;
+                    }
+                };
+                return match scale::S3::open(bucket, "runs/") {
+                    Ok(s) => Some((
+                        scale::Runs::over(Box::new(s) as DynStore),
+                        Box::new(ecs) as Box<dyn scale::Launcher + Send + Sync>,
+                    )),
+                    Err(e) => {
+                        eprintln!("the scale record is configured but unusable: {e:#}");
+                        None
+                    }
+                };
             }
+
+            // ⚠ THE LOCAL SHAPE IS OPT-IN, NOT INFERRED. `RATIO_SCALE_LOCAL=<dir>`
+            // folds on a thread in this process with the record on disk — which
+            // is how the progress UI is watched working before a deploy. It is
+            // NOT the default for a bare `ratio watch`, because the full shape
+            // generates a ~40 GB journal, and a button that can do that to a
+            // laptop must be asked for in the environment, not offered by one.
+            let dir = std::env::var("RATIO_SCALE_LOCAL").ok().filter(|d| !d.is_empty())?;
+            let dir = std::path::PathBuf::from(dir);
+            Some((
+                scale::Runs::over(Box::new(scale::Files::at(dir.join("runs"))) as DynStore),
+                Box::new(scale::Here { books: dir.join("books"), root: dir.join("runs") })
+                    as Box<dyn scale::Launcher + Send + Sync>,
+            ))
         })
         .as_ref()
 }
@@ -741,30 +788,95 @@ fn scale_start(body: &str) -> Result<String> {
         bail!("{}", scale::Refusal::NoSuchShape);
     };
 
+    // ⛔ THE EMAIL IS A MAILING-LIST ENTRY, NEVER A CONTROL. It is recorded and
+    // it earns the follow-up report; whether the fold may START is decided
+    // entirely by the lock, the cooldown and the ceiling, exactly as before —
+    // so a fabricated address buys nothing that costs money. Optional, because
+    // the gate is a page affordance: a caller who skips it just gets no email.
+    let email = req["email"].as_str().unwrap_or("").trim().to_string();
+    if !email.is_empty() {
+        if !scale::valid_email(&email) {
+            bail!("that does not look like an email address");
+        }
+        let _ = scale::record_lead(runs.store(), &email, now_secs());
+    }
+
     let now = now_secs();
     match runs.start(shape.name, now, this_month(now), "pending")? {
-        Err(refusal) => Ok(format!(
-            "{{\"started\":false,\"why\":{}}}",
-            quote(&refusal.to_string())
-        )),
+        Err(refusal) => {
+            // ⭐ A LEAD WHO ARRIVES DURING THE COOLDOWN STILL GETS THE REPORT.
+            // The latest run of this shape is the same fold they asked for —
+            // deterministic book, same dials, same seed — so the follow-up
+            // email cites it, sent now because no task exists to send it later.
+            let replay = scale::latest(runs.store(), shape.name);
+            if let (false, Some(id)) = (email.is_empty(), &replay) {
+                if let Some(Ok(mailer)) = scale::Mailer::from_env() {
+                    let summary = scale::report(runs.store(), id)
+                        .map(|j| scale::summarize_report(&j))
+                        .unwrap_or_default();
+                    if let Err(e) = mailer.send_report(&email, id, &summary) {
+                        eprintln!("replay report email failed: {e:#}");
+                    }
+                }
+            }
+            Ok(format!(
+                "{{\"started\":false,\"why\":{},\"report\":{}}}",
+                quote(&refusal.to_string()),
+                match &replay {
+                    Some(id) => quote(id),
+                    None => "null".to_string(),
+                }
+            ))
+        }
         Ok(_) => {
+            // The run's identity, minted here so the page can show the
+            // permalink before the fold begins and the task publishes to it.
+            let id = format!("{}-{now}", shape.name);
+            if !email.is_empty() {
+                let _ = scale::await_report(runs.store(), &id, &email);
+            }
             // ⛔ THE LOCK IS TAKEN BEFORE THE TASK IS ASKED FOR, and released if
             // asking fails. The other order would let two visitors both reach
             // RunTask while neither holds anything.
-            match launcher.launch(shape.name) {
+            match launcher.launch(shape.name, &id) {
                 Ok(token) => Ok(format!(
-                    "{{\"started\":true,\"size\":{},\"where\":{},\"token\":{}}}",
+                    "{{\"started\":true,\"size\":{},\"id\":{},\"where\":{},\"token\":{}}}",
                     quote(shape.name),
+                    quote(&id),
                     quote(&launcher.describe()),
                     quote(&token)
                 )),
                 Err(e) => {
-                    let _ = runs.finish(shape.name, None);
+                    // ⛔ `abandon`, NOT `finish`. No compute happened — the task
+                    // was refused before it existed — so the cooldown and the
+                    // charge are walked back with the lock. `finish` here left
+                    // the deployed demo cooling for a run that never ran.
+                    let _ = runs.abandon(shape.name, this_month(now));
                     Err(e).context("the fold was allowed but could not be started")
                 }
             }
         }
     }
+}
+
+/// Register an address on the mailing list, unlocking the demo button.
+///
+/// ⛔ THE UNLOCK IS A PAGE AFFORDANCE, NOT A BOUNDARY. Skipping this route and
+/// POSTing /scale/start directly starts the same fold under the same money
+/// controls — what a skipper forfeits is the report email. Pretending this were
+/// authentication would be the lie; recording the list here and at start is the
+/// honest shape.
+fn scale_unlock(body: &str) -> Result<String> {
+    let Some((runs, _)) = scale_runner() else {
+        bail!("this server has no scale runner configured, so there is no demo to unlock");
+    };
+    let req: serde_json::Value = serde_json::from_str(body).context("that is not JSON")?;
+    let email = req["email"].as_str().unwrap_or("").trim();
+    if !scale::valid_email(email) {
+        bail!("that does not look like an email address");
+    }
+    let new = scale::record_lead(runs.store(), email, now_secs())?;
+    Ok(format!("{{\"unlocked\":true,\"new\":{new}}}"))
 }
 
 /// What has run, what is running, and what each shape costs to run.
@@ -802,9 +914,15 @@ fn scale_runs_json() -> Result<String> {
             s.cents,
             s.cooldown,
             if last > 0 { last + s.cooldown } else { 0 },
+            // ⚠ EMBEDDED RAW, BECAUSE IT IS A DOCUMENT NOW — a phase and a
+            // sample series, not a display string. The `starts_with` guard is
+            // for a stale key written by the previous format; quoting a JSON
+            // document would hand the page a string it then had to parse out of
+            // a string, and embedding a NON-document raw would corrupt the
+            // whole response.
             match &progress {
-                Some(p) => quote(p),
-                None => "null".to_string(),
+                Some(p) if p.starts_with('{') => p.clone(),
+                _ => "null".to_string(),
             },
             result.unwrap_or_else(|| "null".to_string()),
         ));
@@ -1238,6 +1356,18 @@ fn safe_redirect(value: &str) -> &str {
 }
 
 /// Wrap a screen's body in the shared document, marking the current tab.
+/// A page served WITHOUT the operator nav — the lead-gen surfaces.
+///
+/// ⛔ SAME HEAD, SAME FOOT, NO TABS, and that is a product decision recorded in
+/// PLAN.md: a prospect landing on the demo should meet one claim and one
+/// button, not an operator's tab bar. The operator screens keep their nav;
+/// `/scale` and the run reports stand alone. Everything the hygiene tests hold
+/// a page to — self-contained, both themes, no external URL, no form element,
+/// no innerHTML — applies unchanged, because these bodies stay in `SCREENS`.
+fn lead_page(body: &str) -> String {
+    format!("{HEAD}{body}{FOOT}")
+}
+
 fn page(body: &str, current: &str) -> String {
     let tab = |slug: &str, href: &str, label: &str| {
         format!(
@@ -1246,12 +1376,11 @@ fn page(body: &str, current: &str) -> String {
         )
     };
     format!(
-        "{HEAD}<nav class=\"tabs\">{}{}{}{}{}</nav>{body}{FOOT}",
+        "{HEAD}<nav class=\"tabs\">{}{}{}{}</nav>{body}{FOOT}",
         tab("chat", "/chat", "Set up the books"),
         tab("balance", "/balance", "Trial balance"),
         tab("breaks", "/breaks", "Break report"),
-        tab("rules", "/rules", "Rules"),
-        tab("scale", "/scale", "Scale")
+        tab("rules", "/rules", "Rules")
     )
 }
 
@@ -1801,12 +1930,203 @@ function head(title, ...chips) {
 /// recorded. They are a measurement taken on a named machine on a named day, not
 /// something this process did — and the page says which is which, because a
 /// reader who cannot tell them apart will take the recorded one for a live one.
+
+/// The report a lead's email links to: one run, every figure, the fold as it
+/// happened.
+///
+/// ⛔ ONE STATIC SHELL FOR EVERY RUN. The id comes from the URL in the page's
+/// own script and the document from `/scale/runs/{id}.json` — so nothing a
+/// caller typed is ever interpolated into HTML on the server, and a bad id is a
+/// sentence, not a broken page. Built with the DOM throughout, same as every
+/// screen: the document under it embeds strings this server did not write.
+const REPORT_BODY: &str = r##"<div class="wrap">
+<header class="hero">
+  <p class="brand">ratio</p>
+  <h1 id="r-title">A fold, and the figures it struck</h1>
+  <p class="lede" id="r-sub">Reading the run…</p>
+</header>
+
+<div class="panels">
+  <section class="panel warn">
+    <h2>The cold build <span class="grows">grows with every trade</span></h2>
+    <dl id="r-cold" class="rep"></dl>
+  </section>
+  <section class="panel">
+    <h2>What it proves <span class="flat">flat in the lots</span></h2>
+    <dl id="r-flat" class="rep"></dl>
+    <p class="note">⛔ Two curves, deliberately side by side. Folding the journal
+    is O(entries) and grows forever; the NAV struck off the finished projection
+    reads one price per security and one rate per currency, and the tax lots are
+    not among them — <code>Ratio.Closure.factored_nav_never_reads_the_lots</code>.</p>
+  </section>
+</div>
+
+<figure class="livefig">
+  <svg id="r-chart" viewBox="0 0 640 200" role="img"
+       aria-label="Entries processed against elapsed seconds, as this run happened"></svg>
+  <figcaption class="note" id="r-cap">The fold as it happened — entries read
+  against elapsed seconds, from the run's own progress record.</figcaption>
+</figure>
+
+<section class="gate">
+  <h2>Reproduce it, or run your own</h2>
+  <p class="note" id="r-repro"></p>
+  <p class="note"><a href="/scale">Run the demo yourself</a> ·
+  <a href="/">open the operations console</a> ·
+  the code and the proofs: <code>github.com/mattmarshall/ratio</code></p>
+</section>
+</div>
+<style>
+.hero{margin:8px 0 26px}
+.hero .brand{font-size:13px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+.hero h1{font-size:30px;line-height:1.15;margin:0 0 12px;max-width:24ch}
+.lede{color:var(--text-2);max-width:60ch}
+.panels{display:grid;grid-template-columns:1fr;gap:18px}
+@media(min-width:760px){.panels{grid-template-columns:1fr 1fr}}
+.panel{padding:16px;border:1px solid var(--rule);border-radius:8px;
+  background:var(--raised)}
+.panel h2{font-size:15px;margin:0 0 12px;display:flex;gap:8px;
+  align-items:baseline;flex-wrap:wrap}
+.flat,.grows{font-size:11px;font-weight:700;letter-spacing:.04em;
+  text-transform:uppercase;padding:2px 7px;border-radius:99px}
+.flat{background:var(--accent);color:var(--ground)}
+.grows{background:var(--warn);color:var(--ground)}
+.rep{display:grid;grid-template-columns:1fr auto;gap:6px 16px;margin:0}
+.rep dt{color:var(--muted);font-size:14px}
+.rep dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.rep .big{font-size:20px;color:var(--accent)}
+.livefig{margin:20px 0 0}
+#r-chart{width:100%;height:auto;display:block}
+.gate{padding:16px;border:1px solid var(--rule);border-radius:8px;
+  background:var(--raised);margin:22px 0 0}
+.gate h2{font-size:15px;margin:0 0 8px}
+.gate a{color:var(--accent)}
+.note{font-size:13px;color:var(--muted);max-width:62ch}
+</style>
+<script>
+const fmt = n => n.toLocaleString('en-US');
+const ms = n => n >= 1000 ? (n / 1000).toFixed(1) + ' s' : n + ' ms';
+
+function row(dl, label, value, big) {
+  const dt = document.createElement('dt');
+  dt.textContent = label;
+  const dd = document.createElement('dd');
+  dd.textContent = value;
+  if (big) dd.className = 'big';
+  dl.append(dt, dd);
+}
+
+// The run's own series, redrawn from its embedded record — never from the live
+// progress key, which the next run of this size overwrites.
+function draw(samples, expected) {
+  const svg = document.getElementById('r-chart');
+  const NS = 'http://www.w3.org/2000/svg';
+  svg.replaceChildren();
+  if (!samples || samples.length < 2) return;
+  const W = 640, H = 200, PAD = 34;
+  const tMax = Math.max(samples[Math.max(samples.length - 1, 0)][0], 1);
+  const nMax = Math.max(expected || 0, samples[samples.length - 1][1], 1);
+  const x = t => PAD + (W - 2 * PAD) * t / tMax;
+  const y = n => H - PAD - (H - 2 * PAD) * n / nMax;
+  const el = (k, at) => {
+    const e = document.createElementNS(NS, k);
+    for (const [a, v] of Object.entries(at)) e.setAttribute(a, v);
+    svg.append(e);
+    return e;
+  };
+  el('line', {x1: PAD, y1: H - PAD, x2: W - PAD, y2: H - PAD,
+              stroke: 'var(--rule)', 'stroke-width': 1});
+  el('line', {x1: PAD, y1: PAD, x2: PAD, y2: H - PAD,
+              stroke: 'var(--rule)', 'stroke-width': 1});
+  el('path', {
+    d: samples.map((p, i) => (i ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + y(p[1]).toFixed(1)).join(' '),
+    fill: 'none', stroke: 'var(--warn)', 'stroke-width': 2,
+  });
+  const label = el('text', {x: W - PAD, y: PAD - 6, 'text-anchor': 'end',
+    'font-size': 11, fill: 'var(--muted)'});
+  label.textContent = fmt(samples[samples.length - 1][1]) + ' entries over '
+    + samples[samples.length - 1][0] + ' s';
+}
+
+async function load() {
+  // ⛔ THE ID NEVER TOUCHES MARKUP. It rides only in the fetch URL, and the
+  // server validates it again before it goes near a store key.
+  const id = location.pathname.split('/').pop();
+  const sub = document.getElementById('r-sub');
+  const r = await fetch('/scale/runs/' + encodeURIComponent(id) + '.json');
+  if (!r.ok) {
+    sub.textContent = 'No run is published under this id. Runs expire from '
+      + 'nobody\u2019s hands — this link never existed.';
+    return;
+  }
+  const d = await r.json();
+  const run = d.run || {};
+  sub.textContent = fmt(run.open_lots || 0) + ' open tax lots over '
+    + fmt(run.journal_entries || 0) + ' journal entries, folded cold from an '
+    + 'empty projection. Trial balance: ' + fmt(run.trial_balance || 0)
+    + '. Build ' + String(run.build || '').slice(0, 12) + '.';
+
+  const cold = document.getElementById('r-cold');
+  row(cold, 'cold build', ms(Math.round((run.cold_build_ns || 0) / 1e6)), true);
+  row(cold, 'of which parse', ms(Math.round((run.parse_ns || 0) / 1e6)));
+  row(cold, 'of which fold', ms(Math.round((run.fold_ns || 0) / 1e6)));
+  row(cold, 'reliefs', fmt(run.reliefs || 0));
+  row(cold, 'recorded run of this shape', ms(run.recorded_cold_build_ms || 0));
+
+  const flat = document.getElementById('r-flat');
+  row(flat, 'open tax lots', fmt(run.open_lots || 0), true);
+  row(flat, 'journal entries', fmt(run.journal_entries || 0));
+  row(flat, 'trial balance', fmt(run.trial_balance || 0), true);
+  row(flat, 'securities', fmt(run.securities || 0));
+  row(flat, 'lots per security', fmt(run.lots_per || 0));
+
+  document.getElementById('r-repro').textContent =
+    'This book is a pure function of its dials and seed \u2014 '
+    + 'ratio bench --securities ' + (run.securities || 0)
+    + ' --lots-per ' + (run.lots_per || 0)
+    + ' --currencies 3 --seed 1 reproduces these figures on your machine, '
+    + 'byte for byte.';
+
+  const prog = d.progress || {};
+  draw(prog.samples || [], prog.expected || run.journal_entries || 0);
+}
+load();
+</script>
+"##;
+
 const SCALE_BODY: &str = r##"<div class="wrap">
-<h1>Twenty million tax lots</h1>
-<p class="lede">A NAV does not read the tax lots. That is a claim about a fund
-with a lot of them, so turn the dial and watch what a period end actually reads.
-The arithmetic is emitted from <code>Ratio.Closure</code> — it is the same
-function the kernel runs, not a model of it.</p>
+<header class="hero">
+  <p class="brand">ratio</p>
+  <h1>Twenty million tax lots.<br>Folded cold in seventeen minutes.<br>
+  <span class="accent">Struck in twelve microseconds.</span></h1>
+  <p class="lede">A brand-new fund — 140 million journal entries, three
+  currencies, every lot dated — generated from a seed, folded from an empty
+  projection on real hardware, and the trial balance ties at zero. Not a video,
+  not a mock: the button below runs it, and you watch both curves happen.</p>
+  <p class="lede">The seventeen minutes is the recorded cold build. The NAV
+  struck off the finished projection is <strong>microseconds</strong>, because a
+  NAV never reads the tax lots — that is the theorem, and this page is where you
+  check it rather than take it.</p>
+</header>
+
+<!-- The mailing-list gate. ⛔ AN AFFORDANCE, NOT A BOUNDARY, and the comment in
+     `scale_unlock` says so in the same words: skipping it starts the same fold
+     under the same money controls; what it earns is the follow-up report with
+     the permalink to every figure. -->
+<section class="gate" id="gate">
+  <h2>Run it, and keep the figures</h2>
+  <p class="note">Leave an email and the demo unlocks. When your fold lands you
+  get the report — every figure, the fold as it happened, and the shape and seed
+  that reproduce it. No account, no card; you are joining the mailing list, and
+  that is the whole trade.</p>
+  <div class="gaterow">
+    <input id="lead-email" type="email" autocomplete="email"
+           placeholder="you@fund.example" aria-label="Work email">
+    <button class="fold" id="unlock">Unlock the demo</button>
+  </div>
+  <p class="note" id="gate-note"></p>
+</section>
 
 <!-- ⛔ A PLAIN DIV, NOT A FORM ELEMENT, AND THE FENCE IS WORTH MORE THAN THE
      CONVENIENCE. No screen this binary serves has one: `approval_is_a_person_
@@ -1817,6 +2137,9 @@ function the kernel runs, not a model of it.</p>
      ⚠ The assertion is a grep over this source, so naming the tag here at all
      would trip it. That is the check working, not a false alarm to route
      around. -->
+
+<details class="depth">
+<summary>The arithmetic, if you want to turn the dials yourself</summary>
 
 <div id="dials" class="dials">
   <label>Securities <input id="securities" type="number" min="0" max="100000000" value="500"></label>
@@ -1859,9 +2182,10 @@ function the kernel runs, not a model of it.</p>
     <code>ratio bench --fold --book DIR</code>.</p>
   </section>
 </div>
+</details>
 
 <section class="runs">
-  <h2>Fold one yourself</h2>
+  <h2>Run it now</h2>
   <p class="note" id="runner-note"></p>
   <table class="mini runs-table">
     <thead><tr><th>Shape</th><th class="n">Open lots</th><th class="n">Recorded</th><th class="n">This run</th><th></th></tr></thead>
@@ -1876,12 +2200,43 @@ function the kernel runs, not a model of it.</p>
   a cooldown per shape and a monthly ceiling. A second visitor arriving mid-run
   <em>joins</em> it — the book is generated from a seed, so it is the same fold
   they would have started.</p>
+
+  <div id="live" hidden>
+    <h3 id="live-title"></h3>
+    <div class="meter"><div id="live-bar"></div></div>
+    <dl class="readout">
+      <div><dt>entries</dt><dd id="live-n">—</dd></div>
+      <div><dt>rate</dt><dd id="live-rate">—</dd></div>
+      <div><dt>eta</dt><dd id="live-eta">—</dd></div>
+      <div><dt>elapsed</dt><dd id="live-t">—</dd></div>
+    </dl>
+    <figure class="livefig">
+      <svg id="live-chart" viewBox="0 0 640 200" role="img"
+           aria-label="Entries processed against elapsed seconds, drawn as the run happens"></svg>
+      <figcaption class="note">⛔ This is the GROWING curve — the journal being
+      read from nothing. The flat one is the strike in the panel above, and the
+      dashes mark where the recorded run of this shape finished.</figcaption>
+    </figure>
+  </div>
 </section>
 
 <p class="note">⛔ <strong>Quoting the second curve as though it were the
 first is the overclaim this screen exists to make hard.</strong> "Twenty million
 lots are free" is true of the strike and false of the fold. Both are on this
 page for that reason.</p>
+
+<footer class="tail">
+  <p>Ratio keeps a fund's books as an append-only journal of conserved postings
+  and proves what must be true of them. The proofs are Lean 4, the model checks
+  are TLA+, the kernel is Rust emitted from the Lean.</p>
+  <!-- ⛔ NO EXTERNAL URL ON ANY SCREEN — `every_page_is_self_contained` is
+       blunt on purpose. The console link is `/`, which already redirects
+       there; the repository is cited as text, and the follow-up email carries
+       the clickable link. -->
+  <p><a href="/">Open the operations console</a> ·
+  <a href="/balance">See a live trial balance</a> ·
+  the code and the proofs: <code>github.com/mattmarshall/ratio</code></p>
+</footer>
 </div>
 <style>
 .lede{color:var(--text-2);max-width:60ch}
@@ -1924,7 +2279,37 @@ button.fold{font:inherit;font-size:13px;font-weight:600;padding:5px 12px;
   color:var(--ground);cursor:pointer}
 button.fold[disabled]{background:transparent;color:var(--muted);
   border-color:var(--rule);cursor:not-allowed}
+#live{margin-top:18px;padding-top:14px;border-top:1px solid var(--rule)}
+#live h3{font-size:14px;margin:0 0 8px}
+.meter{height:10px;border-radius:99px;background:var(--surface);overflow:hidden}
+#live-bar{height:100%;width:0%;background:var(--accent);border-radius:99px;
+  transition:width .8s linear}
+.readout{display:flex;gap:26px;margin:10px 0 4px;flex-wrap:wrap}
+.readout div{display:flex;flex-direction:column}
+.readout dt{font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted)}
+.readout dd{margin:0;font-variant-numeric:tabular-nums;font-weight:600}
+.livefig{margin:12px 0 0}
+#live-chart{width:100%;height:auto;display:block}
 .note{font-size:13px;color:var(--muted);max-width:62ch}
+.hero{margin:8px 0 26px}
+.hero .brand{font-size:13px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+.hero h1{font-size:34px;line-height:1.15;margin:0 0 14px;max-width:22ch}
+.hero .accent{color:var(--accent)}
+.gate{padding:16px;border:1px solid var(--accent);border-radius:8px;
+  background:var(--raised);margin:0 0 20px}
+.gate h2{font-size:15px;margin:0 0 8px}
+.gaterow{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 6px}
+.gaterow input{flex:1;min-width:220px;padding:8px 10px;font:inherit;
+  font-size:14px;background:var(--surface);color:var(--text);
+  border:1px solid var(--rule);border-radius:6px}
+.depth{margin:20px 0}
+.depth>summary{cursor:pointer;font-size:14px;font-weight:600;
+  color:var(--muted);padding:6px 0}
+.tail{margin:30px 0 0;padding-top:16px;border-top:1px solid var(--rule);
+  font-size:13px;color:var(--muted)}
+.tail a{color:var(--accent)}
 </style>
 <script>
 // ⛔ THE ARITHMETIC IS NOT HERE. Every figure below comes from /scale.json,
@@ -1932,6 +2317,11 @@ button.fold[disabled]{background:transparent;color:var(--muted);
 // copy of the formula in JavaScript would be a second answer to a proved
 // question, and the two would drift the first time the proof changed.
 const fmt = n => n.toLocaleString('en-US');
+// ⛔ localStorage HOLDS ONLY WHAT THE VISITOR TYPED ABOUT THEMSELVES, and it is
+// a convenience, not a session: the server re-validates the address on every
+// call and the money controls never read it.
+const LEAD = 'ratio-lead-email';
+const lead = () => localStorage.getItem(LEAD) || '';
 const DIALS = ['securities', 'currencies', 'lots-per', 'open-actions'];
 const dials = document.getElementById('dials');
 let pending = null;
@@ -1979,8 +2369,34 @@ async function tick() {
       + 'above zero to see what a rewrite would have cost.';
 }
 
+// ── the gate ────────────────────────────────────────────────────────────
+function gatePaint() {
+  const has = !!lead();
+  document.getElementById('gate-note').textContent = has
+    ? 'Unlocked for ' + lead() + ' — your report lands when the fold does.'
+    : '';
+  document.getElementById('gate').classList.toggle('open', has);
+  return has;
+}
+
+document.getElementById('unlock').addEventListener('click', async () => {
+  const email = document.getElementById('lead-email').value.trim();
+  const note = document.getElementById('gate-note');
+  const r = await (await fetch('/scale/unlock', {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({email}),
+  })).json();
+  if (r.error) { note.textContent = r.error; return; }
+  localStorage.setItem(LEAD, email);
+  gatePaint();
+  runs();
+});
+gatePaint();
+
 // ── the runs panel ──────────────────────────────────────────────────────
 const ms = n => n >= 1000 ? (n / 1000).toFixed(1) + ' s' : n + ' ms';
+const secs = t => t >= 90 ? Math.round(t / 60) + ' min' : Math.round(t) + ' s';
 
 function cell(row, text, cls) {
   const td = document.createElement('td');
@@ -1988,6 +2404,139 @@ function cell(row, text, cls) {
   if (cls) td.className = cls;
   row.append(td);
   return td;
+}
+
+// SVG built with the DOM, like everything else on these screens — the chart is
+// data plus two labels, and none of it may pass through markup.
+const SVG = 'http://www.w3.org/2000/svg';
+function el(name, attrs, parent) {
+  const e = document.createElementNS(SVG, name);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  parent.append(e);
+  return e;
+}
+
+// The rate over a trailing window, never since the start: parse and fold move
+// at different speeds, and generation at a third, so a cumulative average is
+// wrong in every phase.
+function windowed(samples) {
+  if (samples.length < 2) return 0;
+  const last = samples[samples.length - 1];
+  let i = samples.length - 2;
+  while (i > 0 && last[0] - samples[i][0] < 30) i--;
+  const dt = last[0] - samples[i][0];
+  return dt > 0 ? (last[1] - samples[i][1]) / dt : 0;
+}
+
+// Entries against elapsed seconds, with the recorded run's finish as a dashed
+// vertical marker. ⚠ A MARKER, NOT A PROJECTED LINE: the recorded run left one
+// number — where it ended — and drawing a slope to it would claim a trajectory
+// nobody measured.
+function drawChart(svg, samples, expected, recordedS) {
+  svg.replaceChildren();
+  const W = 640, H = 200, L = 46, R = 12, T = 12, B = 24;
+  const last = samples[samples.length - 1] || [0, 0];
+  const xMax = Math.max(last[0] * 1.15, recordedS * 1.05, 10);
+  const yMax = Math.max(expected, last[1]);
+  const px = t => L + (W - L - R) * (t / xMax);
+  const py = n => H - B - (H - T - B) * (n / yMax);
+
+  // Recessive grid: three lines, no box.
+  for (const f of [0.25, 0.5, 0.75, 1]) {
+    el('line', {x1: L, x2: W - R, y1: py(yMax * f), y2: py(yMax * f),
+      stroke: 'var(--rule)', 'stroke-width': 1}, svg);
+  }
+  el('line', {x1: L, x2: W - R, y1: py(0), y2: py(0),
+    stroke: 'var(--muted)', 'stroke-width': 1}, svg);
+
+  // Axis extents in text tokens — the only numbers on the frame.
+  const label = (x, y, text, anchor) => {
+    const t = el('text', {x, y, 'text-anchor': anchor, fill: 'var(--muted)',
+      'font-size': 11}, svg);
+    t.textContent = text;
+    return t;
+  };
+  label(L - 6, py(yMax) + 4, fmt(yMax), 'end');
+  label(L - 6, py(0) + 4, '0', 'end');
+  label(W - R, H - 6, secs(xMax), 'end');
+  label(L, H - 6, '0', 'start');
+
+  // Where the recorded run of this shape FINISHED.
+  if (recordedS <= xMax) {
+    el('line', {x1: px(recordedS), x2: px(recordedS), y1: py(yMax), y2: py(0),
+      stroke: 'var(--muted)', 'stroke-width': 1.5,
+      'stroke-dasharray': '5 4'}, svg);
+    label(px(recordedS), H - 6, 'recorded ' + secs(recordedS), 'middle');
+  }
+
+  // The series: one line, the page's accent, 2px.
+  if (samples.length > 1) {
+    el('polyline', {
+      points: samples.map(([t, n]) => px(t) + ',' + py(n)).join(' '),
+      fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2,
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round'}, svg);
+  }
+  const dot = el('circle', {cx: px(last[0]), cy: py(last[1]), r: 4,
+    fill: 'var(--accent)'}, svg);
+
+  // The hover layer: nearest sample under the pointer, as a crosshair + text.
+  const hoverLine = el('line', {y1: py(yMax), y2: py(0), stroke: 'var(--text-2)',
+    'stroke-width': 1, visibility: 'hidden'}, svg);
+  const hoverText = el('text', {fill: 'var(--text-2)', 'font-size': 11,
+    'text-anchor': 'middle', visibility: 'hidden'}, svg);
+  const overlay = el('rect', {x: L, y: T, width: W - L - R, height: H - T - B,
+    fill: 'transparent'}, svg);
+  overlay.addEventListener('mousemove', ev => {
+    const box = svg.getBoundingClientRect();
+    const t = ((ev.clientX - box.left) * (W / box.width) - L) / (W - L - R) * xMax;
+    let best = samples[0];
+    for (const s of samples) if (Math.abs(s[0] - t) < Math.abs(best[0] - t)) best = s;
+    if (!best) return;
+    hoverLine.setAttribute('x1', px(best[0]));
+    hoverLine.setAttribute('x2', px(best[0]));
+    hoverText.setAttribute('x', px(best[0]));
+    hoverText.setAttribute('y', Math.max(py(best[1]) - 8, T + 10));
+    hoverText.textContent = fmt(best[1]) + ' @ ' + secs(best[0]);
+    hoverLine.setAttribute('visibility', 'visible');
+    hoverText.setAttribute('visibility', 'visible');
+  });
+  overlay.addEventListener('mouseleave', () => {
+    hoverLine.setAttribute('visibility', 'hidden');
+    hoverText.setAttribute('visibility', 'hidden');
+  });
+  svg.append(dot, hoverLine, hoverText, overlay);
+}
+
+function showLive(d) {
+  const live = document.getElementById('live');
+  if (!d.running) { live.hidden = true; return false; }
+  const s = d.shapes.find(x => x.size === d.running.size);
+  const p = s && s.progress;
+  live.hidden = false;
+  const phase = p ? p.phase : 'starting';
+  document.getElementById('live-title').textContent =
+    'The ' + d.running.size + ' fold, ' + phase;
+  if (!p || !p.samples || !p.samples.length) return true;
+
+  const last = p.samples[p.samples.length - 1];
+  const frac = p.expected > 0 ? last[1] / p.expected : 0;
+  // ⚠ CLAMPED: `expected` is the DECLARED entry count, and if the generator
+  // ever drifted from the table a bar past 100% would be the symptom. The
+  // chart deliberately does not clamp, so the drift stays visible somewhere.
+  document.getElementById('live-bar').style.width =
+    Math.min(100, frac * 100).toFixed(1) + '%';
+  document.getElementById('live-n').textContent =
+    fmt(last[1]) + ' / ' + fmt(p.expected);
+  document.getElementById('live-t').textContent = secs(last[0]);
+  const rate = windowed(p.samples);
+  document.getElementById('live-rate').textContent =
+    rate > 0 ? fmt(Math.round(rate)) + '/s' : '—';
+  document.getElementById('live-eta').textContent =
+    rate > 0 && p.expected > last[1]
+      ? '~' + secs((p.expected - last[1]) / rate) : '—';
+  drawChart(document.getElementById('live-chart'), p.samples, p.expected,
+    s.recorded_cold_build_ms / 1000);
+  return true;
 }
 
 async function runs() {
@@ -2013,24 +2562,26 @@ async function runs() {
     // ⛔ THE COLD BUILD, NOT THE STRIKE. The flat curve is the panel above;
     // putting it here unlabelled beside "recorded" would invite reading one
     // as the other.
-    const mine = d.running && d.running.size === s.size
-      ? (s.progress || 'starting…')
+    const running = d.running && d.running.size === s.size;
+    const mine = running
+      ? (s.progress ? s.progress.phase + '…' : 'starting…')
       : (s.result ? ms(Math.round(s.result.cold_build_ns / 1e6)) : '—');
     cell(tr, mine);
 
     const td = document.createElement('td');
     const b = document.createElement('button');
     b.className = 'fold';
-    b.textContent = d.running && d.running.size === s.size ? 'running' : 'Fold it';
+    b.textContent = running ? 'running' : 'Fold it';
     const cooling = s.again_at > d.now;
-    b.disabled = !d.runner || !!d.running || cooling;
+    b.disabled = !d.runner || !!d.running || cooling || !lead();
+    if (!lead()) b.title = 'Unlock the demo above first';
     if (cooling && !d.running) b.textContent = 'cooling';
     b.addEventListener('click', async () => {
       b.disabled = true;
       const r = await (await fetch('/scale/start', {
         method: 'POST',
         headers: {'content-type': 'application/json'},
-        body: JSON.stringify({size: s.size}),
+        body: JSON.stringify({size: s.size, email: lead()}),
       })).json();
       if (r.error || r.why) note.textContent = r.error || r.why;
       runs();
@@ -2039,13 +2590,23 @@ async function runs() {
     tr.append(td);
     body.append(tr);
   }
+
+  return showLive(d);
 }
 
-// ⚠ Slower than the trial balance's 400 ms tick. A fold is minutes long, and
-// polling it four times a second would be four times the requests for a number
-// that changes every five seconds.
-setInterval(runs, 3000);
-runs();
+// ⚠ Two speeds: a run in flight redraws every 2 s off samples that move every
+// 5, and an idle panel asks every 10 — a fold is minutes long, and there is no
+// third state worth a third speed. (No SSE and no streaming: this API sits
+// behind a gateway and an adapter that give both up, so polling is the whole
+// option space.)
+let timer = null;
+function pace(active) {
+  const want = active ? 2000 : 10000;
+  if (timer && timer.want === want) return;
+  if (timer) clearInterval(timer.id);
+  timer = {want, id: setInterval(async () => pace(await runs()), want)};
+}
+runs().then(pace);
 
 dials.addEventListener('input', () => {
   clearTimeout(pending);
@@ -2544,12 +3105,13 @@ mod tests {
     // omission looks exactly like a suite that passes. Every screen the route
     // table serves belongs here; `every_screen_the_router_serves_is_listed_here`
     // is what stops the next one being forgotten.
-    const SCREENS: [(&str, &str); 5] = [
+    const SCREENS: [(&str, &str); 6] = [
         ("chat", CHAT_BODY),
         ("balance", BALANCE_BODY),
         ("breaks", BREAKS_BODY),
         ("rules", RULES_BODY),
         ("scale", SCALE_BODY),
+        ("report", REPORT_BODY),
     ];
 
     #[test]
@@ -2558,8 +3120,13 @@ mod tests {
         // subresource would render an unstyled page in front of a customer.
         for (name, body) in SCREENS {
             let html = page(body, name);
-            // The SVG xmlns is a namespace identifier, not a fetch.
-            let stripped = html.replace("http%3A//www.w3.org/2000/svg", "");
+            // The SVG xmlns is a namespace identifier, not a fetch — in the
+            // favicon's URL-encoded form and in `createElementNS`'s plain one.
+            // ⚠ Stripping exactly these two strings is the point: anything else
+            // that looks like a URL is still an external reference.
+            let stripped = html
+                .replace("http%3A//www.w3.org/2000/svg", "")
+                .replace("http://www.w3.org/2000/svg", "");
             assert!(!stripped.contains("http://"), "{name}: external reference");
             assert!(!stripped.contains("https://"), "{name}: external reference");
             assert!(html.contains("<!doctype html>"), "{name}");
@@ -2580,6 +3147,11 @@ mod tests {
     #[test]
     fn the_nav_marks_exactly_the_current_screen() {
         for (name, body) in SCREENS {
+            // ⚠ The lead pages are served WITHOUT the nav — `lead_page` — so
+            // "which tab is current" is a question they never answer.
+            if name == "scale" || name == "report" {
+                continue;
+            }
             let html = page(body, name);
             // Count inside the nav only — the stylesheet mentions the same
             // attribute in a selector, and counting the whole document made
@@ -2594,32 +3166,25 @@ mod tests {
     }
 
     #[test]
-    fn there_are_five_screens_and_no_sixth() {
-        // PLAN.md said "Three. Not four." The fourth is the MCP conversation
-        // itself, which that rule assumed would happen in someone else's
-        // client — "the MCP conversation IS the authoring interface". It still
-        // is; this screen shows it rather than replacing it, and there is
-        // still no portal, no dashboard, no settings and no rule editor.
-        //
-        // ⭐ THE FIFTH IS `scale`, AND IT IS A DELIBERATE ADDITION RATHER THAN
-        // DRIFT. `deploy/seed-demo-funds.sh` names the gap it closes in as many
-        // words — "THE SCALE ARGUMENT WAS UNSHOWABLE… 'A NAV does not read the
-        // tax lots' is a claim about a fund with a lot of them" — and the demo's
-        // largest fund holds eight hundred. The screen turns the dials of
-        // `Ratio.Closure` and shows the recorded cold build beside the answer,
-        // so the claim can be CHECKED rather than taken.
-        //
-        // ⛔ IT READS AND NOTHING ELSE. No portal, no dashboard, no settings, no
-        // rule editor, and no button that spends anybody's money — the tests
-        // above hold it to having no form and no write. This assertion is the
-        // moment to notice if that ever stops being true, which is why it counts
-        // rather than describes.
+    fn the_nav_has_four_tabs_and_the_lead_pages_stand_alone() {
+        // PLAN.md said "Three. Not four." The fourth is the MCP conversation.
+        // The fifth screen — scale — was in this nav for one release and LEFT
+        // it deliberately: it became the lead-gen front door, and a prospect
+        // landing there should meet one claim and one button, not an operator's
+        // tab bar. It and the run reports are served by `lead_page`, WITHOUT
+        // the nav, and are still held to every page fence because they stay in
+        // SCREENS. This assertion is the moment to notice if the nav grows —
+        // or if the lead page quietly rejoins it.
         let html = page(CHAT_BODY, "chat");
         let tabs = html.matches("<a href=").count();
-        assert_eq!(tabs, 5, "the nav offers {tabs} screens");
+        assert_eq!(tabs, 4, "the nav offers {tabs} screens");
+        // And the standalone wrapper really is nav-free: a lead page with a tab
+        // bar is an operator screen again.
+        assert!(!lead_page(SCALE_BODY).contains("<nav"), "the lead page grew the nav");
+        assert!(!lead_page(REPORT_BODY).contains("<nav"), "the report page grew the nav");
     }
 
-    #[test]
+#[test]
     fn the_chat_screen_says_what_the_model_cannot_do() {
         // The fence is invisible unless something names it. A viewer who never
         // asks the model to approve should still leave knowing it cannot.
@@ -2763,10 +3328,20 @@ mod tests {
         let mut served: Vec<&str> = router
             .lines()
             // The route arms, not this test's own mention of them.
-            .filter(|l| l.contains("=> (\"200 OK\", \"text/html; charset=utf-8\", page("))
+            // ⛔ ROUTE ARMS ONLY, for both wrappers. A bare `lead_page(` match
+            // also catches this test's own assertions and the wrapper's
+            // definition — include_str! reads the whole file, tests included —
+            // and the first version of this branch did exactly that.
+            .filter(|l| {
+                l.contains("text/html; charset=utf-8\", page(")
+                    || l.contains("text/html; charset=utf-8\", lead_page(")
+            })
             .filter_map(|l| l.split("page(").nth(1))
             .filter_map(|rest| rest.split(',').next())
-            .map(|body| body.trim())
+            // ⚠ A `lead_page(BODY))` arm carries no `, "slug"` tail, so the
+            // token keeps the closing parens; a `page(BODY, "slug")` one does
+            // not. Trim both to the bare const name.
+            .map(|body| body.trim().trim_end_matches(')'))
             .collect();
         served.sort_unstable();
         served.dedup();
@@ -2782,6 +3357,7 @@ mod tests {
                         "BREAKS_BODY" => BREAKS_BODY,
                         "RULES_BODY" => RULES_BODY,
                         "SCALE_BODY" => SCALE_BODY,
+                        "REPORT_BODY" => REPORT_BODY,
                         other => panic!(
                             "the router serves {other}, which this test does not know how to \
                              resolve — add it to both SCREENS and this match"

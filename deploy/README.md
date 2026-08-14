@@ -108,6 +108,39 @@ account answered a tool-use call correctly and refused the identical call forty
 minutes later — new accounts appear to get a grace window. Test after the form,
 not before.
 
+## The report email (SES) — one-time setup
+
+The demo's follow-up email — a lead's run report, with the permalink to every
+figure — sends from the identity in the `ScaleSender` stack parameter, currently
+`demo@ratio.msoftware.co`. Until SES is set up, leave `SCALE_SENDER` unset:
+**the demo is whole without it** — no email is attempted and the report link is
+on the page the moment a run completes.
+
+To turn it on, once, by hand:
+
+1. **Verify the domain.** SES console (us-east-1) → Verified identities →
+   Create identity → Domain → `ratio.msoftware.co`. Add the three DKIM CNAME
+   records it prints to the domain's DNS. Wait for "Verified".
+2. **Leave the sandbox.** SES starts sandboxed: it will only send TO verified
+   addresses, which for a lead-capture demo is exactly backwards. SES console →
+   Account dashboard → Request production access; the form asks what you send
+   and how you handle bounces (transactional, one report per demo run, capped
+   at 200 per run in code). Usually approved inside a day.
+3. **Re-run bootstrap** (the function's replay-email grant is scoped to
+   `*@ratio.msoftware.co` — change both if the domain ever changes):
+
+       aws --profile ratio cloudformation deploy \
+         --template-file deploy/bootstrap.yaml \
+         --stack-name ratio-demo-bootstrap \
+         --capabilities CAPABILITY_NAMED_IAM \
+         --parameter-overrides GitHubRepo=mattmarshall/ratio
+
+4. **Set the sender** as a repository variable: `SCALE_SENDER=demo@ratio.msoftware.co`.
+   The next deploy passes it through; email activates with no code change.
+
+⚠ **Order matters:** set `SCALE_SENDER` only after the identity verifies —
+before that, every send fails quietly in the task log while the demo carries on.
+
 ## Where it runs
 
 Account **320473299741** (`ratio`), in the `Platform` OU of the marsh
@@ -378,6 +411,14 @@ read-only actions are wildcards now (`ec2:Describe*`, `s3:Get*`), which narrows
 nothing that was ever narrow — those calls take no resource ARN — and removes a
 whole class of deploy that fails after the image is already pushed.
 `//deploy:iac_test` now fails on the exact grant that shipped.
+
+⛔ **And a third time, for the ECS service-linked role.** The first real button
+press failed with the IAM simulator saying `ecs:RunTask` was ALLOWED — because
+the role ECS itself assumes, `AWSServiceRoleForECS`, had never been created in
+this account. AWS creates it on first cluster creation only when the creating
+principal may `iam:CreateServiceLinkedRole`, which the deploy role deliberately
+may not. Bootstrap now declares it (`AWS::IAM::ServiceLinkedRole`), and
+`//deploy:iac_test` refuses an app stack that runs ECS tasks without it.
 
 ## How CI gets in
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useSelectedLayoutSegments } from "next/navigation";
+import { SCREENS, screenHref } from "@/lib/screens";
 
 /**
  * The screens under one fund, in the order an operator works them.
@@ -12,25 +13,11 @@ import { useSelectedLayoutSegments } from "next/navigation";
  * about which figure it is showing is the failure HANDOFF.md already records:
  * the console and the CLI reported different NAVs for one book, neither saying
  * which. The `.views` CSS class went with it, to `.screens`.
- */
-const SCREENS = [
-  { segment: "breaks", label: "Exceptions", scoped: true },
-  { segment: "accounts", label: "Trial balance", scoped: true },
-  { segment: "positions", label: "Positions", scoped: true },
-  { segment: "data", label: "Data", scoped: false },
-  { segment: "strikes", label: "NAV", scoped: true },
-  { segment: "config", label: "Configuration", scoped: false },
-  { segment: "rules", label: "Rules", scoped: false },
-  { segment: "changes", label: "Change log", scoped: false },
-] as const;
-
-/**
- * ⚠ `scoped` IS NOT COSMETIC. A screen showing figures folded from a journal
- * prefix belongs to one view and lives under `views/<id>/`; one showing what was
- * AGREED — the configuration, the rules, the change log, the deliveries — does
- * not, because a rule set is the same document whichever way you recognise the
- * entries it produced. Getting this wrong in either direction is a URL that
- * lies about what it is showing.
+ *
+ * ⚠ THE LIST ITSELF MOVED TO `lib/screens.ts` when the command palette began
+ * offering the same eight screens. Two copies would be two answers to what
+ * `scoped` means, and `scoped` decides whether a URL tells the truth about
+ * which book of record produced the figures on it.
  */
 export function ScreenTabs({
   fund,
@@ -50,11 +37,7 @@ export function ScreenTabs({
       {SCREENS.map((s) => (
         <Link
           key={s.segment}
-          href={
-            s.scoped
-              ? `/funds/${fund}/views/${view}/${s.segment}`
-              : `/funds/${fund}/${s.segment}`
-          }
+          href={screenHref(fund, view, s)}
           aria-current={here === s.segment ? "page" : undefined}
         >
           {s.label}

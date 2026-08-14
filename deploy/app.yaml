@@ -66,6 +66,16 @@ Parameters:
       OAuth client secret paired with GoogleClientId. NoEcho so it is masked in
       stack events and not returned by describe-stacks. Passed from a repository
       secret; never committed.
+  ScaleSender:
+    Type: String
+    Default: ""
+    Description: >
+      The verified SES identity the follow-up report email is sent from, e.g.
+      demo@ratio.msoftware.co. Empty disables email entirely — the demo is
+      whole without it, and the report link is on the page the moment a run
+      completes. Set it only AFTER the identity verifies in SES, or every send
+      fails quietly in the task log.
+
   ReservedConcurrency:
     Type: Number
     Default: 0
@@ -179,6 +189,10 @@ Resources:
           RATIO_SCALE_SUBNET: !Ref ScaleSubnet
           RATIO_SCALE_SECURITY_GROUP: !GetAtt ScaleSecurityGroup.GroupId
           RATIO_SCALE_BUCKET: !Ref ScaleBucket
+          # The report email: who it is from, and where its permalink points.
+          # ⚠ Both unset is a WORKING state — no email, nothing else changes.
+          RATIO_SCALE_SENDER: !Ref ScaleSender
+          RATIO_PUBLIC_ORIGIN: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"
       Tags:
         - Key: project
           Value: ratio
@@ -565,9 +579,19 @@ Resources:
           # progress and figures are superseded by the next run; the book is
           # what makes the next run possible without twenty minutes of
           # generation, so it is not on a timer.
-          - Id: expire-run-records
+          # ⛔ ONLY THE EPHEMERAL RECORDS EXPIRE. `runs/` also holds
+          # `report-{id}.json` now — the PERMALINK a lead's follow-up email
+          # opens — and the first version of this rule expired the whole
+          # prefix, which would have 404ed every emailed link on day 31.
+          # Progress documents are superseded by the next run and the awaits
+          # are drained at completion; those may age out. A permalink may not.
+          - Id: expire-progress-records
             Status: Enabled
-            Prefix: runs/
+            Prefix: runs/progress-
+            ExpirationInDays: 30
+          - Id: expire-stale-awaits
+            Status: Enabled
+            Prefix: runs/await-
             ExpirationInDays: 30
           - Id: drop-unfinished-uploads
             Status: Enabled
@@ -642,6 +666,19 @@ Resources:
                 Effect: Allow
                 Action: s3:ListBucket
                 Resource: !Sub "arn:aws:s3:::ratio-demo-scale-${AWS::AccountId}"
+              # The follow-up report, sent when the fold this task ran lands.
+              # ⛔ ONE identity and one configuration-set-free SendEmail — not
+              # ses:* — because this role belongs to a container that executes
+              # a public button's work. The cap in `send_awaited` bounds volume;
+              # this bounds what a compromised task could send AS.
+              - Sid: SendTheReportEmail
+                Effect: Allow
+                Action:
+                  - ses:SendEmail
+                Resource: "*"
+                Condition:
+                  StringLike:
+                    ses:FromAddress: !Ref ScaleSender
 
   # ⛔ ONE FAMILY, TWO JOBS, CHOSEN BY THE COMMAND AT RunTask. `build` generates
   # a book and uploads it; `fold` downloads one and measures the cold build.
@@ -682,6 +719,10 @@ Resources:
           Environment:
             - Name: RATIO_SCALE_BUCKET
               Value: !Sub "ratio-demo-scale-${AWS::AccountId}"
+            - Name: RATIO_SCALE_SENDER
+              Value: !Ref ScaleSender
+            - Name: RATIO_PUBLIC_ORIGIN
+              Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"
             - Name: RATIO_BUILD
               Value: !Ref BuildSha
           LogConfiguration:

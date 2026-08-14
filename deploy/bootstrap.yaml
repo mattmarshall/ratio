@@ -15,6 +15,26 @@ Parameters:
     Description: owner/repo allowed to assume the deploy role.
 
 Resources:
+  # ── What ECS itself needs, once per account ─────────────────────────────
+  #
+  # ⛔ WITHOUT THIS, EVERY RunTask IN THE ACCOUNT IS REFUSED, AND NOTHING IN
+  # ANY TEMPLATE SAYS SO. ECS manages the network interfaces of awsvpc tasks
+  # through its service-linked role, which AWS creates automatically the first
+  # time a cluster is made — IF the principal making it may
+  # iam:CreateServiceLinkedRole. The scale cluster was created by CloudFormation
+  # under the deploy role above, which deliberately may not. So the cluster
+  # existed, the IAM simulator said RunTask was allowed, PassRole was allowed —
+  # and the first button press on the deployed demo failed anyway, because the
+  # role ECS ITSELF assumes was never born.
+  #
+  # ⚠ ACCOUNT-SINGLETON. This is the one place it can live: bootstrap is the
+  # stack for things that exist once per account and are applied by a human
+  # with admin. It costs nothing and AWS manages its policy.
+  EcsServiceLinkedRole:
+    Type: AWS::IAM::ServiceLinkedRole
+    Properties:
+      AWSServiceName: ecs.amazonaws.com
+
   # ── The registry ────────────────────────────────────────────────────────
   Repository:
     Type: AWS::ECR::Repository
@@ -520,6 +540,20 @@ Resources:
                 Condition:
                   StringLike:
                     s3:prefix: "runs/*"
+              # A lead who arrives during a cooldown is emailed the LATEST run's
+              # report immediately — no task exists to send it later, so the
+              # function sends it. ⛔ Scoped exactly as the task role's grant is:
+              # one SendEmail, and only AS an address under the demo's own
+              # domain. A public endpoint with an unscoped mail permission is a
+              # phishing kit with a budget.
+              - Sid: SendTheReplayReportEmail
+                Effect: Allow
+                Action:
+                  - ses:SendEmail
+                Resource: "*"
+                Condition:
+                  StringLike:
+                    ses:FromAddress: "*@ratio.msoftware.co"
 
   # ⛔ NO BUDGET HERE. mattmarshall/cloud-org owns budgets for every account in
   # the organization, at the payer, filtered by LinkedAccount — including this

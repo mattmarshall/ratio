@@ -155,6 +155,26 @@ def main(app_path, bootstrap_path, workflow_path):
         else:
             print(f"  ok  {marker} needs {action}, and the deploy role has it")
 
+    # ⛔ THE PERMISSION NO POLICY CAN GRANT: A SERVICE-LINKED ROLE THAT DOES NOT
+    # EXIST. ECS manages awsvpc task networking through AWSServiceRoleForECS,
+    # auto-created on first cluster creation only if the creator may
+    # iam:CreateServiceLinkedRole — which the deploy role deliberately may not.
+    # The failure that taught this: the IAM simulator said RunTask was allowed
+    # and PassRole was allowed, and the first real button press failed anyway,
+    # because the role ECS ITSELF assumes had never been created in the account.
+    # Nothing in either template's grants could have said so; only the presence
+    # of the SLR resource can.
+    if "AWS::ECS::TaskDefinition" in app:
+        if "AWS::IAM::ServiceLinkedRole" in boot and "ecs.amazonaws.com" in boot:
+            print("  ok  ECS tasks exist and bootstrap creates the ECS service-linked role")
+        else:
+            fail(
+                f"{app_path} runs ECS tasks but {bootstrap_path} does not create the ECS "
+                "service-linked role (AWS::IAM::ServiceLinkedRole, ecs.amazonaws.com) — in "
+                "an account that has never used ECS, every RunTask fails even though the IAM "
+                "simulator says it is allowed"
+            )
+
     # ⭐ THE ONE THAT WOULD BE SILENT. A role the app stack creates for ECS must
     # be passable TO ecs, or RunTask is refused at the moment a visitor presses
     # the button — long after every deploy has gone green.
