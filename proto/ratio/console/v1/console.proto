@@ -415,8 +415,6 @@ message Fund {
   // ISO 4217.
   string currency_code = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  State state = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
-
   // Debits minus credits. Zero for any book the journal accepted — it is
   // reported as a figure rather than a green tick because it is a proved
   // property of the kernel, not a check that happened to pass.
