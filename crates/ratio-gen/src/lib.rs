@@ -49,7 +49,7 @@
 
 use std::fmt::Write as _;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use ratio_store::{
     Account, AccountTypeRecord, AnnouncementRecord, ConfigStore, FileBook, Journal, JournalEntry,
     PostingRecord,
@@ -145,6 +145,13 @@ fn between(seed: u64, a: u64, b: u64, lo: i64, hi: i64) -> i64 {
 /// taken against one would be unreproducible — the same reason there is no RNG
 /// in this crate.
 const FIRST_TRADE_DAY: i64 = 13_151;
+
+/// When the generated corporate actions were announced, in unix seconds.
+///
+/// ⛔ ONE CONSTANT FOR TWO FIELDS. The announcement record carries it and so
+/// does the entry's trade date, and two spellings of one instant would let a
+/// view place the entry on a day the announcement itself disagreed with.
+const ANNOUNCED_AT: i64 = 1_767_225_600;
 
 /// One book of record a generated fund keeps.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -252,6 +259,41 @@ pub fn ticker(i: i64) -> String {
 /// journal that contains them, and conflating the two would be the easiest
 /// overclaim available here.
 pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
+    generate_books(path, shape, &Books::default())
+}
+
+/// The same fund, keeping the books of record `books` declares.
+///
+/// ⚠ `generate` IS THIS WITH NOTHING DECLARED, and that case must stay
+/// byte-identical to what this crate produced before views existed — every
+/// measurement in HANDOFF.md was taken against one.
+pub fn generate_books(path: &std::path::Path, shape: Shape, books: &Books) -> Result<usize> {
+    if books.subscriptions_in_tail > 0 {
+        if books.settle_tail <= 0 {
+            bail!(
+                "a settlement tail of {} subscriptions needs days to spread over — pass \
+                 --settle-tail",
+                books.subscriptions_in_tail
+            );
+        }
+        if books.tail_ends <= 0 {
+            bail!("a settlement tail has to end on a day — `Books::tail_ends` was not set");
+        }
+        // ⛔ REFUSED, NOT WRAPPED. Spreading more subscriptions than there are
+        // days would put two on one day and leave the last day of the tail
+        // empty, which is the day most likely to straddle the valuation point.
+        // A demo that quietly generated a fund the views agree about is the one
+        // outcome this whole fund exists to avoid.
+        if books.subscriptions_in_tail > books.settle_tail {
+            bail!(
+                "{} subscriptions will not fit in a {}-day tail — one a day, so the last day \
+                 of the tail is never the empty one",
+                books.subscriptions_in_tail,
+                books.settle_tail
+            );
+        }
+    }
+
     let _ = std::fs::remove_dir_all(path);
     let mut b = FileBook::open(path).context("creating the book")?;
 
@@ -268,8 +310,14 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
     // the rule set refuses a collision when it is read.
     let owned = format!(
         "lot_method = \"{}\"\nrules = []\n\n[chart_roles]\n\
-         investments = 1\ncash = 2\nrealized_gain = 30\ncurrency_conversion = 40\n",
-        shape.method.as_declared()
+         investments = 1\ncash = 2\nrealized_gain = 30\ncurrency_conversion = 40\n{}",
+        shape.method.as_declared(),
+        // ⛔ THE VIEWS GO IN THE SAME CONFIGURATION EVERY ENTRY PINS, which is
+        // what makes this one journal rather than two books. A per-view file
+        // would leave the views unpinned while the rules were pinned, and a
+        // calendar amended later would silently move a NAV already struck —
+        // `//tla:calendar_in_side_file_check` is exactly that.
+        books.toml()
     );
     let config: &str = &owned;
     let cfg = b.put(config.as_bytes())?;
@@ -301,7 +349,13 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                 PostingRecord::of_currency(2, amount, base),
                 PostingRecord::of_currency(20, -amount, base),
             ],
-            trade_date: None,
+            // ⛔ DATED, LIKE EVERY OTHER ENTRY HERE, AND IT USED NOT TO BE. A
+            // settlement view refuses an entry it cannot date — rightly, since
+            // there is nothing to roll forward from — so a generator that dated
+            // only its trades produced a fund every settlement view refused
+            // outright. Funding lands before the first trade, which is the only
+            // thing about the day that matters.
+            trade_date: Some(ratio_common::iso_date_from_days(FIRST_TRADE_DAY - 30 + k)),
             announcement: None,
         })?;
         written += 1;
@@ -336,7 +390,10 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                 PostingRecord::of_currency(conversion, -got, code),
                 PostingRecord::of_currency(2, got, code),
             ],
-            trade_date: None,
+            // After the funding and before the first trade — the fund buys the
+            // currency it is about to trade in. See `cap-{k}` above for why an
+            // undated entry is not an option.
+            trade_date: Some(ratio_common::iso_date_from_days(FIRST_TRADE_DAY - 20 + c)),
             announcement: None,
         })?;
         written += 1;
@@ -532,15 +589,54 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
             memo: format!("announced ca-{k}"),
             config: cfg.clone(),
             postings: Vec::new(),
-            trade_date: None,
+            // ⚠ THE DAY IT WAS ANNOUNCED, NOT THE EX-DATE. This entry carries no
+            // postings, so what a view does with the date changes no figure —
+            // but a view that cannot PLACE it refuses the whole book, and an
+            // announcement's own day is the day somebody was told.
+            trade_date: Some(ratio_common::iso_date_from_days(ANNOUNCED_AT / 86_400)),
             announcement: Some(AnnouncementRecord {
                 id: format!("ca-{k}"),
                 instrument: ticker(i),
                 numerator: num,
                 denominator: den,
                 ex_date: "2026-01-15".into(),
-                announced: 1_767_225_600,
+                announced: ANNOUNCED_AT,
             }),
+        })?;
+        written += 1;
+    }
+
+    // ⛔ AND THEN THE TAIL: THE ONLY ENTRIES IN THIS FILE ANCHORED TO A DAY THE
+    // CALLER CHOSE, AND THE ONLY REASON TWO VIEWS OF THIS FUND DISAGREE.
+    //
+    // ⭐ FOLDED TO THE END OF HISTORY EVERY VIEW AGREES, because everything
+    // eventually settles — `Ratio.Views.a_fold_with_no_cut_hides_the_settlement_
+    // gap`. The difference between two books of record lives entirely at a CUT,
+    // so these have to be traded ON OR BEFORE the valuation point and settle
+    // AFTER it. `ratio strike` values at now, which is why `tail_ends` is passed
+    // in rather than derived from `FIRST_TRADE_DAY` like everything above.
+    //
+    // ⛔ SUBSCRIPTIONS, AND A PURCHASE WOULD NOT DO. Cash and investments are
+    // both assets, so recognising a trade or not moves the NAV by ZERO and the
+    // two views would agree while every line of the engine ran. Capital is
+    // equity, the NAV filter excludes it, and the asset side is left holding the
+    // balance — so the figure MOVES. HANDOFF.md records the multi-currency
+    // version of this being written vacuously twice before anybody noticed.
+    for j in 0..books.subscriptions_in_tail {
+        // One a day, most recent first, so the last day of the tail is never
+        // the empty one — it is the day most likely to straddle the cut.
+        let day = books.tail_ends - j;
+        let amount = between(shape.seed, 23, j as u64, 5_000_000_00, 30_000_000_00);
+        b.append(&JournalEntry {
+            id: format!("sub-tail-{j}"),
+            memo: format!("subscription {}", j + 1),
+            config: cfg.clone(),
+            postings: vec![
+                PostingRecord::of_currency(2, amount, base),
+                PostingRecord::of_currency(20, -amount, base),
+            ],
+            trade_date: Some(ratio_common::iso_date_from_days(day)),
+            announcement: None,
         })?;
         written += 1;
     }

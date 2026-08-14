@@ -3751,7 +3751,7 @@ mod tests {
 
         // Equity is credit-normal, so a credit balance is ordinary there —
         // otherwise the flag would just be reporting the sign.
-        let equity = c.get_account("funds/demo/accounts/20").unwrap();
+        let equity = c.get_account(&format!("{}/accounts/20", demo_view())).unwrap();
         assert_eq!(equity.balance, "500");
         assert!(equity.abnormal, "equity holding a DEBIT balance is the abnormal one");
 

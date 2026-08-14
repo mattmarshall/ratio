@@ -62,6 +62,7 @@ usage:
   ratio stale [--book DIR]             NAVs struck without an action since arrived
   ratio gen [--book DIR] [--securities N] [--lots-per N] [--turnover N]
         [--currencies N] [--open-actions N] [--capital N] [--seed N]
+        [--views abor,ibor:t+2] [--settle-tail N] [--subscriptions-in-tail N]
                                        generate a fund INTO a book, to serve
   ratio bench [--securities N] [--lots-per N] [--turnover N]
         [--currencies N]
@@ -625,6 +626,7 @@ fn shape_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Shape, Vec<&'a str>)> 
 /// of this command.
 fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
     let (shape, rest) = shape_from(args)?;
+    let (books, rest) = books_from(&rest)?;
     // ⚠ `--book` NEVER REACHES HERE. `split_book_flag` pulls it out before
     // dispatch, wherever it appears, and hands it in — so anything left over is
     // a flag nobody defined. I wrote a second `--book` parser here first; it
@@ -633,7 +635,7 @@ fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
         bail!("{other:?} is not a dial — see `ratio help`");
     }
 
-    let entries = ratio_gen::generate(&book, shape)?;
+    let entries = ratio_gen::generate_books(&book, shape, &books)?;
     let proj = ratio_project::Projection::of_book(&book)?;
     println!("generated {} into {}", plural(entries as i64, "entry", "entries"), book.display());
     println!("  {:<22}{:>12}", "securities", shape.securities);
@@ -646,6 +648,74 @@ fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
 /// `1 entry` / `2 entries`, because a demo script prints this.
 fn plural(n: i64, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// The books of record a generated fund keeps, from the dials that name them.
+///
+/// ⛔ SEPARATE FROM `shape_from`, AND NOT BY ACCIDENT. `Shape` is what
+/// `ratio bench` prints as a cost table — securities, lots, currencies — and a
+/// recognition convention is not a dimension of a fund's size. Putting `--views`
+/// there would make it appear in a benchmark that has no use for it.
+///
+/// ⚠ AND THIS IS WHERE THE WALL CLOCK ENTERS. `ratio-gen` has no `now` and is
+/// not getting one: it exists to produce the same book from the same dials. But
+/// `ratio strike` values at NOW, and a settlement tail that has already settled
+/// by then demonstrates nothing — `Ratio.Views.a_fold_with_no_cut_hides_the_
+/// settlement_gap` — so the tail is anchored to today, here, at the edge. The
+/// twenty years of history above it stay fixed.
+fn books_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Books, Vec<&'a str>)> {
+    let mut books = ratio_gen::Books::default();
+    let mut rest = Vec::new();
+    let mut it = args.iter().peekable();
+    while let Some(flag) = it.next() {
+        match *flag {
+            // `abor,ibor:t+2` — a bare id recognises on the trade date, and
+            // `:t+n` settles n open days after it.
+            "--views" => {
+                let spec = it.next().ok_or_else(|| anyhow::anyhow!("--views needs a list"))?;
+                for one in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+                    let (id, settles_in) = match one.split_once(':') {
+                        None => (one, None),
+                        Some((id, lag)) => {
+                            let n = lag
+                                .trim()
+                                .strip_prefix("t+")
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "{lag:?} is not a settlement convention — write \
+                                         `{id}:t+2` for two open days after the trade"
+                                    )
+                                })?
+                                .parse::<i64>()
+                                .with_context(|| format!("{lag:?} is not `t+<days>`"))?;
+                            (id, Some(n))
+                        }
+                    };
+                    books.views.push(ratio_gen::GenView { id: id.to_string(), settles_in });
+                }
+            }
+            "--settle-tail" => {
+                books.settle_tail = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--settle-tail needs a number of days"))?
+                    .parse()
+                    .context("--settle-tail needs a number of days")?;
+            }
+            "--subscriptions-in-tail" => {
+                books.subscriptions_in_tail = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--subscriptions-in-tail needs a number"))?
+                    .parse()
+                    .context("--subscriptions-in-tail needs a number")?;
+            }
+            other => rest.push(other),
+        }
+    }
+    books.tail_ends = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64 / 86_400)
+        .unwrap_or(0);
+    Ok((books, rest))
 }
 
 /// Generate a fund and measure what a period end actually takes.
