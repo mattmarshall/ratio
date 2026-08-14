@@ -3,6 +3,11 @@ package(default_visibility = ["//visibility:public"])
 # Exposed for crate_universe's `manifests` (the workspace root manifest).
 exports_files(["Cargo.toml"])
 
+# ⛔ The deploy workflow is DATA to a test, because the capability flag it passes
+# is part of whether `deploy/app.yaml` can be deployed at all. See
+# `//deploy:iac_test`.
+exports_files([".github/workflows/deploy.yml"])
+
 # Convenience: `bazel run //:ratio`.
 alias(
     name = "ratio",

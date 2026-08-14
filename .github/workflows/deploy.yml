@@ -139,9 +139,17 @@ jobs:
           # callback. See the ⛔ on CallbackURLs in deploy/app.yaml.
           CONSOLE_ORIGIN: ${{ vars.CONSOLE_ORIGIN }}
         run: |
+          # ⛔ CAPABILITY_NAMED_IAM, BECAUSE THE STACK CREATES TWO NAMED ROLES.
+          # The scale runner's task role and task execution role are named
+          # (`ratio-demo-scale-task`, `ratio-demo-scale-exec`) so that the deploy
+          # role in bootstrap.yaml can scope iam:CreateRole to those two exact
+          # ARNs — an unnamed role gets a generated ARN no policy can name in
+          # advance. Naming them is what buys the tight scope; this flag is the
+          # price of naming them.
           aws cloudformation deploy \
             --template-file deploy/app.yaml \
             --stack-name "$STACK" \
+            --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               ImageUri='${{ steps.image.outputs.uri }}' \
