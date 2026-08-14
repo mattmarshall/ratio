@@ -2600,7 +2600,7 @@ mod tests {
         // and the key in the lot book are the same allocation, not two equal
         // ones.
         let pos_key = p.positions().value.held.keys().find(|(_, i)| &**i == "vti").unwrap();
-        let lot_key = p.lots.open.keys().find(|(_, i)| &**i == "vti").unwrap();
+        let lot_key = p.only().lots.open.keys().find(|(_, i)| &**i == "vti").unwrap();
         assert!(std::sync::Arc::ptr_eq(&pos_key.1, &lot_key.1));
     }
 
