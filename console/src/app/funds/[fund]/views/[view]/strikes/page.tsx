@@ -2,11 +2,12 @@ import Link from "next/link";
 import { caller } from "@/lib/caller";
 import { money } from "@/lib/format";
 import { listNavStrikes } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
 /** Every NAV this fund has struck, newest first. */
-export default async function Strikes({
+async function Strikes({
   params,
 }: {
   params: Promise<{ fund: string; view: string }>;
@@ -56,3 +57,5 @@ export default async function Strikes({
     </section>
   );
 }
+
+export default withRefusal(Strikes);

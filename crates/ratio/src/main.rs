@@ -41,9 +41,11 @@ usage:
   ratio rules show [--book DIR]        render the active rules for a human
   ratio apply FILE [--book DIR]        apply rules to events and post the result
   ratio post FILE [--book DIR]         post entries directly; refuses unbalanced
-  ratio balance [--book DIR]           print the trial balance
+  ratio balance [--view V] [--book DIR] print the trial balance, per book of record
   ratio explain ACCOUNT [--book DIR]   read back the postings behind a figure
   ratio views [--book DIR]             the books of record this fund keeps
+  ratio reconcile A B [--book DIR]     what two books of record disagree about,
+                                       entry by entry — the difference is a list
   ratio strike [--as-of D] [--view V]  strike a NAV, pinned to the journal
         [--book DIR]                   with --as-of it REFUSES an unpriced position
   ratio navs [--view V]                every NAV struck on this book
@@ -140,8 +142,12 @@ fn main() -> Result<()> {
         ["rules", "show"] => rules_show(book),
         ["apply", file] => apply(book, file),
         ["post", file] => post(book, file),
-        ["balance"] => balance(book),
+        ["balance", rest @ ..] => {
+            let f = flags(rest)?;
+            balance(book, f.get("--view").map(String::as_str))
+        }
         ["views"] => views_cmd(book),
+        ["reconcile", a, b] => reconcile_cmd(book, a, b),
         ["explain", account] => explain(book, account),
         ["strike", rest @ ..] => {
             let f = flags(rest)?;
@@ -657,11 +663,22 @@ fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
 
     let entries = ratio_gen::generate_books(&book, shape, &books)?;
     let proj = ratio_project::Projection::of_book(&book)?;
+    // ⚠ THE DEFAULT VIEW'S FIGURES, NAMED AS SUCH WHEN THERE IS AN ELECTION.
+    // A generated dual-basis book holds one lot book per view; printing one
+    // with no view on it is the substitution the whole feature refuses.
+    let view = books
+        .views
+        .first()
+        .map(|v| v.id.clone())
+        .unwrap_or_else(|| ratio_rules::UNDECLARED_VIEW.to_string());
+    let label = |s: &str| {
+        if books.views.is_empty() { s.to_string() } else { format!("{s} ({view})") }
+    };
     println!("generated {} into {}", plural(entries as i64, "entry", "entries"), book.display());
     println!("  {:<22}{:>12}", "securities", shape.securities);
     println!("  {:<22}{:>12}", "currencies", shape.currencies);
-    println!("  {:<22}{:>12}", "open tax lots", proj.open_lots());
-    println!("  {:<22}{:>12}", "open positions", proj.positions().value.held.len());
+    println!("  {:<22}{:>12}", label("open tax lots"), proj.open_lots(&view)?);
+    println!("  {:<22}{:>12}", label("open positions"), proj.positions(&view)?.value.held.len());
     Ok(())
 }
 
@@ -770,6 +787,12 @@ fn books_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Books, Vec<&'a str>)> 
 /// from a directory that happens to have one.
 fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     use std::time::Instant;
+
+    // ⚠ THE UNDECLARED VIEW, BY CONSTRUCTION: `ratio bench` generates its own
+    // book and writes no `[[view]]`, so it keeps exactly one book of record.
+    // If a views dial lands here, every read below refuses rather than
+    // benching one view of several and reporting it as the fund's.
+    let bv = ratio_rules::UNDECLARED_VIEW;
 
     // ⛔ ONE MEASUREMENT, TWO RENDERINGS — never two measurements. `--json` picks
     // which of them is printed and changes nothing above it, so the figure a
@@ -910,7 +933,7 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     let mut gross: i64 = 0;
     for i in 0..shape.securities {
         let tkr = ratio_gen::ticker(i);
-        let units = proj.units_as_of(1, &tkr, "2026-06-30")?.value;
+        let units = proj.units_as_of(bv, 1, &tkr, "2026-06-30")?.value;
         let px = prices.get(&tkr).copied().unwrap_or(0);
         // Per-currency subtotals are what FX translates, so the local figure is
         // accumulated here and translated once per currency below.
@@ -942,6 +965,7 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
         b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
     let t = Instant::now();
     let struck = proj.nav(
+        bv,
         &|dim| {
         matches!(
             types.get(&dim),
@@ -953,9 +977,9 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     )?;
     let strike_ns = t.elapsed().as_nanos() as i64;
 
-    let open_positions = proj.positions().value.held.len() as i64;
-    let open_lots = proj.open_lots();
-    let breaks = proj.lot_breaks().len();
+    let open_positions = proj.positions(bv)?.value.held.len() as i64;
+    let open_lots = proj.open_lots(bv)?;
+    let breaks = proj.lot_breaks(bv)?.len();
     let nav_ns = mark_ns + fx_ns + strike_ns;
     out!();
     out!("  {:<26}{:>14}", "journal entries", entries);
@@ -971,7 +995,7 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     );
     if breaks > 0 {
         out!("  {:<26}{:>14}   ⚠ sales that could not be relieved", "lot breaks", breaks);
-        for b in proj.lot_breaks().iter().take(2) {
+        for b in proj.lot_breaks(bv)?.iter().take(2) {
             out!("      {b}");
         }
     }
@@ -1008,13 +1032,13 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     // ⭐ THE FIGURE THIS ENGINE EXISTS FOR. Six lot methods, holding-period
     // classification and the whole relief layer decide it, and until the sale
     // posted three legs it was computed and discarded.
-    let realized = proj.nav(&|dim| dim == 30, &rates)?.value.0;
+    let realized = proj.nav(bv, &|dim| dim == 30, &rates)?.value.0;
     out!("  net asset value {:>20}   over {} entries", struck.value.0, struck.prefix);
     out!(
         "  realized gain   {:>20}   credit-normal, so a gain reads negative",
         realized
     );
-    out!("  basis relieved  {:>20}", proj.relieved_cost());
+    out!("  basis relieved  {:>20}", proj.relieved_cost(bv)?);
     out!("  trial balance   {:>20}", struck.value.1);
     out!();
     out!("⛔ Two curves, and only the second is flat in fragmentation. Folding");
@@ -1075,7 +1099,7 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
             "net_asset_value": struck.value.0,
             "trial_balance": struck.value.1,
             "realized_gain": realized,
-            "basis_relieved": proj.relieved_cost(),
+            "basis_relieved": proj.relieved_cost(bv)?,
             "prefix": struck.prefix,
         });
         println!("{}", serde_json::to_string_pretty(&doc)?);
@@ -1521,7 +1545,7 @@ fn post(book: PathBuf, file: &str) -> Result<()> {
     Ok(())
 }
 
-fn balance(book: PathBuf) -> Result<()> {
+fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
     let b = FileBook::open(&book)?;
     // ⛔ COUNTED, NOT COLLECTED. This held the whole journal in memory to print
     // one number — 1.26 GB on a book whose trial balance is a dozen rows.
@@ -1532,10 +1556,50 @@ fn balance(book: PathBuf) -> Result<()> {
     })?;
     let names: std::collections::BTreeMap<i64, Account> =
         b.accounts()?.into_iter().map(|a| (a.dim, a)).collect();
-    let by_dim = b.balances_by_dim()?;
-    let tb = b.trial_balance()?;
+    // ⛔ TWO SOURCES, NAMED, NEVER MIXED. Bare `ratio balance` is the KERNEL's
+    // whole-journal fold, which is the recorded reading and needs no
+    // projection. `--view` reads the maintained per-view fold, because a
+    // settlement view's trial balance excludes what it has not recognised —
+    // and the header says which book of record the rows are.
+    let (by_dim, tb, through) = match view {
+        None => (b.balances_by_dim()?, b.trial_balance()?, None),
+        Some(v) => {
+            let proj = ratio_project::Projection::of_book(&book)?;
+            let bal = proj.balances(v)?;
+            let rows: std::collections::BTreeMap<(i64, Option<String>), (i64, i64)> = bal
+                .value
+                .iter()
+                .map(|((dim, ccy), r)| {
+                    (
+                        (*dim, ccy.as_deref().map(str::to_string)),
+                        (
+                            i64::try_from(r.debit).unwrap_or(i64::MAX),
+                            i64::try_from(r.credit).unwrap_or(i64::MAX),
+                        ),
+                    )
+                })
+                .collect();
+            let (d, c) = rows.values().fold((0i64, 0i64), |(d, c), (rd, rc)| {
+                (d.saturating_add(*rd), c.saturating_add(*rc))
+            });
+            // The same emitted checker the whole-journal path runs at the
+            // bottom of this function: a view keeps or drops WHOLE entries, so
+            // its columns tie by `Ratio.Views.every_view_conserves` — and if
+            // they ever do not, the bail below says so instead of printing.
+            (rows, ratio_chart::TrialBalance { debits: d, credits: c }, bal.through)
+        }
+    };
 
-    println!("TRIAL BALANCE — {entry_count} entrie(s)");
+    match (view, through) {
+        (None, _) => println!("TRIAL BALANCE — {entry_count} entrie(s)"),
+        (Some(v), None) => println!("TRIAL BALANCE ({v}) — {entry_count} entrie(s)"),
+        // The third coordinate of a settlement figure: the day this view had
+        // recognised through when the rows were read.
+        (Some(v), Some(t)) => println!(
+            "TRIAL BALANCE ({v}) — {entry_count} entrie(s), recognised through {}",
+            ratio_common::iso_date_from_days(i64::from(t))
+        ),
+    }
     if let Some(c) = b.active()? {
         println!("configuration  {c}");
     }
@@ -1602,9 +1666,19 @@ fn balance(book: PathBuf) -> Result<()> {
                 &b.records(ratio_store::Plane::Facts)?,
             );
             let proj = ratio_project::Projection::of_book(&book)?;
-            if let Some(r) = proj.realized(Some(roles), &rates)?.value {
+            // ⚠ THE NAMED VIEW'S REALIZED FIGURES — or the default view's, and
+            // the header says which when there is an election: a dual-basis
+            // book relieves one lot book per view, so "the" realized gain is a
+            // view's realized gain.
+            let rv = view.map(str::to_string).unwrap_or_else(|| set.default_view());
+            if let Some(r) = proj.realized(&rv, Some(roles), &rates)?.value {
                 println!();
-                println!("REALIZED, SINCE INCEPTION            {}", ratio_project::relief::Method::from(set.effective_lot_method()).describe());
+                let heading = if set.views_declared() {
+                    format!("REALIZED, SINCE INCEPTION ({rv})")
+                } else {
+                    "REALIZED, SINCE INCEPTION".to_string()
+                };
+                println!("{:<37}{}", heading, ratio_project::relief::Method::from(set.effective_lot_method()).describe());
                 // ⚠ A GAIN IS CREDIT-NORMAL, so the stored figure is negative
                 // when money was made. It is flipped HERE, once, at the render
                 // boundary — the same place `console/src/lib/format.ts` flips it — and
@@ -1782,6 +1856,85 @@ fn views_cmd(book: PathBuf) -> Result<()> {
         println!("This configuration declares no views, so the book has one and it");
         println!("recognises entries in the journal's own order. That is a custom,");
         println!("not a term anybody agreed to.");
+    }
+    Ok(())
+}
+
+/// What two books of record over one journal disagree about, entry by entry.
+///
+/// ⭐ THE DIFFERENCE IS A LIST, AND THE NUMBER IS WHAT THE LIST SUMS TO —
+/// `Ratio.Views.two_views_differ_by_exactly_what_is_in_flight`. Both figures
+/// and the list come off ONE projection at ONE prefix; running `ratio navs`
+/// twice and subtracting compares two journal positions, and the gap is then
+/// partly a settlement convention and partly one read being behind, in one
+/// number, with nothing saying which part is which.
+fn reconcile_cmd(book: PathBuf, here: &str, there: &str) -> Result<()> {
+    let b = FileBook::open(&book)?;
+    let types: std::collections::BTreeMap<i64, ratio_store::AccountTypeRecord> =
+        b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
+    let is_al = |d: i64| {
+        matches!(
+            types.get(&d),
+            Some(ratio_store::AccountTypeRecord::Asset)
+                | Some(ratio_store::AccountTypeRecord::Liability)
+        )
+    };
+    let rates = ratio_project::Rates::of_facts(
+        ratio_store::BASE_CURRENCY,
+        &b.records(ratio_store::Plane::Facts)?,
+    );
+    let proj = ratio_project::Projection::of_book(&book)?;
+    let rec = proj.reconcile(here, there, &is_al, &rates)?;
+    let nav_here = proj.nav(here, &is_al, &rates)?.value.0;
+    let nav_there = proj.nav(there, &is_al, &rates)?.value.0;
+
+    println!(
+        "RECONCILIATION — {here} against {there}, folded from journal position {}",
+        rec.prefix
+    );
+    println!();
+    // The arithmetic on three lines, so a reader is never asked to trust it.
+    println!("{:<26}{:>20}", format!("{here} net asset value"), minor(nav_here));
+    println!("{:<26}{:>20}", format!("{there} net asset value"), minor(nav_there));
+    println!("{:<26}{:>20}", "difference", minor(rec.value.difference));
+
+    let day = |d: ratio_project::views::Day| ratio_common::iso_date_from_days(i64::from(d));
+    let side = |title: String, rows: Vec<&ratio_project::InFlightEntry>| {
+        println!();
+        println!("{title}");
+        if rows.is_empty() {
+            println!("  nothing in flight");
+        }
+        for e in rows {
+            let when = match (e.recognised_here, e.recognised_there) {
+                (Some(h), Some(t)) => format!("{} here, {} there", day(h), day(t)),
+                (Some(h), None) => format!("{} here, journal order there", day(h)),
+                (None, Some(t)) => format!("journal order here, {} there", day(t)),
+                (None, None) => "journal order".to_string(),
+            };
+            println!(
+                "  {}  {:<24}{:<44}{:>16}",
+                day(e.trade_day),
+                if e.memo.is_empty() { &e.id } else { &e.memo },
+                when,
+                minor(e.effect)
+            );
+        }
+    };
+    let (in_here, in_there): (Vec<_>, Vec<_>) =
+        rec.value.entries.iter().partition(|e| e.in_here);
+    side(format!("RECOGNISED IN {here}, NOT YET IN {there}"), in_here);
+    side(format!("RECOGNISED IN {there}, NOT YET IN {here}"), in_there);
+
+    // ⛔ SHOWN, NOT OMITTED. These contribute to neither figure, so leaving
+    // them off would make the difference look fully explained when entries sit
+    // outside both books of record.
+    if !rec.value.unplaceable.is_empty() {
+        println!();
+        println!("NEITHER VIEW CAN PLACE");
+        for u in &rec.value.unplaceable {
+            println!("  {:<26}{}", if u.memo.is_empty() { &u.id } else { &u.memo }, u.why);
+        }
     }
     Ok(())
 }

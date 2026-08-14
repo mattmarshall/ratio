@@ -362,7 +362,6 @@ impl Console {
     /// there for when you want only what moved.
     pub fn list_accounts(&self, parent: &str, filter: &str) -> Result<pb::ListAccountsResponse> {
         let (fund, view) = view_scoped_parent(parent)?;
-        self.view_the_projection_can_answer(&fund, &view)?;
         let accounts = self.accounts_of(&fund, &view)?;
         let keep: Vec<pb::Account> = accounts
             .into_iter()
@@ -377,7 +376,6 @@ impl Console {
 
     pub fn get_account(&self, name: &str) -> Result<pb::Account> {
         let (fund, view, dim) = view_scoped_id(name, "accounts")?;
-        self.view_the_projection_can_answer(&fund, &view)?;
         self.accounts_of(&fund, &view)?
             .into_iter()
             .find(|a| a.dimension == dim)
@@ -400,43 +398,45 @@ impl Console {
         // needs the second. Every other surface shows the split, and the one
         // screen a customer actually looks at was the one that could not.
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
+        // ⛔ OFF THE MAINTAINED FOLD, PER VIEW — NOT `b.balances_by_dim()`. The
+        // file's answer sums the whole journal, which is exactly one view's
+        // answer wearing no label: a settlement view's trial balance excludes
+        // what it has not recognised, and until this read moved, every view's
+        // accounts screen showed the recorded figures under its own name.
+        let proj = self.projection(fund)?;
+        let balances = proj.balances(view)?;
         let mut totals: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
         let mut split: BTreeMap<i64, Vec<pb::CurrencyTotal>> = BTreeMap::new();
-        for ((dim, ccy), (debit, credit)) in b.balances_by_dim()? {
-            let factor = rates.factor_of_optional(ccy.as_deref()).with_context(|| {
+        let mut counts: BTreeMap<i64, i64> = BTreeMap::new();
+        for ((dim, ccy), row) in balances.value {
+            let ccy = ccy.as_deref();
+            let factor = rates.factor_of_optional(ccy).with_context(|| {
                 format!(
                     "this fund holds {} and no rate for it was supplied — an account total \
                      mixing denominations is not a total",
-                    ccy.as_deref().unwrap_or("an untyped balance")
+                    ccy.unwrap_or("an untyped balance")
                 )
             })? as i128;
-            let s = totals.entry(dim).or_insert((0, 0));
+            let s = totals.entry(*dim).or_insert((0, 0));
             let scale = ratio_project::RATE_SCALE as i128;
-            s.0 += (debit as i128 * factor / scale) as i64;
-            s.1 += (credit as i128 * factor / scale) as i64;
-            split.entry(dim).or_default().push(pb::CurrencyTotal {
-                currency_code: ccy.clone().unwrap_or_default(),
-                debit: debit.to_string(),
-                credit: credit.to_string(),
-                balance: (debit - credit).to_string(),
+            s.0 += (row.debit * factor / scale) as i64;
+            s.1 += (row.credit * factor / scale) as i64;
+            *counts.entry(*dim).or_default() += row.postings;
+            split.entry(*dim).or_default().push(pb::CurrencyTotal {
+                currency_code: ccy.unwrap_or_default().to_string(),
+                debit: row.debit.to_string(),
+                credit: row.credit.to_string(),
+                balance: row.net().to_string(),
                 // ⛔ EMPTY FOR THE BASE AND FOR AN UNTYPED LEG, not "100".
                 // Both translate at par, and both do so WITHOUT a rate fact —
                 // printing a rate nobody recorded would invent the evidence the
                 // column exists to supply.
-                rate: match ccy.as_deref() {
+                rate: match ccy {
                     Some(c) if c != FUND_CURRENCY => factor.to_string(),
                     _ => String::new(),
                 },
             });
         }
-
-        let mut counts: BTreeMap<i64, i64> = BTreeMap::new();
-        b.for_each_entry_since(0, &mut |e| {
-            for p in &e.postings {
-                *counts.entry(p.dim).or_default() += 1;
-            }
-            Ok(())
-        })?;
 
         Ok(b.accounts()?
             .into_iter()
@@ -472,7 +472,6 @@ impl Console {
     /// after it.
     pub fn list_postings(&self, parent: &str) -> Result<pb::ListPostingsResponse> {
         let (fund, view, dim_str) = view_scoped_id(parent, "accounts")?;
-        self.view_the_projection_can_answer(&fund, &view)?;
         // ⛔ TENANCY BEFORE THE DIMENSION PARSE. A caller who may not see this
         // fund is refused here — not after we have judged whether their account
         // id was well-formed. The denial must not depend on the caller's input,
@@ -480,10 +479,20 @@ impl Console {
         let path = self.book_path(&fund)?;
         let dim: i64 = dim_str.parse().with_context(|| format!("{dim_str:?} is not a dimension"))?;
         let b = FileBook::open(&path)?;
+        let proj = self.projection(&fund)?;
 
         let mut running = 0i64;
         let mut out = Vec::new();
         b.for_each_entry_since(0, &mut |entry| {
+            // ⛔ THE VIEW'S ENTRIES, DECIDED BY THE FOLD'S OWN RULE. The fold
+            // keeps totals, not history, so this walk reads the journal — and
+            // it must skip exactly what the view has not recognised, or the
+            // rows and the account total they claim to sum to disagree.
+            // `Projection::recognised` is the fold's decision, not a second
+            // spelling of it.
+            if !proj.recognised(&view, entry)? {
+                return Ok(());
+            }
             // `leg` counts within the entry, so an entry that touches the same
             // account twice yields two citable postings rather than one name
             // for two lines.
@@ -962,7 +971,6 @@ impl Console {
     /// `Ratio.Ingest.positions_roll_up` made structural rather than remembered.
     pub fn list_positions(&self, parent: &str) -> Result<pb::ListPositionsResponse> {
         let (fund, view) = view_scoped_parent(parent)?;
-        self.view_the_projection_can_answer(&fund, &view)?;
         Ok(pb::ListPositionsResponse {
             positions: self.positions_of(&fund, &view)?,
             next_page_token: String::new(),
@@ -971,7 +979,6 @@ impl Console {
 
     pub fn get_position(&self, name: &str) -> Result<pb::Position> {
         let (fund, view, id) = view_scoped_id(name, "positions")?;
-        self.view_the_projection_can_answer(&fund, &view)?;
         self.positions_of(&fund, &view)?
             .into_iter()
             .find(|p| p.name.ends_with(&format!("/{id}")))
@@ -986,7 +993,6 @@ impl Console {
     /// its lots are every purchase it still holds.
     pub fn list_lots(&self, parent: &str) -> Result<pb::ListLotsResponse> {
         let (fund, view, id) = view_scoped_id(parent, "positions")?;
-        self.view_the_projection_can_answer(&fund, &view)?;
         // ⛔ TENANCY BEFORE THE POSITION-KEY PARSE. `projection` opens the book
         // through `book_path`, so a caller who may not see this fund is refused
         // before their position id is parsed — the denial does not depend on
@@ -995,7 +1001,7 @@ impl Console {
         let (dim, instrument) = position_key(&id)?;
         Ok(pb::ListLotsResponse {
             lots: proj
-                .lots_of(dim, &instrument)
+                .lots_of(&view, dim, &instrument)?
                 .value
                 .into_iter()
                 .map(|l| pb::Lot {
@@ -1037,7 +1043,20 @@ impl Console {
     fn positions_of(&self, fund: &str, view: &str) -> Result<Vec<pb::Position>> {
         let path = self.book_path(fund)?;
         let b = FileBook::open(&path)?;
-        let (held, rest) = b.positions()?;
+        // ⛔ THE VIEW'S POSITIONS, OFF THE MAINTAINED FOLD — not
+        // `b.positions()`, whose whole-journal answer is one view's wearing no
+        // label. A trade in flight under a settlement view is cash there and a
+        // holding here, and this list has to say which book of record it read.
+        let proj = self.projection(fund)?;
+        let as_of = proj.positions(view)?;
+        let held: Vec<((i64, String), (i64, i64))> = as_of
+            .value
+            .held
+            .iter()
+            .map(|((d, i), v)| ((*d, i.to_string()), *v))
+            .collect();
+        let rest: Vec<(i64, i64)> =
+            as_of.value.rest.iter().map(|(d, v)| (*d, *v)).collect();
         let chart: BTreeMap<i64, String> = b
             .accounts()?
             .into_iter()
@@ -1076,13 +1095,12 @@ impl Console {
         // ⛔ `Ratio.Closure.factored_nav_never_reads_the_lots` is the claim that
         // this number does not appear in the NAV; showing it beside one that
         // does is what lets a reader see the claim rather than be told it.
-        let proj = self.projection(fund).ok();
         let mut out: Vec<pb::Position> = held
             .into_iter()
             .map(|((dim, instrument), (value, quantity))| pb::Position {
                 open_lot_count: proj
-                    .as_ref()
-                    .map(|p| p.lots_of(dim, &instrument).value.len() as i64)
+                    .lots_of(view, dim, &instrument)
+                    .map(|l| l.value.len() as i64)
                     .unwrap_or(0),
                 name: format!("funds/{fund}/views/{view}/positions/{dim}-{instrument}"),
                 account: format!("funds/{fund}/views/{view}/accounts/{dim}"),
@@ -1783,34 +1801,7 @@ impl Console {
     /// so the RECORDED NAV is already per view. It is the maintained projection
     /// behind these screens that is not, and the gap is named here rather than
     /// hidden behind an equal number.
-    fn view_the_projection_can_answer(&self, fund: &str, view: &str) -> Result<()> {
-        let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
-        let set = match b.active()? {
-            Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))
-                .unwrap_or_default(),
-            None => ratio_rules::RuleSet::default(),
-        };
-        let declared = set.effective_views();
-        let Some(v) = declared.iter().find(|v| v.id == view) else {
-            bail!(
-                "no view {view:?} on this fund. It keeps: {}",
-                declared.iter().map(|v| v.id.as_str()).collect::<Vec<_>>().join(", ")
-            );
-        };
-        if v.basis != ratio_rules::Basis::Recorded {
-            bail!(
-                "view {view:?} recognises entries by date, and the maintained projection \
-                 behind this screen folds the whole journal with no cut — so it would \
-                 return the same figures as every other view rather than that view's. \
-                 `ratio strike --view {view}` and `ratio navs --view {view}` do cut and \
-                 are correct; these screens are not, and refusing is the honest answer \
-                 until the projection folds per view"
-            );
-        }
-        Ok(())
-    }
-
+ 
     /// The default view's id: which book of record a fund-level answer is about.
     ///
     /// ⛔ A FUND-LEVEL FIGURE STILL BELONGS TO A VIEW. `ApplyEvent`,
@@ -1838,12 +1829,11 @@ impl Console {
     /// the substitution this feature exists to prevent.
     fn default_view_nav(&self, fund: &str) -> Result<String> {
         let view = self.default_view_of(fund)?;
-        self.view_the_projection_can_answer(fund, &view)?;
         let path = self.book_path(fund)?;
         let b = FileBook::open(&path)?;
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
         let proj = self.projection(fund)?;
-        Ok(nav_from(&b, &proj, &rates)?.0.to_string())
+        Ok(nav_from(&b, &proj, &view, &rates)?.0.to_string())
     }
 
     pub fn get_fund(&self, name: &str) -> Result<pb::Fund> {
@@ -1993,7 +1983,6 @@ impl Console {
         // whole journal with no cut, so it can only answer for a view that
         // recognises in journal order. Anything else refuses, loudly, rather
         // than returning the recorded view's numbers under another name.
-        self.view_the_projection_can_answer(&id, &view)?;
 
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
         let proj = self.projection(&id)?;
@@ -2003,19 +1992,25 @@ impl Console {
         // ⚠ IT TAKES THE PROJECTION RATHER THAN FETCHING ONE. `projection`
         // hands back a CLONE, and a fund holding a quarter of a million open
         // lots does not want two of them alive to answer one request.
-        let (nav, nav_strike) = nav_from(&b, &proj, &rates)?;
+        let (nav, nav_strike) = nav_from(&b, &proj, &view, &rates)?;
         let realized = proj
-            .realized(set.chart_roles, &rates)
+            .realized(&view, set.chart_roles, &rates)
             .ok()
             .and_then(|r| r.value);
 
         let breaks = self.breaks_for(&path, &id, &view)?;
         let open: Vec<&pb::Break> = breaks.iter().filter(|k| !k.explained).collect();
-        let tb = b.trial_balance()?;
+        // ⛔ THE VIEW'S OWN COLUMNS, summed off its fold — `b.trial_balance()`
+        // is the whole journal, which is one view's answer wearing no label.
+        let balances = proj.balances(&view)?;
+        let (td, tc) = balances
+            .value
+            .values()
+            .fold((0i128, 0i128), |(d, c), r| (d + r.debit, c + r.credit));
 
         out.net_asset_value = nav.to_string();
-        out.total_debit = tb.debits.to_string();
-        out.total_credit = tb.credits.to_string();
+        out.total_debit = td.to_string();
+        out.total_credit = tc.to_string();
         out.open_difference = open
             .iter()
             .filter_map(|k| k.difference.parse::<i64>().ok().map(i64::abs))
@@ -2029,9 +2024,17 @@ impl Console {
         out.long_term_gain = realized.map(|r| r.long_term.to_string()).unwrap_or_default();
         out.unclassified_gain =
             realized.map(|r| r.unclassified().to_string()).unwrap_or_default();
-        out.open_lot_count = proj.open_lots();
-        out.position_count = proj.positions().value.held.len() as i64;
+        out.open_lot_count = proj.open_lots(&view)?;
+        out.position_count = proj.positions(&view)?.value.held.len() as i64;
         out.journal_position = proj.prefix() as i64;
+        // The third coordinate of a settlement figure, and what the view could
+        // not place — both off the fold that produced every number above.
+        out.recognised_through = balances
+            .through
+            .map(|d| ratio_common::iso_date_from_days(i64::from(d)))
+            .as_deref()
+            .and_then(iso_date);
+        out.unplaceable_entry_count = proj.unplaceable(&view)?.len() as i64;
         out.nav_strike = Some(ratio_proto::duration_proto::google::protobuf::Duration {
             seconds: nav_strike.as_secs() as i64,
             nanos: nav_strike.subsec_nanos() as i32,
@@ -2041,31 +2044,77 @@ impl Console {
 
     /// What two books of record over one journal disagree about.
     ///
-    /// ⛔ REFUSES RATHER THAN SUBTRACTING TWO FIGURES. The difference between
-    /// two views is a LIST OF ENTRIES — `Ratio.Views.two_views_differ_by_
-    /// exactly_what_is_in_flight` — and producing that list needs a fold that
-    /// knows which entries each view recognised. The maintained projection does
-    /// not have one yet. Differencing two NAVs and calling the result a
-    /// reconciliation would show a number with nothing behind it, which is the
-    /// one thing this screen exists not to do.
+    /// ⭐ A DERIVATION, NOT A SUBTRACTION. `Projection::reconcile` walks the two
+    /// bands — bounded by the settlement lag, never the journal — and returns
+    /// the LIST of entries one view recognises and the other does not, with the
+    /// difference as what the list sums to. Both figures and the list come off
+    /// ONE projection at ONE prefix; fetching two views separately would
+    /// compare figures at two journal positions, which is
+    /// `//tla:views_at_two_prefixes_check`'s failure.
     pub fn reconcile_views(&self, name: &str, against: &str) -> Result<pb::ReconcileViewsResponse> {
         let (id, view) = view_scoped_parent(name).context("bad view name")?;
-        let _ = self.book_path(&id)?;
+        let path = self.book_path(&id)?;
         if against.is_empty() {
             bail!("reconciling is a question about two views — name the other with ?against=");
         }
-        bail!(
-            "cannot reconcile {view:?} against {against:?} yet: the difference between two \
-             books of record is the entries one recognises and the other does not, and the \
-             maintained projection folds the whole journal with no cut, so it cannot say \
-             which those are. `ratio strike --view` already cuts and is correct; this \
-             screen waits on the projection folding per view"
-        );
+        let b = FileBook::open(&path)?;
+        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
+        let proj = self.projection(&id)?;
+        let by_dim: BTreeMap<i64, AccountTypeRecord> =
+            b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
+        let is_al = |d: i64| {
+            matches!(
+                by_dim.get(&d),
+                Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
+            )
+        };
+        let rec = proj.reconcile(&view, against, &is_al, &rates)?;
+        let nav_here = proj.nav(&view, &is_al, &rates)?.value.0;
+        let nav_there = proj.nav(against, &is_al, &rates)?.value.0;
+
+        let date = |d: Option<ratio_project::views::Day>| {
+            d.map(|n| ratio_common::iso_date_from_days(i64::from(n))).as_deref().and_then(iso_date)
+        };
+        let row = |e: &ratio_project::InFlightEntry| pb::RecognitionDifference {
+            entry_id: e.id.clone(),
+            memo: e.memo.clone(),
+            trade_date: date(Some(e.trade_day)),
+            recognised_here: date(e.recognised_here),
+            recognised_there: date(e.recognised_there),
+            net_asset_value_effect: e.effect.to_string(),
+        };
+        Ok(pb::ReconcileViewsResponse {
+            name: name.to_string(),
+            against: format!("funds/{id}/views/{against}"),
+            net_asset_value: nav_here.to_string(),
+            against_net_asset_value: nav_there.to_string(),
+            difference: rec.value.difference.to_string(),
+            recognised_here: rec.value.entries.iter().filter(|e| e.in_here).map(row).collect(),
+            recognised_there: rec.value.entries.iter().filter(|e| !e.in_here).map(row).collect(),
+            // ⛔ SHOWN, NOT OMITTED. These contribute to neither figure, and a
+            // difference that looks fully explained while entries sit outside
+            // both books of record is the shape of every defect in HANDOFF.md's
+            // table. Entries only ONE view cannot place refuse the whole read,
+            // inside `Projection::reconcile`.
+            unplaceable: rec
+                .value
+                .unplaceable
+                .iter()
+                .map(|u| pb::RecognitionDifference {
+                    entry_id: u.id.clone(),
+                    memo: u.memo.clone(),
+                    trade_date: date(u.trade_day),
+                    recognised_here: None,
+                    recognised_there: None,
+                    net_asset_value_effect: "0".to_string(),
+                })
+                .collect(),
+            journal_position: rec.prefix as i64,
+        })
     }
 
     pub fn list_breaks(&self, parent: &str, filter: &str) -> Result<pb::ListBreaksResponse> {
         let (id, view) = view_scoped_parent(parent).context("bad parent")?;
-        self.view_the_projection_can_answer(&id, &view)?;
         let path = self.book_path(&id)?;
         let mut breaks = self.breaks_for(&path, &id, &view)?;
         breaks.retain(|k| match filter {
@@ -2078,7 +2127,6 @@ impl Console {
 
     pub fn get_break(&self, name: &str) -> Result<pb::Break> {
         let (fund, view, brk) = view_scoped_id(name, "breaks").context("bad break name")?;
-        self.view_the_projection_can_answer(&fund, &view)?;
         let path = self.book_path(&fund)?;
         self.breaks_for(&path, &fund, &view)?
             .into_iter()
@@ -2489,13 +2537,11 @@ impl Console {
         let s = ratio_nav::get(&path, &view, &id)?;
         let cal = ratio_nav::closure::rate_for(&path);
 
-        let (shape, refusal) = match self.view_the_projection_can_answer(&fund, &view) {
-            Ok(()) => {
-                let b = FileBook::open(&path)?;
-                let accounts = b.accounts()?.len() as i64;
-                let proj = self.projection(&fund)?;
-                (Some(ratio_nav::shape_of(&proj, accounts, cal)?), String::new())
-            }
+        let b = FileBook::open(&path)?;
+        let accounts = b.accounts()?.len() as i64;
+        let proj = self.projection(&fund)?;
+        let (shape, refusal) = match ratio_nav::shape_of(&proj, &view, accounts, cal) {
+            Ok(s) => (Some(s), String::new()),
             // ⛔ `{e:#}` — the WHOLE chain. The refusal's prose is the answer
             // this endpoint gives, and truncating it to the outermost line
             // would leave a screen saying "cannot" without saying why.
@@ -2555,7 +2601,7 @@ impl Console {
     fn lot_breaks_for(&self, fund: &str, view: &str) -> Result<Vec<pb::Break>> {
         let proj = self.projection(fund)?;
         Ok(proj
-            .lot_breaks()
+            .lot_breaks(view)?
             .iter()
             .enumerate()
             .map(|(i, why)| pb::Break {
@@ -3199,6 +3245,7 @@ pub use ratio_store::BASE_CURRENCY as FUND_CURRENCY;
 fn nav_from(
     b: &FileBook,
     proj: &ratio_project::Projection,
+    view: &str,
     rates: &ratio_project::Rates,
 ) -> Result<(i64, std::time::Duration)> {
     let by_dim: BTreeMap<i64, AccountTypeRecord> =
@@ -3210,7 +3257,7 @@ fn nav_from(
         )
     };
     let struck_at = std::time::Instant::now();
-    let nav = proj.nav(&is_asset_or_liability, rates)?.value.0;
+    let nav = proj.nav(view, &is_asset_or_liability, rates)?.value.0;
     Ok((nav, struck_at.elapsed()))
 }
 
@@ -3375,6 +3422,9 @@ pub fn nested_id(name: &str, outer: &str, inner: &str) -> Result<(String, String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The one view every seeded test book has, for direct projection reads.
+    use ratio_rules::UNDECLARED_VIEW as B;
 
     /// The demo book's one view, as a resource name — which is also the parent
     /// every view-scoped read below takes.
@@ -3709,8 +3759,8 @@ mod tests {
         // the cache safe to have at all.
         let cold = ratio_project::Projection::of_book(&d).unwrap();
         let assets = |dim: i64| dim == 1 || dim == 2 || dim == 40;
-        assert_eq!(after.nav(&assets, &ratio_project::Rates::none()).unwrap().value, cold.nav(&assets, &ratio_project::Rates::none()).unwrap().value);
-        assert_eq!(after.positions().value, &cold.positions().value.clone());
+        assert_eq!(after.nav(B, &assets, &ratio_project::Rates::none()).unwrap().value, cold.nav(B, &assets, &ratio_project::Rates::none()).unwrap().value);
+        assert_eq!(after.positions(B).unwrap().value, &cold.positions(B).unwrap().value.clone());
     }
 
     #[test]
@@ -3747,7 +3797,7 @@ mod tests {
 
         let p = c.projection("demo").unwrap();
         assert_eq!(p.prefix(), 1, "rebuilt from the new book, not spliced onto the old");
-        assert_eq!(p.nav(&|dim| dim == 1, &ratio_project::Rates::none()).unwrap().value.0, 11, "and the totals are the new book's");
+        assert_eq!(p.nav(B, &|dim| dim == 1, &ratio_project::Rates::none()).unwrap().value.0, 11, "and the totals are the new book's");
     }
 
     #[test]

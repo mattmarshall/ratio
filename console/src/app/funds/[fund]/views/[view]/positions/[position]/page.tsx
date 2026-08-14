@@ -5,10 +5,11 @@ import { isoDate } from "@/lib/dates";
 import { count, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { getPosition } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
-export default async function PositionDetail({
+async function PositionDetail({
   params,
 }: {
   params: Promise<{ fund: string; view: string; position: string }>;
@@ -56,3 +57,5 @@ export default async function PositionDetail({
     </aside>
   );
 }
+
+export default withRefusal(PositionDetail);

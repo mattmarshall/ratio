@@ -4,6 +4,7 @@ import { isMoneyBreak } from "@/lib/breaks";
 import { caller } from "@/lib/caller";
 import { money, SEVERITY_CLASS } from "@/lib/format";
 import { listBreaks } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ const FILTERS: readonly Filter[] = [
 ];
 
 /** The exceptions queue, ordered by money at risk. */
-export default async function Breaks({
+async function Breaks({
   params,
   searchParams,
 }: {
@@ -90,3 +91,5 @@ export default async function Breaks({
     </>
   );
 }
+
+export default withRefusal(Breaks);

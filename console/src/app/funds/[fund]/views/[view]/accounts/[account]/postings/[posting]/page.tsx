@@ -2,11 +2,12 @@ import { caller } from "@/lib/caller";
 import { money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { getPosting } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
 /** One line, and the entry and configuration it came from. */
-export default async function PostingDetail({
+async function PostingDetail({
   params,
 }: {
   params: Promise<{ fund: string; view: string; account: string; posting: string }>;
@@ -41,3 +42,5 @@ export default async function PostingDetail({
     </aside>
   );
 }
+
+export default withRefusal(PostingDetail);

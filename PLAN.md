@@ -562,6 +562,27 @@ all of which take `UNDECLARED_VIEW` because the seeded books declare none.
 `the_pending_queue_is_bounded_by_the_settlement_lag_not_by_the_journal`, which is
 the paragraph above as an assertion.
 
+**Landed, 2026-08-14, with one refinement the design note missed.** The frontier
+that advances the cut is the highest **trade** day seen — the journal's own
+clock — not the highest recognition day: advanced on recognition days, the band
+drains the moment anything enters it (the latest-settling entry always settles
+last), every view agrees at every prefix, and the vacuity of design 1 is rebuilt
+one layer up. With the cut on trade days, "in flight" means exactly *struck but
+not yet settled relative to the journal's own frontier*. `ratio reconcile A B`
+shows the list; the reconciliation itself **refuses** when the per-entry effects
+cannot sum to the NAV difference (integer translation does not distribute over a
+sum), when a view has entries only IT cannot place, or when a view was declared
+after the fold read past its history — and shows, rather than omits, what
+NEITHER view can place. The ten view-scoped screens and `ReconcileViews` answer
+per view; the projection-cannot-answer refusal is deleted.
+
+And the deployed console taught one more rule on the same day: a refusal THROWN
+out of a server component reaches production as `Minified React error #441` —
+Next redacts the message — so the API's one explanatory sentence is exactly what
+got hidden, on every view screen of the dual-basis demo fund. Every view-scoped
+page now treats a `Refused` as a value and renders the sentence
+(`withRefusal`); `error.tsx` had stated the rule all along.
+
 ### Amendment, 2026-08-14 — a plan screen, and the thirty-sixth RPC
 
 The console can show how a NAV was computed: `/funds/{fund}/views/{view}/

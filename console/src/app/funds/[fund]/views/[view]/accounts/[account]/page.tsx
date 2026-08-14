@@ -3,6 +3,7 @@ import { caller } from "@/lib/caller";
 import { count, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { getAccount, listPostings } from "@/wire/client";
+import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
  * the account's own figures render from `getAccount` above rather than being
  * summed from this list.
  */
-export default async function AccountDetail({
+async function AccountDetail({
   params,
 }: {
   params: Promise<{ fund: string; view: string; account: string }>;
@@ -85,3 +86,5 @@ export default async function AccountDetail({
     </aside>
   );
 }
+
+export default withRefusal(AccountDetail);

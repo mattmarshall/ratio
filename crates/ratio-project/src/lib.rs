@@ -59,13 +59,29 @@ pub struct AsOf<T> {
     pub value: T,
     /// Entries folded. Also the position a figure built from this must pin.
     pub prefix: usize,
+    /// The book of record this figure is read under.
+    ///
+    /// ⛔ ON THE VALUE, NOT LEFT TO THE CALLER'S MEMORY. With two views,
+    /// `nav("abor")` and `nav("ibor")` are structurally interchangeable — same
+    /// types, same shapes, figures close enough to pass a glance. A figure that
+    /// carries its view cannot be quoted under the other one without the
+    /// substitution being visible in the record.
+    pub view: String,
+    /// The day this view had recognised through when the figure was read.
+    ///
+    /// `None` on a view that consults no date (journal order), or on one that
+    /// has not yet seen a dated entry. A settlement figure is determined by the
+    /// prefix, the view, AND the day — this is the third coordinate, and it is
+    /// the fold's own frontier rather than a clock nobody gave it.
+    pub through: Option<views::Day>,
 }
 
 impl<T> AsOf<T> {
-    /// Transform the value, keeping the prefix. The prefix cannot be changed by
-    /// this or any other method — it is set once, by the fold that produced it.
+    /// Transform the value, keeping the prefix, the view and the cut. None of
+    /// them can be changed by this or any other method — they are set once, by
+    /// the fold that produced the figure.
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> AsOf<U> {
-        AsOf { value: f(self.value), prefix: self.prefix }
+        AsOf { value: f(self.value), prefix: self.prefix, view: self.view, through: self.through }
     }
 }
 
@@ -100,9 +116,31 @@ pub struct Totals {
     /// alone, which was harmless only for as long as no posting carried a
     /// currency — and the moment one did, every NAV would have been a mixture
     /// of denominations reported as one number.
-    pub by_dim: BTreeMap<(i64, Option<Text>), i128>,
+    ///
+    /// ⚠ THE SIDES ARE KEPT, NOT JUST THE NET, because the trial-balance screen
+    /// shows debit and credit columns PER VIEW — and a net cannot be split back
+    /// into its sides. `FileBook::balances_by_dim` answers the same question
+    /// only for the whole journal, which is exactly one view's answer.
+    pub by_dim: BTreeMap<(i64, Option<Text>), DimTotal>,
     pub debits: i128,
     pub credits: i128,
+}
+
+/// One (dimension, currency) row of a view's fold: both sides, and how many
+/// postings landed there.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DimTotal {
+    pub debit: i128,
+    pub credit: i128,
+    /// Postings, for the console's per-account counts — a count per VIEW,
+    /// since a view recognises a subset of the journal.
+    pub postings: i64,
+}
+
+impl DimTotal {
+    pub fn net(&self) -> i128 {
+        self.debit - self.credit
+    }
 }
 
 /// How many hundredths of the base currency one unit of a currency is worth.
@@ -360,6 +398,58 @@ impl Realized {
     }
 }
 
+/// One entry in flight between two books of record.
+///
+/// `Ratio.Views.two_views_differ_by_exactly_what_is_in_flight`: the difference
+/// between two views over one journal prefix is a LIST OF ENTRIES, not a
+/// number — the number is what the list sums to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InFlightEntry {
+    pub id: String,
+    pub memo: String,
+    /// The day the trade was struck.
+    pub trade_day: views::Day,
+    /// When `here` recognises it. `None` on a basis that consults no date.
+    pub recognised_here: Option<views::Day>,
+    /// When `there` recognises it.
+    pub recognised_there: Option<views::Day>,
+    /// What recognising this entry moves a NAV by, in minor units of the base.
+    ///
+    /// ⛔ SIGNED AS A CONTRIBUTION TO `difference`, not to either NAV: an entry
+    /// `here` counts and `there` does not carries its own effect; the reverse
+    /// carries the negation. The two directions sum to the difference exactly.
+    ///
+    /// ⚠ ZERO FOR A PURCHASE, AND THAT IS THE ENTRY BEHAVING, NOT A BUG: a
+    /// purchase moves cash into investments — both assets — so a NAV does not
+    /// care when it is recognised. Subscriptions and redemptions are what make
+    /// two views actually disagree.
+    pub effect: i64,
+    /// Which side counts it: `true` when `here` has recognised it and `there`
+    /// has not. ⛔ NOT DERIVABLE FROM THE SIGN — a trade's effect is zero in
+    /// both directions, and it still belongs to exactly one list.
+    pub in_here: bool,
+}
+
+/// What accounts for two views' NAVs differing, entry by entry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reconciliation {
+    pub here: String,
+    pub there: String,
+    /// Entries one view holds and the other does not, in journal order.
+    pub entries: Vec<InFlightEntry>,
+    /// Entries NEITHER view can place. ⛔ SHOWN, NOT OMITTED: they contribute
+    /// to neither figure, so leaving them off makes a difference look fully
+    /// explained when it is not. An entry unplaceable in only ONE view refuses
+    /// the whole reconciliation instead — the other view counts it, so the
+    /// lists could not account for the difference.
+    pub unplaceable: Vec<Unplaced>,
+    /// `nav(here) − nav(there)`, and ⛔ EXACTLY the sum of the entries'
+    /// signed effects — positive where `here` has recognised and `there` has
+    /// not. The test that says so is
+    /// `two_views_disagree_about_the_nav_and_the_difference_is_a_list_of_entries`.
+    pub difference: i64,
+}
+
 /// Open tax lots, per position, and what relieving them has cost.
 ///
 /// ⛔ THE LOTS ARE MAINTAINED BY THE FOLD, not derived on demand. A buy opens a
@@ -424,11 +514,93 @@ struct LotBook {
 /// instrument, not a posting in scope of a recognition convention: two views
 /// have heard about the same split. Putting it per view would leave two copies
 /// of one fact to keep in step.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 struct ViewFold {
     positions: Positions,
     totals: Totals,
     lots: LotBook,
+    /// How this view dates an entry, as the ACTIVE configuration declares it.
+    ///
+    /// ⚠ FOR THE READ SIDE ONLY — `AsOf.through` is `None` on a basis that
+    /// consults no date. How each ENTRY is recognised still comes from the
+    /// digest that entry pinned, never from here.
+    basis: ratio_rules::Basis,
+    /// The cut: the highest trade day the fold has seen.
+    ///
+    /// ⛔ THE JOURNAL'S OWN CLOCK, NOT THE HIGHEST RECOGNITION DAY. Advancing
+    /// this to the highest day an entry was PLACED on would drain the band the
+    /// moment anything entered it — the latest-settling entry always settles
+    /// last, so everything would fold and the views would agree at every
+    /// prefix, which is `Ratio.Views.a_fold_with_no_cut_hides_the_settlement_
+    /// gap` rebuilt one layer up. The trade days are the evidence of what day
+    /// it is; the band holds what is placed beyond them.
+    ///
+    /// ⛔ MONOTONIC. A late entry carrying an old trade date folds immediately
+    /// (its day is inside the cut) but never moves the cut backward —
+    /// `advance` using `max`, one layer out.
+    recognised_through: Option<views::Day>,
+    /// The band: entries placed beyond the cut, keyed by recognition day.
+    ///
+    /// ⛔ BOUNDED BY THE SETTLEMENT LAG ONLY BECAUSE THE CUT MOVES AS THE FOLD
+    /// READS. A cold build over twenty years against a cut that never advanced
+    /// would hold the whole journal here — the failure design 2 was rejected
+    /// for, reached by a different road. A journal is roughly chronological,
+    /// so with the cut tracking the trade days this holds days of entries
+    /// rather than years: `the_pending_queue_is_bounded_by_the_settlement_lag_
+    /// not_by_the_journal`.
+    pending: BTreeMap<views::Day, Vec<Pending>>,
+    /// Entries this view can never date, each with the reason.
+    ///
+    /// ⛔ REPORTED, NEVER SILENTLY DROPPED — and never folded as `recorded`
+    /// either, for the reason a bad config refuses the relief rather than
+    /// falling back to FIFO. `Placement::Unplaceable` is not "not yet":
+    /// an entry the view recognises on Tuesday is in the band; an entry it
+    /// cannot date at all is here.
+    ///
+    /// ⚠ THE ENTRY, NOT JUST THE SENTENCE. A reconciliation shows what neither
+    /// view can place as a third list — omitted, a difference looks fully
+    /// explained when it is not — and a list needs the id and the memo, which
+    /// a prose reason has already thrown away.
+    unplaceable: Vec<Unplaced>,
+}
+
+impl Default for ViewFold {
+    fn default() -> Self {
+        Self {
+            positions: Positions::default(),
+            totals: Totals::default(),
+            lots: LotBook::default(),
+            basis: ratio_rules::Basis::Recorded,
+            recognised_through: None,
+            pending: BTreeMap::new(),
+            unplaceable: Vec::new(),
+        }
+    }
+}
+
+/// One entry the fold has read but a view has not yet recognised.
+///
+/// ⚠ A CLONE OF THE ENTRY, AND THE BAND IS WHY THAT IS AFFORDABLE: it holds
+/// the last few days' trades, not the journal — retaining every entry to
+/// filter on read is exactly the design the band replaced.
+#[derive(Clone, Debug)]
+struct Pending {
+    at: usize,
+    entry: JournalEntry,
+    terms: Result<Terms, String>,
+    trade_day: views::Day,
+}
+
+/// One entry a view can never recognise, and why.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unplaced {
+    /// Empty on the one refusal that is about the VIEW rather than an entry —
+    /// a view declared after this projection had already folded a prefix.
+    pub id: String,
+    pub memo: String,
+    /// `None` when the record carries none, which is usually why it is here.
+    pub trade_day: Option<views::Day>,
+    pub why: String,
 }
 
 /// The read model.
@@ -482,6 +654,15 @@ pub struct Projection {
     /// some fund somewhere, so a guess that lands on it is indistinguishable
     /// from having read it.
     terms: BTreeMap<ratio_store::Digest, Result<Terms, String>>,
+    /// The views each configuration declares, resolved once per digest.
+    ///
+    /// ⛔ FROM THE DIGEST AN ENTRY PINNED, NEVER FROM ACTIVE, cached exactly as
+    /// `terms` is and for the same two reasons — the fold is per entry, and how
+    /// an entry is recognised is a term of the agreement in force when it was
+    /// posted. A settlement date re-derived over a calendar amended since is
+    /// `//tla:calendar_in_side_file_check`. Which views EXIST is the active
+    /// configuration's question; this map answers the other one.
+    view_defs: BTreeMap<ratio_store::Digest, Result<Vec<views::ViewDef>, String>>,
 }
 
 /// ⛔ HAND-WRITTEN, FOR THE REASON `RuleSet`'s IS. `#[derive(Default)]` gives
@@ -503,21 +684,50 @@ impl Default for Projection {
             cost: FoldCost::default(),
             names: ratio_common::intern::Interner::default(),
             terms: BTreeMap::new(),
+            view_defs: BTreeMap::new(),
         }
     }
 }
 
 impl Projection {
-    /// The one book of record this folds, until the cut lands.
+    /// One view's fold, or a refusal that names the views this book keeps.
     ///
-    /// ⚠ `expect` RATHER THAN A `Result`, AND THAT IS AN INVARIANT NOT A RISK:
-    /// `Default` puts the undeclared view in and nothing removes it. When this
-    /// map grows a second entry these become `fold_of(view)` returning a
-    /// refusal, because THEN a caller can name a view a book does not keep.
-    fn only(&self) -> &ViewFold {
-        self.views
-            .get(ratio_rules::UNDECLARED_VIEW)
-            .expect("every projection holds the view every book has")
+    /// ⛔ A REFUSAL, NOT A FALLBACK. A caller asking for a view this book does
+    /// not keep is holding a URL, a flag, or a guess — and answering with the
+    /// default view's figures would be the substitution this whole feature
+    /// exists to prevent. The error lists what the book actually keeps, which
+    /// is what the caller needs to correct with.
+    fn fold_of(&self, view: &str) -> Result<&ViewFold> {
+        self.views.get(view).ok_or_else(|| {
+            anyhow::anyhow!(
+                "no view {view:?} on this book. It keeps: {}",
+                self.views.keys().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")
+            )
+        })
+    }
+
+    /// The cut a figure read from this view carries: `None` on a basis that
+    /// consults no date, the frontier otherwise.
+    fn through_of(fold: &ViewFold) -> Option<views::Day> {
+        match fold.basis {
+            ratio_rules::Basis::Recorded => None,
+            _ => fold.recognised_through,
+        }
+    }
+
+    /// The views this projection folds, in id order.
+    pub fn views(&self) -> Vec<&str> {
+        self.views.keys().map(|k| k.as_str()).collect()
+    }
+
+    /// Entries a view has read but not yet recognised — the band, flattened.
+    pub fn in_flight(&self, view: &str) -> Result<usize> {
+        Ok(self.fold_of(view)?.pending.values().map(Vec::len).sum())
+    }
+
+    /// Entries this view can never date, each with the reason.
+    pub fn unplaceable(&self, view: &str) -> Result<&[Unplaced]> {
+        Ok(&self.fold_of(view)?.unplaceable)
     }
 }
 
@@ -587,7 +797,9 @@ impl Projection {
         entry: &JournalEntry,
         terms: &Result<Terms, String>,
     ) {
-        self.fold_lots(at, entry, terms);
+        // Shared, once per entry: an announcement is a fact about an
+        // instrument, not a posting in scope of a recognition convention, which
+        // is why `actions` lives on `Projection` rather than on a view.
         if let Some(a) = &entry.announcement {
             self.actions.announced.push((
                 a.instrument.clone(),
@@ -600,16 +812,229 @@ impl Projection {
         if let Some(id) = entry.id.strip_prefix("action-") {
             self.actions.rewritten.insert(id.to_string());
         }
-        // ⛔ THE INTERNER AND THE FOLD ARE BORROWED SEPARATELY, ONCE, OUTSIDE THE
-        // LOOP. Both are fields of `self`, and reaching through `self` for each
-        // in turn would borrow the whole thing twice per posting — so the map
-        // lookup that finds the view would land on the hot path, which is per
-        // POSTING across millions of entries. Destructuring splits the borrow at
-        // no cost, which is the same reason `names` exists at all.
-        let Self { names, views, .. } = self;
-        let fold = views
-            .get_mut(ratio_rules::UNDECLARED_VIEW)
-            .expect("every projection holds the view every book has");
+        // ⛔ PARSED ONCE PER ENTRY, NOT ONCE PER VIEW. Two views over seven
+        // million entries must not mean fourteen million date parses — `follow`
+        // pays `parse` once and runs N per-view bodies, which is
+        // `//tla:views_check`'s `EveryViewFoldsTheSamePrefix` by construction.
+        //
+        // ⚠ A DATE THAT WILL NOT PARSE IS A BREAK, NOT A SILENT ABSENCE. Left
+        // as `None` it is indistinguishable from an entry that never carried
+        // one. The break lands in the lot book of every view that folds the
+        // entry; a view that refuses the entry outright reports it in
+        // `unplaceable` instead, which is the sharper message.
+        let (trade_day, date_break): (Option<relief::Day>, Option<String>) =
+            match entry.trade_date.as_deref() {
+                None => (None, None),
+                Some(d) => match ratio_common::days_from_iso_date(d) {
+                    Ok(n) => (Some(n as relief::Day), None),
+                    Err(e) => (
+                        None,
+                        Some(format!(
+                            "{}: trade date {d:?} is not a date — {e:#}. Lots it opens carry \
+                             no acquisition date, and the holding-period methods refuse them",
+                            entry.id
+                        )),
+                    ),
+                },
+            };
+        // ⛔ THE INTERNER AND THE FOLDS ARE BORROWED SEPARATELY, ONCE, OUTSIDE
+        // THE LOOP. Reaching through `self` for each in turn would borrow the
+        // whole thing twice per posting; destructuring splits the borrow at no
+        // cost, which is the same reason `names` exists at all.
+        let Self { names, views, cost, view_defs, .. } = self;
+        for (vid, vf) in views.iter_mut() {
+            let placement = Self::placement_of(view_defs, vid, entry, trade_day);
+            match placement {
+                views::Placement::Always => {
+                    Self::apply(vf, names, cost, at, entry, terms, trade_day, date_break.as_deref())
+                }
+                views::Placement::On(d) => {
+                    // ⚠ `<=`, AND THE BOUNDARY IS ON THE DAY — an entry
+                    // recognised exactly at the cut is IN, matching
+                    // `ViewDef::recognises` and `the_settlement_day_itself_is_
+                    // recognised`.
+                    if vf.recognised_through.is_some_and(|c| d <= c) {
+                        Self::apply(vf, names, cost, at, entry, terms, trade_day, date_break.as_deref())
+                    } else {
+                        vf.pending.entry(d).or_default().push(Pending {
+                            at,
+                            entry: entry.clone(),
+                            terms: terms.clone(),
+                            trade_day: trade_day
+                                .expect("an entry placed on a day carries the date that placed it"),
+                        });
+                    }
+                }
+                views::Placement::Unplaceable(why) => vf.unplaceable.push(Unplaced {
+                    id: entry.id.clone(),
+                    memo: entry.memo.clone(),
+                    trade_day,
+                    why,
+                }),
+            }
+            // ⛔ THE CUT ADVANCES ON THE TRADE DAY — THE JOURNAL'S OWN CLOCK —
+            // AND THE BAND DRAINS UP TO IT. Advancing on the day entries are
+            // PLACED would drain the band the moment anything entered it, and
+            // every view would agree at every prefix. The trade days are the
+            // fold's only evidence of what day it is; an entry that settles
+            // beyond the latest of them is exactly what "in flight" means.
+            if let Some(t) = trade_day {
+                if vf.recognised_through.is_none_or(|c| t > c) {
+                    vf.recognised_through = Some(t);
+                    loop {
+                        match vf.pending.first_key_value() {
+                            Some((&d, _)) if d <= t => {
+                                let (_, batch) =
+                                    vf.pending.pop_first().expect("the key was just seen");
+                                // ⚠ RECOGNITION ORDER, WHICH IS THE VIEW'S OWN
+                                // ORDER: by day, journal order within a day.
+                                // The lot ordinals stay honest because each
+                                // pending entry kept its journal position.
+                                for pe in batch {
+                                    Self::apply(
+                                        vf,
+                                        names,
+                                        cost,
+                                        pe.at,
+                                        &pe.entry,
+                                        &pe.terms,
+                                        Some(pe.trade_day),
+                                        None,
+                                    );
+                                }
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Where one view puts one entry, resolved from the digest THAT ENTRY
+    /// pinned — never from the active configuration.
+    ///
+    /// ⛔ THE ONE SPELLING OF THE DECISION. `fold` asks it to decide what lands
+    /// in a view's figures; `recognised` asks it so a walk over the journal
+    /// can filter to exactly those entries. Two spellings would be two doors
+    /// with one law, and HANDOFF.md records what that costs here.
+    ///
+    /// ⛔ AN ENTRY WHOSE PINNED CONFIGURATION DOES NOT DECLARE THE VIEW IS
+    /// REFUSED, never folded as `recorded`: that would put an entry in a
+    /// settlement NAV no settlement convention admitted, and the figure would
+    /// tie the whole way — the same argument that stops an unreadable config
+    /// falling back to FIFO.
+    fn placement_of(
+        view_defs: &BTreeMap<ratio_store::Digest, Result<Vec<views::ViewDef>, String>>,
+        vid: &str,
+        entry: &JournalEntry,
+        trade_day: Option<relief::Day>,
+    ) -> views::Placement {
+        match view_defs.get(&entry.config) {
+            Some(Ok(defs)) => match defs.iter().find(|v| v.id == vid) {
+                Some(def) => def.placement(&entry.id, trade_day),
+                None => views::Placement::Unplaceable(format!(
+                    "{}: the configuration this entry pinned ({}) declares no view \
+                     {:?}, so this view cannot say when it is recognised",
+                    entry.id,
+                    entry.config.as_str(),
+                    vid
+                )),
+            },
+            // ⚠ AN UNREADABLE CONFIG REFUSES A DECLARED VIEW AND NOT THE
+            // UNDECLARED ONE, and the asymmetry is the point. A settlement
+            // date is a term of the pinned agreement — no readable config, no
+            // calendar, no date. Journal order is a term of NOTHING: it is the
+            // custom every book has, `ViewDef::undeclared` answers over every
+            // book ever written, and an entry with a broken config still
+            // FOLDED before views existed — only its RELIEF refused, per sale,
+            // with a break naming why. Refusing the whole entry here turned
+            // `a_configuration_that_is_not_a_rule_set_refuses_the_relief`'s
+            // one lot break into an empty book.
+            Some(Err(_)) if vid == ratio_rules::UNDECLARED_VIEW => views::Placement::Always,
+            Some(Err(why)) => views::Placement::Unplaceable(format!(
+                "{}: the configuration this entry pinned ({}) could not be read — \
+                 {why}",
+                entry.id,
+                entry.config.as_str()
+            )),
+            // A slice fold has no book to resolve digests from. The one view
+            // every book has consults no date, so its placement needs none;
+            // any other view got into this map from a configuration a slice
+            // cannot see, and guessing would be folding under terms nobody
+            // read.
+            None if vid == ratio_rules::UNDECLARED_VIEW => views::Placement::Always,
+            None => views::Placement::Unplaceable(format!(
+                "{}: this fold was advanced from a slice, which carries no \
+                 configurations to say when view {:?} recognises it",
+                entry.id, vid
+            )),
+        }
+    }
+
+    /// Whether one view's figures hold this entry, at the fold's own cut.
+    ///
+    /// ⛔ FOR WALKS THE PROJECTION DOES NOT RETAIN. `list_postings` reads the
+    /// journal directly — the fold keeps totals, not history — so a per-view
+    /// posting list must skip exactly what the view has not recognised.
+    /// Filtering with anything but the fold's own decision would let the list
+    /// and the totals disagree about which entries a figure holds.
+    pub fn recognised(&self, view: &str, entry: &JournalEntry) -> Result<bool> {
+        let fold = self.fold_of(view)?;
+        let trade_day = entry
+            .trade_date
+            .as_deref()
+            .and_then(|d| ratio_common::days_from_iso_date(d).ok())
+            .map(|n| n as relief::Day);
+        Ok(match Self::placement_of(&self.view_defs, view, entry, trade_day) {
+            views::Placement::Always => true,
+            views::Placement::On(d) => fold.recognised_through.is_some_and(|c| d <= c),
+            views::Placement::Unplaceable(_) => false,
+        })
+    }
+
+    /// One view's trial-balance rows: `(dimension, currency)` → both sides and
+    /// the posting count, off the maintained fold.
+    ///
+    /// ⛔ PER VIEW, WHICH `FileBook::balances_by_dim` IS NOT: the file's answer
+    /// sums the whole journal, and that is exactly one view's answer wearing
+    /// no label. The console's trial balance reads this.
+    pub fn balances(
+        &self,
+        view: &str,
+    ) -> Result<AsOf<&BTreeMap<(i64, Option<Text>), DimTotal>>> {
+        let fold = self.fold_of(view)?;
+        Ok(AsOf {
+            value: &fold.totals.by_dim,
+            prefix: self.at,
+            view: view.to_string(),
+            through: Self::through_of(fold),
+        })
+    }
+
+    /// Apply one recognised entry to one view's fold: the totals, the
+    /// positions, and the lot book.
+    ///
+    /// ⛔ THE ONLY PLACE AN ENTRY LANDS IN A FOLD. `fold` reaches here directly
+    /// for an entry inside the cut and through the band for one beyond it —
+    /// two application paths would be two chances to disagree about what an
+    /// entry means, and the disagreement would be a NAV that depended on
+    /// whether an entry ever sat in the band.
+    #[allow(clippy::too_many_arguments)]
+    fn apply(
+        fold: &mut ViewFold,
+        names: &mut ratio_common::intern::Interner,
+        cost: &mut FoldCost,
+        at: usize,
+        entry: &JournalEntry,
+        terms: &Result<Terms, String>,
+        trade_day: Option<relief::Day>,
+        date_break: Option<&str>,
+    ) {
+        if let Some(b) = date_break {
+            fold.lots.breaks.push(b.to_string());
+        }
+        Self::apply_lots(fold, names, cost, at, entry, terms, trade_day);
         for p in &entry.postings {
             // ⚠ `-p.amount` is not the magnitude at the floor: `-i64::MIN`
             // overflows. Widened first, it does not.
@@ -618,10 +1043,13 @@ impl Projection {
             // across seven million entries; cloning the code to look up a row
             // that already exists is the same waste the instrument key was.
             let ccy = p.currency.as_deref().map(|c| names.intern(c));
-            *fold.totals.by_dim.entry((p.dim, ccy)).or_default() += amount;
+            let row = fold.totals.by_dim.entry((p.dim, ccy)).or_default();
+            row.postings += 1;
             if amount >= 0 {
+                row.debit += amount;
                 fold.totals.debits += amount;
             } else {
+                row.credit += -amount;
                 fold.totals.credits += -amount;
             }
             match &p.instrument {
@@ -715,6 +1143,24 @@ impl Projection {
 
         let book = FileBook::open(path)?;
 
+        // ⛔ TWO DIFFERENT QUESTIONS, TWO DIFFERENT SOURCES. Which views EXIST
+        // comes from the ACTIVE configuration, read here, once per follow. How
+        // each ENTRY is recognised comes from the digest that entry pinned,
+        // resolved per digest inside the walk. Conflating them re-derives
+        // settlement dates over whatever calendar is in force now, which is
+        // `//tla:calendar_in_side_file_check`.
+        {
+            use ratio_store::ConfigStore;
+            let active = match book.active()? {
+                Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(
+                    &book.get(&d)?,
+                ))
+                .unwrap_or_default(),
+                None => ratio_rules::RuleSet::default(),
+            };
+            self.seed_views(&active);
+        }
+
         // ⛔ STREAMED, ONE ENTRY AT A TIME. `entries_since` returned a `Vec` of
         // the whole journal — 1.85 GB resident to fold 1.77M entries into a
         // projection holding 8 MB of lots, and about eighty gigabytes at the
@@ -733,6 +1179,10 @@ impl Projection {
             if !self.terms.contains_key(&entry.config) {
                 let resolved = Self::terms_of(&book, &entry.config);
                 self.terms.insert(entry.config.clone(), resolved);
+            }
+            if !self.view_defs.contains_key(&entry.config) {
+                let resolved = Self::views_of(&book, &entry.config);
+                self.view_defs.insert(entry.config.clone(), resolved);
             }
             let terms = self.terms.get(&entry.config).cloned().unwrap_or_else(|| {
                 Err("the configuration was not resolved before folding".to_string())
@@ -790,19 +1240,85 @@ impl Projection {
         Ok(Terms::of(&set))
     }
 
-    /// The positions, as of the prefix folded.
+    /// The views a stored configuration declares, for recognising the entries
+    /// that pinned it. Cached by digest in `view_defs`, exactly as `terms` is.
+    fn views_of(
+        book: &FileBook,
+        config: &ratio_store::Digest,
+    ) -> Result<Vec<views::ViewDef>, String> {
+        use ratio_store::ConfigStore;
+        let bytes = book
+            .get(config)
+            .map_err(|e| format!("config {} could not be read — {e:#}", config.as_str()))?;
+        let set = ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&bytes))
+            .map_err(|e| format!("config {} is not a rule set — {e:#}", config.as_str()))?;
+        Ok(views::ViewDef::of(&set))
+    }
+
+    /// Make the fold map answer for exactly the views the ACTIVE configuration
+    /// declares.
     ///
-    /// ⛔ THE ONLY WAY OUT OF THIS TYPE, and it hands back the prefix with the
-    /// value. There is deliberately no `fn positions(&self) -> &Positions`.
-    pub fn positions(&self) -> AsOf<&Positions> {
-        AsOf { value: &self.only().positions, prefix: self.at }
+    /// ⛔ A VIEW DECLARED AFTER ENTRIES WERE FOLDED CANNOT BE CONJURED. A
+    /// maintained fold has read past everything it would need — so the view
+    /// appears, but refusing, until a rebuild folds it from the start. Folding
+    /// only from here would be a book of record missing its history, and the
+    /// trial balance would tie on the fragment.
+    ///
+    /// ⚠ A view REMOVED from the active configuration keeps its fold: the
+    /// entries were recognised under terms they pinned, and the figures remain
+    /// answerable. Listing what a fund offers is the console's question and it
+    /// reads the active configuration, not this map.
+    fn seed_views(&mut self, active: &ratio_rules::RuleSet) {
+        let declared = views::ViewDef::of(active);
+        if self.at == 0 {
+            self.views = declared
+                .iter()
+                .map(|d| (d.id.clone(), ViewFold { basis: d.basis, ..ViewFold::default() }))
+                .collect();
+            return;
+        }
+        let folded = self.at;
+        for d in declared {
+            self.views.entry(d.id.clone()).or_insert_with(|| {
+                let mut vf = ViewFold { basis: d.basis, ..ViewFold::default() };
+                vf.unplaceable.push(Unplaced {
+                    id: String::new(),
+                    memo: String::new(),
+                    trade_day: None,
+                    why: format!(
+                        "view {:?} was declared after this projection had folded {folded} \
+                         entries, and a maintained fold cannot recognise what it has \
+                         already read past — rebuild to fold this view from the start",
+                        d.id
+                    ),
+                });
+                vf
+            });
+        }
+    }
+
+    /// The positions, as of the prefix folded, under one book of record.
+    ///
+    /// ⛔ THE ONLY WAY OUT OF THIS TYPE, and it hands back the prefix, the view
+    /// and the cut with the value. There is deliberately no
+    /// `fn positions(&self) -> &Positions` — and deliberately no default view
+    /// parameter: with two views the figures are structurally interchangeable,
+    /// so the caller SAYS which book of record it is asking about, every time.
+    pub fn positions(&self, view: &str) -> Result<AsOf<&Positions>> {
+        let fold = self.fold_of(view)?;
+        Ok(AsOf {
+            value: &fold.positions,
+            prefix: self.at,
+            view: view.to_string(),
+            through: Self::through_of(fold),
+        })
     }
 
     /// Total cost held in one instrument, across every account.
-    pub fn cost_of(&self, instrument: &str) -> AsOf<i64> {
-        AsOf {
-            value: self
-                .only()
+    pub fn cost_of(&self, view: &str, instrument: &str) -> Result<AsOf<i64>> {
+        let fold = self.fold_of(view)?;
+        Ok(AsOf {
+            value: fold
                 .positions
                 .held
                 .iter()
@@ -810,7 +1326,9 @@ impl Projection {
                 .map(|(_, (cost, _))| *cost)
                 .sum(),
             prefix: self.at,
-        }
+            view: view.to_string(),
+            through: Self::through_of(fold),
+        })
     }
 
     /// Maintain the lot book for one entry.
@@ -829,21 +1347,15 @@ impl Projection {
     /// one trade — so relieving under anything else is relieving somebody
     /// else's book. It is silent: the units left are right, the proceeds are
     /// right, the trial balance ties, and only the realized gain moves.
-    fn fold_lots(
-        &mut self,
+    fn apply_lots(
+        fold: &mut ViewFold,
+        names: &mut ratio_common::intern::Interner,
+        cost: &mut FoldCost,
         at: usize,
         entry: &JournalEntry,
         terms: &Result<Terms, String>,
+        trade_day: Option<relief::Day>,
     ) {
-        // ⛔ SPLIT ONCE, LIKE `fold`. `lots` is per view and `names` and
-        // `cost` are not, and this walks every disposal in the entry — so
-        // reaching through `self` for each in turn would put the lookup that
-        // finds the view inside the loop over lots, which is the one loop in
-        // this crate that grows with a fund's trading history.
-        let Self { names, views, cost, .. } = self;
-        let fold = views
-            .get_mut(ratio_rules::UNDECLARED_VIEW)
-            .expect("every projection holds the view every book has");
         // ⛔ THE GAIN IS ATTRIBUTED ONLY WHEN THE ENTRY IS UNAMBIGUOUS: exactly
         // one sale, and a chart that names where a gain goes. An entry disposing
         // of two instruments carries ONE gain leg between them, and splitting it
@@ -852,31 +1364,10 @@ impl Projection {
         // ⚠ Ambiguous entries are not dropped — they land in
         // `Realized::unclassified`, which is the total MINUS what was
         // classified, so nothing can go missing without showing up there.
-        // ⛔ PARSED ONCE PER ENTRY, NOT ONCE PER LOT AND AGAIN PER CLASSIFY. The
-        // date is stored on every lot this entry opens and read again by every
-        // disposal that relieves one, and it used to be an ISO string at both
-        // ends — so a book with a million open lots retained a million small
-        // allocations and re-parsed text to decide a holding period.
         //
-        // ⚠ A DATE THAT WILL NOT PARSE IS A BREAK, NOT A SILENT ABSENCE. Left as
-        // `None` it is indistinguishable from an entry that never carried one,
-        // and the holding-period methods would refuse the holding without
-        // anybody learning why.
-        let trade_day: Option<relief::Day> = match entry.trade_date.as_deref() {
-            None => None,
-            Some(d) => match ratio_common::days_from_iso_date(d) {
-                Ok(n) => Some(n as relief::Day),
-                Err(e) => {
-                    fold.lots.breaks.push(format!(
-                        "{}: trade date {d:?} is not a date — {e:#}. Lots it opens carry \
-                         no acquisition date, and the holding-period methods refuse them",
-                        entry.id
-                    ));
-                    None
-                }
-            },
-        };
-
+        // ⚠ `trade_day` WAS PARSED ONCE, IN `fold`, so N views cost one parse —
+        // and a date that would not parse arrives as `None` here with the break
+        // already recorded by `apply`.
         let sales = entry
             .postings
             .iter()
@@ -1021,26 +1512,33 @@ impl Projection {
     /// this deliberately does not answer.
     pub fn realized(
         &self,
+        view: &str,
         roles: Option<ratio_rules::ChartRoles>,
         rates: &Rates,
     ) -> Result<AsOf<Option<Realized>>> {
+        let fold = self.fold_of(view)?;
         let value = match roles {
             None => None,
             Some(r) => Some(Realized {
-                gain: self.translate(&|dim| dim == r.realized_gain, rates)?,
-                basis: convert(&self.only().lots.relieved, rates)?,
-                short_term: convert(&self.only().lots.short_term, rates)?,
-                long_term: convert(&self.only().lots.long_term, rates)?,
+                gain: Self::translate(fold, &|dim| dim == r.realized_gain, rates)?,
+                basis: convert(&fold.lots.relieved, rates)?,
+                short_term: convert(&fold.lots.short_term, rates)?,
+                long_term: convert(&fold.lots.long_term, rates)?,
             }),
         };
-        Ok(AsOf { value, prefix: self.at })
+        Ok(AsOf {
+            value,
+            prefix: self.at,
+            view: view.to_string(),
+            through: Self::through_of(fold),
+        })
     }
 
     /// The open lots of one position, oldest first.
-    pub fn lots_of(&self, dim: i64, instrument: &str) -> AsOf<Vec<relief::Lot>> {
-        AsOf {
-            value: self
-                .only()
+    pub fn lots_of(&self, view: &str, dim: i64, instrument: &str) -> Result<AsOf<Vec<relief::Lot>>> {
+        let fold = self.fold_of(view)?;
+        Ok(AsOf {
+            value: fold
                 .lots
                 .open
                 // ⚠ Allocates, and that is fine HERE: this is a read for one
@@ -1052,7 +1550,9 @@ impl Projection {
                 .map(|h| h.lots())
                 .unwrap_or_default(),
             prefix: self.at,
-        }
+            view: view.to_string(),
+            through: Self::through_of(fold),
+        })
     }
 
     /// How many open lots this fund holds, across every position.
@@ -1061,8 +1561,8 @@ impl Projection {
     /// `nav`. `Ratio.Closure.factored_nav_never_reads_the_lots` is the claim
     /// that this figure does not appear in a NAV's cost, and having it available
     /// here is what lets that be checked rather than asserted.
-    pub fn open_lots(&self) -> i64 {
-        self.only().lots.open.values().map(|v| v.len() as i64).sum()
+    pub fn open_lots(&self, view: &str) -> Result<i64> {
+        Ok(self.fold_of(view)?.lots.open.values().map(|v| v.len() as i64).sum())
     }
 
     /// Distinct currencies this book's totals are keyed by.
@@ -1077,14 +1577,15 @@ impl Projection {
     /// conservation group of its own — `Rates::factor_of_optional` translates it
     /// through the base — so leaving it out would report a fund with fewer
     /// denominations than it has.
-    pub fn currency_count(&self) -> i64 {
-        self.only()
+    pub fn currency_count(&self, view: &str) -> Result<i64> {
+        Ok(self
+            .fold_of(view)?
             .totals
             .by_dim
             .keys()
             .map(|(_, c)| c.clone())
             .collect::<std::collections::BTreeSet<_>>()
-            .len() as i64
+            .len() as i64)
     }
 
     /// Rows the maintained NAV actually walks: one per (dimension, currency).
@@ -1093,8 +1594,8 @@ impl Projection {
     /// charges one read per security; `translate` walks this map. Quoting either
     /// as the other is how an estimate stops being checkable against the thing
     /// it estimates — which is the only reason to have both numbers.
-    pub fn total_rows(&self) -> i64 {
-        self.only().totals.by_dim.len() as i64
+    pub fn total_rows(&self, view: &str) -> Result<i64> {
+        Ok(self.fold_of(view)?.totals.by_dim.len() as i64)
     }
 
     /// Corporate actions announced inside this prefix and not yet rewritten.
@@ -1112,13 +1613,13 @@ impl Projection {
     }
 
     /// Cumulative cost given up by sales.
-    pub fn relieved_cost(&self) -> i128 {
-        self.only().lots.relieved.values().sum()
+    pub fn relieved_cost(&self, view: &str) -> Result<i128> {
+        Ok(self.fold_of(view)?.lots.relieved.values().sum())
     }
 
     /// Sales that could not be relieved, and why.
-    pub fn lot_breaks(&self) -> &[String] {
-        &self.only().lots.breaks
+    pub fn lot_breaks(&self, view: &str) -> Result<&[String]> {
+        Ok(&self.fold_of(view)?.lots.breaks)
     }
 
     /// Net asset value and the trial-balance difference, off the maintained
@@ -1135,10 +1636,12 @@ impl Projection {
     /// by twice the liability.
     pub fn nav(
         &self,
+        view: &str,
         is_asset_or_liability: &dyn Fn(i64) -> bool,
         rates: &Rates,
     ) -> Result<AsOf<(i64, i64)>> {
-        let nav = self.translate(&|dim| is_asset_or_liability(dim), rates)?;
+        let fold = self.fold_of(view)?;
+        let nav = Self::translate(fold, &|dim| is_asset_or_liability(dim), rates)?;
         // ⛔ A figure that cannot be represented is REFUSED rather than
         // truncated. `Ratio.Bounded`: an operation agrees with the theorem or
         // declines, and there is no third answer.
@@ -1147,12 +1650,194 @@ impl Projection {
                 i64::try_from(nav).map_err(|_| {
                     anyhow::anyhow!("this fund's net asset value does not fit in 64 bits")
                 })?,
-                i64::try_from(self.only().totals.debits - self.only().totals.credits).map_err(|_| {
+                i64::try_from(fold.totals.debits - fold.totals.credits).map_err(|_| {
                     anyhow::anyhow!("this fund's trial-balance difference does not fit in 64 bits")
                 })?,
             ),
             prefix: self.at,
+            view: view.to_string(),
+            through: Self::through_of(fold),
         })
+    }
+
+    /// What accounts for two views' NAVs differing, entry by entry.
+    ///
+    /// ⛔ BOUNDED BY THE SETTLEMENT LAG, NOT BY THE JOURNAL: this walks the two
+    /// bands, which hold the last few days' trades, never the history. It is
+    /// `Ratio.Views.two_views_differ_by_exactly_what_is_in_flight` as a read —
+    /// the difference IS a list of entries, and the number is what the list
+    /// sums to.
+    ///
+    /// ⛔ THREE REFUSALS, EACH THE HONEST ANSWER:
+    /// - a view this book does not keep — `fold_of`'s refusal, naming what it
+    ///   keeps;
+    /// - a view with unplaceable entries — those contribute to NEITHER figure,
+    ///   so the difference cannot be fully accounted for, and a list that looks
+    ///   complete while missing them is worse than no list;
+    /// - a translation residue — integer translation does not distribute over
+    ///   a sum, so on a multi-currency book the per-entry effects can differ
+    ///   from the NAV difference by a minor unit per bucket. Refused with the
+    ///   residue named, rather than published as an account that does not add
+    ///   up or silently adjusted so it does.
+    pub fn reconcile(
+        &self,
+        here: &str,
+        there: &str,
+        is_asset_or_liability: &dyn Fn(i64) -> bool,
+        rates: &Rates,
+    ) -> Result<AsOf<Reconciliation>> {
+        let a = self.fold_of(here)?;
+        let b = self.fold_of(there)?;
+        // ⛔ UNPLACEABLE-IN-ONE REFUSES; UNPLACEABLE-IN-BOTH IS THE THIRD LIST.
+        // An entry only one view can place is counted by that view and missing
+        // from the other's band, so no list of in-flight entries can account
+        // for the difference — refusing is the only answer that does not
+        // publish an account that does not add up. An entry NEITHER view can
+        // place contributes to neither figure; it is reported, not refused.
+        fn ids(f: &ViewFold) -> std::collections::BTreeSet<&str> {
+            f.unplaceable.iter().map(|u| u.id.as_str()).collect()
+        }
+        let (un_a, un_b) = (ids(a), ids(b));
+        for (name, mine, theirs) in [(here, &a.unplaceable, &un_b), (there, &b.unplaceable, &un_a)]
+        {
+            if let Some(u) = mine.iter().find(|u| !theirs.contains(u.id.as_str())) {
+                anyhow::bail!(
+                    "view {name:?} cannot place {:?} and the other view counts it, so the \
+                     difference cannot be accounted for entry by entry: {}",
+                    u.id,
+                    u.why
+                );
+            }
+        }
+        let unplaceable: Vec<Unplaced> = a
+            .unplaceable
+            .iter()
+            .filter(|u| un_b.contains(u.id.as_str()))
+            .cloned()
+            .collect();
+        // The bands, keyed by journal position — which both views share,
+        // because one pass feeds every view.
+        fn band(f: &ViewFold) -> BTreeMap<usize, (&Pending, views::Day)> {
+            f.pending
+                .iter()
+                .flat_map(|(d, batch)| batch.iter().map(move |p| (p.at, (p, *d))))
+                .collect()
+        }
+        let pending_here = band(a);
+        let pending_there = band(b);
+        // Journal order, one merged walk: an entry pending in BOTH bands is in
+        // NEITHER fold, so it accounts for nothing and is skipped.
+        let mut entries = Vec::new();
+        let mut summed: i128 = 0;
+        for (at, (p, day)) in &pending_there {
+            if pending_here.contains_key(at) {
+                continue;
+            }
+            // `here` has recognised it and `there` has not: it adds its effect.
+            let effect = Self::effect_of(&p.entry, is_asset_or_liability, rates)?;
+            summed += i128::from(effect);
+            entries.push((
+                *at,
+                InFlightEntry {
+                    id: p.entry.id.clone(),
+                    memo: p.entry.memo.clone(),
+                    trade_day: p.trade_day,
+                    recognised_here: self.recognition_of(here, &p.entry, p.trade_day),
+                    recognised_there: Some(*day),
+                    effect,
+                    in_here: true,
+                },
+            ));
+        }
+        for (at, (p, day)) in &pending_here {
+            if pending_there.contains_key(at) {
+                continue;
+            }
+            let effect = Self::effect_of(&p.entry, is_asset_or_liability, rates)?;
+            summed -= i128::from(effect);
+            entries.push((
+                *at,
+                InFlightEntry {
+                    id: p.entry.id.clone(),
+                    memo: p.entry.memo.clone(),
+                    trade_day: p.trade_day,
+                    recognised_here: Some(*day),
+                    recognised_there: self.recognition_of(there, &p.entry, p.trade_day),
+                    effect: -effect,
+                    in_here: false,
+                },
+            ));
+        }
+        entries.sort_by_key(|(at, _)| *at);
+        let nav_here = Self::translate(a, &|d| is_asset_or_liability(d), rates)?;
+        let nav_there = Self::translate(b, &|d| is_asset_or_liability(d), rates)?;
+        let difference = nav_here - nav_there;
+        if difference != summed {
+            anyhow::bail!(
+                "the NAVs differ by {difference} and the in-flight entries sum to {summed} — \
+                 a translation residue of {} minor units, because integer translation does \
+                 not distribute over a sum. The difference cannot be accounted for entry by \
+                 entry at these rates",
+                difference - summed
+            );
+        }
+        Ok(AsOf {
+            value: Reconciliation {
+                here: here.to_string(),
+                there: there.to_string(),
+                entries: entries.into_iter().map(|(_, e)| e).collect(),
+                unplaceable,
+                difference: i64::try_from(difference).map_err(|_| {
+                    anyhow::anyhow!("the difference between these views does not fit in 64 bits")
+                })?,
+            },
+            prefix: self.at,
+            view: here.to_string(),
+            through: Self::through_of(a),
+        })
+    }
+
+    /// When one view recognises an entry, from the configuration THAT ENTRY
+    /// pinned. `None` is journal order — the basis that consults no date.
+    fn recognition_of(
+        &self,
+        view: &str,
+        entry: &JournalEntry,
+        trade_day: views::Day,
+    ) -> Option<views::Day> {
+        match self.view_defs.get(&entry.config) {
+            Some(Ok(defs)) => defs.iter().find(|v| v.id == view).and_then(|d| {
+                match d.placement(&entry.id, Some(trade_day)) {
+                    views::Placement::On(day) => Some(day),
+                    _ => None,
+                }
+            }),
+            _ => None,
+        }
+    }
+
+    /// What recognising one entry moves a NAV by, in minor units of the base.
+    fn effect_of(
+        entry: &JournalEntry,
+        want: &dyn Fn(i64) -> bool,
+        rates: &Rates,
+    ) -> Result<i64> {
+        let mut total: i128 = 0;
+        for p in &entry.postings {
+            if !want(p.dim) {
+                continue;
+            }
+            let factor = rates.factor(p.currency.as_deref()).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "this entry posts {} and no rate for it was supplied — a difference \
+                     mixing denominations is not a figure",
+                    p.currency.as_deref().unwrap_or("an untyped balance")
+                )
+            })?;
+            total += p.amount as i128 * factor as i128 / RATE_SCALE as i128;
+        }
+        i64::try_from(total)
+            .map_err(|_| anyhow::anyhow!("this entry's effect does not fit in 64 bits"))
     }
 
     /// Sum the dimensions a predicate picks out, translated into one currency.
@@ -1168,9 +1853,9 @@ impl Projection {
     /// has no exact answer at any rate with finitely many digits, so refusing
     /// would refuse every foreign holding. Rounded down, in `i128`, once per
     /// (dimension, currency) rather than per posting.
-    fn translate(&self, want: &dyn Fn(i64) -> bool, rates: &Rates) -> Result<i128> {
+    fn translate(fold: &ViewFold, want: &dyn Fn(i64) -> bool, rates: &Rates) -> Result<i128> {
         let mut total: i128 = 0;
-        for ((dim, currency), amount) in &self.only().totals.by_dim {
+        for ((dim, currency), row) in &fold.totals.by_dim {
             if !want(*dim) {
                 continue;
             }
@@ -1181,7 +1866,7 @@ impl Projection {
                     currency.as_deref().unwrap_or("an untyped balance")
                 )
             })?;
-            total += amount * factor as i128 / RATE_SCALE as i128;
+            total += row.net() * factor as i128 / RATE_SCALE as i128;
         }
         Ok(total)
     }
@@ -1214,9 +1899,15 @@ impl Projection {
     /// does not divide means the holder was paid cash in lieu, which realizes a
     /// gain and is a posting the configuration must declare:
     /// `Ratio.Actions.Factor.a_factor_can_succeed_where_the_rewrite_refuses`.
-    pub fn units_as_of(&self, dim: i64, instrument: &str, day: &str) -> Result<AsOf<i64>> {
-        let stored = self
-            .only()
+    pub fn units_as_of(
+        &self,
+        view: &str,
+        dim: i64,
+        instrument: &str,
+        day: &str,
+    ) -> Result<AsOf<i64>> {
+        let fold = self.fold_of(view)?;
+        let stored = fold
             .positions
             .held
             .get(&(dim, Text::from(instrument)))
@@ -1225,6 +1916,8 @@ impl Projection {
         Ok(AsOf {
             value: ratio_ingest::factor::units_as_of(stored, &self.steps_for(instrument, day))?,
             prefix: self.at,
+            view: view.to_string(),
+            through: Self::through_of(fold),
         })
     }
 
@@ -1316,6 +2009,11 @@ fn classify(
 mod tests {
     use super::*;
     use ratio_store::{Account, AccountTypeRecord as A, ConfigStore, PostingRecord};
+
+    /// The one view every book that declares none has — which is every book
+    /// these tests seed, so every read below names it. The tests that declare
+    /// views name theirs.
+    use ratio_rules::UNDECLARED_VIEW as B;
 
     /// An ISO date as the day number a lot now stores.
     fn day(iso: &str) -> relief::Day {
@@ -1478,7 +2176,7 @@ mod tests {
         buy_dated(&d, "b2", "vti", 10, 400, "2026-01-15");
         let p = Projection::of_book(&d).unwrap();
 
-        let lots = p.lots_of(1, "vti").value;
+        let lots = p.lots_of(B, 1, "vti").unwrap().value;
         assert_eq!(lots.len(), 2);
         assert_eq!(lots[0].acquired, Some(day("2024-03-01")));
         assert_eq!(lots[1].acquired, Some(day("2026-01-15")));
@@ -1497,7 +2195,7 @@ mod tests {
         // the records do not support.
         let d = book("undated", &[("vti", 100, 10)]);
         let p = Projection::of_book(&d).unwrap();
-        let lots = p.lots_of(1, "vti").value;
+        let lots = p.lots_of(B, 1, "vti").unwrap().value;
         assert!(lots[0].acquired.is_none());
         assert!(relief::relieve_by(relief::Method::LongestHeldFirst, &lots, 5).is_err());
         assert!(relief::relieve_by(relief::Method::Fifo, &lots, 5).is_ok(), "FIFO still works");
@@ -1513,12 +2211,12 @@ mod tests {
         sell(&d, "s1", "vti", 1, 10); // the cheap lot's basis, which is what FIFO gives up
         let p = Projection::of_book(&d).unwrap();
 
-        assert_eq!(p.open_lots(), 1, "one lot left");
-        let left = p.lots_of(1, "vti");
+        assert_eq!(p.open_lots(B).unwrap(), 1, "one lot left");
+        let left = p.lots_of(B, 1, "vti").unwrap();
         assert_eq!(left.value[0].units, 1);
         assert_eq!(left.value[0].cost, 40, "the DEAR lot survives, not the cheap one");
-        assert_eq!(p.relieved_cost(), 10, "and 10 of basis was given up");
-        assert!(p.lot_breaks().is_empty());
+        assert_eq!(p.relieved_cost(B).unwrap(), 10, "and 10 of basis was given up");
+        assert!(p.lot_breaks(B).unwrap().is_empty());
     }
 
     #[test]
@@ -1538,8 +2236,8 @@ mod tests {
         sell(&d, "s1", "vti", 1, 40);
         let p = Projection::of_book(&d).unwrap();
 
-        assert_eq!(p.lot_breaks().len(), 1, "{:?}", p.lot_breaks());
-        let b = &p.lot_breaks()[0];
+        assert_eq!(p.lot_breaks(B).unwrap().len(), 1, "{:?}", p.lot_breaks(B).unwrap());
+        let b = &p.lot_breaks(B).unwrap()[0];
         assert!(b.contains("posted 40 of basis"), "{b}");
         assert!(b.contains("costs 10"), "{b}");
         assert!(b.contains("disagree by 30"), "names the gap: {b}");
@@ -1547,7 +2245,7 @@ mod tests {
         // ⚠ A derived model CANNOT enforce this — the journal is the record, and
         // the posted figure is what the trial balance is built from. What it can
         // do is notice, and say which figure it disagrees with.
-        assert!(p.nav(&|dim| dim == 1 || dim == 2, &Rates::none()).is_ok(), "and the fund still values");
+        assert!(p.nav(B, &|dim| dim == 1 || dim == 2, &Rates::none()).is_ok(), "and the fund still values");
     }
 
     #[test]
@@ -1561,8 +2259,8 @@ mod tests {
         sell(&d, "s1", "vti", 12, 125); // 10 units at 100, then 2 of 20 at 250 → 25
         let p = Projection::of_book(&d).unwrap();
 
-        for (key, held) in &p.positions().value.held {
-            let lots = p.lots_of(key.0, &key.1);
+        for (key, held) in &p.positions(B).unwrap().value.held {
+            let lots = p.lots_of(B, key.0, &key.1).unwrap();
             assert_eq!(
                 lots.value.iter().map(|l| l.units).sum::<i64>(),
                 held.1,
@@ -1586,14 +2284,14 @@ mod tests {
         sell(&d, "s1", "vti", 3, 45);
         let p = Projection::of_book(&d).unwrap();
 
-        assert_eq!(p.lot_breaks().len(), 1, "{:?}", p.lot_breaks());
-        assert!(p.lot_breaks()[0].contains("administration agreement"), "{:?}", p.lot_breaks());
-        assert_eq!(p.open_lots(), 1, "and the lot is untouched, not half-relieved");
-        assert_eq!(p.lots_of(1, "vti").value[0].units, 7);
+        assert_eq!(p.lot_breaks(B).unwrap().len(), 1, "{:?}", p.lot_breaks(B).unwrap());
+        assert!(p.lot_breaks(B).unwrap()[0].contains("administration agreement"), "{:?}", p.lot_breaks(B).unwrap());
+        assert_eq!(p.open_lots(B).unwrap(), 1, "and the lot is untouched, not half-relieved");
+        assert_eq!(p.lots_of(B, 1, "vti").unwrap().value[0].units, 7);
 
         // ⚠ And the NAV still strikes. A break is something an operator looks
         // at, not something that stops the fund being valued.
-        assert!(p.nav(&|dim| dim == 1 || dim == 2, &Rates::none()).is_ok());
+        assert!(p.nav(B, &|dim| dim == 1 || dim == 2, &Rates::none()).is_ok());
     }
 
     #[test]
@@ -1609,9 +2307,9 @@ mod tests {
             piecemeal.advance(&js[..n], FIFO);
         }
         let cold = Projection::rebuild(&js, FIFO);
-        assert_eq!(piecemeal.open_lots(), cold.open_lots());
-        assert_eq!(piecemeal.relieved_cost(), cold.relieved_cost());
-        assert_eq!(piecemeal.lots_of(1, "vti").value, cold.lots_of(1, "vti").value);
+        assert_eq!(piecemeal.open_lots(B).unwrap(), cold.open_lots(B).unwrap());
+        assert_eq!(piecemeal.relieved_cost(B).unwrap(), cold.relieved_cost(B).unwrap());
+        assert_eq!(piecemeal.lots_of(B, 1, "vti").unwrap().value, cold.lots_of(B, 1, "vti").unwrap().value);
     }
 
     #[test]
@@ -1648,14 +2346,14 @@ mod tests {
         // its instrument names and `FileBook` — the slow fold this is checked
         // against — does not; the KEYS must still agree, which is the point.
         let projected: BTreeMap<(i64, String), (i64, i64)> = p
-            .positions()
+            .positions(B).unwrap()
             .value
             .held
             .iter()
             .map(|((d, i), v)| ((*d, i.to_string()), *v))
             .collect();
         assert_eq!(projected, held);
-        assert_eq!(p.positions().value.rest, rest);
+        assert_eq!(p.positions(B).unwrap().value.rest, rest);
         assert_eq!(p.prefix(), 3);
     }
 
@@ -1674,7 +2372,7 @@ mod tests {
         let p = Projection::rebuild(&js, FIFO);
 
         // dims 1 and 2 are assets in `book()`; nothing else is.
-        let got = p.nav(&|dim| dim == 1 || dim == 2, &Rates::none()).unwrap();
+        let got = p.nav(B, &|dim| dim == 1 || dim == 2, &Rates::none()).unwrap();
         let want = ratio_nav::strike(&d, ratio_rules::UNDECLARED_VIEW, 1_782_662_400, "e.marsh").unwrap();
 
         assert_eq!(got.value.0, want.net_asset_value, "the same NAV");
@@ -1747,7 +2445,7 @@ mod tests {
             &b.records::<ratio_ingest::Fact>(ratio_store::Plane::Facts).unwrap(),
         );
         let p = Projection::rebuild(&entries(&d), FIFO);
-        let got = p.nav(&|dim| dim == 1 || dim == 2, &rates).unwrap();
+        let got = p.nav(B, &|dim| dim == 1 || dim == 2, &rates).unwrap();
         let want = ratio_nav::strike(&d, ratio_rules::UNDECLARED_VIEW, 1_782_662_400, "e.marsh").unwrap();
 
         assert_eq!(got.value.0, want.net_asset_value, "the same NAV, translated the same way");
@@ -1815,8 +2513,8 @@ mod tests {
         // error this fold exists to avoid.
         let d = book("navdims", &[("vti", 25_000, 100)]);
         let p = Projection::rebuild(&entries(&d), FIFO);
-        assert_eq!(p.nav(&|dim| dim == 1 || dim == 2, &Rates::none()).unwrap().value.0, 0, "buy: asset in, cash out");
-        assert_eq!(p.nav(&|dim| dim == 1, &Rates::none()).unwrap().value.0, 25_000, "investments alone");
+        assert_eq!(p.nav(B, &|dim| dim == 1 || dim == 2, &Rates::none()).unwrap().value.0, 0, "buy: asset in, cash out");
+        assert_eq!(p.nav(B, &|dim| dim == 1, &Rates::none()).unwrap().value.0, 25_000, "investments alone");
     }
 
     #[test]
@@ -1831,7 +2529,7 @@ mod tests {
             piecemeal.advance(&js[..n], FIFO);
         }
         let assets = |dim: i64| dim == 1 || dim == 2;
-        assert_eq!(piecemeal.nav(&assets, &Rates::none()).unwrap(), Projection::rebuild(&js, FIFO).nav(&assets, &Rates::none()).unwrap());
+        assert_eq!(piecemeal.nav(B, &assets, &Rates::none()).unwrap(), Projection::rebuild(&js, FIFO).nav(B, &assets, &Rates::none()).unwrap());
     }
 
     #[test]
@@ -1845,9 +2543,9 @@ mod tests {
 
         let mut p = Projection::new();
         p.advance(&js, FIFO);
-        let once = p.cost_of("vti");
+        let once = p.cost_of(B, "vti").unwrap();
         p.advance(&js, FIFO);
-        let twice = p.cost_of("vti");
+        let twice = p.cost_of(B, "vti").unwrap();
 
         assert_eq!(once.value, 30_000);
         assert_eq!(twice, once, "a second advance over the same journal folds nothing");
@@ -1865,7 +2563,7 @@ mod tests {
         for n in 1..=js.len() {
             piecemeal.advance(&js[..n], FIFO);
         }
-        assert_eq!(piecemeal.positions().value, &Projection::rebuild(&js, FIFO).positions().value.clone());
+        assert_eq!(piecemeal.positions(B).unwrap().value, &Projection::rebuild(&js, FIFO).positions(B).unwrap().value.clone());
         assert_eq!(piecemeal.prefix(), js.len());
     }
 
@@ -1926,9 +2624,9 @@ mod tests {
         assert_eq!(p.prefix(), 3);
 
         // And it lands exactly where a cold build would.
-        assert_eq!(p.positions().value, &Projection::of_book(&d).unwrap().positions().value.clone());
+        assert_eq!(p.positions(B).unwrap().value, &Projection::of_book(&d).unwrap().positions(B).unwrap().value.clone());
         let assets = |dim: i64| dim == 1 || dim == 2;
-        assert_eq!(p.nav(&assets, &Rates::none()).unwrap().value, Projection::of_book(&d).unwrap().nav(&assets, &Rates::none()).unwrap().value);
+        assert_eq!(p.nav(B, &assets, &Rates::none()).unwrap().value, Projection::of_book(&d).unwrap().nav(B, &assets, &Rates::none()).unwrap().value);
     }
 
     #[test]
@@ -1962,7 +2660,7 @@ mod tests {
         let mut p = Projection::new();
         p.advance(&js[..1], FIFO);
 
-        let read = p.cost_of("vti");
+        let read = p.cost_of(B, "vti").unwrap();
         assert_eq!(read.prefix, 1, "what it folded");
         assert_eq!(read.value, 10, "and the value agrees with that prefix, not the journal");
         assert_ne!(read.prefix, js.len(), "the journal has moved on, and the read has not");
@@ -1976,8 +2674,8 @@ mod tests {
         // where it came from.
         let d = book("map", &[("vti", 10, 1)]);
         let p = Projection::rebuild(&entries(&d), FIFO);
-        let doubled = p.cost_of("vti").map(|v| v * 2);
-        assert_eq!(doubled, AsOf { value: 20, prefix: 1 });
+        let doubled = p.cost_of(B, "vti").unwrap().map(|v| v * 2);
+        assert_eq!(doubled, AsOf { value: 20, prefix: 1, view: B.to_string(), through: None });
     }
 
     fn announce(id: &str, inst: &str, num: i64, den: i64, ex: &str, cfg: &ratio_store::Digest) -> JournalEntry {
@@ -2009,10 +2707,10 @@ mod tests {
         js.push(announce("ca-1", "vti", 2, 1, "2026-01-15", &cfg));
         let p = Projection::rebuild(&js, FIFO);
 
-        assert_eq!(p.units_as_of(1, "vti", "2026-01-14").unwrap().value, 100, "before the ex-date");
-        assert_eq!(p.units_as_of(1, "vti", "2026-02-01").unwrap().value, 200, "on and after it");
+        assert_eq!(p.units_as_of(B, 1, "vti", "2026-01-14").unwrap().value, 100, "before the ex-date");
+        assert_eq!(p.units_as_of(B, 1, "vti", "2026-02-01").unwrap().value, 200, "on and after it");
         assert_eq!(
-            p.positions().value.held[&(1, "vti".into())].1,
+            p.positions(B).unwrap().value.held[&(1, "vti".into())].1,
             100,
             "and the STORED units were never rewritten — that is the saving"
         );
@@ -2031,8 +2729,8 @@ mod tests {
         js.push(announce("ca-1", "vti", 2, 1, "2026-01-15", &cfg));
         let p = Projection::rebuild(&js, FIFO);
 
-        assert_eq!(p.units_as_of(1, "vti", "2026-01-14").unwrap().value, 50, "the day before");
-        assert_eq!(p.units_as_of(1, "vti", "2026-01-15").unwrap().value, 100, "ON the ex-date");
+        assert_eq!(p.units_as_of(B, 1, "vti", "2026-01-14").unwrap().value, 50, "the day before");
+        assert_eq!(p.units_as_of(B, 1, "vti", "2026-01-15").unwrap().value, 100, "ON the ex-date");
     }
 
     #[test]
@@ -2047,8 +2745,8 @@ mod tests {
         js.push(announce("ca-1", "vti", 2, 1, "2026-01-15", &cfg));
         let p = Projection::rebuild(&js, FIFO);
 
-        assert_eq!(p.units_as_of(1, "vti", "2026-02-01").unwrap().value, 100, "split");
-        assert_eq!(p.units_as_of(1, "voo", "2026-02-01").unwrap().value, 80, "untouched");
+        assert_eq!(p.units_as_of(B, 1, "vti", "2026-02-01").unwrap().value, 100, "split");
+        assert_eq!(p.units_as_of(B, 1, "voo", "2026-02-01").unwrap().value, 80, "untouched");
         assert!(p.steps_for("voo", "2026-02-01").is_empty());
     }
 
@@ -2081,12 +2779,12 @@ mod tests {
         let p = Projection::rebuild(&js, FIFO);
 
         assert_eq!(
-            p.positions().value.held[&(1, "vti".into())].1,
+            p.positions(B).unwrap().value.held[&(1, "vti".into())].1,
             200,
             "the rewrite is in the stored units"
         );
         assert!(p.steps_for("vti", "2026-02-01").is_empty(), "so it is NOT read through");
-        assert_eq!(p.units_as_of(1, "vti", "2026-02-01").unwrap().value, 200, "not 400");
+        assert_eq!(p.units_as_of(B, 1, "vti", "2026-02-01").unwrap().value, 200, "not 400");
     }
 
     #[test]
@@ -2100,8 +2798,8 @@ mod tests {
         js.push(announce("ca-1", "vti", 3, 2, "2026-01-15", &cfg));
         let p = Projection::rebuild(&js, FIFO);
 
-        assert_eq!(p.units_as_of(1, "vti", "2026-01-14").unwrap().value, 5, "before: fine");
-        let err = p.units_as_of(1, "vti", "2026-02-01").unwrap_err();
+        assert_eq!(p.units_as_of(B, 1, "vti", "2026-01-14").unwrap().value, 5, "before: fine");
+        let err = p.units_as_of(B, 1, "vti", "2026-02-01").unwrap_err();
         assert!(format!("{err:#}").contains("cash in lieu"), "{err:#}");
     }
 
@@ -2114,14 +2812,14 @@ mod tests {
         let cfg = js[0].config.clone();
         js.push(announce("ca-1", "vti", 2, 1, "2026-01-15", &cfg));
         let p = Projection::rebuild(&js, FIFO);
-        assert_eq!(p.units_as_of(1, "vti", "2026-02-01").unwrap().prefix, 2);
+        assert_eq!(p.units_as_of(B, 1, "vti", "2026-02-01").unwrap().prefix, 2);
     }
 
     #[test]
     fn an_empty_journal_projects_to_nothing_at_position_zero() {
         let p = Projection::rebuild(&[], FIFO);
         assert_eq!(p.prefix(), 0);
-        assert_eq!(p.cost_of("vti"), AsOf { value: 0, prefix: 0 });
+        assert_eq!(p.cost_of(B, "vti").unwrap(), AsOf { value: 0, prefix: 0, view: B.to_string(), through: None });
         assert!(p.is_current_with(0), "current with an empty journal, not stale");
     }
 
@@ -2180,11 +2878,11 @@ mod tests {
         sell(&d, "s1", "vti", 1, 40);
         let p = Projection::of_book(&d).unwrap();
 
-        assert_eq!(p.relieved_cost(), 40, "HIFO gives up the DEAR lot, not the old one");
-        let left = p.lots_of(1, "vti").value;
+        assert_eq!(p.relieved_cost(B).unwrap(), 40, "HIFO gives up the DEAR lot, not the old one");
+        let left = p.lots_of(B, 1, "vti").unwrap().value;
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].cost, 10, "the cheap lot is what remains");
-        assert!(p.lot_breaks().is_empty(), "{:?}", p.lot_breaks());
+        assert!(p.lot_breaks(B).unwrap().is_empty(), "{:?}", p.lot_breaks(B).unwrap());
     }
 
     #[test]
@@ -2195,8 +2893,8 @@ mod tests {
         sell(&d, "s1", "vti", 1, 10);
         let p = Projection::of_book(&d).unwrap();
 
-        assert_eq!(p.relieved_cost(), 10, "FIFO gives up the OLD lot");
-        assert_eq!(p.lots_of(1, "vti").value[0].cost, 40);
+        assert_eq!(p.relieved_cost(B).unwrap(), 10, "FIFO gives up the OLD lot");
+        assert_eq!(p.lots_of(B, 1, "vti").unwrap().value[0].cost, 40);
     }
 
     #[test]
@@ -2241,10 +2939,10 @@ mod tests {
 
         let p = Projection::of_book(&d).unwrap();
         // 10 relieved under FIFO, then 60 — the dearest — under HIFO.
-        assert_eq!(p.relieved_cost(), 70);
-        let left: Vec<i64> = p.lots_of(1, "vti").value.iter().map(|l| l.cost).collect();
+        assert_eq!(p.relieved_cost(B).unwrap(), 70);
+        let left: Vec<i64> = p.lots_of(B, 1, "vti").unwrap().value.iter().map(|l| l.cost).collect();
         assert_eq!(left, vec![40, 30], "the dear lot went, the cheap ones stayed");
-        assert!(p.lot_breaks().is_empty(), "{:?}", p.lot_breaks());
+        assert!(p.lot_breaks(B).unwrap().is_empty(), "{:?}", p.lot_breaks(B).unwrap());
     }
 
     #[test]
@@ -2286,11 +2984,11 @@ mod tests {
         drop(b);
 
         let p = Projection::of_book(&d).unwrap();
-        let breaks = p.lot_breaks();
+        let breaks = p.lot_breaks(B).unwrap();
         assert_eq!(breaks.len(), 1, "{breaks:?}");
         assert!(breaks[0].contains("lot method is not known"), "{}", breaks[0]);
-        assert_eq!(p.relieved_cost(), 0, "nothing was relieved under a guess");
-        assert_eq!(p.lots_of(1, "vti").value.len(), 1, "the lot is still open");
+        assert_eq!(p.relieved_cost(B).unwrap(), 0, "nothing was relieved under a guess");
+        assert_eq!(p.lots_of(B, 1, "vti").unwrap().value.len(), 1, "the lot is still open");
     }
 
     #[test]
@@ -2302,7 +3000,7 @@ mod tests {
         sell(&d, "s1", "vti", 1, 25); // posts 25 of basis; HIFO relieves 40
         let p = Projection::of_book(&d).unwrap();
 
-        let breaks = p.lot_breaks();
+        let breaks = p.lot_breaks(B).unwrap();
         assert_eq!(breaks.len(), 1, "{breaks:?}");
         assert!(breaks[0].contains("dearest-per-unit-first"), "{}", breaks[0]);
         assert!(!breaks[0].contains("oldest-first"), "{}", breaks[0]);
@@ -2353,7 +3051,7 @@ mod tests {
         let mut b = FileBook::open(d).unwrap();
         let c = b.active().unwrap().unwrap();
         let p = Projection::of_book(d).unwrap();
-        let held = p.lots_of(1, "vti").value;
+        let held = p.lots_of(B, 1, "vti").unwrap().value;
         let r = relief::relieve_by(relief::Method::Fifo, &held, units).unwrap();
         let postings =
             relief::sale_postings(ROLES, None, "vti", units, r.cost, proceeds).unwrap();
@@ -2380,7 +3078,7 @@ mod tests {
         dispose(&d, "s-new", 1, 150, "2026-06-30"); // then the new one
 
         let p = Projection::of_book(&d).unwrap();
-        let r = p.realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
+        let r = p.realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
 
         // Credit-normal: a gain reads negative. 200 long, 50 short.
         assert_eq!(r.gain, -250);
@@ -2403,7 +3101,7 @@ mod tests {
         let d = book_with_gains("threshold-exact", 365);
         buy_on(&d, "b", 1, 100, "2025-06-30");
         dispose(&d, "s", 1, 300, "2026-06-30"); // exactly 365 days
-        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
+        let r = Projection::of_book(&d).unwrap().realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.long_term, -200, "the threshold day is long-term");
         assert_eq!(r.short_term, 0);
 
@@ -2411,7 +3109,7 @@ mod tests {
         let d = book_with_gains("threshold-short", 365);
         buy_on(&d, "b", 1, 100, "2025-07-01");
         dispose(&d, "s", 1, 300, "2026-06-30"); // 364 days
-        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
+        let r = Projection::of_book(&d).unwrap().realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.short_term, -200);
         assert_eq!(r.long_term, 0);
 
@@ -2419,7 +3117,7 @@ mod tests {
         let d = book_with_gains("threshold-730", 730);
         buy_on(&d, "b", 1, 100, "2025-06-30");
         dispose(&d, "s", 1, 300, "2026-06-30"); // 365 days — short, under 730
-        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
+        let r = Projection::of_book(&d).unwrap().realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.short_term, -200, "365 days is short-term at a 730-day threshold");
         assert_eq!(r.long_term, 0);
     }
@@ -2435,7 +3133,7 @@ mod tests {
         buy_on(&d, "b2", 1, 40, "2026-06-01");
         dispose(&d, "s", 2, 101, "2026-06-30");
 
-        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
+        let r = Projection::of_book(&d).unwrap().realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.gain, -21, "the total is exact and ties to the chart");
         assert_eq!(r.short_term, 0);
         assert_eq!(r.long_term, 0);
@@ -2472,7 +3170,7 @@ mod tests {
         drop(b);
         dispose(&d, "s", 1, 300, "2026-06-30");
 
-        let r = Projection::of_book(&d).unwrap().realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
+        let r = Projection::of_book(&d).unwrap().realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.gain, -200);
         assert_eq!(r.unclassified(), -200);
         assert_eq!(r.short_term + r.long_term, 0);
@@ -2491,7 +3189,7 @@ mod tests {
         dispose(&d, "s2", 2, 401, "2026-06-30"); // will not divide
 
         let p = Projection::of_book(&d).unwrap();
-        let r = p.realized(Some(ROLES), &Rates::none()).unwrap().value.unwrap();
+        let r = p.realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.short_term + r.long_term + r.unclassified(), r.gain);
         assert!(r.unclassified() != 0, "the indivisible disposal is in there");
     }
@@ -2539,7 +3237,7 @@ mod tests {
         let d = two_currency_book("two-ccy-refused");
         let p = Projection::of_book(&d).unwrap();
 
-        let err = p.nav(&|dim| dim == 1, &Rates::of("USD", [])).unwrap_err();
+        let err = p.nav(B, &|dim| dim == 1, &Rates::of("USD", [])).unwrap_err();
         let msg = format!("{err:#}");
         assert!(msg.contains("EUR"), "{msg}");
         assert!(msg.contains("mixing denominations"), "{msg}");
@@ -2552,13 +3250,13 @@ mod tests {
 
         // EUR at 1.20: 9,000 becomes 10,800, plus 10,000 of base.
         let rates = Rates::of("USD", [("EUR".to_string(), 120)]);
-        assert_eq!(p.nav(&|dim| dim == 1, &rates).unwrap().value.0, 20_800);
+        assert_eq!(p.nav(B, &|dim| dim == 1, &rates).unwrap().value.0, 20_800);
 
         // ⛔ AND THE RATE CHANGES THE ANSWER, which is the whole reason it must
         // be stated. At par the same book is 19,000 — the number the old flat
         // sum produced, and it is only right if a euro is worth a dollar.
         let par = Rates::of("USD", [("EUR".to_string(), RATE_SCALE)]);
-        assert_eq!(p.nav(&|dim| dim == 1, &par).unwrap().value.0, 19_000);
+        assert_eq!(p.nav(B, &|dim| dim == 1, &par).unwrap().value.0, 19_000);
     }
 
     #[test]
@@ -2569,13 +3267,13 @@ mod tests {
         let d = two_currency_book("base-at-par");
         let p = Projection::of_book(&d).unwrap();
         let rates = Rates::of("USD", [("EUR".to_string(), 100)]);
-        assert!(p.nav(&|dim| dim == 20, &rates).is_ok());
+        assert!(p.nav(B, &|dim| dim == 20, &rates).is_ok());
 
         // And a book written before any of this, whose legs name no currency,
         // values with no rates at all — one group, translated at par.
         let d = book("untyped-values", &[("vti", 10, 1)]);
         let p = Projection::of_book(&d).unwrap();
-        assert!(p.nav(&|dim| dim == 1, &Rates::none()).is_ok());
+        assert!(p.nav(B, &|dim| dim == 1, &Rates::none()).is_ok());
     }
 
     #[test]
@@ -2599,8 +3297,8 @@ mod tests {
         // ⭐ And the shared copy really is shared: the key in the position map
         // and the key in the lot book are the same allocation, not two equal
         // ones.
-        let pos_key = p.positions().value.held.keys().find(|(_, i)| &**i == "vti").unwrap();
-        let lot_key = p.only().lots.open.keys().find(|(_, i)| &**i == "vti").unwrap();
+        let pos_key = p.positions(B).unwrap().value.held.keys().find(|(_, i)| &**i == "vti").unwrap();
+        let lot_key = p.fold_of(B).unwrap().lots.open.keys().find(|(_, i)| &**i == "vti").unwrap();
         assert!(std::sync::Arc::ptr_eq(&pos_key.1, &lot_key.1));
     }
 
@@ -2642,12 +3340,12 @@ mod tests {
         drop(b);
 
         let p = Projection::of_book(&d).unwrap();
-        let breaks = p.lot_breaks();
+        let breaks = p.lot_breaks(B).unwrap();
         assert_eq!(breaks.len(), 1, "{breaks:?}");
         assert!(breaks[0].contains("is not a date"), "{}", breaks[0]);
         // And the lot is open with no acquisition date, which the
         // holding-period methods refuse rather than guess about.
-        assert_eq!(p.lots_of(1, "vti").value[0].acquired, None);
+        assert_eq!(p.lots_of(B, 1, "vti").unwrap().value[0].acquired, None);
     }
 
     #[test]
@@ -2657,10 +3355,10 @@ mod tests {
         dispose(&d, "s", 1, 300, "2026-06-30");
         let p = Projection::of_book(&d).unwrap();
 
-        assert_eq!(p.realized(Some(ROLES), &Rates::none()).unwrap().prefix, p.prefix());
+        assert_eq!(p.realized(B, Some(ROLES), &Rates::none()).unwrap().prefix, p.prefix());
         // ⛔ `None`, NOT ZERO. Without a chart the engine does not know which
         // dimension a gain lands in, and zero is a fund that realized nothing.
-        assert!(p.realized(None, &Rates::none()).unwrap().value.is_none());
+        assert!(p.realized(B, None, &Rates::none()).unwrap().value.is_none());
     }
 
     /// A book of `n` balanced entries, written in ONE `append_all`.
@@ -2738,10 +3436,265 @@ mod tests {
         let watched = Projection::of_book_with_progress(&d, &mut |_| {}).unwrap();
 
         assert_eq!(quiet.prefix(), watched.prefix());
-        assert_eq!(quiet.positions().value, watched.positions().value);
+        assert_eq!(quiet.positions(B).unwrap().value, watched.positions(B).unwrap().value);
         assert_eq!(
-            quiet.nav(&|d| d == 1 || d == 2, &Rates::none()).unwrap().value,
-            watched.nav(&|d| d == 1 || d == 2, &Rates::none()).unwrap().value
+            quiet.nav(B, &|d| d == 1 || d == 2, &Rates::none()).unwrap().value,
+            watched.nav(B, &|d| d == 1 || d == 2, &Rates::none()).unwrap().value
         );
+    }
+
+    // ── The per-view fold: the cut, the band, and what accounts for a difference ──
+
+    /// Two books of record over one journal: `abor` on the trade date, `ibor`
+    /// settling T+2 over a Saturday/Sunday calendar.
+    const DUAL: &str = r#"rules = []
+[[calendar]]
+id = "wk"
+weekend = [0, 6]
+[[view]]
+id = "abor"
+display_name = "ABOR"
+basis = "trade"
+[[view]]
+id = "ibor"
+display_name = "IBOR"
+basis = "settlement"
+settles_in = 2
+calendar = "wk"
+"#;
+
+    fn dual_book(name: &str) -> std::path::PathBuf {
+        let d = tmp_root().join(format!("ratio-project-{name}"));
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+            Account { dim: 3, display_name: "Capital".into(), account_type: A::Equity },
+        ])
+        .unwrap();
+        let c = b.put(DUAL.as_bytes()).unwrap();
+        b.set_active(&c).unwrap();
+        d
+    }
+
+    /// A subscription: cash in against capital. ⛔ THE SHAPE THAT MAKES TWO
+    /// VIEWS ACTUALLY DISAGREE — a purchase moves cash into investments, both
+    /// assets, so recognising it or not moves a NAV by ZERO. HANDOFF.md records
+    /// the differential going vacuous twice on tails full of trades.
+    fn subscribe_dated(d: &std::path::Path, id: &str, amount: i64, day: &str) {
+        let mut b = FileBook::open(d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        b.append(&JournalEntry {
+            id: id.into(),
+            memo: "subscription".into(),
+            config: c,
+            postings: vec![PostingRecord::new(2, amount), PostingRecord::new(3, -amount)],
+            trade_date: Some(day.into()),
+            announcement: None,
+        })
+        .unwrap();
+    }
+
+    const ASSETS: fn(i64) -> bool = |d| d == 1 || d == 2;
+
+    #[test]
+    fn one_pass_advances_every_view_and_every_view_reads_the_same_prefix() {
+        // ⭐ `//tla:views_check`'s `EveryViewFoldsTheSamePrefix`, on the real
+        // fold: one `of_book`, two books of record, one journal position.
+        let d = dual_book("one-pass");
+        buy_dated(&d, "t1", "vti", 10, 1_000, "2026-03-02"); // Monday
+        subscribe_dated(&d, "s1", 5_000, "2026-03-03"); // Tuesday
+        buy_dated(&d, "t2", "voo", 5, 500, "2026-03-04"); // Wednesday
+        let p = Projection::of_book(&d).unwrap();
+
+        let a = p.positions("abor").unwrap();
+        let i = p.positions("ibor").unwrap();
+        assert_eq!(a.prefix, 3);
+        assert_eq!(a.prefix, i.prefix, "one pass feeds every view");
+        assert_eq!(a.view, "abor");
+        assert_eq!(i.view, "ibor");
+        // The recorded default is NOT among them: this book declares views.
+        assert!(p.positions(B).is_err(), "a declared book keeps no journal-order view");
+    }
+
+    #[test]
+    fn two_views_disagree_about_the_nav_and_the_difference_is_a_list_of_entries() {
+        // The three-day shape: by Wednesday the Monday trade has settled, the
+        // Tuesday subscription (settles Thursday) and the Wednesday trade
+        // (settles Friday) are in flight under `ibor`, and `abor` holds all
+        // three.
+        let d = dual_book("difference");
+        buy_dated(&d, "t1", "vti", 10, 1_000, "2026-03-02"); // Mon; settles Wed
+        subscribe_dated(&d, "s1", 5_000, "2026-03-03"); // Tue; settles Thu
+        buy_dated(&d, "t2", "voo", 5, 500, "2026-03-04"); // Wed; settles Fri
+        let p = Projection::of_book(&d).unwrap();
+
+        let nav_a = p.nav("abor", &ASSETS, &Rates::none()).unwrap();
+        let nav_i = p.nav("ibor", &ASSETS, &Rates::none()).unwrap();
+        // ⛔ BOTH HALVES, because either alone is a feature that does nothing:
+        // the books tie in every view (a view keeps or drops WHOLE entries)…
+        assert_eq!(nav_a.value.1, 0, "abor ties");
+        assert_eq!(nav_i.value.1, 0, "ibor ties");
+        // …and the NAVs DIFFER, by exactly the subscription in flight.
+        assert_eq!(nav_a.value.0 - nav_i.value.0, 5_000, "the settlement gap is the figure");
+        // The cut travels with the figure: ibor has recognised through the
+        // Wednesday frontier, and abor consults the same clock.
+        assert_eq!(nav_i.through, Some(day("2026-03-04")));
+
+        // The difference is a LIST — `two_views_differ_by_exactly_what_is_in_
+        // flight` — and it sums to the figure exactly.
+        let rec = p.reconcile("abor", "ibor", &ASSETS, &Rates::none()).unwrap();
+        assert_eq!(rec.value.difference, 5_000);
+        assert_eq!(rec.value.entries.len(), 2, "{:?}", rec.value.entries);
+        let sum: i64 = rec.value.entries.iter().map(|e| e.effect).sum();
+        assert_eq!(sum, rec.value.difference, "the entries account for the difference");
+        // The subscription carries the effect; the trade is in flight too but
+        // moves the NAV by zero — shown, not dropped, because an entry that
+        // contributes nothing is still an entry the views disagree about.
+        let s1 = rec.value.entries.iter().find(|e| e.id == "s1").unwrap();
+        assert_eq!(s1.effect, 5_000);
+        assert_eq!(s1.recognised_here, Some(day("2026-03-03")), "abor: the trade day");
+        assert_eq!(s1.recognised_there, Some(day("2026-03-05")), "ibor: T+2");
+        let t2 = rec.value.entries.iter().find(|e| e.id == "t2").unwrap();
+        assert_eq!(t2.effect, 0, "a purchase moves cash into investments — both assets");
+
+        // And folded to the head with the gap closed, the views agree again:
+        // everything eventually settles.
+        buy_dated(&d, "t3", "vti", 1, 100, "2026-03-16"); // the next Monday
+        let p = Projection::of_book(&d).unwrap();
+        assert_eq!(
+            p.nav("abor", &ASSETS, &Rates::none()).unwrap().value,
+            p.nav("ibor", &ASSETS, &Rates::none()).unwrap().value,
+            "with nothing in flight the views agree"
+        );
+    }
+
+    #[test]
+    fn a_view_a_configuration_does_not_declare_refuses_rather_than_falling_back() {
+        // Half one: a view the BOOK does not keep refuses at the read, naming
+        // what it keeps.
+        let d = dual_book("undeclared-view");
+        buy_dated(&d, "t1", "vti", 10, 1_000, "2026-03-02");
+        let p = Projection::of_book(&d).unwrap();
+        let e = p.nav("emir", &ASSETS, &Rates::none()).unwrap_err().to_string();
+        assert!(e.contains("no view \"emir\""), "{e}");
+        assert!(e.contains("abor") && e.contains("ibor"), "the refusal names what it keeps: {e}");
+
+        // Half two: an ENTRY whose pinned configuration declares no views is
+        // refused by a declared view — never folded as `recorded`, for the
+        // reason a bad config refuses the relief rather than falling back to
+        // FIFO. The entry predates the view declaration; its terms never
+        // mentioned settlement.
+        let d2 = tmp_root().join("ratio-project-mixed-history");
+        let _ = std::fs::remove_dir_all(&d2);
+        let mut b = FileBook::open(&d2).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+        ])
+        .unwrap();
+        let plain = b.put(b"rules = []\n").unwrap();
+        b.set_active(&plain).unwrap();
+        buy_dated(&d2, "old", "vti", 10, 1_000, "2026-03-02");
+        let mut b = FileBook::open(&d2).unwrap();
+        let dual = b.put(DUAL.as_bytes()).unwrap();
+        b.set_active(&dual).unwrap();
+        buy_dated(&d2, "new", "vti", 5, 500, "2026-03-03");
+        let p = Projection::of_book(&d2).unwrap();
+
+        let refused = p.unplaceable("ibor").unwrap();
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert_eq!(refused[0].id, "old");
+        assert!(refused[0].why.contains("declares no view"), "{}", refused[0].why);
+
+        // An entry NEITHER view can place is the reconciliation's third list —
+        // it contributes to neither figure, so the difference is still fully
+        // accounted for, and omitting it would make the account look complete
+        // while an entry sits outside both books of record.
+        let rec = p.reconcile("abor", "ibor", &ASSETS, &Rates::none()).unwrap();
+        assert_eq!(rec.value.unplaceable.len(), 1);
+        assert_eq!(rec.value.unplaceable[0].id, "old");
+
+        // But an entry only ONE view can place REFUSES the reconciliation:
+        // the other view counts it, so no list of in-flight entries can
+        // account for the difference between them.
+        let mut b = FileBook::open(&d2).unwrap();
+        let abor_only = b
+            .put(b"rules = []\n[[view]]\nid = \"abor\"\ndisplay_name = \"ABOR\"\nbasis = \"trade\"\n")
+            .unwrap();
+        b.set_active(&abor_only).unwrap();
+        buy_dated(&d2, "half", "vti", 1, 100, "2026-03-04");
+        let mut b = FileBook::open(&d2).unwrap();
+        let dual = b.put(DUAL.as_bytes()).unwrap();
+        b.set_active(&dual).unwrap();
+        let p = Projection::of_book(&d2).unwrap();
+        let e = p.reconcile("abor", "ibor", &ASSETS, &Rates::none()).unwrap_err().to_string();
+        assert!(e.contains("\"half\"") && e.contains("cannot place"), "{e}");
+    }
+
+    #[test]
+    fn the_pending_queue_is_bounded_by_the_settlement_lag_not_by_the_journal() {
+        // ⛔ THE TRAP INSIDE THE SURVIVING DESIGN, as an assertion. The lag
+        // bounds the band only because the cut moves as the fold reads — a cut
+        // that stayed at zero would put this whole journal in the band, which
+        // is the retained-entries design rejected in PLAN.md, reached by a
+        // different road.
+        let d = dual_book("bounded-band");
+        // Sixty weekdays of dated trades: twelve weeks, no weekend entries.
+        let mut dy = day("2026-03-02"); // a Monday
+        let mut n = 0;
+        while n < 60 {
+            let dow = (i64::from(dy) + 4).rem_euclid(7);
+            if dow != 0 && dow != 6 {
+                buy_dated(
+                    &d,
+                    &format!("t{n}"),
+                    "vti",
+                    1,
+                    100,
+                    &ratio_common::iso_date_from_days(i64::from(dy)),
+                );
+                n += 1;
+            }
+            dy += 1;
+        }
+        let p = Projection::of_book(&d).unwrap();
+        assert_eq!(p.prefix(), 60);
+        let banded = p.in_flight("ibor").unwrap();
+        assert!(banded > 0, "a T+2 view with nothing in flight at the head folded everything");
+        assert!(
+            banded <= 4,
+            "sixty days of history left {banded} entries in the band — the lag is the \
+             bound, and the lag is two open days"
+        );
+        assert_eq!(p.in_flight("abor").unwrap(), 0, "trade basis holds nothing back");
+    }
+
+    #[test]
+    fn the_recorded_view_folds_exactly_what_the_projection_used_to() {
+        // ⛔ THE MIGRATION, AS A DIFFERENTIAL. A book declaring no views keeps
+        // exactly one, and its figures are checked against `FileBook`'s
+        // independent fold — the system of record — not against another
+        // projection.
+        let d = book("recorded-unchanged", &[("vti", 25_000, 100), ("voo", 10_000, 40)]);
+        sell(&d, "s1", "vti", 20, 5_000);
+        let p = Projection::of_book(&d).unwrap();
+
+        let (held, rest) = FileBook::open(&d).unwrap().positions().unwrap();
+        let projected: BTreeMap<(i64, String), (i64, i64)> = p
+            .positions(B)
+            .unwrap()
+            .value
+            .held
+            .iter()
+            .map(|((dim, i), v)| ((*dim, i.to_string()), *v))
+            .collect();
+        assert_eq!(projected, held);
+        assert_eq!(p.positions(B).unwrap().value.rest, rest);
+        // Journal order consults no date, so the figure carries no cut.
+        assert_eq!(p.positions(B).unwrap().through, None);
+        assert_eq!(p.in_flight(B).unwrap(), 0);
+        assert!(p.unplaceable(B).unwrap().is_empty());
     }
 }
