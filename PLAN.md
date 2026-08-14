@@ -309,7 +309,8 @@ which would have been simpler, is refused in this account.
 
 ## UI screens — ✅ BUILT (`ratio watch`)
 
-Three. Not four. All three are served by `ratio watch` on loopback — one
+Three. Not four — and now five; see the 2026-08-13 amendment for the fourth
+and fifth. All are served by `ratio watch` on loopback — one
 binary, a fixed route table, reads and never writes. There is no button and no
 form on any of them: the fence that keeps a model from approving a rule would
 be worthless if the screen offered a second way round it, and a test asserts
@@ -415,13 +416,67 @@ What did NOT change, deliberately:
 - **No new RPC.** `Console::apply_action` still has no route, `ratio strike` is
   still CLI-only, and a proposal's rendered form still is not on the contract.
   Each is a proto change and each was refused here rather than smuggled in as
-  page work. ⚠️ **This stopped being true on 2026-08-13** — see the amendment
-  below, which adds three.
+  page work. ⚠️ **This stopped being true on 2026-08-13** — see *multi-view
+  books* below, which adds three. ⚠ The `/scale` amendment between here and
+  it re-asserts the bullet for ITS OWN change and is still right to: that
+  screen lives in the binary's route table and touches no proto.
 
 ⚠️ The cost that was paid: `bazel test //...` stopped being the whole gate. See
 `CONTRIBUTING.md` and the ⛔ in `MODULE.bazel`.
 
-### Amended 2026-08-13 — multi-view books
+### Amendment, 2026-08-13 — a fifth screen, because the scale claim was unshowable
+
+`ratio watch` now serves **five** screens. The section above says "Three. Not
+four.", and the fourth (`chat`) already had its paragraph; this is the fifth's,
+written here rather than left for somebody to find in a test diff.
+
+**`/scale` — what a period end reads, at a size you choose.** It is a public,
+unauthenticated screen with dials over `Ratio.Closure`, and beside the answer it
+carries the recorded cold build of the twenty-million-lot book issue #6
+measured.
+
+**Why it is not drift.** `deploy/seed-demo-funds.sh` names the gap in as many
+words: *"AND THE SCALE ARGUMENT WAS UNSHOWABLE FOR THE SAME REASON. 'A NAV does
+not read the tax lots' is a claim about a fund with a lot of them."* The demo's
+largest fund holds eight hundred lots — deliberately, because the journal is
+copied into a Lambda's `/tmp` on every cold start and `/tmp` is 512 MB. So the
+system's central claim was true, proved, measured, and had nowhere to be seen.
+`site/platform.src.html` sells that claim to the world; this is the screen where
+a reader can check it instead of taking it.
+
+**What it is NOT, and what holds it there:**
+
+- **No write, no form, no button that spends money.** It reads. The existing
+  assertion that no screen has grown a form applies to it unchanged — the dials
+  are a plain `div` producing a query string on a GET, precisely so that fence
+  did not have to be widened to admit "a read-only form".
+- **It is not "performance reporting and attribution"** from the refusal list
+  below. That entry means *investment* performance — returns, benchmarks,
+  attribution against an index — and none of it is here. This is the engine's
+  own cost, which `ratio bench` and `ratio closure` have reported at a terminal
+  since before this file was written. ⚠ The two are one word apart, which is why
+  the distinction is written down rather than assumed.
+- **No new RPC.** `ratio.console.v1.Console` is untouched, the proto is
+  untouched, and `console/` is untouched. The screen lives in the binary's own
+  route table beside `/balance`, which is why the console's route manifest and
+  `//proto:mirrors_test` have nothing to say about it.
+
+⛔ **Both curves are on the screen, and that is the whole point of it.** The
+dial answers what a NAV reads, which is flat in the tax lots and is the
+persuasive number; the panel beside it is the cold build, which is 995 seconds
+and a gigabyte at twenty million lots and does not flatten. `ratio bench` exists
+to make quoting the second as though it were the first hard, and a screen
+showing only the flat curve would have undone that at a public URL.
+
+⚠️ **What is still NOT built: a visitor cannot RUN the twenty-million-lot fold.**
+A cold build of that book is ~66× the function's timeout, ~2× its memory and
+~80× its `/tmp`, so it cannot happen in a request. Doing it live needs compute
+that does not exist yet — a one-shot task, a queue, and a progress surface — and
+none of that is in this repository. The screen is honest about the distinction:
+the estimate is live and calibrated on the serving machine, the 995 seconds is
+labelled as a recorded run.
+
+### Amendment, 2026-08-13 — multi-view books
 
 A fund keeps more than one book of record. The accounting book recognises a
 trade when it is struck; a settlement book recognises it when cash and stock

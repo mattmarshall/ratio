@@ -23,6 +23,8 @@ rust_library(
         "//crates/ratio-rules",
         "//crates/ratio-store",
         "@crates//:anyhow",
+        "@crates//:serde",
+        "@crates//:serde_json",
     ],
 )
 

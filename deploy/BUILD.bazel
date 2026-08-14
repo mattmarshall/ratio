@@ -10,6 +10,27 @@ package(default_visibility = ["//visibility:public"])
 #
 # ⚠ This asserts what the demo DEMONSTRATES. A seed script that exits 0 and
 # produces a fund with nothing in it is precisely how the gap opened.
+# The app stack asks for resources; the deploy role has to be able to create
+# them, and `bootstrap.yaml` is applied by hand. A resource added without its
+# grant fails in `aws cloudformation deploy` — after a Bazel build, the whole
+# test suite, a docker build and an ECR push.
+py_test(
+    name = "iac_test",
+    size = "small",
+    srcs = ["iac_test.py"],
+    args = [
+        "$(location app.yaml)",
+        "$(location bootstrap.yaml)",
+        "$(location //:.github/workflows/deploy.yml)",
+    ],
+    data = [
+        "app.yaml",
+        "bootstrap.yaml",
+        "//:.github/workflows/deploy.yml",
+    ],
+    main = "iac_test.py",
+)
+
 sh_test(
     name = "seed_test",
     size = "small",

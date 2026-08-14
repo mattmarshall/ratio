@@ -562,8 +562,26 @@ impl Projection {
 
     /// Open a book and build a projection of it.
     pub fn of_book(path: &std::path::Path) -> Result<Self> {
+        Self::of_book_with_progress(path, &mut |_| {})
+    }
+
+    /// The same cold build, reporting how far through it is.
+    ///
+    /// ⛔ BECAUSE SILENCE AND A HANG LOOK IDENTICAL. The cold build of the book
+    /// issue #6 measured takes 995 seconds, and `of_book` says nothing until it
+    /// returns — so anything watching one has no way to tell a fold in progress
+    /// from a process that died holding the file open. The callback is the only
+    /// difference; the fold is the same fold.
+    ///
+    /// The count handed back is entries folded SO FAR, not a fraction: a journal
+    /// does not know its own length without reading it, and reading it twice to
+    /// print a percentage would double the cost of the thing being reported on.
+    pub fn of_book_with_progress(
+        path: &std::path::Path,
+        on: &mut dyn FnMut(usize),
+    ) -> Result<Self> {
         let mut p = Self::new();
-        p.follow(path)?;
+        p.follow_with_progress(path, on)?;
         Ok(p)
     }
 
@@ -580,6 +598,31 @@ impl Projection {
     /// path — and resuming from a stale offset would splice two histories and
     /// fold the result as one.
     pub fn follow(&mut self, path: &std::path::Path) -> Result<usize> {
+        self.follow_with_progress(path, &mut |_| {})
+    }
+
+    /// `follow`, reporting entries folded as it goes. See `of_book_with_progress`.
+    ///
+    /// ⚠ The count is entries folded BY THIS CALL, which is the same thing as
+    /// the total only when the projection started empty. `follow` on a
+    /// projection that has already read a prefix counts the delta, exactly as
+    /// its return value does.
+    ///
+    /// ⚠ THE CALLBACK FIRES EVERY `PROGRESS_EVERY` ENTRIES, NOT EVERY ENTRY, and
+    /// the reason is the one `FoldCost` already documents: at a hundred and forty
+    /// million entries a per-entry call is a measurement that changes what it
+    /// measures. It also fires once at the end, so a fold of fewer than
+    /// `PROGRESS_EVERY` entries still reports its total rather than nothing.
+    pub fn follow_with_progress(
+        &mut self,
+        path: &std::path::Path,
+        on: &mut dyn FnMut(usize),
+    ) -> Result<usize> {
+        /// Matches `ratio_gen`'s `FLUSH_EVERY`: the generator writes in chunks of
+        /// this, so a reader reporting on the same boundary reports on whole
+        /// chunks rather than on an offset that means nothing to either side.
+        const PROGRESS_EVERY: usize = 65_536;
+
         let book = FileBook::open(path)?;
 
         // ⛔ STREAMED, ONE ENTRY AT A TIME. `entries_since` returned a `Vec` of
@@ -607,8 +650,22 @@ impl Projection {
             self.fold(at + n, entry, &terms);
             n += 1;
             parse_and_fold += mark.elapsed();
+            // ⛔ WHATEVER THIS DOES IS CHARGED TO THE COLD BUILD. The timed span
+            // above has closed, so the cost lands in `parse` rather than `fold`,
+            // but it lands: a callback that wrote to the network here would be
+            // reporting a number it had itself inflated. Store the count and
+            // return; publish it from somewhere else.
+            if n % PROGRESS_EVERY == 0 {
+                on(n);
+            }
             Ok(())
         })?;
+        // The tail, so a fold shorter than one chunk still reports its total
+        // rather than nothing. ⚠ Skipped on an exact multiple, where the loop
+        // has already reported this very number.
+        if n % PROGRESS_EVERY != 0 {
+            on(n);
+        }
         at += n;
         self.at = at;
         self.read_to = now;
@@ -2436,5 +2493,87 @@ mod tests {
         // ⛔ `None`, NOT ZERO. Without a chart the engine does not know which
         // dimension a gain lands in, and zero is a fund that realized nothing.
         assert!(p.realized(None, &Rates::none()).unwrap().value.is_none());
+    }
+
+    /// A book of `n` balanced entries, written in ONE `append_all`.
+    ///
+    /// ⛔ NOT `append` IN A LOOP. That opens and closes the journal per entry —
+    /// ~4 ms each, which `ratio_gen` measured and is why `append_all` exists.
+    /// Seventy thousand of them would be a five-minute unit test.
+    fn wide_book(name: &str, n: usize) -> std::path::PathBuf {
+        let d = tmp_root().join(format!("ratio-project-{name}"));
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+        ])
+        .unwrap();
+        let c = b.put(b"rules = []\n").unwrap();
+        b.set_active(&c).unwrap();
+        let entries: Vec<JournalEntry> = (0..n)
+            .map(|i| JournalEntry {
+                id: format!("e{i}"),
+                memo: String::new(),
+                config: c.clone(),
+                postings: vec![PostingRecord::new(1, 100), PostingRecord::new(2, -100)],
+                trade_date: None,
+                announcement: None,
+            })
+            .collect();
+        b.append_all(&entries).unwrap();
+        drop(b);
+        d
+    }
+
+    #[test]
+    fn a_cold_build_reports_the_last_entry_it_folded() {
+        let d = wide_book("progress-tail", 3);
+        let mut seen = Vec::new();
+        let p = Projection::of_book_with_progress(&d, &mut |n| seen.push(n)).unwrap();
+
+        // ⛔ THE TAIL IS THE HALF THAT IS EASY TO LOSE. A fold shorter than one
+        // chunk never reaches the in-loop call, so without the report after the
+        // walk a small book would fold in complete silence — which is the state
+        // this whole callback exists to end.
+        assert_eq!(seen.last().copied(), Some(3), "{seen:?}");
+        assert_eq!(p.prefix(), 3);
+    }
+
+    #[test]
+    fn a_long_fold_reports_before_it_finishes_and_the_reports_only_grow() {
+        // ⛔ MORE THAN ONE CHUNK, deliberately. At 65,536 the in-loop report
+        // fires once and the tail fires once, so this covers the branch that
+        // `a_cold_build_reports_the_last_entry_it_folded` cannot reach — a
+        // caller watching a 995-second fold is watching exactly this branch.
+        const N: usize = 65_536 + 17;
+        let d = wide_book("progress-chunked", N);
+        let mut seen = Vec::new();
+        let p = Projection::of_book_with_progress(&d, &mut |n| seen.push(n)).unwrap();
+
+        assert!(seen.len() >= 2, "one report over {N} entries is not progress: {seen:?}");
+        assert_eq!(seen[0], 65_536, "the first report is a whole chunk: {seen:?}");
+        assert!(seen.windows(2).all(|w| w[0] < w[1]), "reports went backwards: {seen:?}");
+        assert_eq!(seen.last().copied(), Some(N), "{seen:?}");
+        assert_eq!(p.prefix(), N);
+    }
+
+    #[test]
+    fn watching_a_cold_build_does_not_change_what_it_builds() {
+        // ⛔ THE PROPERTY THAT MAKES THE HOOK SAFE TO ADD. `of_book` now routes
+        // through `of_book_with_progress`, so the two must fold to the same
+        // projection over the same book — otherwise instrumenting a fold would
+        // have changed the figures it produced, which is the one thing a
+        // measurement is not allowed to do.
+        let d = wide_book("progress-agrees", 1_000);
+        let quiet = Projection::of_book(&d).unwrap();
+        let watched = Projection::of_book_with_progress(&d, &mut |_| {}).unwrap();
+
+        assert_eq!(quiet.prefix(), watched.prefix());
+        assert_eq!(quiet.positions().value, watched.positions().value);
+        assert_eq!(
+            quiet.nav(&|d| d == 1 || d == 2, &Rates::none()).unwrap().value,
+            watched.nav(&|d| d == 1 || d == 2, &Rates::none()).unwrap().value
+        );
     }
 }

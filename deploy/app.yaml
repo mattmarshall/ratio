@@ -162,6 +162,23 @@ Resources:
           # the function then says what it does serve rather than bouncing
           # somebody to an empty string.
           RATIO_CONSOLE_URL: !Ref ConsoleOrigin
+          # ── The scale runner, for the button on /scale ──────────────────
+          #
+          # ⛔ THE FUNCTION LEARNS WHERE TO RUN A FOLD FROM HERE, NOT FROM A
+          # LITERAL. Every one of these is a resource in this same template, so
+          # a rename cannot leave the code pointing at something that no longer
+          # exists — CloudFormation refuses the stack instead.
+          #
+          # ⚠ AND THE ABSENCE OF THEM IS A VALID STATE. A local `ratio watch`
+          # sets none of these, and the scale screen serves its estimate and its
+          # recorded figures with the button disabled — the same shape as
+          # `RATIO_COGNITO_*` being unset meaning "no identity provider here"
+          # rather than "misconfigured".
+          RATIO_SCALE_CLUSTER: !Ref ScaleCluster
+          RATIO_SCALE_TASK: !Ref ScaleTask
+          RATIO_SCALE_SUBNET: !Ref ScaleSubnet
+          RATIO_SCALE_SECURITY_GROUP: !GetAtt ScaleSecurityGroup.GroupId
+          RATIO_SCALE_BUCKET: !Ref ScaleBucket
       Tags:
         - Key: project
           Value: ratio
@@ -405,6 +422,274 @@ Resources:
       Target: !Sub "integrations/${Integration}"
       AuthorizationType: JWT
       AuthorizerId: !Ref Authorizer
+
+  # ══════════════════════ THE SCALE RUNNER ══════════════════════
+  #
+  # A visitor presses a button and a twenty-million-lot book is folded from an
+  # empty projection. It cannot happen in the function: measured, that fold is
+  # 995 seconds over a ~40 GB journal in a gigabyte of memory, against a
+  # 15-SECOND timeout, 512 MB of memory and 512 MB of /tmp. So it happens in a
+  # one-shot Fargate task and the function only starts it and reports on it.
+  #
+  # ⛔ EVERYTHING BELOW COSTS NOTHING AT REST, which is the constraint the whole
+  # deployment is built to — see "What it costs" in README.md. A VPC, a subnet,
+  # a gateway, a route table, a security group, an ECS cluster and a task
+  # definition are all free to have; only a RUNNING task is billed. That is why
+  # there is no NAT gateway anywhere here: it would be ~$32/month standing,
+  # against a $5 budget, to do a job a public subnet does for nothing.
+  #
+  # ⚠ AND THE SPEND CONTROL IS NOT IN THIS FILE. What stops a public button
+  # exhausting the budget — one run in flight, a per-shape cooldown, a monthly
+  # ceiling in cents — is in `crates/ratio/src/scale.rs`, where the test suite
+  # can break it. A control that exists only in a CloudFormation template is a
+  # control nothing can test.
+
+  ScaleVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      # ⛔ BOTH DNS FLAGS, because a Fargate task in a public subnet resolves
+      # ECR, S3 and CloudWatch by name over the internet gateway. Without
+      # hostnames the task fails to pull its image and the only symptom is a
+      # task that stops with no logs — it never got far enough to write any.
+      EnableDnsHostnames: true
+      Tags:
+        - {Key: Name, Value: ratio-demo-scale}
+        - {Key: project, Value: ratio}
+
+  ScaleSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ScaleVpc
+      CidrBlock: 10.0.0.0/24
+      # ⚠ ONE SUBNET, ONE AZ. The task is a single one-shot run with no
+      # availability requirement; spreading it over three zones would buy
+      # nothing and add two more resources to reason about. If a zone is out,
+      # the run is refused and retried, which is what a demo should do.
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - {Key: Name, Value: ratio-demo-scale}
+
+  ScaleGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - {Key: Name, Value: ratio-demo-scale}
+
+  ScaleGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref ScaleVpc
+      InternetGatewayId: !Ref ScaleGateway
+
+  ScaleRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ScaleVpc
+      Tags:
+        - {Key: Name, Value: ratio-demo-scale}
+
+  ScaleDefaultRoute:
+    Type: AWS::EC2::Route
+    # ⛔ The route cannot be created before the gateway is attached, and
+    # CloudFormation does not infer that from !Ref alone.
+    DependsOn: ScaleGatewayAttachment
+    Properties:
+      RouteTableId: !Ref ScaleRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref ScaleGateway
+
+  ScaleSubnetRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ScaleSubnet
+      RouteTableId: !Ref ScaleRouteTable
+
+  # ⛔ EGRESS ONLY, AND NO INGRESS RULE AT ALL. The task pulls an image, reads
+  # and writes one S3 prefix and writes logs. Nothing connects TO it — it has no
+  # port, serves nothing, and an inbound rule would be an opening with no
+  # purpose. A security group with no ingress rules admits nothing.
+  ScaleSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "The scale runner: outbound to ECR, S3 and logs, nothing inbound"
+      VpcId: !Ref ScaleVpc
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: ECR, S3 and CloudWatch over TLS
+      Tags:
+        - {Key: Name, Value: ratio-demo-scale}
+
+  ScaleCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: ratio-demo-scale
+      Tags:
+        - {Key: project, Value: ratio}
+        - {Key: purpose, Value: demo}
+
+  ScaleLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/ecs/ratio-demo-scale
+      # Same seven days as the function's. Lambda's default is never-expire,
+      # which is the quietest recurring cost in AWS; ECS has the same trap.
+      RetentionInDays: 7
+
+  # Where the run's progress, its figures and the lock live.
+  #
+  # ⛔ NOT PUBLIC. The console reads this through the function, which already
+  # serves the screens; a public bucket would be a second, unversioned way to
+  # reach the same figures with no build stamp on them.
+  ScaleBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "ratio-demo-scale-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          # ⚠ THE GENERATED BOOK IS KEPT, THE RUN RECORDS ARE NOT. A run's
+          # progress and figures are superseded by the next run; the book is
+          # what makes the next run possible without twenty minutes of
+          # generation, so it is not on a timer.
+          - Id: expire-run-records
+            Status: Enabled
+            Prefix: runs/
+            ExpirationInDays: 30
+          - Id: drop-unfinished-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+      Tags:
+        - {Key: project, Value: ratio}
+        - {Key: purpose, Value: demo}
+
+  # ── The two roles a task assumes ────────────────────────────────────────
+  #
+  # ⛔ THEY ARE DIFFERENT ROLES BECAUSE THEY ACT AT DIFFERENT TIMES. The
+  # EXECUTION role is used by the ECS agent before the container starts, to pull
+  # the image and open the log stream. The TASK role is used by the process
+  # inside it. Collapsing them would give the running container permission to
+  # pull and rewrite images, which is not a thing a benchmark needs.
+  #
+  # ⚠ Named, because `bootstrap.yaml` scopes CI's iam:CreateRole to these two
+  # exact ARNs, and an unnamed role gets an ARN no policy can name in advance.
+  # That is what CAPABILITY_NAMED_IAM in deploy.yml is for.
+  ScaleTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ratio-demo-scale-exec
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  ScaleTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ratio-demo-scale-task
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: read-the-book-write-the-figures
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # ⛔ THE BOOK IS BUILT ONCE AND KEPT, WHICH IS A MEASURED
+              # DECISION. Generating a fund costs MORE than the cold build it
+              # feeds — 28.6 s against 24.0 s at 500x500, 115.8 s against 94.7 s
+              # at 500x2000, a ratio of 1.2 at both. At twenty million lots that
+              # is ~20 minutes of generation before a ~16 minute fold, so a task
+              # that regenerated per run would spend most of its life building
+              # something byte-identical to what it built last time.
+              - Sid: TheGeneratedBooks
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub "arn:aws:s3:::ratio-demo-scale-${AWS::AccountId}/books/*"
+              - Sid: TheRunsOwnRecord
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub "arn:aws:s3:::ratio-demo-scale-${AWS::AccountId}/runs/*"
+              - Sid: ListWhatItMayRead
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::ratio-demo-scale-${AWS::AccountId}"
+
+  # ⛔ ONE FAMILY, TWO JOBS, CHOSEN BY THE COMMAND AT RunTask. `build` generates
+  # a book and uploads it; `fold` downloads one and measures the cold build.
+  # Two task definitions would be two places for the image, the roles and the
+  # sizing to drift, and the failure would be a benchmark measuring a container
+  # built from a different commit than the one that generated its book.
+  ScaleTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: ratio-demo-scale
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      # 4 vCPU / 8 GB. The measured peak footprint of the full fold is 1.00 GB,
+      # so the memory is headroom; the vCPUs are for `parse`, which is 66% of
+      # the cold build.
+      Cpu: "4096"
+      Memory: "8192"
+      EphemeralStorage:
+        # ⛔ THE JOURNAL IS ~40 GB AT THE FULL SHAPE — 140,030,274 lines at ~291
+        # bytes. The 20 GiB a task gets by default does not hold a fifth of it,
+        # and the failure is ENOSPC halfway through a twenty-minute generation.
+        SizeInGiB: 100
+      ExecutionRoleArn: !GetAtt ScaleTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ScaleTaskRole.Arn
+      ContainerDefinitions:
+        - Name: ratio
+          # The same digest the function runs, so a run measures the build it
+          # was started from. ⚠ ECR keeps only the last 3 tagged images, so a
+          # task definition pinning an older digest breaks on the fourth deploy
+          # — this tracks the parameter and cannot go stale.
+          Image: !Ref ImageUri
+          # ⛔ OVERRIDES entrypoint.sh's DEFAULT, NOT ITS ARGUMENT HANDLING. The
+          # script execs `ratio "$@"` when given arguments and serves when not;
+          # this passes the arguments. Before that branch existed the container
+          # ran the WEB SERVER when asked for a benchmark, and the symptom was a
+          # task that never produced output and never exited.
+          Command: ["help"]
+          Environment:
+            - Name: RATIO_SCALE_BUCKET
+              Value: !Sub "ratio-demo-scale-${AWS::AccountId}"
+            - Name: RATIO_BUILD
+              Value: !Ref BuildSha
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ScaleLogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: run
 
 Outputs:
   DemoUrl:

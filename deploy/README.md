@@ -354,6 +354,18 @@ and domain) so CI can manage the authorizer's user pool. An account that
 provisioned bootstrap before this round must re-run the command above once, or
 the next app deploy fails with an access-denied creating the pool.
 
+⚠ **And re-run it again after the scale runner.** The deploy role gained
+`ecs`, `ec2`, `s3`, `logs` and a narrowly-scoped `iam` so it can stand up the
+one-shot Fargate task that folds a twenty-million-lot book, and the function's
+execution role gained `ecs:RunTask` on one task family plus the run prefix in
+one bucket. ⛔ **Bootstrap first, then push** — the app stack now creates a VPC,
+a cluster, two named roles and a bucket, and CI cannot create any of them until
+this has been applied. The failure if you push first is `AccessDenied` in
+`aws cloudformation deploy`, after a full Bazel build, the whole test suite, a
+docker build and an ECR push. `//deploy:iac_test` checks the two templates agree
+about what may be created, but it cannot check that the account has caught up —
+only running this can.
+
 ## How CI gets in
 
 GitHub's OIDC provider, no long-lived key. The trust policy is scoped to

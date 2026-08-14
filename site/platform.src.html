@@ -723,10 +723,21 @@ __STYLE__
           nanoseconds per record, flat regardless of how many rules the fund has
           — combined with ordinary assumptions about record sizes and bandwidth.
           The ingest range is what third-party feeds typically take, not a
-          measurement of any particular one. <strong>Nothing here has been run on
-          a 20-million-lot book, and the planner described on this page is
-          designed, not built.</strong> The whitepaper labels its performance
-          figures the same way, for the same reason.</p>
+          measurement of any particular one. <strong>The planner described on this
+          page is designed, not built</strong> — so the table above is what this
+          architecture would cost, not what it did.</p>
+          <p><strong>A 20-million-lot book has now actually been folded, and it
+          is slower than this table.</strong> 20,004,324 open tax lots over
+          140,030,274 journal entries: the cold build took <strong>995
+          seconds</strong> — 655.2 s of it parsing JSON — in a peak footprint of
+          1.00 GB, and the trial balance was 0. The NAV struck off the maintained
+          projection took <strong>12 µs</strong>, which is the row above that
+          did survive contact with a real run.
+          <a href="https://github.com/mattmarshall/ratio/blob/main/HANDOFF.md">HANDOFF.md</a>
+          records it, and <code>ratio bench</code> reproduces it. The gap between
+          the 0.15 s fold above and the 339.7 s one measured is the planner and
+          the dense layout, neither of which exists yet — which is the honest
+          shape of the distance between this page and the repository.</p>
           <p>The one-hour incumbent figure is a broad industry observation for a
           book of this size, not a measurement of a named product.</p>
         </div>
