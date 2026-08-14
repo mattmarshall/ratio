@@ -446,19 +446,24 @@ impl Console {
     }
 
     pub fn get_posting(&self, name: &str) -> Result<pb::Posting> {
-        // `funds/f/accounts/1/postings/t1.0` — one segment deeper than
-        // `nested_id` handles, and the id itself contains a dot rather than a
-        // slash, so the split stays at six.
+        // `funds/f/views/v/accounts/1/postings/t1.0` — one segment deeper than
+        // `view_scoped_id` handles, and the id itself contains a dot rather than
+        // a slash, so the split stays at eight.
         let parts: Vec<&str> = name.split('/').collect();
-        if parts.len() != 6 || parts[0] != "funds" || parts[2] != "accounts" || parts[4] != "postings" {
-            bail!("{name:?} is not a funds/*/accounts/*/postings/* name");
+        if parts.len() != 8
+            || parts[0] != "funds"
+            || parts[2] != "views"
+            || parts[4] != "accounts"
+            || parts[6] != "postings"
+        {
+            bail!("{name:?} is not a funds/*/views/*/accounts/*/postings/* name");
         }
-        let parent = format!("funds/{}/accounts/{}", parts[1], parts[3]);
+        let parent = format!("funds/{}/views/{}/accounts/{}", parts[1], parts[3], parts[5]);
         self.list_postings(&parent)?
             .postings
             .into_iter()
             .find(|p| p.name == name)
-            .with_context(|| format!("no posting {:?}", parts[5]))
+            .with_context(|| format!("no posting {:?}", parts[7]))
     }
 
 
@@ -592,7 +597,12 @@ impl Console {
         // journal is free text on somebody else's screen.
         let memo = format!("{id} via {}", rule.id);
 
-        let previous = self.get_fund(&format!("funds/{fund}"))?.net_asset_value;
+        let previous = self.default_view_nav(&fund)?;
+        // ⚠ THE ACCOUNT NAMES BELOW ARE VIEW-SCOPED RESOURCES NOW, and this is
+        // a fund-level RPC — so they name the default view, the one `previous`
+        // is also about. The chart itself does not depend on a view; only its
+        // totals do. A name that omitted the segment would not resolve.
+        let default_view = self.default_view_of(&fund)?;
 
         let entry = ratio_store::JournalEntry {
             id: id.to_string(),
@@ -642,7 +652,7 @@ impl Console {
             }
             (previous.parse::<i128>().unwrap_or(0) + delta).to_string()
         } else {
-            self.get_fund(&format!("funds/{fund}"))?.net_asset_value
+            self.default_view_nav(&fund)?
         };
 
         Ok(pb::ApplyEventResponse {
@@ -654,7 +664,10 @@ impl Console {
                 postings: postings
                     .iter()
                     .map(|p| pb::EntryPosting {
-                        account: format!("funds/{fund}/views/{view}/accounts/{}", p.dim),
+                        account: format!(
+                            "funds/{fund}/views/{default_view}/accounts/{}",
+                            p.dim
+                        ),
                         display_name: chart
                             .iter()
                             .find(|a| a.dim == p.dim)
@@ -849,9 +862,14 @@ impl Console {
     }
 
     pub fn get_lot(&self, name: &str) -> Result<pb::Lot> {
+        // ⛔ EIGHT SEGMENTS, NOT SIX. A lot hangs off a position, which hangs off
+        // a VIEW — which entries are recognised decides which lots are open, so
+        // dropping the view here would answer about a different book of record
+        // than the caller named. `view_scoped_id` handles the six-segment case;
+        // this one is a level deeper and stays spelled out.
         let parts: Vec<&str> = name.split('/').collect();
-        let ["funds", fund, "positions", pos, "lots", lot] = parts[..] else {
-            bail!("{name:?} is not a funds/*/positions/*/lots/* name");
+        let ["funds", fund, "views", view, "positions", pos, "lots", lot] = parts[..] else {
+            bail!("{name:?} is not a funds/*/views/*/positions/*/lots/* name");
         };
         self.list_lots(&format!("funds/{fund}/views/{view}/positions/{pos}"))?
             .lots
@@ -1261,7 +1279,7 @@ impl Console {
             .map(|d| format!("{:04}-{:02}-{:02}", d.year, d.month, d.day))
             .filter(|s| s.len() == 10 && !s.starts_with("0000"))
             .context("a valuation date is required")?;
-        let previous = self.get_fund(&req.parent)?.net_asset_value;
+        let previous = self.default_view_nav(&fund)?;
 
         let path = self.book_path(&fund)?;
         let mut b = FileBook::open(&path)?;
@@ -1373,7 +1391,7 @@ impl Console {
         let net_asset_value = if req.validate_only {
             previous.clone()
         } else {
-            self.get_fund(&req.parent)?.net_asset_value
+            self.default_view_nav(&fund)?
         };
         Ok(pb::MarkPositionsResponse {
             marks,
@@ -1438,7 +1456,7 @@ impl Console {
     pub fn admit_facts(&self, req: &pb::AdmitFactsRequest) -> Result<pb::AdmitFactsResponse> {
         let fund = resource_id(&req.parent, "funds")?;
         let path = self.book_path(&fund)?;
-        let previous = self.get_fund(&req.parent)?.net_asset_value;
+        let previous = self.default_view_nav(&fund)?;
 
         let mut b = FileBook::open(&path)?;
         let digest = b.active()?.context("no configuration is in force")?;
@@ -1562,7 +1580,7 @@ impl Console {
         let net_asset_value = if req.validate_only {
             previous.clone()
         } else {
-            self.get_fund(&req.parent)?.net_asset_value
+            self.default_view_nav(&fund)?
         };
         Ok(pb::AdmitFactsResponse {
             posted_count: n.to_string(),
@@ -1626,6 +1644,41 @@ impl Console {
             );
         }
         Ok(())
+    }
+
+    /// The default view's id: which book of record a fund-level answer is about.
+    ///
+    /// ⛔ A FUND-LEVEL FIGURE STILL BELONGS TO A VIEW. `ApplyEvent`,
+    /// `MarkPositions` and `AdmitFacts` each quote a NAV before and after, and
+    /// there is no such thing as a NAV without a recognition convention — so
+    /// they quote the DEFAULT view's, and `Fund.default_view` is what tells a
+    /// reader which that is. Quoting one with no view named is the row already
+    /// in HANDOFF.md's failure table.
+    fn default_view_of(&self, fund: &str) -> Result<String> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        Ok(match b.active()? {
+            Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))
+                .unwrap_or_default()
+                .default_view(),
+            None => ratio_rules::RuleSet::default().default_view(),
+        })
+    }
+
+    /// The default view's NAV in minor units, as a fund-level answer quotes it.
+    ///
+    /// ⚠ REFUSES FOR THE SAME REASON `GetView` DOES. If a fund's default view
+    /// recognises by date, the maintained projection cannot answer for it — and
+    /// a preview quoting the recorded figure under that view's name is exactly
+    /// the substitution this feature exists to prevent.
+    fn default_view_nav(&self, fund: &str) -> Result<String> {
+        let view = self.default_view_of(fund)?;
+        self.view_the_projection_can_answer(fund, &view)?;
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
+        let proj = self.projection(fund)?;
+        Ok(nav_from(&b, &proj, &rates)?.0.to_string())
     }
 
     pub fn get_fund(&self, name: &str) -> Result<pb::Fund> {
@@ -1774,23 +1827,15 @@ impl Console {
         // than returning the recorded view's numbers under another name.
         self.view_the_projection_can_answer(&id, &view)?;
 
-        let accounts = b.accounts()?;
-        let by_dim: BTreeMap<i64, AccountTypeRecord> =
-            accounts.iter().map(|a| (a.dim, a.account_type)).collect();
-        let is_asset_or_liability = |d: i64| {
-            matches!(
-                by_dim.get(&d),
-                Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
-            )
-        };
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
         let proj = self.projection(&id)?;
-        // ⛔ TIMED AROUND THE FOLD, NOT AROUND THE REQUEST. The same
-        // `Projection::nav` call `ratio bench` times, so it reports the
-        // maintained strike — O(chart) — and not the cold build.
-        let struck_at = std::time::Instant::now();
-        let nav: i64 = proj.nav(&is_asset_or_liability, &rates)?.value.0;
-        let nav_strike = struck_at.elapsed();
+        // ⭐ THE SAME `nav_from` EVERY FUND-LEVEL PREVIEW CALLS, so a NAV quoted
+        // by `ApplyEvent` and a NAV shown on this screen cannot drift apart.
+        //
+        // ⚠ IT TAKES THE PROJECTION RATHER THAN FETCHING ONE. `projection`
+        // hands back a CLONE, and a fund holding a quarter of a million open
+        // lots does not want two of them alive to answer one request.
+        let (nav, nav_strike) = nav_from(&b, &proj, &rates)?;
         let realized = proj
             .realized(set.chart_roles, &rates)
             .ok()
@@ -2285,7 +2330,7 @@ impl Console {
     /// disagreeing, and the figure it corrupts is the REALIZED GAIN — which no
     /// reconciliation reaches, because it has no counterparty. A small one is
     /// not a small problem.
-    fn lot_breaks_for(&self, fund: &str) -> Result<Vec<pb::Break>> {
+    fn lot_breaks_for(&self, fund: &str, view: &str) -> Result<Vec<pb::Break>> {
         let proj = self.projection(fund)?;
         Ok(proj
             .lot_breaks()
@@ -2313,7 +2358,7 @@ impl Console {
             // report has no recon breaks, and used to have no breaks at all —
             // so a lot break on such a fund would have been invisible for the
             // want of an unrelated file.
-            return self.lot_breaks_for(fund);
+            return self.lot_breaks_for(fund, view);
         };
         let b = FileBook::open(book)?;
         let dims: BTreeMap<String, i64> =
@@ -2382,7 +2427,7 @@ impl Console {
         // order an operator with a deadline works in.
         out.sort_by_key(|k| -k.difference.parse::<i64>().unwrap_or(0).abs());
         // ⛔ And the lot engine's, in the same list.
-        out.extend(self.lot_breaks_for(fund)?);
+        out.extend(self.lot_breaks_for(fund, view)?);
         Ok(out)
     }
 
@@ -2649,6 +2694,38 @@ pub fn position_key(id: &str) -> Result<(i64, String)> {
 /// second one arrives this becomes a field on the book.
 pub use ratio_store::BASE_CURRENCY as FUND_CURRENCY;
 
+
+/// One view's NAV in minor units, and how long the fold that struck it took.
+///
+/// ⭐ ONE IMPLEMENTATION, BECAUSE IT IS ONE NUMBER. `GetView` shows it and
+/// `ApplyEvent`, `MarkPositions` and `AdmitFacts` each quote it before and
+/// after; two derivations of it become two numbers the day one is edited, and
+/// the console and the CLI disagreeing about a NAV is already a row in
+/// HANDOFF.md's failure table.
+///
+/// ⛔ TIMED AROUND THE FOLD, NOT AROUND THE REQUEST. The same `Projection::nav`
+/// call `ratio bench` times, so it reports the maintained strike — O(chart) —
+/// and not the cold build.
+///
+/// ⚠ TAKES THE PROJECTION AND THE RATES rather than fetching them, so a caller
+/// that already holds both does not pay for a second copy of either.
+fn nav_from(
+    b: &FileBook,
+    proj: &ratio_project::Projection,
+    rates: &ratio_project::Rates,
+) -> Result<(i64, std::time::Duration)> {
+    let by_dim: BTreeMap<i64, AccountTypeRecord> =
+        b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
+    let is_asset_or_liability = |d: i64| {
+        matches!(
+            by_dim.get(&d),
+            Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
+        )
+    };
+    let struck_at = std::time::Instant::now();
+    let nav = proj.nav(&is_asset_or_liability, rates)?.value.0;
+    Ok((nav, struck_at.elapsed()))
+}
 
 /// A view's declared terms, as the contract carries them.
 ///
@@ -3142,8 +3219,16 @@ mod tests {
         // screenshot and wrong by twice the liability.
         let d = fresh("nav");
         book(&d);
-        let f = Console::new(&d).get_fund("funds/demo").unwrap();
-        assert_eq!(f.net_asset_value, "29900000");
+        let c = Console::new(&d);
+        let f = c.get_fund("funds/demo").unwrap();
+        // ⛔ THE NAV IS ON THE VIEW NOW, AND THE FUND SAYS WHICH VIEW. A book
+        // declaring none has exactly one, so this is the same figure it always
+        // was — and reading it through `default_view` is the assertion that the
+        // two agree about which question is being answered.
+        assert_eq!(f.default_view, ratio_rules::UNDECLARED_VIEW);
+        assert_eq!(f.view_count, 1);
+        let v = c.get_view(&format!("funds/demo/views/{}", f.default_view)).unwrap();
+        assert_eq!(v.net_asset_value, "29900000");
         assert_eq!(f.trial_balance_difference, "0", "any accepted book ties");
         assert_eq!(f.entry_count, 3);
     }
@@ -3356,7 +3441,11 @@ mod tests {
         promote(&d, R1, "e.marsh", "fee_q2");
         let c = Console::new(&d);
 
-        let before = c.get_fund("funds/demo").unwrap();
+        // ⚠ THE DEFAULT VIEW'S NAV, which is what `ApplyEvent` quotes.
+        // `previous_net_asset_value` is a figure about a recognition
+        // convention like every other, so the comparison has to be against
+        // the same one rather than against "the fund".
+        let before = c.get_view(&format!("funds/demo/views/{}", ratio_rules::UNDECLARED_VIEW)).unwrap();
         let entries_before = FileBook::open(&d).unwrap().entries().unwrap().len();
 
         let req = |validate_only: bool| pb::ApplyEventRequest {
@@ -3382,7 +3471,7 @@ mod tests {
             entries_before,
             "a preview must not touch the journal",
         );
-        assert_eq!(c.get_fund("funds/demo").unwrap().net_asset_value, before.net_asset_value);
+        assert_eq!(c.get_view(&format!("funds/demo/views/{}", ratio_rules::UNDECLARED_VIEW)).unwrap().net_asset_value, before.net_asset_value);
 
         // The commit writes exactly one entry, and the NAV the preview
         // predicted is the NAV that results.
