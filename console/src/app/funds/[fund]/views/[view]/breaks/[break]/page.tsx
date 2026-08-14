@@ -18,14 +18,14 @@ export const dynamic = "force-dynamic";
 export default async function BreakDetail({
   params,
 }: {
-  params: Promise<{ fund: string; break: string }>;
+  params: Promise<{ fund: string; view: string; break: string }>;
 }) {
-  const { fund, break: id } = await params;
+  const { fund, view, break: id } = await params;
   const c = await caller();
 
   let brk;
   try {
-    brk = await getBreak(c, fund, id);
+    brk = await getBreak(c, fund, view, id);
   } catch (e) {
     // ⚠ A break this subject may not see is refused with the SAME error as one
     // that does not exist. That is deliberate in `Console::book_path`, and

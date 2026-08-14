@@ -49,14 +49,20 @@
 
 use std::fmt::Write as _;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use ratio_store::{
     Account, AccountTypeRecord, AnnouncementRecord, ConfigStore, FileBook, Journal, JournalEntry,
     PostingRecord,
 };
 
 /// The shape of the fund to build. Mirrors `Ratio.Closure.Dials`.
-#[derive(Clone, Copy, Debug)]
+///
+/// ⛔ SERIALIZED INTO THE BOOK, because a generated book otherwise carries no
+/// record of what generated it. `ratio bench --fold` measures a period end using
+/// the shape — one mark per security, one rate per currency — so a caller who
+/// had to RESTATE the dials could describe a fund that is not the one on disk
+/// and get a confident report about it. `SHAPE` is read back instead.
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Shape {
     pub securities: i64,
     /// Currencies the chart is denominated in. `Ratio.Closure.fxCost` is one
@@ -146,6 +152,99 @@ fn between(seed: u64, a: u64, b: u64, lo: i64, hi: i64) -> i64 {
 /// in this crate.
 const FIRST_TRADE_DAY: i64 = 13_151;
 
+/// When the generated corporate actions were announced, in unix seconds.
+///
+/// ⛔ ONE CONSTANT FOR TWO FIELDS. The announcement record carries it and so
+/// does the entry's trade date, and two spellings of one instant would let a
+/// view place the entry on a day the announcement itself disagreed with.
+const ANNOUNCED_AT: i64 = 1_767_225_600;
+
+/// One book of record a generated fund keeps.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GenView {
+    pub id: String,
+    /// `None` recognises on the trade date. `Some(n)` settles `n` open days
+    /// after it, over the calendar this generator declares.
+    pub settles_in: Option<i64>,
+}
+
+/// The books of record a generated fund keeps, and the tail that makes them
+/// disagree.
+///
+/// ⛔ NOT PART OF `Shape`, WHICH MIRRORS `Ratio.Closure.Dials`. A view is not a
+/// dimension of a fund's SIZE; it is a term of its administration. Putting it in
+/// `Shape` would put it in `ratio bench`'s cost table, where it would sit beside
+/// `securities` and `lots_per` meaning nothing.
+#[derive(Clone, Debug, Default)]
+pub struct Books {
+    /// An empty list declares no `[[view]]` section at all, which is what every
+    /// fund generated before this looked like and must go on looking like.
+    pub views: Vec<GenView>,
+
+    /// The last trading day of the tail, as days since the epoch.
+    ///
+    /// ⛔ PASSED IN, NOT READ FROM A CLOCK. This crate has no `now` and is not
+    /// getting one: it exists to produce the same book from the same dials, and
+    /// the seam where the wall clock enters belongs at the CLI — the same place
+    /// `strike` takes its valuation point.
+    ///
+    /// ⚠ AND A CALLER WANTING THE TAIL TO STRADDLE A VALUATION POINT MUST PASS
+    /// THAT POINT'S DAY. `ratio strike` values at NOW, so `deploy` passes today.
+    /// Folded to the end of history every view agrees, because everything
+    /// eventually settles — `Ratio.Views.a_fold_with_no_cut_hides_the_
+    /// settlement_gap` — so a tail that has already settled demonstrates
+    /// nothing at all.
+    pub tail_ends: i64,
+
+    /// Trading days at the end of the journal the tail is spread over.
+    pub settle_tail: i64,
+
+    /// How many entries in that tail are SUBSCRIPTIONS.
+    ///
+    /// ⛔ SUBSCRIPTIONS, BECAUSE A PURCHASE MOVES A NAV BY ZERO. Cash and
+    /// investments are both assets, so recognising a trade or not leaves the
+    /// figure identical — two views would agree while every line of the engine
+    /// ran. A subscription credits equity, which the NAV filter excludes, so the
+    /// asset side is left holding the balance and the figure MOVES. HANDOFF.md
+    /// records the multi-currency version of this being written vacuously twice.
+    pub subscriptions_in_tail: i64,
+}
+
+impl Books {
+    /// Whether this fund declares any views at all.
+    pub fn declared(&self) -> bool {
+        !self.views.is_empty()
+    }
+
+    /// The `[[calendar]]` and `[[view]]` sections, appended to the generated
+    /// configuration. Empty when nothing is declared, so a fund generated
+    /// without views produces byte-identical TOML to one generated before views
+    /// existed.
+    fn toml(&self) -> String {
+        if !self.declared() {
+            return String::new();
+        }
+        // ⚠ ONE CALENDAR, NAMED, AND EVERY SETTLEMENT VIEW POINTS AT IT.
+        // `View::check` refuses a settlement view naming a calendar nobody
+        // declared, at READ time — so emitting the view without the calendar
+        // would produce a configuration this generator could not read back.
+        let mut s = String::from("\n[[calendar]]\nid = \"settlement\"\n");
+        for v in &self.views {
+            s.push_str("\n[[view]]\n");
+            s.push_str(&format!("id = \"{}\"\n", v.id));
+            match v.settles_in {
+                None => s.push_str("basis = \"trade\"\n"),
+                Some(n) => {
+                    s.push_str("basis = \"settlement\"\n");
+                    s.push_str(&format!("settles_in = {n}\n"));
+                    s.push_str("calendar = \"settlement\"\n");
+                }
+            }
+        }
+        s
+    }
+}
+
 /// Ticker for security `i`. Deterministic, and shaped like a real one.
 pub fn ticker(i: i64) -> String {
     let letters = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -166,6 +265,41 @@ pub fn ticker(i: i64) -> String {
 /// journal that contains them, and conflating the two would be the easiest
 /// overclaim available here.
 pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
+    generate_books(path, shape, &Books::default())
+}
+
+/// The same fund, keeping the books of record `books` declares.
+///
+/// ⚠ `generate` IS THIS WITH NOTHING DECLARED, and that case must stay
+/// byte-identical to what this crate produced before views existed — every
+/// measurement in HANDOFF.md was taken against one.
+pub fn generate_books(path: &std::path::Path, shape: Shape, books: &Books) -> Result<usize> {
+    if books.subscriptions_in_tail > 0 {
+        if books.settle_tail <= 0 {
+            bail!(
+                "a settlement tail of {} subscriptions needs days to spread over — pass \
+                 --settle-tail",
+                books.subscriptions_in_tail
+            );
+        }
+        if books.tail_ends <= 0 {
+            bail!("a settlement tail has to end on a day — `Books::tail_ends` was not set");
+        }
+        // ⛔ REFUSED, NOT WRAPPED. Spreading more subscriptions than there are
+        // days would put two on one day and leave the last day of the tail
+        // empty, which is the day most likely to straddle the valuation point.
+        // A demo that quietly generated a fund the views agree about is the one
+        // outcome this whole fund exists to avoid.
+        if books.subscriptions_in_tail > books.settle_tail {
+            bail!(
+                "{} subscriptions will not fit in a {}-day tail — one a day, so the last day \
+                 of the tail is never the empty one",
+                books.subscriptions_in_tail,
+                books.settle_tail
+            );
+        }
+    }
+
     let _ = std::fs::remove_dir_all(path);
     let mut b = FileBook::open(path).context("creating the book")?;
 
@@ -182,8 +316,14 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
     // the rule set refuses a collision when it is read.
     let owned = format!(
         "lot_method = \"{}\"\nrules = []\n\n[chart_roles]\n\
-         investments = 1\ncash = 2\nrealized_gain = 30\ncurrency_conversion = 40\n",
-        shape.method.as_declared()
+         investments = 1\ncash = 2\nrealized_gain = 30\ncurrency_conversion = 40\n{}",
+        shape.method.as_declared(),
+        // ⛔ THE VIEWS GO IN THE SAME CONFIGURATION EVERY ENTRY PINS, which is
+        // what makes this one journal rather than two books. A per-view file
+        // would leave the views unpinned while the rules were pinned, and a
+        // calendar amended later would silently move a NAV already struck —
+        // `//tla:calendar_in_side_file_check` is exactly that.
+        books.toml()
     );
     let config: &str = &owned;
     let cfg = b.put(config.as_bytes())?;
@@ -215,7 +355,13 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                 PostingRecord::of_currency(2, amount, base),
                 PostingRecord::of_currency(20, -amount, base),
             ],
-            trade_date: None,
+            // ⛔ DATED, LIKE EVERY OTHER ENTRY HERE, AND IT USED NOT TO BE. A
+            // settlement view refuses an entry it cannot date — rightly, since
+            // there is nothing to roll forward from — so a generator that dated
+            // only its trades produced a fund every settlement view refused
+            // outright. Funding lands before the first trade, which is the only
+            // thing about the day that matters.
+            trade_date: Some(ratio_common::iso_date_from_days(FIRST_TRADE_DAY - 30 + k)),
             announcement: None,
         })?;
         written += 1;
@@ -250,7 +396,10 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
                 PostingRecord::of_currency(conversion, -got, code),
                 PostingRecord::of_currency(2, got, code),
             ],
-            trade_date: None,
+            // After the funding and before the first trade — the fund buys the
+            // currency it is about to trade in. See `cap-{k}` above for why an
+            // undated entry is not an option.
+            trade_date: Some(ratio_common::iso_date_from_days(FIRST_TRADE_DAY - 20 + c)),
             announcement: None,
         })?;
         written += 1;
@@ -446,15 +595,54 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
             memo: format!("announced ca-{k}"),
             config: cfg.clone(),
             postings: Vec::new(),
-            trade_date: None,
+            // ⚠ THE DAY IT WAS ANNOUNCED, NOT THE EX-DATE. This entry carries no
+            // postings, so what a view does with the date changes no figure —
+            // but a view that cannot PLACE it refuses the whole book, and an
+            // announcement's own day is the day somebody was told.
+            trade_date: Some(ratio_common::iso_date_from_days(ANNOUNCED_AT / 86_400)),
             announcement: Some(AnnouncementRecord {
                 id: format!("ca-{k}"),
                 instrument: ticker(i),
                 numerator: num,
                 denominator: den,
                 ex_date: "2026-01-15".into(),
-                announced: 1_767_225_600,
+                announced: ANNOUNCED_AT,
             }),
+        })?;
+        written += 1;
+    }
+
+    // ⛔ AND THEN THE TAIL: THE ONLY ENTRIES IN THIS FILE ANCHORED TO A DAY THE
+    // CALLER CHOSE, AND THE ONLY REASON TWO VIEWS OF THIS FUND DISAGREE.
+    //
+    // ⭐ FOLDED TO THE END OF HISTORY EVERY VIEW AGREES, because everything
+    // eventually settles — `Ratio.Views.a_fold_with_no_cut_hides_the_settlement_
+    // gap`. The difference between two books of record lives entirely at a CUT,
+    // so these have to be traded ON OR BEFORE the valuation point and settle
+    // AFTER it. `ratio strike` values at now, which is why `tail_ends` is passed
+    // in rather than derived from `FIRST_TRADE_DAY` like everything above.
+    //
+    // ⛔ SUBSCRIPTIONS, AND A PURCHASE WOULD NOT DO. Cash and investments are
+    // both assets, so recognising a trade or not moves the NAV by ZERO and the
+    // two views would agree while every line of the engine ran. Capital is
+    // equity, the NAV filter excludes it, and the asset side is left holding the
+    // balance — so the figure MOVES. HANDOFF.md records the multi-currency
+    // version of this being written vacuously twice before anybody noticed.
+    for j in 0..books.subscriptions_in_tail {
+        // One a day, most recent first, so the last day of the tail is never
+        // the empty one — it is the day most likely to straddle the cut.
+        let day = books.tail_ends - j;
+        let amount = between(shape.seed, 23, j as u64, 5_000_000_00, 30_000_000_00);
+        b.append(&JournalEntry {
+            id: format!("sub-tail-{j}"),
+            memo: format!("subscription {}", j + 1),
+            config: cfg.clone(),
+            postings: vec![
+                PostingRecord::of_currency(2, amount, base),
+                PostingRecord::of_currency(20, -amount, base),
+            ],
+            trade_date: Some(ratio_common::iso_date_from_days(day)),
+            announcement: None,
         })?;
         written += 1;
     }
@@ -503,7 +691,43 @@ pub fn generate(path: &std::path::Path, shape: Shape) -> Result<usize> {
         )?;
     }
 
+    // ⛔ LAST, SO IT IS ONLY THERE IF EVERYTHING ABOVE SUCCEEDED. A book that
+    // failed halfway through generation must not read back as a complete fund of
+    // a declared shape; a missing `SHAPE` is the honest signal that this is not a
+    // generated book, and `shape_of` says so in those words.
+    put_shape(path, shape)?;
+
     Ok(written)
+}
+
+/// Where a generated book records the dials it was generated from.
+const SHAPE: &str = "SHAPE";
+
+fn put_shape(path: &std::path::Path, shape: Shape) -> Result<()> {
+    let json = serde_json::to_string_pretty(&shape).context("serializing the shape")?;
+    std::fs::write(path.join(SHAPE), json)
+        .with_context(|| format!("writing {}", path.join(SHAPE).display()))
+}
+
+/// The dials a generated book was generated from.
+///
+/// ⛔ THE ONLY WAY TO LEARN A BOOK'S SHAPE, and it refuses rather than guessing.
+/// A period end measured against restated dials is a report about a fund that
+/// may not be the one on disk — one mark per security and one rate per currency
+/// are read off this, so a wrong `securities` marks names that were never
+/// generated and a wrong `currencies` translates at rates nothing traded at.
+/// Both would tie, and both would be somebody else's fund.
+pub fn shape_of(path: &std::path::Path) -> Result<Shape> {
+    let p = path.join(SHAPE);
+    let raw = std::fs::read_to_string(&p).with_context(|| {
+        format!(
+            "{} has no {SHAPE}, so it did not come from `ratio gen` — there is nothing here \
+             that says how many securities or currencies it holds, and a period end measured \
+             against a shape somebody restated would be a report about a different fund",
+            path.display()
+        )
+    })?;
+    serde_json::from_str(&raw).with_context(|| format!("reading {}", p.display()))
 }
 
 /// What one unit of currency `c` is worth in the base, in hundredths.
@@ -642,6 +866,106 @@ mod tests {
             std::fs::read(a.join("journal.jsonl")).unwrap(),
             std::fs::read(b.join("journal.jsonl")).unwrap(),
         );
+    }
+
+    #[test]
+    fn every_entry_a_generated_fund_writes_carries_a_trade_date() {
+        // ⛔ THE PROPERTY THAT WAS BROKEN, AND IT WAS INVISIBLE. Trades were
+        // dated and capital, FX and announcements were not — which no test
+        // noticed, because the only view any generated fund had recognised in
+        // journal order and consults no date at all. The moment one declared a
+        // settlement basis it refused the whole book.
+        //
+        // ⚠ ASSERTED OVER A SHAPE THAT WRITES ALL FOUR KINDS. `open_actions` and
+        // `currencies > 1` are what put an announcement and an exchange in the
+        // journal; at the defaults for either, this test would pass over a book
+        // that contains neither.
+        let d = tmp("dated");
+        let n = generate(
+            &d,
+            Shape {
+                securities: 4,
+                currencies: 3,
+                lots_per: 3,
+                turnover: 2,
+                open_actions: 2,
+                capital_txns: 2,
+                seed: 5,
+                method: ratio_rules::LotMethod::Fifo,
+            },
+        )
+        .unwrap();
+        let entries = FileBook::open(&d).unwrap().entries().unwrap();
+        assert_eq!(entries.len(), n);
+        assert!(entries.iter().any(|e| e.id.starts_with("cap-")), "no capital entry");
+        assert!(entries.iter().any(|e| e.id.starts_with("fx-")), "no exchange");
+        assert!(entries.iter().any(|e| e.announcement.is_some()), "no announcement");
+        let undated: Vec<&str> =
+            entries.iter().filter(|e| e.trade_date.is_none()).map(|e| e.id.as_str()).collect();
+        assert!(undated.is_empty(), "a settlement view would refuse these: {undated:?}");
+    }
+
+    #[test]
+    fn two_declared_views_land_in_the_configuration_every_entry_pins() {
+        // ⭐ ONE JOURNAL, AND THE VIEWS TRAVEL IN THE SAME CONFIGURATION THE
+        // RULES DO. A per-view side file would leave the views unpinned while
+        // the rules were pinned, and a calendar amended later would move a NAV
+        // already struck — `//tla:calendar_in_side_file_check`.
+        let d = tmp("twoviews");
+        let books = Books {
+            views: vec![
+                GenView { id: "abor".into(), settles_in: None },
+                GenView { id: "ibor".into(), settles_in: Some(2) },
+            ],
+            tail_ends: 20_600,
+            settle_tail: 3,
+            subscriptions_in_tail: 2,
+        };
+        generate_books(&d, Shape { securities: 3, lots_per: 2, ..Shape::default() }, &books)
+            .unwrap();
+
+        let b = FileBook::open(&d).unwrap();
+        let digest = b.active().unwrap().expect("a generated book has an active configuration");
+        let set =
+            ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest).unwrap()))
+                .expect("the generated configuration reads back");
+        let views = set.effective_views();
+        assert_eq!(views.len(), 2, "{views:?}");
+        assert!(set.views_declared(), "these were elected, and the fund should say so");
+        assert_eq!(views[0].id, "abor");
+        assert_eq!(views[0].basis, ratio_rules::Basis::Trade);
+        assert_eq!(views[1].basis, ratio_rules::Basis::Settlement);
+        assert_eq!(views[1].settles_in, Some(2));
+        // ⛔ AND THE CALENDAR IT NAMES IS DECLARED. `View::check` refuses a
+        // settlement view pointing at one nobody wrote down, at READ time — so
+        // a generator emitting the view without the calendar would produce a
+        // configuration it could not read back.
+        assert!(set.calendar(views[1].calendar.as_deref().unwrap()).is_some());
+
+        // The tail is where the two views disagree, so it has to be there.
+        let entries = b.entries().unwrap();
+        let tail: Vec<_> = entries.iter().filter(|e| e.id.starts_with("sub-tail-")).collect();
+        assert_eq!(tail.len(), 2, "the settlement tail is missing");
+        for e in &tail {
+            let day = ratio_common::days_from_iso_date(e.trade_date.as_deref().unwrap()).unwrap();
+            assert!(day <= 20_600, "a tail entry traded after the day the tail ends");
+            assert!(day > 20_600 - 3, "a tail entry fell outside the tail");
+        }
+    }
+
+    #[test]
+    fn a_tail_longer_than_its_days_is_refused_rather_than_doubled_up() {
+        // ⛔ Doubling up would leave the LAST day of the tail empty, and that is
+        // the day most likely to straddle the valuation point — a demo that
+        // quietly generated a fund the two views agree about.
+        let e = generate_books(
+            &tmp("tail-overflow"),
+            Shape::default(),
+            &Books { tail_ends: 20_600, settle_tail: 2, subscriptions_in_tail: 5, ..Default::default() },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("will not fit"), "{e}");
     }
 
     #[test]
@@ -826,5 +1150,53 @@ mod tests {
             p.units_as_of(1, &ticker(i), "2026-06-30")
                 .unwrap_or_else(|e| panic!("{} cannot be valued: {e:#}", ticker(i)));
         }
+    }
+
+    #[test]
+    fn a_generated_book_says_what_generated_it() {
+        // ⛔ EVERY DIAL, NOT JUST THE TWO A HEADLINE QUOTES. `ratio bench --fold`
+        // marks one security at a time and translates one currency at a time off
+        // this record, and `method` decides the realized gain — so a field that
+        // failed to round-trip would produce a confident report about a fund
+        // nobody generated.
+        let s = Shape {
+            securities: 7,
+            currencies: 2,
+            turnover: 3,
+            lots_per: 5,
+            open_actions: 1,
+            capital_txns: 2,
+            seed: 42,
+            method: ratio_rules::LotMethod::Hifo,
+        };
+        let d = tmp("shape-roundtrip");
+        generate(&d, s).unwrap();
+        let back = shape_of(&d).unwrap();
+
+        assert_eq!(back.securities, s.securities);
+        assert_eq!(back.currencies, s.currencies);
+        assert_eq!(back.lots_per, s.lots_per);
+        assert_eq!(back.turnover, s.turnover);
+        assert_eq!(back.open_actions, s.open_actions);
+        assert_eq!(back.capital_txns, s.capital_txns);
+        assert_eq!(back.seed, s.seed);
+        // ⭐ The dial the demo exists to show: two funds from one seed differing
+        // only here realize different gains. A method that did not survive the
+        // round trip would fold the book back under FIFO and say so silently.
+        assert_eq!(back.method, s.method);
+    }
+
+    #[test]
+    fn a_book_nobody_generated_refuses_to_state_a_shape() {
+        // ⛔ REFUSES RATHER THAN DEFAULTING. `Shape::default()` is a real fund —
+        // 500 securities, three currencies — so a `unwrap_or_default` here would
+        // hand `bench --fold` a shape for a book that has none, and it would mark
+        // five hundred tickers that do not exist and report the result.
+        let d = tmp("no-shape");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let err = shape_of(&d).unwrap_err();
+        let said = format!("{err:#}");
+        assert!(said.contains("did not come from `ratio gen`"), "{said}");
     }
 }

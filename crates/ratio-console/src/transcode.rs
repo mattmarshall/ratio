@@ -32,9 +32,11 @@ pub struct Route {
 /// contract; this ordering is the implementation's own business.
 pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/funds" },
-    Route { method: "GET", template: "/v1/{parent=funds/*}/breaks" },
+    Route { method: "GET", template: "/v1/{parent=funds/*}/views" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*}:reconcile" },
+    Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/breaks" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/changeLogEntries" },
-    Route { method: "GET", template: "/v1/{name=funds/*/breaks/*}" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*/breaks/*}" },
     Route { method: "GET", template: "/v1/{name=funds/*/changeLogEntries/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/configVersions" },
     Route { method: "GET", template: "/v1/{name=funds/*/configVersions/*}:diff" },
@@ -43,25 +45,25 @@ pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/{name=funds/*/deliveries/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/pendingFacts" },
     Route { method: "GET", template: "/v1/{name=funds/*/pendingFacts/*}" },
-    Route { method: "GET", template: "/v1/{parent=funds/*}/accounts" },
-    Route { method: "GET", template: "/v1/{parent=funds/*/accounts/*}/postings" },
-    Route { method: "GET", template: "/v1/{name=funds/*/accounts/*/postings/*}" },
-    Route { method: "GET", template: "/v1/{name=funds/*/accounts/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/accounts" },
+    Route { method: "GET", template: "/v1/{parent=funds/*/views/*/accounts/*}/postings" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*/accounts/*/postings/*}" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*/accounts/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/corporateActions" },
     Route { method: "GET", template: "/v1/{name=funds/*/corporateActions/*}" },
-    Route { method: "GET", template: "/v1/{parent=funds/*}/navStrikes" },
+    Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/navStrikes" },
     // A custom method (AIP-136) on GET, because replaying is safe and
     // idempotent — it folds a journal prefix and writes nothing.
-    Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}:replay" },
-    Route { method: "GET", template: "/v1/{name=funds/*/navStrikes/*}" },
-    Route { method: "GET", template: "/v1/{parent=funds/*}/positions" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*/navStrikes/*}:replay" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*/navStrikes/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/positions" },
     // ⛔ BEFORE the bare position, and before the position pattern can swallow
     // it. `funds/f/positions/p/lots` has more segments than `funds/*/positions/*`
     // matches, but the ordering here is the documented contract and a reader
     // should not have to work that out.
-    Route { method: "GET", template: "/v1/{parent=funds/*/positions/*}/lots" },
-    Route { method: "GET", template: "/v1/{name=funds/*/positions/*/lots/*}" },
-    Route { method: "GET", template: "/v1/{name=funds/*/positions/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*/views/*/positions/*}/lots" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*/positions/*/lots/*}" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*/positions/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/templates" },
     Route { method: "GET", template: "/v1/{name=funds/*/templates/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/rules" },
@@ -73,6 +75,7 @@ pub const ROUTES: &[Route] = &[
     Route { method: "POST", template: "/v1/{parent=funds/*}:ingest" },
     Route { method: "POST", template: "/v1/{parent=funds/*}:admit" },
     Route { method: "POST", template: "/v1/{parent=funds/*}:mark" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*}" },
     Route { method: "GET", template: "/v1/{name=funds/*}" },
 ];
 
@@ -129,8 +132,19 @@ pub fn serve(
     // a runtime fallthrough.
     let json = match seg.as_slice() {
         ["funds"] => to_json(&console.list_funds()?)?,
-        ["funds", id, "breaks"] => {
-            to_json(&console.list_breaks(&format!("funds/{id}"), filter_of(query))?)?
+        ["funds", id, "views"] => to_json(&console.list_views(&format!("funds/{id}"))?)?,
+        ["funds", id, "views", v] if v.ends_with(":reconcile") => {
+            let view = v.trim_end_matches(":reconcile");
+            to_json(&console.reconcile_views(
+                &format!("funds/{id}/views/{view}"),
+                param_of(query, "against"),
+            )?)?
+        }
+        ["funds", id, "views", v] => {
+            to_json(&console.get_view(&format!("funds/{id}/views/{v}"))?)?
+        }
+        ["funds", id, "views", v, "breaks"] => {
+            to_json(&console.list_breaks(&format!("funds/{id}/views/{v}"), filter_of(query))?)?
         }
         ["funds", id, "changeLogEntries"] => {
             to_json(&console.list_change_log_entries(&format!("funds/{id}"))?)?
@@ -148,17 +162,17 @@ pub fn serve(
         ["funds", id, "configVersions", v] => {
             to_json(&console.get_config_version(&format!("funds/{id}/configVersions/{v}"))?)?
         }
-        ["funds", id, "positions"] => {
-            to_json(&console.list_positions(&format!("funds/{id}"))?)?
+        ["funds", id, "views", v, "positions"] => {
+            to_json(&console.list_positions(&format!("funds/{id}/views/{v}"))?)?
         }
-        ["funds", id, "positions", p, "lots"] => {
-            to_json(&console.list_lots(&format!("funds/{id}/positions/{p}"))?)?
+        ["funds", id, "views", v, "positions", p, "lots"] => {
+            to_json(&console.list_lots(&format!("funds/{id}/views/{v}/positions/{p}"))?)?
         }
-        ["funds", id, "positions", p, "lots", l] => {
-            to_json(&console.get_lot(&format!("funds/{id}/positions/{p}/lots/{l}"))?)?
+        ["funds", id, "views", v, "positions", p, "lots", l] => {
+            to_json(&console.get_lot(&format!("funds/{id}/views/{v}/positions/{p}/lots/{l}"))?)?
         }
-        ["funds", id, "positions", p] => {
-            to_json(&console.get_position(&format!("funds/{id}/positions/{p}"))?)?
+        ["funds", id, "views", v, "positions", p] => {
+            to_json(&console.get_position(&format!("funds/{id}/views/{v}/positions/{p}"))?)?
         }
         ["funds", id, "templates"] => {
             to_json(&console.list_templates(&format!("funds/{id}"))?)?
@@ -180,17 +194,17 @@ pub fn serve(
         ["funds", id, "pendingFacts", f] => {
             to_json(&console.get_pending_fact(&format!("funds/{id}/pendingFacts/{f}"))?)?
         }
-        ["funds", id, "accounts"] => {
-            to_json(&console.list_accounts(&format!("funds/{id}"), filter_of(query))?)?
+        ["funds", id, "views", v, "accounts"] => {
+            to_json(&console.list_accounts(&format!("funds/{id}/views/{v}"), filter_of(query))?)?
         }
-        ["funds", id, "accounts", a, "postings"] => {
-            to_json(&console.list_postings(&format!("funds/{id}/accounts/{a}"))?)?
+        ["funds", id, "views", v, "accounts", a, "postings"] => {
+            to_json(&console.list_postings(&format!("funds/{id}/views/{v}/accounts/{a}"))?)?
         }
-        ["funds", id, "accounts", a, "postings", p] => {
-            to_json(&console.get_posting(&format!("funds/{id}/accounts/{a}/postings/{p}"))?)?
+        ["funds", id, "views", v, "accounts", a, "postings", p] => {
+            to_json(&console.get_posting(&format!("funds/{id}/views/{v}/accounts/{a}/postings/{p}"))?)?
         }
-        ["funds", id, "accounts", a] => {
-            to_json(&console.get_account(&format!("funds/{id}/accounts/{a}"))?)?
+        ["funds", id, "views", v, "accounts", a] => {
+            to_json(&console.get_account(&format!("funds/{id}/views/{v}/accounts/{a}"))?)?
         }
         ["funds", id, "corporateActions"] => {
             to_json(&console.list_corporate_actions(&format!("funds/{id}"))?)?
@@ -198,20 +212,24 @@ pub fn serve(
         ["funds", id, "corporateActions", a] => {
             to_json(&console.get_corporate_action(&format!("funds/{id}/corporateActions/{a}"))?)?
         }
-        ["funds", id, "navStrikes"] => {
-            to_json(&console.list_nav_strikes(&format!("funds/{id}"))?)?
+        ["funds", id, "views", v, "navStrikes"] => {
+            to_json(&console.list_nav_strikes(&format!("funds/{id}/views/{v}"))?)?
         }
         // The custom method is matched on the LAST segment before the plain
         // Get, so `x:replay` never falls through to a lookup for a strike
         // literally named `x:replay`.
-        ["funds", id, "navStrikes", s] if s.ends_with(":replay") => {
+        ["funds", id, "views", v, "navStrikes", s] if s.ends_with(":replay") => {
             let strike = s.trim_end_matches(":replay");
-            to_json(&console.replay_nav_strike(&format!("funds/{id}/navStrikes/{strike}"))?)?
+            to_json(
+                &console.replay_nav_strike(&format!("funds/{id}/views/{v}/navStrikes/{strike}"))?,
+            )?
         }
-        ["funds", id, "navStrikes", s] => {
-            to_json(&console.get_nav_strike(&format!("funds/{id}/navStrikes/{s}"))?)?
+        ["funds", id, "views", v, "navStrikes", s] => {
+            to_json(&console.get_nav_strike(&format!("funds/{id}/views/{v}/navStrikes/{s}"))?)?
         }
-        ["funds", id, "breaks", b] => to_json(&console.get_break(&format!("funds/{id}/breaks/{b}"))?)?,
+        ["funds", id, "views", v, "breaks", b] => {
+            to_json(&console.get_break(&format!("funds/{id}/views/{v}/breaks/{b}"))?)?
+        }
         ["funds", id, "changeLogEntries", e] => {
             to_json(&console.get_change_log_entry(&format!("funds/{id}/changeLogEntries/{e}"))?)?
         }
@@ -409,26 +427,108 @@ impl JsonView for pb::Fund {
     fn to_json(&self) -> String {
         format!(
             "{{\"name\":{},\"displayName\":{},\"currencyCode\":{},\"state\":{},\
-             \"netAssetValue\":{},\"totalDebit\":{},\"totalCredit\":{},\
-             \"trialBalanceDifference\":{},\"openDifference\":{},\
+             \"trialBalanceDifference\":{},\
              \"entryCount\":{},\"openBreakCount\":{},\"pendingFactCount\":{},\
-             \"configDigest\":{},\"lotMethod\":{},\"lotMethodDeclared\":{},\"realizedGain\":{},\
-             \"basisRelieved\":{},\"shortTermGain\":{},\"longTermGain\":{},\
-             \"unclassifiedGain\":{},\"longTermDays\":{},\"openLotCount\":{},\
-             \"positionCount\":{},\"navStrike\":{}}}",
+             \"configDigest\":{},\"defaultView\":{},\"viewCount\":{},\
+             \"lotMethod\":{},\"lotMethodDeclared\":{},\"longTermDays\":{}}}",
             q(&self.name), q(&self.display_name), q(&self.currency_code),
-            q(state_name(self.state)), q(&self.net_asset_value),
-            q(&self.total_debit), q(&self.total_credit),
-            q(&self.trial_balance_difference), q(&self.open_difference),
+            q(state_name(self.state)),
+            q(&self.trial_balance_difference),
             q(&self.entry_count.to_string()), q(&self.open_break_count.to_string()),
             q(&self.pending_fact_count), q(&self.config_digest),
+            q(&self.default_view), q(&self.view_count.to_string()),
             q(&self.lot_method), self.lot_method_declared,
+            q(&self.long_term_days.to_string())
+        )
+    }
+}
+
+/// ⛔ THE FIGURES THAT DEPEND ON WHICH ENTRIES ARE RECOGNISED LIVE HERE, NOT ON
+/// `Fund`. A NAV that does not say which view produced it is the row already in
+/// HANDOFF.md's failure table — the console and the CLI reporting different
+/// NAVs for one book, neither saying which — with a second convention added to
+/// make it easier rather than harder to hit.
+impl JsonView for pb::View {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"displayName\":{},\"basis\":{},\"settlementOpenDays\":{},\
+             \"calendar\":{},\"holidayCount\":{},\"declared\":{},\
+             \"recognisedThrough\":{},\"unplaceableEntryCount\":{},\
+             \"netAssetValue\":{},\"totalDebit\":{},\"totalCredit\":{},\
+             \"openDifference\":{},\"openBreakCount\":{},\"state\":{},\
+             \"realizedGain\":{},\"basisRelieved\":{},\"shortTermGain\":{},\
+             \"longTermGain\":{},\"unclassifiedGain\":{},\"openLotCount\":{},\
+             \"positionCount\":{},\"navStrike\":{},\"journalPosition\":{}}}",
+            q(&self.name), q(&self.display_name), q(basis_name(self.basis)),
+            q(&self.settlement_open_days.to_string()), q(&self.calendar),
+            q(&self.holiday_count.to_string()), self.declared,
+            date_json(&self.recognised_through),
+            q(&self.unplaceable_entry_count.to_string()),
+            q(&self.net_asset_value), q(&self.total_debit), q(&self.total_credit),
+            q(&self.open_difference), q(&self.open_break_count.to_string()),
+            q(state_name(self.state)),
             q(&self.realized_gain), q(&self.basis_relieved),
             q(&self.short_term_gain), q(&self.long_term_gain),
-            q(&self.unclassified_gain), q(&self.long_term_days.to_string()),
-            q(&self.open_lot_count.to_string()), q(&self.position_count.to_string()),
-            duration_json(&self.nav_strike)
+            q(&self.unclassified_gain), q(&self.open_lot_count.to_string()),
+            q(&self.position_count.to_string()), duration_json(&self.nav_strike),
+            q(&self.journal_position.to_string())
         )
+    }
+}
+
+impl JsonView for pb::ListViewsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"views\":[{}],\"nextPageToken\":{}}}",
+            self.views.iter().map(|v| v.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+impl JsonView for pb::RecognitionDifference {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"entryId\":{},\"memo\":{},\"tradeDate\":{},\
+             \"recognisedHere\":{},\"recognisedThere\":{},\
+             \"netAssetValueEffect\":{}}}",
+            q(&self.entry_id), q(&self.memo), date_json(&self.trade_date),
+            date_json(&self.recognised_here), date_json(&self.recognised_there),
+            q(&self.net_asset_value_effect)
+        )
+    }
+}
+
+impl JsonView for pb::ReconcileViewsResponse {
+    fn to_json(&self) -> String {
+        let list = |rows: &[pb::RecognitionDifference]| {
+            rows.iter().map(|r| r.to_json()).collect::<Vec<_>>().join(",")
+        };
+        format!(
+            "{{\"name\":{},\"against\":{},\"netAssetValue\":{},\
+             \"againstNetAssetValue\":{},\"difference\":{},\
+             \"recognisedHere\":[{}],\"recognisedThere\":[{}],\
+             \"unplaceable\":[{}],\"journalPosition\":{}}}",
+            q(&self.name), q(&self.against), q(&self.net_asset_value),
+            q(&self.against_net_asset_value), q(&self.difference),
+            list(&self.recognised_here), list(&self.recognised_there),
+            list(&self.unplaceable), q(&self.journal_position.to_string())
+        )
+    }
+}
+
+/// How a view's basis is written on the wire.
+///
+/// ⛔ `BASIS_RECORDED` IS NOT A SETTLEMENT CONVENTION and must never be rendered
+/// as "T+0". It is the absence of an election — the journal's own order — and a
+/// client that prints it as an agreed basis asserts a decision nobody made.
+/// `View.declared` is the field that carries the distinction.
+fn basis_name(v: i32) -> &'static str {
+    match pb::view::Basis::try_from(v) {
+        Ok(pb::view::Basis::Recorded) => "RECORDED",
+        Ok(pb::view::Basis::Trade) => "TRADE",
+        Ok(pb::view::Basis::Settlement) => "SETTLEMENT",
+        _ => "UNSPECIFIED",
     }
 }
 
@@ -911,10 +1011,12 @@ impl JsonView for pb::DiffConfigVersionsResponse {
 impl JsonView for pb::NavStrike {
     fn to_json(&self) -> String {
         format!(
-            "{{\"name\":{},\"valuationTime\":{},\"actor\":{},\"journalPosition\":{},\
+            "{{\"name\":{},\"view\":{},\"valuationTime\":{},\"actor\":{},\
+             \"journalPosition\":{},\
              \"journalDigest\":{},\"netAssetValue\":{},\"trialBalanceDifference\":{},\
              \"configDigest\":{},\"qualification\":[{}]}}",
             q(&self.name),
+            q(&self.view),
             // proto3 canonical JSON renders a Timestamp as an RFC 3339 string.
             q(&self
                 .valuation_time

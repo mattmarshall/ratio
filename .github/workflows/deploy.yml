@@ -22,7 +22,13 @@ name: deploy
 #     --template-file deploy/bootstrap.yaml \
 #     --stack-name ratio-demo-bootstrap \
 #     --capabilities CAPABILITY_NAMED_IAM \
-#     --parameter-overrides GitHubRepo=mattmarshall/ratio BudgetEmail=you@example.com
+#     --parameter-overrides GitHubRepo=mattmarshall/ratio
+#
+# ⚠ `BudgetEmail` used to be listed here and is not a parameter of that
+# template — the budget lives in `mattmarshall/cloud-org`, at the payer. Passing
+# it fails the command outright with "Parameter values specified for a template
+# which does not require them", which is a confusing first thing to meet when
+# setting this account up for the first time.
 
 on:
   push:
@@ -139,9 +145,17 @@ jobs:
           # callback. See the ⛔ on CallbackURLs in deploy/app.yaml.
           CONSOLE_ORIGIN: ${{ vars.CONSOLE_ORIGIN }}
         run: |
+          # ⛔ CAPABILITY_NAMED_IAM, BECAUSE THE STACK CREATES TWO NAMED ROLES.
+          # The scale runner's task role and task execution role are named
+          # (`ratio-demo-scale-task`, `ratio-demo-scale-exec`) so that the deploy
+          # role in bootstrap.yaml can scope iam:CreateRole to those two exact
+          # ARNs — an unnamed role gets a generated ARN no policy can name in
+          # advance. Naming them is what buys the tight scope; this flag is the
+          # price of naming them.
           aws cloudformation deploy \
             --template-file deploy/app.yaml \
             --stack-name "$STACK" \
+            --capabilities CAPABILITY_NAMED_IAM \
             --no-fail-on-empty-changeset \
             --parameter-overrides \
               ImageUri='${{ steps.image.outputs.uri }}' \
@@ -262,6 +276,19 @@ jobs:
           # it is the console's own callback route now, and it MUST match a
           # registered Cognito callback URL or every sign-in is refused by the
           # IdP with an error the console cannot explain.
+          # The scale screen is public and must stay that way — it is the one
+          # place the twenty-million-lot claim can be checked by somebody with
+          # no account. ⚠ Asserting the RECORDED figure, not a live one: no
+          # fold has run on a fresh deploy, and a smoke test that waited for one
+          # would wait sixteen minutes.
+          want "the scale screen" "Twenty million tax lots" "${URL}scale"
+          want "the recorded cold build" "995.0 s" "${URL}scale"
+          want "the shapes it can fold" '"size":"full"' "${URL}scale-runs.json"
+          # ⛔ AND THE RUNNER IS WIRED. `"runner":null` means the function has no
+          # cluster to start a fold on — which is a valid LOCAL state and a
+          # broken deployed one, so the deploy is where it must be caught.
+          deny "an unwired scale runner" '"runner":null' "${URL}scale-runs.json"
+
           want "the auth config" '"redirectPath":"/api/auth/callback"' "${URL}authconfig.json"
 
           # ⛔ THE CONSOLE TAKES ITS OAuth `redirect_uri` FROM THIS FIELD, so a

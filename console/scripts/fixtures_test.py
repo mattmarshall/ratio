@@ -11,7 +11,7 @@ carries exactly those names — recursively, through nested messages.
 
 ⚠ WHAT THIS DOES NOT CHECK IS THE VALUES. It cannot: only a real book knows what
 a real book says. `console/scripts/capture_fixtures.sh` regenerates these from a
-running `ratio watch` over `deploy/seed-demo-funds.sh`'s six funds, and that is
+running `ratio watch` over `deploy/seed-demo-funds.sh`'s seven funds, and that is
 the honest way to refresh them. This test is what keeps a hand-edit from
 silently inventing a field in the meantime.
 
@@ -29,6 +29,9 @@ from pathlib import Path
 FIXTURES = {
     "funds.json": "ListFundsResponse",
     "fund.json": "Fund",
+    "views.json": "ListViewsResponse",
+    "view.json": "View",
+    "reconcile.json": "ReconcileViewsResponse",
     "breaks.json": "ListBreaksResponse",
     "break.json": "Break",
     "accounts.json": "ListAccountsResponse",

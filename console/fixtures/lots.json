@@ -1,7 +1,7 @@
 {
   "lots": [
     {
-      "name": "funds/harbourline-global-value/positions/ACME/lots/1",
+      "name": "funds/harbourline-global-value/views/abor/positions/ACME/lots/1",
       "sequence": "1",
       "units": "600",
       "cost": "19800000",
@@ -12,7 +12,7 @@
       }
     },
     {
-      "name": "funds/harbourline-global-value/positions/ACME/lots/2",
+      "name": "funds/harbourline-global-value/views/abor/positions/ACME/lots/2",
       "sequence": "2",
       "units": "400",
       "cost": "13488000",

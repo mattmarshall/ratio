@@ -8,9 +8,12 @@ import changeLogFixture from "../../fixtures/changeLogEntries.json";
 import fundFixture from "../../fixtures/fund.json";
 import lotsFixture from "../../fixtures/lots.json";
 import navStrikesFixture from "../../fixtures/navStrikes.json";
+import reconcileFixture from "../../fixtures/reconcile.json";
 import positionsFixture from "../../fixtures/positions.json";
 import replayFixture from "../../fixtures/replay.json";
 import rulesFixture from "../../fixtures/rules.json";
+import viewFixture from "../../fixtures/view.json";
+import viewsFixture from "../../fixtures/views.json";
 
 // ⛔ THE SUCCESSOR TO `//web:rendered_test`, AND ITS REASON IS UNCHANGED.
 //
@@ -45,14 +48,27 @@ vi.mock("next/navigation", async () => {
   return {
     ...actual,
     useRouter: () => ({ replace: () => {}, push: () => {}, refresh: () => {} }),
-    usePathname: () => "/funds/harbourline-global-value/breaks",
+    usePathname: () =>
+      "/funds/harbourline-global-value/views/abor/breaks",
     useSelectedLayoutSegment: () => "breaks",
-    useSelectedLayoutSegments: () => ["harbourline-global-value", "breaks"],
+    // ⚠ FOUR SEGMENTS NOW, NOT TWO. `FundRail` reads [0] for the fund and
+    // both `ScreenTabs` and `ViewSwitch` read [1] and [2] for the view and the
+    // screen. A mock that stayed two long would have let every one of them
+    // render the wrong link while these tests stayed green.
+    useSelectedLayoutSegments: () => [
+      "harbourline-global-value",
+      "views",
+      "abor",
+      "breaks",
+    ],
   };
 });
 
 const wire = {
   getFund: async () => fundFixture,
+  getView: async () => viewFixture,
+  listViews: async () => viewsFixture,
+  reconcileViews: async () => reconcileFixture,
   getBreak: async () => breakFixture,
   listBreaks: async () => breaksFixture,
   listAccounts: async () => accountsFixture,
@@ -73,6 +89,7 @@ vi.mock("@/wire/client", async () => {
 });
 
 const FUND = "harbourline-global-value";
+const VIEW = "abor";
 const params = <T,>(v: T) => Promise.resolve(v);
 
 /** Render an async server component by awaiting the element it returns. */
@@ -82,9 +99,9 @@ async function renderAsync(el: Promise<React.ReactElement>) {
 
 describe("the trial balance", () => {
   it("shows the untranslated per-currency split beneath a translated total", async () => {
-    const Accounts = (await import("./funds/[fund]/accounts/page")).default;
+    const Accounts = (await import("./funds/[fund]/views/[view]/accounts/page")).default;
     await renderAsync(
-      Accounts({ params: params({ fund: FUND }), searchParams: params({}) }),
+      Accounts({ params: params({ fund: FUND, view: VIEW }), searchParams: params({}) }),
     );
     // ⛔ The figure above is a conversion; a reader checking it needs the facts
     // it was converted from. Two currencies are two independent conservation
@@ -98,17 +115,80 @@ describe("the trial balance", () => {
 
 describe("positions", () => {
   it("shows the open-lot count on the list", async () => {
-    const Positions = (await import("./funds/[fund]/positions/page")).default;
-    await renderAsync(Positions({ params: params({ fund: FUND }) }));
+    const Positions = (await import("./funds/[fund]/views/[view]/positions/page")).default;
+    await renderAsync(Positions({ params: params({ fund: FUND, view: VIEW }) }));
     expect(screen.getByText(/40 open lots/)).toBeDefined();
   });
 
   it("renders the lot book, and says when a lot has no trade date", async () => {
     const { LotBook } = await import("@/components/LotBook");
-    await renderAsync(LotBook({ fund: FUND, position: "ACME" }));
+    await renderAsync(LotBook({ fund: FUND, view: VIEW, position: "ACME" }));
     expect(document.querySelectorAll(".lotrow").length).toBe(2);
     // A lot the engine cannot classify says so rather than showing a guess.
     expect(screen.getByText("no trade date")).toBeDefined();
+  });
+});
+
+describe("views", () => {
+  it("names the basis of every view, and marks one nobody declared", async () => {
+    const { ViewSwitch } = await import("@/components/ViewSwitch");
+    render(
+      <ViewSwitch
+        fund={FUND}
+        views={viewsFixture.views as never}
+        defaultView="abor"
+      />,
+    );
+    expect(screen.getByText("ABOR")).toBeDefined();
+    expect(screen.getByText("IBOR")).toBeDefined();
+    // ⛔ THE DISTINCTION A DEFAULT DESTROYS. Both fixture views are declared,
+    // so nothing is marked — and an undeclared one must be. Flip `declared` to
+    // false in views.json and this goes red; that is the negative test.
+    expect(screen.queryByText("default")).toBeNull();
+  });
+
+  it("shows two NAVs, their difference, and the entries that account for it", async () => {
+    const Reconcile = (
+      await import("./funds/[fund]/views/[view]/reconcile/page")
+    ).default;
+    await renderAsync(
+      Reconcile({
+        params: params({ fund: FUND, view: VIEW }),
+        searchParams: params({ against: "ibor" }),
+      }),
+    );
+
+    // ⭐ THE ARITHMETIC IS RENDERED, NOT ASSERTED. A screen that shows a
+    // difference it cannot itemize is one to distrust, and
+    // `Ratio.Views.two_views_differ_by_exactly_what_is_in_flight` says the two
+    // lists account for it exactly.
+    expect(screen.getByText("134,439,187.51")).toBeDefined();
+    expect(screen.getByText("134,102,187.51")).toBeDefined();
+
+    // ⭐ TWICE ON THE SCREEN, AND THAT IS THE ASSERTION RATHER THAN AN
+    // ACCIDENT. The headline difference and the subtotal of the entries listed
+    // under it are the same figure — a trade-date view recognises no later than
+    // a T+2 one, so nothing is in flight the other way and the one list
+    // accounts for the whole gap. If the screen ever showed a difference its
+    // rows did not add to, this drops to one.
+    expect(screen.getAllByText("337,000.00").length).toBe(2);
+
+    // And the lists really do add to it: 300,000.00 + 40,000.00 − 3,000.00.
+    //
+    // ⚠ BOTH LISTS, THOUGH ONE IS EMPTY HERE. A trade-date view recognises no
+    // later than a T+2 one, so nothing is in flight the other way round for
+    // THIS pair — but a recorded view against a trade-date one puts entries in
+    // both, and a sum that read only one list would be right by accident.
+    const sum = (rows: { netAssetValueEffect: string }[]) =>
+      rows.reduce((n, r) => n + BigInt(r.netAssetValueEffect), 0n);
+    const here = sum(reconcileFixture.recognisedHere);
+    const there = sum(reconcileFixture.recognisedThere);
+    expect((here + there).toString()).toBe(reconcileFixture.difference);
+
+    // ⛔ AND THE ENTRIES NEITHER VIEW CAN PLACE ARE ON THE SCREEN. Hiding them
+    // would make the difference look fully explained when it is not.
+    expect(screen.getByText("Neither view can place these")).toBeDefined();
+    expect(screen.getByText("Opening balance, migrated book")).toBeDefined();
   });
 });
 
@@ -116,7 +196,12 @@ describe("the fund overview", () => {
   it("reads the realized gain, and flips it credit-normal exactly once", async () => {
     const Overview = (await import("./funds/[fund]/page")).default;
     await renderAsync(Overview({ params: params({ fund: FUND }) }));
-    expect(screen.getByText("Realized gain")).toBeDefined();
+    // ⛔ THE ROW NAMES ITS VIEW NOW, AND THAT IS THE ASSERTION. A realized
+    // gain depends on which open lots had been recognised when the sale
+    // arrived, so the same election gives up different lots in different
+    // views. A row that printed the figure without saying which view is the
+    // row already in HANDOFF.md's failure table.
+    expect(screen.getByText(/Realized gain, in abor/)).toBeDefined();
     // ⛔ The raw figure is "-1500000" — the gain leg is `relieved − proceeds`,
     // so a PROFITABLE disposal carries a minus sign. A screen that printed it
     // unflipped would show every profitable fund as a loss.
@@ -148,18 +233,18 @@ describe("the fund overview", () => {
 
 describe("a NAV strike", () => {
   it("puts the qualification before the figure, not behind a click", async () => {
-    const Strikes = (await import("./funds/[fund]/strikes/page")).default;
-    await renderAsync(Strikes({ params: params({ fund: FUND }) }));
+    const Strikes = (await import("./funds/[fund]/views/[view]/strikes/page")).default;
+    await renderAsync(Strikes({ params: params({ fund: FUND, view: VIEW }) }));
     expect(
       screen.getByText(/a corporate action announced after this prefix/),
     ).toBeDefined();
   });
 
   it("reports history intact and reproduced as two separate claims", async () => {
-    const Replay = (await import("./funds/[fund]/strikes/[strike]/replay/page"))
+    const Replay = (await import("./funds/[fund]/views/[view]/strikes/[strike]/replay/page"))
       .default;
     await renderAsync(
-      Replay({ params: params({ fund: FUND, strike: "2026-02-26" }) }),
+      Replay({ params: params({ fund: FUND, view: VIEW, strike: "2026-02-26" }) }),
     );
     // ⛔ TWO CLAIMS, NOT ONE. Intact says the prefix still hashes to what the
     // strike recorded; reproduced says folding it again gives the same figure.
@@ -173,9 +258,9 @@ describe("a NAV strike", () => {
 
 describe("a break", () => {
   it("shows the two figures and what produced ours", async () => {
-    const Detail = (await import("./funds/[fund]/breaks/[break]/page")).default;
+    const Detail = (await import("./funds/[fund]/views/[view]/breaks/[break]/page")).default;
     await renderAsync(
-      Detail({ params: params({ fund: FUND, break: "cash-usd-2026-02-26" }) }),
+      Detail({ params: params({ fund: FUND, view: VIEW, break: "cash-usd-2026-02-26" }) }),
     );
     expect(screen.getByText("Ratio")).toBeDefined();
     expect(screen.getByText("Reported")).toBeDefined();
@@ -186,9 +271,12 @@ describe("a break", () => {
   it("names the bounds the severity was graded against", async () => {
     // A grade whose terms a reader has to go and look up is a grade a reader
     // takes on trust — which is the one thing this product is not for.
-    const Detail = (await import("./funds/[fund]/breaks/[break]/page")).default;
+    const Detail = (await import("./funds/[fund]/views/[view]/breaks/[break]/page"))
+      .default;
     await renderAsync(
-      Detail({ params: params({ fund: FUND, break: "cash-usd-2026-02-26" }) }),
+      Detail({
+        params: params({ fund: FUND, view: VIEW, break: "cash-usd-2026-02-26" }),
+      }),
     );
     expect(screen.getByText(/graded at/)).toBeDefined();
     expect(screen.getByText(/1,000\.00 blocks/)).toBeDefined();
@@ -196,9 +284,12 @@ describe("a break", () => {
   });
 
   it("shows an accepted explanation with the name on it", async () => {
-    const Detail = (await import("./funds/[fund]/breaks/[break]/page")).default;
+    const Detail = (await import("./funds/[fund]/views/[view]/breaks/[break]/page"))
+      .default;
     await renderAsync(
-      Detail({ params: params({ fund: FUND, break: "cash-usd-2026-02-26" }) }),
+      Detail({
+        params: params({ fund: FUND, view: VIEW, break: "cash-usd-2026-02-26" }),
+      }),
     );
     expect(screen.getByText("Why this is acceptable")).toBeDefined();
     expect(screen.getByText(/unsettled dividend/)).toBeDefined();
@@ -215,9 +306,12 @@ describe("a break", () => {
     // explanation a later figure overtook are both "not open", and showing
     // them alike is how the second gets closed without anybody looking at
     // what moved.
-    const Queue = (await import("./funds/[fund]/breaks/page")).default;
+    const Queue = (await import("./funds/[fund]/views/[view]/breaks/page")).default;
     await renderAsync(
-      Queue({ params: params({ fund: FUND }), searchParams: params({}) }),
+      Queue({
+        params: params({ fund: FUND, view: VIEW }),
+        searchParams: params({}),
+      }),
     );
     expect(screen.getByText("stale")).toBeDefined();
   });

@@ -17,13 +17,15 @@ import { listLots } from "@/wire/client";
  */
 export async function LotBook({
   fund,
+  view,
   position,
 }: {
   fund: string;
+  view: string;
   position: string;
 }) {
   const c = await caller();
-  const { lots } = await listLots(c, fund, position);
+  const { lots } = await listLots(c, fund, view, position);
   if (lots.length === 0) {
     return <div className="empty">No open lots behind this position.</div>;
   }
@@ -35,7 +37,7 @@ export async function LotBook({
           <Link
             className="lotrow"
             key={l.name}
-            href={`/funds/${fund}/positions/${position}/lots/${id}`}
+            href={`/funds/${fund}/views/${view}/positions/${position}/lots/${id}`}
           >
             <span className="num">{l.sequence}</span>
             <span className="num">{count(l.units)}</span>

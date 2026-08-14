@@ -1,7 +1,7 @@
 {
   "navStrikes": [
     {
-      "name": "funds/harbourline-global-value/navStrikes/2026-02-26",
+      "name": "funds/harbourline-global-value/views/abor/navStrikes/2026-02-26",
       "valuationTime": "2026-02-26T21:00:00Z",
       "actor": "e.marsh",
       "journalPosition": "6",
@@ -11,7 +11,8 @@
       "qualification": [
         "a corporate action announced after this prefix is not applied"
       ],
-      "configDigest": "9f2c1ab7de40551c"
+      "configDigest": "9f2c1ab7de40551c",
+      "view": "abor"
     }
   ],
   "nextPageToken": ""

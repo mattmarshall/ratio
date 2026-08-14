@@ -1,7 +1,7 @@
 {
   "breaks": [
     {
-      "name": "funds/harbourline-global-value/breaks/cash-usd-2026-02-26",
+      "name": "funds/harbourline-global-value/views/abor/breaks/cash-usd-2026-02-26",
       "account": "Cash and equivalents",
       "accountDimension": "1010",
       "severity": "HIGH",
@@ -38,7 +38,7 @@
       }
     },
     {
-      "name": "funds/harbourline-global-value/breaks/lot-acme-2026-02-26",
+      "name": "funds/harbourline-global-value/views/abor/breaks/lot-acme-2026-02-26",
       "account": "Investments at fair value",
       "accountDimension": "1200",
       "severity": "HIGH",

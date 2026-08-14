@@ -171,7 +171,7 @@ side log — the current `Plane::Actions` is not pinned by a strike, so a factor
 computed from it would produce a different figure on every replay as the world
 told us more.
 
-`Ratio.Period.one_answer_per_day` refuses restatement. A replay that quietly
+`Ratio.Period.one_answer_per_view_per_day` refuses restatement. A replay that quietly
 answered differently would not be a restatement — it would be worse, because
 nothing would announce that the figure had moved. -/
 theorem replay_is_determined_by_the_prefix

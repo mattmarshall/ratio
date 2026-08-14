@@ -25,3 +25,25 @@ sh_test(
     args = ["$(rootpath //crates/ratio)"],
     data = ["//crates/ratio"],
 )
+
+# `ratio bench` renders one run as a report and as JSON. This holds the two to
+# the same figures — the defect it is for is a second MEASUREMENT rather than a
+# second rendering, which would give two answers that both tie and disagree.
+sh_test(
+    name = "bench_renderings_test",
+    size = "small",
+    srcs = ["bench-renderings.sh"],
+    args = ["$(rootpath //crates/ratio)"],
+    data = ["//crates/ratio"],
+)
+
+# Two benchmarks at once used to delete each other's book, and the wrong answer
+# tied — 22% of the lots in 22% of the time, trial balance 0. `medium` because
+# it runs three benches, two of them concurrently.
+sh_test(
+    name = "bench_concurrent_test",
+    size = "medium",
+    srcs = ["bench-concurrent.sh"],
+    args = ["$(rootpath //crates/ratio)"],
+    data = ["//crates/ratio"],
+)

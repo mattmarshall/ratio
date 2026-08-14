@@ -78,16 +78,18 @@ RUN set -eu; \
     echo "demo book ok: $(find /opt/demo-book -type f | wc -l) file(s)"; \
     echo "== /opt/demo-funds =="; \
     ls -1 /opt/demo-funds | sed 's|^|  |'; \
-    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 6 || { echo "FAIL: expected 6 funds"; exit 1; }; \
+    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 7 || { echo "FAIL: expected 7 funds"; exit 1; }; \
     for f in /opt/demo-funds/*/; do \
       test -s "$f/accounts.json" || { echo "FAIL: $f has no chart"; exit 1; }; \
     done; \
     test ! -s /opt/demo-funds/harbourline-global-value/NAVS || { echo "FAIL: a blocked fund struck a NAV"; exit 1; }; \
     test -s /opt/demo-funds/pennington-select-income/NAVS || { echo "FAIL: the explained fund has no NAV — the gate did not open"; exit 1; }; \
     test -s /opt/demo-funds/pennington-select-income/explanations.jsonl || { echo "FAIL: no explanation on the explained fund"; exit 1; }; \
+    test -s /opt/demo-funds/marlowe-dual-basis/NAVS || { echo "FAIL: the dual-basis fund has no NAV"; exit 1; }; \
+    test "$(wc -l < /opt/demo-funds/marlowe-dual-basis/NAVS)" -ge 2 || { echo "FAIL: the dual-basis fund struck fewer than two views"; exit 1; }; \
     ashcombe=$(wc -l < /opt/demo-funds/ashcombe-global-equity/journal.jsonl); \
     test "$ashcombe" -gt 1000 || { echo "FAIL: the generated fund has $ashcombe entries — the demo shows no scale"; exit 1; }; \
-    echo "demo funds ok: 6, and $ashcombe entries on the generated one"
+    echo "demo funds ok: 7, and $ashcombe entries on the generated one"
 
 # The adapter polls this until the server answers, so a cold start does not
 # race the first request.

@@ -69,6 +69,41 @@ def proto_messages(text: str) -> dict[str, set[str]]:
     return out
 
 
+def duplicate_fields(text: str) -> list[str]:
+    """Fields a message declares twice, by name or by number.
+
+    ⛔ THE ONE THING `proto_messages` ABOVE STRUCTURALLY CANNOT SEE, AND IT LET A
+    BROKEN CONTRACT PAST THIS FILE. Fields are collected into a SET, so a message
+    declaring `state` twice collapses to one entry and every mirror agrees with
+    it — this test went green on a `console.proto` that protoc refused outright.
+
+    ⚠ protoc is the real authority and always was; this is not trying to replace
+    it. What it buys is that the failure lands HERE, in a check that runs without
+    Bazel, rather than eight minutes into CI on a machine that can fetch a
+    toolchain — which is the difference between a typo and a round trip.
+    """
+    out: list[str] = []
+    text = re.sub(r"//[^\n]*", "", text)
+    for m in re.finditer(r"\bmessage\s+(\w+)\s*\{", text):
+        i, depth = m.end(), 1
+        while i < len(text) and depth:
+            depth += (text[i] == "{") - (text[i] == "}")
+            i += 1
+        body = re.sub(r"\b(?:enum|message)\s+\w+\s*\{[^{}]*\}", "", text[m.end() : i - 1])
+        names: dict[str, int] = {}
+        nums: dict[str, int] = {}
+        for f in re.finditer(r"^\s*(?:repeated\s+)?[\w.]+\s+(\w+)\s*=\s*(\d+)", body, re.M):
+            names[f.group(1)] = names.get(f.group(1), 0) + 1
+            nums[f.group(2)] = nums.get(f.group(2), 0) + 1
+        for n, c in sorted(names.items()):
+            if c > 1:
+                out.append(f"{m.group(1)}.{n} is declared {c} times")
+        for n, c in sorted(nums.items()):
+            if c > 1:
+                out.append(f"{m.group(1)} uses field number {n} {c} times")
+    return out
+
+
 def ts_interfaces(text: str) -> dict[str, set[str]]:
     out: dict[str, set[str]] = {}
     for m in re.finditer(r"export interface (\w+)\s*\{([^}]*)\}", text):
@@ -156,7 +191,19 @@ def compare(what: str, proto: dict[str, set[str]], mirror: dict[str, set[str]],
 
 
 def main() -> None:
-    proto = proto_messages(Path(sys.argv[1]).read_text())
+    contract = Path(sys.argv[1]).read_text()
+    # ⛔ BEFORE THE MIRRORS, because a contract that protoc will refuse cannot be
+    # mirrored correctly by anything — and the set-based comparison below reads
+    # a duplicated field as a single one and passes.
+    dupes = duplicate_fields(contract)
+    for d in dupes:
+        print(f"::error::{d}")
+    if dupes:
+        sys.exit(
+            f"\n{len(dupes)} duplicate field(s) — protoc will refuse this contract, and "
+            "the mirror comparison below would have called it fine"
+        )
+    proto = proto_messages(contract)
     ts = ts_interfaces(Path(sys.argv[2]).read_text())
     rs = json_impls(Path(sys.argv[3]).read_text())
 

@@ -3,6 +3,11 @@ package(default_visibility = ["//visibility:public"])
 # Exposed for crate_universe's `manifests` (the workspace root manifest).
 exports_files(["Cargo.toml"])
 
+# ⛔ The deploy workflow is DATA to a test, because the capability flag it passes
+# is part of whether `deploy/app.yaml` can be deployed at all. See
+# `//deploy:iac_test`.
+exports_files([".github/workflows/deploy.yml"])
+
 # Convenience: `bazel run //:ratio`.
 alias(
     name = "ratio",
@@ -25,4 +30,27 @@ sh_test(
     srcs = ["plan_refusals_test.sh"],
     args = ["$(location PLAN.md)"],
     data = ["PLAN.md"],
+)
+
+# The scale screen offers three shapes to fold. This checks they are the shapes
+# HANDOFF.md measured — same spirit as the check above, and the same honest
+# limitation: it cannot say either list is true, only that the two cannot drift
+# apart in silence.
+#
+# ⛔ The confusion it exists for is real and cost a plan revision: the recorded
+# twenty-million-lot row is 10,000 securities x 2,000 lots, while `ratio closure`
+# dials 500 x 40,000. Same lot count, a twentieth of the mark cost, both
+# captioned "twenty million tax lots".
+sh_test(
+    name = "scale_shapes_test",
+    size = "small",
+    srcs = ["scale_shapes_test.sh"],
+    args = [
+        "$(location //crates/ratio:src/scale.rs)",
+        "$(location HANDOFF.md)",
+    ],
+    data = [
+        "HANDOFF.md",
+        "//crates/ratio:src/scale.rs",
+    ],
 )

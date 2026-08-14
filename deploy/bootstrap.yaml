@@ -218,8 +218,11 @@ Resources:
                   - logs:DeleteLogGroup
                   - logs:DescribeLogGroups
                   - logs:PutRetentionPolicy
+                  - logs:DeleteRetentionPolicy
                   - logs:TagResource
+                  - logs:UntagResource
                   - logs:ListTagsForResource
+                  - logs:ListTagsLogGroup
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/ratio-demo*"
               - Sid: PassOnlyTheExecutionRole
                 Effect: Allow
@@ -234,6 +237,186 @@ Resources:
                   - iam:GetRole
                   - iam:ListRoleTags
                 Resource: !GetAtt ExecutionRole.Arn
+
+              # ── The scale runner ───────────────────────────────────────────
+              #
+              # A twenty-million-lot cold build takes ~16 minutes, a gigabyte and
+              # a ~40 GB journal. The function it would run in has a 15-SECOND
+              # timeout, 512 MB of memory and 512 MB of /tmp, so the fold happens
+              # in a one-shot Fargate task and the function only starts it.
+              #
+              # ⛔ NONE OF THIS EXISTED, AND CI COULD CREATE NONE OF IT. The
+              # statements below are what `app.yaml` needs to stand up the task:
+              # a VPC to put it in, a cluster to run it on, a bucket for the
+              # figures, and the two roles the task assumes. Without them the
+              # deploy fails with AccessDenied and the template is unusable.
+              #
+              # ⚠ EVERY ONE IS SCOPED. `ecs:*` on `*` would let a compromised CI
+              # run any task definition in the account; these name the cluster
+              # and the family. The `ec2:` block is the exception and cannot be
+              # narrowed — VPC resources have no ARN until they exist, so
+              # CreateVpc is inherently unscopable. It is bounded instead by the
+              # CloudFormation statement above, which admits one stack.
+              - Sid: TheScaleClusterAndItsTasks
+                Effect: Allow
+                Action:
+                  - ecs:CreateCluster
+                  - ecs:DeleteCluster
+                  - ecs:DescribeClusters
+                  - ecs:PutClusterCapacityProviders
+                  - ecs:TagResource
+                  - ecs:UntagResource
+                  - ecs:RegisterTaskDefinition
+                  - ecs:DeregisterTaskDefinition
+                  - ecs:DescribeTaskDefinition
+                  - ecs:ListTaskDefinitions
+                  - ecs:ListTagsForResource
+                  - ecs:UpdateCluster
+                Resource: "*"
+
+              # ⛔ THE NETWORK IS CREATED, NOT BORROWED. Fargate requires awsvpc
+              # networking and this account has no VPC at all — not even a
+              # default one — so the stack brings its own: one VPC, one PUBLIC
+              # subnet, an internet gateway and a route. ⚠ Public deliberately:
+              # a private subnet would need a NAT gateway, which is ~$32/month
+              # standing against a $5 budget, to reach ECR and S3.
+              - Sid: TheNetworkTheTaskRunsIn
+                Effect: Allow
+                Action:
+                  # ⛔ THE MUTATING ACTIONS ARE ENUMERATED. These are the ones
+                  # worth being exact about: each creates or destroys something
+                  # that costs money or carries traffic.
+                  - ec2:CreateVpc
+                  - ec2:DeleteVpc
+                  - ec2:ModifyVpcAttribute
+                  - ec2:CreateSubnet
+                  - ec2:DeleteSubnet
+                  - ec2:ModifySubnetAttribute
+                  - ec2:CreateInternetGateway
+                  - ec2:DeleteInternetGateway
+                  - ec2:AttachInternetGateway
+                  - ec2:DetachInternetGateway
+                  - ec2:CreateRouteTable
+                  - ec2:DeleteRouteTable
+                  - ec2:CreateRoute
+                  - ec2:DeleteRoute
+                  - ec2:AssociateRouteTable
+                  - ec2:DisassociateRouteTable
+                  - ec2:CreateSecurityGroup
+                  - ec2:DeleteSecurityGroup
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:RevokeSecurityGroupEgress
+                  - ec2:CreateTags
+                  - ec2:DeleteTags
+                  # ⛔ AND THE READS ARE A WILDCARD, DELIBERATELY, BECAUSE
+                  # ENUMERATING THEM IS WHAT FAILED. The first version listed
+                  # five `Describe` calls — the ones matching resources this
+                  # template creates — and the deploy died on a sixth:
+                  #
+                  #   ScaleSubnet CREATE_FAILED  AccessDenied. User doesn't have
+                  #   permission to call ec2:DescribeAvailabilityZones
+                  #
+                  # `!GetAZs ""` needs it, and nothing about the subnet's own
+                  # resource type says so. CloudFormation also reads back
+                  # `DescribeVpcAttribute` after setting the DNS flags, and
+                  # `DescribeSecurityGroupRules` after an egress rule — none of
+                  # which is discoverable from the template.
+                  #
+                  # ⚠ THIS IS NOT A WIDENING. Every `ec2:Describe*` is read-only
+                  # and takes no resource ARN, so enumerating them buys no
+                  # narrowing whatsoever — the `Resource: "*"` below was already
+                  # forced by that. What enumeration bought was a deploy that
+                  # failed after a Bazel build, a test suite, a docker build and
+                  # an ECR push, once per missing verb.
+                  - ec2:Describe*
+                Resource: "*"
+
+              # Where the run's progress and its figures are kept. One bucket,
+              # named after the account so the name is available.
+              - Sid: TheBucketTheFiguresLandIn
+                Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:DeleteBucket
+                  - s3:PutBucketPolicy
+                  - s3:DeleteBucketPolicy
+                  - s3:GetBucketPolicy
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:GetBucketPublicAccessBlock
+                  - s3:PutLifecycleConfiguration
+                  - s3:PutBucketTagging
+                  - s3:PutEncryptionConfiguration
+                  - s3:ListBucket
+                  # ⛔ SAME REASON AS ec2:Describe*. CloudFormation's S3 handler
+                  # populates its resource model by reading EVERY bucket
+                  # sub-resource on create — acl, cors, website, logging,
+                  # versioning, notification, replication, object-lock,
+                  # ownership-controls, accelerate, request-payment — whether or
+                  # not the template mentions them. Listing the ones this
+                  # template sets is exactly the mistake that failed on
+                  # `ec2:DescribeAvailabilityZones`, and every one of these is
+                  # read-only on a single named bucket.
+                  - s3:Get*
+                Resource: !Sub "arn:aws:s3:::ratio-demo-scale-${AWS::AccountId}"
+
+              # The task's own log group, kept separate from the function's so
+              # the retention on each is set for what it holds.
+              - Sid: TheScaleTasksLogGroup
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
+                  - logs:DescribeLogGroups
+                  - logs:PutRetentionPolicy
+                  - logs:DeleteRetentionPolicy
+                  - logs:TagResource
+                  - logs:UntagResource
+                  - logs:ListTagsForResource
+                  - logs:ListTagsLogGroup
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/ecs/ratio-demo-scale*"
+
+              # ⛔ THE TWO TASK ROLES, BY NAME. `app.yaml` creates them, so CI
+              # needs iam:CreateRole — which is the widest thing in this policy
+              # and is therefore pinned to two exact ARNs. Naming the roles
+              # explicitly is what makes that possible; unnamed roles get
+              # generated ARNs that no policy can name in advance.
+              #
+              # ⚠ This is why the deploy passes CAPABILITY_NAMED_IAM.
+              - Sid: TheTaskRolesAndNothingElse
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListRoleTags
+                  - iam:TagRole
+                  - iam:UntagRole
+                  # ⚠ Needed when a role's trust policy or description changes
+                  # rather than when it is first created — so a template edit
+                  # that CI could apply today would fail on the day somebody
+                  # narrows a trust policy.
+                  - iam:UpdateRole
+                  - iam:UpdateAssumeRolePolicy
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ratio-demo-scale-task"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ratio-demo-scale-exec"
+
+              - Sid: PassTheTaskRolesToEcsOnly
+                Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ratio-demo-scale-task"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ratio-demo-scale-exec"
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
 
   # ── What the function itself may do ─────────────────────────────────────
   # Deliberately almost nothing. The demo reads a book baked into its own image
@@ -275,6 +458,68 @@ Resources:
                   - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-sonnet-4-5-20250929-v1:0"
                   - arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0
                   - arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0
+        - PolicyName: start-and-read-a-scale-run
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # The scale screen's button. ⛔ ONE TASK DEFINITION FAMILY AND ONE
+              # CLUSTER — not `ecs:RunTask` on `*`, which on a PUBLIC endpoint
+              # would let anyone who found a way to influence the call run any
+              # container in the account.
+              #
+              # ⚠ The wildcard on the family is the task definition's REVISION,
+              # which changes on every deploy. `…:task-definition/ratio-demo-
+              # scale:*` names every revision of one family and nothing else.
+              - Sid: StartOneKindOfTask
+                Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/ratio-demo-scale:*"
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/ratio-demo-scale"
+
+              # To report "a fold is already running" and how far along it is.
+              - Sid: SeeWhatIsRunning
+                Effect: Allow
+                Action:
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                Resource: "*"
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/ratio-demo-scale"
+
+              # ⛔ RunTask HANDS THE TASK ITS ROLES, so the caller needs
+              # PassRole for them — scoped to the two, and to ECS only.
+              - Sid: HandTheTaskItsRoles
+                Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ratio-demo-scale-task"
+                  - !Sub "arn:aws:iam::${AWS::AccountId}:role/ratio-demo-scale-exec"
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+
+              # The lock, the spend counter and the published figures.
+              #
+              # ⛔ THE LOCK IS A CONDITIONAL PUT, which is an ordinary
+              # `s3:PutObject` with an `If-None-Match` header — no extra
+              # permission, and no read-then-write that could admit two runs.
+              - Sid: TheRunRecord
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub "arn:aws:s3:::ratio-demo-scale-${AWS::AccountId}/runs/*"
+              - Sid: ListOnlyTheRunPrefix
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::ratio-demo-scale-${AWS::AccountId}"
+                Condition:
+                  StringLike:
+                    s3:prefix: "runs/*"
 
   # ⛔ NO BUDGET HERE. mattmarshall/cloud-org owns budgets for every account in
   # the organization, at the payer, filtered by LinkedAccount — including this

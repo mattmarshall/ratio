@@ -43,10 +43,11 @@ usage:
   ratio post FILE [--book DIR]         post entries directly; refuses unbalanced
   ratio balance [--book DIR]           print the trial balance
   ratio explain ACCOUNT [--book DIR]   read back the postings behind a figure
-  ratio strike [--as-of YYYY-MM-DD]    strike a NAV, pinned to the journal
+  ratio views [--book DIR]             the books of record this fund keeps
+  ratio strike [--as-of D] [--view V]  strike a NAV, pinned to the journal
         [--book DIR]                   with --as-of it REFUSES an unpriced position
-  ratio navs [--book DIR]              every NAV struck on this book
-  ratio replay STRIKE-ID [--book DIR]  re-derive a strike and prove it again
+  ratio navs [--view V]                every NAV struck on this book
+  ratio replay ID [--view V]           re-derive a strike and prove it again
   ratio recon TXNS.csv POSITIONS.csv   shadow-run a period and report breaks
         [--book DIR] [--out FILE.pb] [--post]
   ratio watch [--book DIR] [--port N]  live trial balance in a browser
@@ -61,23 +62,52 @@ usage:
   ratio stale [--book DIR]             NAVs struck without an action since arrived
   ratio gen [--book DIR] [--securities N] [--lots-per N] [--turnover N]
         [--currencies N] [--open-actions N] [--capital N] [--seed N]
+        [--views abor,ibor:t+2] [--settle-tail N] [--subscriptions-in-tail N]
                                        generate a fund INTO a book, to serve
   ratio bench [--securities N] [--lots-per N] [--turnover N]
         [--currencies N]
                                        generate a fund and measure a period end
+  ratio bench --fold [--book DIR]      measure a period end over a book already
+                                       generated; takes no dials, reads the shape
   ratio closure [--securities N] [--currencies N] [--lots-per N]
         [--open-actions N] [--capital N]
                                        what a period end costs, before running it
+  ratio scale-run --size NAME          fold one declared shape and publish it
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio accept BREAK --because TEXT    record why a difference is acceptable
-        [--book DIR]                   — humans only, like approve
+        [--book DIR] [--view NAME]     — humans only, like approve
   ratio server                         serve the Ledger gRPC API
 
 The book defaults to ./book, or $RATIO_BOOK if set.
 ";
 
+mod scale;
 mod watch;
+
+/// `--name value` pairs, for verbs that carry more than one.
+///
+/// ⛔ REFUSES AN UNKNOWN FLAG RATHER THAN IGNORING IT. A mistyped `--veiw` that
+/// parsed as nothing would strike in whichever view the book defaults to, print
+/// a figure, and be wrong in a way the output does not show. The whole point of
+/// naming the view is that a figure says which question it answers.
+fn flags(rest: &[&str]) -> Result<std::collections::BTreeMap<String, String>> {
+    const KNOWN: [&str; 2] = ["--as-of", "--view"];
+    let mut out = std::collections::BTreeMap::new();
+    let mut it = rest.iter();
+    while let Some(k) = it.next() {
+        if !KNOWN.contains(k) {
+            bail!("unrecognized flag {k:?} — this verb takes {}", KNOWN.join(" or "));
+        }
+        let v = it
+            .next()
+            .with_context(|| format!("{k} needs a value"))?;
+        if out.insert(k.to_string(), v.to_string()).is_some() {
+            bail!("{k} given twice");
+        }
+    }
+    Ok(out)
+}
 
 fn main() -> Result<()> {
     // Restore the default SIGPIPE behavior that Rust turns off at startup.
@@ -111,11 +141,20 @@ fn main() -> Result<()> {
         ["apply", file] => apply(book, file),
         ["post", file] => post(book, file),
         ["balance"] => balance(book),
+        ["views"] => views_cmd(book),
         ["explain", account] => explain(book, account),
-        ["strike"] => strike(book, None),
-        ["strike", "--as-of", d] => strike(book, Some(d)),
-        ["navs"] => navs(book),
-        ["replay", id] => replay_strike(book, id),
+        ["strike", rest @ ..] => {
+            let f = flags(rest)?;
+            strike(book, f.get("--as-of").map(String::as_str), f.get("--view").map(String::as_str))
+        }
+        ["navs", rest @ ..] => {
+            let f = flags(rest)?;
+            navs(book, f.get("--view").map(String::as_str))
+        }
+        ["replay", id, rest @ ..] => {
+            let f = flags(rest)?;
+            replay_strike(book, id, f.get("--view").map(String::as_str))
+        }
         ["recon", txns, positions] => recon(book, txns, positions, None, false),
         ["recon", txns, positions, "--post"] => recon(book, txns, positions, None, true),
         ["recon", txns, positions, "--out", out] => {
@@ -141,10 +180,23 @@ fn main() -> Result<()> {
         ["stale"] => stale(book),
         ["closure", rest @ ..] => closure(book, rest),
         ["gen", rest @ ..] => gen(book, rest),
-        ["bench", rest @ ..] => bench(rest),
+        ["bench", rest @ ..] => bench(book, rest),
+        // ⛔ WHAT THE FARGATE TASK RUNS, and the same `scale::run` a laptop
+        // calls on a thread. Two implementations would be two answers to "what
+        // did the fold cost", and the one nobody ran locally would be quoted.
+        ["scale-run", "--size", size] => scale_run(size),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
-        ["accept", brk, "--because", why] => accept(book, brk, why),
+        // ⚠ SPELLED OUT RATHER THAN PUT THROUGH `flags`, because `--because`
+        // takes free text and `flags`' KNOWN list is shared with every other
+        // verb — adding it there would make `ratio strike --because "…"` parse
+        // and be ignored. The `recon` arms above enumerate their orderings for
+        // the same reason.
+        ["accept", brk, "--because", why] => accept(book, brk, None, why),
+        ["accept", brk, "--because", why, "--view", v]
+        | ["accept", brk, "--view", v, "--because", why] => {
+            accept(book, brk, Some(v), why)
+        }
         ["server"] => serve(),
         other => {
             eprint!("{USAGE}");
@@ -594,6 +646,7 @@ fn shape_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Shape, Vec<&'a str>)> 
 /// of this command.
 fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
     let (shape, rest) = shape_from(args)?;
+    let (books, rest) = books_from(&rest)?;
     // ⚠ `--book` NEVER REACHES HERE. `split_book_flag` pulls it out before
     // dispatch, wherever it appears, and hands it in — so anything left over is
     // a flag nobody defined. I wrote a second `--book` parser here first; it
@@ -602,7 +655,7 @@ fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
         bail!("{other:?} is not a dial — see `ratio help`");
     }
 
-    let entries = ratio_gen::generate(&book, shape)?;
+    let entries = ratio_gen::generate_books(&book, shape, &books)?;
     let proj = ratio_project::Projection::of_book(&book)?;
     println!("generated {} into {}", plural(entries as i64, "entry", "entries"), book.display());
     println!("  {:<22}{:>12}", "securities", shape.securities);
@@ -615,6 +668,74 @@ fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
 /// `1 entry` / `2 entries`, because a demo script prints this.
 fn plural(n: i64, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// The books of record a generated fund keeps, from the dials that name them.
+///
+/// ⛔ SEPARATE FROM `shape_from`, AND NOT BY ACCIDENT. `Shape` is what
+/// `ratio bench` prints as a cost table — securities, lots, currencies — and a
+/// recognition convention is not a dimension of a fund's size. Putting `--views`
+/// there would make it appear in a benchmark that has no use for it.
+///
+/// ⚠ AND THIS IS WHERE THE WALL CLOCK ENTERS. `ratio-gen` has no `now` and is
+/// not getting one: it exists to produce the same book from the same dials. But
+/// `ratio strike` values at NOW, and a settlement tail that has already settled
+/// by then demonstrates nothing — `Ratio.Views.a_fold_with_no_cut_hides_the_
+/// settlement_gap` — so the tail is anchored to today, here, at the edge. The
+/// twenty years of history above it stay fixed.
+fn books_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Books, Vec<&'a str>)> {
+    let mut books = ratio_gen::Books::default();
+    let mut rest = Vec::new();
+    let mut it = args.iter().peekable();
+    while let Some(flag) = it.next() {
+        match *flag {
+            // `abor,ibor:t+2` — a bare id recognises on the trade date, and
+            // `:t+n` settles n open days after it.
+            "--views" => {
+                let spec = it.next().ok_or_else(|| anyhow::anyhow!("--views needs a list"))?;
+                for one in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+                    let (id, settles_in) = match one.split_once(':') {
+                        None => (one, None),
+                        Some((id, lag)) => {
+                            let n = lag
+                                .trim()
+                                .strip_prefix("t+")
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "{lag:?} is not a settlement convention — write \
+                                         `{id}:t+2` for two open days after the trade"
+                                    )
+                                })?
+                                .parse::<i64>()
+                                .with_context(|| format!("{lag:?} is not `t+<days>`"))?;
+                            (id, Some(n))
+                        }
+                    };
+                    books.views.push(ratio_gen::GenView { id: id.to_string(), settles_in });
+                }
+            }
+            "--settle-tail" => {
+                books.settle_tail = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--settle-tail needs a number of days"))?
+                    .parse()
+                    .context("--settle-tail needs a number of days")?;
+            }
+            "--subscriptions-in-tail" => {
+                books.subscriptions_in_tail = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--subscriptions-in-tail needs a number"))?
+                    .parse()
+                    .context("--subscriptions-in-tail needs a number")?;
+            }
+            other => rest.push(other),
+        }
+    }
+    books.tail_ends = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64 / 86_400)
+        .unwrap_or(0);
+    Ok((books, rest))
 }
 
 /// Generate a fund and measure what a period end actually takes.
@@ -635,33 +756,130 @@ fn plural(n: i64, one: &str, many: &str) -> String {
 ///                lots nowhere in it. This does NOT grow.
 ///
 /// "Twenty million lots are free" is true of the second and false of the first.
-fn bench(args: &[&str]) -> Result<()> {
+/// ⛔ `--fold` MEASURES A BOOK THAT IS ALREADY THERE, and it takes NO dials.
+/// The shape is read back from the book (`ratio_gen::shape_of`) rather than
+/// restated on the command line, because the mark and FX phases below are driven
+/// by the shape: a caller who typed `--fold --securities 500` at a twenty-security
+/// book would get a report naming four hundred and eighty tickers that do not
+/// exist in it. Refusing the dials outright is the only version of this that
+/// cannot be quietly wrong.
+///
+/// ⚠ AND IT IS OPT-IN RATHER THAN INFERRED FROM `--book`. `split_book_flag`
+/// defaults the book to `./book`, so "fold whatever is at the book path" would
+/// silently measure a book the caller never mentioned the moment they ran this
+/// from a directory that happens to have one.
+fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     use std::time::Instant;
 
-    let (shape, _) = shape_from(args)?;
+    // ⛔ ONE MEASUREMENT, TWO RENDERINGS — never two measurements. `--json` picks
+    // which of them is printed and changes nothing above it, so the figure a
+    // machine reads and the figure a person reads are the same figure computed
+    // once. Two code paths here would be the same defect `shape_from` exists to
+    // prevent, one layer up: two commands reporting about "the twenty-million lot
+    // fund" and disagreeing.
+    let json = args.contains(&"--json");
+    macro_rules! out {
+        ($($t:tt)*) => { if !json { println!($($t)*) } };
+    }
 
-    println!("A FUND OF THIS SHAPE, GENERATED AND MEASURED");
-    println!();
-    println!("  {:<22}{:>12}", "securities", shape.securities);
-    println!("  {:<22}{:>12}", "currencies", shape.currencies);
-    println!("  {:<22}{:>12}   at steady state", "open lots / security", shape.lots_per);
-    println!("  {:<22}{:>12}   opened per lot left open", "turnover", shape.turnover);
-    println!("  {:<22}{:>12}", "open corp. actions", shape.open_actions);
-    println!();
+    let folding = args.contains(&"--fold");
+    let (shape, dir) = if folding {
+        let rest: Vec<&str> =
+            args.iter().copied().filter(|a| *a != "--fold" && *a != "--json").collect();
+        if let Some(other) = rest.first() {
+            bail!(
+                "`--fold` measures the book at {}, so {other:?} would describe a fund that is \
+                 not the one being folded — the shape is read from the book",
+                book.display()
+            );
+        }
+        (ratio_gen::shape_of(&book)?, book)
+    } else {
+        // ⛔ ONE DIRECTORY PER PROCESS, AND THE FIXED NAME COST A MEASUREMENT.
+        // This was `ratio-bench-book` for every run, and `ratio_gen::generate`
+        // opens with `remove_dir_all`. Two benches at once therefore delete each
+        // other's book: the second wipes the directory the first is halfway
+        // through folding, and the first goes on to report a cold build over
+        // whatever survived.
+        //
+        // ⚠ AND THE WRONG ANSWER TIED. A 500 × 2000 run measured 1,022,625 open
+        // lots over 94.7 s on its own, and 224,852 over 20.7 s beside a small
+        // one — 22% of the lots in 22% of the time, trial balance 0, entry count
+        // correct, no error anywhere. It reads exactly like a fund with less
+        // fragmentation than expected. HANDOFF names this trap for TESTS ("two
+        // tests naming the same book wipe each other's directory"); it was in
+        // the benchmark the whole time, where a wrong number gets published.
+        //
+        // The pid is enough: the collision is between concurrent processes, and
+        // a run still leaves its book behind for inspection afterwards.
+        let dir = std::env::temp_dir().join(format!("ratio-bench-book-{}", std::process::id()));
+        (shape_from(args)?.0, dir)
+    };
 
-    let dir = std::env::temp_dir().join("ratio-bench-book");
-    let t = Instant::now();
-    let entries = ratio_gen::generate(&dir, shape)?;
-    let gen_ns = t.elapsed().as_nanos() as i64;
-    println!(
-        "  generated {entries} journal entries in {}",
-        ratio_nav::closure::human_nanos(gen_ns)
-    );
+    if folding {
+        out!("A FUND OF THIS SHAPE, FOLDED FROM {}", dir.display());
+    } else {
+        out!("A FUND OF THIS SHAPE, GENERATED AND MEASURED");
+    }
+    out!();
+    out!("  {:<22}{:>12}", "securities", shape.securities);
+    out!("  {:<22}{:>12}", "currencies", shape.currencies);
+    out!("  {:<22}{:>12}   at steady state", "open lots / security", shape.lots_per);
+    out!("  {:<22}{:>12}   opened per lot left open", "turnover", shape.turnover);
+    out!("  {:<22}{:>12}", "open corp. actions", shape.open_actions);
+    out!();
+
+    // ⭐ GENERATION IS TIMED AND REPORTED, AND IT IS NOT A FOOTNOTE. Measured at
+    // 500 securities × 500 lots: **28.6 s to generate, 24.0 s to fold**. Building
+    // the book costs MORE than the cold build it exists to feed, which is the
+    // opposite of what everything about this command's shape implies — the two
+    // curves it argues about are both downstream of a third that nobody timed.
+    // Anything deciding where a large book should come from needs this number,
+    // so `--json` carries it rather than the report alone.
+    let (entries, gen_ns) = if folding {
+        // ⛔ NOT GENERATED, AND SAID SO RATHER THAN PRINTED AS ZERO. A `0` on the
+        // generation line reads as "generating this fund was free", which is the
+        // opposite of true — it is the line item this mode SKIPS, and per the
+        // measurement above it is the most expensive one.
+        out!("  generated {:>14}   ⛔ not generated here — folded as found", "—");
+        (None, None)
+    } else {
+        let t = Instant::now();
+        let n = ratio_gen::generate(&dir, shape)?;
+        let ns = t.elapsed().as_nanos() as i64;
+        out!(
+            "  generated {n} journal entries in {}",
+            ratio_nav::closure::human_nanos(ns)
+        );
+        (Some(n), Some(ns))
+    };
 
     // COLD: fold the whole journal into a projection. O(entries).
+    //
+    // ⚠ THE TICKER GOES TO STDERR, NOT STDOUT. The report below is parsed by
+    // scripts; progress is for whoever is watching a fold that can run for
+    // sixteen minutes, and mixing the two would corrupt the first to serve the
+    // second.
     let t = Instant::now();
-    let proj = ratio_project::Projection::of_book(&dir)?;
+    let proj = if folding {
+        use std::io::Write as _;
+        ratio_project::Projection::of_book_with_progress(&dir, &mut |n| {
+            // ⚠ A LINE A MACHINE CAN READ UNDER `--json`, because whatever is
+            // watching a sixteen-minute fold is what needs the progress, and in
+            // a task it is not a person.
+            if json {
+                let _ = writeln!(std::io::stderr(), "{{\"folding\":{n}}}");
+            } else {
+                let _ = write!(std::io::stderr(), "\r  folding {n} entries…");
+                let _ = std::io::stderr().flush();
+            }
+        })
+        .inspect(|_| if !json { eprintln!() })?
+    } else {
+        ratio_project::Projection::of_book(&dir)?
+    };
     let cold_ns = t.elapsed().as_nanos() as i64;
+    let entries = entries.unwrap_or(proj.prefix());
 
     // The prices and rates a NAV reads. `Ratio.Closure.navCost` is
     // `markCost + fxCost + ...` — one price per SECURITY, one rate per
@@ -739,72 +957,129 @@ fn bench(args: &[&str]) -> Result<()> {
     let open_lots = proj.open_lots();
     let breaks = proj.lot_breaks().len();
     let nav_ns = mark_ns + fx_ns + strike_ns;
-    println!();
-    println!("  {:<26}{:>14}", "journal entries", entries);
-    println!("  {:<26}{:>14}   ⛔ steady state, not cumulative", "open positions", open_positions);
+    out!();
+    out!("  {:<26}{:>14}", "journal entries", entries);
+    out!("  {:<26}{:>14}   ⛔ steady state, not cumulative", "open positions", open_positions);
     // ⛔ THE TWO NUMBERS THE SCALE ARGUMENT IS ACTUALLY ABOUT. Positions are a
     // CHART — five hundred entries whatever the fund's history. Lots are a
     // HISTORY, and this is where the memory is.
-    println!(
+    out!(
         "  {:<26}{:>14}   ≈ {} MB resident at 40 bytes each",
         "open tax lots",
         open_lots,
         open_lots * 40 / 1_048_576
     );
     if breaks > 0 {
-        println!("  {:<26}{:>14}   ⚠ sales that could not be relieved", "lot breaks", breaks);
+        out!("  {:<26}{:>14}   ⚠ sales that could not be relieved", "lot breaks", breaks);
         for b in proj.lot_breaks().iter().take(2) {
-            println!("      {b}");
+            out!("      {b}");
         }
     }
-    println!();
+    out!();
     // ⛔ THE LABEL WAS WRONG, AND IT IS THE ONE #6 EXTRAPOLATES FROM. Holding
     // entries constant at ~1.8M and raising fragmentation 500 → 1000 → 2000
     // lots a position took this from 20.7 s to 26.3 s to 44.1 s. That is not
     // O(entries): there is a term proportional to entries × LOTS PER POSITION,
     // and the breakdown below says which line carries it.
     let cost = proj.cost();
-    println!(
+    out!(
         "  {:<26}{:>14}   O(entries), and MEASURED to be",
         "COLD BUILD", ratio_nav::closure::human_nanos(cold_ns)
     );
-    println!(
+    out!(
         "  {:<26}{:>14}   reading and deserializing",
         "  parse", ratio_nav::closure::human_nanos(cost.parse.as_nanos() as i64)
     );
-    println!(
+    out!(
         "  {:<26}{:>14}   totals, positions, actions, lots",
         "  fold", ratio_nav::closure::human_nanos(cost.fold.as_nanos() as i64)
     );
-    println!(
+    out!(
         "  {:<26}{:>14}   of the fold, in {} reliefs",
         "    relieve",
         ratio_nav::closure::human_nanos(cost.relieve.as_nanos() as i64),
         cost.reliefs
     );
-    println!("  {:<26}{:>14}   {marked} prices", "  mark", ratio_nav::closure::human_nanos(mark_ns));
-    println!("  {:<26}{:>14}   {translated} rates, not {marked}", "  fx", ratio_nav::closure::human_nanos(fx_ns));
-    println!("  {:<26}{:>14}   off maintained totals", "  strike", ratio_nav::closure::human_nanos(strike_ns));
-    println!("  {:<26}{:>14}", "NAV  (O(chart))", ratio_nav::closure::human_nanos(nav_ns));
-    println!();
+    out!("  {:<26}{:>14}   {marked} prices", "  mark", ratio_nav::closure::human_nanos(mark_ns));
+    out!("  {:<26}{:>14}   {translated} rates, not {marked}", "  fx", ratio_nav::closure::human_nanos(fx_ns));
+    out!("  {:<26}{:>14}   off maintained totals", "  strike", ratio_nav::closure::human_nanos(strike_ns));
+    out!("  {:<26}{:>14}", "NAV  (O(chart))", ratio_nav::closure::human_nanos(nav_ns));
+    out!();
     // ⭐ THE FIGURE THIS ENGINE EXISTS FOR. Six lot methods, holding-period
     // classification and the whole relief layer decide it, and until the sale
     // posted three legs it was computed and discarded.
     let realized = proj.nav(&|dim| dim == 30, &rates)?.value.0;
-    println!("  net asset value {:>20}   over {} entries", struck.value.0, struck.prefix);
-    println!(
+    out!("  net asset value {:>20}   over {} entries", struck.value.0, struck.prefix);
+    out!(
         "  realized gain   {:>20}   credit-normal, so a gain reads negative",
         realized
     );
-    println!("  basis relieved  {:>20}", proj.relieved_cost());
-    println!("  trial balance   {:>20}", struck.value.1);
-    println!();
-    println!("⛔ Two curves, and only the second is flat in fragmentation. Folding");
-    println!("   the journal grows with every trade ever made — an append-only log");
-    println!("   does not forget a closed lot. Striking the NAV off the maintained");
-    println!("   projection does not: `Ratio.Closure.factored_nav_never_reads_the_");
-    println!("   lots`. Quoting the second as though it were the first is the");
-    println!("   overclaim this command exists to make hard.");
+    out!("  basis relieved  {:>20}", proj.relieved_cost());
+    out!("  trial balance   {:>20}", struck.value.1);
+    out!();
+    out!("⛔ Two curves, and only the second is flat in fragmentation. Folding");
+    out!("   the journal grows with every trade ever made — an append-only log");
+    out!("   does not forget a closed lot. Striking the NAV off the maintained");
+    out!("   projection does not: `Ratio.Closure.factored_nav_never_reads_the_");
+    out!("   lots`. Quoting the second as though it were the first is the");
+    out!("   overclaim this command exists to make hard.");
+
+    if json {
+        // ⛔ BOTH CURVES, OR NEITHER. The text report above cannot show the
+        // strike without the cold build beside it, and this must not be the
+        // rendering where that stops being true — a consumer that can read
+        // `strike_ns` without `cold_build_ns` is one screen away from publishing
+        // "twenty million lots, twelve microseconds" as though it were the whole
+        // story. They are siblings here for the same reason they are adjacent
+        // there.
+        //
+        // ⚠ NANOSECONDS, NOT the rendered strings. `human_nanos` rounds for
+        // reading; a consumer that parsed "12 µs" back into a number would be
+        // reading a figure through a display filter.
+        let cost = proj.cost();
+        let doc = serde_json::json!({
+            "shape": {
+                "securities": shape.securities,
+                "currencies": shape.currencies,
+                "lots_per": shape.lots_per,
+                "turnover": shape.turnover,
+                "open_actions": shape.open_actions,
+                "capital_txns": shape.capital_txns,
+                "seed": shape.seed,
+                "method": shape.method.as_declared(),
+            },
+            "generated": !folding,
+            // ⛔ `null` WHEN FOLDING, NEVER 0. Zero would say this book cost
+            // nothing to build; null says this run did not build it, which is a
+            // different claim and the true one.
+            "generate_ns": gen_ns,
+            "journal_entries": entries,
+            "open_positions": open_positions,
+            "open_lots": open_lots,
+            "lot_breaks": breaks,
+            // The growing curve.
+            "cold_build_ns": cold_ns,
+            "parse_ns": cost.parse.as_nanos() as i64,
+            "fold_ns": cost.fold.as_nanos() as i64,
+            "relieve_ns": cost.relieve.as_nanos() as i64,
+            "reliefs": cost.reliefs,
+            // The flat one.
+            "nav_ns": nav_ns,
+            "mark_ns": mark_ns,
+            "fx_ns": fx_ns,
+            "strike_ns": strike_ns,
+            "marks": marked,
+            "rates": translated,
+            // The figures, so a reader can check the run tied rather than
+            // trusting that it did.
+            "net_asset_value": struck.value.0,
+            "trial_balance": struck.value.1,
+            "realized_gain": realized,
+            "basis_relieved": proj.relieved_cost(),
+            "prefix": struck.prefix,
+        });
+        println!("{}", serde_json::to_string_pretty(&doc)?);
+    }
     Ok(())
 }
 
@@ -1404,16 +1679,25 @@ fn book_label(book: &std::path::Path) -> String {
 /// The valuation point is now. A real system takes it from the fund's calendar
 /// — 16:00 New York for a US mutual fund — and that belongs in configuration
 /// rather than in a flag, so it is deliberately not one.
-fn strike(book: PathBuf, as_of: Option<&str>) -> Result<()> {
+fn strike(book: PathBuf, as_of: Option<&str>, view: Option<&str>) -> Result<()> {
+    // ⛔ ONE REFUSAL, LISTING EVERYTHING. The unpriced-position check used to
+    // live inline here and was the only thing consulted; `refuse_if_blocked`
+    // subsumes it, and adds the breaks nobody has explained and the facts that
+    // do not resolve. Clearing one obstacle only to be shown the next is the
+    // shape this replaces.
     refuse_if_blocked(&book, as_of)?;
+    // ⛔ RESOLVED BEFORE ANYTHING IS WRITTEN. On a book keeping more than one
+    // book of record an unnamed view is refused, because a NAV recorded under a
+    // convention nobody chose is the failure this whole feature is about.
+    let view = view_or_refuse(&book, view)?;
     let actor = actor_name();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let s = ratio_nav::strike_and_record(&book, now, &actor)?;
+    let s = ratio_nav::strike_and_record(&book, &view, now, &actor)?;
 
-    println!("struck {}", s.id);
+    println!("struck {} in {}", s.id, s.view);
     println!("  NAV        {}", minor(s.net_asset_value));
     println!("  difference {}", minor(s.trial_balance_difference));
     println!("  journal    {} entrie(s)", s.journal_position);
@@ -1421,7 +1705,84 @@ fn strike(book: PathBuf, as_of: Option<&str>) -> Result<()> {
     println!("  config     {}", &s.config_digest[..7.min(s.config_digest.len())]);
     println!("  by         {}", s.actor);
     println!();
-    println!("Re-derive it any time with:  ratio replay {}", s.id);
+    println!("Re-derive it any time with:  ratio replay {} --view {}", s.id, s.view);
+    Ok(())
+}
+
+/// Which book of record a verb is about.
+///
+/// ⛔ ON A BOOK KEEPING MORE THAN ONE, AN UNNAMED VIEW IS REFUSED RATHER THAN
+/// DEFAULTED. Picking one for the caller would put a figure on a terminal under
+/// a recognition convention nobody chose — which is the row already in
+/// HANDOFF.md's failure table, with the console and the CLI reporting different
+/// NAVs for one book and neither saying which. On a book with exactly one view
+/// there is no question to answer, so none is asked.
+fn view_or_refuse(book: &std::path::Path, asked: Option<&str>) -> Result<String> {
+    let declared = declared_views(book)?;
+    match asked {
+        Some(v) => {
+            if !declared.iter().any(|d| d == v) {
+                bail!(
+                    "this book declares no view {v:?}. It keeps: {}",
+                    declared.join(", ")
+                );
+            }
+            Ok(v.to_string())
+        }
+        None if declared.len() == 1 => Ok(declared[0].clone()),
+        None => bail!(
+            "this book keeps {} books of record — {} — so a figure has to say which. \
+             Pass --view",
+            declared.len(),
+            declared.join(", ")
+        ),
+    }
+}
+
+/// The views the ACTIVE configuration declares.
+///
+/// ⚠ ACTIVE, AND ONLY FOR THIS. Which views EXIST is a question about now; how
+/// an entry is RECOGNISED comes from the digest that entry pinned, which
+/// `NavFold` resolves per entry. Conflating the two is `Terms`' mistake one
+/// level out.
+fn declared_views(book: &std::path::Path) -> Result<Vec<String>> {
+    let b = FileBook::open(book)?;
+    let set = match b.active()? {
+        Some(d) => RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))?,
+        None => RuleSet::default(),
+    };
+    Ok(set.effective_views().into_iter().map(|v| v.id).collect())
+}
+
+/// Every book of record this fund keeps.
+fn views_cmd(book: PathBuf) -> Result<()> {
+    let b = FileBook::open(&book)?;
+    let set = match b.active()? {
+        Some(d) => RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))?,
+        None => RuleSet::default(),
+    };
+    println!("{:<14}{:<26}{}", "ID", "NAME", "RECOGNISES");
+    for v in set.effective_views() {
+        let how = match v.basis {
+            ratio_rules::Basis::Recorded => "in journal order".to_string(),
+            ratio_rules::Basis::Trade => "on the trade date".to_string(),
+            ratio_rules::Basis::Settlement => format!(
+                "{} open days after the trade, over {}",
+                v.settles_in.unwrap_or(0),
+                v.calendar.as_deref().unwrap_or("no calendar")
+            ),
+        };
+        println!("{:<14}{:<26}{}", v.id, v.label(), how);
+    }
+    // ⛔ AND WHETHER ANYBODY CHOSE THEM. A book declaring nothing has one view
+    // and it is not an election; reporting it as one asserts a decision nobody
+    // made, which is what happened with the lot method on three live funds.
+    if !set.views_declared() {
+        println!();
+        println!("This configuration declares no views, so the book has one and it");
+        println!("recognises entries in the journal's own order. That is a custom,");
+        println!("not a term anybody agreed to.");
+    }
     Ok(())
 }
 
@@ -1463,6 +1824,11 @@ fn blocking_text(book: &std::path::Path, as_of: Option<&str>) -> Result<Option<S
     let c = ratio_console::Console::new(book);
     let blocking = c.blocking_at("demo")?;
 
+    // ⛔ WITHOUT A VALUATION DATE THE UNPRICED CHECK DOES NOT RUN, and that is
+    // the honest limit rather than an oversight: "unpriced" is not a well-formed
+    // question until somebody says as of WHEN, and a book does not know what day
+    // it is. The breaks and the facts above have no such dependency, so they are
+    // checked either way.
     let unpriced = match as_of {
         Some(day) => {
             if day.split('-').count() != 3 {
@@ -1527,17 +1893,31 @@ fn minor_str(s: &str) -> String {
 }
 
 /// Every NAV struck on this book.
-fn navs(book: PathBuf) -> Result<()> {
-    let all = ratio_nav::list(&book)?;
+fn navs(book: PathBuf, view: Option<&str>) -> Result<()> {
+    let all = match view {
+        Some(v) => ratio_nav::list_in(&book, &view_or_refuse(&book, Some(v))?)?,
+        None => ratio_nav::list(&book)?,
+    };
     if all.is_empty() {
         println!("No NAV has been struck on this book. `ratio strike` takes one.");
         return Ok(());
     }
-    println!("{:<20}{:>18}{:>10}  {:<10}{}", "AS OF", "NAV", "ENTRIES", "CONFIG", "BY");
+    // ⛔ THE VIEW IS A COLUMN, NOT A FOOTNOTE. Two rows can carry the same
+    // valuation point and the same id and be different figures.
+    // ⛔ TWENTY-TWO, NOT TWENTY. `rfc3339` is EXACTLY 20 characters, so a
+    // 20-wide column padded it to nothing and the timestamp ran straight into
+    // the view beside it — `2026-08-14T12:43:44Zabor`. The header was padded
+    // from five and looked fine, which is why it survived: the columns only
+    // collide on rows with data in them.
+    println!(
+        "{:<22}{:<12}{:>18}{:>10}  {:<10}{}",
+        "AS OF", "VIEW", "NAV", "ENTRIES", "CONFIG", "BY"
+    );
     for s in &all {
         println!(
-            "{:<20}{:>18}{:>10}  {:<10}{}",
+            "{:<22}{:<12}{:>18}{:>10}  {:<10}{}",
             ratio_nav::rfc3339(s.valuation_time),
+            s.view,
             minor(s.net_asset_value),
             s.journal_position,
             &s.config_digest[..7.min(s.config_digest.len())],
@@ -1551,11 +1931,11 @@ fn navs(book: PathBuf) -> Result<()> {
 ///
 /// Exits non-zero when either check fails. A replay that reports a broken NAV
 /// on stdout and exits 0 is a replay nothing can be built on.
-fn replay_strike(book: PathBuf, id: &str) -> Result<()> {
-    let s = ratio_nav::get(&book, id)?;
+fn replay_strike(book: PathBuf, id: &str, view: Option<&str>) -> Result<()> {
+    let s = ratio_nav::get(&book, &view_or_refuse(&book, view)?, id)?;
     let r = ratio_nav::replay(&book, &s)?;
 
-    println!("replaying {}", s.id);
+    println!("replaying {} in {}", s.id, s.view);
     println!("  struck     {} by {}", ratio_nav::rfc3339(s.valuation_time), s.actor);
     println!("  folding    {} entrie(s) of the journal", s.journal_position);
     println!();
@@ -1757,6 +2137,19 @@ fn recon(
 /// Note what this cannot do: promote a rule. `approve` below is a CLI command
 /// and is not exposed as a tool, so a proposal becomes policy only when a
 /// person runs it. See `ratio-mcp`'s module docs.
+/// Fold one declared shape and publish the figures. Run by the scale task.
+///
+/// ⚠ THE RECORD IS S3 AND THE SCRATCH IS LOCAL DISK. The task has 100 GiB of
+/// ephemeral storage for a ~40 GB journal; the figures and the lock have to
+/// outlive the container, so they go to the bucket the function also reads.
+fn scale_run(size: &str) -> Result<()> {
+    let bucket = std::env::var("RATIO_SCALE_BUCKET")
+        .context("RATIO_SCALE_BUCKET is unset, so there is nowhere to publish the result")?;
+    let books = std::env::var("RATIO_SCALE_BOOKS").unwrap_or_else(|_| "/tmp/scale".into());
+    let store = scale::S3::open(bucket, "runs/")?;
+    scale::run(&store, size, std::path::Path::new(&books))
+}
+
 fn mcp(book: PathBuf) -> Result<()> {
     FileBook::open(&book)?; // fail here rather than mid-conversation
     let stdin = std::io::stdin();
@@ -1788,14 +2181,19 @@ fn approve(book: PathBuf, id: &str) -> Result<()> {
 /// alternative — making it disappear — is the thing
 /// `crates/ratio-console/src/lib.rs` refuses in the comment beside
 /// `explained`: a break the software decided was fine.
-fn accept(book: PathBuf, brk: &str, why: &str) -> Result<()> {
+fn accept(book: PathBuf, brk: &str, view: Option<&str>, why: &str) -> Result<()> {
     let fund = book_fund_id(&book);
     // A person types the id off a screen; the full resource name is what a link
     // gives them. Accept either.
+    //
+    // ⚠ THE SHORT FORM STILL HAS TO NAME A VIEW, so it goes through
+    // `view_or_refuse` like every other figure-bearing verb: a book keeping two
+    // books of record is asked which, rather than being given the first one.
     let name = if brk.starts_with("funds/") {
         brk.to_string()
     } else {
-        format!("funds/{fund}/breaks/{brk}")
+        let view = view_or_refuse(&book, view)?;
+        format!("funds/{fund}/views/{view}/breaks/{brk}")
     };
     let actor = actor_name();
     let e = ratio_console::Console::new(&book)
@@ -2190,7 +2588,7 @@ weight = -1
         // nothing consulted it before striking, so the screen and the command
         // disagreed about whether the fund was ready — the screen being right.
         let book = book_with_a_break("refuses", 200_000);
-        let e = strike(book.clone(), None).unwrap_err().to_string();
+        let e = strike(book.clone(), None, None).unwrap_err().to_string();
         assert!(e.contains("the NAV was not struck"), "{e}");
     }
 
@@ -2201,7 +2599,7 @@ weight = -1
         // appended has recorded a NAV nobody can see and cannot take back —
         // `Ratio.Period.one_answer_per_day` means the valuation point is spent.
         let book = book_with_a_break("norecord", 200_000);
-        assert!(strike(book.clone(), None).is_err());
+        assert!(strike(book.clone(), None, None).is_err());
         assert!(ratio_nav::list(&book).unwrap().is_empty(), "a refused strike recorded a NAV");
     }
 
@@ -2211,7 +2609,7 @@ weight = -1
         // every assertion above and is useless, so one break has to get
         // through — and which one is a term of the agreement, not a constant.
         let book = book_with_a_break("under", 100);
-        assert!(strike(book, None).is_ok(), "100 is beneath notice and blocks nothing");
+        assert!(strike(book, None, None).is_ok(), "100 is beneath notice and blocks nothing");
     }
 
     #[test]
@@ -2220,11 +2618,11 @@ weight = -1
         // so the gate and the verb that clears it ship together and this is
         // what joins them.
         let book = book_with_a_break("cleared", 200_000);
-        assert!(strike(book.clone(), None).is_err(), "blocked to begin with");
+        assert!(strike(book.clone(), None, None).is_err(), "blocked to begin with");
 
-        accept(book.clone(), "1", "the custodian's unsettled dividend, clears T+2").unwrap();
+        accept(book.clone(), "1", None, "the custodian's unsettled dividend, clears T+2").unwrap();
 
-        assert!(strike(book.clone(), None).is_ok(), "and struck once somebody explained it");
+        assert!(strike(book.clone(), None, None).is_ok(), "and struck once somebody explained it");
         assert_eq!(ratio_nav::list(&book).unwrap().len(), 1);
     }
 
@@ -2233,8 +2631,8 @@ weight = -1
         // A note about a figure that has since moved is not a note about this
         // one. The fund goes back to blocked, and the words stay visible.
         let book = book_with_a_break("stalegate", 200_000);
-        accept(book.clone(), "1", "about the old number").unwrap();
-        assert!(strike(book.clone(), None).is_ok(), "explained, so strikeable");
+        accept(book.clone(), "1", None, "about the old number").unwrap();
+        assert!(strike(book.clone(), None, None).is_ok(), "explained, so strikeable");
 
         // A later run reports a different figure for the same break.
         let mut b = FileBook::open(&book).unwrap();
@@ -2267,7 +2665,7 @@ weight = -1
         })
         .unwrap();
 
-        let e = strike(book.clone(), None).unwrap_err().to_string();
+        let e = strike(book.clone(), None, None).unwrap_err().to_string();
         assert!(e.contains("the NAV was not struck"), "a moved figure is unexplained again: {e}");
     }
 

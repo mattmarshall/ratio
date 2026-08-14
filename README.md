@@ -16,10 +16,11 @@ decision.
 
 ### ▶ [Try the live demo](https://ratio-ims.vercel.app/)
 
-Sign in with Google or email and watch a real fund's books tie out — six
+Sign in with Google or email and watch a real fund's books tie out — seven
 seeded funds, one blocked by a break nobody has explained, one struck because
-somebody did. Every break, NAV strike and configuration version has a URL, so
-a figure can be sent to somebody rather than described.
+somebody did, and one keeping two books of record over a single journal. Every
+break, NAV strike and configuration version has a URL, so a figure can be sent
+to somebody rather than described.
 
 The console is a Next.js application on Vercel; the API it reads is the same
 binary you build below, running on AWS Lambda. If you would rather see a book

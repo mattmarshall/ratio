@@ -328,7 +328,7 @@ returns `401` — but it cannot assert `/v1` **content** (a held position, the
 three fund states, the NAV replay) without a token, and CI holds no user
 credential. Those checks moved out of the public smoke test. To exercise the
 authenticated path end to end, sign in through the Hosted UI on the live URL and
-confirm the fund rail shows the six seeded funds and the principal chip shows
+confirm the fund rail shows the seven seeded funds and the principal chip shows
 the signed-in email; or script an `initiate-auth` against the pool with a
 smoke user's permanent password and replay one `/v1/funds` call with the
 returned access token. The public `/balance.json` and `/breaks.json` checks
@@ -353,6 +353,31 @@ Then update `ACCOUNT_ID` in `.github/workflows/deploy.yml` and push.
 and domain) so CI can manage the authorizer's user pool. An account that
 provisioned bootstrap before this round must re-run the command above once, or
 the next app deploy fails with an access-denied creating the pool.
+
+⚠ **And re-run it again after the scale runner.** The deploy role gained
+`ecs`, `ec2`, `s3`, `logs` and a narrowly-scoped `iam` so it can stand up the
+one-shot Fargate task that folds a twenty-million-lot book, and the function's
+execution role gained `ecs:RunTask` on one task family plus the run prefix in
+one bucket. ⛔ **Bootstrap first, then push** — the app stack now creates a VPC,
+a cluster, two named roles and a bucket, and CI cannot create any of them until
+this has been applied. The failure if you push first is `AccessDenied` in
+`aws cloudformation deploy`, after a full Bazel build, the whole test suite, a
+docker build and an ECR push. `//deploy:iac_test` checks the two templates agree
+about what may be created, but it cannot check that the account has caught up —
+only running this can.
+
+⛔ **AND ONCE MORE AFTER THAT, IF YOU APPLIED IT BEFORE 2026-08-14.** The first
+version of the grant enumerated five `ec2:Describe*` actions — the ones matching
+resources the template creates — and the deploy died on a sixth:
+
+    ScaleSubnet CREATE_FAILED  AccessDenied. User doesn't have permission
+    to call ec2:DescribeAvailabilityZones
+
+`!GetAZs ""` needs it, and nothing about a subnet's resource type says so. The
+read-only actions are wildcards now (`ec2:Describe*`, `s3:Get*`), which narrows
+nothing that was ever narrow — those calls take no resource ARN — and removes a
+whole class of deploy that fails after the image is already pushed.
+`//deploy:iac_test` now fails on the exact grant that shipped.
 
 ## How CI gets in
 

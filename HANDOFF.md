@@ -215,6 +215,65 @@ the conserved one, and the kernel never said it was.
 - **`ChartRoles` are checked when the configuration is READ.** A chart that
   cannot express a gain is wrong the moment it is written down; finding out at
   the first disposal means finding out in production.
+- **EVERY VIEW FOLDS ONE PREFIX, IN ONE PASS.** A book keeps more than one book
+  of record — ABOR recognises a trade when it is struck, a settlement view when
+  cash and stock move — and they are N folds inside ONE `Projection` with one
+  `at` and one `read_to`. A projection per view is `//tla:sql_projection_check`'s
+  `AFigureIsFoldedFromOnePrefix` with views where that spec has tables: both
+  folds correct, both books tying, and the difference between them partly a
+  settlement convention and partly one of them being three entries behind, in
+  one number, with nothing saying which part is which.
+  `//tla:views_at_two_prefixes_check`. It also pays `parse` once, which at 65%
+  of the cold build is the difference between N views and N × the build.
+- **`recorded` IS NOT `settlement 0`.** A book that declares no view has one,
+  and it consults no date — which is the only thing that answers over the
+  entries carrying no `trade_date`, i.e. most of every book written so far. A
+  same-day settlement convention reads the calendar and REFUSES such an entry.
+  `Ratio.Views.nobody_said_is_not_a_settlement_convention`; `View.declared` is
+  the field that keeps the two apart, for the reason `lot_method_declared`
+  exists.
+- **The view SET comes from ACTIVE; the CONVENTION comes from the digest the
+  entry pinned.** Which views exist is a question about now. How an entry is
+  recognised is a term of the agreement in force when it was posted — `Terms`'
+  rule, one level out. ⛔ An entry whose pinned configuration does not declare a
+  view must be REFUSED by it and reported, never folded as `recorded`: that is
+  the no-fallback-to-FIFO argument with a date instead of a lot method.
+- ⚠ **THE MAINTAINED PROJECTION DOES NOT FOLD PER VIEW YET, AND THE BFF REFUSES
+  RATHER THAN PRETENDING.** `ratio strike` cuts — it derives the day from the
+  valuation point — so the RECORDED NAV is already per view and correct. The
+  projection behind the console's screens folds the whole journal with no cut,
+  so it can only answer for a `recorded` view; `Console::view_the_projection_
+  can_answer` refuses anything else, and `ReconcileViews` refuses outright.
+  ⛔ THE REFUSAL IS THE POINT. Serving a trade-date or settlement view off a
+  cut-less fold would return the recorded view's figures under another name —
+  two labels, one number, and nothing saying so. That is the defect the whole
+  feature exists to prevent, not a rough edge in it.
+  ⚠ AND `console/fixtures/reconcile.json` DESCRIBES A SHAPE NOTHING SERVES.
+  The render test is green against it; the endpoint 400s. The fixture documents
+  the intended response and the screen shows the server's refusal prose, which
+  is honest — but a fixture that outlives the gap it was written for is how a
+  captured fixture stops being a capture.
+- ⛔ **A DIFFERENTIAL TEST BETWEEN TWO VIEWS THAT DOES NOT CUT IS VACUOUS.**
+  Folded to the end of history every view agrees, because everything eventually
+  settles — `Ratio.Views.a_fold_with_no_cut_hides_the_settlement_gap` is the
+  theorem, written down before anybody fell into it. And the second trap is
+  sharper: a PURCHASE moves cash into investments, both assets, so recognising
+  it or not moves a NAV by ZERO. **Subscriptions are the shape that works**,
+  exactly as they were for the multi-currency version that was vacuous twice.
+- ⚠ **WHAT `//deploy:seed_test` ACTUALLY PROVES, WHICH IS LESS THAN IT LOOKS.**
+  It checks the two views' recorded NAVs DIFFER and that the book ties. It does
+  NOT check that the entries in flight account for the difference, because
+  `ratio reconcile` does not exist and waits on the same per-view fold the BFF
+  does. The stronger claim — `Ratio.Views.two_views_differ_by_exactly_what_is_
+  in_flight` — is proved in Lean and asserted nowhere in the demo. ⛔ The gap is
+  written into the script rather than left to be inferred from its absence.
+- ⚠ **THE GENERATOR'S SETTLEMENT TAIL IS ANCHORED TO THE DAY IT RUNS, AND ONLY
+  IT.** `FIRST_TRADE_DAY` is a constant so that every measurement taken against
+  a generated book is reproducible, and that stays true: `--settle-tail` writes
+  the ONLY entries dated from a day the caller passes in. It has to be, because
+  `ratio strike` values at NOW and a tail that has already settled by then makes
+  the two views agree. So `ratio gen` with no `--views` is still byte-identical
+  run to run, and `ratio gen --settle-tail` deliberately is not.
 
 ---
 
@@ -401,6 +460,49 @@ strike unchanged.
 ⛔ **It reports two curves and both must be quoted.** Folding the journal grows;
 only the strike off a maintained projection is flat.
 
+⛔ **AND THERE IS A THIRD CURVE, LARGER THAN EITHER, THAT NOTHING TIMED UNTIL
+NOW: GENERATING THE BOOK.** Measured on one Linux machine, both shapes:
+
+| shape | generate | COLD BUILD | ratio |
+|---|---|---|---|
+| 500 × 500 | 28.6 s | 24.0 s | 1.19 |
+| 500 × 2000 | 115.8 s | 94.7 s | 1.22 |
+
+**Building the fund costs more than the cold build it exists to feed**, and
+consistently so. Everything about this command's shape implies the two curves it
+argues about are the expensive ones; they are downstream of a third that is
+bigger than both. At the twenty-million-lot shape that is roughly twenty minutes
+of generation before a fold that takes sixteen — so **a book that size is built
+once and kept, never regenerated per run**, and any plan that assumes otherwise
+has budgeted for a third of the work. `--json` now carries `generate_ns` (null,
+never 0, when folding) so this cannot go untimed again.
+
+⛔ **TWO BENCHMARKS AT ONCE DELETED EACH OTHER'S BOOK, AND THE WRONG ANSWER
+TIED.** `bench` generated into `$TMPDIR/ratio-bench-book` — one fixed name for
+every run — and `ratio_gen::generate` opens with `remove_dir_all`. A second run
+starting while a first was folding wiped the directory under it. A 500 × 2000
+run measured:
+
+    alone      1,022,625 open lots   94.7 s   trial balance 0
+    concurrent   224,852 open lots   20.7 s   trial balance 0
+
+**22% of the lots in 22% of the time**, entry count correct, nothing on stderr.
+It does not read as a broken run; it reads as a fund with less fragmentation than
+expected, which is a thing funds are. This file already named the trap for TESTS
+— "two tests naming the same book wipe each other's directory" — and it was in
+the benchmark the whole time, which is the one place a number gets published.
+The directory now carries the pid, and `//demo:bench_concurrent_test` fails if it
+stops doing so.
+
+⚠ **THE 20M ROW IS 10,000 SECURITIES × 2,000 LOTS, NOT 500 × 40,000.** Both are
+twenty million open tax lots; they are not the same fund. The mark phase reads
+one price per SECURITY (`Ratio.Closure.markCost`), so the recorded shape marks
+ten thousand names and `ratio closure`'s default dial marks five hundred — a
+twentyfold difference in the term that grows with the chart. Estimating one and
+running the other, both captioned "twenty million tax lots", gives two figures
+that each tie and describe different books. `//:scale_shapes_test` holds the
+shapes the scale screen offers to the rows in this table.
+
 ⛔ **AND THE REAL LIMIT WAS NEVER TIME, IT WAS MEMORY.** Every fold in this
 codebase materialized what it folded: 1.85 GB resident to fold 1.77M entries into
 a projection holding 8 MB of lots, and `ratio balance` — which prints a dozen
@@ -412,6 +514,15 @@ rows — held 1.26 GB. At the ~80M entries a twenty-million-lot book implies, th
 | `ratio balance` | 1.26 GB | **9 MB** |
 | `ratio bench` (generate AND fold) | 1.85 GB | **50 MB** |
 | console serving the book | — | 39 MB |
+
+⛔ **AND EVERY MEMORY FIGURE ABOVE IS A ONE-VIEW FIGURE.** Multi-view books
+landed after these were taken. Each view carries its own lot book — a settlement
+view has recognised a different set of open lots when a sale arrives, which is
+the feature working — so the projection is roughly linear in views where the
+fold is not. At the twenty-million-lot shape that is ~640 MB per view against a
+1.00 GB peak, and NOBODY HAS MEASURED TWO. `ratio bench` needs a views dial
+before the ⭐ claim below is quoted about a fund keeping an ABOR and an IBOR.
+Quote `peak memory footprint`, not RSS: at that size RSS understates by 19×.
 
 `Journal::for_each_entry_since` is the streaming primitive. `entries()` and
 `entries_since()` still exist, expressed on top of it and documented as
@@ -467,6 +578,8 @@ than one that is entirely unclassified.
 |---|---|
 | `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,Edges,Posting}`, `Actions/Factor`, `Closure`, `Exec` |
 | `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `tolerance` — the administration agreement, as configuration |
+| `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
+| `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
