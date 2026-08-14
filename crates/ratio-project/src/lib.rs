@@ -411,13 +411,39 @@ struct LotBook {
     breaks: Vec<String>,
 }
 
-/// The read model.
+/// One book of record's fold over the shared journal.
+///
+/// ⭐ EXACTLY THE STATE THAT DEPENDS ON WHICH ENTRIES ARE RECOGNISED, and
+/// nothing else. `Ratio.Views` classifies a view against the three kinds of
+/// label a posting carries and it is none of them — it says WHICH ENTRIES ARE
+/// IN SCOPE — so what it changes is the set folded, and every figure derived
+/// from that set moves with it. The chart, the interner, the corporate actions
+/// and the journal position stay on `Projection`, one copy each.
+///
+/// ⚠ `actions` IS DELIBERATELY NOT HERE. An announcement is a fact about an
+/// instrument, not a posting in scope of a recognition convention: two views
+/// have heard about the same split. Putting it per view would leave two copies
+/// of one fact to keep in step.
 #[derive(Clone, Debug, Default)]
-pub struct Projection {
+struct ViewFold {
     positions: Positions,
     totals: Totals,
-    actions: Actions,
     lots: LotBook,
+}
+
+/// The read model.
+#[derive(Clone, Debug)]
+pub struct Projection {
+    /// The books of record this projection folds, by view id.
+    ///
+    /// ⛔ ONE ENTRY, `UNDECLARED_VIEW`, UNTIL THE CUT LANDS. This map is the
+    /// structural half of the per-view fold: the state has moved, the number
+    /// has not. Every existing assertion passing unchanged is what says the
+    /// extraction was faithful — see `PLAN.md`'s design note for the half that
+    /// remains, which is a monotonic cut and the band of what it has not
+    /// reached.
+    views: BTreeMap<String, ViewFold>,
+    actions: Actions,
     /// How far into the journal FILE this has read.
     ///
     /// ⛔ BYTES, NOT ENTRIES, and the two are not interchangeable. `at` says how
@@ -456,6 +482,43 @@ pub struct Projection {
     /// some fund somewhere, so a guess that lands on it is indistinguishable
     /// from having read it.
     terms: BTreeMap<ratio_store::Digest, Result<Terms, String>>,
+}
+
+/// ⛔ HAND-WRITTEN, FOR THE REASON `RuleSet`'s IS. `#[derive(Default)]` gives
+/// every field its type's default, and `views` would come out EMPTY — a
+/// projection with no book of record at all, which is not a state this type has.
+/// Every book has at least one view; a book that declares none has exactly one,
+/// recognising in journal order. `Ratio.Views.nobody_said_is_not_a_settlement_
+/// convention` is that as a theorem, and this is where the code has to agree
+/// with it.
+impl Default for Projection {
+    fn default() -> Self {
+        Self {
+            views: [(ratio_rules::UNDECLARED_VIEW.to_string(), ViewFold::default())]
+                .into_iter()
+                .collect(),
+            actions: Actions::default(),
+            read_to: 0,
+            at: 0,
+            cost: FoldCost::default(),
+            names: ratio_common::intern::Interner::default(),
+            terms: BTreeMap::new(),
+        }
+    }
+}
+
+impl Projection {
+    /// The one book of record this folds, until the cut lands.
+    ///
+    /// ⚠ `expect` RATHER THAN A `Result`, AND THAT IS AN INVARIANT NOT A RISK:
+    /// `Default` puts the undeclared view in and nothing removes it. When this
+    /// map grows a second entry these become `fold_of(view)` returning a
+    /// refusal, because THEN a caller can name a view a book does not keep.
+    fn only(&self) -> &ViewFold {
+        self.views
+            .get(ratio_rules::UNDECLARED_VIEW)
+            .expect("every projection holds the view every book has")
+    }
 }
 
 impl Projection {
@@ -537,6 +600,16 @@ impl Projection {
         if let Some(id) = entry.id.strip_prefix("action-") {
             self.actions.rewritten.insert(id.to_string());
         }
+        // ⛔ THE INTERNER AND THE FOLD ARE BORROWED SEPARATELY, ONCE, OUTSIDE THE
+        // LOOP. Both are fields of `self`, and reaching through `self` for each
+        // in turn would borrow the whole thing twice per posting — so the map
+        // lookup that finds the view would land on the hot path, which is per
+        // POSTING across millions of entries. Destructuring splits the borrow at
+        // no cost, which is the same reason `names` exists at all.
+        let Self { names, views, .. } = self;
+        let fold = views
+            .get_mut(ratio_rules::UNDECLARED_VIEW)
+            .expect("every projection holds the view every book has");
         for p in &entry.postings {
             // ⚠ `-p.amount` is not the magnitude at the floor: `-i64::MIN`
             // overflows. Widened first, it does not.
@@ -544,21 +617,21 @@ impl Projection {
             // ⛔ THE LAST PER-POSTING ALLOCATION. Five distinct currency codes
             // across seven million entries; cloning the code to look up a row
             // that already exists is the same waste the instrument key was.
-            let ccy = p.currency.as_deref().map(|c| self.names.intern(c));
-            *self.totals.by_dim.entry((p.dim, ccy)).or_default() += amount;
+            let ccy = p.currency.as_deref().map(|c| names.intern(c));
+            *fold.totals.by_dim.entry((p.dim, ccy)).or_default() += amount;
             if amount >= 0 {
-                self.totals.debits += amount;
+                fold.totals.debits += amount;
             } else {
-                self.totals.credits += -amount;
+                fold.totals.credits += -amount;
             }
             match &p.instrument {
                 Some(i) => {
-                    let key = (p.dim, self.names.intern(i));
-                    let slot = self.positions.held.entry(key).or_insert((0, 0));
+                    let key = (p.dim, names.intern(i));
+                    let slot = fold.positions.held.entry(key).or_insert((0, 0));
                     slot.0 += p.amount;
                     slot.1 += p.quantity.unwrap_or(0);
                 }
-                None => *self.positions.rest.entry(p.dim).or_default() += p.amount,
+                None => *fold.positions.rest.entry(p.dim).or_default() += p.amount,
             }
         }
     }
@@ -722,13 +795,14 @@ impl Projection {
     /// ⛔ THE ONLY WAY OUT OF THIS TYPE, and it hands back the prefix with the
     /// value. There is deliberately no `fn positions(&self) -> &Positions`.
     pub fn positions(&self) -> AsOf<&Positions> {
-        AsOf { value: &self.positions, prefix: self.at }
+        AsOf { value: &self.only().positions, prefix: self.at }
     }
 
     /// Total cost held in one instrument, across every account.
     pub fn cost_of(&self, instrument: &str) -> AsOf<i64> {
         AsOf {
             value: self
+                .only()
                 .positions
                 .held
                 .iter()
@@ -761,6 +835,15 @@ impl Projection {
         entry: &JournalEntry,
         terms: &Result<Terms, String>,
     ) {
+        // ⛔ SPLIT ONCE, LIKE `fold`. `lots` is per view and `names` and
+        // `cost` are not, and this walks every disposal in the entry — so
+        // reaching through `self` for each in turn would put the lookup that
+        // finds the view inside the loop over lots, which is the one loop in
+        // this crate that grows with a fund's trading history.
+        let Self { names, views, cost, .. } = self;
+        let fold = views
+            .get_mut(ratio_rules::UNDECLARED_VIEW)
+            .expect("every projection holds the view every book has");
         // ⛔ THE GAIN IS ATTRIBUTED ONLY WHEN THE ENTRY IS UNAMBIGUOUS: exactly
         // one sale, and a chart that names where a gain goes. An entry disposing
         // of two instruments carries ONE gain leg between them, and splitting it
@@ -784,7 +867,7 @@ impl Projection {
             Some(d) => match ratio_common::days_from_iso_date(d) {
                 Ok(n) => Some(n as relief::Day),
                 Err(e) => {
-                    self.lots.breaks.push(format!(
+                    fold.lots.breaks.push(format!(
                         "{}: trade date {d:?} is not a date — {e:#}. Lots it opens carry \
                          no acquisition date, and the holding-period methods refuse them",
                         entry.id
@@ -816,7 +899,7 @@ impl Projection {
             if qty == 0 {
                 continue;
             }
-            let key = (p.dim, self.names.intern(inst));
+            let key = (p.dim, names.intern(inst));
             if qty > 0 {
                 // A purchase opens a lot. `seq` is the journal position, which
                 // IS acquisition order — `relief::relieve` sorts by it rather
@@ -835,8 +918,8 @@ impl Projection {
                 };
                 // ⛔ A HUSK IS REFUSED WHERE IT IS OFFERED, so the walk no longer
                 // rescans the whole holding on every sale looking for one.
-                if let Err(e) = self.lots.open.entry(key).or_default().push(lot) {
-                    self.lots.breaks.push(format!("{}: {e:#}", entry.id));
+                if let Err(e) = fold.lots.open.entry(key).or_default().push(lot) {
+                    fold.lots.breaks.push(format!("{}: {e:#}", entry.id));
                 }
                 continue;
             }
@@ -851,7 +934,7 @@ impl Projection {
             let terms = match terms {
                 Ok(t) => *t,
                 Err(why) => {
-                    self.lots.breaks.push(format!(
+                    fold.lots.breaks.push(format!(
                         "{}: selling {} of {} could not be relieved — the lot method is \
                          not known: {why}",
                         entry.id, -qty, inst
@@ -860,11 +943,11 @@ impl Projection {
                 }
             };
             let method = terms.method;
-            let held = self.lots.open.entry(key.clone()).or_default();
+            let held = fold.lots.open.entry(key.clone()).or_default();
             let relieving = std::time::Instant::now();
             let relieved = held.relieve(method, -qty);
-            self.cost.relieve += relieving.elapsed();
-            self.cost.reliefs += 1;
+            cost.relieve += relieving.elapsed();
+            cost.reliefs += 1;
             match relieved {
                 Ok(r) => {
                     // ⛔ THE POSITION AND THE LOT BOOK ARE TWO INDEPENDENT
@@ -886,7 +969,7 @@ impl Projection {
                     // operator would read to investigate a drift asserted the
                     // very thing that was wrong.
                     if -p.amount != r.cost {
-                        self.lots.breaks.push(format!(
+                        fold.lots.breaks.push(format!(
                             "{}: selling {} of {} posted {} of basis, and relieving the lots \
                              {} costs {} — the position and the lot book \
                              will disagree by {}",
@@ -899,18 +982,18 @@ impl Projection {
                             -p.amount - r.cost
                         ));
                     }
-                    let ccy = p.currency.as_deref().map(|c| self.names.intern(c));
-                    *self.lots.relieved.entry(ccy.clone()).or_default() += r.cost as i128;
+                    let ccy = p.currency.as_deref().map(|c| names.intern(c));
+                    *fold.lots.relieved.entry(ccy.clone()).or_default() += r.cost as i128;
                     // Computed before `r.left` is moved out below, and as a free
                     // function because `held` still borrows the lot book.
                     let split = gain_leg
                         .and_then(|g| classify(&r, g, trade_day, terms));
                     if let Some((short, long)) = split {
-                        *self.lots.short_term.entry(ccy.clone()).or_default() += short;
-                        *self.lots.long_term.entry(ccy).or_default() += long;
+                        *fold.lots.short_term.entry(ccy.clone()).or_default() += short;
+                        *fold.lots.long_term.entry(ccy).or_default() += long;
                     }
                 }
-                Err(e) => self.lots.breaks.push(format!(
+                Err(e) => fold.lots.breaks.push(format!(
                     "{}: selling {} of {} could not be relieved — {e:#}",
                     entry.id, -qty, inst
                 )),
@@ -945,9 +1028,9 @@ impl Projection {
             None => None,
             Some(r) => Some(Realized {
                 gain: self.translate(&|dim| dim == r.realized_gain, rates)?,
-                basis: convert(&self.lots.relieved, rates)?,
-                short_term: convert(&self.lots.short_term, rates)?,
-                long_term: convert(&self.lots.long_term, rates)?,
+                basis: convert(&self.only().lots.relieved, rates)?,
+                short_term: convert(&self.only().lots.short_term, rates)?,
+                long_term: convert(&self.only().lots.long_term, rates)?,
             }),
         };
         Ok(AsOf { value, prefix: self.at })
@@ -957,6 +1040,7 @@ impl Projection {
     pub fn lots_of(&self, dim: i64, instrument: &str) -> AsOf<Vec<relief::Lot>> {
         AsOf {
             value: self
+                .only()
                 .lots
                 .open
                 // ⚠ Allocates, and that is fine HERE: this is a read for one
@@ -978,7 +1062,7 @@ impl Projection {
     /// that this figure does not appear in a NAV's cost, and having it available
     /// here is what lets that be checked rather than asserted.
     pub fn open_lots(&self) -> i64 {
-        self.lots.open.values().map(|v| v.len() as i64).sum()
+        self.only().lots.open.values().map(|v| v.len() as i64).sum()
     }
 
     /// Distinct currencies this book's totals are keyed by.
@@ -994,7 +1078,8 @@ impl Projection {
     /// through the base — so leaving it out would report a fund with fewer
     /// denominations than it has.
     pub fn currency_count(&self) -> i64 {
-        self.totals
+        self.only()
+            .totals
             .by_dim
             .keys()
             .map(|(_, c)| c.clone())
@@ -1009,7 +1094,7 @@ impl Projection {
     /// as the other is how an estimate stops being checkable against the thing
     /// it estimates — which is the only reason to have both numbers.
     pub fn total_rows(&self) -> i64 {
-        self.totals.by_dim.len() as i64
+        self.only().totals.by_dim.len() as i64
     }
 
     /// Corporate actions announced inside this prefix and not yet rewritten.
@@ -1028,12 +1113,12 @@ impl Projection {
 
     /// Cumulative cost given up by sales.
     pub fn relieved_cost(&self) -> i128 {
-        self.lots.relieved.values().sum()
+        self.only().lots.relieved.values().sum()
     }
 
     /// Sales that could not be relieved, and why.
     pub fn lot_breaks(&self) -> &[String] {
-        &self.lots.breaks
+        &self.only().lots.breaks
     }
 
     /// Net asset value and the trial-balance difference, off the maintained
@@ -1062,7 +1147,7 @@ impl Projection {
                 i64::try_from(nav).map_err(|_| {
                     anyhow::anyhow!("this fund's net asset value does not fit in 64 bits")
                 })?,
-                i64::try_from(self.totals.debits - self.totals.credits).map_err(|_| {
+                i64::try_from(self.only().totals.debits - self.only().totals.credits).map_err(|_| {
                     anyhow::anyhow!("this fund's trial-balance difference does not fit in 64 bits")
                 })?,
             ),
@@ -1085,7 +1170,7 @@ impl Projection {
     /// (dimension, currency) rather than per posting.
     fn translate(&self, want: &dyn Fn(i64) -> bool, rates: &Rates) -> Result<i128> {
         let mut total: i128 = 0;
-        for ((dim, currency), amount) in &self.totals.by_dim {
+        for ((dim, currency), amount) in &self.only().totals.by_dim {
             if !want(*dim) {
                 continue;
             }
@@ -1131,6 +1216,7 @@ impl Projection {
     /// `Ratio.Actions.Factor.a_factor_can_succeed_where_the_rewrite_refuses`.
     pub fn units_as_of(&self, dim: i64, instrument: &str, day: &str) -> Result<AsOf<i64>> {
         let stored = self
+            .only()
             .positions
             .held
             .get(&(dim, Text::from(instrument)))
@@ -1526,6 +1612,26 @@ mod tests {
         assert_eq!(piecemeal.open_lots(), cold.open_lots());
         assert_eq!(piecemeal.relieved_cost(), cold.relieved_cost());
         assert_eq!(piecemeal.lots_of(1, "vti").value, cold.lots_of(1, "vti").value);
+    }
+
+    #[test]
+    fn a_projection_holds_the_one_view_every_book_has() {
+        // ⛔ ONE, NOT ZERO — AND ZERO IS WHAT `#[derive(Default)]` WOULD GIVE
+        // IT, which is why `Default` here is written out. A projection with no
+        // book of record is not a state this type has: every book has at least
+        // one view, and a book that declares none has exactly one recognising
+        // in journal order. `Ratio.Views.nobody_said_is_not_a_settlement_
+        // convention`.
+        //
+        // ⚠ THE ASSERTION THAT `views` HAS ONE ENTRY IS THE ONE THAT MATTERS
+        // WHEN THE CUT LANDS. Everything else about this refactor is checked by
+        // the three differential tests below going on passing unchanged — the
+        // fold moved and the figures did not — and none of them can see how
+        // many views there are.
+        let p = Projection::new();
+        assert_eq!(p.views.len(), 1, "{:?}", p.views.keys().collect::<Vec<_>>());
+        assert!(p.views.contains_key(ratio_rules::UNDECLARED_VIEW));
+        assert_eq!(p.prefix(), 0);
     }
 
     #[test]
@@ -2494,7 +2600,7 @@ mod tests {
         // and the key in the lot book are the same allocation, not two equal
         // ones.
         let pos_key = p.positions().value.held.keys().find(|(_, i)| &**i == "vti").unwrap();
-        let lot_key = p.lots.open.keys().find(|(_, i)| &**i == "vti").unwrap();
+        let lot_key = p.only().lots.open.keys().find(|(_, i)| &**i == "vti").unwrap();
         assert!(std::sync::Arc::ptr_eq(&pos_key.1, &lot_key.1));
     }
 
