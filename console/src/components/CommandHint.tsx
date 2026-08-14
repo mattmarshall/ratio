@@ -1,7 +1,7 @@
 "use client";
 
-import { useKBar } from "kbar";
 import { useEffect, useState } from "react";
+import { useKBar } from "@/lib/kbar";
 
 /**
  * Where an operator finds out the palette is there.

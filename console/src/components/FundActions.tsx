@@ -1,8 +1,7 @@
 "use client";
 
-import { Priority, useKBar, useRegisterActions } from "kbar";
 import { useSelectedLayoutSegments } from "next/navigation";
-import type { Action } from "kbar";
+import { Priority, useKBar, useRegisterActions, type Action } from "@/lib/kbar";
 import { candidatesForId, hrefForResourceName } from "@/lib/deeplink";
 import { BASIS_LABEL } from "@/lib/format";
 import { SCREENS, screenHref } from "@/lib/screens";

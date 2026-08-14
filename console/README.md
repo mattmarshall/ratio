@@ -91,6 +91,15 @@ deliberate — the animator is invisible without the Web Animations API and buil
 an unguarded `ResizeObserver`, and the positioner's type accepts no `role`. The
 panel is nine lines of CSS in `globals.css` and a `role="dialog"` here.
 
+⚠ **The expensive half loads on first ⌘K, not on page load.** kbar is CommonJS,
+so `next build` cannot shake `fuse.js` or the virtualizer out of its barrel;
+`lib/kbar.ts` re-exports the light half by deep import and `PaletteUI.tsx`
+carries the rest behind `next/dynamic`. Measured in Chromium against the fixture
+set: every fund screen pays 8.7 KB gzipped for the provider and the hint, and the
+first open fetches 21.3 KB more. Importing `PaletteUI` statically from anywhere —
+or re-exporting `KBarResults`/`useMatches` from `lib/kbar.ts` — quietly undoes
+the split; both files say so at the line it would happen.
+
 ### The screens that write
 
 There are five routes over four writes — `/record`, `/ingest`, `/mark`, and
