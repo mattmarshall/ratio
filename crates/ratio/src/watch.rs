@@ -658,6 +658,73 @@ fn balance_json(book: &Path) -> Result<String> {
 }
 
 /// The postings behind one account — the drill-down.
+/// A shape a visitor may ask to have folded, and what folding it cost when it
+/// was recorded.
+///
+/// ⛔ THESE ARE THE SHAPES HANDOFF.md MEASURED, NOT THE ONES `ratio closure`
+/// DIALS. The recorded twenty-million-lot row is **10,000 securities × 2,000
+/// lots**, and `ratio closure`'s default — the one the estimate panel on this
+/// screen uses — is **500 × 40,000**. Both are twenty million open tax lots.
+/// They are not the same fund: the mark phase reads one price per SECURITY, so
+/// the recorded shape marks ten thousand names and the dialled one marks five
+/// hundred, a twentyfold difference in the term `Ratio.Closure.markCost` names.
+/// Estimating one and running the other, both captioned "twenty million tax
+/// lots", is precisely the shape of defect HANDOFF catalogues: every figure
+/// ties, and one of them is about somebody else's fund.
+///
+/// ⚠ `//:scale_shapes_test` holds this table and HANDOFF's to the same numbers.
+struct Shape {
+    /// What a caller names in `POST /scale/start`. ⛔ Matched exhaustively; a
+    /// caller never supplies dials.
+    name: &'static str,
+    securities: i64,
+    lots_per: i64,
+    /// Open lots the generator settles at. Deterministic, so this is a fact
+    /// about the shape rather than an estimate of it.
+    open_lots: i64,
+    entries: i64,
+    /// The cold build HANDOFF.md records, in milliseconds.
+    ///
+    /// ⚠ RECORDED ON A NAMED MACHINE ON A NAMED DAY, and a run started from this
+    /// screen happens somewhere else. The page shows both and says which is
+    /// which — a reader who cannot tell them apart reads the recorded one as a
+    /// live one, which is the whole reason `Calibration::provenance` exists one
+    /// module over.
+    recorded_cold_build_ms: i64,
+}
+
+/// ⛔ THE FULL SHAPE IS THE ONLY ONE THAT CANNOT RUN WHERE THE OTHERS DO. Its
+/// journal is ~291 bytes × 140 million lines ≈ 40 GB, against a Lambda's 512 MB
+/// of `/tmp` and a GitHub runner's ~14 GB of free disk. The two smaller shapes
+/// fit both; that asymmetry is why the small ones can be measured in CI and this
+/// one needs somewhere else to happen.
+const SHAPES: [Shape; 3] = [
+    Shape {
+        name: "small",
+        securities: 500,
+        lots_per: 500,
+        open_lots: 252_843,
+        entries: 1_769_907,
+        recorded_cold_build_ms: 12_500,
+    },
+    Shape {
+        name: "medium",
+        securities: 500,
+        lots_per: 2_000,
+        open_lots: 1_022_625,
+        entries: 7_158_381,
+        recorded_cold_build_ms: 50_200,
+    },
+    Shape {
+        name: "full",
+        securities: 10_000,
+        lots_per: 2_000,
+        open_lots: 20_004_324,
+        entries: 140_030_274,
+        recorded_cold_build_ms: 995_000,
+    },
+];
+
 /// This machine's read rate, measured ONCE.
 ///
 /// ⛔ NOT PER REQUEST, AND THAT IS A SECURITY PROPERTY AS MUCH AS A CORRECTNESS

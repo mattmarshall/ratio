@@ -1,12 +1,29 @@
 #!/usr/bin/env bash
 #
-# Copy the baked demo book somewhere writable, then serve.
+# Copy the baked demo book somewhere writable, then serve — or, given arguments,
+# run those instead.
 #
 # A Lambda filesystem is read-only apart from /tmp, and the demo posts entries.
 # Copying on start also means every cold start resets the demo to a known
 # state — which is what you want in front of a customer, not a book carrying
 # whatever the last visitor did to it.
 set -euo pipefail
+
+# ⛔ ARGUMENTS RUN THE BINARY, AND WITHOUT THIS THEY WERE SILENTLY DISCARDED.
+# Docker appends a `docker run` command to ENTRYPOINT, so `docker run <image>
+# bench --fold --json` arrived here as $1..$n and this script — which never
+# mentioned "$@" — went on to exec `ratio watch` regardless. There is no CMD to
+# override either. The container therefore ran a WEB SERVER when asked for a
+# benchmark, and the only symptom was a task that never produced output and
+# never exited: a hang, from a program working perfectly on a different job.
+#
+# ⚠ The seeding below is deliberately skipped in this mode. A one-shot run
+# brings its own book and copying two demo books first would be ~30 MB of
+# pointless IO before every measurement — and `RATIO_BOOK` would be seeded to
+# somewhere the caller did not ask about.
+if [ "$#" -gt 0 ]; then
+  exec /usr/local/bin/ratio "$@"
+fi
 
 BOOK="${RATIO_BOOK:-/tmp/book}"
 if [ ! -d "$BOOK" ]; then
