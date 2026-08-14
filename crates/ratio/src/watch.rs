@@ -841,23 +841,13 @@ fn scale_runs_json() -> Result<String> {
 /// ⚠ A rate is a property of the MACHINE, so measuring it repeatedly answers
 /// the same question at somebody's expense. Once per process is the honest
 /// frequency, and a Lambda cold start is where it lands.
+/// ⚠ THE MEMO AND THE FALLBACK MOVED TO `closure::rate_for`, AND ONLY BECAUSE A
+/// SECOND CALLER ARRIVED. `Console::explain_nav_strike` quotes the same rate
+/// beside the same kind of duration, and two memoized copies would be two
+/// answers to "how fast is this machine" — differing by whichever book each was
+/// first asked about, which on a multi-fund process is not the same book.
 fn read_rate(book: &Path) -> &'static ratio_nav::closure::Calibration {
-    static RATE: std::sync::OnceLock<ratio_nav::closure::Calibration> = std::sync::OnceLock::new();
-    RATE.get_or_init(|| {
-        // ⛔ THE REASON IS KEPT RATHER THAN SWALLOWED. `Calibration::provenance`
-        // is rendered verbatim on the page, and "shipped" versus "measured here"
-        // is the difference between a number this machine stands behind and one
-        // taken off a laptop in August — a reader who cannot tell them apart
-        // will read the constant as a measurement.
-        match ratio_nav::closure::measure(book) {
-            Ok(c) => c,
-            Err(e) => {
-                let mut c = ratio_nav::closure::Calibration::measured();
-                c.provenance = format!("{} — not measured here: {e:#}", c.provenance);
-                c
-            }
-        }
-    })
+    ratio_nav::closure::rate_for(book)
 }
 
 /// What a period end of a given shape COSTS, before anyone runs one.

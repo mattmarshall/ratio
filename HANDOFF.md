@@ -275,6 +275,47 @@ the conserved one, and the kernel never said it was.
   the two views agree. So `ratio gen` with no `--views` is still byte-identical
   run to run, and `ratio gen --settle-tail` deliberately is not.
 
+- ⚠ **THE PLAN SCREEN EXPLAINS TWO PATHS AND MODELS ONLY ONE OF THEM, WHICH IS
+  THE MODEL BEING HONEST RATHER THAN A GAP TO FILL IN.** `ExplainNavStrike`
+  draws `ratio_nav::strike` beside `Projection::nav`. `Ratio.Closure` costs a
+  period end off a projection that is ALREADY CURRENT — it has no term for
+  parsing a journal and there is no theorem about what a fold costs — so every
+  step of the recorded fold carries an estimate only where the strike record
+  supplies one (the pinned prefix) or the shape does (accounts, currencies).
+  ⛔ The rest are blank, never zero. Anybody tempted to "fill in the missing
+  estimates" would be inventing a cost model for the one curve this repository
+  measures instead.
+- ⛔ **AND WHAT `?analyze=true` MEASURES IS THIS MACHINE RE-DERIVING THE PREFIX
+  NOW, NOT WHAT THE STRIKE COST.** Nothing is recorded at strike time. Putting
+  per-stage costs in the `NAVS` file was considered and refused: it widens an
+  append-only record whose eight-field legacy read is already documented, for a
+  number that is a property of a machine on a day. Every actual on the screen
+  says so beside itself rather than once at the bottom.
+- ⚠ **`Rates::len()` IS THE FACTS, `Ratio.Closure.fxCost` IS THE CURRENCIES, AND
+  THEY DIFFER BY ONE ON EVERY BOOK.** The base has no rate fact — a fund does
+  not record what a dollar is worth in dollars. So the plan's `Read Rates` step
+  measures one lower than it estimates, always, and the node carries a note
+  saying why. Read as a defect it would send somebody looking for a missing
+  rate; the missing one is the denomination the figure is reported in.
+- ⚠ **`capital_txns` IS PASSED AS ZERO AND REPORTED AS BLANK, AND THE TWO ARE
+  NOT THE SAME CLAIM.** Counting subscriptions and redemptions needs the chart
+  roles and `Projection` deliberately does not know the chart, so the model gets
+  a zero it needs to typecheck and the screen gets nothing. ⛔ Every total on
+  that screen therefore EXCLUDES capital activity and says so. A future change
+  that starts counting it must move both, or the steps will stop adding to the
+  figure beside them.
+- ⛔ **`explain.json` IS THE ONE FIXTURE IN `console/fixtures/` THAT WAS NEVER
+  CAPTURED.** Bazel could not fetch two `tomato-bazel` modules in the
+  environment it was written in (403 under an egress policy), so no `ratio
+  watch` could be built to capture from. The steps, citations, notes and every
+  modelled figure came out of `ratio_nav::explain::plan_of` itself and the
+  encoding was copied from `transcode.rs` — but the FUND'S SHAPE is chosen to
+  agree with `view.json` rather than read off a book. `capture_fixtures.sh` says
+  so at the top and now captures it; run it and commit whatever comes back.
+  ⚠ This is the same shape as `console/fixtures/reconcile.json` two entries
+  above: a fixture that outlives the gap it was written for is how a captured
+  fixture stops being a capture.
+
 ---
 
 ## Traps that cost real time
@@ -583,7 +624,8 @@ than one that is entirely unclassified.
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
-| `crates/ratio-console` | the console's BFF — 34 RPCs, transcoded onto `/v1` |
+| `crates/ratio-console` | the console's BFF — 38 RPCs, transcoded onto `/v1` |
+| `crates/ratio-nav/src/explain.rs` | what a strike DOES, as a plan. ⛔ a description of two code paths, not a planner over them — nothing chooses |
 | `console/` | the console itself. Next.js on Vercel; ⛔ Bazel does not build it |
 | `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9 |
 | `AGENTS.md` | the rules, for a person or a model. Replaces the two stale LLM guides |

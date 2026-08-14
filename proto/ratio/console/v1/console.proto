@@ -352,6 +352,44 @@ service Console {
     option (google.api.method_signature) = "name";
   }
 
+  // What this strike DID, step by step, and what the same question costs off
+  // the maintained totals. (AIP-136)
+  //
+  // ⛔ A DESCRIPTION OF THE TWO PATHS, NOT A PLAN THE ENGINE CHOSE. Nothing in
+  // Ratio selects between them: `ratio_nav::strike` folds the journal,
+  // `Projection::nav` reads maintained totals, and a caller picks one by calling
+  // it. `Ratio.Plan` proves the two agree and is not emitted into Rust at all.
+  // Serving this as "the plan" without saying so would put a diagram behind a
+  // structure nothing produces — which is the shape of both false premises
+  // HANDOFF.md opens with.
+  //
+  // ⛔ AND IT ANSWERS IN TWO CURRENCIES OF COST THAT MUST NOT BE MIXED. The
+  // proved model (`Ratio.Closure`) costs a period end off a projection that is
+  // already CURRENT; it has no term for parsing a journal and no theorem about
+  // what a fold costs. So a step carries an estimate only where the model or the
+  // strike record supplies one, and carries nothing — never zero — elsewhere.
+  //
+  // ⛔ THIS IS NOT THE "explain" THE CONSOLE DELIBERATELY HAS NO BUTTON FOR.
+  // ORCHESTRATION.md: "the console reads and previews, and deliberately has no
+  // approve, explain, or strike button." That "explain" is the VERB — accepting
+  // an explanation for a break, which is `ratio accept` at a terminal and has no
+  // RPC on purpose. This one reads how a recorded NAV was computed and changes
+  // nothing. Same word, and the two are one word apart in exactly the way
+  // `/scale` is one word from performance attribution, so it is written down
+  // here rather than left to be inferred from the absence of a write.
+  //
+  // A custom method on GET, for the same reason `:replay` is one: it reads.
+  //
+  // `?analyze=true` re-derives the strike under instrumentation and fills in
+  // what the fold actually saw. Opt-in, because a fold is the slowest thing this
+  // API does and a page that measured on load would spend a period end's work on
+  // somebody who wanted to look at a diagram — the argument `:replay` already
+  // makes about asserting a proof rather than offering it.
+  rpc ExplainNavStrike(ExplainNavStrikeRequest) returns (ExplainNavStrikeResponse) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*/navStrikes/*}:explain"};
+    option (google.api.method_signature) = "name";
+  }
+
   // Lists the corporate actions announced on this fund. (AIP-132)
   //
   // Announced, NOT applied. An action sits here from the moment somebody tells
@@ -1209,6 +1247,222 @@ message ReplayNavStrikeResponse {
   // than merely reported.
   string net_asset_value = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
   string journal_digest = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One step of a NAV strike's plan.
+//
+// ⛔ EVERY FIGURE ON THIS MESSAGE IS A STRING, AND AN EMPTY ONE MEANS THERE IS
+// NO FIGURE — never "0". `View.realized_gain` already carries that convention
+// for the same reason, and here it is load-bearing twice over: a rendered zero
+// that nothing measured reads as "instant", and a rendered zero that nothing
+// estimated reads as "free". Ratio has shipped the inverse of this once —
+// `fx_rate` returned a figure two orders of magnitude wrong for months because
+// its only consumer discarded it.
+message PlanNode {
+  // Which of the two answers to "what is this fund worth" this step belongs to.
+  enum Group {
+    GROUP_UNSPECIFIED = 0;
+
+    // `ratio_nav::strike` — the fold that produced the record. Grows with the
+    // journal, and the proved model has no term for it at all.
+    GROUP_RECORDED = 1;
+
+    // `Projection::nav` — the same figure off maintained totals. The chart and
+    // the currencies, flat in fragmentation.
+    GROUP_MAINTAINED = 2;
+  }
+
+  // What the step is doing on the page.
+  enum Role {
+    ROLE_UNSPECIFIED = 0;
+
+    // It runs.
+    ROLE_CHOSEN = 1;
+
+    // A plan for the same answer that costs more and is not taken.
+    ROLE_REJECTED = 2;
+
+    // Where the strike stops rather than reporting a figure it cannot stand
+    // behind.
+    ROLE_REFUSAL = 3;
+
+    // ⛔ NOT `REJECTED`. A rejected step would have worked and cost more; an
+    // unread one is never touched — `Ratio.Closure.factored_nav_never_reads_the_
+    // lots` — and collapsing the two would lose the only claim on this screen
+    // that is a theorem.
+    ROLE_UNREAD = 4;
+  }
+
+  // Stable within one plan. Edges name these.
+  string id = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What it does, in the operator style EXPLAIN uses.
+  string operator = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The one line that qualifies it — the equivalent of an index name.
+  string detail = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  Group group = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  Role role = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The theorem or the function this cost comes from.
+  //
+  // ⛔ REQUIRED OF EVERY NODE, and the Rust builder has a test that no step
+  // ships without one. A number on this screen that a reader cannot trace is the
+  // thing the whole product argues against.
+  string cites = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Why it costs what it costs. Rendered, not decoration.
+  repeated string note = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Reads, from the proved model or from the strike's own record. EMPTY where
+  // nothing costs this step.
+  string estimated_reads = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // `estimated_reads` times the calibrated rate. The measured half of an
+  // estimate whose other half is proved, kept apart from it on purpose.
+  //
+  // ⛔ A DURATION, AND NOT NAMED `estimated_nanos`. `core::0142::time-field-type`
+  // flags any field whose last underscore-separated token is a time unit —
+  // `nanos`, `millis`, `seconds`, `time` — and it accepts ONLY Timestamp, Date,
+  // DateTime and TimeOfDay. A `google.protobuf.Duration` called `_nanos` fails
+  // it just as a string does; what fixes it is the NAME. `View.nav_strike` is
+  // the precedent: a Duration named for what it measures rather than for its
+  // unit.
+  //
+  // ⭐ AND THE TYPE BUYS SOMETHING THE STRING DID NOT — real presence. Absent
+  // renders as JSON `null`, so "nothing costed this step" stops relying on the
+  // empty-string convention the counts still use.
+  google.protobuf.Duration estimated_duration = 9
+      [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What an instrumented re-fold actually saw. EMPTY / null unless `analyzed`.
+  string actual_rows = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.protobuf.Duration actual_duration = 11
+      [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// An edge of the plan.
+message PlanEdge {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+
+    // Rows moving from one step to the next.
+    KIND_FLOW = 1;
+
+    // Where those rows go instead when the strike refuses them.
+    KIND_REFUSAL = 2;
+
+    // Drawn, and carrying nothing.
+    KIND_UNREAD = 3;
+  }
+
+  // ⛔ `source`/`target`, NOT `from`/`to`. `from` is on AIP-140's reserved-word
+  // list because it is a Python keyword, and `//proto:ratio_aip_lint` runs with
+  // every rule but one enabled. The internal model in `ratio_nav::explain`
+  // spells them the same way, so no layer has to translate.
+  string source = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string target = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  Kind kind = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Rows that travelled it. Empty when nothing measured them.
+  string rows = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// The fund's shape, as the estimate was taken over it.
+//
+// ⛔ READ OFF THE BOOK, NEVER TYPED IN. `/scale` offers dials because it argues
+// about funds that do not exist; this explains one that does.
+//
+// ⛔ AND `securities` AND `lots_per` ARE SEPARATE BECAUSE THE PRODUCT IS. 500 x
+// 40,000 and 10,000 x 2,000 are both twenty million open tax lots and are NOT
+// the same fund — marking reads one price per SECURITY, so the two differ
+// twentyfold in the term that grows with the chart. A single lot count would
+// hide that, and has: HANDOFF.md records two runs captioned identically that
+// describe different books.
+message PlanDials {
+  string securities = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string currencies = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Open lots per security. ⚠ AN AVERAGE, derived by dividing and rounding
+  // down. The action term multiplies it and wants the fragmentation of the one
+  // instrument a split touches, which a real book's is not uniform in.
+  string lots_per = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Announced and not yet rewritten. ⛔ Not announced-ever, which is not a dial.
+  string open_actions = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Rows in the chart, and rows the maintained NAV actually walks — one per
+  // (dimension, currency), which is NOT the same as one per security.
+  string accounts = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string total_rows = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Open tax lots actually held. The number the scale claim is about, and the
+  // one the chosen plan does not read.
+  string open_lots = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// How a NAV strike is computed, and what the alternatives would have cost.
+//
+// ⚠ NAMED FOR THE METHOD RATHER THAN FOR ITSELF. `NavStrikePlan` reads better
+// and AIP-136 refuses it: a custom method's response must be `<Rpc>Response` or
+// the resource being operated on, and the resource here is `NavStrike`.
+// `ReplayNavStrikeResponse` above is the same concession for the same reason.
+message ExplainNavStrikeResponse {
+  // The strike this explains.
+  string name = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string view = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  repeated PlanNode nodes = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  repeated PlanEdge edges = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Empty when `estimate_refusal` is set.
+  PlanDials dials = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Why there is no estimate, when there is none.
+  //
+  // ⛔ CARRIED, NOT SWALLOWED. The maintained projection folds the whole journal
+  // with no cut, so it cannot supply a shape for a trade- or settlement-basis
+  // view — and answering with the recorded view's shape under another name is
+  // precisely the defect multi-view books exist to prevent. Same posture as
+  // `ReconcileViews`, which refuses outright.
+  string estimate_refusal = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether the fold was re-run under instrumentation.
+  //
+  // ⛔ WHEN TRUE, THE ACTUALS ARE THIS MACHINE RE-DERIVING THE PREFIX NOW — not
+  // what the original strike cost. Nothing was recorded at strike time, and a
+  // duration presented as the strike's own would be a fabrication.
+  bool analyzed = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Nanoseconds per read, and where that number came from.
+  //
+  // ⛔ THE PROVENANCE TRAVELS WITH THE FIGURE. Reads are proved; seconds are a
+  // property of a machine on a day. A rate with no provenance is a guess wearing
+  // a decimal point, and the shipped one was 250 until somebody measured it and
+  // found 4,436.
+  string nanos_per_read = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string provenance = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The three costs, side by side.
+  //
+  // ⛔ ALL THREE, ALWAYS, EVEN WHEN THE REJECTED STEPS ARE COLLAPSED. `ratio
+  // bench` "reports two curves and both must be quoted" and this is the same
+  // rule: `chosen_reads` is the flattering number, and a screen showing it alone
+  // would be the overclaim that command is shaped to make hard.
+  //
+  // ⚠ NONE OF THEM INCLUDES THE CAPITAL TERM. Counting subscriptions and
+  // redemptions needs the chart roles, which the maintained projection does not
+  // have — so it is excluded from every figure here rather than guessed at.
+  string chosen_reads = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The same period end with its open actions applied by REWRITING the lots
+  // they touch. `Ratio.Closure.the_cliff`.
+  string rewrite_reads = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Folding every open tax lot instead of reading the maintained totals.
+  // `Ratio.Plan.scan_cost_is_the_lots`.
+  string scan_reads = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One version of a fund's configuration.
@@ -2089,6 +2343,19 @@ message ReplayNavStrikeRequest {
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference).type = "ratio.fastverk.dev/NavStrike"
   ];
+}
+
+message ExplainNavStrikeRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/NavStrike"
+  ];
+
+  // Re-derive the strike under instrumentation and report what the fold saw.
+  //
+  // ⛔ OPT-IN, AND THE DEFAULT IS THE CHEAP ANSWER. A fold is the slowest thing
+  // this API does and two 15-second ceilings stack behind it.
+  bool analyze = 2 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message ListChangeLogEntriesRequest {

@@ -35,6 +35,24 @@ FUND="${RATIO_FIXTURE_FUND:-harbourline-global-value}"
 STRUCK="${RATIO_FIXTURE_STRUCK_FUND:-northstar-multi-strategy}"
 OUT="$(cd "$(dirname "$0")/../fixtures" && pwd)"
 
+# ⛔ `explain.json` HAS NEVER BEEN CAPTURED, AND IT IS THE ONE FIXTURE IN THIS
+# DIRECTORY THAT IS NOT A RECORDING. It was emitted by `ratio_nav::explain::
+# plan_of` directly — the real builder, so every step, citation, note and
+# modelled figure is what the server would compute — with the encoding copied
+# from `transcode.rs` and the fund's SHAPE chosen to agree with the `view.json`
+# committed beside it (twelve positions, 252,843 open lots, prefix 6). What has
+# never been checked is whether a real book's dials are those.
+#
+# ⚠ AND THE FIRST REAL CAPTURE WILL MOVE IT TO `$STRUCK`, along with
+# `navStrikes.json` and `replay.json` — the committed trio is still harbourline's
+# from before that fund became the blocked one. They move together or they
+# describe two funds, which is worse than being stale.
+#
+# ⚠ THAT IS EXACTLY THE THING THIS SCRIPT'S HEADER WARNS ABOUT, so it is written
+# down rather than left to be discovered. Run the capture below and commit
+# whatever comes back, even if nothing else changed: a fixture that outlives the
+# gap it was written for is how a captured fixture stops being a capture, which
+# HANDOFF.md already records happening to `reconcile.json`.
 get() { # get <file> <path>
   local body
   body="$(curl -sf "${API}/v1/$2")" || {
@@ -68,6 +86,15 @@ get break.json      "funds/${FUND}/breaks/$(id breaks.json breaks)"
 get postings.json   "funds/${FUND}/accounts/$(id accounts.json accounts)/postings"
 get lots.json       "funds/${FUND}/positions/$(id positions.json positions)/lots"
 get replay.json     "funds/${STRUCK}/navStrikes/$(id navStrikes.json navStrikes):replay"
+# ⛔ `$STRUCK`, FOR THE REASON `replay.json` USES IT — a plan explains a STRIKE,
+# and a blocked fund has none to explain. Capturing this against `$FUND` would
+# index an empty list exactly as the strike list does.
+#
+# ⚠ AND WITHOUT `?analyze=true`, deliberately. The render suite's default case is
+# the unmeasured plan, and it asserts every actual is BLANK rather than zero —
+# capturing an analyzed one would make that case pass against a fixture that
+# could not fail it.
+get explain.json    "funds/${STRUCK}/navStrikes/$(id navStrikes.json navStrikes):explain"
 get diff.json       "funds/${FUND}/configVersions/$(id configVersions.json configVersions):diff"
 
 echo "captured into $OUT — now run: python3 console/scripts/fixtures_test.py \\"

@@ -10,7 +10,13 @@
 // `//console:route_manifest_test` holds this file to that from both sides:
 //
 //   * every route named here has a `page.tsx` (or `layout.tsx`) on disk, and
-//   * every one of the 34 RPCs in console.proto is read by something here.
+//   * every one of the 38 RPCs in console.proto is read by something here.
+//
+// ⚠ THAT COUNT IS PROSE AND NOTHING CHECKS IT, WHICH IS WHY IT WAS WRONG BY
+// THREE. It read 34 while the contract carried 37 — the RPCs arrived, the test
+// went on enforcing the property in both directions, and only the sentence
+// drifted. AGENTS.md's "a comment nothing tests will drift" with a number in it.
+// The test below is the thing that matters; this line is a reader's orientation.
 //
 // ⚠ THE SECOND DIRECTION IS THE ONE THAT MATTERS. `//web:rendered_test` existed
 // because "a field can be declared, transcoded, served, typechecked and mirrored
@@ -153,6 +159,19 @@ export const ROUTES: readonly Route[] = [
     path: "/funds/[fund]/views/[view]/strikes/[strike]/replay",
     file: "funds/[fund]/views/[view]/strikes/[strike]/replay/page.tsx",
     reads: ["getNavStrike", "replayNavStrike"],
+  },
+  // A URL for a derivation. What the strike DID, step by step, beside what the
+  // same question costs off the maintained totals — and what the plans not
+  // taken would have cost.
+  //
+  // ⛔ NOT A PLAN THE ENGINE CHOSE, and the screen says so in as many words.
+  // Nothing in Ratio selects between the two paths; a caller picks one by
+  // calling it. Serving a diagram that implied otherwise would be a picture of
+  // a structure nothing produces.
+  {
+    path: "/funds/[fund]/views/[view]/strikes/[strike]/plan",
+    file: "funds/[fund]/views/[view]/strikes/[strike]/plan/page.tsx",
+    reads: ["getNavStrike", "explainNavStrike"],
   },
 
   // ── Configuration ────────────────────────────────────────────────────────

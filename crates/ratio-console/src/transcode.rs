@@ -55,6 +55,8 @@ pub const ROUTES: &[Route] = &[
     // A custom method (AIP-136) on GET, because replaying is safe and
     // idempotent — it folds a journal prefix and writes nothing.
     Route { method: "GET", template: "/v1/{name=funds/*/views/*/navStrikes/*}:replay" },
+    // The same, and for the same reason: explaining a strike reads.
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*/navStrikes/*}:explain" },
     Route { method: "GET", template: "/v1/{name=funds/*/views/*/navStrikes/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/positions" },
     // ⛔ BEFORE the bare position, and before the position pattern can swallow
@@ -223,6 +225,19 @@ pub fn serve(
             to_json(
                 &console.replay_nav_strike(&format!("funds/{id}/views/{v}/navStrikes/{strike}"))?,
             )?
+        }
+        ["funds", id, "views", v, "navStrikes", s] if s.ends_with(":explain") => {
+            let strike = s.trim_end_matches(":explain");
+            // ⛔ ANY VALUE BUT `true` IS `false`, INCLUDING `1` AND `yes`. The
+            // parameter decides whether this request folds a journal, so a
+            // typo must fall to the cheap answer rather than to the expensive
+            // one — a permissive parse here is a way to spend a period end by
+            // accident.
+            let analyze = param_of(query, "analyze") == "true";
+            to_json(&console.explain_nav_strike(
+                &format!("funds/{id}/views/{v}/navStrikes/{strike}"),
+                analyze,
+            )?)?
         }
         ["funds", id, "views", v, "navStrikes", s] => {
             to_json(&console.get_nav_strike(&format!("funds/{id}/views/{v}/navStrikes/{s}"))?)?
@@ -495,6 +510,100 @@ impl JsonView for pb::RecognitionDifference {
             q(&self.entry_id), q(&self.memo), date_json(&self.trade_date),
             date_json(&self.recognised_here), date_json(&self.recognised_there),
             q(&self.net_asset_value_effect)
+        )
+    }
+}
+
+fn plan_group_name(v: i32) -> &'static str {
+    match pb::plan_node::Group::try_from(v) {
+        Ok(pb::plan_node::Group::Recorded) => "RECORDED",
+        Ok(pb::plan_node::Group::Maintained) => "MAINTAINED",
+        _ => "UNSPECIFIED",
+    }
+}
+
+/// ⛔ `UNREAD` IS NOT `REJECTED`, AND A CLIENT COLLAPSING THEM LOSES THE
+/// THEOREM. A rejected step is a plan that would have worked and cost more; an
+/// unread one is never touched at all, which is what
+/// `Ratio.Closure.factored_nav_never_reads_the_lots` says about twenty million
+/// tax lots.
+fn plan_role_name(v: i32) -> &'static str {
+    match pb::plan_node::Role::try_from(v) {
+        Ok(pb::plan_node::Role::Chosen) => "CHOSEN",
+        Ok(pb::plan_node::Role::Rejected) => "REJECTED",
+        Ok(pb::plan_node::Role::Refusal) => "REFUSAL",
+        Ok(pb::plan_node::Role::Unread) => "UNREAD",
+        _ => "UNSPECIFIED",
+    }
+}
+
+fn plan_edge_kind_name(v: i32) -> &'static str {
+    match pb::plan_edge::Kind::try_from(v) {
+        Ok(pb::plan_edge::Kind::Flow) => "FLOW",
+        Ok(pb::plan_edge::Kind::Refusal) => "REFUSAL",
+        Ok(pb::plan_edge::Kind::Unread) => "UNREAD",
+        _ => "UNSPECIFIED",
+    }
+}
+
+impl JsonView for pb::PlanNode {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"id\":{},\"operator\":{},\"detail\":{},\"group\":{},\"role\":{},\
+             \"cites\":{},\"note\":[{}],\"estimatedReads\":{},\
+             \"estimatedDuration\":{},\"actualRows\":{},\"actualDuration\":{}}}",
+            q(&self.id), q(&self.operator), q(&self.detail),
+            q(plan_group_name(self.group)), q(plan_role_name(self.role)),
+            q(&self.cites), strings(&self.note),
+            // ⛔ THE EMPTY STRING IS "NO FIGURE", NOT ZERO, and it reaches here
+            // as one because `ratio_nav::explain` carries these as `Option`.
+            // Rendering an unmeasured step as `0` would read as "instant" and a
+            // step nothing costs as "free"; both are claims nobody made.
+            q(&self.estimated_reads), duration_json(&self.estimated_duration),
+            q(&self.actual_rows), duration_json(&self.actual_duration)
+        )
+    }
+}
+
+impl JsonView for pb::PlanEdge {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"source\":{},\"target\":{},\"kind\":{},\"rows\":{}}}",
+            q(&self.source), q(&self.target), q(plan_edge_kind_name(self.kind)),
+            q(&self.rows)
+        )
+    }
+}
+
+impl JsonView for pb::PlanDials {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"securities\":{},\"currencies\":{},\"lotsPer\":{},\
+             \"openActions\":{},\"accounts\":{},\"totalRows\":{},\"openLots\":{}}}",
+            q(&self.securities), q(&self.currencies), q(&self.lots_per),
+            q(&self.open_actions), q(&self.accounts), q(&self.total_rows),
+            q(&self.open_lots)
+        )
+    }
+}
+
+impl JsonView for pb::ExplainNavStrikeResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"view\":{},\"nodes\":[{}],\"edges\":[{}],\"dials\":{},\
+             \"estimateRefusal\":{},\"analyzed\":{},\"nanosPerRead\":{},\
+             \"provenance\":{},\"chosenReads\":{},\"rewriteReads\":{},\
+             \"scanReads\":{}}}",
+            q(&self.name), q(&self.view),
+            self.nodes.iter().map(|n| n.to_json()).collect::<Vec<_>>().join(","),
+            self.edges.iter().map(|e| e.to_json()).collect::<Vec<_>>().join(","),
+            match &self.dials {
+                Some(d) => d.to_json(),
+                None => "null".into(),
+            },
+            q(&self.estimate_refusal), self.analyzed, q(&self.nanos_per_read),
+            q(&self.provenance), q(&self.chosen_reads), q(&self.rewrite_reads),
+            q(&self.scan_reads)
         )
     }
 }

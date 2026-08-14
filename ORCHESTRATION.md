@@ -159,7 +159,7 @@ rather than translated.
 | exception-management-only operations | the break list is a list of real data problems, ordered by money. It is kept short by being right, not by being filtered — a **false break** is the cardinal sin. |
 | auto-resolve exceptions | a model-drafted explanation a person accepts. The break becomes *explained*, never *gone*. |
 | learns from resolution history | may **cite** history in a proposal. Never becomes behavior — the book's conduct replays from the journal and the config digest, and from nothing else. |
-| conversational, not navigational | the MCP conversation is the authoring interface. The console reads and previews, and deliberately has no approve, explain, or strike button. |
+| conversational, not navigational | the MCP conversation is the authoring interface. The console reads and previews, and deliberately has no approve, explain, or strike button. ⚠ **"explain" there is the VERB — accepting an explanation for a break, which is `ratio accept` at a terminal and has no RPC on purpose.** It is not `ExplainNavStrike`, which reads how a recorded NAV was computed and changes nothing. One word, two things, and the console has a route for the second precisely because it is not the first. |
 | auto-trigger close, auto-release | a NAV strike is a named person at a terminal, once per valuation day, and the kernel refuses it while anything is unpriced. |
 | an agent per function | a verb over a plane. Fifteen job titles collapse into one propose/approve loop pointed at different planes. |
 | four-eyes review package | the change log. The model authors the DRAFT; the person owns the verb. Two lines, two actors, one record. |
@@ -188,7 +188,7 @@ domains Ratio has no substrate for and will not pretend to.
 | 10 | OTC Derivative Pricing | no substrate | refused as a domain, below |
 | 11 | Transaction Close | theorem + narration | the break list and the unpriced list |
 | 12 | Valuation Close | theorem | the strike's own refusal |
-| 13 | NAV Validation & Approval | theorem + narration | `explain_figure`, replay |
+| 13 | NAV Validation & Approval | theorem + narration | `explain_figure`, replay, the strike's plan |
 | 14 | Audit Close & Dissemination | theorem + human | the strike; dissemination has no substrate |
 | 15 | Governance & Oversight | reads | the change log, `CHANGELOG`, the record itself |
 
