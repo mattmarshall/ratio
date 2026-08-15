@@ -692,7 +692,9 @@ a.brandlink{color:inherit;text-decoration:none}
 /* The reconciliation. The arithmetic is rendered rather than asserted: a screen
    that shows a difference it cannot itemize is one to distrust, and the two
    lists below it add to this line by theorem. */
-.recsum{display:flex;align-items:baseline;gap:10px;padding:12px 14px;
+/* Wraps rather than widens: two fourteen-digit figures and their difference
+   are wider than a phone, and the arithmetic reads the same on two lines. */
+.recsum{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding:12px 14px;
   border-bottom:1px solid var(--rule);font-variant-numeric:tabular-nums}
 .recsum .op{color:var(--text-2)}
 .recsum b{color:var(--text)}
@@ -871,7 +873,9 @@ a.brandlink{color:inherit;text-decoration:none}
   .qhead{padding:14px 14px 10px}
   .qhead h1{font-size:19px}
   .screens{margin-left:0}
-  .stats{grid-template-columns:repeat(2,1fr)}
+  /* ⛔ `minmax(0,1fr)` FOR THE SAME REASON AS `.body`'s column: bare 1fr lets
+     the widest figure set the track, and four of them beat a phone by 4px. */
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .stat{padding:11px 14px}
   .stat .v{font-size:19px}
 

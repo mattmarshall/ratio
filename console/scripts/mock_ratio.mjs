@@ -1,0 +1,109 @@
+// A stand-in `ratio watch`, serving the committed fixtures at the /v1 routes.
+//
+// ⛔ THE FIXTURES ARE THE ONLY DATA IT KNOWS. capture_fixtures.sh's header
+// draws the line this file lives behind: a fixture the server sent is what the
+// server sends, and `//console:fixtures_test` holds the shape of every file
+// here to console.proto. This mock invents nothing on top — a list route
+// serves the captured list, a singleton route serves the first element of the
+// captured list — so a screen rendered against it is a screen rendered against
+// what a real book once said.
+//
+// ⚠ IT EXISTS FOR phone_test.mjs, NOT FOR DEVELOPMENT. A local run against
+// real figures is `ratio watch --book <dir>` (see ../README.md); this exists
+// so a layout check can boot the console with no Rust toolchain in the job.
+// `/authconfig.json` answers with empty strings for the same reason it does on
+// a local `ratio watch`: no identity provider means no sign-in gate.
+//
+// Usage: node mock_ratio.mjs [port]   (default 4373)
+
+import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures");
+const fixture = (name) => readFileSync(join(FIXTURES, `${name}.json`), "utf8");
+
+// One entry per google.api.http rule the screens read. `:first` marks a
+// singleton served as the first element of its captured list — the same
+// derivation capture_fixtures.sh uses to pick an id.
+//
+// ⚠ `[^/:]` IN THE SINGLETON SEGMENTS, NOT `[^/]`. A custom method is
+// `name:verb` in one path segment, so a singleton pattern that admits `:`
+// swallows `…/navStrikes/x:explain` before the explain route is consulted —
+// and answers it with the wrong shape.
+const ROUTES = [
+  [/^\/v1\/funds$/, "funds"],
+  [/^\/v1\/funds\/[^/:]+$/, "fund"],
+  [/^\/v1\/funds\/[^/]+\/views$/, "views"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/:]+$/, "view"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+:reconcile$/, "reconcile"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/breaks$/, "breaks"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/breaks\/[^/:]+$/, "break"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/accounts$/, "accounts"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/accounts\/[^/:]+$/, "accounts:first"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/accounts\/[^/]+\/postings$/, "postings"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/accounts\/[^/]+\/postings\/[^/:]+$/, "postings:first"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/positions$/, "positions"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/positions\/[^/:]+$/, "positions:first"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/positions\/[^/]+\/lots$/, "lots"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/positions\/[^/]+\/lots\/[^/:]+$/, "lots:first"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/navStrikes$/, "navStrikes"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/navStrikes\/[^/:]+$/, "navStrikes:first"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/navStrikes\/[^/]+:replay$/, "replay"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/navStrikes\/[^/]+:explain$/, "explain"],
+  [/^\/v1\/funds\/[^/]+\/configVersions$/, "configVersions"],
+  [/^\/v1\/funds\/[^/]+\/configVersions\/[^/:]+$/, "configVersions:first"],
+  [/^\/v1\/funds\/[^/]+\/configVersions\/[^/]+:diff$/, "diff"],
+  [/^\/v1\/funds\/[^/]+\/rules$/, "rules"],
+  [/^\/v1\/funds\/[^/]+\/rules\/[^/:]+$/, "rules:first"],
+  [/^\/v1\/funds\/[^/]+\/templates$/, "templates"],
+  [/^\/v1\/funds\/[^/]+\/templates\/[^/:]+$/, "templates:first"],
+  [/^\/v1\/funds\/[^/]+\/deliveries$/, "deliveries"],
+  [/^\/v1\/funds\/[^/]+\/deliveries\/[^/:]+$/, "deliveries:first"],
+  [/^\/v1\/funds\/[^/]+\/pendingFacts$/, "pendingFacts"],
+  [/^\/v1\/funds\/[^/]+\/pendingFacts\/[^/:]+$/, "pendingFacts:first"],
+  [/^\/v1\/funds\/[^/]+\/corporateActions$/, "corporateActions"],
+  [/^\/v1\/funds\/[^/]+\/corporateActions\/[^/:]+$/, "corporateActions:first"],
+  [/^\/v1\/funds\/[^/]+\/changeLogEntries$/, "changeLogEntries"],
+  [/^\/v1\/funds\/[^/]+\/changeLogEntries\/[^/:]+$/, "changeLogEntries:first"],
+];
+
+function body(name) {
+  if (!name.endsWith(":first")) return fixture(name);
+  const doc = JSON.parse(fixture(name.slice(0, -":first".length)));
+  const key = Object.keys(doc).find((k) => Array.isArray(doc[k]));
+  return JSON.stringify(doc[key][0]);
+}
+
+export function serve(port = 4373) {
+  return new Promise((resolve) => {
+    const server = createServer((req, res) => {
+      const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
+      if (path === "/authconfig.json") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          issuer: "", clientId: "", domain: "", scopes: [],
+          redirectPath: "", consoleOrigin: "",
+        }));
+        return;
+      }
+      const hit = ROUTES.find(([re]) => re.test(path));
+      if (!hit) {
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: `no fixture route for ${path}` }));
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(body(hit[1]));
+    });
+    server.listen(port, "127.0.0.1", () => resolve(server));
+  });
+}
+
+// Runnable on its own, for pointing a `pnpm dev` at fixture data by hand.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const port = Number(process.argv[2] || 4373);
+  await serve(port);
+  console.log(`mock ratio on 127.0.0.1:${port} — RATIO_API_ORIGIN=http://127.0.0.1:${port}`);
+}
