@@ -75,6 +75,18 @@ jobs:
       - name: Check
         run: pnpm check
 
+      # ⛔ A LAYOUT ENGINE, BECAUSE SOURCE TEXT CANNOT HOLD THIS. Every other
+      # check in this job reads files; the defect this one exists for — a
+      # `1fr` that let the screen tabs set the width of every page, so the
+      # whole console scrolled sideways on a phone — only exists once layout
+      # has run. The built console boots against the committed fixtures and a
+      # browser opens every screen at 375px. scripts/phone_test.mjs says
+      # exactly what is asserted.
+      - name: Install the phone-check browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: The console fits a phone
+        run: pnpm test:phone
+
       # The hermetic checks, run here as well as under Bazel. A console-only
       # push does not trigger build.yml, and a route added without a page or a
       # field dropped from a screen should go red in the workflow that owns this
