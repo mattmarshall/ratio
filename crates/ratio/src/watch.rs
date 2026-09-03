@@ -27,6 +27,7 @@
 use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, Context, Result};
 
@@ -38,7 +39,7 @@ use ratio_proto::ratio::console::v1 as pb;
 // the console's are `ratio.console.v1`. Two aliases because they are two APIs.
 use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::{check, render as render_rule, RuleSet};
-use ratio_store::{ConfigStore, FileBook, Journal};
+use ratio_store::{ConfigStore, FileBook, Journal, ObjectStore};
 
 /// Wire the durable journal, if the environment asked for one.
 ///
@@ -56,30 +57,53 @@ fn install_journal_store() -> Result<()> {
             .unwrap_or_else(|| "journals/".to_string());
         let store = scale::S3::open(&bucket, prefix)
             .with_context(|| format!("opening the journal store in s3://{bucket}"))?;
-        ratio_store::install_object_store(std::sync::Arc::new(store));
+        ratio_store::install_object_store(Arc::new(store));
         return Ok(());
     }
     if let Some(dir) = std::env::var("RATIO_JOURNAL_LOCAL").ok().filter(|d| !d.is_empty()) {
-        ratio_store::install_object_store(std::sync::Arc::new(ratio_store::DirStore::at(dir)));
+        ratio_store::install_object_store(Arc::new(ratio_store::DirStore::at(dir)));
     }
     Ok(())
 }
 
+/// Whether book-backed routes may open the journal.
+///
+/// Probes never consult this. `None` means hydrate is still running — a
+/// request that needs the book may `FileBook::open` itself (the store is
+/// already installed, so that open cannot write `/tmp`).
+enum BookGate {
+    Ready,
+    Unavailable(String),
+}
+
 /// Serve the screens until interrupted.
 pub fn watch(book: PathBuf, port: u16) -> Result<()> {
-    // ⛔ BEFORE THE FIRST OPEN. FileBook reads the process-wide store on
-    // `open`, so installing after the first request would leave that request
-    // writing `/tmp` while later ones write the object store — two journals
-    // under one URL, which is the fork this exists to close.
-    install_journal_store()?;
-    // Fail on a bad book here rather than rendering an error page later.
-    FileBook::open(&book).with_context(|| format!("opening book at {}", book.display()))?;
+    // ⛔ INSTALL BEFORE THE FIRST OPEN, BIND BEFORE HYDRATE.
+    // FileBook reads the process-wide store on `open`, so installing after
+    // the first request would leave that request writing `/tmp` while later
+    // ones write the object store — two journals under one URL.
+    //
+    // A failed install or a slow/refused hydrate must not `?` out of `watch`:
+    // that exits the process before `TcpListener::bind`, Lambda Web Adapter
+    // never sees `/healthz`, and every APIGW route becomes the generic 500.
+    // Issue #125.
+    let store_err = install_journal_store().err();
 
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let listener = TcpListener::bind(addr)
         .with_context(|| format!("binding {addr} — is another `ratio watch` running?"))?;
     // Port 0 means "any free port", so report what was actually bound.
     let addr = listener.local_addr()?;
+
+    let gate = Arc::new(Mutex::new(None::<BookGate>));
+    match store_err {
+        None => begin_hydrate(book.clone(), gate.clone(), None),
+        Some(e) => {
+            eprintln!("ERROR journal store failed: {e:#}");
+            *gate.lock().expect("hydrate gate") =
+                Some(BookGate::Unavailable(format!("{e:#}")));
+        }
+    }
 
     println!("ratio  http://{addr}/");
     println!("  /         trial balance");
@@ -88,14 +112,64 @@ pub fn watch(book: PathBuf, port: u16) -> Result<()> {
     println!("book   {}", book.display());
     println!("(ctrl-c to stop)");
 
+    accept_loop(listener, book, gate)
+}
+
+/// Hydrate the book on a side thread so `/healthz` can answer during INIT.
+///
+/// ⛔ BIND IS NOT ENOUGH. Lambda Web Adapter's readiness check is served only
+/// from the accept loop. Hydrating on the thread that will `accept` — even
+/// after `bind` — leaves LWA waiting for a path that does not exist yet, which
+/// is the same 500 as exiting. A refused or slow S3 PUT must not own that loop.
+fn begin_hydrate(
+    book: PathBuf,
+    gate: Arc<Mutex<Option<BookGate>>>,
+    store: Option<Arc<dyn ObjectStore>>,
+) {
+    std::thread::Builder::new()
+        .name("journal-hydrate".into())
+        .spawn(move || {
+            // `open_with` is the test seam: a refusing store without
+            // `std::env::set_var` and without `install_object_store` (OnceLock,
+            // first call wins for the whole process). Production passes `None`
+            // and reads the store `install_journal_store` already wired.
+            let opened = match store {
+                Some(s) => FileBook::open_with(&book, Some(s)),
+                None => FileBook::open(&book),
+            };
+            let state = match opened
+                .with_context(|| format!("opening book at {}", book.display()))
+            {
+                Ok(_) => BookGate::Ready,
+                Err(e) => {
+                    eprintln!("ERROR journal hydrate failed: {e:#}");
+                    BookGate::Unavailable(format!("{e:#}"))
+                }
+            };
+            *gate.lock().expect("hydrate gate") = Some(state);
+        })
+        .expect("spawn journal-hydrate");
+}
+
+fn accept_loop(
+    listener: TcpListener,
+    book: PathBuf,
+    gate: Arc<Mutex<Option<BookGate>>>,
+) -> Result<()> {
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue }; // one dropped connection is not the end
         let book = book.clone();
+        let gate = gate.clone();
         std::thread::spawn(move || {
-            let _ = handle(stream, &book);
+            let _ = handle(stream, &book, &gate);
         });
     }
     Ok(())
+}
+
+/// Public probes that must answer even when the journal is not open.
+fn is_readiness_probe(path: &str) -> bool {
+    matches!(path, "/healthz" | "/version" | "/authconfig.json")
 }
 
 /// One parsed request. Only what the routes actually need.
@@ -252,7 +326,11 @@ fn v1_error_status(msg: &str) -> &'static str {
     }
 }
 
-fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
+fn handle(
+    mut stream: TcpStream,
+    book: &Path,
+    gate: &Mutex<Option<BookGate>>,
+) -> Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let req = match read_request(&mut reader) {
         Ok(r) => r,
@@ -307,6 +385,32 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             )?;
         }
         return Ok(());
+    }
+
+    // ⛔ PROBES MUST NOT WAIT ON THE JOURNAL. `/healthz` is what Lambda Web
+    // Adapter polls during INIT; `/version` is what deploy smoke waits for;
+    // `/authconfig.json` is the console's IdP config. A hydrate failure that
+    // 503s those three is the same outage as exiting before bind.
+    if !is_readiness_probe(&req.path) {
+        let unavailable = gate.lock().ok().and_then(|g| match &*g {
+            Some(BookGate::Unavailable(r)) => Some(r.clone()),
+            _ => None,
+        });
+        if let Some(reason) = unavailable {
+            let body = format!("{{\"error\":{}}}", quote(&reason));
+            let canonical = std::env::var("RATIO_CANONICAL_HOST").ok();
+            write!(
+                stream,
+                "HTTP/1.1 503 Service Unavailable\r\n\
+                 Content-Type: application/json\r\n\
+                 Content-Length: {}\r\n\
+                 {}Cache-Control: no-store\r\n\
+                 Connection: close\r\n\r\n{body}",
+                body.len(),
+                security_headers("application/json", &req.host, canonical.as_deref())
+            )?;
+            return Ok(());
+        }
     }
 
     let json = |r: Result<String>| match r {
@@ -3009,6 +3113,114 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         crate::init(dir.clone()).unwrap();
         dir
+    }
+
+    /// A store that answers LIST/GET and refuses every PUT. The production
+    /// failure mode: `RATIO_JOURNAL_BUCKET` is set, hydrate claims each seed
+    /// line, and S3 says no. No `std::env::set_var` — that races every other
+    /// test in this crate that reads the environment.
+    struct RefusingStore;
+    impl ObjectStore for RefusingStore {
+        fn put_if_absent(&self, key: &str, _body: &[u8]) -> Result<bool> {
+            bail!("the journal store refused the put of {key}");
+        }
+        fn get(&self, _key: &str) -> Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+        fn list(&self, _prefix: &str) -> Result<Vec<String>> {
+            Ok(Vec::new())
+        }
+    }
+
+    fn http_get(addr: SocketAddr, path: &str) -> std::io::Result<(String, String)> {
+        let mut s = TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(1))?;
+        s.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
+        s.set_write_timeout(Some(std::time::Duration::from_secs(2)))?;
+        write!(
+            s,
+            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+        )?;
+        let mut buf = String::new();
+        std::io::Read::read_to_string(&mut s, &mut buf)?;
+        let (head, body) = buf.split_once("\r\n\r\n").unwrap_or((&buf, ""));
+        let status = head.lines().next().unwrap_or("").to_string();
+        Ok((status, body.to_string()))
+    }
+
+    fn wait_http(addr: SocketAddr, path: &str) -> (String, String) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            match http_get(addr, path) {
+                Ok(pair) => return pair,
+                Err(_) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                Err(e) => panic!("GET {path} at {addr} never answered: {e}"),
+            }
+        }
+    }
+
+    fn wait_until(
+        addr: SocketAddr,
+        path: &str,
+        pred: impl Fn(&str, &str) -> bool,
+    ) -> (String, String) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut last = (String::new(), String::new());
+        while std::time::Instant::now() < deadline {
+            if let Ok(pair) = http_get(addr, path) {
+                if pred(&pair.0, &pair.1) {
+                    return pair;
+                }
+                last = pair;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!("GET {path} never matched: last={last:?}");
+    }
+
+    #[test]
+    fn probes_answer_when_the_journal_store_refuses_puts() {
+        // Production died here: FileBook::open hydrates every seed line via
+        // put_if_absent BEFORE TcpListener::bind. A refused put exited the
+        // process; Lambda Web Adapter never saw /healthz; every APIGW route
+        // was `{"message":"Internal Server Error"}`. Issue #125.
+        let book = fresh("refuse-hydrate");
+        std::fs::write(book.join("journal.jsonl"), "{\"seed\":1}\n").unwrap();
+
+        let listener =
+            TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let gate = Arc::new(Mutex::new(None));
+        begin_hydrate(book.clone(), gate.clone(), Some(Arc::new(RefusingStore)));
+        std::thread::spawn(move || {
+            let _ = accept_loop(listener, book, gate);
+        });
+
+        let health = wait_http(addr, "/healthz");
+        assert!(health.0.contains("200"), "healthz: {health:?}");
+        assert_eq!(health.1, "ok");
+
+        let version = wait_http(addr, "/version");
+        assert!(version.0.contains("200"), "version: {version:?}");
+        assert_eq!(
+            version.1,
+            std::env::var("RATIO_BUILD").unwrap_or_else(|_| "dev".into())
+        );
+
+        let auth = wait_http(addr, "/authconfig.json");
+        assert!(auth.0.contains("200"), "authconfig: {auth:?}");
+        assert!(auth.1.contains("\"redirectPath\""), "{}", auth.1);
+
+        // Hydrate is on a side thread. Wait until it has recorded the
+        // refusal — a book route must 503 rather than open a local journal
+        // after the store failed.
+        let balance = wait_until(addr, "/balance.json", |status, _| status.contains("503"));
+        assert!(
+            balance.1.contains("refused"),
+            "the 503 must carry the anyhow chain: {}",
+            balance.1
+        );
     }
 
     #[test]

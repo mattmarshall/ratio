@@ -289,6 +289,25 @@ jobs:
           SCALE_SENDER: ${{ vars.SCALE_SENDER }}
         run: |
           set -euo pipefail
+          # ⛔ A RED SMOKE USED TO SAY ONLY THAT /version WAS WRONG. The
+          # function's own log group is where INIT_REPORT / Runtime.ExitError
+          # / the anyhow chain land, and the deploy role could not read them
+          # (Sid TheFunctionsOwnLogGroup had Create/Describe/PutRetention
+          # only). Dump on failure. AccessDenied must not replace the smoke
+          # error — bootstrap.yaml is applied by a human, so this stays
+          # `|| true` until that stack is updated.
+          dump_lambda_logs() {
+            echo "=== CloudWatch /aws/lambda/ratio-demo (ERROR/panic/INIT/Runtime) ==="
+            START_MS=$(( ($(date +%s) - 900) * 1000 ))
+            aws logs filter-log-events \
+              --log-group-name /aws/lambda/ratio-demo \
+              --start-time "$START_MS" \
+              --filter-pattern '?ERROR ?panic ?INIT ?Runtime' \
+              --output text \
+              || echo "(filter-log-events failed — deploy role may lack logs:FilterLogEvents until deploy/bootstrap.yaml is applied)"
+          }
+          trap 'rc=$?; if [ "$rc" -ne 0 ]; then dump_lambda_logs || true; fi' EXIT
+
           URL="$(aws cloudformation describe-stacks --stack-name "$STACK" \
                   --query 'Stacks[0].Outputs[?OutputKey==`DemoUrl`].OutputValue' --output text)"
           echo "URL: $URL"
@@ -319,6 +338,7 @@ jobs:
           done
           [ "$SEEN" = "$GITHUB_SHA" ] || {
             echo "::error::after 2 minutes the URL still serves '${SEEN:-nothing}', not $GITHUB_SHA"
+            dump_lambda_logs || true
             exit 1
           }
           echo "serving $GITHUB_SHA"
