@@ -13,6 +13,7 @@ describe("screensFor", () => {
     const labels = screensFor("PERSONAL").map((s) => s.label);
     expect(labels).toContain("Balance sheet");
     expect(labels).toContain("Period P&L");
+    expect(labels).toContain("Net-worth bridge");
     expect(labels).toContain("Budget vs actual");
     expect(labels).toContain("Loan schedule");
     expect(labels).toContain("Trial balance");
@@ -77,7 +78,7 @@ describe("screensFor", () => {
   it("figure screens are view-scoped", () => {
     for (const s of [
       ...PERSONAL_SCREENS.filter((x) =>
-        ["sheet", "pnl", "budget", "loans"].includes(x.segment),
+        ["sheet", "pnl", "bridge", "budget", "loans"].includes(x.segment),
       ),
       ...PROJECT_SCREENS.filter((x) =>
         ["budget", "wip", "billing"].includes(x.segment),

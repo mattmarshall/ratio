@@ -266,6 +266,7 @@ describe("a first-class book", () => {
     expect(screen.getByText("independent")).toBeDefined();
     expect(screen.getByRole("link", { name: "Balance sheet" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Period P&L" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Net-worth bridge" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Budget vs actual" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Loan schedule" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
@@ -603,6 +604,9 @@ describe("a first-class book", () => {
     expect(screen.getByRole("link", { name: "Period P&L" }).getAttribute("href")).toBe(
       "/books/household/views/book/pnl",
     );
+    expect(screen.getByRole("link", { name: "Net-worth bridge" }).getAttribute("href")).toBe(
+      "/books/household/views/book/bridge",
+    );
     const trial = screen.getByRole("link", { name: "Trial balance" });
     expect(trial.getAttribute("href")).toBe(
       "/books/household/views/book/accounts",
@@ -728,6 +732,7 @@ describe("a first-class book", () => {
     const Book = (await import("./books/[book]/page")).default;
     await renderAsync(Book({ params: params({ book: FUND }) }));
     expect(screen.queryByRole("link", { name: "Loan schedule" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Net-worth bridge" })).toBeNull();
   });
 
   it("cites an unset household loan schedule rather than a roll-forward of zeros", async () => {
@@ -845,6 +850,222 @@ describe("a first-class book", () => {
     const Loans = (await import("./books/[book]/views/[view]/loans/page")).default;
     await expect(
       Loans({
+        params: params({ book: FUND, view: VIEW }),
+        searchParams: params({ period: "2026-03" }),
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("cites an unset net-worth bridge rather than a measured zero", async () => {
+    const Bridge = (await import("./books/[book]/views/[view]/bridge/page")).default;
+    const real = wire.listAccounts;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/1",
+          displayName: "Cash and bank",
+          dimension: "1",
+          type: "ASSET",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/2",
+          displayName: "Investments",
+          dimension: "2",
+          type: "ASSET",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/30",
+          displayName: "Income",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        Bridge({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(
+        screen.getByText(/Beginning and ending stay unset — not a measured zero/),
+      ).toBeDefined();
+      expect(screen.getByLabelText("Net-worth bridge")).toBeDefined();
+      expect(screen.getAllByText("—").length).toBeGreaterThan(2);
+      expect(screen.queryByText("0.00")).toBeNull();
+      expect(screen.getByText("no purchase account distinct from a transfer")).toBeDefined();
+    } finally {
+      wire.listAccounts = real;
+    }
+  });
+
+  it("cites ΔNW against income and expense and leaves principal off the identity", async () => {
+    const Bridge = (await import("./books/[book]/views/[view]/bridge/page")).default;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    wire.getBook = (async () => ({
+      ...bookFixture,
+      loans: [{ dimension: "41", interest: "12" }],
+    })) as unknown as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/1",
+          displayName: "Cash and bank",
+          dimension: "1",
+          type: "ASSET",
+          debit: "3000",
+          credit: "2100",
+          balance: "10000900",
+          abnormal: false,
+          postingCount: "5",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/2",
+          displayName: "Investments",
+          dimension: "2",
+          type: "ASSET",
+          debit: "500",
+          credit: "0",
+          balance: "500",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/41",
+          displayName: "Mortgage",
+          dimension: "41",
+          type: "LIABILITY",
+          debit: "800",
+          credit: "0",
+          balance: "-9999200",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/30",
+          displayName: "Income",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "3000",
+          balance: "-3000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/10",
+          displayName: "Living expenses",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "600",
+          credit: "0",
+          balance: "600",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/12",
+          displayName: "Mortgage interest",
+          dimension: "12",
+          type: "EXPENSE",
+          debit: "200",
+          credit: "0",
+          balance: "200",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/40",
+          displayName: "Credit cards",
+          dimension: "40",
+          type: "LIABILITY",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        Bridge({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("Net-worth bridge")).toBeDefined();
+      expect(screen.getByText("beginning plus income minus expenses")).toBeDefined();
+      expect(screen.getAllByText("0.00").length).toBeGreaterThan(0);
+      expect(screen.getByText("30.00")).toBeDefined();
+      expect(screen.getAllByText("8.00").length).toBe(2);
+      expect(screen.getAllByText("22.00").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("5.00")).toBeDefined();
+      expect(screen.getByText("no purchase account distinct from a transfer")).toBeDefined();
+      expect(
+        screen.getByText(/Principal, transfers and purchases move the sheet, not net worth/),
+      ).toBeDefined();
+      expect(screen.queryByText(/Beginning and ending stay unset/)).toBeNull();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("asks ListAccounts for a period window on the net-worth bridge", async () => {
+    const calls: unknown[][] = [];
+    const real = wire.listAccounts;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      calls.push(args);
+      return { accounts: [], nextPageToken: "" };
+    }) as typeof wire.listAccounts;
+    try {
+      const Bridge = (await import("./books/[book]/views/[view]/bridge/page")).default;
+      await renderAsync(
+        Bridge({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(calls[0]?.slice(1)).toEqual(["household", "book", "bridge", "2026-03"]);
+    } finally {
+      wire.listAccounts = real;
+    }
+  });
+
+  it("404s a net-worth bridge on a book that is not Personal", async () => {
+    const Bridge = (await import("./books/[book]/views/[view]/bridge/page")).default;
+    await expect(
+      Bridge({
         params: params({ book: FUND, view: VIEW }),
         searchParams: params({ period: "2026-03" }),
       }),
@@ -984,6 +1205,9 @@ describe("a first-class book", () => {
     );
     expect(screen.getByRole("link", { name: "Period P&L" }).getAttribute("href")).toBe(
       "/books/household/views/hearth/pnl",
+    );
+    expect(screen.getByRole("link", { name: "Net-worth bridge" }).getAttribute("href")).toBe(
+      "/books/household/views/hearth/bridge",
     );
     expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
     expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();

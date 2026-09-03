@@ -330,6 +330,23 @@ NEEDLES: list[tuple[str, str]] = [
         "No loan schedule is configured",
         "an unset household loan figure would render as a roll-forward of zeros",
     ),
+    # ── household net-worth bridge (#94) ────────────────────────────────────
+    # ⚠ THE UNSET SENTENCE, NOT THE TAB LABEL. `screens.ts` already says
+    # "Net-worth bridge"; a page that rendered $0.00 NW on an empty book
+    # would still contain the label and stay green. The refusal copy is
+    # what goes red if someone "helps" by showing zeros.
+    (
+        "Beginning and ending stay unset — not a measured zero",
+        "an empty household journal would render a fake zero net worth",
+    ),
+    (
+        "move the sheet, not net worth",
+        "the bridge would stop saying principal and transfers are not P&L",
+    ),
+    (
+        "no purchase account distinct from a transfer",
+        "asset purchases would be invented rather than left unset",
+    ),
 ]
 
 
