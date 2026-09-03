@@ -157,10 +157,11 @@ jobs:
           # become a hard-coded production identifier. Do not point this at
           # another product.
           WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID }}
-          # Optional. Unset means the production AuthKit custom domain
-          # (https://auth.ratio.marsh.build), which serves OIDC discovery.
-          # The bare https://api.workos.com/ host does not, and CloudFormation
-          # refuses it as an AWS::ApiGatewayV2::Authorizer issuer.
+          # Optional. Unset means the iss AuthKit session tokens mint:
+          # https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB
+          # The bare https://api.workos.com/ host has no OIDC discovery, and
+          # CloudFormation refuses it as an AWS::ApiGatewayV2::Authorizer
+          # issuer. auth.ratio.marsh.build is the hosted AuthKit UI, not iss.
           WORKOS_ISSUER: ${{ vars.WORKOS_ISSUER }}
           # The verified SES identity the report email sends from. A repository
           # VARIABLE like the others — an address is not a secret. Unset means
@@ -194,9 +195,11 @@ jobs:
           # CloudFormation rejects Issuer: https://api.workos.com/ with
           # "must have a valid discovery endpoint ended with
           # /.well-known/openid-configuration" (run 33784570568, #122).
-          # Production AuthKit custom domain is auth.ratio.marsh.build
-          # (verified; issuer is that host, no trailing slash).
-          PRODUCTION_ISSUER='https://auth.ratio.marsh.build'
+          # AuthKit session tokens mint iss as
+          # https://api.workos.com/user_management/{client_id}
+          # (client_01M1JJZTFXFDZJ0XJM1NPNSEJB, no trailing slash).
+          # auth.ratio.marsh.build is the hosted login hostname, not iss.
+          PRODUCTION_ISSUER='https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB'
           BARE_WORKOS_ISSUER='https://api.workos.com'
           ISSUER="${WORKOS_ISSUER:-$PRODUCTION_ISSUER}"
           ISSUER="${ISSUER%/}"
@@ -280,7 +283,7 @@ jobs:
           # process to prove it arrived. See the /authconfig.json check.
           CONSOLE_ORIGIN: ${{ vars.CONSOLE_ORIGIN }}
           # Same optional override the Deploy step uses. Unset means the
-          # production AuthKit custom domain, asserted below against
+          # AuthKit session-token issuer, asserted below against
           # /authconfig.json so a drift from the authorizer is visible here.
           WORKOS_ISSUER: ${{ vars.WORKOS_ISSUER }}
           # The verified SES identity the report email sends from. A repository
@@ -433,9 +436,10 @@ jobs:
           want "the auth config" '"redirectPath":"/callback"' "${URL}authconfig.json"
           # ⛔ THE AUTHORIZER AND THIS DOCUMENT MUST NAME THE SAME ISSUER.
           # https://api.workos.com/ has no OIDC discovery; CloudFormation
-          # refuses it. The production AuthKit custom domain does, and is
-          # the issuer the stack now passes. Same default as the Deploy step.
-          ISSUER="${WORKOS_ISSUER:-https://auth.ratio.marsh.build}"
+          # refuses it. AuthKit session tokens mint iss under
+          # /user_management/{client_id}, and that is the issuer the stack
+          # now passes. Same default as the Deploy step.
+          ISSUER="${WORKOS_ISSUER:-https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB}"
           ISSUER="${ISSUER%/}"
           want "the auth config issuer" "\"issuer\":\"${ISSUER}\"" \
             "${URL}authconfig.json"
