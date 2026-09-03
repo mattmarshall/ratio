@@ -243,7 +243,16 @@ Resources:
                   - logs:UntagResource
                   - logs:ListTagsForResource
                   - logs:ListTagsLogGroup
-                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/ratio-demo*"
+                  # Issue #125: smoke used to fail with only the APIGW 500
+                  # wrapper. These three let the deploy role dump INIT/panic
+                  # from the function's own group. Applied by a human with
+                  # the bootstrap stack — until then the smoke dump is `|| true`.
+                  - logs:FilterLogEvents
+                  - logs:GetLogEvents
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/ratio-demo*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/ratio-demo*:*"
               - Sid: PassOnlyTheExecutionRole
                 Effect: Allow
                 Action: iam:PassRole
