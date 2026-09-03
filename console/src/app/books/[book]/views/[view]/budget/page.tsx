@@ -394,7 +394,7 @@ async function projectBudget({
       <p className="note">
         <Link href={`/books/${book}/views/${view}/wip`}>WIP capitalization</Link>
         {" · "}
-        <Link href={`/books/${book}/views/${view}/billing`}>Billing basis</Link>
+        <Link href={`/books/${book}/views/${view}/billing`}>Remaining to bill and collections</Link>
         {" · "}
         <Link href={`/books/${book}/record`}>Record a cost, change order, or capitalize WIP</Link>
         {" · "}

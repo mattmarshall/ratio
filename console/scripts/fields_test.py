@@ -286,6 +286,22 @@ NEEDLES: list[tuple[str, str]] = [
         "not rewritten when a change order posts",
         "the original contract would look mutated in place",
     ),
+    (
+        "revised minus billed — the citeable leftover, not a spreadsheet rebuild",
+        "remaining-to-bill is gone from the project billing screen",
+    ),
+    (
+        "unset until a progress bill posts — not the whole contract as a fake remainder",
+        "an unbilled revised contract would print the whole job as remaining",
+    ),
+    (
+        "Collections vs billed",
+        "collections vs billed is gone from the project billing screen",
+    ),
+    (
+        "unset until a progress bill posts — not a fake zero collected",
+        "an unbilled job would show collected 0.00",
+    ),
     # ⛔ AND NO `startTransition` NEEDLE, THOUGH THE PALETTE NEEDS ONE AS MUCH AS
     # `FilterChips` DOES. Both that file and `PlanControls` already contain the
     # literal, so the case would pass with the palette's transition dropped — the

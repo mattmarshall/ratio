@@ -1473,6 +1473,21 @@ describe("a first-class book", () => {
     expect(
       screen.getByText(/unset — no approved change order has posted, not a silent zero/),
     ).toBeDefined();
+    expect(screen.getByText("Remaining to bill")).toBeDefined();
+    expect(
+      screen.getByText(/unset until \[project\] budget is set — not a priced remainder/),
+    ).toBeDefined();
+    expect(screen.getByText("Collections vs billed")).toBeDefined();
+    expect(screen.getByText("Collected")).toBeDefined();
+    expect(
+      screen.getByText(/unset — accounts receivable has not posted, so cash against AR cannot be cited/),
+    ).toBeDefined();
+    const remaining = screen.getByText("Remaining to bill").closest("[role=row]");
+    expect(remaining?.textContent).toContain("—");
+    expect(remaining?.textContent).not.toMatch(/0\.00/);
+    const collected = screen.getByText("Collected").closest("[role=row]");
+    expect(collected?.textContent).toContain("—");
+    expect(collected?.textContent).not.toMatch(/0\.00/);
   });
 
   it("keeps billed-minus-earned unset when either side has not posted", async () => {
@@ -1538,9 +1553,148 @@ describe("a first-class book", () => {
       ).toBeDefined();
       expect(screen.getByText("Billing basis")).toBeDefined();
       expect(screen.getByText("100,500.00")).toBeDefined();
+      expect(screen.getByText("Remaining to bill")).toBeDefined();
+      expect(screen.getByText("99,500.00")).toBeDefined();
+      expect(
+        screen.getByText(/revised minus billed — the citeable leftover/),
+      ).toBeDefined();
     } finally {
       wire.listAccounts = realAccounts;
       wire.getBook = realBook;
+    }
+  });
+
+  it("keeps remaining-to-bill unset when billed has not posted, even with a revised contract", async () => {
+    const realProgress = wire.projectProgress;
+    const realBook = wire.getBook;
+    const bridge = booksFixture.books.find((b) => b.kind === "PROJECT")!;
+    wire.getBook = (async () => ({
+      ...bridge,
+      budget: "10000000",
+    })) as typeof wire.getBook;
+    wire.projectProgress = (async () => ({
+      ...projectProgressFixture,
+      billed: "",
+      earned: "",
+      billedMinusEarned: "",
+      retainageReceivable: "",
+      retainagePayable: "",
+    })) as typeof wire.projectProgress;
+    try {
+      const Billing = (await import("./books/[book]/views/[view]/billing/page"))
+        .default;
+      await renderAsync(
+        Billing({ params: params({ book: "bridge", view: "book" }) }),
+      );
+      expect(
+        screen.getByText(/unset until a progress bill posts — not the whole contract as a fake remainder/),
+      ).toBeDefined();
+      const remaining = screen.getByText("Remaining to bill").closest("[role=row]");
+      expect(remaining?.textContent).toContain("—");
+      expect(remaining?.textContent).not.toMatch(/100,000\.00/);
+      expect(remaining?.textContent).not.toMatch(/0\.00/);
+      expect(
+        screen.getByText(/unset until a progress bill posts — not a fake zero collected/),
+      ).toBeDefined();
+      const collected = screen.getByText("Collected").closest("[role=row]");
+      expect(collected?.textContent).toContain("—");
+      expect(collected?.textContent).not.toMatch(/0\.00/);
+    } finally {
+      wire.projectProgress = realProgress;
+      wire.getBook = realBook;
+    }
+  });
+
+  it("cites collections vs billed as cash against AR when the journal can support the cut", async () => {
+    const realAccounts = wire.listAccounts;
+    const realBook = wire.getBook;
+    const bridge = booksFixture.books.find((b) => b.kind === "PROJECT")!;
+    wire.getBook = (async () => ({
+      ...bridge,
+      budget: "10000000",
+    })) as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/bridge/views/book/accounts/3",
+          displayName: "Accounts receivable",
+          dimension: "3",
+          type: "ASSET",
+          debit: "100000",
+          credit: "60000",
+          balance: "40000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as typeof wire.listAccounts;
+    try {
+      const Billing = (await import("./books/[book]/views/[view]/billing/page"))
+        .default;
+      await renderAsync(
+        Billing({ params: params({ book: "bridge", view: "book" }) }),
+      );
+      // billed 1,000.00 − AR 400.00 − retainage 100.00 = collected 500.00
+      const collectedRow = screen.getByText("Collected").closest("[role=row]");
+      expect(collectedRow?.textContent).toContain("500.00");
+      const outstandingRow = screen
+        .getByText("Outstanding receivable")
+        .closest("[role=row]");
+      expect(outstandingRow?.textContent).toContain("500.00");
+      expect(
+        screen.getByText(/AR plus retainage receivable — the uncollected billed/),
+      ).toBeDefined();
+      expect(screen.getByText("Remaining to bill")).toBeDefined();
+      // revised 100,000.00 − billed 1,000.00
+      expect(screen.getByText("99,000.00")).toBeDefined();
+    } finally {
+      wire.listAccounts = realAccounts;
+      wire.getBook = realBook;
+    }
+  });
+
+  it("shows a real zero collected when the job is billed and nothing has come in", async () => {
+    const realAccounts = wire.listAccounts;
+    const realProgress = wire.projectProgress;
+    wire.projectProgress = (async () => ({
+      ...projectProgressFixture,
+      retainageReceivable: "",
+    })) as typeof wire.projectProgress;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/bridge/views/book/accounts/3",
+          displayName: "Accounts receivable",
+          dimension: "3",
+          type: "ASSET",
+          debit: "100000",
+          credit: "0",
+          balance: "100000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as typeof wire.listAccounts;
+    try {
+      const Billing = (await import("./books/[book]/views/[view]/billing/page"))
+        .default;
+      await renderAsync(
+        Billing({ params: params({ book: "bridge", view: "book" }) }),
+      );
+      const collectedRow = screen.getByText("Collected").closest("[role=row]");
+      expect(collectedRow?.textContent).toContain("0.00");
+      expect(collectedRow?.textContent).toMatch(/cash against AR/);
+      const outstandingRow = screen
+        .getByText("Outstanding receivable")
+        .closest("[role=row]");
+      expect(outstandingRow?.textContent).toContain("1,000.00");
+    } finally {
+      wire.listAccounts = realAccounts;
+      wire.projectProgress = realProgress;
     }
   });
 

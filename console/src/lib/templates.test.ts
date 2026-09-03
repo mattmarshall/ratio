@@ -32,6 +32,8 @@ describe("book templates", () => {
     expect(byKind.PROJECT).toMatch(/retainage/);
     expect(byKind.PROJECT).toMatch(/change orders/);
     expect(byKind.PROJECT).toMatch(/two figures/);
+    expect(byKind.PROJECT).toMatch(/Remaining to bill/);
+    expect(byKind.PROJECT).toMatch(/collections vs billed/);
   });
 });
 

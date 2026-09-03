@@ -114,13 +114,19 @@ __STYLE__
           Transfers between
           household accounts post without claiming lot relief. A Project book
           cites budget vs actual and WIP capitalization at <code>/budget</code>
-          and <code>/wip</code>, and billed vs earned, retainage, and cost by
-          work-package at <code>/billing</code> — two figures, two URLs.
-          Approved change orders compose onto both: original contract,
-          approved changes, and revised stay citeable, and an unposted CO
-          is unset, not a silent zero. A change-order walk-through can
-          record or ingest an approval against a work package; it cannot
-          show AIA G702 product UI, a client portal, e-signature, or CRM.
+          and <code>/wip</code>, and billed vs earned, retainage, cost by
+          work-package, remaining to bill (revised − billed), and
+          collections vs billed (cash against AR) at <code>/billing</code>
+          — two figures, two URLs. Approved change orders compose onto
+          both: original contract, approved changes, and revised stay
+          citeable, and an unposted CO is unset, not a silent zero.
+          Remaining to bill and collected stay unset until the journal can
+          support the cut — never the whole contract as a fake remainder,
+          never a fake zero collected. A change-order walk-through can
+          record or ingest an approval against a work package; a remaining-
+          to-bill / collections walk-through can cite those leftovers on
+          the same <code>/billing</code> page. Neither can show AIA G702
+          product UI, a client portal, e-signature, or CRM.
           Billed / earned / retainage stay unset until posted, not a fake zero.
           An Investment book cites partner capital activity (contributions,
           distributions, transfers, ending capital) and partner-scoped
@@ -305,7 +311,7 @@ __STYLE__
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet, period P&amp;L, and net-worth bridge with transfers that are not trades, household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, and original vs revised contract (approved change orders keyed by phase — unset until posted), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return) and a period NAV roll-forward (unset, not a fake zero), the exception queue, a difference at its own address, a book's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet, period P&amp;L, and net-worth bridge with transfers that are not trades, household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return) and a period NAV roll-forward (unset, not a fake zero), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue

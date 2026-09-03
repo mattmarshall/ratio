@@ -29,7 +29,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "PROJECT",
     label: "Project",
-    blurb: "Cash, work in progress, project costs by work package, funding, revenue, progress billings, retainage, and approved change orders. Budget vs actual and billed vs earned are two figures, not one URL. A change order adjusts the revised contract without rewriting the original baseline.",
+    blurb: "Cash, work in progress, project costs by work package, funding, revenue, progress billings, retainage, and approved change orders. Budget vs actual and billed vs earned are two figures, not one URL. A change order adjusts the revised contract without rewriting the original baseline. Remaining to bill and collections vs billed stay unset until the journal can support them.",
   },
 ];
 

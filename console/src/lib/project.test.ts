@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountsReceivable,
   approvedChangeOrders,
   changeOrdersInWindow,
+  collectedAgainstBilled,
   figure,
   isApprovedChangeOrder,
   isChangeOrderAccount,
   isFundingAccount,
+  outstandingAgainstBilled,
   phaseApproved,
   projectRollup,
+  remainingToBill,
   revisedContract,
   wipFoots,
 } from "./project";
@@ -173,6 +177,59 @@ describe("change orders", () => {
     expect(revisedContract(10000000n, null)).toBe(10000000n);
     expect(revisedContract(null, 500000n)).toBeNull();
     expect(revisedContract(10000000n, 500000n)).toBe(10500000n);
+  });
+});
+
+describe("remaining to bill", () => {
+  it("stays unset when either the revised contract or billed cannot support the cut", () => {
+    expect(remainingToBill(null, "")).toBeNull();
+    expect(remainingToBill(null, "100000")).toBeNull();
+    expect(remainingToBill(10000000n, "")).toBeNull();
+  });
+
+  it("is revised minus billed when both sides are set, including a real zero", () => {
+    expect(remainingToBill(10000000n, "100000")).toBe(9900000n);
+    expect(remainingToBill(10500000n, "100000")).toBe(10400000n);
+    expect(remainingToBill(100000n, "100000")).toBe(0n);
+    expect(remainingToBill(0n, "0")).toBe(0n);
+  });
+});
+
+describe("collections vs billed", () => {
+  it("stays unset when billed has not posted, even if AR looks empty", () => {
+    expect(collectedAgainstBilled("", null, "")).toBeNull();
+    expect(collectedAgainstBilled("", 0n, "")).toBeNull();
+    expect(outstandingAgainstBilled("", 40000n, "10000")).toBeNull();
+  });
+
+  it("stays unset when billed is set but AR has never posted", () => {
+    expect(collectedAgainstBilled("100000", null, "")).toBeNull();
+    expect(collectedAgainstBilled("100000", null, "10000")).toBeNull();
+    expect(outstandingAgainstBilled("100000", null, "")).toBeNull();
+  });
+
+  it("treats unheld retainage as zero and a billed-but-uncollected job as a real zero", () => {
+    expect(collectedAgainstBilled("100000", 100000n, "")).toBe(0n);
+    expect(outstandingAgainstBilled("100000", 100000n, "")).toBe(100000n);
+  });
+
+  it("is cash against AR: billed minus receivable minus retainage held", () => {
+    expect(collectedAgainstBilled("100000", 40000n, "10000")).toBe(50000n);
+    expect(outstandingAgainstBilled("100000", 40000n, "10000")).toBe(50000n);
+    const billed = 100000n;
+    const collected = collectedAgainstBilled("100000", 40000n, "10000")!;
+    const outstanding = outstandingAgainstBilled("100000", 40000n, "10000")!;
+    expect(collected + outstanding).toBe(billed);
+  });
+
+  it("reads Accounts receivable only when that account has posted", () => {
+    expect(accountsReceivable(CHART)).toBeNull();
+    expect(
+      accountsReceivable([acct("3", "Accounts receivable", "ASSET", "0", "0", "0")]),
+    ).toBeNull();
+    expect(
+      accountsReceivable([acct("3", "Accounts receivable", "ASSET", "100000", "50000")]),
+    ).toBe(50000n);
   });
 });
 

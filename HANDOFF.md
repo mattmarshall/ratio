@@ -460,6 +460,19 @@ the conserved one, and the kernel never said it was.
   client portal, GC/sub marketplace, e-signature, full AIA G702 product UI,
   CRM, or a live construction job — CreateBook seeds the patterns; the
   seeded demo funds remain investment books.
+- ⚠ **A project remaining-to-bill / collections walk-through (#100 / #27).**
+  `/billing` cites remaining to bill (revised − billed) and collections vs
+  billed (cash against AR: billed − outstanding receivable − retainage
+  held). They compose from the same ListAccounts / `projectProgress` /
+  `[project] budget` cuts change orders and billing already use — not a
+  third chrome URL. An unbilled job, or a book with no `[project] budget`,
+  stays **unset** — not the whole contract as remaining, and not collected
+  0.00. Billed but uncollected is a real zero collected. `collect_receivable`
+  is the cash-against-AR rule CreateBook already seeds. ⛔ The walk-through
+  cannot show AIA G702 / SOV product UI, a client portal, e-signature, CRM,
+  a subcontractor pay-app marketplace, or SPI/CPI dashboards. Change orders
+  stay on #91; retainage / billed vs earned stay on #85. The seeded demo
+  funds remain investment books.
 - ⚠ **`console/scripts/capture_fixtures.sh` takes `navStrikes.json` and
   `replay.json` from `RATIO_FIXTURE_STRUCK_FUND`, not from `RATIO_FIXTURE_FUND`.**
   The fixture fund is the BLOCKED book on purpose, and a blocked book now has no
