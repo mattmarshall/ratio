@@ -31,7 +31,7 @@ const acct = (
 const close = (surplus: string, dest = "25"): PeriodClose => ({
   name: "funds/household/views/book/periodCloses/2026-03-31",
   view: "book",
-  closedDate: "2026-03-31",
+  closedDate: { year: 2026, month: 3, day: 31 },
   journalPosition: "3",
   journalDigest: "d".repeat(64),
   configDigest: "c".repeat(64),
@@ -112,7 +112,11 @@ describe("a period close roll-forward", () => {
     const march = close("-2400");
     expect(windowEnd("2026-03")).toBe("2026-03-31");
     expect(windowEnd("2026")).toBe("2026-12-31");
-    expect(coveringClose([march], "2026-03")?.closedDate).toBe("2026-03-31");
+    expect(coveringClose([march], "2026-03")?.closedDate).toEqual({
+      year: 2026,
+      month: 3,
+      day: 31,
+    });
     expect(coveringClose([march], "2026")).toBeNull();
   });
 });

@@ -14,7 +14,17 @@
 
 import { beginningOf, raw } from "./nav";
 import { shown } from "./statement";
-import type { Account, PeriodClose } from "@/wire/types";
+import type { Account, CalendarDate, PeriodClose } from "@/wire/types";
+
+/** `YYYY-MM-DD` for comparison and the resource id. A CalendarDate is a
+ *  day, not an instant — do not put it through `Date`. */
+export function closedYmd(d: CalendarDate | null | undefined): string {
+  if (!d) return "";
+  const y = String(d.year).padStart(4, "0");
+  const m = String(d.month).padStart(2, "0");
+  const day = String(d.day).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function periodNet(a: Account): bigint {
   return raw(a.debit) - raw(a.credit);
@@ -45,7 +55,7 @@ export function coveringClose(
   spec: string,
 ): PeriodClose | null {
   const end = windowEnd(spec);
-  return closes.find((c) => c.closedDate >= end) ?? null;
+  return closes.find((c) => closedYmd(c.closedDate) >= end) ?? null;
 }
 
 function destOf(

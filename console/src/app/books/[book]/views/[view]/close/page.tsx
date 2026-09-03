@@ -3,10 +3,11 @@ import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import {
   closeRollForward,
+  closedYmd,
   coveringClose,
   equityShown,
 } from "@/lib/close";
-import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
+import { isoDate, periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
 import { getPeriodClose, listAccounts, listPeriodCloses } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
@@ -48,7 +49,7 @@ async function PeriodClosePage({
   ]);
   const cover = coveringClose(listed.periodCloses, window);
   const evidence = cover
-    ? await getPeriodClose(c, book, view, cover.closedDate)
+    ? await getPeriodClose(c, book, view, closedYmd(cover.closedDate))
     : null;
   const r = closeRollForward(accounts, evidence);
   const bothUnset = r.beginning === null && r.ending === null && r.surplus === null;
@@ -157,7 +158,7 @@ async function PeriodClosePage({
             <div className="tbrow static" role="row">
               <span role="cell">
                 Closed through
-                <span className="at">{evidence.closedDate}</span>
+                <span className="at">{isoDate(evidence.closedDate)}</span>
               </span>
               <span role="cell" className="num">
                 {evidence.view}

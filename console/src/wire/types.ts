@@ -398,7 +398,7 @@ export interface NavStrike {
 export interface PeriodClose {
     name: string;
     view: string;
-    closedDate: string;
+    closedDate: CalendarDate | null;
     journalPosition: string;
     journalDigest: string;
     configDigest: string;

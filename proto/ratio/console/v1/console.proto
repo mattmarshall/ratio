@@ -1561,8 +1561,13 @@ message PeriodClose {
 
   string view = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // `YYYY-MM-DD`. The last day this view recognises as closed.
-  string closed_date = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // The last calendar day this view recognises as closed.
+  //
+  // ⚠ A DATE, NOT A STRING AND NOT A TIMESTAMP. `core::0142::time-field-type`
+  // accepts only Timestamp / Date / DateTime / TimeOfDay for a field whose
+  // last token is `date`. A trade date is the same kind of thing: a day in
+  // the book's calendar, not an instant.
+  google.type.Date closed_date = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   string actor = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 

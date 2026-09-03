@@ -4090,7 +4090,7 @@ fn to_pb_close(fund: &str, c: &CloseRecord) -> pb::PeriodClose {
             c.view, c.closed_date
         ),
         view: c.view.clone(),
-        closed_date: c.closed_date.clone(),
+        closed_date: iso_date(&c.closed_date),
         actor: c.actor.clone(),
         journal_position: c.journal_position as i64,
         journal_digest: c.journal_digest.clone(),
@@ -10249,7 +10249,14 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             .list_period_closes(&format!("funds/household/views/{view}"))
             .unwrap();
         assert_eq!(listed.period_closes.len(), 1);
-        assert_eq!(listed.period_closes[0].closed_date, "2026-03-31");
+        let listed_day = listed.period_closes[0]
+            .closed_date
+            .as_ref()
+            .expect("a recorded close has a closed date");
+        assert_eq!(
+            (listed_day.year, listed_day.month, listed_day.day),
+            (2026, 3, 31)
+        );
         assert_eq!(listed.period_closes[0].surplus, "-2400");
         assert_eq!(listed.period_closes[0].actor, "tester");
 

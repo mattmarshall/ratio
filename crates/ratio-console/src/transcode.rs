@@ -1391,7 +1391,7 @@ impl JsonView for pb::PeriodClose {
              \"surplus\":{}}}",
             q(&self.name),
             q(&self.view),
-            q(&self.closed_date),
+            date_json(&self.closed_date),
             q(&self.actor),
             q(&self.journal_position.to_string()),
             q(&self.journal_digest),
