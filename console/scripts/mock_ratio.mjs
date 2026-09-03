@@ -62,6 +62,10 @@ const ROUTES = [
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/positions\/[^/]+\/lots\/[^/:]+$/, "lots:first"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/navStrikes$/, "navStrikes"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/navStrikes\/[^/:]+$/, "navStrikes:first"],
+  // ⭐ EMPTY ON PURPOSE. Seeded books have not closed. An empty list is the
+  // unset state the sheet / P&L / `/close` already render; inventing a
+  // close record here would make the phone pass a closed period.
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/periodCloses$/, "periodCloses"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/navStrikes\/[^/]+:replay$/, "replay"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/navStrikes\/[^/]+:explain$/, "explain"],
   [/^\/v1\/funds\/[^/]+\/configVersions$/, "configVersions"],

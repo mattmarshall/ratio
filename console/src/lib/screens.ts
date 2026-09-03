@@ -64,6 +64,7 @@ const AGREEMENT: readonly Screen[] = [
 export const FUND_SCREENS: readonly Screen[] = [
   { segment: "breaks", label: "Exceptions", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
+  { segment: "close", label: "Period close", scoped: true, group: "book" },
   { segment: "positions", label: "Positions", scoped: true, group: "book" },
   { segment: "strikes", label: "NAV", scoped: true, group: "book" },
   ...AGREEMENT,
@@ -71,8 +72,8 @@ export const FUND_SCREENS: readonly Screen[] = [
 
 /**
  * Household figures. Balance sheet, period P&L, the net-worth bridge,
- * the period cash-flow statement, budget vs actual, and the loan
- * roll-forward — not ABOR.
+ * the period cash-flow statement, the period close, budget vs actual,
+ * and the loan roll-forward — not ABOR.
  *
  * Trial balance stays: it is the conservation view of the same accounts, and
  * a sheet that could not be checked against it would be a picture.
@@ -82,6 +83,7 @@ export const PERSONAL_SCREENS: readonly Screen[] = [
   { segment: "pnl", label: "Period P&L", scoped: true, group: "book" },
   { segment: "bridge", label: "Net-worth bridge", scoped: true, group: "book" },
   { segment: "cashflow", label: "Cash flow", scoped: true, group: "book" },
+  { segment: "close", label: "Period close", scoped: true, group: "book" },
   { segment: "budget", label: "Budget vs actual", scoped: true, group: "book" },
   { segment: "loans", label: "Loan schedule", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
@@ -107,6 +109,7 @@ export const PROJECT_SCREENS: readonly Screen[] = [
   { segment: "budget", label: "Budget vs actual", scoped: true, group: "book" },
   { segment: "wip", label: "WIP", scoped: true, group: "book" },
   { segment: "billing", label: "Billing", scoped: true, group: "book" },
+  { segment: "close", label: "Period close", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   ...AGREEMENT,
 ];
@@ -130,6 +133,7 @@ export const PROJECT_SCREENS: readonly Screen[] = [
 export const INVESTMENT_SCREENS: readonly Screen[] = [
   { segment: "capital", label: "Capital activity", scoped: true, group: "book" },
   { segment: "nav", label: "NAV roll-forward", scoped: true, group: "book" },
+  { segment: "close", label: "Period close", scoped: true, group: "book" },
   { segment: "breaks", label: "Exceptions", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   { segment: "positions", label: "Positions", scoped: true, group: "book" },
@@ -156,14 +160,16 @@ export const INVESTMENT_SCREENS: readonly Screen[] = [
  * stays unset — the chart has no PPE / securities account.
  *
  * Sheet and P&L reuse the existing `/sheet` and `/pnl` pages: grouping
- * is by account type, and `chart_for(Operating)` is the chart. Trial
- * balance is the close surface — conservation plus abnormal/unsupported
- * sides, without fund positions or strikes.
+ * is by account type, and `chart_for(Operating)` is the chart. Period
+ * close is the same `/close` as every other kind — surplus into
+ * retained earnings, not Owner equity. Trial balance stays: it is the
+ * conservation view, without fund positions or strikes.
  */
 export const OPERATING_SCREENS: readonly Screen[] = [
   { segment: "sheet", label: "Balance sheet", scoped: true, group: "book" },
   { segment: "pnl", label: "Income statement", scoped: true, group: "book" },
   { segment: "cashflow", label: "Cash flow", scoped: true, group: "book" },
+  { segment: "close", label: "Period close", scoped: true, group: "book" },
   { segment: "aging", label: "AR/AP aging", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   ...AGREEMENT,

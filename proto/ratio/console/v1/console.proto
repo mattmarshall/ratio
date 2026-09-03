@@ -538,6 +538,23 @@ service Console {
     option (google.api.http) = {get: "/v1/{parent=funds/*}/changeLogEntries"};
     option (google.api.method_signature) = "parent";
   }
+
+  // Lists period closes on one book of record, newest first. (AIP-132)
+  //
+  // ⛔ READ-ONLY. The operator close is `ratio close` at a terminal, the same
+  // fence as `ratio accept` and `ratio approve`. This resource is the
+  // evidence an operator opens: closed date, journal prefix, configuration
+  // digest, actor, time. `Ratio.Close`. `//tla:period_close_check`.
+  rpc ListPeriodCloses(ListPeriodClosesRequest) returns (ListPeriodClosesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*/views/*}/periodCloses"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one period close. (AIP-131)
+  rpc GetPeriodClose(GetPeriodCloseRequest) returns (PeriodClose) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*/periodCloses/*}"};
+    option (google.api.method_signature) = "name";
+  }
 }
 
 // A journal and its content-addressed configuration.
@@ -1517,6 +1534,66 @@ message NavStrike {
 
   // The configuration in force at the last entry folded.
   string config_digest = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// A period close: the citeable boundary per book of record.
+//
+// ⛔ NOT THE CLOSING POSTING. That is a journal entry and is what makes the
+// retained-earnings roll-forward citeable from ledger postings. This
+// resource is the evidence: which view, through which day, at which
+// journal prefix, under which configuration, by whom, when.
+// `Ratio.Close`. `//tla:period_close_check`.
+//
+// ⚠ `surplus` AND `closing_entry` ARE EMPTY WHEN UNSET. A period with no
+// income or expense activity can still be closed (the door holds); there
+// is then nothing to roll. Empty is not a measured zero.
+message PeriodClose {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/PeriodClose"
+    pattern: "funds/{fund}/views/{view}/periodCloses/{period_close}"
+    singular: "periodClose"
+    plural: "periodCloses"
+  };
+
+  // `funds/{fund}/views/{view}/periodCloses/{period_close}`.
+  // The id is the closed date, `YYYY-MM-DD`.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  string view = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The last calendar day this view recognises as closed.
+  //
+  // ⚠ A DATE, NOT A STRING AND NOT A TIMESTAMP. `core::0142::time-field-type`
+  // accepts only Timestamp / Date / DateTime / TimeOfDay for a field whose
+  // last token is `date`. A trade date is the same kind of thing: a day in
+  // the book's calendar, not an instant.
+  google.type.Date closed_date = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string actor = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // How many journal entries the close pinned, including the closing
+  // posting when one exists.
+  int64 journal_position = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string journal_digest = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The configuration in force at the last dated entry folded.
+  string config_digest = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The journal entry id of the closing posting. Empty when unset.
+  string closing_entry = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // When the operator closed it, not the period end.
+  google.protobuf.Timestamp create_time = 9
+      [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Chart dimension the surplus rolled into, as decimal. Always set on
+  // a recorded close — a close without a destination is refused.
+  string equity_destination = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Raw surplus posted to the destination, minor units. Empty when the
+  // close recorded no posting.
+  string surplus = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // A corporate action, as announced.
@@ -2933,4 +3010,25 @@ message ListChangeLogEntriesRequest {
 message ListChangeLogEntriesResponse {
   repeated ChangeLogEntry change_log_entries = 1;
   string next_page_token = 2;
+}
+
+message ListPeriodClosesRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListPeriodClosesResponse {
+  repeated PeriodClose period_closes = 1;
+  string next_page_token = 2;
+}
+
+message GetPeriodCloseRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/PeriodClose"
+  ];
 }

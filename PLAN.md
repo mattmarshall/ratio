@@ -863,6 +863,61 @@ client portal. Sheet / P&L stay on #108; aging stays on #117; period close
 stays on #114. None of those are on the *Explicitly not building* list, and
 this amendment adds none of them.
 
+### Amendment, 2026-09-03 — a citeable period close, and nothing on the refusal list moved
+
+Stage 1 named "no effect on a closed period" as a required check. The rule
+compiler never asked. `FileBook::trial_balance` folded the whole journal.
+The sheet showed `surplus = income + expenses` as the residual that makes
+the books foot **while they have not closed**, and said so. There was no
+close verb, no closed-through day, and no roll into equity.
+
+What landed is a citeable close boundary per Book / view / period, and a
+retained-earnings roll-forward, for Personal, Investment, Project,
+Operating, and the fund operations surface. Kind still selects the chrome
+from one `screensFor` list. Operating rolls into retained earnings (25),
+not Owner equity — the same distinction Personal keeps between Opening
+equity and the residual. Operating `/cashflow` stays the period cash
+statement (#118); this amendment does not change that classification.
+
+**The door is on the journal, not the rule set.** A `CloseRecord` lives on
+`Plane::Closes` (`closes.jsonl`), beside the journal the way an explanation
+does. The closing *posting* is a conserved journal entry — that is what
+makes the post-close trial balance cite the same legs as the P&L. The
+record is the evidence: view, closed date, journal prefix, configuration
+digest, actor, time. `Journal::append` refuses a dated entry on or before
+any view's closed-through day. Append-only storage is not this.
+`Ratio.Close`. `//tla:period_close_check`. The probe
+`//tla:backdated_post_check` flips the door off and
+`AClosedPeriodRefusesABackdatedPost` goes red.
+
+**The operator verb is `ratio close --through YYYY-MM-DD`.** Same fence as
+`ratio accept` and `ratio approve`. The console is read-only evidence at
+`/books/{id}/views/{view}/close` (`filter=close-YYYY[-MM]`, the Loan-shaped
+window the bridge already uses) plus `ListPeriodCloses` / `GetPeriodClose`.
+No write RPC.
+
+**Unset stays unset.** `[close] equity_destination` names the dest; a
+missing key refuses the close rather than defaulting to Opening equity or
+Funding. A period with no income or expense still closes (the door holds)
+and leaves `closing_entry` / `surplus` absent — not a measured zero. A
+missing beginning prefix leaves the roll-forward unset. The proto surplus
+field is a string so empty is empty.
+
+**Post-close statements agree.** The P&L Activity fold skips the closing
+entry, so March still shows March. The sheet as-of includes it, so
+temporaries are zero and retained earnings holds the surplus. The next
+period does not silently include the prior I/E. An open period may preview
+unclosed surplus; it says provisional rather than presenting the period as
+closed.
+
+**What a walk-through can and cannot show** (demo readiness, #27). It can
+show a close against a named view, prefix and digest, a back-dated post
+refused, a roll-forward that ties to the period P&L and the post-close
+trial balance, and unset when the journal cannot support a close. It
+cannot show a control-plane configuration editor, a client portal,
+performance reporting, a tax-filing workflow, AR/AP aging, or a general
+workflow engine. The close may remain CLI/API.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

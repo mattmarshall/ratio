@@ -2,8 +2,9 @@ import Link from "next/link";
 import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
+import { coveringClose } from "@/lib/close";
 import { ofType, sheetTotals, shown } from "@/lib/statement";
-import { getBook, listAccounts } from "@/wire/client";
+import { getBook, listAccounts, listPeriodCloses } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 import type { Account } from "@/wire/types";
 
@@ -33,11 +34,13 @@ async function PnL({
   const { period = month } = await searchParams;
   const window = period || month;
   const c = await caller();
-  const [b, { accounts }] = await Promise.all([
+  const [b, { accounts }, listed] = await Promise.all([
     getBook(c, book),
     listAccounts(c, book, view, "pnl", window),
+    listPeriodCloses(c, book, view),
   ]);
   const operating = b.kind === "OPERATING";
+  const closed = coveringClose(listed.periodCloses, window) !== null;
 
   const filters: readonly Filter[] = [
     { key: month, label: periodLabel(month) },
@@ -56,7 +59,11 @@ async function PnL({
         active={window}
         param="period"
         label="Period"
-        note={`${periodLabel(window)} — dated entries only, not since inception`}
+        note={`${periodLabel(window)} — dated entries only, not since inception${
+          closed
+            ? "; this window is closed — surplus is in retained earnings"
+            : "; provisional — not a closing entry"
+        }`}
       />
 
       <div
@@ -84,7 +91,11 @@ async function PnL({
           <div className="tbfoot static" role="row">
             <span role="cell">
               Surplus
-              <small>income less expenses, this window</small>
+              <small>
+                {closed
+                  ? "income less expenses, this window — closed into retained earnings"
+                  : "provisional — income less expenses, this window"}
+              </small>
             </span>
             <span role="cell" className="num">
               {shown("equity", totals.surplus)}
@@ -107,6 +118,10 @@ async function PnL({
             </Link>
           </>
         ) : null}
+        {" · "}
+        <Link href={`/books/${book}/views/${view}/close?period=${encodeURIComponent(window)}`}>
+          Period close
+        </Link>
         {" · "}
         <Link href={`/books/${book}/record`}>Record income or an expense</Link>
         {operating ? null : (

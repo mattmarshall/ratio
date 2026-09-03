@@ -187,6 +187,11 @@ export const ROUTES: readonly Route[] = [
   // same contribution / distribution accounts `/capital` already names.
   // `/strikes` stays the ABOR NAV.
   {
+    path: "/books/[book]/views/[view]/close",
+    file: "books/[book]/views/[view]/close/page.tsx",
+    reads: ["listAccounts", "listPeriodCloses", "getPeriodClose"],
+  },
+  {
     path: "/books/[book]/views/[view]/nav",
     file: "books/[book]/views/[view]/nav/page.tsx",
     reads: ["getBook", "listAccounts"],

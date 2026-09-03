@@ -391,6 +391,36 @@ pub struct JournalEntry {
     pub application: Option<String>,
 }
 
+/// A period close: the citeable boundary per book of record.
+///
+/// ⛔ NOT THE CLOSING POSTING. That is a journal entry — conserved, dated,
+/// pinned to a configuration — and is what makes the roll-forward citeable
+/// from ledger postings. This record is the evidence an operator opens:
+/// which view, through which day, at which journal prefix, under which
+/// configuration, by whom, when. `Ratio.Close`. `//tla:period_close_check`.
+///
+/// ⚠ `surplus` AND `closing_entry` ARE OPTIONAL. A period with no income or
+/// expense activity can still be closed (the door holds); there is then
+/// nothing to roll. Empty is unset, not a measured zero.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CloseRecord {
+    pub view: String,
+    /// `YYYY-MM-DD`. ISO so it compares in date order as a string.
+    pub closed_date: String,
+    pub journal_position: u64,
+    pub journal_digest: String,
+    pub config_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closing_entry: Option<String>,
+    pub actor: String,
+    /// Unix seconds. When the operator closed it, not the period end.
+    pub recorded: i64,
+    pub equity_destination: i64,
+    /// Raw surplus posted to the destination. Absent when nothing closed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surplus: Option<i64>,
+}
+
 impl JournalEntry {
     /// The kernel's view of this entry.
     pub fn transaction(&self) -> Transaction {
@@ -730,6 +760,19 @@ pub enum Plane {
     /// explanation adjusts a figure rather than annotating one, it belongs in
     /// the journal with everything else that does.
     Explanations,
+    /// A period close: the citeable boundary, not the closing posting.
+    ///
+    /// ⛔ BESIDE THE JOURNAL, LIKE AN EXPLANATION, because the close record
+    /// moves no money. The surplus roll-forward IS a journal entry — that is
+    /// what makes the post-close trial balance cite the same postings as the
+    /// P&L. This plane is the evidence: which view, through which day, at
+    /// which prefix, under which configuration, by whom, when.
+    ///
+    /// ⚠ AND IT IS WHAT THE APPEND DOOR READS. Append-only storage is not a
+    /// close; `Journal::append` refuses a dated entry on or before the
+    /// closed-through day. `Ratio.Close.a_dated_entry_on_or_before_close_
+    /// is_refused`. `//tla:period_close_check`.
+    Closes,
 }
 
 impl Plane {
@@ -740,6 +783,7 @@ impl Plane {
             Plane::Facts => "facts.jsonl",
             Plane::Actions => "actions.jsonl",
             Plane::Explanations => "explanations.jsonl",
+            Plane::Closes => "closes.jsonl",
         }
     }
 }
@@ -804,6 +848,7 @@ impl FileBook {
             Plane::Facts,
             Plane::Actions,
             Plane::Explanations,
+            Plane::Closes,
         ] {
             if let Some(log) = self.plane_log(plane) {
                 hydrate_jsonl(&self.root.join(plane.file()), &log)?;
@@ -895,6 +940,57 @@ impl FileBook {
         }
         let s = fs::read_to_string(&path).context("reading accounts")?;
         Ok(serde_json::from_str(&s).context("parsing accounts")?)
+    }
+
+    /// Every period close recorded on this book, oldest first.
+    pub fn closes(&self) -> Result<Vec<CloseRecord>> {
+        self.records(Plane::Closes)
+    }
+
+    /// The latest close of one view, if any.
+    ///
+    /// ⛔ PER VIEW. Two books of record are two answers; a settlement close
+    /// does not borrow the accounting book's closed-through day.
+    pub fn latest_close(&self, view: &str) -> Result<Option<CloseRecord>> {
+        let mut closes = self.closes()?;
+        closes.retain(|c| c.view == view);
+        Ok(closes.into_iter().max_by(|a, b| a.closed_date.cmp(&b.closed_date)))
+    }
+
+    /// Refuse a dated entry that lands on or before any view's closed-through
+    /// day.
+    ///
+    /// ⭐ THE DOOR STAGE 1 NAMED. Append-only storage is not a close.
+    /// `Ratio.Close.a_dated_entry_on_or_before_close_is_refused`. An undated
+    /// entry has no period (`an_undated_entry_is_not_in_a_period`) and is
+    /// left alone — period folds already skip it.
+    ///
+    /// ⚠ CONSERVATIVE ACROSS VIEWS. The journal is shared. Refusing against
+    /// the most restrictive close is the door that cannot silently put an
+    /// entry into a view that already signed the period.
+    fn refuse_closed_period(&self, entry: &JournalEntry) -> Result<()> {
+        let Some(day) = entry.trade_date.as_deref() else {
+            return Ok(());
+        };
+        let closes = self.closes()?;
+        if let Some(c) = closes
+            .iter()
+            .filter(|c| day <= c.closed_date.as_str())
+            .max_by(|a, b| a.closed_date.cmp(&b.closed_date))
+        {
+            bail!(
+                "entry {:?} is dated {day}, and view {:?} is closed through {} \
+                 (journal prefix {}, closed by {}). Posting into a closed period \
+                 is refused — append-only storage is not a close, and this door is. \
+                 Ratio.Close.a_dated_entry_on_or_before_close_is_refused",
+                entry.id,
+                c.view,
+                c.closed_date,
+                c.journal_position,
+                c.actor
+            );
+        }
+        Ok(())
     }
 
     /// The trial balance of the whole book — the fold of the log.
@@ -1036,6 +1132,7 @@ impl Journal for FileBook {
                 entry.config.short()
             );
         }
+        self.refuse_closed_period(entry)?;
         let line = serde_json::to_string(entry).context("serializing entry")?;
         if let Some(log) = self.journal_log() {
             log.append(line.as_bytes())?;
@@ -1095,6 +1192,7 @@ impl Journal for FileBook {
                     entry.config.short()
                 );
             }
+            self.refuse_closed_period(entry)?;
         }
         if let Some(log) = self.journal_log() {
             // Each entry is its own claim. Sharing a file handle is the jsonl
@@ -1777,5 +1875,79 @@ mod tests {
         let b = FileBook::open_with(&root, Some(store)).unwrap();
         let got: Vec<Rec> = b.records(Plane::Facts).unwrap();
         assert_eq!(got, vec![Rec { id: "f1".into() }]);
+    }
+
+    #[test]
+    fn a_dated_entry_on_or_before_a_close_is_refused() {
+        // ⭐ THE DOOR. A close recorded, then a later append dated inside the
+        // closed period. Append-only storage would have accepted it.
+        // `Ratio.Close.a_dated_entry_on_or_before_close_is_refused`.
+        let (mut b, cfg) = book();
+        let mut open = entry("open", &cfg, &[(1, 500), (2, -500)]);
+        open.trade_date = Some("2026-03-15".into());
+        b.append(&open).unwrap();
+        b.append_record(
+            Plane::Closes,
+            &CloseRecord {
+                view: "book".into(),
+                closed_date: "2026-03-31".into(),
+                journal_position: 1,
+                journal_digest: "d".into(),
+                config_digest: cfg.as_str().to_string(),
+                closing_entry: None,
+                actor: "tester".into(),
+                recorded: 1,
+                equity_destination: 25,
+                surplus: None,
+            },
+        )
+        .unwrap();
+
+        let mut back = entry("back", &cfg, &[(1, 100), (2, -100)]);
+        back.trade_date = Some("2026-03-31".into());
+        let err = b.append(&back).unwrap_err().to_string();
+        assert!(err.contains("closed through"), "{err}");
+        assert!(err.contains("2026-03-31"), "{err}");
+        assert_eq!(b.entries().unwrap().len(), 1, "the back-date must not land");
+
+        let mut earlier = entry("earlier", &cfg, &[(1, 50), (2, -50)]);
+        earlier.trade_date = Some("2026-03-01".into());
+        assert!(b.append(&earlier).is_err(), "on or before, not only before");
+
+        let mut later = entry("later", &cfg, &[(1, 25), (2, -25)]);
+        later.trade_date = Some("2026-04-01".into());
+        b.append(&later).unwrap();
+
+        let undated = entry("undated", &cfg, &[(1, 10), (2, -10)]);
+        b.append(&undated).unwrap();
+        assert_eq!(b.entries().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn a_close_record_without_a_posting_stays_unset() {
+        // ⭐ MISSING CLOSE POSTING IS UNSET, NOT ZERO. A period with no
+        // income or expense can still be closed; the door holds and the
+        // surplus field is absent.
+        let (mut b, cfg) = book();
+        b.append_record(
+            Plane::Closes,
+            &CloseRecord {
+                view: "book".into(),
+                closed_date: "2026-03-31".into(),
+                journal_position: 0,
+                journal_digest: "empty".into(),
+                config_digest: cfg.as_str().to_string(),
+                closing_entry: None,
+                actor: "tester".into(),
+                recorded: 1,
+                equity_destination: 25,
+                surplus: None,
+            },
+        )
+        .unwrap();
+        let got = b.latest_close("book").unwrap().expect("the close is there");
+        assert!(got.closing_entry.is_none());
+        assert!(got.surplus.is_none());
+        assert!(b.latest_close("settlement").unwrap().is_none());
     }
 }

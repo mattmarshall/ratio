@@ -79,6 +79,8 @@ usage:
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio accept BREAK --because TEXT    record why a difference is acceptable
         [--book DIR] [--view NAME]     — humans only, like approve
+  ratio close --through YYYY-MM-DD     close a period; rolls surplus into equity
+        [--view V] [--book DIR]        — humans only, like accept
   ratio server                         serve the Ledger gRPC API
 
 The book defaults to ./book, or $RATIO_BOOK if set.
@@ -203,6 +205,13 @@ fn main() -> Result<()> {
         | ["accept", brk, "--view", v, "--because", why] => {
             accept(book, brk, Some(v), why)
         }
+        // ⚠ SPELLED OUT rather than put through `flags`, because `--through`
+        // is this verb's day and `flags` only knows `--as-of` / `--view`.
+        // Adding it there would make `ratio strike --through "…"` parse
+        // and be ignored. The `accept` arms above enumerate for the same reason.
+        ["close", "--through", d] => close_cmd(book, None, d),
+        ["close", "--view", v, "--through", d]
+        | ["close", "--through", d, "--view", v] => close_cmd(book, Some(v), d),
         ["server"] => serve(),
         other => {
             eprint!("{USAGE}");
@@ -2365,6 +2374,39 @@ fn accept(book: PathBuf, brk: &str, view: Option<&str>, why: &str) -> Result<()>
     println!();
     println!("The break stays on the queue, explained rather than gone. A later");
     println!("reconciliation reporting a different figure retires this note.");
+    Ok(())
+}
+
+/// Close one view through one calendar day.
+///
+/// ⛔ THE OPERATOR VERB. The console lists the evidence; it does not write
+/// the close. Same fence as `ratio accept` and `ratio approve`.
+fn close_cmd(book: PathBuf, view: Option<&str>, through: &str) -> Result<()> {
+    let view = view_or_refuse(&book, view)?;
+    let actor = actor_name();
+    let rec = ratio_console::Console::new(&book)
+        .as_actor(&actor)
+        .close_period("demo", &view, through)?;
+
+    println!("closed {} through {}", rec.view, rec.closed_date);
+    println!("  journal    {} entrie(s)", rec.journal_position);
+    println!(
+        "  digest     {}",
+        &rec.journal_digest[..12.min(rec.journal_digest.len())]
+    );
+    println!(
+        "  config     {}",
+        &rec.config_digest[..7.min(rec.config_digest.len())]
+    );
+    match rec.surplus {
+        Some(s) => println!("  surplus    {}", minor(s)),
+        None => println!("  surplus    unset — no income or expense to roll"),
+    }
+    if let Some(id) = &rec.closing_entry {
+        println!("  posting    {id}");
+    }
+    println!("  equity     dim {}", rec.equity_destination);
+    println!("  by         {}", rec.actor);
     Ok(())
 }
 

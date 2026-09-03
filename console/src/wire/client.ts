@@ -66,6 +66,8 @@ import type {
   MarkPositionsRequest,
   MarkPositionsResponse,
   NavStrike,
+  PeriodClose,
+  ListPeriodClosesResponse,
   PendingFact,
   Position,
   Posting,
@@ -390,7 +392,7 @@ export const getLot = (
 // ⛔ AIP-132: a List request has no `period` field. A month or year rides on
 // `filter` as `pnl-YYYY-MM` / `sheet-YYYY` / `capital-YYYY-MM` /
 // `budget-YYYY-MM` / `loan-YYYY-MM` / `bridge-YYYY-MM` / `cashflow-YYYY-MM` /
-// `change-YYYY-MM` / `nav-YYYY-MM` — hyphen because transcode does not
+// `change-YYYY-MM` / `nav-YYYY-MM` / `close-YYYY-MM` — hyphen because transcode does not
 // percent-decode.
 // Pages still pass the two pieces; this is where they join.
 export const listAccounts = (
@@ -439,6 +441,21 @@ export const getPosting = (
 export const listNavStrikes = (c: Caller, fund: string, view: string) =>
   send<ListNavStrikesResponse>(c, `/funds/${fund}/views/${view}/navStrikes`);
 // GET /v1/{name=funds/*/views/*/navStrikes/*}
+// GET /v1/{parent=funds/*/views/*}/periodCloses
+export const listPeriodCloses = (c: Caller, fund: string, view: string) =>
+  send<ListPeriodClosesResponse>(
+    c,
+    `/funds/${fund}/views/${view}/periodCloses`,
+  );
+// GET /v1/{name=funds/*/views/*/periodCloses/*}
+export const getPeriodClose = (
+  c: Caller,
+  fund: string,
+  view: string,
+  id: string,
+) =>
+  send<PeriodClose>(c, `/funds/${fund}/views/${view}/periodCloses/${id}`);
+
 export const getNavStrike = (
   c: Caller,
   fund: string,

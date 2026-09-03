@@ -568,3 +568,36 @@ tla_check(
     tags = ["manual"],
     deps = [":views"],
 )
+
+# ⛔ A period close: the journal door Stage 1 named and nothing enforced.
+#
+# `Ratio.Close` proves the arithmetic of one close. This is the SEQUENCE:
+# post activity, record a close, post a back-dated entry. Append-only
+# storage is not the door — without RefuseOnClosedPeriod the invariant
+# AClosedPeriodRefusesABackdatedPost goes red, and that is the probe.
+#
+# ⚠ NOT `close_gate_check`. That spec is whether a NAV may be struck over
+# an unexplained break. This is a fiscal closed-through day.
+tla_library(
+    name = "period_close",
+    srcs = ["PeriodClose.tla"],
+)
+
+tla_check(
+    name = "period_close_check",
+    size = "medium",
+    config = "MCPeriodClose.cfg",
+    module = "MCPeriodClose.tla",
+    deps = [":period_close"],
+)
+
+# ⛔ The door flipped off: a close recorded, and a later post dated inside
+# the closed period lands. AClosedPeriodRefusesABackdatedPost goes red.
+tla_check(
+    name = "backdated_post_check",
+    size = "medium",
+    config = "BackdatedPost.cfg",
+    module = "MCPeriodClose.tla",
+    tags = ["manual"],
+    deps = [":period_close"],
+)

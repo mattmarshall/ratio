@@ -461,6 +461,23 @@ NEEDLES: list[tuple[str, str]] = [
         "no investing account on this chart — chart_for(Operating)",
         "operating cash-flow would invent a PPE / securities class",
     ),
+    # ── period close / retained-earnings roll-forward (#114) ───────────────
+    # ⚠ THE UNSET SENTENCE, NOT THE TAB LABEL. `screens.ts` already says
+    # "Period close"; a page that rendered $0.00 RE on an empty book
+    # would still contain the label and stay green. The refusal copy is
+    # what goes red if someone "helps" by showing zeros.
+    (
+        "Beginning and ending stay unset — not a measured zero close",
+        "an empty journal would render a fake zero close",
+    ),
+    (
+        "provisional — not a closing entry",
+        "an open period would present as if it had already closed",
+    ),
+    (
+        "unset — no named closing adjustment this window",
+        "a missing adjustment would render as a silent zero",
+    ),
 ]
 
 

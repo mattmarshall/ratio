@@ -2,8 +2,9 @@ import Link from "next/link";
 import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
+import { coveringClose } from "@/lib/close";
 import { ofType, sheetFoots, sheetTotals, shown } from "@/lib/statement";
-import { getBook, listAccounts } from "@/wire/client";
+import { getBook, listAccounts, listPeriodCloses } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 import type { Account } from "@/wire/types";
 
@@ -15,6 +16,8 @@ export const dynamic = "force-dynamic";
  * ⭐ THE CHART IS `chart_for(Personal)` (or whichever kind this book is).
  * Grouping does not invent accounts. Surplus is income − expenses, the
  * residual that makes A = L + E + surplus while the books have not closed.
+ * After a close that residual is in retained earnings, and this page says
+ * so rather than presenting an open-period picture.
  *
  * Period chips are as-of a month or year end. Empty is now — the maintained
  * fold, including undated entries. A dated as-of skips those, because an
@@ -33,7 +36,7 @@ async function Sheet({
   const year = utcYear();
   const last = previousMonth(month);
   const c = await caller();
-  const [b, { accounts }] = await Promise.all([
+  const [b, { accounts }, listed] = await Promise.all([
     getBook(c, book),
     listAccounts(
       c,
@@ -42,6 +45,7 @@ async function Sheet({
       period ? "sheet" : undefined,
       period || undefined,
     ),
+    listPeriodCloses(c, book, view),
   ]);
   const operating = b.kind === "OPERATING";
 
@@ -54,6 +58,12 @@ async function Sheet({
 
   const totals = sheetTotals(accounts);
   const foots = sheetFoots(totals);
+  const closed = period
+    ? coveringClose(listed.periodCloses, period) !== null
+    : listed.periodCloses.length > 0 && totals.surplus === 0n;
+  const surplusNote = closed
+    ? "rolled into retained earnings — this as-of is closed"
+    : "provisional — not a closing entry, the residual that makes the sheet foot";
 
   return (
     <>
@@ -102,9 +112,7 @@ async function Sheet({
             <div className="tbrow static" role="row">
               <span role="cell">
                 Income less expenses
-                <span className="at">
-                  not a closing entry — the residual that makes the sheet foot
-                </span>
+                <span className="at">{surplusNote}</span>
               </span>
               <span role="cell" className="num">
                 {shown("equity", totals.surplus)}
@@ -130,6 +138,10 @@ async function Sheet({
       <p className="note">
         <Link href={`/books/${book}/views/${view}/pnl?period=${encodeURIComponent(period || month)}`}>
           {operating ? "Income statement" : "Period P&L"}
+        </Link>
+        {" · "}
+        <Link href={`/books/${book}/views/${view}/close?period=${encodeURIComponent(period || month)}`}>
+          Period close
         </Link>
         {operating ? (
           <>

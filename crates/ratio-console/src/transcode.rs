@@ -65,6 +65,8 @@ pub const ROUTES: &[Route] = &[
     // The same, and for the same reason: explaining a strike reads.
     Route { method: "GET", template: "/v1/{name=funds/*/views/*/navStrikes/*}:explain" },
     Route { method: "GET", template: "/v1/{name=funds/*/views/*/navStrikes/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/periodCloses" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*/periodCloses/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/positions" },
     // ⛔ BEFORE the bare position, and before the position pattern can swallow
     // it. `funds/f/positions/p/lots` has more segments than `funds/*/positions/*`
@@ -280,6 +282,12 @@ pub fn serve(
         }
         ["funds", id, "views", v, "navStrikes", s] => {
             to_json(&console.get_nav_strike(&format!("funds/{id}/views/{v}/navStrikes/{s}"))?)?
+        }
+        ["funds", id, "views", v, "periodCloses"] => {
+            to_json(&console.list_period_closes(&format!("funds/{id}/views/{v}"))?)?
+        }
+        ["funds", id, "views", v, "periodCloses", c] => {
+            to_json(&console.get_period_close(&format!("funds/{id}/views/{v}/periodCloses/{c}"))?)?
         }
         ["funds", id, "views", v, "breaks", b] => {
             to_json(&console.get_break(&format!("funds/{id}/views/{v}/breaks/{b}"))?)?
@@ -1369,6 +1377,42 @@ impl JsonView for pb::ListCorporateActionsResponse {
         format!(
             "{{\"corporateActions\":[{}],\"nextPageToken\":{}}}",
             self.corporate_actions.iter().map(|a| a.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+impl JsonView for pb::PeriodClose {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"view\":{},\"closedDate\":{},\"actor\":{},\
+             \"journalPosition\":{},\"journalDigest\":{},\"configDigest\":{},\
+             \"closingEntry\":{},\"createTime\":{},\"equityDestination\":{},\
+             \"surplus\":{}}}",
+            q(&self.name),
+            q(&self.view),
+            date_json(&self.closed_date),
+            q(&self.actor),
+            q(&self.journal_position.to_string()),
+            q(&self.journal_digest),
+            q(&self.config_digest),
+            q(&self.closing_entry),
+            q(&self
+                .create_time
+                .as_ref()
+                .map(|t| ratio_nav::rfc3339(t.seconds))
+                .unwrap_or_default()),
+            q(&self.equity_destination),
+            q(&self.surplus)
+        )
+    }
+}
+
+impl JsonView for pb::ListPeriodClosesResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"periodCloses\":[{}],\"nextPageToken\":{}}}",
+            self.period_closes.iter().map(|c| c.to_json()).collect::<Vec<_>>().join(","),
             q(&self.next_page_token)
         )
     }

@@ -389,7 +389,32 @@ export interface NavStrike {
    * have been in — and a qualification a caller fetches separately is one a
    * caller renders the figure without.
    */
-  qualification: string[];
+    qualification: string[];
+}
+
+/** A close of one view through one calendar day. The surplus field is a
+ *  decimal string so a missing close stays empty rather than a proto-default
+ *  zero — `Ratio.Close.missing_surplus_is_unset`. */
+export interface PeriodClose {
+    name: string;
+    view: string;
+    closedDate: CalendarDate | null;
+    journalPosition: string;
+    journalDigest: string;
+    configDigest: string;
+    closingEntry: string;
+    actor: string;
+    createTime: string;
+    equityDestination: string;
+    surplus: string;
+}
+
+export interface ListPeriodClosesRequest {
+    parent: string;
+}
+
+export interface GetPeriodCloseRequest {
+    name: string;
 }
 
 export interface ReplayNavStrikeResponse {
@@ -594,6 +619,11 @@ export interface ListCorporateActionsResponse {
 
 export interface ListNavStrikesResponse {
   navStrikes: NavStrike[];
+  nextPageToken: string;
+}
+
+export interface ListPeriodClosesResponse {
+  periodCloses: PeriodClose[];
   nextPageToken: string;
 }
 
