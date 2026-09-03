@@ -355,12 +355,11 @@ the replacement, still in `left` — writes. The search is over the remainder,
 so "do not write a relieved lot" is structural rather than a check somebody
 has to remember. -/
 theorem attaching_cannot_write_a_lot_the_sale_took :
-    match relieveFifo [⟨1, 1, 10⟩, ⟨2, 1, 40⟩] 1 with
-    | none => False
-    | some (_, left) =>
-        attachTo left 1 100 = none
-        ∧ attachTo left 2 100 = some [⟨2, 1, 140⟩] := by
-  decide
+    (relieveFifo [⟨1, 1, 10⟩, ⟨2, 1, 40⟩] 1).bind (fun r => attachTo r.2 1 100)
+      = none
+    ∧ (relieveFifo [⟨1, 1, 10⟩, ⟨2, 1, 40⟩] 1).bind (fun r => attachTo r.2 2 100)
+      = some [⟨2, 1, 140⟩] := by
+  constructor <;> decide
 
 /-- **A later sale of the replacement takes the adjusted basis**, not the
 acquisition cost. One unit left, carrying 40 plus a thousand of deferred loss:
@@ -368,10 +367,9 @@ the next relief gives up 1040. That is the loss coming back, and it is the
 figure `disallowing_without_attaching_destroys_the_loss` says an engine that
 stops at the first half never produces. -/
 theorem a_later_sale_of_the_replacement_takes_the_adjusted_basis :
-    match attachTo [⟨2, 1, 40⟩] 2 1000 with
-    | none => False
-    | some held =>
-        (relieveFifo held 1).map (fun r => takenCost r.1) = some 1040 := by
+    (attachTo [⟨2, 1, 40⟩] 2 1000).bind
+        (fun held => (relieveFifo held 1).map (fun r => takenCost r.1))
+      = some 1040 := by
   decide
 
 /-- **⛔ AND THE WRITE CHANGES WHAT A LATER METHOD GIVES UP.**
@@ -393,12 +391,9 @@ layers. -/
 theorem a_wash_write_changes_what_a_later_method_gives_up :
     (relieveBy .hifo [⟨1, 1, 25⟩, ⟨2, 1, 10⟩] 1).map (fun r => takenCost r.1)
       = some 25
-    ∧ match attachTo [⟨1, 1, 25⟩, ⟨2, 1, 10⟩] 2 20 with
-      | none => False
-      | some held =>
-          (relieveBy .hifo held 1).map (fun r => takenCost r.1) = some 30 := by
-  constructor
-  · decide
-  · decide
+    ∧ (attachTo [⟨1, 1, 25⟩, ⟨2, 1, 10⟩] 2 20).bind
+        (fun held => (relieveBy .hifo held 1).map (fun r => takenCost r.1))
+      = some 30 := by
+  constructor <;> decide
 
 end Ratio.Lots
