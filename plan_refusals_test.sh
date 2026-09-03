@@ -100,6 +100,11 @@ BUILT=(
   # check would have stayed green whatever was built. The sentence it
   # matches is in the 2026-09-03 wash-holding amendment.
   "the non-US holding-period variant is an election"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The console wash-flag cite is not on the refusal list — this check
+  # would have stayed green whatever was built. The sentence it matches
+  # is in the 2026-09-03 console-cite amendment.
+  "the console cites the wash election"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

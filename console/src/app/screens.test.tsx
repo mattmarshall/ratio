@@ -3194,6 +3194,61 @@ describe("the fund overview", () => {
     ).toBeDefined();
   });
 
+  it("cites a declared wash window and leaves the US transfer in force", async () => {
+    const Overview = (await import("./funds/[fund]/page")).default;
+    await renderAsync(Overview({ params: params({ fund: FUND }) }));
+    expect(screen.getByText("Wash window")).toBeDefined();
+    // ⛔ THE DAYS, AND THE CLAIM THAT SOMEBODY WROTE THEM. A silent 30 is the
+    // lot-method trap for this field: every in-window loss on every existing
+    // book would have been restated.
+    expect(screen.getByText("30 days")).toBeDefined();
+    expect(screen.getByText("Wash holding period")).toBeDefined();
+    expect(screen.getByText("US transfer stays in force")).toBeDefined();
+    expect(screen.getByText(/nobody wrote keep/)).toBeDefined();
+    expect(screen.queryByText("replacement keeps its own date")).toBeNull();
+    expect(screen.queryByText(/declares no wash window/)).toBeNull();
+  });
+
+  it("does not invent a wash window when nobody elected one", async () => {
+    const real = wire.getFund;
+    wire.getFund = (async () => ({
+      ...fundFixture,
+      washWindowDays: "0",
+      washWindowDeclared: false,
+      washKeepHoldingPeriod: false,
+    })) as typeof wire.getFund;
+    try {
+      const Overview = (await import("./funds/[fund]/page")).default;
+      await renderAsync(Overview({ params: params({ fund: FUND }) }));
+      expect(screen.getByText("Wash window")).toBeDefined();
+      expect(screen.getByText(/this configuration declares no wash window/)).toBeDefined();
+      expect(screen.queryByText("30 days")).toBeNull();
+      expect(screen.queryByText("Wash holding period")).toBeNull();
+      expect(screen.queryByText("US transfer stays in force")).toBeNull();
+    } finally {
+      wire.getFund = real;
+    }
+  });
+
+  it("cites the keep-holding-period election and does not invent a third meaning", async () => {
+    const real = wire.getFund;
+    wire.getFund = (async () => ({
+      ...fundFixture,
+      washWindowDays: "30",
+      washWindowDeclared: true,
+      washKeepHoldingPeriod: true,
+    })) as typeof wire.getFund;
+    try {
+      const Overview = (await import("./funds/[fund]/page")).default;
+      await renderAsync(Overview({ params: params({ fund: FUND }) }));
+      expect(screen.getByText("replacement keeps its own date")).toBeDefined();
+      expect(screen.queryByText("US transfer stays in force")).toBeNull();
+      expect(screen.queryByText(/nobody wrote keep/)).toBeNull();
+    } finally {
+      wire.getFund = real;
+    }
+  });
+
   it("names the tax lots and the fold that does not read them", async () => {
     const Overview = (await import("./funds/[fund]/page")).default;
     await renderAsync(Overview({ params: params({ fund: FUND }) }));

@@ -203,9 +203,11 @@ __STYLE__
           The non-US holding-period variant is an election
           (<code>wash_keep_holding_period = true</code>; unset stays
           unset, not a silent keep).
-          It cannot show a wash
-          flag on the console
-          or lot-relief UI screens for MinTax, SpecID, or average
+          The fund lot-terms screen cites the wash window
+          (<code>wash_window_days</code>; silence stays unset, not a
+          silent 30) and the keep election when a book writes it
+          (unset stays the US transfer — not a third meaning).
+          It cannot show lot-relief UI screens for MinTax, SpecID, or average
           cost. Fund books
           keep the operations surface. An Operating book cites a balance
           sheet, a period income statement, and a period cash-flow

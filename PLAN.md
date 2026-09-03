@@ -1193,6 +1193,7 @@ What landed is the record, not a console screen:
 - Not a **wash flag on the console or in the demo**. Lot proto and
   the operations screens do not grow a field for this. Adding one
   is a cite, not a restatement, and it is still ahead.
+  *(the console wash-flag cite is a later amendment.)*
 - Not a **non-US holding-period variant**. `replacementAcquired`
   is the US transfer already named in `Ratio.Lots.Wash`. A
   jurisdiction that does not transfer the period is a different
@@ -1211,6 +1212,7 @@ repurchase moves the figure. It cannot show a wash flag on the
 console or in the demo, a non-US holding-period variant, or a
 lot-relief UI screen. Those remain on #5 (wash leftovers) and #9
 (engine UI cites).
+*(the console wash-flag cite is a later amendment.)*
 *(the non-US holding-period variant is an election — the next
 amendment.)*
 
@@ -1247,6 +1249,7 @@ What landed is the election, as its own shape:
 - Not a **wash flag on the console or in the demo**. Lot proto
   and the operations screens do not grow a field for this. Adding
   one is a cite, not this election, and it is still ahead.
+  *(the console wash-flag cite is a later amendment.)*
 
 Nothing on the *Explicitly not building* list moved. This
 amendment does not close #5. It does not close #9. MinTax /
@@ -1259,6 +1262,48 @@ and show a later sale classified from the replacement's own date.
 Silence stays unset, not a silent keep. It cannot show a wash
 flag on the console or in the demo, or a lot-relief UI screen.
 Those remain on #5 (console cite) and #9 (engine UI cites).
+*(the console wash-flag cite is the next amendment.)*
+
+### Amendment, 2026-09-03 — the console cites the wash election
+
+The engine halves of #5 were already on main: the wash window
+(`wash_window_days`; silence stays unset, not a silent 30),
+`WashRestatement` as a citeable record, and the non-US keep
+(`wash_keep_holding_period = true`; unset stays the US transfer;
+`Some(false)` is refused at read). A live walk-through still
+could not point at the election the way it can point at lot
+method. Built named the engine; cannot-show still said the
+console could not show a wash flag. That honesty gap was the
+product leftover.
+
+What landed is the cite, not new arithmetic:
+
+- The fund lot-terms screen reads `wash_window_days` and
+  `wash_keep_holding_period` from the configuration already on
+  `RuleSet`. Unset stays unset — the days are not printed when
+  nobody wrote a window, and keep is not printed as a third
+  meaning. `Some(true)` elects keep. `lot_method = "wash"` stays
+  refused.
+- The proto / wire / fixtures / `fields_test` needles / rendered
+  screens hold the phrases, so the rows cannot silently
+  disappear. The demo seed writes `wash_window_days = 30` on the
+  recon books and leaves keep unset (US transfer).
+
+**What this is NOT, because #9 leftovers stay on #9:**
+
+- Not a **tax-lot planner UI**, and not MinTax / SpecID /
+  average-cost console cites. Those stay leftovers on #9.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes the #5 leftover. It does not close #9.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+A fund admin walk-through can point at the wash window on the
+fund lot-terms screen the way it can point at lot method, and
+can point at keep when a book writes it. Silence stays unset, not
+a silent 30, and unset keep stays the US transfer. It cannot show
+lot-relief UI screens for MinTax, SpecID, or average cost. Those
+remain on #9.
 
 ## The control plane: geetch and crova
 
