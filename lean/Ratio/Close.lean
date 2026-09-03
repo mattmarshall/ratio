@@ -243,9 +243,9 @@ one allowed step; walking it back would reopen a signed period without an
 audited verb. -/
 theorem a_close_only_moves_forward (t d : Day)
     (h : close (some t) d = some d) : t < d := by
-  unfold close at h
-  split at h
+  simp [close] at h
+  split_ifs at h with ht
   · contradiction
-  · omega
+  · exact Int.not_le.mp ht
 
 end Ratio.Close
