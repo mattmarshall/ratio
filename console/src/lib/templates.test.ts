@@ -69,6 +69,9 @@ describe("ingest templates", () => {
     expect(
       templatesForKind("PERSONAL", extra).map((t) => t.templateId),
     ).toEqual(["bank-statement"]);
+    expect(
+      templatesForKind("PROJECT", extra).map((t) => t.templateId),
+    ).toEqual(["project-invoices"]);
   });
 
   it("the fixture forms are the rendered mapping, not a slogan", () => {
@@ -77,16 +80,21 @@ describe("ingest templates", () => {
     const byId = Object.fromEntries(
       templatesFixture.templates.map((t) => [t.templateId, t]),
     );
-    expect(byId["bank-statement"].factKind).toBe("statement");
-    expect(byId["bank-statement"].posts).toBe(true);
-    expect(byId["bank-statement"].form).toMatch(/template bank-statement \{/);
-    expect(byId["bank-statement"].form).toMatch(/one statement per row/);
-    expect(byId["project-invoices"].factKind).toBe("invoice");
-    expect(byId["project-invoices"].posts).toBe(true);
-    expect(byId["project-invoices"].form).toMatch(/template project-invoices \{/);
-    expect(byId["custodian-positions"].factKind).toBe("position");
-    expect(byId["custodian-positions"].posts).toBe(false);
-    expect(byId["custodian-positions"].form).toMatch(/posts      nothing/);
+    const need = (id: string) => {
+      const t = byId[id];
+      expect(t, id).toBeDefined();
+      return t!;
+    };
+    expect(need("bank-statement").factKind).toBe("statement");
+    expect(need("bank-statement").posts).toBe(true);
+    expect(need("bank-statement").form).toMatch(/template bank-statement \{/);
+    expect(need("bank-statement").form).toMatch(/one statement per row/);
+    expect(need("project-invoices").factKind).toBe("invoice");
+    expect(need("project-invoices").posts).toBe(true);
+    expect(need("project-invoices").form).toMatch(/template project-invoices \{/);
+    expect(need("custodian-positions").factKind).toBe("position");
+    expect(need("custodian-positions").posts).toBe(false);
+    expect(need("custodian-positions").form).toMatch(/posts      nothing/);
   });
 
   it("sample CSVs name the columns the seeded templates read", () => {

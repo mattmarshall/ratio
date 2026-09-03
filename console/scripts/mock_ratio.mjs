@@ -80,7 +80,7 @@ const ROUTES = [
 ];
 
 // CreateBook seed ids. An id that is not in this map (the demo book's
-// `prime_equity_trades`) stays on whichever book the fixture named it under.
+// `prime_equity_trades`) is treated as Investment — that is the closed loop.
 const INGEST_TEMPLATE_KIND = {
   "bank-statement": "PERSONAL",
   "custodian-positions": "INVESTMENT",
@@ -98,8 +98,8 @@ function templatesDoc(path) {
   const kind = bookKind(bookId);
   const doc = JSON.parse(fixture("templates"));
   doc.templates = doc.templates.filter((t) => {
-    const owner = INGEST_TEMPLATE_KIND[t.templateId];
-    return owner === undefined || owner === kind;
+    const owner = INGEST_TEMPLATE_KIND[t.templateId] ?? "INVESTMENT";
+    return owner === kind;
   });
   for (const t of doc.templates) {
     t.name = `funds/${bookId}/templates/${t.templateId}`;

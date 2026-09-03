@@ -46,8 +46,8 @@ export const KIND_SHORT: Record<BookKind, string> = {
  * ⭐ THE LIVE LIST IS THE BOOK'S CONFIGURATION. This catalog is the filter
  * that stops a mixed fixture — or a recapture that still only has the fund
  * snapshot — from offering `custodian-positions` on a Personal book. An id
- * that belongs to no kind (the demo book's `prime_equity_trades`) stays
- * visible on whichever book actually holds it.
+ * that belongs to no kind (the demo book's `prime_equity_trades`) is treated
+ * as Investment: that is the book that holds the closed loop.
  */
 export const INGEST_TEMPLATE_KIND: Readonly<Record<string, Exclude<BookKind, "UNSPECIFIED">>> = {
   "bank-statement": "PERSONAL",
@@ -60,7 +60,7 @@ export function templatesForKind<T extends { templateId: string }>(
   listed: readonly T[],
 ): T[] {
   return listed.filter((t) => {
-    const owner = INGEST_TEMPLATE_KIND[t.templateId];
-    return owner === undefined || owner === kind;
+    const owner = INGEST_TEMPLATE_KIND[t.templateId] ?? "INVESTMENT";
+    return owner === kind;
   });
 }
