@@ -1,0 +1,65 @@
+{
+  "accounts": [
+    {
+      "name": "funds/partners/views/book/accounts/50",
+      "displayName": "Partner capital — LP",
+      "dimension": "50",
+      "type": "EQUITY",
+      "debit": "0",
+      "credit": "4000",
+      "balance": "-4000",
+      "abnormal": false,
+      "postingCount": "1",
+      "currencyTotals": []
+    },
+    {
+      "name": "funds/partners/views/book/accounts/52",
+      "displayName": "Commitments — LP",
+      "dimension": "52",
+      "type": "EQUITY",
+      "debit": "4000",
+      "credit": "10000",
+      "balance": "-6000",
+      "abnormal": false,
+      "postingCount": "2",
+      "currencyTotals": []
+    },
+    {
+      "name": "funds/partners/views/book/accounts/54",
+      "displayName": "Undrawn commitments — LP",
+      "dimension": "54",
+      "type": "EQUITY",
+      "debit": "10000",
+      "credit": "4000",
+      "balance": "6000",
+      "abnormal": false,
+      "postingCount": "2",
+      "currencyTotals": []
+    },
+    {
+      "name": "funds/partners/views/book/accounts/53",
+      "displayName": "Commitments — GP",
+      "dimension": "53",
+      "type": "EQUITY",
+      "debit": "0",
+      "credit": "0",
+      "balance": "0",
+      "abnormal": false,
+      "postingCount": "0",
+      "currencyTotals": []
+    },
+    {
+      "name": "funds/partners/views/book/accounts/55",
+      "displayName": "Undrawn commitments — GP",
+      "dimension": "55",
+      "type": "EQUITY",
+      "debit": "0",
+      "credit": "0",
+      "balance": "0",
+      "abnormal": false,
+      "postingCount": "0",
+      "currencyTotals": []
+    }
+  ],
+  "nextPageToken": ""
+}

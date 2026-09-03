@@ -273,8 +273,12 @@ household budget vs actual (`[personal] budget` on the configuration that
 book pins, then `/books/{id}/views/{view}/budget` for a month or a year —
 unset shows as unset, not a fake zero). CreateBook(Project) lands on the
 same `/budget` URL as a cumulative project roll-up. CreateBook(Investment)
-lands on capital activity, then the fund ABOR warehouse. The live demo does
-not seed those baselines.
+lands on capital activity (funded partners plus commitment / undrawn —
+unset until a commitment posts, not a callable zero), then the fund ABOR
+warehouse. A capital-call walk-through can record `commit_lp` / `call_lp`
+or ingest `capital-calls`; it cannot show IRR, a waterfall, or a future
+call schedule. The live demo does not seed those baselines or any
+commitment postings.
 
 `entrypoint.sh` copies the seeded chart and config to `/tmp` at start, because a
 Lambda filesystem is read-only elsewhere. **The journal is not that copy.** When

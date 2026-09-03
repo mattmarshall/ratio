@@ -387,7 +387,8 @@ impl Console {
     /// second List field (AIP-132). `pnl-2026-03` is March; bare `pnl` is
     /// refused — cumulative income is the ABOR-shaped view this filter exists
     /// to refuse as a default. `capital-2026-03` is March capital activity;
-    /// bare `capital` is inception-to-date partner and contribution equity.
+    /// bare `capital` is inception-to-date partner, contribution, and
+    /// commitment / undrawn equity.
     /// `budget-2026-03` is March household spend; bare `budget` is refused,
     /// and a non-personal book is refused — a project's period is the project,
     /// so the project `/budget` page lists unfiltered. `loan-2026-03` is March
@@ -460,7 +461,10 @@ impl Console {
                         || a.r#type == pb::account::Type::Revenue as i32
                         || a.r#type == pb::account::Type::Expense as i32
                 }
-                "capital" => book::is_capital_account(&a.display_name),
+                "capital" => {
+                    book::is_capital_account(&a.display_name)
+                        || book::is_commitment_account(&a.display_name)
+                }
                 "budget" => a.r#type == pb::account::Type::Expense as i32,
                 "loan" => loan_dims.contains(&a.dimension),
                 _ => true,
@@ -5230,6 +5234,95 @@ mod tests {
     }
 
     #[test]
+    fn a_capital_call_draws_undrawn_and_a_contribution_does_not() {
+        // ⭐ A CALL IS ONE CONSERVED FACT: cash in, partner capital up,
+        // remaining commitment down. contribute_lp is still funded capital
+        // without a draw — using it when a commitment exists leaves undrawn
+        // stale, which is the operator's claim, not a silent schedule.
+        let root = fresh("capital-commit-call");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "callbook".into(),
+        })
+        .unwrap();
+
+        let view = capital_view("callbook");
+        let before = c.list_accounts(&view, "capital").unwrap().accounts;
+        let undrawn = before
+            .iter()
+            .find(|a| a.display_name == "Undrawn commitments — LP")
+            .expect("CreateBook seeds undrawn on the chart");
+        assert_eq!(undrawn.posting_count, "0", "unset, not a callable zero: {undrawn:?}");
+        assert_eq!(undrawn.debit, "0");
+        assert_eq!(undrawn.credit, "0");
+
+        c.apply_event(&capital_req("callbook", "k-lp", "commit_lp", "100.00", 2026, 3, 1))
+            .unwrap();
+        {
+            let all = c.list_accounts(&view, "").unwrap().accounts;
+            let cash = all.iter().find(|a| a.display_name == "Cash and equivalents").unwrap();
+            assert_eq!(cash.debit, "0", "a commitment is not cash: {cash:?}");
+            let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+            let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+            assert_eq!(lp.credit, "0", "a commitment is not funded capital: {lp:?}");
+            let undrawn = capital.iter().find(|a| a.display_name == "Undrawn commitments — LP").unwrap();
+            let commitments = capital.iter().find(|a| a.display_name == "Commitments — LP").unwrap();
+            assert_eq!(undrawn.debit, "10000");
+            assert_eq!(commitments.credit, "10000");
+            assert_ne!(undrawn.posting_count, "0");
+        }
+        c.apply_event(&capital_req("callbook", "call-1", "call_lp", "40.00", 2026, 3, 15))
+            .unwrap();
+        c.apply_event(&capital_req("callbook", "c-extra", "contribute_lp", "10.00", 2026, 3, 20))
+            .unwrap();
+
+        assert_eq!(c.get_fund("funds/callbook").unwrap().trial_balance_difference, "0");
+        let proj = c.projection("callbook").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a capital call must not open a lot"
+        );
+
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        let commitments = capital.iter().find(|a| a.display_name == "Commitments — LP").unwrap();
+        let undrawn = capital.iter().find(|a| a.display_name == "Undrawn commitments — LP").unwrap();
+        // Partner capital: 40.00 called + 10.00 contributed, not the commitment.
+        assert_eq!(lp.credit, "5000", "call 40 + contribute 10: {lp:?}");
+        assert_eq!(commitments.credit, "10000", "committed 100.00: {commitments:?}");
+        assert_eq!(commitments.debit, "4000", "called 40.00 against the commitment: {commitments:?}");
+        assert_eq!(undrawn.debit, "10000", "commitment opened undrawn: {undrawn:?}");
+        assert_eq!(undrawn.credit, "4000", "the call drew 40.00: {undrawn:?}");
+        assert_ne!(undrawn.posting_count, "0");
+        // Remaining commitment (credit − debit) equals remaining undrawn (debit − credit).
+        let remaining_commitment: i64 = commitments.credit.parse::<i64>().unwrap()
+            - commitments.debit.parse::<i64>().unwrap();
+        let remaining_undrawn: i64 =
+            undrawn.debit.parse::<i64>().unwrap() - undrawn.credit.parse::<i64>().unwrap();
+        assert_eq!(remaining_commitment, 6000);
+        assert_eq!(remaining_undrawn, 6000);
+        // ⛔ SABOTAGE: a contribution is not a silent draw.
+        assert_eq!(
+            remaining_undrawn, 6000,
+            "contribute_lp must not invent a draw against the commitment"
+        );
+
+        let all = c.list_accounts(&view, "").unwrap().accounts;
+        let cash = all.iter().find(|a| a.display_name == "Cash and equivalents").unwrap();
+        assert_eq!(cash.debit, "5000", "call + contribute hit cash; the commit did not: {cash:?}");
+        assert!(
+            capital.iter().all(|a| a.display_name != "Unrealized gain"),
+            "valuation equity is not a commitment: {capital:?}"
+        );
+    }
+
+    #[test]
     fn parse_period_ends_february_on_the_calendar() {
         let w = parse_period("2026-02").unwrap();
         assert_eq!(w.start, "2026-02-01");
@@ -5648,6 +5741,7 @@ mod tests {
                 &[
                     ("custodian-positions", false),
                     ("prime_equity_trades", true),
+                    ("capital-calls", true),
                 ],
             ),
             (

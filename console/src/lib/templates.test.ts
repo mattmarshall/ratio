@@ -26,6 +26,7 @@ describe("book templates", () => {
     expect(byKind.INVESTMENT).toMatch(/fair value/);
     expect(byKind.INVESTMENT).toMatch(/distributions/);
     expect(byKind.INVESTMENT).toMatch(/partner capital/);
+    expect(byKind.INVESTMENT).toMatch(/commitments/);
     expect(byKind.INVESTMENT).toMatch(/Does not file a fund/);
     expect(byKind.PROJECT).toMatch(/work in progress/);
     expect(byKind.PROJECT).toMatch(/retainage/);
@@ -39,6 +40,7 @@ describe("ingest templates", () => {
     expect(INGEST_TEMPLATE_KIND["loan-payment"]).toBe("PERSONAL");
     expect(INGEST_TEMPLATE_KIND["custodian-positions"]).toBe("INVESTMENT");
     expect(INGEST_TEMPLATE_KIND["prime_equity_trades"]).toBe("INVESTMENT");
+    expect(INGEST_TEMPLATE_KIND["capital-calls"]).toBe("INVESTMENT");
     expect(INGEST_TEMPLATE_KIND["project-invoices"]).toBe("PROJECT");
     const ids = templatesFixture.templates.map((t) => t.templateId);
     for (const id of Object.keys(INGEST_TEMPLATE_KIND)) {
@@ -53,11 +55,17 @@ describe("ingest templates", () => {
     const investment = templatesForKind("INVESTMENT", listed).map((t) => t.templateId);
     expect(personal).toEqual(["bank-statement", "loan-payment"]);
     expect(project).toEqual(["project-invoices"]);
-    expect(investment).toEqual(["custodian-positions", "prime_equity_trades"]);
+    expect(investment).toEqual([
+      "custodian-positions",
+      "prime_equity_trades",
+      "capital-calls",
+    ]);
     expect(personal).not.toContain("custodian-positions");
     expect(personal).not.toContain("prime_equity_trades");
+    expect(personal).not.toContain("capital-calls");
     expect(project).not.toContain("custodian-positions");
     expect(project).not.toContain("prime_equity_trades");
+    expect(project).not.toContain("capital-calls");
   });
 
   it("leaves an unlisted price file visible on the Investment book that holds it", () => {
@@ -76,7 +84,12 @@ describe("ingest templates", () => {
     ];
     expect(
       templatesForKind("INVESTMENT", extra).map((t) => t.templateId),
-    ).toEqual(["custodian-positions", "prime_equity_trades", "vendor_eod_prices"]);
+    ).toEqual([
+      "custodian-positions",
+      "prime_equity_trades",
+      "capital-calls",
+      "vendor_eod_prices",
+    ]);
     expect(
       templatesForKind("PERSONAL", extra).map((t) => t.templateId),
     ).toEqual(["bank-statement", "loan-payment"]);
@@ -112,6 +125,12 @@ describe("ingest templates", () => {
     expect(need("prime_equity_trades").form).toMatch(/one trade per row/);
     expect(need("prime_equity_trades").form).toMatch(/amount      consideration/);
     expect(need("prime_equity_trades").form).toMatch(/buy         -> equity_purchase/);
+    expect(need("capital-calls").factKind).toBe("capital");
+    expect(need("capital-calls").posts).toBe(true);
+    expect(need("capital-calls").form).toMatch(/template capital-calls \{/);
+    expect(need("capital-calls").form).toMatch(/one capital per row/);
+    expect(need("capital-calls").form).toMatch(/commit_lp   -> commit_lp/);
+    expect(need("capital-calls").form).toMatch(/call_lp     -> call_lp/);
   });
 
   it("sample CSVs name the columns the seeded templates read", () => {
@@ -130,6 +149,9 @@ describe("ingest templates", () => {
     expect(sampleHeader("prime_equity_trades.csv")).toBe(
       "TradeRef,ISIN,Symbol,Exch,Broker,B/S,Quantity,Price,Ccy,TradeDate",
     );
+    expect(sampleHeader("capital-calls.csv")).toBe(
+      "CallRef,Date,Amount,Ccy,Kind",
+    );
     const forms = Object.fromEntries(
       templatesFixture.templates.map((t) => [t.templateId, t.form]),
     );
@@ -138,5 +160,7 @@ describe("ingest templates", () => {
     expect(forms["custodian-positions"]).toMatch(/from "ISIN"/);
     expect(forms["prime_equity_trades"]).toMatch(/from "B\/S"/);
     expect(forms["prime_equity_trades"]).toMatch(/from "TradeDate"/);
+    expect(forms["capital-calls"]).toMatch(/from "Kind"/);
+    expect(forms["capital-calls"]).toMatch(/from "CallRef"/);
   });
 });

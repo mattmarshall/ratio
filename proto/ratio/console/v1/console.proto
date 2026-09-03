@@ -2008,7 +2008,8 @@ message ListAccountsRequest {
   // `sheet` keeps assets, liabilities, equity, income and expense so a
   // balance sheet can foot (A = L + E + surplus). `pnl` keeps income and
   // expense. `capital` keeps partner / contribution / distribution /
-  // allocation / transfer equity (not unrealized gain). `budget-YYYY[-MM]`
+  // allocation / transfer equity and commitment / undrawn equity
+  // (not unrealized gain). `budget-YYYY[-MM]`
   // is household spend in a calendar window. `loan-YYYY[-MM]` is a household
   // loan roll-forward keyed by named liability. All are presentations of the
   // same chart; they do not invent accounts.

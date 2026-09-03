@@ -90,6 +90,7 @@ const INGEST_TEMPLATE_KIND = {
   "loan-payment": "PERSONAL",
   "custodian-positions": "INVESTMENT",
   "prime_equity_trades": "INVESTMENT",
+  "capital-calls": "INVESTMENT",
   "project-invoices": "PROJECT",
 };
 

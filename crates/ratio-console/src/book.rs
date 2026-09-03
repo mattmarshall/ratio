@@ -19,13 +19,18 @@ use ratio_store::{Account, AccountTypeRecord, ConfigStore, FileBook};
 /// The live list is the book's own configuration; these ids are what
 /// [`config_for`] puts there, and what the console catalog filters on.
 ///
-/// Investment is two mappings on purpose: the holdings snapshot (recorded,
-/// never booked) and the trade column contract that posts. One without the
-/// other is a file you can read and a loop you cannot run.
+/// Investment is three mappings on purpose: the holdings snapshot (recorded,
+/// never booked), the trade column contract that posts, and the capital-call
+/// contract (`commit_*` / `call_*`). One without the others is a file you
+/// can read and a loop you cannot run.
 pub fn ingest_template_ids(kind: BookKind) -> &'static [&'static str] {
     match kind {
         BookKind::Personal => &["bank-statement", "loan-payment"],
-        BookKind::Investment => &["custodian-positions", "prime_equity_trades"],
+        BookKind::Investment => &[
+            "custodian-positions",
+            "prime_equity_trades",
+            "capital-calls",
+        ],
         BookKind::Project => &["project-invoices"],
     }
 }
@@ -178,6 +183,18 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
             // is untouched — `Ratio.Ingest.partition_preserves_conservation`.
             acct(50, "Partner capital — LP", AccountTypeRecord::Equity),
             acct(51, "Partner capital — GP", AccountTypeRecord::Equity),
+            // ⭐ COMMITMENT / UNDRAWN ARE EQUITY, NOT AN ASSET. An undrawn
+            // receivable would put unfunded capital into NAV — money that
+            // has not arrived. Both sides of the pair are equity so they
+            // cancel in the NAV filter (`Ratio.Chart.Dimensions`: equity
+            // is partitioning, not conserved) and still conserve: a
+            // commitment is Dr undrawn / Cr commitments; a call draws
+            // that pair while cash and partner capital move. Grain is
+            // the partner dim, not one fund-level bucket.
+            acct(52, "Commitments — LP", AccountTypeRecord::Equity),
+            acct(53, "Commitments — GP", AccountTypeRecord::Equity),
+            acct(54, "Undrawn commitments — LP", AccountTypeRecord::Equity),
+            acct(55, "Undrawn commitments — GP", AccountTypeRecord::Equity),
         ],
         BookKind::Personal => vec![
             acct(1, "Cash and bank", AccountTypeRecord::Asset),
@@ -225,6 +242,16 @@ pub fn is_capital_account(display_name: &str) -> bool {
         display_name,
         "Capital contributions" | "Distributions" | "Allocations" | "Capital transfers"
     ) || display_name.starts_with("Partner capital")
+}
+
+/// Commitment and undrawn equity — not funded capital.
+///
+/// ⛔ THESE ARE NOT `is_capital_account`. Folding them into ending capital
+/// would make a commitment look like money that arrived. They appear on
+/// the capital fold so `/capital` can cite them; `bookCapital` still
+/// excludes them.
+pub fn is_commitment_account(display_name: &str) -> bool {
+    display_name.starts_with("Commitments") || display_name.starts_with("Undrawn commitments")
 }
 
 /// The opening configuration CreateBook writes: posting rules that hit
@@ -769,6 +796,80 @@ weight = 1
 account = 10
 weight = -1
 
+# Commitments. Not a schedule, not IRR, not a waterfall.
+# A commitment is the pair: undrawn up, commitments up. A call is cash
+# and partner capital PLUS drawing that pair. contribute_lp is still
+# funded capital without a draw — using it when you meant a call leaves
+# undrawn stale, which is the operator's claim, not a silent draw.
+
+[[rule]]
+id = "commit_lp"
+kind = "trade"
+description = "LP commitment: undrawn up, commitments up"
+
+[[rule.posting]]
+account = 54
+weight = 1
+
+[[rule.posting]]
+account = 52
+weight = -1
+
+[[rule]]
+id = "commit_gp"
+kind = "trade"
+description = "GP commitment: undrawn up, commitments up"
+
+[[rule.posting]]
+account = 55
+weight = 1
+
+[[rule.posting]]
+account = 53
+weight = -1
+
+[[rule]]
+id = "call_lp"
+kind = "trade"
+description = "LP capital call: cash in, partner capital up, draw the commitment"
+
+[[rule.posting]]
+account = 2
+weight = 1
+
+[[rule.posting]]
+account = 50
+weight = -1
+
+[[rule.posting]]
+account = 52
+weight = 1
+
+[[rule.posting]]
+account = 54
+weight = -1
+
+[[rule]]
+id = "call_gp"
+kind = "trade"
+description = "GP capital call: cash in, partner capital up, draw the commitment"
+
+[[rule.posting]]
+account = 2
+weight = 1
+
+[[rule.posting]]
+account = 51
+weight = -1
+
+[[rule.posting]]
+account = 53
+weight = 1
+
+[[rule.posting]]
+account = 55
+weight = -1
+
 [[rule]]
 id = "equity_purchase"
 kind = "trade"
@@ -879,6 +980,38 @@ reads = "csv"
   amount = "consideration"
   rules = { buy = "equity_purchase", sell = "disposal_proceeds" }
   dated = "traded"
+
+[[template]]
+id = "capital-calls"
+reads = "csv"
+
+  [template.fact]
+  kind = "capital"
+  reference = "CallRef"
+
+  [[template.fact.value]]
+  field = "dated"
+  as = "date"
+  column = "Date"
+  format = "YYYY-MM-DD"
+
+  [[template.fact.value]]
+  field = "amount"
+  as = "money"
+  column = "Amount"
+  currency = "Ccy"
+
+  [[template.fact.value]]
+  field = "kind"
+  as = "enum"
+  column = "Kind"
+  map = { commit_lp = "commit_lp", commit_gp = "commit_gp", call_lp = "call_lp", call_gp = "call_gp" }
+
+  [template.fact.posts]
+  by = "kind"
+  amount = "amount"
+  rules = { commit_lp = "commit_lp", commit_gp = "commit_gp", call_lp = "call_lp", call_gp = "call_gp" }
+  dated = "dated"
 "#;
 
 /// Project posting rules plus the vendor-invoice ingest template.
@@ -1298,6 +1431,12 @@ mod tests {
         assert!(investment
             .iter()
             .any(|a| a.display_name == "Investments at fair value"));
+        assert!(investment
+            .iter()
+            .any(|a| a.display_name == "Commitments — LP"));
+        assert!(investment
+            .iter()
+            .any(|a| a.display_name == "Undrawn commitments — GP"));
         assert!(project.iter().any(|a| a.display_name == "Work in progress"));
         assert!(project.iter().any(|a| a.display_name == "Progress billings"));
         assert!(project.iter().any(|a| a.display_name == "Retainage receivable"));
@@ -1535,6 +1674,85 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
     }
 
     #[test]
+    fn funded_capital_is_not_a_commitment_and_a_commitment_is_not_funded() {
+        // ⛔ ENDING CAPITAL MUST NOT INCLUDE UNDRAWN. A commitment that
+        // counted as money in would make NAV and partner capital tell
+        // different stories about the same cash.
+        assert!(is_capital_account("Partner capital — LP"));
+        assert!(is_capital_account("Capital contributions"));
+        assert!(!is_capital_account("Commitments — LP"));
+        assert!(!is_capital_account("Undrawn commitments — GP"));
+        assert!(!is_capital_account("Unrealized gain"));
+        assert!(is_commitment_account("Commitments — LP"));
+        assert!(is_commitment_account("Undrawn commitments — GP"));
+        assert!(!is_commitment_account("Partner capital — LP"));
+        assert!(!is_commitment_account("Capital contributions"));
+    }
+
+    #[test]
+    fn a_capital_call_row_posts_the_partner_rule_and_not_a_float() {
+        // ⭐ KIND NAMES THE CLAIM. Partner grain is the rule, not a
+        // fund-level bucket and not a CRM entity.
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Investment)).unwrap();
+        let t = set.template("capital-calls").unwrap();
+        assert!(t.fact.posts.is_some());
+        assert!(t.entities.is_empty(), "a partner is a chart dim, not an entity master");
+        let csv = "\
+CallRef,Date,Amount,Ccy,Kind
+CC-1,2026-01-15,1000000.00,USD,commit_lp
+CC-2,2026-03-01,250000.00,USD,call_lp
+CC-3,2026-01-15,100000.00,USD,commit_gp
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(p.facts.len(), 3);
+        assert_eq!(
+            p.facts[0].values.get("amount"),
+            Some(&ratio_ingest::Value::Money {
+                minor: 100_000_000,
+                currency: "USD".into()
+            }),
+        );
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[0]).unwrap();
+        assert_eq!(rule, "commit_lp");
+        assert_eq!(minor, 100_000_000);
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[1]).unwrap();
+        assert_eq!(rule, "call_lp");
+        assert_eq!(minor, 25_000_000);
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[2]).unwrap();
+        assert_eq!(rule, "commit_gp");
+        assert_eq!(ratio_ingest::dated_of(t, &p.facts[0]), Some("2026-01-15"));
+        let form = t.render();
+        assert_eq!(
+            form,
+            "\
+template capital-calls {
+  reads      csv with header
+  grain      one capital per row
+
+  fact       capital
+    reference   from \"CallRef\"
+    dated       from \"Date\" as date \"YYYY-MM-DD\"
+    amount      from \"Amount\" as money in \"Ccy\"
+    kind        from \"Kind\" as { call_gp: call_gp, call_lp: call_lp, commit_gp: commit_gp, commit_lp: commit_lp }
+
+  posts      by \"kind\"
+    amount      amount
+    dated       dated
+    call_gp     -> call_gp
+    call_lp     -> call_lp
+    commit_gp   -> commit_gp
+    commit_lp   -> commit_lp
+}
+"
+        );
+        // No entity to resolve — admissible without a master.
+        let resolved = ratio_ingest::resolve_all(&p.facts, &[]);
+        assert!(resolved.iter().all(|r| r.is_admissible()));
+    }
+
+    #[test]
     fn initialize_investment_seeds_contribute_and_distribute_and_partners() {
         let dir = std::env::temp_dir().join("ratio-book-init-investment-capital");
         let _ = std::fs::remove_dir_all(&dir);
@@ -1554,6 +1772,10 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
             "transfer_lp_gp",
             "allocate_gain_lp",
             "allocate_fee_lp",
+            "commit_lp",
+            "commit_gp",
+            "call_lp",
+            "call_gp",
         ] {
             let r = set.rule(id).unwrap_or_else(|| panic!("missing {id} in {text}"));
             assert!(
@@ -1572,6 +1794,13 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
         let templates = ratio_ingest::TemplateSet::from_toml(&text).unwrap();
         assert!(templates.template("custodian-positions").is_some());
         assert!(templates.template("prime_equity_trades").is_some());
+        assert!(templates.template("capital-calls").is_some());
+        let call = set.rule("call_lp").expect("missing call_lp");
+        assert_eq!(
+            call.legs.len(),
+            4,
+            "a call is cash + partner capital + the commitment draw, not two events"
+        );
         let findings = ratio_rules::check(&set, &chart);
         assert!(
             findings.iter().all(|f| f.is_question),

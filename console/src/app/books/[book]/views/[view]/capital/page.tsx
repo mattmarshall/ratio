@@ -5,7 +5,11 @@ import {
   activityOf,
   bookCapital,
   endingCapital,
+  isPosted,
   partnersOf,
+  remainingUndrawn,
+  undrawnFigure,
+  undrawnOf,
 } from "@/lib/capital";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
 import { money } from "@/lib/format";
@@ -25,8 +29,16 @@ export const dynamic = "force-dynamic";
  * less debit. PLAN.md refuses performance reporting; this is the ledger
  * of who put money in and took money out.
  *
+ * ⭐ UNDRAWN IS A STOCK ON THE SAME JOURNAL. A commitment is equity that
+ * cancels (Dr undrawn / Cr commitments). A call draws that pair while
+ * cash and partner capital move. Remaining is debit-normal on the
+ * undrawn account. `postingCount === "0"` is unset — not a callable
+ * zero — and a fully-drawn line is a real zero.
+ *
  * Period is an AIP-160 `filter` (`capital-2026-03`). Bare `capital` is
  * inception-to-date, including undated entries. A dated suffix drops them.
+ * Remaining undrawn is the since-inception figure; a month chip is the
+ * window's commits and calls, not outstanding.
  */
 async function Capital({
   params,
@@ -63,7 +75,19 @@ async function Capital({
 
   const partners = partnersOf(accounts);
   const activity = activityOf(accounts);
+  const undrawn = undrawnOf(accounts);
   const total = bookCapital(accounts);
+  const remaining = dated ? null : undrawnFigure(accounts);
+  const undrawnGap =
+    undrawn.length === 0
+      ? "this chart has no commitment accounts — undrawn is unset, not a callable zero"
+      : remaining === null
+        ? dated
+          ? "outstanding undrawn is the since-inception figure — this window is commits and calls, not remaining"
+          : "unset — no commitment has been posted, not a callable zero"
+        : dated
+          ? "net this window — not outstanding"
+          : "remaining commitment, partner grain — not a return";
 
   const chips: readonly Filter[] = [
     { key: "capital", label: "Since inception" },
@@ -125,11 +149,45 @@ async function Capital({
         </div>
       </div>
 
+      <div className="tb" role="table" aria-label="Undrawn commitment">
+        <div className="tbrow tbhead" role="row">
+          <span role="columnheader">Account</span>
+          <span role="columnheader">Committed</span>
+          <span role="columnheader">Called</span>
+          <span role="columnheader">{dated ? "Net this window" : "Undrawn"}</span>
+        </div>
+
+        <Section
+          title="Commitments"
+          empty="No commitment / undrawn accounts in this chart."
+        >
+          {undrawn.map((a) => (
+            <UndrawnRow key={a.name} book={book} view={view} account={a} dated={dated} />
+          ))}
+        </Section>
+
+        <div className="posgroup">
+          <div className="tbfoot static" role="row">
+            <span role="cell">
+              {dated ? "Undrawn this window" : "Undrawn commitment"}
+              <small>{undrawnGap}</small>
+            </span>
+            <span role="cell" className="num" />
+            <span role="cell" className="num" />
+            <span role="cell" className="num">
+              {remaining === null ? "—" : money(remaining.toString())}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <p className="note">
-        Record a contribution, distribution, transfer or allocation against the
-        seeded capital rules.
+        Record a contribution, distribution, commitment, or capital call against
+        the seeded capital rules.
         {" · "}
         <Link href={`/books/${book}/record`}>Record an event</Link>
+        {" · "}
+        <Link href={`/books/${book}/ingest`}>Ingest capital calls</Link>
         {" · "}
         <Link href={`/books/${book}/views/${view}/accounts`}>Trial balance</Link>
         {" · "}
@@ -197,6 +255,40 @@ function Row({
       </span>
       <span role="cell" className="num">
         {money(endingCapital(a).toString())}
+      </span>
+    </Link>
+  );
+}
+
+function UndrawnRow({
+  book,
+  view,
+  account: a,
+  dated,
+}: {
+  book: string;
+  view: string;
+  account: Account;
+  dated: boolean;
+}) {
+  const id = a.name.split("/").pop()!;
+  const posted = isPosted(a);
+  const remaining = remainingUndrawn(a);
+  return (
+    <Link
+      className="tbrow"
+      role="row"
+      href={`/books/${book}/views/${view}/accounts/${id}`}
+    >
+      <span role="cell">{a.displayName}</span>
+      <span role="cell" className="num">
+        {posted ? money(a.debit) : "—"}
+      </span>
+      <span role="cell" className="num">
+        {posted ? money(a.credit) : "—"}
+      </span>
+      <span role="cell" className="num">
+        {posted ? money(remaining.toString()) : dated ? "—" : "unset"}
       </span>
     </Link>
   );

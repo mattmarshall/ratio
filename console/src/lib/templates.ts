@@ -24,7 +24,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "INVESTMENT",
     label: "Investment / Fund",
-    blurb: "Positions at fair value, contributions, distributions, and partner capital. Does not file a fund.",
+    blurb: "Positions at fair value, contributions, distributions, partner capital, and partner-scoped commitments. Does not file a fund.",
   },
   {
     kind: "PROJECT",
@@ -54,6 +54,7 @@ export const INGEST_TEMPLATE_KIND: Readonly<Record<string, Exclude<BookKind, "UN
   "loan-payment": "PERSONAL",
   "custodian-positions": "INVESTMENT",
   "prime_equity_trades": "INVESTMENT",
+  "capital-calls": "INVESTMENT",
   "project-invoices": "PROJECT",
 };
 

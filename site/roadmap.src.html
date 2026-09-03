@@ -114,8 +114,12 @@ __STYLE__
           work-package at <code>/billing</code> — two figures, two URLs.
           Billed / earned / retainage stay unset until posted, not a fake zero.
           An Investment book cites partner capital activity (contributions,
-          distributions, transfers, ending capital) on the same journal as NAV
-          and exceptions — not a return, a benchmark, or attribution. Fund books
+          distributions, transfers, ending capital) and partner-scoped
+          commitments / undrawn on the same journal as NAV and exceptions —
+          not a return, a benchmark, or attribution. Undrawn stays unset
+          until a commitment posts, not a callable zero. A capital-call
+          walk-through can record or ingest a call against a commitment; it
+          cannot show IRR, a waterfall, or a future call schedule. Fund books
           keep the operations surface. A live walk-through does not yet post a
           construction job — CreateBook seeds the patterns; the seeded demo
           funds remain investment books.</li>
@@ -286,7 +290,7 @@ __STYLE__
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet and period P&amp;L with transfers that are not trades, household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, and cost by work package, investment capital activity (partners, contributions, distributions — not a return), the exception queue, a difference at its own address, a book's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet and period P&amp;L with transfers that are not trades, household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, and cost by work package, investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue

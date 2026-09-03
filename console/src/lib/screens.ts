@@ -13,8 +13,9 @@
 // ⭐ KIND SELECTS THE LIST. A personal book that offered Exceptions / Positions
 // / NAV would be a fake label on fund-ops screens — issue #65 (sheet/P&L)
 // and #83 (budget). A project book that wore that warehouse is #66 (budget/WIP)
-// and #85 (billing). An investment book cites partner capital first, then the
-// ABOR warehouse (#70). The agreement screens stay shared: a rule set is the
+// and #85 (billing). An investment book cites partner capital first — funded
+// activity and commitment / undrawn on the same `/capital` URL (#70, #82) —
+// then the ABOR warehouse. The agreement screens stay shared: a rule set is the
 // same document whichever chart it posted.
 
 import type { BookKind } from "@/wire/types";
@@ -97,7 +98,9 @@ export const PROJECT_SCREENS: readonly Screen[] = [
  *
  * ⛔ NOT A REPLACEMENT FOR NAV / POSITIONS / EXCEPTIONS. Those stay: a fund
  * book of record still has to strike. Capital is who put money in and took
- * money out, on the same journal.
+ * money out, and what remains callable, on the same journal. Commitment
+ * and undrawn stay on `/capital` — one capital story, not a second URL.
+ * A book that has never posted a commitment shows unset, not a callable zero.
  */
 export const INVESTMENT_SCREENS: readonly Screen[] = [
   { segment: "capital", label: "Capital activity", scoped: true, group: "book" },
@@ -193,9 +196,29 @@ const PROJECT_TICKETS: readonly Ticket[] = [
   },
 ];
 
+const INVESTMENT_TICKETS: readonly Ticket[] = [
+  {
+    segment: "trade",
+    label: "Trade ticket",
+    keywords: "trade,buy,sell,instrument,units,price",
+  },
+  {
+    segment: "record",
+    label: "Record an event",
+    keywords: "record,event,rule,apply,commit,call,contribution,distribution",
+  },
+  {
+    segment: "ingest",
+    label: "Ingest a delivery",
+    keywords: "ingest,delivery,file,custodian,admit,commitment,capital call",
+  },
+  { segment: "mark", label: "Mark positions", keywords: "mark,price,valuation,marks" },
+];
+
 export function ticketsFor(kind: BookKind): readonly Ticket[] {
   if (kind === "PERSONAL") return PERSONAL_TICKETS;
   if (kind === "PROJECT") return PROJECT_TICKETS;
+  if (kind === "INVESTMENT") return INVESTMENT_TICKETS;
   return FUND_TICKETS;
 }
 

@@ -15,6 +15,13 @@
             "posts": true
         },
         {
+            "name": "funds/harbourline-global-value/templates/capital-calls",
+            "templateId": "capital-calls",
+            "factKind": "capital",
+            "form": "template capital-calls {\n  reads      csv with header\n  grain      one capital per row\n\n  fact       capital\n    reference   from \"CallRef\"\n    dated       from \"Date\" as date \"YYYY-MM-DD\"\n    amount      from \"Amount\" as money in \"Ccy\"\n    kind        from \"Kind\" as { call_gp: call_gp, call_lp: call_lp, commit_gp: commit_gp, commit_lp: commit_lp }\n\n  posts      by \"kind\"\n    amount      amount\n    dated       dated\n    call_gp     -> call_gp\n    call_lp     -> call_lp\n    commit_gp   -> commit_gp\n    commit_lp   -> commit_lp\n}\n",
+            "posts": true
+        },
+        {
             "name": "funds/household/templates/bank-statement",
             "templateId": "bank-statement",
             "factKind": "statement",
