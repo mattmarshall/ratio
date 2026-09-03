@@ -77,4 +77,19 @@ describe("PlaceHead", () => {
     expect(screen.getByRole("heading", { name: "Configuration" })).toBeDefined();
     expect(screen.queryByLabelText("Book of record")).toBeNull();
   });
+
+  it("titles a personal balance sheet, not Exceptions", () => {
+    segments.current = ["views", "book", "sheet"];
+    render(
+      <PlaceHead
+        fund="household"
+        displayName="Household"
+        views={views}
+        defaultView="book"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Balance sheet" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Exceptions" })).toBeNull();
+  });
 });

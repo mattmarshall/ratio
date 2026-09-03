@@ -64,7 +64,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/views/[view]",
     file: "books/[book]/views/[view]/page.tsx",
-    reads: ["getView"],
+    reads: ["getView", "getBook"],
   },
   { path: "/funds", file: "funds/page.tsx", reads: ["listFunds"] },
   // The rail. Every fund-scoped page renders inside it.
@@ -83,7 +83,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "(layout)/books/[book]/views/[view]",
     file: "books/[book]/views/[view]/layout.tsx",
-    reads: ["getView"],
+    reads: ["getView", "getBook"],
   },
   // ⚠ Where the view-dependent screens USED to live without a view segment.
   // A redirect, not a deletion: these URLs have been sent to people, and the
@@ -163,6 +163,24 @@ export const ROUTES: readonly Route[] = [
     path: "/books/[book]/entries/[entry]",
     file: "books/[book]/entries/[entry]/page.tsx",
     reads: ["getEntry"],
+  },
+
+  // ── Household figures ────────────────────────────────────────────────────
+  //
+  // ⭐ NOT A SECOND LEDGER. Both screens call ListAccounts against the same
+  // chart `chart_for` wrote. `filter=sheet-YYYY-MM` / `filter=pnl-YYYY-MM`
+  // are presentations of those rows, not new resources — so they do not
+  // grow the deeplink table. The page URL still uses `?period=` for the
+  // chips; the wire does not (AIP-132).
+  {
+    path: "/books/[book]/views/[view]/sheet",
+    file: "books/[book]/views/[view]/sheet/page.tsx",
+    reads: ["listAccounts"],
+  },
+  {
+    path: "/books/[book]/views/[view]/pnl",
+    file: "books/[book]/views/[view]/pnl/page.tsx",
+    reads: ["listAccounts"],
   },
 
   // ── Positions ────────────────────────────────────────────────────────────
@@ -316,6 +334,11 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/record",
     file: "books/[book]/record/page.tsx",
+    reads: ["listRules", "applyEvent"],
+  },
+  {
+    path: "/books/[book]/transfer",
+    file: "books/[book]/transfer/page.tsx",
     reads: ["listRules", "applyEvent"],
   },
   // ⚠ AT THE CEILING, AND `?view=` IS WHY IT FITS. The holdings panel needs to

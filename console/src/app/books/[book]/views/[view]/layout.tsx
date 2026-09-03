@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Refusal } from "@/components/Refusal";
 import { Stat } from "@/components/Stat";
-import { viewOf } from "@/lib/data";
+import { bookOf, viewOf } from "@/lib/data";
 import { basisOf, count, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { orRefused } from "@/lib/refusal";
@@ -9,7 +9,7 @@ import { orRefused } from "@/lib/refusal";
 export const dynamic = "force-dynamic";
 
 /**
- * The four figures that decide whether this view's NAV can be struck.
+ * The figures that belong on every child of this book of record.
  *
  * ⛔ EVERY ONE OF THEM CARRIES ITS VIEW, THE WAY IT CARRIES ITS CURRENCY.
  * `134,439,187.51 USD` is not an answer until a reader also knows whether the
@@ -22,6 +22,10 @@ export const dynamic = "force-dynamic";
  * reconciliation screen honest — a difference between two views is a
  * recognition convention and never one of them being three entries behind.
  * `//tla:views_check`'s `EveryViewFoldsTheSamePrefix`.
+ *
+ * ⭐ A PERSONAL BOOK DOES NOT WEAR NAV CHROME. The same `netAssetValue` is
+ * assets minus liabilities — net worth — and open breaks are a fund-ops
+ * queue. Unplaceable stays: an undated entry is in no period P&L.
  */
 export default async function ViewLayout({
   children,
@@ -46,37 +50,57 @@ export default async function ViewLayout({
   }
   const v = r.value;
   const basis = basisOf(v.basis, v.settlementOpenDays);
+  const book = await or404(bookOf(fund));
+  const personal = book.kind === "PERSONAL";
 
   return (
     <>
       <div className="stats">
-        <Stat k="Net asset value" v={money(v.netAssetValue)} sub={basis} />
-        <Stat
-          k="Open difference"
-          v={money(v.openDifference)}
-          sub={basis}
-          tone={v.openDifference === "0" ? undefined : "at-risk"}
-        />
-        <Stat
-          k="Open breaks"
-          v={count(v.openBreakCount)}
-          sub={v.openBreakCount === "1" ? "exception" : "exceptions"}
-          tone={v.openBreakCount === "0" ? "tied" : "at-risk"}
-        />
-        {/* ⛔ REPORTED, NOT HIDDEN. An entry this view cannot place — no trade
-            date, or a configuration that does not declare it — contributes to
-            no figure above. Leaving it off the screen would make a NAV look
-            complete when it is short of entries nobody was told about. */}
-        <Stat
-          k="Unplaceable"
-          v={count(v.unplaceableEntryCount)}
-          sub={
-            v.unplaceableEntryCount === "1"
-              ? "entry this view cannot date"
-              : "entries this view cannot date"
-          }
-          tone={v.unplaceableEntryCount === "0" ? "tied" : "at-risk"}
-        />
+        {personal ? (
+          <>
+            <Stat k="Net worth" v={money(v.netAssetValue)} sub={basis} />
+            <Stat
+              k="Unplaceable"
+              v={count(v.unplaceableEntryCount)}
+              sub={
+                v.unplaceableEntryCount === "1"
+                  ? "entry with no date — in no period"
+                  : "entries with no date — in no period"
+              }
+              tone={v.unplaceableEntryCount === "0" ? "tied" : "at-risk"}
+            />
+          </>
+        ) : (
+          <>
+            <Stat k="Net asset value" v={money(v.netAssetValue)} sub={basis} />
+            <Stat
+              k="Open difference"
+              v={money(v.openDifference)}
+              sub={basis}
+              tone={v.openDifference === "0" ? undefined : "at-risk"}
+            />
+            <Stat
+              k="Open breaks"
+              v={count(v.openBreakCount)}
+              sub={v.openBreakCount === "1" ? "exception" : "exceptions"}
+              tone={v.openBreakCount === "0" ? "tied" : "at-risk"}
+            />
+            {/* ⛔ REPORTED, NOT HIDDEN. An entry this view cannot place — no trade
+                date, or a configuration that does not declare it — contributes to
+                no figure above. Leaving it off the screen would make a NAV look
+                complete when it is short of entries nobody was told about. */}
+            <Stat
+              k="Unplaceable"
+              v={count(v.unplaceableEntryCount)}
+              sub={
+                v.unplaceableEntryCount === "1"
+                  ? "entry this view cannot date"
+                  : "entries this view cannot date"
+              }
+              tone={v.unplaceableEntryCount === "0" ? "tied" : "at-risk"}
+            />
+          </>
+        )}
       </div>
 
       {children}

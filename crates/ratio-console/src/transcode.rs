@@ -212,7 +212,10 @@ pub fn serve(
             to_json(&console.get_pending_fact(&format!("funds/{id}/pendingFacts/{f}"))?)?
         }
         ["funds", id, "views", v, "accounts"] => {
-            to_json(&console.list_accounts(&format!("funds/{id}/views/{v}"), filter_of(query))?)?
+            to_json(&console.list_accounts(
+                &format!("funds/{id}/views/{v}"),
+                filter_of(query),
+            )?)?
         }
         ["funds", id, "views", v, "accounts", a, "postings"] => {
             to_json(&console.list_postings(&format!("funds/{id}/views/{v}/accounts/{a}"))?)?

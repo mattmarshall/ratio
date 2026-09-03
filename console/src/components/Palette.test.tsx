@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import fundsFixture from "../../fixtures/funds.json";
 import viewsFixture from "../../fixtures/views.json";
-import { SCREENS, screenHref } from "@/lib/screens";
+import { SCREENS, PERSONAL_SCREENS, screenHref } from "@/lib/screens";
 import type { Fund, View } from "@/wire/types";
 import { CommandHint } from "./CommandHint";
 import { FundActions } from "./FundActions";
@@ -361,5 +361,87 @@ describe("the command palette", () => {
     const tab = fireEvent.keyDown(dialog, { key: "Tab" });
     // `fireEvent` returns false when a handler called preventDefault.
     expect(tab).toBe(false);
+  });
+
+  it("offers a personal book's household places and a transfer, not NAV", async () => {
+    // ⛔ WRITTEN OUT, for the same reason the fund table is. Deriving this
+    // from PERSONAL_SCREENS would stay green after deleting a place.
+    // ⚠ THE OPEN VIEW IS THE MOCKED SEGMENTS', NOT defaultView. FundActions
+    // reads ["views","abor","breaks"] from the same layout mock the fund
+    // cases use, so a personal screen stays on abor the way a fund one
+    // does — switching the kind must not invent a second view id.
+    const expected: ReadonlyArray<readonly [string, string]> = [
+      ["Balance sheet", "/books/household/views/abor/sheet"],
+      ["Period P&L", "/books/household/views/abor/pnl"],
+      ["Trial balance", "/books/household/views/abor/accounts"],
+      ["Data", "/books/household/data"],
+      ["Configuration", "/books/household/config"],
+      ["Rules", "/books/household/rules"],
+      ["Change log", "/books/household/changes"],
+    ];
+    expect(PERSONAL_SCREENS.map((s) => s.label)).toEqual(expected.map(([l]) => l));
+
+    for (const [label, href] of expected) {
+      const { unmount } = render(
+        <Palette funds={funds}>
+          <FundActions
+            fund="household"
+            views={views}
+            defaultView="book"
+            kind="PERSONAL"
+          />
+        </Palette>,
+      );
+      await type(label);
+      fireEvent.click(await row(label));
+      expect(push).toHaveBeenCalledWith(href);
+      push.mockClear();
+      unmount();
+    }
+
+    const { unmount } = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("Transfer");
+    fireEvent.click(await row("Transfer"));
+    expect(push).toHaveBeenCalledWith("/books/household/transfer");
+    expect(document.querySelector("form")).toBeNull();
+    unmount();
+
+    for (const absent of ["Trade ticket", "Mark positions", "Exceptions"] as const) {
+      const { unmount } = render(
+        <Palette funds={funds}>
+          <FundActions
+            fund="household"
+            views={views}
+            defaultView="book"
+            kind="PERSONAL"
+          />
+        </Palette>,
+      );
+      await type(absent);
+      expect(screen.queryByText(absent)).toBeNull();
+      unmount();
+    }
+    const nav = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("NAV");
+    expect(screen.queryByText(/^NAV$/)).toBeNull();
+    nav.unmount();
   });
 });

@@ -474,6 +474,16 @@ a.brandlink{color:inherit;text-decoration:none}
 [aria-label="Positions"] .tbfoot{
   grid-template-columns:minmax(200px,1fr) 100px 130px 150px}
 
+/* Household sheet and P&L: two columns, the name and the figure. Unscoped
+   this would flatten the trial balance's four columns the way the positions
+   override once did. */
+[aria-label="Balance sheet"] .tbrow,
+[aria-label="Balance sheet"] .tbfoot,
+[aria-label="Period profit and loss"] .tbrow,
+[aria-label="Period profit and loss"] .tbfoot{
+  grid-template-columns:minmax(220px,1fr) 150px;
+  min-width:400px}
+
 /* A NAV that cannot be read at face value says so on its own row. It is not an
    error — the figure is what it is and will not be restated — so it wears the
    attention color rather than the failure one. */

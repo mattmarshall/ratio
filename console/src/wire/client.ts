@@ -346,15 +346,22 @@ export const getLot = (
 
 // ── The chart ──────────────────────────────────────────────────────────────
 // GET /v1/{parent=funds/*/views/*}/accounts
+//
+// ⛔ AIP-132: a List request has no `period` field. A month or year rides on
+// `filter` as `pnl-YYYY-MM` / `sheet-YYYY` — hyphen because transcode does
+// not percent-decode. Pages still pass the two pieces; this is where they join.
 export const listAccounts = (
   c: Caller,
   fund: string,
   view: string,
   filter?: string,
+  period?: string,
 ) =>
   send<ListAccountsResponse>(
     c,
-    `/funds/${fund}/views/${view}/accounts${q({ filter })}`,
+    `/funds/${fund}/views/${view}/accounts${q({
+      filter: filter && period ? `${filter}-${period}` : filter,
+    })}`,
   );
 // GET /v1/{name=funds/*/views/*/accounts/*}
 export const getAccount = (c: Caller, fund: string, view: string, id: string) =>

@@ -208,7 +208,31 @@ NEEDLES: list[tuple[str, str]] = [
         "the journal entry page has no accessible name, so the phone check "
         "cannot tell it rendered",
     ),
-
+    # ── household figures (#65) ─────────────────────────────────────────────
+    # A personal book that still said NAV / Exceptions is a fake label on
+    # fund-ops screens. These are the phrases a household walk-through looks
+    # for; deleting the sheet, the period P&L, or the transfer would leave
+    # CreateBook offering a template whose screens are still ABOR.
+    (
+        "Balance sheet",
+        "a personal book has no citable balance sheet",
+    ),
+    (
+        "Period P&L",
+        "a personal book has no period P&L",
+    ),
+    (
+        "not since inception",
+        "the P&L would look cumulative like ABOR",
+    ),
+    (
+        "Net worth",
+        "a personal book would still say NAV",
+    ),
+    (
+        "this is not a trade",
+        "the transfer form stopped saying a household move is not a sale",
+    ),
     # ⛔ AND NO `startTransition` NEEDLE, THOUGH THE PALETTE NEEDS ONE AS MUCH AS
     # `FilterChips` DOES. Both that file and `PlanControls` already contain the
     # literal, so the case would pass with the palette's transition dropped — the
