@@ -90,7 +90,10 @@ the other way out once #25 lands.
 
 ⚠ **Preview hostnames are not registered.** AuthKit will accept a wildcard
 redirect URI, but this console's documented URIs are the two origins below.
-Previews render from `console/fixtures/`.
+Previews render from `console/fixtures/`. `preflight.mjs` requires the
+WorkOS variables on `VERCEL_ENV=production` only; a preview with none of
+them set is a fixtures build, not a broken sign-in. A preview with some of
+them set and not others still fails — that is a half-configured IdP.
 
 ## WorkOS AuthKit — Ratio project
 

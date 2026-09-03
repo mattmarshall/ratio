@@ -29,6 +29,12 @@ const WORKOS_REDIRECT = process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI;
 // Set by Vercel on every build. Distinguishes "deploying" from "a laptop with
 // one variable exported", which changes what counts as a missing value.
 const DEPLOYING = Boolean(process.env.VERCEL);
+// Preview hostnames are not AuthKit redirect URIs. Those builds render from
+// fixtures; Production is the deploy that must be able to sign somebody in.
+const PRODUCTION = process.env.VERCEL_ENV === "production";
+const workosPartial = Boolean(
+  WORKOS_CLIENT || WORKOS_KEY || WORKOS_COOKIE || WORKOS_REDIRECT,
+);
 
 let failed = false;
 
@@ -142,7 +148,12 @@ if (DEPLOYING && published === "" && !DECLARED) {
 // ⛔ NOTHING BELOW PRINTS A SECRET, ONLY ITS SHAPE. AuthKit encrypts its
 // session with WORKOS_COOKIE_PASSWORD (≥32 characters). A build log is not
 // a place a key goes.
-if (DEPLOYING) {
+//
+// ⚠ PREVIEW IS NOT PRODUCTION. `VERCEL` is set on every Vercel build, and
+// requiring secrets there failed the PR preview before anyone could paste
+// them. Production still fails closed. A half-set WorkOS config fails
+// everywhere — that is a deploy that thinks it can sign in and cannot.
+if (PRODUCTION || workosPartial) {
   if (!WORKOS_CLIENT) {
     fail("WORKOS_CLIENT_ID is not set. AuthKit cannot start a sign-in.");
   } else {
