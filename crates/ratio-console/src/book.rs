@@ -10,17 +10,22 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use ratio_store::{Account, AccountTypeRecord, ConfigStore, FileBook};
 
-/// The ingest template CreateBook writes for this kind.
+/// The ingest templates CreateBook writes for this kind, in the order
+/// [`config_for`] lists them.
 ///
 /// ⭐ KIND-AWARE, NOT A SHARED MENU. A Personal book that offered
 /// `custodian-positions` would be asking a household to pick a fund feed.
-/// The live list is the book's own configuration; this id is what
+/// The live list is the book's own configuration; these ids are what
 /// [`config_for`] puts there, and what the console catalog filters on.
-pub fn ingest_template_id(kind: BookKind) -> &'static str {
+///
+/// Investment is two mappings on purpose: the holdings snapshot (recorded,
+/// never booked) and the trade column contract that posts. One without the
+/// other is a file you can read and a loop you cannot run.
+pub fn ingest_template_ids(kind: BookKind) -> &'static [&'static str] {
     match kind {
-        BookKind::Personal => "bank-statement",
-        BookKind::Investment => "custodian-positions",
-        BookKind::Project => "project-invoices",
+        BookKind::Personal => &["bank-statement"],
+        BookKind::Investment => &["custodian-positions", "prime_equity_trades"],
+        BookKind::Project => &["project-invoices"],
     }
 }
 
@@ -183,13 +188,13 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
 }
 
 /// The opening configuration CreateBook writes: posting rules that hit
-/// [`chart_for`] and one ingest template for this kind.
+/// [`chart_for`] and the ingest template(s) for this kind.
 ///
-/// ⛔ NOT THE DEMO FUND'S TRADE FILE. `deploy/seed-demo-book.sh` still owns
-/// `prime_equity_trades` — delivery → resolve → admit, with VWRL left pending
-/// so an operator has a fact they can open. CreateBook seeds the *kind's*
-/// column contract so a blank book can read a file; it does not invent a
-/// journal to reconcile against.
+/// ⭐ INVESTMENT SEEDS THE TRADE COLUMN CONTRACT, NOT A JOURNAL. The mapping
+/// is the same `prime_equity_trades` file `deploy/seed-demo-book.sh` delivers;
+/// a blank book has no rows until someone reads a file. The demo script still
+/// posts recon history so the blocked-NAV story has a break — that is a
+/// different book, and inventing those entries here would lie about this one's.
 pub fn config_for(kind: BookKind) -> &'static str {
     match kind {
         BookKind::Personal => PERSONAL_CONFIG,
@@ -285,16 +290,41 @@ reads = "csv"
   dated = "dated"
 "#;
 
-/// Custodian positions snapshot. REFERENCE DATA: no `posts` block, so a row
-/// is recorded and citable and never touches the journal. The column
-/// contract is one real file: LineRef, AsOf, ISIN, Ticker, Exch, Quantity,
-/// MarketValue, Ccy.
+/// Custodian holdings snapshot plus the trade file that posts.
 ///
-/// ⚠ THE CLOSED LOOP IS `prime_equity_trades` IN `deploy/seed-demo-book.sh`.
-/// That path delivers, resolves, admits, and leaves VWRL pending — a break
-/// an operator can open. A CreateBook investment book has no journal yet,
-/// so seeding the trade file here would be a mapping with nothing to post.
+/// The snapshot is REFERENCE DATA: no `posts` block, so a row is recorded
+/// and citable and never touches the journal. The trade mapping is the same
+/// column contract the demo delivers (`TradeRef,ISIN,Symbol,Exch,Broker,B/S,
+/// Quantity,Price,Ccy,TradeDate`) — not a second vendor catalog. Amounts
+/// post as `consideration` (quantity × price); `dated` is the trade date, or
+/// every lot this file opens is refused by every holding-period method.
+///
+/// ⚠ THE JOURNAL STAYS EMPTY UNTIL A FILE IS ADMITTED. Seeding counterparties
+/// or opening balances here would be the fake history #76 refuses.
 const INVESTMENT_CONFIG: &str = r#"
+[[rule]]
+id = "equity_purchase"
+kind = "trade"
+description = "Buy: investments up, cash down"
+[[rule.posting]]
+account = 1
+weight = 1
+per_instrument = true
+[[rule.posting]]
+account = 2
+weight = -1
+
+[[rule]]
+id = "disposal_proceeds"
+kind = "trade"
+description = "Sale, proceeds half: cash in against realized gain"
+[[rule.posting]]
+account = 2
+weight = 1
+[[rule.posting]]
+account = 31
+weight = -1
+
 [[template]]
 id = "custodian-positions"
 reads = "csv"
@@ -329,6 +359,59 @@ reads = "csv"
   as = "money"
   column = "MarketValue"
   currency = "Ccy"
+
+[[template]]
+id = "prime_equity_trades"
+reads = "csv"
+
+  [[template.entity]]
+  name = "security"
+  kind = "instrument"
+  absent = "pend"
+  by = [
+    { attribute = "isin", column = "ISIN" },
+    { attribute = "ticker", column = "Symbol", within = { attribute = "exchange", column = "Exch" } },
+  ]
+
+  [[template.entity]]
+  name = "broker"
+  kind = "counterparty"
+  absent = "pend"
+  by = [{ attribute = "code", column = "Broker" }]
+
+  [template.fact]
+  kind = "trade"
+  reference = "TradeRef"
+  entities = { security = "security", broker = "broker" }
+
+  [[template.fact.value]]
+  field = "side"
+  as = "enum"
+  column = "B/S"
+  map = { B = "buy", S = "sell" }
+
+  [[template.fact.value]]
+  field = "quantity"
+  as = "decimal"
+  column = "Quantity"
+
+  [[template.fact.value]]
+  field = "price"
+  as = "money"
+  column = "Price"
+  currency = "Ccy"
+
+  [[template.fact.value]]
+  field = "traded"
+  as = "date"
+  column = "TradeDate"
+  format = "MM/DD/YYYY"
+
+  [template.fact.posts]
+  by = "side"
+  amount = "consideration"
+  rules = { buy = "equity_purchase", sell = "disposal_proceeds" }
+  dated = "traded"
 "#;
 
 /// Vendor invoice / cost CSV → project costs and payables claims.
@@ -455,6 +538,7 @@ pub fn grant(root: &Path, who: &str, book_id: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratio_store::Journal;
 
     #[test]
     fn a_missing_sidecar_is_a_legacy_fund_book() {
@@ -524,15 +608,19 @@ mod tests {
         for kind in [BookKind::Personal, BookKind::Investment, BookKind::Project] {
             let set = ratio_ingest::TemplateSet::from_toml(config_for(kind)).unwrap();
             let ids: Vec<&str> = set.templates.iter().map(|t| t.id.as_str()).collect();
-            assert_eq!(ids, vec![ingest_template_id(kind)], "{kind:?}: {ids:?}");
-            let t = set.template(ingest_template_id(kind)).unwrap();
-            assert!(t.check().is_empty(), "{kind:?}: {:?}", t.check());
+            assert_eq!(ids, ingest_template_ids(kind), "{kind:?}: {ids:?}");
+            for id in ingest_template_ids(kind) {
+                let t = set.template(id).unwrap();
+                assert!(t.check().is_empty(), "{kind:?} {id}: {:?}", t.check());
+            }
         }
         let personal = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Personal)).unwrap();
         assert!(personal.template("custodian-positions").is_none());
+        assert!(personal.template("prime_equity_trades").is_none());
         assert!(personal.template("project-invoices").is_none());
         let project = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Project)).unwrap();
         assert!(project.template("custodian-positions").is_none());
+        assert!(project.template("prime_equity_trades").is_none());
         assert!(project.template("bank-statement").is_none());
     }
 
@@ -654,6 +742,55 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
     }
 
     #[test]
+    fn a_prime_equity_trade_row_posts_consideration_and_picks_the_buy_rule() {
+        // ⭐ THE COLUMN CONTRACT #76 ASKS FOR. Same headers the demo delivers;
+        // money is minor units; quantity × price is refused rather than rounded.
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Investment)).unwrap();
+        let t = set.template("prime_equity_trades").unwrap();
+        assert!(t.fact.posts.is_some());
+        let rows = ratio_ingest::extract_csv(PRIME_TRADES_CSV).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(p.facts.len(), 3);
+        assert_eq!(
+            p.facts[0].values.get("price"),
+            Some(&ratio_ingest::Value::Money {
+                minor: 25_000,
+                currency: "USD".into()
+            }),
+        );
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[0]).unwrap();
+        assert_eq!(rule, "equity_purchase");
+        // 1000 × 250.00 → 25_000_000 minor units, not a float and not a guess.
+        assert_eq!(minor, 25_000_000);
+        assert_eq!(ratio_ingest::dated_of(t, &p.facts[0]), Some("2026-02-24"));
+        // VWRL is in the file and not in the master — LEAVE_ONE_PENDING's shape.
+        let resolved = ratio_ingest::resolve_all(
+            &p.facts,
+            &[
+                sample_entity(
+                    "cp-prime",
+                    ratio_ingest::EntityKind::Counterparty,
+                    &[("code", "PRME")],
+                ),
+                sample_entity(
+                    "inst-vti",
+                    ratio_ingest::EntityKind::Instrument,
+                    &[("isin", "US9229087690")],
+                ),
+                sample_entity(
+                    "inst-voo",
+                    ratio_ingest::EntityKind::Instrument,
+                    &[("ticker", "VOO"), ("exchange", "ARCX")],
+                ),
+            ],
+        );
+        let pending: Vec<_> = resolved.iter().filter(|r| !r.is_admissible()).collect();
+        assert_eq!(pending.len(), 1, "{:?}", pending.iter().map(|r| &r.fact.reference).collect::<Vec<_>>());
+        assert_eq!(pending[0].fact.reference, "PB-0043");
+    }
+
+    #[test]
     fn initialize_writes_the_kind_template_into_the_opening_config() {
         let dir = std::env::temp_dir().join("ratio-book-init-personal-ingest");
         let _ = std::fs::remove_dir_all(&dir);
@@ -665,6 +802,16 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
         assert_eq!(set.templates.len(), 1);
         assert_eq!(set.templates[0].id, "bank-statement");
         assert!(set.template("custodian-positions").is_none());
+        assert!(set.template("prime_equity_trades").is_none());
+        // ⛔ AND THE JOURNAL IS EMPTY. A CreateBook book that arrived with
+        // recon-posted history would be the fake past #76 is about.
+        let mut n = 0usize;
+        b.for_each_entry_since(0, &mut |_| {
+            n += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(n, 0);
     }
 
     fn sample_delivery() -> ratio_ingest::Delivery {
@@ -675,4 +822,29 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
             bytes: 1,
         }
     }
+
+    fn sample_entity(
+        id: &str,
+        kind: ratio_ingest::EntityKind,
+        attrs: &[(&str, &str)],
+    ) -> ratio_ingest::Entity {
+        ratio_ingest::Entity {
+            id: id.into(),
+            kind,
+            display_name: id.into(),
+            attributes: attrs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        }
+    }
+
+    /// Same rows `console/fixtures/samples/prime_equity_trades.csv` and
+    /// `deploy/seed-demo-book.sh` deliver. VWRL is the one the master lacks.
+    const PRIME_TRADES_CSV: &str = "\
+TradeRef,ISIN,Symbol,Exch,Broker,B/S,Quantity,Price,Ccy,TradeDate
+PB-0041,US9229087690,VTI,ARCX,PRME,B,1000,250.00,USD,02/24/2026
+PB-0042,,VOO,ARCX,PRME,B,400,450.00,USD,02/25/2026
+PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
+";
 }
