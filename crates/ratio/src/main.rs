@@ -2407,6 +2407,13 @@ pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
              `ratio config set <file>`, so the whole document is what somebody approved."
         );
     }
+    if incoming.personal.is_some() {
+        bail!(
+            "proposal {id} declares household terms, and [personal] is not something a proposal \
+             moves.\nWhich liabilities have a loan schedule is a term of the configuration — \
+             change it by editing the configuration and running `ratio config set <file>`."
+        );
+    }
 
     // Re-check at approval time. The chart may have moved since the proposal
     // was made, and approving something that no longer passes would put a bad

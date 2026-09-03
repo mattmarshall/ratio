@@ -14,6 +14,7 @@ describe("screensFor", () => {
     expect(labels).toContain("Balance sheet");
     expect(labels).toContain("Period P&L");
     expect(labels).toContain("Budget vs actual");
+    expect(labels).toContain("Loan schedule");
     expect(labels).toContain("Trial balance");
     expect(labels).not.toContain("Exceptions");
     expect(labels).not.toContain("NAV");
@@ -76,7 +77,7 @@ describe("screensFor", () => {
   it("figure screens are view-scoped", () => {
     for (const s of [
       ...PERSONAL_SCREENS.filter((x) =>
-        ["sheet", "pnl", "budget"].includes(x.segment),
+        ["sheet", "pnl", "budget", "loans"].includes(x.segment),
       ),
       ...PROJECT_SCREENS.filter((x) =>
         ["budget", "wip", "billing"].includes(x.segment),

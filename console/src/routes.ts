@@ -144,6 +144,15 @@ export const ROUTES: readonly Route[] = [
     file: "books/[book]/views/[view]/accounts/page.tsx",
     reads: ["listAccounts"],
   },
+  // Household loan roll-forward. Not a ScreenTabs island — chrome unification
+  // PRs own `screensFor`. Discovery is the Personal hub note; this URL is
+  // the citation. getBook carries `[personal.loan]`; listAccounts under
+  // `loan-YYYY-MM` is skipped when that table is empty.
+  {
+    path: "/books/[book]/views/[view]/loans",
+    file: "books/[book]/views/[view]/loans/page.tsx",
+    reads: ["getBook", "listAccounts"],
+  },
   {
     path: "/books/[book]/views/[view]/capital",
     file: "books/[book]/views/[view]/capital/page.tsx",

@@ -22,6 +22,7 @@ describe("book templates", () => {
     const byKind = Object.fromEntries(BOOK_TEMPLATES.map((t) => [t.kind, t.blurb]));
     expect(byKind.PERSONAL).toMatch(/Cash and bank/);
     expect(byKind.PERSONAL).toMatch(/configuration total/);
+    expect(byKind.PERSONAL).toMatch(/named loans/);
     expect(byKind.INVESTMENT).toMatch(/fair value/);
     expect(byKind.INVESTMENT).toMatch(/distributions/);
     expect(byKind.INVESTMENT).toMatch(/partner capital/);
@@ -35,6 +36,7 @@ describe("book templates", () => {
 describe("ingest templates", () => {
   it("seeds the CreateBook mappings, and the fixture carries each", () => {
     expect(INGEST_TEMPLATE_KIND["bank-statement"]).toBe("PERSONAL");
+    expect(INGEST_TEMPLATE_KIND["loan-payment"]).toBe("PERSONAL");
     expect(INGEST_TEMPLATE_KIND["custodian-positions"]).toBe("INVESTMENT");
     expect(INGEST_TEMPLATE_KIND["prime_equity_trades"]).toBe("INVESTMENT");
     expect(INGEST_TEMPLATE_KIND["project-invoices"]).toBe("PROJECT");
@@ -49,7 +51,7 @@ describe("ingest templates", () => {
     const personal = templatesForKind("PERSONAL", listed).map((t) => t.templateId);
     const project = templatesForKind("PROJECT", listed).map((t) => t.templateId);
     const investment = templatesForKind("INVESTMENT", listed).map((t) => t.templateId);
-    expect(personal).toEqual(["bank-statement"]);
+    expect(personal).toEqual(["bank-statement", "loan-payment"]);
     expect(project).toEqual(["project-invoices"]);
     expect(investment).toEqual(["custodian-positions", "prime_equity_trades"]);
     expect(personal).not.toContain("custodian-positions");
@@ -77,7 +79,7 @@ describe("ingest templates", () => {
     ).toEqual(["custodian-positions", "prime_equity_trades", "vendor_eod_prices"]);
     expect(
       templatesForKind("PERSONAL", extra).map((t) => t.templateId),
-    ).toEqual(["bank-statement"]);
+    ).toEqual(["bank-statement", "loan-payment"]);
     expect(
       templatesForKind("PROJECT", extra).map((t) => t.templateId),
     ).toEqual(["project-invoices"]);

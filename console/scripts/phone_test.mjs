@@ -70,6 +70,7 @@ const SCREENS = [
   [`/books/bridge/views/book/budget`, "main"],
   [`/books/bridge/views/book/wip`, "main"],
   [`/books/${F}/views/abor/capital`, "main"],
+  ["/books/household/views/book/loans", "main"],
   [`/books/${F}/views/abor/accounts/x`, '[aria-label="Account detail"]'],
   [`/books/${F}/views/abor/accounts/x/postings/x`, '[aria-label="Posting detail"]'],
   [`/books/${F}/views/abor/positions`, "main"],

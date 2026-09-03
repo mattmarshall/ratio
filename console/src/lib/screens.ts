@@ -69,6 +69,7 @@ export const PERSONAL_SCREENS: readonly Screen[] = [
   { segment: "sheet", label: "Balance sheet", scoped: true, group: "book" },
   { segment: "pnl", label: "Period P&L", scoped: true, group: "book" },
   { segment: "budget", label: "Budget vs actual", scoped: true, group: "book" },
+  { segment: "loans", label: "Loan schedule", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   ...AGREEMENT,
 ];

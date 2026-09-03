@@ -12,7 +12,8 @@
       "configDigest": "",
       "trialBalanceDifference": "0",
       "budget": "",
-      "envelopes": []
+      "envelopes": [],
+      "loans": []
     },
     {
       "name": "books/harbourline-global-value",
@@ -26,7 +27,8 @@
       "configDigest": "9f2c1ab7de40551c",
       "trialBalanceDifference": "0",
       "budget": "",
-      "envelopes": []
+      "envelopes": [],
+      "loans": []
     },
     {
       "name": "books/bridge",
@@ -40,7 +42,8 @@
       "configDigest": "",
       "trialBalanceDifference": "0",
       "budget": "",
-      "envelopes": []
+      "envelopes": [],
+      "loans": []
     }
   ],
   "nextPageToken": ""

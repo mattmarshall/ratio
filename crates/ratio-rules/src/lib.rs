@@ -268,6 +268,11 @@ pub struct RuleSet {
     ///
     /// Envelope grain is `[personal.envelope]`, keyed by chart dimension.
     /// An absent key is unset for that category, not a fake zero.
+    ///
+    /// `[personal.loan]` is keyed by liability chart dimension; the value
+    /// is the paired interest-expense dimension. `None` (or an empty table)
+    /// means no named loan — not a roll-forward of zeros. CreateBook seeds
+    /// the posting pattern and omits this table.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub personal: Option<PersonalTerms>,
 }
@@ -345,11 +350,17 @@ pub struct PersonalTerms {
     /// `"10"`, taxes `"11"` — `chart_for(Personal)`. Absent keys are unset.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub envelope: BTreeMap<String, i64>,
+    /// Liability dimension (decimal string) → interest-expense dimension.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub loan: BTreeMap<String, i64>,
 }
 
 impl PersonalTerms {
     /// ⛔ CHECKED WHEN THE CONFIGURATION IS READ. A negative budget inverts
-    /// variance: every spend would look like remaining authorization.
+    /// variance: every spend would look like remaining authorization. A
+    /// loan key that is not a chart dimension, or an interest account
+    /// equal to the liability, would put a schedule on a number nobody
+    /// can cite.
     pub fn check(&self) -> Result<()> {
         if let Some(b) = self.budget {
             if b < 0 {
@@ -370,6 +381,32 @@ impl PersonalTerms {
                 bail!(
                     "household envelope {k} is not negative — it is an authorized magnitude, \
                      not a posting"
+                );
+            }
+        }
+        for (k, interest) in &self.loan {
+            let dim: i64 = k.parse().map_err(|_| {
+                anyhow!(
+                    "household loan {k:?} is not a chart dimension — keys are the \
+                     decimal dimension (41, 42, 43), not a name"
+                )
+            })?;
+            if dim <= 0 {
+                bail!(
+                    "household loan {k} is not a chart dimension — dimensions are \
+                     positive"
+                );
+            }
+            if *interest <= 0 {
+                bail!(
+                    "household loan {k} interest is not a chart dimension — \
+                     values are the interest-expense dimension (12, 13, 14)"
+                );
+            }
+            if dim == *interest {
+                bail!(
+                    "household loan {k} cannot use itself as the interest \
+                     expense — the liability and the expense are two accounts"
                 );
             }
         }
@@ -491,6 +528,9 @@ impl Default for RuleSet {
             views: Vec::new(),
             calendars: Vec::new(),
             project: None,
+            // ⛔ NONE IS UNSET, NOT AN EMPTY LOAN TABLE. A derived Default
+            // that put `Some(PersonalTerms { loan: {} })` here would make
+            // "nobody said" indistinguishable from "said, named none".
             personal: None,
         }
     }
@@ -1272,6 +1312,45 @@ pub fn compile(rule: &Rule, event: &Event) -> Result<Vec<PostingRecord>> {
             })
         })
         .collect()
+}
+
+/// Merge legs that share (dimension, currency, instrument).
+///
+/// ⭐ TWO BALANCED TEMPLATES REMAIN BALANCED. A loan payment compiles
+/// interest and principal as separate rules (each nets to zero by
+/// `balanced_template_balances`) and concatenates them. The cash account
+/// then has two credits; merging those legs is the 3-posting identity
+/// (interest expense + principal reduction against cash) and does not
+/// change the net. A zero after the merge is dropped — a $0 interest
+/// posting is nothing that happened.
+pub fn merge_postings(
+    legs: Vec<ratio_store::PostingRecord>,
+) -> Result<Vec<ratio_store::PostingRecord>> {
+    let mut by: BTreeMap<(i64, Option<String>, Option<String>), (i64, Option<i64>)> =
+        BTreeMap::new();
+    for p in legs {
+        let key = (p.dim, p.currency.clone(), p.instrument.clone());
+        let slot = by.entry(key).or_insert((0, None));
+        slot.0 = ratio_common::checked::add(slot.0, p.amount, "a merged posting")?;
+        match (slot.1, p.quantity) {
+            (None, q) => slot.1 = q,
+            (Some(a), Some(b)) => {
+                slot.1 = Some(ratio_common::checked::add(a, b, "a merged quantity")?);
+            }
+            (Some(_), None) => {}
+        }
+    }
+    Ok(by
+        .into_iter()
+        .filter(|(_, (amount, _))| *amount != 0)
+        .map(|((dim, currency, instrument), (amount, quantity))| PostingRecord {
+            dim,
+            amount,
+            currency,
+            instrument,
+            quantity,
+        })
+        .collect())
 }
 
 /// The accrued amount: `basis × rate × days ÷ (10 000 × denominator)`.
@@ -2106,5 +2185,33 @@ calendar = "us-settlement"
         let t = Tolerance::default();
         assert_eq!(t.severity(i64::MIN), Severity::High);
         assert_eq!(t.severity(i64::MAX), Severity::High);
+    }
+
+    #[test]
+    fn a_household_loan_schedule_round_trips_and_an_unset_one_is_absent() {
+        let set = RuleSet::from_toml(
+            "rules = []\n[personal.loan]\n41 = 12\n42 = 13\n",
+        )
+        .unwrap();
+        let p = set.personal.as_ref().expect("personal table present");
+        assert_eq!(p.loan.get("41"), Some(&12));
+        assert_eq!(p.loan.get("42"), Some(&13));
+        assert!(
+            p.loan.get("43").is_none(),
+            "a loan nobody set is absent, not a fake zero"
+        );
+
+        let silent = RuleSet::from_toml("rules = []\n").unwrap();
+        assert!(silent.personal.is_none(), "nobody said");
+
+        let e = RuleSet::from_toml("rules = []\n[personal.loan]\nmortgage = 12\n")
+            .expect_err("a name that is not a dimension must not parse")
+            .to_string();
+        assert!(e.contains("chart dimension"), "{e}");
+
+        let same = RuleSet::from_toml("rules = []\n[personal.loan]\n41 = 41\n")
+            .expect_err("liability cannot be its own interest")
+            .to_string();
+        assert!(same.contains("itself"), "{same}");
     }
 }

@@ -1,0 +1,4 @@
+Ref,Date,Principal,Interest,Ccy,Loan,Lender,Memo
+M-1,2026-03-01,800.00,200.00,USD,mortgage,FIRST NATIONAL,March mortgage
+A-1,2026-03-01,350.00,45.00,USD,auto,ALLY,
+S-1,2026-03-01,100.00,,USD,student,DEPT OF ED,principal only

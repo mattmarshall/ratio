@@ -321,6 +321,15 @@ NEEDLES: list[tuple[str, str]] = [
         "Price from",
         "a marked position would not open the price fact it cites",
     ),
+    # ── household loan roll-forward (#87) ───────────────────────────────────
+    # ⚠ THE SENTENCE, NOT THE TABLE. A page that rendered a mortgage of
+    # $0.00 on a book that never named a loan would still contain "Loan
+    # schedule" and stay green. The unset copy is the thing that goes
+    # red if someone "helps" by showing zeros.
+    (
+        "No loan schedule is configured",
+        "an unset household loan figure would render as a roll-forward of zeros",
+    ),
 ]
 
 
