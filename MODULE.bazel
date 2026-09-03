@@ -53,11 +53,13 @@ rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
 # exactly that class of thing out of a hermetic build one package at a time.
 # Rather than fight that, the whole toolchain left with the thing it was for.
 #
-# ⚠ `bazel test //...` still says something about the console. `//console:*` is
-# five checks that read SOURCE TEXT and need no node — the contract reaches every
-# screen, the screens still read the fields whose absence has shipped before, the
-# fixtures are shaped like the proto, the design tokens still agree with
-# `site/style.css`, and nothing that belongs in the environment is committed.
+# ⚠ `bazel test //...` still says something about the console. `//console:*`
+# exports the wire types; the source-text checks themselves run in
+# `console.yml` — the contract reaches every screen, the screens still read
+# the fields whose absence has shipped before, the fixtures are shaped like
+# the proto, the design tokens still agree with `site/style.css`, nothing
+# that belongs in the environment is committed, and every `BookKind` is
+# named in PLAN.md. `//:plan_refusals_test` holds the last of those.
 # `site/` is the precedent for a non-Bazel path verified this way.
 
 rust.toolchain(

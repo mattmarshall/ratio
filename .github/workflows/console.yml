@@ -14,11 +14,12 @@ name: console
 # checkmark in a different place. `site/` is the precedent: a non-Bazel path,
 # verified by a script that CI and a developer run identically.
 #
-# ⚠ AND `bazel test //...` STILL SAYS SOMETHING. `//console:*` is five checks
-# over source text — the contract reaches every screen, the screens still read
-# the fields whose absence has shipped before, the fixtures match the proto, the
-# design tokens still agree with site/style.css, and nothing that belongs in the
-# environment is committed. Those need no node and run in the main suite.
+# ⚠ AND `bazel test //...` STILL SAYS SOMETHING. `//console:*` is source-text
+# checks — the contract reaches every screen, the screens still read the fields
+# whose absence has shipped before, the fixtures match the proto, the design
+# tokens still agree with site/style.css, nothing that belongs in the
+# environment is committed, and every `BookKind` is named in PLAN.md. Those
+# need no node; the BookKind half also runs from `//:plan_refusals_test`.
 
 on:
   push:
@@ -105,3 +106,5 @@ jobs:
           python3 console/scripts/fields_test.py console/src/routes.ts
           python3 console/scripts/tokens_test.py site/style.css console/src/app/globals.css
           python3 console/scripts/no_secrets_test.py console/src/routes.ts
+          python3 console/scripts/book_kinds_in_plan_test.py \
+            console/src/wire/types.ts PLAN.md

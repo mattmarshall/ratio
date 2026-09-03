@@ -293,9 +293,14 @@ books wrong.*
 
 `https://ratio.marsh.build/` — the operations console. A Next.js application
 with a route per resource, so a break, a NAV strike or a configuration version
-can be sent to somebody rather than described. Sign-in is Cognito, open to
-anyone; the browser never calls AWS, because the console's own server holds the
-token and makes the call.
+can be sent to somebody rather than described. Sign-in is WorkOS AuthKit, not
+Cognito; the browser never calls AWS, because the console's own server holds
+the token and makes the call. AuthKit is the code path (#63). Vercel
+Production has the env (#68 closed). Live activation leftovers remain on
+#22 — write-route actor binding, API authorizer leftovers, Cognito leftovers
+in the deploy templates. Do not read this paragraph as production-complete.
+The retired `https://ratio-ims.vercel.app` host still resolves;
+`deploy.yml` refuses it as `CONSOLE_ORIGIN`.
 
 `https://1h4q8av2gb.execute-api.us-east-1.amazonaws.com/` — the API the console
 reads, plus the three public screens (`/balance`, `/breaks`, `/rules`) and the
@@ -670,6 +675,97 @@ away from two entries:**
 a real customer's period reconciling. It widens the funnel's mouth; the funnel
 still ends at a conversation, not a sign-up.
 
+### Amendment, 2026-09-03 — the book-centric turn
+
+The plan of record was a fund-admin console on a Cognito demo. The repository
+has been something else for four merged PRs, and this file was not touched in
+between. That is the same failure the refusal-list protocol exists for.
+
+**What a Book is.** A Book is a journal plus content-addressed configuration.
+It is the unit the console addresses. A Fund and a WorkOS organization are
+optional layers, not parents: absence is independence, not an error.
+`CreateBook` writes no fund and no organization. Kind selects the chart
+`chart_for` writes and the chrome `screensFor` offers — one list, not a fork
+of the kernel. `UNSPECIFIED` is the proto default, not a domain and not a
+hidden fifth kind.
+
+**Why it exists independently of Funds and Orgs.** A household, a construction
+job, and an operating company are not funds that forgot to file. Filing every
+book under a Fund so the old URLs kept working would have made "fund" mean
+"directory", and a Personal book's NAV would have been a fake label on fund-ops
+screens. The kernel already treated a directory as a book (`FileBook`). The
+sidecar (`book.toml`) is the control-plane fact the directory never had to
+carry.
+
+**Which domains it serves.** Four kinds, named as the wire names them so a
+kind the console offers cannot go unrecorded here again:
+
+- `PERSONAL` — household: sheet, period P&L, net-worth bridge, cash-flow
+  (the same-day amendment below), budget vs actual, named-loan roll-forward.
+  Ingest: `bank-statement`, `loan-payment`.
+- `INVESTMENT` — fund administration as one kind of four, not the product:
+  partner capital (beginning → contributions → distributions → allocated
+  plugs → ending; unset without a partner cut; never an equal split of
+  book NAV), commitments / undrawn, period NAV roll-forward, then the
+  ABOR warehouse. Does not file a Fund.
+- `PROJECT` — a job, not an entity: original vs revised contract, awarded
+  committed cost, remaining to spend, remaining to bill, collections vs
+  billed. Unset until the journal can support them. The budget page does
+  not forecast.
+- `OPERATING` — an ordinary operating business: cash, AR, AP, operating
+  revenue / expense, owner equity. Sheet and period income statement
+  that tie to the trial balance. AR/AP aging is a named follow-on
+  (#117) — no due date, no open-item application.
+
+**The wedge is still the revenue path.** A paid shadow run on a real
+customer's period is the first dollar. What changed is the *unit*. The
+fund-admin Cognito demo is not the plan of record; independent Books
+across four kinds are. The first engagement is still a fund
+administrator's quarter, because that is who feels reconciliation pain
+and who this file already named. That is a decision, written here rather
+than inferred from the commit log.
+
+**What this is NOT, because two entries on the refusal list are adjacent
+to it and both still stand:**
+
+- **Not "the client portal."** That entry is a customer self-service
+  product — a signed-in surface where a CLIENT of a firm operates on
+  their own fund (an LP on a capital account, a household as someone
+  else's customer). The 2026-08-11 and 2026-08-15 amendments drew that
+  line for console auth and for `/scale`. A Personal, Project, or
+  Operating book is the operator of that book on the same ops console,
+  behind the same fence (no approve button, no control-plane editor,
+  kind selects chrome). Growing kinds on the operator surface is not a
+  second product for clients.
+- **Not "performance reporting and attribution."** The `/scale`
+  amendment already drew this line: that entry means *investment*
+  performance — returns, benchmarks, attribution against an index.
+  Partner capital is who put money in and what remains callable.
+  A NAV roll-forward is beginning → plugs → ending on the same journal.
+  Neither computes a return. The multi-view amendment said the same
+  about a settlement-basis NAV.
+
+**Sign-in is WorkOS AuthKit**, on `https://ratio.marsh.build`. Cognito
+is not the code path. AuthKit is in the code (#63). Vercel Production
+has the env (#68 closed). Live activation leftovers remain on #22 —
+write-route actor binding, API authorizer leftovers, Cognito leftovers
+in the deploy templates. Do not read this paragraph as
+production-complete, and do not read a walk-through as demo-ready (#27).
+
+**What it cost.** A Book proto resource; `book.toml`; `CreateBook` /
+`ListBooks` / `GetBook`; kind-selected charts and ingest templates;
+`screensFor` as the one chrome list; the AuthKit callback (`/sign-in`,
+`/callback`) in place of Cognito's Hosted UI. The domain figures above
+composed onto existing URLs — `/capital`, `/billing`, `/budget`,
+`/sheet`, `/pnl` — rather than minting a chrome list per issue.
+
+**What it did NOT buy, and this is the honest half.** Period close
+(#114) is the Stage 1 door ("no effect on a closed period"); this
+amendment does not land it and does not refuse it. AR/AP aging is
+unset. Envelope coaching, bank OAuth, a credit score, a cash forecast,
+and a client portal stay refused or on their own issues. The remaining
+wedge gap is still a real customer's period.
+
 ### Amendment, 2026-09-03 — a household cash-flow statement, and nothing on the refusal list moved
 
 Personal books already cited a sheet, a period P&L, a net-worth bridge, budget
@@ -681,7 +777,8 @@ What landed is a citeable period figure at `/books/{id}/views/{view}/cashflow`,
 folded from the same journal as every other household figure (`filter=
 cashflow-YYYY[-MM]`, the Loan-shaped window the bridge already uses). No new
 RPC, no second store, no proto resource. Kind still selects the chrome from
-one `screensFor` list — Fund, Project, and Investment books do not wear it.
+one `screensFor` list — Fund, Project, Investment, and Operating books
+do not wear it.
 
 **The split the chart can support.** Operating / investing / financing,
 reconstructed from each non-cash account's period net (cash from an account

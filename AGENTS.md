@@ -31,9 +31,10 @@ members are stale and the Lean emission step has no Cargo equivalent.
 ⚠ **`bazel test //...` is the whole suite for everything except `console/`.** The
 operations console is a Next.js application built by Vercel, so there is no
 JavaScript toolchain in the Bazel graph; `.github/workflows/console.yml` is a
-required check and runs `tsc --noEmit`, the render suite, `next build` and five
+required check and runs `tsc --noEmit`, the render suite, `next build` and six
 source-text checks. ⛔ The one thing Bazel still asserts about the console is
 `//proto:mirrors_test`, which holds `console/src/wire/types.ts` to the proto.
+`//:plan_refusals_test` also holds every `BookKind` in that file to `PLAN.md`.
 
 **Proofs before code, for anything that decides a figure.** The order in this
 repository is Lean or TLA+ first, then Rust against it. `//tla:relief_engine_

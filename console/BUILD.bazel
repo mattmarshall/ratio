@@ -4,7 +4,7 @@
 #
 # The console is a Next.js application built and deployed by Vercel, which runs
 # its ordinary `next build`. `.github/workflows/console.yml` is the required
-# check: `tsc --noEmit`, the render suite, `next build`, and the five source-text
+# check: `tsc --noEmit`, the render suite, `next build`, and the six source-text
 # checks in `scripts/`. None of them need Bazel, and they are green there.
 #
 # ⚠ THEY USED TO BE `sh_test`s HERE, AND THE REASON THEY ARE NOT IS WORTH
@@ -24,4 +24,7 @@
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["src/wire/types.ts"])
+exports_files([
+    "src/wire/types.ts",
+    "scripts/book_kinds_in_plan_test.py",
+])
