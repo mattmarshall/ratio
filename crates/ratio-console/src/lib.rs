@@ -3353,6 +3353,11 @@ impl Console {
                 postings: legs,
                 trade_date: Some(through.to_string()),
                 announcement: None,
+                // ⛔ A CLOSE IS NOT AN OPEN ITEM. Aging (#117) reads due_date
+                // and application; inventing either here would put the
+                // closing posting in a current bucket.
+                due_date: None,
+                application: None,
             };
             b.append(&entry)?;
             (Some(id), Some(dest_amt), digest.as_str().to_string())
