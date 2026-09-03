@@ -2695,7 +2695,20 @@ describe("an operating-business statement", () => {
       expect(screen.getByText("150.00")).toBeDefined();
       expect(screen.getByText("500.00")).toBeDefined();
       expect(screen.getByText("200.00")).toBeDefined();
-      expect(screen.getAllByText("-50.00").length).toBe(2);
+      // ⛔ BOTH THE OWNER-EQUITY PLUG AND THE FINANCING FOOT ARE -50.00.
+      // getByText("-50.00") finds both; the right figure is the one on
+      // its row. Investing stays unset on this chart — not a silent 0.00.
+      const owner = screen.getByText("Owner equity").closest("[role=row]");
+      expect(owner?.textContent).toContain("-50.00");
+      const financing = screen
+        .getAllByRole("row")
+        .find((r) => r.className.includes("tbfoot") && r.textContent?.includes("Financing"));
+      expect(financing?.textContent).toContain("-50.00");
+      const investing = screen
+        .getAllByRole("row")
+        .find((r) => r.className.includes("tbfoot") && r.textContent?.includes("Investing"));
+      expect(investing?.textContent).toContain("—");
+      expect(investing?.textContent).not.toMatch(/0\.00/);
       expect(screen.getByText("working capital — an invoice is not a cash inflow")).toBeDefined();
       expect(screen.getByText("working capital — a vendor bill is not a cash outflow")).toBeDefined();
       expect(screen.getByText(/no investing account on this chart/)).toBeDefined();
