@@ -284,7 +284,7 @@ books wrong.*
 
 **Two surfaces now, on two clouds, and the split is deliberate.**
 
-`https://ratio-ims.vercel.app/` — the operations console. A Next.js application
+`https://ratio.marsh.build/` — the operations console. A Next.js application
 with a route per resource, so a break, a NAV strike or a configuration version
 can be sent to somebody rather than described. Sign-in is Cognito, open to
 anyone; the browser never calls AWS, because the console's own server holds the

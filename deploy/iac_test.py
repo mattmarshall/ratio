@@ -188,6 +188,58 @@ def main(app_path, bootstrap_path, workflow_path):
         else:
             print("  ok  the task roles can be passed to ECS")
 
+    # ⛔ A MISSING WORKOS CLIENT ID MUST NOT BECOME A PRODUCTION IDENTIFIER.
+    # `${WORKOS_CLIENT_ID:-}` in a `[ -z ]` test is not a fallback — that is
+    # how bash reads an unset variable under `set -u`. The thing this refuses
+    # is `:-client_…`, a missing value turning into a live identifier. `flow`
+    # is already comment-stripped, so a sentence describing the old fallback
+    # cannot satisfy or fail this.
+    if ":-client_" in flow:
+        fail(
+            f"{workflow_path} falls back to a hard-coded WorkOS client id when "
+            "the variable is unset — a missing configuration value becoming a "
+            "production identifier"
+        )
+    else:
+        print("  ok  WORKOS_CLIENT_ID has no silent default in the workflow")
+
+    if 'WorkOsClientId="${WORKOS_CLIENT_ID}"' not in flow:
+        fail(
+            f"{workflow_path} does not pass WorkOsClientId from WORKOS_CLIENT_ID "
+            "with no fallback"
+        )
+    else:
+        print("  ok  WorkOsClientId is passed from the variable, nothing else")
+
+    # ⭐ THE FAILURE THAT SAID NOTHING. `cloudformation deploy` exits 255 and
+    # tells the reader to run describe-stack-events on a box they do not have.
+    # A check satisfied by the command appearing in a comment is the same
+    # shape as the CAPABILITY_NAMED_IAM check above, which is why this uses
+    # `flow` rather than the raw file.
+    if "describe-stack-events" not in flow:
+        fail(
+            f"{workflow_path} does not dump CloudFormation stack events on "
+            "deploy failure — the next red run will again say nothing"
+        )
+    else:
+        print("  ok  a failed deploy dumps stack events")
+
+    if "ratio.marsh.build" not in flow:
+        fail(
+            f"{workflow_path} no longer names the production console origin "
+            "https://ratio.marsh.build"
+        )
+    else:
+        print("  ok  the workflow names the production console origin")
+
+    if 'Default: "client_01M1JJZTFXFDZJ0XJM1NPNSEJB"' in app:
+        fail(
+            f"{app_path} defaults WorkOsClientId to a production client id — "
+            "a missing parameter must not become a live audience"
+        )
+    else:
+        print("  ok  WorkOsClientId has no template default")
+
     if failures:
         print(f"\n{len(failures)} problem(s): the app stack and the deploy role disagree "
               "about what may be created", file=sys.stderr)
