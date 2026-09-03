@@ -70,6 +70,10 @@ get breaks.json             "funds/${FUND}/breaks"
 get accounts.json           "funds/${FUND}/accounts"
 get positions.json          "funds/${FUND}/positions"
 get navStrikes.json         "funds/${STRUCK}/navStrikes"
+# ⚠ EMPTY IS THE CAPTURE. Seeded demo books have not closed a period. The
+# committed file is that empty list, not a hand-written close — inventing
+# one would make `/close` look closed against a book that never was.
+get periodCloses.json       "funds/${FUND}/views/abor/periodCloses"
 get configVersions.json     "funds/${FUND}/configVersions"
 get rules.json              "funds/${FUND}/rules"
 get templates.json          "funds/${FUND}/templates"

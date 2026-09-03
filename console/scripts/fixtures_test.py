@@ -45,6 +45,7 @@ FIXTURES = {
     "positions.json": "ListPositionsResponse",
     "lots.json": "ListLotsResponse",
     "navStrikes.json": "ListNavStrikesResponse",
+    "periodCloses.json": "ListPeriodClosesResponse",
     "replay.json": "ReplayNavStrikeResponse",
     "explain.json": "ExplainNavStrikeResponse",
     "configVersions.json": "ListConfigVersionsResponse",
