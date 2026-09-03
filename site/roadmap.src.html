@@ -104,13 +104,15 @@ __STYLE__
           Project templates — each job at its own URL. The screens behind those
           templates are still the operations surface, not three finished
           products.</li>
+          <li>A versioned ConfigStore — directory, hash, atomic pointer — and a
+          fact plane whose prices and FX an operator can open from a figure.</li>
         </ul>
       </div>
       <div class="r-spec">
         <p class="r-col-tag neg">Designed, specified, not yet built</p>
         <ul>
-          <li>Both planes described on the <a href="platform.html">platform
-          page</a> — the versioned control plane and the typed fact plane.</li>
+          <li>Reviewed change control (geetch/crova). Today's pointer file is
+          the seam; a forge is still ahead.</li>
           <li>Postgres for transactional state. The journal is the store today;
           a relational engine is still ahead.</li>
           <li>Every one of the sixteen capability areas below, at varying
@@ -231,7 +233,7 @@ __STYLE__
       Reviewed change control (geetch/crova) waits for a second customer.</p>
       <ul class="r-deliver">
         <li class="d">The append-only journal — persistence without a database</li>
-        <li class="d">Control plane: versioned, reviewed, atomic</li>
+        <li class="d">Control plane: versioned, atomic — ConfigStore seam</li>
         <li class="d">Fact plane: prices and FX with provenance</li>
         <li class="d">Multi-currency and FX translation</li>
         <li class="d">Tax lots and cost-basis methods</li>
