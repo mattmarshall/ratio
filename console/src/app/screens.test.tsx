@@ -516,7 +516,7 @@ describe("a first-class book", () => {
           searchParams: params({}),
         }),
       );
-      expect(screen.getByText("100,000.00")).toBeDefined();
+      expect(screen.getAllByText("100,000.00").length).toBe(2);
       expect(screen.getByText("Project costs")).toBeDefined();
       expect(screen.getByText("Work in progress")).toBeDefined();
       // incurred 6,000.00; committed 8,000.00; variance 92,000.00

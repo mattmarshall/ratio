@@ -225,8 +225,7 @@ async function projectBudget({
               Original contract
               <span className="at">
                 not a second ledger — journal costs, WIP and payables
-                against a configuration total. [project] budget is not
-                rewritten when a change order posts
+                against a configuration total. [project] budget is not rewritten when a change order posts
               </span>
             </span>
             <span role="cell" className="num">
