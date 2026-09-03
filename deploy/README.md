@@ -274,11 +274,14 @@ book pins, then `/books/{id}/views/{view}/budget` for a month or a year —
 unset shows as unset, not a fake zero). CreateBook(Project) lands on the
 same `/budget` URL as a cumulative project roll-up — original contract,
 approved change orders, and revised — and `/billing` as billed vs earned,
-retainage, cost by phase, and the revised contract as the billing basis.
-A change-order walk-through can record `approve_co_site` / `deduct_co_site`
-or ingest `change-orders`; it cannot show AIA G702 product UI, a client
-portal, e-signature, or CRM. Unset original / unposted COs stay unset, not
-a fake zero. The live demo does not seed those baselines or any
+retainage, cost by phase, remaining to bill (revised − billed), and
+collections vs billed (cash against AR). A change-order walk-through can
+record `approve_co_site` / `deduct_co_site` or ingest `change-orders`; a
+remaining-to-bill / collections walk-through can cite those leftovers on
+`/billing` after `progress_bill` / `collect_receivable`. Neither can show
+AIA G702 product UI, a client portal, e-signature, or CRM. Unset original
+/ unposted COs / unbilled remaining / uncollected cash stay unset, not a
+fake zero. The live demo does not seed those baselines or any
 commitment postings. CreateBook(Investment)
 lands on capital activity (funded partners plus commitment / undrawn —
 unset until a commitment posts, not a callable zero), then the fund ABOR

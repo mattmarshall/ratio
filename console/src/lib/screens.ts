@@ -13,7 +13,8 @@
 // ⭐ KIND SELECTS THE LIST. A personal book that offered Exceptions / Positions
 // / NAV would be a fake label on fund-ops screens — issue #65 (sheet/P&L)
 // and #83 (budget). A project book that wore that warehouse is #66 (budget/WIP)
-// and #85 (billing). An investment book cites partner capital first — funded
+// and #85 (billing); remaining-to-bill and collections compose onto
+// `/billing` (#100). An investment book cites partner capital first — funded
 // activity and commitment / undrawn on the same `/capital` URL (#70, #82) —
 // then a period NAV roll-forward (#96), then the ABOR warehouse. The
 // agreement screens stay shared: a rule set is the same document whichever
@@ -83,8 +84,10 @@ export const PERSONAL_SCREENS: readonly Screen[] = [
  *
  * ⛔ `/billing` IS NOT `/budget`. Budget is authorized spend vs committed
  * cost — original contract, approved change orders, revised. Billing is
- * billed vs earned, retainage, and cost by phase. Change orders compose
- * onto both; they are not a third URL. One chrome list (`screensFor`).
+ * billed vs earned, retainage, cost by phase, remaining to bill (revised
+ * − billed), and collections vs billed (cash against AR). Change orders,
+ * remaining-to-bill, and collections compose onto those URLs; they are
+ * not a third chrome list. One chrome list (`screensFor`).
  *
  * Trial balance stays: it is the conservation view of the same accounts, and
  * a figure that could not be checked against it would be a picture.

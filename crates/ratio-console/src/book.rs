@@ -1061,9 +1061,11 @@ reads = "csv"
 /// no holdback never posts it, and the figure stays unset rather than 0%.
 ///
 /// WIP capitalization (`capitalize_wip` / `recognize_wip`) is #66 / PR #80.
-/// Progress billing is #85 / PR #88. Change orders are #91. All three seed
-/// here; `/wip` and `/billing` stay two URLs, and change orders compose
-/// onto `/budget` and `/billing` rather than a third chrome list.
+/// Progress billing is #85 / PR #88. Change orders are #91. Remaining to
+/// bill and collections vs billed (#100) compose onto `/billing` from the
+/// same journal — they do not add a rule. `/wip` and `/billing` stay two
+/// URLs; change orders, remaining-to-bill, and collections compose onto
+/// `/budget` and `/billing` rather than a third chrome list.
 ///
 /// Phase budget: `[[project.phase]] account = <dim> budget = <minor units>`.
 /// Omitting the row means no baseline, not a budget of zero.

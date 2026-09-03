@@ -6017,6 +6017,102 @@ mod tests {
     }
 
     #[test]
+    fn remaining_to_bill_and_collections_stay_unset_until_the_journal_can_support_them() {
+        // ⭐ THE CLAIM #100 IS ABOUT. Remaining to bill is revised − billed.
+        // Collections vs billed is cash against AR. Both compose from
+        // ListAccounts + projectProgress + [project] budget — the same
+        // cuts `/billing` already reads. Treating unbilled as billed-zero
+        // would print the whole contract as remaining; treating unbilled
+        // as collected-zero would invent cash that never arrived.
+        let root = fresh("project-remaining-collections");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let unset = c.project_progress(&view).unwrap();
+        assert!(
+            unset.billed.is_empty(),
+            "a new project has not billed: {:?}",
+            unset.billed
+        );
+        assert_eq!(
+            c.get_book("books/bridge").unwrap().budget,
+            "",
+            "CreateBook must not invent a contract baseline"
+        );
+        let seed = c.list_accounts(&view, "").unwrap().accounts;
+        let ar = seed
+            .iter()
+            .find(|a| a.display_name == "Accounts receivable")
+            .expect("seeded AR");
+        assert_eq!(
+            ar.posting_count, "0",
+            "a new project has not opened a receivable: {ar:?}"
+        );
+
+        let path = root.join("bridge");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str("\n[project]\nbudget = 1000000\n");
+        let next = b.put(text.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+        assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
+
+        // Budget set, still unbilled: remaining cannot be the whole contract.
+        let still_unbilled = c.project_progress(&view).unwrap();
+        assert!(
+            still_unbilled.billed.is_empty(),
+            "setting [project] budget must not invent a billed figure: {:?}",
+            still_unbilled.billed
+        );
+
+        c.apply_event(&project_event("bill-1", "progress_bill", "1000.00"))
+            .unwrap();
+        c.apply_event(&project_event("hold-1", "hold_retainage", "100.00"))
+            .unwrap();
+        c.apply_event(&project_event("collect-1", "collect_receivable", "400.00"))
+            .unwrap();
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        let proj = c.projection("bridge").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "collecting a receivable must not claim lot relief"
+        );
+
+        let fig = c.project_progress(&view).unwrap();
+        assert_eq!(fig.billed, "100000");
+        assert_eq!(fig.retainage_receivable, "10000");
+        let accounts = c.list_accounts(&view, "").unwrap().accounts;
+        let ar = accounts
+            .iter()
+            .find(|a| a.display_name == "Accounts receivable")
+            .unwrap();
+        assert_eq!(ar.balance, "50000");
+        assert_ne!(ar.posting_count, "0");
+        // collected = billed − AR − retainage = 100000 − 50000 − 10000
+        let billed: i64 = fig.billed.parse().unwrap();
+        let receivable: i64 = ar.balance.parse().unwrap();
+        let held: i64 = fig.retainage_receivable.parse().unwrap();
+        assert_eq!(billed - receivable - held, 40000);
+        // remaining = revised − billed = 1000000 − 100000 (no CO posted)
+        let approved = accounts.iter().any(|a| {
+            a.display_name.starts_with("Approved change orders") && a.posting_count != "0"
+        });
+        assert!(!approved, "this walk-through posts no change order");
+        assert_eq!(1_000_000 - billed, 900_000);
+    }
+
+    #[test]
     fn approved_change_orders_adjust_contract_without_rewriting_the_baseline() {
         // ⭐ THE CLAIM #91 IS ABOUT. [project] budget is the original
         // contract. An approved CO posts a conserved equity pair keyed by

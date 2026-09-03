@@ -115,6 +115,8 @@ export const ROUTES: readonly Route[] = [
     file: "books/[book]/views/[view]/reconcile/page.tsx",
     reads: ["reconcileViews"],
   },
+  // Remaining to bill and collections vs billed compose here from
+  // ListAccounts + projectProgress + [project] budget — not a second URL.
   {
     path: "/books/[book]/views/[view]/billing",
     file: "books/[book]/views/[view]/billing/page.tsx",
@@ -224,8 +226,9 @@ export const ROUTES: readonly Route[] = [
   // ⭐ ONE `/budget` URL. Kind selects the roll-up: household period spend
   // against `[personal] budget`, or project original vs revised contract
   // against journal costs. Approved change orders compose onto this page
-  // and `/billing`; they are not a second chrome list. A second path
-  // would be a second answer.
+  // and `/billing`; remaining-to-bill and collections live on `/billing`.
+  // They are not a second chrome list. A second path would be a second
+  // answer.
   {
     path: "/books/[book]/views/[view]/budget",
     file: "books/[book]/views/[view]/budget/page.tsx",

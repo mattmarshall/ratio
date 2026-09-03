@@ -8,8 +8,11 @@
 // (`Book.budget`) — the original contract. Billing is billed vs earned,
 // retainage, and cost by phase from `projectProgress`. Approved change
 // orders are a conserved equity pair on the same chart; they adjust the
-// revised contract without rewriting that key. Those stay two URLs;
-// change orders compose onto both rather than a third chrome list.
+// revised contract without rewriting that key. Remaining to bill is
+// revised − billed; collections vs billed is cash against AR (billed −
+// outstanding receivable − retainage held). Those stay two URLs;
+// change orders, remaining-to-bill, and collections compose onto both
+// rather than a third chrome list.
 
 import { money } from "./format";
 import type { Account } from "@/wire/types";
@@ -141,9 +144,10 @@ export interface ProjectRollup {
  * else the first asset that is not WIP.
  *
  * ⚠ BILLING FIGURES ARE NOT THIS ROLL-UP. Progress billings, retainage and
- * unbilled receivables live on `/billing` via `projectProgress`. Folding
- * them into committed spend here would make `/budget` answer a different
- * question.
+ * unbilled receivables live on `/billing` via `projectProgress`. Remaining
+ * to bill and collections compose there from this roll-up's revised
+ * contract plus those billing cuts. Folding them into committed spend
+ * here would make `/budget` answer a different question.
  *
  * ⚠ CHANGE ORDERS ARE NOT FUNDING AND NOT COST. They are excluded from
  * `funding` the way commitments are excluded from book capital. Variance
@@ -235,6 +239,64 @@ export function revisedContract(
 ): bigint | null {
   if (baseline === null) return null;
   return baseline + (approved ?? 0n);
+}
+
+/**
+ * Remaining to bill: revised − billed.
+ *
+ * ⛔ UNSET STAYS UNSET. An unknown baseline cannot produce a remainder.
+ * An unbilled job is not billed-zero — treating billed as 0 would print
+ * the whole contract as remaining and look like a measured leftover.
+ * A posted billed of nothing against a set revised is a real zero.
+ */
+export function remainingToBill(
+  revised: bigint | null,
+  billed: string,
+): bigint | null {
+  if (revised === null || billed === "") return null;
+  return revised - raw(billed);
+}
+
+/** Debit-normal Accounts receivable, or null when that account has not posted. */
+export function accountsReceivable(accounts: readonly Account[]): bigint | null {
+  const a = accounts.find((x) => x.displayName === "Accounts receivable");
+  if (!a || !isPosted(a)) return null;
+  return raw(a.balance);
+}
+
+/**
+ * Cash collected against billed AR: billed − AR − retainage held.
+ *
+ * ⛔ NOT A FAKE ZERO. Unset billed cannot support collections-vs-billed.
+ * Unset AR cannot either — progress_bill always posts the receivable, so
+ * a billed figure with no AR posting is a chart the identity cannot read.
+ * Retainage that has never been held is 0 for the subtraction (no hold
+ * is not an unknown hold). Billed and uncollected is a real zero.
+ */
+export function collectedAgainstBilled(
+  billed: string,
+  ar: bigint | null,
+  retainageReceivable: string,
+): bigint | null {
+  if (billed === "" || ar === null) return null;
+  const held = retainageReceivable === "" ? 0n : raw(retainageReceivable);
+  return raw(billed) - ar - held;
+}
+
+/**
+ * Uncollected billed: AR + retainage receivable.
+ *
+ * Same refusal as `collectedAgainstBilled` — the two partition billed
+ * when both are set. `collected + outstanding === billed`.
+ */
+export function outstandingAgainstBilled(
+  billed: string,
+  ar: bigint | null,
+  retainageReceivable: string,
+): bigint | null {
+  if (billed === "" || ar === null) return null;
+  const held = retainageReceivable === "" ? 0n : raw(retainageReceivable);
+  return ar + held;
 }
 
 /**
