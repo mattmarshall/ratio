@@ -82,7 +82,7 @@ import type {
  *
  * ⛔ 401 IS A REAL ANSWER, NOT A TRANSPORT FAILURE. `RATIO_AUTH=required` makes
  * the API fail closed: a `/v1` request the gateway attached no verified identity
- * to is refused even if the authorizer were removed. A page catches this and
+ * to is refused even if the authorizer were removed. `orAuth` catches this and
  * redirects to sign-in rather than rendering an error row.
  */
 export class AuthError extends Error {

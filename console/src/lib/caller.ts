@@ -44,8 +44,11 @@ export async function caller(): Promise<Caller> {
  * component cannot see its own URL. It is a path and never an absolute URL, and
  * `/sign-in` re-checks that before redirecting to it — an unchecked
  * return target on a route that carries tokens is an open redirect.
+ *
+ * `orAuth` reuses this rather than building a second one — a second
+ * construction is how an open redirect gets invented.
  */
-async function signInHref(): Promise<string> {
+export async function signInHref(): Promise<string> {
   const here = (await headers()).get("x-pathname");
   return here ? `/signin?returnTo=${encodeURIComponent(here)}` : "/signin";
 }

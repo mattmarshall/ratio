@@ -15,8 +15,8 @@ import { Refused } from "@/wire/client";
  * refusal is returned as a value rather than thrown; the error boundary is for
  * the unexpected ones.
  *
- * ⚠ `NotFound` and `AuthError` deliberately still throw — `or404` and the
- * sign-in redirect are their handlers, and a refusal is neither: the resource
+ * ⚠ `NotFound` and `AuthError` deliberately still throw — `or404` and
+ * `orAuth` are their handlers, and a refusal is neither: the resource
  * exists, the caller may see it, and the answer is a sentence about why there
  * is no figure.
  */
