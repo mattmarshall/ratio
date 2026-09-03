@@ -33,6 +33,8 @@ const fixture = (name) => readFileSync(join(FIXTURES, `${name}.json`), "utf8");
 // swallows `…/navStrikes/x:explain` before the explain route is consulted —
 // and answers it with the wrong shape.
 const ROUTES = [
+  [/^\/v1\/books$/, "books"],
+  [/^\/v1\/books\/[^/:]+$/, "book"],
   [/^\/v1\/funds$/, "funds"],
   [/^\/v1\/funds\/[^/:]+$/, "fund"],
   [/^\/v1\/funds\/[^/]+\/views$/, "views"],
