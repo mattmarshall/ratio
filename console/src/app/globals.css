@@ -139,6 +139,9 @@ a.brandlink{color:inherit;text-decoration:none}
 .qhead{padding:18px 22px 12px;border-bottom:1px solid var(--rule);background:var(--ground);
   position:sticky;top:0;z-index:2}
 .qhead h1{font-size:21px;letter-spacing:-.015em}
+.bookcrumb{display:inline-block;font-size:12px;font-weight:600;color:var(--text-2);
+  text-decoration:none;margin-bottom:6px}
+.bookcrumb:hover{color:var(--text)}
 .subhead{display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;margin-top:5px;
   font-size:12.5px;color:var(--muted)}
 .subhead code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
