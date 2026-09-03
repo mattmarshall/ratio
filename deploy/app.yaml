@@ -231,6 +231,12 @@ Resources:
           # URL. Set, append is LIST then conditional PUT at max+1
           # (`tla/S3Journal.tla`). The seeded chart and config still copy into
           # /tmp — they are not the system of record for a write.
+          #
+          # ⭐ MUST STAY SET. Clearing this was an ops workaround when
+          # hydrate re-claimed every seed line and list folded every object
+          # — that hung /v1/books. hydrate_jsonl now short-circuits on
+          # SeqLog height and list reads local files; do not leave
+          # production dependent on unsetting the bucket.
           RATIO_JOURNAL_BUCKET: !Ref ScaleBucket
           RATIO_JOURNAL_PREFIX: journals/
           # The report email: who it is from, and where its permalink points.
