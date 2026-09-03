@@ -22,7 +22,7 @@
 //! gain is wrong — which is the figure nobody reconciles because it has no
 //! counterparty.
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 
 use crate::generated_lots::{lot_is_sound, partial_cost, partial_divides, takes_whole_lot};
 

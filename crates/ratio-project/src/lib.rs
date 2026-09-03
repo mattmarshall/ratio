@@ -1557,16 +1557,25 @@ impl Projection {
                             *fold.lots.short_term.entry(ccy.clone()).or_default() += short;
                             *fold.lots.long_term.entry(ccy).or_default() += long;
                         }
-                        attached.and_then(|w| {
-                            (w.remaining_units > 0 && w.remaining_loss < 0).then(|| PendingWash {
-                                key: key.clone(),
-                                window: terms.wash_window_days,
-                                sold_on: trade_day?,
-                                remaining_units: w.remaining_units,
-                                remaining_loss: w.remaining_loss,
-                                original_acquired: r.taken.iter().filter_map(|t| t.acquired).min(),
-                            })
-                        })
+                        match (attached, trade_day) {
+                            (Some(w), Some(sold_on))
+                                if w.remaining_units > 0 && w.remaining_loss < 0 =>
+                            {
+                                Some(PendingWash {
+                                    key: key.clone(),
+                                    window: terms.wash_window_days,
+                                    sold_on,
+                                    remaining_units: w.remaining_units,
+                                    remaining_loss: w.remaining_loss,
+                                    original_acquired: r
+                                        .taken
+                                        .iter()
+                                        .filter_map(|t| t.acquired)
+                                        .min(),
+                                })
+                            }
+                            _ => None,
+                        }
                     }
                     Err(e) => {
                         fold.lots.breaks.push(format!(
