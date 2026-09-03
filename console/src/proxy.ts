@@ -1,5 +1,9 @@
-import { authkit } from "@workos-inc/authkit-nextjs";
+import {
+  applyResponseHeaders,
+  authkit,
+} from "@workos-inc/authkit-nextjs";
 import { NextResponse, type NextRequest } from "next/server";
+import { mergeAuthkitProxyHeaders } from "@/lib/authkitProxy";
 import { workosConfigured } from "@/lib/workos";
 
 // The Content-Security-Policy, with a per-request nonce.
@@ -46,34 +50,27 @@ const POLICY = (nonce: string) =>
 // old filename; the export name follows the file.
 export default async function proxy(req: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const pathname = req.nextUrl.pathname + req.nextUrl.search;
 
-  const headers = new Headers(req.headers);
-  headers.set("x-nonce", nonce);
-  // ⛔ SO A DEEP LINK SURVIVES SIGNING IN. A server component cannot see its own
-  // URL, and without this `caller()` can only send an unauthenticated visitor to
-  // the default queue — which throws away the very thing this console exists to
-  // provide. Somebody sent a link to ONE break; landing them somewhere else and
-  // making them find it again is the old console's behaviour with extra steps.
-  headers.set("x-pathname", req.nextUrl.pathname + req.nextUrl.search);
+  let requestHeaders = new Headers(req.headers);
+  let responseHeaders = new Headers();
 
-  // AuthKit's composable helper refreshes the session cookie. Route protection
-  // stays in `caller()` / `withAuth()`, the same page-based pattern the docs
-  // describe — this proxy already has CSP work that `authkitMiddleware()`
-  // would replace. https://workos.com/docs/authkit/nextjs
-  let authkitHeaders = new Headers();
   if (workosConfigured()) {
-    const result = await authkit(req);
-    authkitHeaders = result.headers;
+    const { headers: authkitHeaders } = await authkit(req);
+    ({ requestHeaders, responseHeaders } = mergeAuthkitProxyHeaders(
+      req,
+      authkitHeaders,
+      { "x-nonce": nonce, "x-pathname": pathname },
+    ));
+  } else {
+    requestHeaders.set("x-nonce", nonce);
+    requestHeaders.set("x-pathname", pathname);
   }
 
-  const res = NextResponse.next({ request: { headers } });
-  for (const [key, value] of authkitHeaders) {
-    if (key.toLowerCase() === "set-cookie") {
-      res.headers.append(key, value);
-    } else {
-      res.headers.set(key, value);
-    }
-  }
+  const res = applyResponseHeaders(
+    NextResponse.next({ request: { headers: requestHeaders } }),
+    responseHeaders,
+  );
   res.headers.set("Content-Security-Policy", POLICY(nonce));
   return res;
 }
