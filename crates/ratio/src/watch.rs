@@ -40,8 +40,38 @@ use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::{check, render as render_rule, RuleSet};
 use ratio_store::{ConfigStore, FileBook, Journal};
 
+/// Wire the durable journal, if the environment asked for one.
+///
+/// ⚠ UNSET IS THE LOCAL SHAPE, not a misconfiguration. `ratio watch` on a
+/// laptop writes `journal.jsonl` as it always has. The deployed demo sets
+/// `RATIO_JOURNAL_BUCKET` (the same bucket as the scale runner, a `journals/`
+/// prefix) so a write survives the next cold start and two containers share
+/// one log. `RATIO_JOURNAL_LOCAL` is the same claim on a directory, for a
+/// laptop that wants to see the seam without AWS.
+fn install_journal_store() -> Result<()> {
+    if let Some(bucket) = std::env::var("RATIO_JOURNAL_BUCKET").ok().filter(|b| !b.is_empty()) {
+        let prefix = std::env::var("RATIO_JOURNAL_PREFIX")
+            .ok()
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| "journals/".to_string());
+        let store = scale::S3::open(&bucket, prefix)
+            .with_context(|| format!("opening the journal store in s3://{bucket}"))?;
+        ratio_store::install_object_store(std::sync::Arc::new(store));
+        return Ok(());
+    }
+    if let Some(dir) = std::env::var("RATIO_JOURNAL_LOCAL").ok().filter(|d| !d.is_empty()) {
+        ratio_store::install_object_store(std::sync::Arc::new(ratio_store::DirStore::at(dir)));
+    }
+    Ok(())
+}
+
 /// Serve the screens until interrupted.
 pub fn watch(book: PathBuf, port: u16) -> Result<()> {
+    // ⛔ BEFORE THE FIRST OPEN. FileBook reads the process-wide store on
+    // `open`, so installing after the first request would leave that request
+    // writing `/tmp` while later ones write the object store — two journals
+    // under one URL, which is the fork this exists to close.
+    install_journal_store()?;
     // Fail on a bad book here rather than rendering an error page later.
     FileBook::open(&book).with_context(|| format!("opening book at {}", book.display()))?;
 

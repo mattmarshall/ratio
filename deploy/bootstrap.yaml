@@ -439,9 +439,10 @@ Resources:
                     iam:PassedToService: ecs-tasks.amazonaws.com
 
   # ── What the function itself may do ─────────────────────────────────────
-  # Deliberately almost nothing. The demo reads a book baked into its own image
-  # and writes to /tmp; it has no reason to reach any AWS API, so it is given
-  # no permission to.
+  # The demo used to read a book baked into its image and write only to /tmp.
+  # It now also invokes Bedrock, starts a scale task, and appends the journal
+  # to one prefix of the scale bucket. Each of those is a Sid below, scoped
+  # to the thing it names. It is given no permission it does not use.
   ExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -540,6 +541,25 @@ Resources:
                 Condition:
                   StringLike:
                     s3:prefix: "runs/*"
+
+              # Issue #24: the journal on the same bucket, a different prefix.
+              # ⛔ NO DeleteObject. The log is append-only; a delete would be a
+              # truncation wearing an IAM grant. PutObject here is the
+              # conditional PUT (`If-None-Match:*`) — no extra permission, and
+              # no read-then-write that could admit two writers to one slot.
+              - Sid: TheJournal
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub "arn:aws:s3:::ratio-demo-scale-${AWS::AccountId}/journals/*"
+              - Sid: ListOnlyTheJournalPrefix
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::ratio-demo-scale-${AWS::AccountId}"
+                Condition:
+                  StringLike:
+                    s3:prefix: "journals/*"
               # A lead who arrives during a cooldown is emailed the LATEST run's
               # report immediately — no task exists to send it later, so the
               # function sends it. ⛔ Scoped exactly as the task role's grant is:

@@ -752,18 +752,13 @@ impl Console {
             bail!("{id:?} is already in this journal — an event is recorded once");
         }
 
-        // ⚠ On the public demo this endpoint is unauthenticated, because the
-        // demo is the point. The exposure is deliberately small — the fields
-        // are structured, the memo is composed rather than supplied, the event
-        // id is validated, and a cold start restores the books — but "small"
-        // is not "none", and an unbounded journal in a 512 MB /tmp is the one
-        // part that does not heal itself. The deployment sets a ceiling; a
-        // local run has none.
+        // ⚠ The deployment sets a ceiling; a local run has none. The journal
+        // itself is no longer healed by a cold start — when the object store
+        // is wired, a write survives, so the ceiling is the bound that remains.
         if let Some(max) = self.max_entries {
             if !req.validate_only && existing_len >= max {
                 bail!(
-                    "this book has {} entries, which is as many as the demo accepts; \
-                     it resets on the next cold start",
+                    "this book has {} entries, which is as many as the demo accepts",
                     existing_len
                 );
             }
@@ -1266,7 +1261,7 @@ impl Console {
                 if held > max {
                     bail!(
                         "this book would hold {held} facts, which is more than the demo \
-                         accepts; it resets on the next cold start"
+                         accepts"
                     );
                 }
             }
@@ -4953,7 +4948,7 @@ mod tests {
         let refused = c.apply_event(&req("over-1", false));
         assert!(refused.is_err(), "a write past the ceiling must be refused");
         assert!(
-            format!("{:#}", refused.unwrap_err()).contains("cold start"),
+            format!("{:#}", refused.unwrap_err()).contains("as many as the demo accepts"),
             "and must say what happens next",
         );
 

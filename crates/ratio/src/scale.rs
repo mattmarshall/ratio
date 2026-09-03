@@ -464,6 +464,23 @@ impl Store for S3 {
     }
 }
 
+impl ratio_store::ObjectStore for S3 {
+    /// The same conditional PUT the scale lock uses, now as the journal's
+    /// claim. `tla/S3Journal.tla`: a second writer to the same sequence key
+    /// is refused (`If-None-Match:*`) and retries; a blind PUT would overwrite
+    /// an acked entry and the shortened journal would still tie.
+    fn put_if_absent(&self, key: &str, body: &[u8]) -> Result<bool> {
+        let s = std::str::from_utf8(body).context("a journal object is utf-8")?;
+        Store::put_if_absent(self, key, s)
+    }
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        Ok(Store::get(self, key)?.map(String::into_bytes))
+    }
+    fn list(&self, prefix: &str) -> Result<Vec<String>> {
+        Store::list(self, prefix)
+    }
+}
+
 
 // ── Leads, run reports, and the follow-up email ──────────────────────────────
 
