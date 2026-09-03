@@ -490,14 +490,29 @@ fn book_key(root: &Path) -> String {
         .to_string()
 }
 
-/// PUT each non-empty line at its 1-based sequence. Occupied slots are left
-/// alone — another container already hydrated them.
+/// PUT each non-empty line at its 1-based sequence, starting after the
+/// store's current height.
+///
+/// Occupied slots are a contiguous prefix (`ContiguousNoHoles`). If the
+/// store is already at or past the seed, this is a no-op — a second open
+/// must not re-PutObject seq 1..=height. A timeout mid-hydrate leaves a
+/// partial prefix; the next open resumes at height+1 rather than burning
+/// the budget on 412s from seq 1.
 fn hydrate_jsonl(path: &Path, log: &SeqLog) -> Result<()> {
     if !path.exists() {
         return Ok(());
     }
     let text = fs::read_to_string(path).with_context(|| format!("seeding from {}", path.display()))?;
-    for (i, line) in text.lines().filter(|l| !l.trim().is_empty()).enumerate() {
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    let seed_line_count = u64::try_from(lines.len())
+        .ok()
+        .context("the seed is longer than a journal can hold")?;
+    let height = log.height()?;
+    if height >= seed_line_count {
+        return Ok(());
+    }
+    // Contiguous prefix: slots 1..=height are already claimed.
+    for (i, line) in lines.iter().enumerate().skip(height as usize) {
         let seq = (i as u64)
             .checked_add(1)
             .context("the seed is longer than a journal can hold")?;
@@ -798,6 +813,29 @@ impl FileBook {
     /// converge rather than fork.
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
         Self::open_with(root, installed_object_store())
+    }
+
+    /// How many journal entries the index may report.
+    ///
+    /// Prefers the local `journal.jsonl` line count — the demo entrypoint
+    /// copies the seed onto `/tmp`, and that file is authoritative for the
+    /// list. Falls back to [`SeqLog::height`] (one LIST, no body GETs) when
+    /// the local file is missing and a store is in play.
+    ///
+    /// ⛔ NOT A FOLD. `trial_balance` and `for_each_entry_since` GET every
+    /// object; a generated fund cannot finish that inside API Gateway's 30s.
+    /// The books index needs a count, not a trial balance.
+    pub fn list_entry_count(root: &Path, store: Option<Arc<dyn ObjectStore>>) -> Result<u64> {
+        let journal = root.join("journal.jsonl");
+        if journal.is_file() {
+            let text = fs::read_to_string(&journal)
+                .with_context(|| format!("counting {}", journal.display()))?;
+            return Ok(text.lines().filter(|l| !l.trim().is_empty()).count() as u64);
+        }
+        if let Some(store) = store {
+            return SeqLog::new(store, format!("{}/journal/", book_key(root))).height();
+        }
+        Ok(0)
     }
 
     /// Open a book against an explicit store. Tests use this so they do not
@@ -1820,6 +1858,112 @@ mod tests {
         assert_eq!(got.len(), 1, "a second hydrate must not duplicate the seed");
         assert_eq!(got[0].id, "seed");
         assert_eq!(got[0].config, cfg);
+    }
+
+    /// Records every `put_if_absent` attempt, including those that return
+    /// false (occupied). The production defect was re-claiming seq 1..=height
+    /// on every open — a 412 still costs a PutObject.
+    struct CountingStore {
+        inner: MemoryStore,
+        puts: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl CountingStore {
+        fn new() -> Self {
+            Self {
+                inner: MemoryStore::new(),
+                puts: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+        fn puts(&self) -> Vec<String> {
+            self.puts.lock().expect("puts").clone()
+        }
+        fn clear(&self) {
+            self.puts.lock().expect("puts").clear();
+        }
+    }
+
+    impl ObjectStore for CountingStore {
+        fn put_if_absent(&self, key: &str, body: &[u8]) -> Result<bool> {
+            self.puts.lock().expect("puts").push(key.to_string());
+            self.inner.put_if_absent(key, body)
+        }
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            self.inner.get(key)
+        }
+        fn list(&self, prefix: &str) -> Result<Vec<String>> {
+            self.inner.list(prefix)
+        }
+    }
+
+    #[test]
+    fn a_second_hydrate_against_a_full_seed_does_not_put() {
+        // ⭐ THE SHORT-CIRCUIT. Height already covers the seed, so a second
+        // open must not call put for any existing seq — a 412 on every line
+        // is what burned the Lambda budget on ashcombe.
+        let root = tmp();
+        {
+            let mut b = FileBook::open(&root).unwrap();
+            let d = b.put(b"cfg").unwrap();
+            b.set_active(&d).unwrap();
+            b.append(&entry("seed", &d, &[(1, 3), (2, -3)])).unwrap();
+        }
+        let store = Arc::new(CountingStore::new());
+        let first = FileBook::open_with(&root, Some(store.clone())).unwrap();
+        assert_eq!(first.entries().unwrap().len(), 1);
+        store.clear();
+        let second = FileBook::open_with(&root, Some(store.clone())).unwrap();
+        assert_eq!(second.entries().unwrap().len(), 1, "a second hydrate must not duplicate the seed");
+        assert!(
+            store.puts().is_empty(),
+            "a full seed must not re-claim: {:?}",
+            store.puts()
+        );
+    }
+
+    #[test]
+    fn a_partial_hydrate_claims_only_past_the_store_height() {
+        // A timeout mid-seed leaves a contiguous prefix. The next open
+        // resumes at height+1; re-Putting seq 1 is the hang.
+        let root = tmp();
+        fs::write(root.join("journal.jsonl"), "one\ntwo\nthree\n").unwrap();
+        let store = Arc::new(CountingStore::new());
+        let log = SeqLog::new(store.clone(), format!("{}/journal/", super::book_key(&root)));
+        assert!(log.claim(1, b"one").unwrap());
+        store.clear();
+        let _ = FileBook::open_with(&root, Some(store.clone())).unwrap();
+        let puts = store.puts();
+        assert!(
+            puts.iter().all(|k| !k.ends_with("00000000000000000001")),
+            "seq 1 is already held and must not be re-Put: {puts:?}"
+        );
+        assert!(
+            puts.iter().any(|k| k.ends_with("00000000000000000002")),
+            "seq 2 must be claimed: {puts:?}"
+        );
+        assert!(
+            puts.iter().any(|k| k.ends_with("00000000000000000003")),
+            "seq 3 must be claimed: {puts:?}"
+        );
+        assert_eq!(log.height().unwrap(), 3);
+    }
+
+    #[test]
+    fn list_entry_count_prefers_the_local_jsonl() {
+        let root = tmp();
+        fs::write(root.join("journal.jsonl"), "a\n\nb\n").unwrap();
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        assert_eq!(FileBook::list_entry_count(&root, Some(store)).unwrap(), 2);
+    }
+
+    #[test]
+    fn list_entry_count_falls_back_to_store_height() {
+        let root = tmp();
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let log = SeqLog::new(store.clone(), format!("{}/journal/", super::book_key(&root)));
+        assert!(log.claim(1, b"one").unwrap());
+        assert!(log.claim(2, b"two").unwrap());
+        assert_eq!(FileBook::list_entry_count(&root, Some(store)).unwrap(), 2);
     }
 
     #[test]

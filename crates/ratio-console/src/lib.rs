@@ -39,8 +39,8 @@ use ratio_proto::ratio::console::v1 as pb;
 use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::RuleSet;
 use ratio_store::{
-    AccountTypeRecord, CloseRecord, ConfigStore, FileBook, Journal, JournalEntry, Plane,
-    PostingRecord,
+    installed_object_store, AccountTypeRecord, CloseRecord, ConfigStore, FileBook, Journal,
+    JournalEntry, Plane, PostingRecord,
 };
 
 /// What stands between a fund and a NAV.
@@ -2391,7 +2391,7 @@ impl Console {
     pub fn list_funds(&self) -> Result<pb::ListFundsResponse> {
         let mut funds = Vec::new();
         for id in self.fund_ids()? {
-            funds.push(self.get_fund(&format!("funds/{id}"))?);
+            funds.push(self.list_fund_row(&id)?);
         }
         Ok(pb::ListFundsResponse { funds, next_page_token: String::new() })
     }
@@ -2399,9 +2399,77 @@ impl Console {
     pub fn list_books(&self) -> Result<pb::ListBooksResponse> {
         let mut books = Vec::new();
         for id in self.book_ids()? {
-            books.push(self.get_book(&format!("books/{id}"))?);
+            books.push(self.list_book_row(&id)?);
         }
         Ok(pb::ListBooksResponse { books, next_page_token: String::new() })
+    }
+
+    /// The books-index row: sidecar, local ACTIVE, local journal line count.
+    ///
+    /// ⛔ NOT `get_book` / `get_fund`. Those fold `trial_balance` and
+    /// `for_each_entry_since`, which GET every S3 journal object. A generated
+    /// fund cannot finish that inside API Gateway's 30s — the index needs a
+    /// name, a kind, a count and a digest, not a trial balance.
+    fn list_book_row(&self, id: &str) -> Result<pb::Book> {
+        let path = self.book_path(id)?;
+        let meta = book::BookMeta::load(&path, id);
+        let (config_digest, set) = local_config(&path);
+        let effective = set.unwrap_or_default();
+        Ok(pb::Book {
+            name: format!("books/{id}"),
+            display_name: meta.display_name,
+            kind: meta.kind.proto(),
+            currency_code: FUND_CURRENCY.into(),
+            fund: meta.fund.map(|f| format!("funds/{f}")).unwrap_or_default(),
+            organization: meta.organization.unwrap_or_default(),
+            default_view: effective.default_view(),
+            entry_count: FileBook::list_entry_count(&path, installed_object_store())? as i64,
+            config_digest,
+            trial_balance_difference: String::new(),
+            budget: String::new(),
+            envelopes: Vec::new(),
+            loans: Vec::new(),
+        })
+    }
+
+    /// The funds-index row. Same cheap inputs as [`list_book_row`]; state and
+    /// open breaks stay unset because they are a fold.
+    fn list_fund_row(&self, id: &str) -> Result<pb::Fund> {
+        let path = self.book_path(id)?;
+        let meta = book::BookMeta::load(&path, id);
+        let (config_digest, set) = local_config(&path);
+        let effective = set.clone().unwrap_or_default();
+        let entry_count = FileBook::list_entry_count(&path, installed_object_store())? as i64;
+        // Awaiting prices is the one state the index can name without a
+        // fold: no lines, nothing to strike. Anything else is GetFund.
+        let state = if entry_count == 0 {
+            pb::fund::State::AwaitingPrices
+        } else {
+            pb::fund::State::Unspecified
+        };
+        Ok(pb::Fund {
+            name: format!("funds/{id}"),
+            display_name: meta.display_name,
+            currency_code: FUND_CURRENCY.into(),
+            state: state as i32,
+            open_break_count: 0,
+            default_view: effective.default_view(),
+            view_count: effective.effective_views().len() as i64,
+            lot_method: set
+                .as_ref()
+                .map(|s| {
+                    ratio_project::relief::Method::from(s.effective_lot_method())
+                        .describe()
+                        .to_string()
+                })
+                .unwrap_or_default(),
+            lot_method_declared: set.as_ref().is_some_and(|s| s.lot_method.is_some()),
+            long_term_days: set.as_ref().map(|s| s.long_term_days).unwrap_or(0),
+            pending_fact_count: "0".into(),
+            trial_balance_difference: String::new(),
+            entry_count,
+            config_digest,
+        })
     }
 
     pub fn get_book(&self, name: &str) -> Result<pb::Book> {
@@ -4169,6 +4237,27 @@ fn cause_text(cause: i32) -> String {
         _ => "Unspecified",
     }
     .to_string()
+}
+
+/// The digest in `config/ACTIVE`, and the rules that blob names, if both
+/// are on disk. List reads these rather than opening the book — `FileBook::open`
+/// hydrates the object store, which is GetFund's job.
+fn local_config(path: &Path) -> (String, Option<RuleSet>) {
+    let digest = std::fs::read_to_string(path.join("config").join("ACTIVE"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_default();
+    if digest.is_empty() {
+        return (String::new(), None);
+    }
+    match std::fs::read(path.join("config").join(&digest)) {
+        Ok(bytes) => (
+            digest,
+            RuleSet::from_toml(&String::from_utf8_lossy(&bytes)).ok(),
+        ),
+        Err(_) => (digest, None),
+    }
 }
 
 /// A book id turned into something a person would read.
@@ -7634,6 +7723,46 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             .unwrap_err()
             .to_string();
         assert!(via_funds.contains("membership could not be read"), "{via_funds}");
+    }
+
+    #[test]
+    fn list_books_and_list_funds_count_local_journal_lines_without_folding() {
+        // ⭐ THE INDEX IS NOT A TRIAL BALANCE. An unparseable journal refuses
+        // GetBook / GetFund. List still reports the line count and the ACTIVE
+        // digest — those are local files, not a fold over every S3 object.
+        let root = fresh("list-no-fold");
+        std::fs::write(root.join("accounts.json"), "[]").unwrap();
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        let digest = "a".repeat(64);
+        std::fs::write(root.join("config").join("ACTIVE"), &digest).unwrap();
+        std::fs::write(root.join("journal.jsonl"), "not an entry\n\nsecond\n").unwrap();
+
+        let console = Console::new(&root);
+        let books = console.list_books().unwrap().books;
+        assert_eq!(books.len(), 1);
+        assert_eq!(books[0].name, "books/demo");
+        assert_eq!(books[0].display_name, "Demo");
+        assert_eq!(books[0].kind, book::BookKind::Investment.proto());
+        assert_eq!(books[0].fund, "funds/demo");
+        assert_eq!(books[0].entry_count, 2, "empty lines do not count");
+        assert_eq!(books[0].config_digest, digest);
+
+        let funds = console.list_funds().unwrap().funds;
+        assert_eq!(funds.len(), 1);
+        assert_eq!(funds[0].name, "funds/demo");
+        assert_eq!(funds[0].entry_count, 2);
+        assert_eq!(funds[0].config_digest, digest);
+
+        let get_fund = console.get_fund("funds/demo").unwrap_err().to_string();
+        assert!(
+            get_fund.contains("journal") || get_fund.contains("entry") || get_fund.contains("expected"),
+            "GetFund must still fold, and this journal must refuse: {get_fund}"
+        );
+        let get_book = console.get_book("books/demo").unwrap_err().to_string();
+        assert!(
+            get_book.contains("journal") || get_book.contains("entry") || get_book.contains("expected"),
+            "GetBook must still fold: {get_book}"
+        );
     }
 
     #[test]
