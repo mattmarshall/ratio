@@ -229,7 +229,7 @@ Two required on a laptop; four more on a Vercel deploy (AuthKit).
 |---|---|
 | `RATIO_API_ORIGIN` | where the API is — **scheme and host, no path**. `http://127.0.0.1:7373` locally |
 | `RATIO_CONSOLE_ORIGIN` | *optional locally.* This app's own origin |
-| `WORKOS_CLIENT_ID` | AuthKit client id. Empty locally — no IdP. **Never committed; never copied from another product** |
+| `WORKOS_CLIENT_ID` | Ratio Staging: `client_01M1JJZT4T0NN1WWT65NE6CV3W`. Empty skips IdP. **Never copied from another product** |
 | `WORKOS_API_KEY` | AuthKit API key. Placeholder only in docs; never commit a real one |
 | `WORKOS_COOKIE_PASSWORD` | ≥32 characters; `openssl rand -base64 32` |
 | `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | Must match a Redirect URI on the attached WorkOS application |

@@ -44,4 +44,7 @@ __pycache__/
 /console/node_modules/
 /console/.next/
 /console/*.tsbuildinfo
+/console/.env
+/console/.env.local
+/console/.env.*.local
 /deploy/demo-funds/

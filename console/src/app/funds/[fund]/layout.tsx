@@ -1,6 +1,6 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { FundActions } from "@/components/FundActions";
-import { ScreenTabs } from "@/components/ScreenTabs";
 import { ViewSwitch } from "@/components/ViewSwitch";
 import { caller } from "@/lib/caller";
 import { count } from "@/lib/format";
@@ -62,13 +62,9 @@ export default async function FundLayout({
             </span>
           ) : null}
           <ViewSwitch fund={fund} views={views} defaultView={defaultView} />
+          <Link href={`/books/${fund}`}>Book</Link>
         </div>
       </div>
-      <ScreenTabs
-        fund={fund}
-        view={defaultView}
-        pending={f.pendingFactCount}
-      />
 
       {children}
     </main>

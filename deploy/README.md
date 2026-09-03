@@ -59,7 +59,7 @@ None of them is a WorkOS client id written in this repository.
 | | |
 |---|---|
 | `RATIO_API_ORIGIN` | this stack's `DemoUrl`, **scheme and host, no path and no trailing slash** |
-| `WORKOS_CLIENT_ID` | the attached WorkOS application's client id. Empty in this repo on purpose |
+| `WORKOS_CLIENT_ID` | Ratio Production: `client_01M1JJZTFXFDZJ0XJM1NPNSEJB` |
 | `WORKOS_API_KEY` | the same application's API key |
 | `WORKOS_COOKIE_PASSWORD` | ≥32 characters; `openssl rand -base64 32` |
 | `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | this origin's AuthKit callback, e.g. `https://ratio-ims.vercel.app/callback` |
@@ -92,30 +92,49 @@ the other way out once #25 lands.
 redirect URI, but this console's documented URIs are the two origins below.
 Previews render from `console/fixtures/`.
 
-## WorkOS AuthKit — project-agnostic
+## WorkOS AuthKit — Ratio project
 
-This repository does not contain a WorkOS client id and must not grow one.
+Team **Marsh**, project **Ratio** (`project_01M1JJZSSEMWSHNNQX151D19GB`).
+Do not use a client id from any other product.
+
 AuthKit reads `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, `WORKOS_COOKIE_PASSWORD`
-and `NEXT_PUBLIC_WORKOS_REDIRECT_URI`. Attach whichever WorkOS application
-Matthew names by setting those variables — do not copy a client id from
-another product.
+and `NEXT_PUBLIC_WORKOS_REDIRECT_URI`. The running code never hardcodes a
+client id. Paths match the [authkit-nextjs README](https://github.com/workos/authkit-nextjs):
+`handleAuth()` at `/app/callback/route.ts`, Sign-in URL at
+`/app/sign-in/route.ts`. Already registered on this project.
 
-The callback path is the one [AuthKit for Next.js](https://workos.com/docs/authkit/nextjs)
-and the [authkit-nextjs README](https://github.com/workos/authkit-nextjs)
-document: `handleAuth()` at `/app/callback/route.ts`, recommended URI
-`http://localhost:3000/callback`. The Sign-in URL is `/sign-in`
-(`app/sign-in/route.ts` in that README) — already registered on the Ratio
-WorkOS application.
-
-This repository does not compile a client id. The Ratio project's public
-identifiers, for the env var only:
-
-| | Staging (local / AuthKit sandbox) | Production (Vercel) |
+| | Staging (sandbox, local) | Production (Vercel + API Gateway) |
 |---|---|---|
+| environment | `environment_01M1JJZSSNCSMVHWV7RXVPE2SY` | `environment_01M1JJZTBCFS9K7QEJ1ADFMEZW` |
+| AuthKit app | `app_01M1JJZTB38S4WXDV3YTXT23Q8` | `app_01M1JJZTN0B6JK2GZR5AJP0YAA` |
 | `WORKOS_CLIENT_ID` | `client_01M1JJZT4T0NN1WWT65NE6CV3W` | `client_01M1JJZTFXFDZJ0XJM1NPNSEJB` |
-| Redirect URI | `http://localhost:3000/callback` (default) and `https://ratio-ims.vercel.app/callback` | `https://ratio-ims.vercel.app/callback` |
+| Redirect URI | `http://localhost:3000/callback` (default), `https://ratio-ims.vercel.app/callback` | `https://ratio-ims.vercel.app/callback` |
 | Sign-in URL | `http://localhost:3000/sign-in` | `https://ratio-ims.vercel.app/sign-in` |
-| Sign-out URI | `http://localhost:3000` | `https://ratio-ims.vercel.app` |
+| Sign-out URI | `http://localhost:3000` (default), `https://ratio-ims.vercel.app` | `https://ratio-ims.vercel.app` |
+| CORS | both origins above | `https://ratio-ims.vercel.app` |
+
+### What to set
+
+**Local** (`console/.env.example` → `.env.local`), only if you want a live
+IdP. Unset means `Subject::Local` against `ratio watch`.
+
+- `WORKOS_CLIENT_ID=client_01M1JJZT4T0NN1WWT65NE6CV3W`
+- `WORKOS_API_KEY` — staging secret from the Ratio environment; never committed
+- `WORKOS_COOKIE_PASSWORD` — ≥32 characters; `openssl rand -base64 32`
+- `NEXT_PUBLIC_WORKOS_REDIRECT_URI=http://localhost:3000/callback`
+
+**Vercel** (Production and Preview), console project:
+
+- `RATIO_API_ORIGIN` — the stack's `DemoUrl`
+- `WORKOS_CLIENT_ID=client_01M1JJZTFXFDZJ0XJM1NPNSEJB` (Production) or the
+  staging id above (Preview, if you want sandbox users)
+- `WORKOS_API_KEY` — matching environment secret
+- `WORKOS_COOKIE_PASSWORD` — ≥32 characters
+- `NEXT_PUBLIC_WORKOS_REDIRECT_URI=https://ratio-ims.vercel.app/callback`
+
+**API Gateway** audience is `WorkOsClientId` on the stack (Production client
+id by default). GitHub variable `WORKOS_CLIENT_ID` overrides it; it is not
+a secret.
 
 `WORKOS_API_KEY` is a secret (`sk_…`). Do not commit it. `/login` and
 `/api/auth/login` are the same initiate-login handler as `/sign-in`.

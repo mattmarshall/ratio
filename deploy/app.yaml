@@ -52,13 +52,13 @@ Parameters:
       CONSOLE_ORIGIN repository variable.
   WorkOsClientId:
     Type: String
-    Default: "client_placeholder"
+    Default: "client_01M1JJZTFXFDZJ0XJM1NPNSEJB"
     Description: >
-      WorkOS AuthKit client id (the audience the JWT authorizer checks). The
-      console holds WORKOS_CLIENT_ID / WORKOS_API_KEY / WORKOS_COOKIE_PASSWORD
-      as Vercel env; this value is what API Gateway verifies on /v1. A
-      placeholder deploys the stack without a live WorkOS app; replace it
-      before turning RATIO_DEMO_OPEN off. Never a secret.
+      WorkOS AuthKit client id for the Ratio project's Production environment
+      (the audience the JWT authorizer checks). Public identifier, never a
+      secret. The console holds WORKOS_CLIENT_ID / WORKOS_API_KEY /
+      WORKOS_COOKIE_PASSWORD as Vercel env; this value is what API Gateway
+      verifies on /v1. Do not substitute another product's client id.
   GoogleClientId:
     Type: String
     Default: ""
