@@ -369,6 +369,43 @@ tla_check(
     deps = [":wash_restatement"],
 )
 
+# The write the wash rule is: a deferred loss lands on a lot the sale did not
+# relieve.
+#
+# ⛔ `wash_restatement_check` IS ABOUT THE RECORD, NOT THE WRITE. That spec
+# says a struck figure that a later repurchase moved must not change silently.
+# This one says the disallowed amount is sitting on the replacement, as basis.
+# An engine can satisfy the first and still permanently overtax the investor,
+# because qualifying a restatement does not attach anything to a lot.
+#
+# `Ratio.Lots.Wash.attachTo` is the arithmetic; this is the sequence it sits
+# in. `//tla:unattached_wash_check` is the probe: first half only, and
+# ADisallowedLossIsOnTheReplacement goes red.
+tla_library(
+    name = "wash_engine",
+    srcs = ["WashEngine.tla"],
+)
+
+tla_check(
+    name = "wash_engine_check",
+    size = "medium",
+    config = "MCWashEngine.cfg",
+    module = "MCWashEngine.tla",
+    deps = [":wash_engine"],
+)
+
+# ⛔ Disallowed, never attached. The period recognizes less loss and the lot
+# book never heard about it. Cost is conserved the entire time.
+# ADisallowedLossIsOnTheReplacement goes red.
+tla_check(
+    name = "unattached_wash_check",
+    size = "medium",
+    config = "UnattachedWash.cfg",
+    module = "UnattachedWash.tla",
+    tags = ["manual"],
+    deps = [":wash_engine"],
+)
+
 # The projection as TABLES, and the figure that straddles two of them.
 #
 # ⛔ `projection_check` PROVES A SCALAR AND POSTGRES HAS A FUNCTION. That spec's

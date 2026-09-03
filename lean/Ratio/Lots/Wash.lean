@@ -58,6 +58,17 @@ theorem outside_the_window_is_not_a_wash :
     inWashWindow 30 100 69 = false ∧ inWashWindow 30 100 131 = false := by
   decide
 
+/-- **The window is a jurisdiction's number, not a constant in the arithmetic.**
+
+Twenty-five days is inside a thirty-day window and outside a ten-day one. The
+same two dates, two different answers — which is why the threshold is a
+parameter here, the same way `isLongTerm` takes `365` rather than baking it in.
+A constant in the engine would make it right in one place and wrong in every
+other. -/
+theorem the_window_is_a_jurisdiction_number :
+    inWashWindow 30 0 25 = true ∧ inWashWindow 10 0 25 = false := by
+  decide
+
 /- ── How much of the loss is disallowed ────────────────────────────────── -/
 
 /-- The disallowed portion of a loss, as a POSITIVE magnitude.
@@ -222,5 +233,172 @@ theorem the_method_decides_whether_there_is_a_loss_to_wash :
       ≠ (relieveFifo ([⟨1, 1, 10⟩, ⟨2, 1, 40⟩] : List Lot).reverse 1).map
         (fun r => disallowed (20 - takenCost r.1) 1 1) := by
   decide
+
+/- ── The write ─────────────────────────────────────────────────────────── -/
+
+/-- Attach a deferred loss to one open lot, by acquisition ordinal.
+
+⛔ THIS IS A WRITE TO A LOT THE ENGINE DID NOT RELIEVE. Relief returns what it
+took and what remains; this searches the remainder and mutates one lot still
+in it. A lot that was `Taken` is not a candidate — the write has nowhere to
+go if the replacement was already consumed, and it refuses rather than
+inventing one or silently adjusting a husk.
+
+⚠ A NEGATIVE `d` IS REFUSED. The rule defers losses; writing a negative
+adjustment would reduce basis, which is washing a gain, which
+`a_gain_is_never_washed` already forbids. An engine that "attached" a signed
+figure would smuggle that error in through the back door.
+
+`//tla:wash_engine_check` is the sequence this function sits in: the sale
+relieves, a replacement opens, this write lands, and a later sale relieves
+the replacement against the adjusted basis. -/
+def attachTo : List Lot → Nat → Int → Option (List Lot)
+  | [], _, _ => none
+  | l :: rest, seq, d =>
+    if d < 0 then none
+    else if l.seq = seq then some (⟨l.seq, l.units, l.cost + d⟩ :: rest)
+    else
+      match attachTo rest seq d with
+      | none => none
+      | some rest' => some (l :: rest')
+
+/-- **A lot that is not open cannot take the deferral.** Unset, not a silent
+zero: there is no replacement to write, and inventing one would be a second
+source of basis. -/
+theorem attaching_to_an_absent_lot_is_refused (seq : Nat) (d : Int) :
+    attachTo [] seq d = none := by
+  simp [attachTo]
+
+/-- **⛔ AND A NEGATIVE DEFERRAL IS REFUSED**, even when the lot is sitting
+there. The write is how a loss comes back; a write that lowers basis is a
+different rule, and it is not this one. -/
+theorem a_negative_deferral_is_refused :
+    attachTo [⟨1, 1, 10⟩] 1 (-1) = none := by
+  decide
+
+/-- **⭐ ATTACHING RAISES THE BOOK BY EXACTLY THE DEFERRAL.**
+
+The lot book's total cost goes up by `d` and nothing else moves. That is the
+second half of `the_wash_rule_moves_a_loss_it_does_not_remove_it`, stated over
+the holding rather than over two isolated figures: the loss that was taken
+out of this period is sitting on an open lot, as cost.
+
+⚠ `cost_is_conserved` CANNOT SAY THIS. It relates taken and remaining to the
+original and never mentions a write to what remains, so it is equally true of
+an engine that disallowed the loss and left every surviving lot untouched. -/
+theorem attaching_raises_the_book_by_exactly_the_deferral
+    (seq : Nat) (d : Int) :
+    ∀ (ls ls' : List Lot),
+      attachTo ls seq d = some ls' →
+      totalCost ls' = totalCost ls + d := by
+  intro ls
+  induction ls with
+  | nil =>
+    intro ls' h
+    simp [attachTo] at h
+  | cons l rest ih =>
+    intro ls' h
+    simp only [attachTo] at h
+    split at h
+    · simp at h
+    · split at h
+      · simp at h
+        subst h
+        simp [totalCost]
+        omega
+      · cases hr : attachTo rest seq d with
+        | none => rw [hr] at h; simp at h
+        | some rest' =>
+          rw [hr] at h
+          simp at h
+          subst h
+          have hq := ih rest' hr
+          simp [totalCost] at hq ⊢
+          omega
+
+/-- **And it does not invent or destroy units.** The write is to BASIS. A
+version that also scaled the lot would be a corporate action nobody announced. -/
+theorem attaching_does_not_change_units
+    (seq : Nat) (d : Int) :
+    ∀ (ls ls' : List Lot),
+      attachTo ls seq d = some ls' →
+      totalUnits ls' = totalUnits ls := by
+  intro ls
+  induction ls with
+  | nil =>
+    intro ls' h
+    simp [attachTo] at h
+  | cons l rest ih =>
+    intro ls' h
+    simp only [attachTo] at h
+    split at h
+    · simp at h
+    · split at h
+      · simp at h
+        subst h
+        simp [totalUnits]
+      · cases hr : attachTo rest seq d with
+        | none => rw [hr] at h; simp at h
+        | some rest' =>
+          rw [hr] at h
+          simp at h
+          subst h
+          have hq := ih rest' hr
+          simp [totalUnits] at hq ⊢
+          omega
+
+/-- **⛔ THE WRITE CANNOT LAND ON A LOT THE SALE JUST TOOK.**
+
+Two lots; the sale relieves the first. Attaching to seq 1 — the one in
+`Taken` — refuses, because that lot is no longer open. Attaching to seq 2 —
+the replacement, still in `left` — writes. The search is over the remainder,
+so "do not write a relieved lot" is structural rather than a check somebody
+has to remember. -/
+theorem attaching_cannot_write_a_lot_the_sale_took :
+    match relieveFifo [⟨1, 1, 10⟩, ⟨2, 1, 40⟩] 1 with
+    | none => False
+    | some (_, left) =>
+        attachTo left 1 100 = none
+        ∧ attachTo left 2 100 = some [⟨2, 1, 140⟩] := by
+  decide
+
+/-- **A later sale of the replacement takes the adjusted basis**, not the
+acquisition cost. One unit left, carrying 40 plus a thousand of deferred loss:
+the next relief gives up 1040. That is the loss coming back, and it is the
+figure `disallowing_without_attaching_destroys_the_loss` says an engine that
+stops at the first half never produces. -/
+theorem a_later_sale_of_the_replacement_takes_the_adjusted_basis :
+    match attachTo [⟨2, 1, 40⟩] 2 1000 with
+    | none => False
+    | some held =>
+        (relieveFifo held 1).map (fun r => takenCost r.1) = some 1040 := by
+  decide
+
+/-- **⛔ AND THE WRITE CHANGES WHAT A LATER METHOD GIVES UP.**
+
+The other direction of `the_method_decides_whether_there_is_a_loss_to_wash`.
+There, the method decided whether a loss existed to wash. Here a wash that
+has already landed decides which lot a later HIFO sale takes:
+
+  lot 1   basis 25
+  lot 2   basis 10, the replacement
+
+Without the write, HIFO gives up lot 1 (dearest). After attaching 20 of
+disallowed loss, lot 2 carries 30 and HIFO gives that up instead.
+
+Same later sale, same method, different taxable income — because a wash the
+engine did yesterday changed the basis of a lot today's method is looking at.
+This is why `Ratio.Lots.Methods` and this file are one problem, not two
+layers. -/
+theorem a_wash_write_changes_what_a_later_method_gives_up :
+    (relieveBy .hifo [⟨1, 1, 25⟩, ⟨2, 1, 10⟩] 1).map (fun r => takenCost r.1)
+      = some 25
+    ∧ match attachTo [⟨1, 1, 25⟩, ⟨2, 1, 10⟩] 2 20 with
+      | none => False
+      | some held =>
+          (relieveBy .hifo held 1).map (fun r => takenCost r.1) = some 30 := by
+  constructor
+  · decide
+  · decide
 
 end Ratio.Lots
