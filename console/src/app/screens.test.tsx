@@ -218,6 +218,8 @@ describe("a first-class book", () => {
     const Templates = (await import("./books/[book]/data/templates/page")).default;
     await renderAsync(Templates({ params: params({ book: "bridge" }) }));
     expect(screen.getByText("project-invoices")).toBeDefined();
+    expect(screen.getByText("change-orders")).toBeDefined();
+    expect(screen.getByText("purchase-orders")).toBeDefined();
     expect(screen.getByText("invoice")).toBeDefined();
     expect(screen.queryByText("custodian-positions")).toBeNull();
     expect(screen.queryByText("prime_equity_trades")).toBeNull();
@@ -908,13 +910,27 @@ describe("a first-class book", () => {
         }),
       );
       expect(screen.getAllByText("100,000.00").length).toBe(2);
-      expect(screen.getByText("Project costs")).toBeDefined();
+      expect(screen.getAllByText("Project costs").length).toBeGreaterThan(0);
       expect(screen.getByText("Work in progress")).toBeDefined();
-      // incurred 6,000.00; committed 8,000.00; variance 92,000.00
+      // incurred 6,000.00; awarded unset; remaining to spend unset
       expect(screen.getByText("6,000.00")).toBeDefined();
-      expect(screen.getByText("8,000.00")).toBeDefined();
-      expect(screen.getByText("92,000.00")).toBeDefined();
       expect(screen.getByText("Original contract")).toBeDefined();
+      expect(screen.getByText("Remaining to spend")).toBeDefined();
+      expect(
+        screen.getByText(/unset until a purchase order is awarded — not budget minus actual as fake headroom/),
+      ).toBeDefined();
+      expect(screen.getByText("Estimate at completion")).toBeDefined();
+      expect(
+        screen.getByText(/this page does not forecast/),
+      ).toBeDefined();
+      const remaining = screen.getByText("Remaining to spend").closest("[role=row]");
+      expect(remaining?.textContent).toContain("—");
+      expect(remaining?.textContent).not.toMatch(/92,000\.00/);
+      expect(remaining?.textContent).not.toMatch(/0\.00/);
+      expect(screen.getByText("Awarded")).toBeDefined();
+      expect(
+        screen.getByText(/unset — no purchase order has been awarded, not a fake zero committed/),
+      ).toBeDefined();
       expect(screen.getByText("Approved change orders")).toBeDefined();
       expect(
         screen.getByText(/unset — no approved change order has posted, not a silent zero/),
@@ -1015,6 +1031,10 @@ describe("a first-class book", () => {
       expect(screen.getByText("105,000.00")).toBeDefined();
       expect(screen.getByText(/original plus approved change orders/)).toBeDefined();
       expect(screen.queryByText("Change-order authorization — Site and mobilization")).toBeNull();
+      expect(screen.getByText("Remaining to spend")).toBeDefined();
+      expect(
+        screen.getByText(/unset until a purchase order is awarded — not budget minus actual as fake headroom/),
+      ).toBeDefined();
     } finally {
       wire.getBook = realBook;
       wire.listAccounts = realAccounts;
@@ -1044,6 +1064,95 @@ describe("a first-class book", () => {
       ).toBeDefined();
     } finally {
       wire.listAccounts = real;
+    }
+  });
+
+  it("cites remaining to spend from awarded commitments without treating an unposted award as zero", async () => {
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    const bridge = booksFixture.books.find((b) => b.kind === "PROJECT")!;
+    wire.getBook = (async () => ({
+      ...bridge,
+      budget: "10000000",
+    })) as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/bridge/views/book/accounts/10",
+          displayName: "Project costs",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "300000",
+          credit: "0",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/11",
+          displayName: "Site and mobilization",
+          dimension: "11",
+          type: "EXPENSE",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/64",
+          displayName: "Awarded commitments",
+          dimension: "64",
+          type: "EQUITY",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/65",
+          displayName: "Awarded commitments — Site and mobilization",
+          dimension: "65",
+          type: "EQUITY",
+          debit: "0",
+          credit: "350000",
+          balance: "-350000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as typeof wire.listAccounts;
+    try {
+      const Budget = (await import("./books/[book]/views/[view]/budget/page")).default;
+      await renderAsync(
+        Budget({
+          params: params({ book: "bridge", view: "book" }),
+          searchParams: params({}),
+        }),
+      );
+      // revised 100,000 − incurred 3,000 − awarded 3,500 = 93,500
+      expect(screen.getAllByText("3,500.00").length).toBeGreaterThan(0);
+      expect(screen.getByText("93,500.00")).toBeDefined();
+      expect(
+        screen.getByText(/revised minus incurred minus awarded — the citeable leftover, not a forecast/),
+      ).toBeDefined();
+      expect(
+        screen.getByText(/open award on this work package — same grain cost-by-package uses/),
+      ).toBeDefined();
+      expect(screen.getAllByText(/unset — no purchase order has been awarded on this work package/).length).toBeGreaterThan(0);
+      expect(screen.queryByText("Commitment authorization")).toBeNull();
+      expect(screen.getByText(/this page does not forecast/)).toBeDefined();
+      const eac = screen.getByText("Estimate at completion").closest("[role=row]");
+      expect(eac?.textContent).toContain("—");
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
     }
   });
 

@@ -125,13 +125,22 @@ __STYLE__
           — two figures, two URLs. Approved change orders compose onto
           both: original contract, approved changes, and revised stay
           citeable, and an unposted CO is unset, not a silent zero.
+          Awarded committed cost composes onto <code>/budget</code>, keyed
+          to the same work packages as cost-by-package. Remaining to spend
+          is revised − incurred − awarded and stays unset until budget,
+          actual, and an awarded commitment can support the cut — never
+          budget − actual as fake headroom, never a fake zero committed.
           Remaining to bill and collected stay unset until the journal can
           support the cut — never the whole contract as a fake remainder,
-          never a fake zero collected. A change-order walk-through can
-          record or ingest an approval against a work package; a remaining-
-          to-bill / collections walk-through can cite those leftovers on
-          the same <code>/billing</code> page. Neither can show AIA G702
-          product UI, a client portal, e-signature, or CRM.
+          never a fake zero collected. <code>/budget</code> does not
+          forecast: estimate at completion and cost to complete are not a
+          journal fact. A change-order walk-through can record or ingest
+          an approval against a work package; a remaining-to-bill /
+          collections walk-through can cite those leftovers on
+          <code>/billing</code>; a committed-cost walk-through can record
+          or ingest an award on the same <code>/budget</code> page. None
+          of those can show AIA G702 product UI, a client portal,
+          e-signature, CRM, or an EAC.
           Billed / earned / retainage stay unset until posted, not a fake zero.
           An Investment book cites partner capital activity (contributions,
           distributions, transfers, ending capital) and partner-scoped
@@ -327,7 +336,7 @@ __STYLE__
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet, period P&amp;L, net-worth bridge with transfers that are not trades, and a period cash-flow statement (operating / investing / financing; unset, not a fake zero cash), household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), a per-partner capital account statement (beginning → activity → allocated plugs stay unset without a partner cut, never an equal split of book NAV), and a period NAV roll-forward (unset, not a fake zero), the exception queue, a difference at its own address, a book's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet, period P&amp;L, net-worth bridge with transfers that are not trades, and a period cash-flow statement (operating / investing / financing; unset, not a fake zero cash), household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), awarded committed cost keyed to those work packages (unset until an award posts, not a fake zero), remaining to spend (revised − incurred − awarded, unset until budget, actual, and awarded can support it — no EAC / no forecast), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), a per-partner capital account statement (beginning → activity → allocated plugs stay unset without a partner cut, never an equal split of book NAV), and a period NAV roll-forward (unset, not a fake zero), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue

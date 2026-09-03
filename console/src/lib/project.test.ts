@@ -2,16 +2,21 @@ import { describe, expect, it } from "vitest";
 import {
   accountsReceivable,
   approvedChangeOrders,
+  awardedCommitments,
   changeOrdersInWindow,
   collectedAgainstBilled,
   figure,
   isApprovedChangeOrder,
+  isAwardedCommitment,
+  isAwardedCommitmentAccount,
   isChangeOrderAccount,
   isFundingAccount,
   outstandingAgainstBilled,
   phaseApproved,
+  phaseAwarded,
   projectRollup,
   remainingToBill,
+  remainingToSpendOf,
   revisedContract,
   wipFoots,
 } from "./project";
@@ -50,6 +55,8 @@ const CHART: Account[] = [
   acct("25", "Approved change orders", "EQUITY", "0", "0", "0"),
   acct("30", "Project revenue", "REVENUE", "0", "150000"),
   acct("40", "Payables", "LIABILITY", "0", "200000"),
+  acct("60", "Commitment authorization", "EQUITY", "0", "0", "0"),
+  acct("64", "Awarded commitments", "EQUITY", "0", "0", "0"),
 ];
 
 describe("projectRollup", () => {
@@ -65,8 +72,10 @@ describe("projectRollup", () => {
     expect(r.committed).toBe(800000n);
     expect(r.baseline).toBe(10000000n);
     expect(r.approved).toBeNull();
+    expect(r.awarded).toBeNull();
     expect(r.revised).toBe(10000000n);
     expect(r.variance).toBe(9200000n);
+    expect(r.remainingToSpend).toBeNull();
     expect(r.funding).toBe(-800000n);
     expect(r.revenue).toBe(-150000n);
   });
@@ -77,6 +86,8 @@ describe("projectRollup", () => {
     expect(r.approved).toBeNull();
     expect(r.revised).toBeNull();
     expect(r.variance).toBeNull();
+    expect(r.awarded).toBeNull();
+    expect(r.remainingToSpend).toBeNull();
     expect(r.incurred).toBe(600000n);
   });
 
@@ -85,6 +96,7 @@ describe("projectRollup", () => {
     expect(r.baseline).toBe(0n);
     expect(r.revised).toBe(0n);
     expect(r.variance).toBe(-800000n);
+    expect(r.remainingToSpend).toBeNull();
   });
 
   it("WIP debit equals currently capitalized plus recognized", () => {
@@ -102,6 +114,8 @@ describe("projectRollup", () => {
     expect(r.approved).toBeNull();
     expect(r.revised).toBe(100n);
     expect(r.variance).toBe(100n);
+    expect(r.awarded).toBeNull();
+    expect(r.remainingToSpend).toBeNull();
   });
 
   it("adds approved change orders to the revised contract without rewriting the baseline", () => {
@@ -118,6 +132,8 @@ describe("projectRollup", () => {
     expect(r.revised).toBe(10900000n);
     expect(r.variance).toBe(10100000n);
     expect(r.committed).toBe(800000n);
+    expect(r.awarded).toBeNull();
+    expect(r.remainingToSpend).toBeNull();
     // ⛔ SABOTAGE: folding the pair into funding would cancel (good) but
     // folding only the credit into funding would inflate owner money.
     expect(r.funding).toBe(-800000n);
@@ -192,6 +208,79 @@ describe("remaining to bill", () => {
     expect(remainingToBill(10500000n, "100000")).toBe(10400000n);
     expect(remainingToBill(100000n, "100000")).toBe(0n);
     expect(remainingToBill(0n, "0")).toBe(0n);
+  });
+});
+
+describe("awarded commitments", () => {
+  it("names the seeded pair, not a cost or a payable", () => {
+    expect(isAwardedCommitment("Awarded commitments")).toBe(true);
+    expect(isAwardedCommitment("Awarded commitments — Structure")).toBe(true);
+    expect(isAwardedCommitmentAccount("Commitment authorization — Finishes and closeout")).toBe(true);
+    expect(isAwardedCommitment("Project costs")).toBe(false);
+    expect(isAwardedCommitmentAccount("Funding")).toBe(false);
+    expect(isAwardedCommitmentAccount("Payables")).toBe(false);
+    expect(isAwardedCommitmentAccount("Site and mobilization")).toBe(false);
+    expect(isChangeOrderAccount("Awarded commitments")).toBe(false);
+  });
+
+  it("treats postingCount 0 as unset, and a posted net of nothing as a real zero", () => {
+    expect(awardedCommitments(CHART)).toBeNull();
+    expect(
+      awardedCommitments([acct("64", "Awarded commitments", "EQUITY", "0", "0", "0")]),
+    ).toBeNull();
+    expect(
+      awardedCommitments([acct("64", "Awarded commitments", "EQUITY", "5000", "5000")]),
+    ).toBe(0n);
+  });
+
+  it("keys a phase award to the matching work-package expense", () => {
+    const accounts = [
+      acct("64", "Awarded commitments", "EQUITY", "0", "0", "0"),
+      acct("65", "Awarded commitments — Site and mobilization", "EQUITY", "0", "300000"),
+    ];
+    expect(phaseAwarded(accounts, "Site and mobilization")).toBe(300000n);
+    expect(phaseAwarded(accounts, "Structure")).toBeNull();
+    expect(phaseAwarded(accounts, "Project costs")).toBeNull();
+  });
+
+  it("does not fold the pair into funding", () => {
+    const withPo = [
+      ...CHART.filter((a) => a.dimension !== "60" && a.dimension !== "64"),
+      acct("60", "Commitment authorization", "EQUITY", "350000", "0"),
+      acct("64", "Awarded commitments", "EQUITY", "0", "350000"),
+      acct("61", "Commitment authorization — Site and mobilization", "EQUITY", "300000", "0"),
+      acct("65", "Awarded commitments — Site and mobilization", "EQUITY", "0", "300000"),
+    ];
+    const r = projectRollup(withPo, "10000000");
+    expect(r.awarded).toBe(650000n);
+    expect(r.incurred).toBe(600000n);
+    expect(r.remainingToSpend).toBe(8750000n);
+    expect(r.funding).toBe(-800000n);
+    expect(withPo.filter(isFundingAccount).map((a) => a.displayName)).toEqual(["Funding"]);
+  });
+});
+
+describe("remaining to spend", () => {
+  it("stays unset when either the revised contract or awarded cannot support the cut", () => {
+    expect(remainingToSpendOf(null, 0n, null)).toBeNull();
+    expect(remainingToSpendOf(null, 600000n, 350000n)).toBeNull();
+    expect(remainingToSpendOf(10000000n, 600000n, null)).toBeNull();
+    expect(remainingToSpendOf(10000000n, 0n, null)).toBeNull();
+  });
+
+  it("is revised minus incurred minus awarded when both sides are set, including a real zero", () => {
+    expect(remainingToSpendOf(10000000n, 600000n, 350000n)).toBe(9050000n);
+    expect(remainingToSpendOf(10500000n, 600000n, 350000n)).toBe(9550000n);
+    expect(remainingToSpendOf(100000n, 100000n, 0n)).toBe(0n);
+    expect(remainingToSpendOf(0n, 0n, 0n)).toBe(0n);
+  });
+
+  it("cannot treat an unknown award as zero headroom even when actual is known", () => {
+    const r = projectRollup(CHART, "10000000");
+    expect(r.incurred).toBe(600000n);
+    expect(r.awarded).toBeNull();
+    expect(r.remainingToSpend).toBeNull();
+    expect(r.variance).toBe(9200000n);
   });
 });
 

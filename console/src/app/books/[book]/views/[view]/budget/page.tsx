@@ -10,6 +10,7 @@ import {
   debitShown as projectDebit,
   isFundingAccount,
   ofType,
+  phaseAwarded,
   projectRollup,
 } from "@/lib/project";
 import { getBook, listAccounts } from "@/wire/client";
@@ -23,16 +24,21 @@ export const dynamic = "force-dynamic";
  * ⭐ NOT NAV RELABELLED, AND NOT TWO URLS. Kind selects the roll-up: a
  * personal book cites `[personal] budget` against period spend; a project
  * book cites `[project] budget` as the original contract against cumulative
- * costs, WIP and payables, plus approved change orders as a journal fact
- * that does not rewrite that key. A second ledger would be a second answer
- * to a question the journal already answers. Investment books 404 — fund
- * ABOR is untouched.
+ * costs, WIP, awarded commitments, and remaining to spend, plus approved
+ * change orders as a journal fact that does not rewrite that key. A second
+ * ledger would be a second answer to a question the journal already
+ * answers. Investment books 404 — fund ABOR is untouched.
  *
  * ⚠ A PROJECT'S PERIOD IS THE PROJECT. Household chips name a month or
  * year because living expenses are a calendar figure; milestone-gated
  * close is still out of scope for a project — same period gap as #26,
  * named rather than faked with a NAV strike. The optional change-order
- * chip is which COs were approved in-window; committed spend stays as-of.
+ * chip is which COs were approved in-window; incurred and awarded stay as-of.
+ *
+ * ⛔ THIS PAGE DOES NOT FORECAST. Estimate at completion and cost to
+ * complete are not journal facts yet. Remaining to spend is a leftover,
+ * not an EAC. Over/under-billing stays on `/billing` as billed minus
+ * earned — this page does not invent costs-in-excess-of-billings.
  *
  * ⛔ CUMULATIVE-ONLY IS THE ABOR-SHAPED VIEW FOR A HOUSEHOLD. The personal
  * path always sends `filter=budget-YYYY[-MM]`; bare `budget` is refused
@@ -212,8 +218,8 @@ async function projectBudget({
         label="Change-order window"
         note={
           period
-            ? `${periodLabel(period)} — approved this window; committed spend is still as-of, because a project's period is the project`
-            : "since inception — original contract against journal costs; the chip is which COs were approved in-window"
+            ? `${periodLabel(period)} — approved this window; incurred and awarded commitments are still as-of, because a project's period is the project`
+            : "since inception — original contract against journal costs and awarded commitments; the chip is which COs were approved in-window"
         }
       />
 
@@ -323,46 +329,97 @@ async function projectBudget({
           </div>
         </div>
         <div className="posgroup">
-          <div className="posacct">Commitment</div>
-          {payables.map((a) => {
+          <div className="posacct">Unpaid</div>
+          {payables
+            .filter((a) => a.displayName === "Payables")
+            .map((a) => {
+              const id = a.name.split("/").pop()!;
+              return (
+                <Link
+                  key={a.name}
+                  className="tbrow"
+                  role="row"
+                  href={`/books/${book}/views/${view}/accounts/${id}`}
+                >
+                  <span role="cell">
+                    {a.displayName}
+                    <span className="at">
+                      incurred on a vendor invoice and not yet paid — not an awarded purchase order
+                    </span>
+                  </span>
+                  <span role="cell" className="num">
+                    {creditShown(BigInt(a.balance))}
+                  </span>
+                </Link>
+              );
+            })}
+        </div>
+        <div className="posgroup">
+          <div className="posacct">Committed cost</div>
+          {costs.map((a) => {
             const id = a.name.split("/").pop()!;
+            const awarded = phaseAwarded(accounts, a.displayName);
             return (
               <Link
-                key={a.name}
+                key={`award-${a.name}`}
                 className="tbrow"
                 role="row"
                 href={`/books/${book}/views/${view}/accounts/${id}`}
               >
-                <span role="cell">{a.displayName}</span>
+                <span role="cell">
+                  {a.displayName}
+                  <span className="at">
+                    {awarded === null
+                      ? "unset — no purchase order has been awarded on this work package, not a silent zero"
+                      : "open award on this work package — same grain cost-by-package uses"}
+                  </span>
+                </span>
                 <span role="cell" className="num">
-                  {creditShown(BigInt(a.balance))}
+                  {awarded === null ? "—" : projectDebit(awarded)}
                 </span>
               </Link>
             );
           })}
           <div className="tbfoot static" role="row">
             <span role="cell">
-              Committed
-              <small>incurred plus unpaid payables</small>
+              Awarded
+              <small>
+                {r.awarded === null
+                  ? "unset — no purchase order has been awarded, not a fake zero committed"
+                  : "credit-normal on the work-package pair; not incurred and not a payable"}
+              </small>
             </span>
             <span role="cell" className="num">
-              {projectDebit(r.committed)}
+              {r.awarded === null ? "—" : projectDebit(r.awarded)}
             </span>
           </div>
         </div>
         <div className="posgroup">
           <div className="tbfoot static" role="row">
             <span role="cell">
-              Variance
+              Remaining to spend
               <small>
-                {r.revised === null
-                  ? "no [project] budget on the configuration in force"
-                  : "revised minus committed — remaining authorization, not a mutated baseline"}
+                {r.remainingToSpend === null
+                  ? r.revised === null
+                    ? "unset until [project] budget is set — not a priced remainder"
+                    : "unset until a purchase order is awarded — not budget minus actual as fake headroom"
+                  : "revised minus incurred minus awarded — the citeable leftover, not a forecast"}
               </small>
             </span>
             <span role="cell" className="num">
-              {r.variance === null ? "—" : projectDebit(r.variance)}
+              {r.remainingToSpend === null ? "—" : projectDebit(r.remainingToSpend)}
             </span>
+          </div>
+        </div>
+        <div className="posgroup">
+          <div className="tbrow static" role="row">
+            <span role="cell">
+              Estimate at completion
+              <span className="at">
+                this page does not forecast — EAC and cost to complete are not a journal fact
+              </span>
+            </span>
+            <span role="cell" className="num">—</span>
           </div>
         </div>
         <div className="posgroup">
@@ -396,7 +453,7 @@ async function projectBudget({
         {" · "}
         <Link href={`/books/${book}/views/${view}/billing`}>Remaining to bill and collections</Link>
         {" · "}
-        <Link href={`/books/${book}/record`}>Record a cost, change order, or capitalize WIP</Link>
+        <Link href={`/books/${book}/record`}>Record a cost, purchase order, change order, or capitalize WIP</Link>
         {" · "}
         <Link href={`/books/${book}/views/${view}/accounts`}>Trial balance</Link>
       </p>

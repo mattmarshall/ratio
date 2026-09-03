@@ -247,7 +247,7 @@ async function Billing({
       <p className="note">
         <Link href={`/books/${book}/record`}>Record a bill, collection, retainage hold, cost, or change order</Link>
         {" · "}
-        <Link href={`/books/${book}/views/${view}/budget`}>Original vs revised contract</Link>
+        <Link href={`/books/${book}/views/${view}/budget`}>Remaining to spend and original vs revised contract</Link>
         {" · "}
         <Link href={`/books/${book}/views/${view}/accounts`}>Trial balance</Link>
       </p>
