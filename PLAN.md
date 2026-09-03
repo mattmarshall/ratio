@@ -716,9 +716,10 @@ kind the console offers cannot go unrecorded here again:
   revenue / expense, owner equity. Sheet, period income statement, and
   period cash-flow (the same-day amendment below) that tie to the trial
   balance. Investing stays unset — the chart has no PPE account.
-  AR/AP aging (#117) cites due-date buckets when the journal carries a
-  due date and an application; unset when it cannot — never a fake
-  current bucket.
+  AR/AP aging at `/aging` (#117, the same-day amendment below) cites
+  due-date buckets when the journal carries a due date and an
+  application; unset when it cannot — never a fake current bucket.
+  Buckets foot to the AR/AP control.
 
 **The wedge is still the revenue path.** A paid shadow run on a real
 customer's period is the first dollar. What changed is the *unit*. The
@@ -760,14 +761,15 @@ production-complete, and do not read a walk-through as demo-ready (#27).
 `screensFor` as the one chrome list; the AuthKit callback (`/sign-in`,
 `/callback`) in place of Cognito's Hosted UI. The domain figures above
 composed onto existing URLs — `/capital`, `/billing`, `/budget`,
-`/sheet`, `/pnl`, `/cashflow` — rather than minting a chrome list per issue.
+`/sheet`, `/pnl`, `/cashflow`, `/aging` — rather than minting a chrome
+list per issue.
 
 **What it did NOT buy, and this is the honest half.** Period close
 (#114) is the Stage 1 door ("no effect on a closed period"); this
-amendment does not land it and does not refuse it. AR/AP aging is
-unset. Envelope coaching, bank OAuth, a credit score, a cash forecast,
-and a client portal stay refused or on their own issues. The remaining
-wedge gap is still a real customer's period.
+amendment does not land it and does not refuse it. Envelope coaching,
+bank OAuth, a credit score, a cash forecast, and a client portal stay
+refused or on their own issues. The remaining wedge gap is still a
+real customer's period.
 
 ### Amendment, 2026-09-03 — a household cash-flow statement, and nothing on the refusal list moved
 
@@ -857,11 +859,58 @@ down to zero is a real zero.
 **What a walk-through can and cannot show** (demo readiness, #27). It can
 show beginning and ending cash for a month or year, the operating and
 financing classes the journal supports, and the conserved tie. It cannot
-show AR/AP aging, a period close, a bank reconciliation, a cash forecast,
-payroll, tax filing, inventory/COGS, payment initiation, bank OAuth, or a
-client portal. Sheet / P&L stay on #108; aging stays on #117; period close
-stays on #114. None of those are on the *Explicitly not building* list, and
-this amendment adds none of them.
+show a bank reconciliation, a cash forecast, payroll, tax filing,
+inventory/COGS, payment initiation, bank OAuth, or a client portal.
+Sheet / P&L stay on #108; aging is the same-day amendment below; period
+close is the same-day amendment after that. None of those are on the
+*Explicitly not building* list, and this amendment adds none of them.
+
+### Amendment, 2026-09-03 — operating AR/AP aging by due-date bucket, and nothing on the refusal list moved
+
+OPERATING books already cited a balance sheet, a period income statement,
+a trial balance, and a period cash-flow statement (#108 / #118). AR and AP
+were control-account totals. They did not say which invoices and bills
+were current, past due, or undated. Operators rebuilt that story in a
+spreadsheet beside a book that already tied.
+
+What landed is a citeable as-of figure at
+`/books/{id}/views/{view}/aging`, folded from the same journal
+(`filter=` as-of, the sheet-shaped cut). The journal carries optional due
+date and open-item application. `OperatingAging` is a fold, not a second
+store — there is no OperatingAging resource. Kind still selects the
+chrome from one `screensFor` list — the screen is added to
+`OPERATING_SCREENS`. Fund, Project, and Investment books do not wear it.
+Project `/billing` is one job's billed/earned/collections, not
+entity-wide aging. This is not a bank reconciliation, not payroll, not
+inventory/COGS, and not payment initiation.
+
+**The buckets the journal can support.** Current / 1–30 / 31–60 / 61–90 /
+older than 90 / undated, remaining open items against the AR and AP
+controls:
+
+- **Current** — due on or after the as-of day.
+- **1–30 / 31–60 / 61–90 / older** — days past due.
+- **Undated** — remaining with no due date. A missing due date is
+  undated, not current.
+
+Dated buckets plus the undated residual equal the control on the same
+cut.
+
+**Unset stays unset.** A schedule is unset when remaining items have no
+due date, or a collection/payment does not name the invoice or bill it
+applies to — no FIFO, no equal split, no silent current bucket. Empty
+dated buckets on a set schedule are `"0"` (nothing in that window).
+`undated` empty is no residual line. An empty journal is not a schedule
+of zeros.
+
+**What a walk-through can and cannot show** (demo readiness, #27). It can
+show aged AR and AP that foot to the control, an undated residual that
+is not current, and unset when the journal cannot support the cut. It
+cannot show a bank reconciliation, payroll, tax filing, inventory/COGS,
+payment initiation, bank OAuth, or a client portal. Sheet / P&L stay on
+#108; cash-flow stays on #118; period close is the same-day amendment
+below. None of those are on the *Explicitly not building* list, and this
+amendment adds none of them.
 
 ### Amendment, 2026-09-03 — a citeable period close, and nothing on the refusal list moved
 
@@ -915,8 +964,9 @@ show a close against a named view, prefix and digest, a back-dated post
 refused, a roll-forward that ties to the period P&L and the post-close
 trial balance, and unset when the journal cannot support a close. It
 cannot show a control-plane configuration editor, a client portal,
-performance reporting, a tax-filing workflow, AR/AP aging, or a general
-workflow engine. The close may remain CLI/API.
+performance reporting, a tax-filing workflow, or a general
+workflow engine. Aging is the same-day amendment above. The close may
+remain CLI/API.
 
 ## The control plane: geetch and crova
 
