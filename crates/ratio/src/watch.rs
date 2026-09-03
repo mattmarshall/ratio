@@ -65,16 +65,24 @@ fn install_journal_store() -> Result<()> {
     Ok(())
 }
 
+/// Whether a journal-store or book-open failure should take `watch` down.
+///
+/// The deployed demo sets `RATIO_JOURNAL_BUCKET`. A hydrate failure there
+/// must be a CloudWatch line, not a dead API: `/healthz` and `/version` do
+/// not need the book, and LWA's readiness check is HTTP GET `/healthz`.
+/// Unset (or empty) is the laptop shape — a bad path should fail before the
+/// accept loop, not hang as a silent empty server.
+fn startup_open_failure_is_fatal(journal_bucket: Option<&str>) -> bool {
+    !matches!(journal_bucket, Some(b) if !b.is_empty())
+}
+
 /// Serve the screens until interrupted.
 pub fn watch(book: PathBuf, port: u16) -> Result<()> {
-    // ⛔ BEFORE THE FIRST OPEN. FileBook reads the process-wide store on
-    // `open`, so installing after the first request would leave that request
-    // writing `/tmp` while later ones write the object store — two journals
-    // under one URL, which is the fork this exists to close.
-    install_journal_store()?;
-    // Fail on a bad book here rather than rendering an error page later.
-    FileBook::open(&book).with_context(|| format!("opening book at {}", book.display()))?;
-
+    // Bind BEFORE hydrate. LWA's readiness check is HTTP GET /healthz on
+    // this port; a closed port is an API Gateway 500 on every route for the
+    // life of the function. After #84 the journal is one object per entry,
+    // and FileBook::open issues a conditional PUT per seed line — that was
+    // fail-closed here, so a hydrate problem took /healthz with it.
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let listener = TcpListener::bind(addr)
         .with_context(|| format!("binding {addr} — is another `ratio watch` running?"))?;
@@ -87,6 +95,31 @@ pub fn watch(book: PathBuf, port: u16) -> Result<()> {
     println!("  /rules    rules and their checks");
     println!("book   {}", book.display());
     println!("(ctrl-c to stop)");
+
+    // ⛔ BEFORE THE FIRST OPEN. FileBook reads the process-wide store on
+    // `open`, so installing after the first request would leave that request
+    // writing `/tmp` while later ones write the object store — two journals
+    // under one URL, which is the fork this exists to close.
+    //
+    // A failed install leaves the store unset (today's local shape) rather
+    // than crashing. /healthz and /version never call FileBook::open.
+    let deployed = !startup_open_failure_is_fatal(
+        std::env::var("RATIO_JOURNAL_BUCKET").ok().as_deref(),
+    );
+    if let Err(e) = install_journal_store() {
+        if !deployed {
+            return Err(e);
+        }
+        eprintln!("journal store failed to install; serving without it: {e:#}");
+    }
+    if let Err(e) = FileBook::open(&book)
+        .with_context(|| format!("opening book at {}", book.display()))
+    {
+        if !deployed {
+            return Err(e);
+        }
+        eprintln!("book failed to open; /healthz and /version still serve: {e:#}");
+    }
 
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue }; // one dropped connection is not the end
@@ -2793,6 +2826,65 @@ mod tests {
 
     fn parse(raw: &str) -> Request {
         read_request(&mut std::io::BufReader::new(raw.as_bytes())).unwrap()
+    }
+
+    #[test]
+    fn a_set_journal_bucket_must_not_kill_the_server_on_open_failure() {
+        // Deployed shape. A hydrate problem is a CloudWatch line; /healthz
+        // still has to answer or LWA 500s every route for the life of the
+        // function. #123 put this path in production for the first time.
+        assert!(!startup_open_failure_is_fatal(Some("ratio-scale-bucket")));
+    }
+
+    #[test]
+    fn a_local_watch_still_fails_fast_on_a_bad_book() {
+        // Unset is the laptop. A bad path must not hang as a silent empty server.
+        assert!(startup_open_failure_is_fatal(None));
+        assert!(
+            startup_open_failure_is_fatal(Some("")),
+            "empty is the same claim as unset"
+        );
+    }
+
+    fn probe(addr: SocketAddr, path: &str) -> String {
+        let mut s = TcpStream::connect(addr).expect("connect to the probe listener");
+        write!(s, "GET {path} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").unwrap();
+        let _ = s.shutdown(std::net::Shutdown::Write);
+        let mut out = String::new();
+        std::io::Read::read_to_string(&mut s, &mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn healthz_and_version_are_served_without_opening_a_book() {
+        // These two routes must not touch the book. The live demo 500'd every
+        // route — including /healthz — because watch() hydrated before bind
+        // and LWA never saw a listener. A missing book here is the same
+        // shape as a hydrate that has not finished: the probe still answers.
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let book = PathBuf::from("/no/such/ratio-book");
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(2) {
+                let Ok(stream) = stream else { continue };
+                let _ = handle(stream, &book);
+            }
+        });
+
+        let healthz = probe(addr, "/healthz");
+        assert!(healthz.contains("200 OK"), "{healthz}");
+        assert!(
+            healthz.ends_with("ok") || healthz.contains("\r\n\r\nok"),
+            "healthz body must be the literal ok, got {healthz}"
+        );
+
+        let version = probe(addr, "/version");
+        assert!(version.contains("200 OK"), "{version}");
+        // Body is RATIO_BUILD or "dev". The point is it answered without a book.
+        assert!(
+            version.contains("\r\n\r\n"),
+            "version must carry a body: {version}"
+        );
     }
 
     #[test]
