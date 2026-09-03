@@ -201,6 +201,7 @@ describe("the command palette", () => {
   const EXPECTED_SCREENS: ReadonlyArray<readonly [string, string]> = [
     ["Capital activity", `/books/${FUND}/views/${VIEW}/capital`],
     ["NAV roll-forward", `/books/${FUND}/views/${VIEW}/nav`],
+    ["Period close", `/books/${FUND}/views/${VIEW}/close`],
     ["Exceptions", `/books/${FUND}/views/${VIEW}/breaks`],
     ["Trial balance", `/books/${FUND}/views/${VIEW}/accounts`],
     ["Positions", `/books/${FUND}/views/${VIEW}/positions`],
@@ -289,6 +290,7 @@ describe("the command palette", () => {
       ["Budget vs actual", `/books/bridge/views/${VIEW}/budget`],
       ["WIP", `/books/bridge/views/${VIEW}/wip`],
       ["Billing", `/books/bridge/views/${VIEW}/billing`],
+      ["Period close", `/books/bridge/views/${VIEW}/close`],
     ] as const) {
       const { unmount } = renderProject();
       await type(label);
@@ -322,6 +324,7 @@ describe("the command palette", () => {
       ["Balance sheet", `/books/studio/views/${VIEW}/sheet`],
       ["Income statement", `/books/studio/views/${VIEW}/pnl`],
       ["Cash flow", `/books/studio/views/${VIEW}/cashflow`],
+      ["Period close", `/books/studio/views/${VIEW}/close`],
       ["AR/AP aging", `/books/studio/views/${VIEW}/aging`],
       ["Trial balance", `/books/studio/views/${VIEW}/accounts`],
     ] as const) {
@@ -490,6 +493,7 @@ describe("the command palette", () => {
       ["Period P&L", "/books/household/views/abor/pnl"],
       ["Net-worth bridge", "/books/household/views/abor/bridge"],
       ["Cash flow", "/books/household/views/abor/cashflow"],
+      ["Period close", "/books/household/views/abor/close"],
       ["Budget vs actual", "/books/household/views/abor/budget"],
       ["Loan schedule", "/books/household/views/abor/loans"],
       ["Trial balance", "/books/household/views/abor/accounts"],

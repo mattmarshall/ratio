@@ -38,7 +38,10 @@ use ratio_proto::ratio::console::v1 as pb;
 // because they are two APIs, and this is the seam between them.
 use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::RuleSet;
-use ratio_store::{AccountTypeRecord, ConfigStore, FileBook, Journal, Plane};
+use ratio_store::{
+    AccountTypeRecord, CloseRecord, ConfigStore, FileBook, Journal, JournalEntry, Plane,
+    PostingRecord,
+};
 
 /// What stands between a fund and a NAV.
 ///
@@ -443,6 +446,11 @@ impl Console {
     /// over the Investment chart — a period NAV roll-forward, not a strike.
     /// Bare `nav` is refused; a non-investment book is refused. Commitment
     /// and undrawn stay on the chart (they are equity) and cancel in NAV.
+    /// `close-2026-03` is the same Loan-shaped fold so a period close
+    /// roll-forward can name beginning retained earnings, period surplus,
+    /// and ending retained earnings without a second ledger. Bare `close`
+    /// is refused. Kind does not select this fold — every book that can
+    /// close uses it.
     pub fn list_accounts(
         &self,
         parent: &str,
@@ -533,13 +541,18 @@ impl Console {
                 bail!("a period NAV roll-forward needs a month (YYYY-MM) or a year (YYYY)");
             }
         }
+        if kind == "close" && period.is_empty() {
+            // ⛔ NO KIND RESTRICTION. Every book that can close uses this
+            // fold. Bare `close` is the cumulative default this refuses —
+            // a roll-forward without a window is not a period close.
+            bail!("a period close roll-forward needs a month (YYYY-MM) or a year (YYYY)");
+        }
         let fold = match (kind, period) {
             ("pnl", p) => AccountFold::Activity(parse_period(p)?),
             ("capital", p) if !p.is_empty() => AccountFold::Activity(parse_period(p)?),
             ("budget", p) => AccountFold::Activity(parse_period(p)?),
-            ("loan", p) | ("bridge", p) | ("cashflow", p) | ("change", p) | ("nav", p) => {
-                AccountFold::Loan(parse_period(p)?)
-            }
+            ("loan", p) | ("bridge", p) | ("cashflow", p) | ("change", p) | ("nav", p)
+            | ("close", p) => AccountFold::Loan(parse_period(p)?),
             (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
             _ => AccountFold::Current,
         };
@@ -655,9 +668,25 @@ impl Console {
                 // today would put it in a window nobody elected, and both
                 // defaults are wrong in a direction that looks ordinary.
                 let activity = matches!(fold, AccountFold::Activity(_));
+                // ⛔ ACTIVITY SKIPS THE CLOSING POSTING. The P&L is the
+                // income statement before close; including the entry that
+                // zeros the temporaries would make a closed March look like
+                // a month with no income. The sheet as-of includes it.
+                // `Ratio.Close.the_equity_leg_is_the_surplus`.
+                let closing: BTreeSet<String> = if activity {
+                    b.closes()?
+                        .into_iter()
+                        .filter_map(|c| c.closing_entry)
+                        .collect()
+                } else {
+                    BTreeSet::new()
+                };
                 let proj = self.projection(fund)?;
                 let mut rows: BTreeMap<(i64, Option<String>), (i128, i128, i64)> = BTreeMap::new();
                 b.for_each_entry_since(0, &mut |entry| {
+                    if activity && closing.contains(&entry.id) {
+                        return Ok(());
+                    }
                     if !proj.recognised(view, entry)? {
                         return Ok(());
                     }
@@ -3165,6 +3194,217 @@ impl Console {
         Ok(to_pb(&fund, &s, &why))
     }
 
+    /// Close one view through one calendar day.
+    ///
+    /// ⭐ THE VERB STAGE 1 NAMED. Posts the conserved closing entry
+    /// (`Ratio.Close.closing_conserves`) then records the citeable
+    /// boundary. Append-only storage is not this door — the record is
+    /// what `Journal::append` reads. Order is posting then record, so
+    /// the door does not refuse the closing entry itself.
+    ///
+    /// ⛔ UNSET STAYS UNSET. A missing `[close] equity_destination`
+    /// refuses rather than defaulting to Opening equity or Funding.
+    /// A period with no income or expense still closes (the door
+    /// holds) and leaves `closing_entry` / `surplus` absent — not a
+    /// measured zero. `Ratio.Close.missing_destination_refuses_the_close`.
+    pub fn close_period(
+        &self,
+        fund: &str,
+        view: &str,
+        through: &str,
+    ) -> Result<CloseRecord> {
+        ratio_common::days_from_iso_date(through).with_context(|| {
+            format!("{through:?} is not a calendar day (YYYY-MM-DD)")
+        })?;
+
+        let path = self.book_path(fund)?;
+        let mut b = FileBook::open(&path)?;
+        let digest = b
+            .active()?
+            .context("no configuration is in force — a close cannot pin an unset config")?;
+        let set = RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))?;
+        let dest = match &set.close {
+            Some(c) => c.equity_destination,
+            None => bail!(
+                "this book has no [close] equity_destination — a missing destination \
+                 refuses the close, and Opening equity or Funding is not a default. \
+                 Ratio.Close.missing_destination_refuses_the_close"
+            ),
+        };
+        let chart = b.accounts()?;
+        let dest_acct = chart.iter().find(|a| a.dim == dest).with_context(|| {
+            format!(
+                "equity destination {dest} is not in the chart of accounts. \
+                 Ratio.Close.missing_destination_refuses_the_close"
+            )
+        })?;
+        if dest_acct.account_type != AccountTypeRecord::Equity {
+            bail!(
+                "equity destination {dest} ({}) is {:?}, not equity. A close that \
+                 rolled surplus into an income or asset account would move the \
+                 residual off the sheet while the books still tied",
+                dest_acct.display_name,
+                dest_acct.account_type
+            );
+        }
+
+        if let Some(prior) = b.latest_close(view)? {
+            if through <= prior.closed_date.as_str() {
+                bail!(
+                    "view {view:?} is already closed through {} (journal prefix {}, \
+                     closed by {}). A close only moves forward. \
+                     Ratio.Close.a_close_only_moves_forward",
+                    prior.closed_date,
+                    prior.journal_position,
+                    prior.actor
+                );
+            }
+        }
+
+        let types: std::collections::BTreeMap<i64, AccountTypeRecord> =
+            chart.iter().map(|a| (a.dim, a.account_type)).collect();
+        let proj = self.projection(fund)?;
+        let mut temps: std::collections::BTreeMap<(i64, Option<String>), i128> =
+            std::collections::BTreeMap::new();
+        let mut dated = 0u64;
+        let mut last_config = None;
+        b.for_each_entry_since(0, &mut |entry| {
+            if !proj.recognised(view, entry)? {
+                return Ok(());
+            }
+            let Some(day) = entry.trade_date.as_deref() else {
+                return Ok(());
+            };
+            if day > through {
+                return Ok(());
+            }
+            dated += 1;
+            last_config = Some(entry.config.clone());
+            for p in &entry.postings {
+                match types.get(&p.dim) {
+                    Some(AccountTypeRecord::Income | AccountTypeRecord::Expense) => {
+                        *temps.entry((p.dim, p.currency.clone())).or_default() +=
+                            p.amount as i128;
+                    }
+                    _ => {}
+                }
+            }
+            Ok(())
+        })?;
+        if dated == 0 {
+            bail!(
+                "no dated journal prefix through {through} this view recognises — \
+                 a close without a beginning prefix stays unset, not a measured zero"
+            );
+        }
+
+        let mut legs: Vec<PostingRecord> = Vec::new();
+        let mut surplus: i128 = 0;
+        let mut currencies: std::collections::BTreeSet<Option<String>> =
+            std::collections::BTreeSet::new();
+        for ((dim, ccy), bal) in &temps {
+            if *bal == 0 {
+                continue;
+            }
+            surplus += *bal;
+            currencies.insert(ccy.clone());
+            let amount = i64::try_from(*bal).map_err(|_| {
+                anyhow::anyhow!("temporary balance on {dim} does not fit i64")
+            })?;
+            let neg = ratio_common::checked::neg(amount, "closing a temporary account")?;
+            let mut p = PostingRecord::new(*dim, neg);
+            p.currency = ccy.clone();
+            legs.push(p);
+        }
+        if currencies.len() > 1 {
+            bail!(
+                "a close that would mix currencies is refused — each currency is \
+                 its own conservation law, and a single surplus would hide which"
+            );
+        }
+
+        let actor = self.actor.clone().unwrap_or_default();
+        let recorded = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        let (closing_entry, surplus_opt, config_digest) = if legs.is_empty() {
+            (
+                None,
+                None,
+                last_config
+                    .map(|d| d.as_str().to_string())
+                    .unwrap_or_else(|| digest.as_str().to_string()),
+            )
+        } else {
+            let dest_amt = i64::try_from(surplus)
+                .map_err(|_| anyhow::anyhow!("surplus does not fit i64"))?;
+            let mut dest_leg = PostingRecord::new(dest, dest_amt);
+            if let Some(Some(c)) = currencies.iter().next() {
+                dest_leg.currency = Some(c.clone());
+            }
+            legs.push(dest_leg);
+
+            let id = format!("close:{view}:{through}");
+            let entry = JournalEntry {
+                id: id.clone(),
+                memo: format!("Close {view} through {through}"),
+                config: digest.clone(),
+                postings: legs,
+                trade_date: Some(through.to_string()),
+                announcement: None,
+            };
+            b.append(&entry)?;
+            (Some(id), Some(dest_amt), digest.as_str().to_string())
+        };
+
+        let entries = b.entries()?;
+        let journal_position = entries.len() as u64;
+        let journal_digest = ratio_nav::prefix_digest(&entries)?;
+
+        let rec = CloseRecord {
+            view: view.to_string(),
+            closed_date: through.to_string(),
+            journal_position,
+            journal_digest: journal_digest.clone(),
+            config_digest,
+            closing_entry,
+            actor,
+            recorded,
+            equity_destination: dest,
+            surplus: surplus_opt,
+        };
+        b.append_record(Plane::Closes, &rec)?;
+        self.record_change(&path, "closed", through, &journal_digest)?;
+        Ok(rec)
+    }
+
+    pub fn list_period_closes(&self, parent: &str) -> Result<pb::ListPeriodClosesResponse> {
+        let (id, view) = view_scoped_parent(parent).context("bad parent")?;
+        let path = self.book_path(&id)?;
+        let b = FileBook::open(&path)?;
+        let mut closes = b.closes()?;
+        closes.retain(|c| c.view == view);
+        closes.sort_by(|a, b| b.closed_date.cmp(&a.closed_date));
+        Ok(pb::ListPeriodClosesResponse {
+            period_closes: closes.into_iter().map(|c| to_pb_close(&id, &c)).collect(),
+            next_page_token: String::new(),
+        })
+    }
+
+    pub fn get_period_close(&self, name: &str) -> Result<pb::PeriodClose> {
+        let (fund, view, id) =
+            view_scoped_id(name, "periodCloses").context("bad name")?;
+        let path = self.book_path(&fund)?;
+        let b = FileBook::open(&path)?;
+        b.closes()?
+            .into_iter()
+            .find(|c| c.view == view && c.closed_date == id)
+            .map(|c| to_pb_close(&fund, &c))
+            .with_context(|| format!("{name:?} is not a recorded period close"))
+    }
+
     /// The corporate actions announced on this fund, applied or not.
     ///
     /// ⛔ EVERY FIELD IS DERIVED FROM THE JOURNAL, nothing about application is
@@ -3843,6 +4083,25 @@ fn to_pb(fund: &str, s: &ratio_nav::Strike, why: &[String]) -> pb::NavStrike {
     }
 }
 
+fn to_pb_close(fund: &str, c: &CloseRecord) -> pb::PeriodClose {
+    pb::PeriodClose {
+        name: format!(
+            "funds/{fund}/views/{}/periodCloses/{}",
+            c.view, c.closed_date
+        ),
+        view: c.view.clone(),
+        closed_date: c.closed_date.clone(),
+        actor: c.actor.clone(),
+        journal_position: c.journal_position as i64,
+        journal_digest: c.journal_digest.clone(),
+        config_digest: c.config_digest.clone(),
+        closing_entry: c.closing_entry.clone().unwrap_or_default(),
+        create_time: Some(stamp(c.recorded)),
+        equity_destination: c.equity_destination.to_string(),
+        surplus: c.surplus.map(|s| s.to_string()).unwrap_or_default(),
+    }
+}
+
 fn newest_report(book: &Path) -> Result<Option<kernel::BreakReport>> {
     let dir = book.join("reports");
     let mut found: Vec<PathBuf> = std::fs::read_dir(&dir)
@@ -4200,7 +4459,7 @@ struct PeriodWindow {
 /// AIP-132 List requests carry `filter` (AIP-160), not a custom period field.
 /// `pnl-2026-03` / `sheet-2026` / `capital-2026-03` / `budget-2026-03` /
 /// `loan-2026-03` / `bridge-2026-03` / `cashflow-2026-03` / `change-2026-03` /
-/// `nav-2026-03` — hyphen because `param_of` does not decode.
+/// `nav-2026-03` / `close-2026-03` — hyphen because `param_of` does not decode.
 fn list_accounts_window(filter: &str) -> (&str, &str) {
     if let Some(rest) = filter.strip_prefix("pnl-") {
         ("pnl", rest)
@@ -4220,6 +4479,8 @@ fn list_accounts_window(filter: &str) -> (&str, &str) {
         ("change", rest)
     } else if let Some(rest) = filter.strip_prefix("nav-") {
         ("nav", rest)
+    } else if let Some(rest) = filter.strip_prefix("close-") {
+        ("close", rest)
     } else {
         (filter, "")
     }
@@ -9945,5 +10206,290 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         let stale = Console::new(&d).get_fact("funds/demo/facts/r1").unwrap();
         assert!(stale.superseded);
         assert_eq!(stale.assertion, "EUR at 1.08");
+    }
+
+    #[test]
+    fn a_book_period_can_be_closed_against_a_named_view_prefix_and_digest() {
+        // ⭐ THE CLAIM #114 IS ABOUT. A close pins the view, the through
+        // day, the journal prefix, the configuration, the actor and the
+        // time. The surplus rolls into the named equity destination.
+        let root = fresh("period-close-evidence");
+        let c = Console::new(&root).as_actor("tester");
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        c.apply_event(&household_req("inc", "receive_income", "30.00", 2026, 3, 5))
+            .unwrap();
+        c.apply_event(&household_req("spend", "spend_cash", "6.00", 2026, 3, 8))
+            .unwrap();
+
+        let view = ratio_rules::UNDECLARED_VIEW;
+        let rec = c.close_period("household", view, "2026-03-31").unwrap();
+        assert_eq!(rec.view, view);
+        assert_eq!(rec.closed_date, "2026-03-31");
+        assert_eq!(rec.actor, "tester");
+        assert_eq!(rec.equity_destination, 25);
+        assert_eq!(rec.surplus, Some(-2400), "30.00 income − 6.00 expense, raw");
+        assert_eq!(
+            rec.closing_entry.as_deref(),
+            Some("close:book:2026-03-31")
+        );
+        assert!(rec.journal_position >= 3, "income, spend, close: {}", rec.journal_position);
+        assert_eq!(rec.journal_digest.len(), 64);
+        assert_eq!(rec.config_digest.len(), 64);
+        assert!(rec.recorded > 0);
+
+        let listed = c
+            .list_period_closes(&format!("funds/household/views/{view}"))
+            .unwrap();
+        assert_eq!(listed.period_closes.len(), 1);
+        assert_eq!(listed.period_closes[0].closed_date, "2026-03-31");
+        assert_eq!(listed.period_closes[0].surplus, "-2400");
+        assert_eq!(listed.period_closes[0].actor, "tester");
+
+        let got = c
+            .get_period_close(&format!(
+                "funds/household/views/{view}/periodCloses/2026-03-31"
+            ))
+            .unwrap();
+        assert_eq!(got.journal_digest, rec.journal_digest);
+        assert_eq!(got.closing_entry, "close:book:2026-03-31");
+
+        let again = c.close_period("household", view, "2026-03-31").unwrap_err();
+        assert!(
+            again.to_string().contains("already closed"),
+            "{again}"
+        );
+    }
+
+    #[test]
+    fn a_back_dated_posting_into_a_closed_period_refuses() {
+        // ⭐ APPEND-ONLY STORAGE IS NOT A CLOSE. The door Stage 1 named.
+        let root = fresh("period-close-door");
+        let c = Console::new(&root).as_actor("tester");
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        c.apply_event(&household_req("inc", "receive_income", "10.00", 2026, 3, 1))
+            .unwrap();
+        c.close_period("household", ratio_rules::UNDECLARED_VIEW, "2026-03-31")
+            .unwrap();
+
+        let err = c
+            .apply_event(&household_req("late", "spend_cash", "1.00", 2026, 3, 31))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("closed through"), "{err}");
+        assert!(err.contains("2026-03-31"), "{err}");
+
+        let earlier = c
+            .apply_event(&household_req("earlier", "spend_cash", "1.00", 2026, 3, 15))
+            .unwrap_err()
+            .to_string();
+        assert!(earlier.contains("closed through"), "{earlier}");
+
+        c.apply_event(&household_req("april", "spend_cash", "2.00", 2026, 4, 1))
+            .unwrap();
+    }
+
+    #[test]
+    fn the_closing_roll_forward_ties_to_the_period_pnl_and_post_close_trial_balance() {
+        // ⭐ THE CLOSING POSTING AND THE STATEMENTS CITE THE SAME ENTRIES.
+        // March P&L still shows the period (Activity skips the close).
+        // The as-of sheet and the current trial balance include it, so
+        // I/E are zero and retained earnings holds the surplus. April
+        // does not silently include March.
+        let root = fresh("period-close-ties");
+        let c = Console::new(&root).as_actor("tester");
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        c.apply_event(&household_req("inc", "receive_income", "30.00", 2026, 3, 5))
+            .unwrap();
+        c.apply_event(&household_req("spend", "spend_cash", "6.00", 2026, 3, 8))
+            .unwrap();
+        let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let rec = c
+            .close_period("household", ratio_rules::UNDECLARED_VIEW, "2026-03-31")
+            .unwrap();
+
+        let march = c.list_accounts(&view, "pnl-2026-03").unwrap();
+        let income = march
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Income")
+            .expect("pnl still names Income");
+        let living = march
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Living expenses")
+            .expect("pnl still names Living expenses");
+        assert_eq!(income.credit, "3000", "March P&L keeps the income: {income:?}");
+        assert_eq!(living.debit, "600", "March P&L keeps the spend: {living:?}");
+
+        let sheet = c.list_accounts(&view, "sheet-2026-03").unwrap();
+        let re = sheet
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Retained earnings")
+            .expect("the sheet names Retained earnings");
+        assert_eq!(re.balance, "-2400", "surplus landed on RE: {re:?}");
+        let sheet_income = sheet
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Income")
+            .unwrap();
+        assert_eq!(
+            sheet_income.balance, "0",
+            "as-of March 31 the close zeroed income: {sheet_income:?}"
+        );
+
+        let tb = c.list_accounts(&view, "").unwrap();
+        let tb_re = tb
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Retained earnings")
+            .unwrap();
+        assert_eq!(tb_re.balance, "-2400");
+        assert_eq!(
+            rec.closing_entry.as_deref(),
+            Some("close:book:2026-03-31")
+        );
+
+        c.apply_event(&household_req("apr", "spend_cash", "4.00", 2026, 4, 2))
+            .unwrap();
+        let april = c.list_accounts(&view, "pnl-2026-04").unwrap();
+        let apr_living = april
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Living expenses")
+            .unwrap();
+        assert_eq!(
+            apr_living.debit, "400",
+            "April is April, not March+April: {apr_living:?}"
+        );
+        let apr_income = april
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Income")
+            .unwrap();
+        assert_eq!(
+            apr_income.credit, "0",
+            "March income must not leak into April: {apr_income:?}"
+        );
+
+        let roll = c.list_accounts(&view, "close-2026-03").unwrap();
+        let roll_re = roll
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Retained earnings")
+            .unwrap();
+        let end: i64 = roll_re.balance.parse().unwrap();
+        let d: i64 = roll_re.debit.parse().unwrap();
+        let cr: i64 = roll_re.credit.parse().unwrap();
+        assert_eq!(end - (d - cr), 0, "first close: beginning RE is a real zero");
+        assert_eq!(end, -2400);
+    }
+
+    #[test]
+    fn missing_close_state_stays_unset_rather_than_zero() {
+        // ⭐ MISSING IS UNSET, NOT A MEASURED ZERO. No close recorded:
+        // ListPeriodCloses is empty and surplus is not "0". A close of
+        // a period with no I/E leaves closing_entry and surplus absent.
+        // A book without [close] refuses rather than inventing Opening equity.
+        let root = fresh("period-close-unset");
+        let c = Console::new(&root).as_actor("tester");
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let empty = c.list_period_closes(&view).unwrap();
+        assert!(empty.period_closes.is_empty(), "{empty:?}");
+
+        let bare = c.list_accounts(&view, "close").unwrap_err().to_string();
+        assert!(bare.contains("month"), "{bare}");
+
+        c.apply_event(&household_req(
+            "xfer",
+            "xfer_cash_investments",
+            "5.00",
+            2026,
+            3,
+            15,
+        ))
+        .unwrap();
+        let rec = c
+            .close_period("household", ratio_rules::UNDECLARED_VIEW, "2026-03-31")
+            .unwrap();
+        assert!(
+            rec.closing_entry.is_none(),
+            "a transfer is not income: {:?}",
+            rec.closing_entry
+        );
+        assert!(
+            rec.surplus.is_none(),
+            "no I/E movement is unset surplus, not zero: {:?}",
+            rec.surplus
+        );
+        let listed = c.list_period_closes(&view).unwrap();
+        assert_eq!(listed.period_closes[0].surplus, "");
+        assert_eq!(listed.period_closes[0].closing_entry, "");
+
+        let fund = book::BookKind::Investment;
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: fund.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        // Strip [close] so a missing destination refuses.
+        let path = root.join("partners");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let stripped = text
+            .lines()
+            .filter(|l| !l.contains("equity_destination") && *l != "[close]")
+            .collect::<Vec<_>>()
+            .join("\n");
+        let cfg = b.put(stripped.as_bytes()).unwrap();
+        b.set_active(&cfg).unwrap();
+        drop(b);
+        let refused = Console::new(&root)
+            .as_actor("tester")
+            .close_period("partners", ratio_rules::UNDECLARED_VIEW, "2026-03-31")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refused.contains("equity_destination") || refused.contains("missing destination"),
+            "{refused}"
+        );
     }
 }

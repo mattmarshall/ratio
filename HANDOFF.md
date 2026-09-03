@@ -1,6 +1,6 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
-**State**: 51 bazel tests green, 18 `lean_test`, 20 `tla_check`, 13 `manual`
+**State**: bazel tests green, 19 `lean_test`, 21 `tla_check`, 14 `manual`
 probes all red for the reasons they name.
 
 Issues #4 and #7 are closed. Open work is #5, #6, #8, #9. This file is the part
@@ -525,20 +525,20 @@ the conserved one, and the kernel never said it was.
   funds remain investment books.
 - ⚠ **An operating-business walk-through (#108).** CreateBook(Operating)
   writes an independent Book — no Fund, no WorkOS organization — with
-  cash, AR, AP, operating revenue/expense, and owner equity. Record or
-  ingest `invoice_customer` / `collect_receivable` / `vendor_bill` /
-  `pay_vendor`: the trial balance still ties, no lot opens, `/sheet`
-  cites the control accounts, and `/pnl` cites the period (month or
-  year, not since inception). An undated entry is in no period. ⛔ The
-  walk-through cannot invent due dates. `/aging` cites due-date buckets
-  when invoices and bills carry a due date and collections/payments name
-  the item they apply to; missing due dates stay **unset**, not current,
-  and an unapplied reduction unsets that side — no FIFO, no equal split.
-  Project `/billing` is one job's billed/earned/collections, not
-  entity-wide aging. Payroll, tax filing, inventory/COGS, CRM, payment
-  initiation, and bank-feed OAuth stay refused. `KIND_UNSPECIFIED` is
-  not this kind and still falls through to fund operations. The seeded
-  demo funds remain investment books.
+  cash, AR, AP, operating revenue/expense, owner equity, and retained
+  earnings. Record or ingest `invoice_customer` / `collect_receivable` /
+  `vendor_bill` / `pay_vendor`: the trial balance still ties, no lot
+  opens, `/sheet` cites the control accounts, and `/pnl` cites the
+  period (month or year, not since inception). An undated entry is in
+  no period. ⛔ The walk-through cannot invent due dates. `/aging` cites
+  due-date buckets when invoices and bills carry a due date and
+  collections/payments name the item they apply to; missing due dates
+  stay **unset**, not current, and an unapplied reduction unsets that
+  side — no FIFO, no equal split. Project `/billing` is one job's
+  billed/earned/collections, not entity-wide aging. Payroll, tax filing,
+  inventory/COGS, CRM, payment initiation, and bank-feed OAuth stay
+  refused. `KIND_UNSPECIFIED` is not this kind and still falls through
+  to fund operations. The seeded demo funds remain investment books.
 - ⚠ **An operating cash-flow walk-through (#118 / #27).** It can show
   beginning and ending cash for a month or year, and classify the
   movement into operating (revenue, expenses, AR/AP working capital)
@@ -556,6 +556,20 @@ the conserved one, and the kernel never said it was.
   bank OAuth, or a client portal. Sheet / P&L stay on #108. The screen
   is the same `/cashflow` URL Personal already uses — one `screensFor`
   list.
+- ⚠ **A period-close walk-through (#114 / #27).** It can show a book period
+  closed against a named view, journal prefix and configuration digest,
+  with actor and time; a back-dated posting into that period refused;
+  beginning retained earnings → period surplus → ending retained earnings
+  tying to the P&L and the post-close trial balance; and unset when no
+  close has been recorded, when the destination is missing, or when the
+  period had no income or expense to roll. CreateBook seeds
+  `[close] equity_destination` on Personal (25), Investment (25),
+  Project (29), and Operating (25). The operator verb is `ratio close`;
+  the console is the evidence at `/close`. An open period may preview
+  surplus and must say it is provisional. ⛔ The walk-through cannot
+  show a control-plane configuration editor, a client portal,
+  performance reporting, a tax-filing workflow, or a general workflow
+  engine. A demo fund without `[close]` correctly refuses the close.
 - ⚠ **`console/scripts/capture_fixtures.sh` takes `navStrikes.json` and
   `replay.json` from `RATIO_FIXTURE_STRUCK_FUND`, not from `RATIO_FIXTURE_FUND`.**
   The fixture fund is the BLOCKED book on purpose, and a blocked book now has no

@@ -105,7 +105,12 @@ impl Replay {
 /// round-trips through the parser but alters the bytes — a reordered field, a
 /// different memo encoding — is still visible. What is being attested is the
 /// record, not an interpretation of it.
-fn prefix_digest(entries: &[JournalEntry]) -> Result<String> {
+///
+/// ⛔ PUBLIC BECAUSE A PERIOD CLOSE PINS THE SAME PREFIX A STRIKE DOES.
+/// Two encoders would be two digests for one journal, and a close that
+/// could not be replayed against a strike of the same prefix would be
+/// two answers to "what was the book".
+pub fn prefix_digest(entries: &[JournalEntry]) -> Result<String> {
     let mut d = ratio_store::DigestBuilder::new();
     for e in entries {
         feed(&mut d, e)?;

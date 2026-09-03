@@ -429,6 +429,22 @@ filegroup(
     srcs = _LEAN_SRCS,
 )
 
+# A period close: the surplus roll-forward, and the refuse. Settled here
+# before any of it is built. The closing posting conserves and the equity
+# leg IS the surplus; a missing destination or a missing beginning stays
+# unset rather than a measured zero; a dated entry on or before the
+# closed-through day is refused; a close only moves forward.
+#
+# ⚠ NOT `Ratio.Period` AND NOT `CloseGate`. Those are the NAV valuation day
+# and whether a strike may be taken over an unexplained break. This is a
+# fiscal boundary per book of record.
+lean_test(
+    name = "close_proof_test",
+    size = "small",
+    srcs = ["Ratio/Close.lean"],
+    entry = "Ratio/Close.lean",
+)
+
 # A loss the rule DEFERS, and the ways an engine removes it.
 #
 # ⛔ THE SECOND HALF OF THE RULE IS THE ONE THAT GETS DROPPED. Disallowing a loss

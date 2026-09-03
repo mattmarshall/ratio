@@ -122,6 +122,10 @@ const wire = {
   getFact: async () => factsFixture.facts[0],
   listNavStrikes: async () => navStrikesFixture,
   getNavStrike: async () => navStrikesFixture.navStrikes[0],
+  listPeriodCloses: async () => ({ periodCloses: [], nextPageToken: "" }),
+  getPeriodClose: async () => {
+    throw new Error("no period close in the fixture");
+  },
   replayNavStrike: async () => replayFixture,
   explainNavStrike: async () => explainFixture,
   listRules: async () => rulesFixture,
@@ -291,6 +295,7 @@ describe("a first-class book", () => {
     expect(screen.getByRole("link", { name: "Period P&L" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Net-worth bridge" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Cash flow" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Period close" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Budget vs actual" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Loan schedule" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
@@ -327,6 +332,9 @@ describe("a first-class book", () => {
       expect(
         screen.getByRole("link", { name: "Billing" }).getAttribute("href"),
       ).toBe("/books/bridge/views/book/billing");
+      expect(
+        screen.getByRole("link", { name: "Period close" }).getAttribute("href"),
+      ).toBe("/books/bridge/views/book/close");
       expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
       expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
       expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
@@ -356,6 +364,9 @@ describe("a first-class book", () => {
       expect(
         screen.getByRole("link", { name: "Cash flow" }).getAttribute("href"),
       ).toBe("/books/studio/views/book/cashflow");
+      expect(
+        screen.getByRole("link", { name: "Period close" }).getAttribute("href"),
+      ).toBe("/books/studio/views/book/close");
       expect(
         screen.getByRole("link", { name: "AR/AP aging" }).getAttribute("href"),
       ).toBe("/books/studio/views/book/aging");
@@ -390,6 +401,9 @@ describe("a first-class book", () => {
       expect(
         screen.getByRole("link", { name: "NAV roll-forward" }).getAttribute("href"),
       ).toBe("/books/harbourline-global-value/views/abor/nav");
+      expect(
+        screen.getByRole("link", { name: "Period close" }).getAttribute("href"),
+      ).toBe("/books/harbourline-global-value/views/abor/close");
       expect(screen.getByRole("link", { name: /^NAV$/ })).toBeDefined();
       expect(screen.getByRole("link", { name: "Exceptions" })).toBeDefined();
       expect(screen.getByRole("link", { name: "Positions" })).toBeDefined();
@@ -1291,6 +1305,9 @@ describe("a first-class book", () => {
     expect(screen.getByRole("link", { name: "Cash flow" }).getAttribute("href")).toBe(
       "/books/household/views/book/cashflow",
     );
+    expect(screen.getByRole("link", { name: "Period close" }).getAttribute("href")).toBe(
+      "/books/household/views/book/close",
+    );
     const trial = screen.getByRole("link", { name: "Trial balance" });
     expect(trial.getAttribute("href")).toBe(
       "/books/household/views/book/accounts",
@@ -1817,6 +1834,90 @@ describe("a first-class book", () => {
       expect(screen.getByText("no purchase account distinct from a transfer")).toBeDefined();
     } finally {
       wire.listAccounts = real;
+    }
+  });
+
+  it("cites an unset period close rather than a measured zero close", async () => {
+    const Close = (await import("./books/[book]/views/[view]/close/page")).default;
+    const realAccounts = wire.listAccounts;
+    const realCloses = wire.listPeriodCloses;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/25",
+          displayName: "Retained earnings",
+          dimension: "25",
+          type: "EQUITY",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/30",
+          displayName: "Income",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    wire.listPeriodCloses = (async () => ({
+      periodCloses: [],
+      nextPageToken: "",
+    })) as typeof wire.listPeriodCloses;
+    try {
+      await renderAsync(
+        Close({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(
+        screen.getByText(/Beginning and ending stay unset — not a measured zero close/),
+      ).toBeDefined();
+      expect(screen.getByLabelText("Period close")).toBeDefined();
+      expect(screen.getByText(/provisional — not a closing entry/)).toBeDefined();
+      expect(screen.getByText(/unset — no named closing adjustment this window/)).toBeDefined();
+      expect(screen.getAllByText("—").length).toBeGreaterThan(2);
+    } finally {
+      wire.listAccounts = realAccounts;
+      wire.listPeriodCloses = realCloses;
+    }
+  });
+
+  it("asks ListAccounts for a close window and lists period closes", async () => {
+    const calls: unknown[][] = [];
+    const real = wire.listAccounts;
+    const realCloses = wire.listPeriodCloses;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      calls.push(args);
+      return { accounts: [], nextPageToken: "" };
+    }) as typeof wire.listAccounts;
+    wire.listPeriodCloses = (async () => ({
+      periodCloses: [],
+      nextPageToken: "",
+    })) as typeof wire.listPeriodCloses;
+    try {
+      const Close = (await import("./books/[book]/views/[view]/close/page")).default;
+      await renderAsync(
+        Close({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(calls[0]?.slice(1)).toEqual(["household", "book", "close", "2026-03"]);
+    } finally {
+      wire.listAccounts = real;
+      wire.listPeriodCloses = realCloses;
     }
   });
 
@@ -2387,6 +2488,9 @@ describe("a first-class book", () => {
     );
     expect(screen.getByRole("link", { name: "Cash flow" }).getAttribute("href")).toBe(
       "/books/household/views/hearth/cashflow",
+    );
+    expect(screen.getByRole("link", { name: "Period close" }).getAttribute("href")).toBe(
+      "/books/household/views/hearth/close",
     );
     expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
     expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();

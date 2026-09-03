@@ -33,7 +33,7 @@ use std::collections::BTreeMap;
 
 use anyhow::{anyhow, bail, Context, Result};
 use ratio_kernel::{transaction_is_balanced, Posting, Transaction};
-use ratio_store::{Account, PostingRecord};
+use ratio_store::{Account, AccountTypeRecord, PostingRecord};
 use serde::{Deserialize, Serialize};
 
 /// What a rule is triggered by, and therefore how its amount is derived.
@@ -277,6 +277,21 @@ pub struct RuleSet {
     /// the posting pattern and omits this table.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub personal: Option<PersonalTerms>,
+
+    /// Where a period close rolls surplus.
+    ///
+    /// ⛔ ABSENT MEANS NOBODY SAID, AND THAT IS NOT A DEFAULT TO OPENING
+    /// EQUITY OR FUNDING. Closing into the wrong equity account restates
+    /// who owns the residual. `None` refuses the close.
+    /// `Ratio.Close.missing_destination_refuses_the_close`.
+    #[serde(rename = "close", default, skip_serializing_if = "Option::is_none")]
+    pub close: Option<CloseTerms>,
+}
+
+/// The equity destination a period close rolls surplus into.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CloseTerms {
+    pub equity_destination: i64,
 }
 
 /// The authorized spend a project book cites against the journal.
@@ -1260,6 +1275,32 @@ pub fn check(set: &RuleSet, chart: &[Account]) -> Vec<Finding> {
                     ));
                 }
             }
+        }
+    }
+
+    if let Some(c) = &set.close {
+        match by_dim.get(&c.equity_destination) {
+            None => out.push(Finding::error(
+                "close",
+                format!(
+                    "names equity destination {} which is not in the chart of accounts. \
+                     Add it, or point [close] at an existing equity account. \
+                     Ratio.Close.missing_destination_refuses_the_close",
+                    c.equity_destination
+                ),
+            )),
+            Some(account) if account.account_type != AccountTypeRecord::Equity => {
+                out.push(Finding::error(
+                    "close",
+                    format!(
+                        "names equity destination {} ({}) which is {:?}, not equity. \
+                         A close that rolled surplus into an income or asset account \
+                         would move the residual off the sheet while the books still tied",
+                        c.equity_destination, account.display_name, account.account_type
+                    ),
+                ));
+            }
+            Some(_) => {}
         }
     }
 

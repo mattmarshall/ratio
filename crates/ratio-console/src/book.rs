@@ -180,6 +180,12 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
             acct(22, "Distributions", AccountTypeRecord::Equity),
             acct(23, "Allocations", AccountTypeRecord::Equity),
             acct(24, "Capital transfers", AccountTypeRecord::Equity),
+            // ⭐ PERIOD-CLOSE EQUITY, NOT PARTNER CAPITAL. Allocations are
+            // a personed close-into-capital; retained earnings is the
+            // residual a period close carries. `[close] equity_destination
+            // = 25`. Closing into Capital contributions would make a
+            // year's surplus look like a subscription.
+            acct(25, "Retained earnings", AccountTypeRecord::Equity),
             acct(30, "Dividend income", AccountTypeRecord::Income),
             acct(31, "Realized gain on investments", AccountTypeRecord::Income),
             acct(40, "Management fee payable", AccountTypeRecord::Liability),
@@ -211,6 +217,12 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
             acct(13, "Auto loan interest", AccountTypeRecord::Expense),
             acct(14, "Student loan interest", AccountTypeRecord::Expense),
             acct(20, "Opening equity", AccountTypeRecord::Equity),
+            // ⭐ WHERE A PERIOD CLOSE ROLLS SURPLUS. Opening equity is
+            // beginning capital, not the residual. `[close] equity_destination
+            // = 25` names this; a book without that key refuses the close
+            // rather than defaulting here. `Ratio.Close.missing_destination_
+            // refuses_the_close`.
+            acct(25, "Retained earnings", AccountTypeRecord::Equity),
             acct(30, "Income", AccountTypeRecord::Income),
             acct(40, "Credit cards", AccountTypeRecord::Liability),
             acct(41, "Mortgage", AccountTypeRecord::Liability),
@@ -243,6 +255,11 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
             acct(26, "Approved change orders — Site and mobilization", AccountTypeRecord::Equity),
             acct(27, "Approved change orders — Structure", AccountTypeRecord::Equity),
             acct(28, "Approved change orders — Finishes and closeout", AccountTypeRecord::Equity),
+            // ⭐ PERIOD-CLOSE EQUITY, NOT FUNDING AND NOT A CHANGE ORDER.
+            // Funding is who put money in; a CO pair is authorization.
+            // `[close] equity_destination = 29`. Dim 25 is already
+            // Approved change orders.
+            acct(29, "Retained earnings", AccountTypeRecord::Equity),
             acct(30, "Project revenue", AccountTypeRecord::Income),
             acct(40, "Payables", AccountTypeRecord::Liability),
             acct(41, "Progress billings", AccountTypeRecord::Liability),
@@ -279,6 +296,11 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
             acct(2, "Accounts receivable", AccountTypeRecord::Asset),
             acct(10, "Operating expenses", AccountTypeRecord::Expense),
             acct(20, "Owner equity", AccountTypeRecord::Equity),
+            // ⭐ PERIOD-CLOSE EQUITY, NOT OWNER EQUITY. Owner equity is
+            // who put money in and drew it out. `[close] equity_destination
+            // = 25`. Closing into Owner equity would make a year's surplus
+            // look like a contribution.
+            acct(25, "Retained earnings", AccountTypeRecord::Equity),
             acct(30, "Operating revenue", AccountTypeRecord::Income),
             acct(40, "Accounts payable", AccountTypeRecord::Liability),
         ],
@@ -684,6 +706,10 @@ reads = "csv"
     [[template.fact.posts.also]]
     amount = "interest"
     rules = { mortgage = "mortgage_interest", auto = "auto_interest", student = "student_interest" }
+
+# Where a period close rolls surplus. Absent is unset — not Opening equity.
+[close]
+equity_destination = 25
 "#;
 
 /// Custodian holdings snapshot plus the trade file that posts.
@@ -1098,6 +1124,10 @@ reads = "csv"
   amount = "amount"
   rules = { commit_lp = "commit_lp", commit_gp = "commit_gp", call_lp = "call_lp", call_gp = "call_gp" }
   dated = "dated"
+
+# Where a period close rolls surplus. Absent is unset — not Capital contributions.
+[close]
+equity_destination = 25
 "#;
 
 /// Project posting rules plus the vendor-invoice ingest template.
@@ -1681,6 +1711,10 @@ reads = "csv"
   amount = "amount"
   rules = { award_commitment = "award_commitment", award_commitment_site = "award_commitment_site", award_commitment_structure = "award_commitment_structure", award_commitment_finishes = "award_commitment_finishes", release_commitment = "release_commitment", release_commitment_site = "release_commitment_site", release_commitment_structure = "release_commitment_structure", release_commitment_finishes = "release_commitment_finishes" }
   dated = "dated"
+
+# Where a period close rolls surplus. Dim 25 is Approved change orders.
+[close]
+equity_destination = 29
 "#;
 
 /// Operating-company posting rules plus customer-invoice and vendor-bill ingest.
@@ -1906,6 +1940,12 @@ reads = "csv"
   amount = "amount"
   rules = { bill = "vendor_bill", pay = "pay_vendor" }
   dated = "dated"
+
+# Where a period close rolls surplus. Dim 20 is Owner equity — who put
+# money in. Closing into it would make a year's surplus look like a
+# contribution. `Ratio.Close.missing_destination_refuses_the_close`.
+[close]
+equity_destination = 25
 "#;
 
 /// Create the directory, the chart, the kind's opening ingest configuration,
@@ -2044,6 +2084,22 @@ mod tests {
         assert_ne!(operating, project);
         assert_ne!(operating, investment);
         assert!(personal.iter().any(|a| a.display_name == "Cash and bank"));
+        assert!(
+            personal.iter().any(|a| a.display_name == "Retained earnings"),
+            "period close needs a named equity destination: {personal:?}"
+        );
+        assert!(
+            investment.iter().any(|a| a.display_name == "Retained earnings"),
+            "investment close destination: {investment:?}"
+        );
+        assert!(
+            project.iter().any(|a| a.display_name == "Retained earnings"),
+            "project close destination: {project:?}"
+        );
+        assert!(
+            operating.iter().any(|a| a.display_name == "Retained earnings"),
+            "operating close destination is not Owner equity: {operating:?}"
+        );
         assert!(investment
             .iter()
             .any(|a| a.display_name == "Investments at fair value"));
