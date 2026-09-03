@@ -15,6 +15,6 @@ describe("book templates", () => {
     expect(byKind.PERSONAL).toMatch(/Cash and bank/);
     expect(byKind.INVESTMENT).toMatch(/fair value/);
     expect(byKind.INVESTMENT).toMatch(/Does not file a fund/);
-    expect(byKind.PROJECT).toMatch(/Work in progress/);
+    expect(byKind.PROJECT).toMatch(/work in progress/);
   });
 });

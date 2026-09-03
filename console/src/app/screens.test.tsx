@@ -138,7 +138,7 @@ describe("a first-class book", () => {
     const Books = (await import("./books/page")).default;
     await renderAsync(Books());
     expect(screen.getByText("Household")).toBeDefined();
-    expect(screen.getByText(/independent/)).toBeDefined();
+    expect(screen.getAllByText(/independent/).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "New book" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Funds" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Projects" })).toBeDefined();
@@ -164,8 +164,11 @@ describe("a first-class book", () => {
     expect(screen.getByText("Investment / Fund")).toBeDefined();
     expect(screen.getByText(/Does not file a fund/)).toBeDefined();
     expect(screen.getByText("Project")).toBeDefined();
-    expect(screen.getByText(/Work in progress/)).toBeDefined();
-    expect(screen.getByRole("radio", { name: /Personal finance/ })).toBeChecked();
+    expect(screen.getByText(/work in progress/)).toBeDefined();
+    expect(
+      (screen.getByRole("radio", { name: /Personal finance/ }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
   });
 
   it("reaches the book collection from the fund list", async () => {
