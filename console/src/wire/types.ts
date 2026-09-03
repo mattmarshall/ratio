@@ -61,12 +61,25 @@ export interface Book {
    * are omitted, not sent as `"0"`.
    */
   envelopes: HouseholdEnvelope[];
+  /**
+   * Declared `[personal.loan]` schedules. Empty when unset — not a
+   * roll-forward of zeros on a book that never named a loan.
+   */
+  loans: LoanSchedule[];
 }
 
 /** One declared household envelope. Absent when that category is unset. */
 export interface HouseholdEnvelope {
   dimension: string;
   budget: Int64;
+}
+
+/** One declared household loan. Omitted from `Book.loans` when unset. */
+export interface LoanSchedule {
+  /** Liability chart dimension as decimal. */
+  dimension: string;
+  /** Interest-expense chart dimension as decimal. */
+  interest: string;
 }
 
 export interface ListBooksResponse {

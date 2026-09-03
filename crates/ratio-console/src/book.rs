@@ -24,7 +24,7 @@ use ratio_store::{Account, AccountTypeRecord, ConfigStore, FileBook};
 /// other is a file you can read and a loop you cannot run.
 pub fn ingest_template_ids(kind: BookKind) -> &'static [&'static str] {
     match kind {
-        BookKind::Personal => &["bank-statement"],
+        BookKind::Personal => &["bank-statement", "loan-payment"],
         BookKind::Investment => &["custodian-positions", "prime_equity_trades"],
         BookKind::Project => &["project-invoices"],
     }
@@ -184,9 +184,15 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
             acct(2, "Investments", AccountTypeRecord::Asset),
             acct(10, "Living expenses", AccountTypeRecord::Expense),
             acct(11, "Taxes", AccountTypeRecord::Expense),
+            acct(12, "Mortgage interest", AccountTypeRecord::Expense),
+            acct(13, "Auto loan interest", AccountTypeRecord::Expense),
+            acct(14, "Student loan interest", AccountTypeRecord::Expense),
             acct(20, "Opening equity", AccountTypeRecord::Equity),
             acct(30, "Income", AccountTypeRecord::Income),
-            acct(40, "Credit cards and loans", AccountTypeRecord::Liability),
+            acct(40, "Credit cards", AccountTypeRecord::Liability),
+            acct(41, "Mortgage", AccountTypeRecord::Liability),
+            acct(42, "Auto loan", AccountTypeRecord::Liability),
+            acct(43, "Student loan", AccountTypeRecord::Liability),
         ],
         BookKind::Project => vec![
             acct(1, "Cash", AccountTypeRecord::Asset),
@@ -225,6 +231,10 @@ pub fn is_capital_account(display_name: &str) -> bool {
 /// The opening configuration CreateBook writes: posting rules that hit
 /// [`chart_for`] and the ingest template(s) for this kind.
 ///
+/// Personal seeds two mappings (`bank-statement` and `loan-payment`);
+/// Investment and Project seed their own. The live list is the book's
+/// configuration.
+///
 /// ⭐ INVESTMENT SEEDS THE TRADE COLUMN CONTRACT, NOT A JOURNAL. The mapping
 /// is the same `prime_equity_trades` file `deploy/seed-demo-book.sh` delivers;
 /// a blank book has no rows until someone reads a file. The demo script still
@@ -241,6 +251,12 @@ pub fn config_for(kind: BookKind) -> &'static str {
 /// Bank / card CSV → cash and expense claims. Amounts are a money column
 /// (never a float); `Kind` picks the rule so a signed-amount inference
 /// cannot silently flip income and a card charge.
+///
+/// Loan payments: a second template reads principal and interest as two
+/// money columns and posts two balanced rules into one entry. Set
+/// `[personal.loan]` keyed by liability dimension (value = interest
+/// expense dimension) to name a schedule; omitting the table means no
+/// loan has been named — not a roll-forward of zeros.
 const PERSONAL_CONFIG: &str = r#"
 [[rule]]
 id = "living_expense"
@@ -385,6 +401,73 @@ weight = 1
 account = 30
 weight = -1
 
+
+[[rule]]
+id = "mortgage_interest"
+kind = "trade"
+description = "Mortgage interest up, cash and bank down"
+[[rule.posting]]
+account = 12
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "mortgage_principal"
+kind = "trade"
+description = "Mortgage liability down, cash and bank down"
+[[rule.posting]]
+account = 41
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "auto_interest"
+kind = "trade"
+description = "Auto loan interest up, cash and bank down"
+[[rule.posting]]
+account = 13
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "auto_principal"
+kind = "trade"
+description = "Auto loan liability down, cash and bank down"
+[[rule.posting]]
+account = 42
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "student_interest"
+kind = "trade"
+description = "Student loan interest up, cash and bank down"
+[[rule.posting]]
+account = 14
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "student_principal"
+kind = "trade"
+description = "Student loan liability down, cash and bank down"
+[[rule.posting]]
+account = 43
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
 [[template]]
 id = "bank-statement"
 reads = "csv"
@@ -433,6 +516,62 @@ reads = "csv"
   amount = "amount"
   rules = { expense = "living_expense", income = "household_income", card = "card_charge" }
   dated = "dated"
+
+[[template]]
+id = "loan-payment"
+reads = "csv"
+
+  [[template.entity]]
+  name = "lender"
+  kind = "counterparty"
+  absent = "pend"
+  by = [{ attribute = "name", column = "Lender" }]
+
+  [template.fact]
+  kind = "payment"
+  reference = "Ref"
+  entities = { lender = "lender" }
+
+  [[template.fact.value]]
+  field = "dated"
+  as = "date"
+  column = "Date"
+  format = "YYYY-MM-DD"
+
+  [[template.fact.value]]
+  field = "principal"
+  as = "money"
+  column = "Principal"
+  currency = "Ccy"
+
+  [[template.fact.value]]
+  field = "interest"
+  as = "money"
+  column = "Interest"
+  currency = "Ccy"
+  optional = true
+
+  [[template.fact.value]]
+  field = "loan"
+  as = "enum"
+  column = "Loan"
+  map = { mortgage = "mortgage", auto = "auto", student = "student" }
+
+  [[template.fact.value]]
+  field = "memo"
+  as = "text"
+  column = "Memo"
+  optional = true
+
+  [template.fact.posts]
+  by = "loan"
+  amount = "principal"
+  rules = { mortgage = "mortgage_principal", auto = "auto_principal", student = "student_principal" }
+  dated = "dated"
+
+    [[template.fact.posts.also]]
+    amount = "interest"
+    rules = { mortgage = "mortgage_interest", auto = "auto_interest", student = "student_interest" }
 "#;
 
 /// Custodian holdings snapshot plus the trade file that posts.
@@ -1196,6 +1335,8 @@ mod tests {
         }
         let personal = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Personal)).unwrap();
         assert!(personal.template("custodian-positions").is_none());
+        assert!(personal.template("loan-payment").is_some());
+        assert!(personal.template("loan-payment").unwrap().check().is_empty());
         assert!(personal.template("prime_equity_trades").is_none());
         assert!(personal.template("project-invoices").is_none());
         let project = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Project)).unwrap();
@@ -1379,8 +1520,8 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
         let digest = b.active().unwrap().unwrap();
         let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
         let set = ratio_ingest::TemplateSet::from_toml(&text).unwrap();
-        assert_eq!(set.templates.len(), 1);
-        assert_eq!(set.templates[0].id, "bank-statement");
+        let ids: Vec<&str> = set.templates.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(ids, vec!["bank-statement", "loan-payment"]);
         assert!(set.template("custodian-positions").is_none());
         assert!(set.template("prime_equity_trades").is_none());
         // ⛔ AND THE JOURNAL IS EMPTY. A CreateBook book that arrived with
@@ -1535,6 +1676,108 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
         assert!(set.project.is_none());
         let ingest = ratio_ingest::TemplateSet::from_toml(&text).unwrap();
         assert_eq!(ingest.templates[0].id, "project-invoices");
+    }
+
+    #[test]
+    fn create_book_seeds_loan_rules_and_no_loan_schedule() {
+        // ⭐ THE CLAIM #87 IS ABOUT. The posting pattern is on the chart;
+        // which liabilities have a schedule is `[personal.loan]`, and a new
+        // household has not named one. A silent zero here would put a
+        // mortgage of nothing on a book that never declared one.
+        let set = ratio_rules::RuleSet::from_toml(config_for(BookKind::Personal)).unwrap();
+        assert!(
+            set.personal.as_ref().map(|p| p.loan.is_empty()).unwrap_or(true),
+            "a new household has no loan schedule until someone sets [personal.loan]"
+        );
+        assert!(set.rule("mortgage_principal").is_some());
+        assert!(set.rule("mortgage_interest").is_some());
+        assert!(set.rule("auto_principal").is_some());
+        assert!(set.rule("student_principal").is_some());
+    }
+
+    #[test]
+    fn a_loan_payment_conserves_interest_and_principal_against_cash() {
+        // ⭐ TWO BALANCED TEMPLATES, ONE ENTRY. A varying split cannot be
+        // one amount × weights; compiling interest at 200 and principal at
+        // 800 and merging the cash legs is the 3-posting identity the
+        // household payment is. `Ratio.Chart.balanced_template_balances`
+        // applies to each; the concatenation of balanced vectors is
+        // balanced; merging same-account legs does not change the net.
+        let set = ratio_rules::RuleSet::from_toml(config_for(BookKind::Personal)).unwrap();
+        let interest = ratio_rules::compile(
+            set.rule("mortgage_interest").unwrap(),
+            &ratio_rules::Event {
+                rule: "mortgage_interest".into(),
+                id: "m-1".into(),
+                amount: 20_000,
+                days: None,
+                memo: String::new(),
+                instrument: None,
+                quantity: None,
+            },
+        )
+        .unwrap();
+        let principal = ratio_rules::compile(
+            set.rule("mortgage_principal").unwrap(),
+            &ratio_rules::Event {
+                rule: "mortgage_principal".into(),
+                id: "m-1".into(),
+                amount: 80_000,
+                days: None,
+                memo: String::new(),
+                instrument: None,
+                quantity: None,
+            },
+        )
+        .unwrap();
+        let mut legs = interest;
+        legs.extend(principal);
+        let merged = ratio_rules::merge_postings(legs).unwrap();
+        assert_eq!(merged.len(), 3, "{merged:?}");
+        let net: i64 = merged.iter().map(|p| p.amount).sum();
+        assert_eq!(net, 0, "interest + principal against cash must conserve");
+        let by: std::collections::BTreeMap<i64, i64> =
+            merged.iter().map(|p| (p.dim, p.amount)).collect();
+        assert_eq!(by.get(&12), Some(&20_000), "interest expense");
+        assert_eq!(by.get(&41), Some(&80_000), "principal reduction");
+        assert_eq!(by.get(&1), Some(&-100_000), "cash out");
+    }
+
+    #[test]
+    fn a_loan_payment_row_posts_principal_and_interest_as_one_fact() {
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Personal)).unwrap();
+        let t = set.template("loan-payment").unwrap();
+        assert!(t.check().is_empty(), "{:?}", t.check());
+        let csv = "\
+Ref,Date,Principal,Interest,Ccy,Loan,Lender,Memo
+M-1,2026-03-01,800.00,200.00,USD,mortgage,FIRST NATIONAL,March mortgage
+A-1,2026-03-01,350.00,45.00,USD,auto,ALLY,
+S-1,2026-03-01,100.00,,USD,student,DEPT OF ED,principal only
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(p.facts.len(), 3);
+        let pairs = ratio_ingest::postings_for(t, &p.facts[0]).unwrap();
+        assert_eq!(
+            pairs,
+            vec![
+                ("mortgage_principal".into(), 80_000),
+                ("mortgage_interest".into(), 20_000),
+            ]
+        );
+        let auto = ratio_ingest::postings_for(t, &p.facts[1]).unwrap();
+        assert_eq!(
+            auto,
+            vec![
+                ("auto_principal".into(), 35_000),
+                ("auto_interest".into(), 4_500),
+            ]
+        );
+        // Optional interest left blank: principal only, not a silent $0
+        // interest posting.
+        let student = ratio_ingest::postings_for(t, &p.facts[2]).unwrap();
+        assert_eq!(student, vec![("student_principal".into(), 10_000)]);
     }
 
     fn sample_delivery() -> ratio_ingest::Delivery {

@@ -476,6 +476,23 @@ pub struct PostsDecl {
     /// existed. A price file has no trade date and should not pretend to.
     #[serde(default)]
     pub dated: Option<String>,
+
+    /// Additional (amount field → rules) posted in the SAME entry.
+    ///
+    /// A loan payment: principal picks the liability rule; interest, when
+    /// present and non-zero, picks the expense rule. Each is a balanced
+    /// template; admit concatenates them. Empty means the historical
+    /// one-amount path.
+    #[serde(default)]
+    pub also: Vec<AlsoPosts>,
+}
+
+/// A second amount on the same fact, posting under a second rule keyed
+/// by the same discriminator.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AlsoPosts {
+    pub amount: String,
+    pub rules: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -562,6 +579,18 @@ impl Template {
             }
             if p.rules.is_empty() {
                 out.push("posts declares no rules, so nothing would ever post".into());
+            }
+            for also in &p.also {
+                if also.amount != "consideration" && !fields.contains(also.amount.as_str()) {
+                    out.push(format!(
+                        "posts.also takes its amount from `{}`, which is neither a field \
+                         the fact reads nor `consideration`",
+                        also.amount
+                    ));
+                }
+                if also.rules.is_empty() {
+                    out.push("posts.also declares no rules, so the extra amount would never post".into());
+                }
             }
             // ⛔ AND IT HAS TO BE A DATE, not merely a field that exists. Pointed
             // at a text column the accessor answers `None`, so the entry would
@@ -660,6 +689,12 @@ impl Template {
             ));
             for (value, rule) in &p.rules {
                 s.push_str(&format!("    {value:<12}-> {rule}\n"));
+            }
+            for also in &p.also {
+                s.push_str(&format!("    also        {}\n", also.amount));
+                for (value, rule) in &also.rules {
+                    s.push_str(&format!("      {value:<10}-> {rule}\n"));
+                }
             }
         } else {
             // ⛔ A MODE, NOT A GAP, and the form says which. Reporting the design
@@ -884,13 +919,18 @@ pub fn dated_of<'a>(template: &Template, fact: &'a Fact) -> Option<&'a str> {
     fact.values.get(field)?.as_date()
 }
 
-/// What an admitted fact posts as: a rule id and an amount in minor units.
+/// What an admitted fact posts as: one or more (rule id, amount) pairs.
 ///
-/// ⛔ Returns an error rather than a rounding when quantity × price is not a
-/// whole number of minor units. Which way to round is a term of an
-/// administration agreement, so it belongs in the configuration beside the
-/// tolerances — not in this function, and certainly not implicitly.
-pub fn posting_for(template: &Template, fact: &Fact) -> Result<(String, i64)> {
+/// ⛔ A LOAN PAYMENT IS TWO PAIRS IN ONE ENTRY. Principal and interest are
+/// two money columns; each scales a balanced template. Returning one pair
+/// and dropping the other would dump the whole payment onto principal or
+/// invent an interest of nothing.
+///
+/// A zero amount is omitted rather than posted — $0 interest is nothing
+/// that happened, and a silent zero posting would show up as activity on
+/// the roll-forward. An optional amount that the fact does not carry is
+/// the same omission, not a fake zero.
+pub fn postings_for(template: &Template, fact: &Fact) -> Result<Vec<(String, i64)>> {
     let posts = template
         .fact
         .posts
@@ -902,26 +942,68 @@ pub fn posting_for(template: &Template, fact: &Fact) -> Result<(String, i64)> {
         .get(&posts.discriminator)
         .and_then(Value::as_text)
         .with_context(|| format!("no `{}` on this fact", posts.discriminator))?;
+
+    let mut out = Vec::new();
     let rule = posts.rules.get(key).with_context(|| {
         format!(
             "`{key}` is not one of the values this template posts ({})",
             posts.rules.keys().cloned().collect::<Vec<_>>().join(", ")
         )
     })?;
+    let amount = required_amount(fact, &posts.amount)?;
+    if amount != 0 {
+        out.push((rule.clone(), amount));
+    }
+    for also in &posts.also {
+        let also_rule = also.rules.get(key).with_context(|| {
+            format!(
+                "`{key}` is not one of the values this template's extra amount posts ({})",
+                also.rules.keys().cloned().collect::<Vec<_>>().join(", ")
+            )
+        })?;
+        match optional_amount(fact, &also.amount)? {
+            None | Some(0) => {}
+            Some(n) => out.push((also_rule.clone(), n)),
+        }
+    }
+    if out.is_empty() {
+        bail!(
+            "this fact posts nothing — principal and interest are both absent or zero"
+        );
+    }
+    Ok(out)
+}
 
-    let amount = if posts.amount == "consideration" {
-        let q = fact
-            .values
-            .get("quantity")
-            .and_then(Value::as_minor)
-            .context("consideration needs a quantity")?;
-        let p = fact
-            .values
-            .get("price")
-            .and_then(Value::as_minor)
-            .context("consideration needs a price")?;
-        // Both are scaled by a hundred, so their product is scaled by ten
-        // thousand and has to come back down.
+/// What an admitted fact posts as: a rule id and an amount in minor units.
+///
+/// ⛔ Returns an error rather than a rounding when quantity × price is not a
+/// whole number of minor units. Which way to round is a term of an
+/// administration agreement, so it belongs in the configuration beside the
+/// tolerances — not in this function, and certainly not implicitly.
+///
+/// For a fact that posts more than one amount (a loan payment), this is the
+/// first pair. Prefer [`postings_for`] on the admit path.
+pub fn posting_for(template: &Template, fact: &Fact) -> Result<(String, i64)> {
+    let mut pairs = postings_for(template, fact)?;
+    Ok(pairs.remove(0))
+}
+
+fn required_amount(fact: &Fact, field: &str) -> Result<i64> {
+    amount_of(fact, field)?.with_context(|| format!("no `{field}` on this fact"))
+}
+
+fn optional_amount(fact: &Fact, field: &str) -> Result<Option<i64>> {
+    amount_of(fact, field)
+}
+
+fn amount_of(fact: &Fact, field: &str) -> Result<Option<i64>> {
+    if field == "consideration" {
+        let Some(q) = fact.values.get("quantity").and_then(Value::as_minor) else {
+            return Ok(None);
+        };
+        let Some(p) = fact.values.get("price").and_then(Value::as_minor) else {
+            return Ok(None);
+        };
         let scaled = q.checked_mul(p).context("consideration overflows i64")?;
         if scaled % 100 != 0 {
             bail!(
@@ -931,15 +1013,9 @@ pub fn posting_for(template: &Template, fact: &Fact) -> Result<(String, i64)> {
                 scaled
             );
         }
-        scaled / 100
-    } else {
-        fact.values
-            .get(&posts.amount)
-            .and_then(Value::as_minor)
-            .with_context(|| format!("no `{}` on this fact", posts.amount))?
-    };
-
-    Ok((rule.clone(), amount))
+        return Ok(Some(scaled / 100));
+    }
+    Ok(fact.values.get(field).and_then(Value::as_minor))
 }
 
 /// A date in the template's format, as ISO-8601.

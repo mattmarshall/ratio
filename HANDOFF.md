@@ -375,20 +375,32 @@ the conserved one, and the kernel never said it was.
   deliberately not fixed there — it changes the strike id, the `NAVS` ledger's
   meaning and `one_answer_per_day`'s subject, and belongs in its own commit.
 - ⭐ **CreateBook seeds ingest templates per kind** — `bank-statement`
-  (Personal: bank/card CSV → cash and expense claims), `project-invoices`
-  (Project: vendor invoice/cost CSV → costs and payables), and on Investment
-  both `custodian-positions` (holdings snapshot, recorded and never posted)
-  and `prime_equity_trades` (the same trade column contract the demo
-  delivers: `B/S` → `equity_purchase` / `disposal_proceeds`, amount
-  `consideration`, dated by the trade date). The live list is the book's
-  configuration, so a household book cannot be asked to pick a fund feed.
-  `console/src/lib/templates.ts` `templatesForKind` is the fixture-side
-  filter; `//crates/ratio-console:ratio-console_test` holds the seed and the
-  closed loop: CreateBook → entity master → ingest → admit, journal only
-  the admitted trades, VWRL left pending the same way `LEAVE_ONE_PENDING`
-  does. ⛔ The demo script still posts recon history so the blocked-NAV
-  story has a break; that is a different book. A blank CreateBook
-  investment book does not invent those rows.
+  (Personal: bank/card CSV → cash and expense claims) **and** `loan-payment`
+  (Personal: principal + interest columns → two balanced rules merged into
+  one conserved entry), `project-invoices` (Project: vendor invoice/cost CSV
+  → costs and payables), and on Investment both `custodian-positions`
+  (holdings snapshot, recorded and never posted) and `prime_equity_trades`
+  (the same trade column contract the demo delivers: `B/S` →
+  `equity_purchase` / `disposal_proceeds`, amount `consideration`, dated by
+  the trade date). The live list is the book's configuration, so a household
+  book cannot be asked to pick a fund feed. `console/src/lib/templates.ts`
+  `templatesForKind` is the fixture-side filter; `//crates/ratio-console:ratio-console_test`
+  holds the seed and the closed loop: CreateBook → entity master → ingest →
+  admit, journal only the admitted trades, VWRL left pending the same way
+  `LEAVE_ONE_PENDING` does. ⛔ The demo script still posts recon history so
+  the blocked-NAV story has a break; that is a different book. A blank
+  CreateBook investment book does not invent those rows.
+  ⚠ `[personal.loan]` is **not** seeded. CreateBook writes the posting
+  pattern (mortgage/auto/student interest and principal against cash) and
+  leaves the schedule table absent — a new household has no named loan, and
+  `/books/{id}/views/{view}/loans` says so rather than rolling zeros. Name a
+  liability with `ratio config set` (`41 = 12` pairs mortgage with mortgage
+  interest). Grain is the liability dimension, not a single debt bucket.
+- ⚠ **A household loan-payment walk-through (#87 / #27).** It can show a
+  conserved payment (interest expense + principal reduction against cash) and
+  two named loans that do not collapse into one debt bucket. It cannot show
+  loan origination as a product, refinance shopping, credit scores, bank OAuth,
+  or a client portal — those stay refused. Envelope budgeting is #83.
 - ⚠ **`console/scripts/capture_fixtures.sh` takes `navStrikes.json` and
   `replay.json` from `RATIO_FIXTURE_STRUCK_FUND`, not from `RATIO_FIXTURE_FUND`.**
   The fixture fund is the BLOCKED book on purpose, and a blocked book now has no

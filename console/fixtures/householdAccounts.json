@@ -129,7 +129,7 @@
     },
     {
       "name": "funds/household/views/book/accounts/40",
-      "displayName": "Credit cards and loans",
+      "displayName": "Credit cards",
       "dimension": "40",
       "type": "LIABILITY",
       "debit": "0",

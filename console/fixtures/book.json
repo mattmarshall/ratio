@@ -10,5 +10,6 @@
   "configDigest": "",
   "trialBalanceDifference": "0",
   "budget": "",
-  "envelopes": []
+  "envelopes": [],
+  "loans": []
 }

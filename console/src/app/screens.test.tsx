@@ -198,13 +198,18 @@ describe("a first-class book", () => {
     const Templates = (await import("./books/[book]/data/templates/page")).default;
     await renderAsync(Templates({ params: params({ book: "household" }) }));
     expect(screen.getByText("bank-statement")).toBeDefined();
+    expect(screen.getByText("loan-payment")).toBeDefined();
     expect(screen.getByText("statement")).toBeDefined();
-    expect(screen.getByText("posts")).toBeDefined();
+    expect(screen.getByText("payment")).toBeDefined();
+    expect(screen.getAllByText("posts").length).toBeGreaterThan(0);
     expect(screen.queryByText("custodian-positions")).toBeNull();
     expect(screen.queryByText("prime_equity_trades")).toBeNull();
     expect(
       screen.getByRole("link", { name: /bank-statement/ }).getAttribute("href"),
     ).toBe("/books/household/data/templates/bank-statement");
+    expect(
+      screen.getByRole("link", { name: /loan-payment/ }).getAttribute("href"),
+    ).toBe("/books/household/data/templates/loan-payment");
   });
 
   it("lists the Project invoice template and not the fund snapshot", async () => {
@@ -215,6 +220,7 @@ describe("a first-class book", () => {
     expect(screen.queryByText("custodian-positions")).toBeNull();
     expect(screen.queryByText("prime_equity_trades")).toBeNull();
     expect(screen.queryByText("bank-statement")).toBeNull();
+    expect(screen.queryByText("loan-payment")).toBeNull();
   });
 
   it("keeps the custodian snapshot and the trade file on an Investment book", async () => {
@@ -232,6 +238,7 @@ describe("a first-class book", () => {
       screen.getByRole("link", { name: /prime_equity_trades/ }).getAttribute("href"),
     ).toBe("/books/harbourline-global-value/data/templates/prime_equity_trades");
     expect(screen.queryByText("bank-statement")).toBeNull();
+    expect(screen.queryByText("loan-payment")).toBeNull();
     expect(screen.queryByText("project-invoices")).toBeNull();
   });
 
@@ -256,6 +263,7 @@ describe("a first-class book", () => {
     expect(screen.getByRole("link", { name: "Balance sheet" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Period P&L" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Budget vs actual" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Loan schedule" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Configuration" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Transfer between accounts" })).toBeDefined();
@@ -566,6 +574,10 @@ describe("a first-class book", () => {
     expect(budget.getAttribute("href")).toBe(
       "/books/household/views/book/budget",
     );
+    const loans = screen.getByRole("link", { name: "Loan schedule" });
+    expect(loans.getAttribute("href")).toBe(
+      "/books/household/views/book/loans",
+    );
     const config = screen.getByRole("link", { name: "Configuration" });
     expect(config.getAttribute("href")).toBe("/books/household/config");
     expect(
@@ -673,6 +685,133 @@ describe("a first-class book", () => {
       wire.getBook = realBook;
       wire.listAccounts = realAccounts;
     }
+  });
+
+  it("does not offer a loan schedule on an investment book hub", async () => {
+    const Book = (await import("./books/[book]/page")).default;
+    await renderAsync(Book({ params: params({ book: FUND }) }));
+    expect(screen.queryByRole("link", { name: "Loan schedule" })).toBeNull();
+  });
+
+  it("cites an unset household loan schedule rather than a roll-forward of zeros", async () => {
+    const Loans = (await import("./books/[book]/views/[view]/loans/page")).default;
+    await renderAsync(
+      Loans({
+        params: params({ book: "household", view: "book" }),
+        searchParams: params({ period: "2026-03" }),
+      }),
+    );
+    expect(screen.getByText("No loan schedule is configured.")).toBeDefined();
+    expect(screen.queryByLabelText("Loan schedule")).toBeNull();
+    expect(screen.queryByText("Mortgage")).toBeNull();
+  });
+
+  it("keys a configured loan roll-forward by liability, not a single debt bucket", async () => {
+    const Loans = (await import("./books/[book]/views/[view]/loans/page")).default;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    wire.getBook = (async () => ({
+      ...bookFixture,
+      loans: [
+        { dimension: "41", interest: "12" },
+        { dimension: "42", interest: "13" },
+      ],
+    })) as unknown as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/41",
+          displayName: "Mortgage",
+          dimension: "41",
+          type: "LIABILITY",
+          debit: "80000",
+          credit: "0",
+          balance: "-9920000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/12",
+          displayName: "Mortgage interest",
+          dimension: "12",
+          type: "EXPENSE",
+          debit: "20000",
+          credit: "0",
+          balance: "20000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/42",
+          displayName: "Auto loan",
+          dimension: "42",
+          type: "LIABILITY",
+          debit: "35000",
+          credit: "0",
+          balance: "-1765000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/13",
+          displayName: "Auto loan interest",
+          dimension: "13",
+          type: "EXPENSE",
+          debit: "4500",
+          credit: "0",
+          balance: "4500",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/40",
+          displayName: "Credit cards",
+          dimension: "40",
+          type: "LIABILITY",
+          debit: "8900",
+          credit: "0",
+          balance: "-8900",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        Loans({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("Loan schedule")).toBeDefined();
+      expect(screen.getByText("Mortgage")).toBeDefined();
+      expect(screen.getByText("Auto loan")).toBeDefined();
+      expect(screen.queryByText("Credit cards")).toBeNull();
+      expect(screen.getByText("100,000.00")).toBeDefined();
+      expect(screen.getByText("800.00")).toBeDefined();
+      expect(screen.getByText("200.00")).toBeDefined();
+      expect(screen.getByText("99,200.00")).toBeDefined();
+      expect(screen.queryByText("No loan schedule is configured.")).toBeNull();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("404s a loan schedule on a book that is not Personal", async () => {
+    const Loans = (await import("./books/[book]/views/[view]/loans/page")).default;
+    await expect(
+      Loans({
+        params: params({ book: FUND, view: VIEW }),
+        searchParams: params({ period: "2026-03" }),
+      }),
+    ).rejects.toThrow();
   });
 
   it("cites billed vs earned, retainage, and cost by phase without a fake zero", async () => {
@@ -839,7 +978,7 @@ describe("a household statement", () => {
       for (const name of [
         "Cash and bank",
         "Investments",
-        "Credit cards and loans",
+        "Credit cards",
         "Opening equity",
       ]) {
         expect(screen.getByText(name)).toBeDefined();

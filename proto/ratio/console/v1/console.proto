@@ -598,6 +598,19 @@ message Book {
   // chart dimension. Personal-only; unset categories are omitted, not
   // sent as `"0"`.
   repeated HouseholdEnvelope envelopes = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Declared loan schedules from `[personal.loan]`, keyed by liability
+  // chart dimension with the paired interest-expense dimension as the
+  // value. Empty when this book has no such table — including every
+  // investment and project book, and a household nobody has named a loan
+  // on. CreateBook seeds the posting pattern and does not invent a
+  // schedule.
+  //
+  // ⛔ EMPTY IS UNSET, NOT A ROLL-FORWARD OF ZEROS. A silent zero here
+  // would put a mortgage of nothing on a book that never declared one.
+  //
+  // ⚠ Field 13: budget is 11, envelopes 12. This must not collide.
+  repeated LoanSchedule loans = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One declared household envelope. Absent from `Book.envelopes` when that
@@ -607,6 +620,17 @@ message HouseholdEnvelope {
   string dimension = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
   // Minor units. Never empty on this message — unset envelopes are omitted.
   string budget = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One declared household loan. Absent from `Book.loans` when that
+// liability has no `[personal.loan]` entry — not a fake zero.
+message LoanSchedule {
+  // Liability chart dimension as decimal. Seeded mortgage is `41`,
+  // auto loan `42`, student loan `43`.
+  string dimension = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Interest-expense chart dimension as decimal. Seeded mortgage
+  // interest is `12`, auto `13`, student `14`.
+  string interest = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message ListBooksRequest {
@@ -1985,18 +2009,20 @@ message ListAccountsRequest {
   // balance sheet can foot (A = L + E + surplus). `pnl` keeps income and
   // expense. `capital` keeps partner / contribution / distribution /
   // allocation / transfer equity (not unrealized gain). `budget-YYYY[-MM]`
-  // is household spend in a calendar window. All are presentations of the
+  // is household spend in a calendar window. `loan-YYYY[-MM]` is a household
+  // loan roll-forward keyed by named liability. All are presentations of the
   // same chart; they do not invent accounts.
   //
   // ⛔ A MONTH OR YEAR IS A SUFFIX, NOT A SECOND FIELD. AIP-132 List requests
   // carry parent, page_size, page_token, and filter. `pnl-2026-03` is March;
   // `pnl-2026` is the year; `sheet-2026-03` is as-of that month end;
   // `capital-2026-03` is March capital activity; `budget-2026-03` is March
-  // household spend. Bare `pnl` / `budget` is refused — cumulative income
-  // or spend is an ABOR-shaped figure wearing the wrong label. Bare
-  // `capital` is inception-to-date. An entry with no date is not in any
-  // period fold. Hyphens, not colons: the transcode does not percent-decode
-  // query values.
+  // household spend; `loan-2026-03` is March loan activity with the as-of-end
+  // balance (beginning = ending − (debit − credit)). Bare `pnl` / `budget` /
+  // `loan` is refused — cumulative income, spend, or liability is an
+  // ABOR-shaped figure wearing the wrong label. Bare `capital` is
+  // inception-to-date. An entry with no date is not in any period fold.
+  // Hyphens, not colons: the transcode does not percent-decode query values.
   string filter = 4 [(google.api.field_behavior) = OPTIONAL];
 }
 

@@ -390,7 +390,10 @@ impl Console {
     /// bare `capital` is inception-to-date partner and contribution equity.
     /// `budget-2026-03` is March household spend; bare `budget` is refused,
     /// and a non-personal book is refused — a project's period is the project,
-    /// so the project `/budget` page lists unfiltered.
+    /// so the project `/budget` page lists unfiltered. `loan-2026-03` is March
+    /// loan activity with the as-of-end balance; bare `loan` is refused — a
+    /// cumulative liability is the ABOR-shaped view a household figure exists
+    /// to reject.
     pub fn list_accounts(
         &self,
         parent: &str,
@@ -414,14 +417,33 @@ impl Console {
                 bail!("a household budget needs a month (YYYY-MM) or a year (YYYY)");
             }
         }
+        if kind == "loan" {
+            let path = self.book_path(&fund)?;
+            let meta = book::BookMeta::load(&path, &fund);
+            if meta.kind != book::BookKind::Personal {
+                bail!(
+                    "loan schedule is a household figure — this book is {}",
+                    meta.kind.as_str()
+                );
+            }
+            if period.is_empty() {
+                bail!("a loan schedule needs a month (YYYY-MM) or a year (YYYY)");
+            }
+        }
         let fold = match (kind, period) {
             ("pnl", p) => AccountFold::Activity(parse_period(p)?),
             ("capital", p) if !p.is_empty() => AccountFold::Activity(parse_period(p)?),
             ("budget", p) => AccountFold::Activity(parse_period(p)?),
+            ("loan", p) => AccountFold::Loan(parse_period(p)?),
             (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
             _ => AccountFold::Current,
         };
         let accounts = self.accounts_folded(&fund, &view, fold)?;
+        let loan_dims = if kind == "loan" {
+            self.loan_dimensions(&fund)?
+        } else {
+            BTreeSet::new()
+        };
         let keep: Vec<pb::Account> = accounts
             .into_iter()
             .filter(|a| match kind {
@@ -440,6 +462,7 @@ impl Console {
                 }
                 "capital" => book::is_capital_account(&a.display_name),
                 "budget" => a.r#type == pb::account::Type::Expense as i32,
+                "loan" => loan_dims.contains(&a.dimension),
                 _ => true,
             })
             .collect();
@@ -481,7 +504,12 @@ impl Console {
         let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &facts);
         let rate_facts = ratio_ingest::value::current_rates(&facts);
-        let raw = match &fold {
+        // (dim, ccy, activity debit, activity credit, ending debit, ending credit, postings)
+        // Current / AsOf / Activity set activity = ending. Loan keeps them
+        // apart: debit/credit are window activity, balance is as-of the
+        // window end, so beginning = ending − (debit − credit). Activity
+        // alone would make beginning always 0.
+        let raw: Vec<(i64, Option<String>, i128, i128, i128, i128, i64)> = match &fold {
             AccountFold::Current => {
                 // ⛔ OFF THE MAINTAINED FOLD, PER VIEW — NOT `b.balances_by_dim()`.
                 // The file's answer sums the whole journal, which is exactly one
@@ -495,9 +523,17 @@ impl Console {
                     .value
                     .iter()
                     .map(|((dim, ccy), row)| {
-                        (*dim, ccy.as_deref().map(str::to_string), row.debit, row.credit, row.postings)
+                        (
+                            *dim,
+                            ccy.as_deref().map(str::to_string),
+                            row.debit,
+                            row.credit,
+                            row.debit,
+                            row.credit,
+                            row.postings,
+                        )
                     })
-                    .collect::<Vec<_>>()
+                    .collect()
             }
             AccountFold::AsOf(w) | AccountFold::Activity(w) => {
                 // ⚠ A SECOND WALK, NOT A SECOND FOLD. The maintained projection
@@ -540,15 +576,64 @@ impl Console {
                     Ok(())
                 })?;
                 rows.into_iter()
-                    .map(|((dim, ccy), (d, c, n))| (dim, ccy, d, c, n))
+                    .map(|((dim, ccy), (d, c, n))| (dim, ccy, d, c, d, c, n))
+                    .collect()
+            }
+            AccountFold::Loan(w) => {
+                let proj = self.projection(fund)?;
+                let mut activity: BTreeMap<(i64, Option<String>), (i128, i128, i64)> =
+                    BTreeMap::new();
+                let mut ending: BTreeMap<(i64, Option<String>), (i128, i128)> = BTreeMap::new();
+                b.for_each_entry_since(0, &mut |entry| {
+                    if !proj.recognised(view, entry)? {
+                        return Ok(());
+                    }
+                    let Some(day) = entry.trade_date.as_deref() else {
+                        return Ok(());
+                    };
+                    if day > w.end.as_str() {
+                        return Ok(());
+                    }
+                    let in_period = day >= w.start.as_str() && day <= w.end.as_str();
+                    for p in &entry.postings {
+                        let amount = p.amount as i128;
+                        let key = (p.dim, p.currency.clone());
+                        let end = ending.entry(key.clone()).or_default();
+                        if amount >= 0 {
+                            end.0 += amount;
+                        } else {
+                            end.1 += -amount;
+                        }
+                        if in_period {
+                            let slot = activity.entry(key).or_default();
+                            slot.2 += 1;
+                            if amount >= 0 {
+                                slot.0 += amount;
+                            } else {
+                                slot.1 += -amount;
+                            }
+                        }
+                    }
+                    Ok(())
+                })?;
+                let mut keys: BTreeSet<(i64, Option<String>)> = BTreeSet::new();
+                keys.extend(activity.keys().cloned());
+                keys.extend(ending.keys().cloned());
+                keys.into_iter()
+                    .map(|key| {
+                        let (ad, ac, n) = activity.get(&key).copied().unwrap_or((0, 0, 0));
+                        let (ed, ec) = ending.get(&key).copied().unwrap_or((0, 0));
+                        (key.0, key.1, ad, ac, ed, ec, n)
+                    })
                     .collect()
             }
         };
 
-        let mut totals: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
+        let mut activity: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
+        let mut ending: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
         let mut split: BTreeMap<i64, Vec<pb::CurrencyTotal>> = BTreeMap::new();
         let mut counts: BTreeMap<i64, i64> = BTreeMap::new();
-        for (dim, ccy, debit, credit, postings) in raw {
+        for (dim, ccy, ad, ac, ed, ec, postings) in raw {
             let ccy_ref = ccy.as_deref();
             let factor = rates.factor_of_optional(ccy_ref).with_context(|| {
                 format!(
@@ -557,10 +642,13 @@ impl Console {
                     ccy_ref.unwrap_or("an untyped balance")
                 )
             })? as i128;
-            let s = totals.entry(dim).or_insert((0, 0));
             let scale = ratio_project::RATE_SCALE as i128;
-            s.0 += (debit * factor / scale) as i64;
-            s.1 += (credit * factor / scale) as i64;
+            let s = activity.entry(dim).or_insert((0, 0));
+            s.0 += (ad * factor / scale) as i64;
+            s.1 += (ac * factor / scale) as i64;
+            let e = ending.entry(dim).or_insert((0, 0));
+            e.0 += (ed * factor / scale) as i64;
+            e.1 += (ec * factor / scale) as i64;
             *counts.entry(dim).or_default() += postings;
             // ⛔ THE FACT THE FIGURE CITES, OR NOTHING. The base and an untyped
             // leg translate at par without a rate fact; inventing a resource
@@ -580,9 +668,9 @@ impl Console {
             };
             split.entry(dim).or_default().push(pb::CurrencyTotal {
                 currency_code: ccy_ref.unwrap_or("").to_string(),
-                debit: debit.to_string(),
-                credit: credit.to_string(),
-                balance: (debit - credit).to_string(),
+                debit: ad.to_string(),
+                credit: ac.to_string(),
+                balance: (ed - ec).to_string(),
                 // ⛔ EMPTY FOR THE BASE AND FOR AN UNTYPED LEG, not "100".
                 // Both translate at par, and both do so WITHOUT a rate fact —
                 // printing a rate nobody recorded would invent the evidence the
@@ -600,8 +688,9 @@ impl Console {
         Ok(b.accounts()?
             .into_iter()
             .map(|a| {
-                let (debit, credit) = totals.get(&a.dim).copied().unwrap_or((0, 0));
-                let balance = debit - credit;
+                let (debit, credit) = activity.get(&a.dim).copied().unwrap_or((0, 0));
+                let (ed, ec) = ending.get(&a.dim).copied().unwrap_or((0, 0));
+                let balance = ed - ec;
                 pb::Account {
                     name: format!("funds/{fund}/views/{view}/accounts/{}", a.dim),
                     display_name: a.display_name,
@@ -625,6 +714,30 @@ impl Console {
                 }
             })
             .collect())
+    }
+
+    fn loan_dimensions(&self, fund: &str) -> Result<BTreeSet<String>> {
+        Ok(self
+            .loan_schedules_of(fund)?
+            .into_iter()
+            .flat_map(|s| [s.dimension, s.interest])
+            .collect())
+    }
+
+    fn loan_schedules_of(&self, fund: &str) -> Result<Vec<pb::LoanSchedule>> {
+        let path = self.book_path(fund)?;
+        let meta = book::BookMeta::load(&path, fund);
+        if meta.kind != book::BookKind::Personal {
+            return Ok(vec![]);
+        }
+        let b = FileBook::open(&path)?;
+        let chart = b.accounts()?;
+        let Some(digest) = b.active()? else {
+            return Ok(vec![]);
+        };
+        let text = String::from_utf8(b.get(&digest)?)?;
+        let set = RuleSet::from_toml(&text)?;
+        loan_schedules(&set, &chart)
     }
 
     /// Every posting on one account, in journal order, each with the balance
@@ -2101,6 +2214,7 @@ impl Console {
         // working; the sidecar is what distinguishes a fund listing from a book.
         let fund = self.get_fund(&format!("funds/{id}"))?;
         let (budget, envelopes) = budget_terms_of(&path, meta.kind);
+        let loans = self.loan_schedules_of(&id)?;
         Ok(pb::Book {
             name: format!("books/{id}"),
             display_name: meta.display_name,
@@ -2114,6 +2228,7 @@ impl Console {
             trial_balance_difference: fund.trial_balance_difference,
             budget,
             envelopes,
+            loans,
         })
     }
 
@@ -2157,6 +2272,7 @@ impl Console {
             trial_balance_difference: "0".into(),
             budget: String::new(),
             envelopes: Vec::new(),
+            loans: Vec::new(),
         })
     }
 
@@ -3763,6 +3879,48 @@ pub fn position_key(id: &str) -> Result<(i64, String)> {
     ))
 }
 
+/// `[personal.loan]` → citable rows. Empty when unset.
+///
+/// ⛔ A KEY THAT IS NOT ON THE CHART IS A REFUSAL, NOT A SKIP. Omitting it
+/// would look like unset, and the operator would not know the schedule they
+/// wrote was unread.
+fn loan_schedules(
+    set: &RuleSet,
+    chart: &[ratio_store::Account],
+) -> Result<Vec<pb::LoanSchedule>> {
+    let Some(p) = set.personal.as_ref() else {
+        return Ok(vec![]);
+    };
+    if p.loan.is_empty() {
+        return Ok(vec![]);
+    }
+    let by_dim: BTreeMap<i64, &ratio_store::Account> =
+        chart.iter().map(|a| (a.dim, a)).collect();
+    let mut out = Vec::new();
+    for (k, interest) in &p.loan {
+        let dim: i64 = k
+            .parse()
+            .with_context(|| format!("[personal.loan] {k:?} is not a chart dimension"))?;
+        let liab = by_dim.get(&dim).with_context(|| {
+            format!("[personal.loan] {k} is not on this book's chart")
+        })?;
+        if liab.account_type != AccountTypeRecord::Liability {
+            bail!("[personal.loan] {k} is not a liability");
+        }
+        let exp = by_dim.get(interest).with_context(|| {
+            format!("[personal.loan] {k} interest {interest} is not on this book's chart")
+        })?;
+        if exp.account_type != AccountTypeRecord::Expense {
+            bail!("[personal.loan] {k} interest {interest} is not an expense");
+        }
+        out.push(pb::LoanSchedule {
+            dimension: k.clone(),
+            interest: interest.to_string(),
+        });
+    }
+    Ok(out)
+}
+
 /// The currency a fund reports in.
 ///
 /// ⛔ ONE CONSTANT, BECAUSE IT IS TWO ANSWERS TO ONE QUESTION OTHERWISE. It is
@@ -3785,6 +3943,7 @@ enum AccountFold {
     Current,
     AsOf(PeriodWindow),
     Activity(PeriodWindow),
+    Loan(PeriodWindow),
 }
 
 #[derive(Clone, Debug)]
@@ -3794,8 +3953,8 @@ struct PeriodWindow {
 }
 
 /// AIP-132 List requests carry `filter` (AIP-160), not a custom period field.
-/// `pnl-2026-03` / `sheet-2026` / `capital-2026-03` / `budget-2026-03` —
-/// hyphen because `param_of` does not decode.
+/// `pnl-2026-03` / `sheet-2026` / `capital-2026-03` / `budget-2026-03` /
+/// `loan-2026-03` — hyphen because `param_of` does not decode.
 fn list_accounts_window(filter: &str) -> (&str, &str) {
     if let Some(rest) = filter.strip_prefix("pnl-") {
         ("pnl", rest)
@@ -3805,6 +3964,8 @@ fn list_accounts_window(filter: &str) -> (&str, &str) {
         ("capital", rest)
     } else if let Some(rest) = filter.strip_prefix("budget-") {
         ("budget", rest)
+    } else if let Some(rest) = filter.strip_prefix("loan-") {
+        ("loan", rest)
     } else {
         (filter, "")
     }
@@ -4673,7 +4834,7 @@ mod tests {
             "the sheet names chart_for(Personal), not a fund: {sheet:?}"
         );
         assert!(sheet.iter().any(|a| a.display_name == "Investments"));
-        assert!(sheet.iter().any(|a| a.display_name == "Credit cards and loans"));
+        assert!(sheet.iter().any(|a| a.display_name == "Credit cards"));
         assert_eq!(c.get_fund("funds/household").unwrap().trial_balance_difference, "0");
 
         let proj = c.projection("household").unwrap();
@@ -5066,6 +5227,179 @@ mod tests {
     }
 
     #[test]
+    fn a_household_loan_schedule_is_unset_until_named_and_keyed_by_liability() {
+        // ⭐ THE CLAIM #87 IS ABOUT. CreateBook seeds the posting pattern
+        // and no `[personal.loan]`. The figure is empty, not a roll-forward
+        // of zeros. Naming two liabilities gives two rows, not one debt
+        // bucket. Credit cards moved in the window and stay off the figure.
+        let root = fresh("household-loan-figure");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Household".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "house".into(),
+            })
+            .unwrap();
+        let got = console.get_book("books/house").unwrap();
+        assert!(
+            got.loans.is_empty(),
+            "CreateBook must not invent a loan schedule: {:?}",
+            got.loans
+        );
+
+        let view = format!("funds/house/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let e = console
+            .list_accounts(&view, "loan")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("month"), "{e}");
+
+        let empty = console.list_accounts(&view, "loan-2026-03").unwrap();
+        assert!(
+            empty.accounts.is_empty(),
+            "unset is not a silent zero: {:?}",
+            empty.accounts
+        );
+
+        // An investment book is refused, not given a household figure.
+        book(&root.join("fundbook"));
+        // `book()` writes a legacy sidecar-less fund named by its directory.
+        let fund_view = format!(
+            "funds/fundbook/views/{}",
+            ratio_rules::UNDECLARED_VIEW
+        );
+        // The helper writes into root/fundbook; book_ids picks directories
+        // with accounts.json. Kind is Investment (legacy).
+        let inv = console
+            .list_accounts(&fund_view, "loan-2026-03")
+            .unwrap_err()
+            .to_string();
+        assert!(inv.contains("household"), "{inv}");
+
+        let path = root.join("house");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str("\n[personal.loan]\n41 = 12\n42 = 13\n");
+        let d = b.put(text.as_bytes()).unwrap();
+        b.set_active(&d).unwrap();
+        drop(b);
+
+        let named = console.get_book("books/house").unwrap();
+        assert_eq!(
+            named
+                .loans
+                .iter()
+                .map(|l| (l.dimension.as_str(), l.interest.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("41", "12"), ("42", "13")]
+        );
+
+        let mut b = FileBook::open(&path).unwrap();
+        let cfg = b.active().unwrap().unwrap();
+        use ratio_store::{JournalEntry, PostingRecord};
+        // Originate a $100,000 mortgage in February (outside March).
+        b.append(&JournalEntry {
+            id: "orig-m".into(),
+            memo: "originate mortgage".into(),
+            config: cfg.clone(),
+            postings: vec![
+                PostingRecord::new(1, 10_000_000),
+                PostingRecord::new(41, -10_000_000),
+            ],
+            trade_date: Some("2026-02-01".into()),
+            announcement: None,
+        })
+        .unwrap();
+        // $18,000 auto in February.
+        b.append(&JournalEntry {
+            id: "orig-a".into(),
+            memo: "originate auto".into(),
+            config: cfg.clone(),
+            postings: vec![
+                PostingRecord::new(1, 1_800_000),
+                PostingRecord::new(42, -1_800_000),
+            ],
+            trade_date: Some("2026-02-01".into()),
+            announcement: None,
+        })
+        .unwrap();
+        // March mortgage: $800 principal + $200 interest against cash.
+        b.append(&JournalEntry {
+            id: "pay-m".into(),
+            memo: "march mortgage".into(),
+            config: cfg.clone(),
+            postings: vec![
+                PostingRecord::new(12, 20_000),
+                PostingRecord::new(41, 80_000),
+                PostingRecord::new(1, -100_000),
+            ],
+            trade_date: Some("2026-03-01".into()),
+            announcement: None,
+        })
+        .unwrap();
+        // March auto: $350 principal + $45 interest.
+        b.append(&JournalEntry {
+            id: "pay-a".into(),
+            memo: "march auto".into(),
+            config: cfg.clone(),
+            postings: vec![
+                PostingRecord::new(13, 4_500),
+                PostingRecord::new(42, 35_000),
+                PostingRecord::new(1, -39_500),
+            ],
+            trade_date: Some("2026-03-15".into()),
+            announcement: None,
+        })
+        .unwrap();
+        // A card charge the same month — not a declared loan.
+        b.append(&JournalEntry {
+            id: "card".into(),
+            memo: "groceries".into(),
+            config: cfg,
+            postings: vec![
+                PostingRecord::new(10, 8_900),
+                PostingRecord::new(40, -8_900),
+            ],
+            trade_date: Some("2026-03-20".into()),
+            announcement: None,
+        })
+        .unwrap();
+        drop(b);
+
+        let listed = console.list_accounts(&view, "loan-2026-03").unwrap();
+        let by: BTreeMap<_, _> = listed
+            .accounts
+            .iter()
+            .map(|a| (a.dimension.as_str(), a))
+            .collect();
+        assert!(
+            !by.contains_key("40"),
+            "credit cards are not a named loan: {:?}",
+            by.keys().collect::<Vec<_>>()
+        );
+        let m = by.get("41").expect("mortgage liability");
+        assert_eq!(m.debit, "80000", "principal paid this month");
+        assert_eq!(m.credit, "0");
+        assert_eq!(m.balance, "-9920000", "ending = 100000 − 800");
+        let mi = by.get("12").expect("mortgage interest");
+        assert_eq!(mi.debit, "20000");
+        let a = by.get("42").expect("auto liability");
+        assert_eq!(a.debit, "35000");
+        assert_eq!(a.balance, "-1765000");
+
+        // Beginning from the figure identity: ending − (debit − credit).
+        let ending: i64 = m.balance.parse().unwrap();
+        let debit: i64 = m.debit.parse().unwrap();
+        let credit: i64 = m.credit.parse().unwrap();
+        assert_eq!(ending - (debit - credit), -10_000_000);
+    }
+
+    #[test]
     fn create_book_grants_the_creator_and_not_their_org() {
         let root = fresh("create-grants-sub");
         book(&root.join("legacy"));
@@ -5289,7 +5623,7 @@ mod tests {
             (
                 "house",
                 book::BookKind::Personal,
-                &[("bank-statement", true)] as &[(&str, bool)],
+                &[("bank-statement", true), ("loan-payment", true)] as &[(&str, bool)],
             ),
             (
                 "fund",

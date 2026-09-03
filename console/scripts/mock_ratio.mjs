@@ -87,6 +87,7 @@ const ROUTES = [
 // book as the trade loop.
 const INGEST_TEMPLATE_KIND = {
   "bank-statement": "PERSONAL",
+  "loan-payment": "PERSONAL",
   "custodian-positions": "INVESTMENT",
   "prime_equity_trades": "INVESTMENT",
   "project-invoices": "PROJECT",
