@@ -82,6 +82,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # the same-commit amendment. The public roadmap lagged. Same class
     # of defect as #67 / wash sales / MinTax.
     "SpecID is a named selection",
+    # ⚠ Average cost landed as a pool, not a Method; PLAN named it in
+    # the same-commit amendment.
+    "Average cost is a pool",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -94,6 +97,7 @@ ROADMAP_ENGINE_BUILT = [
     "wash sales",
     "MinTax is a ranking at a price",
     "SpecID is a named selection",
+    "Average cost is a pool",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",

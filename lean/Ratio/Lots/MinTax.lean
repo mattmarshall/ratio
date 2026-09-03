@@ -6,9 +6,10 @@ set_option warningAsError true
 
 `Ratio.Lots.Methods` proves the space of lot methods is not all orderings, and
 names three shapes that are not: specific identification, average cost, and
-tax-minimising relief. The first two stay modelled there. This file is the
-third, because the decision surface is a function of the sale PRICE and the
-holding period, and an `Order` has no place to put either.
+tax-minimising relief. SpecID is `Ratio.Lots.SpecId`. Average cost is
+`Ratio.Lots.AverageCost`. This file is the ranking, because the decision
+surface is a function of the sale PRICE and the holding period, and an
+`Order` has no place to put either.
 
 ⛔ A TAX-MINIMISING METHOD IS NOT A FUNCTION OF THE LOTS. Whether a lot yields
 a GAIN or a LOSS depends on the sale price. A short-term LOSS is worth more
