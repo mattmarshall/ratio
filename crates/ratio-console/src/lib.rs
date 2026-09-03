@@ -10499,4 +10499,47 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             "{refused}"
         );
     }
+
+    #[test]
+    fn an_operating_period_closes_into_retained_earnings_not_owner_equity() {
+        // ⭐ #114 ON THE KIND THAT LANDED WITH #110. Owner equity is who
+        // put money in. The residual is retained earnings (dim 25).
+        let root = fresh("period-close-operating");
+        let c = Console::new(&root).as_actor("tester");
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Studio".into(),
+                kind: book::BookKind::Operating.proto(),
+                ..Default::default()
+            }),
+            book_id: "studio".into(),
+        })
+        .unwrap();
+        c.apply_event(&operating_req("sale", "receive_revenue", "50.00", 2026, 3, 4))
+            .unwrap();
+        c.apply_event(&operating_req("bill", "pay_expense", "12.00", 2026, 3, 12))
+            .unwrap();
+        let rec = c
+            .close_period("studio", ratio_rules::UNDECLARED_VIEW, "2026-03-31")
+            .unwrap();
+        assert_eq!(rec.equity_destination, 25);
+        assert_eq!(rec.surplus, Some(-3800), "50.00 revenue − 12.00 expense, raw");
+        let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let sheet = c.list_accounts(&view, "sheet-2026-03").unwrap();
+        let re = sheet
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Retained earnings")
+            .expect("operating sheet names Retained earnings");
+        assert_eq!(re.balance, "-3800", "surplus landed on RE, not Owner equity: {re:?}");
+        let owner = sheet
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Owner equity")
+            .expect("Owner equity is still on the chart");
+        assert_eq!(
+            owner.balance, "0",
+            "a close must not look like a contribution: {owner:?}"
+        );
+    }
 }

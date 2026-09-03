@@ -876,8 +876,12 @@ retained-earnings roll-forward, for Personal, Investment, Project,
 Operating, and the fund operations surface. Kind still selects the chrome
 from one `screensFor` list. Operating rolls into retained earnings (25),
 not Owner equity — the same distinction Personal keeps between Opening
+<<<<<<< HEAD
 equity and the residual. Operating `/cashflow` stays the period cash
 statement (#118); this amendment does not change that classification.
+=======
+equity and the residual.
+>>>>>>> 3f739a7 (Close an operating book into retained earnings, not owner equity)
 
 **The door is on the journal, not the rule set.** A `CloseRecord` lives on
 `Plane::Closes` (`closes.jsonl`), beside the journal the way an explanation
