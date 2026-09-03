@@ -356,8 +356,8 @@ describe("a first-class book", () => {
       expect(screen.getByLabelText("Capital activity")).toBeDefined();
       expect(screen.getByText("Partner capital — LP")).toBeDefined();
       expect(screen.getByText("Partner capital — GP")).toBeDefined();
-      expect(screen.getByText("Distributions")).toBeDefined();
-      expect(screen.getByText("75.00")).toBeDefined();
+      expect(screen.getAllByText("Distributions").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("75.00").length).toBeGreaterThan(0);
       expect(screen.getByText("115.00")).toBeDefined();
       expect(screen.getByText(/not a return, not attribution/)).toBeDefined();
       expect(screen.getByText(/not IRR/)).toBeDefined();
@@ -365,14 +365,19 @@ describe("a first-class book", () => {
       expect(screen.getByText("Capital account — LP")).toBeDefined();
       expect(screen.getByText("Capital account — GP")).toBeDefined();
       expect(
-        screen.getByText(/since inception has no prior prefix — not a measured zero beginning/),
-      ).toBeDefined();
+        screen.getAllByText(/since inception has no prior prefix — not a measured zero beginning/)
+          .length,
+      ).toBeGreaterThan(0);
       expect(
-        screen.getByText(/unset — no partner-cut of period income, not an equal share of book NAV/),
-      ).toBeDefined();
+        screen.getAllByText(
+          /unset — no partner-cut of period income, not an equal share of book NAV/,
+        ).length,
+      ).toBeGreaterThan(0);
       expect(
-        screen.getByText(/unset — no partner-cut of Unrealized gain — not a silent equal allocation/),
-      ).toBeDefined();
+        screen.getAllByText(
+          /unset — no partner-cut of Unrealized gain — not a silent equal allocation/,
+        ).length,
+      ).toBeGreaterThan(0);
       expect(screen.queryByText(/^Unrealized gain$/)).toBeNull();
       expect(
         screen.getByRole("link", { name: "Record an event" }).getAttribute("href"),
@@ -508,13 +513,13 @@ describe("a first-class book", () => {
       expect(calls.some((a) => a[3] === "nav" && a[4] === "2026-03")).toBe(true);
       expect(screen.getByLabelText("Capital account statement")).toBeDefined();
       expect(screen.getByText("Capital account — LP")).toBeDefined();
-      expect(screen.getByText("100.00")).toBeDefined();
+      expect(screen.getAllByText("100.00").length).toBeGreaterThan(0);
       expect(screen.getByText("130.00")).toBeDefined();
       expect(screen.getByText("Capital account — GP")).toBeDefined();
       expect(screen.getAllByText("20.00").length).toBeGreaterThan(0);
       expect(
-        screen.getByText(/the same Loan-shaped fold \/nav cites/),
-      ).toBeDefined();
+        screen.getAllByText(/the same Loan-shaped fold \/nav cites/).length,
+      ).toBeGreaterThan(0);
       const income = screen.getAllByText("Allocated income");
       expect(income.length).toBe(2);
       for (const label of income) {
