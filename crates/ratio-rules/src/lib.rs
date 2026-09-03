@@ -203,6 +203,30 @@ pub struct RuleSet {
     #[serde(default = "default_long_term_days")]
     pub long_term_days: i64,
 
+    /// How many days either side of a sale a repurchase washes the loss.
+    ///
+    /// ⛔ A JURISDICTION'S NUMBER, exactly like [`long_term_days`].
+    /// `Ratio.Lots.Wash.inWashWindow` takes the window as a parameter for the
+    /// same reason `isLongTerm` takes 365: a fund administered under other
+    /// rules uses a different one, and a constant in the engine would make it
+    /// right in one place and wrong in every other.
+    /// `Ratio.Lots.Wash.the_window_is_a_jurisdiction_number`.
+    ///
+    /// ⛔ AND IT REACHES BOTH WAYS. A repurchase before the sale washes it
+    /// just as one after does. The number is the half-width, not a horizon.
+    ///
+    /// ⛔ `None` MEANS NOBODY SAID, AND THAT IS NOT THE SAME AS SAYING 30.
+    /// A silent default of 30 restated every in-window loss on every existing
+    /// book — the generated fund's short/long split stopped partitioning the
+    /// chart total, and `//deploy:seed_test` could not strike a NAV. Thirty
+    /// is the US number a fund WRITES; it is not applied to a book that never
+    /// elected the rule. Same distinction [`lot_method`] keeps.
+    ///
+    /// [`long_term_days`]: RuleSet::long_term_days
+    /// [`lot_method`]: RuleSet::lot_method
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wash_window_days: Option<i64>,
+
     /// How big a difference has to be before it stops the NAV.
     ///
     /// ⛔ `None` MEANS NOBODY SAID, AND THAT IS NOT THE SAME AS SAYING 5.00 AND
@@ -524,6 +548,7 @@ fn default_long_term_days() -> i64 {
     365
 }
 
+
 /// ⛔ HAND-WRITTEN, NOT DERIVED, AND THAT IS THE POINT. `#[derive(Default)]`
 /// gives every field its type's default, so `long_term_days` would be **0**
 /// here while `#[serde(default = ...)]` makes it 365 on the way in from TOML.
@@ -537,6 +562,7 @@ impl Default for RuleSet {
             lot_method: None,
             chart_roles: None,
             long_term_days: default_long_term_days(),
+            wash_window_days: None,
             tolerance: None,
             // ⛔ EMPTY IS NOT ZERO VIEWS. `effective_views` turns this into the
             // one view every book has, recognising in journal order — and
@@ -1051,6 +1077,18 @@ impl RuleSet {
         // which nobody does.
         if let Some(t) = &set.tolerance {
             t.check()?;
+        }
+        // ⛔ A NEGATIVE WINDOW IS NOT A WINDOW. `-30` would make `inWashWindow`
+        // never fire, which is "we handle wash sales" in name only — every
+        // conservation check would pass and no loss would ever be deferred.
+        if let Some(w) = set.wash_window_days {
+            if w < 0 {
+                bail!(
+                    "wash_window_days is {w}, and a negative window is not a window — \
+                     every repurchase would sit outside it, and a loss the rule \
+                     defers would be recognized in full"
+                );
+            }
         }
         // ⛔ AND THE VIEWS, FOR THE SAME REASON. A view naming a calendar
         // nobody declared is wrong when it is written, not on the NAV day it
@@ -2122,6 +2160,34 @@ calendar = "us-settlement"
         // And a fund administered under other rules says so.
         let set = RuleSet::from_toml("rules = []\nlong_term_days = 730\n").unwrap();
         assert_eq!(set.long_term_days, 730);
+    }
+
+    #[test]
+    fn a_wash_window_nobody_declared_is_absent_rather_than_thirty() {
+        // ⛔ NOT THE `long_term_days` SHAPE. Silence-as-30 restated every
+        // in-window loss on every existing book. Thirty is the US number a
+        // fund writes; it is not applied to a book that never elected the rule.
+        assert_eq!(RuleSet::default().wash_window_days, None);
+        assert_eq!(RuleSet::from_toml("rules = []\n").unwrap().wash_window_days, None);
+
+        let set = RuleSet::from_toml("rules = []\nwash_window_days = 10\n").unwrap();
+        assert_eq!(set.wash_window_days, Some(10));
+
+        let toml = RuleSet::from_toml("rules = []\n").unwrap().to_toml().unwrap();
+        assert!(
+            !toml.contains("wash_window"),
+            "silence must not write a window: {toml}"
+        );
+        let named = RuleSet::from_toml("rules = []\nwash_window_days = 10\n")
+            .unwrap()
+            .to_toml()
+            .unwrap();
+        assert!(named.contains("wash_window_days = 10"), "{named}");
+
+        let e = RuleSet::from_toml("rules = []\nwash_window_days = -1\n")
+            .expect_err("a negative window is not a window")
+            .to_string();
+        assert!(e.contains("not a window"), "{e}");
     }
 
     #[test]

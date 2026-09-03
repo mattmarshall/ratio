@@ -293,8 +293,9 @@ struct Actions {
 /// What one entry's configuration tells the lot engine.
 ///
 /// ⛔ RESOLVED FROM THE DIGEST THAT ENTRY PINNED, never from whatever is active
-/// now. All three of these are terms of an administration agreement rather than
-/// implementation choices, and all three decide a REALIZED GAIN — the figure
+/// now. The method, the chart roles, the holding-period threshold and the
+/// wash window are terms of an administration agreement rather than
+/// implementation choices, and each decides a REALIZED GAIN — the figure
 /// with no counterparty, which no reconciliation reaches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Terms {
@@ -305,6 +306,10 @@ pub struct Terms {
     pub roles: Option<ratio_rules::ChartRoles>,
     /// Days held for a gain to be long-term. `Ratio.Lots.Methods.isLongTerm`.
     pub long_term_days: i64,
+    /// Days either side of a sale a repurchase washes the loss.
+    /// `None` means the fund did not elect the rule.
+    /// `Ratio.Lots.Wash.inWashWindow`.
+    pub wash_window_days: Option<i64>,
 }
 
 impl Terms {
@@ -314,6 +319,7 @@ impl Terms {
             method: set.effective_lot_method().into(),
             roles: set.chart_roles,
             long_term_days: set.long_term_days,
+            wash_window_days: set.wash_window_days,
         }
     }
 
@@ -490,6 +496,13 @@ struct LotBook {
     /// things is the failure this whole file is about.
     short_term: BTreeMap<Option<Text>, i128>,
     long_term: BTreeMap<Option<Text>, i128>,
+    /// A loss that has been realized and not yet matched to a replacement.
+    ///
+    /// ⛔ THE FORWARD HALF OF THE WINDOW. A repurchase can land after the
+    /// sale; at sale time there is nothing to write. Remembering the leftover
+    /// is how the write still happens, onto a lot the sale did not take.
+    /// `//tla:wash_engine_check`.
+    pending_wash: Vec<PendingWash>,
     /// ⛔ SALES THAT COULD NOT BE RELIEVED, named rather than propagated.
     ///
     /// A husk, a pro-rata split that will not divide, a holding that is short —
@@ -499,6 +512,20 @@ struct LotBook {
     /// so these surface as breaks, which is already what this product calls a
     /// thing an operator must look at.
     breaks: Vec<String>,
+}
+
+/// A sale's leftover wash, waiting for a replacement to open.
+///
+/// Window and terms are the SALE's — pinned by the configuration that entry
+/// named, not whatever is in force when the repurchase lands.
+#[derive(Clone, Debug)]
+struct PendingWash {
+    key: (i64, Text),
+    window: i64,
+    sold_on: relief::Day,
+    remaining_units: i64,
+    remaining_loss: i64,
+    original_acquired: Option<relief::Day>,
 }
 
 /// One book of record's fold over the shared journal.
@@ -1407,11 +1434,30 @@ impl Projection {
                     // directions.
                     acquired: trade_day,
                 };
+                // ⛔ PENDING IS TAKEN OUT so the holding and the leftover
+                // list are not borrowed together. A repurchase that matches
+                // writes the deferral onto this new lot — the forward half
+                // of `Ratio.Lots.Wash.the_window_reaches_backwards_too`.
+                let mut pending = std::mem::take(&mut fold.lots.pending_wash);
+                let held = fold.lots.open.entry(key.clone()).or_default();
                 // ⛔ A HUSK IS REFUSED WHERE IT IS OFFERED, so the walk no longer
                 // rescans the whole holding on every sale looking for one.
-                if let Err(e) = fold.lots.open.entry(key).or_default().push(lot) {
+                if let Err(e) = held.push(lot.clone()) {
+                    fold.lots.breaks.push(format!("{}: {e:#}", entry.id));
+                    fold.lots.pending_wash = pending;
+                    continue;
+                }
+                if let Err(e) = match_pending_washes(
+                    held,
+                    &mut pending,
+                    &key,
+                    lot.seq,
+                    qty,
+                    trade_day,
+                ) {
                     fold.lots.breaks.push(format!("{}: {e:#}", entry.id));
                 }
+                fold.lots.pending_wash = pending;
                 continue;
             }
             // A sale relieves — under the method this entry's configuration
@@ -1434,60 +1480,111 @@ impl Projection {
                 }
             };
             let method = terms.method;
-            let held = fold.lots.open.entry(key.clone()).or_default();
-            let relieving = std::time::Instant::now();
-            let relieved = held.relieve(method, -qty);
-            cost.relieve += relieving.elapsed();
-            cost.reliefs += 1;
-            match relieved {
-                Ok(r) => {
-                    // ⛔ THE POSITION AND THE LOT BOOK ARE TWO INDEPENDENT
-                    // PATHS, AND NOTHING FORCES THEM TO AGREE. The aggregate
-                    // follows the amount the entry POSTED; the lots follow what
-                    // relieving them actually cost. An entry that posts a basis
-                    // FIFO does not agree with leaves the two drifting, and both
-                    // are internally consistent — the trial balance ties on the
-                    // posted figure and the lot book ties on the computed one.
-                    //
-                    // ⚠ `Ratio.Lots.aggregate_matches_scan` is the theorem that
-                    // they must agree. It is about one relief; this is the
-                    // system-level obligation, and a derived model cannot
-                    // enforce it — the journal is the record. What it can do is
-                    // notice, and say which figure it disagrees with.
-                    // ⚠ NAMES THE METHOD IT ACTUALLY USED. This message said
-                    // "oldest-first" whatever the fund had elected, back when
-                    // the fold ignored the configuration — so the one line an
-                    // operator would read to investigate a drift asserted the
-                    // very thing that was wrong.
-                    if -p.amount != r.cost {
-                        fold.lots.breaks.push(format!(
-                            "{}: selling {} of {} posted {} of basis, and relieving the lots \
-                             {} costs {} — the position and the lot book \
-                             will disagree by {}",
-                            entry.id,
+            let leftover = {
+                let held = fold.lots.open.entry(key.clone()).or_default();
+                let relieving = std::time::Instant::now();
+                let relieved = held.relieve(method, -qty);
+                cost.relieve += relieving.elapsed();
+                cost.reliefs += 1;
+                match relieved {
+                    Ok(r) => {
+                        // ⛔ THE POSITION AND THE LOT BOOK ARE TWO INDEPENDENT
+                        // PATHS, AND NOTHING FORCES THEM TO AGREE. The aggregate
+                        // follows the amount the entry POSTED; the lots follow what
+                        // relieving them actually cost. An entry that posts a basis
+                        // FIFO does not agree with leaves the two drifting, and both
+                        // are internally consistent — the trial balance ties on the
+                        // posted figure and the lot book ties on the computed one.
+                        //
+                        // ⚠ `Ratio.Lots.aggregate_matches_scan` is the theorem that
+                        // they must agree. It is about one relief; this is the
+                        // system-level obligation, and a derived model cannot
+                        // enforce it — the journal is the record. What it can do is
+                        // notice, and say which figure it disagrees with.
+                        // ⚠ NAMES THE METHOD IT ACTUALLY USED. This message said
+                        // "oldest-first" whatever the fund had elected, back when
+                        // the fold ignored the configuration — so the one line an
+                        // operator would read to investigate a drift asserted the
+                        // very thing that was wrong.
+                        if -p.amount != r.cost {
+                            fold.lots.breaks.push(format!(
+                                "{}: selling {} of {} posted {} of basis, and relieving the lots \
+                                 {} costs {} — the position and the lot book \
+                                 will disagree by {}",
+                                entry.id,
+                                -qty,
+                                inst,
+                                -p.amount,
+                                method.describe(),
+                                r.cost,
+                                -p.amount - r.cost
+                            ));
+                        }
+                        let ccy = p.currency.as_deref().map(|c| names.intern(c));
+                        *fold.lots.relieved.entry(ccy.clone()).or_default() += r.cost as i128;
+                        // The wash write, if any. ⛔ BOTH HALVES: disallow the
+                        // loss AND attach it to an open replacement. A first-half
+                        // engine conserves and permanently overtaxes.
+                        // `Ratio.Lots.Wash.disallowing_without_attaching_
+                        // destroys_the_loss`.
+                        let attached = match try_wash_sale(
+                            held,
+                            &r,
                             -qty,
-                            inst,
-                            -p.amount,
-                            method.describe(),
-                            r.cost,
-                            -p.amount - r.cost
-                        ));
+                            gain_leg,
+                            trade_day,
+                            terms,
+                        ) {
+                            Ok(w) => w,
+                            Err(e) => {
+                                fold.lots.breaks.push(format!("{}: {e:#}", entry.id));
+                                None
+                            }
+                        };
+                        // ⚠ CLASSIFY THE POSTED GAIN, NOT THE WASHED ONE.
+                        // The chart total is the journal's realized-gain
+                        // dimension. Restating the split against a figure
+                        // the journal did not post makes `unclassified` absorb
+                        // every deferral — which is how a generated book
+                        // that never elected wash stopped partitioning.
+                        // Qualification / restatement of the posted figure
+                        // is `WashRestatement`, and it is not this fold.
+                        let split = gain_leg.and_then(|g| classify(&r, g, trade_day, terms));
+                        if let Some((short, long)) = split {
+                            *fold.lots.short_term.entry(ccy.clone()).or_default() += short;
+                            *fold.lots.long_term.entry(ccy).or_default() += long;
+                        }
+                        match (attached, trade_day, terms.wash_window_days) {
+                            (Some(w), Some(sold_on), Some(window))
+                                if w.remaining_units > 0 && w.remaining_loss < 0 =>
+                            {
+                                Some(PendingWash {
+                                    key: key.clone(),
+                                    window,
+                                    sold_on,
+                                    remaining_units: w.remaining_units,
+                                    remaining_loss: w.remaining_loss,
+                                    original_acquired: r
+                                        .taken
+                                        .iter()
+                                        .filter_map(|t| t.acquired)
+                                        .min(),
+                                })
+                            }
+                            _ => None,
+                        }
                     }
-                    let ccy = p.currency.as_deref().map(|c| names.intern(c));
-                    *fold.lots.relieved.entry(ccy.clone()).or_default() += r.cost as i128;
-                    // Computed before `r.left` is moved out below, and as a free
-                    // function because `held` still borrows the lot book.
-                    let split = gain_leg
-                        .and_then(|g| classify(&r, g, trade_day, terms));
-                    if let Some((short, long)) = split {
-                        *fold.lots.short_term.entry(ccy.clone()).or_default() += short;
-                        *fold.lots.long_term.entry(ccy).or_default() += long;
+                    Err(e) => {
+                        fold.lots.breaks.push(format!(
+                            "{}: selling {} of {} could not be relieved — {e:#}",
+                            entry.id, -qty, inst
+                        ));
+                        None
                     }
                 }
-                Err(e) => fold.lots.breaks.push(format!(
-                    "{}: selling {} of {} could not be relieved — {e:#}",
-                    entry.id, -qty, inst
-                )),
+            };
+            if let Some(w) = leftover {
+                fold.lots.pending_wash.push(w);
             }
         }
     }
@@ -1949,6 +2046,91 @@ fn convert(by_currency: &BTreeMap<Option<Text>, i128>, rates: &Rates) -> Result<
         total += amount * factor as i128 / RATE_SCALE as i128;
     }
     Ok(total)
+}
+
+/// Apply the wash write after a sale, if a loss and a dated window exist.
+///
+/// ⛔ BOTH HALVES. Disallowing without attaching is
+/// `Ratio.Lots.Wash.disallowing_without_attaching_destroys_the_loss`.
+/// The search is over the holding — the remainder — so a Taken lot is
+/// unreachable. `Ratio.Lots.Wash.attaching_cannot_write_a_lot_the_sale_took`.
+fn try_wash_sale(
+    held: &mut relief::Holding,
+    r: &relief::Relief,
+    sold_units: i64,
+    gain_leg: Option<i64>,
+    sale_day: Option<relief::Day>,
+    terms: Terms,
+) -> Result<Option<relief::WashMatch>> {
+    let Some(window) = terms.wash_window_days else {
+        return Ok(None);
+    };
+    let Some(g) = gain_leg else {
+        return Ok(None);
+    };
+    let Some(sale_day) = sale_day else {
+        return Ok(None);
+    };
+    // `sale_postings` is credit-normal: a loss is a POSITIVE gain leg.
+    // `disallowed` takes the Relief sign — negative when money was lost.
+    let loss = ratio_common::checked::neg(g, "the realized loss")?;
+    if loss >= 0 {
+        return Ok(None);
+    }
+    let original = r.taken.iter().filter_map(|t| t.acquired).min();
+    Ok(Some(relief::wash_open(
+        held,
+        loss,
+        sold_units,
+        sale_day,
+        window,
+        original,
+        &r.taken,
+    )?))
+}
+
+/// Match a newly opened lot against leftover washes of the same position.
+///
+/// The window, and the leftover loss, are the SALE's — stored on
+/// [`PendingWash`] from the configuration that sale pinned.
+fn match_pending_washes(
+    held: &mut relief::Holding,
+    pending: &mut Vec<PendingWash>,
+    key: &(i64, Text),
+    replacement_seq: u64,
+    bought_units: i64,
+    buy_day: Option<relief::Day>,
+) -> Result<()> {
+    let Some(buy_day) = buy_day else {
+        return Ok(());
+    };
+    let mut leftover = Vec::new();
+    let mut units_left = bought_units;
+    for mut w in pending.drain(..) {
+        if w.key != *key
+            || units_left <= 0
+            || !relief::in_wash_window(w.window, w.sold_on, buy_day)
+        {
+            leftover.push(w);
+            continue;
+        }
+        let (_, remaining_units, remaining_loss) = relief::wash_purchase(
+            held,
+            replacement_seq,
+            units_left,
+            w.remaining_loss,
+            w.remaining_units,
+            w.original_acquired,
+        )?;
+        units_left -= w.remaining_units - remaining_units;
+        w.remaining_units = remaining_units;
+        w.remaining_loss = remaining_loss;
+        if w.remaining_units > 0 && w.remaining_loss < 0 {
+            leftover.push(w);
+        }
+    }
+    *pending = leftover;
+    Ok(())
 }
 
 /// Split one disposal's gain into (short-term, long-term), or decline.
@@ -3069,12 +3251,19 @@ mod tests {
 
     /// A disposal posted the way the engine posts one: investments out at
     /// basis, cash in at proceeds, the difference to realized gain.
+    ///
+    /// ⛔ RELIEVES UNDER THE METHOD THE BOOK ELECTED. Hard-coding FIFO here
+    /// is how a `--method hifo` generator declared HIFO and posted FIFO
+    /// gains — the fold then disagreed with every sale.
     fn dispose(d: &std::path::Path, id: &str, units: i64, proceeds: i64, day: &str) {
         let mut b = FileBook::open(d).unwrap();
         let c = b.active().unwrap().unwrap();
+        let set = ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&c).unwrap()))
+            .unwrap();
+        let method = relief::Method::from(set.effective_lot_method());
         let p = Projection::of_book(d).unwrap();
         let held = p.lots_of(B, 1, "vti").unwrap().value;
-        let r = relief::relieve_by(relief::Method::Fifo, &held, units).unwrap();
+        let r = relief::relieve_by(method, &held, units).unwrap();
         let postings =
             relief::sale_postings(ROLES, None, "vti", units, r.cost, proceeds).unwrap();
         b.append(&JournalEntry {
@@ -3218,6 +3407,131 @@ mod tests {
         let r = p.realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
         assert_eq!(r.short_term + r.long_term + r.unclassified(), r.gain);
         assert!(r.unclassified() != 0, "the indivisible disposal is in there");
+    }
+
+    // ── wash sales, on a real book ─────────────────────────────────────────
+
+    fn book_with_wash(name: &str, wash_window_days: i64, method: &str) -> std::path::PathBuf {
+        let d = tmp_root().join(format!("ratio-project-{name}"));
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+            Account { dim: 30, display_name: "Realized gain".into(), account_type: A::Income },
+        ])
+        .unwrap();
+        let c = b
+            .put(
+                format!(
+                    "lot_method = \"{method}\"\nrules = []\nlong_term_days = 365\n\
+                     wash_window_days = {wash_window_days}\n\n\
+                     [chart_roles]\ninvestments = 1\ncash = 2\nrealized_gain = 30\n"
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        b.set_active(&c).unwrap();
+        d
+    }
+
+    #[test]
+    fn an_in_window_wash_raises_the_replacement_basis_on_the_book() {
+        // ⭐ THE ENGINE ON A REAL BOOK. Buy, top up inside the window, sell the
+        // original at a loss: forty of a hundred shares bought back defers 400
+        // of a 1000 loss onto the replacement.
+        let d = book_with_wash("wash-in", 30, "fifo");
+        buy_on(&d, "orig", 100, 2000, "2026-01-01");
+        buy_on(&d, "repl", 40, 500, "2026-06-10");
+        dispose(&d, "s", 100, 1000, "2026-06-15");
+
+        let p = Projection::of_book(&d).unwrap();
+        let left = p.lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].cost, 900, "500 + 400 of deferred loss");
+        assert_eq!(left[0].acquired, Some(day("2026-01-01")), "the period transferred");
+        assert!(p.lot_breaks(B).unwrap().is_empty(), "{:?}", p.lot_breaks(B).unwrap());
+
+        // A later sale of the replacement takes the adjusted basis.
+        dispose(&d, "s2", 40, 500, "2026-07-01");
+        let p = Projection::of_book(&d).unwrap();
+        assert_eq!(p.relieved_cost(B).unwrap(), 2000 + 900);
+        assert!(p.lots_of(B, 1, "vti").unwrap().value.is_empty());
+    }
+
+    #[test]
+    fn an_out_of_window_repurchase_does_not_raise_the_book() {
+        let d = book_with_wash("wash-out", 30, "fifo");
+        buy_on(&d, "orig", 100, 2000, "2026-01-01");
+        buy_on(&d, "repl", 40, 500, "2026-04-01"); // 75 days before the sale
+        dispose(&d, "s", 100, 1000, "2026-06-15");
+
+        let left = Projection::of_book(&d).unwrap().lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left[0].cost, 500, "untouched — outside the window");
+        assert_eq!(left[0].acquired, Some(day("2026-04-01")), "and the period did not transfer");
+    }
+
+    #[test]
+    fn a_narrower_window_is_a_different_answer() {
+        // ⛔ THE WINDOW IS CONFIGURATION. Twenty-five days is inside 30 and
+        // outside 10. Same two dates, two books, two answers.
+        // `Ratio.Lots.Wash.the_window_is_a_jurisdiction_number`.
+        let wide = book_with_wash("wash-wide", 30, "fifo");
+        buy_on(&wide, "orig", 100, 2000, "2026-01-01");
+        dispose(&wide, "s", 100, 1000, "2026-06-15");
+        buy_on(&wide, "repl", 100, 1000, "2026-07-10"); // 25 days later
+        assert_eq!(
+            Projection::of_book(&wide).unwrap().lots_of(B, 1, "vti").unwrap().value[0].cost,
+            2000,
+            "the whole loss attached under a 30-day window"
+        );
+
+        let narrow = book_with_wash("wash-narrow", 10, "fifo");
+        buy_on(&narrow, "orig", 100, 2000, "2026-01-01");
+        dispose(&narrow, "s", 100, 1000, "2026-06-15");
+        buy_on(&narrow, "repl", 100, 1000, "2026-07-10");
+        assert_eq!(
+            Projection::of_book(&narrow).unwrap().lots_of(B, 1, "vti").unwrap().value[0].cost,
+            1000,
+            "twenty-five days is outside a ten-day window"
+        );
+    }
+
+    #[test]
+    fn a_forward_repurchase_washes_once_the_replacement_opens() {
+        // Sale first, then the buy — the half a forward-only engine gets right.
+        let d = book_with_wash("wash-fwd", 30, "fifo");
+        buy_on(&d, "orig", 100, 2000, "2026-01-01");
+        dispose(&d, "s", 100, 1000, "2026-06-15");
+        buy_on(&d, "repl", 40, 500, "2026-06-20");
+
+        let left = Projection::of_book(&d).unwrap().lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].cost, 900, "the write landed after the repurchase opened");
+        assert_eq!(left[0].acquired, Some(day("2026-01-01")));
+    }
+
+    #[test]
+    fn a_wash_write_changes_what_a_later_hifo_sale_gives_up() {
+        // ⛔ METHODS AND WASH ARE ONE PROBLEM. After the write, HIFO gives up
+        // the replacement it previously ignored.
+        let d = book_with_wash("wash-hifo", 30, "hifo");
+        buy_on(&d, "dear", 1, 25, "2026-06-01");
+        buy_on(&d, "cheap", 1, 10, "2026-06-10");
+        // Sell a third lot at a loss so the cheap one is the replacement.
+        // Cheaper: open a losing lot, sell it, the cheap lot is in-window.
+        // Simpler path: attach via a losing sale of `dear`? HIFO would take
+        // `dear` first (25 > 10). Sell 1 at 5: HIFO gives up 25, loss 20.
+        // The cheap lot is open, in window, and is the replacement.
+        dispose(&d, "s", 1, 5, "2026-06-15");
+        let p = Projection::of_book(&d).unwrap();
+        let left = p.lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].cost, 30, "10 + 20 of deferred loss");
+        // HIFO now gives that up, not a 10-cost lot.
+        dispose(&d, "s2", 1, 30, "2026-06-20");
+        let p = Projection::of_book(&d).unwrap();
+        assert_eq!(p.relieved_cost(B).unwrap(), 25 + 30);
     }
 
     // ── currencies ─────────────────────────────────────────────────────────

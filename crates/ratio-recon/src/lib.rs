@@ -1010,6 +1010,12 @@ fn rule_changes(a: &RuleSet, b: &RuleSet) -> Vec<String> {
             a.long_term_days, b.long_term_days
         ));
     }
+    if a.wash_window_days != b.wash_window_days {
+        out.push(format!(
+            "wash window: {:?} to {:?}",
+            a.wash_window_days, b.wash_window_days
+        ));
+    }
     out.sort();
     out
 }
