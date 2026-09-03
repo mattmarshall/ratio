@@ -373,7 +373,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             // `Local` console. So a removed or misconfigured authorizer produces
             // refusal, not open access, and the boundary does not depend on a
             // CloudFormation resource the test suite cannot see. Authorization
-            // (which funds this subject may open) stays in Rust, at `book_path`.
+            // (which books this subject may open) stays in Rust, at `open_book`.
             let auth_required = std::env::var("RATIO_AUTH").as_deref() == Ok("required");
             if subject.is_none() && auth_required {
                 // A shape the SPA renders as a sign-in prompt, not a blank page.
@@ -403,7 +403,11 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
                 // rather than by guessing from the path.
                 Err(e) => {
                     let msg = format!("{e:#}");
-                    let status = if msg.contains("no fund") || msg.contains("no route")
+                    let status = if msg.contains("membership could not be read") {
+                        // ⛔ NOT 200 WITH []. An unreadable membership file is a
+                        // refusal, and must not look like an authorized empty list.
+                        "403 Forbidden"
+                    } else if msg.contains("no fund") || msg.contains("no route")
                         || msg.contains("no break") || msg.contains("no change-log")
                         || msg.contains("no entry")
                     {

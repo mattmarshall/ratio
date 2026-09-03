@@ -1557,6 +1557,24 @@ mod tests {
     use ratio_store::Journal;
 
     #[test]
+    fn grant_writes_the_subject_and_not_an_org_and_is_idempotent() {
+        let dir = std::env::temp_dir().join("ratio-book-grant");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        grant(&dir, "", "household").unwrap();
+        assert!(
+            !dir.join("MEMBERSHIP.tsv").is_file(),
+            "Local (empty who) writes nothing"
+        );
+        grant(&dir, "user_1", "household").unwrap();
+        grant(&dir, "user_1", "household").unwrap();
+        grant(&dir, "user_2", "household").unwrap();
+        let text = std::fs::read_to_string(dir.join("MEMBERSHIP.tsv")).unwrap();
+        assert_eq!(text, "user_1\thousehold\nuser_2\thousehold\n");
+        assert!(!text.contains("org:"), "grant is the subject's id, not an org");
+    }
+
+    #[test]
     fn a_missing_sidecar_is_a_legacy_fund_book() {
         let dir = std::env::temp_dir().join("ratio-book-meta-legacy");
         let _ = std::fs::remove_dir_all(&dir);
