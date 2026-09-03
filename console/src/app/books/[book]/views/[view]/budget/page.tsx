@@ -45,15 +45,15 @@ async function Budget({
   const c = await caller();
   const b = await getBook(c, book);
   if (b.kind === "PERSONAL") {
-    return <HouseholdBudget book={book} view={view} b={b} searchParams={searchParams} />;
+    return householdBudget({ book, view, b, searchParams });
   }
   if (b.kind === "PROJECT") {
-    return <ProjectBudget book={book} view={view} b={b} />;
+    return projectBudget({ book, view, b });
   }
   notFound();
 }
 
-async function HouseholdBudget({
+async function householdBudget({
   book,
   view,
   b,
@@ -162,7 +162,7 @@ async function HouseholdBudget({
   );
 }
 
-async function ProjectBudget({
+async function projectBudget({
   book,
   view,
   b,

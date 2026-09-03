@@ -16,7 +16,10 @@
           "debit": "1400000",
           "credit": "254000",
           "balance": "1146000",
-          "rate": ""
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
         }
       ]
     },
@@ -36,7 +39,10 @@
           "debit": "250000",
           "credit": "0",
           "balance": "250000",
-          "rate": ""
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
         }
       ]
     },
@@ -56,7 +62,10 @@
           "debit": "4000",
           "credit": "0",
           "balance": "4000",
-          "rate": ""
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
         }
       ]
     },
@@ -88,7 +97,10 @@
           "debit": "0",
           "credit": "1000000",
           "balance": "-1000000",
-          "rate": ""
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
         }
       ]
     },
@@ -108,7 +120,10 @@
           "debit": "0",
           "credit": "400000",
           "balance": "-400000",
-          "rate": ""
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
         }
       ]
     },

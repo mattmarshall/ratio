@@ -29,7 +29,7 @@ import viewsFixture from "../../fixtures/views.json";
 // `string`. `//console:fixtures_test` checks their SHAPE against console.proto
 // on every build, which is the check a cast here would otherwise be pretending
 // to be.
-import type { Book, Rule } from "@/wire/types";
+import type { Rule } from "@/wire/types";
 
 // ⛔ THE SUCCESSOR TO `//web:rendered_test`, AND ITS REASON IS UNCHANGED.
 //

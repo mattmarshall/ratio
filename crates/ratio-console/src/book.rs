@@ -8,6 +8,7 @@
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use ratio_rules::{check, RuleSet};
 use ratio_store::{Account, AccountTypeRecord, ConfigStore, FileBook};
 
 /// The ingest template CreateBook writes for this kind.
