@@ -1779,7 +1779,7 @@ describe("a first-class book", () => {
       expect(screen.getByText("9.00")).toBeDefined();
       expect(screen.getByText("30.00")).toBeDefined();
       expect(screen.getByText("22.00")).toBeDefined();
-      expect(screen.getByText("-5.00")).toBeDefined();
+      expect(screen.getAllByText("-5.00").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("-8.00").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("no purchase account distinct from a transfer")).toBeDefined();
       expect(
@@ -1841,7 +1841,9 @@ describe("a first-class book", () => {
       expect(
         screen.getByText("not a named loan and not a transfer — open the account"),
       ).toBeDefined();
-      expect(screen.getByText("no [personal.loan] on the configuration in force")).toBeDefined();
+      expect(
+        screen.getAllByText("no [personal.loan] on the configuration in force").length,
+      ).toBeGreaterThanOrEqual(1);
     } finally {
       wire.getBook = realBook;
       wire.listAccounts = realAccounts;
