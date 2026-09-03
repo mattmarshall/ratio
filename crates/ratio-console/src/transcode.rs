@@ -1436,13 +1436,13 @@ impl JsonView for pb::ProjectProgressResponse {
 impl JsonView for pb::AgingSchedule {
     fn to_json(&self) -> String {
         format!(
-            "{{\"current\":{},\"days130\":{},\"days3160\":{},\"days6190\":{},\
-             \"daysOver90\":{},\"undated\":{},\"control\":{}}}",
+            "{{\"current\":{},\"daysThirty\":{},\"daysSixty\":{},\"daysNinety\":{},\
+             \"daysOlder\":{},\"undated\":{},\"control\":{}}}",
             q(&self.current),
-            q(&self.days_1_30),
-            q(&self.days_31_60),
-            q(&self.days_61_90),
-            q(&self.days_over_90),
+            q(&self.days_thirty),
+            q(&self.days_sixty),
+            q(&self.days_ninety),
+            q(&self.days_older),
             q(&self.undated),
             q(&self.control)
         )

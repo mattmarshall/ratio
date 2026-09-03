@@ -13,10 +13,10 @@ import type { AgingSchedule } from "@/wire/types";
 
 export type AgingBucket =
   | "current"
-  | "days130"
-  | "days3160"
-  | "days6190"
-  | "daysOver90"
+  | "daysThirty"
+  | "daysSixty"
+  | "daysNinety"
+  | "daysOlder"
   | "undated";
 
 export type AgingSide = "receivable" | "payable";
@@ -41,10 +41,10 @@ export function scheduleFoots(s: AgingSchedule | null | undefined): boolean {
   if (!scheduleIsSet(s) || !s) return false;
   const dated = [
     s.current,
-    s.days130,
-    s.days3160,
-    s.days6190,
-    s.daysOver90,
+    s.daysThirty,
+    s.daysSixty,
+    s.daysNinety,
+    s.daysOlder,
   ].reduce((n, raw) => n + BigInt(raw), 0n);
   const undated = s.undated === "" ? 0n : BigInt(s.undated);
   if (s.control === "") return false;
@@ -65,10 +65,10 @@ export function bucketOf(dueDate: string | null, asOf: string): AgingBucket {
   if (due === null || asOfDays === null) return "undated";
   const past = asOfDays - due;
   if (past <= 0) return "current";
-  if (past <= 30) return "days130";
-  if (past <= 60) return "days3160";
-  if (past <= 90) return "days6190";
-  return "daysOver90";
+  if (past <= 30) return "daysThirty";
+  if (past <= 60) return "daysSixty";
+  if (past <= 90) return "daysNinety";
+  return "daysOlder";
 }
 
 /** Days since Unix epoch from `YYYY-MM-DD`, or null. Civil, not a `Date`. */

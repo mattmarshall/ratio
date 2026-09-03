@@ -108,10 +108,10 @@ async function Aging({
 
 const ROWS: ReadonlyArray<{ key: keyof AgingSchedule; label: string; hint: string }> = [
   { key: "current", label: "Current", hint: "due on or after the as-of day" },
-  { key: "days130", label: "1–30 days", hint: "one to thirty days past due" },
-  { key: "days3160", label: "31–60 days", hint: "thirty-one to sixty days past due" },
-  { key: "days6190", label: "61–90 days", hint: "sixty-one to ninety days past due" },
-  { key: "daysOver90", label: "Over 90 days", hint: "more than ninety days past due" },
+  { key: "daysThirty", label: "1–30 days", hint: "one to thirty days past due" },
+  { key: "daysSixty", label: "31–60 days", hint: "thirty-one to sixty days past due" },
+  { key: "daysNinety", label: "61–90 days", hint: "sixty-one to ninety days past due" },
+  { key: "daysOlder", label: "Older than 90 days", hint: "more than ninety days past due" },
   { key: "undated", label: "Undated", hint: "remaining, and no due date — not current" },
 ];
 

@@ -4449,10 +4449,10 @@ impl AgingFold {
         if !any_open {
             return pb::AgingSchedule {
                 current: "0".into(),
-                days_1_30: "0".into(),
-                days_31_60: "0".into(),
-                days_61_90: "0".into(),
-                days_over_90: "0".into(),
+                days_thirty: "0".into(),
+                days_sixty: "0".into(),
+                days_ninety: "0".into(),
+                days_older: "0".into(),
                 undated: String::new(),
                 control,
             };
@@ -4468,10 +4468,10 @@ impl AgingFold {
 
         pb::AgingSchedule {
             current: current.to_string(),
-            days_1_30: d1.to_string(),
-            days_31_60: d31.to_string(),
-            days_61_90: d61.to_string(),
-            days_over_90: d90.to_string(),
+            days_thirty: d1.to_string(),
+            days_sixty: d31.to_string(),
+            days_ninety: d61.to_string(),
+            days_older: d90.to_string(),
             undated: if undated == 0 {
                 String::new()
             } else {
@@ -7922,13 +7922,13 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         // inv-current remaining 300, due 20 Apr → current; inv-30 200, due 16 Mar
         // is 30 days past → 1–30. Collection named the invoice.
         assert_eq!(ar.current, "30000", "{ar:?}");
-        assert_eq!(ar.days_1_30, "20000", "{ar:?}");
-        assert_eq!(ar.days_31_60, "0", "{ar:?}");
-        assert_eq!(ar.days_61_90, "0", "{ar:?}");
-        assert_eq!(ar.days_over_90, "0", "{ar:?}");
+        assert_eq!(ar.days_thirty, "20000", "{ar:?}");
+        assert_eq!(ar.days_sixty, "0", "{ar:?}");
+        assert_eq!(ar.days_ninety, "0", "{ar:?}");
+        assert_eq!(ar.days_older, "0", "{ar:?}");
         assert!(ar.undated.is_empty(), "every remaining invoice has a due date: {ar:?}");
         assert_eq!(ar.control, "50000", "400 + 200 − 100: {ar:?}");
-        let ar_sum: i64 = [&ar.current, &ar.days_1_30, &ar.days_31_60, &ar.days_61_90, &ar.days_over_90]
+        let ar_sum: i64 = [&ar.current, &ar.days_thirty, &ar.days_sixty, &ar.days_ninety, &ar.days_older]
             .iter()
             .map(|s| s.parse::<i64>().unwrap())
             .sum();
@@ -7937,10 +7937,10 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         let ap = aging_of(&aged, false);
         // due 1 Mar, as-of 15 Apr → 45 days past → 31–60. Credit-normal raw.
         assert_eq!(ap.current, "0", "{ap:?}");
-        assert_eq!(ap.days_1_30, "0", "{ap:?}");
-        assert_eq!(ap.days_31_60, "-8000", "{ap:?}");
-        assert_eq!(ap.days_61_90, "0", "{ap:?}");
-        assert_eq!(ap.days_over_90, "0", "{ap:?}");
+        assert_eq!(ap.days_thirty, "0", "{ap:?}");
+        assert_eq!(ap.days_sixty, "-8000", "{ap:?}");
+        assert_eq!(ap.days_ninety, "0", "{ap:?}");
+        assert_eq!(ap.days_older, "0", "{ap:?}");
         assert!(ap.undated.is_empty(), "{ap:?}");
         assert_eq!(ap.control, "-8000", "{ap:?}");
     }
@@ -7978,7 +7978,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         let aged = c.operating_aging(&view, "2026-04-15").unwrap();
         let ar = aging_of(&aged, true);
         assert!(ar.current.is_empty(), "undated AR must not look current: {ar:?}");
-        assert!(ar.days_1_30.is_empty(), "{ar:?}");
+        assert!(ar.days_thirty.is_empty(), "{ar:?}");
         assert_eq!(ar.control, "40000", "the control is still the sheet figure: {ar:?}");
         let ap = aging_of(&aged, false);
         assert!(ap.current.is_empty(), "undated AP must not look current: {ap:?}");
@@ -8099,7 +8099,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         let aged = c.operating_aging(&view, "2026-04-15").unwrap();
         let ar = aging_of(&aged, true);
         assert_eq!(ar.current, "0", "fully collected is a real zero, not unset: {ar:?}");
-        assert_eq!(ar.days_1_30, "0", "{ar:?}");
+        assert_eq!(ar.days_thirty, "0", "{ar:?}");
         assert!(ar.undated.is_empty(), "{ar:?}");
         assert_eq!(ar.control, "0", "{ar:?}");
         let ap = aging_of(&aged, false);

@@ -276,10 +276,10 @@ export interface OperatingAgingResponse {
  */
 export interface AgingSchedule {
   current: Int64;
-  days130: Int64;
-  days3160: Int64;
-  days6190: Int64;
-  daysOver90: Int64;
+  daysThirty: Int64;
+  daysSixty: Int64;
+  daysNinety: Int64;
+  daysOlder: Int64;
   undated: Int64;
   control: Int64;
 }

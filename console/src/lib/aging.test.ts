@@ -10,20 +10,20 @@ import type { AgingSchedule } from "@/wire/types";
 
 const empty: AgingSchedule = {
   current: "",
-  days130: "",
-  days3160: "",
-  days6190: "",
-  daysOver90: "",
+  daysThirty: "",
+  daysSixty: "",
+  daysNinety: "",
+  daysOlder: "",
   undated: "",
   control: "",
 };
 
 const cited: AgingSchedule = {
   current: "30000",
-  days130: "20000",
-  days3160: "0",
-  days6190: "0",
-  daysOver90: "0",
+  daysThirty: "20000",
+  daysSixty: "0",
+  daysNinety: "0",
+  daysOlder: "0",
   undated: "",
   control: "50000",
 };
@@ -46,10 +46,10 @@ describe("bucketOf", () => {
   it("places a dated item in the window the as-of day names", () => {
     expect(bucketOf("2026-04-20", "2026-04-15")).toBe("current");
     expect(bucketOf("2026-04-15", "2026-04-15")).toBe("current");
-    expect(bucketOf("2026-03-16", "2026-04-15")).toBe("days130");
-    expect(bucketOf("2026-03-15", "2026-04-15")).toBe("days3160");
-    expect(bucketOf("2026-02-13", "2026-04-15")).toBe("days6190");
-    expect(bucketOf("2026-01-14", "2026-04-15")).toBe("daysOver90");
+    expect(bucketOf("2026-03-16", "2026-04-15")).toBe("daysThirty");
+    expect(bucketOf("2026-03-15", "2026-04-15")).toBe("daysSixty");
+    expect(bucketOf("2026-02-13", "2026-04-15")).toBe("daysNinety");
+    expect(bucketOf("2026-01-14", "2026-04-15")).toBe("daysOlder");
   });
 });
 
@@ -76,10 +76,10 @@ describe("scheduleFoots", () => {
   it("a fully collected book is a real-zero schedule that foots", () => {
     const zero: AgingSchedule = {
       current: "0",
-      days130: "0",
-      days3160: "0",
-      days6190: "0",
-      daysOver90: "0",
+      daysThirty: "0",
+      daysSixty: "0",
+      daysNinety: "0",
+      daysOlder: "0",
       undated: "",
       control: "0",
     };

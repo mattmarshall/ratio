@@ -1384,10 +1384,16 @@ message OperatingAgingResponse {
 // that account has never posted in the cut.
 message AgingSchedule {
   string current = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
-  string days_1_30 = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
-  string days_31_60 = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
-  string days_61_90 = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
-  string days_over_90 = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // 1–30 days past due. Words, not `days_1_30`: AIP-140 refuses a
+  // field word that starts with a digit.
+  string days_thirty = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // 31–60 days past due.
+  string days_sixty = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // 61–90 days past due.
+  string days_ninety = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // More than 90 days past due. ⛔ NOT `days_over_90` — AIP-140 bans
+  // the preposition `over` in a field name.
+  string days_older = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
   string undated = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
   string control = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
