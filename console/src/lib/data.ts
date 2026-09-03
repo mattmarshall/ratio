@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { getBook, getView, listBooks, listFunds } from "@/wire/client";
 import { caller } from "./caller";
+import { orAuth } from "./orAuth";
 
 /**
  * The reads a layout and its page both need, memoized for one request.
@@ -16,15 +17,23 @@ import { caller } from "./caller";
  *
  * ⚠ Memoized PER REQUEST, not across them. Nothing here is a cache in the sense
  * that would let a stale NAV survive a reload.
+ *
+ * ⚠ A 401 AFTER `caller()` IS STILL A MISSING SESSION. `caller()` only
+ * redirects when AuthKit has no session. A session the gateway will not
+ * accept still reaches the list call; `orAuth` turns that `AuthError` into
+ * the same `/signin?returnTo=…` so layout and page cannot each throw through
+ * the error boundary.
  */
 export const funds = cache(async () => {
   const c = await caller();
-  return (await listFunds(c)).funds;
+  // ⚠ `caller()` only redirects when AuthKit has no session. A session the
+  // gateway will not accept still reaches the list call; `orAuth` is the 401.
+  return (await orAuth(listFunds(c))).funds;
 });
 
 export const books = cache(async () => {
   const c = await caller();
-  return (await listBooks(c)).books;
+  return (await orAuth(listBooks(c))).books;
 });
 
 /**
@@ -37,7 +46,7 @@ export const books = cache(async () => {
  */
 export const bookOf = cache(async (id: string) => {
   const c = await caller();
-  return getBook(c, id);
+  return orAuth(getBook(c, id));
 });
 
 /**
@@ -50,5 +59,5 @@ export const bookOf = cache(async (id: string) => {
  */
 export const viewOf = cache(async (fund: string, view: string) => {
   const c = await caller();
-  return getView(c, fund, view);
+  return orAuth(getView(c, fund, view));
 });

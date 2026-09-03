@@ -2,6 +2,7 @@ import "server-only";
 
 import { notFound } from "next/navigation";
 import { NotFound } from "@/wire/client";
+import { orAuth } from "./orAuth";
 
 /**
  * Render 404 for a resource that is not there.
@@ -14,7 +15,7 @@ import { NotFound } from "@/wire/client";
  */
 export async function or404<T>(p: Promise<T>): Promise<T> {
   try {
-    return await p;
+    return await orAuth(p);
   } catch (e) {
     if (e instanceof NotFound) notFound();
     throw e;
