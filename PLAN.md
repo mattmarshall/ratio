@@ -1025,7 +1025,8 @@ demo, or a non-US holding-period variant. Those remain on #5. This
 amendment does not close #5. MinTax stays on #9. None of those are on
 the *Explicitly not building* list, and this amendment adds none of
 them.
-*(WashRestatement as a citeable record is the next amendment.)*
+*(WashRestatement as a citeable record, and the non-US holding-period
+variant as an election, are later amendments.)*
 
 ### Amendment, 2026-09-03 — MinTax is a ranking at a price, not a Method
 
@@ -1139,7 +1140,8 @@ What landed is the decision surface and the engine, as its own election:
   invented.
 - Not **WashRestatement**, a wash flag on the console, or a non-US
   holding-period variant. Those stay on #5.
-  *(WashRestatement as a citeable record is the next amendment.)*
+  *(WashRestatement as a citeable record, and the non-US
+  holding-period variant as an election, are later amendments.)*
 
 Nothing on the *Explicitly not building* list moved. Issue #9 stays
 open for the UI cite and the holding-period leftover. This amendment
@@ -1196,6 +1198,8 @@ What landed is the record, not a console screen:
   jurisdiction that does not transfer the period is a different
   rule; it does not fall out of this record and is not invented
   here.
+  *(the non-US holding-period variant is an election — the next
+  amendment.)*
 
 Nothing on the *Explicitly not building* list moved. This
 amendment does not close #5. It does not close #9.
@@ -1207,6 +1211,54 @@ repurchase moves the figure. It cannot show a wash flag on the
 console or in the demo, a non-US holding-period variant, or a
 lot-relief UI screen. Those remain on #5 (wash leftovers) and #9
 (engine UI cites).
+*(the non-US holding-period variant is an election — the next
+amendment.)*
+
+### Amendment, 2026-09-03 — the non-US holding-period variant is an election
+
+`Ratio.Lots.Wash.replacementAcquired` is the US rule: the
+replacement's acquisition date for holding-period purposes becomes
+the original lot's, not the repurchase's. A jurisdiction that does
+not transfer the period is a different rule. Assuming the US
+transfer everywhere classifies that disposal at the US rate.
+Conservation holds, the trial balance ties, the deferred loss
+still attaches. The figure that goes wrong is the RATE — short
+or long — which no reconciliation reaches.
+
+What landed is the election, as its own shape:
+
+- Lean: `Ratio.Lots.WashHolding`. `PeriodRule` is `transfer` or
+  `keep`, not an `Order` / `Method` / `lot_method = "wash"`.
+  Day 0 / repurchase 300 / dispose 400 / threshold 365: transfer
+  is long, keep is short. Same basis. Assuming
+  `replacementAcquired` when the election is `keep` is the named
+  defect. `choosing_the_wrong_rule_flips_the_rate`.
+- TLA: `//tla:wash_holding_check`. The probe
+  `//tla:universal_us_transfer_check` hardcodes the US transfer
+  and `TheReplacementKeepsItsOwnDate` goes red.
+- Rust: `wash_keep_holding_period` on the rule set. `None` means
+  nobody said — not a silent keep. Silence leaves the US transfer
+  that already landed. `Some(true)` elects keep. `Some(false)` is
+  refused at read; omit the field. Electing keep without
+  `wash_window_days` refuses. `lot_method = "wash"` stays refused.
+
+**What this is NOT, because one leftover stays named on #5:**
+
+- Not a **wash flag on the console or in the demo**. Lot proto
+  and the operations screens do not grow a field for this. Adding
+  one is a cite, not this election, and it is still ahead.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not close #5. It does not close #9. MinTax /
+SpecID / average-cost UI cites stay on #9.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can elect `wash_keep_holding_period = true` beside a wash
+window, attach a deferred loss without transferring the period,
+and show a later sale classified from the replacement's own date.
+Silence stays unset, not a silent keep. It cannot show a wash
+flag on the console or in the demo, or a lot-relief UI screen.
+Those remain on #5 (console cite) and #9 (engine UI cites).
 
 ## The control plane: geetch and crova
 

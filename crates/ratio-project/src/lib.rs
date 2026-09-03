@@ -294,10 +294,10 @@ struct Actions {
 ///
 /// ⛔ RESOLVED FROM THE DIGEST THAT ENTRY PINNED, never from whatever is active
 /// now. The method, the chart roles, the holding-period threshold, the
-/// wash window and the min-tax weight are terms of an administration
-/// agreement rather than implementation choices, and each decides a
-/// REALIZED GAIN — the figure with no counterparty, which no
-/// reconciliation reaches.
+/// wash window, the min-tax weight and the wash holding-period election
+/// are terms of an administration agreement rather than implementation
+/// choices, and each decides a REALIZED GAIN — the figure with no
+/// counterparty, which no reconciliation reaches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Terms {
     /// Which lots a sale gives up.
@@ -319,6 +319,11 @@ pub struct Terms {
     /// `None` means the fund did not elect the pool.
     /// ⛔ NOT A `Method`. `Ratio.Lots.AverageCost`.
     pub average_cost: Option<bool>,
+    /// Whether a wash replacement keeps its own acquisition date.
+    /// `None` means nobody elected the non-US variant — the US
+    /// transfer already named in `Ratio.Lots.Wash` stays in force.
+    /// ⛔ NOT A `Method`. `Ratio.Lots.WashHolding`.
+    pub wash_keep_holding_period: Option<bool>,
 }
 
 impl Terms {
@@ -331,6 +336,7 @@ impl Terms {
             wash_window_days: set.wash_window_days,
             min_tax_short_weight: set.min_tax_short_weight,
             average_cost: set.average_cost,
+            wash_keep_holding_period: set.wash_keep_holding_period,
         }
     }
 
@@ -1635,11 +1641,10 @@ impl Projection {
                                     sold_on,
                                     remaining_units: w.remaining_units,
                                     remaining_loss: w.remaining_loss,
-                                    original_acquired: r
-                                        .taken
-                                        .iter()
-                                        .filter_map(|t| t.acquired)
-                                        .min(),
+                                    original_acquired: relief::acquired_write(
+                                        terms.wash_keep_holding_period == Some(true),
+                                        r.taken.iter().filter_map(|t| t.acquired).min(),
+                                    ),
                                 })
                             }
                             _ => None,
@@ -2229,13 +2234,14 @@ fn try_wash_sale(
         return Ok(None);
     }
     let original = r.taken.iter().filter_map(|t| t.acquired).min();
+    let write = relief::acquired_write(terms.wash_keep_holding_period == Some(true), original);
     Ok(Some(relief::wash_open(
         held,
         loss,
         sold_units,
         sale_day,
         window,
-        original,
+        write,
         &r.taken,
     )?))
 }
@@ -3612,6 +3618,24 @@ mod tests {
     // ── wash sales, on a real book ─────────────────────────────────────────
 
     fn book_with_wash(name: &str, wash_window_days: i64, method: &str) -> std::path::PathBuf {
+        book_with_wash_terms(name, wash_window_days, method, "")
+    }
+
+    fn book_with_wash_keep(name: &str, wash_window_days: i64, method: &str) -> std::path::PathBuf {
+        book_with_wash_terms(
+            name,
+            wash_window_days,
+            method,
+            "wash_keep_holding_period = true\n",
+        )
+    }
+
+    fn book_with_wash_terms(
+        name: &str,
+        wash_window_days: i64,
+        method: &str,
+        extra: &str,
+    ) -> std::path::PathBuf {
         let d = tmp_root().join(format!("ratio-project-{name}"));
         let _ = std::fs::remove_dir_all(&d);
         let mut b = FileBook::open(&d).unwrap();
@@ -3625,7 +3649,7 @@ mod tests {
             .put(
                 format!(
                     "lot_method = \"{method}\"\nrules = []\nlong_term_days = 365\n\
-                     wash_window_days = {wash_window_days}\n\n\
+                     wash_window_days = {wash_window_days}\n{extra}\n\
                      [chart_roles]\ninvestments = 1\ncash = 2\nrealized_gain = 30\n"
                 )
                 .as_bytes(),
@@ -3695,6 +3719,52 @@ mod tests {
             1000,
             "twenty-five days is outside a ten-day window"
         );
+    }
+
+    #[test]
+    fn choosing_the_wrong_wash_period_rule_flips_the_later_rate() {
+        // ⭐ THE ENGINE ON A REAL BOOK. Same trades, two elections, two rates.
+        // `Ratio.Lots.WashHolding.choosing_the_wrong_rule_flips_the_rate`.
+        //
+        // Buy 1 @ 2000 on 2026-01-01; sell at 1000 on 2026-10-28; buy the
+        // replacement on 2026-11-01; sell it at 1500 on 2027-02-05.
+        // The first sale is a 1000 loss, washed in full onto the replacement
+        // (basis 2000). The later sale realises a 500 loss.
+        // Transfer (US, unset): replacement acquired 2026-01-01 → long.
+        // Keep (elected): replacement acquired 2026-11-01 → short.
+        // Conservation and the trial balance are identical either way.
+        let us = book_with_wash("wash-us-hp", 30, "fifo");
+        buy_on(&us, "orig", 1, 2000, "2026-01-01");
+        dispose(&us, "s", 1, 1000, "2026-10-28");
+        buy_on(&us, "repl", 1, 1000, "2026-11-01");
+        let left = Projection::of_book(&us).unwrap().lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left[0].cost, 2000, "1000 + 1000 of deferred loss");
+        assert_eq!(left[0].acquired, Some(day("2026-01-01")), "the period transferred");
+        dispose(&us, "s2", 1, 1500, "2027-02-05");
+        let p = Projection::of_book(&us).unwrap();
+        assert!(p.lot_breaks(B).unwrap().is_empty(), "{:?}", p.lot_breaks(B).unwrap());
+        let r = p.realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
+        assert_eq!(r.long_term, 500, "the later loss is long under US transfer");
+        assert_eq!(r.short_term, 1000, "the first sale was short either way");
+
+        let keep = book_with_wash_keep("wash-keep-hp", 30, "fifo");
+        buy_on(&keep, "orig", 1, 2000, "2026-01-01");
+        dispose(&keep, "s", 1, 1000, "2026-10-28");
+        buy_on(&keep, "repl", 1, 1000, "2026-11-01");
+        let left = Projection::of_book(&keep).unwrap().lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left[0].cost, 2000, "the write is still the write");
+        assert_eq!(
+            left[0].acquired,
+            Some(day("2026-11-01")),
+            "keep leaves the repurchase's own date"
+        );
+        dispose(&keep, "s2", 1, 1500, "2027-02-05");
+        let p = Projection::of_book(&keep).unwrap();
+        assert!(p.lot_breaks(B).unwrap().is_empty(), "{:?}", p.lot_breaks(B).unwrap());
+        let r = p.realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
+        assert_eq!(r.short_term, 1500, "both losses are short when the period is kept");
+        assert_eq!(r.long_term, 0, "assuming US transfer here would have put 500 long");
+        assert_eq!(r.gain, 1500, "the total is the same under either rule");
     }
 
     #[test]

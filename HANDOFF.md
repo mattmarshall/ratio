@@ -1,6 +1,6 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
-**State**: bazel tests green, 26 `lean_test`, 45 `tla_check`, 28 `manual`
+**State**: bazel tests green, 27 `lean_test`, 46 `tla_check`, 29 `manual`
 probes all red for the reasons they name.
 
 Issues #4 and #7 are closed. Open work is #5, #6, #8, #9. This file is the part
@@ -8,8 +8,10 @@ that does not fit in an issue: what was learned, what is load-bearing, and what
 will bite. Wash sales have a Lean/TLA model and a Rust window
 (`RuleSet.wash_window_days`). `WashRestatement` is a citeable record
 (`Ratio.Lots.WashRestatement`; a restatement cites the strike, it does
-not rewrite it); #5 stays open for the console wash flag and a non-US
-holding-period variant. MinTax, SpecID, and average cost (#9) each have a Lean
+not rewrite it). The non-US holding-period variant is an election
+(`wash_keep_holding_period`; unset stays unset, not a silent keep;
+the US `replacementAcquired` transfer stays in force until somebody
+writes the keep); #5 stays open for the console wash flag. MinTax, SpecID, and average cost (#9) each have a Lean
 surface, a TLA probe that fails if they are treated as a Method, and a
 Rust election that is not a `LotMethod` variant. #9 stays open for the
 console cite and the pooled holding-period leftover. This file does not
@@ -136,6 +138,15 @@ the conserved one, and the kernel never said it was.
   `//tla:sort_and_walk_average_cost_check` is the engine that pretends
   otherwise. 10 / 40 / 70 pools to 40 (a lot's own basis); the
   load-bearing holding is 10 / 20 / 60, which pools to 30.
+- **The non-US wash holding period is not a `Method`.**
+  `Ratio.Lots.WashHolding` elects whether a replacement keeps its own
+  acquisition date; `lot_method = "wash"` stays refused. The election
+  is `wash_keep_holding_period: Option<bool>` — `None` is unset, not
+  a silent keep, and `Some(false)` is refused at read. Keep without a
+  wash window refuses. Assuming `replacementAcquired` everywhere
+  flips a later disposal between tax rates while the books still
+  tie. `//tla:universal_us_transfer_check` is the engine that
+  pretends the US transfer is universal.
 - **`Totals.by_dim` keys on (dimension, currency).** A total over both is not a
   figure — `a_flat_total_hides_a_currency_mismatch`. `nav` and `realized`
   translate through an explicit `Rates` or refuse, and `Rates` carries its BASE
@@ -840,11 +851,11 @@ than one that is entirely unclassified.
 
 | | |
 |---|---|
-| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,Edges,Posting,Wash,WashRestatement}`, `Actions/Factor`, `Closure`, `Exec` |
-| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `min_tax_short_weight`, `average_cost`, `tolerance` — the administration agreement, as configuration |
+| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Actions/Factor`, `Closure`, `Exec` |
+| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `wash_keep_holding_period`, `min_tax_short_weight`, `average_cost`, `tolerance` — the administration agreement, as configuration |
 | `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
-| `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
+| `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine — one pass, N view folds, each with a monotonic cut on the journal's own clock and a band bounded by the settlement lag. ⚠ every memory figure in this file is a ONE-VIEW figure; each view carries its own lot book |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
 | `crates/ratio-console` | the console's BFF — 40 RPCs, transcoded onto `/v1` |

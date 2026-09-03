@@ -1490,6 +1490,39 @@ pub fn replacement_acquired(original_acquired: Option<Day>, _repurchased_on: Opt
     original_acquired
 }
 
+/// The replacement's acquisition date under the elected holding-period rule.
+///
+/// `keep` is the non-US variant: the repurchase's own date.
+/// Otherwise the US transfer already named as [`replacement_acquired`].
+/// `Ratio.Lots.WashHolding.acquiredFor`.
+///
+/// ⛔ CHOOSING THE WRONG RULE FLIPS THE RATE. Same units, same basis,
+/// same proceeds. Conservation cannot see it.
+pub fn acquired_for(
+    keep: bool,
+    original_acquired: Option<Day>,
+    repurchase_on: Option<Day>,
+) -> Option<Day> {
+    if keep {
+        repurchase_on
+    } else {
+        replacement_acquired(original_acquired, repurchase_on)
+    }
+}
+
+/// What [`Holding::attach`] is handed for the date write.
+///
+/// `keep` leaves the repurchase's own date (`None` — attach does not
+/// overwrite). Otherwise the original's date is written. This is not
+/// unset: the election was already read. `Ratio.Lots.WashHolding`.
+pub fn acquired_write(keep: bool, original_acquired: Option<Day>) -> Option<Day> {
+    if keep {
+        None
+    } else {
+        original_acquired
+    }
+}
+
 /// Attach a deferred loss to one open lot in a remainder list.
 ///
 /// `Ratio.Lots.Wash.attachTo`. ⛔ SEARCHES THE LIST IT WAS HANDED, which is
@@ -2259,6 +2292,54 @@ mod tests {
         assert_eq!(transferred, Some(0));
         assert!(400 - transferred.unwrap() as i64 >= 365);
         assert!(400 - 300 < 365);
+    }
+
+    #[test]
+    fn choosing_the_wrong_rule_flips_the_rate() {
+        // `Ratio.Lots.WashHolding.choosing_the_wrong_rule_flips_the_rate`.
+        // Transfer: 400 days, long. Keep: 100 days, short. Same basis.
+        let transfer = acquired_for(false, Some(0), Some(300)).unwrap();
+        let keep = acquired_for(true, Some(0), Some(300)).unwrap();
+        assert_eq!(transfer, 0);
+        assert_eq!(keep, 300);
+        assert!(is_long_term(365, transfer, 400));
+        assert!(!is_long_term(365, keep, 400));
+        assert_eq!(replacement_basis(500, 1000).unwrap(), 1500);
+    }
+
+    #[test]
+    fn assuming_us_transfer_when_the_election_is_keep_is_the_wrong_rate() {
+        // ⛔ THE NAMED DEFECT. replacementAcquired on a keep book classifies
+        // long; the elected date classifies short. The books still tie.
+        let usurped = replacement_acquired(Some(0), Some(300)).unwrap();
+        let elected = acquired_for(true, Some(0), Some(300)).unwrap();
+        assert!(is_long_term(365, usurped, 400));
+        assert!(!is_long_term(365, elected, 400));
+    }
+
+    #[test]
+    fn a_keep_write_leaves_the_repurchase_date() {
+        // Attach with None does not overwrite. That is keep, not unset —
+        // the election was already read. `acquired_write(true, …)` is None.
+        assert_eq!(acquired_write(true, Some(0)), None);
+        assert_eq!(acquired_write(false, Some(0)), Some(0));
+
+        let mut h = Holding::new(Method::Fifo);
+        h.push(dated(1, 100, 2000, "2026-01-01")).unwrap();
+        h.push(dated(2, 40, 500, "2026-06-10")).unwrap();
+        let taken = h.relieve(Method::Fifo, 100).unwrap();
+        let loss = taken.gain(1000).unwrap();
+        let sale = ratio_common::days_from_iso_date("2026-06-15").unwrap() as Day;
+        let write = acquired_write(true, taken.taken[0].acquired);
+        let w = wash_open(&mut h, loss, 100, sale, 30, write, &taken.taken).unwrap();
+        assert_eq!(w.attached, 400);
+        assert_eq!(h.get(2).unwrap().cost, 900, "the write is still the write");
+        assert_eq!(
+            h.get(2).unwrap().acquired,
+            ratio_common::days_from_iso_date("2026-06-10").ok().map(|d| d as Day),
+            "keep leaves the repurchase's own date"
+        );
+        assert_eq!(h.relieve(Method::Fifo, 40).unwrap().cost, 900);
     }
 
     #[test]

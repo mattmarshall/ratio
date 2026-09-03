@@ -273,6 +273,31 @@ pub struct RuleSet {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub average_cost: Option<bool>,
 
+    /// Whether a wash replacement keeps its own acquisition date.
+    ///
+    /// ⛔ NOT A `LotMethod`, AND NOT `lot_method = "wash"`. The US path
+    /// already transfers the holding period through
+    /// `Ratio.Lots.Wash.replacementAcquired`. A jurisdiction that does
+    /// not transfer is a different rule: the replacement keeps the
+    /// repurchase's date. Electing this is a different shape from
+    /// `lot_method`.
+    /// `Ratio.Lots.WashHolding.choosing_the_wrong_rule_flips_the_rate`.
+    ///
+    /// ⛔ `None` MEANS NOBODY SAID, AND THAT IS NOT A SILENT KEEP.
+    /// Silence leaves the existing US transfer in place — that path
+    /// already landed; this field does not invent a second default.
+    /// `Some(true)` elects keep. `Some(false)` is refused at read —
+    /// omit the field. Same distinction [`average_cost`] keeps.
+    ///
+    /// ⛔ AND IT CANNOT BE ELECTED WITHOUT A WASH WINDOW. A holding-
+    /// period variant of a rule nobody named is a configuration that
+    /// cannot be applied. Read-time refuse, not a silent ignore.
+    ///
+    /// [`average_cost`]: RuleSet::average_cost
+    /// [`wash_window_days`]: RuleSet::wash_window_days
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wash_keep_holding_period: Option<bool>,
+
     /// How big a difference has to be before it stops the NAV.
     ///
     /// ⛔ `None` MEANS NOBODY SAID, AND THAT IS NOT THE SAME AS SAYING 5.00 AND
@@ -611,6 +636,7 @@ impl Default for RuleSet {
             wash_window_days: None,
             min_tax_short_weight: None,
             average_cost: None,
+            wash_keep_holding_period: None,
             tolerance: None,
             // ⛔ EMPTY IS NOT ZERO VIEWS. `effective_views` turns this into the
             // one view every book has, recognising in journal order — and
@@ -1083,6 +1109,13 @@ fn unsupported_method(toml_src: &str) -> Option<&'static str> {
              lot_method. See Ratio.Lots.AverageCost and \
              Ratio.Lots.Methods.average_cost_is_not_a_lot_walk",
         ),
+        "wash" | "wash_sale" | "wash_sales" => Some(
+            "a wash is not an ordering, so it is not a lot method: it DEFERS a loss onto a \
+             replacement's basis, and the holding-period rule is which DATE that replacement \
+             carries. Elect the window with wash_window_days; elect the non-US keep with \
+             wash_keep_holding_period = true. See Ratio.Lots.Wash and \
+             Ratio.Lots.WashHolding.choosing_the_wrong_rule_flips_the_rate",
+        ),
         _ => None,
     }
 }
@@ -1186,6 +1219,29 @@ impl RuleSet {
                      One ranks at a SALE PRICE; the other POOLS. Two answers for one \
                      sale. Drop min_tax_short_weight, or drop average_cost. \
                      See Ratio.Lots.AverageCost"
+                );
+            }
+        }
+        // ⛔ KEEP IS NOT AN ORDERING, AND `false` IS NOT AN ELECTION.
+        // Omitting the field leaves the US transfer that already landed.
+        // Writing false would make "somebody said transfer" look like a
+        // new term, and a silent true would restate every existing wash
+        // book's later disposal at the other rate.
+        if let Some(flag) = set.wash_keep_holding_period {
+            if !flag {
+                bail!(
+                    "wash_keep_holding_period = false is not an election — omit the field. \
+                     None means nobody said, and the US transfer already named in \
+                     Ratio.Lots.Wash.replacementAcquired stays in force. \
+                     See Ratio.Lots.WashHolding"
+                );
+            }
+            if set.wash_window_days.is_none() {
+                bail!(
+                    "this configuration elects wash_keep_holding_period without \
+                     wash_window_days. A holding-period variant of a wash nobody \
+                     named cannot be applied. Write the window, or omit the keep. \
+                     See Ratio.Lots.WashHolding"
                 );
             }
         }
@@ -1599,6 +1655,8 @@ mod tests {
             ("specific_identification", "PER SALE"),
             ("average_cost", "POOLS"),
             ("pooled", "POOLS"),
+            ("wash", "DATE"),
+            ("wash_sale", "DATE"),
         ] {
             let e = RuleSet::from_toml(&format!("lot_method = \"{name}\"\nrules = []\n"))
                 .expect_err("not an ordering, so it cannot be a lot method")
@@ -2368,6 +2426,52 @@ calendar = "us-settlement"
         .expect_err("pool and ranking are two answers")
         .to_string();
         assert!(with_mintax.contains("POOLS") || with_mintax.contains("SALE PRICE"), "{with_mintax}");
+    }
+
+    #[test]
+    fn a_keep_election_nobody_declared_is_absent_rather_than_true() {
+        // ⛔ NONE IS UNSET, NOT A SILENT KEEP. The US transfer already
+        // landed via replacementAcquired. A silent true would restate
+        // every existing wash book's later disposal at the other rate.
+        // `Ratio.Lots.WashHolding.choosing_the_wrong_rule_flips_the_rate`.
+        assert_eq!(RuleSet::default().wash_keep_holding_period, None);
+        assert_eq!(
+            RuleSet::from_toml("rules = []\n").unwrap().wash_keep_holding_period,
+            None
+        );
+
+        let set = RuleSet::from_toml(
+            "rules = []\nwash_window_days = 30\nwash_keep_holding_period = true\n",
+        )
+        .unwrap();
+        assert_eq!(set.wash_keep_holding_period, Some(true));
+        assert_eq!(set.lot_method, None, "keep is not a lot_method");
+
+        let toml = RuleSet::from_toml("rules = []\n").unwrap().to_toml().unwrap();
+        assert!(
+            !toml.contains("wash_keep_holding_period"),
+            "silence must not write a keep: {toml}"
+        );
+        let named = RuleSet::from_toml(
+            "rules = []\nwash_window_days = 30\nwash_keep_holding_period = true\n",
+        )
+        .unwrap()
+        .to_toml()
+        .unwrap();
+        assert!(
+            named.contains("wash_keep_holding_period = true"),
+            "{named}"
+        );
+
+        let denied = RuleSet::from_toml("rules = []\nwash_keep_holding_period = false\n")
+            .expect_err("false is not an election")
+            .to_string();
+        assert!(denied.contains("not an election"), "{denied}");
+
+        let orphan = RuleSet::from_toml("rules = []\nwash_keep_holding_period = true\n")
+            .expect_err("keep without a window cannot be applied")
+            .to_string();
+        assert!(orphan.contains("wash_window_days"), "{orphan}");
     }
 
     #[test]
