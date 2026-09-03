@@ -42,7 +42,7 @@ export async function caller(): Promise<Caller> {
  *
  * ⚠ The path comes from a header `src/proxy.ts` sets, because a server
  * component cannot see its own URL. It is a path and never an absolute URL, and
- * `/api/auth/login` re-checks that before redirecting to it — an unchecked
+ * `/login` re-checks that before redirecting to it — an unchecked
  * return target on a route that carries tokens is an open redirect.
  */
 async function signInHref(): Promise<string> {

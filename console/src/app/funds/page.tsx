@@ -14,6 +14,7 @@ export default async function Funds() {
         <h1>Your funds</h1>
         <div className="subhead">
           <span>{count(String(funds.length))} administered</span>
+          <Link href="/books">All books</Link>
         </div>
       </div>
 

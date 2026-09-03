@@ -43,6 +43,9 @@ export default async function FundsLayout({
             Operations <span aria-hidden="true">/</span> <b>NAV</b>
           </span>
           <span className="spacer" />
+          <Link href="/books" className="crumb">
+            Books
+          </Link>
           <CommandHint />
           <Who />
         </header>

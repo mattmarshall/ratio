@@ -21,6 +21,7 @@ export default async function Books() {
         <h1>Your books</h1>
         <div className="subhead">
           <span>{count(String(books.length))} open to you</span>
+          <Link href="/funds">Funds</Link>
           <Link href="/books/new">New book</Link>
         </div>
       </div>

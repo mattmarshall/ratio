@@ -9,6 +9,7 @@ import explainFixture from "../../fixtures/explain.json";
 import bookFixture from "../../fixtures/book.json";
 import booksFixture from "../../fixtures/books.json";
 import fundFixture from "../../fixtures/fund.json";
+import fundsFixture from "../../fixtures/funds.json";
 import lotsFixture from "../../fixtures/lots.json";
 import navStrikesFixture from "../../fixtures/navStrikes.json";
 import reconcileFixture from "../../fixtures/reconcile.json";
@@ -75,6 +76,7 @@ vi.mock("next/navigation", async () => {
 
 const wire = {
   listBooks: async () => booksFixture,
+  listFunds: async () => fundsFixture,
   getBook: async () => bookFixture,
   createBook: async () => bookFixture,
   getFund: async () => fundFixture,
@@ -133,6 +135,13 @@ describe("a first-class book", () => {
     expect(screen.getByText("Household")).toBeDefined();
     expect(screen.getByText(/independent/)).toBeDefined();
     expect(screen.getByText("New book")).toBeDefined();
+    expect(screen.getByText("Funds")).toBeDefined();
+  });
+
+  it("reaches the book collection from the fund list", async () => {
+    const Funds = (await import("./funds/page")).default;
+    await renderAsync(Funds());
+    expect(screen.getByText("All books")).toBeDefined();
   });
 
   it("opens a book as its own page", async () => {
@@ -933,7 +942,7 @@ describe("sign-in", () => {
     const deep = "/funds/harbourline-global-value/breaks/cash-usd-2026-02-26";
     await renderAsync(SignIn({ searchParams: params({ returnTo: deep }) }));
     const href = document.querySelector(".signin-btn")?.getAttribute("href");
-    expect(href).toBe(`/api/auth/login?returnTo=${encodeURIComponent(deep)}`);
+    expect(href).toBe(`/login?returnTo=${encodeURIComponent(deep)}`);
   });
 
   it("names the signed-in principal and offers the way out", async () => {

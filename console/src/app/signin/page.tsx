@@ -4,8 +4,8 @@ export const dynamic = "force-dynamic";
 
 /** The console with no session: a prompt, not a wall of refusals.
  *
- * The button is a plain link to `/api/auth/login`, which is the AuthKit
- * initiate-login URL. Nothing about the flow runs in this page. */
+ * The button is a plain link to `/login`, the initiate-login URL
+ * AuthKit-for-Next.js documents. Nothing about the flow runs in this page. */
 export default async function SignIn({
   searchParams,
 }: {
@@ -13,8 +13,8 @@ export default async function SignIn({
 }) {
   const { returnTo, error } = await searchParams;
   const href = returnTo
-    ? `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`
-    : "/api/auth/login";
+    ? `/login?returnTo=${encodeURIComponent(returnTo)}`
+    : "/login";
 
   return (
     <div className="app signin">

@@ -229,15 +229,29 @@ Two required on a laptop; four more on a Vercel deploy (AuthKit).
 |---|---|
 | `RATIO_API_ORIGIN` | where the API is — **scheme and host, no path**. `http://127.0.0.1:7373` locally |
 | `RATIO_CONSOLE_ORIGIN` | *optional locally.* This app's own origin |
-| `WORKOS_CLIENT_ID` | AuthKit client id. Empty locally — no IdP |
+| `WORKOS_CLIENT_ID` | AuthKit client id. Empty locally — no IdP. **Never committed; never copied from another product** |
 | `WORKOS_API_KEY` | AuthKit API key. Placeholder only in docs; never commit a real one |
 | `WORKOS_COOKIE_PASSWORD` | ≥32 characters; `openssl rand -base64 32` |
-| `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | AuthKit redirect URI, e.g. `http://localhost:3000/callback` or `https://<console-host>/callback` |
+| `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | Must match a Redirect URI on the attached WorkOS application |
 
 ⭐ **WorkOS AuthKit is the sign-in path.** Cognito is not consulted. The API
 Gateway JWT authorizer uses issuer `https://api.workos.com/` and audience =
 `WORKOS_CLIENT_ID`. Membership is still `MEMBERSHIP.tsv`: `sub`, email, or
 `org:{workos_org_id}`. Creating a book grants only the creator's `sub`.
+
+The callback path is the one [AuthKit for Next.js](https://workos.com/docs/authkit/nextjs)
+names (`handleAuth()` at `/app/callback/route.ts`), not Cognito's
+`/api/auth/callback`. Register these on whichever WorkOS application is
+attached — this repo does not pick one:
+
+| | Production console | Local `next dev` |
+|---|---|---|
+| Redirect URI | `https://ratio-ims.vercel.app/callback` | `http://localhost:3000/callback` |
+| Initiate login URL | `https://ratio-ims.vercel.app/login` | `http://localhost:3000/login` |
+| Sign-out URI | `https://ratio-ims.vercel.app/signin` | `http://localhost:3000/signin` |
+
+`/api/auth/login` is the same initiate-login handler as `/login`.
+`/api/auth/callback` only sends the browser to `/signin`.
 
 ⚠ **A wrong value fails the build, not the sign-in.** `pnpm build` runs
 `scripts/preflight.mjs` first: it fetches `${RATIO_API_ORIGIN}/authconfig.json`

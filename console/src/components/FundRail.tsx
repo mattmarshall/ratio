@@ -26,7 +26,10 @@ export function FundRail({ funds }: { funds: Fund[] }) {
     <nav className="funds" aria-label="Funds">
       <div className="railhead">
         <span>Your funds</span>
-        <span>{funds.length || ""}</span>
+        <span>
+          <Link href="/books">Books</Link>
+          {funds.length ? ` · ${funds.length}` : ""}
+        </span>
       </div>
       {funds.length === 0 ? (
         <div className="empty">No funds are granted to you.</div>

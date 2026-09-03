@@ -7,6 +7,10 @@
  *
  * Variables are the ones AuthKit-for-Next.js documents. Do not invent a
  * second cookie password or a Cognito client beside them.
+ *
+ * ⛔ NO CLIENT ID LIVES IN THIS REPOSITORY. `WORKOS_CLIENT_ID` is whichever
+ * WorkOS application the operator attaches. Copying another product's
+ * client id (or baking one in) is the defect this file exists to prevent.
  */
 export function workosConfigured(): boolean {
   return Boolean(

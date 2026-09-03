@@ -25,15 +25,15 @@ the stylesheet inlined, embedded as a `&str`. It is a **Next.js application in
 Two things about that are load-bearing here:
 
 - **The browser never calls this API.** The console's server does, attaching the
-  id token from an httpOnly cookie. So `CorsConfiguration` is not consulted for
+  WorkOS access token. So `CorsConfiguration` is not consulted for
   console traffic at all, and the **absence** of `authorization` from
   `AllowHeaders` is now a fence rather than an oversight — it is what makes a
   browser-direct call impossible. Do not add it.
-- **AuthKit's redirect URI is on the console's origin.** `/authconfig.json`
-  advertises `"redirectPath":"/callback"`. Register
-  `${ConsoleOrigin}/callback` (and `http://localhost:3000/callback`) on the
-  WorkOS application. Cognito resources remain in the template unused so a
-  stack update does not destroy the live pool.
+- **AuthKit's redirect URI is on the console's origin.** The path is the one
+  AuthKit-for-Next.js documents (`handleAuth()` at `/app/callback/route.ts`),
+  not Cognito's `/api/auth/callback`. See [WorkOS AuthKit](#workos-authkit--project-agnostic)
+  for the exact URIs to register. Cognito resources remain in the template
+  unused so a stack update does not destroy the live pool.
 
 Set `ConsoleOrigin` through the **`CONSOLE_ORIGIN` repository variable** (a
 hostname is not a secret, so a variable rather than a secret — same reasoning as
@@ -53,17 +53,20 @@ in this workflow.
 
 ### What Vercel needs
 
-Two variables, in **Production and Preview** (Settings → Environment Variables):
+Five variables, in **Production and Preview** (Settings → Environment Variables).
+None of them is a WorkOS client id written in this repository.
 
 | | |
 |---|---|
 | `RATIO_API_ORIGIN` | this stack's `DemoUrl`, **scheme and host, no path and no trailing slash** |
-| `RATIO_SESSION_KEYS` | `openssl rand -base64 32`. Comma-separated keyring, newest first — rotate by prepending |
+| `WORKOS_CLIENT_ID` | the attached WorkOS application's client id. Empty in this repo on purpose |
+| `WORKOS_API_KEY` | the same application's API key |
+| `WORKOS_COOKIE_PASSWORD` | ≥32 characters; `openssl rand -base64 32` |
+| `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | this origin's AuthKit callback, e.g. `https://ratio-ims.vercel.app/callback` |
 
-⛔ **Generate the session key yourself and paste it nowhere else.** It is the
-repository's only runtime secret; one that has been in a chat log or a plan file
-is a disclosed key. `console/scripts/preflight.mjs` checks its length and never
-prints it.
+⛔ **Generate the cookie password yourself and paste it nowhere else.** A value
+that has been in a chat log or a plan file is a disclosed key.
+`console/scripts/preflight.mjs` checks its length and never prints it.
 
 ⚠ `RATIO_CONSOLE_ORIGIN` is **not** in that table on purpose — it is a local
 development override and setting it on a deployment only creates the drift
@@ -77,20 +80,45 @@ console nobody can sign into.
 DEFAULT.** The team default is `ssoProtection: all_except_custom_domains`, so
 every `*.vercel.app` URL sits behind Vercel's own login. That breaks this twice
 over: nobody outside the Vercel team can reach the console, and Vercel
-intercepts the return from Cognito before `/api/auth/callback` ever sees the
-`?code=` — which reads as a broken sign-in rather than as a protection setting.
+intercepts the return from AuthKit before `/callback` ever sees the `?code=` —
+which reads as a broken sign-in rather than as a protection setting.
 Vercel dashboard → the project → Settings → Deployment Protection → Vercel
 Authentication → Disabled. That is correct here: the console is *meant* to be a
-public sign-in page, Cognito is the real boundary, and `RATIO_AUTH=required`
+public sign-in page, WorkOS is the real boundary, and `RATIO_AUTH=required`
 makes this API fail closed regardless. A custom domain would be exempt, which is
 the other way out once #25 lands.
 
-⛔ **Cognito accepts no wildcards in callback URLs.** A Vercel preview
-deployment on its own generated hostname cannot sign in. That is deliberate —
-previews render from `console/fixtures/`. If live preview data is ever needed,
-the pattern is a bounce through a registered origin carrying the preview host in
-the OAuth `state`, **with a server-side allowlist on the way back**; without one
-that is an open redirect on a route that carries tokens.
+⚠ **Preview hostnames are not registered.** AuthKit will accept a wildcard
+redirect URI, but this console's documented URIs are the two origins below.
+Previews render from `console/fixtures/`.
+
+## WorkOS AuthKit — project-agnostic
+
+This repository does not contain a WorkOS client id and must not grow one.
+AuthKit reads `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, `WORKOS_COOKIE_PASSWORD`
+and `NEXT_PUBLIC_WORKOS_REDIRECT_URI`. Attach whichever WorkOS application
+Matthew names by setting those variables — do not copy a client id from
+another product.
+
+The callback path is the one [AuthKit for Next.js](https://workos.com/docs/authkit/nextjs)
+documents, not the old Cognito `/api/auth/callback`. That page recommends
+`http://localhost:3000/callback` and puts `handleAuth()` in
+`/app/callback/route.ts`. The initiate-login example is `/login`.
+
+Register these on the attached WorkOS application:
+
+| | Production console | Local `next dev` |
+|---|---|---|
+| **Redirect URI** | `https://ratio-ims.vercel.app/callback` | `http://localhost:3000/callback` |
+| **Initiate login URL** | `https://ratio-ims.vercel.app/login` | `http://localhost:3000/login` |
+| **Sign-out URI** | `https://ratio-ims.vercel.app/signin` | `http://localhost:3000/signin` |
+
+`/api/auth/login` is the same initiate-login handler as `/login`, kept so an
+old bookmark still starts AuthKit. `/api/auth/callback` only redirects to
+`/signin`; it cannot complete a sign-in.
+
+Local `next dev` and `ratio watch` leave every `WORKOS_*` variable unset.
+That is `Subject::Local`, not a second IdP.
 
 ## ⛔ The chat screen needs a one-time console action
 
@@ -233,10 +261,13 @@ to load and start the sign-in.
 The split of responsibility is the load-bearing decision:
 
 - **Authentication** — "the token is real, unexpired, ours" — is the API
-  Gateway JWT authorizer, backed by a Cognito user pool. The server does no
-  crypto. The authorizer puts the verified claims on the request context, which
+  Gateway JWT authorizer, issuer `https://api.workos.com/`, audience =
+  `WorkOsClientId` (the same value as `WORKOS_CLIENT_ID`, from the stack
+  parameter, never a literal in this repository). The server does no crypto.
+  The authorizer puts the verified claims on the request context, which
   the Lambda Web Adapter forwards as `x-amzn-request-context` — a header the
-  gateway synthesizes, so a client cannot forge its own claims.
+  gateway synthesizes, so a client cannot forge its own claims. The Cognito
+  pool remains in the template unused so a stack update does not destroy it.
 - **Authorization** — "this subject may open this fund" — is entirely in Rust,
   at `Console::book_path`, where the test suite can break it. A fund a caller
   may not see is refused with the *same* error as one that does not exist. With
@@ -293,13 +324,14 @@ rail — a green sign-in that looks like a broken demo. If you invite a user und
 a different address, override the `DemoMember` parameter to match, or the grant
 names a subject who never signs in.
 
-⛔ **The console sends the *id* token as the API bearer, not the access token.**
-The gateway authorizer accepts either, but only the id token carries the `email`
-claim the tenant boundary matches on — a Cognito access token has `sub` and
-`client_id` and no email, which would leave every signed-in person on an empty
-rail regardless of MEMBERSHIP. It is `Caller.idToken` in
-`console/src/wire/client.ts`, and the token is now held server-side, so a reader
-who has both to hand will reach for the access token by reflex.
+⭐ **The console sends the WorkOS *access* token as the API bearer.** AuthKit's
+`withAuth()` hands that token over; the gateway authorizer's audience is the
+WorkOS client id. Membership matches on `sub`, email if present, or
+`org:{workos_org_id}`. A Cognito id token is not consulted.
+
+⚠ The leftover Cognito user-creation and Google-provider steps below apply
+only to the unused pool. Google and email sign-in for the live console are
+AuthKit's, configured on the attached WorkOS application.
 
 ⚠ **`RATIO_DEMO_OPEN=1` HIDES THAT MISTAKE COMPLETELY.** An open demo grants any
 authenticated caller every fund, so sending the wrong token still shows a full
