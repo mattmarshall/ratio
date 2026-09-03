@@ -61,6 +61,7 @@ const SCREENS = [
   ["/books/new", "main"],
   ["/projects", "main"],
   [`/books/${F}`, "main"],
+  [`/books/${F}/views/abor`, "main"],
   ["/funds", "main"],
   [`/funds/${F}`, "main"],
   [`/books/${F}/views/abor/breaks`, "main"],

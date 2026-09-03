@@ -208,10 +208,68 @@ describe("a first-class book", () => {
   });
 
   it("gives a book of record a page of its own", async () => {
+    // ⭐ #53. ListViews returns this name; the URL used to 404 and the
+    // palette compensated by landing on breaks. The page is the citation —
+    // figures about the view, not a child screen — and a render without the
+    // layout still has to show them.
     const View = (await import("./books/[book]/views/[view]/page")).default;
     await renderAsync(View({ params: params({ book: FUND, view: VIEW }) }));
-    expect(screen.getByText(/Exceptions/)).toBeDefined();
-    expect(screen.getByText(/Book/)).toBeDefined();
+    expect(screen.getByText("ABOR")).toBeDefined();
+    expect(screen.getByText("134,439,187.51")).toBeDefined();
+    expect(screen.getByText("2,000.00")).toBeDefined();
+    expect(screen.getByText("Unplaceable")).toBeDefined();
+    expect(screen.getAllByText("trade date").length).toBeGreaterThan(0);
+    expect(screen.getByText("26 Feb 2026")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Exceptions" }).getAttribute("href")).toBe(
+      `/books/${FUND}/views/${VIEW}/breaks`,
+    );
+    expect(screen.getByRole("link", { name: "Book" }).getAttribute("href")).toBe(
+      `/books/${FUND}`,
+    );
+    for (const a of document.querySelectorAll("a[href]")) {
+      expect(a.getAttribute("href")).not.toMatch(/\/funds\//);
+    }
+  });
+
+  it("names a settlement view's convention and the day it has recognised through", async () => {
+    const real = wire.getView;
+    wire.getView = (async () => viewsFixture.views[1]) as typeof wire.getView;
+    try {
+      const View = (await import("./books/[book]/views/[view]/page")).default;
+      await renderAsync(View({ params: params({ book: FUND, view: "ibor" }) }));
+      expect(screen.getByText("IBOR")).toBeDefined();
+      expect(screen.getAllByText("settled T+2").length).toBeGreaterThan(0);
+      expect(screen.getByText("us-settlement")).toBeDefined();
+      expect(screen.getByText("24 Feb 2026")).toBeDefined();
+    } finally {
+      wire.getView = real;
+    }
+  });
+
+  it("says a recorded-basis view has no cut rather than inventing a day", async () => {
+    // ⛔ ABSENT IS THE HONEST ANSWER. A recorded-basis view does not recognise
+    // by date; printing the epoch (or yesterday) would be a cut nobody elected.
+    const real = wire.getView;
+    wire.getView = (async () => ({
+      ...viewFixture,
+      displayName: "book",
+      basis: "RECORDED",
+      settlementOpenDays: "0",
+      calendar: "",
+      declared: false,
+      recognisedThrough: null,
+    })) as typeof wire.getView;
+    try {
+      const View = (await import("./books/[book]/views/[view]/page")).default;
+      await renderAsync(View({ params: params({ book: "household", view: "book" }) }));
+      expect(screen.getAllByText("journal order").length).toBeGreaterThan(0);
+      expect(screen.getByText("Recognised through").nextElementSibling?.textContent).toBe(
+        "—",
+      );
+      expect(screen.getByText(/the journal's own order/)).toBeDefined();
+    } finally {
+      wire.getView = real;
+    }
   });
 });
 
@@ -1046,7 +1104,11 @@ describe("a refusal", () => {
     try {
       const Layout = (await import("./books/[book]/views/[view]/layout")).default;
       await renderAsync(
-        Layout({ children: null, params: params({ book: FUND, view: "ibor" }) }),
+        // ⚠ A VIEW ID NO OTHER TEST HAS ASKED `viewOf` FOR. React `cache`
+        // memoizes per (fund, view) for the process under vitest, and a
+        // shared key would serve a sibling test's answer instead of this
+        // throw — a green refusal test that never saw a refusal.
+        Layout({ children: null, params: params({ book: FUND, view: "emir" }) }),
       );
       expect(screen.getByRole("status").textContent).toContain(
         "recognises entries by date",

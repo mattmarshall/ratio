@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { ROUTES } from "@/routes";
+
 import {
   COLLECTION_TO_SEGMENT,
   candidatesForId,
@@ -93,10 +95,13 @@ describe("a pasted resource name", () => {
   });
 
   it("lands a book of record on the view itself", () => {
-    // #53: `views/[view]` is now a page. Redirecting past it hid the citation.
-    expect(hrefForResourceName(`funds/${FUND}/views/${VIEW}`)).toBe(
-      `/books/${FUND}/views/${VIEW}`,
-    );
+    // ⭐ #53. `views/[view]` is a page. Redirecting past it hid the citation.
+    // The translated URL has to be a route the tree actually serves — a
+    // string that matches and a file that is missing is how this started.
+    const href = hrefForResourceName(`funds/${FUND}/views/${VIEW}`);
+    expect(href).toBe(`/books/${FUND}/views/${VIEW}`);
+    const route = ROUTES.find((r) => r.path === "/books/[book]/views/[view]");
+    expect(route?.file).toBe("books/[book]/views/[view]/page.tsx");
   });
 
   it("refuses a resource this console gives no url", () => {

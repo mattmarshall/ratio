@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { listBooks, listFunds } from "@/wire/client";
+import { getView, listBooks, listFunds } from "@/wire/client";
 import { caller } from "./caller";
 
 /**
@@ -25,4 +25,17 @@ export const funds = cache(async () => {
 export const books = cache(async () => {
   const c = await caller();
   return (await listBooks(c)).books;
+});
+
+/**
+ * The book of record a view layout and its page both render.
+ *
+ * ⭐ #53. The four Stat tiles live on the layout; the page is the citation of
+ * the same figures plus the terms that distinguish this view from its sibling.
+ * Asking twice would be two Lambdas for one URL. `cache` is the same door
+ * `funds` and `books` already use.
+ */
+export const viewOf = cache(async (fund: string, view: string) => {
+  const c = await caller();
+  return getView(c, fund, view);
 });

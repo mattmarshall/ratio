@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
 import { Refusal } from "@/components/Refusal";
 import { Stat } from "@/components/Stat";
-import { caller } from "@/lib/caller";
+import { viewOf } from "@/lib/data";
 import { basisOf, count, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { orRefused } from "@/lib/refusal";
-import { getView } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
 
@@ -32,14 +31,16 @@ export default async function ViewLayout({
   params: Promise<{ book: string; view: string }>;
 }) {
   const { book: fund, view } = await params;
-  const c = await caller();
   // ⛔ A REFUSAL RENDERS ITS SENTENCE, AND THE CHILDREN DO NOT FETCH. Thrown,
   // this reached production as `Minified React error #441` and a digest — the
   // API's one explanatory sentence redacted to a number, on every screen of
   // the dual-basis demo fund. The layout is the gate: if the view itself
   // refuses, every child's fetch would refuse identically, so answering here
   // once is both the fix and the cheaper page.
-  const r = await orRefused(or404(getView(c, fund, view)));
+  //
+  // ⭐ `viewOf` IS THE SAME GETVIEW THE PAGE READS. Asking twice would be two
+  // Lambdas for one URL; React `cache` is the door `funds` already uses.
+  const r = await orRefused(or404(viewOf(fund, view)));
   if (r.refused !== null) {
     return <Refusal why={r.refused} />;
   }
