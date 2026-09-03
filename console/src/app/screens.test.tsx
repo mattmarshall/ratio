@@ -25,6 +25,7 @@ import rulesFixture from "../../fixtures/rules.json";
 import templatesFixture from "../../fixtures/templates.json";
 import viewFixture from "../../fixtures/view.json";
 import viewsFixture from "../../fixtures/views.json";
+import projectProgressFixture from "../../fixtures/projectProgress.json";
 // ⚠ The fixtures are captured JSON, so TypeScript widens their enums to
 // `string`. `//console:fixtures_test` checks their SHAPE against console.proto
 // on every build, which is the check a cast here would otherwise be pretending
@@ -103,6 +104,7 @@ const wire = {
   getView: async () => viewFixture,
   listViews: async () => viewsFixture,
   reconcileViews: async () => reconcileFixture,
+  projectProgress: async () => projectProgressFixture,
   getBreak: async () => breakFixture,
   listBreaks: async () => breaksFixture,
   listAccounts: async () => accountsFixture,
@@ -285,6 +287,9 @@ describe("a first-class book", () => {
       expect(
         screen.getByRole("link", { name: "WIP" }).getAttribute("href"),
       ).toBe("/books/bridge/views/book/wip");
+      expect(
+        screen.getByRole("link", { name: "Billing" }).getAttribute("href"),
+      ).toBe("/books/bridge/views/book/billing");
       expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
       expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
       expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
@@ -526,6 +531,24 @@ describe("a first-class book", () => {
     }
   });
 
+  it("opens a project book onto billing, not Exceptions or NAV", async () => {
+    const real = wire.getBook;
+    wire.getBook = (async () => booksFixture.books[2]) as typeof wire.getBook;
+    try {
+      const Book = (await import("./books/[book]/page")).default;
+      await renderAsync(Book({ params: params({ book: "bridge" }) }));
+      expect(screen.getByText("Project")).toBeDefined();
+      const billing = screen.getByRole("link", { name: "Billing" });
+      expect(billing.getAttribute("href")).toBe("/books/bridge/views/book/billing");
+      expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
+      expect(screen.queryByText("NAV, in")).toBeNull();
+    } finally {
+      wire.getBook = real;
+    }
+  });
+
   it("sends every job to /books/{book}/… and never through /funds", async () => {
     const Book = (await import("./books/[book]/page")).default;
     await renderAsync(Book({ params: params({ book: "household" }) }));
@@ -650,13 +673,58 @@ describe("a first-class book", () => {
       wire.getBook = realBook;
       wire.listAccounts = realAccounts;
     }
+  });
 
-    const Book = (await import("./books/[book]/page")).default;
-    await renderAsync(Book({ params: params({ book: "bridge" }) }));
-    expect(screen.getByRole("heading", { name: "Bridge" })).toBeDefined();
-    // Same `/budget` URL; kind selects the project roll-up, not household chrome.
-    expect(screen.getByRole("link", { name: "Budget vs actual" })).toBeDefined();
-    expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+  it("cites billed vs earned, retainage, and cost by phase without a fake zero", async () => {
+    const Billing = (await import("./books/[book]/views/[view]/billing/page"))
+      .default;
+    await renderAsync(
+      Billing({ params: params({ book: "bridge", view: "book" }) }),
+    );
+    expect(screen.getByText("Billed to date")).toBeDefined();
+    expect(screen.getByText("1,000.00")).toBeDefined();
+    expect(screen.getByText("Earned to date")).toBeDefined();
+    expect(screen.getByText("800.00")).toBeDefined();
+    expect(screen.getByText("200.00")).toBeDefined();
+    expect(screen.getByText("Retainage outstanding")).toBeDefined();
+    expect(screen.getByText("100.00")).toBeDefined();
+    const payable = screen.getByText("Payable").closest("[role=row]");
+    expect(payable?.textContent).toContain("—");
+    expect(screen.getByText("Site and mobilization")).toBeDefined();
+    expect(screen.getByText("authorized 4,000.00")).toBeDefined();
+    expect(screen.getByText("250.00")).toBeDefined();
+    expect(screen.getAllByText("budget unset — not a silent zero").length).toBeGreaterThan(0);
+    const site = screen.getByText("Site and mobilization").closest("a");
+    expect(site?.getAttribute("href")).toBe(
+      "/books/bridge/views/book/accounts/11",
+    );
+  });
+
+  it("keeps billed-minus-earned unset when either side has not posted", async () => {
+    const real = wire.projectProgress;
+    wire.projectProgress = (async () => ({
+      ...projectProgressFixture,
+      billed: "100000",
+      earned: "",
+      billedMinusEarned: "",
+      retainageReceivable: "",
+      retainagePayable: "",
+    })) as typeof wire.projectProgress;
+    try {
+      const Billing = (await import("./books/[book]/views/[view]/billing/page"))
+        .default;
+      await renderAsync(
+        Billing({ params: params({ book: "bridge", view: "book" }) }),
+      );
+      expect(
+        screen.getByText(/unset until both billed and earned have posted/),
+      ).toBeDefined();
+      const variance = screen.getByText("Billed minus earned").closest("[role=row]");
+      expect(variance?.textContent).toContain("—");
+      expect(variance?.textContent).not.toMatch(/0\.00/);
+    } finally {
+      wire.projectProgress = real;
+    }
   });
 
   it("gives a book of record a page of its own", async () => {

@@ -1,0 +1,34 @@
+{
+  "name": "funds/bridge/views/book",
+  "billed": "100000",
+  "earned": "80000",
+  "billedMinusEarned": "20000",
+  "retainageReceivable": "10000",
+  "retainagePayable": "",
+  "phases": [
+    {
+      "account": "10",
+      "displayName": "Project costs",
+      "cost": "0",
+      "budget": ""
+    },
+    {
+      "account": "11",
+      "displayName": "Site and mobilization",
+      "cost": "25000",
+      "budget": "400000"
+    },
+    {
+      "account": "12",
+      "displayName": "Structure",
+      "cost": "0",
+      "budget": ""
+    },
+    {
+      "account": "13",
+      "displayName": "Finishes and closeout",
+      "cost": "0",
+      "budget": ""
+    }
+  ]
+}

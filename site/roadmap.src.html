@@ -107,12 +107,16 @@ __STYLE__
           against living expenses — the baseline is a configuration total,
           unset until someone sets it, not a fake zero. Transfers between
           household accounts post without claiming lot relief. A Project book
-          cites budget vs actual and WIP capitalization over its own chart, at
-          the same <code>/budget</code> URL the household uses. An Investment
-          book cites partner capital activity (contributions, distributions,
-          transfers, ending capital) on the same journal as NAV and exceptions
-          — not a return, a benchmark, or attribution. Fund books keep the
-          operations surface.</li>
+          cites budget vs actual and WIP capitalization at <code>/budget</code>
+          and <code>/wip</code>, and billed vs earned, retainage, and cost by
+          work-package at <code>/billing</code> — two figures, two URLs.
+          Billed / earned / retainage stay unset until posted, not a fake zero.
+          An Investment book cites partner capital activity (contributions,
+          distributions, transfers, ending capital) on the same journal as NAV
+          and exceptions — not a return, a benchmark, or attribution. Fund books
+          keep the operations surface. A live walk-through does not yet post a
+          construction job — CreateBook seeds the patterns; the seeded demo
+          funds remain investment books.</li>
           <li>A versioned ConfigStore — directory, hash, atomic pointer — and a
           fact plane whose prices and FX an operator can open from a figure.</li>
         </ul>
@@ -280,7 +284,7 @@ __STYLE__
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet and period P&amp;L with transfers that are not trades, household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual and WIP capitalization, investment capital activity (partners, contributions, distributions — not a return), the exception queue, a difference at its own address, a book's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet and period P&amp;L with transfers that are not trades, household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, and cost by work package, investment capital activity (partners, contributions, distributions — not a return), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue

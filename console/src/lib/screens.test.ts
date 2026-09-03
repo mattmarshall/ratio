@@ -19,6 +19,7 @@ describe("screensFor", () => {
     expect(labels).not.toContain("NAV");
     expect(labels).not.toContain("Positions");
     expect(labels).not.toContain("WIP");
+    expect(labels).not.toContain("Billing");
     expect(defaultScreen("PERSONAL")).toBe("sheet");
     expect(ticketsFor("PERSONAL").map((t) => t.segment)).toEqual([
       "transfer",
@@ -27,10 +28,13 @@ describe("screensFor", () => {
     ]);
   });
 
-  it("a project book is not offered Exceptions or NAV", () => {
+  it("a project book offers budget, WIP, and billing, not Exceptions or NAV", () => {
+    const segments = screensFor("PROJECT").map((s) => s.segment);
+    expect(segments.slice(0, 4)).toEqual(["budget", "wip", "billing", "accounts"]);
     const labels = screensFor("PROJECT").map((s) => s.label);
     expect(labels).toContain("Budget vs actual");
     expect(labels).toContain("WIP");
+    expect(labels).toContain("Billing");
     expect(labels).toContain("Trial balance");
     expect(labels).not.toContain("Exceptions");
     expect(labels).not.toContain("NAV");
@@ -40,6 +44,8 @@ describe("screensFor", () => {
       "record",
       "ingest",
     ]);
+    expect(ticketsFor("PROJECT").some((t) => t.segment === "trade")).toBe(false);
+    expect(ticketsFor("PROJECT").some((t) => t.segment === "mark")).toBe(false);
   });
 
   it("an investment book cites capital first, then the ABOR warehouse", () => {
@@ -50,6 +56,7 @@ describe("screensFor", () => {
     expect(labels).toContain("Positions");
     expect(labels).not.toContain("Balance sheet");
     expect(labels).not.toContain("WIP");
+    expect(labels).not.toContain("Billing");
     expect(defaultScreen("INVESTMENT")).toBe("capital");
     expect(ticketsFor("INVESTMENT").map((t) => t.segment)).toEqual([
       "trade",
@@ -71,7 +78,9 @@ describe("screensFor", () => {
       ...PERSONAL_SCREENS.filter((x) =>
         ["sheet", "pnl", "budget"].includes(x.segment),
       ),
-      ...PROJECT_SCREENS.filter((x) => ["budget", "wip"].includes(x.segment)),
+      ...PROJECT_SCREENS.filter((x) =>
+        ["budget", "wip", "billing"].includes(x.segment),
+      ),
       ...INVESTMENT_SCREENS.filter((x) => x.segment === "capital"),
     ]) {
       expect(s.scoped).toBe(true);

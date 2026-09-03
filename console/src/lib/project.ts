@@ -1,12 +1,13 @@
 // Project figure presentation: grouping the chart, not inventing one.
 //
 // ⛔ INTEGER STRINGS, NEVER A NUMBER. `lib/format.ts` refuses to parse money
-// into a double; a budget page that summed with `Number` would undo that
-// on the one screen a project operator actually looks at.
+// into a double; a budget or billing page that summed with `Number` would
+// undo that on the screens a project operator actually looks at.
 //
-// ⭐ ACTUALS ARE THE JOURNAL. Budget is a configuration total (`Book.budget`).
-// Variance is baseline minus committed spend. A second accounting system
-// would be a second answer to a question the trial balance already answers.
+// ⭐ ACTUALS ARE THE JOURNAL. Book-level budget is a configuration total
+// (`Book.budget`). Billing is billed vs earned, retainage, and cost by
+// phase from `projectProgress`. Those are two figures; `/budget` and
+// `/billing` stay two URLs.
 
 import { money } from "./format";
 import type { Account } from "@/wire/types";
@@ -15,13 +16,26 @@ export function raw(s: string): bigint {
   return BigInt(s);
 }
 
+/** Empty is unset — not a fake zero. `"0"` is a set figure of nothing. */
+export function figure(minor: string): string {
+  return minor === "" ? "—" : money(minor);
+}
+
 /** Debit-normal magnitude: assets and expenses show as stored. */
-export function debitShown(n: bigint): string {
+export function debitShown(n: bigint): string;
+/** Debit-normal wire string; empty is unset. */
+export function debitShown(minor: string): string;
+export function debitShown(n: bigint | string): string {
+  if (typeof n === "string") return figure(n);
   return money(n.toString());
 }
 
 /** Credit-normal magnitude: a liability of −4000 raw is 40.00 shown. */
-export function creditShown(n: bigint): string {
+export function creditShown(n: bigint): string;
+/** Credit-normal wire string already stored as a credit; empty is unset. */
+export function creditShown(minor: string): string;
+export function creditShown(n: bigint | string): string {
+  if (typeof n === "string") return figure(n);
   return money((-n).toString());
 }
 
@@ -66,6 +80,11 @@ export interface ProjectRollup {
  * the chart has been relabelled. Costs / funding / revenue / payables are
  * the expense, equity, income and liability accounts. Cash is named cash,
  * else the first asset that is not WIP.
+ *
+ * ⚠ BILLING FIGURES ARE NOT THIS ROLL-UP. Progress billings, retainage and
+ * unbilled receivables live on `/billing` via `projectProgress`. Folding
+ * them into committed spend here would make `/budget` answer a different
+ * question.
  */
 export function projectRollup(
   accounts: readonly Account[],

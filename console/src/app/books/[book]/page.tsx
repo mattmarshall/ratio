@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  *
  * ⭐ KIND SELECTS THE PLACES. A personal book that listed Exceptions / NAV
  * would be a fake label on fund-ops screens (#65, #83). A project book
- * that listed them is the same defect (#66). An investment book cites
+ * that listed them is the same defect (#66, #85). An investment book cites
  * capital first, then the ABOR warehouse (#70). The hub is how you open
  * the citable figures after CreateBook.
  */
@@ -113,7 +113,7 @@ export default async function BookPage({
       ) : null}
       {project && b.defaultView ? (
         <p className="note">
-          <Link href={`/books/${book}/record`}>Record a cost or capitalize WIP</Link>
+          <Link href={`/books/${book}/record`}>Record a cost, bill, retainage hold, or capitalize WIP</Link>
         </p>
       ) : null}
       {b.fund ? (

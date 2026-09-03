@@ -69,6 +69,7 @@ import type {
   PendingFact,
   Position,
   Posting,
+  ProjectProgressResponse,
   ReconcileViewsResponse,
   ReplayNavStrikeResponse,
   Rule,
@@ -233,6 +234,17 @@ export const reconcileViews = (
   send<ReconcileViewsResponse>(
     c,
     `/funds/${fund}/views/${view}:reconcile${q({ against })}`,
+  );
+
+/**
+ * Billed vs earned, retainage outstanding, and cost by work-package
+ * account. Project books only — other kinds are refused, not zeroed.
+ */
+// GET /v1/{name=funds/*/views/*}:projectProgress
+export const projectProgress = (c: Caller, fund: string, view: string) =>
+  send<ProjectProgressResponse>(
+    c,
+    `/funds/${fund}/views/${view}:projectProgress`,
   );
 
 // ── Breaks ─────────────────────────────────────────────────────────────────

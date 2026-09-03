@@ -12,10 +12,10 @@
 //
 // ⭐ KIND SELECTS THE LIST. A personal book that offered Exceptions / Positions
 // / NAV would be a fake label on fund-ops screens — issue #65 (sheet/P&L)
-// and #83 (budget). A project book that wore that warehouse is #66. An
-// investment book cites partner capital first, then the ABOR warehouse
-// (#70). The agreement screens stay shared: a rule set is the same
-// document whichever chart it posted.
+// and #83 (budget). A project book that wore that warehouse is #66 (budget/WIP)
+// and #85 (billing). An investment book cites partner capital first, then the
+// ABOR warehouse (#70). The agreement screens stay shared: a rule set is the
+// same document whichever chart it posted.
 
 import type { BookKind } from "@/wire/types";
 
@@ -74,7 +74,11 @@ export const PERSONAL_SCREENS: readonly Screen[] = [
 ];
 
 /**
- * Project figures. Budget vs actual and WIP capitalization, not ABOR.
+ * Project figures. Budget vs actual, WIP capitalization, and progress billing.
+ *
+ * ⛔ `/billing` IS NOT `/budget`. Budget is authorized spend vs committed
+ * cost. Billing is billed vs earned, retainage, and cost by phase. One URL
+ * would make those two answers.
  *
  * Trial balance stays: it is the conservation view of the same accounts, and
  * a figure that could not be checked against it would be a picture.
@@ -82,6 +86,7 @@ export const PERSONAL_SCREENS: readonly Screen[] = [
 export const PROJECT_SCREENS: readonly Screen[] = [
   { segment: "budget", label: "Budget vs actual", scoped: true, group: "book" },
   { segment: "wip", label: "WIP", scoped: true, group: "book" },
+  { segment: "billing", label: "Billing", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   ...AGREEMENT,
 ];
@@ -175,7 +180,11 @@ const PERSONAL_TICKETS: readonly Ticket[] = [
 ];
 
 const PROJECT_TICKETS: readonly Ticket[] = [
-  { segment: "record", label: "Record an event", keywords: "record,event,rule,apply,cost,wip" },
+  {
+    segment: "record",
+    label: "Record an event",
+    keywords: "record,event,rule,apply,cost,wip,bill,retainage",
+  },
   {
     segment: "ingest",
     label: "Ingest a delivery",

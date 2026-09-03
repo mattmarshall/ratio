@@ -191,10 +191,18 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
         BookKind::Project => vec![
             acct(1, "Cash", AccountTypeRecord::Asset),
             acct(2, "Work in progress", AccountTypeRecord::Asset),
+            acct(3, "Accounts receivable", AccountTypeRecord::Asset),
+            acct(4, "Retainage receivable", AccountTypeRecord::Asset),
+            acct(5, "Unbilled receivables", AccountTypeRecord::Asset),
             acct(10, "Project costs", AccountTypeRecord::Expense),
+            acct(11, "Site and mobilization", AccountTypeRecord::Expense),
+            acct(12, "Structure", AccountTypeRecord::Expense),
+            acct(13, "Finishes and closeout", AccountTypeRecord::Expense),
             acct(20, "Funding", AccountTypeRecord::Equity),
             acct(30, "Project revenue", AccountTypeRecord::Income),
             acct(40, "Payables", AccountTypeRecord::Liability),
+            acct(41, "Progress billings", AccountTypeRecord::Liability),
+            acct(42, "Retainage payable", AccountTypeRecord::Liability),
         ],
     }
 }
@@ -735,12 +743,44 @@ reads = "csv"
   dated = "traded"
 "#;
 
-/// Vendor invoice / cost CSV → project costs and payables claims.
-const PROJECT_CONFIG: &str = r#"
+/// Project posting rules plus the vendor-invoice ingest template.
+///
+/// ⭐ THE ACCOUNT NUMBERS ARE `chart_for(Project)`'S. `initialize` runs
+/// `check` against that chart before the digest is activated, so a drift
+/// between the two is a refused create rather than a book that cannot post.
+///
+/// ⭐ WORK PACKAGES ARE ACCOUNTS, NOT INSTRUMENTS. Site / structure /
+/// finishes partition project costs the way the chart partitions anything
+/// else. Tagging a cost with an instrument would open a tax lot, and a
+/// phase is not a security.
+///
+/// Progress-bill credits billings; earn-progress credits revenue. The two
+/// are independent, so billed-to-date and earned-to-date can diverge while
+/// every entry still conserves. Retainage is a transfer off AR (or onto
+/// payables) — not a percentage baked into the bill — so a contract with
+/// no holdback never posts it, and the figure stays unset rather than 0%.
+///
+/// WIP capitalization (`capitalize_wip` / `recognize_wip`) is #66 / PR #80.
+/// Progress billing is #85 / PR #88. Both seed here; `/wip` and `/billing`
+/// stay two URLs.
+///
+/// Phase budget: `[[project.phase]] account = <dim> budget = <minor units>`.
+/// Omitting the row means no baseline, not a budget of zero.
+/// Book-level `[project] budget` is the `/budget` roll-up, a different figure.
+///
+/// The `project-invoices` template still maps `cost`/`invoice` onto the
+/// unpartitioned `project_cost` / `vendor_invoice` rules. Per-phase mapping
+/// is a later operator choice, not a CreateBook invention.
+const PROJECT_CONFIG: &str = r#"# Project posting rules. Amount given; no instrument, so no lot.
+# Work packages are accounts 11–13, not instruments.
+# Progress-bill and earn-progress are independent: billed and earned can diverge.
+# Retainage is a transfer, not a baked-in split — omit it and the figure stays unset.
+# Phase budget: [[project.phase]] account = <dim> budget = <minor units>.
+
 [[rule]]
 id = "project_cost"
 kind = "trade"
-description = "Project costs up, cash down"
+description = "Unpartitioned project costs paid from cash"
 [[rule.posting]]
 account = 10
 weight = 1
@@ -749,11 +789,77 @@ account = 1
 weight = -1
 
 [[rule]]
+id = "project_cost_site"
+kind = "trade"
+description = "Site and mobilization paid from cash"
+[[rule.posting]]
+account = 11
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "project_cost_structure"
+kind = "trade"
+description = "Structure paid from cash"
+[[rule.posting]]
+account = 12
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "project_cost_finishes"
+kind = "trade"
+description = "Finishes and closeout paid from cash"
+[[rule.posting]]
+account = 13
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
 id = "vendor_invoice"
 kind = "trade"
-description = "Project costs up, payables up"
+description = "Unpartitioned project costs on a vendor invoice"
 [[rule.posting]]
 account = 10
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "vendor_invoice_site"
+kind = "trade"
+description = "Site and mobilization on a vendor invoice"
+[[rule.posting]]
+account = 11
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "vendor_invoice_structure"
+kind = "trade"
+description = "Structure on a vendor invoice"
+[[rule.posting]]
+account = 12
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "vendor_invoice_finishes"
+kind = "trade"
+description = "Finishes and closeout on a vendor invoice"
+[[rule.posting]]
+account = 13
 weight = 1
 [[rule.posting]]
 account = 40
@@ -812,6 +918,83 @@ account = 1
 weight = 1
 [[rule.posting]]
 account = 30
+weight = -1
+
+[[rule]]
+id = "progress_bill"
+kind = "trade"
+description = "Progress bill: receivable against billings on account"
+[[rule.posting]]
+account = 3
+weight = 1
+[[rule.posting]]
+account = 41
+weight = -1
+
+[[rule]]
+id = "hold_retainage"
+kind = "trade"
+description = "Hold retainage from a receivable until a milestone clears"
+[[rule.posting]]
+account = 4
+weight = 1
+[[rule.posting]]
+account = 3
+weight = -1
+
+[[rule]]
+id = "release_retainage"
+kind = "trade"
+description = "Release retainage onto the receivable"
+[[rule.posting]]
+account = 3
+weight = 1
+[[rule.posting]]
+account = 4
+weight = -1
+
+[[rule]]
+id = "collect_receivable"
+kind = "trade"
+description = "Collect a billed receivable into cash"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 3
+weight = -1
+
+[[rule]]
+id = "earn_progress"
+kind = "trade"
+description = "Recognize earned progress against unbilled receivables"
+[[rule.posting]]
+account = 5
+weight = 1
+[[rule.posting]]
+account = 30
+weight = -1
+
+[[rule]]
+id = "hold_vendor_retainage"
+kind = "trade"
+description = "Hold retainage from a vendor payable"
+[[rule.posting]]
+account = 40
+weight = 1
+[[rule.posting]]
+account = 42
+weight = -1
+
+[[rule]]
+id = "release_vendor_retainage"
+kind = "trade"
+description = "Release vendor retainage back onto payables"
+[[rule.posting]]
+account = 42
+weight = 1
+[[rule.posting]]
+account = 40
 weight = -1
 
 [[template]]
@@ -978,6 +1161,9 @@ mod tests {
             .iter()
             .any(|a| a.display_name == "Investments at fair value"));
         assert!(project.iter().any(|a| a.display_name == "Work in progress"));
+        assert!(project.iter().any(|a| a.display_name == "Progress billings"));
+        assert!(project.iter().any(|a| a.display_name == "Retainage receivable"));
+        assert!(project.iter().any(|a| a.display_name == "Site and mobilization"));
     }
 
     #[test]
@@ -1308,19 +1494,34 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
         assert!(set.rule("recognize_wip").is_some());
         assert!(set.rule("project_cost").is_some());
         assert!(set.rule("vendor_invoice").is_some());
+        assert!(set.rule("progress_bill").is_some());
+        assert!(set.rule("hold_retainage").is_some());
+        assert!(set.rule("earn_progress").is_some());
+        assert!(set.rule("project_cost_site").is_some());
+        assert!(
+            set.rules.iter().all(|r| r.legs.iter().all(|l| !l.per_instrument)),
+            "a project phase is an account, not an instrument — a per_instrument \
+             leg would open a lot"
+        );
         assert!(
             set.project.is_none(),
-            "a new project has no baseline until someone sets [project] budget"
+            "a new project has no baseline until someone sets [project] budget \
+             or [[project.phase]]"
         );
         let against_empty = check(&set, &[]);
         assert!(
             against_empty.iter().any(|f| !f.is_question),
             "project rules must not check against an empty chart: {against_empty:?}"
         );
+        // Wave 2 (#75) ingest mapping is additive: still one template, still
+        // unpartitioned cost/invoice rules. Not a per-phase ingest menu.
+        let ingest = ratio_ingest::TemplateSet::from_toml(PROJECT_CONFIG).unwrap();
+        assert_eq!(ingest.templates.len(), 1);
+        assert_eq!(ingest.templates[0].id, "project-invoices");
     }
 
     #[test]
-    fn initialize_seeds_the_wip_rules_and_no_project_budget() {
+    fn initialize_seeds_wip_and_progress_billing_and_no_project_budget() {
         let dir = std::env::temp_dir().join("ratio-book-init-project-rules");
         let _ = std::fs::remove_dir_all(&dir);
         initialize(&dir, "bridge", "Bridge", BookKind::Project).unwrap();
@@ -1329,7 +1530,11 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
         let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
         let set = RuleSet::from_toml(&text).unwrap();
         assert!(set.rule("capitalize_wip").is_some(), "{text}");
+        assert!(set.rule("progress_bill").is_some(), "{text}");
+        assert!(set.rule("hold_retainage").is_some(), "{text}");
         assert!(set.project.is_none());
+        let ingest = ratio_ingest::TemplateSet::from_toml(&text).unwrap();
+        assert_eq!(ingest.templates[0].id, "project-invoices");
     }
 
     fn sample_delivery() -> ratio_ingest::Delivery {

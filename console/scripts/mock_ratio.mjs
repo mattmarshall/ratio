@@ -48,6 +48,7 @@ const ROUTES = [
   [/^\/v1\/funds\/[^/]+\/views$/, "views"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/:]+$/, "view"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+:reconcile$/, "reconcile"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+:projectProgress$/, "projectProgress"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/breaks$/, "breaks"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/breaks\/[^/:]+$/, "break"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/accounts$/, "accounts"],

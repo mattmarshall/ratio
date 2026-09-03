@@ -29,7 +29,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "PROJECT",
     label: "Project",
-    blurb: "Cash, work in progress, project costs, funding, and revenue. Budget vs actual is a figure over those accounts, not a second ledger.",
+    blurb: "Cash, work in progress, project costs by work package, funding, revenue, progress billings, and retainage. Budget vs actual and billed vs earned are two figures, not one URL.",
   },
 ];
 

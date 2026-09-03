@@ -269,7 +269,7 @@ describe("the command palette", () => {
     }
   });
 
-  it("a project book is offered budget and WIP, not a trade ticket", async () => {
+  it("a project book is offered budget, WIP, and billing, not a trade ticket", async () => {
     const renderProject = () =>
       render(
         <Palette funds={funds}>
@@ -287,6 +287,7 @@ describe("the command palette", () => {
     for (const [label, href] of [
       ["Budget vs actual", `/books/bridge/views/${VIEW}/budget`],
       ["WIP", `/books/bridge/views/${VIEW}/wip`],
+      ["Billing", `/books/bridge/views/${VIEW}/billing`],
     ] as const) {
       const { unmount } = renderProject();
       await type(label);

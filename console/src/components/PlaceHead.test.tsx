@@ -136,4 +136,19 @@ describe("PlaceHead", () => {
     expect(screen.getByRole("heading", { name: "Budget vs actual" })).toBeDefined();
     expect(screen.queryByRole("heading", { name: "Exceptions" })).toBeNull();
   });
+
+  it("titles billing on a project figure page", () => {
+    segments.current = ["views", "book", "billing"];
+    render(
+      <PlaceHead
+        fund="bridge"
+        displayName="Bridge"
+        views={views}
+        defaultView="book"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Billing" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Exceptions" })).toBeNull();
+  });
 });

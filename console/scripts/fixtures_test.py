@@ -56,6 +56,7 @@ FIXTURES = {
     "changeLogEntries.json": "ListChangeLogEntriesResponse",
     "entry.json": "Entry",
     "entries.json": "ListEntriesResponse",
+    "projectProgress.json": "ProjectProgressResponse",
 }
 
 SCALARS = {

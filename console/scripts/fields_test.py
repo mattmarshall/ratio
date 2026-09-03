@@ -266,6 +266,18 @@ NEEDLES: list[tuple[str, str]] = [
         "not a second ledger — journal expenses against a",
         "budget vs actual would look like a second accounting system",
     ),
+    (
+        "Billed to date",
+        "the progress-billing figure is gone from the project billing screen",
+    ),
+    (
+        "Retainage outstanding",
+        "retainage is not cited under /books/{id}",
+    ),
+    (
+        "budget unset — not a silent zero",
+        "a phase without [project.phase] budget would show a fake zero",
+    ),
     # ⛔ AND NO `startTransition` NEEDLE, THOUGH THE PALETTE NEEDS ONE AS MUCH AS
     # `FilterChips` DOES. Both that file and `PlanControls` already contain the
     # literal, so the case would pass with the palette's transition dropped — the

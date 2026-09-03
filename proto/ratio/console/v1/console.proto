@@ -133,6 +133,26 @@ service Console {
     option (google.api.method_signature) = "name,against";
   }
 
+  // Billed vs earned, retainage outstanding, and cost by work-package
+  // account, for one project book of record. (AIP-136)
+  //
+  // GET, like `:reconcile`: it folds a journal prefix and writes nothing.
+  //
+  // ⛔ PROJECT ONLY. Personal and investment books are refused with a
+  // sentence, not served a zero that looks like "nothing billed". Unset
+  // billed / earned / retainage / phase budget stay empty — not `"0"`.
+  // Actual costs of zero on a seeded phase account are real (nothing
+  // posted there); an omitted `[project.phase] budget` is not a budget
+  // of zero.
+  //
+  // ⭐ ACCOUNTS, NOT INSTRUMENTS. Work packages are dimensions on
+  // `chart_for(Project)`. Tagging a cost with an instrument would open
+  // a lot, and a project phase is not a security.
+  rpc ProjectProgress(ProjectProgressRequest) returns (ProjectProgressResponse) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*}:projectProgress"};
+    option (google.api.method_signature) = "name";
+  }
+
   // Lists a fund's open breaks, ordered by money at risk. (AIP-132)
   rpc ListBreaks(ListBreaksRequest) returns (ListBreaksResponse) {
     option (google.api.http) = {get: "/v1/{parent=funds/*/views/*}/breaks"};
@@ -528,8 +548,10 @@ message Book {
     KIND_PERSONAL = 1;
     // Fund or investment book — the chart `ratio init` has always written.
     KIND_INVESTMENT = 2;
-    // A single project: costs, WIP, funding, revenue. Budget is a
-    // configuration total compared to those accounts, not a second ledger.
+    // A single project: costs (including work-package accounts), WIP,
+    // funding, revenue, progress billings, and retainage. Budget vs actual
+    // is a configuration total; billed vs earned and retainage are journal
+    // figures. They are two screens, not one ledger.
     KIND_PROJECT = 3;
   }
 
@@ -1223,6 +1245,63 @@ message ReconcileViewsResponse {
   // The journal prefix both sides were folded from. One number, because one
   // pass feeds every view.
   int64 journal_position = 9;
+}
+
+message ProjectProgressRequest {
+  // `funds/{fund}/views/{view}` — the book of record the figures fold.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+  ];
+}
+
+// Billed vs earned, retainage, and cost by work-package account.
+//
+// ⚠ NAMED FOR THE METHOD. AIP-136 wants `<Rpc>Response` or the resource;
+// there is no ProjectProgress resource — these are figures folded off the
+// view's trial balance and the configuration it pins.
+message ProjectProgressResponse {
+  // The view these figures fold, as `funds/{fund}/views/{view}`.
+  string name = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Credit of Progress billings, minor units. Empty when that account has
+  // never been posted to — not `"0"`, which would claim a billing cycle
+  // that has not started.
+  string billed = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Credit of Project revenue, minor units. Empty when revenue has never
+  // been posted. Independent of `billed`: progress-bill credits billings,
+  // earn-progress credits revenue, and the two can diverge.
+  string earned = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // `billed − earned`. Empty when either side is unset, so a book that
+  // has only billed (or only earned) does not look fully caught up.
+  string billed_minus_earned = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Retainage receivable balance (debit-normal). Empty until a hold posts.
+  string retainage_receivable = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Retainage payable outstanding, credit-normal (the credit of that
+  // liability). Empty until a vendor hold posts. Contractor and owner
+  // sides are two accounts, not one netted figure.
+  string retainage_payable = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Expense accounts on this chart — the work-package grain. Cost is the
+  // trial-balance balance (zero when nothing posted is a true zero).
+  // Budget is empty when `[project.phase]` omits that account.
+  repeated PhaseCost phases = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// Cost (and optional authorized spend) on one work-package account.
+message PhaseCost {
+  // Chart dimension, as a decimal string so it matches `Account.dimension`.
+  string account = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string display_name = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Minor units, debit-normal. A seeded phase with no postings is `"0"`.
+  string cost = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Authorized spend for this account, minor units. Empty when unset.
+  // ⛔ `"0"` IS A SET BASELINE OF NOTHING; empty is no baseline.
+  string budget = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message ListBreaksRequest {

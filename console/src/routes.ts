@@ -116,6 +116,11 @@ export const ROUTES: readonly Route[] = [
     reads: ["reconcileViews"],
   },
   {
+    path: "/books/[book]/views/[view]/billing",
+    file: "books/[book]/views/[view]/billing/page.tsx",
+    reads: ["projectProgress"],
+  },
+  {
     path: "/funds/[fund]",
     file: "funds/[fund]/page.tsx",
     reads: ["getFund", "getView", "listChangeLogEntries"],
