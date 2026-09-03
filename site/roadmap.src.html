@@ -91,8 +91,11 @@ __STYLE__
           <li>Tax lots and the cost-basis methods a book elects — including
           wash sales when a fund writes a wash window
           (<code>wash_window_days</code>; silence stays unset, not a
-          silent 30) — and corporate actions in factor form — nothing
-          in the journal is rewritten.</li>
+          silent 30), and MinTax is a ranking at a price
+          (<code>min_tax_short_weight</code>; unset stays unset, not a
+          silent 2; <code>lot_method = "min_tax"</code> stays refused,
+          not an Order or a Method) — and corporate actions in factor
+          form — nothing in the journal is rewritten.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>That threshold as a term of the configuration rather than a
@@ -166,12 +169,17 @@ __STYLE__
           capital-account walk-through can cite each partner's beginning,
           activity, and ending against those same facts. Neither can show
           IRR, a waterfall, a future call schedule, management-fee billing,
-          an LP portal, or K-1 packaging. A live walk-through of
+          an LP portal, or K-1 packaging.           A live walk-through of
           investment lot relief can elect a wash window, attach a
           deferred loss to an open replacement, and show a later sale
           taking the adjusted basis; silence stays unset, not a silent
-          30. It cannot show a restatement of a struck figure, a wash
-          flag on the console, or a non-US holding-period variant. Fund books
+          30. The lot engine ranks MinTax at a price
+          (<code>min_tax_short_weight</code>; unset stays unset, not a
+          silent 2); <code>lot_method = "min_tax"</code> stays refused.
+          It cannot show a restatement of a struck figure, a wash
+          flag on the console, a non-US holding-period variant,
+          specific identification, average cost / pooled basis, or
+          MinTax UI screens. Fund books
           keep the operations surface. An Operating book cites a balance
           sheet, a period income statement, and a period cash-flow
           statement that tie to the trial

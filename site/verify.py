@@ -74,6 +74,10 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ #133 / #138 landed the wash window and the Rust engine; PLAN
     # named tax lots and said nothing. Same class of defect as #67.
     "wash sales",
+    # ⚠ #141 landed MinTax as a ranking at a price; PLAN named it in
+    # the same-commit amendment. The public roadmap lagged. Same class
+    # of defect as #67 / wash sales.
+    "MinTax is a ranking at a price",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -84,6 +88,7 @@ ROADMAP_ENGINE_BUILT = [
     "ConfigStore",
     "fact plane",
     "wash sales",
+    "MinTax is a ranking at a price",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",

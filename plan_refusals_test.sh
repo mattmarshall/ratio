@@ -73,6 +73,12 @@ BUILT=(
   # 2026-09-03 wash-sales amendment. #133 / #138 landed the engine
   # without this file moving; adding the line is the cost of noticing.
   "wash sales"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED THEM, WHICH IS THE PROTOCOL.
+  # MinTax is not on the refusal list — this check would have stayed
+  # green whatever was built. The sentence it matches is in the
+  # 2026-09-03 MinTax amendment. #141 landed the ranking without this
+  # file moving; adding the line is the cost of noticing.
+  "MinTax is a ranking at a price"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
