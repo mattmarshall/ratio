@@ -409,6 +409,16 @@ the conserved one, and the kernel never said it was.
   two named loans that do not collapse into one debt bucket. It cannot show
   loan origination as a product, refinance shopping, credit scores, bank OAuth,
   or a client portal — those stay refused. Envelope budgeting is #83.
+- ⚠ **A household net-worth-bridge walk-through (#94 / #27).** It can show
+  beginning and ending net worth for a month or year, cite ΔNW against
+  period income and expense, and name the balance-sheet plugs the P&L
+  ignores (principal paid on a named loan, transfers on Investments /
+  Credit cards). An empty journal, or a cut with no dated prefix, stays
+  **unset** — not a measured $0.00 NW. Origination that nets to zero is a
+  real zero. It cannot show a purchase account the chart does not have
+  (asset purchases stay unset), a fire number, lifestyle coaching, bank
+  OAuth, a credit score, or a client portal. Envelope budgeting is #83;
+  loan schedules are #87.
 - ⭐ **A capital-call walk-through (#82) can show, and cannot show.**
   CreateBook(Investment) seeds partner-scoped `Commitments — LP/GP` and
   `Undrawn commitments — LP/GP` (equity, so they cancel in the NAV filter)

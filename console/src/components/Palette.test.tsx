@@ -448,6 +448,7 @@ describe("the command palette", () => {
     const expected: ReadonlyArray<readonly [string, string]> = [
       ["Balance sheet", "/books/household/views/abor/sheet"],
       ["Period P&L", "/books/household/views/abor/pnl"],
+      ["Net-worth bridge", "/books/household/views/abor/bridge"],
       ["Budget vs actual", "/books/household/views/abor/budget"],
       ["Loan schedule", "/books/household/views/abor/loans"],
       ["Trial balance", "/books/household/views/abor/accounts"],

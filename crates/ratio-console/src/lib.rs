@@ -394,7 +394,10 @@ impl Console {
     /// so the project `/budget` page lists unfiltered. `loan-2026-03` is March
     /// loan activity with the as-of-end balance; bare `loan` is refused — a
     /// cumulative liability is the ABOR-shaped view a household figure exists
-    /// to reject.
+    /// to reject. `bridge-2026-03` is the same fold over the whole personal
+    /// chart — period activity in debit/credit, as-of-end in balance — so a
+    /// net-worth bridge can name beginning, ending, and the plugs without a
+    /// second ledger. Bare `bridge` is refused for the same reason as `pnl`.
     pub fn list_accounts(
         &self,
         parent: &str,
@@ -431,11 +434,24 @@ impl Console {
                 bail!("a loan schedule needs a month (YYYY-MM) or a year (YYYY)");
             }
         }
+        if kind == "bridge" {
+            let path = self.book_path(&fund)?;
+            let meta = book::BookMeta::load(&path, &fund);
+            if meta.kind != book::BookKind::Personal {
+                bail!(
+                    "net-worth bridge is a household figure — this book is {}",
+                    meta.kind.as_str()
+                );
+            }
+            if period.is_empty() {
+                bail!("a net-worth bridge needs a month (YYYY-MM) or a year (YYYY)");
+            }
+        }
         let fold = match (kind, period) {
             ("pnl", p) => AccountFold::Activity(parse_period(p)?),
             ("capital", p) if !p.is_empty() => AccountFold::Activity(parse_period(p)?),
             ("budget", p) => AccountFold::Activity(parse_period(p)?),
-            ("loan", p) => AccountFold::Loan(parse_period(p)?),
+            ("loan", p) | ("bridge", p) => AccountFold::Loan(parse_period(p)?),
             (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
             _ => AccountFold::Current,
         };
@@ -3970,7 +3986,7 @@ struct PeriodWindow {
 
 /// AIP-132 List requests carry `filter` (AIP-160), not a custom period field.
 /// `pnl-2026-03` / `sheet-2026` / `capital-2026-03` / `budget-2026-03` /
-/// `loan-2026-03` — hyphen because `param_of` does not decode.
+/// `loan-2026-03` / `bridge-2026-03` — hyphen because `param_of` does not decode.
 fn list_accounts_window(filter: &str) -> (&str, &str) {
     if let Some(rest) = filter.strip_prefix("pnl-") {
         ("pnl", rest)
@@ -3982,6 +3998,8 @@ fn list_accounts_window(filter: &str) -> (&str, &str) {
         ("budget", rest)
     } else if let Some(rest) = filter.strip_prefix("loan-") {
         ("loan", rest)
+    } else if let Some(rest) = filter.strip_prefix("bridge-") {
+        ("bridge", rest)
     } else {
         (filter, "")
     }
@@ -5507,6 +5525,143 @@ mod tests {
         let debit: i64 = m.debit.parse().unwrap();
         let credit: i64 = m.credit.parse().unwrap();
         assert_eq!(ending - (debit - credit), -10_000_000);
+    }
+
+    #[test]
+    fn a_household_net_worth_bridge_cites_period_plugs_and_refuses_a_fake_zero() {
+        // ⭐ THE CLAIM #94 IS ABOUT. Two as-of cuts and named plugs, from
+        // one Loan-shaped fold over the personal chart. An empty book is
+        // not a measured zero NW. Origination that nets to zero NW is.
+        // Principal and a cash→investments transfer move the sheet and
+        // must not be required for the ΔNW identity to hold.
+        let root = fresh("household-nw-bridge");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Household".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "household".into(),
+            })
+            .unwrap();
+
+        let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let bare = console
+            .list_accounts(&view, "bridge")
+            .unwrap_err()
+            .to_string();
+        assert!(bare.contains("month"), "{bare}");
+
+        let empty = console.list_accounts(&view, "bridge-2026-03").unwrap();
+        assert!(
+            empty.accounts.iter().all(|a| a.balance == "0" && a.debit == "0" && a.credit == "0"),
+            "an empty journal is zeros on the chart, not a NW figure: {:?}",
+            empty.accounts
+        );
+        assert!(
+            empty.accounts.iter().any(|a| a.display_name == "Cash and bank"),
+            "the chart is the source of the rows: {:?}",
+            empty.accounts
+        );
+
+        book(&root.join("fundbook"));
+        let fund_view = format!(
+            "funds/fundbook/views/{}",
+            ratio_rules::UNDECLARED_VIEW
+        );
+        let inv = console
+            .list_accounts(&fund_view, "bridge-2026-03")
+            .unwrap_err()
+            .to_string();
+        assert!(inv.contains("household"), "{inv}");
+
+        let path = root.join("household");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str("\n[personal.loan]\n41 = 12\n");
+        let cfg = b.put(text.as_bytes()).unwrap();
+        b.set_active(&cfg).unwrap();
+        use ratio_store::{JournalEntry, PostingRecord};
+        // Originate a $100,000 mortgage in February — NW stays 0.
+        b.append(&JournalEntry {
+            id: "orig-m".into(),
+            memo: "originate mortgage".into(),
+            config: cfg.clone(),
+            postings: vec![
+                PostingRecord::new(1, 10_000_000),
+                PostingRecord::new(41, -10_000_000),
+            ],
+            trade_date: Some("2026-02-01".into()),
+            announcement: None,
+        })
+        .unwrap();
+        drop(b);
+
+        console
+            .apply_event(&household_req("inc", "receive_income", "30.00", 2026, 3, 5))
+            .unwrap();
+        console
+            .apply_event(&household_req("spend", "spend_cash", "6.00", 2026, 3, 8))
+            .unwrap();
+        console
+            .apply_event(&household_req("prin", "mortgage_principal", "8.00", 2026, 3, 10))
+            .unwrap();
+        console
+            .apply_event(&household_req("int", "mortgage_interest", "2.00", 2026, 3, 10))
+            .unwrap();
+        console
+            .apply_event(&household_req("xfer", "xfer_cash_investments", "5.00", 2026, 3, 15))
+            .unwrap();
+        {
+            let mut req = household_req("undated", "receive_income", "99.00", 2026, 3, 1);
+            req.trade_date = None;
+            console.apply_event(&req).unwrap();
+        }
+
+        let listed = console.list_accounts(&view, "bridge-2026-03").unwrap();
+        let by: BTreeMap<_, _> = listed
+            .accounts
+            .iter()
+            .map(|a| (a.display_name.as_str(), a))
+            .collect();
+        let cash = by.get("Cash and bank").expect("cash");
+        let inv_acct = by.get("Investments").expect("investments");
+        let mortgage = by.get("Mortgage").expect("mortgage");
+        let income = by.get("Income").expect("income");
+        let living = by.get("Living expenses").expect("living");
+        let interest = by.get("Mortgage interest").expect("interest");
+
+        // Ending cash = 100_000 + 30 − 6 − 8 − 2 − 5 = 100_009.00
+        assert_eq!(cash.balance, "10000900", "{cash:?}");
+        assert_eq!(inv_acct.debit, "500", "the transfer is investments activity");
+        assert_eq!(inv_acct.balance, "500");
+        assert_eq!(mortgage.debit, "800", "principal paid this window");
+        assert_eq!(mortgage.balance, "-9999200");
+        assert_eq!(income.credit, "3000", "March income, not the undated 99");
+        assert_eq!(living.debit, "600");
+        assert_eq!(interest.debit, "200");
+
+        let cash_end: i64 = cash.balance.parse().unwrap();
+        let cash_d: i64 = cash.debit.parse().unwrap();
+        let cash_c: i64 = cash.credit.parse().unwrap();
+        let cash_begin = cash_end - (cash_d - cash_c);
+        assert_eq!(cash_begin, 10_000_000, "February origination is the beginning cut");
+
+        let mort_end: i64 = mortgage.balance.parse().unwrap();
+        let mort_d: i64 = mortgage.debit.parse().unwrap();
+        let mort_c: i64 = mortgage.credit.parse().unwrap();
+        assert_eq!(mort_end - (mort_d - mort_c), -10_000_000);
+
+        // ΔNW = ending A+L − beginning A+L = income − expenses, not principal.
+        let end_nw = cash_end
+            + inv_acct.balance.parse::<i64>().unwrap()
+            + mort_end;
+        let begin_nw = cash_begin + -10_000_000;
+        assert_eq!(begin_nw, 0, "origination nets to a real zero NW");
+        assert_eq!(end_nw - begin_nw, 2_200, "30.00 − 6.00 − 2.00, not ±principal ±xfer");
     }
 
     #[test]

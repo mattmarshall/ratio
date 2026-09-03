@@ -61,7 +61,8 @@ export const FUND_SCREENS: readonly Screen[] = [
 ];
 
 /**
- * Household figures. Balance sheet, period P&L, and budget vs actual — not ABOR.
+ * Household figures. Balance sheet, period P&L, the net-worth bridge,
+ * budget vs actual, and the loan roll-forward — not ABOR.
  *
  * Trial balance stays: it is the conservation view of the same accounts, and
  * a sheet that could not be checked against it would be a picture.
@@ -69,6 +70,7 @@ export const FUND_SCREENS: readonly Screen[] = [
 export const PERSONAL_SCREENS: readonly Screen[] = [
   { segment: "sheet", label: "Balance sheet", scoped: true, group: "book" },
   { segment: "pnl", label: "Period P&L", scoped: true, group: "book" },
+  { segment: "bridge", label: "Net-worth bridge", scoped: true, group: "book" },
   { segment: "budget", label: "Budget vs actual", scoped: true, group: "book" },
   { segment: "loans", label: "Loan schedule", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },

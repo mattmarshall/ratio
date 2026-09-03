@@ -153,6 +153,14 @@ export const ROUTES: readonly Route[] = [
     file: "books/[book]/views/[view]/loans/page.tsx",
     reads: ["getBook", "listAccounts"],
   },
+  // Household net-worth bridge. Same chrome source as loans. Beginning and
+  // ending are the Loan-shaped fold (`bridge-YYYY-MM`); named plugs stay
+  // unset when the journal or the configuration cannot support them.
+  {
+    path: "/books/[book]/views/[view]/bridge",
+    file: "books/[book]/views/[view]/bridge/page.tsx",
+    reads: ["getBook", "listAccounts"],
+  },
   {
     path: "/books/[book]/views/[view]/capital",
     file: "books/[book]/views/[view]/capital/page.tsx",
