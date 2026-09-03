@@ -3,16 +3,10 @@ import { caller } from "@/lib/caller";
 import { count } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { SCREENS, SCREEN_GROUPS, screenHref } from "@/lib/screens";
+import { KIND_SHORT } from "@/lib/templates";
 import { getBook, getView } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
-
-const KIND_LABEL: Record<string, string> = {
-  PERSONAL: "Personal",
-  INVESTMENT: "Investment",
-  PROJECT: "Project",
-  UNSPECIFIED: "Book",
-};
 
 /**
  * The book of record as its own page — see #53.
@@ -33,11 +27,11 @@ export default async function BookPage({
     : null;
 
   return (
-    <main className="queue">
+    <>
       <div className="qhead">
         <h1>{b.displayName}</h1>
         <div className="subhead">
-          <span>{KIND_LABEL[b.kind] ?? b.kind}</span>
+          <span>{KIND_SHORT[b.kind] ?? b.kind}</span>
           {b.fund ? <span>filed as {b.fund}</span> : <span>independent</span>}
           {b.organization ? <span>org {b.organization}</span> : null}
         </div>
@@ -86,6 +80,6 @@ export default async function BookPage({
           <Link href={`/${b.fund}`}>Fund filing</Link>
         </p>
       ) : null}
-    </main>
+    </>
   );
 }

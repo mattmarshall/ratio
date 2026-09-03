@@ -57,38 +57,43 @@ const S = "northstar-multi-strategy";
 // segments are arbitrary — the mock serves each singleton as the first element
 // of its captured list whatever it is asked for.
 const SCREENS = [
+  ["/books", "main"],
+  ["/books/new", "main"],
+  ["/projects", "main"],
+  [`/books/${F}`, "main"],
   ["/funds", "main"],
-  [`/funds/${F}/views/abor/breaks`, "main"],
-  [`/funds/${F}/views/abor/breaks/x`, '[aria-label="Break detail"]'],
-  [`/funds/${F}/views/abor/accounts`, "main"],
-  [`/funds/${F}/views/abor/accounts/x`, '[aria-label="Account detail"]'],
-  [`/funds/${F}/views/abor/accounts/x/postings/x`, '[aria-label="Posting detail"]'],
-  [`/funds/${F}/views/abor/positions`, "main"],
-  [`/funds/${F}/views/abor/positions/x`, '[aria-label="Position detail"]'],
-  [`/funds/${F}/views/abor/positions/x/lots/x`, '[aria-label="Lot detail"]'],
-  [`/funds/${F}/views/abor/reconcile?against=ibor`, "main"],
-  [`/funds/${S}/views/abor/strikes`, "main"],
-  [`/funds/${S}/views/abor/strikes/x`, '[aria-label="NAV strike"]'],
-  [`/funds/${S}/views/abor/strikes/x/plan`, '[aria-label="How this NAV was computed"]'],
-  [`/funds/${S}/views/abor/strikes/x/replay`, '[aria-label="Replay"]'],
-  [`/funds/${F}/trade`, "main"],
-  [`/funds/${F}/record`, "main"],
-  [`/funds/${F}/ingest`, "main"],
-  [`/funds/${F}/mark`, "main"],
-  [`/funds/${F}/config`, "main"],
-  [`/funds/${F}/config/x`, '[aria-label="Configuration version"]'],
-  [`/funds/${F}/config/x/diff`, '[aria-label="Configuration diff"]'],
-  [`/funds/${F}/rules`, "main"],
-  [`/funds/${F}/rules/x`, '[aria-label="Rule"]'],
-  [`/funds/${F}/data`, "main"],
-  [`/funds/${F}/data/deliveries/x`, '[aria-label="Delivery"]'],
-  [`/funds/${F}/data/pending/x`, '[aria-label="Pending fact"]'],
-  [`/funds/${F}/data/templates`, "main"],
-  [`/funds/${F}/data/templates/x`, '[aria-label="Template"]'],
-  [`/funds/${F}/changes`, "main"],
-  [`/funds/${F}/changes/x`, '[aria-label="Change log entry"]'],
-  [`/funds/${F}/actions`, "main"],
-  [`/funds/${F}/actions/x`, '[aria-label="Corporate action"]'],
+  [`/funds/${F}`, "main"],
+  [`/books/${F}/views/abor/breaks`, "main"],
+  [`/books/${F}/views/abor/breaks/x`, '[aria-label="Break detail"]'],
+  [`/books/${F}/views/abor/accounts`, "main"],
+  [`/books/${F}/views/abor/accounts/x`, '[aria-label="Account detail"]'],
+  [`/books/${F}/views/abor/accounts/x/postings/x`, '[aria-label="Posting detail"]'],
+  [`/books/${F}/views/abor/positions`, "main"],
+  [`/books/${F}/views/abor/positions/x`, '[aria-label="Position detail"]'],
+  [`/books/${F}/views/abor/positions/x/lots/x`, '[aria-label="Lot detail"]'],
+  [`/books/${F}/views/abor/reconcile?against=ibor`, "main"],
+  [`/books/${S}/views/abor/strikes`, "main"],
+  [`/books/${S}/views/abor/strikes/x`, '[aria-label="NAV strike"]'],
+  [`/books/${S}/views/abor/strikes/x/plan`, '[aria-label="How this NAV was computed"]'],
+  [`/books/${S}/views/abor/strikes/x/replay`, '[aria-label="Replay"]'],
+  [`/books/${F}/trade`, "main"],
+  [`/books/${F}/record`, "main"],
+  [`/books/${F}/ingest`, "main"],
+  [`/books/${F}/mark`, "main"],
+  [`/books/${F}/config`, "main"],
+  [`/books/${F}/config/x`, '[aria-label="Configuration version"]'],
+  [`/books/${F}/config/x/diff`, '[aria-label="Configuration diff"]'],
+  [`/books/${F}/rules`, "main"],
+  [`/books/${F}/rules/x`, '[aria-label="Rule"]'],
+  [`/books/${F}/data`, "main"],
+  [`/books/${F}/data/deliveries/x`, '[aria-label="Delivery"]'],
+  [`/books/${F}/data/pending/x`, '[aria-label="Pending fact"]'],
+  [`/books/${F}/data/templates`, "main"],
+  [`/books/${F}/data/templates/x`, '[aria-label="Template"]'],
+  [`/books/${F}/changes`, "main"],
+  [`/books/${F}/changes/x`, '[aria-label="Change log entry"]'],
+  [`/books/${F}/actions`, "main"],
+  [`/books/${F}/actions/x`, '[aria-label="Corporate action"]'],
 ];
 
 function fail(msg) {
@@ -179,6 +184,17 @@ for (const [path, landmark] of SCREENS) {
   }
   if (!visible) fail(`${path}: ${landmark} did not render, or is display:none`);
   checked++;
+}
+
+// Seeded demo permalinks still resolve: the fund job URL lands on the book.
+{
+  const legacy = `/funds/${F}/views/abor/breaks`;
+  const r = await page.goto(origin + legacy, { waitUntil: "networkidle" });
+  if (!r || !r.ok()) fail(`${legacy}: HTTP ${r?.status()}`);
+  const landed = new URL(page.url()).pathname;
+  if (landed !== `/books/${F}/views/abor/breaks`) {
+    fail(`${legacy}: redirected to ${landed}, not the book URL`);
+  }
 }
 
 await browser.close();

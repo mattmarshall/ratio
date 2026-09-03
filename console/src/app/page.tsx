@@ -1,21 +1,17 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { caller } from "@/lib/caller";
-import { listBooks } from "@/wire/client";
+import { WORKSPACE_COOKIE, workspaceHome } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
 
 /**
- * The front door.
+ * After sign-in, the chosen collection.
  *
- * Lands on a book, not a fund. A personal or project book has no
- * `/funds/{fund}/…` URL it must travel through. Seeded fund books still
- * carry a default view, so the demo path is unchanged in substance.
+ * ⭐ A COOKIE, DEFAULT `/books`. Kind is a template on CreateBook, not a
+ * reason to invent a second ledger. An operator who lives in fund admin
+ * or project finance sets that on the collection chrome.
  */
 export default async function Home() {
-  const c = await caller();
-  const { books } = await listBooks(c);
-  if (!books.length) redirect("/books");
-  const first = books[0]!;
-  const id = first.name.replace(/^books\//, "");
-  redirect(`/books/${id}`);
+  const raw = (await cookies()).get(WORKSPACE_COOKIE)?.value;
+  redirect(workspaceHome(raw));
 }

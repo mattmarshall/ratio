@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { WorkspaceSwitch } from "@/components/WorkspaceSwitch";
 import { funds as fundsForRequest } from "@/lib/data";
 import { count, STATE_CLASS, STATE_LABEL } from "@/lib/format";
 
@@ -15,6 +16,8 @@ export default async function Funds() {
         <div className="subhead">
           <span>{count(String(funds.length))} administered</span>
           <Link href="/books">All books</Link>
+          <Link href="/projects">Projects</Link>
+          <WorkspaceSwitch current="funds" />
         </div>
       </div>
 
@@ -31,7 +34,7 @@ export default async function Funds() {
           const id = f.name.replace(/^funds\//, "");
           return (
             <li key={f.name}>
-              <Link className="row" href={`/funds/${id}/breaks`}>
+              <Link className="row" href={`/books/${id}/views/${f.defaultView}/breaks`}>
                 <span className={`sev ${f.state === "BLOCKED" ? "high" : "low"}`} />
                 <span>
                   <div className="title">{f.displayName}</div>

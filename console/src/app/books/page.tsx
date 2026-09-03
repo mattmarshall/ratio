@@ -1,15 +1,10 @@
 import Link from "next/link";
+import { WorkspaceSwitch } from "@/components/WorkspaceSwitch";
 import { books as booksForRequest } from "@/lib/data";
 import { count } from "@/lib/format";
+import { KIND_SHORT } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
-
-const KIND_LABEL: Record<string, string> = {
-  PERSONAL: "Personal",
-  INVESTMENT: "Investment",
-  PROJECT: "Project",
-  UNSPECIFIED: "Book",
-};
 
 /** Every book this operator may open — funds are an optional layer, not a parent. */
 export default async function Books() {
@@ -22,7 +17,9 @@ export default async function Books() {
         <div className="subhead">
           <span>{count(String(books.length))} open to you</span>
           <Link href="/funds">Funds</Link>
+          <Link href="/projects">Projects</Link>
           <Link href="/books/new">New book</Link>
+          <WorkspaceSwitch current="books" />
         </div>
       </div>
 
@@ -46,7 +43,7 @@ export default async function Books() {
                 <span>
                   <div className="title">{b.displayName}</div>
                   <div className="why">
-                    {KIND_LABEL[b.kind] ?? b.kind}
+                    {KIND_SHORT[b.kind] ?? b.kind}
                     {b.fund ? " · filed as a fund" : " · independent"}
                     {" · "}
                     {count(b.entryCount)} entries

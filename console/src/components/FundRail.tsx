@@ -28,6 +28,8 @@ export function FundRail({ funds }: { funds: Fund[] }) {
         <span>Your funds</span>
         <span>
           <Link href="/books">Books</Link>
+          {" · "}
+          <Link href="/projects">Projects</Link>
           {funds.length ? ` · ${funds.length}` : ""}
         </span>
       </div>
@@ -42,7 +44,7 @@ export function FundRail({ funds }: { funds: Fund[] }) {
             // Straight to the fund's default view rather than through the
             // legacy redirect: the rail is the commonest way in, and a
             // redirect on every click is a round trip nobody needs.
-            href={`/funds/${id}/views/${f.defaultView}/breaks`}
+            href={`/books/${id}/views/${f.defaultView}/breaks`}
             className="fund"
             aria-current={id === open ? "page" : undefined}
           >

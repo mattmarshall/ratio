@@ -82,7 +82,7 @@ export default async function FundOverview({
       <section className="log" aria-label="Recent activity">
         <div className="loghead">
           <span>Recent activity</span>
-          <Link className="sortnote" href={`/funds/${fund}/changes`}>
+          <Link className="sortnote" href={`/books/${fund}/changes`}>
             the whole change log
           </Link>
         </div>

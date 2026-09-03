@@ -37,7 +37,7 @@ export async function LotBook({
           <Link
             className="lotrow"
             key={l.name}
-            href={`/funds/${fund}/views/${view}/positions/${position}/lots/${id}`}
+            href={`/books/${fund}/views/${view}/positions/${position}/lots/${id}`}
           >
             <span className="num">{l.sequence}</span>
             <span className="num">{count(l.units)}</span>

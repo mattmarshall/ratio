@@ -29,11 +29,11 @@ const { push } = vi.hoisted(() => {
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, replace: () => {}, refresh: () => {} }),
-  usePathname: () => "/funds/harbourline-global-value/views/abor/breaks",
-  // ⚠ THE SEGMENTS A COMPONENT RENDERED BY `funds/[fund]/layout.tsx` SEES —
-  // three, not four. `FundRail` sits one layout up and sees the fund id first;
-  // `FundActions`, `ScreenTabs` and `ViewSwitch` all see this. A mock of the
-  // wrong depth would let every action here build the wrong URL and stay green.
+  usePathname: () => "/books/harbourline-global-value/views/abor/breaks",
+  // ⚠ THE SEGMENTS A COMPONENT RENDERED BY `books/[book]/layout.tsx` SEES —
+  // three, not four. The collection layout sits one level up and sees the book
+  // id first; `FundActions` and `ViewSwitch` see this. A mock of the wrong
+  // depth would let every action here build the wrong URL and stay green.
   useSelectedLayoutSegments: () => ["views", "abor", "breaks"],
 }));
 
@@ -162,16 +162,23 @@ describe("the command palette", () => {
     expect(push).toHaveBeenCalledWith("/books/new");
   });
 
+  it("opens the project collection without inventing a second ledger", async () => {
+    renderConsole();
+    await type("your projects");
+    fireEvent.click(await row("Your projects"));
+    expect(push).toHaveBeenCalledWith("/projects");
+  });
+
   it("sends a fund exactly where the rail sends it", async () => {
     renderConsole();
     await type("northstar");
     fireEvent.click(await row("Northstar Multi-Strategy"));
     // ⛔ THE RAIL'S HREF, NOT THE LEGACY REDIRECT. `FundRail` links straight to
     // the fund's default view because "a redirect on every click is a round trip
-    // nobody needs"; a palette using `/funds/{f}/breaks` would pay it every jump.
+    // nobody needs"; a palette using `/books/{f}/breaks` would pay it every jump.
     const northstar = funds.find((f) => f.name.endsWith("northstar-multi-strategy"))!;
     expect(push).toHaveBeenCalledWith(
-      `/funds/northstar-multi-strategy/views/${northstar.defaultView}/breaks`,
+      `/books/northstar-multi-strategy/views/${northstar.defaultView}/breaks`,
     );
   });
 
@@ -188,14 +195,14 @@ describe("the command palette", () => {
   // `scoped` is for, because getting it wrong is a URL that lies about which
   // book produced the figures on it.
   const EXPECTED_SCREENS: ReadonlyArray<readonly [string, string]> = [
-    ["Exceptions", `/funds/${FUND}/views/${VIEW}/breaks`],
-    ["Trial balance", `/funds/${FUND}/views/${VIEW}/accounts`],
-    ["Positions", `/funds/${FUND}/views/${VIEW}/positions`],
-    ["NAV", `/funds/${FUND}/views/${VIEW}/strikes`],
-    ["Data", `/funds/${FUND}/data`],
-    ["Configuration", `/funds/${FUND}/config`],
-    ["Rules", `/funds/${FUND}/rules`],
-    ["Change log", `/funds/${FUND}/changes`],
+    ["Exceptions", `/books/${FUND}/views/${VIEW}/breaks`],
+    ["Trial balance", `/books/${FUND}/views/${VIEW}/accounts`],
+    ["Positions", `/books/${FUND}/views/${VIEW}/positions`],
+    ["NAV", `/books/${FUND}/views/${VIEW}/strikes`],
+    ["Data", `/books/${FUND}/data`],
+    ["Configuration", `/books/${FUND}/config`],
+    ["Rules", `/books/${FUND}/rules`],
+    ["Change log", `/books/${FUND}/changes`],
   ];
 
   it("offers all eight screens, each going where its tab goes", async () => {
@@ -228,7 +235,7 @@ describe("the command palette", () => {
     fireEvent.click(await row(new RegExp(view.displayName)));
     // ⭐ A view is a property of the answer, so switching one stays on the screen
     // whose figures it changes — `ViewSwitch` makes the same move.
-    expect(push).toHaveBeenCalledWith(`/funds/${FUND}/views/${id}/breaks`);
+    expect(push).toHaveBeenCalledWith(`/books/${FUND}/views/${id}/breaks`);
   });
 
   it("opens the four tickets and posts none of them", async () => {
@@ -241,7 +248,7 @@ describe("the command palette", () => {
       const { unmount } = renderConsole();
       await type(label);
       fireEvent.click(await row(label));
-      expect(push).toHaveBeenCalledWith(`/funds/${FUND}/${segment}`);
+      expect(push).toHaveBeenCalledWith(`/books/${FUND}/${segment}`);
       // ⛔ THE PALETTE REACHES THE FORM AND NEVER GETS PAST IT. No form is
       // rendered here, and no write on the wire client was called.
       expect(document.querySelector("form")).toBeNull();
@@ -263,7 +270,7 @@ describe("the command palette", () => {
     );
     fireEvent.click(await row(/as an exception$/));
     expect(push).toHaveBeenCalledWith(
-      `/funds/${FUND}/views/${VIEW}/breaks/cash-usd-2026-02-26`,
+      `/books/${FUND}/views/${VIEW}/breaks/cash-usd-2026-02-26`,
     );
   });
 
@@ -276,7 +283,7 @@ describe("the command palette", () => {
     expect(screen.queryByText(/as a NAV strike$/)).toBeNull();
     fireEvent.click(await row(/^Open funds\//));
     expect(push).toHaveBeenCalledWith(
-      `/funds/${FUND}/views/${VIEW}/strikes/2026-02-26`,
+      `/books/${FUND}/views/${VIEW}/strikes/2026-02-26`,
     );
   });
 
@@ -290,7 +297,7 @@ describe("the command palette", () => {
     //
     // ⭐ This is exactly the entry resource of #52: declared in the contract,
     // carried in payloads, and given no screen. The palette says so instead of
-    // inventing `/funds/{f}/entries/5`.
+    // inventing `/books/{f}/entries/5`.
     await type(`funds/${FUND}/entries/5`);
     expect(await screen.findByText("Nothing matches.")).toBeTruthy();
     // ⛔ The listbox stays in the document even with nothing in it: `KBarSearch`

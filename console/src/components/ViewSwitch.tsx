@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSelectedLayoutSegments } from "next/navigation";
+import { useSelectedLayoutSegments } from "next/navigation";
 import { BASIS_LABEL } from "@/lib/format";
 import type { View } from "@/wire/types";
 
@@ -29,8 +29,6 @@ export function ViewSwitch({
 }) {
   // ["views", "<view>", "breaks"] under a view; ["config"] at fund level.
   const segments = useSelectedLayoutSegments();
-  const pathname = usePathname();
-  const root = pathname.startsWith("/books/") ? "books" : "funds";
   const underView = segments[0] === "views";
   const open = underView ? segments[1] : defaultView;
   // Stay on the same screen when switching views. A control-plane screen is not
@@ -49,8 +47,8 @@ export function ViewSwitch({
             key={v.name}
             href={
               screen
-                ? `/${root}/${fund}/views/${id}/${screen}`
-                : `/${root}/${fund}/views/${id}`
+                ? `/books/${fund}/views/${id}/${screen}`
+                : `/books/${fund}/views/${id}`
             }
             aria-current={id === open ? "page" : undefined}
             title={BASIS_LABEL[v.basis]}
