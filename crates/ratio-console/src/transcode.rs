@@ -38,6 +38,7 @@ pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/funds" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/views" },
     Route { method: "GET", template: "/v1/{name=funds/*/views/*}:reconcile" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*}:projectProgress" },
     Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/breaks" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/changeLogEntries" },
     Route { method: "GET", template: "/v1/{name=funds/*/views/*/breaks/*}" },
@@ -155,6 +156,10 @@ pub fn serve(
                 param_of(query, "against"),
             )?)?
         }
+        ["funds", id, "views", v] if v.ends_with(":projectProgress") => {
+            let view = v.trim_end_matches(":projectProgress");
+            to_json(&console.project_progress(&format!("funds/{id}/views/{view}"))?)?
+        }
         ["funds", id, "views", v] => {
             to_json(&console.get_view(&format!("funds/{id}/views/{v}"))?)?
         }
@@ -220,7 +225,10 @@ pub fn serve(
             to_json(&console.get_fact(&format!("funds/{id}/facts/{f}"))?)?
         }
         ["funds", id, "views", v, "accounts"] => {
-            to_json(&console.list_accounts(&format!("funds/{id}/views/{v}"), filter_of(query))?)?
+            to_json(&console.list_accounts(
+                &format!("funds/{id}/views/{v}"),
+                filter_of(query),
+            )?)?
         }
         ["funds", id, "views", v, "accounts", a, "postings"] => {
             to_json(&console.list_postings(&format!("funds/{id}/views/{v}/accounts/{a}"))?)?
@@ -739,7 +747,8 @@ impl JsonView for pb::Book {
         format!(
             "{{\"name\":{},\"displayName\":{},\"kind\":{},\"currencyCode\":{},\
              \"fund\":{},\"organization\":{},\"defaultView\":{},\
-             \"entryCount\":{},\"configDigest\":{},\"trialBalanceDifference\":{}}}",
+             \"entryCount\":{},\"configDigest\":{},\"trialBalanceDifference\":{},\
+             \"budget\":{},\"envelopes\":[{}]}}",
             q(&self.name),
             q(&self.display_name),
             q(book_kind_name(self.kind)),
@@ -749,7 +758,19 @@ impl JsonView for pb::Book {
             q(&self.default_view),
             q(&self.entry_count.to_string()),
             q(&self.config_digest),
-            q(&self.trial_balance_difference)
+            q(&self.trial_balance_difference),
+            q(&self.budget),
+            self.envelopes.iter().map(|e| e.to_json()).collect::<Vec<_>>().join(",")
+        )
+    }
+}
+
+impl JsonView for pb::HouseholdEnvelope {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"dimension\":{},\"budget\":{}}}",
+            q(&self.dimension),
+            q(&self.budget)
         )
     }
 }
@@ -1357,6 +1378,34 @@ impl JsonView for pb::ListChangeLogEntriesResponse {
             "{{\"changeLogEntries\":[{}],\"nextPageToken\":{}}}",
             self.change_log_entries.iter().map(|e| e.to_json()).collect::<Vec<_>>().join(","),
             q(&self.next_page_token)
+        )
+    }
+}
+
+impl JsonView for pb::PhaseCost {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"account\":{},\"displayName\":{},\"cost\":{},\"budget\":{}}}",
+            q(&self.account),
+            q(&self.display_name),
+            q(&self.cost),
+            q(&self.budget)
+        )
+    }
+}
+
+impl JsonView for pb::ProjectProgressResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"billed\":{},\"earned\":{},\"billedMinusEarned\":{},\
+             \"retainageReceivable\":{},\"retainagePayable\":{},\"phases\":[{}]}}",
+            q(&self.name),
+            q(&self.billed),
+            q(&self.earned),
+            q(&self.billed_minus_earned),
+            q(&self.retainage_receivable),
+            q(&self.retainage_payable),
+            self.phases.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(",")
         )
     }
 }

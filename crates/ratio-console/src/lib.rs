@@ -382,14 +382,64 @@ impl Console {
     /// no postings is a real row with a zero on it, and dropping it would make
     /// an empty chart and a complete one look the same. `filter=posted` is
     /// there for when you want only what moved.
-    pub fn list_accounts(&self, parent: &str, filter: &str) -> Result<pb::ListAccountsResponse> {
+    ///
+    /// A month (`YYYY-MM`) or a year (`YYYY`) is a suffix on the chip, not a
+    /// second List field (AIP-132). `pnl-2026-03` is March; bare `pnl` is
+    /// refused — cumulative income is the ABOR-shaped view this filter exists
+    /// to refuse as a default. `capital-2026-03` is March capital activity;
+    /// bare `capital` is inception-to-date partner and contribution equity.
+    /// `budget-2026-03` is March household spend; bare `budget` is refused,
+    /// and a non-personal book is refused — a project's period is the project,
+    /// so the project `/budget` page lists unfiltered.
+    pub fn list_accounts(
+        &self,
+        parent: &str,
+        filter: &str,
+    ) -> Result<pb::ListAccountsResponse> {
         let (fund, view) = view_scoped_parent(parent)?;
-        let accounts = self.accounts_of(&fund, &view)?;
+        let (kind, period) = list_accounts_window(filter);
+        if kind == "pnl" && period.is_empty() {
+            bail!("a period P&L needs a month (YYYY-MM) or a year (YYYY)");
+        }
+        if kind == "budget" {
+            let path = self.book_path(&fund)?;
+            let meta = book::BookMeta::load(&path, &fund);
+            if meta.kind != book::BookKind::Personal {
+                bail!(
+                    "budget-YYYY is household period spend — this book is {}",
+                    meta.kind.as_str()
+                );
+            }
+            if period.is_empty() {
+                bail!("a household budget needs a month (YYYY-MM) or a year (YYYY)");
+            }
+        }
+        let fold = match (kind, period) {
+            ("pnl", p) => AccountFold::Activity(parse_period(p)?),
+            ("capital", p) if !p.is_empty() => AccountFold::Activity(parse_period(p)?),
+            ("budget", p) => AccountFold::Activity(parse_period(p)?),
+            (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
+            _ => AccountFold::Current,
+        };
+        let accounts = self.accounts_folded(&fund, &view, fold)?;
         let keep: Vec<pb::Account> = accounts
             .into_iter()
-            .filter(|a| match filter {
+            .filter(|a| match kind {
                 "posted" => a.posting_count != "0",
                 "abnormal" => a.abnormal,
+                "pnl" => {
+                    a.r#type == pb::account::Type::Revenue as i32
+                        || a.r#type == pb::account::Type::Expense as i32
+                }
+                "sheet" => {
+                    a.r#type == pb::account::Type::Asset as i32
+                        || a.r#type == pb::account::Type::Liability as i32
+                        || a.r#type == pb::account::Type::Equity as i32
+                        || a.r#type == pb::account::Type::Revenue as i32
+                        || a.r#type == pb::account::Type::Expense as i32
+                }
+                "capital" => book::is_capital_account(&a.display_name),
+                "budget" => a.r#type == pb::account::Type::Expense as i32,
                 _ => true,
             })
             .collect();
@@ -406,6 +456,15 @@ impl Console {
 
     /// Every account in a fund's chart, with its debit and credit totals.
     fn accounts_of(&self, fund: &str, view: &str) -> Result<Vec<pb::Account>> {
+        self.accounts_folded(fund, view, AccountFold::Current)
+    }
+
+    fn accounts_folded(
+        &self,
+        fund: &str,
+        view: &str,
+        fold: AccountFold,
+    ) -> Result<Vec<pb::Account>> {
         let path = self.book_path(fund)?;
         let b = FileBook::open(&path)?;
         // ⛔ TRANSLATED INTO THE FUND'S CURRENCY, because a `pb::Account` is
@@ -422,34 +481,91 @@ impl Console {
         let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &facts);
         let rate_facts = ratio_ingest::value::current_rates(&facts);
-        // ⛔ OFF THE MAINTAINED FOLD, PER VIEW — NOT `b.balances_by_dim()`. The
-        // file's answer sums the whole journal, which is exactly one view's
-        // answer wearing no label: a settlement view's trial balance excludes
-        // what it has not recognised, and until this read moved, every view's
-        // accounts screen showed the recorded figures under its own name.
-        let proj = self.projection(fund)?;
-        let balances = proj.balances(view)?;
+        let raw = match &fold {
+            AccountFold::Current => {
+                // ⛔ OFF THE MAINTAINED FOLD, PER VIEW — NOT `b.balances_by_dim()`.
+                // The file's answer sums the whole journal, which is exactly one
+                // view's answer wearing no label: a settlement view's trial
+                // balance excludes what it has not recognised, and until this
+                // read moved, every view's accounts screen showed the recorded
+                // figures under its own name.
+                let proj = self.projection(fund)?;
+                let balances = proj.balances(view)?;
+                balances
+                    .value
+                    .iter()
+                    .map(|((dim, ccy), row)| {
+                        (*dim, ccy.as_deref().map(str::to_string), row.debit, row.credit, row.postings)
+                    })
+                    .collect::<Vec<_>>()
+            }
+            AccountFold::AsOf(w) | AccountFold::Activity(w) => {
+                // ⚠ A SECOND WALK, NOT A SECOND FOLD. The maintained projection
+                // has no term for a calendar window, so a period figure has to
+                // re-read the journal. It skips exactly what `recognised`
+                // skips, so a settlement view's January P&L is still that
+                // view's January — not the recorded view's wearing a date.
+                //
+                // ⛔ AN ENTRY WITH NO DATE HAS NO PERIOD. Same refusal as a
+                // lot with no acquisition date: defaulting to the epoch or to
+                // today would put it in a window nobody elected, and both
+                // defaults are wrong in a direction that looks ordinary.
+                let activity = matches!(fold, AccountFold::Activity(_));
+                let proj = self.projection(fund)?;
+                let mut rows: BTreeMap<(i64, Option<String>), (i128, i128, i64)> = BTreeMap::new();
+                b.for_each_entry_since(0, &mut |entry| {
+                    if !proj.recognised(view, entry)? {
+                        return Ok(());
+                    }
+                    let Some(day) = entry.trade_date.as_deref() else {
+                        return Ok(());
+                    };
+                    if activity {
+                        if day < w.start.as_str() || day > w.end.as_str() {
+                            return Ok(());
+                        }
+                    } else if day > w.end.as_str() {
+                        return Ok(());
+                    }
+                    for p in &entry.postings {
+                        let amount = p.amount as i128;
+                        let slot = rows.entry((p.dim, p.currency.clone())).or_default();
+                        slot.2 += 1;
+                        if amount >= 0 {
+                            slot.0 += amount;
+                        } else {
+                            slot.1 += -amount;
+                        }
+                    }
+                    Ok(())
+                })?;
+                rows.into_iter()
+                    .map(|((dim, ccy), (d, c, n))| (dim, ccy, d, c, n))
+                    .collect()
+            }
+        };
+
         let mut totals: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
         let mut split: BTreeMap<i64, Vec<pb::CurrencyTotal>> = BTreeMap::new();
         let mut counts: BTreeMap<i64, i64> = BTreeMap::new();
-        for ((dim, ccy), row) in balances.value {
-            let ccy = ccy.as_deref();
-            let factor = rates.factor_of_optional(ccy).with_context(|| {
+        for (dim, ccy, debit, credit, postings) in raw {
+            let ccy_ref = ccy.as_deref();
+            let factor = rates.factor_of_optional(ccy_ref).with_context(|| {
                 format!(
                     "this fund holds {} and no rate for it was supplied — an account total \
                      mixing denominations is not a total",
-                    ccy.unwrap_or("an untyped balance")
+                    ccy_ref.unwrap_or("an untyped balance")
                 )
             })? as i128;
-            let s = totals.entry(*dim).or_insert((0, 0));
+            let s = totals.entry(dim).or_insert((0, 0));
             let scale = ratio_project::RATE_SCALE as i128;
-            s.0 += (row.debit * factor / scale) as i64;
-            s.1 += (row.credit * factor / scale) as i64;
-            *counts.entry(*dim).or_default() += row.postings;
+            s.0 += (debit * factor / scale) as i64;
+            s.1 += (credit * factor / scale) as i64;
+            *counts.entry(dim).or_default() += postings;
             // ⛔ THE FACT THE FIGURE CITES, OR NOTHING. The base and an untyped
             // leg translate at par without a rate fact; inventing a resource
             // name for them would offer a 404 in the voice used for EUR.
-            let (rate_fact, delivery_digest, config_digest) = match ccy {
+            let (rate_fact, delivery_digest, config_digest) = match ccy_ref {
                 Some(c) if c != FUND_CURRENCY => rate_facts
                     .get(c)
                     .map(|f| {
@@ -462,16 +578,16 @@ impl Console {
                     .unwrap_or_default(),
                 _ => Default::default(),
             };
-            split.entry(*dim).or_default().push(pb::CurrencyTotal {
-                currency_code: ccy.unwrap_or_default().to_string(),
-                debit: row.debit.to_string(),
-                credit: row.credit.to_string(),
-                balance: row.net().to_string(),
+            split.entry(dim).or_default().push(pb::CurrencyTotal {
+                currency_code: ccy_ref.unwrap_or("").to_string(),
+                debit: debit.to_string(),
+                credit: credit.to_string(),
+                balance: (debit - credit).to_string(),
                 // ⛔ EMPTY FOR THE BASE AND FOR AN UNTYPED LEG, not "100".
                 // Both translate at par, and both do so WITHOUT a rate fact —
                 // printing a rate nobody recorded would invent the evidence the
                 // column exists to supply.
-                rate: match ccy {
+                rate: match ccy_ref {
                     Some(c) if c != FUND_CURRENCY => factor.to_string(),
                     _ => String::new(),
                 },
@@ -1984,6 +2100,7 @@ impl Console {
         // answers for any book directory so existing screens and rewrites keep
         // working; the sidecar is what distinguishes a fund listing from a book.
         let fund = self.get_fund(&format!("funds/{id}"))?;
+        let (budget, envelopes) = budget_terms_of(&path, meta.kind);
         Ok(pb::Book {
             name: format!("books/{id}"),
             display_name: meta.display_name,
@@ -1995,6 +2112,8 @@ impl Console {
             entry_count: fund.entry_count,
             config_digest: fund.config_digest,
             trial_balance_difference: fund.trial_balance_difference,
+            budget,
+            envelopes,
         })
     }
 
@@ -2036,6 +2155,8 @@ impl Console {
             entry_count: 0,
             config_digest: String::new(),
             trial_balance_difference: "0".into(),
+            budget: String::new(),
+            envelopes: Vec::new(),
         })
     }
 
@@ -2299,6 +2420,99 @@ impl Console {
 
     /// What two books of record over one journal disagree about.
     ///
+    /// Billed vs earned, retainage outstanding, and cost by work-package
+    /// account — for a project book of record.
+    ///
+    /// ⛔ REFUSES ANY OTHER KIND. Serving zeros to a personal or investment
+    /// book would look like "nothing billed this period" rather than "this
+    /// is not a project figure".
+    ///
+    /// ⭐ UNSET STAYS UNSET. `billed` / `earned` / retainage are empty until
+    /// those accounts have a posting. A seeded phase account with no
+    /// postings reports cost `"0"` — that is a true zero — and an omitted
+    /// `[project.phase] budget` stays empty, which is the #66 honesty.
+    pub fn project_progress(&self, name: &str) -> Result<pb::ProjectProgressResponse> {
+        let (fund, view) = view_scoped_parent(name).context("bad view name")?;
+        let path = self.book_path(&fund)?;
+        let meta = book::BookMeta::load(&path, &fund);
+        if meta.kind != book::BookKind::Project {
+            bail!(
+                "progress billing is a project figure — this book is {}, not a project",
+                meta.kind.as_str()
+            );
+        }
+
+        let accounts = self.accounts_of(&fund, &view)?;
+        let named = |n: &str| accounts.iter().find(|a| a.display_name == n);
+        let posted = |a: &pb::Account| a.posting_count != "0";
+        let credit_if_posted = |a: Option<&pb::Account>| match a {
+            Some(a) if posted(a) => a.credit.clone(),
+            _ => String::new(),
+        };
+        let balance_if_posted = |a: Option<&pb::Account>| match a {
+            Some(a) if posted(a) => a.balance.clone(),
+            _ => String::new(),
+        };
+
+        let billed = credit_if_posted(named("Progress billings"));
+        let earned = credit_if_posted(named("Project revenue"));
+        let billed_minus_earned = match (billed.parse::<i64>(), earned.parse::<i64>()) {
+            (Ok(b), Ok(e)) if !billed.is_empty() && !earned.is_empty() => (b - e).to_string(),
+            _ => String::new(),
+        };
+        let retainage_receivable = balance_if_posted(named("Retainage receivable"));
+        // Credit-normal outstanding: the liability's credit, once something
+        // has posted. Empty until then — a payable of zero is a fake holdback.
+        let retainage_payable = credit_if_posted(named("Retainage payable"));
+
+        let phase_budget: BTreeMap<i64, i64> = {
+            let b = FileBook::open(&path)?;
+            match b.active()? {
+                Some(digest) => match RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))
+                {
+                    Ok(set) => set
+                        .project
+                        .map(|p| {
+                            p.phases
+                                .into_iter()
+                                .filter_map(|ph| ph.budget.map(|n| (ph.account, n)))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    Err(_) => BTreeMap::new(),
+                },
+                None => BTreeMap::new(),
+            }
+        };
+
+        let phases = accounts
+            .iter()
+            .filter(|a| a.r#type == pb::account::Type::Expense as i32)
+            .map(|a| {
+                let dim: i64 = a.dimension.parse().unwrap_or(0);
+                pb::PhaseCost {
+                    account: a.dimension.clone(),
+                    display_name: a.display_name.clone(),
+                    cost: a.balance.clone(),
+                    budget: phase_budget
+                        .get(&dim)
+                        .map(|n| n.to_string())
+                        .unwrap_or_default(),
+                }
+            })
+            .collect();
+
+        Ok(pb::ProjectProgressResponse {
+            name: format!("funds/{fund}/views/{view}"),
+            billed,
+            earned,
+            billed_minus_earned,
+            retainage_receivable,
+            retainage_payable,
+            phases,
+        })
+    }
+
     /// ⭐ A DERIVATION, NOT A SUBTRACTION. `Projection::reconcile` walks the two
     /// bands — bounded by the settlement lag, never the journal — and returns
     /// the LIST of entries one view recognises and the other does not, with the
@@ -3562,6 +3776,82 @@ pub fn position_key(id: &str) -> Result<(i64, String)> {
 /// second one arrives this becomes a field on the book.
 pub use ratio_store::BASE_CURRENCY as FUND_CURRENCY;
 
+/// How `ListAccounts` folds the journal.
+///
+/// `Current` is the maintained projection — inception-to-date, including
+/// undated entries. A period fold re-reads the journal and skips any entry
+/// that names no day, because an undated entry has no period.
+enum AccountFold {
+    Current,
+    AsOf(PeriodWindow),
+    Activity(PeriodWindow),
+}
+
+#[derive(Clone, Debug)]
+struct PeriodWindow {
+    start: String,
+    end: String,
+}
+
+/// AIP-132 List requests carry `filter` (AIP-160), not a custom period field.
+/// `pnl-2026-03` / `sheet-2026` / `capital-2026-03` / `budget-2026-03` —
+/// hyphen because `param_of` does not decode.
+fn list_accounts_window(filter: &str) -> (&str, &str) {
+    if let Some(rest) = filter.strip_prefix("pnl-") {
+        ("pnl", rest)
+    } else if let Some(rest) = filter.strip_prefix("sheet-") {
+        ("sheet", rest)
+    } else if let Some(rest) = filter.strip_prefix("capital-") {
+        ("capital", rest)
+    } else if let Some(rest) = filter.strip_prefix("budget-") {
+        ("budget", rest)
+    } else {
+        (filter, "")
+    }
+}
+
+/// A month (`YYYY-MM`) or a year (`YYYY`) as an inclusive calendar window.
+///
+/// ⛔ THE LAST DAY IS THE CALENDAR'S, NOT DAY 31. `2026-02` ending on the
+/// 31st would either refuse a real February or, worse, carry into March the
+/// way an unvalidated ISO date once did.
+fn parse_period(spec: &str) -> Result<PeriodWindow> {
+    let spec = spec.trim();
+    if spec.len() == 4 && spec.bytes().all(|b| b.is_ascii_digit()) {
+        let y = spec;
+        let start = format!("{y}-01-01");
+        let end = format!("{y}-12-31");
+        ratio_common::days_from_iso_date(&start)
+            .with_context(|| format!("{spec:?} is not a year"))?;
+        ratio_common::days_from_iso_date(&end)?;
+        return Ok(PeriodWindow { start, end });
+    }
+    if spec.len() == 7 && spec.as_bytes().get(4) == Some(&b'-') {
+        let y: i32 = spec[..4]
+            .parse()
+            .with_context(|| format!("{spec:?} is not a month (YYYY-MM)"))?;
+        let m: i32 = spec[5..]
+            .parse()
+            .with_context(|| format!("{spec:?} is not a month (YYYY-MM)"))?;
+        if !(1..=12).contains(&m) {
+            bail!("{spec:?} names month {m}");
+        }
+        if !(0..=9999).contains(&y) {
+            bail!("{spec:?} names year {y}");
+        }
+        let start = format!("{y:04}-{m:02}-01");
+        let (ny, nm) = if m == 12 { (y + 1, 1) } else { (y, m + 1) };
+        let next = format!("{ny:04}-{nm:02}-01");
+        let start_d = ratio_common::days_from_iso_date(&start)?;
+        let next_d = ratio_common::days_from_iso_date(&next)?;
+        let end = ratio_common::iso_date_from_days(next_d - 1);
+        ratio_common::days_from_iso_date(&end)?;
+        let _ = start_d;
+        return Ok(PeriodWindow { start, end });
+    }
+    bail!("{spec:?} is not a month (YYYY-MM) or a year (YYYY)")
+}
+
 
 /// One view's NAV in minor units, and how long the fold that struck it took.
 ///
@@ -3720,6 +4010,75 @@ fn view_pb(fund: &str, set: &ratio_rules::RuleSet, v: &ratio_rules::View) -> pb:
         // it is not an election; the same trap `lot_method_declared` exists for.
         declared: set.views_declared(),
         ..Default::default()
+    }
+}
+
+/// Authorized spend from the configuration in force, plus personal envelopes.
+///
+/// Field 11 is `[personal] budget` or `[project] budget` by kind. Field 12 is
+/// Personal-only. Empty when unset — including every investment book, and a
+/// household or project nobody has given a baseline. `0` is a set baseline of
+/// nothing and is returned as `"0"`. Unset stays unset, not a fake zero.
+fn budget_terms_of(path: &Path, kind: book::BookKind) -> (String, Vec<pb::HouseholdEnvelope>) {
+    match kind {
+        book::BookKind::Personal => household_terms_of(path),
+        book::BookKind::Project => (project_budget_of(path), Vec::new()),
+        _ => (String::new(), Vec::new()),
+    }
+}
+
+/// Authorized household spend from the configuration in force.
+fn household_terms_of(path: &Path) -> (String, Vec<pb::HouseholdEnvelope>) {
+    let Ok(b) = FileBook::open(path) else {
+        return (String::new(), Vec::new());
+    };
+    let Ok(Some(digest)) = b.active() else {
+        return (String::new(), Vec::new());
+    };
+    let Ok(bytes) = b.get(&digest) else {
+        return (String::new(), Vec::new());
+    };
+    match RuleSet::from_toml(&String::from_utf8_lossy(&bytes)) {
+        Ok(set) => {
+            let Some(p) = set.personal else {
+                return (String::new(), Vec::new());
+            };
+            let budget = p.budget.map(|n| n.to_string()).unwrap_or_default();
+            let envelopes = p
+                .envelope
+                .into_iter()
+                .map(|(dimension, n)| pb::HouseholdEnvelope {
+                    dimension,
+                    budget: n.to_string(),
+                })
+                .collect();
+            (budget, envelopes)
+        }
+        Err(_) => (String::new(), Vec::new()),
+    }
+}
+
+/// Authorized project spend from the configuration in force, minor units.
+///
+/// Empty when unset — a project whose configuration omits `[project] budget`,
+/// and a directory we cannot read. `0` is a set baseline of nothing.
+fn project_budget_of(path: &Path) -> String {
+    let Ok(b) = FileBook::open(path) else {
+        return String::new();
+    };
+    let Ok(Some(digest)) = b.active() else {
+        return String::new();
+    };
+    let Ok(bytes) = b.get(&digest) else {
+        return String::new();
+    };
+    match RuleSet::from_toml(&String::from_utf8_lossy(&bytes)) {
+        Ok(set) => set
+            .project
+            .and_then(|p| p.budget)
+            .map(|n| n.to_string())
+            .unwrap_or_default(),
+        Err(_) => String::new(),
     }
 }
 
@@ -4269,6 +4628,443 @@ mod tests {
         );
     }
 
+    fn household_req(id: &str, rule: &str, amount: &str, y: i32, m: i32, d: i32) -> pb::ApplyEventRequest {
+        pb::ApplyEventRequest {
+            parent: "funds/household".into(),
+            rule_id: rule.into(),
+            event_id: id.into(),
+            amount: amount.into(),
+            days: String::new(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: Some(ratio_proto::date_proto::google::r#type::Date {
+                year: y,
+                month: m,
+                day: d,
+            }),
+            validate_only: false,
+        }
+    }
+
+    #[test]
+    fn a_personal_transfer_posts_without_opening_a_lot() {
+        // ⭐ CASH → INVESTMENTS IS A TRANSFER, NOT A SALE. The household
+        // template's transfer rules carry no instrument and no per-instrument
+        // leg, so the walk that opens lots skips them. The entry still
+        // conserves; the trial balance still ties; the lot book stays empty.
+        let root = fresh("personal-xfer");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        c.apply_event(&household_req("xfer-1", "xfer_cash_investments", "250.00", 2026, 3, 15))
+            .unwrap();
+
+        let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let sheet = c.list_accounts(&view, "sheet").unwrap().accounts;
+        assert!(
+            sheet.iter().any(|a| a.display_name == "Cash and bank"),
+            "the sheet names chart_for(Personal), not a fund: {sheet:?}"
+        );
+        assert!(sheet.iter().any(|a| a.display_name == "Investments"));
+        assert!(sheet.iter().any(|a| a.display_name == "Credit cards and loans"));
+        assert_eq!(c.get_fund("funds/household").unwrap().trial_balance_difference, "0");
+
+        let proj = c.projection("household").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a household transfer must not claim lot relief"
+        );
+        assert!(
+            proj.positions(ratio_rules::UNDECLARED_VIEW)
+                .unwrap()
+                .value
+                .held
+                .is_empty(),
+            "a transfer that opened a position invented a fund holding"
+        );
+    }
+
+    #[test]
+    fn a_period_pnl_keeps_one_month_and_drops_an_undated_entry() {
+        // ⛔ CUMULATIVE-ONLY IS THE ABOR-SHAPED VIEW. March's living expenses
+        // are March's; an April spend and an undated spend must not join them.
+        let root = fresh("personal-pnl");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        c.apply_event(&household_req("mar", "spend_cash", "40.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&household_req("apr", "spend_cash", "60.00", 2026, 4, 2))
+            .unwrap();
+        {
+            let mut req = household_req("undated", "spend_cash", "99.00", 2026, 3, 1);
+            req.trade_date = None;
+            c.apply_event(&req).unwrap();
+        }
+
+        let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let march = c.list_accounts(&view, "pnl-2026-03").unwrap().accounts;
+        let living = march
+            .iter()
+            .find(|a| a.display_name == "Living expenses")
+            .expect("pnl names the personal expense account");
+        assert_eq!(living.debit, "4000", "March is 40.00, not 40+60+99: {living:?}");
+        assert_eq!(living.posting_count, "1");
+        assert!(
+            march.iter().any(|a| a.display_name == "Income"),
+            "the chart is the source of the rows even when income did not move"
+        );
+        assert!(
+            march.iter().all(|a| a.display_name != "Cash and bank"),
+            "a P&L that lists cash is a balance sheet wearing the wrong label"
+        );
+
+        let year = c.list_accounts(&view, "pnl-2026").unwrap().accounts;
+        let living_y = year.iter().find(|a| a.display_name == "Living expenses").unwrap();
+        assert_eq!(living_y.debit, "10000", "the year is March+April, still not the undated 99");
+
+        let refused = c.list_accounts(&view, "pnl");
+        assert!(refused.is_err(), "a P&L without a period is the cumulative default this refuses");
+    }
+
+    #[test]
+    fn a_household_budget_is_the_configuration_total_not_a_second_ledger() {
+        let root = fresh("household-budget");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        let created = c.get_book("books/household").unwrap();
+        assert!(
+            created.budget.is_empty(),
+            "CreateBook must not invent a baseline: {:?}",
+            created.budget
+        );
+        assert!(
+            created.envelopes.is_empty(),
+            "CreateBook must not invent envelopes: {:?}",
+            created.envelopes
+        );
+
+        let path = root.join("household");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str("\n[personal]\nbudget = 500000\n[personal.envelope]\n10 = 400000\n11 = 100000\n");
+        let next = b.put(text.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+
+        let set = c.get_book("books/household").unwrap();
+        assert_eq!(set.budget, "500000");
+        assert_eq!(set.envelopes.len(), 2);
+        let living = set.envelopes.iter().find(|e| e.dimension == "10").unwrap();
+        assert_eq!(living.budget, "400000");
+        assert!(
+            set.envelopes.iter().all(|e| e.dimension != "2"),
+            "an envelope nobody set is omitted, not a fake zero: {:?}",
+            set.envelopes
+        );
+
+        c.apply_event(&household_req("mar", "spend_cash", "40.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&household_req("apr", "spend_cash", "60.00", 2026, 4, 2))
+            .unwrap();
+        let mut undated = household_req("undated", "spend_cash", "99.00", 2026, 3, 1);
+        undated.trade_date = None;
+        c.apply_event(&undated).unwrap();
+
+        let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let march = c.list_accounts(&view, "budget-2026-03").unwrap().accounts;
+        assert!(
+            march.iter().all(|a| a.r#type == pb::account::Type::Expense as i32),
+            "budget actuals are expenses, not a balance sheet: {march:?}"
+        );
+        let living = march
+            .iter()
+            .find(|a| a.display_name == "Living expenses")
+            .expect("budget names the personal expense account");
+        assert_eq!(living.balance, "4000", "March only, not April and not the undated spend");
+        let taxes = march
+            .iter()
+            .find(|a| a.display_name == "Taxes")
+            .expect("the chart's other expense is present even at zero this month");
+        assert_eq!(taxes.balance, "0");
+
+        let year = c.list_accounts(&view, "budget-2026").unwrap().accounts;
+        let living_y = year.iter().find(|a| a.display_name == "Living expenses").unwrap();
+        assert_eq!(living_y.balance, "10000", "year keeps March and April, drops undated");
+
+        let refused = c.list_accounts(&view, "budget");
+        assert!(
+            refused.is_err(),
+            "a budget without a period is the cumulative default this refuses"
+        );
+
+        // The baseline is still the configuration total; actuals are the journal.
+        assert_eq!(c.get_book("books/household").unwrap().budget, "500000");
+        assert_eq!(c.get_fund("funds/household").unwrap().trial_balance_difference, "0");
+    }
+
+    #[test]
+    fn a_project_or_investment_book_is_not_offered_a_household_budget_filter() {
+        let root = fresh("not-household-budget");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let err = c
+            .list_accounts(&view, "budget-2026-03")
+            .expect_err("project books must not wear a household budget filter")
+            .to_string();
+        assert!(err.contains("household"), "{err}");
+        assert!(c.get_book("books/bridge").unwrap().budget.is_empty());
+        assert!(c.get_book("books/bridge").unwrap().envelopes.is_empty());
+    }
+
+    fn capital_req(
+        book: &str,
+        id: &str,
+        rule: &str,
+        amount: &str,
+        year: i32,
+        month: i32,
+        day: i32,
+    ) -> pb::ApplyEventRequest {
+        pb::ApplyEventRequest {
+            parent: format!("funds/{book}"),
+            rule_id: rule.into(),
+            event_id: id.into(),
+            amount: amount.into(),
+            days: String::new(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: Some(ratio_proto::date_proto::google::r#type::Date {
+                year,
+                month,
+                day,
+            }),
+            validate_only: false,
+        }
+    }
+
+    fn capital_view(book: &str) -> String {
+        format!("funds/{book}/views/{}", ratio_rules::UNDECLARED_VIEW)
+    }
+
+    #[test]
+    fn contributing_and_distributing_conserves_and_opens_no_lot() {
+        // ⭐ CAPITAL IS EQUITY, NOT A SALE. contribute_lp / distribute_lp carry
+        // no instrument and no per-instrument leg, so the walk that opens lots
+        // skips them. The entry still conserves; the trial balance still ties.
+        let root = fresh("capital-contrib-dist");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "100.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "d-lp", "distribute_lp", "25.00", 2026, 3, 15))
+            .unwrap();
+
+        let view = capital_view("partners");
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        assert!(
+            capital.iter().any(|a| a.display_name == "Partner capital — LP"),
+            "capital names chart_for(Investment) partners, not a blotter: {capital:?}"
+        );
+        assert!(capital.iter().any(|a| a.display_name == "Distributions"));
+        assert!(
+            capital.iter().all(|a| a.display_name != "Unrealized gain"),
+            "a mark must not look like a contribution: {capital:?}"
+        );
+        let lp = capital
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(lp.credit, "10000", "100.00 contributed: {lp:?}");
+        assert_eq!(lp.debit, "2500", "25.00 distributed: {lp:?}");
+        assert_eq!(lp.balance, "-7500", "ending capital is credit-normal: {lp:?}");
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
+
+        let proj = c.projection("partners").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a contribution must not claim lot relief"
+        );
+        assert!(
+            proj.positions(ratio_rules::UNDECLARED_VIEW)
+                .unwrap()
+                .value
+                .held
+                .is_empty(),
+            "capital that opened a position invented a holding"
+        );
+    }
+
+    #[test]
+    fn transferring_lp_to_gp_conserves_and_leaves_book_capital_unchanged() {
+        let root = fresh("capital-xfer");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "100.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "x-1", "transfer_lp_gp", "40.00", 2026, 3, 2))
+            .unwrap();
+
+        let view = capital_view("partners");
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        let gp = capital.iter().find(|a| a.display_name == "Partner capital — GP").unwrap();
+        assert_eq!(lp.balance, "-6000", "LP kept 60.00: {lp:?}");
+        assert_eq!(gp.balance, "-4000", "GP received 40.00: {gp:?}");
+        let ending: i64 = capital.iter().map(|a| a.balance.parse::<i64>().unwrap()).sum();
+        assert_eq!(ending, -10000, "book capital is unchanged by a transfer: {capital:?}");
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
+    }
+
+    #[test]
+    fn allocating_a_fee_across_partners_keeps_the_trial_balance_tied() {
+        // Accrue the fee at book level, then close it into LP and GP capital
+        // with exact integer shares — 60.00 and 40.00 of 100.00, not 60%.
+        let root = fresh("capital-alloc");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "600.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "c-gp", "contribute_gp", "400.00", 2026, 3, 1))
+            .unwrap();
+        // Exact integer shares, not a percentage: 60.00 and 40.00 of the fee.
+        c.apply_event(&capital_req("partners", "f-lp", "allocate_fee_lp", "60.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "f-gp", "allocate_fee_gp", "40.00", 2026, 3, 10))
+            .unwrap();
+
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
+        let view = capital_view("partners");
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        let gp = capital.iter().find(|a| a.display_name == "Partner capital — GP").unwrap();
+        assert_eq!(lp.balance, "-54000", "LP 600.00 − 60.00: {lp:?}");
+        assert_eq!(gp.balance, "-36000", "GP 400.00 − 40.00: {gp:?}");
+        let all = c.list_accounts(&view, "").unwrap().accounts;
+        let expense = all.iter().find(|a| a.display_name == "Management fee expense").unwrap();
+        assert_eq!(expense.credit, "10000", "fee closed into capital, not rounded: {expense:?}");
+        assert!(
+            all.iter().any(|a| a.display_name == "Unrealized gain"),
+            "the whole chart still has valuation equity"
+        );
+        assert!(c.list_accounts(&view, "capital").unwrap().accounts.iter().all(|a| {
+            a.display_name != "Unrealized gain"
+        }));
+    }
+
+    #[test]
+    fn a_period_capital_keeps_one_month_and_drops_an_undated_entry() {
+        let root = fresh("capital-period");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "mar", "contribute_lp", "40.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "apr", "contribute_lp", "60.00", 2026, 4, 2))
+            .unwrap();
+        {
+            let mut req = capital_req("partners", "undated", "contribute_lp", "99.00", 2026, 3, 1);
+            req.trade_date = None;
+            c.apply_event(&req).unwrap();
+        }
+
+        let view = capital_view("partners");
+        let march = c.list_accounts(&view, "capital-2026-03").unwrap().accounts;
+        let lp = march
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .expect("capital names the LP account");
+        assert_eq!(lp.credit, "4000", "March is 40.00, not 40+60+99: {lp:?}");
+        assert_eq!(lp.posting_count, "1");
+        let year = c.list_accounts(&view, "capital-2026").unwrap().accounts;
+        let lp_y = year.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        assert_eq!(lp_y.credit, "10000", "the year is March+April, not the undated: {lp_y:?}");
+        let all = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp_all = all.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        assert_eq!(
+            lp_all.credit, "19900",
+            "inception includes the undated entry the period fold refused: {lp_all:?}"
+        );
+    }
+
+    #[test]
+    fn parse_period_ends_february_on_the_calendar() {
+        let w = parse_period("2026-02").unwrap();
+        assert_eq!(w.start, "2026-02-01");
+        assert_eq!(w.end, "2026-02-28");
+        let leap = parse_period("2024-02").unwrap();
+        assert_eq!(leap.end, "2024-02-29");
+        let y = parse_period("2026").unwrap();
+        assert_eq!(y.start, "2026-01-01");
+        assert_eq!(y.end, "2026-12-31");
+        assert!(parse_period("2026-13").is_err());
+        assert!(parse_period("soon").is_err());
+    }
+
     #[test]
     fn create_book_grants_the_creator_and_not_their_org() {
         let root = fresh("create-grants-sub");
@@ -4302,6 +5098,187 @@ mod tests {
             !membership.contains("org:org_01a\tmine"),
             "a personal create must not grant the org: {membership}"
         );
+    }
+
+    fn project_event(id: &str, rule: &str, amount: &str) -> pb::ApplyEventRequest {
+        pb::ApplyEventRequest {
+            parent: "funds/bridge".into(),
+            rule_id: rule.into(),
+            event_id: id.into(),
+            amount: amount.into(),
+            days: String::new(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: None,
+            validate_only: false,
+        }
+    }
+
+    #[test]
+    fn progress_billing_and_retainage_conserve_and_open_no_lot() {
+        // ⭐ BILL / HOLD / EARN / COLLECT ARE CONSERVED TRANSFERS, NOT SALES.
+        // The project template's rules carry no instrument, so the walk that
+        // opens lots skips them. The trial balance still ties. Billed is the
+        // progress-billings credit; earned is the revenue credit; they diverge
+        // until both have posted.
+        let root = fresh("project-billing");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let unset = c.project_progress(&view).unwrap();
+        assert!(
+            unset.billed.is_empty() && unset.earned.is_empty(),
+            "a new project has not billed or earned: billed={:?} earned={:?}",
+            unset.billed,
+            unset.earned
+        );
+        assert!(
+            unset.retainage_receivable.is_empty() && unset.retainage_payable.is_empty(),
+            "retainage must stay unset until a hold posts: recv={:?} pay={:?}",
+            unset.retainage_receivable,
+            unset.retainage_payable
+        );
+        assert!(
+            unset.billed_minus_earned.is_empty(),
+            "comparing two unsets must not invent a caught-up zero: {:?}",
+            unset.billed_minus_earned
+        );
+        assert!(
+            unset.phases.iter().all(|p| p.budget.is_empty()),
+            "CreateBook must not invent a phase baseline: {:?}",
+            unset.phases
+        );
+
+        c.apply_event(&project_event("bill-1", "progress_bill", "1000.00"))
+            .unwrap();
+        let billed_only = c.project_progress(&view).unwrap();
+        assert_eq!(billed_only.billed, "100000");
+        assert!(billed_only.earned.is_empty());
+        assert!(
+            billed_only.billed_minus_earned.is_empty(),
+            "one side posted must not invent a caught-up zero: {:?}",
+            billed_only.billed_minus_earned
+        );
+
+        c.apply_event(&project_event("hold-1", "hold_retainage", "100.00"))
+            .unwrap();
+        c.apply_event(&project_event("earn-1", "earn_progress", "800.00"))
+            .unwrap();
+        c.apply_event(&project_event("cost-site", "project_cost_site", "250.00"))
+            .unwrap();
+
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        let proj = c.projection("bridge").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a progress bill must not claim lot relief"
+        );
+
+        let fig = c.project_progress(&view).unwrap();
+        assert_eq!(fig.billed, "100000");
+        assert_eq!(fig.earned, "80000");
+        assert_eq!(fig.billed_minus_earned, "20000");
+        assert_eq!(fig.retainage_receivable, "10000");
+        assert!(fig.retainage_payable.is_empty(), "{:?}", fig.retainage_payable);
+
+        let site = fig
+            .phases
+            .iter()
+            .find(|p| p.display_name == "Site and mobilization")
+            .expect("site phase");
+        assert_eq!(site.cost, "25000");
+        assert!(site.budget.is_empty(), "unset budget is empty, not zero: {:?}", site.budget);
+        let structure = fig
+            .phases
+            .iter()
+            .find(|p| p.display_name == "Structure")
+            .expect("structure phase");
+        assert_eq!(structure.cost, "0");
+        assert!(structure.budget.is_empty());
+
+        c.apply_event(&project_event("vhold-1", "hold_vendor_retainage", "50.00"))
+            .unwrap();
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        let after_vendor = c.project_progress(&view).unwrap();
+        assert_eq!(after_vendor.retainage_payable, "5000");
+        assert_eq!(after_vendor.retainage_receivable, "10000");
+    }
+
+    #[test]
+    fn a_phase_budget_is_the_configuration_total_not_a_second_ledger() {
+        let root = fresh("project-phase-budget");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+
+        let path = root.join("bridge");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str("\n[[project.phase]]\naccount = 11\nbudget = 400000\n");
+        let next = b.put(text.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let fig = c.project_progress(&view).unwrap();
+        let site = fig
+            .phases
+            .iter()
+            .find(|p| p.account == "11")
+            .expect("site");
+        assert_eq!(site.budget, "400000");
+        assert_eq!(site.cost, "0");
+        let unpartitioned = fig
+            .phases
+            .iter()
+            .find(|p| p.account == "10")
+            .expect("unpartitioned");
+        assert!(
+            unpartitioned.budget.is_empty(),
+            "an omitted phase budget is unset, not zero: {:?}",
+            unpartitioned.budget
+        );
+    }
+
+    #[test]
+    fn project_progress_refuses_a_personal_book() {
+        let root = fresh("project-progress-kind");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        let err = c
+            .project_progress(&format!(
+                "funds/household/views/{}",
+                ratio_rules::UNDECLARED_VIEW
+            ))
+            .expect_err("personal books have no progress billing")
+            .to_string();
+        assert!(err.contains("not a project"), "{err}");
+        assert!(!err.contains("0"), "a refusal must not look like a zero figure: {err}");
     }
 
     #[test]
@@ -4527,6 +5504,94 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         let err = console.get_book("books/theirs").unwrap_err().to_string();
         assert!(err.contains("no fund"), "{err}");
         assert!(console.get_book("books/ours").is_ok());
+    }
+
+    #[test]
+    fn capitalizing_wip_conserves_and_opens_no_lot() {
+        // ⭐ COST → WIP → RECOGNIZED IS A CONSERVED TRANSFER, NOT A SALE.
+        // The project template's rules carry no instrument and no
+        // per_instrument leg, so the walk that opens lots skips them. The
+        // trial balance still ties. Incurred cost is costs.balance + WIP.balance
+        // — recognizing WIP moves it back to expense and must not double-count.
+        let root = fresh("project-wip");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+
+        c.apply_event(&project_event("fund-1", "receive_funding", "200.00")).unwrap();
+        c.apply_event(&project_event("cost-1", "project_cost", "100.00")).unwrap();
+        c.apply_event(&project_event("cap-1", "capitalize_wip", "60.00")).unwrap();
+        c.apply_event(&project_event("rec-1", "recognize_wip", "20.00")).unwrap();
+
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        let proj = c.projection("bridge").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a WIP transfer must not claim lot relief"
+        );
+
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let rows = c.list_accounts(&view, "").unwrap().accounts;
+        let named = |n: &str| {
+            rows.iter()
+                .find(|a| a.display_name == n)
+                .unwrap_or_else(|| panic!("missing {n} in {rows:?}"))
+        };
+        // 100.00 in, 60.00 capitalized, 20.00 recognized back: net expense 60.00
+        assert_eq!(named("Project costs").balance, "6000");
+        // 60.00 in, 20.00 out: 40.00 still capitalized
+        assert_eq!(named("Work in progress").balance, "4000");
+        assert_eq!(named("Work in progress").credit, "2000");
+        // Incurred = still-in-expense + still-in-WIP = original 100.00
+        let incurred: i64 = named("Project costs").balance.parse().unwrap();
+        let wip: i64 = named("Work in progress").balance.parse().unwrap();
+        assert_eq!(incurred + wip, 10_000);
+
+        let created = c.get_book("books/bridge").unwrap();
+        assert_eq!(created.kind, book::BookKind::Project.proto());
+        assert!(
+            created.budget.is_empty(),
+            "CreateBook must not invent a baseline: {:?}",
+            created.budget
+        );
+    }
+
+    #[test]
+    fn a_project_budget_is_the_configuration_total_not_a_second_ledger() {
+        let root = fresh("project-budget");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+        assert!(c.get_book("books/bridge").unwrap().budget.is_empty());
+
+        let path = root.join("bridge");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str("\n[project]\nbudget = 1000000\n");
+        let next = b.put(text.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+
+        assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
+        c.apply_event(&project_event("cost-1", "project_cost", "250.00")).unwrap();
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        // The baseline is still the configuration total; actuals are the journal.
+        assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
     }
 
     #[test]

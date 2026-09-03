@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import fundsFixture from "../../fixtures/funds.json";
 import viewsFixture from "../../fixtures/views.json";
-import { SCREENS, screenHref } from "@/lib/screens";
+import { PERSONAL_SCREENS, screensFor, screenHref } from "@/lib/screens";
 import type { Fund, View } from "@/wire/types";
 import { CommandHint } from "./CommandHint";
 import { FundActions } from "./FundActions";
@@ -19,12 +19,15 @@ import { Palette } from "./Palette";
 // `/Mac|iPod|iPhone|iPad/.test(navigator.platform)`. jsdom reports "", so `$mod`
 // would be Control and every ⌘K below would fire nothing while the suite stayed
 // green. `vi.hoisted` runs above the import of `kbar` itself.
-const { push } = vi.hoisted(() => {
+const { push, segments } = vi.hoisted(() => {
   Object.defineProperty(window.navigator, "platform", {
     value: "MacIntel",
     configurable: true,
   });
-  return { push: vi.fn() };
+  return {
+    push: vi.fn(),
+    segments: { current: ["views", "abor", "breaks"] as string[] },
+  };
 });
 
 vi.mock("next/navigation", () => ({
@@ -34,7 +37,7 @@ vi.mock("next/navigation", () => ({
   // three, not four. The collection layout sits one level up and sees the book
   // id first; `FundActions` and `ViewSwitch` see this. A mock of the wrong
   // depth would let every action here build the wrong URL and stay green.
-  useSelectedLayoutSegments: () => ["views", "abor", "breaks"],
+  useSelectedLayoutSegments: () => segments.current,
 }));
 
 // ⛔ THE FENCE, AS A SPY. Nothing in the palette imports the wire client today,
@@ -82,6 +85,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   push.mockClear();
+  segments.current = ["views", "abor", "breaks"];
   for (const w of Object.values(writes)) w.mockClear();
 });
 
@@ -92,7 +96,7 @@ function renderConsole() {
       <header>
         <CommandHint />
       </header>
-      <FundActions fund={FUND} views={views} defaultView={VIEW} />
+      <FundActions fund={FUND} views={views} defaultView={VIEW} kind="INVESTMENT" />
     </Palette>,
   );
 }
@@ -195,6 +199,7 @@ describe("the command palette", () => {
   // `scoped` is for, because getting it wrong is a URL that lies about which
   // book produced the figures on it.
   const EXPECTED_SCREENS: ReadonlyArray<readonly [string, string]> = [
+    ["Capital activity", `/books/${FUND}/views/${VIEW}/capital`],
     ["Exceptions", `/books/${FUND}/views/${VIEW}/breaks`],
     ["Trial balance", `/books/${FUND}/views/${VIEW}/accounts`],
     ["Positions", `/books/${FUND}/views/${VIEW}/positions`],
@@ -205,7 +210,7 @@ describe("the command palette", () => {
     ["Change log", `/books/${FUND}/changes`],
   ];
 
-  it("offers all eight screens, each going where its tab goes", async () => {
+  it("offers the investment screens, each going where its tab goes", async () => {
     for (const [label, href] of EXPECTED_SCREENS) {
       const { unmount } = renderConsole();
       await type(label);
@@ -216,15 +221,85 @@ describe("the command palette", () => {
     }
   });
 
+  it("a personal book is offered Budget vs actual and not Exceptions", async () => {
+    // ⭐ THE OPEN VIEW, NOT THE FUND FIXTURE'S ABOR. FundActions reads the
+    // segments so switching books of record stays on the same screen.
+    // A household's undeclared view is `book`; leaving the mock on `abor`
+    // would send a personal palette to a fund book of record.
+    segments.current = ["views", "book", "budget"];
+    const { unmount } = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("Budget vs actual");
+    fireEvent.click(await row("Budget vs actual"));
+    expect(push).toHaveBeenCalledWith("/books/household/views/book/budget");
+    push.mockClear();
+    unmount();
+
+    const again = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("Exceptions");
+    expect(screen.queryByText("Exceptions")).toBeNull();
+    again.unmount();
+  });
+
   it("offers the header's screens and no others", async () => {
     // ⭐ THE PALETTE AND THE HEADER ARE ONE LIST, said where it can be checked.
     // `ScreenTabs` and `FundActions` both read `@/lib/screens`, so this is what
     // notices a ninth tab arriving — or an eighth leaving — without the palette.
-    expect(SCREENS.map((s) => s.label)).toEqual(EXPECTED_SCREENS.map(([l]) => l));
-    for (const s of SCREENS) {
+    expect(screensFor("INVESTMENT").map((s) => s.label)).toEqual(EXPECTED_SCREENS.map(([l]) => l));
+    for (const s of screensFor("INVESTMENT")) {
       const expected = EXPECTED_SCREENS.find(([l]) => l === s.label)![1];
       expect(screenHref(FUND, VIEW, s)).toBe(expected);
     }
+  });
+
+  it("a project book is offered budget, WIP, and billing, not a trade ticket", async () => {
+    const renderProject = () =>
+      render(
+        <Palette funds={funds}>
+          <header>
+            <CommandHint />
+          </header>
+          <FundActions
+            fund="bridge"
+            views={views}
+            defaultView="book"
+            kind="PROJECT"
+          />
+        </Palette>,
+      );
+    for (const [label, href] of [
+      ["Budget vs actual", `/books/bridge/views/${VIEW}/budget`],
+      ["WIP", `/books/bridge/views/${VIEW}/wip`],
+      ["Billing", `/books/bridge/views/${VIEW}/billing`],
+    ] as const) {
+      const { unmount } = renderProject();
+      await type(label);
+      fireEvent.click(await row(label));
+      expect(push).toHaveBeenCalledWith(href);
+      push.mockClear();
+      unmount();
+    }
+    const { unmount } = renderProject();
+    await type("Trade ticket");
+    expect(screen.queryByText("Trade ticket")).toBeNull();
+    unmount();
   });
 
   it("keeps the screen when it switches the book of record", async () => {
@@ -361,5 +436,88 @@ describe("the command palette", () => {
     const tab = fireEvent.keyDown(dialog, { key: "Tab" });
     // `fireEvent` returns false when a handler called preventDefault.
     expect(tab).toBe(false);
+  });
+
+  it("offers a personal book's household places and a transfer, not NAV", async () => {
+    // ⛔ WRITTEN OUT, for the same reason the fund table is. Deriving this
+    // from PERSONAL_SCREENS would stay green after deleting a place.
+    // ⚠ THE OPEN VIEW IS THE MOCKED SEGMENTS', NOT defaultView. FundActions
+    // reads ["views","abor","breaks"] from the same layout mock the fund
+    // cases use, so a personal screen stays on abor the way a fund one
+    // does — switching the kind must not invent a second view id.
+    const expected: ReadonlyArray<readonly [string, string]> = [
+      ["Balance sheet", "/books/household/views/abor/sheet"],
+      ["Period P&L", "/books/household/views/abor/pnl"],
+      ["Budget vs actual", "/books/household/views/abor/budget"],
+      ["Trial balance", "/books/household/views/abor/accounts"],
+      ["Data", "/books/household/data"],
+      ["Configuration", "/books/household/config"],
+      ["Rules", "/books/household/rules"],
+      ["Change log", "/books/household/changes"],
+    ];
+    expect(PERSONAL_SCREENS.map((s) => s.label)).toEqual(expected.map(([l]) => l));
+
+    for (const [label, href] of expected) {
+      const { unmount } = render(
+        <Palette funds={funds}>
+          <FundActions
+            fund="household"
+            views={views}
+            defaultView="book"
+            kind="PERSONAL"
+          />
+        </Palette>,
+      );
+      await type(label);
+      fireEvent.click(await row(label));
+      expect(push).toHaveBeenCalledWith(href);
+      push.mockClear();
+      unmount();
+    }
+
+    const { unmount } = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("Transfer");
+    fireEvent.click(await row("Transfer"));
+    expect(push).toHaveBeenCalledWith("/books/household/transfer");
+    expect(document.querySelector("form")).toBeNull();
+    unmount();
+
+    for (const absent of ["Trade ticket", "Mark positions", "Exceptions"] as const) {
+      const { unmount } = render(
+        <Palette funds={funds}>
+          <FundActions
+            fund="household"
+            views={views}
+            defaultView="book"
+            kind="PERSONAL"
+          />
+        </Palette>,
+      );
+      await type(absent);
+      expect(screen.queryByText(absent)).toBeNull();
+      unmount();
+    }
+    const nav = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("NAV");
+    expect(screen.queryByText(/^NAV$/)).toBeNull();
+    nav.unmount();
   });
 });

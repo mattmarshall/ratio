@@ -48,6 +48,7 @@ const ROUTES = [
   [/^\/v1\/funds\/[^/]+\/views$/, "views"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/:]+$/, "view"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+:reconcile$/, "reconcile"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+:projectProgress$/, "projectProgress"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/breaks$/, "breaks"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/breaks\/[^/:]+$/, "break"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/accounts$/, "accounts"],
@@ -116,6 +117,15 @@ function body(name, path) {
   if (name === "templates:first") {
     return JSON.stringify(templatesDoc(path).templates[0]);
   }
+  // ⭐ KIND SELECTS CHROME. GetBook used to serve `book.json` (a personal
+  // household) for every id. Look the id up in the captured list.
+  if (name === "book") {
+    const id = path.split("/").pop();
+    const books = JSON.parse(fixture("books")).books;
+    const found = books.find((b) => b.name === `books/${id}`);
+    if (found) return JSON.stringify(found);
+    return fixture("book");
+  }
   if (!name.endsWith(":first")) return fixture(name);
   const doc = JSON.parse(fixture(name.slice(0, -":first".length)));
   const key = Object.keys(doc).find((k) => Array.isArray(doc[k]));
@@ -132,6 +142,17 @@ export function serve(port = 4373) {
           issuer: "", clientId: "", domain: "", scopes: [],
           redirectPath: "", consoleOrigin: "",
         }));
+        return;
+      }
+      // ⭐ KIND IS PER BOOK. A singleton `book.json` is Household (Personal);
+      // serving it for every id made a Project URL wear fund-ops chrome in
+      // the phone pass. Look the id up in the list the hub already uses.
+      if (/^\/v1\/books\/[^/:]+$/.test(path)) {
+        const id = path.slice("/v1/books/".length);
+        const list = JSON.parse(fixture("books"));
+        const found = list.books.find((b) => b.name === `books/${id}`);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(found ?? JSON.parse(fixture("book"))));
         return;
       }
       const hit = ROUTES.find(([re]) => re.test(path));

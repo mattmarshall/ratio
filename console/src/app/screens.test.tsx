@@ -2,6 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import accountsFixture from "../../fixtures/accounts.json";
+import householdAccountsFixture from "../../fixtures/householdAccounts.json";
+import capitalAccountsFixture from "../../fixtures/capitalAccounts.json";
 import breakFixture from "../../fixtures/break.json";
 import breaksFixture from "../../fixtures/breaks.json";
 import changeLogFixture from "../../fixtures/changeLogEntries.json";
@@ -23,6 +25,7 @@ import rulesFixture from "../../fixtures/rules.json";
 import templatesFixture from "../../fixtures/templates.json";
 import viewFixture from "../../fixtures/view.json";
 import viewsFixture from "../../fixtures/views.json";
+import projectProgressFixture from "../../fixtures/projectProgress.json";
 // ⚠ The fixtures are captured JSON, so TypeScript widens their enums to
 // `string`. `//console:fixtures_test` checks their SHAPE against console.proto
 // on every build, which is the check a cast here would otherwise be pretending
@@ -86,7 +89,11 @@ vi.mock("next/navigation", async () => {
 const wire = {
   listBooks: async () => booksFixture,
   listFunds: async () => fundsFixture,
-  getBook: async (_c: unknown, id?: string) => {
+  // ⭐ KIND IS A PROPERTY OF THE BOOK, NOT OF THE SUITE. A mock that always
+  // returned the household fixture made every fund view wear personal chrome
+  // the moment GetBook started being read beside GetView.
+  getBook: async (_c: unknown, book?: string) => {
+    const id = String(book ?? "").replace(/^books\//, "");
     const found = booksFixture.books.find(
       (b) => b.name === `books/${id}` || b.name.split("/").pop() === id,
     );
@@ -97,6 +104,7 @@ const wire = {
   getView: async () => viewFixture,
   listViews: async () => viewsFixture,
   reconcileViews: async () => reconcileFixture,
+  projectProgress: async () => projectProgressFixture,
   getBreak: async () => breakFixture,
   listBreaks: async () => breaksFixture,
   listAccounts: async () => accountsFixture,
@@ -245,21 +253,477 @@ describe("a first-class book", () => {
     expect(screen.getByRole("heading", { name: "Household" })).toBeDefined();
     expect(screen.getByText("Personal")).toBeDefined();
     expect(screen.getByText("independent")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Balance sheet" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Period P&L" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Budget vs actual" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Configuration" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Transfer between accounts" })).toBeDefined();
+    expect(screen.getByText(/Net worth/)).toBeDefined();
+    expect(screen.getByText("unset — [personal] budget on the configuration")).toBeDefined();
+    // ⛔ THE LABEL IS NOT THE PRODUCT. A personal hub that still offered
+    // Exceptions / Positions / NAV would be fund-ops screens with a household
+    // name on them — issue #65.
+    expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Capital activity" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "WIP" })).toBeNull();
+  });
+
+  it("a project book opens budget vs actual and WIP, not Exceptions or NAV", async () => {
+    const real = wire.getBook;
+    const bridge = booksFixture.books.find((b) => b.kind === "PROJECT")!;
+    wire.getBook = (async () => ({ ...bridge, defaultView: "book" })) as typeof wire.getBook;
+    try {
+      const Book = (await import("./books/[book]/page")).default;
+      await renderAsync(Book({ params: params({ book: "bridge" }) }));
+      expect(screen.getByRole("heading", { name: "Bridge" })).toBeDefined();
+      expect(screen.getByText("Project")).toBeDefined();
+      const budget = screen.getByRole("link", { name: "Budget vs actual" });
+      expect(budget.getAttribute("href")).toBe(
+        "/books/bridge/views/book/budget",
+      );
+      expect(
+        screen.getByRole("link", { name: "WIP" }).getAttribute("href"),
+      ).toBe("/books/bridge/views/book/wip");
+      expect(
+        screen.getByRole("link", { name: "Billing" }).getAttribute("href"),
+      ).toBe("/books/bridge/views/book/billing");
+      expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
+      expect(screen.getByText(/unset/)).toBeDefined();
+    } finally {
+      wire.getBook = real;
+    }
+  });
+
+  it("an investment book hub leads with capital activity and still offers NAV", async () => {
+    const harbour = booksFixture.books.find((b) => b.kind === "INVESTMENT")!;
+    const realBook = wire.getBook;
+    const realView = wire.getView;
+    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    try {
+      const Book = (await import("./books/[book]/page")).default;
+      await renderAsync(
+        Book({ params: params({ book: "harbourline-global-value" }) }),
+      );
+      const capital = screen.getByRole("link", { name: "Capital activity" });
+      expect(capital.getAttribute("href")).toBe(
+        "/books/harbourline-global-value/views/abor/capital",
+      );
+      expect(screen.getByRole("link", { name: "NAV" })).toBeDefined();
+      expect(screen.getByRole("link", { name: "Exceptions" })).toBeDefined();
+      expect(screen.getByRole("link", { name: "Positions" })).toBeDefined();
+    } finally {
+      wire.getBook = realBook;
+      wire.getView = realView;
+    }
+  });
+
+  it("cites partner capital in and out and ending, and says it is not a return", async () => {
+    const harbour = booksFixture.books.find((b) => b.kind === "INVESTMENT")!;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    wire.listAccounts = (async () => capitalAccountsFixture) as typeof wire.listAccounts;
+    try {
+      const Capital = (await import("./books/[book]/views/[view]/capital/page"))
+        .default;
+      await renderAsync(
+        Capital({
+          params: params({ book: "harbourline-global-value", view: "abor" }),
+          searchParams: params({}),
+        }),
+      );
+      expect(screen.getByLabelText("Capital activity")).toBeDefined();
+      expect(screen.getByText("Partner capital — LP")).toBeDefined();
+      expect(screen.getByText("Partner capital — GP")).toBeDefined();
+      expect(screen.getByText("Distributions")).toBeDefined();
+      expect(screen.getByText("75.00")).toBeDefined();
+      expect(screen.getByText("115.00")).toBeDefined();
+      expect(screen.getByText(/not a return, not attribution/)).toBeDefined();
+      expect(screen.getByText(/not IRR/)).toBeDefined();
+      expect(screen.queryByText("Unrealized gain")).toBeNull();
+      expect(
+        screen.getByRole("link", { name: "Record an event" }).getAttribute("href"),
+      ).toBe("/books/harbourline-global-value/record");
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("refuses capital activity on a personal book", async () => {
+    const Capital = (await import("./books/[book]/views/[view]/capital/page"))
+      .default;
+    await renderAsync(
+      Capital({
+        params: params({ book: "household", view: "book" }),
+        searchParams: params({}),
+      }),
+    );
+    expect(screen.getByText(/Capital activity is an Investment figure/)).toBeDefined();
+    expect(screen.getByText(/Personal/)).toBeDefined();
+    expect(screen.queryByLabelText("Capital activity")).toBeNull();
+  });
+
+  it("a personal book is not sent to project WIP or fund Exceptions", async () => {
+    const Book = (await import("./books/[book]/page")).default;
+    await renderAsync(Book({ params: params({ book: "household" }) }));
+    expect(screen.getByRole("link", { name: "Budget vs actual" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "WIP" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+  });
+
+  it("renders budget vs actual from the journal against a configuration total", async () => {
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    const bridge = booksFixture.books.find((b) => b.kind === "PROJECT")!;
+    wire.getBook = (async () => ({
+      ...bridge,
+      budget: "10000000",
+    })) as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/bridge/views/book/accounts/1",
+          displayName: "Cash",
+          dimension: "1",
+          type: "ASSET",
+          debit: "500000",
+          credit: "200000",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/2",
+          displayName: "Work in progress",
+          dimension: "2",
+          type: "ASSET",
+          debit: "400000",
+          credit: "100000",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/10",
+          displayName: "Project costs",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "700000",
+          credit: "400000",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "3",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/20",
+          displayName: "Funding",
+          dimension: "20",
+          type: "EQUITY",
+          debit: "0",
+          credit: "900000",
+          balance: "-900000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/30",
+          displayName: "Project revenue",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "150000",
+          balance: "-150000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/40",
+          displayName: "Payables",
+          dimension: "40",
+          type: "LIABILITY",
+          debit: "0",
+          credit: "200000",
+          balance: "-200000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as typeof wire.listAccounts;
+    try {
+      const Budget = (await import("./books/[book]/views/[view]/budget/page")).default;
+      await renderAsync(
+        Budget({
+          params: params({ book: "bridge", view: "book" }),
+          searchParams: params({}),
+        }),
+      );
+      expect(screen.getByText("100,000.00")).toBeDefined();
+      expect(screen.getByText("Project costs")).toBeDefined();
+      expect(screen.getByText("Work in progress")).toBeDefined();
+      // incurred 6,000.00; committed 8,000.00; variance 92,000.00
+      expect(screen.getByText("6,000.00")).toBeDefined();
+      expect(screen.getByText("8,000.00")).toBeDefined();
+      expect(screen.getByText("92,000.00")).toBeDefined();
+      expect(
+        screen.queryByRole("link", { name: "Exceptions" }),
+      ).toBeNull();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("renders WIP as cost then capitalized then recognized", async () => {
+    const realAccounts = wire.listAccounts;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/bridge/views/book/accounts/2",
+          displayName: "Work in progress",
+          dimension: "2",
+          type: "ASSET",
+          debit: "400000",
+          credit: "100000",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/10",
+          displayName: "Project costs",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "700000",
+          credit: "400000",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "3",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as typeof wire.listAccounts;
+    try {
+      const Wip = (await import("./books/[book]/views/[view]/wip/page")).default;
+      await renderAsync(
+        Wip({ params: params({ book: "bridge", view: "book" }) }),
+      );
+      expect(screen.getByText("Currently capitalized")).toBeDefined();
+      expect(screen.getByText("Recognized (out of WIP)")).toBeDefined();
+      expect(screen.getByText("currently capitalized plus recognized")).toBeDefined();
+      expect(screen.getByText("uncapitalized plus currently in WIP — not a second ledger")).toBeDefined();
+    } finally {
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("opens a project book onto billing, not Exceptions or NAV", async () => {
+    const real = wire.getBook;
+    wire.getBook = (async () => booksFixture.books[2]) as typeof wire.getBook;
+    try {
+      const Book = (await import("./books/[book]/page")).default;
+      await renderAsync(Book({ params: params({ book: "bridge" }) }));
+      expect(screen.getByText("Project")).toBeDefined();
+      const billing = screen.getByRole("link", { name: "Billing" });
+      expect(billing.getAttribute("href")).toBe("/books/bridge/views/book/billing");
+      expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
+      expect(screen.queryByText("NAV, in")).toBeNull();
+    } finally {
+      wire.getBook = real;
+    }
   });
 
   it("sends every job to /books/{book}/… and never through /funds", async () => {
     const Book = (await import("./books/[book]/page")).default;
     await renderAsync(Book({ params: params({ book: "household" }) }));
+    expect(screen.getByRole("link", { name: "Balance sheet" }).getAttribute("href")).toBe(
+      "/books/household/views/book/sheet",
+    );
+    expect(screen.getByRole("link", { name: "Period P&L" }).getAttribute("href")).toBe(
+      "/books/household/views/book/pnl",
+    );
     const trial = screen.getByRole("link", { name: "Trial balance" });
     expect(trial.getAttribute("href")).toBe(
       "/books/household/views/book/accounts",
     );
+    const budget = screen.getByRole("link", { name: "Budget vs actual" });
+    expect(budget.getAttribute("href")).toBe(
+      "/books/household/views/book/budget",
+    );
     const config = screen.getByRole("link", { name: "Configuration" });
     expect(config.getAttribute("href")).toBe("/books/household/config");
+    expect(
+      screen.getByRole("link", { name: "Transfer between accounts" }).getAttribute("href"),
+    ).toBe("/books/household/transfer");
     for (const a of document.querySelectorAll("a[href]")) {
       expect(a.getAttribute("href")).not.toMatch(/\/funds\//);
+    }
+  });
+
+  it("cites household budget vs actual and does not invent a zero baseline", async () => {
+    const Budget = (await import("./books/[book]/views/[view]/budget/page")).default;
+    const real = wire.listAccounts;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/10",
+          displayName: "Living expenses",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "4000",
+          credit: "0",
+          balance: "4000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/11",
+          displayName: "Taxes",
+          dimension: "11",
+          type: "EXPENSE",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        Budget({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("Budget vs actual")).toBeDefined();
+      expect(screen.getByText("Living expenses")).toBeDefined();
+      expect(screen.getByText("Taxes")).toBeDefined();
+      expect(
+        screen.getByText("no [personal] budget on the configuration in force"),
+      ).toBeDefined();
+      expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    } finally {
+      wire.listAccounts = real;
+    }
+  });
+
+  it("a set household budget is a figure against envelopes, not a second ledger", async () => {
+    const Budget = (await import("./books/[book]/views/[view]/budget/page")).default;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    wire.getBook = (async () => ({
+      ...(bookFixture as object),
+      budget: "500000",
+      envelopes: [
+        { dimension: "10", budget: "400000" },
+        { dimension: "11", budget: "100000" },
+      ],
+    })) as unknown as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/10",
+          displayName: "Living expenses",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "4000",
+          credit: "0",
+          balance: "4000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        Budget({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByText("5,000.00")).toBeDefined();
+      // Living expenses and the spent total are the same figure here —
+      // one category, one window. Two cells, not a second ledger.
+      expect(screen.getAllByText("40.00").length).toBe(2);
+      expect(screen.getByText(/envelope 4,000\.00/)).toBeDefined();
+      expect(screen.getByText(/remaining authorization, not annualized/)).toBeDefined();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("cites billed vs earned, retainage, and cost by phase without a fake zero", async () => {
+    const Billing = (await import("./books/[book]/views/[view]/billing/page"))
+      .default;
+    await renderAsync(
+      Billing({ params: params({ book: "bridge", view: "book" }) }),
+    );
+    expect(screen.getByText("Billed to date")).toBeDefined();
+    expect(screen.getByText("1,000.00")).toBeDefined();
+    expect(screen.getByText("Earned to date")).toBeDefined();
+    expect(screen.getByText("800.00")).toBeDefined();
+    expect(screen.getByText("200.00")).toBeDefined();
+    expect(screen.getByText("Retainage outstanding")).toBeDefined();
+    expect(screen.getByText("100.00")).toBeDefined();
+    const payable = screen.getByText("Payable").closest("[role=row]");
+    expect(payable?.textContent).toContain("—");
+    expect(screen.getByText("Site and mobilization")).toBeDefined();
+    expect(screen.getByText("authorized 4,000.00")).toBeDefined();
+    expect(screen.getByText("250.00")).toBeDefined();
+    expect(screen.getAllByText("budget unset — not a silent zero").length).toBeGreaterThan(0);
+    const site = screen.getByText("Site and mobilization").closest("a");
+    expect(site?.getAttribute("href")).toBe(
+      "/books/bridge/views/book/accounts/11",
+    );
+  });
+
+  it("keeps billed-minus-earned unset when either side has not posted", async () => {
+    const real = wire.projectProgress;
+    wire.projectProgress = (async () => ({
+      ...projectProgressFixture,
+      billed: "100000",
+      earned: "",
+      billedMinusEarned: "",
+      retainageReceivable: "",
+      retainagePayable: "",
+    })) as typeof wire.projectProgress;
+    try {
+      const Billing = (await import("./books/[book]/views/[view]/billing/page"))
+        .default;
+      await renderAsync(
+        Billing({ params: params({ book: "bridge", view: "book" }) }),
+      );
+      expect(
+        screen.getByText(/unset until both billed and earned have posted/),
+      ).toBeDefined();
+      const variance = screen.getByText("Billed minus earned").closest("[role=row]");
+      expect(variance?.textContent).toContain("—");
+      expect(variance?.textContent).not.toMatch(/0\.00/);
+    } finally {
+      wire.projectProgress = real;
     }
   });
 
@@ -325,6 +789,105 @@ describe("a first-class book", () => {
       expect(screen.getByText(/the journal's own order/)).toBeDefined();
     } finally {
       wire.getView = real;
+    }
+  });
+
+  it("opens a personal book of record as net worth, not NAV", async () => {
+    // ⚠ A DISTINCT VIEW ID FROM THE RECORDED-BASIS CASE ABOVE. `viewOf` is
+    // React-cached per (book, view) for the process, so reusing `book`
+    // would serve that test's override and this would never see the
+    // default fixture.
+    const View = (await import("./books/[book]/views/[view]/page")).default;
+    await renderAsync(View({ params: params({ book: "household", view: "hearth" }) }));
+    expect(screen.getByText("Net worth")).toBeDefined();
+    expect(screen.queryByText("Net asset value")).toBeNull();
+    expect(screen.queryByText("Open difference")).toBeNull();
+    expect(screen.queryByText("Open breaks")).toBeNull();
+    expect(screen.getByRole("link", { name: "Balance sheet" }).getAttribute("href")).toBe(
+      "/books/household/views/hearth/sheet",
+    );
+    expect(screen.getByRole("link", { name: "Period P&L" }).getAttribute("href")).toBe(
+      "/books/household/views/hearth/pnl",
+    );
+    expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
+  });
+});
+
+describe("a household statement", () => {
+  async function withHouseholdAccounts<T>(fn: () => Promise<T>): Promise<T> {
+    const real = wire.listAccounts;
+    wire.listAccounts = (async () =>
+      householdAccountsFixture) as typeof wire.listAccounts;
+    try {
+      return await fn();
+    } finally {
+      wire.listAccounts = real;
+    }
+  }
+
+  it("renders chart_for(Personal) on a citable balance sheet", async () => {
+    await withHouseholdAccounts(async () => {
+      const Sheet = (await import("./books/[book]/views/[view]/sheet/page")).default;
+      await renderAsync(
+        Sheet({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({}),
+        }),
+      );
+      expect(screen.getByLabelText("Balance sheet")).toBeDefined();
+      for (const name of [
+        "Cash and bank",
+        "Investments",
+        "Credit cards and loans",
+        "Opening equity",
+      ]) {
+        expect(screen.getByText(name)).toBeDefined();
+      }
+      expect(screen.queryByText("Cash and equivalents")).toBeNull();
+      expect(screen.queryByText("Investments at fair value")).toBeNull();
+      expect(screen.getByRole("link", { name: "Period P&L" })).toBeDefined();
+      expect(screen.getByRole("link", { name: "Transfer" })).toBeDefined();
+    });
+  });
+
+  it("renders a period P&L and says it is not since inception", async () => {
+    await withHouseholdAccounts(async () => {
+      const PnL = (await import("./books/[book]/views/[view]/pnl/page")).default;
+      await renderAsync(
+        PnL({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("Period profit and loss")).toBeDefined();
+      expect(screen.getByText("Living expenses")).toBeDefined();
+      expect(screen.getByText("Taxes")).toBeDefined();
+      expect(screen.getAllByText("Income").length).toBeGreaterThan(0);
+      expect(screen.getByText(/not since inception/)).toBeDefined();
+      expect(screen.queryByText("Cash and bank")).toBeNull();
+      expect(screen.getByRole("link", { name: "Balance sheet" })).toBeDefined();
+    });
+  });
+
+  it("asks ListAccounts for a period window on the P&L", async () => {
+    const calls: unknown[][] = [];
+    const real = wire.listAccounts;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      calls.push(args);
+      return householdAccountsFixture;
+    }) as typeof wire.listAccounts;
+    try {
+      const PnL = (await import("./books/[book]/views/[view]/pnl/page")).default;
+      await renderAsync(
+        PnL({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(calls[0]?.slice(1)).toEqual(["household", "book", "pnl", "2026-03"]);
+    } finally {
+      wire.listAccounts = real;
     }
   });
 });
@@ -797,6 +1360,15 @@ describe("the write screens", () => {
     accounts: ["Investments at fair value", "Cash and equivalents"],
   };
 
+  const XFER_CASH_INV = {
+    name: "funds/household/rules/xfer_cash_investments",
+    ruleId: "xfer_cash_investments",
+    kind: "TRADE" as const,
+    description: "Move cash to investments",
+    form: "debit Investments, credit Cash and bank",
+    accounts: ["Investments", "Cash and bank"],
+  };
+
   /** ⚠ `view: ""` and no holdings is the cold-landing case — see the page. */
   async function ticket(rules = [TRADE_RULE], positions = [], view = "") {
     const { TradeTicket } = await import("./books/[book]/trade/TradeTicket");
@@ -845,6 +1417,7 @@ describe("the write screens", () => {
     const { MarkForm } = await import("./books/[book]/mark/MarkForm");
     const { IngestForm } = await import("./books/[book]/ingest/IngestForm");
     const { TradeTicket } = await import("./books/[book]/trade/TradeTicket");
+    const { TransferForm } = await import("./books/[book]/transfer/TransferForm");
 
     for (const [what, el] of [
       ["record", <RecordForm key="r" fund={FUND} rules={rulesFixture.rules as Rule[]} />],
@@ -862,6 +1435,10 @@ describe("the write screens", () => {
           positions={[]}
           view=""
         />,
+      ],
+      [
+        "transfer",
+        <TransferForm key="x" fund="household" rules={[XFER_CASH_INV]} />,
       ],
     ] as const) {
       const { unmount } = render(el);
@@ -1197,6 +1774,41 @@ describe("the write screens", () => {
       target: { value: "1.005" },
     });
     expect(screen.getByText(/more than two decimal places/)).toBeDefined();
+  });
+
+  it("posts a household transfer without an instrument or a quantity", async () => {
+    // ⭐ CASH → INVESTMENTS IS A TRANSFER, NOT A SALE. The ticket that
+    // asked for units would open a lot; this one must not even have the
+    // fields.
+    const { TransferForm } = await import("./books/[book]/transfer/TransferForm");
+    render(<TransferForm fund="household" rules={[XFER_CASH_INV]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    expect(screen.getByText(/this is not a trade/)).toBeDefined();
+    fireEvent.change(screen.getByLabelText("From"), {
+      target: { value: "Cash and bank" },
+    });
+    fireEvent.change(screen.getByLabelText("To"), {
+      target: { value: "Investments" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "250.00" },
+    });
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-03-15" },
+    });
+    expect(screen.getByText("xfer_cash_investments")).toBeDefined();
+    expect(screen.queryByLabelText("Instrument")).toBeNull();
+    expect(screen.queryByLabelText("Units")).toBeNull();
+    const form = document.querySelector("form")!;
+    const sent = Object.fromEntries(new FormData(form).entries());
+    expect(sent).toMatchObject({
+      fund: "household",
+      ruleId: "xfer_cash_investments",
+      amount: "250.00",
+      date: "2026-03-15",
+    });
+    expect(sent).not.toHaveProperty("instrument");
+    expect(sent).not.toHaveProperty("quantity");
   });
 });
 

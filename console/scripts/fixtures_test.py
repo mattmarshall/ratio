@@ -37,6 +37,8 @@ FIXTURES = {
     "breaks.json": "ListBreaksResponse",
     "break.json": "Break",
     "accounts.json": "ListAccountsResponse",
+    "householdAccounts.json": "ListAccountsResponse",
+    "capitalAccounts.json": "ListAccountsResponse",
     "postings.json": "ListPostingsResponse",
     "positions.json": "ListPositionsResponse",
     "lots.json": "ListLotsResponse",
@@ -54,6 +56,7 @@ FIXTURES = {
     "changeLogEntries.json": "ListChangeLogEntriesResponse",
     "entry.json": "Entry",
     "entries.json": "ListEntriesResponse",
+    "projectProgress.json": "ProjectProgressResponse",
 }
 
 SCALARS = {

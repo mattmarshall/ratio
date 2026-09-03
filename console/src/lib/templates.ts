@@ -19,17 +19,17 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "PERSONAL",
     label: "Personal finance",
-    blurb: "Cash and bank, living expenses, income, and a credit-card liability.",
+    blurb: "Cash and bank, living expenses, income, and a credit-card liability. A household budget is a configuration total, not a second ledger.",
   },
   {
     kind: "INVESTMENT",
     label: "Investment / Fund",
-    blurb: "Positions at fair value, contributions, realized and unrealized gain. Does not file a fund.",
+    blurb: "Positions at fair value, contributions, distributions, and partner capital. Does not file a fund.",
   },
   {
     kind: "PROJECT",
     label: "Project",
-    blurb: "Cash, work in progress, project costs, funding, and revenue.",
+    blurb: "Cash, work in progress, project costs by work package, funding, revenue, progress billings, and retainage. Budget vs actual and billed vs earned are two figures, not one URL.",
   },
 ];
 

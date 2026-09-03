@@ -247,6 +247,134 @@ pub struct RuleSet {
     /// is worse than a restatement, because a restatement announces itself.
     #[serde(rename = "calendar", default, skip_serializing_if = "Vec::is_empty")]
     pub calendars: Vec<Calendar>,
+
+    /// Project-finance terms. Absent on personal and investment books.
+    ///
+    /// ⛔ A CONFIGURATION TOTAL, NOT A SECOND LEDGER. Actual costs, WIP and
+    /// payables are the journal. Book-level `[project] budget` is the
+    /// authorized baseline `/budget` cites. Phase rows (`[[project.phase]]`)
+    /// are the per-work-package baselines `/billing` cites. `None` (or a
+    /// phase with no `budget`) means no baseline — not a budget of zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<ProjectTerms>,
+
+    /// Household-finance terms. Absent on investment and project books.
+    ///
+    /// ⛔ A CONFIGURATION TOTAL, NOT A SECOND LEDGER. Actual spend is the
+    /// journal's expense accounts (living expenses, taxes — the chart
+    /// dimensions). This is the authorized baseline those actuals are
+    /// compared to. `None` means no baseline has been set — not a budget
+    /// of zero, which would make the first grocery an overrun.
+    ///
+    /// Envelope grain is `[personal.envelope]`, keyed by chart dimension.
+    /// An absent key is unset for that category, not a fake zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub personal: Option<PersonalTerms>,
+}
+
+/// The authorized spend a project book cites against the journal.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectTerms {
+    /// Book-level baseline in minor units. Omitted means unset; `0` is a
+    /// set baseline of nothing. `/budget` cites this; `/billing` cites phases.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<i64>,
+    /// Per work-package account. `account` is a chart dimension.
+    #[serde(rename = "phase", default, skip_serializing_if = "Vec::is_empty")]
+    pub phases: Vec<PhaseBudget>,
+}
+
+/// Authorized spend on one work-package account.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PhaseBudget {
+    /// Chart dimension — `chart_for(Project)`'s site / structure / finishes
+    /// accounts, or an operator-added partition of the same kind.
+    pub account: i64,
+    /// Minor units. Omitted means this phase has no baseline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<i64>,
+}
+
+impl ProjectTerms {
+    /// ⛔ CHECKED WHEN THE CONFIGURATION IS READ. A negative budget inverts
+    /// variance; two rows for one account are two answers under one name.
+    pub fn check(&self) -> Result<()> {
+        if let Some(b) = self.budget {
+            if b < 0 {
+                bail!(
+                    "a project budget is not negative — it is an authorized magnitude, \
+                     not a posting"
+                );
+            }
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for p in &self.phases {
+            if p.account <= 0 {
+                bail!(
+                    "a phase budget names account {}, which is not a chart dimension",
+                    p.account
+                );
+            }
+            if !seen.insert(p.account) {
+                bail!(
+                    "this configuration declares a phase budget for account {} twice. \
+                     A figure cited against that account could not pick one",
+                    p.account
+                );
+            }
+            if let Some(b) = p.budget {
+                if b < 0 {
+                    bail!(
+                        "a phase budget is not negative — it is an authorized magnitude, \
+                         not a posting"
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The authorized spend a household book cites against the journal.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersonalTerms {
+    /// Minor units. Omitted means unset; `0` is a set baseline of nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<i64>,
+    /// Chart dimension (decimal string) → minor units. Living expenses is
+    /// `"10"`, taxes `"11"` — `chart_for(Personal)`. Absent keys are unset.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub envelope: BTreeMap<String, i64>,
+}
+
+impl PersonalTerms {
+    /// ⛔ CHECKED WHEN THE CONFIGURATION IS READ. A negative budget inverts
+    /// variance: every spend would look like remaining authorization.
+    pub fn check(&self) -> Result<()> {
+        if let Some(b) = self.budget {
+            if b < 0 {
+                bail!(
+                    "a household budget is not negative — it is an authorized magnitude, \
+                     not a posting"
+                );
+            }
+        }
+        for (k, v) in &self.envelope {
+            if k.parse::<i64>().is_err() {
+                bail!(
+                    "household envelope {k:?} is not a chart dimension — keys are the \
+                     decimal dim `chart_for(Personal)` writes (10 living expenses, 11 taxes)"
+                );
+            }
+            if *v < 0 {
+                bail!(
+                    "household envelope {k} is not negative — it is an authorized magnitude, \
+                     not a posting"
+                );
+            }
+        }
+        Ok(())
+    }
 }
 
 /// How a view decides the day it recognises an entry on.
@@ -362,6 +490,8 @@ impl Default for RuleSet {
             // failure the whole `declared` distinction exists for.
             views: Vec::new(),
             calendars: Vec::new(),
+            project: None,
+            personal: None,
         }
     }
 }
@@ -865,6 +995,12 @@ impl RuleSet {
         // first has to roll a trade over one.
         for c in &set.calendars {
             c.check()?;
+        }
+        if let Some(p) = &set.project {
+            p.check()?;
+        }
+        if let Some(p) = &set.personal {
+            p.check()?;
         }
         let mut seen = std::collections::BTreeSet::new();
         for v in &set.views {
@@ -1764,6 +1900,87 @@ calendar = "us-settlement"
         let toml = RuleSet::from_toml("rules = []\n").unwrap().to_toml().unwrap();
         assert!(!toml.contains("view"), "{toml}");
         assert!(!toml.contains("calendar"), "{toml}");
+        assert!(!toml.contains("project"), "{toml}");
+        assert!(!toml.contains("personal"), "{toml}");
+    }
+
+    #[test]
+    fn a_project_budget_round_trips_and_a_negative_one_is_refused() {
+        let set = RuleSet::from_toml("rules = []\n[project]\nbudget = 1000000\n").unwrap();
+        assert_eq!(set.project.as_ref().and_then(|p| p.budget), Some(1_000_000));
+        let back = RuleSet::from_toml(&set.to_toml().unwrap()).unwrap();
+        assert_eq!(back.project, set.project);
+
+        let e = RuleSet::from_toml("rules = []\n[project]\nbudget = -1\n")
+            .expect_err("a negative budget must not parse")
+            .to_string();
+        assert!(e.contains("not negative"), "{e}");
+    }
+
+    #[test]
+    fn a_phase_budget_round_trips_and_a_negative_or_duplicate_is_refused() {
+        let set = RuleSet::from_toml(
+            "rules = []\n[[project.phase]]\naccount = 11\nbudget = 400000\n",
+        )
+        .unwrap();
+        assert_eq!(set.project.as_ref().unwrap().phases[0].account, 11);
+        assert_eq!(set.project.as_ref().unwrap().phases[0].budget, Some(400_000));
+        let back = RuleSet::from_toml(&set.to_toml().unwrap()).unwrap();
+        assert_eq!(back.project, set.project);
+
+        let e = RuleSet::from_toml("rules = []\n[[project.phase]]\naccount = 11\nbudget = -1\n")
+            .expect_err("a negative phase budget must not parse")
+            .to_string();
+        assert!(e.contains("not negative"), "{e}");
+
+        let e = RuleSet::from_toml(
+            "rules = []\n[[project.phase]]\naccount = 11\nbudget = 1\n\
+             [[project.phase]]\naccount = 11\nbudget = 2\n",
+        )
+        .expect_err("two budgets for one account must not parse")
+        .to_string();
+        assert!(e.contains("twice"), "{e}");
+    }
+
+    #[test]
+    fn a_household_budget_round_trips_and_a_negative_one_is_refused() {
+        let set = RuleSet::from_toml(
+            "rules = []\n[personal]\nbudget = 500000\n[personal.envelope]\n10 = 400000\n11 = 100000\n",
+        )
+        .unwrap();
+        let p = set.personal.as_ref().expect("personal table present");
+        assert_eq!(p.budget, Some(500_000));
+        assert_eq!(p.envelope.get("10"), Some(&400_000));
+        assert_eq!(p.envelope.get("11"), Some(&100_000));
+        assert!(
+            p.envelope.get("2").is_none(),
+            "an envelope nobody set is absent, not a fake zero"
+        );
+
+        let silent = RuleSet::from_toml("rules = []\n").unwrap();
+        assert!(silent.personal.is_none(), "nobody said");
+
+        let zero = RuleSet::from_toml("rules = []\n[personal]\nbudget = 0\n").unwrap();
+        assert_eq!(
+            zero.personal.as_ref().and_then(|p| p.budget),
+            Some(0),
+            "a set baseline of nothing is not the same as unset"
+        );
+
+        let e = RuleSet::from_toml("rules = []\n[personal]\nbudget = -1\n")
+            .expect_err("a negative budget must not parse")
+            .to_string();
+        assert!(e.contains("not negative"), "{e}");
+
+        let env = RuleSet::from_toml("rules = []\n[personal.envelope]\n10 = -5\n")
+            .expect_err("a negative envelope must not parse")
+            .to_string();
+        assert!(env.contains("not negative"), "{env}");
+
+        let bad_key = RuleSet::from_toml("rules = []\n[personal.envelope]\nliving = 1\n")
+            .expect_err("an envelope key that is not a dimension must not parse")
+            .to_string();
+        assert!(bad_key.contains("chart dimension"), "{bad_key}");
     }
 
     #[test]

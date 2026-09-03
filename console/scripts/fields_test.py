@@ -72,6 +72,26 @@ NEEDLES: list[tuple[str, str]] = [
     ("no trade date", "a lot that cannot be classified would show a guessed date"),
     ("Tax lots", "the lot book is gone"),
     ("the fold that", "the scale claim is gone — it lived only in a benchmark once"),
+    # ── project figures (#66) ───────────────────────────────────────────────
+    # ⚠ Phrases that live on the figure pages and nowhere else. A needle
+    # satisfied by screens.ts or templates.ts would stay green with the
+    # pages deleted.
+    (
+        "not a second ledger — journal costs, WIP and payables",
+        "budget vs actual no longer says actuals are the journal",
+    ),
+    (
+        "costs plus WIP — recognizing does not double-count",
+        "incurred would silently double-count after recognize_wip",
+    ),
+    (
+        "currently capitalized plus recognized",
+        "the WIP identity (debit = remaining + recognized) is gone",
+    ),
+    (
+        "uncapitalized plus currently in WIP — not a second ledger",
+        "cost incurred would be a picture rather than the trial balance",
+    ),
     # ── multi-view books ────────────────────────────────────────────────────
     # ⚠ Same discipline: these are the strings a reader looks for when asking
     # WHICH BOOK OF RECORD a figure came from. A console that stops saying is
@@ -208,7 +228,56 @@ NEEDLES: list[tuple[str, str]] = [
         "the journal entry page has no accessible name, so the phone check "
         "cannot tell it rendered",
     ),
-
+    # ── household figures (#65, #83) ────────────────────────────────────────
+    # A personal book that still said NAV / Exceptions is a fake label on
+    # fund-ops screens. These are the phrases a household walk-through looks
+    # for; deleting the sheet, the period P&L, the transfer, or budget vs
+    # actual would leave CreateBook offering a template whose screens are
+    # still ABOR.
+    (
+        "Balance sheet",
+        "a personal book has no citable balance sheet",
+    ),
+    (
+        "Period P&L",
+        "a personal book has no period P&L",
+    ),
+    (
+        "not since inception",
+        "the P&L would look cumulative like ABOR",
+    ),
+    (
+        "Net worth",
+        "a personal book would still say NAV",
+    ),
+    (
+        "this is not a trade",
+        "the transfer form stopped saying a household move is not a sale",
+    ),
+    (
+        "Budget vs actual",
+        "the household budget figure is gone from the console",
+    ),
+    (
+        "no [personal] budget on the configuration in force",
+        "an unset household budget would read as a fake zero",
+    ),
+    (
+        "not a second ledger — journal expenses against a",
+        "budget vs actual would look like a second accounting system",
+    ),
+    (
+        "Billed to date",
+        "the progress-billing figure is gone from the project billing screen",
+    ),
+    (
+        "Retainage outstanding",
+        "retainage is not cited under /books/{id}",
+    ),
+    (
+        "budget unset — not a silent zero",
+        "a phase without [project.phase] budget would show a fake zero",
+    ),
     # ⛔ AND NO `startTransition` NEEDLE, THOUGH THE PALETTE NEEDS ONE AS MUCH AS
     # `FilterChips` DOES. Both that file and `PlanControls` already contain the
     # literal, so the case would pass with the palette's transition dropped — the
@@ -222,6 +291,19 @@ NEEDLES: list[tuple[str, str]] = [
     # the rename instead, where an assertion can see it — and note that a needle
     # placed in THAT file would pass vacuously too, because the exclusion below is
     # `.test.tsx` only.
+    # ── investment capital activity (#70) ───────────────────────────────────
+    (
+        "Capital activity is an Investment figure",
+        "a personal or project book would inherit the fund capital screen",
+    ),
+    (
+        "partners plus unallocated activity — not a return, not attribution",
+        "the capital figure would stop saying it is not a return",
+    ),
+    (
+        "who put money in and took money out, not IRR",
+        "the capital figure would read as performance reporting",
+    ),
     # ── the fact plane ──────────────────────────────────────────────────────
     (
         "a correction is a new row",

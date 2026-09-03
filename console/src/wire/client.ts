@@ -69,6 +69,7 @@ import type {
   PendingFact,
   Position,
   Posting,
+  ProjectProgressResponse,
   ReconcileViewsResponse,
   ReplayNavStrikeResponse,
   Rule,
@@ -235,6 +236,17 @@ export const reconcileViews = (
     `/funds/${fund}/views/${view}:reconcile${q({ against })}`,
   );
 
+/**
+ * Billed vs earned, retainage outstanding, and cost by work-package
+ * account. Project books only — other kinds are refused, not zeroed.
+ */
+// GET /v1/{name=funds/*/views/*}:projectProgress
+export const projectProgress = (c: Caller, fund: string, view: string) =>
+  send<ProjectProgressResponse>(
+    c,
+    `/funds/${fund}/views/${view}:projectProgress`,
+  );
+
 // ── Breaks ─────────────────────────────────────────────────────────────────
 // GET /v1/{parent=funds/*/views/*}/breaks
 export const listBreaks = (
@@ -354,15 +366,23 @@ export const getLot = (
 
 // ── The chart ──────────────────────────────────────────────────────────────
 // GET /v1/{parent=funds/*/views/*}/accounts
+//
+// ⛔ AIP-132: a List request has no `period` field. A month or year rides on
+// `filter` as `pnl-YYYY-MM` / `sheet-YYYY` / `capital-YYYY-MM` /
+// `budget-YYYY-MM` — hyphen because transcode does not percent-decode.
+// Pages still pass the two pieces; this is where they join.
 export const listAccounts = (
   c: Caller,
   fund: string,
   view: string,
   filter?: string,
+  period?: string,
 ) =>
   send<ListAccountsResponse>(
     c,
-    `/funds/${fund}/views/${view}/accounts${q({ filter })}`,
+    `/funds/${fund}/views/${view}/accounts${q({
+      filter: filter && period ? `${filter}-${period}` : filter,
+    })}`,
   );
 // GET /v1/{name=funds/*/views/*/accounts/*}
 export const getAccount = (c: Caller, fund: string, view: string, id: string) =>

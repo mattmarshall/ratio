@@ -63,6 +63,20 @@ describe("PlaceHead", () => {
     expect(screen.getByText("ABOR")).toBeDefined();
   });
 
+  it("titles capital activity on an investment figure page", () => {
+    segments.current = ["views", "abor", "capital"];
+    render(
+      <PlaceHead
+        fund="partners"
+        displayName="Partners"
+        views={views}
+        defaultView="abor"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Capital activity" })).toBeDefined();
+  });
+
   it("does not put a book of record on an agreement page", () => {
     segments.current = ["config"];
     render(
@@ -76,5 +90,65 @@ describe("PlaceHead", () => {
     );
     expect(screen.getByRole("heading", { name: "Configuration" })).toBeDefined();
     expect(screen.queryByLabelText("Book of record")).toBeNull();
+  });
+
+  it("titles a personal balance sheet, not Exceptions", () => {
+    segments.current = ["views", "book", "sheet"];
+    render(
+      <PlaceHead
+        fund="household"
+        displayName="Household"
+        views={views}
+        defaultView="book"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Balance sheet" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Exceptions" })).toBeNull();
+  });
+
+  it("titles household budget vs actual", () => {
+    segments.current = ["views", "book", "budget"];
+    render(
+      <PlaceHead
+        fund="household"
+        displayName="Household"
+        views={views}
+        defaultView="book"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Budget vs actual" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Exceptions" })).toBeNull();
+  });
+
+  it("titles a project figure the hub named, not Exceptions", () => {
+    segments.current = ["views", "book", "budget"];
+    render(
+      <PlaceHead
+        fund="bridge"
+        displayName="Bridge"
+        views={views}
+        defaultView="book"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Budget vs actual" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Exceptions" })).toBeNull();
+  });
+
+  it("titles billing on a project figure page", () => {
+    segments.current = ["views", "book", "billing"];
+    render(
+      <PlaceHead
+        fund="bridge"
+        displayName="Bridge"
+        views={views}
+        defaultView="book"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Billing" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Exceptions" })).toBeNull();
   });
 });

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { viewOf } from "@/lib/data";
+import { bookOf, viewOf } from "@/lib/data";
 import { isoDate } from "@/lib/dates";
 import { basisOf, count, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
+import { screenHref, screensFor } from "@/lib/screens";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
  * and used to land on the exceptions queue because the segment had a layout
  * and no page. The URL is now the citation.
  *
- * ⚠ THE FOUR STAT TILES IN THE LAYOUT ARE CHROME ON EVERY CHILD. They are
+ * ⚠ THE STAT TILES IN THE LAYOUT ARE CHROME ON EVERY CHILD. They are
  * restated here because this page is what you send, and because a render test
  * mounts the page without the layout. `viewOf` is the one GetView both share.
  */
@@ -25,7 +26,12 @@ export default async function ViewPage({
 }) {
   const { book, view } = await params;
   const v = await or404(viewOf(book, view));
+  const b = await or404(bookOf(book));
   const basis = basisOf(v.basis, v.settlementOpenDays);
+  const personal = b.kind === "PERSONAL";
+  const project = b.kind === "PROJECT";
+  const places = screensFor(b.kind).filter((s) => s.scoped);
+  const tb = (BigInt(v.totalDebit) - BigInt(v.totalCredit)).toString();
 
   return (
     <section className="lots">
@@ -34,14 +40,35 @@ export default async function ViewPage({
         <span className="sortnote">{basis}</span>
       </div>
       <dl className="kv">
-        <dt>Net asset value</dt>
+        <dt>
+          {personal
+            ? "Net worth"
+            : project
+              ? "Assets less liabilities"
+              : "Net asset value"}
+        </dt>
         <dd className="num">{money(v.netAssetValue)}</dd>
-        <dt>Open difference</dt>
-        <dd className="num">{money(v.openDifference)}</dd>
-        <dt>Open breaks</dt>
-        <dd className="num">{count(v.openBreakCount)}</dd>
-        <dt>Unplaceable</dt>
-        <dd className="num">{count(v.unplaceableEntryCount)}</dd>
+        {personal ? null : project ? (
+          <>
+            <dt>Trial balance</dt>
+            <dd className="num">{money(tb)}</dd>
+          </>
+        ) : (
+          <>
+            <dt>Open difference</dt>
+            <dd className="num">{money(v.openDifference)}</dd>
+            <dt>Open breaks</dt>
+            <dd className="num">{count(v.openBreakCount)}</dd>
+            <dt>Unplaceable</dt>
+            <dd className="num">{count(v.unplaceableEntryCount)}</dd>
+          </>
+        )}
+        {personal ? (
+          <>
+            <dt>Unplaceable</dt>
+            <dd className="num">{count(v.unplaceableEntryCount)}</dd>
+          </>
+        ) : null}
         <dt>Basis</dt>
         <dd>
           {basis}
@@ -57,9 +84,12 @@ export default async function ViewPage({
         </dd>
       </dl>
       <p className="note">
-        <Link href={`/books/${book}/views/${view}/breaks`}>Exceptions</Link>
-        {" · "}
-        <Link href={`/books/${book}/views/${view}/accounts`}>Trial balance</Link>
+        {places.map((s, i) => (
+          <span key={s.segment}>
+            {i ? " · " : null}
+            <Link href={screenHref(book, view, s, "books")}>{s.label}</Link>
+          </span>
+        ))}
         {" · "}
         <Link href={`/books/${book}`}>Book</Link>
       </p>

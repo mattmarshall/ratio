@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSelectedLayoutSegments } from "next/navigation";
 import type { ReactNode } from "react";
-import { SCREENS } from "@/lib/screens";
+import { placeOf } from "@/lib/screens";
 import type { View } from "@/wire/types";
 import { ViewSwitch } from "./ViewSwitch";
 
@@ -37,7 +37,7 @@ export function PlaceHead({
   const segs = useSelectedLayoutSegments();
   const underView = segs[0] === "views";
   const here = underView ? segs[2] : segs[0];
-  const place = SCREENS.find((s) => s.segment === here);
+  const place = placeOf(here);
   const title = place
     ? place.label
     : underView

@@ -1,0 +1,144 @@
+{
+  "accounts": [
+    {
+      "name": "funds/household/views/book/accounts/1",
+      "displayName": "Cash and bank",
+      "dimension": "1",
+      "type": "ASSET",
+      "debit": "1400000",
+      "credit": "254000",
+      "balance": "1146000",
+      "abnormal": false,
+      "postingCount": "4",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "1400000",
+          "credit": "254000",
+          "balance": "1146000",
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
+        }
+      ]
+    },
+    {
+      "name": "funds/household/views/book/accounts/2",
+      "displayName": "Investments",
+      "dimension": "2",
+      "type": "ASSET",
+      "debit": "250000",
+      "credit": "0",
+      "balance": "250000",
+      "abnormal": false,
+      "postingCount": "1",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "250000",
+          "credit": "0",
+          "balance": "250000",
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
+        }
+      ]
+    },
+    {
+      "name": "funds/household/views/book/accounts/10",
+      "displayName": "Living expenses",
+      "dimension": "10",
+      "type": "EXPENSE",
+      "debit": "4000",
+      "credit": "0",
+      "balance": "4000",
+      "abnormal": false,
+      "postingCount": "1",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "4000",
+          "credit": "0",
+          "balance": "4000",
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
+        }
+      ]
+    },
+    {
+      "name": "funds/household/views/book/accounts/11",
+      "displayName": "Taxes",
+      "dimension": "11",
+      "type": "EXPENSE",
+      "debit": "0",
+      "credit": "0",
+      "balance": "0",
+      "abnormal": false,
+      "postingCount": "0",
+      "currencyTotals": []
+    },
+    {
+      "name": "funds/household/views/book/accounts/20",
+      "displayName": "Opening equity",
+      "dimension": "20",
+      "type": "EQUITY",
+      "debit": "0",
+      "credit": "1000000",
+      "balance": "-1000000",
+      "abnormal": false,
+      "postingCount": "1",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "0",
+          "credit": "1000000",
+          "balance": "-1000000",
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
+        }
+      ]
+    },
+    {
+      "name": "funds/household/views/book/accounts/30",
+      "displayName": "Income",
+      "dimension": "30",
+      "type": "REVENUE",
+      "debit": "0",
+      "credit": "400000",
+      "balance": "-400000",
+      "abnormal": false,
+      "postingCount": "1",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "0",
+          "credit": "400000",
+          "balance": "-400000",
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
+        }
+      ]
+    },
+    {
+      "name": "funds/household/views/book/accounts/40",
+      "displayName": "Credit cards and loans",
+      "dimension": "40",
+      "type": "LIABILITY",
+      "debit": "0",
+      "credit": "0",
+      "balance": "0",
+      "abnormal": false,
+      "postingCount": "0",
+      "currencyTotals": []
+    }
+  ],
+  "nextPageToken": ""
+}

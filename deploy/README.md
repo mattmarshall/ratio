@@ -267,6 +267,15 @@ reviews a binary diff. It contains a four-rule configuration, a replayed
 quarter, one break of `2000.00`, and one proposal nobody has approved (so the
 rules screen has both of its columns).
 
+That seeded book is a **fund**. Kind-selected chrome is a different
+walk-through: CreateBook(Personal) lands on the sheet, with a period P&L and
+household budget vs actual (`[personal] budget` on the configuration that
+book pins, then `/books/{id}/views/{view}/budget` for a month or a year —
+unset shows as unset, not a fake zero). CreateBook(Project) lands on the
+same `/budget` URL as a cumulative project roll-up. CreateBook(Investment)
+lands on capital activity, then the fund ABOR warehouse. The live demo does
+not seed those baselines.
+
 `entrypoint.sh` copies the seeded chart and config to `/tmp` at start, because a
 Lambda filesystem is read-only elsewhere. **The journal is not that copy.** When
 `RATIO_JOURNAL_BUCKET` is set (the app stack sets it to the scale bucket, prefix
