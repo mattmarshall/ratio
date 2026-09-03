@@ -91,9 +91,19 @@ Close(v, d) ==
     /\ UNCHANGED <<pos, journal>>
     /\ lastOp' = "close"
 
+\* Journal full and every view closed through the last day: nothing left
+\* that can happen. The explicit self-loop keeps a finished behavior from
+\* reading as a deadlock — same shape as CloseGate.Settled.
+Settled ==
+    /\ pos = MaxPos
+    /\ \A v \in Views :
+          closedThrough[v] # NoClose
+          /\ \A d \in Days : ~(d > closedThrough[v])
+
 Next ==
     \/ \E d \in Days \cup {NoDay} : Post(d) \/ RefusePost(d)
     \/ \E v \in Views, d \in Days : Close(v, d)
+    \/ (Settled /\ UNCHANGED vars)
 
 Spec == Init /\ [][Next]_vars
 

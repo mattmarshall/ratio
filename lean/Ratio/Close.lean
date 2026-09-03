@@ -125,6 +125,18 @@ theorem closing_conserves (as : List Account) (dest : Dim) :
   rw [neg_temps_sum]
   omega
 
+/-- `xs ++ [p]` ends at `p`. Local so the equity-leg theorem does not
+depend on which `Init` lemma names `getLast?` of a snoc. -/
+theorem getLast?_snoc (xs : List (Dim × Int)) (p : Dim × Int) :
+    (xs ++ [p]).getLast? = some p := by
+  induction xs with
+  | nil => rfl
+  | cons _ xs ih =>
+    cases xs with
+    | nil => rfl
+    | cons _ _ =>
+      simpa [List.getLast?] using ih
+
 /-- **The equity leg is the surplus**, not a second figure. The amount that
 lands on retained earnings is income plus expenses in raw
 debit-minus-credit — the same residual `sheetTotals.surplus` already
@@ -133,7 +145,7 @@ on the wrong taxable income. -/
 theorem the_equity_leg_is_the_surplus (as : List Account) (dest : Dim) :
     (closingLegs as dest).getLast? = some (dest, surplus as) := by
   unfold closingLegs surplus
-  exact List.getLast?_concat (negTemps as) (dest, tempSum as)
+  exact getLast?_snoc (negTemps as) (dest, tempSum as)
 
 /- ── Unset stays unset ─────────────────────────────────────────────────── -/
 
