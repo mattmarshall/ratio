@@ -721,6 +721,11 @@ kind the console offers cannot go unrecorded here again:
   application; unset when it cannot — never a fake current bucket.
   Buckets foot to the AR/AP control.
 
+Period close at `/close` (the same-day amendment below) is on every
+kind that wears a trial balance, including the fund operations
+surface. Unset / provisional when the period is not closed — never a
+fake closed period.
+
 **The wedge is still the revenue path.** A paid shadow run on a real
 customer's period is the first dollar. What changed is the *unit*. The
 fund-admin Cognito demo is not the plan of record; independent Books
@@ -761,12 +766,13 @@ production-complete, and do not read a walk-through as demo-ready (#27).
 `screensFor` as the one chrome list; the AuthKit callback (`/sign-in`,
 `/callback`) in place of Cognito's Hosted UI. The domain figures above
 composed onto existing URLs — `/capital`, `/billing`, `/budget`,
-`/sheet`, `/pnl`, `/cashflow`, `/aging` — rather than minting a chrome
-list per issue.
+`/sheet`, `/pnl`, `/cashflow`, `/aging`, `/close` — rather than minting
+a chrome list per issue.
 
 **What it did NOT buy, and this is the honest half.** Period close
 (#114) is the Stage 1 door ("no effect on a closed period"); this
-amendment does not land it and does not refuse it. Envelope coaching,
+amendment does not land it and does not refuse it. The same-day
+amendment below records that #114 / #116 landed. Envelope coaching,
 bank OAuth, a credit score, a cash forecast, and a client portal stay
 refused or on their own issues. The remaining wedge gap is still a
 real customer's period.
@@ -813,9 +819,10 @@ down to zero is a real zero.
 show beginning and ending cash for a month or year, the three activity
 classes, and the conserved tie. It cannot show a cash forecast, envelope
 coaching, bank OAuth, a credit score, a fire number, or a client portal.
-Envelope budgeting stays on #83; loan schedules on #87; the net-worth
-bridge on #94. None of those are on the *Explicitly not building* list, and
-this amendment adds none of them.
+Household budget vs actual is at `/budget`; loan schedules at `/loans`;
+the net-worth bridge at `/bridge`. Period close is the same-day
+amendment below. None of those are on the *Explicitly not building*
+list, and this amendment adds none of them.
 
 ### Amendment, 2026-09-03 — an operating-company cash-flow statement, and nothing on the refusal list moved
 
@@ -830,8 +837,9 @@ What landed is the same citeable period figure at
 (`filter=cashflow-YYYY[-MM]`). No new RPC, no second store, no proto
 resource. Kind still selects the chrome from one `screensFor` list — the
 screen is added to `OPERATING_SCREENS`. Fund, Project, and Investment books
-do not wear it. This is not AR/AP aging (#117), not a period close (#114),
-not a bank reconciliation, and not a forecast.
+do not wear it. This is not a bank reconciliation and not a forecast.
+Aging is the same-day amendment below; period close is the same-day
+amendment after that.
 
 **The split the Operating chart can support.** Operating / investing /
 financing, reconstructed from each non-cash account's period net (cash from

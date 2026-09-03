@@ -177,7 +177,14 @@ __STYLE__
           application; a missing due date is undated, not current;
           buckets foot to the AR/AP control; unset when they cannot —
           never a silent current bucket, and not a generic
-          &quot;billing&quot; label. A live walk-through does not yet post a
+          &quot;billing&quot; label. Period close at <code>/close</code> is
+          on every kind that wears a trial balance — Personal, Fund,
+          Project, Investment, Operating. A close pins the closed-through
+          day, journal prefix, and configuration digest, and rolls surplus
+          into retained earnings (or the named equity destination). An
+          open period may preview unclosed surplus and says it is
+          provisional; missing destination, prefix, or close stays unset
+          — never a fake closed period. A live walk-through does not yet post a
           construction job or an operating company — CreateBook seeds the patterns; the seeded demo
           funds remain investment books.</li>
           <li>A versioned ConfigStore — directory, hash, atomic pointer — and a
@@ -343,13 +350,14 @@ __STYLE__
         <li class="d">Exception handling: differences measured against a declared threshold, explained by a person, retired when the figure moves</li>
         <li class="o">Reconciliation against live custodian feeds, at a fund's volume</li>
         <li class="d">The gate on a close: a fund refuses its own NAV while something is unexplained, unidentified or unpriced</li>
-        <li class="o">NAV calculation and period close</li>
+        <li class="d">Period close: a citeable closed-through day, journal prefix and digest; surplus into retained earnings; a back-dated post refused; unset or provisional when the period is not closed — never a fake closed period</li>
+        <li class="o">NAV calculation</li>
         <li class="o">Fee accrual and billing rules</li>
         <li class="o">Restatement and point-in-time reporting</li>
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: books (Personal, Fund, Project, Operating templates), a household balance sheet, period P&amp;L, net-worth bridge with transfers that are not trades, and a period cash-flow statement (operating / investing / financing; unset, not a fake zero cash), household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), awarded committed cost keyed to those work packages (unset until an award posts, not a fake zero), remaining to spend (revised − incurred − awarded, unset until budget, actual, and awarded can support it — no EAC / no forecast), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it), an Operating book that cites a balance sheet, period income statement, period cash-flow statement, and AR/AP aging against the trial balance (AR/AP as working capital, owner equity as financing, investing unset — no PPE account; aging at /aging — missing due date is undated not current, buckets foot to control), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), a per-partner capital account statement (beginning → activity → allocated plugs stay unset without a partner cut, never an equal split of book NAV), and a period NAV roll-forward (unset, not a fake zero), the exception queue, a difference at its own address, a book's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project, Operating templates), a household balance sheet, period P&amp;L, net-worth bridge with transfers that are not trades, and a period cash-flow statement (operating / investing / financing; unset, not a fake zero cash), household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), awarded committed cost keyed to those work packages (unset until an award posts, not a fake zero), remaining to spend (revised − incurred − awarded, unset until budget, actual, and awarded can support it — no EAC / no forecast), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it), an Operating book that cites a balance sheet, period income statement, period cash-flow statement, and AR/AP aging against the trial balance (AR/AP as working capital, owner equity as financing, investing unset — no PPE account; aging at /aging — missing due date is undated not current, buckets foot to control), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), a per-partner capital account statement (beginning → activity → allocated plugs stay unset without a partner cut, never an equal split of book NAV), a period NAV roll-forward (unset, not a fake zero), and period close at /close on every kind (closed-through day, prefix and digest; surplus into retained earnings; provisional when open, unset when the journal cannot support a close — never a fake closed period), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue
