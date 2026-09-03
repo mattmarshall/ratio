@@ -328,6 +328,23 @@ NEEDLES: list[tuple[str, str]] = [
         "who put money in and took money out, not IRR",
         "the capital figure would read as performance reporting",
     ),
+    # ── per-partner capital account (#102) ──────────────────────────────────
+    # ⚠ THE UNSET SENTENCE, NOT THE TAB LABEL. `/capital` already says
+    # "Capital activity"; a page that equal-split book NAV or printed
+    # allocated 0.00 would still contain that label and stay green. The
+    # refusal copy is what goes red if someone "helps" by sharing P&L.
+    (
+        "unset — no partner-cut of period income, not an equal share of book NAV",
+        "allocated income would silently equal-split book NAV across partners",
+    ),
+    (
+        "unset — no partner-cut of Unrealized gain — not a silent equal allocation",
+        "unrealized would render as an equal partner share or a silent zero",
+    ),
+    (
+        "beginning stays unset until a dated prefix can support the cut — not a measured zero",
+        "a capital account without a prior prefix would render a fake zero beginning",
+    ),
     # ── the fact plane ──────────────────────────────────────────────────────
     (
         "a correction is a new row",

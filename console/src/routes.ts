@@ -168,6 +168,10 @@ export const ROUTES: readonly Route[] = [
     file: "books/[book]/views/[view]/capital/page.tsx",
     reads: ["getBook", "listAccounts"],
   },
+  // Per-partner capital accounts compose onto `/capital` (#102). A dated
+  // window also reads `nav-YYYY-MM` so beginning / ending are the same
+  // Loan-shaped cuts `/nav` cites — `capital-*` is Activity and would
+  // print a fake zero beginning. No second chrome URL.
   // Period NAV roll-forward. Same chrome source as capital. Beginning and
   // ending are the Loan-shaped fold (`nav-YYYY-MM`); named plugs cite the
   // same contribution / distribution accounts `/capital` already names.

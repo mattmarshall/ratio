@@ -361,7 +361,19 @@ describe("a first-class book", () => {
       expect(screen.getByText("115.00")).toBeDefined();
       expect(screen.getByText(/not a return, not attribution/)).toBeDefined();
       expect(screen.getByText(/not IRR/)).toBeDefined();
-      expect(screen.queryByText("Unrealized gain")).toBeNull();
+      expect(screen.getByLabelText("Capital account statement")).toBeDefined();
+      expect(screen.getByText("Capital account — LP")).toBeDefined();
+      expect(screen.getByText("Capital account — GP")).toBeDefined();
+      expect(
+        screen.getByText(/since inception has no prior prefix — not a measured zero beginning/),
+      ).toBeDefined();
+      expect(
+        screen.getByText(/unset — no partner-cut of period income, not an equal share of book NAV/),
+      ).toBeDefined();
+      expect(
+        screen.getByText(/unset — no partner-cut of Unrealized gain — not a silent equal allocation/),
+      ).toBeDefined();
+      expect(screen.queryByText(/^Unrealized gain$/)).toBeNull();
       expect(
         screen.getByRole("link", { name: "Record an event" }).getAttribute("href"),
       ).toBe("/books/harbourline-global-value/record");
@@ -398,6 +410,128 @@ describe("a first-class book", () => {
       expect(screen.getAllByText("unset").length).toBeGreaterThan(0);
       expect(screen.queryByText(/not a callable zero/)).toBeNull();
       expect(screen.getByText(/remaining commitment, partner grain/)).toBeDefined();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("cites a period capital account from the NAV fold and refuses an equal split", async () => {
+    const harbour = booksFixture.books.find((b) => b.kind === "INVESTMENT")!;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    const calls: unknown[][] = [];
+    // Loan-shaped March: LP began at 100.00, contributed 40, distributed 10.
+    // GP contributed 20. Book income 30.00 / unrealized 20.00 — equal-split
+    // would print 15.00 and 10.00 on each partner. Those must not appear
+    // as allocated plugs.
+    const period = {
+      accounts: [
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/2",
+          displayName: "Cash and equivalents",
+          dimension: "2",
+          type: "ASSET",
+          debit: "6000",
+          credit: "1000",
+          balance: "15000",
+          abnormal: false,
+          postingCount: "3",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/50",
+          displayName: "Partner capital — LP",
+          dimension: "50",
+          type: "EQUITY",
+          debit: "1000",
+          credit: "4000",
+          balance: "-13000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/51",
+          displayName: "Partner capital — GP",
+          dimension: "51",
+          type: "EQUITY",
+          debit: "0",
+          credit: "2000",
+          balance: "-2000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/30",
+          displayName: "Dividend income",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "3000",
+          balance: "-3000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/21",
+          displayName: "Unrealized gain",
+          dimension: "21",
+          type: "EQUITY",
+          debit: "0",
+          credit: "2000",
+          balance: "-2000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    };
+    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      calls.push(args);
+      if (args[3] === "nav") return period;
+      return capitalAccountsFixture;
+    }) as typeof wire.listAccounts;
+    try {
+      const Capital = (await import("./books/[book]/views/[view]/capital/page"))
+        .default;
+      await renderAsync(
+        Capital({
+          params: params({ book: "harbourline-global-value", view: "abor" }),
+          searchParams: params({ filter: "capital-2026-03" }),
+        }),
+      );
+      expect(calls.some((a) => a[3] === "nav" && a[4] === "2026-03")).toBe(true);
+      expect(screen.getByLabelText("Capital account statement")).toBeDefined();
+      expect(screen.getByText("Capital account — LP")).toBeDefined();
+      expect(screen.getByText("100.00")).toBeDefined();
+      expect(screen.getByText("130.00")).toBeDefined();
+      expect(screen.getByText("Capital account — GP")).toBeDefined();
+      expect(screen.getAllByText("20.00").length).toBeGreaterThan(0);
+      expect(
+        screen.getByText(/the same Loan-shaped fold \/nav cites/),
+      ).toBeDefined();
+      const income = screen.getAllByText("Allocated income");
+      expect(income.length).toBe(2);
+      for (const label of income) {
+        const row = label.closest("[role=row]");
+        expect(row?.textContent).toContain("—");
+        expect(row?.textContent).not.toMatch(/15\.00/);
+        expect(row?.textContent).not.toMatch(/0\.00/);
+      }
+      const unreal = screen.getAllByText("Unrealized");
+      expect(unreal.length).toBe(2);
+      for (const label of unreal) {
+        const row = label.closest("[role=row]");
+        expect(row?.textContent).toContain("—");
+        expect(row?.textContent).not.toMatch(/10\.00/);
+        expect(row?.textContent).not.toMatch(/0\.00/);
+      }
+      expect(screen.queryByText("15.00")).toBeNull();
     } finally {
       wire.getBook = realBook;
       wire.listAccounts = realAccounts;
