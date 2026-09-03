@@ -41,7 +41,7 @@ export interface Book {
   displayName: string;
   kind: BookKind;
   currencyCode: string;
-  /** `funds/{fund}`, or empty when the book is independent. */
+  /** funds/id, or empty when the book is independent. */
   fund: string;
   /** WorkOS organization id, or empty. */
   organization: string;

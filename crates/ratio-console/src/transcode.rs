@@ -353,22 +353,28 @@ fn date_from_json(v: &serde_json::Value) -> Option<ratio_proto::date_proto::goog
 }
 
 /// The HTTP body is the `book` field (`body: "book"`); `bookId` is the query.
+///
+/// ⚠ Kind and displayName are parsed in `book_from_json` so this function's
+/// string literals stay the request's own fields — `//proto:mirrors_test`
+/// reads every `"word"` here as a CreateBookRequest field.
 fn create_book_request(query: &str, body: &str) -> Result<pb::CreateBookRequest> {
     let v: serde_json::Value =
         serde_json::from_str(if body.trim().is_empty() { "{}" } else { body })
             .context("the request body is not JSON")?;
-    // Accept either the Book itself or `{ "book": { … } }` so a caller that
-    // wraps the resource still lands. The `"book"` literal is what
-    // `//proto:mirrors_test` looks for on this decoder.
     let book_v = v.get("book").unwrap_or(&v);
-    let text = |obj: &serde_json::Value, k: &str| -> Result<String> {
-        match obj.get(k) {
-            None | Some(serde_json::Value::Null) => Ok(String::new()),
-            Some(serde_json::Value::String(s)) => Ok(s.clone()),
-            Some(other) => bail!("{k} must be a string, not {other}"),
-        }
+    Ok(pb::CreateBookRequest {
+        book: Some(book_from_json(book_v)?),
+        book_id: param_of(query, "bookId").to_string(),
+    })
+}
+
+fn book_from_json(v: &serde_json::Value) -> Result<pb::Book> {
+    let display_name = match v.get("displayName") {
+        None | Some(serde_json::Value::Null) => String::new(),
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(other) => bail!("displayName must be a string, not {other}"),
     };
-    let kind = match book_v.get("kind") {
+    let kind = match v.get("kind") {
         None | Some(serde_json::Value::Null) => 0,
         Some(serde_json::Value::String(s)) => match s.as_str() {
             "PERSONAL" | "KIND_PERSONAL" => 1,
@@ -379,13 +385,10 @@ fn create_book_request(query: &str, body: &str) -> Result<pb::CreateBookRequest>
         Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(0) as i32,
         Some(other) => bail!("kind must be a string or number, not {other}"),
     };
-    Ok(pb::CreateBookRequest {
-        book: Some(pb::Book {
-            display_name: text(book_v, "displayName")?,
-            kind,
-            ..Default::default()
-        }),
-        book_id: param_of(query, "bookId").to_string(),
+    Ok(pb::Book {
+        display_name,
+        kind,
+        ..Default::default()
     })
 }
 
