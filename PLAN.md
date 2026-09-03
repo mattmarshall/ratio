@@ -1026,6 +1026,43 @@ amendment does not close #5. MinTax stays on #9. None of those are on
 the *Explicitly not building* list, and this amendment adds none of
 them.
 
+### Amendment, 2026-09-03 — MinTax is a ranking at a price, not a Method
+
+Tax lots left the refusal list in the 48 hours after this file was
+written. Six ordering methods and a holding-period split shipped then.
+MinTax was modelled in `Ratio.Lots.Methods` as the shape that is **not**
+an ordering — `a_tax_minimising_method_is_not_a_function_of_the_lots` —
+and deliberately not implemented, because adding it as a `Method` /
+`Order` variant is the mistake that file exists to prevent.
+
+What landed is the decision surface and the engine, as its own election:
+
+- Lean: `Ratio.Lots.MinTax`. Ranking takes a sale **price**. Close
+  bases flip (10 short / 12 long: at 50 take the long lot, at 5 take
+  the short). Far bases do not. No `Order` reproduces both answers.
+  A price that will not divide is refused. Missing dates refuse.
+- TLA: `//tla:mintax_engine_check`. The probe
+  `//tla:sort_and_walk_mintax_check` treats MinTax as a Method and
+  `TheLotTakenMinimisesTax` goes red.
+- Rust: `min_tax_short_weight` on the rule set. `None` means nobody
+  said — not a silent 2. `lot_method = "min_tax"` stays refused.
+  Electing both `lot_method` and `min_tax_short_weight` refuses.
+  The fold ranks at the cash posting's per-unit proceeds.
+
+**What this is NOT, because two shapes named in #9 stay named:**
+
+- Not **specific identification**. That is a per-sale selection the
+  client supplies, possibly from the middle of a holding. Still
+  modelled, not an engine.
+- Not **average cost**. That pools the holding and carries a rounding
+  decision no ordering has. Still modelled, not an engine.
+
+Nothing on the *Explicitly not building* list moved. Tax lots already
+left it. This extends that engine with the one method that cannot be a
+sort. Issue #9 stays open until those two siblings land.
+Wash sales stay as the previous amendment recorded them; #5 stays
+open for `WashRestatement` and the console cite.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

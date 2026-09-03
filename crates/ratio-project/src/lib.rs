@@ -293,10 +293,11 @@ struct Actions {
 /// What one entry's configuration tells the lot engine.
 ///
 /// ⛔ RESOLVED FROM THE DIGEST THAT ENTRY PINNED, never from whatever is active
-/// now. The method, the chart roles, the holding-period threshold and the
-/// wash window are terms of an administration agreement rather than
-/// implementation choices, and each decides a REALIZED GAIN — the figure
-/// with no counterparty, which no reconciliation reaches.
+/// now. The method, the chart roles, the holding-period threshold, the
+/// wash window and the min-tax weight are terms of an administration
+/// agreement rather than implementation choices, and each decides a
+/// REALIZED GAIN — the figure with no counterparty, which no
+/// reconciliation reaches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Terms {
     /// Which lots a sale gives up.
@@ -310,6 +311,10 @@ pub struct Terms {
     /// `None` means the fund did not elect the rule.
     /// `Ratio.Lots.Wash.inWashWindow`.
     pub wash_window_days: Option<i64>,
+    /// Short-term tax weight for min-tax relief.
+    /// `None` means the fund did not elect the ranking.
+    /// ⛔ NOT A `Method`. `Ratio.Lots.MinTax`.
+    pub min_tax_short_weight: Option<i64>,
 }
 
 impl Terms {
@@ -320,6 +325,7 @@ impl Terms {
             roles: set.chart_roles,
             long_term_days: set.long_term_days,
             wash_window_days: set.wash_window_days,
+            min_tax_short_weight: set.min_tax_short_weight,
         }
     }
 
@@ -1483,7 +1489,16 @@ impl Projection {
             let leftover = {
                 let held = fold.lots.open.entry(key.clone()).or_default();
                 let relieving = std::time::Instant::now();
-                let relieved = held.relieve(method, -qty);
+                // ⛔ MINTAX IS NOT A METHOD. When the entry's configuration
+                // elected the ranking, the sale PRICE comes from the cash
+                // posting (the trade's proceeds) and the walk re-ranks.
+                // Treating it as `held.relieve(method, …)` is
+                // `//tla:sort_and_walk_mintax_check`.
+                let relieved = if let Some(weight) = terms.min_tax_short_weight {
+                    min_tax_sale(held, entry, &terms, trade_day, -qty, weight)
+                } else {
+                    held.relieve(method, -qty)
+                };
                 cost.relieve += relieving.elapsed();
                 cost.reliefs += 1;
                 match relieved {
@@ -1507,6 +1522,11 @@ impl Projection {
                         // operator would read to investigate a drift asserted the
                         // very thing that was wrong.
                         if -p.amount != r.cost {
+                            let how = if terms.min_tax_short_weight.is_some() {
+                                "min-tax-at-the-sale-price"
+                            } else {
+                                method.describe()
+                            };
                             fold.lots.breaks.push(format!(
                                 "{}: selling {} of {} posted {} of basis, and relieving the lots \
                                  {} costs {} — the position and the lot book \
@@ -1515,7 +1535,7 @@ impl Projection {
                                 -qty,
                                 inst,
                                 -p.amount,
-                                method.describe(),
+                                how,
                                 r.cost,
                                 -p.amount - r.cost
                             ));
@@ -2054,6 +2074,53 @@ fn convert(by_currency: &BTreeMap<Option<Text>, i128>, rates: &Rates) -> Result<
 /// `Ratio.Lots.Wash.disallowing_without_attaching_destroys_the_loss`.
 /// The search is over the holding — the remainder — so a Taken lot is
 /// unreachable. `Ratio.Lots.Wash.attaching_cannot_write_a_lot_the_sale_took`.
+/// Rank and relieve one sale under MinTax. `Ratio.Lots.MinTax`.
+///
+/// ⛔ THE PRICE IS THE CASH POSTING, not the posted basis. The basis is
+/// what the ranking decides; using it as the price would be circular and
+/// would make every sale look like a sale at cost.
+fn min_tax_sale(
+    held: &mut relief::Holding,
+    entry: &JournalEntry,
+    terms: &Terms,
+    trade_day: Option<relief::Day>,
+    want: i64,
+    short_weight: i64,
+) -> Result<relief::Relief> {
+    let Some(day) = trade_day else {
+        anyhow::bail!(
+            "min-tax relief needs the sale's trade date to classify lots short or \
+             long, and this entry has none — assuming today or the epoch would pick \
+             a rate the records do not support"
+        );
+    };
+    let Some(roles) = terms.roles else {
+        anyhow::bail!(
+            "min-tax relief needs the sale PRICE, which is the cash posting, and \
+             this configuration names no chart roles — there is no cash dimension \
+             to read a price from"
+        );
+    };
+    let cash: Vec<i64> = entry
+        .postings
+        .iter()
+        .filter(|p| p.dim == roles.cash)
+        .map(|p| p.amount)
+        .collect();
+    if cash.is_empty() {
+        anyhow::bail!(
+            "min-tax relief needs the sale PRICE and this entry has no cash posting \
+             — a ranking without a price is a sort, and Ratio.Lots.MinTax is not a \
+             sort"
+        );
+    }
+    let proceeds = cash.into_iter().try_fold(0i64, |acc, a| {
+        ratio_common::checked::add(acc, a, "the sale's proceeds")
+    })?;
+    let price = relief::unit_price(proceeds, want)?;
+    held.relieve_min_tax(want, price, short_weight, terms.long_term_days, day)
+}
+
 fn try_wash_sale(
     held: &mut relief::Holding,
     r: &relief::Relief,
@@ -3260,10 +3327,16 @@ mod tests {
         let c = b.active().unwrap().unwrap();
         let set = ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&c).unwrap()))
             .unwrap();
-        let method = relief::Method::from(set.effective_lot_method());
         let p = Projection::of_book(d).unwrap();
         let held = p.lots_of(B, 1, "vti").unwrap().value;
-        let r = relief::relieve_by(method, &held, units).unwrap();
+        let as_of = ratio_common::days_from_iso_date(day).unwrap() as relief::Day;
+        let r = if let Some(w) = set.min_tax_short_weight {
+            let price = relief::unit_price(proceeds, units).unwrap();
+            relief::relieve_min_tax(&held, units, price, w, set.long_term_days, as_of).unwrap()
+        } else {
+            relief::relieve_by(relief::Method::from(set.effective_lot_method()), &held, units)
+                .unwrap()
+        };
         let postings =
             relief::sale_postings(ROLES, None, "vti", units, r.cost, proceeds).unwrap();
         b.append(&JournalEntry {
@@ -3532,6 +3605,71 @@ mod tests {
         dispose(&d, "s2", 1, 30, "2026-06-20");
         let p = Projection::of_book(&d).unwrap();
         assert_eq!(p.relieved_cost(B).unwrap(), 25 + 30);
+    }
+
+    // ── min-tax, on a real book ────────────────────────────────────────────
+
+    fn book_with_mintax(name: &str) -> std::path::PathBuf {
+        let d = tmp_root().join(format!("ratio-project-{name}"));
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+            Account { dim: 30, display_name: "Realized gain".into(), account_type: A::Income },
+        ])
+        .unwrap();
+        let c = b
+            .put(
+                b"rules = []\nlong_term_days = 365\nmin_tax_short_weight = 2\n\n\
+                  [chart_roles]\ninvestments = 1\ncash = 2\nrealized_gain = 30\n",
+            )
+            .unwrap();
+        b.set_active(&c).unwrap();
+        d
+    }
+
+    fn mintax_holding(d: &std::path::Path) {
+        // A short (basis 10), B long (basis 12). Close bases — the flip.
+        buy_on(d, "a", 1, 10, "2025-10-01");
+        buy_on(d, "b", 1, 12, "2023-01-01");
+    }
+
+    #[test]
+    fn mintax_on_the_book_takes_the_long_lot_at_a_gain() {
+        // ⭐ `Ratio.Lots.MinTax.mintax_takes_different_lots_at_the_two_prices`.
+        let d = book_with_mintax("mintax-gain");
+        mintax_holding(&d);
+        dispose(&d, "s", 1, 50, "2026-01-01");
+        let left = Projection::of_book(&d).unwrap().lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].cost, 10, "gave up B at 12; A remains");
+        assert_eq!(left[0].acquired, Some(day("2025-10-01")));
+    }
+
+    #[test]
+    fn mintax_on_the_book_takes_the_short_lot_at_a_loss() {
+        let d = book_with_mintax("mintax-loss");
+        mintax_holding(&d);
+        dispose(&d, "s", 1, 5, "2026-01-01");
+        let left = Projection::of_book(&d).unwrap().lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].cost, 12, "gave up A at 10; B remains");
+        assert_eq!(left[0].acquired, Some(day("2023-01-01")));
+    }
+
+    #[test]
+    fn a_silent_book_does_not_rank_at_a_price() {
+        // ⛔ UNSET STAYS UNSET. A book that never elected min-tax still
+        // relieves oldest-first by custom. The same two lots, sold at 5:
+        // FIFO takes A (10) because it is older in journal order? A was
+        // bought first. FIFO takes A at any price. That is not the flip.
+        let d = book_with_gains("mintax-silent", 365);
+        mintax_holding(&d);
+        dispose(&d, "s", 1, 5, "2026-01-01");
+        let left = Projection::of_book(&d).unwrap().lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].cost, 12, "FIFO took A; B remains — no price ranking");
     }
 
     // ── currencies ─────────────────────────────────────────────────────────

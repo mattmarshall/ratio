@@ -1,11 +1,16 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
-**State**: bazel tests green, 19 `lean_test`, 21 `tla_check`, 14 `manual`
+**State**: bazel tests green, 23 `lean_test`, 40 `tla_check`, 25 `manual`
 probes all red for the reasons they name.
 
 Issues #4 and #7 are closed. Open work is #5, #6, #8, #9. This file is the part
 that does not fit in an issue: what was learned, what is load-bearing, and what
-will bite.
+will bite. Wash sales have a Lean/TLA model and a Rust window
+(`RuleSet.wash_window_days`); #5 stays open for `WashRestatement` and the
+console cite. MinTax (#9) now has a Lean ranking, a TLA probe that fails if it
+is treated as a Method, and a Rust election that is not a `LotMethod`
+variant. Specific identification and average cost stay named, not built.
+This file does not close #5 or #9.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 
@@ -109,6 +114,11 @@ the conserved one, and the kernel never said it was.
 - **A config that cannot be read REFUSES the relief.** There is no fallback to
   FIFO: FIFO is a method real funds elect, so a book relieved under it by
   accident is indistinguishable from one relieved under it by agreement.
+- **MinTax is not a `Method`.** `Ratio.Lots.MinTax` ranks at a sale PRICE;
+  `lot_method = "min_tax"` stays refused. The election is
+  `min_tax_short_weight: Option<i64>` — `None` is unset, not a silent 2 —
+  and it cannot share a configuration with `lot_method`.
+  `//tla:sort_and_walk_mintax_check` is the engine that pretends otherwise.
 - **`Totals.by_dim` keys on (dimension, currency).** A total over both is not a
   figure — `a_flat_total_hides_a_currency_mismatch`. `nav` and `realized`
   translate through an explicit `Rates` or refuse, and `Rates` carries its BASE
@@ -813,11 +823,11 @@ than one that is entirely unclassified.
 
 | | |
 |---|---|
-| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,Edges,Posting,Wash}`, `Actions/Factor`, `Closure`, `Exec` |
-| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `tolerance` — the administration agreement, as configuration |
+| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,Edges,Posting,Wash}`, `Actions/Factor`, `Closure`, `Exec` |
+| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `min_tax_short_weight`, `tolerance` — the administration agreement, as configuration |
 | `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
-| `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
+| `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `MinTaxEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine — one pass, N view folds, each with a monotonic cut on the journal's own clock and a band bounded by the settlement lag. ⚠ every memory figure in this file is a ONE-VIEW figure; each view carries its own lot book |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
 | `crates/ratio-console` | the console's BFF — 40 RPCs, transcoded onto `/v1` |

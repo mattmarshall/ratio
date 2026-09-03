@@ -120,11 +120,11 @@ impl Relieved {
 /// produce different taxable income under each, with no figure on the balance
 /// sheet moving. `Ratio.Lots.Methods.the_method_decides_the_taxable_gain`.
 ///
-/// ⚠ AND THE SPACE IS NOT ALL ORDERINGS. These four sort and walk. SPECIFIC
-/// IDENTIFICATION is a selection that may take from the middle of a holding, and
-/// AVERAGE COST pools the holding so there is no lot to give up at all — both
-/// are modelled in `Ratio.Lots.Methods` and neither belongs in this enum.
-/// Adding them here as variants is the mistake the Lean file exists to prevent.
+/// ⚠ AND THE SPACE IS NOT ALL ORDERINGS. These sort and walk. SPECIFIC
+/// IDENTIFICATION is a selection, AVERAGE COST pools the holding, and MINTAX
+/// ranks at a SALE PRICE — all three are modelled in `Ratio.Lots.Methods` /
+/// `Ratio.Lots.MinTax` and none belongs in this enum. Adding MinTax here as a
+/// variant is the mistake those files exist to prevent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Method {
     /// Oldest acquisition first.
@@ -669,6 +669,37 @@ impl Holding {
 
         Ok(Relief { taken, cost })
     }
+
+    /// Give up `want` units under MinTax: rank at `price`, then walk.
+    ///
+    /// ⛔ NOT `relieve`. The ranking takes the sale PRICE, so it cannot be a
+    /// `Method` and cannot live in the pre-indexed order. Each sale re-ranks.
+    /// `Ratio.Lots.MinTax`. `//tla:sort_and_walk_mintax_check` is the engine
+    /// that pretends otherwise.
+    pub fn relieve_min_tax(
+        &mut self,
+        want: i64,
+        price: i64,
+        short_weight: i64,
+        threshold: i64,
+        as_of: Day,
+    ) -> Result<Relief> {
+        let lots = self.drain_all();
+        match relieve_min_tax(&lots, want, price, short_weight, threshold, as_of) {
+            Ok(r) => {
+                for lot in r.left {
+                    self.insert_open(lot)?;
+                }
+                Ok(Relief { taken: r.taken, cost: r.cost })
+            }
+            Err(e) => {
+                for lot in lots {
+                    self.insert_open(lot)?;
+                }
+                Err(e)
+            }
+        }
+    }
 }
 
 /// What a relief took. ⛔ No `left`: the holding kept it.
@@ -847,6 +878,223 @@ pub fn sale_postings(
             quantity: None,
         },
     ])
+}
+
+/// Per-unit proceeds of a sale. `Ratio.Lots.MinTax.unitPrice`.
+///
+/// ⛔ REFUSES RATHER THAN ROUNDS. A sale of three units for 100 has no
+/// whole-minor-unit price, and which way to round would move the ranking of
+/// every lot. `a_price_that_does_not_divide_is_refused`.
+pub fn unit_price(proceeds: i64, want: i64) -> Result<i64> {
+    if want <= 0 {
+        bail!(
+            "a unit price over {want} units is not a price — a sale of nothing, or a \
+             negative one, has no per-unit proceeds"
+        );
+    }
+    if proceeds % want != 0 {
+        bail!(
+            "a sale of {want} units for {proceeds} does not divide into a whole-minor-unit \
+             price — which way to round would move every lot's tax rank, and \
+             Ratio.Lots.MinTax.a_price_that_does_not_divide_is_refused refuses rather \
+             than guesses"
+        );
+    }
+    Ok(proceeds / want)
+}
+
+/// Whether a holding period is long-term. `Ratio.Lots.Methods.isLongTerm`.
+///
+/// ⚠ THE THRESHOLD DAY IS LONG-TERM. Off by one here moves a lot between
+/// tax rates, and the resulting figure looks entirely ordinary.
+pub fn is_long_term(threshold: i64, acquired: Day, as_of: Day) -> bool {
+    i64::from(as_of) - i64::from(acquired) >= threshold
+}
+
+/// Tax of giving up a lot at a per-unit sale price. `Ratio.Lots.MinTax.taxAt`.
+///
+/// ⛔ EVERY MULTIPLY IS CHECKED. The proof is over unbounded `Int`; this
+/// runs on `i64`. Asking a wrapped number which lot costs less is asking
+/// about a product that never happened.
+fn tax_at(short_weight: i64, price: i64, lot: &Lot, short: bool) -> Result<i64> {
+    let proceeds = ratio_common::checked::mul(price, lot.units, "min-tax proceeds at this lot")?;
+    let gain = ratio_common::checked::sub(proceeds, lot.cost, "min-tax gain at this lot")?;
+    if short {
+        ratio_common::checked::mul(gain, short_weight, "min-tax short-term weight")
+    } else {
+        Ok(gain)
+    }
+}
+
+/// Whether lot `a` is cheaper in tax per unit than lot `b` at this price.
+///
+/// ⛔ CROSS-MULTIPLIED, NEVER `tax / units`. `Ratio.Lots.MinTax.cheaperTax`.
+/// Compared in `i128` so the ranking itself is not a 64-bit product.
+fn cheaper_tax(
+    short_weight: i64,
+    price: i64,
+    a: &Lot,
+    a_short: bool,
+    b: &Lot,
+    b_short: bool,
+) -> Result<bool> {
+    let ta = tax_at(short_weight, price, a, a_short)?;
+    let tb = tax_at(short_weight, price, b, b_short)?;
+    Ok((ta as i128) * (b.units as i128) < (tb as i128) * (a.units as i128))
+}
+
+fn lot_is_short(threshold: i64, as_of: Day, lot: &Lot) -> Result<bool> {
+    let Some(acquired) = lot.acquired else {
+        bail!(
+            "lot {} has no acquisition date, and min-tax cannot classify it — \
+             assuming the epoch would make it long-term at the favorable rate on \
+             records that do not support the claim, and assuming today would make it \
+             short-term on a holding that may have been held for years. Neither is \
+             conservative; they are wrong in opposite directions",
+            lot.seq
+        );
+    };
+    Ok(!is_long_term(threshold, acquired, as_of))
+}
+
+/// Rank a holding by tax at a sale price, cheapest-tax first.
+///
+/// `Ratio.Lots.MinTax.arrangeMinTax`. Missing dates refuse. Equal tax falls
+/// back to acquisition order.
+pub fn arrange_min_tax(
+    lots: &mut [Lot],
+    price: i64,
+    short_weight: i64,
+    threshold: i64,
+    as_of: Day,
+) -> Result<()> {
+    for l in lots.iter() {
+        let short = lot_is_short(threshold, as_of, l)?;
+        if !lot_is_sound(l.units, l.cost) {
+            bail!(
+                "lot {} holds {} units and carries {} — a holding of nothing that owes \
+                 something is not a lot, and relieving it would give away its basis for \
+                 no units at all",
+                l.seq,
+                l.units,
+                l.cost
+            );
+        }
+        // Fail here, not inside `sort_by`: a comparator that returns Result
+        // cannot refuse, and `expect` would panic on a product that does not
+        // fit.
+        tax_at(short_weight, price, l, short)?;
+    }
+    // Insertion-style via sort_by. The comparator is the Lean `thenBySeq`
+    // over `cheaperTax`: cheaper first, and ONLY a tie falls to seq.
+    lots.sort_by(|a, b| {
+        let a_short = lot_is_short(threshold, as_of, a).expect("dates checked");
+        let b_short = lot_is_short(threshold, as_of, b).expect("dates checked");
+        let a_cheaper = cheaper_tax(short_weight, price, a, a_short, b, b_short)
+            .expect("tax ranking");
+        let b_cheaper = cheaper_tax(short_weight, price, b, b_short, a, a_short)
+            .expect("tax ranking");
+        if a_cheaper {
+            std::cmp::Ordering::Less
+        } else if b_cheaper {
+            std::cmp::Ordering::Greater
+        } else {
+            a.seq.cmp(&b.seq)
+        }
+    });
+    Ok(())
+}
+
+/// Relieve under MinTax: rank at the price, then walk.
+///
+/// `Ratio.Lots.MinTax.relieveMinTax`. Conservation is the walk's; the
+/// ranking decides the gain.
+pub fn relieve_min_tax(
+    lots: &[Lot],
+    want: i64,
+    price: i64,
+    short_weight: i64,
+    threshold: i64,
+    as_of: Day,
+) -> Result<Relieved> {
+    if want < 0 {
+        bail!("a relief of {want} units is not a relief; a negative sale is a purchase");
+    }
+    if short_weight <= 0 {
+        bail!(
+            "min-tax short-term weight is {short_weight}, and a non-positive weight is \
+             not a weight"
+        );
+    }
+    let mut ordered = lots.to_vec();
+    arrange_min_tax(&mut ordered, price, short_weight, threshold, as_of)?;
+    // The walk is FIFO over the ranked list. ⛔ NOT `Method::Fifo.arrange` —
+    // that would re-sort by sequence and undo the price ranking.
+    walk_ordered(ordered, want)
+}
+
+/// Walk an already-ranked holding. Shared by the Method walk's shape; the
+/// caller owns the order.
+fn walk_ordered(ordered: Vec<Lot>, want: i64) -> Result<Relieved> {
+    let mut taken = Vec::new();
+    let mut cost = 0i64;
+    let mut remaining = want;
+    let mut left: Vec<Lot> = Vec::new();
+    let mut it = ordered.into_iter();
+
+    for lot in it.by_ref() {
+        if remaining == 0 {
+            left.push(lot);
+            break;
+        }
+        if takes_whole_lot(lot.units, remaining) {
+            taken.push(Taken {
+                seq: lot.seq,
+                units: lot.units,
+                cost: lot.cost,
+                acquired: lot.acquired,
+            });
+            cost = ratio_common::checked::add(cost, lot.cost, "the relieved cost")?;
+            remaining -= lot.units;
+            continue;
+        }
+        ratio_common::checked::mul(lot.cost, remaining, "a pro-rata lot split")?;
+        if !partial_divides(lot.cost, remaining, lot.units) {
+            bail!(
+                "relieving {remaining} of lot {}'s {} units does not divide its cost of {} \
+                 into whole minor units — which way to round is a term of an administration \
+                 agreement, not a property of arithmetic",
+                lot.seq,
+                lot.units,
+                lot.cost
+            );
+        }
+        let part = partial_cost(lot.cost, remaining, lot.units);
+        taken.push(Taken {
+            seq: lot.seq,
+            units: remaining,
+            cost: part,
+            acquired: lot.acquired,
+        });
+        cost = ratio_common::checked::add(cost, part, "the relieved cost")?;
+        left.push(Lot {
+            seq: lot.seq,
+            units: lot.units - remaining,
+            cost: lot.cost - part,
+            acquired: lot.acquired,
+        });
+        remaining = 0;
+    }
+    left.extend(it);
+
+    if remaining > 0 {
+        bail!(
+            "this holding is {remaining} units short of the {want} being sold — \
+             `Ratio.Lots.short_sales_are_refused`, and going negative would create \
+             a position nobody opened"
+        );
+    }
+    Ok(Relieved { taken, left, cost })
 }
 
 /// Whether a repurchase falls inside the disallowance window of a sale.
@@ -1761,6 +2009,139 @@ mod tests {
     #[test]
     fn an_overflowing_wash_split_is_refused() {
         let err = disallowed(i64::MIN, 2, 1).unwrap_err();
+        assert!(format!("{err:#}").contains("64 bits"), "{err:#}");
+    }
+
+    // ── min-tax — `Ratio.Lots.MinTax` ─────────────────────────────────────
+
+    fn close_bases() -> [Lot; 2] {
+        // A short (basis 10), B long (basis 12). Threshold 365.
+        [
+            dated(1, 1, 10, "2025-10-01"),
+            dated(2, 1, 12, "2023-01-01"),
+        ]
+    }
+
+    const AS_OF: &str = "2026-01-01";
+
+    fn as_of() -> Day {
+        ratio_common::days_from_iso_date(AS_OF).unwrap() as Day
+    }
+
+    #[test]
+    fn a_price_that_does_not_divide_is_refused() {
+        let err = unit_price(100, 3).unwrap_err();
+        assert!(format!("{err:#}").contains("does not divide"), "{err:#}");
+        assert_eq!(unit_price(150, 3).unwrap(), 50);
+    }
+
+    #[test]
+    fn mintax_takes_different_lots_at_the_two_prices() {
+        // ⭐ `Ratio.Lots.MinTax.mintax_takes_different_lots_at_the_two_prices`.
+        let lots = close_bases();
+        let at_50 = relieve_min_tax(&lots, 1, 50, 2, 365, as_of()).unwrap();
+        let at_5 = relieve_min_tax(&lots, 1, 5, 2, 365, as_of()).unwrap();
+        assert_eq!(at_50.cost, 12, "at a gain the long lot costs less");
+        assert_eq!(at_50.taken[0].seq, 2);
+        assert_eq!(at_5.cost, 10, "at a loss the short lot is worth more");
+        assert_eq!(at_5.taken[0].seq, 1);
+    }
+
+    #[test]
+    fn far_bases_do_not_flip() {
+        // ⚠ `Ratio.Lots.MinTax.far_bases_do_not_flip`. Basis 40 on the long
+        // lot wins at both prices; a test that used this holding would stay
+        // green on an engine that never saw the price.
+        let lots = [
+            dated(1, 1, 10, "2025-10-01"),
+            dated(2, 1, 40, "2023-01-01"),
+        ];
+        assert_eq!(relieve_min_tax(&lots, 1, 50, 2, 365, as_of()).unwrap().taken[0].seq, 2);
+        assert_eq!(relieve_min_tax(&lots, 1, 5, 2, 365, as_of()).unwrap().taken[0].seq, 2);
+    }
+
+    #[test]
+    fn no_ordering_reproduces_both_mintax_answers() {
+        // `Ratio.Lots.MinTax.no_ordering_reproduces_both_mintax_answers`.
+        // Each Order produces one basis from this holding. MinTax produces
+        // two. FIFO/LOFO give 10; LIFO/HIFO give 12. None give both.
+        let lots = close_bases();
+        let mintax_gain = relieve_min_tax(&lots, 1, 50, 2, 365, as_of()).unwrap().cost;
+        let mintax_loss = relieve_min_tax(&lots, 1, 5, 2, 365, as_of()).unwrap().cost;
+        assert_eq!(mintax_gain, 12);
+        assert_eq!(mintax_loss, 10);
+        for m in [Method::Fifo, Method::Lifo, Method::Hifo, Method::Lofo] {
+            let cost = relieve_by(m, &lots, 1).unwrap().cost;
+            assert!(
+                cost != mintax_gain || cost != mintax_loss,
+                "{m:?} reproduced both MinTax answers from lots alone"
+            );
+        }
+    }
+
+    #[test]
+    fn preferring_long_term_is_not_minimising_tax() {
+        let lots = close_bases();
+        let long = relieve_by(Method::LongestHeldFirst, &lots, 1).unwrap();
+        let min_at_5 = relieve_min_tax(&lots, 1, 5, 2, 365, as_of()).unwrap();
+        assert_eq!(long.taken[0].seq, 2, "prefer-long always takes B");
+        assert_eq!(min_at_5.taken[0].seq, 1, "min-tax at 5 takes A");
+    }
+
+    #[test]
+    fn a_missing_acquisition_date_refuses_mintax() {
+        let lots = [l(1, 1, 10)];
+        let err = relieve_min_tax(&lots, 1, 50, 2, 365, as_of()).unwrap_err();
+        assert!(format!("{err:#}").contains("no acquisition date"), "{err:#}");
+    }
+
+    #[test]
+    fn mintax_partial_relief_is_exactly_pro_rata() {
+        let lots = [dated(1, 7, 100, "2023-01-01")];
+        let err = relieve_min_tax(&lots, 3, 50, 2, 365, as_of()).unwrap_err();
+        assert!(format!("{err:#}").contains("does not divide"), "{err:#}");
+    }
+
+    #[test]
+    fn equal_tax_falls_back_to_acquisition_order() {
+        let lots = [
+            dated(2, 1, 10, "2025-10-01"),
+            dated(1, 1, 10, "2025-10-01"),
+        ];
+        let r = relieve_min_tax(&lots, 1, 50, 2, 365, as_of()).unwrap();
+        assert_eq!(r.taken[0].seq, 1);
+    }
+
+    #[test]
+    fn mintax_is_not_a_method_variant() {
+        // ⛔ THE TRAP. `Method` has no MinTax. Compiles only if it stays that
+        // way — a variant would make this match exhaustive and this test
+        // would have to name it.
+        match Method::Fifo {
+            Method::Fifo
+            | Method::Lifo
+            | Method::Hifo
+            | Method::Lofo
+            | Method::LongestHeldFirst
+            | Method::ShortestHeldFirst => {}
+        }
+    }
+
+    #[test]
+    fn holding_relieve_min_tax_takes_the_long_lot_at_a_gain() {
+        let mut h = Holding::new(Method::Fifo);
+        h.push(dated(1, 1, 10, "2025-10-01")).unwrap();
+        h.push(dated(2, 1, 12, "2023-01-01")).unwrap();
+        let r = h.relieve_min_tax(1, 50, 2, 365, as_of()).unwrap();
+        assert_eq!(r.cost, 12);
+        assert_eq!(h.lots().len(), 1);
+        assert_eq!(h.lots()[0].seq, 1);
+    }
+
+    #[test]
+    fn an_overflowing_mintax_rank_is_refused() {
+        let lots = [dated(1, i64::MAX, i64::MAX / 2, "2023-01-01")];
+        let err = relieve_min_tax(&lots, 1, i64::MAX, 2, 365, as_of()).unwrap_err();
         assert!(format!("{err:#}").contains("64 bits"), "{err:#}");
     }
 }

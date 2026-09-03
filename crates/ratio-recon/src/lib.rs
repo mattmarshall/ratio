@@ -1016,6 +1016,12 @@ fn rule_changes(a: &RuleSet, b: &RuleSet) -> Vec<String> {
             a.wash_window_days, b.wash_window_days
         ));
     }
+    if a.min_tax_short_weight != b.min_tax_short_weight {
+        out.push(format!(
+            "min-tax short-term weight: {:?} to {:?}",
+            a.min_tax_short_weight, b.min_tax_short_weight
+        ));
+    }
     out.sort();
     out
 }
