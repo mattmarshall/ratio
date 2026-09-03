@@ -550,6 +550,10 @@ impl Default for RuleSet {
             // that put `Some(PersonalTerms { loan: {} })` here would make
             // "nobody said" indistinguishable from "said, named none".
             personal: None,
+            // ⛔ NONE REFUSES THE CLOSE. A derived Default that pointed at
+            // Opening equity or Funding would invent a destination nobody
+            // named. `Ratio.Close.missing_destination_refuses_the_close`.
+            close: None,
         }
     }
 }

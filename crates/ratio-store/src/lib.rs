@@ -1918,7 +1918,7 @@ mod tests {
         later.trade_date = Some("2026-04-01".into());
         b.append(&later).unwrap();
 
-        let mut undated = entry("undated", &cfg, &[(1, 10), (2, -10)]);
+        let undated = entry("undated", &cfg, &[(1, 10), (2, -10)]);
         b.append(&undated).unwrap();
         assert_eq!(b.entries().unwrap().len(), 3);
     }
