@@ -3217,8 +3217,7 @@ impl Console {
             format!("{through:?} is not a calendar day (YYYY-MM-DD)")
         })?;
 
-        let path = self.book_path(fund)?;
-        let mut b = FileBook::open(&path)?;
+        let (path, mut b) = self.open_book(fund)?;
         let digest = b
             .active()?
             .context("no configuration is in force — a close cannot pin an unset config")?;
@@ -3382,8 +3381,7 @@ impl Console {
 
     pub fn list_period_closes(&self, parent: &str) -> Result<pb::ListPeriodClosesResponse> {
         let (id, view) = view_scoped_parent(parent).context("bad parent")?;
-        let path = self.book_path(&id)?;
-        let b = FileBook::open(&path)?;
+        let (_, b) = self.open_book(&id)?;
         let mut closes = b.closes()?;
         closes.retain(|c| c.view == view);
         closes.sort_by(|a, b| b.closed_date.cmp(&a.closed_date));
@@ -3396,8 +3394,7 @@ impl Console {
     pub fn get_period_close(&self, name: &str) -> Result<pb::PeriodClose> {
         let (fund, view, id) =
             view_scoped_id(name, "periodCloses").context("bad name")?;
-        let path = self.book_path(&fund)?;
-        let b = FileBook::open(&path)?;
+        let (_, b) = self.open_book(&fund)?;
         b.closes()?
             .into_iter()
             .find(|c| c.view == view && c.closed_date == id)
