@@ -523,6 +523,7 @@ pub fn replay(events: &[Event], set: &RuleSet, config: &Digest) -> Result<Vec<Jo
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         });
     }
     Ok(entries)

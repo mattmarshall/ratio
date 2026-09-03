@@ -396,6 +396,7 @@ pub fn generate_books_with_progress(
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })?;
         written += 1;
     }
@@ -436,6 +437,7 @@ pub fn generate_books_with_progress(
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })?;
         written += 1;
     }
@@ -531,6 +533,7 @@ pub fn generate_books_with_progress(
                 announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
             });
             written += 1;
             open.push(ratio_project::relief::Lot {
@@ -603,6 +606,7 @@ pub fn generate_books_with_progress(
                     announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
                 });
                 written += 1;
             }
@@ -653,6 +657,7 @@ pub fn generate_books_with_progress(
             }),
             due_date: None,
             application: None,
+            identified_lots: None,
         })?;
         written += 1;
     }
@@ -690,6 +695,7 @@ pub fn generate_books_with_progress(
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })?;
         written += 1;
     }
@@ -1176,6 +1182,7 @@ mod tests {
                 announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
             })
             .unwrap_err();
         let msg = format!("{err:#}");

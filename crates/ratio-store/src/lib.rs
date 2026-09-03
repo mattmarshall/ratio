@@ -389,6 +389,19 @@ pub struct JournalEntry {
     /// the buckets look exact while being somebody else's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub application: Option<String>,
+
+    /// Lots the taxpayer named for this sale. `Ratio.Lots.SpecId`.
+    ///
+    /// ⛔ NOT A `lot_method`. Specific identification is an attested per-sale
+    /// choice, not a sort of the holding. `lot_method = "specific_id"` stays
+    /// refused. `None` means this sale is not SpecID; `Some([])` means the
+    /// election is present and the lots are unnamed — that refuses, it does
+    /// not walk FIFO. FIFO is a method real funds elect.
+    ///
+    /// `#[serde(default)]` so every journal written before this field
+    /// existed still reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identified_lots: Option<Vec<u64>>,
 }
 
 /// A period close: the citeable boundary per book of record.
@@ -1425,6 +1438,7 @@ mod position_tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
         b.append(&JournalEntry {
@@ -1440,6 +1454,7 @@ mod position_tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
 
@@ -1497,6 +1512,7 @@ mod tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         }
     }
 
@@ -1534,6 +1550,7 @@ mod tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         };
         assert!(!e.conserves_every_currency());
         let err = b.append(&e).unwrap_err();
@@ -1561,6 +1578,7 @@ mod tests {
                 announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
             })
             .is_ok());
     }
@@ -1591,6 +1609,7 @@ mod tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         };
         assert!(!e.conserves_every_currency());
         assert!(b.append(&e).is_err());

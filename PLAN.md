@@ -1053,7 +1053,7 @@ What landed is the decision surface and the engine, as its own election:
 
 - Not **specific identification**. That is a per-sale selection the
   client supplies, possibly from the middle of a holding. Still
-  modelled, not an engine.
+  modelled, not an engine. *(superseded by the next amendment.)*
 - Not **average cost**. That pools the holding and carries a rounding
   decision no ordering has. Still modelled, not an engine.
 
@@ -1062,6 +1062,41 @@ left it. This extends that engine with the one method that cannot be a
 sort. Issue #9 stays open until those two siblings land.
 Wash sales stay as the previous amendment recorded them; #5 stays
 open for `WashRestatement` and the console cite.
+
+### Amendment, 2026-09-03 — SpecID is a named selection, not a Method
+
+Specific identification was modelled in `Ratio.Lots.Methods` as the
+shape that is **not** an ordering — the client names the lots, possibly
+from the middle — and `selectFirst` put those names first. That walk
+cannot refuse a contradictory instruction. Adding SpecID as a
+`Method` / `Order` / `lot_method` variant is the mistake that file
+exists to prevent.
+
+What landed is the decision surface and the engine, as an attested
+per-sale choice:
+
+- Lean: `Ratio.Lots.SpecId`. Named lots are relieved exactly. Unknown,
+  overspecified, insufficient, duplicate and unnamed selections refuse.
+  No `Order` takes the middle lot of 10 / 40 / 70. `selectFirst` of
+  nothing is FIFO; SpecID of nothing refuses. Conservation is inherited.
+  A husk is still a husk.
+- TLA: `//tla:specid_engine_check`. The probe
+  `//tla:sort_and_walk_specid_check` treats SpecID as FIFO and
+  `TheLotTakenIsTheOneNamed` goes red.
+- Rust: `JournalEntry.identified_lots: Option<Vec<u64>>`. `None` means
+  this sale is not SpecID. `Some([])` is elected and unnamed — refuse,
+  not FIFO. `lot_method = "specific_id"` stays refused. Naming lots on
+  a min-tax book refuses (two answers). The fold reads the names on
+  the entry.
+
+**What this is NOT, because one shape named in #9 stays named:**
+
+- Not **average cost**. That pools the holding and carries a rounding
+  decision no ordering has. Still modelled, not an engine.
+
+Nothing on the *Explicitly not building* list moved. Issue #9 stays
+open for average cost. WashRestatement and the console cite stay on
+#5. This amendment closes nothing.
 
 ## The control plane: geetch and crova
 

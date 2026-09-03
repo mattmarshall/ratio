@@ -121,10 +121,10 @@ impl Relieved {
 /// sheet moving. `Ratio.Lots.Methods.the_method_decides_the_taxable_gain`.
 ///
 /// ⚠ AND THE SPACE IS NOT ALL ORDERINGS. These sort and walk. SPECIFIC
-/// IDENTIFICATION is a selection, AVERAGE COST pools the holding, and MINTAX
-/// ranks at a SALE PRICE — all three are modelled in `Ratio.Lots.Methods` /
-/// `Ratio.Lots.MinTax` and none belongs in this enum. Adding MinTax here as a
-/// variant is the mistake those files exist to prevent.
+/// IDENTIFICATION is a selection the taxpayer names, AVERAGE COST pools the
+/// holding, and MINTAX ranks at a SALE PRICE — none belongs in this enum.
+/// Adding SpecID here as a variant is the mistake `Ratio.Lots.SpecId`
+/// exists to prevent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Method {
     /// Oldest acquisition first.
@@ -700,6 +700,31 @@ impl Holding {
             }
         }
     }
+
+    /// Give up `want` units under SpecID: take the named lots, in the
+    /// order named.
+    ///
+    /// ⛔ NOT `relieve`. The walk takes the taxpayer's NAMES, so it cannot
+    /// be a `Method` and cannot live in the pre-indexed order.
+    /// `Ratio.Lots.SpecId`. `//tla:sort_and_walk_specid_check` is the
+    /// engine that pretends otherwise.
+    pub fn relieve_spec_id(&mut self, want: i64, named: &[u64]) -> Result<Relief> {
+        let lots = self.drain_all();
+        match relieve_spec_id(&lots, want, named) {
+            Ok(r) => {
+                for lot in r.left {
+                    self.insert_open(lot)?;
+                }
+                Ok(Relief { taken: r.taken, cost: r.cost })
+            }
+            Err(e) => {
+                for lot in lots {
+                    self.insert_open(lot)?;
+                }
+                Err(e)
+            }
+        }
+    }
 }
 
 /// What a relief took. ⛔ No `left`: the holding kept it.
@@ -1031,6 +1056,82 @@ pub fn relieve_min_tax(
     // The walk is FIFO over the ranked list. ⛔ NOT `Method::Fifo.arrange` —
     // that would re-sort by sequence and undo the price ranking.
     walk_ordered(ordered, want)
+}
+
+/// Relieve under SpecID: take the named lots, in the order named.
+///
+/// `Ratio.Lots.SpecId.relieveSpecId`. Conservation is the walk's; the
+/// name decides the gain. An empty name list is SpecID elected and lots
+/// unnamed — refuse, do not walk FIFO.
+pub fn relieve_spec_id(lots: &[Lot], want: i64, named: &[u64]) -> Result<Relieved> {
+    if want < 0 {
+        bail!("a relief of {want} units is not a relief; a negative sale is a purchase");
+    }
+    if named.is_empty() {
+        bail!(
+            "specific identification is elected and no lots were named — walking FIFO \
+             would relieve under a method this sale did not elect, and FIFO is a method \
+             real funds elect. Ratio.Lots.SpecId.an_unnamed_selection_is_refused"
+        );
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut picked = Vec::with_capacity(named.len());
+    for seq in named {
+        if !seen.insert(*seq) {
+            bail!(
+                "lot {seq} is named twice on one sale — two instructions about one \
+                 remainder. Ratio.Lots.SpecId.a_duplicate_name_is_refused"
+            );
+        }
+        let lot = lots.iter().find(|l| l.seq == *seq).ok_or_else(|| {
+            anyhow::anyhow!(
+                "lot {seq} is not in this holding — a name the book does not have is \
+                 not a lot the taxpayer can identify. \
+                 Ratio.Lots.SpecId.an_unknown_lot_is_refused"
+            )
+        })?;
+        picked.push(lot.clone());
+    }
+    // ⛔ OVERSPECIFIED: a proper prefix already covers the sale. Naming
+    // lots the walk will not reach contradicts the quantity sold.
+    // `selectFirst` cannot say so.
+    if overspecified(&picked, want) {
+        bail!(
+            "this selection names more lots than the sale of {want} unit(s) will \
+             reach — a client instruction that contradicts itself, not a walk. \
+             Ratio.Lots.SpecId.an_overspecified_selection_is_refused"
+        );
+    }
+    let unnamed: Vec<Lot> = lots
+        .iter()
+        .filter(|l| !seen.contains(&l.seq))
+        .cloned()
+        .collect();
+    let mut r = walk_ordered(picked, want)?;
+    r.left.extend(unnamed);
+    Ok(r)
+}
+
+/// Whether a proper prefix of the named lots already covers `want`.
+///
+/// `Ratio.Lots.SpecId.overspecified`. A husk (0 units) at the front does
+/// not cover; a single named lot may be taken in part.
+fn overspecified(picked: &[Lot], want: i64) -> bool {
+    if picked.len() < 2 {
+        return false;
+    }
+    let mut remaining = want;
+    for (i, lot) in picked.iter().enumerate() {
+        let last = i + 1 == picked.len();
+        if last {
+            return false;
+        }
+        if remaining <= lot.units {
+            return true;
+        }
+        remaining -= lot.units;
+    }
+    false
 }
 
 /// Walk an already-ranked holding. Shared by the Method walk's shape; the
@@ -2143,5 +2244,115 @@ mod tests {
         let lots = [dated(1, i64::MAX, i64::MAX / 2, "2023-01-01")];
         let err = relieve_min_tax(&lots, 1, i64::MAX, 2, 365, as_of()).unwrap_err();
         assert!(format!("{err:#}").contains("64 bits"), "{err:#}");
+    }
+
+    // ── specific identification — `Ratio.Lots.SpecId` ─────────────────────
+
+    fn spec_holding() -> [Lot; 3] {
+        [l(1, 1, 10), l(2, 1, 40), l(3, 1, 70)]
+    }
+
+    #[test]
+    fn specid_takes_from_the_middle() {
+        // ⭐ `Ratio.Lots.SpecId.specid_takes_from_the_middle`.
+        let r = relieve_spec_id(&spec_holding(), 1, &[2]).unwrap();
+        assert_eq!(r.cost, 40);
+        assert_eq!(r.taken[0].seq, 2);
+        let left: Vec<u64> = r.left.iter().map(|l| l.seq).collect();
+        assert_eq!(left, vec![1, 3]);
+    }
+
+    #[test]
+    fn no_ordering_takes_the_middle_lot() {
+        // `Ratio.Lots.SpecId.no_ordering_takes_the_middle`.
+        let lots = spec_holding();
+        let named = relieve_spec_id(&lots, 1, &[2]).unwrap().cost;
+        assert_eq!(named, 40);
+        for m in [Method::Fifo, Method::Lifo, Method::Hifo, Method::Lofo] {
+            assert_ne!(
+                relieve_by(m, &lots, 1).unwrap().cost,
+                named,
+                "{m:?} took the middle lot from the holding alone"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_lot_is_refused() {
+        let err = relieve_spec_id(&spec_holding(), 1, &[9]).unwrap_err();
+        assert!(format!("{err:#}").contains("not in this holding"), "{err:#}");
+    }
+
+    #[test]
+    fn an_overspecified_selection_is_refused() {
+        let err = relieve_spec_id(&spec_holding(), 1, &[2, 3]).unwrap_err();
+        assert!(format!("{err:#}").contains("more lots than the sale"), "{err:#}");
+    }
+
+    #[test]
+    fn an_insufficient_selection_is_refused() {
+        let err = relieve_spec_id(&spec_holding(), 2, &[2]).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("short") || format!("{err:#}").contains("units short"),
+            "{err:#}"
+        );
+    }
+
+    #[test]
+    fn an_unnamed_selection_is_refused() {
+        let err = relieve_spec_id(&spec_holding(), 1, &[]).unwrap_err();
+        assert!(format!("{err:#}").contains("no lots were named"), "{err:#}");
+    }
+
+    #[test]
+    fn a_duplicate_name_is_refused() {
+        let err = relieve_spec_id(&spec_holding(), 1, &[2, 2]).unwrap_err();
+        assert!(format!("{err:#}").contains("named twice"), "{err:#}");
+    }
+
+    #[test]
+    fn specid_partial_relief_is_exactly_pro_rata() {
+        let err = relieve_spec_id(&[l(1, 7, 100)], 3, &[1]).unwrap_err();
+        assert!(format!("{err:#}").contains("does not divide"), "{err:#}");
+    }
+
+    #[test]
+    fn specid_inherits_the_husk() {
+        let r = relieve_spec_id(&[l(1, 0, 40), l(2, 1, 10)], 1, &[1, 2]).unwrap();
+        assert_eq!(r.cost, 50);
+    }
+
+    #[test]
+    fn a_husk_that_was_not_named_stays() {
+        let r = relieve_spec_id(&[l(1, 0, 40), l(2, 1, 10)], 1, &[2]).unwrap();
+        assert_eq!(r.cost, 10);
+        assert_eq!(r.left.iter().map(|l| l.seq).collect::<Vec<_>>(), vec![1]);
+    }
+
+    #[test]
+    fn specid_is_not_a_method_variant() {
+        // ⛔ THE TRAP. `Method` has no SpecId. Compiles only if it stays that
+        // way — a variant would make this match exhaustive and this test
+        // would have to name it.
+        match Method::Fifo {
+            Method::Fifo
+            | Method::Lifo
+            | Method::Hifo
+            | Method::Lofo
+            | Method::LongestHeldFirst
+            | Method::ShortestHeldFirst => {}
+        }
+    }
+
+    #[test]
+    fn holding_relieve_spec_id_takes_the_named_lot() {
+        let mut h = Holding::new(Method::Fifo);
+        h.push(l(1, 1, 10)).unwrap();
+        h.push(l(2, 1, 40)).unwrap();
+        h.push(l(3, 1, 70)).unwrap();
+        let r = h.relieve_spec_id(1, &[2]).unwrap();
+        assert_eq!(r.cost, 40);
+        let left: Vec<u64> = h.lots().iter().map(|l| l.seq).collect();
+        assert_eq!(left, vec![1, 3]);
     }
 }
