@@ -3346,7 +3346,7 @@ mod tests {
     /// is how a `--method hifo` generator declared HIFO and posted FIFO
     /// gains — the fold then disagreed with every sale.
     fn dispose(d: &std::path::Path, id: &str, units: i64, proceeds: i64, day: &str) {
-        let mut b = FileBook::open(d).unwrap();
+        let b = FileBook::open(d).unwrap();
         let c = b.active().unwrap().unwrap();
         let set = ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&c).unwrap()))
             .unwrap();
