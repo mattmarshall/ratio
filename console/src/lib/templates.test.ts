@@ -1,5 +1,13 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { BOOK_TEMPLATES } from "./templates";
+import templatesFixture from "../../fixtures/templates.json";
+import { BOOK_TEMPLATES, INGEST_TEMPLATE_KIND, templatesForKind } from "./templates";
+
+const samples = join(dirname(fileURLToPath(import.meta.url)), "../../fixtures/samples");
+const sampleHeader = (name: string) =>
+  readFileSync(join(samples, name), "utf8").split("\n")[0];
 
 describe("book templates", () => {
   it("are the three CreateBook kinds, not a second ledger", () => {
@@ -16,5 +24,89 @@ describe("book templates", () => {
     expect(byKind.INVESTMENT).toMatch(/fair value/);
     expect(byKind.INVESTMENT).toMatch(/Does not file a fund/);
     expect(byKind.PROJECT).toMatch(/work in progress/);
+  });
+});
+
+describe("ingest templates", () => {
+  it("seeds one mapping per CreateBook kind, and the fixture carries each", () => {
+    expect(INGEST_TEMPLATE_KIND["bank-statement"]).toBe("PERSONAL");
+    expect(INGEST_TEMPLATE_KIND["custodian-positions"]).toBe("INVESTMENT");
+    expect(INGEST_TEMPLATE_KIND["project-invoices"]).toBe("PROJECT");
+    const ids = templatesFixture.templates.map((t) => t.templateId);
+    for (const id of Object.keys(INGEST_TEMPLATE_KIND)) {
+      expect(ids, `fixtures/templates.json drifted off CreateBook seed ${id}`).toContain(id);
+    }
+  });
+
+  it("will not offer a fund snapshot on a Personal or Project book", () => {
+    const listed = templatesFixture.templates;
+    const personal = templatesForKind("PERSONAL", listed).map((t) => t.templateId);
+    const project = templatesForKind("PROJECT", listed).map((t) => t.templateId);
+    const investment = templatesForKind("INVESTMENT", listed).map((t) => t.templateId);
+    expect(personal).toEqual(["bank-statement"]);
+    expect(project).toEqual(["project-invoices"]);
+    expect(investment).toEqual(["custodian-positions"]);
+    expect(personal).not.toContain("custodian-positions");
+    expect(project).not.toContain("custodian-positions");
+  });
+
+  it("leaves a demo trade file visible on the book that holds it", () => {
+    // ⚠ seed-demo-book.sh's e2e path. Not a CreateBook seed; filtering it
+    // out of an Investment list would hide the closed loop the roadmap names.
+    const extra = [
+      ...templatesFixture.templates,
+      {
+        name: "funds/harbourline-global-value/templates/prime_equity_trades",
+        templateId: "prime_equity_trades",
+        factKind: "trade",
+        form: "one trade per row",
+        posts: true,
+      },
+    ];
+    expect(
+      templatesForKind("INVESTMENT", extra).map((t) => t.templateId),
+    ).toEqual(["custodian-positions", "prime_equity_trades"]);
+    expect(
+      templatesForKind("PERSONAL", extra).map((t) => t.templateId),
+    ).toEqual(["bank-statement"]);
+  });
+
+  it("the fixture forms are the rendered mapping, not a slogan", () => {
+    // ⛔ THE OLD FIXTURE SAID "one row, one holding". Template.form is
+    // `render()`, and a slogan that is not that string is a third syntax.
+    const byId = Object.fromEntries(
+      templatesFixture.templates.map((t) => [t.templateId, t]),
+    );
+    expect(byId["bank-statement"].factKind).toBe("statement");
+    expect(byId["bank-statement"].posts).toBe(true);
+    expect(byId["bank-statement"].form).toMatch(/template bank-statement \{/);
+    expect(byId["bank-statement"].form).toMatch(/one statement per row/);
+    expect(byId["project-invoices"].factKind).toBe("invoice");
+    expect(byId["project-invoices"].posts).toBe(true);
+    expect(byId["project-invoices"].form).toMatch(/template project-invoices \{/);
+    expect(byId["custodian-positions"].factKind).toBe("position");
+    expect(byId["custodian-positions"].posts).toBe(false);
+    expect(byId["custodian-positions"].form).toMatch(/posts      nothing/);
+  });
+
+  it("sample CSVs name the columns the seeded templates read", () => {
+    // ⛔ HEADER NAMES, NEVER POSITIONS. extract_csv locates columns by
+    // name; a sample that drifted off the template would ingest blanks
+    // and look like a working file.
+    expect(sampleHeader("bank-statement.csv")).toBe(
+      "Ref,Date,Amount,Ccy,Memo,Account,Kind",
+    );
+    expect(sampleHeader("project-invoices.csv")).toBe(
+      "InvoiceRef,Date,Amount,Ccy,Vendor,Memo,Kind",
+    );
+    expect(sampleHeader("custodian-positions.csv")).toBe(
+      "LineRef,AsOf,ISIN,Ticker,Exch,Quantity,MarketValue,Ccy",
+    );
+    const forms = Object.fromEntries(
+      templatesFixture.templates.map((t) => [t.templateId, t.form]),
+    );
+    expect(forms["bank-statement"]).toMatch(/from "Memo"/);
+    expect(forms["project-invoices"]).toMatch(/from "Vendor"/);
+    expect(forms["custodian-positions"]).toMatch(/from "ISIN"/);
   });
 });

@@ -82,7 +82,12 @@ vi.mock("next/navigation", async () => {
 const wire = {
   listBooks: async () => booksFixture,
   listFunds: async () => fundsFixture,
-  getBook: async () => bookFixture,
+  getBook: async (_c: unknown, id?: string) => {
+    const found = booksFixture.books.find(
+      (b) => b.name === `books/${id}` || b.name.split("/").pop() === id,
+    );
+    return found ?? bookFixture;
+  },
   createBook: async () => bookFixture,
   getFund: async () => fundFixture,
   getView: async () => viewFixture,
@@ -169,6 +174,39 @@ describe("a first-class book", () => {
       (screen.getByRole("radio", { name: /Personal finance/ }) as HTMLInputElement)
         .checked,
     ).toBe(true);
+  });
+
+  it("lists the Personal statement template and not the fund snapshot", async () => {
+    const Templates = (await import("./books/[book]/data/templates/page")).default;
+    await renderAsync(Templates({ params: params({ book: "household" }) }));
+    expect(screen.getByText("bank-statement")).toBeDefined();
+    expect(screen.getByText("statement")).toBeDefined();
+    expect(screen.getByText("posts")).toBeDefined();
+    expect(screen.queryByText("custodian-positions")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: /bank-statement/ }).getAttribute("href"),
+    ).toBe("/books/household/data/templates/bank-statement");
+  });
+
+  it("lists the Project invoice template and not the fund snapshot", async () => {
+    const Templates = (await import("./books/[book]/data/templates/page")).default;
+    await renderAsync(Templates({ params: params({ book: "bridge" }) }));
+    expect(screen.getByText("project-invoices")).toBeDefined();
+    expect(screen.getByText("invoice")).toBeDefined();
+    expect(screen.queryByText("custodian-positions")).toBeNull();
+    expect(screen.queryByText("bank-statement")).toBeNull();
+  });
+
+  it("keeps the custodian positions mapping on an Investment book", async () => {
+    const Templates = (await import("./books/[book]/data/templates/page")).default;
+    await renderAsync(
+      Templates({ params: params({ book: "harbourline-global-value" }) }),
+    );
+    expect(screen.getByText("custodian-positions")).toBeDefined();
+    expect(screen.getByText("position")).toBeDefined();
+    expect(screen.getByText("records")).toBeDefined();
+    expect(screen.queryByText("bank-statement")).toBeNull();
+    expect(screen.queryByText("project-invoices")).toBeNull();
   });
 
   it("reaches the book collection from the fund list", async () => {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { caller } from "@/lib/caller";
-import { listTemplates } from "@/wire/client";
+import { templatesForKind } from "@/lib/templates";
+import { getBook, listTemplates } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,14 @@ export default async function Templates({
 }) {
   const { book: fund } = await params;
   const c = await caller();
-  const { templates } = await listTemplates(c, fund);
+  const [book, listed] = await Promise.all([
+    getBook(c, fund),
+    listTemplates(c, fund),
+  ]);
+  // ⭐ KIND-AWARE. The live API already returns this book's configuration;
+  // the filter is what stops a mixed fixture offering a fund snapshot on
+  // a household book. An id that belongs to no kind stays if the book holds it.
+  const templates = templatesForKind(book.kind, listed.templates);
 
   return (
     <section className="log" aria-label="Templates">

@@ -258,7 +258,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/data/templates",
     file: "books/[book]/data/templates/page.tsx",
-    reads: ["listTemplates"],
+    reads: ["getBook", "listTemplates"],
   },
   {
     path: "/books/[book]/data/templates/[template]",

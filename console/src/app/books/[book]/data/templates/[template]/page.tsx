@@ -31,7 +31,7 @@ export default async function TemplateDetail({
             ? "A row read through this template posts to the journal."
             : "A row read through this template records a fact. Something else posts it, and until then it sits in the pending queue."}
         </p>
-        <p className="note">Fund {fund}.</p>
+        <p className="note">Book {fund}.</p>
       </div>
     </aside>
   );

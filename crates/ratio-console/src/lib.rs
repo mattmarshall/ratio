@@ -4013,6 +4013,23 @@ mod tests {
         // GetFund still answers — existing screens and /books/:id rewrites
         // keep working against the same directory.
         assert_eq!(console.get_fund("funds/household").unwrap().name, "funds/household");
+
+        // ⭐ KIND-AWARE INGEST. CreateBook wrote `bank-statement`, so the
+        // templates list a Personal book offers is not the fund snapshot.
+        let templates = console
+            .list_templates("funds/household")
+            .unwrap()
+            .templates;
+        assert_eq!(
+            templates.iter().map(|t| t.template_id.as_str()).collect::<Vec<_>>(),
+            vec!["bank-statement"]
+        );
+        assert!(templates[0].posts, "a statement row can post");
+        assert!(
+            templates[0].form.contains("one statement per row"),
+            "the rendered form is what the console prints: {}",
+            templates[0].form
+        );
     }
 
     #[test]
@@ -4048,6 +4065,43 @@ mod tests {
             !membership.contains("org:org_01a\tmine"),
             "a personal create must not grant the org: {membership}"
         );
+    }
+
+    #[test]
+    fn list_templates_after_create_book_is_the_kind_seed_and_not_a_shared_menu() {
+        let root = fresh("create-kind-templates");
+        let console = Console::new(&root);
+        for (id, kind, template_id, posts) in [
+            ("house", book::BookKind::Personal, "bank-statement", true),
+            ("fund", book::BookKind::Investment, "custodian-positions", false),
+            ("bridge", book::BookKind::Project, "project-invoices", true),
+        ] {
+            console
+                .create_book(pb::CreateBookRequest {
+                    book: Some(pb::Book {
+                        display_name: id.into(),
+                        kind: kind.proto(),
+                        ..Default::default()
+                    }),
+                    book_id: id.into(),
+                })
+                .unwrap();
+            let listed = console
+                .list_templates(&format!("funds/{id}"))
+                .unwrap()
+                .templates;
+            assert_eq!(
+                listed.iter().map(|t| t.template_id.as_str()).collect::<Vec<_>>(),
+                vec![template_id],
+                "{id}"
+            );
+            assert_eq!(listed[0].posts, posts, "{id}");
+        }
+        // Cross-kind GetTemplate refuses rather than serving the fund snapshot
+        // under a household URL.
+        assert!(console
+            .get_template("funds/house/templates/custodian-positions")
+            .is_err());
     }
 
     #[test]

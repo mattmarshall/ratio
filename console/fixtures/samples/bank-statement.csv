@@ -1,0 +1,4 @@
+Ref,Date,Amount,Ccy,Memo,Account,Kind
+T-1,03/01/2026,45.20,USD,GROCERY STORE,checking,expense
+T-2,03/02/2026,3200.00,USD,ACME PAYROLL,checking,income
+T-3,03/03/2026,89.00,USD,ELECTRIC CO,card,card
