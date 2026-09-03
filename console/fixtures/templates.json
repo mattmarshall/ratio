@@ -55,6 +55,20 @@
             "factKind": "purchase",
             "form": "template purchase-orders {\n  reads      csv with header\n  grain      one purchase per row\n\n  fact       purchase\n    reference   from \"PurchaseRef\"\n    dated       from \"Date\" as date \"YYYY-MM-DD\"\n    amount      from \"Amount\" as money in \"Ccy\"\n    memo        from \"Memo\" as text optional\n    kind        from \"Kind\" as { award_commitment: award_commitment, award_commitment_finishes: award_commitment_finishes, award_commitment_site: award_commitment_site, award_commitment_structure: award_commitment_structure, release_commitment: release_commitment, release_commitment_finishes: release_commitment_finishes, release_commitment_site: release_commitment_site, release_commitment_structure: release_commitment_structure }\n\n  posts      by \"kind\"\n    amount      amount\n    dated       dated\n    award_commitment-> award_commitment\n    award_commitment_finishes-> award_commitment_finishes\n    award_commitment_site-> award_commitment_site\n    award_commitment_structure-> award_commitment_structure\n    release_commitment-> release_commitment\n    release_commitment_finishes-> release_commitment_finishes\n    release_commitment_site-> release_commitment_site\n    release_commitment_structure-> release_commitment_structure\n}\n",
             "posts": true
+        },
+        {
+            "name": "funds/studio/templates/customer-invoices",
+            "templateId": "customer-invoices",
+            "factKind": "invoice",
+            "form": "template customer-invoices {\n  reads      csv with header\n  grain      one invoice per row\n\n  entity     customer  (counterparty)\n    by     name   from \"Customer\"\n    absent   pend\n\n  fact       invoice\n    reference    from \"InvoiceRef\"\n    customer     customer\n    dated        from \"Date\" as date \"YYYY-MM-DD\"\n    amount       from \"Amount\" as money in \"Ccy\"\n    memo         from \"Memo\" as text optional\n    kind         from \"Kind\" as { collect: collect, invoice: invoice }\n\n  posts      by \"kind\"\n    amount      amount\n    dated       dated\n    collect     -> collect_receivable\n    invoice     -> invoice_customer\n}\n",
+            "posts": true
+        },
+        {
+            "name": "funds/studio/templates/vendor-bills",
+            "templateId": "vendor-bills",
+            "factKind": "bill",
+            "form": "template vendor-bills {\n  reads      csv with header\n  grain      one bill per row\n\n  entity     vendor  (counterparty)\n    by     name   from \"Vendor\"\n    absent   pend\n\n  fact       bill\n    reference    from \"BillRef\"\n    vendor       vendor\n    dated        from \"Date\" as date \"YYYY-MM-DD\"\n    amount       from \"Amount\" as money in \"Ccy\"\n    memo         from \"Memo\" as text optional\n    kind         from \"Kind\" as { bill: bill, pay: pay }\n\n  posts      by \"kind\"\n    amount      amount\n    dated       dated\n    bill        -> vendor_bill\n    pay         -> pay_vendor\n}\n",
+            "posts": true
         }
     ],
     "nextPageToken": ""

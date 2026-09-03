@@ -20,7 +20,7 @@
 /** Money and counts. A string because the server sends int64 as a string. */
 export type Int64 = string;
 
-export type BookKind = "PERSONAL" | "INVESTMENT" | "PROJECT" | "UNSPECIFIED";
+export type BookKind = "PERSONAL" | "INVESTMENT" | "PROJECT" | "OPERATING" | "UNSPECIFIED";
 
 export type FundState =
   | "AWAITING_PRICES"

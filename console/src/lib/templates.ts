@@ -31,12 +31,18 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
     label: "Project",
     blurb: "Cash, work in progress, project costs by work package, funding, revenue, progress billings, retainage, approved change orders, and awarded commitments. Budget vs actual and billed vs earned are two figures, not one URL. A change order adjusts the revised contract without rewriting the original baseline. Remaining to spend, remaining to bill, and collections vs billed stay unset until the journal can support them. The budget page does not forecast.",
   },
+  {
+    kind: "OPERATING",
+    label: "Operating business",
+    blurb: "Cash, accounts receivable, accounts payable, operating revenue and expense, and owner equity. Independent of a Fund and of an organization. Cites a balance sheet and a period income statement that tie to the trial balance. AR/AP aging is a follow-on — no due date and no open-item application.",
+  },
 ];
 
 export const KIND_SHORT: Record<BookKind, string> = {
   PERSONAL: "Personal",
   INVESTMENT: "Investment",
   PROJECT: "Project",
+  OPERATING: "Operating",
   UNSPECIFIED: "Book",
 };
 
@@ -58,6 +64,8 @@ export const INGEST_TEMPLATE_KIND: Readonly<Record<string, Exclude<BookKind, "UN
   "project-invoices": "PROJECT",
   "change-orders": "PROJECT",
   "purchase-orders": "PROJECT",
+  "customer-invoices": "OPERATING",
+  "vendor-bills": "OPERATING",
 };
 
 export function templatesForKind<T extends { templateId: string }>(

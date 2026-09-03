@@ -18,7 +18,10 @@
 // onto `/budget` (#104). An investment book cites partner capital first — funded
 // activity, commitment / undrawn, and a per-partner capital account
 // statement on the same `/capital` URL (#70, #82, #102) — then a period
-// NAV roll-forward (#96), then the ABOR warehouse. The
+// NAV roll-forward (#96), then the ABOR warehouse. An
+// operating-business book cites the same sheet + period income statement
+// + trial balance as a close surface (#108) — not Fund NAV, not Project
+// `/billing`, and not a second meaning of UNSPECIFIED. The
 // agreement screens stay shared: a rule set is the same document whichever
 // chart it posted.
 
@@ -132,6 +135,27 @@ export const INVESTMENT_SCREENS: readonly Screen[] = [
   ...AGREEMENT,
 ];
 
+/**
+ * Operating-company figures. Balance sheet, period income statement,
+ * trial balance — not ABOR, not a project job, not a household.
+ *
+ * ⛔ `/billing` IS A PROJECT JOB FIGURE. Putting it here would imply
+ * entity-wide AR/AP aging. The journal has no due date and no
+ * invoice/bill application, so aging is a named follow-on, not a
+ * generic "billing" tab. One chrome list (`screensFor`).
+ *
+ * Sheet and P&L reuse the existing `/sheet` and `/pnl` pages: grouping
+ * is by account type, and `chart_for(Operating)` is the chart. Trial
+ * balance is the close surface — conservation plus abnormal/unsupported
+ * sides, without fund positions or strikes.
+ */
+export const OPERATING_SCREENS: readonly Screen[] = [
+  { segment: "sheet", label: "Balance sheet", scoped: true, group: "book" },
+  { segment: "pnl", label: "Income statement", scoped: true, group: "book" },
+  { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
+  ...AGREEMENT,
+];
+
 /** The fund list. Palette tests on a book without a kind read this. */
 export const SCREENS: readonly Screen[] = FUND_SCREENS;
 
@@ -147,6 +171,7 @@ export function screensFor(kind: BookKind): readonly Screen[] {
   if (kind === "PERSONAL") return PERSONAL_SCREENS;
   if (kind === "PROJECT") return PROJECT_SCREENS;
   if (kind === "INVESTMENT") return INVESTMENT_SCREENS;
+  if (kind === "OPERATING") return OPERATING_SCREENS;
   return FUND_SCREENS;
 }
 
@@ -155,6 +180,7 @@ export function defaultScreen(kind: BookKind): string {
   if (kind === "PERSONAL") return "sheet";
   if (kind === "PROJECT") return "budget";
   if (kind === "INVESTMENT") return "capital";
+  if (kind === "OPERATING") return "sheet";
   return "breaks";
 }
 
@@ -165,6 +191,7 @@ export function placeOf(segment: string | undefined): Screen | undefined {
     PERSONAL_SCREENS.find((s) => s.segment === segment) ??
     PROJECT_SCREENS.find((s) => s.segment === segment) ??
     INVESTMENT_SCREENS.find((s) => s.segment === segment) ??
+    OPERATING_SCREENS.find((s) => s.segment === segment) ??
     FUND_SCREENS.find((s) => s.segment === segment)
   );
 }
@@ -217,6 +244,19 @@ const PROJECT_TICKETS: readonly Ticket[] = [
   },
 ];
 
+const OPERATING_TICKETS: readonly Ticket[] = [
+  {
+    segment: "record",
+    label: "Record an event",
+    keywords: "record,event,rule,apply,invoice,bill,collect,pay,revenue,expense",
+  },
+  {
+    segment: "ingest",
+    label: "Ingest a delivery",
+    keywords: "ingest,delivery,file,invoice,bill,admit",
+  },
+];
+
 const INVESTMENT_TICKETS: readonly Ticket[] = [
   {
     segment: "trade",
@@ -240,6 +280,7 @@ export function ticketsFor(kind: BookKind): readonly Ticket[] {
   if (kind === "PERSONAL") return PERSONAL_TICKETS;
   if (kind === "PROJECT") return PROJECT_TICKETS;
   if (kind === "INVESTMENT") return INVESTMENT_TICKETS;
+  if (kind === "OPERATING") return OPERATING_TICKETS;
   return FUND_TICKETS;
 }
 

@@ -427,6 +427,24 @@ NEEDLES: list[tuple[str, str]] = [
         "unset — Unrealized gain did not move this window, not a silent zero mark",
         "unrealized would render as a silent zero mark",
     ),
+    # ── operating-business book (#108) ──────────────────────────────────────
+    # ⚠ THE REFUSAL SENTENCE, NOT THE TAB LABEL. `screens.ts` already says
+    # "Balance sheet" / "Income statement"; a hub that offered Fund NAV or
+    # Project Billing under an Operating label would still contain those
+    # words and stay green. The follow-on copy is what goes red if someone
+    # "helps" by implying AR/AP aging from a generic billing tab.
+    (
+        "AR/AP aging is a follow-on — invoices and bills post to control",
+        "an operating hub would imply AR/AP aging that the journal cannot cite",
+    ),
+    (
+        "due-date buckets are not on this book",
+        "missing due dates would be silently treated as current",
+    ),
+    (
+        "no due date and no open-item application",
+        "the sheet would stop saying receivable/payable are control accounts",
+    ),
 ]
 
 

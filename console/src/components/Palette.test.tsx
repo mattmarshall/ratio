@@ -303,6 +303,43 @@ describe("the command palette", () => {
     unmount();
   });
 
+  it("an operating book is offered a sheet and income statement, not Billing or a trade ticket", async () => {
+    const renderOperating = () =>
+      render(
+        <Palette funds={funds}>
+          <header>
+            <CommandHint />
+          </header>
+          <FundActions
+            fund="studio"
+            views={views}
+            defaultView="book"
+            kind="OPERATING"
+          />
+        </Palette>,
+      );
+    for (const [label, href] of [
+      ["Balance sheet", `/books/studio/views/${VIEW}/sheet`],
+      ["Income statement", `/books/studio/views/${VIEW}/pnl`],
+      ["Trial balance", `/books/studio/views/${VIEW}/accounts`],
+    ] as const) {
+      const { unmount } = renderOperating();
+      await type(label);
+      fireEvent.click(await row(label));
+      expect(push).toHaveBeenCalledWith(href);
+      push.mockClear();
+      unmount();
+    }
+    const { unmount } = renderOperating();
+    await type("Billing");
+    expect(screen.queryByText("Billing")).toBeNull();
+    unmount();
+    const again = renderOperating();
+    await type("Trade ticket");
+    expect(screen.queryByText("Trade ticket")).toBeNull();
+    again.unmount();
+  });
+
   it("keeps the screen when it switches the book of record", async () => {
     renderConsole();
     const view = views[0]!;

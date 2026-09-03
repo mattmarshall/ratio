@@ -393,7 +393,10 @@ the conserved one, and the kernel never said it was.
   `equity_purchase` / `disposal_proceeds`, amount `consideration`, dated by
   the trade date), and `capital-calls` (Kind `commit_lp` / `call_lp` /
   `commit_gp` / `call_gp` → the partner-scoped commitment and call rules;
-  no entity master — the partner is a chart dim). The live list is the book's
+  no entity master — the partner is a chart dim), and on Operating
+  `customer-invoices` (Kind `invoice` / `collect` → receivable against
+  operating revenue, then cash against AR) and `vendor-bills` (Kind `bill`
+  / `pay` → expense against AP, then AP against cash). The live list is the book's
   configuration, so a household book cannot be asked to pick a fund feed.
   `console/src/lib/templates.ts` `templatesForKind` is the fixture-side filter;
   `//crates/ratio-console:ratio-console_test` holds the seed and the closed
@@ -520,6 +523,21 @@ the conserved one, and the kernel never said it was.
   a subcontractor pay-app marketplace, or SPI/CPI dashboards. Change orders
   stay on #91; retainage / billed vs earned stay on #85. The seeded demo
   funds remain investment books.
+- ⚠ **An operating-business walk-through (#108).** CreateBook(Operating)
+  writes an independent Book — no Fund, no WorkOS organization — with
+  cash, AR, AP, operating revenue/expense, and owner equity. Record or
+  ingest `invoice_customer` / `collect_receivable` / `vendor_bill` /
+  `pay_vendor`: the trial balance still ties, no lot opens, `/sheet`
+  cites the control accounts, and `/pnl` cites the period (month or
+  year, not since inception). An undated entry is in no period. ⛔ The
+  walk-through cannot show AR/AP aging. The journal has no due date and
+  no invoice/bill application; missing due dates must not be treated as
+  current. Aging is a named follow-on, not a generic "billing" tab —
+  Project `/billing` is one job's billed/earned/collections. Payroll,
+  tax filing, inventory/COGS, CRM, payment initiation, and bank-feed
+  OAuth stay refused. `KIND_UNSPECIFIED` is not this kind and still
+  falls through to fund operations. The seeded demo funds remain
+  investment books.
 - ⚠ **`console/scripts/capture_fixtures.sh` takes `navStrikes.json` and
   `replay.json` from `RATIO_FIXTURE_STRUCK_FUND`, not from `RATIO_FIXTURE_FUND`.**
   The fixture fund is the BLOCKED book on purpose, and a blocked book now has no

@@ -10,11 +10,12 @@ const sampleHeader = (name: string) =>
   readFileSync(join(samples, name), "utf8").split("\n")[0];
 
 describe("book templates", () => {
-  it("are the three CreateBook kinds, not a second ledger", () => {
+  it("are the CreateBook kinds, not a second ledger", () => {
     expect(BOOK_TEMPLATES.map((t) => t.kind)).toEqual([
       "PERSONAL",
       "INVESTMENT",
       "PROJECT",
+      "OPERATING",
     ]);
   });
 
@@ -37,6 +38,12 @@ describe("book templates", () => {
     expect(byKind.PROJECT).toMatch(/awarded commitments/);
     expect(byKind.PROJECT).toMatch(/Remaining to spend/);
     expect(byKind.PROJECT).toMatch(/does not forecast/);
+    expect(byKind.OPERATING).toMatch(/Accounts receivable/);
+    expect(byKind.OPERATING).toMatch(/Accounts payable/);
+    expect(byKind.OPERATING).toMatch(/Operating revenue/);
+    expect(byKind.OPERATING).toMatch(/Independent of a Fund/);
+    expect(byKind.OPERATING).toMatch(/AR\/AP aging is a follow-on/);
+    expect(byKind.OPERATING).toMatch(/no due date/);
   });
 });
 
@@ -50,6 +57,8 @@ describe("ingest templates", () => {
     expect(INGEST_TEMPLATE_KIND["project-invoices"]).toBe("PROJECT");
     expect(INGEST_TEMPLATE_KIND["change-orders"]).toBe("PROJECT");
     expect(INGEST_TEMPLATE_KIND["purchase-orders"]).toBe("PROJECT");
+    expect(INGEST_TEMPLATE_KIND["customer-invoices"]).toBe("OPERATING");
+    expect(INGEST_TEMPLATE_KIND["vendor-bills"]).toBe("OPERATING");
     const ids = templatesFixture.templates.map((t) => t.templateId);
     for (const id of Object.keys(INGEST_TEMPLATE_KIND)) {
       expect(ids, `fixtures/templates.json drifted off CreateBook seed ${id}`).toContain(id);
@@ -61,8 +70,10 @@ describe("ingest templates", () => {
     const personal = templatesForKind("PERSONAL", listed).map((t) => t.templateId);
     const project = templatesForKind("PROJECT", listed).map((t) => t.templateId);
     const investment = templatesForKind("INVESTMENT", listed).map((t) => t.templateId);
+    const operating = templatesForKind("OPERATING", listed).map((t) => t.templateId);
     expect(personal).toEqual(["bank-statement", "loan-payment"]);
     expect(project).toEqual(["project-invoices", "change-orders", "purchase-orders"]);
+    expect(operating).toEqual(["customer-invoices", "vendor-bills"]);
     expect(investment).toEqual([
       "custodian-positions",
       "prime_equity_trades",
@@ -74,6 +85,9 @@ describe("ingest templates", () => {
     expect(project).not.toContain("custodian-positions");
     expect(project).not.toContain("prime_equity_trades");
     expect(project).not.toContain("capital-calls");
+    expect(operating).not.toContain("custodian-positions");
+    expect(operating).not.toContain("project-invoices");
+    expect(operating).not.toContain("bank-statement");
   });
 
   it("leaves an unlisted price file visible on the Investment book that holds it", () => {
@@ -104,6 +118,9 @@ describe("ingest templates", () => {
     expect(
       templatesForKind("PROJECT", extra).map((t) => t.templateId),
     ).toEqual(["project-invoices", "change-orders", "purchase-orders"]);
+    expect(
+      templatesForKind("OPERATING", extra).map((t) => t.templateId),
+    ).toEqual(["customer-invoices", "vendor-bills"]);
   });
 
   it("the fixture forms are the rendered mapping, not a slogan", () => {
@@ -151,6 +168,18 @@ describe("ingest templates", () => {
     expect(need("purchase-orders").form).toMatch(/one purchase per row/);
     expect(need("purchase-orders").form).toMatch(/award_commitment_site-> award_commitment_site/);
     expect(need("purchase-orders").form).toMatch(/release_commitment_site-> release_commitment_site/);
+    expect(need("customer-invoices").factKind).toBe("invoice");
+    expect(need("customer-invoices").posts).toBe(true);
+    expect(need("customer-invoices").form).toMatch(/template customer-invoices \{/);
+    expect(need("customer-invoices").form).toMatch(/one invoice per row/);
+    expect(need("customer-invoices").form).toMatch(/invoice     -> invoice_customer/);
+    expect(need("customer-invoices").form).toMatch(/collect     -> collect_receivable/);
+    expect(need("vendor-bills").factKind).toBe("bill");
+    expect(need("vendor-bills").posts).toBe(true);
+    expect(need("vendor-bills").form).toMatch(/template vendor-bills \{/);
+    expect(need("vendor-bills").form).toMatch(/one bill per row/);
+    expect(need("vendor-bills").form).toMatch(/bill        -> vendor_bill/);
+    expect(need("vendor-bills").form).toMatch(/pay         -> pay_vendor/);
   });
 
   it("sample CSVs name the columns the seeded templates read", () => {
@@ -178,6 +207,12 @@ describe("ingest templates", () => {
     expect(sampleHeader("purchase-orders.csv")).toBe(
       "PurchaseRef,Date,Amount,Ccy,Memo,Kind",
     );
+    expect(sampleHeader("customer-invoices.csv")).toBe(
+      "InvoiceRef,Date,Amount,Ccy,Customer,Memo,Kind",
+    );
+    expect(sampleHeader("vendor-bills.csv")).toBe(
+      "BillRef,Date,Amount,Ccy,Vendor,Memo,Kind",
+    );
     const forms = Object.fromEntries(
       templatesFixture.templates.map((t) => [t.templateId, t.form]),
     );
@@ -192,5 +227,9 @@ describe("ingest templates", () => {
     expect(forms["change-orders"]).toMatch(/from "ChangeRef"/);
     expect(forms["purchase-orders"]).toMatch(/from "Kind"/);
     expect(forms["purchase-orders"]).toMatch(/from "PurchaseRef"/);
+    expect(forms["customer-invoices"]).toMatch(/from "Customer"/);
+    expect(forms["customer-invoices"]).toMatch(/from "InvoiceRef"/);
+    expect(forms["vendor-bills"]).toMatch(/from "Vendor"/);
+    expect(forms["vendor-bills"]).toMatch(/from "BillRef"/);
   });
 });

@@ -531,8 +531,9 @@ service Console {
 // optional tenant around a set of books. Neither is required to create one.
 //
 // Kind selects the chart and the terms, not a fork of the kernel. Personal
-// finance, investment accounting and project finance are one Book with
-// different accounts.
+// finance, investment accounting, project finance and ordinary operating
+// businesses are one Book with different accounts. KIND_UNSPECIFIED is
+// absence, not a hidden operating template.
 message Book {
   option (google.api.resource) = {
     type: "ratio.fastverk.dev/Book"
@@ -553,6 +554,13 @@ message Book {
     // is a configuration total; billed vs earned and retainage are journal
     // figures. They are two screens, not one ledger.
     KIND_PROJECT = 3;
+    // An ordinary operating business: cash, receivables, payables, operating
+    // revenue and expense, and owner equity. Independent of a Fund and of a
+    // WorkOS organization. Not a project/job book, not a household, and not
+    // a second meaning of KIND_UNSPECIFIED. AR/AP aging (due-date buckets
+    // with invoice/bill application) is a follow-on — the chart cites the
+    // control accounts; it does not invent an open-item subledger.
+    KIND_OPERATING = 4;
   }
 
   // The resource name: `books/{book}`.

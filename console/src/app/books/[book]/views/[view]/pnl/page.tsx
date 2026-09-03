@@ -3,7 +3,7 @@ import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
 import { ofType, sheetTotals, shown } from "@/lib/statement";
-import { listAccounts } from "@/wire/client";
+import { getBook, listAccounts } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 import type { Account } from "@/wire/types";
 
@@ -33,7 +33,11 @@ async function PnL({
   const { period = month } = await searchParams;
   const window = period || month;
   const c = await caller();
-  const { accounts } = await listAccounts(c, book, view, "pnl", window);
+  const [b, { accounts }] = await Promise.all([
+    getBook(c, book),
+    listAccounts(c, book, view, "pnl", window),
+  ]);
+  const operating = b.kind === "OPERATING";
 
   const filters: readonly Filter[] = [
     { key: month, label: periodLabel(month) },
@@ -55,7 +59,11 @@ async function PnL({
         note={`${periodLabel(window)} — dated entries only, not since inception`}
       />
 
-      <div className="tb" role="table" aria-label="Period profit and loss">
+      <div
+        className="tb"
+        role="table"
+        aria-label={operating ? "Period income statement" : "Period profit and loss"}
+      >
         <Rows
           book={book}
           view={view}
@@ -91,8 +99,12 @@ async function PnL({
         </Link>
         {" · "}
         <Link href={`/books/${book}/record`}>Record income or an expense</Link>
-        {" · "}
-        <Link href={`/books/${book}/transfer`}>Transfer</Link>
+        {operating ? null : (
+          <>
+            {" · "}
+            <Link href={`/books/${book}/transfer`}>Transfer</Link>
+          </>
+        )}
       </p>
     </>
   );

@@ -1,0 +1,3 @@
+BillRef,Date,Amount,Ccy,Vendor,Memo,Kind
+BILL-1,2026-03-02,240.00,USD,CITY POWER,electric,bill
+BILL-2,2026-03-20,240.00,USD,CITY POWER,,pay

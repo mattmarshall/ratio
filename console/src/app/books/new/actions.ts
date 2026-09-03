@@ -23,7 +23,12 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
   if (!/^[A-Za-z0-9_-]+$/.test(bookId)) {
     return { ok: false, error: "An id is letters, digits, hyphen or underscore." };
   }
-  if (kind !== "PERSONAL" && kind !== "INVESTMENT" && kind !== "PROJECT") {
+  if (
+    kind !== "PERSONAL" &&
+    kind !== "INVESTMENT" &&
+    kind !== "PROJECT" &&
+    kind !== "OPERATING"
+  ) {
     return { ok: false, error: "Choose what this book is for." };
   }
 

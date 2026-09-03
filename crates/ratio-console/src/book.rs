@@ -32,6 +32,7 @@ pub fn ingest_template_ids(kind: BookKind) -> &'static [&'static str] {
             "capital-calls",
         ],
         BookKind::Project => &["project-invoices", "change-orders", "purchase-orders"],
+        BookKind::Operating => &["customer-invoices", "vendor-bills"],
     }
 }
 
@@ -41,6 +42,7 @@ pub enum BookKind {
     Personal,
     Investment,
     Project,
+    Operating,
 }
 
 impl BookKind {
@@ -49,6 +51,7 @@ impl BookKind {
             BookKind::Personal => "personal",
             BookKind::Investment => "investment",
             BookKind::Project => "project",
+            BookKind::Operating => "operating",
         }
     }
 
@@ -57,6 +60,7 @@ impl BookKind {
             "personal" | "PERSONAL" | "KIND_PERSONAL" => Ok(BookKind::Personal),
             "investment" | "INVESTMENT" | "KIND_INVESTMENT" => Ok(BookKind::Investment),
             "project" | "PROJECT" | "KIND_PROJECT" => Ok(BookKind::Project),
+            "operating" | "OPERATING" | "KIND_OPERATING" => Ok(BookKind::Operating),
             other => bail!("{other:?} is not a book kind"),
         }
     }
@@ -66,6 +70,7 @@ impl BookKind {
             BookKind::Personal => 1,
             BookKind::Investment => 2,
             BookKind::Project => 3,
+            BookKind::Operating => 4,
         }
     }
 
@@ -74,6 +79,7 @@ impl BookKind {
             1 => Ok(BookKind::Personal),
             2 => Ok(BookKind::Investment),
             3 => Ok(BookKind::Project),
+            4 => Ok(BookKind::Operating),
             0 => bail!("a book kind is required"),
             other => bail!("{other} is not a book kind"),
         }
@@ -259,6 +265,22 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
             acct(66, "Awarded commitments — Structure", AccountTypeRecord::Equity),
             acct(67, "Awarded commitments — Finishes and closeout", AccountTypeRecord::Equity),
         ],
+        // ⭐ BUSINESS-NORMAL GROUPINGS, NOT FUND NAV AND NOT HOUSEHOLD NET
+        // WORTH. Cash, AR, AP, operating revenue/expense, and owner equity
+        // are the partitions an ordinary service company or studio cites.
+        // Inventory, payroll, tax, and prepaid/accrued are not invented
+        // here — a silent zero on those would be a QuickBooks clone.
+        // AR and AP are control accounts the sheet cites; aging them by
+        // due date needs invoice/bill application the journal does not
+        // have, so that figure stays a named follow-on.
+        BookKind::Operating => vec![
+            acct(1, "Cash", AccountTypeRecord::Asset),
+            acct(2, "Accounts receivable", AccountTypeRecord::Asset),
+            acct(10, "Operating expenses", AccountTypeRecord::Expense),
+            acct(20, "Owner equity", AccountTypeRecord::Equity),
+            acct(30, "Operating revenue", AccountTypeRecord::Income),
+            acct(40, "Accounts payable", AccountTypeRecord::Liability),
+        ],
     }
 }
 
@@ -333,6 +355,7 @@ pub fn config_for(kind: BookKind) -> &'static str {
         BookKind::Personal => PERSONAL_CONFIG,
         BookKind::Investment => INVESTMENT_CONFIG,
         BookKind::Project => PROJECT_CONFIG,
+        BookKind::Operating => OPERATING_CONFIG,
     }
 }
 
@@ -1659,6 +1682,203 @@ reads = "csv"
   dated = "dated"
 "#;
 
+/// Operating-company posting rules plus customer-invoice and vendor-bill ingest.
+///
+/// ⭐ THE ACCOUNT NUMBERS ARE `chart_for(Operating)`'S. `initialize` runs
+/// `check` against that chart before the digest is activated.
+///
+/// ⛔ NOT A PROJECT JOB AND NOT A HOUSEHOLD. `invoice_customer` is entity-wide
+/// AR against operating revenue — not progress billings, not retainage, not
+/// billed-vs-earned. `vendor_bill` is entity-wide AP against operating
+/// expense — not a work-package cost. There is no due-date field and no
+/// application of a collection to an invoice: aging would invent both.
+///
+/// Cash sales and cash expenses stay available so a studio that never
+/// invoices can still cite a period income statement. Owner contribution
+/// and draw are equity, not revenue or expense.
+const OPERATING_CONFIG: &str = r#"# Operating-company posting rules. Amount given; no instrument, so no lot.
+# AR and AP are control accounts. Aging them is a follow-on: no due date,
+# no invoice/bill application, no silent "current" bucket.
+
+[[rule]]
+id = "invoice_customer"
+kind = "trade"
+description = "Bill a customer: receivable against operating revenue"
+[[rule.posting]]
+account = 2
+weight = 1
+[[rule.posting]]
+account = 30
+weight = -1
+
+[[rule]]
+id = "collect_receivable"
+kind = "trade"
+description = "Collect a receivable into cash"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 2
+weight = -1
+
+[[rule]]
+id = "receive_revenue"
+kind = "trade"
+description = "Cash sale: cash against operating revenue"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 30
+weight = -1
+
+[[rule]]
+id = "vendor_bill"
+kind = "trade"
+description = "Vendor bill: operating expenses on account"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "pay_vendor"
+kind = "trade"
+description = "Pay a vendor from cash"
+[[rule.posting]]
+account = 40
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "pay_expense"
+kind = "trade"
+description = "Operating expenses paid from cash"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "contribute_equity"
+kind = "trade"
+description = "Owner contribution: cash in, owner equity up"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 20
+weight = -1
+
+[[rule]]
+id = "draw_equity"
+kind = "trade"
+description = "Owner draw: owner equity down, cash out"
+[[rule.posting]]
+account = 20
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[template]]
+id = "customer-invoices"
+reads = "csv"
+
+  [[template.entity]]
+  name = "customer"
+  kind = "counterparty"
+  absent = "pend"
+  by = [{ attribute = "name", column = "Customer" }]
+
+  [template.fact]
+  kind = "invoice"
+  reference = "InvoiceRef"
+  entities = { customer = "customer" }
+
+  [[template.fact.value]]
+  field = "dated"
+  as = "date"
+  column = "Date"
+  format = "YYYY-MM-DD"
+
+  [[template.fact.value]]
+  field = "amount"
+  as = "money"
+  column = "Amount"
+  currency = "Ccy"
+
+  [[template.fact.value]]
+  field = "memo"
+  as = "text"
+  column = "Memo"
+  optional = true
+
+  [[template.fact.value]]
+  field = "kind"
+  as = "enum"
+  column = "Kind"
+  map = { invoice = "invoice", collect = "collect" }
+
+  [template.fact.posts]
+  by = "kind"
+  amount = "amount"
+  rules = { invoice = "invoice_customer", collect = "collect_receivable" }
+  dated = "dated"
+
+[[template]]
+id = "vendor-bills"
+reads = "csv"
+
+  [[template.entity]]
+  name = "vendor"
+  kind = "counterparty"
+  absent = "pend"
+  by = [{ attribute = "name", column = "Vendor" }]
+
+  [template.fact]
+  kind = "bill"
+  reference = "BillRef"
+  entities = { vendor = "vendor" }
+
+  [[template.fact.value]]
+  field = "dated"
+  as = "date"
+  column = "Date"
+  format = "YYYY-MM-DD"
+
+  [[template.fact.value]]
+  field = "amount"
+  as = "money"
+  column = "Amount"
+  currency = "Ccy"
+
+  [[template.fact.value]]
+  field = "memo"
+  as = "text"
+  column = "Memo"
+  optional = true
+
+  [[template.fact.value]]
+  field = "kind"
+  as = "enum"
+  column = "Kind"
+  map = { bill = "bill", pay = "pay" }
+
+  [template.fact.posts]
+  by = "kind"
+  amount = "amount"
+  rules = { bill = "vendor_bill", pay = "pay_vendor" }
+  dated = "dated"
+"#;
+
 /// Create the directory, the chart, the kind's opening ingest configuration,
 /// and the sidecar.
 ///
@@ -1787,9 +2007,13 @@ mod tests {
         let personal = chart_for(BookKind::Personal);
         let investment = chart_for(BookKind::Investment);
         let project = chart_for(BookKind::Project);
+        let operating = chart_for(BookKind::Operating);
         assert_ne!(personal, investment);
         assert_ne!(personal, project);
         assert_ne!(investment, project);
+        assert_ne!(operating, personal);
+        assert_ne!(operating, project);
+        assert_ne!(operating, investment);
         assert!(personal.iter().any(|a| a.display_name == "Cash and bank"));
         assert!(investment
             .iter()
@@ -1816,6 +2040,20 @@ mod tests {
         assert!(project
             .iter()
             .any(|a| a.display_name == "Commitment authorization — Structure"));
+        assert!(operating.iter().any(|a| a.display_name == "Cash"));
+        assert!(operating.iter().any(|a| a.display_name == "Accounts receivable"));
+        assert!(operating.iter().any(|a| a.display_name == "Accounts payable"));
+        assert!(operating.iter().any(|a| a.display_name == "Operating revenue"));
+        assert!(operating.iter().any(|a| a.display_name == "Operating expenses"));
+        assert!(operating.iter().any(|a| a.display_name == "Owner equity"));
+        assert!(
+            operating.iter().all(|a| a.display_name != "Work in progress"),
+            "an operating book is not a project job: {operating:?}"
+        );
+        assert!(
+            operating.iter().all(|a| a.display_name != "Living expenses"),
+            "an operating book is not a household: {operating:?}"
+        );
     }
 
     #[test]
@@ -1837,7 +2075,12 @@ mod tests {
         // `custodian-positions` would force a household to pick a fund feed.
         // CreateBook writes the kind's mapping into the opening configuration,
         // so ListTemplates is kind-aware because the book only has its own.
-        for kind in [BookKind::Personal, BookKind::Investment, BookKind::Project] {
+        for kind in [
+            BookKind::Personal,
+            BookKind::Investment,
+            BookKind::Project,
+            BookKind::Operating,
+        ] {
             let set = ratio_ingest::TemplateSet::from_toml(config_for(kind)).unwrap();
             let ids: Vec<&str> = set.templates.iter().map(|t| t.id.as_str()).collect();
             assert_eq!(ids, ingest_template_ids(kind), "{kind:?}: {ids:?}");
@@ -1856,6 +2099,12 @@ mod tests {
         assert!(project.template("custodian-positions").is_none());
         assert!(project.template("prime_equity_trades").is_none());
         assert!(project.template("bank-statement").is_none());
+        let operating = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Operating)).unwrap();
+        assert!(operating.template("customer-invoices").is_some());
+        assert!(operating.template("vendor-bills").is_some());
+        assert!(operating.template("project-invoices").is_none());
+        assert!(operating.template("bank-statement").is_none());
+        assert!(operating.template("custodian-positions").is_none());
     }
 
     #[test]
@@ -1863,7 +2112,12 @@ mod tests {
         // ⛔ A TEMPLATE THAT POSTS AT A RULE THE CHART CANNOT EXPRESS would
         // admit a fact and then refuse the entry. The opening configuration
         // is checked the same way an approval is.
-        for kind in [BookKind::Personal, BookKind::Investment, BookKind::Project] {
+        for kind in [
+            BookKind::Personal,
+            BookKind::Investment,
+            BookKind::Project,
+            BookKind::Operating,
+        ] {
             let set = ratio_rules::RuleSet::from_toml(config_for(kind)).unwrap();
             let findings = ratio_rules::check(&set, &chart_for(kind));
             assert!(
@@ -2559,6 +2813,159 @@ S-1,2026-03-01,100.00,,USD,student,DEPT OF ED,principal only
         // interest posting.
         let student = ratio_ingest::postings_for(t, &p.facts[2]).unwrap();
         assert_eq!(student, vec![("student_principal".into(), 10_000)]);
+    }
+
+    #[test]
+    fn initialize_writes_the_operating_chart_and_files_no_fund() {
+        // ⭐ THE INDEPENDENCE CONTRACT FOR #108. An operating book is a Book,
+        // not a Fund filing and not a WorkOS organization.
+        let dir = std::env::temp_dir().join("ratio-book-init-operating");
+        let _ = std::fs::remove_dir_all(&dir);
+        initialize(&dir, "studio", "Studio", BookKind::Operating).unwrap();
+        let m = BookMeta::load(&dir, "studio");
+        assert_eq!(m.kind, BookKind::Operating);
+        assert!(m.fund.is_none());
+        assert!(m.organization.is_none());
+        let chart = FileBook::open(&dir).unwrap().accounts().unwrap();
+        assert_eq!(chart, chart_for(BookKind::Operating));
+        let b = FileBook::open(&dir).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let set = RuleSet::from_toml(&text).unwrap();
+        for id in [
+            "invoice_customer",
+            "collect_receivable",
+            "vendor_bill",
+            "pay_vendor",
+            "receive_revenue",
+            "pay_expense",
+            "contribute_equity",
+            "draw_equity",
+        ] {
+            let r = set.rule(id).unwrap_or_else(|| panic!("missing {id} in {text}"));
+            assert!(
+                r.legs.iter().all(|l| !l.per_instrument),
+                "{id} is operating activity and must not open lots"
+            );
+        }
+        let ingest = ratio_ingest::TemplateSet::from_toml(&text).unwrap();
+        assert_eq!(
+            ingest.templates.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            vec!["customer-invoices", "vendor-bills"]
+        );
+        let mut n = 0usize;
+        b.for_each_entry_since(0, &mut |_| {
+            n += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(n, 0, "CreateBook must not invent operating history");
+    }
+
+    #[test]
+    fn operating_template_rules_check_against_its_chart() {
+        let set = RuleSet::from_toml(OPERATING_CONFIG).unwrap();
+        let findings = check(&set, &chart_for(BookKind::Operating));
+        assert!(
+            findings.iter().all(|f| f.is_question),
+            "operating rules must check against chart_for(Operating): {findings:?}"
+        );
+        assert!(
+            set.rules.iter().all(|r| r.legs.iter().all(|l| !l.per_instrument)),
+            "an operating invoice is not an instrument — a per_instrument \
+             leg would open a lot"
+        );
+        let against_empty = check(&set, &[]);
+        assert!(
+            against_empty.iter().any(|f| !f.is_question),
+            "operating rules must not check against an empty chart: {against_empty:?}"
+        );
+        assert!(
+            set.project.is_none(),
+            "an operating book must not inherit a project budget"
+        );
+        assert!(
+            set.personal.is_none(),
+            "an operating book must not inherit a household budget"
+        );
+    }
+
+    #[test]
+    fn a_customer_invoice_row_posts_the_receivable_and_not_a_float() {
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Operating)).unwrap();
+        let t = set.template("customer-invoices").unwrap();
+        assert!(t.check().is_empty(), "{:?}", t.check());
+        let csv = "\
+InvoiceRef,Date,Amount,Ccy,Customer,Memo,Kind
+INV-1,2026-03-01,1500.00,USD,ACME STUDIO,March retainer,invoice
+INV-2,2026-03-15,1500.00,USD,ACME STUDIO,,collect
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(p.facts.len(), 2);
+        assert_eq!(
+            p.facts[0].values.get("amount"),
+            Some(&ratio_ingest::Value::Money {
+                minor: 150_000,
+                currency: "USD".into()
+            }),
+        );
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[0]).unwrap();
+        assert_eq!(rule, "invoice_customer");
+        assert_eq!(minor, 150_000);
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[1]).unwrap();
+        assert_eq!(rule, "collect_receivable");
+        assert!(p.facts[0].values.get("due").is_none());
+        assert!(p.facts[0].values.get("dueDate").is_none());
+        assert_eq!(ratio_ingest::dated_of(t, &p.facts[0]), Some("2026-03-01"));
+        let form = t.render();
+        assert!(form.contains("template customer-invoices {"), "{form}");
+        assert!(form.contains("one invoice per row"), "{form}");
+        assert!(form.contains("invoice     -> invoice_customer"), "{form}");
+        assert!(form.contains("collect     -> collect_receivable"), "{form}");
+        assert!(
+            !form.contains("Due"),
+            "a due date the engine cannot age would be stored-but-unread: {form}"
+        );
+    }
+
+    #[test]
+    fn a_vendor_bill_row_posts_the_payable_and_not_a_float() {
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Operating)).unwrap();
+        let t = set.template("vendor-bills").unwrap();
+        assert!(t.check().is_empty(), "{:?}", t.check());
+        let csv = "\
+BillRef,Date,Amount,Ccy,Vendor,Memo,Kind
+BILL-1,2026-03-02,240.00,USD,CITY POWER,electric,bill
+BILL-2,2026-03-20,240.00,USD,CITY POWER,,pay
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(p.facts.len(), 2);
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[0]).unwrap();
+        assert_eq!(rule, "vendor_bill");
+        assert_eq!(minor, 24_000);
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[1]).unwrap();
+        assert_eq!(rule, "pay_vendor");
+        assert!(p.facts[0].values.get("due").is_none());
+        let form = t.render();
+        assert!(form.contains("template vendor-bills {"), "{form}");
+        assert!(form.contains("one bill per row"), "{form}");
+        assert!(form.contains("bill        -> vendor_bill"), "{form}");
+        assert!(form.contains("pay         -> pay_vendor"), "{form}");
+    }
+
+    #[test]
+    fn unspecified_is_not_an_operating_kind() {
+        // ⛔ KIND_UNSPECIFIED IS ABSENCE, NOT A HIDDEN BUSINESS TEMPLATE.
+        assert!(BookKind::parse("UNSPECIFIED").is_err());
+        assert!(BookKind::parse("unspecified").is_err());
+        assert!(BookKind::from_proto(0).is_err());
+        assert_eq!(BookKind::from_proto(4).unwrap(), BookKind::Operating);
+        assert_eq!(BookKind::Operating.proto(), 4);
+        assert_eq!(BookKind::Operating.as_str(), "operating");
     }
 
     fn sample_delivery() -> ratio_ingest::Delivery {
