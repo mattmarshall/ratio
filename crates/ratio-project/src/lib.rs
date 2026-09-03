@@ -315,6 +315,10 @@ pub struct Terms {
     /// `None` means the fund did not elect the ranking.
     /// ⛔ NOT A `Method`. `Ratio.Lots.MinTax`.
     pub min_tax_short_weight: Option<i64>,
+    /// Whether this book pools the holding.
+    /// `None` means the fund did not elect the pool.
+    /// ⛔ NOT A `Method`. `Ratio.Lots.AverageCost`.
+    pub average_cost: Option<bool>,
 }
 
 impl Terms {
@@ -326,6 +330,7 @@ impl Terms {
             long_term_days: set.long_term_days,
             wash_window_days: set.wash_window_days,
             min_tax_short_weight: set.min_tax_short_weight,
+            average_cost: set.average_cost,
         }
     }
 
@@ -1501,11 +1506,23 @@ impl Projection {
                              Drop identified_lots, or drop min_tax_short_weight. \
                              See Ratio.Lots.SpecId"
                         ))
+                    } else if terms.average_cost == Some(true) {
+                        Err(anyhow::anyhow!(
+                            "this sale names lots for specific identification and its \
+                             configuration elects average cost. Two answers for one sale. \
+                             Drop identified_lots, or drop average_cost. \
+                             See Ratio.Lots.AverageCost"
+                        ))
                     } else {
                         held.relieve_spec_id(-qty, named)
                     }
                 } else if let Some(weight) = terms.min_tax_short_weight {
                     min_tax_sale(held, entry, &terms, trade_day, -qty, weight)
+                } else if terms.average_cost == Some(true) {
+                    // ⛔ NOT `held.relieve(method, …)`. Pooling is not a
+                    // sort-and-walk. `//tla:sort_and_walk_average_cost_check`
+                    // is the engine that pretends otherwise.
+                    held.relieve_average_cost(-qty)
                 } else {
                     held.relieve(method, -qty)
                 };
@@ -1536,6 +1553,8 @@ impl Projection {
                                 "specific-identification"
                             } else if terms.min_tax_short_weight.is_some() {
                                 "min-tax-at-the-sale-price"
+                            } else if terms.average_cost == Some(true) {
+                                "average-cost-pooled-basis"
                             } else {
                                 method.describe()
                             };
@@ -3356,6 +3375,8 @@ mod tests {
         let r = if let Some(w) = set.min_tax_short_weight {
             let price = relief::unit_price(proceeds, units).unwrap();
             relief::relieve_min_tax(&held, units, price, w, set.long_term_days, as_of).unwrap()
+        } else if set.average_cost == Some(true) {
+            relief::relieve_average_cost(&held, units).unwrap()
         } else {
             relief::relieve_by(relief::Method::from(set.effective_lot_method()), &held, units)
                 .unwrap()
@@ -3788,6 +3809,93 @@ mod tests {
         );
         let left = p.lots_of(B, 1, "vti").unwrap().value;
         assert_eq!(left.len(), 3, "the holding is untouched");
+    }
+
+    // ── average cost, on a real book ───────────────────────────────────────
+
+    fn book_with_average_cost(name: &str) -> std::path::PathBuf {
+        let d = tmp_root().join(format!("ratio-project-{name}"));
+        let _ = std::fs::remove_dir_all(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+            Account { dim: 30, display_name: "Realized gain".into(), account_type: A::Income },
+        ])
+        .unwrap();
+        let c = b
+            .put(
+                b"rules = []\naverage_cost = true\n\n\
+                  [chart_roles]\ninvestments = 1\ncash = 2\nrealized_gain = 30\n",
+            )
+            .unwrap();
+        b.set_active(&c).unwrap();
+        d
+    }
+
+    fn pool_holding_on(d: &std::path::Path) {
+        // 10 / 20 / 60. The pool is 30 — no lot carries 30.
+        buy_on(d, "a", 1, 10, "2026-01-01");
+        buy_on(d, "b", 1, 20, "2026-01-02");
+        buy_on(d, "c", 1, 60, "2026-01-03");
+    }
+
+    #[test]
+    fn average_cost_on_the_book_leaves_a_pool() {
+        // ⭐ `Ratio.Lots.AverageCost.the_remainder_is_a_pool_not_the_other_lots`.
+        let d = book_with_average_cost("avg-pool");
+        pool_holding_on(&d);
+        dispose(&d, "s", 1, 50, "2026-06-01");
+        let left = Projection::of_book(&d).unwrap().lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left.len(), 1, "the remainder is a pool, not the other lots");
+        assert_eq!(left[0].units, 2);
+        assert_eq!(left[0].cost, 60);
+        assert_eq!(left[0].seq, 0);
+    }
+
+    #[test]
+    fn a_silent_book_does_not_pool() {
+        // ⛔ UNSET STAYS UNSET. A book that never elected average cost
+        // still relieves oldest-first by custom. FIFO takes 10 and leaves
+        // 20 and 60. That is not a pool.
+        let d = book_with_gains("avg-silent", 365);
+        pool_holding_on(&d);
+        dispose(&d, "s", 1, 50, "2026-06-01");
+        let left = Projection::of_book(&d).unwrap().lots_of(B, 1, "vti").unwrap().value;
+        let costs: Vec<i64> = left.iter().map(|l| l.cost).collect();
+        assert_eq!(costs, vec![20, 60], "FIFO took 10; the other lots remain");
+    }
+
+    #[test]
+    fn a_pool_that_does_not_divide_is_a_break_not_a_round() {
+        let d = book_with_average_cost("avg-round");
+        buy_on(&d, "a", 1, 12, "2026-01-01");
+        buy_on(&d, "b", 1, 13, "2026-01-02");
+        let mut b = FileBook::open(&d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        // Posted basis is a guess the fold will refuse — the engine must
+        // not invent 12 or 13.
+        let postings = relief::sale_postings(ROLES, None, "vti", 1, 12, 50).unwrap();
+        b.append(&JournalEntry {
+            id: "s".into(),
+            memo: "sell".into(),
+            config: c,
+            postings,
+            trade_date: Some("2026-06-01".into()),
+            announcement: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+        })
+        .unwrap();
+        drop(b);
+        let p = Projection::of_book(&d).unwrap();
+        let breaks = p.lot_breaks(B).unwrap();
+        assert!(!breaks.is_empty(), "a non-dividing pool must break, not round");
+        let msg = breaks.join("\n");
+        assert!(msg.contains("does not divide"), "{msg}");
+        let left = p.lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left.len(), 2, "the holding is untouched");
     }
 
     // ── currencies ─────────────────────────────────────────────────────────

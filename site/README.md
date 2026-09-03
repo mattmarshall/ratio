@@ -258,16 +258,17 @@ page would read as a reference customer. Keep it unnamed.
   trust has to be accurate about itself, or it argues against itself.
 - **The roadmap's built / not-yet-built columns are checked against PLAN.md.**
   `verify.py` fails if the page still lists tax lots, FX translation, corporate
-  actions, journal persistence, wash sales, MinTax ranking, or SpecID named
-  selection as unbuilt, or if it claims Postgres is running. Postgres stays on
-  the spec side: Stage E is open, and PLAN's "four of these were built" table
-  records it as spec-only. Wash sales are the engine window and the attach
-  write (#133 / #138), not a console cite or `WashRestatement`. MinTax is a
-  ranking at a price (`min_tax_short_weight`; unset, not a silent 2), not an
-  Order, and not average cost. SpecID is a named selection
-  (`identified_lots`; unnamed or overspecified refuse;
-  `lot_method = "specific_id"` stays refused), not an Order, not a UI,
-  and not average cost.
+  actions, journal persistence, wash sales, MinTax ranking, SpecID named
+  selection, or average-cost pooling as unbuilt, or if it claims Postgres is
+  running. Postgres stays on the spec side: Stage E is open, and PLAN's
+  "four of these were built" table records it as spec-only. Wash sales
+  are the engine window and the attach write (#133 / #138), not a
+  console cite or `WashRestatement`. MinTax is a ranking at a price
+  (`min_tax_short_weight`; unset, not a silent 2), not an Order. SpecID
+  is a named selection (`identified_lots`; unnamed or overspecified
+  refuse; `lot_method = "specific_id"` stays refused), not an Order,
+  not a UI. Average cost is a pool (`average_cost = true`; unset, not
+  a silent true), not an Order, and not a console election screen.
 
 ## American English
 

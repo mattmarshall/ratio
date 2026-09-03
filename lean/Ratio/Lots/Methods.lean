@@ -22,7 +22,8 @@ sort:
                     `Ratio.Lots.SpecId`. The holding alone does not pick.
   AVERAGE COST      no lot is chosen at all. The holding is pooled at a
                     weighted basis, and "which lot" is not a question the
-                    method can answer. `average_cost_is_not_a_lot_walk`.
+                    method can answer. `Ratio.Lots.AverageCost`.
+                    `average_cost_is_not_a_lot_walk`.
 
 ⭐ CONSERVATION IS ALREADY METHOD-INDEPENDENT, and that is worth noticing rather
 than proving again: `Ratio.Lots.cost_is_conserved` is stated over an ARBITRARY
@@ -330,7 +331,8 @@ theorem specific_identification_takes_from_the_middle :
 ⛔ THIS IS NOT A LOT WALK AND CANNOT BE MADE INTO ONE. Under average cost there
 is no lot to give up — every unit has the same basis, so "which lot" is not a
 question the method answers. It is modelled here so the difference is explicit
-rather than discovered by someone trying to add it as another `Order`.
+rather than discovered by someone trying to add it as another `Order`. The
+surface that relieves from the pool is `Ratio.Lots.AverageCost`.
 
 ⚠ AND IT DIVIDES. Total cost over total units rarely lands on a whole minor
 unit, so average cost carries a rounding decision that no ordering method has —

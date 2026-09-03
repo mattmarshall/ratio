@@ -1056,6 +1056,7 @@ What landed is the decision surface and the engine, as its own election:
   modelled, not an engine. *(superseded by the next amendment.)*
 - Not **average cost**. That pools the holding and carries a rounding
   decision no ordering has. Still modelled, not an engine.
+  *(superseded two amendments later.)*
 
 Nothing on the *Explicitly not building* list moved. Tax lots already
 left it. This extends that engine with the one method that cannot be a
@@ -1093,10 +1094,54 @@ per-sale choice:
 
 - Not **average cost**. That pools the holding and carries a rounding
   decision no ordering has. Still modelled, not an engine.
+  *(superseded by the next amendment.)*
 
 Nothing on the *Explicitly not building* list moved. Issue #9 stays
 open for average cost. WashRestatement and the console cite stay on
 #5. This amendment closes nothing.
+
+### Amendment, 2026-09-03 — Average cost is a pool, not a Method
+
+Average cost was modelled in `Ratio.Lots.Methods` as the shape that is
+**not** an ordering — the holding is pooled, so "which lot" is not a
+question it answers, and the figure divides. Adding it as a
+`Method` / `Order` / `lot_method` variant is the mistake that file
+exists to prevent. `average_cost_is_not_a_lot_walk` is the theorem;
+10 / 40 / 70 pools to 40, which equals the middle lot by coincidence.
+
+What landed is the decision surface and the engine, as its own election:
+
+- Lean: `Ratio.Lots.AverageCost`. 10 / 20 / 60 pools to 30 — a basis
+  no lot carries and no `Order` gives up. The remainder is one pooled
+  lot, not the other lots left intact (the 10 / 40 / 70 coincidence
+  with SpecID of lot 2: same taken cost, different remainder). A
+  figure that will not divide is refused. A husk is absorbed into the
+  pool. Conservation is arithmetic.
+- TLA: `//tla:average_cost_engine_check`. The probe
+  `//tla:sort_and_walk_average_cost_check` treats average cost as a
+  Method and `TheBasisTakenIsThePooledBasis` goes red.
+- Rust: `average_cost: Option<bool>` on the rule set. `None` means
+  nobody said — not a silent true. `Some(false)` is refused at read;
+  omit the field. `lot_method = "average_cost"` stays refused.
+  Electing both `lot_method` and `average_cost`, or both min-tax and
+  average cost, refuses. Naming lots on an average-cost book refuses
+  (two answers). The fold pools; treating it as
+  `held.relieve(method, …)` is the TLA probe.
+
+**What this is NOT, because the engine is not the walk-through:**
+
+- Not a **console / proto UI** for electing the pool, nor MinTax or
+  SpecID screens. Those stay leftovers on #9.
+- Not a **holding-period category rule** for the pool (US single vs
+  double category). A shared acquisition date is carried when every
+  lot agrees; mixed or missing dates stay unset. No category is
+  invented.
+- Not **WashRestatement**, a wash flag on the console, or a non-US
+  holding-period variant. Those stay on #5.
+
+Nothing on the *Explicitly not building* list moved. Issue #9 stays
+open for the UI cite and the holding-period leftover. This amendment
+does not close #9. It does not close #5.
 
 ## The control plane: geetch and crova
 

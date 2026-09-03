@@ -249,6 +249,30 @@ pub struct RuleSet {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_tax_short_weight: Option<i64>,
 
+    /// Whether this book pools the holding at a weighted basis.
+    ///
+    /// ⛔ NOT A `LotMethod`. `Ratio.Lots.AverageCost` pools the holding;
+    /// "which lot" is not a question it answers, and the figure divides.
+    /// Electing this is a different shape from `lot_method`, and
+    /// `lot_method = "average_cost"` stays refused.
+    /// `Ratio.Lots.Methods.average_cost_is_not_a_lot_walk`.
+    ///
+    /// ⛔ `None` MEANS NOBODY SAID, AND THAT IS NOT THE SAME AS SAYING TRUE.
+    /// A silent default would start pooling every existing book and
+    /// restating every sale. `Some(true)` elects. `Some(false)` is refused
+    /// at read — omit the field. Same distinction [`wash_window_days`]
+    /// keeps.
+    ///
+    /// ⛔ AND IT CANNOT SHARE A CONFIGURATION WITH `lot_method` OR
+    /// `min_tax_short_weight`. Two elections for the same sale is two
+    /// answers. Read-time refuse, not a silent precedence.
+    ///
+    /// [`wash_window_days`]: RuleSet::wash_window_days
+    /// [`lot_method`]: RuleSet::lot_method
+    /// [`min_tax_short_weight`]: RuleSet::min_tax_short_weight
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub average_cost: Option<bool>,
+
     /// How big a difference has to be before it stops the NAV.
     ///
     /// ⛔ `None` MEANS NOBODY SAID, AND THAT IS NOT THE SAME AS SAYING 5.00 AND
@@ -586,6 +610,7 @@ impl Default for RuleSet {
             long_term_days: default_long_term_days(),
             wash_window_days: None,
             min_tax_short_weight: None,
+            average_cost: None,
             tolerance: None,
             // ⛔ EMPTY IS NOT ZERO VIEWS. `effective_views` turns this into the
             // one view every book has, recognising in journal order — and
@@ -1054,7 +1079,8 @@ fn unsupported_method(toml_src: &str) -> Option<&'static str> {
             "average cost is not an ordering, so it is not a lot method: it POOLS the holding, \
              so which lot is given up is not a question it answers. It also divides — total \
              cost over total units rarely lands on a whole minor unit — which is a rounding \
-             term no ordering method carries. See \
+             term no ordering method carries. Elect it with average_cost = true, not \
+             lot_method. See Ratio.Lots.AverageCost and \
              Ratio.Lots.Methods.average_cost_is_not_a_lot_walk",
         ),
         _ => None,
@@ -1132,6 +1158,34 @@ impl RuleSet {
                      Min-tax is not an ordering — it ranks at the SALE PRICE — and the \
                      two cannot govern the same sales. Drop lot_method, or drop \
                      min_tax_short_weight. See Ratio.Lots.MinTax"
+                );
+            }
+        }
+        // ⛔ AVERAGE COST IS NOT AN ORDERING, AND `false` IS NOT AN ELECTION.
+        // Omitting the field is how a book is not pooled. Writing false would
+        // make "somebody said no" look like a term, and a silent true would
+        // start pooling every existing book.
+        if let Some(flag) = set.average_cost {
+            if !flag {
+                bail!(
+                    "average_cost = false is not an election — omit the field. None means \
+                     nobody said. See Ratio.Lots.AverageCost"
+                );
+            }
+            if set.lot_method.is_some() {
+                bail!(
+                    "this configuration elects both lot_method and average_cost. \
+                     Average cost is not an ordering — it POOLS the holding — and the \
+                     two cannot govern the same sales. Drop lot_method, or drop \
+                     average_cost. See Ratio.Lots.AverageCost"
+                );
+            }
+            if set.min_tax_short_weight.is_some() {
+                bail!(
+                    "this configuration elects both min_tax_short_weight and average_cost. \
+                     One ranks at a SALE PRICE; the other POOLS. Two answers for one \
+                     sale. Drop min_tax_short_weight, or drop average_cost. \
+                     See Ratio.Lots.AverageCost"
                 );
             }
         }
@@ -2271,6 +2325,49 @@ calendar = "us-settlement"
         .to_string();
         assert!(both.contains("SALE PRICE"), "{both}");
         assert!(both.contains("lot_method"), "{both}");
+    }
+
+    #[test]
+    fn an_average_cost_election_nobody_declared_is_absent_rather_than_true() {
+        // ⛔ NOT A SILENT TRUE. Pooling a book that never elected it would
+        // restate every sale. None means nobody said.
+        assert_eq!(RuleSet::default().average_cost, None);
+        assert_eq!(RuleSet::from_toml("rules = []\n").unwrap().average_cost, None);
+
+        let set = RuleSet::from_toml("rules = []\naverage_cost = true\n").unwrap();
+        assert_eq!(set.average_cost, Some(true));
+        assert_eq!(set.lot_method, None, "average cost is not a lot_method");
+
+        let toml = RuleSet::from_toml("rules = []\n").unwrap().to_toml().unwrap();
+        assert!(
+            !toml.contains("average_cost"),
+            "silence must not write a pool: {toml}"
+        );
+        let named = RuleSet::from_toml("rules = []\naverage_cost = true\n")
+            .unwrap()
+            .to_toml()
+            .unwrap();
+        assert!(named.contains("average_cost = true"), "{named}");
+
+        let denied = RuleSet::from_toml("rules = []\naverage_cost = false\n")
+            .expect_err("false is not an election")
+            .to_string();
+        assert!(denied.contains("not an election"), "{denied}");
+
+        let both = RuleSet::from_toml(
+            "rules = []\nlot_method = \"hifo\"\naverage_cost = true\n",
+        )
+        .expect_err("two elections for one sale")
+        .to_string();
+        assert!(both.contains("POOLS"), "{both}");
+        assert!(both.contains("lot_method"), "{both}");
+
+        let with_mintax = RuleSet::from_toml(
+            "rules = []\nmin_tax_short_weight = 2\naverage_cost = true\n",
+        )
+        .expect_err("pool and ranking are two answers")
+        .to_string();
+        assert!(with_mintax.contains("POOLS") || with_mintax.contains("SALE PRICE"), "{with_mintax}");
     }
 
     #[test]

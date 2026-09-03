@@ -123,8 +123,8 @@ impl Relieved {
 /// ⚠ AND THE SPACE IS NOT ALL ORDERINGS. These sort and walk. SPECIFIC
 /// IDENTIFICATION is a selection the taxpayer names, AVERAGE COST pools the
 /// holding, and MINTAX ranks at a SALE PRICE — none belongs in this enum.
-/// Adding SpecID here as a variant is the mistake `Ratio.Lots.SpecId`
-/// exists to prevent.
+/// Adding average cost here as a variant is the mistake
+/// `Ratio.Lots.AverageCost` exists to prevent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Method {
     /// Oldest acquisition first.
@@ -725,6 +725,31 @@ impl Holding {
             }
         }
     }
+
+    /// Give up `want` units under average cost: pool the holding, then
+    /// slice the pool.
+    ///
+    /// ⛔ NOT `relieve`. Pooling is not a sort, so it cannot be a
+    /// `Method` and cannot live in the pre-indexed order.
+    /// `Ratio.Lots.AverageCost`. `//tla:sort_and_walk_average_cost_check`
+    /// is the engine that pretends otherwise.
+    pub fn relieve_average_cost(&mut self, want: i64) -> Result<Relief> {
+        let lots = self.drain_all();
+        match relieve_average_cost(&lots, want) {
+            Ok(r) => {
+                for lot in r.left {
+                    self.insert_open(lot)?;
+                }
+                Ok(Relief { taken: r.taken, cost: r.cost })
+            }
+            Err(e) => {
+                for lot in lots {
+                    self.insert_open(lot)?;
+                }
+                Err(e)
+            }
+        }
+    }
 }
 
 /// What a relief took. ⛔ No `left`: the holding kept it.
@@ -1110,6 +1135,95 @@ pub fn relieve_spec_id(lots: &[Lot], want: i64, named: &[u64]) -> Result<Relieve
     let mut r = walk_ordered(picked, want)?;
     r.left.extend(unnamed);
     Ok(r)
+}
+
+/// Per-unit pooled basis of a holding, or nothing if the figure will
+/// not divide.
+///
+/// `Ratio.Lots.Methods.pooled`. Euclidean remainder, to match Lean's
+/// `Int` — a toward-zero `%` on a negative cost would accept a product
+/// the proof refused, or refuse one it accepted.
+pub fn pooled_basis(lots: &[Lot]) -> Result<i64> {
+    let mut units = 0i64;
+    let mut cost = 0i64;
+    for lot in lots {
+        units = ratio_common::checked::add(units, lot.units, "the holding's units")?;
+        cost = ratio_common::checked::add(cost, lot.cost, "the holding's cost")?;
+    }
+    if units <= 0 {
+        anyhow::bail!(
+            "a holding of {units} unit(s) has no pooled basis — average cost pools \
+             what is held, and nothing is held. \
+             Ratio.Lots.AverageCost.a_zero_unit_holding_has_no_pooled_basis"
+        );
+    }
+    if cost.rem_euclid(units) != 0 {
+        anyhow::bail!(
+            "pooling {units} unit(s) costing {cost} does not divide into a whole \
+             minor unit — which way to round is a term of an administration \
+             agreement, not a property of arithmetic. \
+             Ratio.Lots.Methods.an_average_that_does_not_divide_is_refused"
+        );
+    }
+    Ok(cost.div_euclid(units))
+}
+
+/// The acquisition date the pool carries, if every lot agrees.
+///
+/// ⛔ DOES NOT INVENT A DATE. Mixed or missing dates stay unset. A
+/// holding-period split of a pool is a leftover on #9, not a guess.
+fn pool_acquired(lots: &[Lot]) -> Option<Day> {
+    let mut dates = lots.iter().map(|l| l.acquired);
+    let first = dates.next()??;
+    for d in dates {
+        if d != Some(first) {
+            return None;
+        }
+    }
+    Some(first)
+}
+
+/// Relieve under average cost: pool the holding, slice `want` units.
+///
+/// `Ratio.Lots.AverageCost.relieveAverageCost`. The remainder is one
+/// pooled lot (sequence 0 — the holding, not a surviving lot). A
+/// figure that will not divide is refused.
+pub fn relieve_average_cost(lots: &[Lot], want: i64) -> Result<Relieved> {
+    if want < 0 {
+        bail!("a relief of {want} units is not a relief; a negative sale is a purchase");
+    }
+    if want == 0 {
+        return Ok(Relieved { taken: Vec::new(), left: lots.to_vec(), cost: 0 });
+    }
+    let unit = pooled_basis(lots)?;
+    let mut units = 0i64;
+    let mut cost = 0i64;
+    for lot in lots {
+        units = ratio_common::checked::add(units, lot.units, "the holding's units")?;
+        cost = ratio_common::checked::add(cost, lot.cost, "the holding's cost")?;
+    }
+    if want > units {
+        anyhow::bail!(
+            "the holding is short: {want} unit(s) were sold and {units} are held. \
+             Ratio.Lots.AverageCost.a_sale_bigger_than_the_pool_is_refused"
+        );
+    }
+    let taken_cost = ratio_common::checked::mul(unit, want, "the pooled basis given up")?;
+    let left_units = ratio_common::checked::sub(units, want, "the pooled remainder")?;
+    let left_cost = ratio_common::checked::sub(cost, taken_cost, "the pooled leftover cost")?;
+    let acquired = pool_acquired(lots);
+    let taken = vec![Taken {
+        seq: 0,
+        units: want,
+        cost: taken_cost,
+        acquired,
+    }];
+    let left = if left_units == 0 {
+        Vec::new()
+    } else {
+        vec![Lot { seq: 0, units: left_units, cost: left_cost, acquired }]
+    };
+    Ok(Relieved { taken, left, cost: taken_cost })
 }
 
 /// Whether a proper prefix of the named lots already covers `want`.
@@ -2354,5 +2468,137 @@ mod tests {
         assert_eq!(r.cost, 40);
         let left: Vec<u64> = h.lots().iter().map(|l| l.seq).collect();
         assert_eq!(left, vec![1, 3]);
+    }
+
+    // ── average cost — `Ratio.Lots.AverageCost` ───────────────────────────
+
+    fn pool_holding() -> [Lot; 3] {
+        // 10 / 20 / 60. The pool is 30, and no lot carries 30.
+        [l(1, 1, 10), l(2, 1, 20), l(3, 1, 60)]
+    }
+
+    #[test]
+    fn the_pooled_basis_is_not_any_lots_basis() {
+        // ⭐ `Ratio.Lots.AverageCost.the_pooled_basis_is_not_any_lots_basis`.
+        assert_eq!(pooled_basis(&pool_holding()).unwrap(), 30);
+        let r = relieve_average_cost(&pool_holding(), 1).unwrap();
+        assert_eq!(r.cost, 30);
+        assert_eq!(r.taken[0].seq, 0, "the pool is the holding, not a lot");
+        assert_eq!(r.left.len(), 1);
+        assert_eq!(r.left[0].seq, 0);
+        assert_eq!(r.left[0].units, 2);
+        assert_eq!(r.left[0].cost, 60);
+    }
+
+    #[test]
+    fn no_ordering_gives_up_the_pooled_basis() {
+        // `Ratio.Lots.AverageCost.no_ordering_gives_up_the_pooled_basis`.
+        let lots = pool_holding();
+        let pooled = relieve_average_cost(&lots, 1).unwrap().cost;
+        assert_eq!(pooled, 30);
+        for m in [Method::Fifo, Method::Lifo, Method::Hifo, Method::Lofo] {
+            assert_ne!(
+                relieve_by(m, &lots, 1).unwrap().cost,
+                pooled,
+                "{m:?} gave up the pooled basis from the lots alone"
+            );
+        }
+    }
+
+    #[test]
+    fn an_ordering_leaves_the_other_lots() {
+        // `Ratio.Lots.AverageCost.an_ordering_leaves_the_other_lots`.
+        let r = relieve_by(Method::Fifo, &pool_holding(), 1).unwrap();
+        assert_eq!(r.cost, 10);
+        let left: Vec<i64> = r.left.iter().map(|l| l.cost).collect();
+        assert_eq!(left, vec![20, 60]);
+    }
+
+    #[test]
+    fn the_pooled_remainder_is_not_the_unnamed_lots() {
+        // Same taken cost as SpecID of lot 2 on 10 / 40 / 70; different remainder.
+        let lots = [l(1, 1, 10), l(2, 1, 40), l(3, 1, 70)];
+        let pooled = relieve_average_cost(&lots, 1).unwrap();
+        let named = relieve_spec_id(&lots, 1, &[2]).unwrap();
+        assert_eq!(pooled.cost, 40);
+        assert_eq!(named.cost, 40);
+        assert_eq!(pooled.left.len(), 1);
+        assert_eq!(pooled.left[0].units, 2);
+        assert_eq!(pooled.left[0].cost, 80);
+        let named_left: Vec<i64> = named.left.iter().map(|l| l.cost).collect();
+        assert_eq!(named_left, vec![10, 70]);
+    }
+
+    #[test]
+    fn an_average_that_does_not_divide_is_refused() {
+        let err = relieve_average_cost(&[l(1, 1, 12), l(2, 1, 13)], 1).unwrap_err();
+        assert!(format!("{err:#}").contains("does not divide"), "{err:#}");
+    }
+
+    #[test]
+    fn a_sale_bigger_than_the_pool_is_refused() {
+        let err = relieve_average_cost(&pool_holding(), 4).unwrap_err();
+        assert!(format!("{err:#}").contains("short"), "{err:#}");
+    }
+
+    #[test]
+    fn a_zero_unit_holding_has_no_pooled_basis() {
+        let err = relieve_average_cost(&[], 1).unwrap_err();
+        assert!(format!("{err:#}").contains("no pooled basis"), "{err:#}");
+    }
+
+    #[test]
+    fn a_partial_pool_is_still_the_unit_basis() {
+        let r = relieve_average_cost(&pool_holding(), 2).unwrap();
+        assert_eq!(r.cost, 60);
+        assert_eq!(r.left[0].units, 1);
+        assert_eq!(r.left[0].cost, 30);
+    }
+
+    #[test]
+    fn average_cost_absorbs_the_husk() {
+        // ⚠ `Ratio.Lots.AverageCost.average_cost_absorbs_the_husk`.
+        let r = relieve_average_cost(&[l(1, 0, 40), l(2, 1, 10)], 1).unwrap();
+        assert_eq!(r.cost, 50);
+        assert!(r.left.is_empty());
+    }
+
+    #[test]
+    fn average_cost_is_not_a_method_variant() {
+        // ⛔ THE TRAP. `Method` has no AverageCost. Compiles only if it
+        // stays that way — a variant would make this match exhaustive
+        // and this test would have to name it.
+        match Method::Fifo {
+            Method::Fifo
+            | Method::Lifo
+            | Method::Hifo
+            | Method::Lofo
+            | Method::LongestHeldFirst
+            | Method::ShortestHeldFirst => {}
+        }
+    }
+
+    #[test]
+    fn holding_relieve_average_cost_leaves_a_pool() {
+        let mut h = Holding::new(Method::Fifo);
+        h.push(l(1, 1, 10)).unwrap();
+        h.push(l(2, 1, 20)).unwrap();
+        h.push(l(3, 1, 60)).unwrap();
+        let r = h.relieve_average_cost(1).unwrap();
+        assert_eq!(r.cost, 30);
+        assert_eq!(h.lots().len(), 1);
+        assert_eq!(h.lots()[0].seq, 0);
+        assert_eq!(h.lots()[0].units, 2);
+        assert_eq!(h.lots()[0].cost, 60);
+    }
+
+    #[test]
+    fn an_overflowing_pool_sum_is_refused() {
+        // Two lots whose costs sum past i64. Asking the wrapped
+        // total a divisibility question would answer about a pool
+        // that never happened. `ratio_common::checked`.
+        let lots = [l(1, 1, i64::MAX), l(2, 1, 1)];
+        let err = relieve_average_cost(&lots, 1).unwrap_err();
+        assert!(format!("{err:#}").contains("64 bits"), "{err:#}");
     }
 }
