@@ -3,10 +3,12 @@
 # Copy the baked demo book somewhere writable, then serve — or, given arguments,
 # run those instead.
 #
-# A Lambda filesystem is read-only apart from /tmp, and the demo posts entries.
-# Copying on start also means every cold start resets the demo to a known
-# state — which is what you want in front of a customer, not a book carrying
-# whatever the last visitor did to it.
+# A Lambda filesystem is read-only apart from /tmp, so the seeded chart and
+# config have to land there. The journal does not: when RATIO_JOURNAL_BUCKET is
+# set, FileBook appends to the object store (`tla/S3Journal.tla`) and this copy
+# is only the seed that hydrates an empty prefix. A cold start without that
+# store used to reset every ApplyEvent; two containers used to build two
+# journals under one URL. That is issue #24.
 set -euo pipefail
 
 # ⛔ ARGUMENTS RUN THE BINARY, AND WITHOUT THIS THEY WERE SILENTLY DISCARDED.
@@ -32,8 +34,9 @@ fi
 
 # The console's fund list is a directory OF books, which is a different thing
 # from the single book the other screens read. Both are baked in and both are
-# copied, because /tmp is the only writable place and the demo posts to one of
-# them.
+# copied, because the seeded chart and config still have to live somewhere
+# writable. Writes to the journal go to RATIO_JOURNAL_BUCKET when set; /tmp
+# is not the system of record for those.
 FUNDS="${RATIO_FUNDS:-/tmp/funds}"
 if [ ! -d "$FUNDS" ] && [ -d /opt/demo-funds ]; then
   cp -r /opt/demo-funds "$FUNDS"

@@ -199,6 +199,14 @@ Resources:
           RATIO_SCALE_SUBNET: !Ref ScaleSubnet
           RATIO_SCALE_SECURITY_GROUP: !GetAtt ScaleSecurityGroup.GroupId
           RATIO_SCALE_BUCKET: !Ref ScaleBucket
+          # ⛔ THE JOURNAL. Same bucket as the scale record, a different prefix.
+          # Unset, FileBook writes journal.jsonl under /tmp and a cold start
+          # loses every ApplyEvent; two containers build two journals under one
+          # URL. Set, append is LIST then conditional PUT at max+1
+          # (`tla/S3Journal.tla`). The seeded chart and config still copy into
+          # /tmp — they are not the system of record for a write.
+          RATIO_JOURNAL_BUCKET: !Ref ScaleBucket
+          RATIO_JOURNAL_PREFIX: journals/
           # The report email: who it is from, and where its permalink points.
           # ⚠ Both unset is a WORKING state — no email, nothing else changes.
           RATIO_SCALE_SENDER: !Ref ScaleSender

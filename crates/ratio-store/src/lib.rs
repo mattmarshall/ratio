@@ -18,9 +18,11 @@
 //!   for review and history. Every entry records the digest it was posted
 //!   under, so nothing downstream changes when the implementation does.
 //! * [`Journal`] — the append-only record. Backed here by one JSON line per
-//!   entry. The trigger to put a real engine underneath is indexed lookup
-//!   (postings for one account over a period, without a full scan), which the
-//!   MVP does not need and the wedge might.
+//!   entry, or by one object per entry on an [`ObjectStore`] when the process
+//!   is wired to a durable backend (`tla/S3Journal.tla`, issue #24). The
+//!   trigger to put a real engine underneath is indexed lookup (postings for
+//!   one account over a period, without a full scan), which the MVP does not
+//!   need and the wedge might.
 //!
 //! **An unbalanced entry cannot be appended.** [`Journal::append`] runs the
 //! kernel's conservation check first and refuses. This is the product's actual
@@ -30,6 +32,12 @@ use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+mod objects;
+pub use objects::{
+    install_object_store, installed_object_store, DirStore, MemoryStore, ObjectStore, SeqLog,
+};
 
 use anyhow::{anyhow, bail, Context, Result};
 use ratio_chart::{trial_balance, AccountType, Posting, TrialBalance};
@@ -415,6 +423,36 @@ pub enum AccountTypeRecord {
     Expense,
 }
 
+/// The object-store prefix for a book: its directory name.
+///
+/// Demo funds are unique ids under one root (`/tmp/funds/acme`). Two books
+/// that shared a directory name in different parents would share a journal;
+/// the live path does not do that, and inventing a hash of the full path
+/// would make a rename a silent fork.
+fn book_key(root: &Path) -> String {
+    root.file_name()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("book")
+        .to_string()
+}
+
+/// PUT each non-empty line at its 1-based sequence. Occupied slots are left
+/// alone — another container already hydrated them.
+fn hydrate_jsonl(path: &Path, log: &SeqLog) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let text = fs::read_to_string(path).with_context(|| format!("seeding from {}", path.display()))?;
+    for (i, line) in text.lines().filter(|l| !l.trim().is_empty()).enumerate() {
+        let seq = (i as u64)
+            .checked_add(1)
+            .context("the seed is longer than a journal can hold")?;
+        log.claim(seq, line.as_bytes())?;
+    }
+    Ok(())
+}
+
 impl From<AccountTypeRecord> for AccountType {
     fn from(t: AccountTypeRecord) -> Self {
         match t {
@@ -485,6 +523,8 @@ pub trait Journal {
 /// ```text
 /// <root>/
 ///   journal.jsonl      one entry per line, appended, never rewritten
+///                      (the local backend; an installed ObjectStore is
+///                      `{book}/journal/{seq}` instead — issue #24)
 ///   accounts.json      the chart of accounts
 ///   config/<digest>    configuration bytes, addressed by content
 ///   config/ACTIVE      the digest currently in force
@@ -499,6 +539,11 @@ pub trait Journal {
 /// a figure was struck is still there to be read afterwards.
 pub struct FileBook {
     root: PathBuf,
+    /// When set, the journal and the append-only planes are one object per
+    /// entry on this store, not `journal.jsonl` on disk. `/tmp` is still
+    /// where the seeded chart and config live; it is no longer the system
+    /// of record for a write. `tla/S3Journal.tla`.
+    objects: Option<(Arc<dyn ObjectStore>, String)>,
 }
 
 /// An append-only plane beside the journal.
@@ -551,11 +596,70 @@ impl Plane {
 
 impl FileBook {
     /// Open a book, creating the layout if it is not there.
+    ///
+    /// When a process-wide [`ObjectStore`] has been installed, the journal
+    /// (and the append-only planes) are read and written there. The seeded
+    /// `journal.jsonl` is copied into the store once, by conditional PUT at
+    /// the line's sequence number, so two containers hydrating the same seed
+    /// converge rather than fork.
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
+        Self::open_with(root, installed_object_store())
+    }
+
+    /// Open a book against an explicit store. Tests use this so they do not
+    /// have to mutate process-global state; the demo binary installs once
+    /// and calls [`open`][`FileBook::open`].
+    pub fn open_with(
+        root: impl AsRef<Path>,
+        store: Option<Arc<dyn ObjectStore>>,
+    ) -> Result<Self> {
         let root = root.as_ref().to_path_buf();
         fs::create_dir_all(root.join("config"))
             .with_context(|| format!("creating book at {}", root.display()))?;
-        Ok(FileBook { root })
+        let objects = store.map(|s| (s, book_key(&root)));
+        let book = FileBook { root, objects };
+        book.hydrate_objects()?;
+        Ok(book)
+    }
+
+    fn journal_log(&self) -> Option<SeqLog> {
+        let (store, key) = self.objects.as_ref()?;
+        Some(SeqLog::new(store.clone(), format!("{key}/journal/")))
+    }
+
+    fn plane_log(&self, plane: Plane) -> Option<SeqLog> {
+        let (store, key) = self.objects.as_ref()?;
+        let name = plane.file().trim_end_matches(".jsonl");
+        Some(SeqLog::new(store.clone(), format!("{key}/{name}/")))
+    }
+
+    /// Copy seeded jsonl files into the object store, slot by slot.
+    ///
+    /// ⛔ CLAIM AT THE LINE'S OWN SEQUENCE, NOT APPEND. Two containers that
+    /// both find an empty store must PUT seed line 1 at slot 1. If they
+    /// `append`, the loser retries at slot 2 with the same seed line and the
+    /// journal double-counts the opening position — the books still tie.
+    /// `put_if_absent` on a predetermined key makes a 412 mean "already
+    /// seeded", not "try the next slot".
+    fn hydrate_objects(&self) -> Result<()> {
+        if self.objects.is_none() {
+            return Ok(());
+        }
+        if let Some(log) = self.journal_log() {
+            hydrate_jsonl(&self.journal_path(), &log)?;
+        }
+        for plane in [
+            Plane::Deliveries,
+            Plane::Entities,
+            Plane::Facts,
+            Plane::Actions,
+            Plane::Explanations,
+        ] {
+            if let Some(log) = self.plane_log(plane) {
+                hydrate_jsonl(&self.root.join(plane.file()), &log)?;
+            }
+        }
+        Ok(())
     }
 
     fn journal_path(&self) -> PathBuf {
@@ -579,6 +683,10 @@ impl FileBook {
         if line.contains('\n') {
             bail!("a record with a newline in it would break the log");
         }
+        if let Some(seq) = self.plane_log(log) {
+            seq.append(line.as_bytes())?;
+            return Ok(());
+        }
         let path = self.root.join(log.file());
         let mut f = fs::OpenOptions::new()
             .create(true)
@@ -592,6 +700,20 @@ impl FileBook {
 
     /// Every record on a plane, in the order they were appended.
     pub fn records<T: serde::de::DeserializeOwned>(&self, log: Plane) -> Result<Vec<T>> {
+        if let Some(seq) = self.plane_log(log) {
+            let mut out = Vec::new();
+            seq.for_each_since(0, &mut |n, bytes| {
+                let s = std::str::from_utf8(bytes).with_context(|| {
+                    format!("{} sequence {n} is not utf-8", log.file())
+                })?;
+                out.push(
+                    serde_json::from_str(s)
+                        .with_context(|| format!("{} sequence {n}", log.file()))?,
+                );
+                Ok(())
+            })?;
+            return Ok(out);
+        }
         let path = self.root.join(log.file());
         if !path.exists() {
             return Ok(Vec::new());
@@ -801,6 +923,10 @@ impl Journal for FileBook {
             );
         }
         let line = serde_json::to_string(entry).context("serializing entry")?;
+        if let Some(log) = self.journal_log() {
+            log.append(line.as_bytes())?;
+            return Ok(());
+        }
         let mut f = OpenOptions::new()
             .create(true)
             .append(true)
@@ -856,6 +982,15 @@ impl Journal for FileBook {
                 );
             }
         }
+        if let Some(log) = self.journal_log() {
+            // Each entry is its own claim. Sharing a file handle is the jsonl
+            // optimisation; sharing a slot would be a fork.
+            for entry in entries {
+                let line = serde_json::to_string(entry).context("serializing entry")?;
+                log.append(line.as_bytes())?;
+            }
+            return Ok(());
+        }
         let mut f = OpenOptions::new()
             .create(true)
             .append(true)
@@ -889,6 +1024,19 @@ impl Journal for FileBook {
         offset: u64,
         f: &mut dyn FnMut(&JournalEntry) -> Result<()>,
     ) -> Result<u64> {
+        if let Some(log) = self.journal_log() {
+            // ⚠ THE CURSOR IS A SEQUENCE NUMBER, not a byte offset. The jsonl
+            // backend seeks by bytes because that is what a file is; an object
+            // per entry has no bytes to skip. Mixing the two on one book is
+            // a different book, which `follow` already refuses when the
+            // journal appears to shrink.
+            return log.for_each_since(offset, &mut |seq, bytes| {
+                let entry: JournalEntry = serde_json::from_slice(bytes).with_context(|| {
+                    format!("journal sequence {seq} is not an entry")
+                })?;
+                f(&entry)
+            });
+        }
         use std::io::{BufRead, BufReader, Seek, SeekFrom};
         let path = self.journal_path();
         if !path.exists() {
@@ -938,6 +1086,10 @@ impl Journal for FileBook {
     }
 
     fn entries(&self) -> Result<Vec<JournalEntry>> {
+        if self.journal_log().is_some() {
+            let (out, _) = self.entries_since(0)?;
+            return Ok(out);
+        }
         let path = self.journal_path();
         if !path.exists() {
             return Ok(Vec::new());
@@ -1351,5 +1503,107 @@ mod tests {
             ratio_chart::normal_side(chart[0].account_type.into()),
             ratio_chart::Side::Debit
         );
+    }
+
+    #[test]
+    fn a_journal_on_an_object_store_survives_dropping_the_local_file() {
+        // ⭐ ISSUE #24. The write is on the store, not in `/tmp`. Deleting
+        // journal.jsonl — a cold start, a new container — must not lose it.
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let root = tmp();
+        let cfg = {
+            let mut b = FileBook::open_with(&root, Some(store.clone())).unwrap();
+            let d = b.put(b"cfg").unwrap();
+            b.set_active(&d).unwrap();
+            b.append(&entry("t1", &d, &[(1, 7), (2, -7)])).unwrap();
+            d
+        };
+        let _ = fs::remove_file(root.join("journal.jsonl"));
+        let reopened = FileBook::open_with(&root, Some(store)).unwrap();
+        let got = reopened.entries().unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id, "t1");
+        assert_eq!(reopened.active().unwrap(), Some(cfg));
+        assert!(ratio_chart::trial_balance_ties(
+            reopened.trial_balance().unwrap()
+        ));
+    }
+
+    #[test]
+    fn a_seeded_jsonl_is_claimed_at_its_own_slots() {
+        // Hydration writes line i at sequence i. Two hydrations of the same
+        // seed therefore PUT the same keys, and the second is a 412, not a
+        // duplicate append.
+        let root = tmp();
+        let cfg = {
+            let mut b = FileBook::open(&root).unwrap();
+            let d = b.put(b"cfg").unwrap();
+            b.set_active(&d).unwrap();
+            b.append(&entry("seed", &d, &[(1, 3), (2, -3)])).unwrap();
+            d
+        };
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let first = FileBook::open_with(&root, Some(store.clone())).unwrap();
+        assert_eq!(first.entries().unwrap().len(), 1);
+        let second = FileBook::open_with(&root, Some(store)).unwrap();
+        let got = second.entries().unwrap();
+        assert_eq!(got.len(), 1, "a second hydrate must not duplicate the seed");
+        assert_eq!(got[0].id, "seed");
+        assert_eq!(got[0].config, cfg);
+    }
+
+    #[test]
+    fn concurrent_object_appends_keep_both_entries() {
+        // Two FileBooks on one store, as two Lambda containers under one URL.
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let dir = tmp();
+        let cfg = {
+            let mut seed = FileBook::open_with(&dir, Some(store.clone())).unwrap();
+            let d = seed.put(b"rules = []\n").unwrap();
+            seed.set_active(&d).unwrap();
+            d
+        };
+        std::thread::scope(|s| {
+            let store_a = store.clone();
+            let store_b = store.clone();
+            let dir_a = dir.clone();
+            let dir_b = dir.clone();
+            let cfg_a = cfg.clone();
+            let cfg_b = cfg.clone();
+            s.spawn(move || {
+                let mut b = FileBook::open_with(&dir_a, Some(store_a)).unwrap();
+                b.append(&entry("w1", &cfg_a, &[(1, 10), (2, -10)]))
+                    .unwrap();
+            });
+            s.spawn(move || {
+                let mut b = FileBook::open_with(&dir_b, Some(store_b)).unwrap();
+                b.append(&entry("w2", &cfg_b, &[(1, 11), (2, -11)]))
+                    .unwrap();
+            });
+        });
+        let b = FileBook::open_with(&dir, Some(store)).unwrap();
+        let mut ids: Vec<String> = b.entries().unwrap().into_iter().map(|e| e.id).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["w1".to_string(), "w2".to_string()]);
+        assert!(ratio_chart::trial_balance_ties(b.trial_balance().unwrap()));
+    }
+
+    #[test]
+    fn a_plane_on_an_object_store_survives_dropping_the_local_file() {
+        #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
+        struct Rec {
+            id: String,
+        }
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let root = tmp();
+        {
+            let mut b = FileBook::open_with(&root, Some(store.clone())).unwrap();
+            b.append_record(Plane::Facts, &Rec { id: "f1".into() })
+                .unwrap();
+        }
+        let _ = fs::remove_file(root.join("facts.jsonl"));
+        let b = FileBook::open_with(&root, Some(store)).unwrap();
+        let got: Vec<Rec> = b.records(Plane::Facts).unwrap();
+        assert_eq!(got, vec![Rec { id: "f1".into() }]);
     }
 }

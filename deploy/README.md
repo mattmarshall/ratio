@@ -267,11 +267,20 @@ reviews a binary diff. It contains a four-rule configuration, a replayed
 quarter, one break of `2000.00`, and one proposal nobody has approved (so the
 rules screen has both of its columns).
 
-`entrypoint.sh` copies it to `/tmp` at start, because a Lambda filesystem is
-read-only elsewhere. That also means **every cold start resets the demo**,
-which is what you want in front of a customer.
+`entrypoint.sh` copies the seeded chart and config to `/tmp` at start, because a
+Lambda filesystem is read-only elsewhere. **The journal is not that copy.** When
+`RATIO_JOURNAL_BUCKET` is set (the app stack sets it to the scale bucket, prefix
+`journals/`), append is one object per entry with a conditional PUT — `tla/S3Journal.tla`,
+issue #24. A posted entry survives the next cold start, and two containers
+share one log rather than silently forking under one URL. Unset, `/tmp` is
+still the system of record, which is the local `ratio watch` shape.
 
-Two assertions guard it, because a missing book is invisible: the image build
+⚠ **Re-run bootstrap after this lands, once.** The execution role gained
+`s3:GetObject`/`s3:PutObject` on `journals/*` (no `DeleteObject` — the log is
+append-only). An account that provisioned bootstrap before this grant will
+`AccessDenied` on the first ApplyEvent; the books will still tie on the seed.
+
+Two assertions guard the seed, because a missing book is invisible: the image build
 fails if the book lacks its accounts, journal, reports or proposals, and the
 deploy's smoke test fails if the live site does not serve six entries, a
 pending proposal, and that `2000.00` break. Both exist because an empty book
