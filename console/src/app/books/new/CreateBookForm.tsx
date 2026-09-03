@@ -1,16 +1,17 @@
 "use client";
 
 import { useActionState } from "react";
+import { BOOK_TEMPLATES } from "@/lib/templates";
 import { submit, type Result } from "./actions";
 
 export function CreateBookForm() {
   const [result, action, pending] = useActionState(submit, null as Result);
 
   return (
-    <form action={action} className="ticket">
+    <form action={action} className="form newbook">
       {result && !result.ok ? <p className="empty err">{result.error}</p> : null}
       <label>
-        Id
+        <span>Id</span>
         <input
           name="bookId"
           required
@@ -20,17 +21,25 @@ export function CreateBookForm() {
         />
       </label>
       <label>
-        Name
+        <span>Name</span>
         <input name="displayName" placeholder="Household" autoComplete="off" />
       </label>
-      <label>
-        Kind
-        <select name="kind" defaultValue="PERSONAL" required>
-          <option value="PERSONAL">Personal</option>
-          <option value="INVESTMENT">Investment</option>
-          <option value="PROJECT">Project</option>
-        </select>
-      </label>
+      <fieldset className="templates">
+        <legend>Template</legend>
+        {BOOK_TEMPLATES.map((t) => (
+          <label key={t.kind} className="template">
+            <input
+              type="radio"
+              name="kind"
+              value={t.kind}
+              defaultChecked={t.kind === "PERSONAL"}
+              required
+            />
+            <span className="template-name">{t.label}</span>
+            <span className="template-blurb">{t.blurb}</span>
+          </label>
+        ))}
+      </fieldset>
       <button type="submit" className="signin-btn" disabled={pending}>
         {pending ? "Creating…" : "Create book"}
       </button>

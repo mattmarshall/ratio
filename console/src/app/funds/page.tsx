@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { WorkspaceSwitch } from "@/components/WorkspaceSwitch";
 import { funds as fundsForRequest } from "@/lib/data";
 import { count, STATE_CLASS, STATE_LABEL } from "@/lib/format";
 
@@ -15,6 +16,8 @@ export default async function Funds() {
         <div className="subhead">
           <span>{count(String(funds.length))} administered</span>
           <Link href="/books">All books</Link>
+          <Link href="/projects">Projects</Link>
+          <WorkspaceSwitch current="funds" />
         </div>
       </div>
 

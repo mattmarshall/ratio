@@ -49,6 +49,11 @@ vi.mock("@/lib/caller", () => ({
   principal: async () => ({ sub: "u-1", email: "e.marsh@example.com" }),
 }));
 
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: () => undefined, set: () => {} }),
+  headers: async () => new Headers(),
+}));
+
 // The router hooks a client component reaches for. There is no app router
 // mounted under jsdom, and the screens under test navigate rather than toggle —
 // which is the point of the migration, so it is worth the four lines.
@@ -134,14 +139,40 @@ describe("a first-class book", () => {
     await renderAsync(Books());
     expect(screen.getByText("Household")).toBeDefined();
     expect(screen.getByText(/independent/)).toBeDefined();
-    expect(screen.getByText("New book")).toBeDefined();
-    expect(screen.getByText("Funds")).toBeDefined();
+    expect(screen.getByRole("link", { name: "New book" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Funds" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Projects" })).toBeDefined();
+    expect(screen.getByLabelText("Home workspace")).toBeDefined();
+  });
+
+  it("lists project books on /projects and opens them as books", async () => {
+    const Projects = (await import("./projects/page")).default;
+    await renderAsync(Projects());
+    expect(screen.getByText("Bridge")).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: /Bridge/ }).getAttribute("href"),
+    ).toBe("/books/bridge");
+    expect(screen.queryByText("Household")).toBeNull();
+    expect(screen.queryByText("Harbourline Global Value")).toBeNull();
+  });
+
+  it("offers the three book templates CreateBook already knows", async () => {
+    const NewBook = (await import("./books/new/page")).default;
+    render(<NewBook />);
+    expect(screen.getByText("Personal finance")).toBeDefined();
+    expect(screen.getByText(/Cash and bank/)).toBeDefined();
+    expect(screen.getByText("Investment / Fund")).toBeDefined();
+    expect(screen.getByText(/Does not file a fund/)).toBeDefined();
+    expect(screen.getByText("Project")).toBeDefined();
+    expect(screen.getByText(/Work in progress/)).toBeDefined();
+    expect(screen.getByRole("radio", { name: /Personal finance/ })).toBeChecked();
   });
 
   it("reaches the book collection from the fund list", async () => {
     const Funds = (await import("./funds/page")).default;
     await renderAsync(Funds());
-    expect(screen.getByText("All books")).toBeDefined();
+    expect(screen.getByRole("link", { name: "All books" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Projects" })).toBeDefined();
     // A seeded fund is an investment book. The list is funds-only; the job
     // lives on the book URL so a personal book never has to look like one.
     expect(

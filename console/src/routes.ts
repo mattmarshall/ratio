@@ -40,11 +40,17 @@ export interface Route {
 
 export const ROUTES: readonly Route[] = [
   // ── Chrome ───────────────────────────────────────────────────────────────
-  { path: "/", file: "page.tsx", reads: ["listBooks"] },
+  { path: "/", file: "page.tsx", reads: [] },
   { path: "/signin", file: "signin/page.tsx", reads: [] },
   { path: "/books", file: "books/page.tsx", reads: ["listBooks"] },
   { path: "(layout)/books", file: "books/layout.tsx", reads: ["listBooks", "listFunds"] },
   { path: "/books/new", file: "books/new/page.tsx", reads: ["createBook"] },
+  { path: "/projects", file: "projects/page.tsx", reads: ["listBooks"] },
+  {
+    path: "(layout)/projects",
+    file: "projects/layout.tsx",
+    reads: ["listBooks", "listFunds"],
+  },
   {
     path: "/books/[book]",
     file: "books/[book]/page.tsx",

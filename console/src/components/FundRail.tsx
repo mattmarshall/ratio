@@ -28,6 +28,8 @@ export function FundRail({ funds }: { funds: Fund[] }) {
         <span>Your funds</span>
         <span>
           <Link href="/books">Books</Link>
+          {" · "}
+          <Link href="/projects">Projects</Link>
           {funds.length ? ` · ${funds.length}` : ""}
         </span>
       </div>

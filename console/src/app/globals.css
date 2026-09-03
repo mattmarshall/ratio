@@ -100,8 +100,13 @@ a.brandlink{color:inherit;text-decoration:none}
    query says. Had it fired, it would have blanked every detail page on a
    laptop, which is why it is gone rather than reordered.) */
 .body{display:grid;grid-template-columns:264px minmax(0,1fr);min-height:0}
+/* ⛔ NO RAIL, ONE COLUMN. `/books` and `/projects` (and every job under a
+   book) render inside `.body` without `.funds`. The two-column track would
+   otherwise squeeze the queue into 264px and leave a blank second cell. */
+.body.norail{grid-template-columns:minmax(0,1fr)}
 @media (max-width:1180px){
   .body{grid-template-columns:224px minmax(0,1fr)}
+  .body.norail{grid-template-columns:minmax(0,1fr)}
 }
 /* ⛔ `minmax(0,1fr)`, NOT `1fr`. Bare `1fr` is minmax(auto,1fr), and the screen
    tabs' min-content width is wider than a phone — so the one column grew to fit
@@ -145,6 +150,30 @@ a.brandlink{color:inherit;text-decoration:none}
 .subhead{display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;margin-top:5px;
   font-size:12.5px;color:var(--muted)}
 .subhead code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+
+/* Home workspace. ⛔ NOT IN `.crumb` — that vanishes below 640px, and a
+   control that can only be reached at a desk is not a preference. */
+.workspace{display:inline-flex;align-items:center}
+.workspace label{display:inline-flex;align-items:center;gap:7px}
+.workspace-label{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted)}
+.workspace select{padding:4px 8px;border-radius:7px;font:inherit;font-size:12.5px;
+  border:1px solid var(--rule);background:var(--ground);color:var(--text)}
+.workspace select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+/* CreateBook templates. Kind selects the chart, shown as what you get. */
+.templates{grid-column:1/-1;border:0;padding:0;margin:4px 0 2px;display:grid;gap:8px}
+.templates legend{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);padding:0;margin-bottom:2px}
+.template{display:grid;grid-template-columns:auto 1fr;column-gap:10px;row-gap:2px;
+  padding:11px 13px;border:1px solid var(--rule);border-radius:10px;
+  background:var(--raised);cursor:pointer}
+.template input{margin-top:4px}
+.template-name{font-weight:600;font-size:14px;color:var(--text)}
+.template-blurb{grid-column:2;font-size:12.5px;color:var(--muted);line-height:1.45}
+.template:has(:checked){border-color:var(--accent);background:var(--accent-soft)}
+.form.newbook{padding-bottom:18px}
+.form.newbook .signin-btn{grid-column:1/-1;justify-self:start;margin-top:6px}
 /* The three figures that decide whether the NAV can be struck. */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
   background:var(--rule);border-block:1px solid var(--rule)}
@@ -901,7 +930,7 @@ a.brandlink{color:inherit;text-decoration:none}
   .step>.qbar,.step>.ruleform{margin-inline:-14px;padding-inline:14px}
 
   .form input,.form select,.form textarea,
-  .step input,.step select,.step textarea,.cmdin{font-size:16px}
+  .step input,.step select,.step textarea,.cmdin,.workspace select{font-size:16px}
 
   .cmdscrim{padding:8vh 10px 10px}
   .signin-body{margin-top:10vh}

@@ -6,20 +6,25 @@ import { KIND_SHORT } from "@/lib/templates";
 
 export const dynamic = "force-dynamic";
 
-/** Every book this operator may open — funds are an optional layer, not a parent. */
-export default async function Books() {
-  const books = await booksForRequest();
+/**
+ * Books of kind PROJECT. Still a Book — jobs live at `/books/{id}/…`.
+ *
+ * ⛔ NOT A SECOND LEDGER. ListBooks already returns every book; this is
+ * the same list filtered by the template CreateBook wrote.
+ */
+export default async function Projects() {
+  const books = (await booksForRequest()).filter((b) => b.kind === "PROJECT");
 
   return (
     <main className="queue">
       <div className="qhead">
-        <h1>Your books</h1>
+        <h1>Your projects</h1>
         <div className="subhead">
           <span>{count(String(books.length))} open to you</span>
+          <Link href="/books">All books</Link>
           <Link href="/funds">Funds</Link>
-          <Link href="/projects">Projects</Link>
           <Link href="/books/new">New book</Link>
-          <WorkspaceSwitch current="books" />
+          <WorkspaceSwitch current="projects" />
         </div>
       </div>
 
@@ -27,24 +32,22 @@ export default async function Books() {
         {books.length === 0 ? (
           <li>
             <div className="empty">
-              No books yet. Create one without a fund or an organization —
-              membership is a line in <code>MEMBERSHIP.tsv</code>, not a parent
-              resource.
+              No project books yet. Create one from New book — a project is a
+              Book with the project chart, not a second ledger.
             </div>
           </li>
         ) : null}
         {books.map((b) => {
           const id = b.name.replace(/^books\//, "");
-          const href = `/books/${id}`;
           return (
             <li key={b.name}>
-              <Link className="row" href={href}>
-                <span className={`sev ${b.fund ? "low" : "high"}`} />
+              <Link className="row" href={`/books/${id}`}>
+                <span className="sev high" />
                 <span>
                   <div className="title">{b.displayName}</div>
                   <div className="why">
                     {KIND_SHORT[b.kind] ?? b.kind}
-                    {b.fund ? " · filed as a fund" : " · independent"}
+                    {" · independent"}
                     {" · "}
                     {count(b.entryCount)} entries
                   </div>

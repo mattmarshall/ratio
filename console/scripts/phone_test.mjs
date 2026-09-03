@@ -59,6 +59,7 @@ const S = "northstar-multi-strategy";
 const SCREENS = [
   ["/books", "main"],
   ["/books/new", "main"],
+  ["/projects", "main"],
   [`/books/${F}`, "main"],
   ["/funds", "main"],
   [`/funds/${F}`, "main"],

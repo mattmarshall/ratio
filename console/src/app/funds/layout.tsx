@@ -46,6 +46,9 @@ export default async function FundsLayout({
           <Link href="/books" className="crumb">
             Books
           </Link>
+          <Link href="/projects" className="crumb">
+            Projects
+          </Link>
           <CommandHint />
           <Who />
         </header>

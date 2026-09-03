@@ -10,8 +10,8 @@ export default function NewBook() {
         <h1>New book</h1>
         <div className="subhead">
           <span>
-            Same kernel as every other book. Kind chooses the chart, not a
-            product fork. Nothing here files a fund or an organization.
+            Same kernel as every other book. A template chooses the chart,
+            not a product fork. Nothing here files a fund or an organization.
           </span>
         </div>
       </div>

@@ -162,6 +162,13 @@ describe("the command palette", () => {
     expect(push).toHaveBeenCalledWith("/books/new");
   });
 
+  it("opens the project collection without inventing a second ledger", async () => {
+    renderConsole();
+    await type("your projects");
+    fireEvent.click(await row("Your projects"));
+    expect(push).toHaveBeenCalledWith("/projects");
+  });
+
   it("sends a fund exactly where the rail sends it", async () => {
     renderConsole();
     await type("northstar");

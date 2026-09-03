@@ -23,6 +23,18 @@
       "entryCount": "6",
       "configDigest": "9f2c1ab7de40551c",
       "trialBalanceDifference": "0"
+    },
+    {
+      "name": "books/bridge",
+      "displayName": "Bridge",
+      "kind": "PROJECT",
+      "currencyCode": "USD",
+      "fund": "",
+      "organization": "",
+      "defaultView": "book",
+      "entryCount": "0",
+      "configDigest": "",
+      "trialBalanceDifference": "0"
     }
   ],
   "nextPageToken": ""

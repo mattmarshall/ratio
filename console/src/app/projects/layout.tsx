@@ -9,37 +9,36 @@ import { books as booksForRequest, funds as fundsForRequest } from "@/lib/data";
 export const dynamic = "force-dynamic";
 
 /**
- * Chrome for the book collection and every job under a book.
+ * Chrome for the project collection.
  *
- * ⭐ THE JOBS LIVE HERE. `/books/{book}/views/…` is the real URL, not a
- * rewrite onto a fund page. A personal book never travels through `/funds`.
- * The palette mounts here so ⌘K reaches those jobs; ListFunds stays on
- * `/funds` and is funds-only.
+ * ⭐ A PROJECT IS A BOOK. The jobs stay at `/books/{id}/…`; this layout
+ * only lists them. No FundRail — a project book has no fund to rail.
  */
-export default async function BooksLayout({
+export default async function ProjectsLayout({
   children,
 }: {
   children: ReactNode;
 }) {
   const books = await booksForRequest();
   const funds = await fundsForRequest();
+  const projects = books.filter((b) => b.kind === "PROJECT");
 
   return (
     <Palette funds={funds}>
       <div className="app">
         <header className="top">
-          <Link href="/books" className="brandlink" aria-label="Your books">
+          <Link href="/projects" className="brandlink" aria-label="Your projects">
             <Brand />
           </Link>
           <span className="crumb">
-            Books <span aria-hidden="true">/</span> <b>{books.length}</b>
+            Projects <span aria-hidden="true">/</span> <b>{projects.length}</b>
           </span>
           <span className="spacer" />
+          <Link href="/books" className="crumb">
+            Books
+          </Link>
           <Link href="/funds" className="crumb">
             Funds
-          </Link>
-          <Link href="/projects" className="crumb">
-            Projects
           </Link>
           <CommandHint />
           <Who />

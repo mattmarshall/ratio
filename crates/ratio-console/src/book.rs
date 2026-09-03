@@ -252,4 +252,32 @@ mod tests {
         assert!(m.fund.is_none());
         assert!(m.organization.is_none());
     }
+
+    #[test]
+    fn each_kind_gets_a_different_chart() {
+        let personal = chart_for(BookKind::Personal);
+        let investment = chart_for(BookKind::Investment);
+        let project = chart_for(BookKind::Project);
+        assert_ne!(personal, investment);
+        assert_ne!(personal, project);
+        assert_ne!(investment, project);
+        assert!(personal.iter().any(|a| a.display_name == "Cash and bank"));
+        assert!(investment
+            .iter()
+            .any(|a| a.display_name == "Investments at fair value"));
+        assert!(project.iter().any(|a| a.display_name == "Work in progress"));
+    }
+
+    #[test]
+    fn initialize_writes_the_kind_chart_and_files_no_fund() {
+        let dir = std::env::temp_dir().join("ratio-book-init-project");
+        let _ = std::fs::remove_dir_all(&dir);
+        initialize(&dir, "bridge", "Bridge", BookKind::Project).unwrap();
+        let m = BookMeta::load(&dir, "bridge");
+        assert_eq!(m.kind, BookKind::Project);
+        assert!(m.fund.is_none());
+        assert!(m.organization.is_none());
+        let chart = FileBook::open(&dir).unwrap().accounts().unwrap();
+        assert_eq!(chart, chart_for(BookKind::Project));
+    }
 }
