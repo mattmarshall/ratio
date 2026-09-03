@@ -252,9 +252,11 @@ pub struct RuleSet {
     ///
     /// ⛔ A CONFIGURATION TOTAL, NOT A SECOND LEDGER. Actual costs, WIP and
     /// payables are the journal. Book-level `[project] budget` is the
-    /// authorized baseline `/budget` cites. Phase rows (`[[project.phase]]`)
-    /// are the per-work-package baselines `/billing` cites. `None` (or a
-    /// phase with no `budget`) means no baseline — not a budget of zero.
+    /// original contract `/budget` cites. Phase rows (`[[project.phase]]`)
+    /// are the per-work-package original baselines `/billing` cites. `None`
+    /// (or a phase with no `budget`) means no baseline — not a budget of
+    /// zero. Approved change orders are journal facts on their own equity
+    /// pair; they do not live here and must not rewrite these keys.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<ProjectTerms>,
 
@@ -280,8 +282,9 @@ pub struct RuleSet {
 /// The authorized spend a project book cites against the journal.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectTerms {
-    /// Book-level baseline in minor units. Omitted means unset; `0` is a
-    /// set baseline of nothing. `/budget` cites this; `/billing` cites phases.
+    /// Book-level original contract in minor units. Omitted means unset;
+    /// `0` is a set baseline of nothing. `/budget` cites this as baseline;
+    /// approved change orders are a different figure, from the journal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget: Option<i64>,
     /// Per work-package account. `account` is a chart dimension.

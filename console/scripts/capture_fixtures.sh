@@ -74,12 +74,12 @@ get configVersions.json     "funds/${FUND}/configVersions"
 get rules.json              "funds/${FUND}/rules"
 get templates.json          "funds/${FUND}/templates"
 # ⚠ THAT CAPTURE IS THE FUND BOOK. CreateBook also seeds `bank-statement`
-# (Personal) and `project-invoices` (Project). After a recapture, merge those
-# two rows back from git — `console/src/lib/templates.test.ts` fails if a
-# CreateBook id is missing, which is how a harbourline-only refresh stays
-# honest. `prime_equity_trades` and `capital-calls` are on CreateBook
-# Investment; a recapture from the demo fund will not have `capital-calls`
-# and must merge that row back from git.
+# (Personal), `project-invoices` and `change-orders` (Project). After a
+# recapture, merge those rows back from git — `console/src/lib/templates.test.ts`
+# fails if a CreateBook id is missing, which is how a harbourline-only
+# refresh stays honest. `prime_equity_trades` and `capital-calls` are on
+# CreateBook Investment; a recapture from the demo fund will not have
+# `capital-calls` and must merge that row back from git.
 get deliveries.json         "funds/${FUND}/deliveries"
 get pendingFacts.json       "funds/${FUND}/pendingFacts"
 get corporateActions.json   "funds/${FUND}/corporateActions"

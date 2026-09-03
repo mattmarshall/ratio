@@ -272,7 +272,14 @@ walk-through: CreateBook(Personal) lands on the sheet, with a period P&L and
 household budget vs actual (`[personal] budget` on the configuration that
 book pins, then `/books/{id}/views/{view}/budget` for a month or a year —
 unset shows as unset, not a fake zero). CreateBook(Project) lands on the
-same `/budget` URL as a cumulative project roll-up. CreateBook(Investment)
+same `/budget` URL as a cumulative project roll-up — original contract,
+approved change orders, and revised — and `/billing` as billed vs earned,
+retainage, cost by phase, and the revised contract as the billing basis.
+A change-order walk-through can record `approve_co_site` / `deduct_co_site`
+or ingest `change-orders`; it cannot show AIA G702 product UI, a client
+portal, e-signature, or CRM. Unset original / unposted COs stay unset, not
+a fake zero. The live demo does not seed those baselines or any
+commitment postings. CreateBook(Investment)
 lands on capital activity (funded partners plus commitment / undrawn —
 unset until a commitment posts, not a callable zero), then the fund ABOR
 warehouse. A capital-call walk-through can record `commit_lp` / `call_lp`

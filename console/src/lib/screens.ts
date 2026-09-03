@@ -81,8 +81,9 @@ export const PERSONAL_SCREENS: readonly Screen[] = [
  * Project figures. Budget vs actual, WIP capitalization, and progress billing.
  *
  * ⛔ `/billing` IS NOT `/budget`. Budget is authorized spend vs committed
- * cost. Billing is billed vs earned, retainage, and cost by phase. One URL
- * would make those two answers.
+ * cost — original contract, approved change orders, revised. Billing is
+ * billed vs earned, retainage, and cost by phase. Change orders compose
+ * onto both; they are not a third URL. One chrome list (`screensFor`).
  *
  * Trial balance stays: it is the conservation view of the same accounts, and
  * a figure that could not be checked against it would be a picture.
@@ -189,7 +190,7 @@ const PROJECT_TICKETS: readonly Ticket[] = [
   {
     segment: "record",
     label: "Record an event",
-    keywords: "record,event,rule,apply,cost,wip,bill,retainage",
+    keywords: "record,event,rule,apply,cost,wip,bill,retainage,change order",
   },
   {
     segment: "ingest",

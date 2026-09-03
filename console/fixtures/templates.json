@@ -41,6 +41,13 @@
             "factKind": "invoice",
             "form": "template project-invoices {\n  reads      csv with header\n  grain      one invoice per row\n\n  entity     vendor  (counterparty)\n    by     name   from \"Vendor\"\n    absent   pend\n\n  fact       invoice\n    reference    from \"InvoiceRef\"\n    vendor       vendor\n    dated        from \"Date\" as date \"YYYY-MM-DD\"\n    amount       from \"Amount\" as money in \"Ccy\"\n    memo         from \"Memo\" as text optional\n    kind         from \"Kind\" as { cost: cost, invoice: invoice }\n\n  posts      by \"kind\"\n    amount      amount\n    dated       dated\n    cost        -> project_cost\n    invoice     -> vendor_invoice\n}\n",
             "posts": true
+        },
+        {
+            "name": "funds/bridge/templates/change-orders",
+            "templateId": "change-orders",
+            "factKind": "change",
+            "form": "template change-orders {\n  reads      csv with header\n  grain      one change per row\n\n  fact       change\n    reference   from \"ChangeRef\"\n    dated       from \"Date\" as date \"YYYY-MM-DD\"\n    amount      from \"Amount\" as money in \"Ccy\"\n    memo        from \"Memo\" as text optional\n    kind        from \"Kind\" as { approve_co: approve_co, approve_co_finishes: approve_co_finishes, approve_co_site: approve_co_site, approve_co_structure: approve_co_structure, deduct_co: deduct_co, deduct_co_finishes: deduct_co_finishes, deduct_co_site: deduct_co_site, deduct_co_structure: deduct_co_structure }\n\n  posts      by \"kind\"\n    amount      amount\n    dated       dated\n    approve_co  -> approve_co\n    approve_co_finishes-> approve_co_finishes\n    approve_co_site-> approve_co_site\n    approve_co_structure-> approve_co_structure\n    deduct_co   -> deduct_co\n    deduct_co_finishes-> deduct_co_finishes\n    deduct_co_site-> deduct_co_site\n    deduct_co_structure-> deduct_co_structure\n}\n",
+            "posts": true
         }
     ],
     "nextPageToken": ""

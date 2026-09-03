@@ -278,6 +278,14 @@ NEEDLES: list[tuple[str, str]] = [
         "budget unset — not a silent zero",
         "a phase without [project.phase] budget would show a fake zero",
     ),
+    (
+        "unset — no approved change order has posted, not a silent zero",
+        "an unposted change order would read as a fake zero contract adjustment",
+    ),
+    (
+        "not rewritten when a change order posts",
+        "the original contract would look mutated in place",
+    ),
     # ⛔ AND NO `startTransition` NEEDLE, THOUGH THE PALETTE NEEDS ONE AS MUCH AS
     # `FilterChips` DOES. Both that file and `PlanControls` already contain the
     # literal, so the case would pass with the palette's transition dropped — the

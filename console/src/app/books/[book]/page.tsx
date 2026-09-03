@@ -113,7 +113,7 @@ export default async function BookPage({
       ) : null}
       {project && b.defaultView ? (
         <p className="note">
-          <Link href={`/books/${book}/record`}>Record a cost, bill, retainage hold, or capitalize WIP</Link>
+          <Link href={`/books/${book}/record`}>Record a cost, bill, retainage hold, change order, or capitalize WIP</Link>
         </p>
       ) : null}
       {b.fund ? (
