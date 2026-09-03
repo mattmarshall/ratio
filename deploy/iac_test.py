@@ -284,6 +284,113 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  WorkOsIssuer is passed from the resolved issuer")
 
+    # ⛔ THE JOURNAL GRANT MUST LIVE IN THE APP STACK, NOT ONLY IN BOOTSTRAP.
+    # Issue #129: Sid TheJournal was added to bootstrap.yaml in #84, and
+    # README said "re-run bootstrap once". Nobody did. After #126 bound
+    # before hydrate, /healthz lived and /balance.json died on
+    # s3:PutObject AccessDenied for journals/book/journal/0000…1.
+    # A grant only in the hand-applied stack is a grant the next deploy
+    # cannot apply. The app stack must allow the execution role to
+    # PutObject under journals/ on the same bucket RATIO_JOURNAL_BUCKET names.
+    #
+    # ⚠ COMMENT-STRIPPED. A sentence describing the grant must not satisfy
+    # this — same shape as the CAPABILITY_NAMED_IAM check above.
+    if "RATIO_JOURNAL_BUCKET: !Ref ScaleBucket" not in app_code:
+        fail(
+            f"{app_path} does not set RATIO_JOURNAL_BUCKET to ScaleBucket — "
+            "hydrate would write a bucket the IAM grant does not name"
+        )
+    else:
+        print("  ok  RATIO_JOURNAL_BUCKET is the scale bucket")
+
+    prefix_m = re.search(r"RATIO_JOURNAL_PREFIX:\s+(\S+)", app_code)
+    if prefix_m is None:
+        fail(f"{app_path} does not set RATIO_JOURNAL_PREFIX")
+        journal_prefix = None
+    else:
+        journal_prefix = prefix_m.group(1)
+        print(f"  ok  RATIO_JOURNAL_PREFIX is {journal_prefix}")
+
+    journal_policy = None
+    for m in re.finditer(
+        r"^  [A-Za-z0-9]+:\n    Type: AWS::S3::BucketPolicy\n"
+        r"((?:.*\n)*?)(?=^  [A-Za-z]|\Z)",
+        app_code,
+        re.M,
+    ):
+        block = m.group(0)
+        if journal_prefix and f"{journal_prefix}*" in block:
+            journal_policy = block
+            break
+    if journal_policy is None:
+        fail(
+            f"{app_path} has no bucket policy covering {journal_prefix or 'journals/'}* "
+            "— the identity grant in bootstrap.yaml is applied by hand and was "
+            "the #129 miss; CI cannot PutRolePolicy on ratio-demo-execution"
+        )
+    else:
+        print("  ok  the app stack has a bucket policy on the journal prefix")
+        if "s3:PutObject" not in journal_policy:
+            fail(
+                f"{app_path} journal bucket policy does not grant s3:PutObject — "
+                "hydrate's If-None-Match claim is an ordinary PutObject"
+            )
+        else:
+            print("  ok  journal policy grants s3:PutObject")
+        if "s3:GetObject" not in journal_policy:
+            fail(
+                f"{app_path} journal bucket policy does not grant s3:GetObject — "
+                "/balance.json reads the objects hydrate just claimed"
+            )
+        else:
+            print("  ok  journal policy grants s3:GetObject")
+        if "s3:ListBucket" not in journal_policy:
+            fail(
+                f"{app_path} journal bucket policy does not grant s3:ListBucket — "
+                "SeqLog.height is a LIST before the fold"
+            )
+        else:
+            print("  ok  journal policy grants s3:ListBucket")
+        if "s3:DeleteObject" in journal_policy:
+            fail(
+                f"{app_path} journal bucket policy grants s3:DeleteObject — "
+                "a delete on an append-only log is a truncation wearing an IAM grant"
+            )
+        else:
+            print("  ok  journal policy does not grant DeleteObject")
+        if "ExecutionRoleArn" not in journal_policy:
+            fail(
+                f"{app_path} journal bucket policy is not scoped to ExecutionRoleArn — "
+                "a principal other than the function is not the writer"
+            )
+        else:
+            print("  ok  journal policy is scoped to the function's execution role")
+        if "ScaleBucket" not in journal_policy:
+            fail(
+                f"{app_path} journal bucket policy is not on ScaleBucket — "
+                "the env and the grant would name different buckets"
+            )
+        else:
+            print("  ok  journal policy is on ScaleBucket")
+
+    # ⛔ SMOKE STILL ASKS FOR A TYING BOOK, AND STILL REFUSES AN OPEN /v1.
+    # A "fix" that dropped the difference:0.00 assertion, or that opened
+    # /v1/funds to make the deploy green, would pass every other check here.
+    if '"difference":"0.00"' not in flow or "balance.json" not in flow:
+        fail(
+            f"{workflow_path} no longer asserts a tying trial balance on "
+            "/balance.json — that is the #129 smoke failure, not a check to drop"
+        )
+    else:
+        print("  ok  smoke still asserts difference:0.00 on /balance.json")
+    if "v1/funds" not in flow or "401" not in flow:
+        fail(
+            f"{workflow_path} no longer asserts unauthenticated /v1/funds is 401 — "
+            "the journal grant must not be bought by opening the tenant boundary"
+        )
+    else:
+        print("  ok  smoke still asserts unauthenticated /v1/funds is 401")
+
     if failures:
         print(f"\n{len(failures)} problem(s): the app stack and the deploy role disagree "
               "about what may be created", file=sys.stderr)

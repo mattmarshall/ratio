@@ -321,10 +321,19 @@ issue #24. A posted entry survives the next cold start, and two containers
 share one log rather than silently forking under one URL. Unset, `/tmp` is
 still the system of record, which is the local `ratio watch` shape.
 
-⚠ **Re-run bootstrap after this lands, once.** The execution role gained
-`s3:GetObject`/`s3:PutObject` on `journals/*` (no `DeleteObject` — the log is
-append-only). An account that provisioned bootstrap before this grant will
-`AccessDenied` on the first ApplyEvent; the books will still tie on the seed.
+⭐ **The write grant lives on the bucket, because that is what CI can apply.**
+`install_journal_store` / hydrate / append are a conditional `s3:PutObject`
+(`If-None-Match:*`) plus `GetObject`/`ListBucket` under `journals/` on the
+scale bucket. Sid `TheJournal` on `ratio-demo-execution` in `bootstrap.yaml`
+already names that — and bootstrap is applied by hand. #84 added the Sid;
+nobody re-ran the stack; after #126 bound before hydrate, `/version` lived
+and `/balance.json` died on `AccessDenied` for
+`journals/book/journal/00000000000000000001` (#129). The app stack now
+carries a bucket policy for the same role, same prefix, no `DeleteObject`
+(a delete would be a truncation wearing an IAM grant). Same-account S3
+accepts a resource-based Allow even when the identity policy has not
+caught up. Re-running bootstrap still attaches the identity grant; it is
+no longer the thing that unblocks smoke.
 
 Two assertions guard the seed, because a missing book is invisible: the image build
 fails if the book lacks its accounts, journal, reports or proposals, and the

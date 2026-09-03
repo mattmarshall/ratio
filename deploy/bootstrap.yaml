@@ -556,6 +556,12 @@ Resources:
               # truncation wearing an IAM grant. PutObject here is the
               # conditional PUT (`If-None-Match:*`) — no extra permission, and
               # no read-then-write that could admit two writers to one slot.
+              #
+              # ⚠ CORRECT AND NOT SUFFICIENT. Bootstrap is applied by hand.
+              # #84 added these Sids; the live role never received them; after
+              # #126 bound before hydrate, /balance.json died on PutObject
+              # AccessDenied (#129). The matching grant CI applies is the
+              # ScaleBucket journal policy in app.yaml.
               - Sid: TheJournal
                 Effect: Allow
                 Action:
