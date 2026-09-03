@@ -38,9 +38,15 @@ def from_descriptor(path: Path) -> set[str]:
     # template, so `…:applyEvent` scanned as `…:applyEvent:`. A template never
     # ends in a bare colon; a custom method always names one after it.
     found = {m.decode("ascii").rstrip(":") for m in TEMPLATE.findall(blob)}
-    # Other services in the same descriptor declare /v1 routes too; the console's
-    # are the ones under funds/.
-    return {t for t in found if "funds" in t}
+    # Other services in the same descriptor declare /v1 routes too. The kernel
+    # keys accounts and transactions on `books/`; the console's book RPCs are
+    # only the collection and the book itself. Everything under `funds/` is
+    # console.
+    return {
+        t
+        for t in found
+        if "funds" in t or t in {"/v1/books", "/v1/{name=books/*}"}
+    }
 
 
 def from_source(path: Path) -> set[str]:

@@ -3116,10 +3116,15 @@ fn newest_report(book: &Path) -> Result<Option<kernel::BreakReport>> {
                 .collect()
         })
         .unwrap_or_default();
+    // ⚠ MTIME FIRST, THEN PATH. Two reports written in one filesystem
+    // timestamp (the test helper's `r0.pb` / `r1.pb`) used to order
+    // arbitrarily, so "the later figure retires the explanation" was a
+    // coin flip on a fast disk.
     found.sort_by_key(|p| {
-        std::fs::metadata(p)
+        let mtime = std::fs::metadata(p)
             .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        (mtime, p.clone())
     });
     match found.last() {
         None => Ok(None),

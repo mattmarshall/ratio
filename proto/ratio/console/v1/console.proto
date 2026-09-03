@@ -491,9 +491,9 @@ message Book {
   // The resource name: `books/{book}`.
   string name = 1 [(google.api.field_behavior) = IDENTIFIER];
 
-  string display_name = 2;
+  string display_name = 2 [(google.api.field_behavior) = OPTIONAL];
 
-  Kind kind = 3;
+  Kind kind = 3 [(google.api.field_behavior) = REQUIRED];
 
   // ISO 4217. The base the figures are labelled in.
   string currency_code = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
