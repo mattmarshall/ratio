@@ -1314,6 +1314,45 @@ pub fn compile(rule: &Rule, event: &Event) -> Result<Vec<PostingRecord>> {
         .collect()
 }
 
+/// Merge legs that share (dimension, currency, instrument).
+///
+/// ⭐ TWO BALANCED TEMPLATES REMAIN BALANCED. A loan payment compiles
+/// interest and principal as separate rules (each nets to zero by
+/// `balanced_template_balances`) and concatenates them. The cash account
+/// then has two credits; merging those legs is the 3-posting identity
+/// (interest expense + principal reduction against cash) and does not
+/// change the net. A zero after the merge is dropped — a $0 interest
+/// posting is nothing that happened.
+pub fn merge_postings(
+    legs: Vec<ratio_store::PostingRecord>,
+) -> Result<Vec<ratio_store::PostingRecord>> {
+    let mut by: BTreeMap<(i64, Option<String>, Option<String>), (i64, Option<i64>)> =
+        BTreeMap::new();
+    for p in legs {
+        let key = (p.dim, p.currency.clone(), p.instrument.clone());
+        let slot = by.entry(key).or_insert((0, None));
+        slot.0 = ratio_common::checked::add(slot.0, p.amount, "a merged posting")?;
+        match (slot.1, p.quantity) {
+            (None, q) => slot.1 = q,
+            (Some(a), Some(b)) => {
+                slot.1 = Some(ratio_common::checked::add(a, b, "a merged quantity")?);
+            }
+            (Some(_), None) => {}
+        }
+    }
+    Ok(by
+        .into_iter()
+        .filter(|(_, (amount, _))| *amount != 0)
+        .map(|((dim, currency, instrument), (amount, quantity))| PostingRecord {
+            dim,
+            amount,
+            currency,
+            instrument,
+            quantity,
+        })
+        .collect())
+}
+
 /// The accrued amount: `basis × rate × days ÷ (10 000 × denominator)`.
 ///
 /// Computed in `i128` because the numerator overflows `i64` on a large book:

@@ -2085,19 +2085,12 @@ impl Console {
                 recorded += 1;
                 continue;
             }
-            let (rule_id, amount) = match ratio_ingest::posting_for(t, &r.fact) {
+            let pairs = match ratio_ingest::postings_for(t, &r.fact) {
                 Ok(v) => v,
                 Err(e) => {
                     refused.push(format!("{}: {e:#}", r.fact.reference));
                     continue;
                 }
-            };
-            let Some(rule) = rules.rule(&rule_id) else {
-                refused.push(format!(
-                    "{}: the template posts it as `{rule_id}`, which is not a rule in force",
-                    r.fact.reference
-                ));
-                continue;
             };
             let who: Vec<String> = r
                 .entities
@@ -2119,34 +2112,53 @@ impl Console {
                 })
                 .and_then(|k| r.entity(k))
                 .map(str::to_string);
-            let postings = ratio_rules::compile(
-                rule,
-                &ratio_rules::Event {
-                    rule: rule_id.clone(),
-                    id: r.fact.reference.clone(),
-                    amount,
-                    days: None,
-                    memo: String::new(),
-                    instrument,
-                    // Whole units. The fact carries it in minor units because
-                    // fractional shares exist; a quantity that is not whole is
-                    // carried as none rather than rounded.
-                    quantity: r
-                        .fact
-                        .values
-                        .get("quantity")
-                        .and_then(ratio_ingest::Value::as_minor)
-                        .filter(|q| q % 100 == 0)
-                        .map(|q| q / 100),
-                },
-            )?;
+            let quantity = r
+                .fact
+                .values
+                .get("quantity")
+                .and_then(ratio_ingest::Value::as_minor)
+                .filter(|q| q % 100 == 0)
+                .map(|q| q / 100);
+            let mut postings = Vec::new();
+            let mut rule_ids = Vec::new();
+            let mut missing = false;
+            for (rule_id, amount) in &pairs {
+                let Some(rule) = rules.rule(rule_id) else {
+                    refused.push(format!(
+                        "{}: the template posts it as `{rule_id}`, which is not a rule in force",
+                        r.fact.reference
+                    ));
+                    missing = true;
+                    break;
+                };
+                postings.extend(ratio_rules::compile(
+                    rule,
+                    &ratio_rules::Event {
+                        rule: rule_id.clone(),
+                        id: r.fact.reference.clone(),
+                        amount: *amount,
+                        days: None,
+                        memo: String::new(),
+                        instrument: instrument.clone(),
+                        // Whole units. The fact carries it in minor units because
+                        // fractional shares exist; a quantity that is not whole is
+                        // carried as none rather than rounded.
+                        quantity,
+                    },
+                )?);
+                rule_ids.push(rule_id.as_str());
+            }
+            if missing {
+                continue;
+            }
+            let postings = ratio_rules::merge_postings(postings)?;
             if !req.validate_only {
                 b.append(&ratio_store::JournalEntry {
                     id: r.fact.reference.clone(),
                     memo: format!(
                         "{} · {} · row {} of {}",
                         who.join(" "),
-                        rule_id,
+                        rule_ids.join("+"),
                         r.fact.provenance.row,
                         &r.fact.provenance.delivery[..12],
                     ),
