@@ -153,6 +153,24 @@ service Console {
     option (google.api.method_signature) = "name";
   }
 
+  // Aged AR/AP open items for one operating book of record. (AIP-136)
+  //
+  // GET, like `:projectProgress`: it folds a journal prefix and writes
+  // nothing.
+  //
+  // ⛔ OPERATING ONLY. Personal, project, and investment books are refused
+  // with a sentence, not served current-bucket zeros. Project `/billing`
+  // is one job's billed/earned/collections — not entity-wide aging.
+  //
+  // ⭐ UNSET STAYS UNSET. Buckets stay empty when the journal has no due
+  // dates on open items, or when a collection/payment does not name the
+  // invoice/bill it applies to. A missing due date is not current. An
+  // unapplied reduction is not an equal split across items.
+  rpc OperatingAging(OperatingAgingRequest) returns (OperatingAgingResponse) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*}:operatingAging"};
+    option (google.api.method_signature) = "name";
+  }
+
   // Lists a fund's open breaks, ordered by money at risk. (AIP-132)
   rpc ListBreaks(ListBreaksRequest) returns (ListBreaksResponse) {
     option (google.api.http) = {get: "/v1/{parent=funds/*/views/*}/breaks"};
@@ -558,8 +576,9 @@ message Book {
     // revenue and expense, and owner equity. Independent of a Fund and of a
     // WorkOS organization. Not a project/job book, not a household, and not
     // a second meaning of KIND_UNSPECIFIED. AR/AP aging (due-date buckets
-    // with invoice/bill application) is a follow-on — the chart cites the
-    // control accounts; it does not invent an open-item subledger.
+    // with invoice/bill application) folds from the journal when those
+    // cuts are present; a missing due date stays unset, not current. The
+    // sheet cites the control accounts. Project `/billing` is one job.
     KIND_OPERATING = 4;
   }
 
@@ -1322,6 +1341,61 @@ message ProjectProgressResponse {
   // trial-balance balance (zero when nothing posted is a true zero).
   // Budget is empty when `[project.phase]` omits that account.
   repeated PhaseCost phases = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message OperatingAgingRequest {
+  // `funds/{fund}/views/{view}` — the book of record the figures fold.
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+  ];
+
+  // As-of cut. Empty is now (every entry, including undated). `YYYY-MM` /
+  // `YYYY` is the last calendar day of that period, dated entries only —
+  // the same cut the operating sheet uses. `YYYY-MM-DD` is that day.
+  string filter = 2 [(google.api.field_behavior) = OPTIONAL];
+}
+
+// Aged AR and AP open items, folded from the journal prefix.
+//
+// ⚠ NAMED FOR THE METHOD. AIP-136 wants `<Rpc>Response` or the resource;
+// there is no OperatingAging resource — these are figures folded off the
+// view's journal, the same way ProjectProgress is.
+message OperatingAgingResponse {
+  // The view these figures fold, as `funds/{fund}/views/{view}`.
+  string name = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  AgingSchedule receivable = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  AgingSchedule payable = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The journal prefix the schedules were folded from.
+  int64 journal_position = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One control account's aged open items.
+//
+// ⛔ EMPTY BUCKETS MEAN THE SCHEDULE IS UNSET, not a book of zeros.
+// `current` is `""` when aging cannot be cited (no due dates on remaining
+// items, or a reduction that does not name its item). A set schedule
+// writes `"0"` for an empty dated bucket — nothing in that window is a
+// real zero. `undated` stays empty when every remaining item has a due
+// date (no residual line), and holds the residual when some do not.
+// `control` is the control-account balance on the same cut; empty when
+// that account has never posted in the cut.
+message AgingSchedule {
+  string current = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // 1–30 days past due. Words, not `days_1_30`: AIP-140 refuses a
+  // field word that starts with a digit.
+  string days_thirty = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // 31–60 days past due.
+  string days_sixty = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // 61–90 days past due.
+  string days_ninety = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // More than 90 days past due. ⛔ NOT `days_over_90` — AIP-140 bans
+  // the preposition `over` in a field name.
+  string days_older = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string undated = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string control = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // Cost (and optional authorized spend) on one work-package account.
@@ -2255,6 +2329,18 @@ message ApplyEventRequest {
   // directions — so an entry without this opens lots no method will classify,
   // and the gain lands in the unclassified residue.
   google.type.Date trade_date = 9 [(google.api.field_behavior) = OPTIONAL];
+
+  // When an invoice or bill is due. Absent means the item cannot be aged.
+  //
+  // ⛔ NOT A DEFAULT OF THE TRADE DATE. Terms and the day dealt are different
+  // facts; copying one onto the other would put every invoice in current
+  // the day it was raised.
+  google.type.Date due_date = 10 [(google.api.field_behavior) = OPTIONAL];
+
+  // The open item (invoice or bill event id) this collection or payment
+  // applies to. Empty on the invoice/bill itself, and empty when the
+  // reduction does not name an item — which leaves that side's aging unset.
+  string application = 11 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message ApplyEventResponse {

@@ -85,11 +85,18 @@ describe("screensFor", () => {
 
   it("an operating book opens a sheet, income statement, and cash-flow, not Fund or Project chrome", () => {
     const segments = screensFor("OPERATING").map((s) => s.segment);
-    expect(segments.slice(0, 4)).toEqual(["sheet", "pnl", "cashflow", "accounts"]);
+    expect(segments.slice(0, 5)).toEqual([
+      "sheet",
+      "pnl",
+      "cashflow",
+      "aging",
+      "accounts",
+    ]);
     const labels = screensFor("OPERATING").map((s) => s.label);
     expect(labels).toContain("Balance sheet");
     expect(labels).toContain("Income statement");
     expect(labels).toContain("Cash flow");
+    expect(labels).toContain("AR/AP aging");
     expect(labels).toContain("Trial balance");
     expect(labels).not.toContain("Exceptions");
     expect(labels).not.toContain("NAV");
@@ -125,7 +132,7 @@ describe("screensFor", () => {
         ["capital", "nav"].includes(x.segment),
       ),
       ...OPERATING_SCREENS.filter((x) =>
-        ["sheet", "pnl", "cashflow"].includes(x.segment),
+        ["sheet", "pnl", "cashflow", "aging"].includes(x.segment),
       ),
     ]) {
       expect(s.scoped).toBe(true);

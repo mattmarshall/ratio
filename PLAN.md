@@ -716,8 +716,9 @@ kind the console offers cannot go unrecorded here again:
   revenue / expense, owner equity. Sheet, period income statement, and
   period cash-flow (the same-day amendment below) that tie to the trial
   balance. Investing stays unset — the chart has no PPE account.
-  AR/AP aging is a named follow-on
-  (#117) — no due date, no open-item application.
+  AR/AP aging (#117) cites due-date buckets when the journal carries a
+  due date and an application; unset when it cannot — never a fake
+  current bucket.
 
 **The wedge is still the revenue path.** A paid shadow run on a real
 customer's period is the first dollar. What changed is the *unit*. The

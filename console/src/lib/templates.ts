@@ -34,7 +34,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "OPERATING",
     label: "Operating business",
-    blurb: "Cash, Accounts receivable, Accounts payable, Operating revenue, Operating expenses, and Owner equity. Independent of a Fund and of an organization. Cites a balance sheet, a period income statement, and a period cash-flow statement that tie to the trial balance. Investing stays unset — the chart has no PPE account. AR/AP aging is a follow-on — no due date and no open-item application.",
+    blurb: "Cash, Accounts receivable, Accounts payable, Operating revenue, Operating expenses, and Owner equity. Independent of a Fund and of an organization. Cites a balance sheet, a period income statement, a period cash-flow statement, and AR/AP aging when due dates and applications are on the journal. Investing stays unset — the chart has no PPE account. A missing due date is not current.",
   },
 ];
 

@@ -530,14 +530,15 @@ the conserved one, and the kernel never said it was.
   `pay_vendor`: the trial balance still ties, no lot opens, `/sheet`
   cites the control accounts, and `/pnl` cites the period (month or
   year, not since inception). An undated entry is in no period. ⛔ The
-  walk-through cannot show AR/AP aging. The journal has no due date and
-  no invoice/bill application; missing due dates must not be treated as
-  current. Aging is a named follow-on, not a generic "billing" tab —
-  Project `/billing` is one job's billed/earned/collections. Payroll,
-  tax filing, inventory/COGS, CRM, payment initiation, and bank-feed
-  OAuth stay refused. `KIND_UNSPECIFIED` is not this kind and still
-  falls through to fund operations. The seeded demo funds remain
-  investment books.
+  walk-through cannot invent due dates. `/aging` cites due-date buckets
+  when invoices and bills carry a due date and collections/payments name
+  the item they apply to; missing due dates stay **unset**, not current,
+  and an unapplied reduction unsets that side — no FIFO, no equal split.
+  Project `/billing` is one job's billed/earned/collections, not
+  entity-wide aging. Payroll, tax filing, inventory/COGS, CRM, payment
+  initiation, and bank-feed OAuth stay refused. `KIND_UNSPECIFIED` is
+  not this kind and still falls through to fund operations. The seeded
+  demo funds remain investment books.
 - ⚠ **An operating cash-flow walk-through (#118 / #27).** It can show
   beginning and ending cash for a month or year, and classify the
   movement into operating (revenue, expenses, AR/AP working capital)
@@ -549,8 +550,8 @@ the conserved one, and the kernel never said it was.
   ending cash; a move the chart cannot name is a residual line an
   operator can open, not silent absorption. An empty journal, or a cut
   with no dated prefix, stays **unset** — not a measured $0.00 cash.
-  Spending down to zero is a real zero. It cannot show AR/AP aging
-  (#117), a period close (#114), a bank reconciliation, a cash
+  Spending down to zero is a real zero. Aging stays on #117; a period
+  close on #114. It cannot show a bank reconciliation, a cash
   forecast, payroll, tax filing, inventory/COGS, payment initiation,
   bank OAuth, or a client portal. Sheet / P&L stay on #108. The screen
   is the same `/cashflow` URL Personal already uses — one `screensFor`

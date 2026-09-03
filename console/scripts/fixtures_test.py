@@ -59,6 +59,7 @@ FIXTURES = {
     "entry.json": "Entry",
     "entries.json": "ListEntriesResponse",
     "projectProgress.json": "ProjectProgressResponse",
+    "operatingAging.json": "OperatingAgingResponse",
 }
 
 SCALARS = {

@@ -767,6 +767,8 @@ mod tests {
             
                 trade_date: None,
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .unwrap();
         }
@@ -817,6 +819,8 @@ mod tests {
         
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
 
@@ -1001,6 +1005,8 @@ mod tests {
                 // trade-date view and has NOT in the settlement one.
                 trade_date: Some("2026-06-28".into()),
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .unwrap();
         }

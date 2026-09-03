@@ -44,8 +44,8 @@ describe("book templates", () => {
     expect(byKind.OPERATING).toMatch(/Operating expenses/);
     expect(byKind.OPERATING).toMatch(/Owner equity/);
     expect(byKind.OPERATING).toMatch(/Independent of a Fund/);
-    expect(byKind.OPERATING).toMatch(/AR\/AP aging is a follow-on/);
-    expect(byKind.OPERATING).toMatch(/no due date/);
+    expect(byKind.OPERATING).toMatch(/AR\/AP aging when due dates/);
+    expect(byKind.OPERATING).toMatch(/A missing due date is not current/);
     expect(byKind.OPERATING).toMatch(/cash-flow statement/);
     expect(byKind.OPERATING).toMatch(/Investing stays unset/);
   });

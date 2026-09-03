@@ -1,0 +1,22 @@
+{
+  "name": "funds/studio/views/book",
+  "receivable": {
+    "current": "30000",
+    "daysThirty": "20000",
+    "daysSixty": "0",
+    "daysNinety": "0",
+    "daysOlder": "0",
+    "undated": "",
+    "control": "50000"
+  },
+  "payable": {
+    "current": "0",
+    "daysThirty": "0",
+    "daysSixty": "-8000",
+    "daysNinety": "0",
+    "daysOlder": "0",
+    "undated": "",
+    "control": "-8000"
+  },
+  "journalPosition": "4"
+}

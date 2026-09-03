@@ -427,23 +427,22 @@ NEEDLES: list[tuple[str, str]] = [
         "unset — Unrealized gain did not move this window, not a silent zero mark",
         "unrealized would render as a silent zero mark",
     ),
-    # ── operating-business book (#108) ──────────────────────────────────────
-    # ⚠ THE REFUSAL SENTENCE, NOT THE TAB LABEL. `screens.ts` already says
-    # "Balance sheet" / "Income statement"; a hub that offered Fund NAV or
-    # Project Billing under an Operating label would still contain those
-    # words and stay green. The follow-on copy is what goes red if someone
-    # "helps" by implying AR/AP aging from a generic billing tab.
+    # ── operating AR/AP aging (#117) ────────────────────────────────────────
+    # ⚠ THE HONESTY SENTENCE, NOT THE TAB LABEL. `screens.ts` already says
+    # "AR/AP aging"; a page that rendered current-bucket zeros on undated
+    # invoices would still contain the label and stay green. The refusal
+    # copy lives on the aging page — not only in `screens.ts`.
     (
-        "AR/AP aging is a follow-on — invoices and bills post to control",
-        "an operating hub would imply AR/AP aging that the journal cannot cite",
+        "A missing due date is not current",
+        "undated invoices would be silently treated as current",
     ),
     (
-        "due-date buckets are not on this book",
-        "missing due dates would be silently treated as current",
+        "buckets sum to the control",
+        "the aging page would stop saying the schedule ties to the control",
     ),
     (
-        "no due date and no open-item application",
-        "the sheet would stop saying receivable/payable are control accounts",
+        "not Project billing",
+        "operating aging would be confused with a project job figure",
     ),
     # ── operating period cash-flow (#118) ───────────────────────────────────
     # ⚠ THE UNSET SENTENCE AND THE CHART-HONEST SPLIT, NOT THE TAB LABEL.

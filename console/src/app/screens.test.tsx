@@ -28,6 +28,7 @@ import templatesFixture from "../../fixtures/templates.json";
 import viewFixture from "../../fixtures/view.json";
 import viewsFixture from "../../fixtures/views.json";
 import projectProgressFixture from "../../fixtures/projectProgress.json";
+import operatingAgingFixture from "../../fixtures/operatingAging.json";
 // ⚠ The fixtures are captured JSON, so TypeScript widens their enums to
 // `string`. `//console:fixtures_test` checks their SHAPE against console.proto
 // on every build, which is the check a cast here would otherwise be pretending
@@ -107,6 +108,7 @@ const wire = {
   listViews: async () => viewsFixture,
   reconcileViews: async () => reconcileFixture,
   projectProgress: async () => projectProgressFixture,
+  operatingAging: async () => operatingAgingFixture,
   getBreak: async () => breakFixture,
   listBreaks: async () => breaksFixture,
   listAccounts: async () => accountsFixture,
@@ -191,7 +193,7 @@ describe("a first-class book", () => {
     expect(screen.getByText("Project")).toBeDefined();
     expect(screen.getByText(/work in progress/)).toBeDefined();
     expect(screen.getByText("Operating business")).toBeDefined();
-    expect(screen.getByText(/AR\/AP aging is a follow-on/)).toBeDefined();
+    expect(screen.getByText(/AR\/AP aging when due dates/)).toBeDefined();
     expect(screen.getByText(/Independent of a Fund/)).toBeDefined();
     expect(
       (screen.getByRole("radio", { name: /Personal finance/ }) as HTMLInputElement)
@@ -354,13 +356,11 @@ describe("a first-class book", () => {
       expect(
         screen.getByRole("link", { name: "Cash flow" }).getAttribute("href"),
       ).toBe("/books/studio/views/book/cashflow");
+      expect(
+        screen.getByRole("link", { name: "AR/AP aging" }).getAttribute("href"),
+      ).toBe("/books/studio/views/book/aging");
       expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
-      expect(
-        screen.getByText(/AR\/AP aging is a follow-on/),
-      ).toBeDefined();
-      expect(
-        screen.getByText(/due-date buckets are not on this book/),
-      ).toBeDefined();
+      expect(screen.getByText(/aged open items by due date/)).toBeDefined();
       expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
       expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
       expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
@@ -2507,9 +2507,8 @@ describe("an operating-business statement", () => {
       expect(screen.getByRole("link", { name: "Income statement" })).toBeDefined();
       expect(screen.getByRole("link", { name: "Cash flow" })).toBeDefined();
       expect(screen.queryByRole("link", { name: "Transfer" })).toBeNull();
-      expect(
-        screen.getByText(/no due date and no open-item application/),
-      ).toBeDefined();
+      expect(screen.getByRole("link", { name: "AR/AP aging" })).toBeDefined();
+      expect(screen.getByText(/control-account balances/)).toBeDefined();
       expect(screen.getByText(/Assets equal liabilities, equity and surplus/)).toBeDefined();
     });
   });
@@ -2762,6 +2761,100 @@ describe("an operating-business statement", () => {
     } finally {
       wire.listAccounts = real;
     }
+  });
+
+  it("cites aged AR/AP open items and says the buckets sum to the control", async () => {
+    const Aging = (await import("./books/[book]/views/[view]/aging/page")).default;
+    await renderAsync(
+      Aging({
+        params: params({ book: "studio", view: "book" }),
+        searchParams: params({}),
+      }),
+    );
+    expect(screen.getByLabelText("AR/AP aging")).toBeDefined();
+    expect(screen.getByText("Accounts receivable")).toBeDefined();
+    expect(screen.getByText("Accounts payable")).toBeDefined();
+    expect(screen.getByText("300.00")).toBeDefined();
+    expect(screen.getByText("200.00")).toBeDefined();
+    expect(screen.getByText("500.00")).toBeDefined();
+    expect(screen.getAllByText("80.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("buckets sum to the control").length).toBeGreaterThan(0);
+    expect(screen.getByText(/A missing due date is not current/)).toBeDefined();
+    expect(screen.getByText(/not Project billing/)).toBeDefined();
+    expect(screen.getByRole("link", { name: "Balance sheet" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "Billing" })).toBeNull();
+  });
+
+  it("shows an em dash when aging cannot be cited, not a current-bucket zero", async () => {
+    const real = wire.operatingAging;
+    wire.operatingAging = (async () => ({
+      name: "funds/studio/views/book",
+      receivable: {
+        current: "",
+        daysThirty: "",
+        daysSixty: "",
+        daysNinety: "",
+        daysOlder: "",
+        undated: "",
+        control: "40000",
+      },
+      payable: {
+        current: "",
+        daysThirty: "",
+        daysSixty: "",
+        daysNinety: "",
+        daysOlder: "",
+        undated: "",
+        control: "",
+      },
+      journalPosition: "1",
+    })) as typeof wire.operatingAging;
+    try {
+      const Aging = (await import("./books/[book]/views/[view]/aging/page")).default;
+      await renderAsync(
+        Aging({
+          params: params({ book: "studio", view: "book" }),
+          searchParams: params({}),
+        }),
+      );
+      expect(screen.getAllByText("unset — not current").length).toBeGreaterThan(0);
+      expect(screen.getByText("400.00")).toBeDefined();
+      expect(screen.queryByText("0.00")).toBeNull();
+    } finally {
+      wire.operatingAging = real;
+    }
+  });
+
+  it("asks OperatingAging for the as-of cut the chips name", async () => {
+    const calls: unknown[][] = [];
+    const real = wire.operatingAging;
+    wire.operatingAging = (async (...args: unknown[]) => {
+      calls.push(args);
+      return operatingAgingFixture;
+    }) as typeof wire.operatingAging;
+    try {
+      const Aging = (await import("./books/[book]/views/[view]/aging/page")).default;
+      await renderAsync(
+        Aging({
+          params: params({ book: "studio", view: "book" }),
+          searchParams: params({ period: "2026-04-15" }),
+        }),
+      );
+      expect(calls[0]?.slice(1)).toEqual(["studio", "book", "2026-04-15"]);
+    } finally {
+      wire.operatingAging = real;
+    }
+  });
+
+  it("404s aging on a household rather than wearing an operating label", async () => {
+    const Aging = (await import("./books/[book]/views/[view]/aging/page")).default;
+    await expect(
+      Aging({
+        params: params({ book: "household", view: "book" }),
+        searchParams: params({}),
+      }),
+    ).rejects.toThrow();
   });
 });
 

@@ -86,6 +86,7 @@ pub const ROUTES: &[Route] = &[
     Route { method: "POST", template: "/v1/{parent=funds/*}:ingest" },
     Route { method: "POST", template: "/v1/{parent=funds/*}:admit" },
     Route { method: "POST", template: "/v1/{parent=funds/*}:mark" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*}:operatingAging" },
     Route { method: "GET", template: "/v1/{name=funds/*/views/*}" },
     Route { method: "GET", template: "/v1/{name=funds/*}" },
 ];
@@ -159,6 +160,13 @@ pub fn serve(
         ["funds", id, "views", v] if v.ends_with(":projectProgress") => {
             let view = v.trim_end_matches(":projectProgress");
             to_json(&console.project_progress(&format!("funds/{id}/views/{view}"))?)?
+        }
+        ["funds", id, "views", v] if v.ends_with(":operatingAging") => {
+            let view = v.trim_end_matches(":operatingAging");
+            to_json(&console.operating_aging(
+                &format!("funds/{id}/views/{view}"),
+                &param_of(query, "filter"),
+            )?)?
         }
         ["funds", id, "views", v] => {
             to_json(&console.get_view(&format!("funds/{id}/views/{v}"))?)?
@@ -321,6 +329,8 @@ fn apply_event_request(parent: &str, body: &str) -> Result<pb::ApplyEventRequest
         // would parse as a trade date nobody supplied, and the holding-period
         // methods would classify against it rather than refusing.
         trade_date: v.get("tradeDate").filter(|d| !d.is_null()).and_then(date_from_json),
+        due_date: v.get("dueDate").filter(|d| !d.is_null()).and_then(date_from_json),
+        application: text("application")?,
         validate_only: matches!(v.get("validateOnly"), Some(serde_json::Value::Bool(true))),
     })
 }
@@ -1419,6 +1429,40 @@ impl JsonView for pb::ProjectProgressResponse {
             q(&self.retainage_receivable),
             q(&self.retainage_payable),
             self.phases.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(",")
+        )
+    }
+}
+
+impl JsonView for pb::AgingSchedule {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"current\":{},\"daysThirty\":{},\"daysSixty\":{},\"daysNinety\":{},\
+             \"daysOlder\":{},\"undated\":{},\"control\":{}}}",
+            q(&self.current),
+            q(&self.days_thirty),
+            q(&self.days_sixty),
+            q(&self.days_ninety),
+            q(&self.days_older),
+            q(&self.undated),
+            q(&self.control)
+        )
+    }
+}
+
+impl JsonView for pb::OperatingAgingResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"receivable\":{},\"payable\":{},\"journalPosition\":{}}}",
+            q(&self.name),
+            self.receivable
+                .as_ref()
+                .map(|s| s.to_json())
+                .unwrap_or_else(|| "null".into()),
+            self.payable
+                .as_ref()
+                .map(|s| s.to_json())
+                .unwrap_or_else(|| "null".into()),
+            q(&self.journal_position.to_string())
         )
     }
 }

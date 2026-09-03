@@ -322,6 +322,7 @@ describe("the command palette", () => {
       ["Balance sheet", `/books/studio/views/${VIEW}/sheet`],
       ["Income statement", `/books/studio/views/${VIEW}/pnl`],
       ["Cash flow", `/books/studio/views/${VIEW}/cashflow`],
+      ["AR/AP aging", `/books/studio/views/${VIEW}/aging`],
       ["Trial balance", `/books/studio/views/${VIEW}/accounts`],
     ] as const) {
       const { unmount } = renderOperating();
