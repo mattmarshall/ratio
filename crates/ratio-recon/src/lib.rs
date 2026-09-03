@@ -1012,7 +1012,7 @@ fn rule_changes(a: &RuleSet, b: &RuleSet) -> Vec<String> {
     }
     if a.wash_window_days != b.wash_window_days {
         out.push(format!(
-            "wash window: {} days to {}",
+            "wash window: {:?} to {:?}",
             a.wash_window_days, b.wash_window_days
         ));
     }

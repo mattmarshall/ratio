@@ -307,8 +307,9 @@ pub struct Terms {
     /// Days held for a gain to be long-term. `Ratio.Lots.Methods.isLongTerm`.
     pub long_term_days: i64,
     /// Days either side of a sale a repurchase washes the loss.
+    /// `None` means the fund did not elect the rule.
     /// `Ratio.Lots.Wash.inWashWindow`.
-    pub wash_window_days: i64,
+    pub wash_window_days: Option<i64>,
 }
 
 impl Terms {
@@ -1540,30 +1541,26 @@ impl Projection {
                                 None
                             }
                         };
-                        let attached_amt = attached.as_ref().map(|w| w.attached).unwrap_or(0);
-                        // Classify the RECOGNIZED gain — the posted figure
-                        // minus what was deferred. Credit-normal: a loss is
-                        // positive; subtracting `d` moves it toward zero.
-                        let recognized = gain_leg.and_then(|g| {
-                            ratio_common::checked::sub(
-                                g,
-                                attached_amt,
-                                "the recognized gain after wash",
-                            )
-                            .ok()
-                        });
-                        let split = recognized.and_then(|g| classify(&r, g, trade_day, terms));
+                        // ⚠ CLASSIFY THE POSTED GAIN, NOT THE WASHED ONE.
+                        // The chart total is the journal's realized-gain
+                        // dimension. Restating the split against a figure
+                        // the journal did not post makes `unclassified` absorb
+                        // every deferral — which is how a generated book
+                        // that never elected wash stopped partitioning.
+                        // Qualification / restatement of the posted figure
+                        // is `WashRestatement`, and it is not this fold.
+                        let split = gain_leg.and_then(|g| classify(&r, g, trade_day, terms));
                         if let Some((short, long)) = split {
                             *fold.lots.short_term.entry(ccy.clone()).or_default() += short;
                             *fold.lots.long_term.entry(ccy).or_default() += long;
                         }
-                        match (attached, trade_day) {
-                            (Some(w), Some(sold_on))
+                        match (attached, trade_day, terms.wash_window_days) {
+                            (Some(w), Some(sold_on), Some(window))
                                 if w.remaining_units > 0 && w.remaining_loss < 0 =>
                             {
                                 Some(PendingWash {
                                     key: key.clone(),
-                                    window: terms.wash_window_days,
+                                    window,
                                     sold_on,
                                     remaining_units: w.remaining_units,
                                     remaining_loss: w.remaining_loss,
@@ -2065,6 +2062,9 @@ fn try_wash_sale(
     sale_day: Option<relief::Day>,
     terms: Terms,
 ) -> Result<Option<relief::WashMatch>> {
+    let Some(window) = terms.wash_window_days else {
+        return Ok(None);
+    };
     let Some(g) = gain_leg else {
         return Ok(None);
     };
@@ -2083,7 +2083,7 @@ fn try_wash_sale(
         loss,
         sold_units,
         sale_day,
-        terms.wash_window_days,
+        window,
         original,
         &r.taken,
     )?))

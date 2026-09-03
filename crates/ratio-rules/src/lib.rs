@@ -215,17 +215,17 @@ pub struct RuleSet {
     /// ⛔ AND IT REACHES BOTH WAYS. A repurchase before the sale washes it
     /// just as one after does. The number is the half-width, not a horizon.
     ///
-    /// ⚠ SILENCE IS THIRTY, THE WAY SILENCE IS 365 FOR THE HOLDING PERIOD —
-    /// US custom, not an election. Serializing the default is skipped so a
-    /// book that never named this field keeps its content address; the engine
-    /// still reads 30. A fund that wants a different window writes one.
+    /// ⛔ `None` MEANS NOBODY SAID, AND THAT IS NOT THE SAME AS SAYING 30.
+    /// A silent default of 30 restated every in-window loss on every existing
+    /// book — the generated fund's short/long split stopped partitioning the
+    /// chart total, and `//deploy:seed_test` could not strike a NAV. Thirty
+    /// is the US number a fund WRITES; it is not applied to a book that never
+    /// elected the rule. Same distinction [`lot_method`] keeps.
     ///
     /// [`long_term_days`]: RuleSet::long_term_days
-    #[serde(
-        default = "default_wash_window_days",
-        skip_serializing_if = "is_default_wash_window_days"
-    )]
-    pub wash_window_days: i64,
+    /// [`lot_method`]: RuleSet::lot_method
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wash_window_days: Option<i64>,
 
     /// How big a difference has to be before it stops the NAV.
     ///
@@ -548,13 +548,6 @@ fn default_long_term_days() -> i64 {
     365
 }
 
-fn default_wash_window_days() -> i64 {
-    30
-}
-
-fn is_default_wash_window_days(d: &i64) -> bool {
-    *d == default_wash_window_days()
-}
 
 /// ⛔ HAND-WRITTEN, NOT DERIVED, AND THAT IS THE POINT. `#[derive(Default)]`
 /// gives every field its type's default, so `long_term_days` would be **0**
@@ -569,7 +562,7 @@ impl Default for RuleSet {
             lot_method: None,
             chart_roles: None,
             long_term_days: default_long_term_days(),
-            wash_window_days: default_wash_window_days(),
+            wash_window_days: None,
             tolerance: None,
             // ⛔ EMPTY IS NOT ZERO VIEWS. `effective_views` turns this into the
             // one view every book has, recognising in journal order — and
@@ -1088,13 +1081,14 @@ impl RuleSet {
         // ⛔ A NEGATIVE WINDOW IS NOT A WINDOW. `-30` would make `inWashWindow`
         // never fire, which is "we handle wash sales" in name only — every
         // conservation check would pass and no loss would ever be deferred.
-        if set.wash_window_days < 0 {
-            bail!(
-                "wash_window_days is {}, and a negative window is not a window — \
-                 every repurchase would sit outside it, and a loss the rule \
-                 defers would be recognized in full",
-                set.wash_window_days
-            );
+        if let Some(w) = set.wash_window_days {
+            if w < 0 {
+                bail!(
+                    "wash_window_days is {w}, and a negative window is not a window — \
+                     every repurchase would sit outside it, and a loss the rule \
+                     defers would be recognized in full"
+                );
+            }
         }
         // ⛔ AND THE VIEWS, FOR THE SAME REASON. A view naming a calendar
         // nobody declared is wrong when it is written, not on the NAV day it
@@ -2169,23 +2163,20 @@ calendar = "us-settlement"
     }
 
     #[test]
-    fn the_wash_window_is_the_same_number_through_either_door() {
-        // ⛔ SAME SHAPE AS `long_term_days`. A derived Default would make this
-        // 0, and a window of zero washes only a same-day repurchase — wrong
-        // for every fund that is not administered that way, silently.
-        assert_eq!(RuleSet::default().wash_window_days, 30);
-        assert_eq!(RuleSet::from_toml("rules = []\n").unwrap().wash_window_days, 30);
+    fn a_wash_window_nobody_declared_is_absent_rather_than_thirty() {
+        // ⛔ NOT THE `long_term_days` SHAPE. Silence-as-30 restated every
+        // in-window loss on every existing book. Thirty is the US number a
+        // fund writes; it is not applied to a book that never elected the rule.
+        assert_eq!(RuleSet::default().wash_window_days, None);
+        assert_eq!(RuleSet::from_toml("rules = []\n").unwrap().wash_window_days, None);
 
         let set = RuleSet::from_toml("rules = []\nwash_window_days = 10\n").unwrap();
-        assert_eq!(set.wash_window_days, 10);
+        assert_eq!(set.wash_window_days, Some(10));
 
-        // ⚠ AND SILENCE DOES NOT MOVE A DIGEST. Emitting `wash_window_days = 30`
-        // on every re-serialization would change the canonical bytes of every
-        // book that never named the field.
         let toml = RuleSet::from_toml("rules = []\n").unwrap().to_toml().unwrap();
         assert!(
             !toml.contains("wash_window"),
-            "silence must not write the default: {toml}"
+            "silence must not write a window: {toml}"
         );
         let named = RuleSet::from_toml("rules = []\nwash_window_days = 10\n")
             .unwrap()
