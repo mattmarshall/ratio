@@ -90,6 +90,17 @@ export function serve(port = 4373) {
         }));
         return;
       }
+      // ⭐ KIND IS PER BOOK. A singleton `book.json` is Household (Personal);
+      // serving it for every id made a Project URL wear fund-ops chrome in
+      // the phone pass. Look the id up in the list the hub already uses.
+      if (/^\/v1\/books\/[^/:]+$/.test(path)) {
+        const id = path.slice("/v1/books/".length);
+        const list = JSON.parse(fixture("books"));
+        const found = list.books.find((b) => b.name === `books/${id}`);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(found ?? JSON.parse(fixture("book"))));
+        return;
+      }
       const hit = ROUTES.find(([re]) => re.test(path));
       if (!hit) {
         res.writeHead(404, { "content-type": "application/json" });

@@ -8,6 +8,7 @@
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use ratio_rules::{check, RuleSet};
 use ratio_store::{Account, AccountTypeRecord, ConfigStore, FileBook};
 
 /// What a book is used for. Same kernel; different chart.
@@ -168,7 +169,112 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
     }
 }
 
-/// Create the directory, the chart, an empty configuration, and the sidecar.
+/// The configuration a new book starts with.
+///
+/// Investment and personal still write an empty rule set — those charts
+/// wait on rules an operator approves (household posting is #65). Project
+/// writes the cost, funding, and WIP-capitalization rules so a book created
+/// from the template can post without inventing a fund trade.
+fn configuration_for(kind: BookKind) -> &'static str {
+    match kind {
+        BookKind::Project => PROJECT_CONFIG,
+        BookKind::Personal | BookKind::Investment => "# ratio configuration\nrules = []\n",
+    }
+}
+
+/// Project posting rules. Amount given; no instrument, so no lot.
+///
+/// ⭐ THE ACCOUNT NUMBERS ARE `chart_for(Project)`'S. `initialize` runs
+/// `check` against that chart before the digest is activated, so a drift
+/// between the two is a refused create rather than a book that cannot post.
+///
+/// Budget vs actual: set `[project] budget = <minor units>` on this
+/// configuration. Actuals are the journal (costs, WIP, payables). That is
+/// the baseline, not a second ledger. Omitting the table means no baseline
+/// has been set — not a budget of zero.
+const PROJECT_CONFIG: &str = r#"# Project posting rules. Amount given; no instrument, so no lot.
+# Budget vs actual: set `[project] budget = <minor units>` here.
+# Actuals are costs, WIP and payables on this chart — not a second ledger.
+
+[[rule]]
+id = "project_cost"
+kind = "trade"
+description = "Project costs paid from cash"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "vendor_invoice"
+kind = "trade"
+description = "Project costs on a vendor invoice"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "pay_vendor"
+kind = "trade"
+description = "Pay a vendor from cash"
+[[rule.posting]]
+account = 40
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "capitalize_wip"
+kind = "trade"
+description = "Move project costs into work in progress"
+[[rule.posting]]
+account = 2
+weight = 1
+[[rule.posting]]
+account = 10
+weight = -1
+
+[[rule]]
+id = "recognize_wip"
+kind = "trade"
+description = "Recognize capitalized WIP as project cost"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 2
+weight = -1
+
+[[rule]]
+id = "receive_funding"
+kind = "trade"
+description = "Funding received to cash"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 20
+weight = -1
+
+[[rule]]
+id = "recognize_revenue"
+kind = "trade"
+description = "Project revenue received to cash"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 30
+weight = -1
+"#;
+
+/// Create the directory, the chart, a kind-appropriate configuration, and the sidecar.
 ///
 /// ⛔ NO FUND AND NO ORG ARE WRITTEN. A caller that wants either files the
 /// book afterwards. Create is the independent book.
@@ -176,9 +282,27 @@ pub fn initialize(path: &Path, id: &str, display: &str, kind: BookKind) -> Resul
     if path.join("accounts.json").is_file() || path.join("book.toml").is_file() {
         bail!("book {id:?} already exists");
     }
+    let chart = chart_for(kind);
+    let cfg = configuration_for(kind);
+    let set = RuleSet::from_toml(cfg).context("the template configuration is not TOML")?;
+    let errors: Vec<_> = check(&set, &chart)
+        .into_iter()
+        .filter(|f| !f.is_question)
+        .collect();
+    if !errors.is_empty() {
+        bail!(
+            "the {:?} template's rules do not check against its chart: {}",
+            kind.as_str(),
+            errors
+                .iter()
+                .map(|f| format!("{}: {}", f.rule, f.message))
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
     let mut b = FileBook::open(path)?;
-    b.put_accounts(&chart_for(kind))?;
-    let digest = b.put(b"# ratio configuration\nrules = []\n")?;
+    b.put_accounts(&chart)?;
+    let digest = b.put(cfg.as_bytes())?;
     b.set_active(&digest)?;
     BookMeta {
         kind,
@@ -279,5 +403,44 @@ mod tests {
         assert!(m.organization.is_none());
         let chart = FileBook::open(&dir).unwrap().accounts().unwrap();
         assert_eq!(chart, chart_for(BookKind::Project));
+    }
+
+    #[test]
+    fn project_template_rules_check_against_its_chart() {
+        // ⭐ A RULE THAT NAMES AN ACCOUNT THE CHART DOES NOT HAVE WOULD CREATE
+        // a book that cannot post. initialize refuses that; this test is what
+        // notices the two drifting apart before a create is attempted.
+        let set = RuleSet::from_toml(PROJECT_CONFIG).unwrap();
+        let findings = check(&set, &chart_for(BookKind::Project));
+        assert!(
+            findings.iter().all(|f| f.is_question),
+            "project rules must check against chart_for(Project): {findings:?}"
+        );
+        assert!(set.rule("capitalize_wip").is_some());
+        assert!(set.rule("recognize_wip").is_some());
+        assert!(set.rule("project_cost").is_some());
+        assert!(set.rule("vendor_invoice").is_some());
+        assert!(
+            set.project.is_none(),
+            "a new project has no baseline until someone sets [project] budget"
+        );
+        let against_empty = check(&set, &[]);
+        assert!(
+            against_empty.iter().any(|f| !f.is_question),
+            "project rules must not check against an empty chart: {against_empty:?}"
+        );
+    }
+
+    #[test]
+    fn initialize_seeds_the_wip_rules_and_no_project_budget() {
+        let dir = std::env::temp_dir().join("ratio-book-init-project-rules");
+        let _ = std::fs::remove_dir_all(&dir);
+        initialize(&dir, "bridge", "Bridge", BookKind::Project).unwrap();
+        let b = FileBook::open(&dir).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let set = RuleSet::from_toml(&text).unwrap();
+        assert!(set.rule("capitalize_wip").is_some(), "{text}");
+        assert!(set.project.is_none());
     }
 }

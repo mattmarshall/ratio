@@ -64,7 +64,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/views/[view]",
     file: "books/[book]/views/[view]/page.tsx",
-    reads: ["getView"],
+    reads: ["getView", "getBook"],
   },
   { path: "/funds", file: "funds/page.tsx", reads: ["listFunds"] },
   // The rail. Every fund-scoped page renders inside it.
@@ -83,7 +83,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "(layout)/books/[book]/views/[view]",
     file: "books/[book]/views/[view]/layout.tsx",
-    reads: ["getView"],
+    reads: ["getView", "getBook"],
   },
   // ⚠ Where the view-dependent screens USED to live without a view segment.
   // A redirect, not a deletion: these URLs have been sent to people, and the
@@ -148,6 +148,18 @@ export const ROUTES: readonly Route[] = [
     path: "/books/[book]/views/[view]/accounts/[account]/postings/[posting]",
     file: "books/[book]/views/[view]/accounts/[account]/postings/[posting]/page.tsx",
     reads: ["getPosting"],
+  },
+
+  // ── Project figures ──────────────────────────────────────────────────────
+  {
+    path: "/books/[book]/views/[view]/budget",
+    file: "books/[book]/views/[view]/budget/page.tsx",
+    reads: ["getBook", "listAccounts"],
+  },
+  {
+    path: "/books/[book]/views/[view]/wip",
+    file: "books/[book]/views/[view]/wip/page.tsx",
+    reads: ["listAccounts"],
   },
 
   // ── Positions ────────────────────────────────────────────────────────────
