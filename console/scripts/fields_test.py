@@ -266,6 +266,19 @@ NEEDLES: list[tuple[str, str]] = [
     # the rename instead, where an assertion can see it — and note that a needle
     # placed in THAT file would pass vacuously too, because the exclusion below is
     # `.test.tsx` only.
+    # ── investment capital activity (#70) ───────────────────────────────────
+    (
+        "Capital activity is an Investment figure",
+        "a personal or project book would inherit the fund capital screen",
+    ),
+    (
+        "partners plus unallocated activity — not a return, not attribution",
+        "the capital figure would stop saying it is not a return",
+    ),
+    (
+        "who put money in and took money out, not IRR",
+        "the capital figure would read as performance reporting",
+    ),
 ]
 
 

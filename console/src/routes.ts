@@ -140,6 +140,11 @@ export const ROUTES: readonly Route[] = [
     reads: ["listAccounts"],
   },
   {
+    path: "/books/[book]/views/[view]/capital",
+    file: "books/[book]/views/[view]/capital/page.tsx",
+    reads: ["getBook", "listAccounts"],
+  },
+  {
     path: "/books/[book]/views/[view]/accounts/[account]",
     file: "books/[book]/views/[view]/accounts/[account]/page.tsx",
     reads: ["getAccount", "listPostings"],

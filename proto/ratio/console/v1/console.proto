@@ -1855,15 +1855,20 @@ message ListAccountsRequest {
   //
   // `sheet` keeps assets, liabilities, equity, income and expense so a
   // balance sheet can foot (A = L + E + surplus). `pnl` keeps income and
-  // expense. Both are the household presentation of the same chart; they
-  // do not invent accounts.
+  // expense. `capital` keeps partner / contribution / distribution /
+  // allocation / transfer equity (not unrealized gain). `budget-YYYY[-MM]`
+  // is household spend in a calendar window. All are presentations of the
+  // same chart; they do not invent accounts.
   //
   // ⛔ A MONTH OR YEAR IS A SUFFIX, NOT A SECOND FIELD. AIP-132 List requests
   // carry parent, page_size, page_token, and filter. `pnl-2026-03` is March;
-  // `pnl-2026` is the year; `sheet-2026-03` is as-of that month end. Bare
-  // `pnl` is refused — cumulative income is an ABOR-shaped figure wearing a
-  // household label. An entry with no date is not in any period. Hyphens,
-  // not colons: the transcode does not percent-decode query values.
+  // `pnl-2026` is the year; `sheet-2026-03` is as-of that month end;
+  // `capital-2026-03` is March capital activity; `budget-2026-03` is March
+  // household spend. Bare `pnl` / `budget` is refused — cumulative income
+  // or spend is an ABOR-shaped figure wearing the wrong label. Bare
+  // `capital` is inception-to-date. An entry with no date is not in any
+  // period fold. Hyphens, not colons: the transcode does not percent-decode
+  // query values.
   string filter = 4 [(google.api.field_behavior) = OPTIONAL];
 }
 

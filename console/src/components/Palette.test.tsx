@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import fundsFixture from "../../fixtures/funds.json";
 import viewsFixture from "../../fixtures/views.json";
-import { SCREENS, PERSONAL_SCREENS, screenHref } from "@/lib/screens";
+import { PERSONAL_SCREENS, screensFor, screenHref } from "@/lib/screens";
 import type { Fund, View } from "@/wire/types";
 import { CommandHint } from "./CommandHint";
 import { FundActions } from "./FundActions";
@@ -92,7 +92,7 @@ function renderConsole() {
       <header>
         <CommandHint />
       </header>
-      <FundActions fund={FUND} views={views} defaultView={VIEW} />
+      <FundActions fund={FUND} views={views} defaultView={VIEW} kind="INVESTMENT" />
     </Palette>,
   );
 }
@@ -195,6 +195,7 @@ describe("the command palette", () => {
   // `scoped` is for, because getting it wrong is a URL that lies about which
   // book produced the figures on it.
   const EXPECTED_SCREENS: ReadonlyArray<readonly [string, string]> = [
+    ["Capital activity", `/books/${FUND}/views/${VIEW}/capital`],
     ["Exceptions", `/books/${FUND}/views/${VIEW}/breaks`],
     ["Trial balance", `/books/${FUND}/views/${VIEW}/accounts`],
     ["Positions", `/books/${FUND}/views/${VIEW}/positions`],
@@ -205,7 +206,7 @@ describe("the command palette", () => {
     ["Change log", `/books/${FUND}/changes`],
   ];
 
-  it("offers all eight screens, each going where its tab goes", async () => {
+  it("offers the investment screens, each going where its tab goes", async () => {
     for (const [label, href] of EXPECTED_SCREENS) {
       const { unmount } = renderConsole();
       await type(label);
@@ -220,8 +221,8 @@ describe("the command palette", () => {
     // ⭐ THE PALETTE AND THE HEADER ARE ONE LIST, said where it can be checked.
     // `ScreenTabs` and `FundActions` both read `@/lib/screens`, so this is what
     // notices a ninth tab arriving — or an eighth leaving — without the palette.
-    expect(SCREENS.map((s) => s.label)).toEqual(EXPECTED_SCREENS.map(([l]) => l));
-    for (const s of SCREENS) {
+    expect(screensFor("INVESTMENT").map((s) => s.label)).toEqual(EXPECTED_SCREENS.map(([l]) => l));
+    for (const s of screensFor("INVESTMENT")) {
       const expected = EXPECTED_SCREENS.find(([l]) => l === s.label)![1];
       expect(screenHref(FUND, VIEW, s)).toBe(expected);
     }
@@ -405,6 +406,7 @@ describe("the command palette", () => {
     const expected: ReadonlyArray<readonly [string, string]> = [
       ["Balance sheet", "/books/household/views/abor/sheet"],
       ["Period P&L", "/books/household/views/abor/pnl"],
+      ["Budget vs actual", "/books/household/views/abor/budget"],
       ["Trial balance", "/books/household/views/abor/accounts"],
       ["Data", "/books/household/data"],
       ["Configuration", "/books/household/config"],

@@ -63,6 +63,20 @@ describe("PlaceHead", () => {
     expect(screen.getByText("ABOR")).toBeDefined();
   });
 
+  it("titles capital activity on an investment figure page", () => {
+    segments.current = ["views", "abor", "capital"];
+    render(
+      <PlaceHead
+        fund="partners"
+        displayName="Partners"
+        views={views}
+        defaultView="abor"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Capital activity" })).toBeDefined();
+  });
+
   it("does not put a book of record on an agreement page", () => {
     segments.current = ["config"];
     render(

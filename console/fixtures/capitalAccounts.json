@@ -1,0 +1,53 @@
+{
+  "accounts": [
+    {
+      "name": "funds/partners/views/book/accounts/50",
+      "displayName": "Partner capital — LP",
+      "dimension": "50",
+      "type": "EQUITY",
+      "debit": "2500",
+      "credit": "10000",
+      "balance": "-7500",
+      "abnormal": false,
+      "postingCount": "2",
+      "currencyTotals": []
+    },
+    {
+      "name": "funds/partners/views/book/accounts/51",
+      "displayName": "Partner capital — GP",
+      "dimension": "51",
+      "type": "EQUITY",
+      "debit": "0",
+      "credit": "4000",
+      "balance": "-4000",
+      "abnormal": false,
+      "postingCount": "1",
+      "currencyTotals": []
+    },
+    {
+      "name": "funds/partners/views/book/accounts/20",
+      "displayName": "Capital contributions",
+      "dimension": "20",
+      "type": "EQUITY",
+      "debit": "0",
+      "credit": "0",
+      "balance": "0",
+      "abnormal": false,
+      "postingCount": "0",
+      "currencyTotals": []
+    },
+    {
+      "name": "funds/partners/views/book/accounts/22",
+      "displayName": "Distributions",
+      "dimension": "22",
+      "type": "EQUITY",
+      "debit": "0",
+      "credit": "0",
+      "balance": "0",
+      "abnormal": false,
+      "postingCount": "0",
+      "currencyTotals": []
+    }
+  ],
+  "nextPageToken": ""
+}

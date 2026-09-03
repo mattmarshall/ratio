@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import accountsFixture from "../../fixtures/accounts.json";
 import householdAccountsFixture from "../../fixtures/householdAccounts.json";
+import capitalAccountsFixture from "../../fixtures/capitalAccounts.json";
 import breakFixture from "../../fixtures/break.json";
 import breaksFixture from "../../fixtures/breaks.json";
 import changeLogFixture from "../../fixtures/changeLogEntries.json";
@@ -205,6 +206,7 @@ describe("a first-class book", () => {
     expect(screen.getByText("independent")).toBeDefined();
     expect(screen.getByRole("link", { name: "Balance sheet" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Period P&L" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Budget vs actual" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Configuration" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Transfer between accounts" })).toBeDefined();
@@ -215,6 +217,8 @@ describe("a first-class book", () => {
     expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
     expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Capital activity" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "WIP" })).toBeNull();
   });
 
   it("a project book opens budget vs actual and WIP, not Exceptions or NAV", async () => {
@@ -242,12 +246,82 @@ describe("a first-class book", () => {
     }
   });
 
-  it("a personal book is not sent to project figure routes", async () => {
+  it("an investment book hub leads with capital activity and still offers NAV", async () => {
+    const harbour = booksFixture.books.find((b) => b.kind === "INVESTMENT")!;
+    const realBook = wire.getBook;
+    const realView = wire.getView;
+    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    try {
+      const Book = (await import("./books/[book]/page")).default;
+      await renderAsync(
+        Book({ params: params({ book: "harbourline-global-value" }) }),
+      );
+      const capital = screen.getByRole("link", { name: "Capital activity" });
+      expect(capital.getAttribute("href")).toBe(
+        "/books/harbourline-global-value/views/abor/capital",
+      );
+      expect(screen.getByRole("link", { name: "NAV" })).toBeDefined();
+      expect(screen.getByRole("link", { name: "Exceptions" })).toBeDefined();
+      expect(screen.getByRole("link", { name: "Positions" })).toBeDefined();
+    } finally {
+      wire.getBook = realBook;
+      wire.getView = realView;
+    }
+  });
+
+  it("cites partner capital in and out and ending, and says it is not a return", async () => {
+    const harbour = booksFixture.books.find((b) => b.kind === "INVESTMENT")!;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    wire.listAccounts = (async () => capitalAccountsFixture) as typeof wire.listAccounts;
+    try {
+      const Capital = (await import("./books/[book]/views/[view]/capital/page"))
+        .default;
+      await renderAsync(
+        Capital({
+          params: params({ book: "harbourline-global-value", view: "abor" }),
+          searchParams: params({}),
+        }),
+      );
+      expect(screen.getByLabelText("Capital activity")).toBeDefined();
+      expect(screen.getByText("Partner capital — LP")).toBeDefined();
+      expect(screen.getByText("Partner capital — GP")).toBeDefined();
+      expect(screen.getByText("Distributions")).toBeDefined();
+      expect(screen.getByText("75.00")).toBeDefined();
+      expect(screen.getByText("115.00")).toBeDefined();
+      expect(screen.getByText(/not a return, not attribution/)).toBeDefined();
+      expect(screen.getByText(/not IRR/)).toBeDefined();
+      expect(screen.queryByText("Unrealized gain")).toBeNull();
+      expect(
+        screen.getByRole("link", { name: "Record an event" }).getAttribute("href"),
+      ).toBe("/books/harbourline-global-value/record");
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("refuses capital activity on a personal book", async () => {
+    const Capital = (await import("./books/[book]/views/[view]/capital/page"))
+      .default;
+    await renderAsync(
+      Capital({
+        params: params({ book: "household", view: "book" }),
+        searchParams: params({}),
+      }),
+    );
+    expect(screen.getByText(/Capital activity is an Investment figure/)).toBeDefined();
+    expect(screen.getByText(/Personal/)).toBeDefined();
+    expect(screen.queryByLabelText("Capital activity")).toBeNull();
+  });
+
+  it("a personal book is not sent to project WIP or fund Exceptions", async () => {
     const Book = (await import("./books/[book]/page")).default;
     await renderAsync(Book({ params: params({ book: "household" }) }));
-    expect(screen.queryByRole("link", { name: "Budget vs actual" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Budget vs actual" })).toBeDefined();
     expect(screen.queryByRole("link", { name: "WIP" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Exceptions" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
   });
 
   it("renders budget vs actual from the journal against a configuration total", async () => {

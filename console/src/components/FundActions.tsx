@@ -5,8 +5,7 @@ import { Priority, useKBar, useRegisterActions, type Action } from "@/lib/kbar";
 import { candidatesForId, hrefForResourceName } from "@/lib/deeplink";
 import { BASIS_LABEL } from "@/lib/format";
 import { defaultScreen, screenHref, screensFor, ticketsFor } from "@/lib/screens";
-import type { BookKind } from "@/wire/types";
-import type { View } from "@/wire/types";
+import type { BookKind, View } from "@/wire/types";
 import { usePaletteNavigator } from "./Palette";
 
 /**
@@ -112,6 +111,7 @@ export function FundActions({
     fund,
     view,
     screen,
+    kind,
     views.map((v) => `${v.name}:${v.declared}`).join(","),
     kind,
     go,

@@ -386,7 +386,8 @@ impl Console {
     /// A month (`YYYY-MM`) or a year (`YYYY`) is a suffix on the chip, not a
     /// second List field (AIP-132). `pnl-2026-03` is March; bare `pnl` is
     /// refused — cumulative income is the ABOR-shaped view this filter exists
-    /// to refuse as a default.
+    /// to refuse as a default. `capital-2026-03` is March capital activity;
+    /// bare `capital` is inception-to-date partner and contribution equity.
     pub fn list_accounts(
         &self,
         parent: &str,
@@ -399,6 +400,7 @@ impl Console {
         }
         let fold = match (kind, period) {
             ("pnl", p) => AccountFold::Activity(parse_period(p)?),
+            ("capital", p) if !p.is_empty() => AccountFold::Activity(parse_period(p)?),
             (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
             _ => AccountFold::Current,
         };
@@ -419,6 +421,7 @@ impl Console {
                         || a.r#type == pb::account::Type::Revenue as i32
                         || a.r#type == pb::account::Type::Expense as i32
                 }
+                "capital" => book::is_capital_account(&a.display_name),
                 _ => true,
             })
             .collect();
@@ -3498,12 +3501,15 @@ struct PeriodWindow {
 }
 
 /// AIP-132 List requests carry `filter` (AIP-160), not a custom period field.
-/// `pnl-2026-03` / `sheet-2026` — hyphen because `param_of` does not decode.
+/// `pnl-2026-03` / `sheet-2026` / `capital-2026-03` — hyphen because
+/// `param_of` does not decode.
 fn list_accounts_window(filter: &str) -> (&str, &str) {
     if let Some(rest) = filter.strip_prefix("pnl-") {
         ("pnl", rest)
     } else if let Some(rest) = filter.strip_prefix("sheet-") {
         ("sheet", rest)
+    } else if let Some(rest) = filter.strip_prefix("capital-") {
+        ("capital", rest)
     } else {
         (filter, "")
     }
@@ -4378,6 +4384,208 @@ mod tests {
 
         let refused = c.list_accounts(&view, "pnl");
         assert!(refused.is_err(), "a P&L without a period is the cumulative default this refuses");
+    }
+
+    fn capital_req(
+        book: &str,
+        id: &str,
+        rule: &str,
+        amount: &str,
+        year: i32,
+        month: i32,
+        day: i32,
+    ) -> pb::ApplyEventRequest {
+        pb::ApplyEventRequest {
+            parent: format!("funds/{book}"),
+            rule_id: rule.into(),
+            event_id: id.into(),
+            amount: amount.into(),
+            days: String::new(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: Some(ratio_proto::date_proto::google::r#type::Date {
+                year,
+                month,
+                day,
+            }),
+            validate_only: false,
+        }
+    }
+
+    fn capital_view(book: &str) -> String {
+        format!("funds/{book}/views/{}", ratio_rules::UNDECLARED_VIEW)
+    }
+
+    #[test]
+    fn contributing_and_distributing_conserves_and_opens_no_lot() {
+        // ⭐ CAPITAL IS EQUITY, NOT A SALE. contribute_lp / distribute_lp carry
+        // no instrument and no per-instrument leg, so the walk that opens lots
+        // skips them. The entry still conserves; the trial balance still ties.
+        let root = fresh("capital-contrib-dist");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "100.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "d-lp", "distribute_lp", "25.00", 2026, 3, 15))
+            .unwrap();
+
+        let view = capital_view("partners");
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        assert!(
+            capital.iter().any(|a| a.display_name == "Partner capital — LP"),
+            "capital names chart_for(Investment) partners, not a blotter: {capital:?}"
+        );
+        assert!(capital.iter().any(|a| a.display_name == "Distributions"));
+        assert!(
+            capital.iter().all(|a| a.display_name != "Unrealized gain"),
+            "a mark must not look like a contribution: {capital:?}"
+        );
+        let lp = capital
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(lp.credit, "10000", "100.00 contributed: {lp:?}");
+        assert_eq!(lp.debit, "2500", "25.00 distributed: {lp:?}");
+        assert_eq!(lp.balance, "-7500", "ending capital is credit-normal: {lp:?}");
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
+
+        let proj = c.projection("partners").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a contribution must not claim lot relief"
+        );
+        assert!(
+            proj.positions(ratio_rules::UNDECLARED_VIEW)
+                .unwrap()
+                .value
+                .held
+                .is_empty(),
+            "capital that opened a position invented a holding"
+        );
+    }
+
+    #[test]
+    fn transferring_lp_to_gp_conserves_and_leaves_book_capital_unchanged() {
+        let root = fresh("capital-xfer");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "100.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "x-1", "transfer_lp_gp", "40.00", 2026, 3, 2))
+            .unwrap();
+
+        let view = capital_view("partners");
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        let gp = capital.iter().find(|a| a.display_name == "Partner capital — GP").unwrap();
+        assert_eq!(lp.balance, "-6000", "LP kept 60.00: {lp:?}");
+        assert_eq!(gp.balance, "-4000", "GP received 40.00: {gp:?}");
+        let ending: i64 = capital.iter().map(|a| a.balance.parse::<i64>().unwrap()).sum();
+        assert_eq!(ending, -10000, "book capital is unchanged by a transfer: {capital:?}");
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
+    }
+
+    #[test]
+    fn allocating_a_fee_across_partners_keeps_the_trial_balance_tied() {
+        // Accrue the fee at book level, then close it into LP and GP capital
+        // with exact integer shares — 60.00 and 40.00 of 100.00, not 60%.
+        let root = fresh("capital-alloc");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "600.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "c-gp", "contribute_gp", "400.00", 2026, 3, 1))
+            .unwrap();
+        // Exact integer shares, not a percentage: 60.00 and 40.00 of the fee.
+        c.apply_event(&capital_req("partners", "f-lp", "allocate_fee_lp", "60.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "f-gp", "allocate_fee_gp", "40.00", 2026, 3, 10))
+            .unwrap();
+
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
+        let view = capital_view("partners");
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        let gp = capital.iter().find(|a| a.display_name == "Partner capital — GP").unwrap();
+        assert_eq!(lp.balance, "-54000", "LP 600.00 − 60.00: {lp:?}");
+        assert_eq!(gp.balance, "-36000", "GP 400.00 − 40.00: {gp:?}");
+        let all = c.list_accounts(&view, "").unwrap().accounts;
+        let expense = all.iter().find(|a| a.display_name == "Management fee expense").unwrap();
+        assert_eq!(expense.credit, "10000", "fee closed into capital, not rounded: {expense:?}");
+        assert!(
+            all.iter().any(|a| a.display_name == "Unrealized gain"),
+            "the whole chart still has valuation equity"
+        );
+        assert!(c.list_accounts(&view, "capital").unwrap().accounts.iter().all(|a| {
+            a.display_name != "Unrealized gain"
+        }));
+    }
+
+    #[test]
+    fn a_period_capital_keeps_one_month_and_drops_an_undated_entry() {
+        let root = fresh("capital-period");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "mar", "contribute_lp", "40.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "apr", "contribute_lp", "60.00", 2026, 4, 2))
+            .unwrap();
+        {
+            let mut req = capital_req("partners", "undated", "contribute_lp", "99.00", 2026, 3, 1);
+            req.trade_date = None;
+            c.apply_event(&req).unwrap();
+        }
+
+        let view = capital_view("partners");
+        let march = c.list_accounts(&view, "capital-2026-03").unwrap().accounts;
+        let lp = march
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .expect("capital names the LP account");
+        assert_eq!(lp.credit, "4000", "March is 40.00, not 40+60+99: {lp:?}");
+        assert_eq!(lp.posting_count, "1");
+        let year = c.list_accounts(&view, "capital-2026").unwrap().accounts;
+        let lp_y = year.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        assert_eq!(lp_y.credit, "10000", "the year is March+April, not the undated: {lp_y:?}");
+        let all = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp_all = all.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        assert_eq!(
+            lp_all.credit, "19900",
+            "inception includes the undated entry the period fold refused: {lp_all:?}"
+        );
     }
 
     #[test]
