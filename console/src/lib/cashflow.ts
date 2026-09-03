@@ -1,4 +1,4 @@
-// Household cash-flow statement: grouping the chart, not inventing one.
+// Period cash-flow statement: grouping the chart, not inventing one.
 //
 // ⛔ INTEGER STRINGS, NEVER A NUMBER. `lib/format.ts` refuses to parse money
 // into a double; a cash-flow walk that summed with `Number` would undo that
@@ -11,19 +11,28 @@
 //
 // ⭐ THE SPLIT THE CHART CAN SUPPORT. IAS 7 activity classes, reconstructed
 // from each non-cash account's period net (cash from an account = −(debit −
-// credit)):
+// credit)). Personal and Operating share the identity and the unset
+// discipline; the plugs are the accounts `chart_for` actually wrote.
 //
+// Personal (#98):
 //   operating  — REVENUE, EXPENSE, Credit cards (working capital)
 //   investing  — Investments (the same account the net-worth bridge names
 //                as a transfer)
 //   financing  — named loans (`Book.loans`: principal and draws) and
 //                Opening equity (household in/out)
 //
+// Operating (#118):
+//   operating  — REVENUE, EXPENSE, Accounts receivable, Accounts payable
+//   investing  — unset. chart_for(Operating) has no PPE / securities
+//                account. A 0.00 investing class would invent one.
+//   financing  — Owner equity (contribution and draw). No `[personal.loan]`.
+//
 // Credit cards sit in operating, not financing: they are the household's
 // one current liability, not a named loan. A card charge is Dr expense /
 // Cr cards and does not move cash; omitting the card plug would make a
-// charge look like a cash outflow. Investments land in investing — that
-// is the half of the bridge's "Transfers" that is an asset purchase/sale.
+// charge look like a cash outflow. AR and AP are the same working-capital
+// argument on an operating chart: an invoice is Dr AR / Cr revenue and
+// does not move cash; a vendor bill is Dr expense / Cr AP.
 //
 // ⛔ A ZERO CASH ON AN EMPTY JOURNAL IS A FAKE. Beginning is unset when
 // every account's beginning balance is 0 — there is no dated prefix
@@ -35,6 +44,7 @@
 // Mortgage / Auto / Student activity on a book that never named
 // `[personal.loan]` is not silently absorbed into financing. Asset
 // purchases stay unset: chart_for(Personal) has no purchase account.
+// Investing stays unset on Operating: the chart has no such account.
 
 import { money } from "./format";
 import type { Account, LoanSchedule } from "@/wire/types";
@@ -92,35 +102,54 @@ export interface CashFlowStatement {
   /** −(period expense net). Null when ending is unset. */
   readonly expense: bigint | null;
   /**
-   * −(Credit cards period net). Null when that account is absent or
-   * the ending cut is unset.
+   * −(Credit cards period net). Null when that account is absent,
+   * the book is Operating, or the ending cut is unset.
    */
   readonly creditCards: bigint | null;
+  /**
+   * −(Accounts receivable period net). Null when that account is
+   * absent, the book is Personal, or the ending cut is unset.
+   */
+  readonly receivables: bigint | null;
+  /**
+   * −(Accounts payable period net). Null when that account is
+   * absent, the book is Personal, or the ending cut is unset.
+   */
+  readonly payables: bigint | null;
   /**
    * −(Investments period net). Null when that account is absent or
    * the ending cut is unset. The same account the bridge names as a transfer.
    */
   readonly transfers: bigint | null;
-  /** Always null — chart_for(Personal) has no purchase account. */
+  /** Always null — neither Personal nor Operating has a purchase account. */
   readonly assetPurchases: bigint | null;
-  /** Investing total. Null when ending is unset. */
+  /**
+   * Investing total. Null when ending is unset, or when the chart
+   * cannot name an investing account (Operating).
+   */
   readonly investing: bigint | null;
   /** Named-loan principal paid (liability debit). Null when `Book.loans` is empty. */
   readonly principalPaid: bigint | null;
   /** Named-loan draws (liability credit). Null when `Book.loans` is empty. */
   readonly drawn: bigint | null;
   /**
-   * −(Opening equity period net). Null when that account is absent or
-   * the ending cut is unset.
+   * −(Opening equity or Owner equity period net). Null when that
+   * account is absent or the ending cut is unset.
    */
   readonly equity: bigint | null;
-  /** Financing total. Null when ending is unset. */
+  /**
+   * Financing total. Null when ending is unset, or when the chart
+   * has no financing plug (no owner equity, no named loans).
+   */
   readonly financing: bigint | null;
   /** Accounts the split cannot name honestly. Empty when everything classified. */
   readonly unclassified: readonly UnclassifiedLine[];
   /**
-   * ending − (beginning + operating + investing + financing + unclassified).
-   * Zero when the identity holds. Null when either cash cut is unset.
+   * ending − (beginning + operating + (investing ?? 0) + (financing ?? 0)
+   * + unclassified). Zero when the identity holds. Null when either
+   * cash cut is unset. An unset investing class (Operating) is omitted,
+   * not replaced with a silent zero in the cited figure — only in this
+   * residual so the spine can still be checked.
    */
   readonly residual: bigint | null;
 }
@@ -231,11 +260,117 @@ export function cashFlowStatement(
     income,
     expense,
     creditCards,
+    receivables: null,
+    payables: null,
     transfers,
     assetPurchases: null,
     investing,
     principalPaid,
     drawn,
+    equity,
+    financing,
+    unclassified,
+    residual,
+  };
+}
+
+/**
+ * Roll a Loan-shaped operating chart into a period cash-flow statement.
+ *
+ * Same identity as the household fold: ListAccounts under `cashflow-*`
+ * puts period activity in debit/credit and the as-of-end figure in
+ * balance. The plugs are `chart_for(Operating)` — AR / AP as working
+ * capital, owner equity as financing — not household loans.
+ */
+export function operatingCashFlowStatement(
+  accounts: readonly Account[],
+): CashFlowStatement {
+  const beginningSet = accounts.some((a) => beginningOf(a) !== 0n);
+  const endingSet = accounts.some((a) => raw(a.balance) !== 0n || moved(a));
+
+  const cashAccounts = accounts.filter(isCashAccount);
+  const cashAt = (at: (a: Account) => bigint): bigint =>
+    cashAccounts.reduce((n, a) => n + at(a), 0n);
+
+  const beginning = beginningSet ? cashAt(beginningOf) : null;
+  const ending = endingSet ? cashAt((a) => raw(a.balance)) : null;
+  const delta =
+    beginning !== null && ending !== null ? ending - beginning : null;
+
+  const ar = accounts.find((a) => a.displayName === "Accounts receivable");
+  const ap = accounts.find((a) => a.displayName === "Accounts payable");
+  const owner = accounts.find((a) => a.displayName === "Owner equity");
+
+  let incomeRaw = 0n;
+  let expenseRaw = 0n;
+  const unclassified: UnclassifiedLine[] = [];
+  for (const a of accounts) {
+    if (isCashAccount(a)) continue;
+    if (a.type === "REVENUE") {
+      incomeRaw += periodNet(a);
+      continue;
+    }
+    if (a.type === "EXPENSE") {
+      expenseRaw += periodNet(a);
+      continue;
+    }
+    if (a.displayName === "Accounts receivable") continue;
+    if (a.displayName === "Accounts payable") continue;
+    if (a.displayName === "Owner equity") continue;
+    // ⛔ A PRIOR BALANCE IS NOT THIS WINDOW'S CASH. Only period activity
+    // is a cash-flow line; leftover sheet balances belong on `/sheet`.
+    if (moved(a)) {
+      unclassified.push({
+        dimension: a.dimension,
+        displayName: a.displayName,
+        cash: cashFrom(a),
+      });
+    }
+  }
+
+  const income = endingSet ? -incomeRaw : null;
+  const expense = endingSet ? -expenseRaw : null;
+  const receivables = endingSet && ar ? cashFrom(ar) : null;
+  const payables = endingSet && ap ? cashFrom(ap) : null;
+  const equity = endingSet && owner ? cashFrom(owner) : null;
+
+  const operating =
+    endingSet
+      ? (income ?? 0n) + (expense ?? 0n) + (receivables ?? 0n) + (payables ?? 0n)
+      : null;
+  // ⛔ NO INVESTING ACCOUNT ON chart_for(Operating). A 0.00 investing
+  // class would invent PPE / securities the journal cannot name.
+  const investing = null;
+  // Financing is owner equity when that account exists. Absent owner
+  // equity is unset — not a silent 0.00 draw, not a household loan.
+  const financing = endingSet && owner ? equity : null;
+
+  const unclassifiedCash = unclassified.reduce((n, l) => n + l.cash, 0n);
+  const residual =
+    beginning !== null && ending !== null && operating !== null
+      ? ending -
+        (beginning +
+          operating +
+          (investing ?? 0n) +
+          (financing ?? 0n) +
+          unclassifiedCash)
+      : null;
+
+  return {
+    beginning,
+    ending,
+    delta,
+    operating,
+    income,
+    expense,
+    creditCards: null,
+    receivables,
+    payables,
+    transfers: null,
+    assetPurchases: null,
+    investing,
+    principalPaid: null,
+    drawn: null,
     equity,
     financing,
     unclassified,

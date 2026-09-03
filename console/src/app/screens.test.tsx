@@ -351,6 +351,9 @@ describe("a first-class book", () => {
       expect(
         screen.getByRole("link", { name: "Income statement" }).getAttribute("href"),
       ).toBe("/books/studio/views/book/pnl");
+      expect(
+        screen.getByRole("link", { name: "Cash flow" }).getAttribute("href"),
+      ).toBe("/books/studio/views/book/cashflow");
       expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
       expect(
         screen.getByText(/AR\/AP aging is a follow-on/),
@@ -2034,7 +2037,7 @@ describe("a first-class book", () => {
     }
   });
 
-  it("404s a cash-flow statement on a book that is not Personal", async () => {
+  it("404s a cash-flow statement on a book that is not Personal or Operating", async () => {
     const CashFlow = (await import("./books/[book]/views/[view]/cashflow/page")).default;
     await expect(
       CashFlow({
@@ -2502,6 +2505,7 @@ describe("an operating-business statement", () => {
       expect(screen.queryByText("Living expenses")).toBeNull();
       expect(screen.queryByText("Work in progress")).toBeNull();
       expect(screen.getByRole("link", { name: "Income statement" })).toBeDefined();
+      expect(screen.getByRole("link", { name: "Cash flow" })).toBeDefined();
       expect(screen.queryByRole("link", { name: "Transfer" })).toBeNull();
       expect(
         screen.getByText(/no due date and no open-item application/),
@@ -2525,8 +2529,205 @@ describe("an operating-business statement", () => {
       expect(screen.getByText(/not since inception/)).toBeDefined();
       expect(screen.queryByText("Cash")).toBeNull();
       expect(screen.getByRole("link", { name: "Balance sheet" })).toBeDefined();
+      expect(screen.getByRole("link", { name: "Cash flow" })).toBeDefined();
       expect(screen.queryByRole("link", { name: "Transfer" })).toBeNull();
     });
+  });
+
+  it("cites an unset operating cash-flow rather than a measured zero cash", async () => {
+    const CashFlow = (await import("./books/[book]/views/[view]/cashflow/page")).default;
+    const real = wire.listAccounts;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/studio/views/book/accounts/1",
+          displayName: "Cash",
+          dimension: "1",
+          type: "ASSET",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/studio/views/book/accounts/2",
+          displayName: "Accounts receivable",
+          dimension: "2",
+          type: "ASSET",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/studio/views/book/accounts/30",
+          displayName: "Operating revenue",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        CashFlow({
+          params: params({ book: "studio", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(
+        screen.getByText(/Beginning and ending stay unset — not a measured zero cash/),
+      ).toBeDefined();
+      expect(screen.getByLabelText("Cash flow")).toBeDefined();
+      expect(screen.getAllByText("—").length).toBeGreaterThan(2);
+      expect(screen.queryByText("0.00")).toBeNull();
+      expect(screen.getByText(/no investing account on this chart/)).toBeDefined();
+      expect(screen.queryByText("Credit cards")).toBeNull();
+      expect(screen.queryByText("Loan draws")).toBeNull();
+    } finally {
+      wire.listAccounts = real;
+    }
+  });
+
+  it("cites operating and financing and leaves investing unset", async () => {
+    const CashFlow = (await import("./books/[book]/views/[view]/cashflow/page")).default;
+    const real = wire.listAccounts;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/studio/views/book/accounts/1",
+          displayName: "Cash",
+          dimension: "1",
+          type: "ASSET",
+          debit: "25000",
+          credit: "10000",
+          balance: "115000",
+          abnormal: false,
+          postingCount: "5",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/studio/views/book/accounts/2",
+          displayName: "Accounts receivable",
+          dimension: "2",
+          type: "ASSET",
+          debit: "40000",
+          credit: "15000",
+          balance: "25000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/studio/views/book/accounts/10",
+          displayName: "Operating expenses",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "10000",
+          credit: "0",
+          balance: "10000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/studio/views/book/accounts/20",
+          displayName: "Owner equity",
+          dimension: "20",
+          type: "EQUITY",
+          debit: "5000",
+          credit: "0",
+          balance: "-95000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/studio/views/book/accounts/30",
+          displayName: "Operating revenue",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "50000",
+          balance: "-50000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/studio/views/book/accounts/40",
+          displayName: "Accounts payable",
+          dimension: "40",
+          type: "LIABILITY",
+          debit: "3000",
+          credit: "8000",
+          balance: "-5000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        CashFlow({
+          params: params({ book: "studio", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("Cash flow")).toBeDefined();
+      expect(
+        screen.getByText("beginning plus operating plus financing"),
+      ).toBeDefined();
+      expect(screen.getByText("1,000.00")).toBeDefined();
+      expect(screen.getByText("1,150.00")).toBeDefined();
+      expect(screen.getByText("150.00")).toBeDefined();
+      expect(screen.getByText("500.00")).toBeDefined();
+      expect(screen.getByText("200.00")).toBeDefined();
+      expect(screen.getByText("-50.00")).toBeDefined();
+      expect(screen.getByText("working capital — an invoice is not a cash inflow")).toBeDefined();
+      expect(screen.getByText("working capital — a vendor bill is not a cash outflow")).toBeDefined();
+      expect(screen.getByText(/no investing account on this chart/)).toBeDefined();
+      expect(screen.getByText("Owner equity")).toBeDefined();
+      expect(screen.queryByText("Credit cards")).toBeNull();
+      expect(screen.queryByText("Net-worth bridge")).toBeNull();
+      expect(screen.getByRole("link", { name: "Income statement" })).toBeDefined();
+      expect(screen.queryByText(/Beginning and ending stay unset/)).toBeNull();
+    } finally {
+      wire.listAccounts = real;
+    }
+  });
+
+  it("asks ListAccounts for a period window on the operating cash-flow statement", async () => {
+    const calls: unknown[][] = [];
+    const real = wire.listAccounts;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      calls.push(args);
+      return { accounts: [], nextPageToken: "" };
+    }) as typeof wire.listAccounts;
+    try {
+      const CashFlow = (await import("./books/[book]/views/[view]/cashflow/page")).default;
+      await renderAsync(
+        CashFlow({
+          params: params({ book: "studio", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(calls[0]?.slice(1)).toEqual(["studio", "book", "cashflow", "2026-03"]);
+    } finally {
+      wire.listAccounts = real;
+    }
   });
 
   it("asks ListAccounts for a period window on the income statement", async () => {

@@ -538,6 +538,23 @@ the conserved one, and the kernel never said it was.
   OAuth stay refused. `KIND_UNSPECIFIED` is not this kind and still
   falls through to fund operations. The seeded demo funds remain
   investment books.
+- ⚠ **An operating cash-flow walk-through (#118 / #27).** It can show
+  beginning and ending cash for a month or year, and classify the
+  movement into operating (revenue, expenses, AR/AP working capital)
+  and financing (owner contribution and draw). Investing stays **unset**
+  — `chart_for(Operating)` has no PPE / securities account, and a
+  silent 0.00 investing class is the defect. An invoice without
+  collection is not operating cash; a vendor bill without payment is
+  not an operating outflow. Beginning plus classified movement equals
+  ending cash; a move the chart cannot name is a residual line an
+  operator can open, not silent absorption. An empty journal, or a cut
+  with no dated prefix, stays **unset** — not a measured $0.00 cash.
+  Spending down to zero is a real zero. It cannot show AR/AP aging
+  (#117), a period close (#114), a bank reconciliation, a cash
+  forecast, payroll, tax filing, inventory/COGS, payment initiation,
+  bank OAuth, or a client portal. Sheet / P&L stay on #108. The screen
+  is the same `/cashflow` URL Personal already uses — one `screensFor`
+  list.
 - ⚠ **`console/scripts/capture_fixtures.sh` takes `navStrikes.json` and
   `replay.json` from `RATIO_FIXTURE_STRUCK_FUND`, not from `RATIO_FIXTURE_FUND`.**
   The fixture fund is the BLOCKED book on purpose, and a blocked book now has no

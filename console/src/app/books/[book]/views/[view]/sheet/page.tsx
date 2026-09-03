@@ -134,6 +134,12 @@ async function Sheet({
         {operating ? (
           <>
             {" · "}
+            <Link
+              href={`/books/${book}/views/${view}/cashflow?period=${encodeURIComponent(period || month)}`}
+            >
+              Cash flow
+            </Link>
+            {" · "}
             <Link href={`/books/${book}/record`}>Record a sale or an expense</Link>
           </>
         ) : (

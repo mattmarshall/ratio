@@ -3,19 +3,25 @@ import { notFound } from "next/navigation";
 import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
-import { cashFlowStatement, cashShown } from "@/lib/cashflow";
+import {
+  cashFlowStatement,
+  cashShown,
+  operatingCashFlowStatement,
+} from "@/lib/cashflow";
 import { getBook, listAccounts } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Period cash-flow statement for one personal book of record.
+ * Period cash-flow statement for one Personal or Operating book of record.
  *
  * ⭐ NOT A SECOND LEDGER. Beginning, ending, and the operating / investing /
  * financing lines are the trial balance in the period the chips name, under
- * `filter=cashflow-YYYY[-MM]`. The bridge explains why net worth moved;
- * this page is where cash went.
+ * `filter=cashflow-YYYY[-MM]`. Personal's bridge explains why net worth
+ * moved; this page is where cash went. Operating has no bridge — the
+ * sheet shows cash as a balance, the income statement shows accrual
+ * profit, and this page classifies the movement.
  *
  * ⛔ A ZERO CASH ON AN EMPTY JOURNAL IS A FAKE. Beginning stays unset when
  * every account's beginning balance is 0. Ending stays unset when nothing
@@ -23,11 +29,12 @@ export const dynamic = "force-dynamic";
  * a real zero — some account moved.
  *
  * ⛔ UNCLASSIFIED MOVEMENT IS A NAMED LINE. A liability the book never
- * named as a loan is not absorbed into financing. Asset purchases stay
- * unset: chart_for(Personal) has no purchase account distinct from a
- * cash↔investments transfer.
+ * named as a loan is not absorbed into financing. Investing stays unset
+ * on Operating: chart_for(Operating) has no PPE / securities account.
+ * Asset purchases stay unset on Personal: chart_for(Personal) has no
+ * purchase account distinct from a cash↔investments transfer.
  *
- * Project and investment books 404 rather than wearing a household label.
+ * Fund, project, and investment books 404 rather than wearing this label.
  */
 async function CashFlow({
   params,
@@ -44,10 +51,14 @@ async function CashFlow({
   const window = period || month;
   const c = await caller();
   const b = await getBook(c, book);
-  if (b.kind !== "PERSONAL") notFound();
+  const personal = b.kind === "PERSONAL";
+  const operating = b.kind === "OPERATING";
+  if (!personal && !operating) notFound();
 
   const { accounts } = await listAccounts(c, book, view, "cashflow", window);
-  const r = cashFlowStatement(accounts, b.loans ?? []);
+  const r = operating
+    ? operatingCashFlowStatement(accounts)
+    : cashFlowStatement(accounts, b.loans ?? []);
   const bothUnset = r.beginning === null && r.ending === null;
   const unclassifiedMoved = r.unclassified.some((l) => l.cash !== 0n);
   const showUnclassified =
@@ -65,7 +76,9 @@ async function CashFlow({
         ? "change stays unset until both cuts exist"
         : "as-of this window's last day"
       : r.residual === 0n
-        ? "beginning plus operating plus investing plus financing"
+        ? operating
+          ? "beginning plus operating plus financing"
+          : "beginning plus operating plus investing plus financing"
         : "does not tie — residual is not absorbed";
 
   return (
@@ -113,7 +126,11 @@ async function CashFlow({
           <div className="tbrow static" role="row">
             <span role="cell">
               Change
-              <span className="at">Δ cash this window — not ΔNW</span>
+              <span className="at">
+                {operating
+                  ? "Δ cash this window — not period profit"
+                  : "Δ cash this window — not ΔNW"}
+              </span>
             </span>
             <span role="cell" className="num">
               {cashShown(r.delta)}
@@ -125,8 +142,12 @@ async function CashFlow({
           <div className="posacct">Operating</div>
           <div className="tbrow static" role="row">
             <span role="cell">
-              Income
-              <span className="at">period P&amp;L receipts, not since inception</span>
+              {operating ? "Revenue" : "Income"}
+              <span className="at">
+                {operating
+                  ? "period income-statement receipts, not since inception"
+                  : "period P&L receipts, not since inception"}
+              </span>
             </span>
             <span role="cell" className="num">
               {cashShown(r.income)}
@@ -135,25 +156,60 @@ async function CashFlow({
           <div className="tbrow static" role="row">
             <span role="cell">
               Expenses
-              <span className="at">living, tax, and loan interest this window</span>
+              <span className="at">
+                {operating
+                  ? "operating expenses this window — a bill is not a cash outflow"
+                  : "living, tax, and loan interest this window"}
+              </span>
             </span>
             <span role="cell" className="num">
               {cashShown(r.expense)}
             </span>
           </div>
-          <div className="tbrow static" role="row">
-            <span role="cell">
-              Credit cards
-              <span className="at">
-                {r.creditCards === null
-                  ? "no Credit cards account on this chart"
-                  : "working capital — a charge is not a cash outflow"}
+          {operating ? (
+            <>
+              <div className="tbrow static" role="row">
+                <span role="cell">
+                  Accounts receivable
+                  <span className="at">
+                    {r.receivables === null
+                      ? "no Accounts receivable account on this chart"
+                      : "working capital — an invoice is not a cash inflow"}
+                  </span>
+                </span>
+                <span role="cell" className="num">
+                  {cashShown(r.receivables)}
+                </span>
+              </div>
+              <div className="tbrow static" role="row">
+                <span role="cell">
+                  Accounts payable
+                  <span className="at">
+                    {r.payables === null
+                      ? "no Accounts payable account on this chart"
+                      : "working capital — a vendor bill is not a cash outflow"}
+                  </span>
+                </span>
+                <span role="cell" className="num">
+                  {cashShown(r.payables)}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="tbrow static" role="row">
+              <span role="cell">
+                Credit cards
+                <span className="at">
+                  {r.creditCards === null
+                    ? "no Credit cards account on this chart"
+                    : "working capital — a charge is not a cash outflow"}
+                </span>
               </span>
-            </span>
-            <span role="cell" className="num">
-              {cashShown(r.creditCards)}
-            </span>
-          </div>
+              <span role="cell" className="num">
+                {cashShown(r.creditCards)}
+              </span>
+            </div>
+          )}
           <div className="tbfoot static" role="row">
             <span role="cell">Operating</span>
             <span role="cell" className="num">
@@ -164,30 +220,47 @@ async function CashFlow({
 
         <div className="posgroup">
           <div className="posacct">Investing</div>
-          <div className="tbrow static" role="row">
-            <span role="cell">
-              Transfers
-              <span className="at">
-                {r.transfers === null
-                  ? "no Investments account on this chart"
-                  : "Investments activity — the same account the net-worth bridge names as a transfer"}
+          {operating ? (
+            <div className="tbrow static" role="row">
+              <span role="cell">
+                PPE and securities
+                <span className="at">
+                  no investing account on this chart — chart_for(Operating)
+                  writes cash, AR, AP, revenue, expense, owner equity
+                </span>
               </span>
-            </span>
-            <span role="cell" className="num">
-              {cashShown(r.transfers)}
-            </span>
-          </div>
-          <div className="tbrow static" role="row">
-            <span role="cell">
-              Asset purchases
-              <span className="at">
-                no purchase account distinct from a transfer
+              <span role="cell" className="num">
+                {cashShown(r.investing)}
               </span>
-            </span>
-            <span role="cell" className="num">
-              {cashShown(r.assetPurchases)}
-            </span>
-          </div>
+            </div>
+          ) : (
+            <>
+              <div className="tbrow static" role="row">
+                <span role="cell">
+                  Transfers
+                  <span className="at">
+                    {r.transfers === null
+                      ? "no Investments account on this chart"
+                      : "Investments activity — the same account the net-worth bridge names as a transfer"}
+                  </span>
+                </span>
+                <span role="cell" className="num">
+                  {cashShown(r.transfers)}
+                </span>
+              </div>
+              <div className="tbrow static" role="row">
+                <span role="cell">
+                  Asset purchases
+                  <span className="at">
+                    no purchase account distinct from a transfer
+                  </span>
+                </span>
+                <span role="cell" className="num">
+                  {cashShown(r.assetPurchases)}
+                </span>
+              </div>
+            </>
+          )}
           <div className="tbfoot static" role="row">
             <span role="cell">Investing</span>
             <span role="cell" className="num">
@@ -198,47 +271,65 @@ async function CashFlow({
 
         <div className="posgroup">
           <div className="posacct">Financing</div>
-          <div className="tbrow static" role="row">
-            <span role="cell">
-              Principal paid on loans
-              <span className="at">
-                {r.principalPaid === null
-                  ? "no [personal.loan] on the configuration in force"
-                  : "named-loan liability down and cash down — the same plug /loans cites"}
-              </span>
-            </span>
-            <span role="cell" className="num">
-              {cashShown(
-                r.principalPaid === null ? null : -r.principalPaid,
-              )}
-            </span>
-          </div>
-          <div className="tbrow static" role="row">
-            <span role="cell">
-              Loan draws
-              <span className="at">
-                {r.drawn === null
-                  ? "no [personal.loan] on the configuration in force"
-                  : "named-loan credits this window — origination and further draws"}
-              </span>
-            </span>
-            <span role="cell" className="num">
-              {cashShown(r.drawn)}
-            </span>
-          </div>
-          {r.equity !== null && r.equity !== 0n ? (
+          {operating ? (
             <div className="tbrow static" role="row">
               <span role="cell">
-                Opening equity
+                Owner equity
                 <span className="at">
-                  household in or out this window — not income
+                  {r.equity === null
+                    ? "no Owner equity account on this chart"
+                    : "owner contribution or draw this window — not revenue"}
                 </span>
               </span>
               <span role="cell" className="num">
                 {cashShown(r.equity)}
               </span>
             </div>
-          ) : null}
+          ) : (
+            <>
+              <div className="tbrow static" role="row">
+                <span role="cell">
+                  Principal paid on loans
+                  <span className="at">
+                    {r.principalPaid === null
+                      ? "no [personal.loan] on the configuration in force"
+                      : "named-loan liability down and cash down — the same plug /loans cites"}
+                  </span>
+                </span>
+                <span role="cell" className="num">
+                  {cashShown(
+                    r.principalPaid === null ? null : -r.principalPaid,
+                  )}
+                </span>
+              </div>
+              <div className="tbrow static" role="row">
+                <span role="cell">
+                  Loan draws
+                  <span className="at">
+                    {r.drawn === null
+                      ? "no [personal.loan] on the configuration in force"
+                      : "named-loan credits this window — origination and further draws"}
+                  </span>
+                </span>
+                <span role="cell" className="num">
+                  {cashShown(r.drawn)}
+                </span>
+              </div>
+              {r.equity !== null && r.equity !== 0n ? (
+                <div className="tbrow static" role="row">
+                  <span role="cell">
+                    Opening equity
+                    <span className="at">
+                      household in or out this window — not income
+                    </span>
+                  </span>
+                  <span role="cell" className="num">
+                    {cashShown(r.equity)}
+                  </span>
+                </div>
+              ) : null}
+            </>
+          )}
           <div className="tbfoot static" role="row">
             <span role="cell">Financing</span>
             <span role="cell" className="num">
@@ -259,7 +350,9 @@ async function CashFlow({
                     {line.displayName}
                   </Link>
                   <span className="at">
-                    not a named loan and not a transfer — open the account
+                    {operating
+                      ? "not revenue, expense, AR, AP, or owner equity — open the account"
+                      : "not a named loan and not a transfer — open the account"}
                   </span>
                 </span>
                 <span role="cell" className="num">
@@ -286,14 +379,19 @@ async function CashFlow({
         ) : null}
       </div>
       <p className="note">
-        Inflow is positive, outflow is negative — cash, not net worth.
+        Inflow is positive, outflow is negative — cash, not{" "}
+        {operating ? "accrual profit" : "net worth"}.
         {" · "}
-        <Link
-          href={`/books/${book}/views/${view}/bridge?period=${encodeURIComponent(window)}`}
-        >
-          Net-worth bridge
-        </Link>
-        {" · "}
+        {personal ? (
+          <>
+            <Link
+              href={`/books/${book}/views/${view}/bridge?period=${encodeURIComponent(window)}`}
+            >
+              Net-worth bridge
+            </Link>
+            {" · "}
+          </>
+        ) : null}
         <Link
           href={`/books/${book}/views/${view}/sheet?period=${encodeURIComponent(window)}`}
         >
@@ -303,16 +401,20 @@ async function CashFlow({
         <Link
           href={`/books/${book}/views/${view}/pnl?period=${encodeURIComponent(window)}`}
         >
-          Period P&L
+          {operating ? "Income statement" : "Period P&L"}
         </Link>
-        {" · "}
-        <Link
-          href={`/books/${book}/views/${view}/loans?period=${encodeURIComponent(window)}`}
-        >
-          Loan schedule
-        </Link>
-        {" · "}
-        <Link href={`/books/${book}/transfer`}>Transfer</Link>
+        {personal ? (
+          <>
+            {" · "}
+            <Link
+              href={`/books/${book}/views/${view}/loans?period=${encodeURIComponent(window)}`}
+            >
+              Loan schedule
+            </Link>
+            {" · "}
+            <Link href={`/books/${book}/transfer`}>Transfer</Link>
+          </>
+        ) : null}
       </p>
     </>
   );

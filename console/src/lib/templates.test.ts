@@ -46,6 +46,8 @@ describe("book templates", () => {
     expect(byKind.OPERATING).toMatch(/Independent of a Fund/);
     expect(byKind.OPERATING).toMatch(/AR\/AP aging is a follow-on/);
     expect(byKind.OPERATING).toMatch(/no due date/);
+    expect(byKind.OPERATING).toMatch(/cash-flow statement/);
+    expect(byKind.OPERATING).toMatch(/Investing stays unset/);
   });
 });
 

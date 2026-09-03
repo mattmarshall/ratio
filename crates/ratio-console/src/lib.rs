@@ -433,7 +433,8 @@ impl Console {
     /// `cashflow-2026-03` is the same fold so a period cash-flow statement
     /// can name beginning cash, ending cash, and the operating / investing /
     /// financing partition without a second ledger. Bare `cashflow` is
-    /// refused. A non-personal book is refused.
+    /// refused. Personal and Operating books are served; Fund / Project /
+    /// Investment are refused — those kinds do not wear this figure.
     /// `change-2026-03` is March approved change orders (Loan fold: window)
     /// activity, as-of-end balance) on a project book; bare `change` is
     /// refused. Incurred cost and awarded commitments stay the unfiltered
@@ -494,9 +495,11 @@ impl Console {
         if kind == "cashflow" {
             let path = self.book_path(&fund)?;
             let meta = book::BookMeta::load(&path, &fund);
-            if meta.kind != book::BookKind::Personal {
+            if meta.kind != book::BookKind::Personal
+                && meta.kind != book::BookKind::Operating
+            {
                 bail!(
-                    "cash-flow statement is a household figure — this book is {}",
+                    "cash-flow statement is a household or operating-company figure — this book is {}",
                     meta.kind.as_str()
                 );
             }
@@ -7432,8 +7435,8 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
         let budget = c.list_accounts(&view, "budget-2026-03").expect_err("not household");
         assert!(budget.to_string().contains("household"), "{budget}");
-        let cashflow = c.list_accounts(&view, "cashflow-2026-03").expect_err("not household");
-        assert!(cashflow.to_string().contains("household"), "{cashflow}");
+        let bridge = c.list_accounts(&view, "bridge-2026-03").expect_err("not household");
+        assert!(bridge.to_string().contains("household"), "{bridge}");
         let change = c.list_accounts(&view, "change-2026-03").expect_err("not a project");
         assert!(change.to_string().contains("project"), "{change}");
         let nav = c.list_accounts(&view, "nav-2026-03").expect_err("not investment");
@@ -7443,6 +7446,132 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             .expect_err("operating books have no progress billing");
         assert!(progress.to_string().contains("not a project"), "{progress}");
         assert!(!progress.to_string().contains("0"), "a refusal must not look like a zero figure: {progress}");
+    }
+
+    #[test]
+    fn an_operating_cash_flow_ties_ops_and_financing_and_refuses_a_fake_zero() {
+        // ⭐ THE CLAIM #118 IS ABOUT. Two cash cuts and an IAS 7 split from
+        // one Loan-shaped fold over the operating chart. An empty book is
+        // not a measured zero cash. Beginning + operating + financing =
+        // ending. An invoice without collection is not operating cash;
+        // investing stays unset — the chart has no PPE account.
+        let root = fresh("operating-period-cash-flow");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Studio".into(),
+                kind: book::BookKind::Operating.proto(),
+                ..Default::default()
+            }),
+            book_id: "studio".into(),
+        })
+        .unwrap();
+
+        let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let bare = c.list_accounts(&view, "cashflow").unwrap_err().to_string();
+        assert!(bare.contains("month"), "{bare}");
+
+        let empty = c.list_accounts(&view, "cashflow-2026-03").unwrap();
+        assert!(
+            empty
+                .accounts
+                .iter()
+                .all(|a| a.balance == "0" && a.debit == "0" && a.credit == "0"),
+            "an empty journal is zeros on the chart, not a cash figure: {:?}",
+            empty.accounts
+        );
+        assert!(
+            empty.accounts.iter().any(|a| a.display_name == "Cash"),
+            "the chart is the source of the rows: {:?}",
+            empty.accounts
+        );
+        assert!(
+            empty
+                .accounts
+                .iter()
+                .any(|a| a.display_name == "Accounts receivable"),
+            "AR is a control account the statement classifies: {:?}",
+            empty.accounts
+        );
+
+        // February contribution is the beginning cash cut.
+        c.apply_event(&operating_req("eq", "contribute_equity", "1000.00", 2026, 2, 1))
+            .unwrap();
+        c.apply_event(&operating_req("inv", "invoice_customer", "400.00", 2026, 3, 5))
+            .unwrap();
+        c.apply_event(&operating_req("col", "collect_receivable", "150.00", 2026, 3, 8))
+            .unwrap();
+        c.apply_event(&operating_req("cash", "receive_revenue", "100.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&operating_req("bill", "vendor_bill", "80.00", 2026, 3, 12))
+            .unwrap();
+        c.apply_event(&operating_req("pay", "pay_vendor", "30.00", 2026, 3, 14))
+            .unwrap();
+        c.apply_event(&operating_req("exp", "pay_expense", "20.00", 2026, 3, 15))
+            .unwrap();
+        c.apply_event(&operating_req("draw", "draw_equity", "50.00", 2026, 3, 20))
+            .unwrap();
+        c.apply_event(&operating_req("apr", "pay_expense", "50.00", 2026, 4, 2))
+            .unwrap();
+        {
+            let mut undated = operating_req("undated", "pay_expense", "99.00", 2026, 3, 1);
+            undated.trade_date = None;
+            c.apply_event(&undated).unwrap();
+        }
+
+        assert_eq!(c.get_fund("funds/studio").unwrap().trial_balance_difference, "0");
+
+        let listed = c.list_accounts(&view, "cashflow-2026-03").unwrap();
+        let by: std::collections::BTreeMap<_, _> = listed
+            .accounts
+            .iter()
+            .map(|a| (a.display_name.as_str(), a))
+            .collect();
+        let cash = by.get("Cash").expect("cash");
+        let ar = by.get("Accounts receivable").expect("ar");
+        let ap = by.get("Accounts payable").expect("ap");
+        let rev = by.get("Operating revenue").expect("revenue");
+        let exp = by.get("Operating expenses").expect("expense");
+        let equity = by.get("Owner equity").expect("equity");
+
+        let cash_end: i64 = cash.balance.parse().unwrap();
+        let cash_d: i64 = cash.debit.parse().unwrap();
+        let cash_c: i64 = cash.credit.parse().unwrap();
+        let cash_begin = cash_end - (cash_d - cash_c);
+        assert_eq!(cash_begin, 100_000, "February contribution is the beginning cash cut");
+        // 1_000 + 150 collect + 100 sale − 30 pay − 20 cash exp − 50 draw = 1_150
+        // April 50 and the undated 99 are outside the March window.
+        assert_eq!(cash_end, 115_000, "{cash:?}");
+        assert_eq!(rev.credit, "50000", "March revenue is invoice+cash, not April: {rev:?}");
+        assert_eq!(exp.debit, "10000", "March is 80+20, not 80+20+50+99: {exp:?}");
+
+        let cash_from = |a: &pb::Account| -> i64 {
+            -(a.debit.parse::<i64>().unwrap() - a.credit.parse::<i64>().unwrap())
+        };
+        let income_cash = cash_from(rev);
+        let expense_cash = cash_from(exp);
+        let ar_cash = cash_from(ar);
+        let ap_cash = cash_from(ap);
+        let equity_cash = cash_from(equity);
+        let operating = income_cash + expense_cash + ar_cash + ap_cash;
+        let financing = equity_cash;
+        assert_eq!(operating, 20_000, "100+150−20−30; invoice and bill are working capital");
+        assert_eq!(financing, -5_000, "the draw is financing, not operating");
+        assert_eq!(
+            cash_begin + operating + financing,
+            cash_end,
+            "beginning + classified movement = ending"
+        );
+        assert_ne!(
+            operating,
+            income_cash + expense_cash,
+            "an invoice without collection looking like cash is the defect"
+        );
+        assert!(
+            !by.contains_key("Investments") && !by.contains_key("Cash and bank"),
+            "an operating cash-flow is not a household: {:?}",
+            listed.accounts
+        );
     }
 
     #[test]

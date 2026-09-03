@@ -97,6 +97,16 @@ async function PnL({
         <Link href={`/books/${book}/views/${view}/sheet?period=${encodeURIComponent(window)}`}>
           Balance sheet
         </Link>
+        {operating ? (
+          <>
+            {" · "}
+            <Link
+              href={`/books/${book}/views/${view}/cashflow?period=${encodeURIComponent(window)}`}
+            >
+              Cash flow
+            </Link>
+          </>
+        ) : null}
         {" · "}
         <Link href={`/books/${book}/record`}>Record income or an expense</Link>
         {operating ? null : (
