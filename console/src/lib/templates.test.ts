@@ -13,6 +13,7 @@ describe("book templates", () => {
   it("names accounts chart_for actually writes", () => {
     const byKind = Object.fromEntries(BOOK_TEMPLATES.map((t) => [t.kind, t.blurb]));
     expect(byKind.PERSONAL).toMatch(/Cash and bank/);
+    expect(byKind.PERSONAL).toMatch(/configuration total/);
     expect(byKind.INVESTMENT).toMatch(/fair value/);
     expect(byKind.INVESTMENT).toMatch(/distributions/);
     expect(byKind.INVESTMENT).toMatch(/partner capital/);

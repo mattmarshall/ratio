@@ -11,7 +11,8 @@
       "entryCount": "0",
       "configDigest": "",
       "trialBalanceDifference": "0",
-      "budget": ""
+      "budget": "",
+      "envelopes": []
     },
     {
       "name": "books/harbourline-global-value",
@@ -24,7 +25,8 @@
       "entryCount": "6",
       "configDigest": "9f2c1ab7de40551c",
       "trialBalanceDifference": "0",
-      "budget": ""
+      "budget": "",
+      "envelopes": []
     },
     {
       "name": "books/bridge",
@@ -37,7 +39,8 @@
       "entryCount": "0",
       "configDigest": "",
       "trialBalanceDifference": "0",
-      "budget": ""
+      "budget": "",
+      "envelopes": []
     }
   ],
   "nextPageToken": ""

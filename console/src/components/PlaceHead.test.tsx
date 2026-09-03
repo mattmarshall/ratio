@@ -107,6 +107,21 @@ describe("PlaceHead", () => {
     expect(screen.queryByRole("heading", { name: "Exceptions" })).toBeNull();
   });
 
+  it("titles household budget vs actual", () => {
+    segments.current = ["views", "book", "budget"];
+    render(
+      <PlaceHead
+        fund="household"
+        displayName="Household"
+        views={views}
+        defaultView="book"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Budget vs actual" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Exceptions" })).toBeNull();
+  });
+
   it("titles a project figure the hub named, not Exceptions", () => {
     segments.current = ["views", "book", "budget"];
     render(

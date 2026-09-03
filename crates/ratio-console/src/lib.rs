@@ -388,6 +388,9 @@ impl Console {
     /// refused — cumulative income is the ABOR-shaped view this filter exists
     /// to refuse as a default. `capital-2026-03` is March capital activity;
     /// bare `capital` is inception-to-date partner and contribution equity.
+    /// `budget-2026-03` is March household spend; bare `budget` is refused,
+    /// and a non-personal book is refused — a project's period is the project,
+    /// so the project `/budget` page lists unfiltered.
     pub fn list_accounts(
         &self,
         parent: &str,
@@ -398,9 +401,23 @@ impl Console {
         if kind == "pnl" && period.is_empty() {
             bail!("a period P&L needs a month (YYYY-MM) or a year (YYYY)");
         }
+        if kind == "budget" {
+            let path = self.book_path(&fund)?;
+            let meta = book::BookMeta::load(&path, &fund);
+            if meta.kind != book::BookKind::Personal {
+                bail!(
+                    "budget-YYYY is household period spend — this book is {}",
+                    meta.kind.as_str()
+                );
+            }
+            if period.is_empty() {
+                bail!("a household budget needs a month (YYYY-MM) or a year (YYYY)");
+            }
+        }
         let fold = match (kind, period) {
             ("pnl", p) => AccountFold::Activity(parse_period(p)?),
             ("capital", p) if !p.is_empty() => AccountFold::Activity(parse_period(p)?),
+            ("budget", p) => AccountFold::Activity(parse_period(p)?),
             (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
             _ => AccountFold::Current,
         };
@@ -422,6 +439,7 @@ impl Console {
                         || a.r#type == pb::account::Type::Expense as i32
                 }
                 "capital" => book::is_capital_account(&a.display_name),
+                "budget" => a.r#type == pb::account::Type::Expense as i32,
                 _ => true,
             })
             .collect();
@@ -1978,6 +1996,7 @@ impl Console {
         // answers for any book directory so existing screens and rewrites keep
         // working; the sidecar is what distinguishes a fund listing from a book.
         let fund = self.get_fund(&format!("funds/{id}"))?;
+        let (budget, envelopes) = budget_terms_of(&path, meta.kind);
         Ok(pb::Book {
             name: format!("books/{id}"),
             display_name: meta.display_name,
@@ -1989,7 +2008,8 @@ impl Console {
             entry_count: fund.entry_count,
             config_digest: fund.config_digest,
             trial_balance_difference: fund.trial_balance_difference,
-            budget: project_budget_of(&path),
+            budget,
+            envelopes,
         })
     }
 
@@ -2032,6 +2052,7 @@ impl Console {
             config_digest: String::new(),
             trial_balance_difference: "0".into(),
             budget: String::new(),
+            envelopes: Vec::new(),
         })
     }
 
@@ -3501,8 +3522,8 @@ struct PeriodWindow {
 }
 
 /// AIP-132 List requests carry `filter` (AIP-160), not a custom period field.
-/// `pnl-2026-03` / `sheet-2026` / `capital-2026-03` — hyphen because
-/// `param_of` does not decode.
+/// `pnl-2026-03` / `sheet-2026` / `capital-2026-03` / `budget-2026-03` —
+/// hyphen because `param_of` does not decode.
 fn list_accounts_window(filter: &str) -> (&str, &str) {
     if let Some(rest) = filter.strip_prefix("pnl-") {
         ("pnl", rest)
@@ -3510,6 +3531,8 @@ fn list_accounts_window(filter: &str) -> (&str, &str) {
         ("sheet", rest)
     } else if let Some(rest) = filter.strip_prefix("capital-") {
         ("capital", rest)
+    } else if let Some(rest) = filter.strip_prefix("budget-") {
+        ("budget", rest)
     } else {
         (filter, "")
     }
@@ -3718,11 +3741,55 @@ fn view_pb(fund: &str, set: &ratio_rules::RuleSet, v: &ratio_rules::View) -> pb:
     }
 }
 
+/// Authorized spend from the configuration in force, plus personal envelopes.
+///
+/// Field 11 is `[personal] budget` or `[project] budget` by kind. Field 12 is
+/// Personal-only. Empty when unset — including every investment book, and a
+/// household or project nobody has given a baseline. `0` is a set baseline of
+/// nothing and is returned as `"0"`. Unset stays unset, not a fake zero.
+fn budget_terms_of(path: &Path, kind: book::BookKind) -> (String, Vec<pb::HouseholdEnvelope>) {
+    match kind {
+        book::BookKind::Personal => household_terms_of(path),
+        book::BookKind::Project => (project_budget_of(path), Vec::new()),
+        _ => (String::new(), Vec::new()),
+    }
+}
+
+/// Authorized household spend from the configuration in force.
+fn household_terms_of(path: &Path) -> (String, Vec<pb::HouseholdEnvelope>) {
+    let Ok(b) = FileBook::open(path) else {
+        return (String::new(), Vec::new());
+    };
+    let Ok(Some(digest)) = b.active() else {
+        return (String::new(), Vec::new());
+    };
+    let Ok(bytes) = b.get(&digest) else {
+        return (String::new(), Vec::new());
+    };
+    match RuleSet::from_toml(&String::from_utf8_lossy(&bytes)) {
+        Ok(set) => {
+            let Some(p) = set.personal else {
+                return (String::new(), Vec::new());
+            };
+            let budget = p.budget.map(|n| n.to_string()).unwrap_or_default();
+            let envelopes = p
+                .envelope
+                .into_iter()
+                .map(|(dimension, n)| pb::HouseholdEnvelope {
+                    dimension,
+                    budget: n.to_string(),
+                })
+                .collect();
+            (budget, envelopes)
+        }
+        Err(_) => (String::new(), Vec::new()),
+    }
+}
+
 /// Authorized project spend from the configuration in force, minor units.
 ///
-/// Empty when unset — every personal and investment book, a project whose
-/// configuration omits `[project] budget`, and a directory we cannot read.
-/// `0` is a set baseline of nothing and is returned as `"0"`.
+/// Empty when unset — a project whose configuration omits `[project] budget`,
+/// and a directory we cannot read. `0` is a set baseline of nothing.
 fn project_budget_of(path: &Path) -> String {
     let Ok(b) = FileBook::open(path) else {
         return String::new();
@@ -4384,6 +4451,113 @@ mod tests {
 
         let refused = c.list_accounts(&view, "pnl");
         assert!(refused.is_err(), "a P&L without a period is the cumulative default this refuses");
+    }
+
+    #[test]
+    fn a_household_budget_is_the_configuration_total_not_a_second_ledger() {
+        let root = fresh("household-budget");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        let created = c.get_book("books/household").unwrap();
+        assert!(
+            created.budget.is_empty(),
+            "CreateBook must not invent a baseline: {:?}",
+            created.budget
+        );
+        assert!(
+            created.envelopes.is_empty(),
+            "CreateBook must not invent envelopes: {:?}",
+            created.envelopes
+        );
+
+        let path = root.join("household");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str("\n[personal]\nbudget = 500000\n[personal.envelope]\n10 = 400000\n11 = 100000\n");
+        let next = b.put(text.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+
+        let set = c.get_book("books/household").unwrap();
+        assert_eq!(set.budget, "500000");
+        assert_eq!(set.envelopes.len(), 2);
+        let living = set.envelopes.iter().find(|e| e.dimension == "10").unwrap();
+        assert_eq!(living.budget, "400000");
+        assert!(
+            set.envelopes.iter().all(|e| e.dimension != "2"),
+            "an envelope nobody set is omitted, not a fake zero: {:?}",
+            set.envelopes
+        );
+
+        c.apply_event(&household_req("mar", "spend_cash", "40.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&household_req("apr", "spend_cash", "60.00", 2026, 4, 2))
+            .unwrap();
+        let mut undated = household_req("undated", "spend_cash", "99.00", 2026, 3, 1);
+        undated.trade_date = None;
+        c.apply_event(&undated).unwrap();
+
+        let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let march = c.list_accounts(&view, "budget-2026-03").unwrap().accounts;
+        assert!(
+            march.iter().all(|a| a.r#type == pb::account::Type::Expense as i32),
+            "budget actuals are expenses, not a balance sheet: {march:?}"
+        );
+        let living = march
+            .iter()
+            .find(|a| a.display_name == "Living expenses")
+            .expect("budget names the personal expense account");
+        assert_eq!(living.balance, "4000", "March only, not April and not the undated spend");
+        let taxes = march
+            .iter()
+            .find(|a| a.display_name == "Taxes")
+            .expect("the chart's other expense is present even at zero this month");
+        assert_eq!(taxes.balance, "0");
+
+        let year = c.list_accounts(&view, "budget-2026").unwrap().accounts;
+        let living_y = year.iter().find(|a| a.display_name == "Living expenses").unwrap();
+        assert_eq!(living_y.balance, "10000", "year keeps March and April, drops undated");
+
+        let refused = c.list_accounts(&view, "budget");
+        assert!(
+            refused.is_err(),
+            "a budget without a period is the cumulative default this refuses"
+        );
+
+        // The baseline is still the configuration total; actuals are the journal.
+        assert_eq!(c.get_book("books/household").unwrap().budget, "500000");
+        assert_eq!(c.get_fund("funds/household").unwrap().trial_balance_difference, "0");
+    }
+
+    #[test]
+    fn a_project_or_investment_book_is_not_offered_a_household_budget_filter() {
+        let root = fresh("not-household-budget");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let err = c
+            .list_accounts(&view, "budget-2026-03")
+            .expect_err("project books must not wear a household budget filter")
+            .to_string();
+        assert!(err.contains("household"), "{err}");
+        assert!(c.get_book("books/bridge").unwrap().budget.is_empty());
+        assert!(c.get_book("books/bridge").unwrap().envelopes.is_empty());
     }
 
     fn capital_req(

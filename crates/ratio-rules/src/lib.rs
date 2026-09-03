@@ -256,6 +256,19 @@ pub struct RuleSet {
     /// not a budget of zero, which would make the first cost an overrun.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<ProjectTerms>,
+
+    /// Household-finance terms. Absent on investment and project books.
+    ///
+    /// ⛔ A CONFIGURATION TOTAL, NOT A SECOND LEDGER. Actual spend is the
+    /// journal's expense accounts (living expenses, taxes — the chart
+    /// dimensions). This is the authorized baseline those actuals are
+    /// compared to. `None` means no baseline has been set — not a budget
+    /// of zero, which would make the first grocery an overrun.
+    ///
+    /// Envelope grain is `[personal.envelope]`, keyed by chart dimension.
+    /// An absent key is unset for that category, not a fake zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub personal: Option<PersonalTerms>,
 }
 
 /// The authorized spend a project book cites against the journal.
@@ -274,6 +287,48 @@ impl ProjectTerms {
             if b < 0 {
                 bail!(
                     "a project budget is not negative — it is an authorized magnitude, \
+                     not a posting"
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The authorized spend a household book cites against the journal.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersonalTerms {
+    /// Minor units. Omitted means unset; `0` is a set baseline of nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<i64>,
+    /// Chart dimension (decimal string) → minor units. Living expenses is
+    /// `"10"`, taxes `"11"` — `chart_for(Personal)`. Absent keys are unset.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub envelope: BTreeMap<String, i64>,
+}
+
+impl PersonalTerms {
+    /// ⛔ CHECKED WHEN THE CONFIGURATION IS READ. A negative budget inverts
+    /// variance: every spend would look like remaining authorization.
+    pub fn check(&self) -> Result<()> {
+        if let Some(b) = self.budget {
+            if b < 0 {
+                bail!(
+                    "a household budget is not negative — it is an authorized magnitude, \
+                     not a posting"
+                );
+            }
+        }
+        for (k, v) in &self.envelope {
+            if k.parse::<i64>().is_err() {
+                bail!(
+                    "household envelope {k:?} is not a chart dimension — keys are the \
+                     decimal dim `chart_for(Personal)` writes (10 living expenses, 11 taxes)"
+                );
+            }
+            if *v < 0 {
+                bail!(
+                    "household envelope {k} is not negative — it is an authorized magnitude, \
                      not a posting"
                 );
             }
@@ -396,6 +451,7 @@ impl Default for RuleSet {
             views: Vec::new(),
             calendars: Vec::new(),
             project: None,
+            personal: None,
         }
     }
 }
@@ -901,6 +957,9 @@ impl RuleSet {
             c.check()?;
         }
         if let Some(p) = &set.project {
+            p.check()?;
+        }
+        if let Some(p) = &set.personal {
             p.check()?;
         }
         let mut seen = std::collections::BTreeSet::new();
@@ -1802,6 +1861,7 @@ calendar = "us-settlement"
         assert!(!toml.contains("view"), "{toml}");
         assert!(!toml.contains("calendar"), "{toml}");
         assert!(!toml.contains("project"), "{toml}");
+        assert!(!toml.contains("personal"), "{toml}");
     }
 
     #[test]
@@ -1815,6 +1875,47 @@ calendar = "us-settlement"
             .expect_err("a negative budget must not parse")
             .to_string();
         assert!(e.contains("not negative"), "{e}");
+    }
+
+    #[test]
+    fn a_household_budget_round_trips_and_a_negative_one_is_refused() {
+        let set = RuleSet::from_toml(
+            "rules = []\n[personal]\nbudget = 500000\n[personal.envelope]\n10 = 400000\n11 = 100000\n",
+        )
+        .unwrap();
+        let p = set.personal.as_ref().expect("personal table present");
+        assert_eq!(p.budget, Some(500_000));
+        assert_eq!(p.envelope.get("10"), Some(&400_000));
+        assert_eq!(p.envelope.get("11"), Some(&100_000));
+        assert!(
+            p.envelope.get("2").is_none(),
+            "an envelope nobody set is absent, not a fake zero"
+        );
+
+        let silent = RuleSet::from_toml("rules = []\n").unwrap();
+        assert!(silent.personal.is_none(), "nobody said");
+
+        let zero = RuleSet::from_toml("rules = []\n[personal]\nbudget = 0\n").unwrap();
+        assert_eq!(
+            zero.personal.as_ref().and_then(|p| p.budget),
+            Some(0),
+            "a set baseline of nothing is not the same as unset"
+        );
+
+        let e = RuleSet::from_toml("rules = []\n[personal]\nbudget = -1\n")
+            .expect_err("a negative budget must not parse")
+            .to_string();
+        assert!(e.contains("not negative"), "{e}");
+
+        let env = RuleSet::from_toml("rules = []\n[personal.envelope]\n10 = -5\n")
+            .expect_err("a negative envelope must not parse")
+            .to_string();
+        assert!(env.contains("not negative"), "{env}");
+
+        let bad_key = RuleSet::from_toml("rules = []\n[personal.envelope]\nliving = 1\n")
+            .expect_err("an envelope key that is not a dimension must not parse")
+            .to_string();
+        assert!(bad_key.contains("chart dimension"), "{bad_key}");
     }
 
     #[test]

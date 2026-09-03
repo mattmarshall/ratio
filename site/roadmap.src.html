@@ -101,15 +101,18 @@ __STYLE__
           that matters is unexplained, a trade does not resolve, or a position is
           unpriced.</li>
           <li>Books as the unit the console addresses — Personal, Fund, and
-          Project templates — each job at its own URL. A personal book opens a
-          citable balance sheet and a period P&amp;L (month or year, not since
-          inception) whose accounts are the household chart, and a transfer
-          between those accounts posts without claiming lot relief. A Project
-          book cites budget vs actual and WIP capitalization over its own
-          chart. An Investment book cites partner capital activity
-          (contributions, distributions, transfers, ending capital) on the
-          same journal as NAV and exceptions — not a return, a benchmark, or
-          attribution. Fund books keep the operations surface.</li>
+          Project templates — each job at its own URL. Kind selects the chrome:
+          a personal book opens a citable balance sheet, a period P&amp;L
+          (month or year, not since inception), and household budget vs actual
+          against living expenses — the baseline is a configuration total,
+          unset until someone sets it, not a fake zero. Transfers between
+          household accounts post without claiming lot relief. A Project book
+          cites budget vs actual and WIP capitalization over its own chart, at
+          the same <code>/budget</code> URL the household uses. An Investment
+          book cites partner capital activity (contributions, distributions,
+          transfers, ending capital) on the same journal as NAV and exceptions
+          — not a return, a benchmark, or attribution. Fund books keep the
+          operations surface.</li>
         </ul>
       </div>
       <div class="r-spec">
@@ -272,7 +275,7 @@ __STYLE__
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet and period P&amp;L with transfers that are not trades, a Project book that cites budget vs actual and WIP capitalization, investment capital activity (partners, contributions, distributions — not a return), the exception queue, a difference at its own address, a book's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet and period P&amp;L with transfers that are not trades, household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual and WIP capitalization, investment capital activity (partners, contributions, distributions — not a return), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue

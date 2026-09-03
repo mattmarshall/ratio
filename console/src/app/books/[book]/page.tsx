@@ -16,8 +16,9 @@ export const dynamic = "force-dynamic";
  *
  * ⭐ KIND SELECTS THE PLACES. A personal book that listed Exceptions / NAV
  * would be a fake label on fund-ops screens (#65, #83). A project book
- * that listed them is the same defect (#66). The hub is how you open the
- * citable figures after CreateBook.
+ * that listed them is the same defect (#66). An investment book cites
+ * capital first, then the ABOR warehouse (#70). The hub is how you open
+ * the citable figures after CreateBook.
  */
 export default async function BookPage({
   params,
@@ -66,6 +67,16 @@ export default async function BookPage({
             <dt>Budget</dt>
             <dd className="num">
               {b.budget ? money(b.budget) : "unset — [project] budget on the configuration"}
+            </dd>
+          </>
+        ) : null}
+        {personal ? (
+          <>
+            <dt>Budget</dt>
+            <dd className="num">
+              {b.budget
+                ? money(b.budget)
+                : "unset — [personal] budget on the configuration"}
             </dd>
           </>
         ) : null}

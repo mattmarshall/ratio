@@ -539,15 +539,30 @@ message Book {
   // Debits minus credits — the same zero in every view.
   string trial_balance_difference = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // Authorized project spend, minor units. Empty when this book has no
-  // `[project] budget` in the configuration in force — including every
-  // personal and investment book, and a project book nobody has set a
+  // Authorized spend, minor units. Filled from `[personal] budget` or
+  // `[project] budget` depending on kind. Empty when this book has no
+  // matching table in the configuration in force — including every
+  // investment book, and a household or project nobody has set a
   // baseline on.
   //
   // ⛔ A CONFIGURATION TOTAL, NOT A SECOND LEDGER. Actuals are the trial
-  // balance (costs, WIP, payables). The figure page compares them. `0` is
-  // a set baseline of nothing; empty is unset.
+  // balance. The figure page compares them. `0` is a set baseline of
+  // nothing; empty is unset.
   string budget = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Per-category household envelopes from `[personal.envelope]`. Keyed by
+  // chart dimension. Personal-only; unset categories are omitted, not
+  // sent as `"0"`.
+  repeated HouseholdEnvelope envelopes = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One declared household envelope. Absent from `Book.envelopes` when that
+// category has no `[personal.envelope]` entry — not a fake zero.
+message HouseholdEnvelope {
+  // Chart dimension as decimal. Living expenses is `10`, taxes `11`.
+  string dimension = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Minor units. Never empty on this message — unset envelopes are omitted.
+  string budget = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message ListBooksRequest {

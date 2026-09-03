@@ -819,6 +819,10 @@ mod tests {
             set.rules.iter().all(|r| r.legs.iter().all(|l| !l.per_instrument)),
             "a household transfer that is per-instrument would open a lot"
         );
+        assert!(
+            set.personal.is_none(),
+            "a new household has no baseline until someone sets [personal] budget"
+        );
     }
 
     #[test]

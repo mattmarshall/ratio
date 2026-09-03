@@ -228,11 +228,12 @@ NEEDLES: list[tuple[str, str]] = [
         "the journal entry page has no accessible name, so the phone check "
         "cannot tell it rendered",
     ),
-    # ── household figures (#65) ─────────────────────────────────────────────
+    # ── household figures (#65, #83) ────────────────────────────────────────
     # A personal book that still said NAV / Exceptions is a fake label on
     # fund-ops screens. These are the phrases a household walk-through looks
-    # for; deleting the sheet, the period P&L, or the transfer would leave
-    # CreateBook offering a template whose screens are still ABOR.
+    # for; deleting the sheet, the period P&L, the transfer, or budget vs
+    # actual would leave CreateBook offering a template whose screens are
+    # still ABOR.
     (
         "Balance sheet",
         "a personal book has no citable balance sheet",
@@ -252,6 +253,18 @@ NEEDLES: list[tuple[str, str]] = [
     (
         "this is not a trade",
         "the transfer form stopped saying a household move is not a sale",
+    ),
+    (
+        "Budget vs actual",
+        "the household budget figure is gone from the console",
+    ),
+    (
+        "no [personal] budget on the configuration in force",
+        "an unset household budget would read as a fake zero",
+    ),
+    (
+        "not a second ledger — journal expenses against a",
+        "budget vs actual would look like a second accounting system",
     ),
     # ⛔ AND NO `startTransition` NEEDLE, THOUGH THE PALETTE NEEDS ONE AS MUCH AS
     # `FilterChips` DOES. Both that file and `PlanControls` already contain the

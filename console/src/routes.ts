@@ -188,7 +188,11 @@ export const ROUTES: readonly Route[] = [
     reads: ["listAccounts"],
   },
 
-  // ── Project figures ──────────────────────────────────────────────────────
+  // ── Kind-selected figures ────────────────────────────────────────────────
+  //
+  // ⭐ ONE `/budget` URL. Kind selects the roll-up: household period spend
+  // against `[personal] budget`, or project cumulative costs against
+  // `[project] budget`. A second path would be a second answer.
   {
     path: "/books/[book]/views/[view]/budget",
     file: "books/[book]/views/[view]/budget/page.tsx",

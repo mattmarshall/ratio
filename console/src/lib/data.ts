@@ -27,17 +27,13 @@ export const books = cache(async () => {
   return (await listBooks(c)).books;
 });
 
-export const bookOf = cache(async (book: string) => {
-  const c = await caller();
-  return getBook(c, book);
-});
-
 /**
  * The book a view layout needs in order to pick chrome.
  *
- * ⭐ KIND SELECTS WHETHER NAV TILES BELONG HERE. A project book's view still
- * folds a journal prefix; it does not strike a NAV. Asking GetBook twice
- * would be two Lambdas for one URL. `cache` is the same door `viewOf` uses.
+ * ⭐ KIND SELECTS WHETHER NAV TILES BELONG HERE. A personal book's view still
+ * folds a journal prefix; it does not strike a NAV. A project book's view
+ * does the same. Asking GetBook twice would be two Lambdas for one URL.
+ * `cache` is the same door `viewOf` uses.
  */
 export const bookOf = cache(async (id: string) => {
   const c = await caller();

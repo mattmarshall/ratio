@@ -735,7 +735,7 @@ impl JsonView for pb::Book {
             "{{\"name\":{},\"displayName\":{},\"kind\":{},\"currencyCode\":{},\
              \"fund\":{},\"organization\":{},\"defaultView\":{},\
              \"entryCount\":{},\"configDigest\":{},\"trialBalanceDifference\":{},\
-             \"budget\":{}}}",
+             \"budget\":{},\"envelopes\":[{}]}}",
             q(&self.name),
             q(&self.display_name),
             q(book_kind_name(self.kind)),
@@ -746,6 +746,17 @@ impl JsonView for pb::Book {
             q(&self.entry_count.to_string()),
             q(&self.config_digest),
             q(&self.trial_balance_difference),
+            q(&self.budget),
+            self.envelopes.iter().map(|e| e.to_json()).collect::<Vec<_>>().join(",")
+        )
+    }
+}
+
+impl JsonView for pb::HouseholdEnvelope {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"dimension\":{},\"budget\":{}}}",
+            q(&self.dimension),
             q(&self.budget)
         )
     }

@@ -19,12 +19,15 @@ import { Palette } from "./Palette";
 // `/Mac|iPod|iPhone|iPad/.test(navigator.platform)`. jsdom reports "", so `$mod`
 // would be Control and every ⌘K below would fire nothing while the suite stayed
 // green. `vi.hoisted` runs above the import of `kbar` itself.
-const { push } = vi.hoisted(() => {
+const { push, segments } = vi.hoisted(() => {
   Object.defineProperty(window.navigator, "platform", {
     value: "MacIntel",
     configurable: true,
   });
-  return { push: vi.fn() };
+  return {
+    push: vi.fn(),
+    segments: { current: ["views", "abor", "breaks"] as string[] },
+  };
 });
 
 vi.mock("next/navigation", () => ({
@@ -34,7 +37,7 @@ vi.mock("next/navigation", () => ({
   // three, not four. The collection layout sits one level up and sees the book
   // id first; `FundActions` and `ViewSwitch` see this. A mock of the wrong
   // depth would let every action here build the wrong URL and stay green.
-  useSelectedLayoutSegments: () => ["views", "abor", "breaks"],
+  useSelectedLayoutSegments: () => segments.current,
 }));
 
 // ⛔ THE FENCE, AS A SPY. Nothing in the palette imports the wire client today,
@@ -82,6 +85,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   push.mockClear();
+  segments.current = ["views", "abor", "breaks"];
   for (const w of Object.values(writes)) w.mockClear();
 });
 
@@ -215,6 +219,43 @@ describe("the command palette", () => {
       push.mockClear();
       unmount();
     }
+  });
+
+  it("a personal book is offered Budget vs actual and not Exceptions", async () => {
+    // ⭐ THE OPEN VIEW, NOT THE FUND FIXTURE'S ABOR. FundActions reads the
+    // segments so switching books of record stays on the same screen.
+    // A household's undeclared view is `book`; leaving the mock on `abor`
+    // would send a personal palette to a fund book of record.
+    segments.current = ["views", "book", "budget"];
+    const { unmount } = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("Budget vs actual");
+    fireEvent.click(await row("Budget vs actual"));
+    expect(push).toHaveBeenCalledWith("/books/household/views/book/budget");
+    push.mockClear();
+    unmount();
+
+    const again = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("Exceptions");
+    expect(screen.queryByText("Exceptions")).toBeNull();
+    again.unmount();
   });
 
   it("offers the header's screens and no others", async () => {

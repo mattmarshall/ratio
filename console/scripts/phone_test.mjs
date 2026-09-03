@@ -104,6 +104,7 @@ const SCREENS = [
   [`/books/${F}/entries/x`, '[aria-label="Journal entry"]'],
   [`/books/${F}/actions`, "main"],
   [`/books/${F}/actions/x`, '[aria-label="Corporate action"]'],
+  ["/books/household/views/book/budget", "main"],
 ];
 
 function fail(msg) {
