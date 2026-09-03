@@ -251,12 +251,16 @@ def main(app_path, bootstrap_path, workflow_path):
     # AuthKit session tokens mint that iss. A prefix match on
     # https://api.workos.com would fail the correct default, so these
     # patterns end at an optional trailing slash and then the quote.
+    # ⚠ `com/"?` IS THE WRONG OPTIONAL. That requires the slash and then
+    # an optional quote — it misses Default: "https://api.workos.com"
+    # and only catches the trailing-slash form. `com/?"` is the other
+    # way around.
     app_code = "\n".join(
         line for line in app.splitlines()
         if not line.lstrip().startswith("#")
     )
     if re.search(
-        r'(?:Issuer|Default):\s+"https://api\.workos\.com/"?\s*$',
+        r'(?:Issuer|Default):\s+"https://api\.workos\.com/?"\s*$',
         app_code,
         re.M,
     ):
@@ -280,7 +284,7 @@ def main(app_path, bootstrap_path, workflow_path):
         print("  ok  the app stack defaults WorkOsIssuer to the session-token issuer")
 
     if re.search(
-        r'Default:\s+"https://auth\.ratio\.marsh\.build/"?\s*$',
+        r'Default:\s+"https://auth\.ratio\.marsh\.build/?"\s*$',
         app_code,
         re.M,
     ):
@@ -291,7 +295,7 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  WorkOsIssuer default is not the hosted AuthKit hostname")
 
-    if re.search(r'WorkOsIssuer="https://api\.workos\.com/"?(?:\s|$)', flow):
+    if re.search(r'WorkOsIssuer="https://api\.workos\.com/?"', flow):
         fail(
             f"{workflow_path} passes the bare api.workos.com host as "
             "WorkOsIssuer — CloudFormation will refuse the authorizer"
