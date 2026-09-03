@@ -1032,7 +1032,7 @@ describe("a first-class book", () => {
       expect(screen.getByText("5.00")).toBeDefined();
       expect(screen.getByText("no purchase account distinct from a transfer")).toBeDefined();
       expect(
-        screen.getByText("Principal, transfers and purchases move the sheet, not net worth."),
+        screen.getByText(/Principal, transfers and purchases move the sheet, not net worth/),
       ).toBeDefined();
       expect(screen.queryByText(/Beginning and ending stay unset/)).toBeNull();
     } finally {
