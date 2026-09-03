@@ -1,13 +1,15 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
-**State**: bazel tests green, 25 `lean_test`, 44 `tla_check`, 27 `manual`
+**State**: bazel tests green, 26 `lean_test`, 45 `tla_check`, 28 `manual`
 probes all red for the reasons they name.
 
 Issues #4 and #7 are closed. Open work is #5, #6, #8, #9. This file is the part
 that does not fit in an issue: what was learned, what is load-bearing, and what
 will bite. Wash sales have a Lean/TLA model and a Rust window
-(`RuleSet.wash_window_days`); #5 stays open for `WashRestatement` and the
-console cite. MinTax, SpecID, and average cost (#9) each have a Lean
+(`RuleSet.wash_window_days`). `WashRestatement` is a citeable record
+(`Ratio.Lots.WashRestatement`; a restatement cites the strike, it does
+not rewrite it); #5 stays open for the console wash flag and a non-US
+holding-period variant. MinTax, SpecID, and average cost (#9) each have a Lean
 surface, a TLA probe that fails if they are treated as a Method, and a
 Rust election that is not a `LotMethod` variant. #9 stays open for the
 console cite and the pooled holding-period leftover. This file does not
@@ -838,7 +840,7 @@ than one that is entirely unclassified.
 
 | | |
 |---|---|
-| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,Edges,Posting,Wash}`, `Actions/Factor`, `Closure`, `Exec` |
+| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,Edges,Posting,Wash,WashRestatement}`, `Actions/Factor`, `Closure`, `Exec` |
 | `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `min_tax_short_weight`, `average_cost`, `tolerance` — the administration agreement, as configuration |
 | `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |

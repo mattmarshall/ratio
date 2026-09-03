@@ -1322,6 +1322,115 @@ pub fn in_wash_window(window: i64, sale_day: Day, buy_day: Day) -> bool {
     -window <= delta && delta <= window
 }
 
+/// A citeable identity of a struck figure: the journal prefix it folded.
+///
+/// ⛔ NOT THE FIGURE. Two strikes can report the same number from different
+/// prefixes; the identity is which prefix was read. Rewriting the number
+/// while keeping this id is the silent defect.
+/// `Ratio.Lots.WashRestatement`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StrikeId {
+    pub prefix: u64,
+}
+
+/// A realized gain that was struck — the number somebody was paid on.
+///
+/// `qualified` is written at strike time: the wash window was still open,
+/// so this figure can still move. Adding the flag later is a restatement.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StruckGain {
+    pub id: StrikeId,
+    pub sold_on: Day,
+    pub figure: i64,
+    pub qualified: bool,
+}
+
+/// A restatement: a new record that cites the strike it supersedes.
+///
+/// ⭐ `Ratio.Period` forbids a second value occupying the same day. This is
+/// that new kind of thing, for the one rule that genuinely reaches
+/// backwards. Putting `moved_to` on the strike is [`rewrite_in_place`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Restatement {
+    pub cites: StrikeId,
+    pub original: i64,
+    pub moved_to: i64,
+}
+
+/// Whether a wash window is still open on this day.
+///
+/// ⭐ WRITTEN AT STRIKE TIME. A sale on day 100 with a 30-day window is
+/// still open on day 130 and closed on day 131. Flagging a closed window
+/// trains a reader to ignore the flag.
+/// `Ratio.Lots.WashRestatement.a_closed_window_is_not_qualified`.
+///
+/// ⛔ THE SUM IS CHECKED. Lean's `day ≤ soldOn + window` is over `Int`;
+/// a wrapped close would qualify a strike whose window had closed, or
+/// refuse one whose window was open.
+pub fn window_still_open(window: i64, sold_on: Day, day: Day) -> Result<bool> {
+    let close = ratio_common::checked::add(
+        i64::from(sold_on),
+        window,
+        "the day the wash window closes",
+    )?;
+    Ok(i64::from(day) <= close)
+}
+
+/// Strike a realized gain. Qualifies iff the window is still open.
+///
+/// `Ratio.Lots.WashRestatement.strikeGain`.
+pub fn strike_gain(
+    id: StrikeId,
+    window: i64,
+    sold_on: Day,
+    day: Day,
+    figure: i64,
+) -> Result<StruckGain> {
+    Ok(StruckGain {
+        id,
+        sold_on,
+        figure,
+        qualified: window_still_open(window, sold_on, day)?,
+    })
+}
+
+/// A later repurchase that washes a struck sale.
+///
+/// Returns a restatement citing the strike, or `None` if the repurchase
+/// does not move this figure. Never returns a mutated [`StruckGain`].
+/// `Ratio.Lots.WashRestatement.restate`.
+pub fn restate(s: &StruckGain, window: i64, buy_day: Day, new_figure: i64) -> Option<Restatement> {
+    if in_wash_window(window, s.sold_on, buy_day) && new_figure != s.figure {
+        Some(Restatement {
+            cites: s.id.clone(),
+            original: s.figure,
+            moved_to: new_figure,
+        })
+    } else {
+        None
+    }
+}
+
+/// The forbidden operation: overwrite the struck figure and keep the id.
+///
+/// Defined so tests can name it. An engine that "updated the strike" is
+/// this, not [`restate`].
+/// `Ratio.Lots.WashRestatement.rewriteInPlace`.
+pub fn rewrite_in_place(s: StruckGain, new_figure: i64) -> StruckGain {
+    StruckGain {
+        figure: new_figure,
+        ..s
+    }
+}
+
+/// Whether the record said the figure can move, or said it did.
+///
+/// The third case — struck clean, changed quietly — is `false`.
+/// `Ratio.Lots.WashRestatement.saysSo`.
+pub fn says_so(s: &StruckGain, r: Option<&Restatement>) -> bool {
+    s.qualified || r.is_some()
+}
+
 /// The disallowed portion of a loss, as a POSITIVE magnitude.
 ///
 /// `Ratio.Lots.Wash.disallowed`. `loss` is signed the way [`Relief::gain`]
@@ -2224,6 +2333,117 @@ mod tests {
     #[test]
     fn an_overflowing_wash_split_is_refused() {
         let err = disallowed(i64::MIN, 2, 1).unwrap_err();
+        assert!(format!("{err:#}").contains("64 bits"), "{err:#}");
+    }
+
+    // ── wash restatement — `Ratio.Lots.WashRestatement` ───────────────────
+
+    fn struck(prefix: u64, sold_on: Day, day: Day, figure: i64) -> StruckGain {
+        strike_gain(StrikeId { prefix }, 30, sold_on, day, figure).unwrap()
+    }
+
+    #[test]
+    fn a_closed_window_is_not_qualified() {
+        // `Ratio.Lots.WashRestatement.a_closed_window_is_not_qualified`.
+        assert!(!struck(7, 100, 131, -1000).qualified);
+        assert!(struck(7, 100, 105, -1000).qualified);
+        assert!(window_still_open(30, 100, 130).unwrap());
+        assert!(!window_still_open(30, 100, 131).unwrap());
+    }
+
+    #[test]
+    fn restatement_cites_the_strike_it_supersedes() {
+        // ⭐ THE STRIKE STILL SAYS −1000. The restatement names prefix 7
+        // and the original number. `Ratio.Lots.WashRestatement.
+        // restatement_cites_the_strike_it_supersedes`.
+        let s = struck(7, 100, 105, -1000);
+        let r = restate(&s, 30, 110, -600).expect("an in-window move restates");
+        assert_eq!(s.figure, -1000, "the strike was not rewritten");
+        assert_eq!(r.cites, StrikeId { prefix: 7 });
+        assert_eq!(r.original, -1000);
+        assert_eq!(r.moved_to, -600);
+    }
+
+    #[test]
+    fn a_wash_that_does_not_change_the_figure_does_not_restate() {
+        let s = struck(7, 100, 105, -1000);
+        assert!(restate(&s, 30, 110, -1000).is_none());
+        assert!(restate(&s, 30, 200, -600).is_none(), "outside the window");
+    }
+
+    #[test]
+    fn a_silent_strike_that_was_restated_says_so() {
+        let s = StruckGain {
+            id: StrikeId { prefix: 7 },
+            sold_on: 100,
+            figure: -1000,
+            qualified: false,
+        };
+        let r = restate(&s, 30, 110, -600);
+        assert!(says_so(&s, r.as_ref()));
+        assert!(says_so(&struck(7, 100, 105, -1000), None));
+        assert!(!says_so(&s, None), "the third case: struck clean, nothing said");
+    }
+
+    #[test]
+    fn rewriting_in_place_keeps_the_id_and_changes_the_figure() {
+        // ⛔ THE DEFECT, NAMED. Prefix 7 still cites; the number is now
+        // −600; nothing is qualified.
+        // `Ratio.Lots.WashRestatement.rewriting_in_place_keeps_the_id_
+        // and_changes_the_figure`.
+        let s = StruckGain {
+            id: StrikeId { prefix: 7 },
+            sold_on: 100,
+            figure: -1000,
+            qualified: false,
+        };
+        let s = rewrite_in_place(s, -600);
+        assert_eq!(s.id, StrikeId { prefix: 7 });
+        assert_eq!(s.figure, -600);
+        assert!(!s.qualified);
+        assert_ne!(
+            s,
+            StruckGain {
+                id: StrikeId { prefix: 7 },
+                sold_on: 100,
+                figure: -1000,
+                qualified: false,
+            }
+        );
+    }
+
+    #[test]
+    fn restatement_and_rewrite_are_not_the_same_operation() {
+        let s = StruckGain {
+            id: StrikeId { prefix: 7 },
+            sold_on: 100,
+            figure: -1000,
+            qualified: false,
+        };
+        assert_eq!(
+            restate(&s, 30, 110, -600),
+            Some(Restatement {
+                cites: StrikeId { prefix: 7 },
+                original: -1000,
+                moved_to: -600,
+            })
+        );
+        assert_eq!(
+            rewrite_in_place(s, -600),
+            StruckGain {
+                id: StrikeId { prefix: 7 },
+                sold_on: 100,
+                figure: -600,
+                qualified: false,
+            }
+        );
+    }
+
+    #[test]
+    fn an_overflowing_window_close_is_refused() {
+        // ⛔ `Ratio.Bounded`. soldOn + window at the i64 edge wraps, and a
+        // wrapped close would qualify a strike whose window had closed.
+        let err = window_still_open(i64::MAX, 1, 0).unwrap_err();
         assert!(format!("{err:#}").contains("64 bits"), "{err:#}");
     }
 

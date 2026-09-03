@@ -468,6 +468,29 @@ lean_test(
     entry = "Ratio/Lots/Wash.lean",
 )
 
+# A struck figure that a later wash moved must not change silently.
+#
+# ⛔ THE OBLIGATION IS ABOUT THE RECORD, NOT THE NUMBER. The tax rule
+# genuinely reaches backwards, so holding March fixed would report a
+# number the rule disagrees with. What is forbidden is rewriting the
+# citeable strike in place. Restatement is a new record that cites what
+# it supersedes — `Ratio.Period`'s "new kind of thing", for this rule.
+#
+# `//tla:wash_restatement_check` is the sequence.
+# `//tla:silent_wash_restatement_check` skips the record.
+# `//tla:mutating_wash_restatement_check` overwrites the figure.
+lean_test(
+    name = "lots_wash_restatement_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Lots.lean",
+        "Ratio/Lots/Methods.lean",
+        "Ratio/Lots/Wash.lean",
+        "Ratio/Lots/WashRestatement.lean",
+    ],
+    entry = "Ratio/Lots/WashRestatement.lean",
+)
+
 # ⛔ A ranking at a PRICE, not a sort of the holding.
 #
 # `Ratio.Lots.Methods.a_tax_minimising_method_is_not_a_function_of_the_lots`

@@ -1025,6 +1025,7 @@ demo, or a non-US holding-period variant. Those remain on #5. This
 amendment does not close #5. MinTax stays on #9. None of those are on
 the *Explicitly not building* list, and this amendment adds none of
 them.
+*(WashRestatement as a citeable record is the next amendment.)*
 
 ### Amendment, 2026-09-03 — MinTax is a ranking at a price, not a Method
 
@@ -1138,10 +1139,74 @@ What landed is the decision surface and the engine, as its own election:
   invented.
 - Not **WashRestatement**, a wash flag on the console, or a non-US
   holding-period variant. Those stay on #5.
+  *(WashRestatement as a citeable record is the next amendment.)*
 
 Nothing on the *Explicitly not building* list moved. Issue #9 stays
 open for the UI cite and the holding-period leftover. This amendment
 does not close #9. It does not close #5.
+
+### Amendment, 2026-09-03 — WashRestatement is a citeable record
+
+A wash sale can land after a NAV has already reported the loss. The
+strike read the whole journal, pinned its prefix, and computed the
+only correct answer available at the time. Days later a repurchase
+reaches backwards and the same sale's realized gain is a different
+number — for a period that is closed. Conservation holds, the trial
+balance ties, the digest reproduces. The figure that moved is the
+one with no counterparty.
+
+The obligation is not "do not let it change". The tax rule genuinely
+reaches back, and an engine that held March fixed would report a
+number the rule disagrees with. The obligation is that a figure
+somebody was paid on must not change **silently**.
+
+What landed is the record, not a console screen:
+
+- Lean: `Ratio.Lots.WashRestatement`. A strike of a realized gain
+  carries a citeable prefix identity. Qualification is written at
+  strike time iff the wash window is still open. Restatement is a
+  new record that cites that identity and the original number —
+  `Ratio.Period`'s "new kind of thing", for this rule. Rewriting
+  the struck figure in place keeps the id and changes the number;
+  that is the defect, named so it cannot be confused with
+  restatement. No `Order` / `Method` / `lot_method = "wash"`
+  variant. `a_struck_gain_that_moved_says_so`.
+- TLA: `//tla:wash_restatement_check` already said a moved figure
+  was qualified or restated. It now also says the restatement cites
+  the strike it supersedes, and that the struck figure is not
+  rewritten. The probe `//tla:silent_wash_restatement_check` skips
+  the record and `AStruckGainThatMovedSaysSo` goes red. The probe
+  `//tla:mutating_wash_restatement_check` overwrites the figure and
+  `AStruckFigureIsNotRewritten` goes red.
+- Rust: `strike_gain` / `restate` / `rewrite_in_place` on the lot
+  surface, matching the proofs. `Projection::open_wash_windows`
+  is what a strike reads to qualify — leftovers whose window is
+  still open on a named day, not a leftover that outlived the
+  window. A wrapped window-close is refused. The posted gain in
+  the journal is not rewritten; a restatement cites, it does not
+  mutate a historical strike digest.
+
+**What this is NOT, because two leftovers stay named on #5:**
+
+- Not a **wash flag on the console or in the demo**. Lot proto and
+  the operations screens do not grow a field for this. Adding one
+  is a cite, not a restatement, and it is still ahead.
+- Not a **non-US holding-period variant**. `replacementAcquired`
+  is the US transfer already named in `Ratio.Lots.Wash`. A
+  jurisdiction that does not transfer the period is a different
+  rule; it does not fall out of this record and is not invented
+  here.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not close #5. It does not close #9.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can qualify a strike taken while a wash window is open, and
+produce a restatement that cites that strike when a later
+repurchase moves the figure. It cannot show a wash flag on the
+console or in the demo, a non-US holding-period variant, or a
+lot-relief UI screen. Those remain on #5 (wash leftovers) and #9
+(engine UI cites).
 
 ## The control plane: geetch and crova
 

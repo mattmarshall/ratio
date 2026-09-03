@@ -100,7 +100,9 @@ __STYLE__
           stays refused, not an Order or a Method), and Average cost
           is a pool (<code>average_cost = true</code>; unset stays
           unset, not a silent true; <code>lot_method = "average_cost"</code>
-          stays refused) — and corporate actions in factor
+          stays refused), and WashRestatement is a citeable record
+          (a struck figure a later wash moved is qualified or
+          restated; the strike is not rewritten) — and corporate actions in factor
           form — nothing in the journal is rewritten.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
@@ -189,7 +191,12 @@ __STYLE__
           (<code>average_cost = true</code>; unset stays unset, not a
           silent true); <code>lot_method = "average_cost"</code> stays
           refused, not an Order or a Method.
-          It cannot show a restatement of a struck figure, a wash
+          WashRestatement is a citeable record: a strike taken
+          while a wash window is open is qualified, and a later
+          repurchase that moves the figure produces a restatement
+          that cites the strike — the struck digest is not
+          rewritten.
+          It cannot show a wash
           flag on the console, a non-US holding-period variant,
           or lot-relief UI screens for MinTax, SpecID, or average
           cost. Fund books
