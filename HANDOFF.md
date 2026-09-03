@@ -421,6 +421,19 @@ the conserved one, and the kernel never said it was.
   (asset purchases stay unset), a fire number, lifestyle coaching, bank
   OAuth, a credit score, or a client portal. Envelope budgeting is #83;
   loan schedules are #87.
+- ⚠ **A household cash-flow walk-through (#98 / #27).** It can show beginning
+  and ending cash for a month or year, and classify the movement into
+  operating (income, expenses, credit-card working capital), investing
+  (Investments — the same account the net-worth bridge names as a transfer),
+  and financing (named-loan principal and draws, opening equity). Beginning
+  plus classified movement equals ending cash; a move the chart cannot name
+  is a residual line an operator can open, not silent absorption. An empty
+  journal, or a cut with no dated prefix, stays **unset** — not a measured
+  $0.00 cash. Spending down to zero is a real zero. It cannot show a
+  purchase account the chart does not have (asset purchases stay unset), a
+  cash forecast, envelope coaching, bank OAuth, a credit score, or a client
+  portal. Envelope budgeting is #83; loan schedules are #87; the net-worth
+  bridge is #94.
 - ⭐ **A capital-call walk-through (#82) can show, and cannot show.**
   CreateBook(Investment) seeds partner-scoped `Commitments — LP/GP` and
   `Undrawn commitments — LP/GP` (equity, so they cancel in the NAV filter)

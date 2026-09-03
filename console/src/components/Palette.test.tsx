@@ -450,6 +450,7 @@ describe("the command palette", () => {
       ["Balance sheet", "/books/household/views/abor/sheet"],
       ["Period P&L", "/books/household/views/abor/pnl"],
       ["Net-worth bridge", "/books/household/views/abor/bridge"],
+      ["Cash flow", "/books/household/views/abor/cashflow"],
       ["Budget vs actual", "/books/household/views/abor/budget"],
       ["Loan schedule", "/books/household/views/abor/loans"],
       ["Trial balance", "/books/household/views/abor/accounts"],

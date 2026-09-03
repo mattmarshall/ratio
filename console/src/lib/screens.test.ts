@@ -14,6 +14,7 @@ describe("screensFor", () => {
     expect(labels).toContain("Balance sheet");
     expect(labels).toContain("Period P&L");
     expect(labels).toContain("Net-worth bridge");
+    expect(labels).toContain("Cash flow");
     expect(labels).toContain("Budget vs actual");
     expect(labels).toContain("Loan schedule");
     expect(labels).toContain("Trial balance");
@@ -41,6 +42,7 @@ describe("screensFor", () => {
     expect(labels).not.toContain("Exceptions");
     expect(labels).not.toContain("NAV");
     expect(labels).not.toContain("Positions");
+    expect(labels).not.toContain("Cash flow");
     expect(defaultScreen("PROJECT")).toBe("budget");
     expect(ticketsFor("PROJECT").map((t) => t.segment)).toEqual([
       "record",
@@ -60,6 +62,7 @@ describe("screensFor", () => {
     expect(labels).not.toContain("Balance sheet");
     expect(labels).not.toContain("WIP");
     expect(labels).not.toContain("Billing");
+    expect(labels).not.toContain("Cash flow");
     expect(defaultScreen("INVESTMENT")).toBe("capital");
     expect(ticketsFor("INVESTMENT").map((t) => t.segment)).toEqual([
       "trade",
@@ -73,13 +76,16 @@ describe("screensFor", () => {
     const labels = screensFor("UNSPECIFIED").map((s) => s.label);
     expect(labels).toContain("Exceptions");
     expect(labels).toContain("NAV");
+    expect(labels).not.toContain("Cash flow");
     expect(defaultScreen("UNSPECIFIED")).toBe("breaks");
   });
 
   it("figure screens are view-scoped", () => {
     for (const s of [
       ...PERSONAL_SCREENS.filter((x) =>
-        ["sheet", "pnl", "bridge", "budget", "loans"].includes(x.segment),
+        ["sheet", "pnl", "bridge", "cashflow", "budget", "loans"].includes(
+          x.segment,
+        ),
       ),
       ...PROJECT_SCREENS.filter((x) =>
         ["budget", "wip", "billing"].includes(x.segment),
