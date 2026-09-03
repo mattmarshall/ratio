@@ -147,19 +147,45 @@ jobs:
           DEMO_MEMBERS: ${{ vars.DEMO_MEMBERS }}
           # Where the console is served from. A repository VARIABLE, like
           # DEMO_MEMBERS and for the same reason — a hostname is not a secret.
-          # Unset means "no console yet": `/` then says what this process serves
-          # instead of redirecting, and Cognito registers only the localhost
-          # callback. See the ⛔ on CallbackURLs in deploy/app.yaml.
+          # Production is https://ratio.marsh.build. Unset, or the retired
+          # Vercel hostname that still resolves, fails the step below rather
+          # than shipping a stale CORS/redirect origin. See the ⛔ on
+          # CallbackURLs in deploy/app.yaml.
           CONSOLE_ORIGIN: ${{ vars.CONSOLE_ORIGIN }}
           # Ratio WorkOS Production client id. A VARIABLE — it is a public
-          # identifier, not a secret. Unset uses the app.yaml default.
-          # Do not point this at another product.
+          # identifier, not a secret. Unset fails the step below; it must not
+          # become a hard-coded production identifier. Do not point this at
+          # another product.
           WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID }}
           # The verified SES identity the report email sends from. A repository
           # VARIABLE like the others — an address is not a secret. Unset means
           # no email, which is the correct state until SES verifies.
           SCALE_SENDER: ${{ vars.SCALE_SENDER }}
         run: |
+          set -euo pipefail
+          # ⛔ THESE TWO ARE REQUIRED, AND THEIR ABSENCE IS A NAMED FAILURE.
+          # CONSOLE_ORIGIN used to ship whatever the variable held, including
+          # the retired https://ratio-ims.vercel.app host that still resolves.
+          # WORKOS_CLIENT_ID used to become a hard-coded production client id
+          # when the variable was empty — a missing configuration value turning
+          # into a live identifier, which this repository refuses elsewhere.
+          PRODUCTION_CONSOLE='https://ratio.marsh.build'
+          RETIRED_CONSOLE='https://ratio-ims.vercel.app'
+          if [ -z "${CONSOLE_ORIGIN:-}" ]; then
+            echo "::error::CONSOLE_ORIGIN is unset. Set the repository variable to ${PRODUCTION_CONSOLE}"
+            exit 1
+          fi
+          case "${CONSOLE_ORIGIN%/}" in
+            "${RETIRED_CONSOLE}")
+              echo "::error::CONSOLE_ORIGIN is the retired host ${CONSOLE_ORIGIN}; production is ${PRODUCTION_CONSOLE}. Update the repository variable."
+              exit 1
+              ;;
+          esac
+          if [ -z "${WORKOS_CLIENT_ID:-}" ]; then
+            echo "::error::WORKOS_CLIENT_ID is unset. Set the repository variable to the Ratio Production AuthKit client id documented in deploy/README.md — a missing value must not become a hard-coded identifier."
+            exit 1
+          fi
+
           # ⛔ CAPABILITY_NAMED_IAM, BECAUSE THE STACK CREATES TWO NAMED ROLES.
           # The scale runner's task role and task execution role are named
           # (`ratio-demo-scale-task`, `ratio-demo-scale-exec`) so that the deploy
@@ -167,6 +193,47 @@ jobs:
           # ARNs — an unnamed role gets a generated ARN no policy can name in
           # advance. Naming them is what buys the tight scope; this flag is the
           # price of naming them.
+          #
+          # ⭐ A FAILED DEPLOY MUST NAME THE RESOURCE. `cloudformation deploy`
+          # prints "run describe-stack-events" and exits 255; nobody running
+          # this job ever could, so every red run since 2026-09-03 said
+          # nothing. Dump the failed events, the stack status, and the
+          # newest change set here — the next red log has to be enough.
+          dump_stack_failure() {
+            echo "::error::CloudFormation deploy of ${STACK} failed"
+            echo "=== stack status ==="
+            aws cloudformation describe-stacks --stack-name "$STACK" \
+              --query 'Stacks[0].{Status:StackStatus,Reason:StackStatusReason}' \
+              --output table \
+              || echo "(describe-stacks failed — the stack may not exist)"
+            echo "=== FAILED resources ==="
+            aws cloudformation describe-stack-events --stack-name "$STACK" \
+              --query "StackEvents[?contains(ResourceStatus, 'FAILED')].{Time:Timestamp,Resource:LogicalResourceId,Type:ResourceType,Status:ResourceStatus,Reason:ResourceStatusReason}" \
+              --output table \
+              || echo "(describe-stack-events failed)"
+            echo "=== recent events ==="
+            aws cloudformation describe-stack-events --stack-name "$STACK" \
+              --max-items 25 \
+              --query 'StackEvents[].{Time:Timestamp,Resource:LogicalResourceId,Status:ResourceStatus,Reason:ResourceStatusReason}' \
+              --output table \
+              || true
+            echo "=== change sets ==="
+            aws cloudformation list-change-sets --stack-name "$STACK" \
+              --query 'Summaries[].{Name:ChangeSetName,Status:Status,Reason:StatusReason,Exec:ExecutionStatus}' \
+              --output table \
+              || true
+            CS="$(aws cloudformation list-change-sets --stack-name "$STACK" \
+              --query 'Summaries[0].ChangeSetName' --output text 2>/dev/null || true)"
+            if [ -n "${CS:-}" ] && [ "$CS" != "None" ]; then
+              echo "=== change set ${CS} ==="
+              aws cloudformation describe-change-set \
+                --stack-name "$STACK" --change-set-name "$CS" \
+                --query '{Status:Status,Reason:StatusReason,Execution:ExecutionStatus,Changes:Changes}' \
+                --output json \
+                || true
+            fi
+          }
+
           aws cloudformation deploy \
             --template-file deploy/app.yaml \
             --stack-name "$STACK" \
@@ -181,7 +248,8 @@ jobs:
               ConsoleOrigin="${CONSOLE_ORIGIN}" \
               DemoMember="${DEMO_MEMBERS:-demo@ratio.fastverk.dev}" \
               ScaleSender="${SCALE_SENDER}" \
-              WorkOsClientId="${WORKOS_CLIENT_ID:-client_01M1JJZTFXFDZJ0XJM1NPNSEJB}"
+              WorkOsClientId="${WORKOS_CLIENT_ID}" \
+            || { dump_stack_failure; exit 1; }
 
       - name: Smoke test the deployed demo
         env:
@@ -325,9 +393,12 @@ jobs:
           # ConsoleOrigin parameter, which is the point: this asserts the
           # parameter arrived, not that two things agree.
           #
-          # ⚠ Only when the variable is set. Unset is a supported state — no
-          # console to point at — and app.yaml registers just the localhost
-          # callback then.
+          # ⚠ Only when CONSOLE_ORIGIN was actually passed to the stack. The
+          # Deploy step now refuses unset and the retired Vercel hostname, so
+          # a green deploy of this job always has a value; this branch is the
+          # same assertion either way. Unset remains valid on a local
+          # `cloudformation deploy` that omits the parameter — app.yaml then
+          # registers just the localhost callback.
           if [ -n "${CONSOLE_ORIGIN:-}" ]; then
             want "the console origin" "\"consoleOrigin\":\"${CONSOLE_ORIGIN}\"" \
               "${URL}authconfig.json"

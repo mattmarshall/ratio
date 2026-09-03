@@ -48,17 +48,22 @@ Parameters:
       its own generated hostname cannot sign in, by design: previews render from
       console/fixtures/ instead.
 
-      Empty leaves the demo with no console to point at. Set it via the
-      CONSOLE_ORIGIN repository variable.
+      Empty leaves the demo with no console to point at. Production is
+      https://ratio.marsh.build, set via the CONSOLE_ORIGIN repository
+      variable. The retired https://ratio-ims.vercel.app host still resolves
+      and must not be shipped as this value.
   WorkOsClientId:
     Type: String
-    Default: "client_01M1JJZTFXFDZJ0XJM1NPNSEJB"
     Description: >
       WorkOS AuthKit client id for the Ratio project's Production environment
       (the audience the JWT authorizer checks). Public identifier, never a
-      secret. The console holds WORKOS_CLIENT_ID / WORKOS_API_KEY /
-      WORKOS_COOKIE_PASSWORD as Vercel env; this value is what API Gateway
-      verifies on /v1. Do not substitute another product's client id.
+      secret. Required — there is no default, because a missing value becoming
+      a hard-coded production identifier is a silent wrong audience on /v1.
+      Set it via the WORKOS_CLIENT_ID repository variable (the Production id
+      is documented in deploy/README.md). The console holds WORKOS_CLIENT_ID /
+      WORKOS_API_KEY / WORKOS_COOKIE_PASSWORD as Vercel env; this value is
+      what API Gateway verifies on /v1. Do not substitute another product's
+      client id.
   GoogleClientId:
     Type: String
     Default: ""

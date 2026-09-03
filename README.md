@@ -15,7 +15,7 @@ products. The proofs are Lean 4, the concurrency and staleness arguments are
 TLA+, the running system is Rust — and parts of the Rust are **emitted from the
 Lean**, so the theorem and the code make the same decision.
 
-### ▶ [Try the live demo](https://ratio-ims.vercel.app/)
+### ▶ [Try the live demo](https://ratio.marsh.build/)
 
 Sign in with Google or email and watch a real fund's books tie out — seven
 seeded funds, one blocked by a break nobody has explained, one struck because

@@ -249,12 +249,12 @@ name (`handleAuth()` at `/app/callback/route.ts`), not Cognito's
 This repo does not compile a client id. Set `WORKOS_CLIENT_ID` to the
 Ratio project's public identifier for the environment you are attaching:
 
-| | Staging (local / AuthKit sandbox) | Production (Vercel) |
+| | Staging (local / AuthKit sandbox) | Production (Vercel + ratio.marsh.build) |
 |---|---|---|
 | `WORKOS_CLIENT_ID` | `client_01M1JJZT4T0NN1WWT65NE6CV3W` | `client_01M1JJZTFXFDZJ0XJM1NPNSEJB` |
-| Redirect URI | `http://localhost:3000/callback` and `https://ratio-ims.vercel.app/callback` | `https://ratio-ims.vercel.app/callback` |
-| Sign-in URL | `http://localhost:3000/sign-in` | `https://ratio-ims.vercel.app/sign-in` |
-| Sign-out URI | `http://localhost:3000` | `https://ratio-ims.vercel.app` |
+| Redirect URI | `http://localhost:3000/callback` and `https://ratio.marsh.build/callback` | `https://ratio.marsh.build/callback` |
+| Sign-in URL | `http://localhost:3000/sign-in` | `https://ratio.marsh.build/sign-in` |
+| Sign-out URI | `http://localhost:3000` | `https://ratio.marsh.build` |
 
 `WORKOS_API_KEY` and `WORKOS_COOKIE_PASSWORD` are secrets. They are never
 committed. `/login` and `/api/auth/login` are the same initiate-login

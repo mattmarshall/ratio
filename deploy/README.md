@@ -37,9 +37,12 @@ Two things about that are load-bearing here:
 
 Set `ConsoleOrigin` through the **`CONSOLE_ORIGIN` repository variable** (a
 hostname is not a secret, so a variable rather than a secret — same reasoning as
-`DEMO_MEMBERS`). It is currently `https://ratio-ims.vercel.app`. Leave it unset
-and the demo still works: the three public screens, the API and MCP all serve,
-and `/` says what it serves instead of redirecting.
+`DEMO_MEMBERS`). Production is **`https://ratio.marsh.build`**. The retired
+`https://ratio-ims.vercel.app` host still resolves; `deploy.yml` refuses it
+rather than shipping it as CORS/redirect configuration. Leave the variable
+unset and CI fails with that name — locally, an empty parameter still means
+the three public screens, the API and MCP all serve, and `/` says what it
+serves instead of redirecting.
 
 ⭐ **One parameter, three consumers, no second copy.** `ConsoleOrigin` becomes
 the Cognito `CallbackURLs` entry, the `RATIO_CONSOLE_URL` that makes `/` and
@@ -62,7 +65,7 @@ None of them is a WorkOS client id written in this repository.
 | `WORKOS_CLIENT_ID` | Ratio Production: `client_01M1JJZTFXFDZJ0XJM1NPNSEJB` |
 | `WORKOS_API_KEY` | the same application's API key |
 | `WORKOS_COOKIE_PASSWORD` | ≥32 characters; `openssl rand -base64 32` |
-| `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | this origin's AuthKit callback, e.g. `https://ratio-ims.vercel.app/callback` |
+| `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | this origin's AuthKit callback, e.g. `https://ratio.marsh.build/callback` |
 
 ⛔ **Generate the cookie password yourself and paste it nowhere else.** A value
 that has been in a chat log or a plan file is a disclosed key.
@@ -111,10 +114,10 @@ client id. Paths match the [authkit-nextjs README](https://github.com/workos/aut
 | environment | `environment_01M1JJZSSNCSMVHWV7RXVPE2SY` | `environment_01M1JJZTBCFS9K7QEJ1ADFMEZW` |
 | AuthKit app | `app_01M1JJZTB38S4WXDV3YTXT23Q8` | `app_01M1JJZTN0B6JK2GZR5AJP0YAA` |
 | `WORKOS_CLIENT_ID` | `client_01M1JJZT4T0NN1WWT65NE6CV3W` | `client_01M1JJZTFXFDZJ0XJM1NPNSEJB` |
-| Redirect URI | `http://localhost:3000/callback` (default), `https://ratio-ims.vercel.app/callback` | `https://ratio-ims.vercel.app/callback` |
-| Sign-in URL | `http://localhost:3000/sign-in` | `https://ratio-ims.vercel.app/sign-in` |
-| Sign-out URI | `http://localhost:3000` (default), `https://ratio-ims.vercel.app` | `https://ratio-ims.vercel.app` |
-| CORS | both origins above | `https://ratio-ims.vercel.app` |
+| Redirect URI | `http://localhost:3000/callback` (default), `https://ratio.marsh.build/callback` | `https://ratio.marsh.build/callback` |
+| Sign-in URL | `http://localhost:3000/sign-in` | `https://ratio.marsh.build/sign-in` |
+| Sign-out URI | `http://localhost:3000` (default), `https://ratio.marsh.build` | `https://ratio.marsh.build` |
+| CORS | both origins above | `https://ratio.marsh.build` |
 
 ### What to set
 
@@ -133,11 +136,14 @@ IdP. Unset means `Subject::Local` against `ratio watch`.
   staging id above (Preview, if you want sandbox users)
 - `WORKOS_API_KEY` — matching environment secret
 - `WORKOS_COOKIE_PASSWORD` — ≥32 characters
-- `NEXT_PUBLIC_WORKOS_REDIRECT_URI=https://ratio-ims.vercel.app/callback`
+- `NEXT_PUBLIC_WORKOS_REDIRECT_URI=https://ratio.marsh.build/callback`
 
-**API Gateway** audience is `WorkOsClientId` on the stack (Production client
-id by default). GitHub variable `WORKOS_CLIENT_ID` overrides it; it is not
-a secret.
+**API Gateway** audience is `WorkOsClientId` on the stack. GitHub variable
+`WORKOS_CLIENT_ID` is required — there is no template default and no
+`${VAR:-client_…}` fallback in the workflow. A missing value fails the
+Deploy step by name rather than silently becoming a production identifier.
+It is not a secret. The Production id to put in the variable is
+`client_01M1JJZTFXFDZJ0XJM1NPNSEJB`.
 
 `WORKOS_API_KEY` is a secret (`sk_…`). Do not commit it. `/login` and
 `/api/auth/login` are the same initiate-login handler as `/sign-in`.
