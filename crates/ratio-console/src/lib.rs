@@ -5506,20 +5506,6 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         assert!(console.get_book("books/ours").is_ok());
     }
 
-    fn project_event(id: &str, rule: &str, amount: &str) -> pb::ApplyEventRequest {
-        pb::ApplyEventRequest {
-            parent: "funds/bridge".into(),
-            rule_id: rule.into(),
-            event_id: id.into(),
-            amount: amount.into(),
-            days: String::new(),
-            instrument: String::new(),
-            quantity: String::new(),
-            trade_date: None,
-            validate_only: false,
-        }
-    }
-
     #[test]
     fn capitalizing_wip_conserves_and_opens_no_lot() {
         // ⭐ COST → WIP → RECOGNIZED IS A CONSERVED TRANSFER, NOT A SALE.
