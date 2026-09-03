@@ -209,7 +209,6 @@ pub fn serve(
             to_json(&console.list_accounts(
                 &format!("funds/{id}/views/{v}"),
                 filter_of(query),
-                param_of(query, "period"),
             )?)?
         }
         ["funds", id, "views", v, "accounts", a, "postings"] => {

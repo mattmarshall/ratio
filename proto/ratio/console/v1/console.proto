@@ -1824,15 +1824,14 @@ message ListAccountsRequest {
   // balance sheet can foot (A = L + E + surplus). `pnl` keeps income and
   // expense. Both are the household presentation of the same chart; they
   // do not invent accounts.
-  string filter = 4 [(google.api.field_behavior) = OPTIONAL];
-
-  // A month (`YYYY-MM`) or a year (`YYYY`). Empty is inception-to-date.
   //
-  // ⛔ WITH `filter=pnl` THIS IS REQUIRED. Cumulative income is an ABOR-shaped
-  // figure wearing a household label, and personal finance needs the window
-  // as the default. An entry with no date is not in any period — same
-  // refusal as a lot with no acquisition date, and for the same reason.
-  string period = 5 [(google.api.field_behavior) = OPTIONAL];
+  // ⛔ A MONTH OR YEAR IS A SUFFIX, NOT A SECOND FIELD. AIP-132 List requests
+  // carry parent, page_size, page_token, and filter. `pnl-2026-03` is March;
+  // `pnl-2026` is the year; `sheet-2026-03` is as-of that month end. Bare
+  // `pnl` is refused — cumulative income is an ABOR-shaped figure wearing a
+  // household label. An entry with no date is not in any period. Hyphens,
+  // not colons: the transcode does not percent-decode query values.
+  string filter = 4 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message ListAccountsResponse {

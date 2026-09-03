@@ -153,9 +153,10 @@ export const ROUTES: readonly Route[] = [
   // ── Household figures ────────────────────────────────────────────────────
   //
   // ⭐ NOT A SECOND LEDGER. Both screens call ListAccounts against the same
-  // chart `chart_for` wrote. `filter=sheet` / `filter=pnl` plus `period` are
-  // presentations of those rows, not new resources — so they do not grow
-  // the deeplink table.
+  // chart `chart_for` wrote. `filter=sheet-YYYY-MM` / `filter=pnl-YYYY-MM`
+  // are presentations of those rows, not new resources — so they do not
+  // grow the deeplink table. The page URL still uses `?period=` for the
+  // chips; the wire does not (AIP-132).
   {
     path: "/books/[book]/views/[view]/sheet",
     file: "books/[book]/views/[view]/sheet/page.tsx",

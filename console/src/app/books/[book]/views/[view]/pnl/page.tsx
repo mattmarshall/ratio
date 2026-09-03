@@ -12,9 +12,9 @@ export const dynamic = "force-dynamic";
 /**
  * Period profit and loss. Month or year, not since inception.
  *
- * ⛔ CUMULATIVE-ONLY IS THE ABOR-SHAPED VIEW. `filter=pnl` without a period
- * is refused by the server; this page always sends one. An entry with no
- * date is not in any window.
+ * ⛔ CUMULATIVE-ONLY IS THE ABOR-SHAPED VIEW. `filter=pnl` without a
+ * `YYYY-MM` / `YYYY` suffix is refused by the server; this page always
+ * sends one. An entry with no date is not in any window.
  *
  * Accounts are `chart_for` income and expense — living expenses, taxes,
  * income — not a fund's realized-gain warehouse.

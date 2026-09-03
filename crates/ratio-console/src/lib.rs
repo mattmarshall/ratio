@@ -383,21 +383,21 @@ impl Console {
     /// an empty chart and a complete one look the same. `filter=posted` is
     /// there for when you want only what moved.
     ///
-    /// `period` is a month (`YYYY-MM`) or a year (`YYYY`). Empty is
-    /// inception-to-date, off the maintained fold. A period P&L (`filter=pnl`)
-    /// needs one: cumulative-only is the ABOR-shaped view this filter exists
+    /// A month (`YYYY-MM`) or a year (`YYYY`) is a suffix on the chip, not a
+    /// second List field (AIP-132). `pnl-2026-03` is March; bare `pnl` is
+    /// refused — cumulative income is the ABOR-shaped view this filter exists
     /// to refuse as a default.
     pub fn list_accounts(
         &self,
         parent: &str,
         filter: &str,
-        period: &str,
     ) -> Result<pb::ListAccountsResponse> {
         let (fund, view) = view_scoped_parent(parent)?;
-        if filter == "pnl" && period.trim().is_empty() {
+        let (kind, period) = list_accounts_window(filter);
+        if kind == "pnl" && period.is_empty() {
             bail!("a period P&L needs a month (YYYY-MM) or a year (YYYY)");
         }
-        let fold = match (filter, period.trim()) {
+        let fold = match (kind, period) {
             ("pnl", p) => AccountFold::Activity(parse_period(p)?),
             (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
             _ => AccountFold::Current,
@@ -405,7 +405,7 @@ impl Console {
         let accounts = self.accounts_folded(&fund, &view, fold)?;
         let keep: Vec<pb::Account> = accounts
             .into_iter()
-            .filter(|a| match filter {
+            .filter(|a| match kind {
                 "posted" => a.posting_count != "0",
                 "abnormal" => a.abnormal,
                 "pnl" => {
@@ -3437,6 +3437,18 @@ struct PeriodWindow {
     end: String,
 }
 
+/// AIP-132 List requests carry `filter` (AIP-160), not a custom period field.
+/// `pnl-2026-03` / `sheet-2026` — hyphen because `param_of` does not decode.
+fn list_accounts_window(filter: &str) -> (&str, &str) {
+    if let Some(rest) = filter.strip_prefix("pnl-") {
+        ("pnl", rest)
+    } else if let Some(rest) = filter.strip_prefix("sheet-") {
+        ("sheet", rest)
+    } else {
+        (filter, "")
+    }
+}
+
 /// A month (`YYYY-MM`) or a year (`YYYY`) as an inclusive calendar window.
 ///
 /// ⛔ THE LAST DAY IS THE CALENDAR'S, NOT DAY 31. `2026-02` ending on the
@@ -4208,7 +4220,7 @@ mod tests {
             .unwrap();
 
         let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
-        let sheet = c.list_accounts(&view, "sheet", "").unwrap().accounts;
+        let sheet = c.list_accounts(&view, "sheet").unwrap().accounts;
         assert!(
             sheet.iter().any(|a| a.display_name == "Cash and bank"),
             "the sheet names chart_for(Personal), not a fund: {sheet:?}"
@@ -4259,7 +4271,7 @@ mod tests {
         }
 
         let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
-        let march = c.list_accounts(&view, "pnl", "2026-03").unwrap().accounts;
+        let march = c.list_accounts(&view, "pnl-2026-03").unwrap().accounts;
         let living = march
             .iter()
             .find(|a| a.display_name == "Living expenses")
@@ -4275,11 +4287,11 @@ mod tests {
             "a P&L that lists cash is a balance sheet wearing the wrong label"
         );
 
-        let year = c.list_accounts(&view, "pnl", "2026").unwrap().accounts;
+        let year = c.list_accounts(&view, "pnl-2026").unwrap().accounts;
         let living_y = year.iter().find(|a| a.display_name == "Living expenses").unwrap();
         assert_eq!(living_y.debit, "10000", "the year is March+April, still not the undated 99");
 
-        let refused = c.list_accounts(&view, "pnl", "");
+        let refused = c.list_accounts(&view, "pnl");
         assert!(refused.is_err(), "a P&L without a period is the cumulative default this refuses");
     }
 
@@ -5516,14 +5528,14 @@ mod tests {
         }
 
         let c = Console::new(&d);
-        let rows = c.list_accounts(&demo_view(), "", "").unwrap().accounts;
+        let rows = c.list_accounts(&demo_view(), "").unwrap().accounts;
 
         assert_eq!(rows.len(), 6, "every account in the chart, posted to or not");
         let idle = rows.iter().find(|a| a.dimension == "3").expect("the untouched account is a row");
         assert_eq!(idle.posting_count, "0");
         assert_eq!(idle.balance, "0");
         // …and `posted` is what drops it.
-        assert_eq!(c.list_accounts(&demo_view(), "posted", "").unwrap().accounts.len(), 5);
+        assert_eq!(c.list_accounts(&demo_view(), "posted").unwrap().accounts.len(), 5);
 
         let debit: i64 = rows.iter().map(|a| a.debit.parse::<i64>().unwrap()).sum();
         let credit: i64 = rows.iter().map(|a| a.credit.parse::<i64>().unwrap()).sum();
@@ -5586,7 +5598,7 @@ mod tests {
         assert_eq!(equity.balance, "500");
         assert!(equity.abnormal, "equity holding a DEBIT balance is the abnormal one");
 
-        let flagged = c.list_accounts(&demo_view(), "abnormal", "").unwrap().accounts;
+        let flagged = c.list_accounts(&demo_view(), "abnormal").unwrap().accounts;
         assert_eq!(flagged.len(), 2, "the filter returns exactly what is flagged");
     }
 
@@ -5596,7 +5608,7 @@ mod tests {
         book(&d);
         let c = Console::new(&d);
 
-        for a in c.list_accounts(&demo_view(), "posted", "").unwrap().accounts {
+        for a in c.list_accounts(&demo_view(), "posted").unwrap().accounts {
             let lines = c.list_postings(&a.name).unwrap().postings;
             assert!(!lines.is_empty(), "{} was filtered as posted-to", a.name);
             // The whole claim of the screen: the lines add up to the figure.
