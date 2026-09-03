@@ -274,6 +274,17 @@ describe("the command palette", () => {
     );
   });
 
+  it("opens a pasted book of record on the view itself", async () => {
+    // ⭐ #53. The name ListViews returns used to land on breaks because the
+    // view segment had no page. The palette must not compensate that way.
+    renderConsole();
+    await type(`funds/${FUND}/views/${VIEW}`);
+    await waitFor(() => expect(screen.getAllByText(/^Open funds\//)).toHaveLength(1));
+    fireEvent.click(await row(/^Open funds\//));
+    expect(push).toHaveBeenCalledWith(`/books/${FUND}/views/${VIEW}`);
+    expect(push).not.toHaveBeenCalledWith(`/books/${FUND}/views/${VIEW}/breaks`);
+  });
+
   it("translates a pasted resource name exactly, and only it", async () => {
     renderConsole();
     await type(`funds/${FUND}/views/${VIEW}/navStrikes/2026-02-26`);

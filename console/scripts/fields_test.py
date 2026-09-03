@@ -87,6 +87,10 @@ NEEDLES: list[tuple[str, str]] = [
     ("settled T+", "a settlement view never says how many days it settles in"),
     ("Unplaceable", "entries a view cannot date would vanish from the screen"),
     (
+        "Recognised through",
+        "a book of record would not say the day it has recognised entries through",
+    ),
+    (
         "Neither view can place these",
         "the reconciliation would look fully explained when it is not",
     ),
