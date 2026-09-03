@@ -2,7 +2,7 @@
 // Refuse to build a console that cannot sign anybody in.
 //
 // ⛔ THIS EXISTS BECAUSE A DEPLOYMENT SHIPPED GREEN AND WAS BROKEN. Every check
-// this repository runs passed — Bazel, the five source-text checks, the render
+// this repository runs passed — Bazel, the six source-text checks, the render
 // suite, `next build` — and the console went live with `RATIO_API_ORIGIN`
 // pointing at its own URL. Nothing noticed, because nothing here had ever
 // looked at the environment; the first thing that did was a person clicking

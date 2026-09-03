@@ -3,6 +3,9 @@ package(default_visibility = ["//visibility:public"])
 # Exposed for crate_universe's `manifests` (the workspace root manifest).
 exports_files(["Cargo.toml"])
 
+# PLAN.md is DATA to the console-side BookKind check.
+exports_files(["PLAN.md"])
+
 # ⛔ The deploy workflow is DATA to a test, because the capability flag it passes
 # is part of whether `deploy/app.yaml` can be deployed at all. See
 # `//deploy:iac_test`.
@@ -28,8 +31,16 @@ sh_test(
     name = "plan_refusals_test",
     size = "small",
     srcs = ["plan_refusals_test.sh"],
-    args = ["$(location PLAN.md)"],
-    data = ["PLAN.md"],
+    args = [
+        "$(location PLAN.md)",
+        "$(location //console:src/wire/types.ts)",
+        "$(location //console:scripts/book_kinds_in_plan_test.py)",
+    ],
+    data = [
+        "PLAN.md",
+        "//console:src/wire/types.ts",
+        "//console:scripts/book_kinds_in_plan_test.py",
+    ],
 )
 
 # The scale screen offers three shapes to fold. This checks they are the shapes

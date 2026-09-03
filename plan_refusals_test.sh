@@ -25,9 +25,19 @@
 # drift apart once both are written down, which is the failure that actually
 # happened. Adding a line to `BUILT` is the cost of building something the plan
 # refused, and it is meant to be a moment where somebody notices.
+#
+# The one tree fact it is now handed is the `BookKind` union: Bazel passes
+# `console/src/wire/types.ts` and `console/scripts/book_kinds_in_plan_test.py`
+# so a kind the console offers that PLAN.md does not name goes red here,
+# which is how PERSONAL shipped. That script still does not scan the tree.
 set -euo pipefail
 
 PLAN="$1"
+# Optional: the BookKind union and the console-side check that holds PLAN.md
+# to it. Bazel passes both; a bare `./plan_refusals_test.sh PLAN.md` still
+# does the BUILT half. See console/scripts/book_kinds_in_plan_test.py.
+TYPES="${2-}"
+KINDS_PY="${3-}"
 
 fail() { echo "  x $*" >&2; exit 1; }
 
@@ -49,6 +59,14 @@ BUILT=(
   # to the refusal list, this goes red instead of the two documents quietly
   # disagreeing. The sentence it matches is in the 2026-08-13 amendment.
   "multi-view books"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED THEM, WHICH IS THE PROTOCOL.
+  # Independent Books and WorkOS AuthKit are not on the refusal list — this
+  # check would have stayed green whatever was built, same as multi-view
+  # books. The sentences they match are in the 2026-09-03 book-centric
+  # amendment. Four merged PRs landed them without this file moving; adding
+  # the lines is the cost of noticing.
+  "independent Books"
+  "WorkOS AuthKit"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
@@ -77,5 +95,9 @@ done
 
 [ "$bad" -eq 0 ] || fail "the plan and the repository disagree about what the product is — \
 edit PLAN.md in the same commit as the feature, or do not land the feature"
+
+if [ -n "$TYPES" ] && [ -n "$KINDS_PY" ]; then
+  python3 "$KINDS_PY" "$TYPES" "$PLAN"
+fi
 
 echo "  ok  ${#BUILT[@]} built features, none still on the plan's refusal list"

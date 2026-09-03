@@ -50,12 +50,12 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 `competitive/` are deliberately NOT ignored.
 
 `.github/workflows/console.yml` runs `tsc --noEmit`, the render suite,
-`next build` and the five checks in `console/scripts/` on any change under
+`next build` and the six checks in `console/scripts/` on any change under
 `console/` — and on a change to `console.proto`, because the wire types mirror
 it. `site.yml` re-runs `tokens_test.py`, because `site/**` is ignored above and
 a token changed there has to go red where it was changed.
 
-⚠ **Bazel does not run those five.** They were `sh_test`s under `//console:` and
+⚠ **Bazel does not run those six.** They were `sh_test`s under `//console:` and
 failed twice on Bazel wiring rather than on anything they check — a
 package-relative path that does not survive the runfiles root, then a label its
 own `glob` already matched. They are green in `console.yml`, which is the one

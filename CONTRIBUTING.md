@@ -22,11 +22,11 @@ JavaScript toolchain any more (see the ⛔ in `MODULE.bazel`) and cannot see a
 type error in `console/`. `console.yml` is a required check for that reason.
 `site/` is the older precedent for a non-Bazel path.
 
-`console.yml` runs `tsc --noEmit`, the render suite, `next build`, and five
+`console.yml` runs `tsc --noEmit`, the render suite, `next build`, and six
 source-text checks — the contract reaches every screen, the screens still read
 the fields whose absence has shipped before, the fixtures match the proto, the
-design tokens still agree with `site/style.css`, and nothing that belongs in the
-environment is committed.
+design tokens still agree with `site/style.css`, nothing that belongs in the
+environment is committed, and every `BookKind` is named in `PLAN.md`.
 
 ⛔ **The one thing Bazel still asserts about the console is
 `//proto:mirrors_test`**, which reads `console/src/wire/types.ts` by label and
