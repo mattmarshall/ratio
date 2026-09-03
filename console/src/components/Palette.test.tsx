@@ -243,8 +243,8 @@ describe("the command palette", () => {
         </Palette>,
       );
     for (const [label, href] of [
-      ["Budget vs actual", "/books/bridge/views/book/budget"],
-      ["WIP", "/books/bridge/views/book/wip"],
+      ["Budget vs actual", `/books/bridge/views/${VIEW}/budget`],
+      ["WIP", `/books/bridge/views/${VIEW}/wip`],
     ] as const) {
       const { unmount } = renderProject();
       await type(label);
