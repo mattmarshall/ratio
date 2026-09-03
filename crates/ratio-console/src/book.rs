@@ -213,7 +213,6 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
     }
 }
 
-
 /// Equity that is capital activity — not unrealized gain.
 ///
 /// ⛔ UNREALIZED GAIN IS VALUATION, NOT WHO PUT MONEY IN. Folding it into
