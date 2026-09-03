@@ -1,12 +1,26 @@
 {
-  "templates": [
-    {
-      "name": "funds/harbourline-global-value/templates/custodian-positions",
-      "templateId": "custodian-positions",
-      "factKind": "position",
-      "form": "one row, one holding",
-      "posts": false
-    }
-  ],
-  "nextPageToken": ""
+    "templates": [
+        {
+            "name": "funds/harbourline-global-value/templates/custodian-positions",
+            "templateId": "custodian-positions",
+            "factKind": "position",
+            "form": "template custodian-positions {\n  reads      csv with header\n  grain      one position per row\n\n  entity     holding  (instrument)\n    by     isin   from \"ISIN\"\n    or     ticker from \"Ticker\" within exchange from \"Exch\"\n    absent   pend\n\n  fact       position\n    reference    from \"LineRef\"\n    holding      holding\n    asOf         from \"AsOf\" as date \"YYYY-MM-DD\"\n    quantity     from \"Quantity\" as decimal\n    marketValue  from \"MarketValue\" as money in \"Ccy\"\n\n  posts      nothing — reference data, recorded and never booked\n}\n",
+            "posts": false
+        },
+        {
+            "name": "funds/household/templates/bank-statement",
+            "templateId": "bank-statement",
+            "factKind": "statement",
+            "form": "template bank-statement {\n  reads      csv with header\n  grain      one statement per row\n\n  entity     payee  (counterparty)\n    by     name   from \"Memo\"\n    absent   pend\n\n  fact       statement\n    reference    from \"Ref\"\n    payee        payee\n    dated        from \"Date\" as date \"MM/DD/YYYY\"\n    amount       from \"Amount\" as money in \"Ccy\"\n    memo         from \"Memo\" as text\n    account      from \"Account\" as text\n    kind         from \"Kind\" as { card: card, expense: expense, income: income }\n\n  posts      by \"kind\"\n    amount      amount\n    dated       dated\n    card        -> card_charge\n    expense     -> living_expense\n    income      -> household_income\n}\n",
+            "posts": true
+        },
+        {
+            "name": "funds/bridge/templates/project-invoices",
+            "templateId": "project-invoices",
+            "factKind": "invoice",
+            "form": "template project-invoices {\n  reads      csv with header\n  grain      one invoice per row\n\n  entity     vendor  (counterparty)\n    by     name   from \"Vendor\"\n    absent   pend\n\n  fact       invoice\n    reference    from \"InvoiceRef\"\n    vendor       vendor\n    dated        from \"Date\" as date \"YYYY-MM-DD\"\n    amount       from \"Amount\" as money in \"Ccy\"\n    memo         from \"Memo\" as text optional\n    kind         from \"Kind\" as { cost: cost, invoice: invoice }\n\n  posts      by \"kind\"\n    amount      amount\n    dated       dated\n    cost        -> project_cost\n    invoice     -> vendor_invoice\n}\n",
+            "posts": true
+        }
+    ],
+    "nextPageToken": ""
 }

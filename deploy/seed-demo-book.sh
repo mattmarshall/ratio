@@ -217,6 +217,51 @@ reads = "csv"
     as = "money"
     column = "Price"
     currency = "Currency"
+
+  # Positions snapshot. The CreateBook investment seed, and the column
+  # contract a custodian holdings file arrives under. REFERENCE DATA: no
+  # `posts` block — recorded, resolved and citable, never booked.
+  #
+  # ⭐ THE CLOSED LOOP THIS SCRIPT ALREADY IS: `prime_equity_trades` above
+  # is delivered (`prime-trades.csv`), resolved against the master, admitted,
+  # and — when `LEAVE_ONE_PENDING` is set — leaves VWRL unmatched so the
+  # pending-fact screen has a row an operator can open. That is the
+  # roadmap's "first custodian feed, end to end". This snapshot is the
+  # other half of the same feed: holdings as of a day, not trades.
+  [[template]]
+  id = "custodian-positions"
+  reads = "csv"
+
+    [[template.entity]]
+    name = "holding"
+    kind = "instrument"
+    absent = "pend"
+    by = [
+      { attribute = "isin", column = "ISIN" },
+      { attribute = "ticker", column = "Ticker", within = { attribute = "exchange", column = "Exch" } },
+    ]
+
+    [template.fact]
+    kind = "position"
+    reference = "LineRef"
+    entities = { holding = "holding" }
+
+    [[template.fact.value]]
+    field = "asOf"
+    as = "date"
+    column = "AsOf"
+    format = "YYYY-MM-DD"
+
+    [[template.fact.value]]
+    field = "quantity"
+    as = "decimal"
+    column = "Quantity"
+
+    [[template.fact.value]]
+    field = "marketValue"
+    as = "money"
+    column = "MarketValue"
+    currency = "Ccy"
 TOML
 "$RATIO" config set rules.toml --book "$OUT" >/dev/null
 

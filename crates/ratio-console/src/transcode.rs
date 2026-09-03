@@ -49,6 +49,8 @@ pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/{name=funds/*/deliveries/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/pendingFacts" },
     Route { method: "GET", template: "/v1/{name=funds/*/pendingFacts/*}" },
+    Route { method: "GET", template: "/v1/{parent=funds/*}/facts" },
+    Route { method: "GET", template: "/v1/{name=funds/*/facts/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/accounts" },
     Route { method: "GET", template: "/v1/{parent=funds/*/views/*/accounts/*}/postings" },
     Route { method: "GET", template: "/v1/{name=funds/*/views/*/accounts/*/postings/*}" },
@@ -210,6 +212,12 @@ pub fn serve(
         }
         ["funds", id, "pendingFacts", f] => {
             to_json(&console.get_pending_fact(&format!("funds/{id}/pendingFacts/{f}"))?)?
+        }
+        ["funds", id, "facts"] => {
+            to_json(&console.list_facts(&format!("funds/{id}"), filter_of(query))?)?
+        }
+        ["funds", id, "facts", f] => {
+            to_json(&console.get_fact(&format!("funds/{id}/facts/{f}"))?)?
         }
         ["funds", id, "views", v, "accounts"] => {
             to_json(&console.list_accounts(
@@ -871,11 +879,13 @@ impl JsonView for pb::Position {
     fn to_json(&self) -> String {
         format!(
             "{{\"name\":{},\"account\":{},\"accountLabel\":{},\"instrument\":{},\
-             \"instrumentLabel\":{},\"quantity\":{},\"value\":{},\"openLotCount\":{},\"markDate\":{}}}",
+             \"instrumentLabel\":{},\"quantity\":{},\"value\":{},\"openLotCount\":{},\
+             \"markDate\":{},\"priceFact\":{},\"deliveryDigest\":{},\"configDigest\":{}}}",
             q(&self.name), q(&self.account), q(&self.account_label), q(&self.instrument),
             q(&self.instrument_label), q(&self.quantity), q(&self.value),
             q(&self.open_lot_count.to_string()),
-            date_json(&self.mark_date)
+            date_json(&self.mark_date),
+            q(&self.price_fact), q(&self.delivery_digest), q(&self.config_digest)
         )
     }
 }
@@ -981,10 +991,12 @@ impl JsonView for pb::Mark {
         format!(
             "{{\"instrument\":{},\"instrumentLabel\":{},\"quantity\":{},\
              \"carrying\":{},\"market\":{},\"movement\":{},\"price\":{},\
-             \"priceDate\":{}}}",
+             \"priceDate\":{},\"priceFact\":{},\"deliveryDigest\":{},\
+             \"configDigest\":{}}}",
             q(&self.instrument), q(&self.instrument_label), q(&self.quantity),
             q(&self.carrying), q(&self.market), q(&self.movement), q(&self.price),
-            date_json(&self.price_date)
+            date_json(&self.price_date),
+            q(&self.price_fact), q(&self.delivery_digest), q(&self.config_digest)
         )
     }
 }
@@ -1082,9 +1094,33 @@ impl JsonView for pb::CurrencyTotal {
     fn to_json(&self) -> String {
         format!(
             "{{\"currencyCode\":{},\"debit\":{},\"credit\":{},\"balance\":{},\
-             \"rate\":{}}}",
+             \"rate\":{},\"rateFact\":{},\"deliveryDigest\":{},\"configDigest\":{}}}",
             q(&self.currency_code), q(&self.debit), q(&self.credit),
-            q(&self.balance), q(&self.rate)
+            q(&self.balance), q(&self.rate), q(&self.rate_fact),
+            q(&self.delivery_digest), q(&self.config_digest)
+        )
+    }
+}
+
+impl JsonView for pb::Fact {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"kind\":{},\"reference\":{},\"assertion\":{},\
+             \"deliveryDigest\":{},\"row\":{},\"templateId\":{},\
+             \"configDigest\":{},\"superseded\":{}}}",
+            q(&self.name), q(&self.kind), q(&self.reference), q(&self.assertion),
+            q(&self.delivery_digest), q(&self.row), q(&self.template_id),
+            q(&self.config_digest), self.superseded
+        )
+    }
+}
+
+impl JsonView for pb::ListFactsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"facts\":[{}],\"nextPageToken\":{}}}",
+            self.facts.iter().map(|f| f.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
         )
     }
 }

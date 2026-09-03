@@ -9,8 +9,8 @@ import {
 } from "./deeplink";
 
 // ⛔ THE HALF A RENDER TEST CANNOT DO. `hrefForResourceName` is the one place in
-// this console where a whole resource name becomes a URL, and seven of the
-// fifteen collections are spelled differently on the two sides. A palette that
+// this console where a whole resource name becomes a URL, and eight of the
+// eighteen collections are spelled differently on the two sides. A palette that
 // sent `navStrikes` into the path would 404 on a resource that exists — and it
 // would do it in the confident voice it uses for the eight that pass through
 // unchanged.
@@ -56,6 +56,7 @@ describe("a pasted resource name", () => {
     [`funds/${FUND}/entries/5`, `/books/${FUND}/entries/5`],
     [`funds/${FUND}/deliveries/7c1e0d`, `/books/${FUND}/data/deliveries/7c1e0d`],
     [`funds/${FUND}/pendingFacts/pf-1`, `/books/${FUND}/data/pending/pf-1`],
+    [`funds/${FUND}/facts/aabb-2`, `/books/${FUND}/data/facts/aabb-2`],
     [
       `funds/${FUND}/views/${VIEW}/positions/ACME`,
       `/books/${FUND}/views/${VIEW}/positions/ACME`,
@@ -83,9 +84,10 @@ describe("a pasted resource name", () => {
     ).toContain("/strikes/");
   });
 
-  it("nests the three data-plane collections under data", () => {
+  it("nests the four data-plane collections under data", () => {
     expect(hrefForResourceName(`funds/${FUND}/deliveries/7c1e0d`)).toContain("/data/");
     expect(hrefForResourceName(`funds/${FUND}/pendingFacts/pf-1`)).toContain("/data/");
+    expect(hrefForResourceName(`funds/${FUND}/facts/aabb-2`)).toContain("/data/");
     expect(hrefForResourceName(`funds/${FUND}/templates/t`)).toContain("/data/");
   });
 
@@ -155,7 +157,7 @@ describe("a bare id", () => {
 
   it("offers the same candidates whatever the id looks like", () => {
     // ⛔ THE POINT, STATED AS AN EQUALITY. A date, a ticker, a GL code and a
-    // slug all get the same twelve routes, because the namespaces collide and
+    // slug all get the same thirteen routes, because the namespaces collide and
     // the console cannot check. Any shape-based ranking breaks this.
     const keys = (id: string) => candidatesForId(FUND, VIEW, id).map((c) => c.key);
     expect(keys("2026-02-26")).toEqual(keys("ACME"));
@@ -186,6 +188,7 @@ describe("a bare id", () => {
       `/books/${FUND}/actions/`,
       `/books/${FUND}/data/deliveries/`,
       `/books/${FUND}/data/pending/`,
+      `/books/${FUND}/data/facts/`,
       `/books/${FUND}/data/templates/`,
     ];
     expect(candidatesForId(FUND, VIEW, "x9").map((c) => c.href)).toEqual(

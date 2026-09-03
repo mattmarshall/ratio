@@ -8,6 +8,14 @@
 // captured list — so a screen rendered against it is a screen rendered against
 // what a real book once said.
 //
+// ⚠ TEMPLATES ARE THE ONE LIST THAT IS KIND-AWARE. CreateBook writes a
+// different mapping per kind, so a real `/v1/funds/{id}/templates` never
+// offers `custodian-positions` on a household book. The committed fixture
+// holds every seeded template in one file (a recapture of harbourline would
+// drop the Personal/Project rows). Subsetting by the kind `books.json`
+// already records is what the live server does by reading that book's
+// config — not a second menu.
+//
 // ⚠ IT EXISTS FOR phone_test.mjs, NOT FOR DEVELOPMENT. A local run against
 // real figures is `ratio watch --book <dir>` (see ../README.md); this exists
 // so a layout check can boot the console with no Rust toolchain in the job.
@@ -73,12 +81,41 @@ const ROUTES = [
   [/^\/v1\/funds\/[^/]+\/entries\/[^/:]+$/, "entry"],
 ];
 
+// CreateBook seed ids. An id that is not in this map (the demo book's
+// `prime_equity_trades`) is treated as Investment — that is the closed loop.
+const INGEST_TEMPLATE_KIND = {
+  "bank-statement": "PERSONAL",
+  "custodian-positions": "INVESTMENT",
+  "project-invoices": "PROJECT",
+};
+
+function bookKind(bookId) {
+  const books = JSON.parse(fixture("books"));
+  const row = books.books.find((b) => b.name.split("/").pop() === bookId);
+  return row?.kind ?? "INVESTMENT";
+}
+
+function templatesDoc(path) {
+  const bookId = path.split("/")[3];
+  const kind = bookKind(bookId);
+  const doc = JSON.parse(fixture("templates"));
+  doc.templates = doc.templates.filter((t) => {
+    const owner = INGEST_TEMPLATE_KIND[t.templateId] ?? "INVESTMENT";
+    return owner === kind;
+  });
+  for (const t of doc.templates) {
+    t.name = `funds/${bookId}/templates/${t.templateId}`;
+  }
+  return doc;
+}
+
 function body(name, path) {
+  if (name === "templates") return JSON.stringify(templatesDoc(path));
+  if (name === "templates:first") {
+    return JSON.stringify(templatesDoc(path).templates[0]);
+  }
   // ⭐ KIND SELECTS CHROME. GetBook used to serve `book.json` (a personal
-  // household) for every id, which was invisible while the hub ignored
-  // kind. A personal book now lands on the sheet; serving Household
-  // for `harbourline-global-value` would put fund-ops URLs behind household
-  // places. Look the id up in the captured list.
+  // household) for every id. Look the id up in the captured list.
   if (name === "book") {
     const id = path.split("/").pop();
     const books = JSON.parse(fixture("books")).books;

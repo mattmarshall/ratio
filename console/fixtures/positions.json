@@ -13,7 +13,10 @@
         "year": 2026,
         "month": 2,
         "day": 26
-      }
+      },
+      "priceFact": "funds/harbourline-global-value/facts/aabbccddeeff0011-3",
+      "deliveryDigest": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+      "configDigest": "9f2c1ab7de40551c9f2c1ab7de40551c9f2c1ab7de40551c9f2c1ab7de40551c"
     }
   ],
   "nextPageToken": ""

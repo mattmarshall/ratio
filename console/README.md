@@ -70,13 +70,13 @@ fetched from the browser at all — there is no search RPC in the contract, and
 ⛔ **So a pasted id offers every route it could name and guesses none.** The id
 namespaces collide and it is not close: a break is `cash-usd-2026-02-26`, a NAV
 strike is `2026-02-26`, an account is `1010` and so is a lot. Nothing here can
-look any of them up, so `deeplink.ts` offers all twelve under *Open by id* and
+look any of them up, so `deeplink.ts` offers all thirteen under *Open by id* and
 shows the URL each would go to. A palette that picked one would be the console
 asserting a fact it has not checked. A pasted *resource name* is different — the
 string says which resource it is, so that resolves to exactly one URL, through the
-one table in this codebase that translates a whole name. ⚠ Seven of its
+one table in this codebase that translates a whole name. ⚠ Eight of its
 collections are spelled differently on the two sides (`navStrikes` → `strikes`,
-`changeLogEntries` → `changes`, and five more), which is why the table exists and
+`changeLogEntries` → `changes`, and six more), which is why the table exists and
 why `deeplink.test.ts` pins every one.
 
 ⚠ **#52 and #53 were the two contract resources with no screen**, and the

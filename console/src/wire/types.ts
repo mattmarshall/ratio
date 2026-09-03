@@ -656,6 +656,14 @@ export interface CurrencyTotal {
    * in hundredths. Empty for the fund's own currency, which has no rate fact.
    */
   rate: Int64;
+  /**
+   * The rate fact this translation cites. Empty for the base currency and for
+   * an untyped leg — both translate at par without a fact.
+   */
+  rateFact: string;
+  deliveryDigest: string;
+  /** The config digest that fact pinned — not whichever is in force now. */
+  configDigest: string;
 }
 
 export interface ListAccountsResponse {
@@ -794,6 +802,29 @@ export interface ListPendingFactsResponse {
   nextPageToken: string;
 }
 
+/**
+ * A fact the data plane has recorded — a price, an FX rate, a trade.
+ *
+ * ⛔ APPEND-ONLY. A correction is a new fact with its own provenance, never an
+ * edit of this one. `superseded` is derived from the log so both stay readable.
+ */
+export interface Fact {
+  name: string;
+  kind: string;
+  reference: string;
+  assertion: string;
+  deliveryDigest: string;
+  row: Int64;
+  templateId: string;
+  configDigest: string;
+  superseded: boolean;
+}
+
+export interface ListFactsResponse {
+  facts: Fact[];
+  nextPageToken: string;
+}
+
 /** A row the template could not map. Per row, never per file. */
 export interface RejectedRow {
   row: Int64;
@@ -891,6 +922,13 @@ export interface Position {
    */
   openLotCount: Int64;
   markDate: CalendarDate | null;
+  /**
+   * The price fact the last mark cited. Empty if this position has never been
+   * marked — then the value is cost, and there is no price to open.
+   */
+  priceFact: string;
+  deliveryDigest: string;
+  configDigest: string;
 }
 
 export interface ListPositionsResponse {
@@ -937,6 +975,10 @@ export interface Mark {
   movement: Int64;
   price: Int64;
   priceDate: CalendarDate | null;
+  /** The fact that supplied the price, so a mark preview names its evidence. */
+  priceFact: string;
+  deliveryDigest: string;
+  configDigest: string;
 }
 
 export interface MarkPositionsRequest {

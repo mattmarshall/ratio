@@ -292,6 +292,23 @@ NEEDLES: list[tuple[str, str]] = [
         "who put money in and took money out, not IRR",
         "the capital figure would read as performance reporting",
     ),
+    # ── the fact plane ──────────────────────────────────────────────────────
+    (
+        "a correction is a new row",
+        "the facts list would not say that a correction is a new fact",
+    ),
+    (
+        "A later fact superseded this one",
+        "a superseded fact would read as the one in force",
+    ),
+    (
+        "Never marked — this is cost, not a price",
+        "an unmarked position would look priced",
+    ),
+    (
+        "Price from",
+        "a marked position would not open the price fact it cites",
+    ),
 ]
 
 

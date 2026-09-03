@@ -51,6 +51,7 @@ FIXTURES = {
     "templates.json": "ListTemplatesResponse",
     "deliveries.json": "ListDeliveriesResponse",
     "pendingFacts.json": "ListPendingFactsResponse",
+    "facts.json": "ListFactsResponse",
     "corporateActions.json": "ListCorporateActionsResponse",
     "changeLogEntries.json": "ListChangeLogEntriesResponse",
     "entry.json": "Entry",

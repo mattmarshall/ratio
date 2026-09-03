@@ -310,6 +310,28 @@ service Console {
     option (google.api.method_signature) = "name";
   }
 
+  // Facts this book has recorded — prices, FX rates, and everything else a
+  // template read out of a file. (AIP-132)
+  //
+  // ⛔ NOT PENDINGFACTS. That collection is the exception queue: facts that
+  // cannot post. This one is the fact plane itself. A price or an FX rate
+  // never posts; it is cited by a figure, and an operator opens it from that
+  // figure rather than only from a CLI dump of facts.jsonl.
+  //
+  // Corrections are a new row, never an edit of an old one. `Fact.superseded`
+  // is derived from append order so both records stay readable.
+  rpc ListFacts(ListFactsRequest) returns (ListFactsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/facts"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one fact, with the delivery, the row, and the config digest the
+  // ingest run pinned. (AIP-131)
+  rpc GetFact(GetFactRequest) returns (Fact) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/facts/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
   // What the fund holds, by account and instrument. (AIP-132)
   //
   // ⛔ THE UNATTRIBUTED REMAINDER IS IN THIS LIST, as a position with no
@@ -1823,6 +1845,18 @@ message CurrencyTotal {
   // in hundredths. Empty for the fund's own currency, which has no rate fact —
   // a fund does not record what a dollar is worth in dollars.
   string rate = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The rate fact this translation cites, so a reader can open it from the
+  // figure rather than only from the CLI. Empty for the base currency and for
+  // an untyped leg — both translate at par without a fact.
+  string rate_fact = 6 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fact"
+  ];
+  string delivery_digest = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // The config digest that fact pinned — the active configuration the ingest
+  // run used, not whichever is in force now.
+  string config_digest = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One line of one entry, as it lands on an account.
@@ -2232,6 +2266,69 @@ message GetPendingFactRequest {
   ];
 }
 
+// A fact the data plane has recorded — a price, an FX rate, a trade.
+//
+// ⛔ APPEND-ONLY. A correction is a new fact with its own provenance, never an
+// edit of this one. `superseded` is derived from the log so both records stay
+// readable: the stale rate is still the rate a figure struck that morning
+// cited, and the later one is the rate in force now.
+message Fact {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Fact"
+    pattern: "funds/{fund}/facts/{fact}"
+    singular: "fact"
+    plural: "facts"
+  };
+
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // `price`, `rate`, or whatever the template declared.
+  string kind = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The row's own reference, as the counterparty knows it.
+  string reference = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // What this fact asserts, as a person reads it — "EUR at 1.08" or
+  // "ACME at 251.14 on 2026-02-26".
+  string assertion = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The chain back to the bytes, and the configuration the ingest run pinned.
+  string delivery_digest = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string row = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string template_id = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // `Provenance.template`: the digest of the configuration that held the
+  // mapping. A fact can always name the rules that produced it.
+  string config_digest = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // True when a later fact of the same kind and subject superseded this one.
+  // Derived, never stored — the log only appends.
+  bool superseded = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListFactsRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // `kind=price` or `kind=rate`. Empty lists every recorded fact.
+  string filter = 4 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListFactsResponse {
+  repeated Fact facts = 1;
+  string next_page_token = 2;
+}
+
+message GetFactRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fact"
+  ];
+}
+
 // What a fund holds in one instrument, in one account.
 message Position {
   option (google.api.resource) = {
@@ -2285,6 +2382,15 @@ message Position {
   // priced it. A screen that does not distinguish them is reporting an opinion
   // as a fact.
   google.type.Date mark_date = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The price fact the last mark cited. Empty if this position has never been
+  // marked — then the value is cost, and there is no price to open.
+  string price_fact = 9 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fact"
+  ];
+  string delivery_digest = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string config_digest = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message ListPositionsRequest {
@@ -2475,6 +2581,14 @@ message Mark {
   // date.
   string price = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
   google.type.Date price_date = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The fact that supplied the price, so a mark preview names its evidence.
+  string price_fact = 9 [
+    (google.api.field_behavior) = OUTPUT_ONLY,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fact"
+  ];
+  string delivery_digest = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string config_digest = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message MarkPositionsRequest {

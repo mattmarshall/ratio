@@ -478,7 +478,9 @@ impl Console {
         // a rate; the denominations are a fact, and a reader checking the first
         // needs the second. Every other surface shows the split, and the one
         // screen a customer actually looks at was the one that could not.
-        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
+        let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &facts);
+        let rate_facts = ratio_ingest::value::current_rates(&facts);
         let raw = match &fold {
             AccountFold::Current => {
                 // ⛔ OFF THE MAINTAINED FOLD, PER VIEW — NOT `b.balances_by_dim()`.
@@ -560,6 +562,22 @@ impl Console {
             s.0 += (debit * factor / scale) as i64;
             s.1 += (credit * factor / scale) as i64;
             *counts.entry(dim).or_default() += postings;
+            // ⛔ THE FACT THE FIGURE CITES, OR NOTHING. The base and an untyped
+            // leg translate at par without a rate fact; inventing a resource
+            // name for them would offer a 404 in the voice used for EUR.
+            let (rate_fact, delivery_digest, config_digest) = match ccy_ref {
+                Some(c) if c != FUND_CURRENCY => rate_facts
+                    .get(c)
+                    .map(|f| {
+                        (
+                            fact_name(fund, &f.id),
+                            f.provenance.delivery.clone(),
+                            f.provenance.template.clone(),
+                        )
+                    })
+                    .unwrap_or_default(),
+                _ => Default::default(),
+            };
             split.entry(dim).or_default().push(pb::CurrencyTotal {
                 currency_code: ccy_ref.unwrap_or("").to_string(),
                 debit: debit.to_string(),
@@ -573,6 +591,9 @@ impl Console {
                     Some(c) if c != FUND_CURRENCY => factor.to_string(),
                     _ => String::new(),
                 },
+                rate_fact,
+                delivery_digest,
+                config_digest,
             });
         }
 
@@ -1114,6 +1135,53 @@ impl Console {
             .with_context(|| format!("no pending fact {id:?}"))
     }
 
+    /// Facts this book has recorded, newest first.
+    ///
+    /// ⛔ THE FACT PLANE, NOT THE EXCEPTION QUEUE. PendingFacts is what cannot
+    /// post. A price or an FX rate never posts; it is cited by a figure, and
+    /// this is how an operator opens it.
+    pub fn list_facts(&self, parent: &str, filter: &str) -> Result<pb::ListFactsResponse> {
+        let fund = resource_id(parent, "funds")?;
+        Ok(pb::ListFactsResponse {
+            facts: self.facts_of(&fund, filter)?,
+            next_page_token: String::new(),
+        })
+    }
+
+    pub fn get_fact(&self, name: &str) -> Result<pb::Fact> {
+        let (fund, id) = nested_id(name, "funds", "facts")?;
+        self.facts_of(&fund, "")?
+            .into_iter()
+            .find(|f| f.name.ends_with(&format!("/{id}")))
+            .with_context(|| format!("no fact {id:?}"))
+    }
+
+    fn facts_of(&self, fund: &str, filter: &str) -> Result<Vec<pb::Fact>> {
+        let path = self.book_path(fund)?;
+        let b = FileBook::open(&path)?;
+        let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+        if facts.is_empty() {
+            return Ok(Vec::new());
+        }
+        let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+        let resolved = ratio_ingest::resolve_all(&facts, &master);
+        let kind = kind_filter(filter);
+
+        // Newest first so a correction is the first row an operator sees, and
+        // the fact it superseded is still there beneath it.
+        let mut subjects: BTreeSet<String> = BTreeSet::new();
+        let mut out = Vec::new();
+        for r in resolved.iter().rev() {
+            if kind.is_some_and(|k| r.fact.kind != k) {
+                continue;
+            }
+            let subject = fact_subject(r);
+            let superseded = !subjects.insert(subject);
+            out.push(wire_fact(fund, r, superseded));
+        }
+        Ok(out)
+    }
+
     fn pending_of(&self, fund: &str) -> Result<Vec<pb::PendingFact>> {
         let path = self.book_path(fund)?;
         let b = FileBook::open(&path)?;
@@ -1267,6 +1335,14 @@ impl Console {
                 .collect();
         let label = |d: i64| chart.get(&d).cloned().unwrap_or_else(|| format!("dimension {d}"));
 
+        // The price facts, so a position that has been marked can name the
+        // observation it cited — an operator opens it from the figure.
+        let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+        let observed = ratio_ingest::value::observations(&ratio_ingest::resolve_all(
+            &facts,
+            &b.records::<ratio_ingest::Entity>(Plane::Entities)?,
+        ))?;
+
         // When each instrument was last marked, from the journal's own entry
         // ids. Derived rather than stored: a "last marked" field would be one
         // more thing that can disagree with the entries, and the entries are
@@ -1293,22 +1369,32 @@ impl Console {
         // does is what lets a reader see the claim rather than be told it.
         let mut out: Vec<pb::Position> = held
             .into_iter()
-            .map(|((dim, instrument), (value, quantity))| pb::Position {
-                open_lot_count: proj
-                    .lots_of(view, dim, &instrument)
-                    .map(|l| l.value.len() as i64)
-                    .unwrap_or(0),
-                name: format!("funds/{fund}/views/{view}/positions/{dim}-{instrument}"),
-                account: format!("funds/{fund}/views/{view}/accounts/{dim}"),
-                account_label: label(dim),
-                instrument_label: names
-                    .get(&instrument)
-                    .cloned()
-                    .unwrap_or_else(|| instrument.clone()),
-                mark_date: marked.get(&instrument).and_then(|d| iso_date(d)),
-                instrument,
-                quantity: quantity.to_string(),
-                value: value.to_string(),
+            .map(|((dim, instrument), (value, quantity))| {
+                let cite = marked.get(&instrument).and_then(|day| {
+                    observed
+                        .get(&instrument)
+                        .and_then(|os| ratio_ingest::value::mark_price(day, os))
+                });
+                pb::Position {
+                    open_lot_count: proj
+                        .lots_of(view, dim, &instrument)
+                        .map(|l| l.value.len() as i64)
+                        .unwrap_or(0),
+                    name: format!("funds/{fund}/views/{view}/positions/{dim}-{instrument}"),
+                    account: format!("funds/{fund}/views/{view}/accounts/{dim}"),
+                    account_label: label(dim),
+                    instrument_label: names
+                        .get(&instrument)
+                        .cloned()
+                        .unwrap_or_else(|| instrument.clone()),
+                    mark_date: marked.get(&instrument).and_then(|d| iso_date(d)),
+                    price_fact: cite.map(|o| fact_name(fund, &o.fact_id)).unwrap_or_default(),
+                    delivery_digest: cite.map(|o| o.delivery.clone()).unwrap_or_default(),
+                    config_digest: cite.map(|o| o.config.clone()).unwrap_or_default(),
+                    instrument,
+                    quantity: quantity.to_string(),
+                    value: value.to_string(),
+                }
             })
             .collect();
 
@@ -1328,6 +1414,9 @@ impl Console {
                 // construction — a lot is a purchase of something.
                 open_lot_count: 0,
                 mark_date: None,
+                price_fact: String::new(),
+                delivery_digest: String::new(),
+                config_digest: String::new(),
             });
         }
         // By account, then by what it holds most of — an operator scanning a
@@ -1693,15 +1782,30 @@ impl Console {
                 continue;
             }
             let label = names.get(&instrument).cloned().unwrap_or_else(|| instrument.clone());
-            let row = |market: i64, movement: i64, price: i64, day: &str| pb::Mark {
-                instrument: instrument.clone(),
-                instrument_label: label.clone(),
-                quantity: quantity.to_string(),
-                carrying: carrying.to_string(),
-                market: market.to_string(),
-                movement: movement.to_string(),
-                price: price.to_string(),
-                price_date: iso_date(day),
+            let row = |market: i64,
+                       movement: i64,
+                       price: i64,
+                       day: &str,
+                       delivery: String,
+                       fact_id: String,
+                       config: String| {
+                pb::Mark {
+                    instrument: instrument.clone(),
+                    instrument_label: label.clone(),
+                    quantity: quantity.to_string(),
+                    carrying: carrying.to_string(),
+                    market: market.to_string(),
+                    movement: movement.to_string(),
+                    price: price.to_string(),
+                    price_date: iso_date(day),
+                    price_fact: if fact_id.is_empty() {
+                        String::new()
+                    } else {
+                        fact_name(&fund, &fact_id)
+                    },
+                    delivery_digest: delivery,
+                    config_digest: config,
+                }
             };
 
             // Units in hundredths, because the proved `marketValue` takes them
@@ -1710,13 +1814,13 @@ impl Console {
             let units = quantity.saturating_mul(100);
             match value_position(&as_of, units, carrying, observed.get(&instrument).map_or(&[][..], |v| v)) {
                 Valuation::Unpriced => {
-                    unpriced.push(row(0, 0, 0, ""));
+                    unpriced.push(row(0, 0, 0, "", String::new(), String::new(), String::new()));
                 }
                 Valuation::Inexact { price, reason } => {
                     inexact.push(format!("{label}: {reason} (price {price})"));
                 }
-                Valuation::Marked { market, delta, price, on_day, .. } => {
-                    marks.push(row(market, delta, price, &on_day));
+                Valuation::Marked { market, delta, price, on_day, delivery, fact_id, config } => {
+                    marks.push(row(market, delta, price, &on_day, delivery, fact_id, config));
                     // A position already at market moves by nothing and posts
                     // nothing — `Ratio.Valuation.mark_again_posts_nothing`.
                     if delta == 0 {
@@ -3380,6 +3484,81 @@ pub use ratio_common::parse_minor as parse_amount;
 ///
 /// Shared by the pending list and the ingest preview so the two cannot describe
 /// the same fact differently.
+/// `funds/{fund}/facts/{id}` — the colon in a fact id is a path segment on no
+/// console, so it becomes a hyphen the same way pending facts already do.
+fn fact_name(fund: &str, id: &str) -> String {
+    format!("funds/{fund}/facts/{}", id.replace(':', "-"))
+}
+
+fn kind_filter(filter: &str) -> Option<&str> {
+    let f = filter.trim();
+    if f.is_empty() {
+        return None;
+    }
+    Some(f.strip_prefix("kind=").unwrap_or(f))
+}
+
+fn fact_subject(r: &ratio_ingest::Resolved) -> String {
+    match r.fact.kind.as_str() {
+        "rate" => format!(
+            "rate:{}",
+            r.fact
+                .values
+                .get("currency")
+                .and_then(|v| v.as_text())
+                .unwrap_or(&r.fact.reference)
+        ),
+        "price" => {
+            let inst = r
+                .fact
+                .entities
+                .iter()
+                .find(|(_, e)| e.kind == ratio_ingest::EntityKind::Instrument)
+                .and_then(|(k, _)| r.entity(k))
+                .unwrap_or(&r.fact.reference);
+            let day = r.fact.values.get("asOf").and_then(|v| v.as_text()).unwrap_or("");
+            format!("price:{inst}:{day}")
+        }
+        _ => format!("id:{}", r.fact.id),
+    }
+}
+
+fn fact_assertion(f: &ratio_ingest::Fact) -> String {
+    let minor = |k: &str| f.values.get(k).and_then(|v| v.as_minor());
+    let text = |k: &str| f.values.get(k).and_then(|v| v.as_text());
+    match f.kind.as_str() {
+        "rate" => match (text("currency"), minor("rate")) {
+            (Some(c), Some(m)) => format!("{c} at {}", render_hundredths(m)),
+            _ => f.reference.clone(),
+        },
+        "price" => match (minor("price"), text("asOf")) {
+            (Some(m), Some(d)) => {
+                format!("{} at {} on {d}", f.reference, render_hundredths(m))
+            }
+            _ => f.reference.clone(),
+        },
+        _ => f.reference.clone(),
+    }
+}
+
+fn render_hundredths(m: i64) -> String {
+    format!("{}.{:02}", m / 100, m.unsigned_abs() % 100)
+}
+
+fn wire_fact(fund: &str, r: &ratio_ingest::Resolved, superseded: bool) -> pb::Fact {
+    pb::Fact {
+        name: fact_name(fund, &r.fact.id),
+        kind: r.fact.kind.clone(),
+        reference: r.fact.reference.clone(),
+        assertion: fact_assertion(&r.fact),
+        delivery_digest: r.fact.provenance.delivery.clone(),
+        row: r.fact.provenance.row.to_string(),
+        template_id: r.fact.provenance.template_id.clone(),
+        config_digest: r.fact.provenance.template.clone(),
+        superseded,
+    }
+}
+
 fn pending_fact(fund: &str, r: &ratio_ingest::Resolved) -> pb::PendingFact {
     // Absent and ambiguous take different remedies, so they are reported apart
     // rather than as one "unresolved".
@@ -4337,6 +4516,23 @@ mod tests {
         // GetFund still answers — existing screens and /books/:id rewrites
         // keep working against the same directory.
         assert_eq!(console.get_fund("funds/household").unwrap().name, "funds/household");
+
+        // ⭐ KIND-AWARE INGEST. CreateBook wrote `bank-statement`, so the
+        // templates list a Personal book offers is not the fund snapshot.
+        let templates = console
+            .list_templates("funds/household")
+            .unwrap()
+            .templates;
+        assert_eq!(
+            templates.iter().map(|t| t.template_id.as_str()).collect::<Vec<_>>(),
+            vec!["bank-statement"]
+        );
+        assert!(templates[0].posts, "a statement row can post");
+        assert!(
+            templates[0].form.contains("one statement per row"),
+            "the rendered form is what the console prints: {}",
+            templates[0].form
+        );
     }
 
     fn household_req(id: &str, rule: &str, amount: &str, y: i32, m: i32, d: i32) -> pb::ApplyEventRequest {
@@ -4809,6 +5005,43 @@ mod tests {
             !membership.contains("org:org_01a\tmine"),
             "a personal create must not grant the org: {membership}"
         );
+    }
+
+    #[test]
+    fn list_templates_after_create_book_is_the_kind_seed_and_not_a_shared_menu() {
+        let root = fresh("create-kind-templates");
+        let console = Console::new(&root);
+        for (id, kind, template_id, posts) in [
+            ("house", book::BookKind::Personal, "bank-statement", true),
+            ("fund", book::BookKind::Investment, "custodian-positions", false),
+            ("bridge", book::BookKind::Project, "project-invoices", true),
+        ] {
+            console
+                .create_book(pb::CreateBookRequest {
+                    book: Some(pb::Book {
+                        display_name: id.into(),
+                        kind: kind.proto(),
+                        ..Default::default()
+                    }),
+                    book_id: id.into(),
+                })
+                .unwrap();
+            let listed = console
+                .list_templates(&format!("funds/{id}"))
+                .unwrap()
+                .templates;
+            assert_eq!(
+                listed.iter().map(|t| t.template_id.as_str()).collect::<Vec<_>>(),
+                vec![template_id],
+                "{id}"
+            );
+            assert_eq!(listed[0].posts, posts, "{id}");
+        }
+        // Cross-kind GetTemplate refuses rather than serving the fund snapshot
+        // under a household URL.
+        assert!(console
+            .get_template("funds/house/templates/custodian-positions")
+            .is_err());
     }
 
     #[test]
@@ -6447,5 +6680,106 @@ mod tests {
         assert_eq!(c.list_breaks(&demo_view(), "").unwrap().breaks.len(), 2);
         assert_eq!(c.list_breaks(&demo_view(), "blocking").unwrap().breaks.len(), 1);
         assert_eq!(c.list_breaks(&demo_view(), "unexplained").unwrap().breaks.len(), 2);
+    }
+
+    fn rate_fact(id: &str, ccy: &str, minor: i64, cfg: &str) -> ratio_ingest::Fact {
+        ratio_ingest::Fact {
+            id: id.into(),
+            kind: "rate".into(),
+            reference: ccy.into(),
+            entities: Default::default(),
+            values: [
+                ("currency".into(), ratio_ingest::Value::Text { text: ccy.into() }),
+                ("rate".into(), ratio_ingest::Value::Decimal { minor }),
+            ]
+            .into_iter()
+            .collect(),
+            provenance: ratio_ingest::Provenance {
+                delivery: format!("{id}{}", "0".repeat(64 - id.len())),
+                row: 2,
+                template: cfg.into(),
+                template_id: "fx".into(),
+                received: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn list_facts_pins_the_config_the_ingest_used_and_a_correction_is_a_new_row() {
+        // ⭐ THE FACT PLANE MINIMUM. A rate is a recorded fact with the digest
+        // the ingest run pinned; a correction is a second row, not an edit.
+        let d = fresh("facts-plane");
+        book(&d);
+        let cfg = FileBook::open(&d).unwrap().active().unwrap().unwrap();
+        let mut b = FileBook::open(&d).unwrap();
+        b.append_record(Plane::Facts, &rate_fact("r1", "EUR", 108, cfg.as_str()))
+            .unwrap();
+        b.append_record(Plane::Facts, &rate_fact("r2", "EUR", 110, cfg.as_str()))
+            .unwrap();
+        drop(b);
+
+        let facts = Console::new(&d).list_facts("funds/demo", "kind=rate").unwrap().facts;
+        assert_eq!(facts.len(), 2);
+        assert_eq!(facts[0].assertion, "EUR at 1.10");
+        assert!(!facts[0].superseded, "the later fact is in force");
+        assert_eq!(facts[1].assertion, "EUR at 1.08");
+        assert!(facts[1].superseded, "the earlier fact is still there");
+        assert_eq!(facts[0].config_digest, cfg.as_str());
+        assert_eq!(facts[1].config_digest, cfg.as_str());
+        // Take the config off the wire and this is a fact that cannot be
+        // reproduced under the rules that produced it.
+        assert_eq!(facts[0].config_digest.len(), 64);
+
+        let got = Console::new(&d).get_fact(&facts[0].name).unwrap();
+        assert_eq!(got.assertion, facts[0].assertion);
+        assert_eq!(got.kind, "rate");
+    }
+
+    #[test]
+    fn a_translated_total_cites_the_rate_fact_in_force() {
+        // ⛔ OPEN FROM THE FIGURE. A trial balance that shows EUR at 1.10 and
+        // cannot name the fact is the CLI-only provenance the roadmap refused.
+        let d = fresh("facts-cite");
+        book(&d);
+        let cfg = FileBook::open(&d).unwrap().active().unwrap().unwrap();
+        let mut b = FileBook::open(&d).unwrap();
+        b.append_record(Plane::Facts, &rate_fact("r1", "EUR", 108, cfg.as_str()))
+            .unwrap();
+        b.append_record(Plane::Facts, &rate_fact("r2", "EUR", 110, cfg.as_str()))
+            .unwrap();
+        b.append(&ratio_store::JournalEntry {
+            id: "eur-cash".into(),
+            memo: "euro subscription".into(),
+            config: cfg.clone(),
+            postings: vec![
+                ratio_store::PostingRecord::of_currency(2, 10_000, "EUR"),
+                ratio_store::PostingRecord::of_currency(20, -10_000, "EUR"),
+            ],
+            trade_date: None,
+            announcement: None,
+        })
+        .unwrap();
+        drop(b);
+
+        let cash = Console::new(&d)
+            .get_account(&format!("{}/accounts/2", demo_view()))
+            .unwrap();
+        let eur = cash
+            .currency_totals
+            .iter()
+            .find(|t| t.currency_code == "EUR")
+            .expect("the euro holding is on the split");
+        assert_eq!(eur.rate, "110", "the later rate, not the one it corrected");
+        assert!(
+            eur.rate_fact.ends_with("/facts/r2"),
+            "the figure names the fact in force: {}",
+            eur.rate_fact
+        );
+        assert_eq!(eur.config_digest, cfg.as_str());
+        // And the stale fact is still on the plane, so a figure that cited it
+        // can still be opened.
+        let stale = Console::new(&d).get_fact("funds/demo/facts/r1").unwrap();
+        assert!(stale.superseded);
+        assert_eq!(stale.assertion, "EUR at 1.08");
     }
 }
