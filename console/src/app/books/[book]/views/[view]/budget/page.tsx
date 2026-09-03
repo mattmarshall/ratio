@@ -5,8 +5,10 @@ import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
 import { debitShown as householdDebit, householdRollup } from "@/lib/household";
 import {
+  changeOrdersInWindow,
   creditShown,
   debitShown as projectDebit,
+  isFundingAccount,
   ofType,
   projectRollup,
 } from "@/lib/project";
@@ -20,14 +22,17 @@ export const dynamic = "force-dynamic";
  *
  * ⭐ NOT NAV RELABELLED, AND NOT TWO URLS. Kind selects the roll-up: a
  * personal book cites `[personal] budget` against period spend; a project
- * book cites `[project] budget` against cumulative costs, WIP and
- * payables. A second ledger would be a second answer to a question the
- * journal already answers. Investment books 404 — fund ABOR is untouched.
+ * book cites `[project] budget` as the original contract against cumulative
+ * costs, WIP and payables, plus approved change orders as a journal fact
+ * that does not rewrite that key. A second ledger would be a second answer
+ * to a question the journal already answers. Investment books 404 — fund
+ * ABOR is untouched.
  *
  * ⚠ A PROJECT'S PERIOD IS THE PROJECT. Household chips name a month or
  * year because living expenses are a calendar figure; milestone-gated
  * close is still out of scope for a project — same period gap as #26,
- * named rather than faked with a NAV strike.
+ * named rather than faked with a NAV strike. The optional change-order
+ * chip is which COs were approved in-window; committed spend stays as-of.
  *
  * ⛔ CUMULATIVE-ONLY IS THE ABOR-SHAPED VIEW FOR A HOUSEHOLD. The personal
  * path always sends `filter=budget-YYYY[-MM]`; bare `budget` is refused
@@ -48,7 +53,7 @@ async function Budget({
     return householdBudget({ book, view, b, searchParams });
   }
   if (b.kind === "PROJECT") {
-    return projectBudget({ book, view, b });
+    return projectBudget({ book, view, b, searchParams });
   }
   notFound();
 }
@@ -166,36 +171,110 @@ async function projectBudget({
   book,
   view,
   b,
+  searchParams,
 }: {
   book: string;
   view: string;
   b: Awaited<ReturnType<typeof getBook>>;
+  searchParams: Promise<{ period?: string }>;
 }) {
+  const month = utcMonth();
+  const year = utcYear();
+  const last = previousMonth(month);
+  const { period = "" } = await searchParams;
   const c = await caller();
   const { accounts } = await listAccounts(c, book, view);
+  const windowed = period
+    ? (await listAccounts(c, book, view, "change", period)).accounts
+    : [];
   const r = projectRollup(accounts, b.budget);
+  const inWindow = period ? changeOrdersInWindow(windowed) : null;
   const costs = ofType(accounts, "EXPENSE");
   const wip = ofType(accounts, "ASSET").filter((a) =>
     /work in progress/i.test(a.displayName),
   );
   const payables = ofType(accounts, "LIABILITY");
-  const funding = ofType(accounts, "EQUITY");
+  const funding = accounts.filter(isFundingAccount);
+
+  const filters: readonly Filter[] = [
+    { key: "", label: "Since inception" },
+    { key: month, label: periodLabel(month) },
+    { key: last, label: periodLabel(last) },
+    { key: year, label: year },
+  ];
 
   return (
     <>
+      <FilterChips
+        filters={filters}
+        active={period}
+        param="period"
+        label="Change-order window"
+        note={
+          period
+            ? `${periodLabel(period)} — approved this window; committed spend is still as-of, because a project's period is the project`
+            : "since inception — original contract against journal costs; the chip is which COs were approved in-window"
+        }
+      />
+
       <div className="tb" role="table" aria-label="Budget vs actual">
         <div className="posgroup">
-          <div className="posacct">Baseline</div>
+          <div className="posacct">Contract</div>
           <div className="tbrow static" role="row">
             <span role="cell">
-              Authorized budget
+              Original contract
               <span className="at">
                 not a second ledger — journal costs, WIP and payables
-                against a configuration total
+                against a configuration total. [project] budget is not rewritten when a change order posts
               </span>
             </span>
             <span role="cell" className="num">
               {r.baseline === null ? "—" : projectDebit(r.baseline)}
+            </span>
+          </div>
+          <div className="tbrow static" role="row">
+            <span role="cell">
+              Approved change orders
+              <span className="at">
+                {r.approved === null
+                  ? "unset — no approved change order has posted, not a silent zero"
+                  : "credit-normal on the work-package pair; does not mutate the baseline"}
+              </span>
+            </span>
+            <span role="cell" className="num">
+              {r.approved === null ? "—" : projectDebit(r.approved)}
+            </span>
+          </div>
+          {period ? (
+            <div className="tbrow static" role="row">
+              <span role="cell">
+                Approved this window
+                <span className="at">
+                  {inWindow === null
+                    ? "unset — nothing approved in this window, not a fake zero"
+                    : "dated approvals only; undated entries have no period"}
+                </span>
+              </span>
+              <span role="cell" className="num">
+                {inWindow === null ? "—" : projectDebit(inWindow)}
+              </span>
+            </div>
+          ) : null}
+          <div className="tbfoot static" role="row">
+            <span role="cell">
+              Revised contract
+              <small>
+                {r.revised === null
+                  ? r.approved === null
+                    ? "no [project] budget on the configuration in force"
+                    : "cannot revise an unknown baseline — approved changes stay visible above"
+                  : r.approved === null
+                    ? "equals the original — no approved change order has posted"
+                    : "original plus approved change orders — the billing basis when priced"}
+              </small>
+            </span>
+            <span role="cell" className="num">
+              {r.revised === null ? "—" : projectDebit(r.revised)}
             </span>
           </div>
         </div>
@@ -276,9 +355,9 @@ async function projectBudget({
             <span role="cell">
               Variance
               <small>
-                {r.baseline === null
+                {r.revised === null
                   ? "no [project] budget on the configuration in force"
-                  : "baseline minus committed — remaining authorization"}
+                  : "revised minus committed — remaining authorization, not a mutated baseline"}
               </small>
             </span>
             <span role="cell" className="num">
@@ -315,7 +394,9 @@ async function projectBudget({
       <p className="note">
         <Link href={`/books/${book}/views/${view}/wip`}>WIP capitalization</Link>
         {" · "}
-        <Link href={`/books/${book}/record`}>Record a cost or capitalize WIP</Link>
+        <Link href={`/books/${book}/views/${view}/billing`}>Billing basis</Link>
+        {" · "}
+        <Link href={`/books/${book}/record`}>Record a cost, change order, or capitalize WIP</Link>
         {" · "}
         <Link href={`/books/${book}/views/${view}/accounts`}>Trial balance</Link>
       </p>

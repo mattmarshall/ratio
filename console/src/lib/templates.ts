@@ -29,7 +29,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "PROJECT",
     label: "Project",
-    blurb: "Cash, work in progress, project costs by work package, funding, revenue, progress billings, and retainage. Budget vs actual and billed vs earned are two figures, not one URL.",
+    blurb: "Cash, work in progress, project costs by work package, funding, revenue, progress billings, retainage, and approved change orders. Budget vs actual and billed vs earned are two figures, not one URL. A change order adjusts the revised contract without rewriting the original baseline.",
   },
 ];
 
@@ -56,6 +56,7 @@ export const INGEST_TEMPLATE_KIND: Readonly<Record<string, Exclude<BookKind, "UN
   "prime_equity_trades": "INVESTMENT",
   "capital-calls": "INVESTMENT",
   "project-invoices": "PROJECT",
+  "change-orders": "PROJECT",
 };
 
 export function templatesForKind<T extends { templateId: string }>(

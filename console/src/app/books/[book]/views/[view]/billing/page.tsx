@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { caller } from "@/lib/caller";
-import { creditShown, debitShown, figure } from "@/lib/project";
-import { projectProgress } from "@/wire/client";
+import { creditShown, debitShown, figure, phaseApproved, projectRollup } from "@/lib/project";
+import { getBook, listAccounts, projectProgress } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
@@ -14,13 +14,20 @@ export const dynamic = "force-dynamic";
  * is the expense accounts `chart_for(Project)` seeded — site, structure,
  * finishes — not Positions wearing a project label.
  *
+ * ⭐ THE BILLING BASIS IS THE REVISED CONTRACT. Original is `[project]
+ * budget`. Approved change orders are the work-package equity pair. Revised
+ * = original + approved when the original is set. Mutating the baseline
+ * would lose the audit trail this page exists to cite.
+ *
  * ⛔ UNSET STAYS UNSET. A book that has never billed does not show billed
  * 0.00. A phase with no `[project.phase] budget` shows — not a fake
  * authorization of zero. A seeded phase with no postings shows cost 0.00,
- * which is a true zero.
+ * which is a true zero. An unposted change order is — not a silent zero
+ * against that phase.
  *
  * ⚠ CUMULATIVE ON PURPOSE. Milestone-gated close is still out of scope —
- * same period gap as #26. Client portal / CRM / Gantt are refused.
+ * same period gap as #26. Client portal / CRM / Gantt / AIA G702 product
+ * UI are refused.
  */
 async function Billing({
   params,
@@ -29,11 +36,58 @@ async function Billing({
 }) {
   const { book, view } = await params;
   const c = await caller();
+  const b = await getBook(c, book);
   const p = await projectProgress(c, book, view);
+  const { accounts } = await listAccounts(c, book, view);
+  const contract = projectRollup(accounts, b.budget);
 
   return (
     <>
       <div className="tb" role="table" aria-label="Progress billing">
+        <div className="posgroup">
+          <div className="posacct">Contract</div>
+          <div className="tbrow static" role="row">
+            <span role="cell">
+              Original contract
+              <span className="at">
+                [project] budget — the baseline a change order must not rewrite
+              </span>
+            </span>
+            <span role="cell" className="num">
+              {contract.baseline === null ? "—" : debitShown(contract.baseline)}
+            </span>
+          </div>
+          <div className="tbrow static" role="row">
+            <span role="cell">
+              Approved change orders
+              <span className="at">
+                {contract.approved === null
+                  ? "unset — no approved change order has posted, not a silent zero"
+                  : "work-package grain, same accounts cost-by-phase uses"}
+              </span>
+            </span>
+            <span role="cell" className="num">
+              {contract.approved === null ? "—" : debitShown(contract.approved)}
+            </span>
+          </div>
+          <div className="tbfoot static" role="row">
+            <span role="cell">
+              Billing basis
+              <small>
+                {contract.revised === null
+                  ? contract.approved === null
+                    ? "unset until [project] budget is set — not a priced zero"
+                    : "cannot price an unknown baseline"
+                  : contract.approved === null
+                    ? "equals the original — no approved change order has posted"
+                    : "revised contract when priced — original plus approved changes"}
+              </small>
+            </span>
+            <span role="cell" className="num">
+              {contract.revised === null ? "—" : debitShown(contract.revised)}
+            </span>
+          </div>
+        </div>
         <div className="posgroup">
           <div className="posacct">Billed vs earned</div>
           <div className="tbrow static" role="row">
@@ -97,6 +151,18 @@ async function Billing({
         <div className="posgroup">
           <div className="posacct">Cost by work package</div>
           {p.phases.map((ph) => {
+            const approved = phaseApproved(accounts, ph.displayName);
+            const original = ph.budget === "" ? null : BigInt(ph.budget);
+            const revised =
+              original === null ? null : original + (approved ?? 0n);
+            const auth =
+              original === null
+                ? approved === null
+                  ? "budget unset — not a silent zero"
+                  : `budget unset — approved changes ${debitShown(approved)} (cannot revise an unknown baseline)`
+                : approved === null
+                  ? `authorized ${debitShown(original)} — no approved change order`
+                  : `original ${debitShown(original)} · approved changes ${debitShown(approved)} · revised ${debitShown(revised!)}`;
             return (
               <Link
                 key={ph.account}
@@ -106,11 +172,7 @@ async function Billing({
               >
                 <span role="cell">
                   {ph.displayName}
-                  <span className="at">
-                    {ph.budget === ""
-                      ? "budget unset — not a silent zero"
-                      : `authorized ${debitShown(ph.budget)}`}
-                  </span>
+                  <span className="at">{auth}</span>
                 </span>
                 <span role="cell" className="num">
                   {debitShown(ph.cost)}
@@ -121,7 +183,9 @@ async function Billing({
         </div>
       </div>
       <p className="note">
-        <Link href={`/books/${book}/record`}>Record a bill, retainage hold, or cost</Link>
+        <Link href={`/books/${book}/record`}>Record a bill, retainage hold, cost, or change order</Link>
+        {" · "}
+        <Link href={`/books/${book}/views/${view}/budget`}>Original vs revised contract</Link>
         {" · "}
         <Link href={`/books/${book}/views/${view}/accounts`}>Trial balance</Link>
       </p>

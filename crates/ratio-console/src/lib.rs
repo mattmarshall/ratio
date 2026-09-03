@@ -398,6 +398,11 @@ impl Console {
     /// chart — period activity in debit/credit, as-of-end in balance — so a
     /// net-worth bridge can name beginning, ending, and the plugs without a
     /// second ledger. Bare `bridge` is refused for the same reason as `pnl`.
+    /// `change-2026-03` is March approved change orders (Loan fold: window
+    /// activity, as-of-end balance) on a project book; bare `change` is
+    /// refused. The project's committed spend stays the unfiltered fold —
+    /// a project's period is still the project; the chip is which COs
+    /// were approved in-window.
     pub fn list_accounts(
         &self,
         parent: &str,
@@ -447,11 +452,24 @@ impl Console {
                 bail!("a net-worth bridge needs a month (YYYY-MM) or a year (YYYY)");
             }
         }
+        if kind == "change" {
+            let path = self.book_path(&fund)?;
+            let meta = book::BookMeta::load(&path, &fund);
+            if meta.kind != book::BookKind::Project {
+                bail!(
+                    "change orders are a project figure — this book is {}, not a project",
+                    meta.kind.as_str()
+                );
+            }
+            if period.is_empty() {
+                bail!("change orders in period need a month (YYYY-MM) or a year (YYYY)");
+            }
+        }
         let fold = match (kind, period) {
             ("pnl", p) => AccountFold::Activity(parse_period(p)?),
             ("capital", p) if !p.is_empty() => AccountFold::Activity(parse_period(p)?),
             ("budget", p) => AccountFold::Activity(parse_period(p)?),
-            ("loan", p) | ("bridge", p) => AccountFold::Loan(parse_period(p)?),
+            ("loan", p) | ("bridge", p) | ("change", p) => AccountFold::Loan(parse_period(p)?),
             (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
             _ => AccountFold::Current,
         };
@@ -3986,7 +4004,8 @@ struct PeriodWindow {
 
 /// AIP-132 List requests carry `filter` (AIP-160), not a custom period field.
 /// `pnl-2026-03` / `sheet-2026` / `capital-2026-03` / `budget-2026-03` /
-/// `loan-2026-03` / `bridge-2026-03` — hyphen because `param_of` does not decode.
+/// `loan-2026-03` / `bridge-2026-03` / `change-2026-03` — hyphen because
+/// `param_of` does not decode.
 fn list_accounts_window(filter: &str) -> (&str, &str) {
     if let Some(rest) = filter.strip_prefix("pnl-") {
         ("pnl", rest)
@@ -4000,6 +4019,8 @@ fn list_accounts_window(filter: &str) -> (&str, &str) {
         ("loan", rest)
     } else if let Some(rest) = filter.strip_prefix("bridge-") {
         ("bridge", rest)
+    } else if let Some(rest) = filter.strip_prefix("change-") {
+        ("change", rest)
     } else {
         (filter, "")
     }
@@ -5700,6 +5721,17 @@ mod tests {
     }
 
     fn project_event(id: &str, rule: &str, amount: &str) -> pb::ApplyEventRequest {
+        project_event_on(id, rule, amount, 0, 0, 0)
+    }
+
+    fn project_event_on(
+        id: &str,
+        rule: &str,
+        amount: &str,
+        year: i32,
+        month: i32,
+        day: i32,
+    ) -> pb::ApplyEventRequest {
         pb::ApplyEventRequest {
             parent: "funds/bridge".into(),
             rule_id: rule.into(),
@@ -5708,7 +5740,11 @@ mod tests {
             days: String::new(),
             instrument: String::new(),
             quantity: String::new(),
-            trade_date: None,
+            trade_date: if year == 0 {
+                None
+            } else {
+                Some(ratio_proto::date_proto::google::r#type::Date { year, month, day })
+            },
             validate_only: false,
         }
     }
@@ -5814,6 +5850,177 @@ mod tests {
     }
 
     #[test]
+    fn approved_change_orders_adjust_contract_without_rewriting_the_baseline() {
+        // ⭐ THE CLAIM #91 IS ABOUT. [project] budget is the original
+        // contract. An approved CO posts a conserved equity pair keyed by
+        // work package. Mutating the config key would lose the baseline;
+        // posting to a cost account would mix authorization with spend.
+        let root = fresh("project-change-orders");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+
+        let path = root.join("bridge");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str("\n[project]\nbudget = 1000000\n[[project.phase]]\naccount = 11\nbudget = 400000\n");
+        let next = b.put(text.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let unset = c.list_accounts(&view, "").unwrap().accounts;
+        let site_co = unset
+            .iter()
+            .find(|a| a.display_name == "Approved change orders — Site and mobilization")
+            .expect("seeded CO account");
+        assert_eq!(
+            site_co.posting_count, "0",
+            "a new project has posted no change order: {site_co:?}"
+        );
+        assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
+
+        c.apply_event(&project_event_on(
+            "co-site-1",
+            "approve_co_site",
+            "5000.00",
+            2026,
+            3,
+            15,
+        ))
+        .unwrap();
+        c.apply_event(&project_event_on(
+            "co-all-1",
+            "approve_co",
+            "800.00",
+            2026,
+            3,
+            20,
+        ))
+        .unwrap();
+
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        let proj = c.projection("bridge").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a change order must not claim lot relief"
+        );
+
+        let after = c.get_book("books/bridge").unwrap();
+        assert_eq!(
+            after.budget, "1000000",
+            "an approved CO must not rewrite [project] budget: {}",
+            after.budget
+        );
+        let fig = c.project_progress(&view).unwrap();
+        let site = fig
+            .phases
+            .iter()
+            .find(|p| p.account == "11")
+            .expect("site");
+        assert_eq!(
+            site.budget, "400000",
+            "an approved CO must not rewrite the phase baseline: {:?}",
+            site.budget
+        );
+
+        let accounts = c.list_accounts(&view, "").unwrap().accounts;
+        let site_co = accounts
+            .iter()
+            .find(|a| a.display_name == "Approved change orders — Site and mobilization")
+            .unwrap();
+        assert_eq!(site_co.credit, "500000");
+        assert_ne!(site_co.posting_count, "0");
+        let unpart = accounts
+            .iter()
+            .find(|a| a.display_name == "Approved change orders")
+            .unwrap();
+        assert_eq!(unpart.credit, "80000");
+        let structure = accounts
+            .iter()
+            .find(|a| a.display_name == "Approved change orders — Structure")
+            .unwrap();
+        assert_eq!(
+            structure.posting_count, "0",
+            "an unposted phase CO stays unset, not a silent zero: {structure:?}"
+        );
+
+        let march = c.list_accounts(&view, "change-2026-03").unwrap().accounts;
+        let march_site = march
+            .iter()
+            .find(|a| a.display_name == "Approved change orders — Site and mobilization")
+            .unwrap();
+        assert_eq!(march_site.credit, "500000");
+        let feb = c.list_accounts(&view, "change-2026-02").unwrap().accounts;
+        let feb_site = feb
+            .iter()
+            .find(|a| a.display_name == "Approved change orders — Site and mobilization");
+        assert!(
+            feb_site.map(|a| a.credit.as_str() == "0" && a.posting_count == "0").unwrap_or(true),
+            "a February window must not cite a March approval as in-period: {feb_site:?}"
+        );
+
+        c.apply_event(&project_event_on(
+            "co-site-d",
+            "deduct_co_site",
+            "1200.00",
+            2026,
+            4,
+            1,
+        ))
+        .unwrap();
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        let after_deduct = c.list_accounts(&view, "").unwrap().accounts;
+        let site_net = after_deduct
+            .iter()
+            .find(|a| a.display_name == "Approved change orders — Site and mobilization")
+            .unwrap();
+        assert_eq!(
+            site_net.credit.parse::<i64>().unwrap() - site_net.debit.parse::<i64>().unwrap(),
+            380_000
+        );
+        assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
+
+        let err = c
+            .list_accounts(&view, "change")
+            .expect_err("bare change is the ABOR-shaped view")
+            .to_string();
+        assert!(err.contains("month"), "{err}");
+    }
+
+    #[test]
+    fn change_order_filter_refuses_a_personal_book() {
+        let root = fresh("change-order-kind");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        let err = c
+            .list_accounts(
+                &format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW),
+                "change-2026-03",
+            )
+            .expect_err("personal books have no change orders")
+            .to_string();
+        assert!(err.contains("not a project"), "{err}");
+        assert!(!err.contains("0"), "a refusal must not look like a zero figure: {err}");
+    }
+
+    #[test]
     fn a_phase_budget_is_the_configuration_total_not_a_second_ledger() {
         let root = fresh("project-phase-budget");
         let c = Console::new(&root);
@@ -5902,7 +6109,7 @@ mod tests {
             (
                 "bridge",
                 book::BookKind::Project,
-                &[("project-invoices", true)],
+                &[("project-invoices", true), ("change-orders", true)],
             ),
         ] {
             console

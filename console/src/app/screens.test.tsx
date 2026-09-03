@@ -516,19 +516,143 @@ describe("a first-class book", () => {
           searchParams: params({}),
         }),
       );
-      expect(screen.getByText("100,000.00")).toBeDefined();
+      expect(screen.getAllByText("100,000.00").length).toBe(2);
       expect(screen.getByText("Project costs")).toBeDefined();
       expect(screen.getByText("Work in progress")).toBeDefined();
       // incurred 6,000.00; committed 8,000.00; variance 92,000.00
       expect(screen.getByText("6,000.00")).toBeDefined();
       expect(screen.getByText("8,000.00")).toBeDefined();
       expect(screen.getByText("92,000.00")).toBeDefined();
+      expect(screen.getByText("Original contract")).toBeDefined();
+      expect(screen.getByText("Approved change orders")).toBeDefined();
+      expect(
+        screen.getByText(/unset — no approved change order has posted, not a silent zero/),
+      ).toBeDefined();
+      expect(screen.getByText(/equals the original — no approved change order has posted/)).toBeDefined();
       expect(
         screen.queryByRole("link", { name: "Exceptions" }),
       ).toBeNull();
     } finally {
       wire.getBook = realBook;
       wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("cites a revised contract from approved change orders without rewriting the baseline", async () => {
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    const bridge = booksFixture.books.find((b) => b.kind === "PROJECT")!;
+    wire.getBook = (async () => ({
+      ...bridge,
+      budget: "10000000",
+    })) as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/bridge/views/book/accounts/10",
+          displayName: "Project costs",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "300000",
+          credit: "0",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/20",
+          displayName: "Funding",
+          dimension: "20",
+          type: "EQUITY",
+          debit: "0",
+          credit: "800000",
+          balance: "-800000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/21",
+          displayName: "Change-order authorization — Site and mobilization",
+          dimension: "21",
+          type: "EQUITY",
+          debit: "500000",
+          credit: "0",
+          balance: "500000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/26",
+          displayName: "Approved change orders — Site and mobilization",
+          dimension: "26",
+          type: "EQUITY",
+          debit: "0",
+          credit: "500000",
+          balance: "-500000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/25",
+          displayName: "Approved change orders",
+          dimension: "25",
+          type: "EQUITY",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as typeof wire.listAccounts;
+    try {
+      const Budget = (await import("./books/[book]/views/[view]/budget/page")).default;
+      await renderAsync(
+        Budget({
+          params: params({ book: "bridge", view: "book" }),
+          searchParams: params({}),
+        }),
+      );
+      expect(screen.getAllByText("100,000.00").length).toBeGreaterThan(0);
+      expect(screen.getByText("5,000.00")).toBeDefined();
+      expect(screen.getByText("105,000.00")).toBeDefined();
+      expect(screen.getByText(/original plus approved change orders/)).toBeDefined();
+      expect(screen.queryByText("Change-order authorization — Site and mobilization")).toBeNull();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("asks ListAccounts for a change-order window without folding the whole project into a month", async () => {
+    const calls: unknown[][] = [];
+    const real = wire.listAccounts;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      calls.push(args);
+      return { accounts: [], nextPageToken: "" };
+    }) as typeof wire.listAccounts;
+    try {
+      const Budget = (await import("./books/[book]/views/[view]/budget/page")).default;
+      await renderAsync(
+        Budget({
+          params: params({ book: "bridge", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(calls[0]?.slice(1)).toEqual(["bridge", "book"]);
+      expect(calls[1]?.slice(1)).toEqual(["bridge", "book", "change", "2026-03"]);
+      expect(screen.getByText(/Approved this window/)).toBeDefined();
+      expect(
+        screen.getByText(/unset — nothing approved in this window, not a fake zero/),
+      ).toBeDefined();
+    } finally {
+      wire.listAccounts = real;
     }
   });
 
@@ -1088,13 +1212,18 @@ describe("a first-class book", () => {
     const payable = screen.getByText("Payable").closest("[role=row]");
     expect(payable?.textContent).toContain("—");
     expect(screen.getByText("Site and mobilization")).toBeDefined();
-    expect(screen.getByText("authorized 4,000.00")).toBeDefined();
+    expect(screen.getByText("authorized 4,000.00 — no approved change order")).toBeDefined();
     expect(screen.getByText("250.00")).toBeDefined();
     expect(screen.getAllByText("budget unset — not a silent zero").length).toBeGreaterThan(0);
     const site = screen.getByText("Site and mobilization").closest("a");
     expect(site?.getAttribute("href")).toBe(
       "/books/bridge/views/book/accounts/11",
     );
+    expect(screen.getByText("Original contract")).toBeDefined();
+    expect(screen.getByText("Billing basis")).toBeDefined();
+    expect(
+      screen.getByText(/unset — no approved change order has posted, not a silent zero/),
+    ).toBeDefined();
   });
 
   it("keeps billed-minus-earned unset when either side has not posted", async () => {
@@ -1121,6 +1250,48 @@ describe("a first-class book", () => {
       expect(variance?.textContent).not.toMatch(/0\.00/);
     } finally {
       wire.projectProgress = real;
+    }
+  });
+
+  it("keys a phase change order to cost-by-phase rather than a lump CO bucket", async () => {
+    const realAccounts = wire.listAccounts;
+    const realBook = wire.getBook;
+    const bridge = booksFixture.books.find((b) => b.kind === "PROJECT")!;
+    wire.getBook = (async () => ({
+      ...bridge,
+      budget: "10000000",
+    })) as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/bridge/views/book/accounts/26",
+          displayName: "Approved change orders — Site and mobilization",
+          dimension: "26",
+          type: "EQUITY",
+          debit: "0",
+          credit: "50000",
+          balance: "-50000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as typeof wire.listAccounts;
+    try {
+      const Billing = (await import("./books/[book]/views/[view]/billing/page"))
+        .default;
+      await renderAsync(
+        Billing({ params: params({ book: "bridge", view: "book" }) }),
+      );
+      expect(
+        screen.getByText(/original 4,000.00 · approved changes 500.00 · revised 4,500.00/),
+      ).toBeDefined();
+      expect(screen.getByText("Billing basis")).toBeDefined();
+      expect(screen.getByText("100,500.00")).toBeDefined();
+    } finally {
+      wire.listAccounts = realAccounts;
+      wire.getBook = realBook;
     }
   });
 

@@ -31,7 +31,7 @@ pub fn ingest_template_ids(kind: BookKind) -> &'static [&'static str] {
             "prime_equity_trades",
             "capital-calls",
         ],
-        BookKind::Project => &["project-invoices"],
+        BookKind::Project => &["project-invoices", "change-orders"],
     }
 }
 
@@ -222,6 +222,21 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
             acct(12, "Structure", AccountTypeRecord::Expense),
             acct(13, "Finishes and closeout", AccountTypeRecord::Expense),
             acct(20, "Funding", AccountTypeRecord::Equity),
+            // ⭐ CHANGE ORDERS ARE EQUITY, NOT A COST AND NOT A MUTATION OF
+            // `[project] budget`. An approved CO is Dr authorization / Cr
+            // approved change orders — the same conserved pair as a
+            // commitment. Both sides are equity so they cancel if folded
+            // into funding, and `/budget` still cites the original
+            // baseline. Grain is the work package (site / structure /
+            // finishes), not one lump CO bucket that fights cost-by-phase.
+            acct(21, "Change-order authorization", AccountTypeRecord::Equity),
+            acct(22, "Change-order authorization — Site and mobilization", AccountTypeRecord::Equity),
+            acct(23, "Change-order authorization — Structure", AccountTypeRecord::Equity),
+            acct(24, "Change-order authorization — Finishes and closeout", AccountTypeRecord::Equity),
+            acct(25, "Approved change orders", AccountTypeRecord::Equity),
+            acct(26, "Approved change orders — Site and mobilization", AccountTypeRecord::Equity),
+            acct(27, "Approved change orders — Structure", AccountTypeRecord::Equity),
+            acct(28, "Approved change orders — Finishes and closeout", AccountTypeRecord::Equity),
             acct(30, "Project revenue", AccountTypeRecord::Income),
             acct(40, "Payables", AccountTypeRecord::Liability),
             acct(41, "Progress billings", AccountTypeRecord::Liability),
@@ -252,6 +267,20 @@ pub fn is_capital_account(display_name: &str) -> bool {
 /// excludes them.
 pub fn is_commitment_account(display_name: &str) -> bool {
     display_name.starts_with("Commitments") || display_name.starts_with("Undrawn commitments")
+}
+
+/// Approved change orders and their authorizing contra — not funding, not cost.
+///
+/// ⛔ THESE ARE NOT `[project] budget`. Folding an approved CO into the
+/// configuration total would rewrite the baseline the way a spreadsheet
+/// does. Citing them as project costs would mix authorization with spend.
+/// Both sides of the pair are equity so they conserve; `/budget` and
+/// `/billing` cite the credit-normal approved-change-order side.
+pub fn is_change_order_account(display_name: &str) -> bool {
+    display_name == "Approved change orders"
+        || display_name == "Change-order authorization"
+        || display_name.starts_with("Approved change orders — ")
+        || display_name.starts_with("Change-order authorization — ")
 }
 
 /// The opening configuration CreateBook writes: posting rules that hit
@@ -1032,20 +1061,25 @@ reads = "csv"
 /// no holdback never posts it, and the figure stays unset rather than 0%.
 ///
 /// WIP capitalization (`capitalize_wip` / `recognize_wip`) is #66 / PR #80.
-/// Progress billing is #85 / PR #88. Both seed here; `/wip` and `/billing`
-/// stay two URLs.
+/// Progress billing is #85 / PR #88. Change orders are #91. All three seed
+/// here; `/wip` and `/billing` stay two URLs, and change orders compose
+/// onto `/budget` and `/billing` rather than a third chrome list.
 ///
 /// Phase budget: `[[project.phase]] account = <dim> budget = <minor units>`.
 /// Omitting the row means no baseline, not a budget of zero.
-/// Book-level `[project] budget` is the `/budget` roll-up, a different figure.
+/// Book-level `[project] budget` is the original contract `/budget` cites.
+/// An approved change order posts; it does not rewrite that key.
 ///
 /// The `project-invoices` template still maps `cost`/`invoice` onto the
 /// unpartitioned `project_cost` / `vendor_invoice` rules. Per-phase mapping
-/// is a later operator choice, not a CreateBook invention.
+/// is a later operator choice, not a CreateBook invention. `change-orders`
+/// maps `approve_co_*` / `deduct_co_*` onto the work-package pair.
 const PROJECT_CONFIG: &str = r#"# Project posting rules. Amount given; no instrument, so no lot.
 # Work packages are accounts 11–13, not instruments.
 # Progress-bill and earn-progress are independent: billed and earned can diverge.
 # Retainage is a transfer, not a baked-in split — omit it and the figure stays unset.
+# Change orders are a conserved equity pair keyed by work package. They do not
+# rewrite [project] budget — that key is the original baseline.
 # Phase budget: [[project.phase]] account = <dim> budget = <minor units>.
 
 [[rule]]
@@ -1268,6 +1302,100 @@ weight = 1
 account = 40
 weight = -1
 
+# Change orders. Not a mutation of [project] budget, not a cost, not AIA G702.
+# An approval is the pair: authorization up, approved change orders up.
+# A deduction reverses that pair. Grain is the work package — site /
+# structure / finishes — matching cost-by-phase, not one CO bucket.
+# Unpartitioned approve_co / deduct_co hit the unpartitioned pair.
+
+[[rule]]
+id = "approve_co"
+kind = "trade"
+description = "Approve an unpartitioned change order: authorization up, approved change orders up"
+[[rule.posting]]
+account = 21
+weight = 1
+[[rule.posting]]
+account = 25
+weight = -1
+
+[[rule]]
+id = "approve_co_site"
+kind = "trade"
+description = "Approve a site-and-mobilization change order"
+[[rule.posting]]
+account = 22
+weight = 1
+[[rule.posting]]
+account = 26
+weight = -1
+
+[[rule]]
+id = "approve_co_structure"
+kind = "trade"
+description = "Approve a structure change order"
+[[rule.posting]]
+account = 23
+weight = 1
+[[rule.posting]]
+account = 27
+weight = -1
+
+[[rule]]
+id = "approve_co_finishes"
+kind = "trade"
+description = "Approve a finishes-and-closeout change order"
+[[rule.posting]]
+account = 24
+weight = 1
+[[rule.posting]]
+account = 28
+weight = -1
+
+[[rule]]
+id = "deduct_co"
+kind = "trade"
+description = "Deduct an unpartitioned change order: reverse the approval pair"
+[[rule.posting]]
+account = 25
+weight = 1
+[[rule.posting]]
+account = 21
+weight = -1
+
+[[rule]]
+id = "deduct_co_site"
+kind = "trade"
+description = "Deduct a site-and-mobilization change order"
+[[rule.posting]]
+account = 26
+weight = 1
+[[rule.posting]]
+account = 22
+weight = -1
+
+[[rule]]
+id = "deduct_co_structure"
+kind = "trade"
+description = "Deduct a structure change order"
+[[rule.posting]]
+account = 27
+weight = 1
+[[rule.posting]]
+account = 23
+weight = -1
+
+[[rule]]
+id = "deduct_co_finishes"
+kind = "trade"
+description = "Deduct a finishes-and-closeout change order"
+[[rule.posting]]
+account = 28
+weight = 1
+[[rule.posting]]
+account = 24
+weight = -1
+
 [[template]]
 id = "project-invoices"
 reads = "csv"
@@ -1311,6 +1439,44 @@ reads = "csv"
   by = "kind"
   amount = "amount"
   rules = { cost = "project_cost", invoice = "vendor_invoice" }
+  dated = "dated"
+
+[[template]]
+id = "change-orders"
+reads = "csv"
+
+  [template.fact]
+  kind = "change"
+  reference = "ChangeRef"
+
+  [[template.fact.value]]
+  field = "dated"
+  as = "date"
+  column = "Date"
+  format = "YYYY-MM-DD"
+
+  [[template.fact.value]]
+  field = "amount"
+  as = "money"
+  column = "Amount"
+  currency = "Ccy"
+
+  [[template.fact.value]]
+  field = "memo"
+  as = "text"
+  column = "Memo"
+  optional = true
+
+  [[template.fact.value]]
+  field = "kind"
+  as = "enum"
+  column = "Kind"
+  map = { approve_co = "approve_co", approve_co_site = "approve_co_site", approve_co_structure = "approve_co_structure", approve_co_finishes = "approve_co_finishes", deduct_co = "deduct_co", deduct_co_site = "deduct_co_site", deduct_co_structure = "deduct_co_structure", deduct_co_finishes = "deduct_co_finishes" }
+
+  [template.fact.posts]
+  by = "kind"
+  amount = "amount"
+  rules = { approve_co = "approve_co", approve_co_site = "approve_co_site", approve_co_structure = "approve_co_structure", approve_co_finishes = "approve_co_finishes", deduct_co = "deduct_co", deduct_co_site = "deduct_co_site", deduct_co_structure = "deduct_co_structure", deduct_co_finishes = "deduct_co_finishes" }
   dated = "dated"
 "#;
 
@@ -1441,6 +1607,12 @@ mod tests {
         assert!(project.iter().any(|a| a.display_name == "Progress billings"));
         assert!(project.iter().any(|a| a.display_name == "Retainage receivable"));
         assert!(project.iter().any(|a| a.display_name == "Site and mobilization"));
+        assert!(project
+            .iter()
+            .any(|a| a.display_name == "Approved change orders — Site and mobilization"));
+        assert!(project
+            .iter()
+            .any(|a| a.display_name == "Change-order authorization — Structure"));
     }
 
     #[test]
@@ -1570,6 +1742,76 @@ INV-2,2026-03-02,450.00,USD,CITY POWER,,cost
     }
 
     #[test]
+    fn a_change_order_row_posts_the_phase_rule_and_not_a_float() {
+        // ⭐ KIND NAMES THE WORK PACKAGE. Phase grain is the rule, not a
+        // lump CO bucket and not a rewrite of [project] budget.
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Project)).unwrap();
+        let t = set.template("change-orders").unwrap();
+        assert!(t.fact.posts.is_some());
+        assert!(
+            t.entities.is_empty(),
+            "a change order is a chart dim, not an entity master"
+        );
+        let csv = "\
+ChangeRef,Date,Amount,Ccy,Memo,Kind
+CO-1,2026-03-15,5000.00,USD,extra footings,approve_co_site
+CO-2,2026-04-01,1200.00,USD,,deduct_co_site
+CO-3,2026-03-20,800.00,USD,allowance,approve_co
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(p.facts.len(), 3);
+        assert_eq!(
+            p.facts[0].values.get("amount"),
+            Some(&ratio_ingest::Value::Money {
+                minor: 500_000,
+                currency: "USD".into()
+            }),
+        );
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[0]).unwrap();
+        assert_eq!(rule, "approve_co_site");
+        assert_eq!(minor, 500_000);
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[1]).unwrap();
+        assert_eq!(rule, "deduct_co_site");
+        assert_eq!(minor, 120_000);
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[2]).unwrap();
+        assert_eq!(rule, "approve_co");
+        assert_eq!(ratio_ingest::dated_of(t, &p.facts[0]), Some("2026-03-15"));
+        let form = t.render();
+        assert_eq!(
+            form,
+            "\
+template change-orders {
+  reads      csv with header
+  grain      one change per row
+
+  fact       change
+    reference   from \"ChangeRef\"
+    dated       from \"Date\" as date \"YYYY-MM-DD\"
+    amount      from \"Amount\" as money in \"Ccy\"
+    memo        from \"Memo\" as text optional
+    kind        from \"Kind\" as { approve_co: approve_co, approve_co_finishes: approve_co_finishes, approve_co_site: approve_co_site, approve_co_structure: approve_co_structure, deduct_co: deduct_co, deduct_co_finishes: deduct_co_finishes, deduct_co_site: deduct_co_site, deduct_co_structure: deduct_co_structure }
+
+  posts      by \"kind\"
+    amount      amount
+    dated       dated
+    approve_co  -> approve_co
+    approve_co_finishes-> approve_co_finishes
+    approve_co_site-> approve_co_site
+    approve_co_structure-> approve_co_structure
+    deduct_co   -> deduct_co
+    deduct_co_finishes-> deduct_co_finishes
+    deduct_co_site-> deduct_co_site
+    deduct_co_structure-> deduct_co_structure
+}
+"
+        );
+        let resolved = ratio_ingest::resolve_all(&p.facts, &[]);
+        assert!(resolved.iter().all(|r| r.is_admissible()));
+    }
+
+    #[test]
     fn custodian_positions_record_and_never_post() {
         // ⭐ A MODE, NOT A GAP. The snapshot is what a recon reads against.
         // Seeding a `posts` block would invent journal entries a blank
@@ -1687,6 +1929,16 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
         assert!(is_commitment_account("Undrawn commitments — GP"));
         assert!(!is_commitment_account("Partner capital — LP"));
         assert!(!is_commitment_account("Capital contributions"));
+        assert!(is_change_order_account("Approved change orders"));
+        assert!(is_change_order_account(
+            "Approved change orders — Site and mobilization"
+        ));
+        assert!(is_change_order_account(
+            "Change-order authorization — Structure"
+        ));
+        assert!(!is_change_order_account("Funding"));
+        assert!(!is_change_order_account("Project costs"));
+        assert!(!is_change_order_account("Site and mobilization"));
     }
 
     #[test]
@@ -1867,6 +2119,8 @@ template capital-calls {
         assert!(set.rule("hold_retainage").is_some());
         assert!(set.rule("earn_progress").is_some());
         assert!(set.rule("project_cost_site").is_some());
+        assert!(set.rule("approve_co_site").is_some());
+        assert!(set.rule("deduct_co_site").is_some());
         assert!(
             set.rules.iter().all(|r| r.legs.iter().all(|l| !l.per_instrument)),
             "a project phase is an account, not an instrument — a per_instrument \
@@ -1882,11 +2136,12 @@ template capital-calls {
             against_empty.iter().any(|f| !f.is_question),
             "project rules must not check against an empty chart: {against_empty:?}"
         );
-        // Wave 2 (#75) ingest mapping is additive: still one template, still
-        // unpartitioned cost/invoice rules. Not a per-phase ingest menu.
+        // Wave 2 (#75) ingest mapping is additive. Change orders (#91) are a
+        // second template, not a rewrite of project-invoices.
         let ingest = ratio_ingest::TemplateSet::from_toml(PROJECT_CONFIG).unwrap();
-        assert_eq!(ingest.templates.len(), 1);
+        assert_eq!(ingest.templates.len(), 2);
         assert_eq!(ingest.templates[0].id, "project-invoices");
+        assert_eq!(ingest.templates[1].id, "change-orders");
     }
 
     #[test]
@@ -1901,9 +2156,13 @@ template capital-calls {
         assert!(set.rule("capitalize_wip").is_some(), "{text}");
         assert!(set.rule("progress_bill").is_some(), "{text}");
         assert!(set.rule("hold_retainage").is_some(), "{text}");
+        assert!(set.rule("approve_co_site").is_some(), "{text}");
         assert!(set.project.is_none());
         let ingest = ratio_ingest::TemplateSet::from_toml(&text).unwrap();
-        assert_eq!(ingest.templates[0].id, "project-invoices");
+        assert_eq!(
+            ingest.templates.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            vec!["project-invoices", "change-orders"]
+        );
     }
 
     #[test]

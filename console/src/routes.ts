@@ -118,7 +118,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/views/[view]/billing",
     file: "books/[book]/views/[view]/billing/page.tsx",
-    reads: ["projectProgress"],
+    reads: ["projectProgress", "getBook", "listAccounts"],
   },
   {
     path: "/funds/[fund]",
@@ -213,8 +213,10 @@ export const ROUTES: readonly Route[] = [
   // ── Kind-selected figures ────────────────────────────────────────────────
   //
   // ⭐ ONE `/budget` URL. Kind selects the roll-up: household period spend
-  // against `[personal] budget`, or project cumulative costs against
-  // `[project] budget`. A second path would be a second answer.
+  // against `[personal] budget`, or project original vs revised contract
+  // against journal costs. Approved change orders compose onto this page
+  // and `/billing`; they are not a second chrome list. A second path
+  // would be a second answer.
   {
     path: "/books/[book]/views/[view]/budget",
     file: "books/[book]/views/[view]/budget/page.tsx",
