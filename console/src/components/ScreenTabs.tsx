@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSelectedLayoutSegments } from "next/navigation";
+import { useSelectedLayoutSegments } from "next/navigation";
 import { SCREENS, SCREEN_GROUPS, screenHref } from "@/lib/screens";
 
 /**
@@ -21,9 +21,7 @@ export function ScreenTabs({
   pending: string;
 }) {
   const segments = useSelectedLayoutSegments();
-  const pathname = usePathname();
   const here = segments[0] === "views" ? segments[2] : segments[0];
-  const root = pathname.startsWith("/books/") ? "books" : "funds";
 
   return (
     <nav className="places" aria-label="Places">
@@ -33,7 +31,7 @@ export function ScreenTabs({
           {SCREENS.filter((s) => s.group === g.id).map((s) => (
             <Link
               key={s.segment}
-              href={screenHref(fund, view, s, root)}
+              href={screenHref(fund, view, s, "books")}
               aria-current={here === s.segment ? "page" : undefined}
             >
               {s.label}

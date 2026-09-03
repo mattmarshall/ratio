@@ -31,7 +31,7 @@ export default async function Funds() {
           const id = f.name.replace(/^funds\//, "");
           return (
             <li key={f.name}>
-              <Link className="row" href={`/funds/${id}/breaks`}>
+              <Link className="row" href={`/books/${id}/views/${f.defaultView}/breaks`}>
                 <span className={`sev ${f.state === "BLOCKED" ? "high" : "low"}`} />
                 <span>
                   <div className="title">{f.displayName}</div>

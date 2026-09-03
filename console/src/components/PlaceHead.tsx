@@ -20,24 +20,38 @@ export function PlaceHead({
   views,
   defaultView,
   meta,
+  identity = "heading",
 }: {
   fund: string;
   displayName: string;
   views: View[];
   defaultView: string;
   meta: ReactNode;
+  /**
+   * On a fund filing page the identity IS the heading. On a book the hub
+   * page already titles it, so this layout only crumbs — otherwise a
+   * personal book would render its name twice.
+   */
+  identity?: "heading" | "crumb";
 }) {
   const segs = useSelectedLayoutSegments();
   const underView = segs[0] === "views";
   const here = underView ? segs[2] : segs[0];
   const place = SCREENS.find((s) => s.segment === here);
+  const title = place
+    ? place.label
+    : underView
+      ? null
+      : identity === "heading"
+        ? displayName
+        : null;
 
   return (
     <div className="qhead">
       <Link href={`/books/${fund}`} className="bookcrumb">
         {displayName}
       </Link>
-      {place ? <h1>{place.label}</h1> : underView ? null : <h1>{displayName}</h1>}
+      {title ? <h1>{title}</h1> : null}
       <div className="subhead">
         {meta}
         {underView ? (

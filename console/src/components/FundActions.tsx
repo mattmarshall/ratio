@@ -13,21 +13,21 @@ import { usePaletteNavigator } from "./Palette";
  *
  * ⚠ A CLIENT COMPONENT FOR ONE REASON, and it is `ViewSwitch`'s reason: to know
  * which view is open. The list of views is fetched on the server by
- * `funds/[fund]/layout.tsx` and handed down; nothing here calls the API, and the
+ * `books/[book]/layout.tsx` and handed down; nothing here calls the API, and the
  * palette costs this console no upstream request at all.
  *
  * ⛔ THE OPEN VIEW IS READ FROM THE SEGMENTS, NOT TAKEN AS A PROP. A layout
  * persists across navigation within its segment — that is the whole reason
- * `funds/[fund]/layout.tsx` is allowed one `GetFund` for every screen beneath it
+ * `books/[book]/layout.tsx` is allowed one `GetBook` for every screen beneath it
  * — so it is NOT re-run when an operator switches `/views/abor/… → /views/ibor/…`.
  * A `view` prop captured at layout render would keep pointing at the book of
  * record they left, and every action here would quietly navigate to the wrong
  * one. `useSelectedLayoutSegments` re-reads on every navigation.
  *
  * ⚠ THE SEGMENTS ARE RELATIVE TO THE LAYOUT THAT RENDERED THE CALLER. This
- * component is rendered by `funds/[fund]/layout.tsx`, so it sees
- * `["views","abor","breaks"]` — the same three `ScreenTabs` and `ViewSwitch`
- * read. `FundRail`, one layout up, sees the fund id first instead.
+ * component is rendered by `books/[book]/layout.tsx`, so it sees
+ * `["views","abor","breaks"]` — the same three `ViewSwitch` reads. The
+ * collection layout one level up sees the book id first instead.
  */
 export function FundActions({
   fund,
@@ -64,7 +64,7 @@ export function FundActions({
         name: s.group === "book" ? "Book" : "Agreement",
         priority: Priority.HIGH,
       },
-      perform: go(screenHref(fund, view, s)),
+      perform: go(screenHref(fund, view, s, "books")),
     })),
 
     // ⭐ A VIEW IS A PROPERTY OF THE ANSWER, and the palette says so the way the
@@ -72,7 +72,7 @@ export function FundActions({
     // screen means something different under the other book.
     ...views.map((v) => {
       const id = v.name.split("/").pop() ?? defaultView;
-      const href = `/funds/${fund}/views/${id}/${screen}`;
+      const href = `/books/${fund}/views/${id}/${screen}`;
       return {
         id: `view:${id}`,
         // ⛔ AN UNDECLARED VIEW SAYS SO, HERE TOO. A book whose configuration
@@ -98,7 +98,7 @@ export function FundActions({
       name: t.label,
       keywords: t.keywords,
       section: { name: "Record", priority: Priority.NORMAL },
-      perform: go(`/funds/${fund}/${t.segment}`),
+      perform: go(`/books/${fund}/${t.segment}`),
     })),
   ];
 

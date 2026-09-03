@@ -122,13 +122,13 @@ function FundRegistrar({ funds }: { funds: Fund[] }) {
       // redirect, because "the rail is the commonest way in, and a redirect on
       // every click is a round trip nobody needs". A palette that used the old
       // URL would pay that cost on every jump.
-      subtitle: `/funds/${id}/views/${f.defaultView}/breaks`,
+      subtitle: `/books/${id}/views/${f.defaultView}/breaks`,
       // ⚠ COMMAS, NOT SPACES. kbar reads this field as `keywords.split(",")`, so
       // a space-separated string is one long token that matches nothing. The raw
       // id is here so `harbourline-global-value` finds it as well as the name.
       keywords: `${id},fund,book`,
       section: { name: "Funds", priority: Priority.HIGH },
-      perform: go(`/funds/${id}/views/${f.defaultView}/breaks`),
+      perform: go(`/books/${id}/views/${f.defaultView}/breaks`),
     };
   });
 

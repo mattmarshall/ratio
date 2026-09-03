@@ -33,7 +33,7 @@ export default async function BookPage({
     : null;
 
   return (
-    <main className="queue">
+    <>
       <div className="qhead">
         <h1>{b.displayName}</h1>
         <div className="subhead">
@@ -86,6 +86,6 @@ export default async function BookPage({
           <Link href={`/${b.fund}`}>Fund filing</Link>
         </p>
       ) : null}
-    </main>
+    </>
   );
 }

@@ -59,7 +59,7 @@ vi.mock("next/navigation", async () => {
     ...actual,
     useRouter: () => ({ replace: () => {}, push: () => {}, refresh: () => {} }),
     usePathname: () =>
-      "/funds/harbourline-global-value/views/abor/breaks",
+      "/books/harbourline-global-value/views/abor/breaks",
     useSelectedLayoutSegment: () => "breaks",
     // ⚠ FOUR SEGMENTS NOW, NOT TWO. `FundRail` reads [0] for the fund and
     // both `ScreenTabs` and `ViewSwitch` read [1] and [2] for the view and the
@@ -142,6 +142,11 @@ describe("a first-class book", () => {
     const Funds = (await import("./funds/page")).default;
     await renderAsync(Funds());
     expect(screen.getByText("All books")).toBeDefined();
+    // A seeded fund is an investment book. The list is funds-only; the job
+    // lives on the book URL so a personal book never has to look like one.
+    expect(
+      screen.getByRole("link", { name: /Harbourline Global Value/ }).getAttribute("href"),
+    ).toBe("/books/harbourline-global-value/views/abor/breaks");
   });
 
   it("opens a book as its own page", async () => {
@@ -154,9 +159,23 @@ describe("a first-class book", () => {
     expect(screen.getByRole("link", { name: "Configuration" })).toBeDefined();
   });
 
+  it("sends every job to /books/{book}/… and never through /funds", async () => {
+    const Book = (await import("./books/[book]/page")).default;
+    await renderAsync(Book({ params: params({ book: "household" }) }));
+    const trial = screen.getByRole("link", { name: "Trial balance" });
+    expect(trial.getAttribute("href")).toBe(
+      "/books/household/views/book/accounts",
+    );
+    const config = screen.getByRole("link", { name: "Configuration" });
+    expect(config.getAttribute("href")).toBe("/books/household/config");
+    for (const a of document.querySelectorAll("a[href]")) {
+      expect(a.getAttribute("href")).not.toMatch(/\/funds\//);
+    }
+  });
+
   it("gives a book of record a page of its own", async () => {
-    const View = (await import("./funds/[fund]/views/[view]/page")).default;
-    await renderAsync(View({ params: params({ fund: FUND, view: VIEW }) }));
+    const View = (await import("./books/[book]/views/[view]/page")).default;
+    await renderAsync(View({ params: params({ book: FUND, view: VIEW }) }));
     expect(screen.getByText(/Exceptions/)).toBeDefined();
     expect(screen.getByText(/Book/)).toBeDefined();
   });
@@ -164,9 +183,9 @@ describe("a first-class book", () => {
 
 describe("the trial balance", () => {
   it("shows the untranslated per-currency split beneath a translated total", async () => {
-    const Accounts = (await import("./funds/[fund]/views/[view]/accounts/page")).default;
+    const Accounts = (await import("./books/[book]/views/[view]/accounts/page")).default;
     await renderAsync(
-      Accounts({ params: params({ fund: FUND, view: VIEW }), searchParams: params({}) }),
+      Accounts({ params: params({ book: FUND, view: VIEW }), searchParams: params({}) }),
     );
     // ⛔ The figure above is a conversion; a reader checking it needs the facts
     // it was converted from. Two currencies are two independent conservation
@@ -180,8 +199,8 @@ describe("the trial balance", () => {
 
 describe("positions", () => {
   it("shows the open-lot count on the list", async () => {
-    const Positions = (await import("./funds/[fund]/views/[view]/positions/page")).default;
-    await renderAsync(Positions({ params: params({ fund: FUND, view: VIEW }) }));
+    const Positions = (await import("./books/[book]/views/[view]/positions/page")).default;
+    await renderAsync(Positions({ params: params({ book: FUND, view: VIEW }) }));
     expect(screen.getByText(/40 open lots/)).toBeDefined();
   });
 
@@ -214,11 +233,11 @@ describe("views", () => {
 
   it("shows two NAVs, their difference, and the entries that account for it", async () => {
     const Reconcile = (
-      await import("./funds/[fund]/views/[view]/reconcile/page")
+      await import("./books/[book]/views/[view]/reconcile/page")
     ).default;
     await renderAsync(
       Reconcile({
-        params: params({ fund: FUND, view: VIEW }),
+        params: params({ book: FUND, view: VIEW }),
         searchParams: params({ against: "ibor" }),
       }),
     );
@@ -298,18 +317,18 @@ describe("the fund overview", () => {
 
 describe("a NAV strike", () => {
   it("puts the qualification before the figure, not behind a click", async () => {
-    const Strikes = (await import("./funds/[fund]/views/[view]/strikes/page")).default;
-    await renderAsync(Strikes({ params: params({ fund: FUND, view: VIEW }) }));
+    const Strikes = (await import("./books/[book]/views/[view]/strikes/page")).default;
+    await renderAsync(Strikes({ params: params({ book: FUND, view: VIEW }) }));
     expect(
       screen.getByText(/a corporate action announced after this prefix/),
     ).toBeDefined();
   });
 
   it("reports history intact and reproduced as two separate claims", async () => {
-    const Replay = (await import("./funds/[fund]/views/[view]/strikes/[strike]/replay/page"))
+    const Replay = (await import("./books/[book]/views/[view]/strikes/[strike]/replay/page"))
       .default;
     await renderAsync(
-      Replay({ params: params({ fund: FUND, view: VIEW, strike: "2026-02-26" }) }),
+      Replay({ params: params({ book: FUND, view: VIEW, strike: "2026-02-26" }) }),
     );
     // ⛔ TWO CLAIMS, NOT ONE. Intact says the prefix still hashes to what the
     // strike recorded; reproduced says folding it again gives the same figure.
@@ -323,12 +342,12 @@ describe("a NAV strike", () => {
 
 describe("how a NAV was computed", () => {
   const Plan = async () =>
-    (await import("./funds/[fund]/views/[view]/strikes/[strike]/plan/page")).default;
+    (await import("./books/[book]/views/[view]/strikes/[strike]/plan/page")).default;
   const show = async (qs: { analyze?: string; rejected?: string }) => {
     const P = await Plan();
     await renderAsync(
       P({
-        params: params({ fund: FUND, view: VIEW, strike: "2026-02-26" }),
+        params: params({ book: FUND, view: VIEW, strike: "2026-02-26" }),
         searchParams: params(qs),
       }),
     );
@@ -433,9 +452,9 @@ describe("how a NAV was computed", () => {
 
 describe("a break", () => {
   it("shows the two figures and what produced ours", async () => {
-    const Detail = (await import("./funds/[fund]/views/[view]/breaks/[break]/page")).default;
+    const Detail = (await import("./books/[book]/views/[view]/breaks/[break]/page")).default;
     await renderAsync(
-      Detail({ params: params({ fund: FUND, view: VIEW, break: "cash-usd-2026-02-26" }) }),
+      Detail({ params: params({ book: FUND, view: VIEW, break: "cash-usd-2026-02-26" }) }),
     );
     expect(screen.getByText("Ratio")).toBeDefined();
     expect(screen.getByText("Reported")).toBeDefined();
@@ -446,11 +465,11 @@ describe("a break", () => {
   it("names the bounds the severity was graded against", async () => {
     // A grade whose terms a reader has to go and look up is a grade a reader
     // takes on trust — which is the one thing this product is not for.
-    const Detail = (await import("./funds/[fund]/views/[view]/breaks/[break]/page"))
+    const Detail = (await import("./books/[book]/views/[view]/breaks/[break]/page"))
       .default;
     await renderAsync(
       Detail({
-        params: params({ fund: FUND, view: VIEW, break: "cash-usd-2026-02-26" }),
+        params: params({ book: FUND, view: VIEW, break: "cash-usd-2026-02-26" }),
       }),
     );
     expect(screen.getByText(/graded at/)).toBeDefined();
@@ -459,11 +478,11 @@ describe("a break", () => {
   });
 
   it("shows an accepted explanation with the name on it", async () => {
-    const Detail = (await import("./funds/[fund]/views/[view]/breaks/[break]/page"))
+    const Detail = (await import("./books/[book]/views/[view]/breaks/[break]/page"))
       .default;
     await renderAsync(
       Detail({
-        params: params({ fund: FUND, view: VIEW, break: "cash-usd-2026-02-26" }),
+        params: params({ book: FUND, view: VIEW, break: "cash-usd-2026-02-26" }),
       }),
     );
     expect(screen.getByText("Why this is acceptable")).toBeDefined();
@@ -481,10 +500,10 @@ describe("a break", () => {
     // explanation a later figure overtook are both "not open", and showing
     // them alike is how the second gets closed without anybody looking at
     // what moved.
-    const Queue = (await import("./funds/[fund]/views/[view]/breaks/page")).default;
+    const Queue = (await import("./books/[book]/views/[view]/breaks/page")).default;
     await renderAsync(
       Queue({
-        params: params({ fund: FUND, view: VIEW }),
+        params: params({ book: FUND, view: VIEW }),
         searchParams: params({}),
       }),
     );
@@ -495,8 +514,8 @@ describe("a break", () => {
 
 describe("rules", () => {
   it("keeps the active rules and the unapproved drafts as two lists", async () => {
-    const Rules = (await import("./funds/[fund]/rules/page")).default;
-    await renderAsync(Rules({ params: params({ fund: FUND }) }));
+    const Rules = (await import("./books/[book]/rules/page")).default;
+    await renderAsync(Rules({ params: params({ book: FUND }) }));
     // ⛔ The gap between the two lists is exactly what a person's approval
     // bought, and merging them erases it.
     expect(screen.getByText("Active")).toBeDefined();
@@ -527,7 +546,7 @@ describe("the write screens", () => {
 
   /** ⚠ `view: ""` and no holdings is the cold-landing case — see the page. */
   async function ticket(rules = [TRADE_RULE], positions = [], view = "") {
-    const { TradeTicket } = await import("./funds/[fund]/trade/TradeTicket");
+    const { TradeTicket } = await import("./books/[book]/trade/TradeTicket");
     render(
       <TradeTicket
         fund={FUND}
@@ -569,10 +588,10 @@ describe("the write screens", () => {
   // would let the other three drift straight back.
 
   it("offers both ways through, on every screen that writes", async () => {
-    const { RecordForm } = await import("./funds/[fund]/record/RecordForm");
-    const { MarkForm } = await import("./funds/[fund]/mark/MarkForm");
-    const { IngestForm } = await import("./funds/[fund]/ingest/IngestForm");
-    const { TradeTicket } = await import("./funds/[fund]/trade/TradeTicket");
+    const { RecordForm } = await import("./books/[book]/record/RecordForm");
+    const { MarkForm } = await import("./books/[book]/mark/MarkForm");
+    const { IngestForm } = await import("./books/[book]/ingest/IngestForm");
+    const { TradeTicket } = await import("./books/[book]/trade/TradeTicket");
 
     for (const [what, el] of [
       ["record", <RecordForm key="r" fund={FUND} rules={rulesFixture.rules as Rule[]} />],
@@ -765,9 +784,9 @@ describe("the write screens", () => {
     // ⛔ AND OFFERS NOTHING INSTEAD. A rule is authored and approved at a
     // terminal; a screen that let one be chosen from somewhere else, or invented
     // a default, would be a way round the fence `ratio approve` is.
-    const Trade = (await import("./funds/[fund]/trade/page")).default;
+    const Trade = (await import("./books/[book]/trade/page")).default;
     await renderAsync(
-      Trade({ params: params({ fund: FUND }), searchParams: params({}) }),
+      Trade({ params: params({ book: FUND }), searchParams: params({}) }),
     );
     expect(screen.getByText(/declares no trade rule/)).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Form" }));
@@ -906,7 +925,7 @@ describe("the write screens", () => {
     // contract documents — and read "25000000" as twenty-five million pounds.
     // `ratio_common::parse_minor("42")` is 4,200 minor units. The entry balances
     // at either size and the trial balance ties on it.
-    const { RecordForm } = await import("./funds/[fund]/record/RecordForm");
+    const { RecordForm } = await import("./books/[book]/record/RecordForm");
     render(<RecordForm fund={FUND} rules={rulesFixture.rules as Rule[]} />);
     fireEvent.click(screen.getByRole("button", { name: "Form" }));
     fireEvent.change(screen.getByLabelText("Amount"), {
@@ -918,7 +937,7 @@ describe("the write screens", () => {
   });
 
   it("refuses a third decimal place rather than dropping it", async () => {
-    const { RecordForm } = await import("./funds/[fund]/record/RecordForm");
+    const { RecordForm } = await import("./books/[book]/record/RecordForm");
     render(<RecordForm fund={FUND} rules={rulesFixture.rules as Rule[]} />);
     fireEvent.click(screen.getByRole("button", { name: "Form" }));
     fireEvent.change(screen.getByLabelText("Amount"), {
@@ -972,9 +991,9 @@ describe("a refusal", () => {
       throw new Refused(400, SENTENCE);
     }) as typeof wire.listBreaks;
     try {
-      const Breaks = (await import("./funds/[fund]/views/[view]/breaks/page")).default;
+      const Breaks = (await import("./books/[book]/views/[view]/breaks/page")).default;
       await renderAsync(
-        Breaks({ params: params({ fund: FUND, view: "ibor" }), searchParams: params({}) }),
+        Breaks({ params: params({ book: FUND, view: "ibor" }), searchParams: params({}) }),
       );
       expect(screen.getByRole("status").textContent).toContain(
         "recognises entries by date",
@@ -991,9 +1010,9 @@ describe("a refusal", () => {
       throw new Refused(400, SENTENCE);
     }) as typeof wire.getView;
     try {
-      const Layout = (await import("./funds/[fund]/views/[view]/layout")).default;
+      const Layout = (await import("./books/[book]/views/[view]/layout")).default;
       await renderAsync(
-        Layout({ children: null, params: params({ fund: FUND, view: "ibor" }) }),
+        Layout({ children: null, params: params({ book: FUND, view: "ibor" }) }),
       );
       expect(screen.getByRole("status").textContent).toContain(
         "recognises entries by date",

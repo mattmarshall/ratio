@@ -43,7 +43,7 @@ export const ROUTES: readonly Route[] = [
   { path: "/", file: "page.tsx", reads: ["listBooks"] },
   { path: "/signin", file: "signin/page.tsx", reads: [] },
   { path: "/books", file: "books/page.tsx", reads: ["listBooks"] },
-  { path: "(layout)/books", file: "books/layout.tsx", reads: ["listBooks"] },
+  { path: "(layout)/books", file: "books/layout.tsx", reads: ["listBooks", "listFunds"] },
   { path: "/books/new", file: "books/new/page.tsx", reads: ["createBook"] },
   {
     path: "/books/[book]",
@@ -51,8 +51,13 @@ export const ROUTES: readonly Route[] = [
     reads: ["getBook", "getView"],
   },
   {
-    path: "/funds/[fund]/views/[view]",
-    file: "funds/[fund]/views/[view]/page.tsx",
+    path: "(layout)/books/[book]",
+    file: "books/[book]/layout.tsx",
+    reads: ["getBook", "listViews"],
+  },
+  {
+    path: "/books/[book]/views/[view]",
+    file: "books/[book]/views/[view]/page.tsx",
     reads: ["getView"],
   },
   { path: "/funds", file: "funds/page.tsx", reads: ["listFunds"] },
@@ -64,43 +69,44 @@ export const ROUTES: readonly Route[] = [
     file: "funds/[fund]/layout.tsx",
     reads: ["getFund", "listViews"],
   },
-  // The view layer. ⛔ A LITERAL `views` SEGMENT, not `/funds/[fund]/[view]`.
-  // Next resolves static segments before dynamic ones, so a view a fund happens
+  // The view layer. ⛔ A LITERAL `views` SEGMENT, not `/books/[book]/[view]`.
+  // Next resolves static segments before dynamic ones, so a view a book happens
   // to name `config` or `rules` would silently shadow that screen — and it
   // makes the URL character-for-character the resource name, which is what this
   // file exists to argue for.
   {
-    path: "(layout)/funds/[fund]/views/[view]",
-    file: "funds/[fund]/views/[view]/layout.tsx",
+    path: "(layout)/books/[book]/views/[view]",
+    file: "books/[book]/views/[view]/layout.tsx",
     reads: ["getView"],
   },
-  // ⚠ Where the view-dependent screens USED to live. A redirect, not a
-  // deletion: these URLs have been sent to people, and the whole argument for
-  // this console is that a figure can be sent rather than described.
+  // ⚠ Where the view-dependent screens USED to live without a view segment.
+  // A redirect, not a deletion: these URLs have been sent to people, and the
+  // whole argument for this console is that a figure can be sent rather than
+  // described. Old `/funds/{fund}/…` job URLs redirect here via next.config.
   {
-    path: "/funds/[fund]/breaks",
-    file: "funds/[fund]/views/[view]/breaks/page.tsx",
+    path: "/books/[book]/breaks",
+    file: "books/[book]/breaks/page.tsx",
     reads: ["getFund"],
   },
   {
-    path: "/funds/[fund]/accounts",
-    file: "funds/[fund]/views/[view]/accounts/page.tsx",
+    path: "/books/[book]/accounts",
+    file: "books/[book]/accounts/page.tsx",
     reads: ["getFund"],
   },
   {
-    path: "/funds/[fund]/positions",
-    file: "funds/[fund]/views/[view]/positions/page.tsx",
+    path: "/books/[book]/positions",
+    file: "books/[book]/positions/page.tsx",
     reads: ["getFund"],
   },
   {
-    path: "/funds/[fund]/strikes",
-    file: "funds/[fund]/views/[view]/strikes/page.tsx",
+    path: "/books/[book]/strikes",
+    file: "books/[book]/strikes/page.tsx",
     reads: ["getFund"],
   },
   // What two books of record over one journal disagree about, entry by entry.
   {
-    path: "/funds/[fund]/views/[view]/reconcile",
-    file: "funds/[fund]/views/[view]/reconcile/page.tsx",
+    path: "/books/[book]/views/[view]/reconcile",
+    file: "books/[book]/views/[view]/reconcile/page.tsx",
     reads: ["reconcileViews"],
   },
   {
@@ -111,66 +117,66 @@ export const ROUTES: readonly Route[] = [
 
   // ── Exceptions ───────────────────────────────────────────────────────────
   {
-    path: "/funds/[fund]/breaks",
-    file: "funds/[fund]/views/[view]/breaks/page.tsx",
+    path: "/books/[book]/views/[view]/breaks",
+    file: "books/[book]/views/[view]/breaks/page.tsx",
     reads: ["listBreaks"],
   },
   {
-    path: "/funds/[fund]/views/[view]/breaks/[break]",
-    file: "funds/[fund]/views/[view]/breaks/[break]/page.tsx",
+    path: "/books/[book]/views/[view]/breaks/[break]",
+    file: "books/[book]/views/[view]/breaks/[break]/page.tsx",
     reads: ["getBreak"],
   },
 
   // ── The chart ────────────────────────────────────────────────────────────
   {
-    path: "/funds/[fund]/accounts",
-    file: "funds/[fund]/views/[view]/accounts/page.tsx",
+    path: "/books/[book]/views/[view]/accounts",
+    file: "books/[book]/views/[view]/accounts/page.tsx",
     reads: ["listAccounts"],
   },
   {
-    path: "/funds/[fund]/views/[view]/accounts/[account]",
-    file: "funds/[fund]/views/[view]/accounts/[account]/page.tsx",
+    path: "/books/[book]/views/[view]/accounts/[account]",
+    file: "books/[book]/views/[view]/accounts/[account]/page.tsx",
     reads: ["getAccount", "listPostings"],
   },
   {
-    path: "/funds/[fund]/views/[view]/accounts/[account]/postings/[posting]",
-    file: "funds/[fund]/views/[view]/accounts/[account]/postings/[posting]/page.tsx",
+    path: "/books/[book]/views/[view]/accounts/[account]/postings/[posting]",
+    file: "books/[book]/views/[view]/accounts/[account]/postings/[posting]/page.tsx",
     reads: ["getPosting"],
   },
 
   // ── Positions ────────────────────────────────────────────────────────────
   {
-    path: "/funds/[fund]/positions",
-    file: "funds/[fund]/views/[view]/positions/page.tsx",
+    path: "/books/[book]/views/[view]/positions",
+    file: "books/[book]/views/[view]/positions/page.tsx",
     reads: ["listPositions"],
   },
   {
-    path: "/funds/[fund]/views/[view]/positions/[position]",
-    file: "funds/[fund]/views/[view]/positions/[position]/page.tsx",
+    path: "/books/[book]/views/[view]/positions/[position]",
+    file: "books/[book]/views/[view]/positions/[position]/page.tsx",
     reads: ["getPosition", "listLots"],
   },
   {
-    path: "/funds/[fund]/views/[view]/positions/[position]/lots/[lot]",
-    file: "funds/[fund]/views/[view]/positions/[position]/lots/[lot]/page.tsx",
+    path: "/books/[book]/views/[view]/positions/[position]/lots/[lot]",
+    file: "books/[book]/views/[view]/positions/[position]/lots/[lot]/page.tsx",
     reads: ["getLot"],
   },
 
   // ── NAV ──────────────────────────────────────────────────────────────────
   {
-    path: "/funds/[fund]/strikes",
-    file: "funds/[fund]/views/[view]/strikes/page.tsx",
+    path: "/books/[book]/views/[view]/strikes",
+    file: "books/[book]/views/[view]/strikes/page.tsx",
     reads: ["listNavStrikes"],
   },
   {
-    path: "/funds/[fund]/views/[view]/strikes/[strike]",
-    file: "funds/[fund]/views/[view]/strikes/[strike]/page.tsx",
+    path: "/books/[book]/views/[view]/strikes/[strike]",
+    file: "books/[book]/views/[view]/strikes/[strike]/page.tsx",
     reads: ["getNavStrike"],
   },
   // A URL for a proof. The replay folds the prefix the strike pinned and says
   // whether the history is intact — that is a citation, not a page state.
   {
-    path: "/funds/[fund]/views/[view]/strikes/[strike]/replay",
-    file: "funds/[fund]/views/[view]/strikes/[strike]/replay/page.tsx",
+    path: "/books/[book]/views/[view]/strikes/[strike]/replay",
+    file: "books/[book]/views/[view]/strikes/[strike]/replay/page.tsx",
     reads: ["getNavStrike", "replayNavStrike"],
   },
   // A URL for a derivation. What the strike DID, step by step, beside what the
@@ -182,25 +188,25 @@ export const ROUTES: readonly Route[] = [
   // calling it. Serving a diagram that implied otherwise would be a picture of
   // a structure nothing produces.
   {
-    path: "/funds/[fund]/views/[view]/strikes/[strike]/plan",
-    file: "funds/[fund]/views/[view]/strikes/[strike]/plan/page.tsx",
+    path: "/books/[book]/views/[view]/strikes/[strike]/plan",
+    file: "books/[book]/views/[view]/strikes/[strike]/plan/page.tsx",
     reads: ["getNavStrike", "explainNavStrike"],
   },
 
   // ── Configuration ────────────────────────────────────────────────────────
   {
-    path: "/funds/[fund]/config",
-    file: "funds/[fund]/config/page.tsx",
+    path: "/books/[book]/config",
+    file: "books/[book]/config/page.tsx",
     reads: ["listConfigVersions"],
   },
   {
-    path: "/funds/[fund]/config/[version]",
-    file: "funds/[fund]/config/[version]/page.tsx",
+    path: "/books/[book]/config/[version]",
+    file: "books/[book]/config/[version]/page.tsx",
     reads: ["getConfigVersion"],
   },
   {
-    path: "/funds/[fund]/config/[version]/diff",
-    file: "funds/[fund]/config/[version]/diff/page.tsx",
+    path: "/books/[book]/config/[version]/diff",
+    file: "books/[book]/config/[version]/diff/page.tsx",
     reads: ["getConfigVersion", "diffConfigVersions"],
   },
 
@@ -217,64 +223,64 @@ export const ROUTES: readonly Route[] = [
   // `ratio approve` at a terminal. A screen offering a second way round the
   // fence would make the fence worthless.
   {
-    path: "/funds/[fund]/rules",
-    file: "funds/[fund]/rules/page.tsx",
+    path: "/books/[book]/rules",
+    file: "books/[book]/rules/page.tsx",
     reads: ["listRules", "listChangeLogEntries"],
   },
   {
-    path: "/funds/[fund]/rules/[rule]",
-    file: "funds/[fund]/rules/[rule]/page.tsx",
+    path: "/books/[book]/rules/[rule]",
+    file: "books/[book]/rules/[rule]/page.tsx",
     reads: ["getRule"],
   },
 
   // ── The data plane ───────────────────────────────────────────────────────
   {
-    path: "/funds/[fund]/data",
-    file: "funds/[fund]/data/page.tsx",
+    path: "/books/[book]/data",
+    file: "books/[book]/data/page.tsx",
     reads: ["listDeliveries", "listPendingFacts"],
   },
   {
-    path: "/funds/[fund]/data/deliveries/[delivery]",
-    file: "funds/[fund]/data/deliveries/[delivery]/page.tsx",
+    path: "/books/[book]/data/deliveries/[delivery]",
+    file: "books/[book]/data/deliveries/[delivery]/page.tsx",
     reads: ["getDelivery"],
   },
   {
-    path: "/funds/[fund]/data/pending/[fact]",
-    file: "funds/[fund]/data/pending/[fact]/page.tsx",
+    path: "/books/[book]/data/pending/[fact]",
+    file: "books/[book]/data/pending/[fact]/page.tsx",
     reads: ["getPendingFact"],
   },
   {
-    path: "/funds/[fund]/data/templates",
-    file: "funds/[fund]/data/templates/page.tsx",
+    path: "/books/[book]/data/templates",
+    file: "books/[book]/data/templates/page.tsx",
     reads: ["listTemplates"],
   },
   {
-    path: "/funds/[fund]/data/templates/[template]",
-    file: "funds/[fund]/data/templates/[template]/page.tsx",
+    path: "/books/[book]/data/templates/[template]",
+    file: "books/[book]/data/templates/[template]/page.tsx",
     reads: ["getTemplate"],
   },
 
   // ── Corporate actions ────────────────────────────────────────────────────
   {
-    path: "/funds/[fund]/actions",
-    file: "funds/[fund]/actions/page.tsx",
+    path: "/books/[book]/actions",
+    file: "books/[book]/actions/page.tsx",
     reads: ["listCorporateActions"],
   },
   {
-    path: "/funds/[fund]/actions/[action]",
-    file: "funds/[fund]/actions/[action]/page.tsx",
+    path: "/books/[book]/actions/[action]",
+    file: "books/[book]/actions/[action]/page.tsx",
     reads: ["getCorporateAction"],
   },
 
   // ── The change log ───────────────────────────────────────────────────────
   {
-    path: "/funds/[fund]/changes",
-    file: "funds/[fund]/changes/page.tsx",
+    path: "/books/[book]/changes",
+    file: "books/[book]/changes/page.tsx",
     reads: ["listChangeLogEntries"],
   },
   {
-    path: "/funds/[fund]/changes/[entry]",
-    file: "funds/[fund]/changes/[entry]/page.tsx",
+    path: "/books/[book]/changes/[entry]",
+    file: "books/[book]/changes/[entry]/page.tsx",
     reads: ["getChangeLogEntry"],
   },
 
@@ -287,8 +293,8 @@ export const ROUTES: readonly Route[] = [
   // deliberate trade: the primitive stays reachable for the kinds of event that
   // have no better form, and the one an operator does daily gets a workflow.
   {
-    path: "/funds/[fund]/record",
-    file: "funds/[fund]/record/page.tsx",
+    path: "/books/[book]/record",
+    file: "books/[book]/record/page.tsx",
     reads: ["listRules", "applyEvent"],
   },
   // ⚠ AT THE CEILING, AND `?view=` IS WHY IT FITS. The holdings panel needs to
@@ -296,18 +302,18 @@ export const ROUTES: readonly Route[] = [
   // the query rather than from the fund's default saves the `getFund` that would
   // make this four.
   {
-    path: "/funds/[fund]/trade",
-    file: "funds/[fund]/trade/page.tsx",
+    path: "/books/[book]/trade",
+    file: "books/[book]/trade/page.tsx",
     reads: ["listRules", "listPositions", "applyEvent"],
   },
   {
-    path: "/funds/[fund]/ingest",
-    file: "funds/[fund]/ingest/page.tsx",
+    path: "/books/[book]/ingest",
+    file: "books/[book]/ingest/page.tsx",
     reads: ["listTemplates", "ingestDelivery", "admitFacts"],
   },
   {
-    path: "/funds/[fund]/mark",
-    file: "funds/[fund]/mark/page.tsx",
+    path: "/books/[book]/mark",
+    file: "books/[book]/mark/page.tsx",
     reads: ["getFund", "listPositions", "markPositions"],
   },
 ];

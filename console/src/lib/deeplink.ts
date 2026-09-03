@@ -19,7 +19,7 @@
  * ⚠ `funds/{fund}/entries/{entry}` IS ABSENT BECAUSE THERE IS NO SCREEN — see
  * #52. It is a real pattern in the contract, the posting screen prints the entry
  * id it came from as plain text, and no RPC fetches one. A translator that
- * invented `/funds/f/entries/5` would be offering a 404 in the confident voice it
+ * invented `/books/f/entries/5` would be offering a 404 in the confident voice it
  * uses for the fifteen that work. Delete this note when a page lands.
  */
 export const COLLECTION_TO_SEGMENT: Record<string, string> = {
@@ -71,7 +71,10 @@ export function hrefForResourceName(name: string): string | null {
     out.push(segment, encodeURIComponent(id));
   }
 
-  return `/${out.join("/")}`;
+  const href = `/${out.join("/")}`;
+  // A fund resource name with children is a job. Jobs live on the book.
+  // `funds/{fund}` alone is the filing page and stays under `/funds`.
+  return href.replace(/^\/funds\/([^/]+)\//, "/books/$1/");
 }
 
 /** One route a bare id might name. Never a claim that it does. */
@@ -104,7 +107,7 @@ export interface Candidate {
  * cannot reach either. That is a fact about the route tree, not an omission.
  */
 export function candidatesForId(
-  fund: string,
+  book: string,
   view: string,
   id: string,
 ): readonly Candidate[] {
@@ -114,8 +117,8 @@ export function candidatesForId(
   if (raw.length < 2 || raw.includes("/")) return [];
   const e = encodeURIComponent(raw);
 
-  const scoped = `/funds/${fund}/views/${view}`;
-  const plain = `/funds/${fund}`;
+  const scoped = `/books/${book}/views/${view}`;
+  const plain = `/books/${book}`;
 
   return [
     { key: "breaks", label: `Open “${raw}” as an exception`,

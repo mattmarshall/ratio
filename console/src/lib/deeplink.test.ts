@@ -27,43 +27,43 @@ describe("a pasted resource name", () => {
   const patterns: ReadonlyArray<readonly [string, string]> = [
     [`books/${FUND}`, `/books/${FUND}`],
     [`funds/${FUND}`, `/funds/${FUND}`],
-    [`funds/${FUND}/views/${VIEW}`, `/funds/${FUND}/views/${VIEW}`],
+    [`funds/${FUND}/views/${VIEW}`, `/books/${FUND}/views/${VIEW}`],
     [
       `funds/${FUND}/views/${VIEW}/breaks/cash-usd-2026-02-26`,
-      `/funds/${FUND}/views/${VIEW}/breaks/cash-usd-2026-02-26`,
+      `/books/${FUND}/views/${VIEW}/breaks/cash-usd-2026-02-26`,
     ],
-    [`funds/${FUND}/changeLogEntries/1`, `/funds/${FUND}/changes/1`],
+    [`funds/${FUND}/changeLogEntries/1`, `/books/${FUND}/changes/1`],
     [
       `funds/${FUND}/views/${VIEW}/navStrikes/2026-02-26`,
-      `/funds/${FUND}/views/${VIEW}/strikes/2026-02-26`,
+      `/books/${FUND}/views/${VIEW}/strikes/2026-02-26`,
     ],
-    [`funds/${FUND}/corporateActions/acme-3for2`, `/funds/${FUND}/actions/acme-3for2`],
+    [`funds/${FUND}/corporateActions/acme-3for2`, `/books/${FUND}/actions/acme-3for2`],
     [
       `funds/${FUND}/configVersions/9f2c1ab7de40551c`,
-      `/funds/${FUND}/config/9f2c1ab7de40551c`,
+      `/books/${FUND}/config/9f2c1ab7de40551c`,
     ],
     [
       `funds/${FUND}/views/${VIEW}/accounts/1010`,
-      `/funds/${FUND}/views/${VIEW}/accounts/1010`,
+      `/books/${FUND}/views/${VIEW}/accounts/1010`,
     ],
     [
       `funds/${FUND}/views/${VIEW}/accounts/1010/postings/p-1`,
-      `/funds/${FUND}/views/${VIEW}/accounts/1010/postings/p-1`,
+      `/books/${FUND}/views/${VIEW}/accounts/1010/postings/p-1`,
     ],
-    [`funds/${FUND}/rules/perf_fee`, `/funds/${FUND}/rules/perf_fee`],
-    [`funds/${FUND}/deliveries/7c1e0d`, `/funds/${FUND}/data/deliveries/7c1e0d`],
-    [`funds/${FUND}/pendingFacts/pf-1`, `/funds/${FUND}/data/pending/pf-1`],
+    [`funds/${FUND}/rules/perf_fee`, `/books/${FUND}/rules/perf_fee`],
+    [`funds/${FUND}/deliveries/7c1e0d`, `/books/${FUND}/data/deliveries/7c1e0d`],
+    [`funds/${FUND}/pendingFacts/pf-1`, `/books/${FUND}/data/pending/pf-1`],
     [
       `funds/${FUND}/views/${VIEW}/positions/ACME`,
-      `/funds/${FUND}/views/${VIEW}/positions/ACME`,
+      `/books/${FUND}/views/${VIEW}/positions/ACME`,
     ],
     [
       `funds/${FUND}/views/${VIEW}/positions/ACME/lots/1`,
-      `/funds/${FUND}/views/${VIEW}/positions/ACME/lots/1`,
+      `/books/${FUND}/views/${VIEW}/positions/ACME/lots/1`,
     ],
     [
       `funds/${FUND}/templates/custodian-positions`,
-      `/funds/${FUND}/data/templates/custodian-positions`,
+      `/books/${FUND}/data/templates/custodian-positions`,
     ],
   ];
 
@@ -86,10 +86,16 @@ describe("a pasted resource name", () => {
     expect(hrefForResourceName(`funds/${FUND}/templates/t`)).toContain("/data/");
   });
 
+  it("keeps a fund with no children on the filing page", () => {
+    // ⭐ THE FILING LAYER. Jobs moved under /books; ListFunds and the fund
+    // overview stay. A name that is only `funds/{id}` is that page, not a job.
+    expect(hrefForResourceName(`funds/${FUND}`)).toBe(`/funds/${FUND}`);
+  });
+
   it("lands a book of record on the view itself", () => {
     // #53: `views/[view]` is now a page. Redirecting past it hid the citation.
     expect(hrefForResourceName(`funds/${FUND}/views/${VIEW}`)).toBe(
-      `/funds/${FUND}/views/${VIEW}`,
+      `/books/${FUND}/views/${VIEW}`,
     );
   });
 
@@ -114,13 +120,13 @@ describe("a pasted resource name", () => {
 
   it("reads a name whether or not somebody kept the leading slash", () => {
     expect(hrefForResourceName(`  /funds/${FUND}/rules/perf_fee  `)).toBe(
-      `/funds/${FUND}/rules/perf_fee`,
+      `/books/${FUND}/rules/perf_fee`,
     );
   });
 
   it("escapes an id rather than letting it add a path segment", () => {
     expect(hrefForResourceName(`funds/${FUND}/rules/a%2Fb`)).toBe(
-      `/funds/${FUND}/rules/a%252Fb`,
+      `/books/${FUND}/rules/a%252Fb`,
     );
   });
 });
@@ -158,17 +164,17 @@ describe("a bare id", () => {
     // ⚠ The shapes `routes.ts` declares. A candidate whose href has no page is
     // the defect this whole tier is trying not to introduce.
     const shapes = [
-      `/funds/${FUND}/views/${VIEW}/breaks/`,
-      `/funds/${FUND}/views/${VIEW}/positions/`,
-      `/funds/${FUND}/views/${VIEW}/accounts/`,
-      `/funds/${FUND}/views/${VIEW}/strikes/`,
-      `/funds/${FUND}/rules/`,
-      `/funds/${FUND}/changes/`,
-      `/funds/${FUND}/config/`,
-      `/funds/${FUND}/actions/`,
-      `/funds/${FUND}/data/deliveries/`,
-      `/funds/${FUND}/data/pending/`,
-      `/funds/${FUND}/data/templates/`,
+      `/books/${FUND}/views/${VIEW}/breaks/`,
+      `/books/${FUND}/views/${VIEW}/positions/`,
+      `/books/${FUND}/views/${VIEW}/accounts/`,
+      `/books/${FUND}/views/${VIEW}/strikes/`,
+      `/books/${FUND}/rules/`,
+      `/books/${FUND}/changes/`,
+      `/books/${FUND}/config/`,
+      `/books/${FUND}/actions/`,
+      `/books/${FUND}/data/deliveries/`,
+      `/books/${FUND}/data/pending/`,
+      `/books/${FUND}/data/templates/`,
     ];
     expect(candidatesForId(FUND, VIEW, "x9").map((c) => c.href)).toEqual(
       shapes.map((s) => `${s}x9`),
@@ -176,14 +182,14 @@ describe("a bare id", () => {
   });
 
   it("puts the literal views segment in every view-scoped candidate", () => {
-    // ⛔ Never `/funds/{f}/{view}/…`. Next resolves static segments before
+    // ⛔ Never `/books/{f}/{view}/…`. Next resolves static segments before
     // dynamic ones, so a view a fund happens to name `config` would silently
     // shadow the configuration screen. `routes.ts` argues this where it declares
     // the view layer, and a view named `config` is the case that proves it.
     const scoped = new Set(["breaks", "positions", "accounts", "strikes"]);
     for (const c of candidatesForId(FUND, "config", "x9")) {
       if (scoped.has(c.key)) {
-        expect(c.href).toBe(`/funds/${FUND}/views/config/${c.key}/x9`);
+        expect(c.href).toBe(`/books/${FUND}/views/config/${c.key}/x9`);
       } else {
         // The control-plane screens are not view-scoped, so they carry no view
         // at all — a rule set is the same document whichever way you recognise

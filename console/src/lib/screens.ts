@@ -54,10 +54,10 @@ export const SCREEN_GROUPS: ReadonlyArray<{
 ];
 
 /**
- * Where a screen lives for one fund and one book of record.
+ * Where a screen lives for one book and one book of record.
  *
- * ⛔ A LITERAL `views` SEGMENT, never `/funds/{fund}/{view}/…`. Next resolves
- * static segments before dynamic ones, so a view a fund happens to name `config`
+ * ⛔ A LITERAL `views` SEGMENT, never `/books/{book}/{view}/…`. Next resolves
+ * static segments before dynamic ones, so a view a book happens to name `config`
  * or `rules` would silently shadow that screen. `routes.ts` makes the same point
  * where it declares the view layer.
  */
@@ -65,7 +65,7 @@ export function screenHref(
   id: string,
   view: string,
   s: Screen,
-  root: "funds" | "books" = "funds",
+  root: "books" | "funds" = "books",
 ): string {
   return s.scoped
     ? `/${root}/${id}/views/${view}/${s.segment}`
