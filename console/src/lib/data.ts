@@ -33,6 +33,18 @@ export const bookOf = cache(async (book: string) => {
 });
 
 /**
+ * The book a view layout needs in order to pick chrome.
+ *
+ * ⭐ KIND SELECTS WHETHER NAV TILES BELONG HERE. A project book's view still
+ * folds a journal prefix; it does not strike a NAV. Asking GetBook twice
+ * would be two Lambdas for one URL. `cache` is the same door `viewOf` uses.
+ */
+export const bookOf = cache(async (id: string) => {
+  const c = await caller();
+  return getBook(c, id);
+});
+
+/**
  * The book of record a view layout and its page both render.
  *
  * ⭐ #53. The four Stat tiles live on the layout; the page is the citation of

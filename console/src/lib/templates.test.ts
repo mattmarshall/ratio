@@ -16,5 +16,6 @@ describe("book templates", () => {
     expect(byKind.INVESTMENT).toMatch(/fair value/);
     expect(byKind.INVESTMENT).toMatch(/Does not file a fund/);
     expect(byKind.PROJECT).toMatch(/work in progress/);
+    expect(byKind.PROJECT).toMatch(/not a second ledger/);
   });
 });

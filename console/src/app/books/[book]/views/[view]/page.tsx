@@ -29,7 +29,9 @@ export default async function ViewPage({
   const b = await or404(bookOf(book));
   const basis = basisOf(v.basis, v.settlementOpenDays);
   const personal = b.kind === "PERSONAL";
+  const project = b.kind === "PROJECT";
   const places = screensFor(b.kind).filter((s) => s.scoped);
+  const tb = (BigInt(v.totalDebit) - BigInt(v.totalCredit)).toString();
 
   return (
     <section className="lots">
@@ -38,18 +40,35 @@ export default async function ViewPage({
         <span className="sortnote">{basis}</span>
       </div>
       <dl className="kv">
-        <dt>{personal ? "Net worth" : "Net asset value"}</dt>
+        <dt>
+          {personal
+            ? "Net worth"
+            : project
+              ? "Assets less liabilities"
+              : "Net asset value"}
+        </dt>
         <dd className="num">{money(v.netAssetValue)}</dd>
-        {personal ? null : (
+        {personal ? null : project ? (
+          <>
+            <dt>Trial balance</dt>
+            <dd className="num">{money(tb)}</dd>
+          </>
+        ) : (
           <>
             <dt>Open difference</dt>
             <dd className="num">{money(v.openDifference)}</dd>
             <dt>Open breaks</dt>
             <dd className="num">{count(v.openBreakCount)}</dd>
+            <dt>Unplaceable</dt>
+            <dd className="num">{count(v.unplaceableEntryCount)}</dd>
           </>
         )}
-        <dt>Unplaceable</dt>
-        <dd className="num">{count(v.unplaceableEntryCount)}</dd>
+        {personal ? (
+          <>
+            <dt>Unplaceable</dt>
+            <dd className="num">{count(v.unplaceableEntryCount)}</dd>
+          </>
+        ) : null}
         <dt>Basis</dt>
         <dd>
           {basis}

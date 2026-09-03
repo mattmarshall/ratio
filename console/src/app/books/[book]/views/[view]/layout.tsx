@@ -23,9 +23,11 @@ export const dynamic = "force-dynamic";
  * recognition convention and never one of them being three entries behind.
  * `//tla:views_check`'s `EveryViewFoldsTheSamePrefix`.
  *
- * ⭐ A PERSONAL BOOK DOES NOT WEAR NAV CHROME. The same `netAssetValue` is
- * assets minus liabilities — net worth — and open breaks are a fund-ops
- * queue. Unplaceable stays: an undated entry is in no period P&L.
+ * ⭐ A PERSONAL OR PROJECT BOOK DOES NOT WEAR NAV CHROME. The same
+ * `netAssetValue` is assets minus liabilities — net worth on a household,
+ * cash + WIP − payables on a project — and open breaks are a fund-ops
+ * queue. Unplaceable stays on a personal book: an undated entry is in no
+ * period P&L.
  */
 export default async function ViewLayout({
   children,
@@ -35,15 +37,6 @@ export default async function ViewLayout({
   params: Promise<{ book: string; view: string }>;
 }) {
   const { book: fund, view } = await params;
-  // ⛔ A REFUSAL RENDERS ITS SENTENCE, AND THE CHILDREN DO NOT FETCH. Thrown,
-  // this reached production as `Minified React error #441` and a digest — the
-  // API's one explanatory sentence redacted to a number, on every screen of
-  // the dual-basis demo fund. The layout is the gate: if the view itself
-  // refuses, every child's fetch would refuse identically, so answering here
-  // once is both the fix and the cheaper page.
-  //
-  // ⭐ `viewOf` IS THE SAME GETVIEW THE PAGE READS. Asking twice would be two
-  // Lambdas for one URL; React `cache` is the door `funds` already uses.
   const r = await orRefused(or404(viewOf(fund, view)));
   if (r.refused !== null) {
     return <Refusal why={r.refused} />;
@@ -52,6 +45,8 @@ export default async function ViewLayout({
   const basis = basisOf(v.basis, v.settlementOpenDays);
   const book = await or404(bookOf(fund));
   const personal = book.kind === "PERSONAL";
+  const project = book.kind === "PROJECT";
+  const tb = (BigInt(v.totalDebit) - BigInt(v.totalCredit)).toString();
 
   return (
     <>
@@ -68,6 +63,20 @@ export default async function ViewLayout({
                   : "entries with no date — in no period"
               }
               tone={v.unplaceableEntryCount === "0" ? "tied" : "at-risk"}
+            />
+          </>
+        ) : project ? (
+          <>
+            <Stat
+              k="Assets less liabilities"
+              v={money(v.netAssetValue)}
+              sub={basis}
+            />
+            <Stat
+              k="Trial balance"
+              v={money(tb)}
+              sub="debits minus credits"
+              tone={tb === "0" ? "tied" : "at-risk"}
             />
           </>
         ) : (

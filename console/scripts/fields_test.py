@@ -72,6 +72,26 @@ NEEDLES: list[tuple[str, str]] = [
     ("no trade date", "a lot that cannot be classified would show a guessed date"),
     ("Tax lots", "the lot book is gone"),
     ("the fold that", "the scale claim is gone — it lived only in a benchmark once"),
+    # ── project figures (#66) ───────────────────────────────────────────────
+    # ⚠ Phrases that live on the figure pages and nowhere else. A needle
+    # satisfied by screens.ts or templates.ts would stay green with the
+    # pages deleted.
+    (
+        "not a second ledger — journal costs, WIP and payables",
+        "budget vs actual no longer says actuals are the journal",
+    ),
+    (
+        "costs plus WIP — recognizing does not double-count",
+        "incurred would silently double-count after recognize_wip",
+    ),
+    (
+        "currently capitalized plus recognized",
+        "the WIP identity (debit = remaining + recognized) is gone",
+    ),
+    (
+        "uncapitalized plus currently in WIP — not a second ledger",
+        "cost incurred would be a picture rather than the trial balance",
+    ),
     # ── multi-view books ────────────────────────────────────────────────────
     # ⚠ Same discipline: these are the strings a reader looks for when asking
     # WHICH BOOK OF RECORD a figure came from. A console that stops saying is

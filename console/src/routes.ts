@@ -183,6 +183,18 @@ export const ROUTES: readonly Route[] = [
     reads: ["listAccounts"],
   },
 
+  // ── Project figures ──────────────────────────────────────────────────────
+  {
+    path: "/books/[book]/views/[view]/budget",
+    file: "books/[book]/views/[view]/budget/page.tsx",
+    reads: ["getBook", "listAccounts"],
+  },
+  {
+    path: "/books/[book]/views/[view]/wip",
+    file: "books/[book]/views/[view]/wip/page.tsx",
+    reads: ["listAccounts"],
+  },
+
   // ── Positions ────────────────────────────────────────────────────────────
   {
     path: "/books/[book]/views/[view]/positions",

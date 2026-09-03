@@ -227,6 +227,38 @@ describe("the command palette", () => {
     }
   });
 
+  it("a project book is offered budget and WIP, not a trade ticket", async () => {
+    const renderProject = () =>
+      render(
+        <Palette funds={funds}>
+          <header>
+            <CommandHint />
+          </header>
+          <FundActions
+            fund="bridge"
+            views={views}
+            defaultView="book"
+            kind="PROJECT"
+          />
+        </Palette>,
+      );
+    for (const [label, href] of [
+      ["Budget vs actual", `/books/bridge/views/${VIEW}/budget`],
+      ["WIP", `/books/bridge/views/${VIEW}/wip`],
+    ] as const) {
+      const { unmount } = renderProject();
+      await type(label);
+      fireEvent.click(await row(label));
+      expect(push).toHaveBeenCalledWith(href);
+      push.mockClear();
+      unmount();
+    }
+    const { unmount } = renderProject();
+    await type("Trade ticket");
+    expect(screen.queryByText("Trade ticket")).toBeNull();
+    unmount();
+  });
+
   it("keeps the screen when it switches the book of record", async () => {
     renderConsole();
     const view = views[0]!;

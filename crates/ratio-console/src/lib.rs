@@ -1986,6 +1986,7 @@ impl Console {
             entry_count: fund.entry_count,
             config_digest: fund.config_digest,
             trial_balance_difference: fund.trial_balance_difference,
+            budget: project_budget_of(&path),
         })
     }
 
@@ -2027,6 +2028,7 @@ impl Console {
             entry_count: 0,
             config_digest: String::new(),
             trial_balance_difference: "0".into(),
+            budget: String::new(),
         })
     }
 
@@ -3710,6 +3712,31 @@ fn view_pb(fund: &str, set: &ratio_rules::RuleSet, v: &ratio_rules::View) -> pb:
     }
 }
 
+/// Authorized project spend from the configuration in force, minor units.
+///
+/// Empty when unset — every personal and investment book, a project whose
+/// configuration omits `[project] budget`, and a directory we cannot read.
+/// `0` is a set baseline of nothing and is returned as `"0"`.
+fn project_budget_of(path: &Path) -> String {
+    let Ok(b) = FileBook::open(path) else {
+        return String::new();
+    };
+    let Ok(Some(digest)) = b.active() else {
+        return String::new();
+    };
+    let Ok(bytes) = b.get(&digest) else {
+        return String::new();
+    };
+    match RuleSet::from_toml(&String::from_utf8_lossy(&bytes)) {
+        Ok(set) => set
+            .project
+            .and_then(|p| p.budget)
+            .map(|n| n.to_string())
+            .unwrap_or_default(),
+        Err(_) => String::new(),
+    }
+}
+
 /// `funds/a/views/v` → `("a", "v")`.
 ///
 /// ⛔ A VIEW IS NOT A TENANCY BOUNDARY, and this deliberately does not check
@@ -4420,6 +4447,108 @@ mod tests {
         let err = console.get_book("books/theirs").unwrap_err().to_string();
         assert!(err.contains("no fund"), "{err}");
         assert!(console.get_book("books/ours").is_ok());
+    }
+
+    fn project_event(id: &str, rule: &str, amount: &str) -> pb::ApplyEventRequest {
+        pb::ApplyEventRequest {
+            parent: "funds/bridge".into(),
+            rule_id: rule.into(),
+            event_id: id.into(),
+            amount: amount.into(),
+            days: String::new(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: None,
+            validate_only: false,
+        }
+    }
+
+    #[test]
+    fn capitalizing_wip_conserves_and_opens_no_lot() {
+        // ⭐ COST → WIP → RECOGNIZED IS A CONSERVED TRANSFER, NOT A SALE.
+        // The project template's rules carry no instrument and no
+        // per_instrument leg, so the walk that opens lots skips them. The
+        // trial balance still ties. Incurred cost is costs.balance + WIP.balance
+        // — recognizing WIP moves it back to expense and must not double-count.
+        let root = fresh("project-wip");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+
+        c.apply_event(&project_event("fund-1", "receive_funding", "200.00")).unwrap();
+        c.apply_event(&project_event("cost-1", "project_cost", "100.00")).unwrap();
+        c.apply_event(&project_event("cap-1", "capitalize_wip", "60.00")).unwrap();
+        c.apply_event(&project_event("rec-1", "recognize_wip", "20.00")).unwrap();
+
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        let proj = c.projection("bridge").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a WIP transfer must not claim lot relief"
+        );
+
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let rows = c.list_accounts(&view, "").unwrap().accounts;
+        let named = |n: &str| {
+            rows.iter()
+                .find(|a| a.display_name == n)
+                .unwrap_or_else(|| panic!("missing {n} in {rows:?}"))
+        };
+        // 100.00 in, 60.00 capitalized, 20.00 recognized back: net expense 60.00
+        assert_eq!(named("Project costs").balance, "6000");
+        // 60.00 in, 20.00 out: 40.00 still capitalized
+        assert_eq!(named("Work in progress").balance, "4000");
+        assert_eq!(named("Work in progress").credit, "2000");
+        // Incurred = still-in-expense + still-in-WIP = original 100.00
+        let incurred: i64 = named("Project costs").balance.parse().unwrap();
+        let wip: i64 = named("Work in progress").balance.parse().unwrap();
+        assert_eq!(incurred + wip, 10_000);
+
+        let created = c.get_book("books/bridge").unwrap();
+        assert_eq!(created.kind, book::BookKind::Project.proto());
+        assert!(
+            created.budget.is_empty(),
+            "CreateBook must not invent a baseline: {:?}",
+            created.budget
+        );
+    }
+
+    #[test]
+    fn a_project_budget_is_the_configuration_total_not_a_second_ledger() {
+        let root = fresh("project-budget");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+        assert!(c.get_book("books/bridge").unwrap().budget.is_empty());
+
+        let path = root.join("bridge");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str("\n[project]\nbudget = 1000000\n");
+        let next = b.put(text.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+
+        assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
+        c.apply_event(&project_event("cost-1", "project_cost", "250.00")).unwrap();
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        // The baseline is still the configuration total; actuals are the journal.
+        assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
     }
 
     #[test]

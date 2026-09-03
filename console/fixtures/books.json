@@ -10,7 +10,8 @@
       "defaultView": "book",
       "entryCount": "0",
       "configDigest": "",
-      "trialBalanceDifference": "0"
+      "trialBalanceDifference": "0",
+      "budget": ""
     },
     {
       "name": "books/harbourline-global-value",
@@ -22,7 +23,8 @@
       "defaultView": "abor",
       "entryCount": "6",
       "configDigest": "9f2c1ab7de40551c",
-      "trialBalanceDifference": "0"
+      "trialBalanceDifference": "0",
+      "budget": ""
     },
     {
       "name": "books/bridge",
@@ -34,7 +36,8 @@
       "defaultView": "book",
       "entryCount": "0",
       "configDigest": "",
-      "trialBalanceDifference": "0"
+      "trialBalanceDifference": "0",
+      "budget": ""
     }
   ],
   "nextPageToken": ""

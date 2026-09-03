@@ -48,7 +48,8 @@ export function FundActions({
   const view = (underView ? segments[1] : undefined) ?? defaultView;
   // Stay on the same screen when switching books, exactly as `ViewSwitch` does.
   // A control-plane screen is not view-scoped, so switching from one lands on
-  // the kind's default figure — sheet for personal, exceptions for a fund.
+  // the kind's default figure — sheet for personal, budget for a project,
+  // capital for investment, exceptions for a fund.
   const screens = screensFor(kind);
   const fallback = defaultScreen(kind);
   const screen = (underView ? segments[2] : undefined) ?? fallback;

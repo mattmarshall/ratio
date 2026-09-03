@@ -217,6 +217,190 @@ describe("a first-class book", () => {
     expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
   });
 
+  it("a project book opens budget vs actual and WIP, not Exceptions or NAV", async () => {
+    const real = wire.getBook;
+    const bridge = booksFixture.books.find((b) => b.kind === "PROJECT")!;
+    wire.getBook = (async () => ({ ...bridge, defaultView: "book" })) as typeof wire.getBook;
+    try {
+      const Book = (await import("./books/[book]/page")).default;
+      await renderAsync(Book({ params: params({ book: "bridge" }) }));
+      expect(screen.getByRole("heading", { name: "Bridge" })).toBeDefined();
+      expect(screen.getByText("Project")).toBeDefined();
+      const budget = screen.getByRole("link", { name: "Budget vs actual" });
+      expect(budget.getAttribute("href")).toBe(
+        "/books/bridge/views/book/budget",
+      );
+      expect(
+        screen.getByRole("link", { name: "WIP" }).getAttribute("href"),
+      ).toBe("/books/bridge/views/book/wip");
+      expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
+      expect(screen.getByText(/unset/)).toBeDefined();
+    } finally {
+      wire.getBook = real;
+    }
+  });
+
+  it("a personal book is not sent to project figure routes", async () => {
+    const Book = (await import("./books/[book]/page")).default;
+    await renderAsync(Book({ params: params({ book: "household" }) }));
+    expect(screen.queryByRole("link", { name: "Budget vs actual" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "WIP" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Exceptions" })).toBeDefined();
+  });
+
+  it("renders budget vs actual from the journal against a configuration total", async () => {
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    const bridge = booksFixture.books.find((b) => b.kind === "PROJECT")!;
+    wire.getBook = (async () => ({
+      ...bridge,
+      budget: "10000000",
+    })) as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/bridge/views/book/accounts/1",
+          displayName: "Cash",
+          dimension: "1",
+          type: "ASSET",
+          debit: "500000",
+          credit: "200000",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/2",
+          displayName: "Work in progress",
+          dimension: "2",
+          type: "ASSET",
+          debit: "400000",
+          credit: "100000",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/10",
+          displayName: "Project costs",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "700000",
+          credit: "400000",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "3",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/20",
+          displayName: "Funding",
+          dimension: "20",
+          type: "EQUITY",
+          debit: "0",
+          credit: "900000",
+          balance: "-900000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/30",
+          displayName: "Project revenue",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "150000",
+          balance: "-150000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/40",
+          displayName: "Payables",
+          dimension: "40",
+          type: "LIABILITY",
+          debit: "0",
+          credit: "200000",
+          balance: "-200000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as typeof wire.listAccounts;
+    try {
+      const Budget = (await import("./books/[book]/views/[view]/budget/page")).default;
+      await renderAsync(
+        Budget({ params: params({ book: "bridge", view: "book" }) }),
+      );
+      expect(screen.getByText("100,000.00")).toBeDefined();
+      expect(screen.getByText("Project costs")).toBeDefined();
+      expect(screen.getByText("Work in progress")).toBeDefined();
+      // incurred 6,000.00; committed 8,000.00; variance 92,000.00
+      expect(screen.getByText("6,000.00")).toBeDefined();
+      expect(screen.getByText("8,000.00")).toBeDefined();
+      expect(screen.getByText("92,000.00")).toBeDefined();
+      expect(
+        screen.queryByRole("link", { name: "Exceptions" }),
+      ).toBeNull();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("renders WIP as cost then capitalized then recognized", async () => {
+    const realAccounts = wire.listAccounts;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/bridge/views/book/accounts/2",
+          displayName: "Work in progress",
+          dimension: "2",
+          type: "ASSET",
+          debit: "400000",
+          credit: "100000",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/bridge/views/book/accounts/10",
+          displayName: "Project costs",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "700000",
+          credit: "400000",
+          balance: "300000",
+          abnormal: false,
+          postingCount: "3",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as typeof wire.listAccounts;
+    try {
+      const Wip = (await import("./books/[book]/views/[view]/wip/page")).default;
+      await renderAsync(
+        Wip({ params: params({ book: "bridge", view: "book" }) }),
+      );
+      expect(screen.getByText("Currently capitalized")).toBeDefined();
+      expect(screen.getByText("Recognized (out of WIP)")).toBeDefined();
+      expect(screen.getByText("currently capitalized plus recognized")).toBeDefined();
+      expect(screen.getByText("uncapitalized plus currently in WIP — not a second ledger")).toBeDefined();
+    } finally {
+      wire.listAccounts = realAccounts;
+    }
+  });
+
   it("sends every job to /books/{book}/… and never through /funds", async () => {
     const Book = (await import("./books/[book]/page")).default;
     await renderAsync(Book({ params: params({ book: "household" }) }));

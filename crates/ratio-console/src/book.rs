@@ -171,14 +171,15 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
 
 /// The configuration a new book starts with.
 ///
-/// Investment and project still write an empty rule set — those charts are
-/// used with rules an operator approves. Personal writes the household
-/// transfers and living-expense rules so a book created from the template
-/// can post without inventing a fund trade.
+/// Kind selects the rules CreateBook activates. Personal writes household
+/// transfers and living-expense rules; project writes cost, funding, and
+/// WIP-capitalization; investment waits on #70's partner-capital templates
+/// until that lands, and until then writes an empty rule set.
 fn configuration_for(kind: BookKind) -> &'static str {
     match kind {
         BookKind::Personal => PERSONAL_CONFIG,
-        BookKind::Investment | BookKind::Project => "# ratio configuration\nrules = []\n",
+        BookKind::Project => PROJECT_CONFIG,
+        BookKind::Investment => "# ratio configuration\nrules = []\n",
     }
 }
 
@@ -294,6 +295,98 @@ weight = -1
 id = "receive_income"
 kind = "trade"
 description = "Income received to cash"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 30
+weight = -1
+"#;
+
+/// Project posting rules. Amount given; no instrument, so no lot.
+///
+/// ⭐ THE ACCOUNT NUMBERS ARE `chart_for(Project)`'S. `initialize` runs
+/// `check` against that chart before the digest is activated, so a drift
+/// between the two is a refused create rather than a book that cannot post.
+///
+/// Budget vs actual: set `[project] budget = <minor units>` on this
+/// configuration. Actuals are the journal (costs, WIP, payables). That is
+/// the baseline, not a second ledger. Omitting the table means no baseline
+/// has been set — not a budget of zero.
+const PROJECT_CONFIG: &str = r#"# Project posting rules. Amount given; no instrument, so no lot.
+# Budget vs actual: set `[project] budget = <minor units>` here.
+# Actuals are costs, WIP and payables on this chart — not a second ledger.
+
+[[rule]]
+id = "project_cost"
+kind = "trade"
+description = "Project costs paid from cash"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "vendor_invoice"
+kind = "trade"
+description = "Project costs on a vendor invoice"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "pay_vendor"
+kind = "trade"
+description = "Pay a vendor from cash"
+[[rule.posting]]
+account = 40
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "capitalize_wip"
+kind = "trade"
+description = "Move project costs into work in progress"
+[[rule.posting]]
+account = 2
+weight = 1
+[[rule.posting]]
+account = 10
+weight = -1
+
+[[rule]]
+id = "recognize_wip"
+kind = "trade"
+description = "Recognize capitalized WIP as project cost"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 2
+weight = -1
+
+[[rule]]
+id = "receive_funding"
+kind = "trade"
+description = "Funding received to cash"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 20
+weight = -1
+
+[[rule]]
+id = "recognize_revenue"
+kind = "trade"
+description = "Project revenue received to cash"
 [[rule.posting]]
 account = 1
 weight = 1
@@ -467,5 +560,44 @@ mod tests {
         let set = RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest).unwrap())).unwrap();
         assert!(set.rule("xfer_cash_investments").is_some());
         assert_eq!(b.accounts().unwrap(), chart_for(BookKind::Personal));
+    }
+
+    #[test]
+    fn project_template_rules_check_against_its_chart() {
+        // ⭐ A RULE THAT NAMES AN ACCOUNT THE CHART DOES NOT HAVE WOULD CREATE
+        // a book that cannot post. initialize refuses that; this test is what
+        // notices the two drifting apart before a create is attempted.
+        let set = RuleSet::from_toml(PROJECT_CONFIG).unwrap();
+        let findings = check(&set, &chart_for(BookKind::Project));
+        assert!(
+            findings.iter().all(|f| f.is_question),
+            "project rules must check against chart_for(Project): {findings:?}"
+        );
+        assert!(set.rule("capitalize_wip").is_some());
+        assert!(set.rule("recognize_wip").is_some());
+        assert!(set.rule("project_cost").is_some());
+        assert!(set.rule("vendor_invoice").is_some());
+        assert!(
+            set.project.is_none(),
+            "a new project has no baseline until someone sets [project] budget"
+        );
+        let against_empty = check(&set, &[]);
+        assert!(
+            against_empty.iter().any(|f| !f.is_question),
+            "project rules must not check against an empty chart: {against_empty:?}"
+        );
+    }
+
+    #[test]
+    fn initialize_seeds_the_wip_rules_and_no_project_budget() {
+        let dir = std::env::temp_dir().join("ratio-book-init-project-rules");
+        let _ = std::fs::remove_dir_all(&dir);
+        initialize(&dir, "bridge", "Bridge", BookKind::Project).unwrap();
+        let b = FileBook::open(&dir).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let set = RuleSet::from_toml(&text).unwrap();
+        assert!(set.rule("capitalize_wip").is_some(), "{text}");
+        assert!(set.project.is_none());
     }
 }

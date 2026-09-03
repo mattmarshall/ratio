@@ -15,8 +15,9 @@ export const dynamic = "force-dynamic";
  * project book through `/funds/{fund}/…` to be opened.
  *
  * ⭐ KIND SELECTS THE PLACES. A personal book that listed Exceptions / NAV
- * would be a fake label on fund-ops screens (#65). The hub is how you
- * open the citable sheet and period P&L after CreateBook.
+ * would be a fake label on fund-ops screens (#65, #83). A project book
+ * that listed them is the same defect (#66). The hub is how you open the
+ * citable figures after CreateBook.
  */
 export default async function BookPage({
   params,
@@ -30,6 +31,7 @@ export default async function BookPage({
     ? await or404(getView(c, book, b.defaultView))
     : null;
   const personal = b.kind === "PERSONAL";
+  const project = b.kind === "PROJECT";
   const places = screensFor(b.kind);
 
   return (
@@ -51,12 +53,20 @@ export default async function BookPage({
         <dd>{b.configDigest || "none"}</dd>
         <dt>Default view</dt>
         <dd>{b.defaultView || "—"}</dd>
-        {view ? (
+        {view && !project ? (
           <>
             <dt>
               {personal ? "Net worth" : "NAV"}, in {b.defaultView}
             </dt>
             <dd className="num">{money(view.netAssetValue)}</dd>
+          </>
+        ) : null}
+        {project ? (
+          <>
+            <dt>Budget</dt>
+            <dd className="num">
+              {b.budget ? money(b.budget) : "unset — [project] budget on the configuration"}
+            </dd>
           </>
         ) : null}
       </dl>
@@ -88,6 +98,11 @@ export default async function BookPage({
           <Link href={`/books/${book}/transfer`}>Transfer between accounts</Link>
           {" · "}
           <Link href={`/books/${book}/record`}>Record income or an expense</Link>
+        </p>
+      ) : null}
+      {project && b.defaultView ? (
+        <p className="note">
+          <Link href={`/books/${book}/record`}>Record a cost or capitalize WIP</Link>
         </p>
       ) : null}
       {b.fund ? (

@@ -67,6 +67,8 @@ const SCREENS = [
   [`/books/${F}/views/abor/breaks`, "main"],
   [`/books/${F}/views/abor/breaks/x`, '[aria-label="Break detail"]'],
   [`/books/${F}/views/abor/accounts`, "main"],
+  [`/books/bridge/views/book/budget`, "main"],
+  [`/books/bridge/views/book/wip`, "main"],
   [`/books/${F}/views/abor/accounts/x`, '[aria-label="Account detail"]'],
   [`/books/${F}/views/abor/accounts/x/postings/x`, '[aria-label="Posting detail"]'],
   [`/books/${F}/views/abor/positions`, "main"],

@@ -11,9 +11,11 @@
 // `lib/format.ts` is the precedent.
 //
 // ⭐ KIND SELECTS THE LIST. A personal book that offered Exceptions / Positions
-// / NAV would be a fake label on fund-ops screens — issue #65. The agreement
-// screens (configuration, rules, change log, data) stay shared: a rule set is
-// the same document whichever chart it posted.
+// / NAV would be a fake label on fund-ops screens — issue #65 (sheet/P&L)
+// and #83 (budget). A project book that wore that warehouse is #66. An
+// investment book cites partner capital first, then the ABOR warehouse
+// (#70). The agreement screens stay shared: a rule set is the same
+// document whichever chart it posted.
 
 import type { BookKind } from "@/wire/types";
 
@@ -48,7 +50,7 @@ const AGREEMENT: readonly Screen[] = [
   { segment: "changes", label: "Change log", scoped: false, group: "agreement" },
 ];
 
-/** Fund / investment operations. NAV, breaks, positions. */
+/** Fund operations. NAV, breaks, positions. */
 export const FUND_SCREENS: readonly Screen[] = [
   { segment: "breaks", label: "Exceptions", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
@@ -58,7 +60,7 @@ export const FUND_SCREENS: readonly Screen[] = [
 ];
 
 /**
- * Household figures. Balance sheet and a period P&L, not ABOR.
+ * Household figures. Balance sheet, period P&L, and budget vs actual — not ABOR.
  *
  * Trial balance stays: it is the conservation view of the same accounts, and
  * a sheet that could not be checked against it would be a picture.
@@ -66,11 +68,41 @@ export const FUND_SCREENS: readonly Screen[] = [
 export const PERSONAL_SCREENS: readonly Screen[] = [
   { segment: "sheet", label: "Balance sheet", scoped: true, group: "book" },
   { segment: "pnl", label: "Period P&L", scoped: true, group: "book" },
+  { segment: "budget", label: "Budget vs actual", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   ...AGREEMENT,
 ];
 
-/** The fund list. Palette tests on an investment book read this. */
+/**
+ * Project figures. Budget vs actual and WIP capitalization, not ABOR.
+ *
+ * Trial balance stays: it is the conservation view of the same accounts, and
+ * a figure that could not be checked against it would be a picture.
+ */
+export const PROJECT_SCREENS: readonly Screen[] = [
+  { segment: "budget", label: "Budget vs actual", scoped: true, group: "book" },
+  { segment: "wip", label: "WIP", scoped: true, group: "book" },
+  { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
+  ...AGREEMENT,
+];
+
+/**
+ * Investment figures. Capital activity first, then the ABOR warehouse.
+ *
+ * ⛔ NOT A REPLACEMENT FOR NAV / POSITIONS / EXCEPTIONS. Those stay: a fund
+ * book of record still has to strike. Capital is who put money in and took
+ * money out, on the same journal.
+ */
+export const INVESTMENT_SCREENS: readonly Screen[] = [
+  { segment: "capital", label: "Capital activity", scoped: true, group: "book" },
+  { segment: "breaks", label: "Exceptions", scoped: true, group: "book" },
+  { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
+  { segment: "positions", label: "Positions", scoped: true, group: "book" },
+  { segment: "strikes", label: "NAV", scoped: true, group: "book" },
+  ...AGREEMENT,
+];
+
+/** The fund list. Palette tests on a book without a kind read this. */
 export const SCREENS: readonly Screen[] = FUND_SCREENS;
 
 export const SCREEN_GROUPS: ReadonlyArray<{
@@ -82,19 +114,27 @@ export const SCREEN_GROUPS: ReadonlyArray<{
 ];
 
 export function screensFor(kind: BookKind): readonly Screen[] {
-  return kind === "PERSONAL" ? PERSONAL_SCREENS : FUND_SCREENS;
+  if (kind === "PERSONAL") return PERSONAL_SCREENS;
+  if (kind === "PROJECT") return PROJECT_SCREENS;
+  if (kind === "INVESTMENT") return INVESTMENT_SCREENS;
+  return FUND_SCREENS;
 }
 
 /** Where a newly opened book of record lands. */
 export function defaultScreen(kind: BookKind): string {
-  return kind === "PERSONAL" ? "sheet" : "breaks";
+  if (kind === "PERSONAL") return "sheet";
+  if (kind === "PROJECT") return "budget";
+  if (kind === "INVESTMENT") return "capital";
+  return "breaks";
 }
 
-/** Title for the place currently open, across both kinds. */
+/** Title for the place currently open, across kinds. */
 export function placeOf(segment: string | undefined): Screen | undefined {
   if (!segment) return undefined;
   return (
     PERSONAL_SCREENS.find((s) => s.segment === segment) ??
+    PROJECT_SCREENS.find((s) => s.segment === segment) ??
+    INVESTMENT_SCREENS.find((s) => s.segment === segment) ??
     FUND_SCREENS.find((s) => s.segment === segment)
   );
 }
@@ -134,8 +174,19 @@ const PERSONAL_TICKETS: readonly Ticket[] = [
   },
 ];
 
+const PROJECT_TICKETS: readonly Ticket[] = [
+  { segment: "record", label: "Record an event", keywords: "record,event,rule,apply,cost,wip" },
+  {
+    segment: "ingest",
+    label: "Ingest a delivery",
+    keywords: "ingest,delivery,file,invoice,admit",
+  },
+];
+
 export function ticketsFor(kind: BookKind): readonly Ticket[] {
-  return kind === "PERSONAL" ? PERSONAL_TICKETS : FUND_TICKETS;
+  if (kind === "PERSONAL") return PERSONAL_TICKETS;
+  if (kind === "PROJECT") return PROJECT_TICKETS;
+  return FUND_TICKETS;
 }
 
 /**

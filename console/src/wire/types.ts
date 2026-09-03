@@ -49,6 +49,12 @@ export interface Book {
   entryCount: Int64;
   configDigest: string;
   trialBalanceDifference: Int64;
+  /**
+   * Authorized project spend, minor units. Empty when unset — every
+   * personal and investment book, and a project nobody has given a
+   * `[project] budget`.
+   */
+  budget: Int64;
 }
 
 export interface ListBooksResponse {
