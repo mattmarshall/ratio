@@ -1184,8 +1184,8 @@ describe("the write screens", () => {
     // fields.
     const { TransferForm } = await import("./books/[book]/transfer/TransferForm");
     render(<TransferForm fund="household" rules={[XFER_CASH_INV]} />);
-    expect(screen.getByText(/this is not a trade/)).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    expect(screen.getByText(/this is not a trade/)).toBeDefined();
     fireEvent.change(screen.getByLabelText("From"), {
       target: { value: "Cash and bank" },
     });

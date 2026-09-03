@@ -360,10 +360,14 @@ describe("the command palette", () => {
   it("offers a personal book's household places and a transfer, not NAV", async () => {
     // ⛔ WRITTEN OUT, for the same reason the fund table is. Deriving this
     // from PERSONAL_SCREENS would stay green after deleting a place.
+    // ⚠ THE OPEN VIEW IS THE MOCKED SEGMENTS', NOT defaultView. FundActions
+    // reads ["views","abor","breaks"] from the same layout mock the fund
+    // cases use, so a personal screen stays on abor the way a fund one
+    // does — switching the kind must not invent a second view id.
     const expected: ReadonlyArray<readonly [string, string]> = [
-      ["Balance sheet", "/books/household/views/book/sheet"],
-      ["Period P&L", "/books/household/views/book/pnl"],
-      ["Trial balance", "/books/household/views/book/accounts"],
+      ["Balance sheet", "/books/household/views/abor/sheet"],
+      ["Period P&L", "/books/household/views/abor/pnl"],
+      ["Trial balance", "/books/household/views/abor/accounts"],
       ["Data", "/books/household/data"],
       ["Configuration", "/books/household/config"],
       ["Rules", "/books/household/rules"],

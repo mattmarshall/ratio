@@ -2,8 +2,7 @@ import Link from "next/link";
 import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
-import { money } from "@/lib/format";
-import { ofType, sectionOf, sheetFoots, sheetTotals, shown } from "@/lib/statement";
+import { ofType, sheetFoots, sheetTotals, shown } from "@/lib/statement";
 import { listAccounts } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 import type { Account } from "@/wire/types";
@@ -157,7 +156,6 @@ function Section({
       <div className="posacct">{title}</div>
       {accounts.map((a) => {
         const id = a.name.split("/").pop()!;
-        const s = sectionOf(a.type);
         return (
           <Link
             key={a.name}
@@ -167,7 +165,7 @@ function Section({
           >
             <span role="cell">{a.displayName}</span>
             <span role="cell" className="num">
-              {s ? shown(s, BigInt(a.balance)) : money(a.balance)}
+              {shown(section, BigInt(a.balance))}
             </span>
           </Link>
         );
