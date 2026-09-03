@@ -27,6 +27,8 @@
 use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 
@@ -70,19 +72,124 @@ fn install_journal_store() -> Result<()> {
 /// The deployed demo sets `RATIO_JOURNAL_BUCKET`. A hydrate failure there
 /// must be a CloudWatch line, not a dead API: `/healthz` and `/version` do
 /// not need the book, and LWA's readiness check is HTTP GET `/healthz`.
-/// Unset (or empty) is the laptop shape — a bad path should fail before the
-/// accept loop, not hang as a silent empty server.
+/// Unset (or empty) is the laptop shape — a bad path should fail closed,
+/// not hang as a silent empty server. Accept still starts so `/healthz`
+/// can answer while we wait to learn the open failed.
 fn startup_open_failure_is_fatal(journal_bucket: Option<&str>) -> bool {
     !matches!(journal_bucket, Some(b) if !b.is_empty())
+}
+
+/// How long a book route waits for startup hydrate before 503.
+///
+/// A laptop `FileBook::open` is milliseconds; a deployed hydrate after #84
+/// is one conditional PUT per seed line and can run for the life of a
+/// cold start. Waiting briefly still serves the first local request.
+/// Waiting for S3 would hold the connection until LWA times out — and
+/// API Gateway then 503s *every* route, including the ones that did
+/// not need the book.
+const BOOK_READY_WAIT: Duration = Duration::from_millis(200);
+
+/// How far startup hydrate has got.
+///
+/// ⭐ `/healthz` AND `/version` NEVER CONSULT THIS. They must answer
+/// while `FileBook::open` is still issuing PutObjects. Book routes wait
+/// [`BOOK_READY_WAIT`], then 503 with Retry-After — they must not sit
+/// in `FileBook::open` on a thread that would starve accept.
+enum HydrateStatus {
+    Pending,
+    Ready,
+    Failed(String),
+}
+
+struct HydrateGate {
+    status: Mutex<HydrateStatus>,
+    cv: Condvar,
+}
+
+impl HydrateGate {
+    fn pending() -> Arc<Self> {
+        Arc::new(Self {
+            status: Mutex::new(HydrateStatus::Pending),
+            cv: Condvar::new(),
+        })
+    }
+
+    fn already_ready() -> Arc<Self> {
+        Arc::new(Self {
+            status: Mutex::new(HydrateStatus::Ready),
+            cv: Condvar::new(),
+        })
+    }
+
+    fn mark_ready(&self) {
+        *self.status.lock().unwrap() = HydrateStatus::Ready;
+        self.cv.notify_all();
+    }
+
+    fn mark_failed(&self, msg: String) {
+        *self.status.lock().unwrap() = HydrateStatus::Failed(msg);
+        self.cv.notify_all();
+    }
+
+    /// Wait up to `limit` for hydrate to settle. Ready *or* Failed is
+    /// settled: a deployed failure still lets the handler try `open`,
+    /// which is today's request-time behaviour.
+    fn wait_ready(&self, limit: Duration) -> bool {
+        let mut g = self.status.lock().unwrap();
+        let deadline = Instant::now() + limit;
+        loop {
+            match &*g {
+                HydrateStatus::Ready | HydrateStatus::Failed(_) => return true,
+                HydrateStatus::Pending => {
+                    let now = Instant::now();
+                    if now >= deadline {
+                        return false;
+                    }
+                    let (gg, timed) = self.cv.wait_timeout(g, deadline - now).unwrap();
+                    g = gg;
+                    if timed.timed_out() {
+                        return !matches!(*g, HydrateStatus::Pending);
+                    }
+                }
+            }
+        }
+    }
+
+    fn failed_error(&self) -> Option<String> {
+        match &*self.status.lock().unwrap() {
+            HydrateStatus::Failed(msg) => Some(msg.clone()),
+            _ => None,
+        }
+    }
+}
+
+/// Routes that open the book — the rest must answer during hydrate.
+fn route_needs_hydrated_book(path: &str) -> bool {
+    matches!(
+        path,
+        "/balance.json"
+            | "/postings.json"
+            | "/breaks.json"
+            | "/rules.json"
+            | "/scale.json"
+            | "/terminal.json"
+            | "/chat.json"
+            | "/mcp"
+    ) || path.starts_with("/v1/")
 }
 
 /// Serve the screens until interrupted.
 pub fn watch(book: PathBuf, port: u16) -> Result<()> {
     // Bind BEFORE hydrate. LWA's readiness check is HTTP GET /healthz on
-    // this port; a closed port is an API Gateway 500 on every route for the
-    // life of the function. After #84 the journal is one object per entry,
-    // and FileBook::open issues a conditional PUT per seed line — that was
-    // fail-closed here, so a hydrate problem took /healthz with it.
+    // this port; a closed port is an API Gateway 500 on every route for
+    // the life of the function. After #84 the journal is one object per
+    // entry, and FileBook::open issues a conditional PUT per seed line.
+    //
+    // ⛔ BIND IS NOT ENOUGH. #126 moved TcpListener::bind above open, but
+    // watch() still ran hydrate synchronously before incoming(). The
+    // port was open and nobody accept()d, so LWA's GET /healthz hung
+    // and API Gateway returned 503 on authenticated routes. Accept
+    // starts here; hydrate is someone else's thread.
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let listener = TcpListener::bind(addr)
         .with_context(|| format!("binding {addr} — is another `ratio watch` running?"))?;
@@ -96,39 +203,81 @@ pub fn watch(book: PathBuf, port: u16) -> Result<()> {
     println!("book   {}", book.display());
     println!("(ctrl-c to stop)");
 
-    // ⛔ BEFORE THE FIRST OPEN. FileBook reads the process-wide store on
-    // `open`, so installing after the first request would leave that request
-    // writing `/tmp` while later ones write the object store — two journals
-    // under one URL, which is the fork this exists to close.
-    //
-    // A failed install leaves the store unset (today's local shape) rather
-    // than crashing. /healthz and /version never call FileBook::open.
     let deployed = !startup_open_failure_is_fatal(
         std::env::var("RATIO_JOURNAL_BUCKET").ok().as_deref(),
     );
-    if let Err(e) = install_journal_store() {
-        if !deployed {
-            return Err(e);
+    watch_ready(book, listener, deployed, move |book| {
+        // ⛔ BEFORE THE FIRST OPEN, AND ON THE HYDRATE THREAD. FileBook
+        // reads the process-wide store on `open`, so installing after a
+        // request-time open would leave that request writing `/tmp`
+        // while later ones write the object store — two journals under
+        // one URL. Book routes wait on the gate, so they cannot open
+        // before this returns.
+        //
+        // A failed install leaves the store unset (today's local shape)
+        // rather than crashing. /healthz and /version never call
+        // FileBook::open.
+        if let Err(e) = install_journal_store() {
+            if !deployed {
+                return Err(e);
+            }
+            eprintln!("journal store failed to install; serving without it: {e:#}");
         }
-        eprintln!("journal store failed to install; serving without it: {e:#}");
-    }
-    if let Err(e) = FileBook::open(&book)
-        .with_context(|| format!("opening book at {}", book.display()))
-    {
-        if !deployed {
-            return Err(e);
-        }
-        eprintln!("book failed to open; /healthz and /version still serve: {e:#}");
-    }
+        FileBook::open(book)
+            .map(|_| ())
+            .with_context(|| format!("opening book at {}", book.display()))
+    })
+}
 
-    for stream in listener.incoming() {
-        let Ok(stream) = stream else { continue }; // one dropped connection is not the end
-        let book = book.clone();
-        std::thread::spawn(move || {
-            let _ = handle(stream, &book);
-        });
+/// Accept immediately; run `open` on another thread.
+///
+/// `deployed` is the CloudWatch-line shape: an `open` failure is logged
+/// and `/healthz` keeps answering. Unset `RATIO_JOURNAL_BUCKET` is the
+/// laptop: the same failure takes `watch` down once we know it failed.
+fn watch_ready(
+    book: PathBuf,
+    listener: TcpListener,
+    deployed: bool,
+    open: impl FnOnce(&Path) -> Result<()> + Send + 'static,
+) -> Result<()> {
+    let gate = HydrateGate::pending();
+    let gate_h = gate.clone();
+    let book_h = book.clone();
+    std::thread::spawn(move || match open(&book_h) {
+        Ok(()) => gate_h.mark_ready(),
+        Err(e) => {
+            if deployed {
+                eprintln!("book failed to open; /healthz and /version still serve: {e:#}");
+            }
+            gate_h.mark_failed(format!("{e:#}"));
+        }
+    });
+
+    // Non-blocking so the laptop shape can observe a failed open and
+    // return, rather than sitting in incoming() as a silent empty server.
+    listener.set_nonblocking(true)?;
+    loop {
+        if !deployed {
+            if let Some(msg) = gate.failed_error() {
+                return Err(anyhow::anyhow!("{msg}"));
+            }
+        }
+        match listener.accept() {
+            Ok((stream, _)) => {
+                // The listener is non-blocking; the handler is not.
+                let _ = stream.set_nonblocking(false);
+                let book = book.clone();
+                let gate = gate.clone();
+                std::thread::spawn(move || {
+                    let _ = handle(stream, &book, &gate);
+                });
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(_) => continue, // one dropped connection is not the end
+        }
     }
-    Ok(())
 }
 
 /// One parsed request. Only what the routes actually need.
@@ -285,7 +434,7 @@ fn v1_error_status(msg: &str) -> &'static str {
     }
 }
 
-fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
+fn handle(mut stream: TcpStream, book: &Path, hydrate: &HydrateGate) -> Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let req = match read_request(&mut reader) {
         Ok(r) => r,
@@ -340,6 +489,33 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             )?;
         }
         return Ok(());
+    }
+
+    // Book routes wait briefly for hydrate, then 503. /healthz and
+    // /version never reach this — they do not need the book. A /v1
+    // request that will 401 for a missing subject also does not: the
+    // authorizer decision is independent of FileBook.
+    if route_needs_hydrated_book(&req.path) {
+        let auth_required = std::env::var("RATIO_AUTH").as_deref() == Ok("required");
+        let will_401 = req.path.starts_with("/v1/")
+            && auth_required
+            && ratio_console::auth::from_request_context(&req.auth_context).is_none();
+        if !will_401 && !hydrate.wait_ready(BOOK_READY_WAIT) {
+            let body = "{\"error\":\"the journal is still hydrating\"}";
+            let canonical = std::env::var("RATIO_CANONICAL_HOST").ok();
+            write!(
+                stream,
+                "HTTP/1.1 503 Service Unavailable\r\n\
+                 Content-Type: application/json\r\n\
+                 Content-Length: {}\r\n\
+                 Retry-After: 2\r\n\
+                 {}Cache-Control: no-store\r\n\
+                 Connection: close\r\n\r\n{body}",
+                body.len(),
+                security_headers("application/json", &req.host, canonical.as_deref())
+            )?;
+            return Ok(());
+        }
     }
 
     let json = |r: Result<String>| match r {
@@ -2829,6 +3005,20 @@ mod tests {
     }
 
     #[test]
+    fn healthz_and_version_do_not_need_the_hydrated_book() {
+        // The classification the accept loop consults. A hydrate that
+        // has not finished must still answer these; /v1/books must not
+        // sit in FileBook::open until LWA times out.
+        assert!(!route_needs_hydrated_book("/healthz"));
+        assert!(!route_needs_hydrated_book("/version"));
+        assert!(!route_needs_hydrated_book("/authconfig.json"));
+        assert!(!route_needs_hydrated_book("/balance"));
+        assert!(route_needs_hydrated_book("/balance.json"));
+        assert!(route_needs_hydrated_book("/v1/books"));
+        assert!(route_needs_hydrated_book("/mcp"));
+    }
+
+    #[test]
     fn a_set_journal_bucket_must_not_kill_the_server_on_open_failure() {
         // Deployed shape. A hydrate problem is a CloudWatch line; /healthz
         // still has to answer or LWA 500s every route for the life of the
@@ -2847,11 +3037,20 @@ mod tests {
     }
 
     fn probe(addr: SocketAddr, path: &str) -> String {
-        let mut s = TcpStream::connect(addr).expect("connect to the probe listener");
+        // A hung accept (hydrate still on the listen thread) must fail
+        // this test rather than sit until CI times the suite out.
+        let mut s = TcpStream::connect_timeout(&addr, Duration::from_secs(1))
+            .expect("connect to the probe listener");
+        s.set_read_timeout(Some(Duration::from_secs(2)))
+            .expect("read timeout");
+        s.set_write_timeout(Some(Duration::from_secs(2)))
+            .expect("write timeout");
         write!(s, "GET {path} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").unwrap();
         let _ = s.shutdown(std::net::Shutdown::Write);
         let mut out = String::new();
-        std::io::Read::read_to_string(&mut s, &mut out).unwrap();
+        std::io::Read::read_to_string(&mut s, &mut out).unwrap_or_else(|e| {
+            panic!("probe {path} failed to read: {e}; got {out:?}");
+        });
         out
     }
 
@@ -2864,10 +3063,11 @@ mod tests {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let addr = listener.local_addr().unwrap();
         let book = PathBuf::from("/no/such/ratio-book");
+        let ready = HydrateGate::already_ready();
         std::thread::spawn(move || {
             for stream in listener.incoming().take(2) {
                 let Ok(stream) = stream else { continue };
-                let _ = handle(stream, &book);
+                let _ = handle(stream, &book, &ready);
             }
         });
 
@@ -2884,6 +3084,81 @@ mod tests {
         assert!(
             version.contains("\r\n\r\n"),
             "version must carry a body: {version}"
+        );
+    }
+
+    #[test]
+    fn a_blocked_hydrate_cannot_prevent_healthz_from_being_accepted() {
+        // ⛔ THE PRODUCTION DEFECT AFTER #126. Bind moved above FileBook::open,
+        // but watch() still ran hydrate on the listen thread. The port was
+        // open; nobody accept()d; LWA's GET /healthz hung; API Gateway
+        // returned 503 on /v1/books. A hydrate that never returns must
+        // not stop /healthz from being answered.
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        std::thread::spawn(move || {
+            let _ = watch_ready(
+                PathBuf::from("/no/such/ratio-book"),
+                listener,
+                true, // deployed: a blocked open is not fatal
+                move |_| {
+                    let _ = release_rx.recv();
+                    Ok(())
+                },
+            );
+        });
+
+        let healthz = probe(addr, "/healthz");
+        assert!(healthz.contains("200 OK"), "{healthz}");
+        assert!(
+            healthz.ends_with("ok") || healthz.contains("\r\n\r\nok"),
+            "healthz body must be the literal ok, got {healthz}"
+        );
+
+        let version = probe(addr, "/version");
+        assert!(version.contains("200 OK"), "{version}");
+
+        let auth = probe(addr, "/authconfig.json");
+        assert!(auth.contains("200 OK"), "{auth}");
+
+        // Book routes must not hang accept either. 503 + Retry-After,
+        // not a blocked FileBook::open on the connection thread that
+        // would look like another LWA timeout.
+        let books = probe(addr, "/balance.json");
+        assert!(
+            books.contains("503 Service Unavailable"),
+            "a book route during hydrate must be 503, got {books}"
+        );
+        assert!(
+            books.contains("Retry-After: 2"),
+            "503 must tell the caller when to retry, got {books}"
+        );
+        assert!(
+            books.contains("the journal is still hydrating"),
+            "503 must say why, got {books}"
+        );
+
+        drop(release_tx);
+    }
+
+    #[test]
+    fn a_local_watch_still_fails_closed_when_open_fails() {
+        // Unset RATIO_JOURNAL_BUCKET is the laptop. A bad path must
+        // take watch down rather than hang as a silent empty server.
+        // Accept has already started — /healthz can answer while we
+        // learn the open failed — and then this returns Err.
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let err = watch_ready(
+            PathBuf::from("/no/such/ratio-book"),
+            listener,
+            false,
+            |_| Err(anyhow::anyhow!("no book at that path")),
+        )
+        .expect_err("laptop must fail-closed");
+        assert!(
+            err.to_string().contains("no book at that path"),
+            "{err:#}"
         );
     }
 
