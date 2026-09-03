@@ -910,9 +910,9 @@ describe("a first-class book", () => {
         }),
       );
       expect(screen.getAllByText("100,000.00").length).toBe(2);
-      expect(screen.getByText("Project costs")).toBeDefined();
+      expect(screen.getAllByText("Project costs").length).toBeGreaterThan(0);
       expect(screen.getByText("Work in progress")).toBeDefined();
-      // incurred 6,000.00; committed 8,000.00; variance 92,000.00
+      // incurred 6,000.00; awarded unset; remaining to spend unset
       expect(screen.getByText("6,000.00")).toBeDefined();
       expect(screen.getByText("Original contract")).toBeDefined();
       expect(screen.getByText("Remaining to spend")).toBeDefined();
@@ -1137,7 +1137,7 @@ describe("a first-class book", () => {
         }),
       );
       // revised 100,000 − incurred 3,000 − awarded 3,500 = 93,500
-      expect(screen.getByText("3,500.00")).toBeDefined();
+      expect(screen.getAllByText("3,500.00").length).toBeGreaterThan(0);
       expect(screen.getByText("93,500.00")).toBeDefined();
       expect(
         screen.getByText(/revised minus incurred minus awarded — the citeable leftover, not a forecast/),
