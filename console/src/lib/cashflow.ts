@@ -280,7 +280,8 @@ export function cashFlowStatement(
  * Same identity as the household fold: ListAccounts under `cashflow-*`
  * puts period activity in debit/credit and the as-of-end figure in
  * balance. The plugs are `chart_for(Operating)` — AR / AP as working
- * capital, owner equity as financing — not household loans.
+ * capital, owner equity as financing — not household loans. Investing
+ * is left unset rather than reported as a measured zero.
  */
 export function operatingCashFlowStatement(
   accounts: readonly Account[],
