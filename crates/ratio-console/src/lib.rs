@@ -537,6 +537,30 @@ impl Console {
         Ok(pb::ListPostingsResponse { postings: out, next_page_token: String::new() })
     }
 
+    /// Every journal entry, in the order the journal holds them.
+    ///
+    /// ⛔ UNBOUNDED. `next_page_token` is declared and left empty, like every
+    /// other list on this service. A book with millions of entries is the
+    /// twenty-million-lot problem; this is the citation surface, not a scan
+    /// of that book.
+    pub fn list_entries(&self, parent: &str) -> Result<pb::ListEntriesResponse> {
+        let fund = resource_id(parent, "funds")?;
+        // ⛔ TENANCY BEFORE THE WALK. Same reason as GetEntry.
+        let path = self.book_path(&fund)?;
+        let b = FileBook::open(&path)?;
+        let chart = b.accounts()?;
+        let default_view = self.default_view_of(&fund)?;
+        let mut out = Vec::new();
+        b.for_each_entry_since(0, &mut |e| {
+            out.push(Self::entry_of(&fund, &default_view, &chart, e));
+            Ok(())
+        })?;
+        Ok(pb::ListEntriesResponse {
+            entries: out,
+            next_page_token: String::new(),
+        })
+    }
+
     /// One journal entry, and the postings the rule produced.
     ///
     /// ⭐ THE CITATION HOP. A posting names this id; this is what makes that
@@ -5407,6 +5431,17 @@ mod tests {
             format!("{:#}", miss.unwrap_err()).contains("no entry"),
             "the 404 mapping in watch.rs keys on this phrase",
         );
+
+        // AIP-121: the list is the journal, and every listed name GetEntry
+        // answers. A list whose links 404 is how this started one layer down.
+        let listed = c.list_entries("funds/demo").unwrap().entries;
+        assert_eq!(listed.len(), 3, "the seeded book posts capital, a buy, a fee");
+        assert_eq!(listed[1].entry_id, "t1");
+        for e in &listed {
+            let one = c.get_entry(&e.name).unwrap();
+            assert_eq!(one.entry_id, e.entry_id);
+            assert_eq!(one.postings, e.postings);
+        }
     }
 
     #[test]

@@ -5,6 +5,7 @@ import accountsFixture from "../../fixtures/accounts.json";
 import breakFixture from "../../fixtures/break.json";
 import breaksFixture from "../../fixtures/breaks.json";
 import changeLogFixture from "../../fixtures/changeLogEntries.json";
+import entriesFixture from "../../fixtures/entries.json";
 import entryFixture from "../../fixtures/entry.json";
 import explainFixture from "../../fixtures/explain.json";
 import postingsFixture from "../../fixtures/postings.json";
@@ -94,6 +95,7 @@ const wire = {
   listBreaks: async () => breaksFixture,
   listAccounts: async () => accountsFixture,
   getPosting: async () => postingsFixture.postings[0],
+  listEntries: async () => entriesFixture,
   getEntry: async () => entryFixture,
   listPositions: async () => positionsFixture,
   listLots: async () => lotsFixture,
@@ -278,6 +280,19 @@ describe("a first-class book", () => {
 });
 
 describe("a journal entry", () => {
+  it("lists the journal and links each row to the entry", async () => {
+    const Entries = (await import("./books/[book]/entries/page")).default;
+    await renderAsync(Entries({ params: params({ book: FUND }) }));
+    expect(screen.getByLabelText("Journal")).toBeDefined();
+    expect(screen.getByText("journal order")).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: /Purchase of 1,000 ACME/ }).getAttribute("href"),
+    ).toBe(`/books/${FUND}/entries/e-0004`);
+    for (const a of document.querySelectorAll("a[href]")) {
+      expect(a.getAttribute("href")).not.toMatch(/\/funds\//);
+    }
+  });
+
   it("gives an entry a page of its own", async () => {
     // ⭐ #52. The posting screen printed `entry {id}` as text because this
     // URL 404'd. The page is the citation — the memo, the configuration,
@@ -292,6 +307,9 @@ describe("a journal entry", () => {
     expect(
       screen.getByRole("link", { name: "Cash and equivalents" }).getAttribute("href"),
     ).toBe(`/books/${FUND}/views/${VIEW}/accounts/1010`);
+    expect(screen.getByRole("link", { name: "Journal" }).getAttribute("href")).toBe(
+      `/books/${FUND}/entries`,
+    );
     expect(screen.getByRole("link", { name: "Book" }).getAttribute("href")).toBe(
       `/books/${FUND}`,
     );

@@ -93,6 +93,7 @@ const SCREENS = [
   [`/books/${F}/data/templates/x`, '[aria-label="Template"]'],
   [`/books/${F}/changes`, "main"],
   [`/books/${F}/changes/x`, '[aria-label="Change log entry"]'],
+  [`/books/${F}/entries`, "main"],
   [`/books/${F}/entries/x`, '[aria-label="Journal entry"]'],
   [`/books/${F}/actions`, "main"],
   [`/books/${F}/actions/x`, '[aria-label="Corporate action"]'],

@@ -67,6 +67,8 @@ async function EntryDetail({
         )}
       </div>
       <p className="note">
+        <Link href={`/books/${book}/entries`}>Journal</Link>
+        {" · "}
         <Link href={`/books/${book}`}>Book</Link>
       </p>
     </aside>

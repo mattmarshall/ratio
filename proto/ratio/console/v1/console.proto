@@ -258,6 +258,16 @@ service Console {
     };
   }
 
+  // Every journal entry, in the order the journal holds them. (AIP-132)
+  //
+  // ⚠ AIP-121 REQUIRES THIS ONCE GetEntry EXISTS. A resource with Get and no
+  // List is a citation you cannot walk up from. The list is the journal; the
+  // get is one row of it.
+  rpc ListEntries(ListEntriesRequest) returns (ListEntriesResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*}/entries"};
+    option (google.api.method_signature) = "parent";
+  }
+
   // Gets one journal entry, with the postings the rule produced. (AIP-131)
   //
   // ⭐ THE CITATION HOP. Every posting names the entry it came from. Without
@@ -1966,6 +1976,20 @@ message GetEntryRequest {
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference).type = "ratio.fastverk.dev/Entry"
   ];
+}
+
+message ListEntriesRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListEntriesResponse {
+  repeated Entry entries = 1;
+  string next_page_token = 2;
 }
 
 message GetRuleRequest {

@@ -200,6 +200,10 @@ NEEDLES: list[tuple[str, str]] = [
         "the journal entry page is gone — the citation hop #52 closed",
     ),
     (
+        "Nothing has been posted to this book",
+        "the journal list is gone — GetEntry without ListEntries is the AIP-121 hole",
+    ),
+    (
         "Journal entry",
         "the journal entry page has no accessible name, so the phone check "
         "cannot tell it rendered",
