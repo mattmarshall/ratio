@@ -555,3 +555,25 @@ lean_test(
     ],
     entry = "Ratio/Lots/AverageCost.lean",
 )
+
+# ⛔ A jurisdiction that does NOT transfer the holding period.
+#
+# `Ratio.Lots.Wash.replacementAcquired` is the US rule. Assuming it
+# everywhere classifies a non-US replacement at the US rate. Conservation
+# holds, the trial balance ties, the deferred loss still attaches. The
+# figure that goes wrong is the RATE. This file is the election — not an
+# `Order`, not a `Method`, not `lot_method = "wash"`.
+#
+# `//tla:wash_holding_check` is the sequence. The probe
+# `//tla:universal_us_transfer_check` hardcodes the US transfer.
+lean_test(
+    name = "lots_wash_holding_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Lots.lean",
+        "Ratio/Lots/Methods.lean",
+        "Ratio/Lots/Wash.lean",
+        "Ratio/Lots/WashHolding.lean",
+    ],
+    entry = "Ratio/Lots/WashHolding.lean",
+)

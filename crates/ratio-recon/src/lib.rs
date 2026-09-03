@@ -1023,6 +1023,12 @@ fn rule_changes(a: &RuleSet, b: &RuleSet) -> Vec<String> {
             a.min_tax_short_weight, b.min_tax_short_weight
         ));
     }
+    if a.wash_keep_holding_period != b.wash_keep_holding_period {
+        out.push(format!(
+            "wash keep holding period: {:?} to {:?}",
+            a.wash_keep_holding_period, b.wash_keep_holding_period
+        ));
+    }
     out.sort();
     out
 }

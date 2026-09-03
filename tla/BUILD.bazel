@@ -420,6 +420,39 @@ tla_check(
     deps = [":wash_engine"],
 )
 
+# A jurisdiction that does not transfer the holding period.
+#
+# ⛔ `Ratio.Lots.Wash.replacementAcquired` IS THE US RULE. Assuming it
+# everywhere classifies a non-US replacement at the US rate. Conservation
+# holds, the trial balance ties, the deferred loss still attaches. The
+# figure that goes wrong is the RATE.
+# `//tla:universal_us_transfer_check` is the probe: AssumeUsTransfer,
+# and TheReplacementKeepsItsOwnDate goes red.
+tla_library(
+    name = "wash_holding",
+    srcs = ["WashHoldingPeriod.tla"],
+)
+
+tla_check(
+    name = "wash_holding_check",
+    size = "medium",
+    config = "MCWashHoldingPeriod.cfg",
+    module = "MCWashHoldingPeriod.tla",
+    deps = [":wash_holding"],
+)
+
+# ⛔ The US transfer hardcoded as universal. The replacement is classified
+# from the original lot's date. Same sale, same basis, the wrong rate.
+# TheReplacementKeepsItsOwnDate MUST go red.
+tla_check(
+    name = "universal_us_transfer_check",
+    size = "medium",
+    config = "UniversalUsTransfer.cfg",
+    module = "UniversalUsTransfer.tla",
+    tags = ["manual"],
+    deps = [":wash_holding"],
+)
+
 # The projection as TABLES, and the figure that straddles two of them.
 #
 # ⛔ `projection_check` PROVES A SCALAR AND POSTGRES HAS A FUNCTION. That spec's

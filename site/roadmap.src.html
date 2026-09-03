@@ -100,9 +100,13 @@ __STYLE__
           stays refused, not an Order or a Method), and Average cost
           is a pool (<code>average_cost = true</code>; unset stays
           unset, not a silent true; <code>lot_method = "average_cost"</code>
-          stays refused), and WashRestatement is a citeable record
+          stays refused), WashRestatement is a citeable record
           (a struck figure a later wash moved is qualified or
-          restated; the strike is not rewritten) — and corporate actions in factor
+          restated; the strike is not rewritten), and the non-US holding-period variant is an election
+          (<code>wash_keep_holding_period = true</code>; unset stays
+          unset, not a silent keep; the US transfer stays in force
+          until somebody writes the keep;
+          <code>lot_method = "wash"</code> stays refused) — and corporate actions in factor
           form — nothing in the journal is rewritten.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
@@ -196,8 +200,11 @@ __STYLE__
           repurchase that moves the figure produces a restatement
           that cites the strike — the struck digest is not
           rewritten.
+          The non-US holding-period variant is an election
+          (<code>wash_keep_holding_period = true</code>; unset stays
+          unset, not a silent keep).
           It cannot show a wash
-          flag on the console, a non-US holding-period variant,
+          flag on the console
           or lot-relief UI screens for MinTax, SpecID, or average
           cost. Fund books
           keep the operations surface. An Operating book cites a balance

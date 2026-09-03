@@ -88,6 +88,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ WashRestatement landed as a citeable record; PLAN named it in
     # the same-commit amendment.
     "WashRestatement is a citeable record",
+    # ⚠ The non-US holding-period variant landed as an election; PLAN
+    # named it in the same-commit amendment.
+    "the non-US holding-period variant is an election",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -102,6 +105,7 @@ ROADMAP_ENGINE_BUILT = [
     "SpecID is a named selection",
     "Average cost is a pool",
     "WashRestatement is a citeable record",
+    "the non-US holding-period variant is an election",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",
