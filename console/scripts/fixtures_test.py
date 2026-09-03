@@ -39,6 +39,7 @@ FIXTURES = {
     "accounts.json": "ListAccountsResponse",
     "householdAccounts.json": "ListAccountsResponse",
     "capitalAccounts.json": "ListAccountsResponse",
+    "capitalCommitments.json": "ListAccountsResponse",
     "postings.json": "ListPostingsResponse",
     "positions.json": "ListPositionsResponse",
     "lots.json": "ListLotsResponse",

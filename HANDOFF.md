@@ -122,6 +122,11 @@ the conserved one, and the kernel never said it was.
 - **The credit-normal flip lives in `format.gain`, in one place.** Applied per
   call site it gets applied twice somewhere and nowhere else, and both mistakes
   produce a plausible number.
+- **Commitment and undrawn are equity, so they cancel in the NAV filter.**
+  Putting undrawn on the asset side would make an unfunded commitment look
+  like cash that had arrived. `call_lp` is the four-leg fact that moves
+  cash; `commit_lp` does not. Remaining undrawn is unset until
+  `postingCount` is not `"0"` — a silent 0.00 is the defect.
 - **`FUND_CURRENCY` is one constant** because it is two answers to one question
   otherwise: what `Fund.currency_code` labels the figures, and the base `Rates`
   translates into. A NAV translated into euros and labelled USD is wrong by the
@@ -378,18 +383,21 @@ the conserved one, and the kernel never said it was.
   (Personal: bank/card CSV → cash and expense claims) **and** `loan-payment`
   (Personal: principal + interest columns → two balanced rules merged into
   one conserved entry), `project-invoices` (Project: vendor invoice/cost CSV
-  → costs and payables), and on Investment both `custodian-positions`
-  (holdings snapshot, recorded and never posted) and `prime_equity_trades`
+  → costs and payables), and on Investment `custodian-positions`
+  (holdings snapshot, recorded and never posted), `prime_equity_trades`
   (the same trade column contract the demo delivers: `B/S` →
   `equity_purchase` / `disposal_proceeds`, amount `consideration`, dated by
-  the trade date). The live list is the book's configuration, so a household
-  book cannot be asked to pick a fund feed. `console/src/lib/templates.ts`
-  `templatesForKind` is the fixture-side filter; `//crates/ratio-console:ratio-console_test`
-  holds the seed and the closed loop: CreateBook → entity master → ingest →
-  admit, journal only the admitted trades, VWRL left pending the same way
-  `LEAVE_ONE_PENDING` does. ⛔ The demo script still posts recon history so
-  the blocked-NAV story has a break; that is a different book. A blank
-  CreateBook investment book does not invent those rows.
+  the trade date), and `capital-calls` (Kind `commit_lp` / `call_lp` /
+  `commit_gp` / `call_gp` → the partner-scoped commitment and call rules;
+  no entity master — the partner is a chart dim). The live list is the book's
+  configuration, so a household book cannot be asked to pick a fund feed.
+  `console/src/lib/templates.ts` `templatesForKind` is the fixture-side filter;
+  `//crates/ratio-console:ratio-console_test` holds the seed and the closed
+  loop: CreateBook → entity master → ingest → admit, journal only the
+  admitted trades, VWRL left pending the same way `LEAVE_ONE_PENDING` does.
+  ⛔ The demo script still posts recon history so the blocked-NAV story has
+  a break; that is a different book. A blank CreateBook investment book does
+  not invent those rows.
   ⚠ `[personal.loan]` is **not** seeded. CreateBook writes the posting
   pattern (mortgage/auto/student interest and principal against cash) and
   leaves the schedule table absent — a new household has no named loan, and
@@ -401,6 +409,20 @@ the conserved one, and the kernel never said it was.
   two named loans that do not collapse into one debt bucket. It cannot show
   loan origination as a product, refinance shopping, credit scores, bank OAuth,
   or a client portal — those stay refused. Envelope budgeting is #83.
+- ⭐ **A capital-call walk-through (#82) can show, and cannot show.**
+  CreateBook(Investment) seeds partner-scoped `Commitments — LP/GP` and
+  `Undrawn commitments — LP/GP` (equity, so they cancel in the NAV filter)
+  and the `commit_*` / `call_*` rules plus the `capital-calls` ingest
+  mapping. Record or ingest a `commit_lp` then a `call_lp`: cash and
+  partner capital move, remaining undrawn falls, the trial balance still
+  ties, and `/capital` cites the remaining figure. A book that has never
+  posted a commitment shows **unset**, not a callable zero — `postingCount
+  === "0"` is the distinction; a fully-drawn line is a real zero.
+  `contribute_lp` is still funded capital without a draw. ⛔ The walk-through
+  cannot show a future call schedule, IRR / TVPI / DPI, a waterfall or
+  carried-interest formula, a client portal, or CRM. The seeded demo fund
+  has no commitment postings, so its `/capital` must refuse undrawn the
+  same way — a silent 0.00 there would be the defect.
 - ⚠ **`console/scripts/capture_fixtures.sh` takes `navStrikes.json` and
   `replay.json` from `RATIO_FIXTURE_STRUCK_FUND`, not from `RATIO_FIXTURE_FUND`.**
   The fixture fund is the BLOCKED book on purpose, and a blocked book now has no

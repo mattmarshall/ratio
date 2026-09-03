@@ -1,0 +1,4 @@
+CallRef,Date,Amount,Ccy,Kind
+CC-1,2026-01-15,1000000.00,USD,commit_lp
+CC-2,2026-03-01,250000.00,USD,call_lp
+CC-3,2026-01-15,100000.00,USD,commit_gp

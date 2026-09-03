@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import accountsFixture from "../../fixtures/accounts.json";
 import householdAccountsFixture from "../../fixtures/householdAccounts.json";
 import capitalAccountsFixture from "../../fixtures/capitalAccounts.json";
+import capitalCommitmentsFixture from "../../fixtures/capitalCommitments.json";
 import breakFixture from "../../fixtures/break.json";
 import breaksFixture from "../../fixtures/breaks.json";
 import changeLogFixture from "../../fixtures/changeLogEntries.json";
@@ -204,6 +205,7 @@ describe("a first-class book", () => {
     expect(screen.getAllByText("posts").length).toBeGreaterThan(0);
     expect(screen.queryByText("custodian-positions")).toBeNull();
     expect(screen.queryByText("prime_equity_trades")).toBeNull();
+    expect(screen.queryByText("capital-calls")).toBeNull();
     expect(
       screen.getByRole("link", { name: /bank-statement/ }).getAttribute("href"),
     ).toBe("/books/household/data/templates/bank-statement");
@@ -219,6 +221,7 @@ describe("a first-class book", () => {
     expect(screen.getByText("invoice")).toBeDefined();
     expect(screen.queryByText("custodian-positions")).toBeNull();
     expect(screen.queryByText("prime_equity_trades")).toBeNull();
+    expect(screen.queryByText("capital-calls")).toBeNull();
     expect(screen.queryByText("bank-statement")).toBeNull();
     expect(screen.queryByText("loan-payment")).toBeNull();
   });
@@ -233,7 +236,8 @@ describe("a first-class book", () => {
     expect(screen.getByText("records")).toBeDefined();
     expect(screen.getByText("prime_equity_trades")).toBeDefined();
     expect(screen.getByText("trade")).toBeDefined();
-    expect(screen.getByText("posts")).toBeDefined();
+    expect(screen.getAllByText("posts").length).toBeGreaterThan(1);
+    expect(screen.getByText("capital-calls")).toBeDefined();
     expect(
       screen.getByRole("link", { name: /prime_equity_trades/ }).getAttribute("href"),
     ).toBe("/books/harbourline-global-value/data/templates/prime_equity_trades");
@@ -357,6 +361,39 @@ describe("a first-class book", () => {
       expect(
         screen.getByRole("link", { name: "Record an event" }).getAttribute("href"),
       ).toBe("/books/harbourline-global-value/record");
+      expect(screen.getByLabelText("Undrawn commitment")).toBeDefined();
+      expect(
+        screen.getByText(/unset — no commitment has been posted, not a callable zero/),
+      ).toBeDefined();
+      expect(screen.getByText("unset")).toBeDefined();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("cites remaining undrawn after a call, and leaves an unposted partner unset", async () => {
+    const harbour = booksFixture.books.find((b) => b.kind === "INVESTMENT")!;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    wire.listAccounts = (async () => capitalCommitmentsFixture) as typeof wire.listAccounts;
+    try {
+      const Capital = (await import("./books/[book]/views/[view]/capital/page"))
+        .default;
+      await renderAsync(
+        Capital({
+          params: params({ book: "harbourline-global-value", view: "abor" }),
+          searchParams: params({}),
+        }),
+      );
+      expect(screen.getByLabelText("Undrawn commitment")).toBeDefined();
+      expect(screen.getByText("Undrawn commitments — LP")).toBeDefined();
+      expect(screen.getAllByText("60.00").length).toBeGreaterThan(1);
+      expect(screen.getByText("Undrawn commitments — GP")).toBeDefined();
+      expect(screen.getAllByText("unset").length).toBeGreaterThan(0);
+      expect(screen.queryByText(/not a callable zero/)).toBeNull();
+      expect(screen.getByText(/remaining commitment, partner grain/)).toBeDefined();
     } finally {
       wire.getBook = realBook;
       wire.listAccounts = realAccounts;
