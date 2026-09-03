@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import accountsFixture from "../../fixtures/accounts.json";
 import capitalAccountsFixture from "../../fixtures/capitalAccounts.json";
 import breakFixture from "../../fixtures/break.json";
 import breaksFixture from "../../fixtures/breaks.json";
