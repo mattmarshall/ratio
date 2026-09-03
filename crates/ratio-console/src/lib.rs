@@ -382,14 +382,24 @@ impl Console {
     /// no postings is a real row with a zero on it, and dropping it would make
     /// an empty chart and a complete one look the same. `filter=posted` is
     /// there for when you want only what moved.
+    ///
+    /// A month (`YYYY-MM`) or a year (`YYYY`) is a suffix on the chip, not a
+    /// second List field (AIP-132). `capital-2026-03` is March activity;
+    /// bare `capital` is inception-to-date partner and contribution equity.
     pub fn list_accounts(&self, parent: &str, filter: &str) -> Result<pb::ListAccountsResponse> {
         let (fund, view) = view_scoped_parent(parent)?;
-        let accounts = self.accounts_of(&fund, &view)?;
+        let (kind, period) = list_accounts_window(filter);
+        let fold = match (kind, period) {
+            ("capital", p) if !p.is_empty() => AccountFold::Activity(parse_period(p)?),
+            _ => AccountFold::Current,
+        };
+        let accounts = self.accounts_folded(&fund, &view, fold)?;
         let keep: Vec<pb::Account> = accounts
             .into_iter()
-            .filter(|a| match filter {
+            .filter(|a| match kind {
                 "posted" => a.posting_count != "0",
                 "abnormal" => a.abnormal,
+                "capital" => book::is_capital_account(&a.display_name),
                 _ => true,
             })
             .collect();
@@ -406,6 +416,15 @@ impl Console {
 
     /// Every account in a fund's chart, with its debit and credit totals.
     fn accounts_of(&self, fund: &str, view: &str) -> Result<Vec<pb::Account>> {
+        self.accounts_folded(fund, view, AccountFold::Current)
+    }
+
+    fn accounts_folded(
+        &self,
+        fund: &str,
+        view: &str,
+        fold: AccountFold,
+    ) -> Result<Vec<pb::Account>> {
         let path = self.book_path(fund)?;
         let b = FileBook::open(&path)?;
         // ⛔ TRANSLATED INTO THE FUND'S CURRENCY, because a `pb::Account` is
@@ -420,40 +439,97 @@ impl Console {
         // needs the second. Every other surface shows the split, and the one
         // screen a customer actually looks at was the one that could not.
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
-        // ⛔ OFF THE MAINTAINED FOLD, PER VIEW — NOT `b.balances_by_dim()`. The
-        // file's answer sums the whole journal, which is exactly one view's
-        // answer wearing no label: a settlement view's trial balance excludes
-        // what it has not recognised, and until this read moved, every view's
-        // accounts screen showed the recorded figures under its own name.
-        let proj = self.projection(fund)?;
-        let balances = proj.balances(view)?;
+        let raw = match &fold {
+            AccountFold::Current => {
+                // ⛔ OFF THE MAINTAINED FOLD, PER VIEW — NOT `b.balances_by_dim()`.
+                // The file's answer sums the whole journal, which is exactly one
+                // view's answer wearing no label: a settlement view's trial
+                // balance excludes what it has not recognised, and until this
+                // read moved, every view's accounts screen showed the recorded
+                // figures under its own name.
+                let proj = self.projection(fund)?;
+                let balances = proj.balances(view)?;
+                balances
+                    .value
+                    .iter()
+                    .map(|((dim, ccy), row)| {
+                        (
+                            *dim,
+                            ccy.as_deref().map(str::to_string),
+                            row.debit as i128,
+                            row.credit as i128,
+                            row.postings,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            }
+            AccountFold::Activity(w) => {
+                // ⚠ A SECOND WALK, NOT A SECOND FOLD. The maintained projection
+                // has no term for a calendar window, so a period figure has to
+                // re-read the journal. It skips exactly what `recognised`
+                // skips, so a settlement view's March capital is still that
+                // view's March — not the recorded view's wearing a date.
+                //
+                // ⛔ AN ENTRY WITH NO DATE HAS NO PERIOD. Same refusal as a
+                // lot with no acquisition date: defaulting to the epoch or to
+                // today would put it in a window nobody elected, and both
+                // defaults are wrong in a direction that looks ordinary.
+                let proj = self.projection(fund)?;
+                let mut rows: BTreeMap<(i64, Option<String>), (i128, i128, i64)> = BTreeMap::new();
+                b.for_each_entry_since(0, &mut |entry| {
+                    if !proj.recognised(view, entry)? {
+                        return Ok(());
+                    }
+                    let Some(day) = entry.trade_date.as_deref() else {
+                        return Ok(());
+                    };
+                    if day < w.start.as_str() || day > w.end.as_str() {
+                        return Ok(());
+                    }
+                    for p in &entry.postings {
+                        let amount = p.amount as i128;
+                        let slot = rows.entry((p.dim, p.currency.clone())).or_default();
+                        slot.2 += 1;
+                        if amount >= 0 {
+                            slot.0 += amount;
+                        } else {
+                            slot.1 += -amount;
+                        }
+                    }
+                    Ok(())
+                })?;
+                rows.into_iter()
+                    .map(|((dim, ccy), (d, c, n))| (dim, ccy, d, c, n))
+                    .collect()
+            }
+        };
         let mut totals: BTreeMap<i64, (i64, i64)> = BTreeMap::new();
         let mut split: BTreeMap<i64, Vec<pb::CurrencyTotal>> = BTreeMap::new();
         let mut counts: BTreeMap<i64, i64> = BTreeMap::new();
-        for ((dim, ccy), row) in balances.value {
-            let ccy = ccy.as_deref();
-            let factor = rates.factor_of_optional(ccy).with_context(|| {
+        for (dim, ccy, debit, credit, postings) in raw {
+            let ccy_ref = ccy.as_deref();
+            let factor = rates.factor_of_optional(ccy_ref).with_context(|| {
                 format!(
                     "this fund holds {} and no rate for it was supplied — an account total \
                      mixing denominations is not a total",
-                    ccy.unwrap_or("an untyped balance")
+                    ccy_ref.unwrap_or("an untyped balance")
                 )
             })? as i128;
-            let s = totals.entry(*dim).or_insert((0, 0));
+            let s = totals.entry(dim).or_insert((0, 0));
             let scale = ratio_project::RATE_SCALE as i128;
-            s.0 += (row.debit * factor / scale) as i64;
-            s.1 += (row.credit * factor / scale) as i64;
-            *counts.entry(*dim).or_default() += row.postings;
-            split.entry(*dim).or_default().push(pb::CurrencyTotal {
-                currency_code: ccy.unwrap_or_default().to_string(),
-                debit: row.debit.to_string(),
-                credit: row.credit.to_string(),
-                balance: row.net().to_string(),
+            s.0 += (debit * factor / scale) as i64;
+            s.1 += (credit * factor / scale) as i64;
+            *counts.entry(dim).or_default() += postings;
+            split.entry(dim).or_default().push(pb::CurrencyTotal {
+                currency_code: ccy_ref.unwrap_or_default().to_string(),
+                debit: debit.to_string(),
+                credit: credit.to_string(),
+                balance: (debit - credit).to_string(),
                 // ⛔ EMPTY FOR THE BASE AND FOR AN UNTYPED LEG, not "100".
                 // Both translate at par, and both do so WITHOUT a rate fact —
                 // printing a rate nobody recorded would invent the evidence the
                 // column exists to supply.
-                rate: match ccy {
+                rate: match ccy_ref {
                     Some(c) if c != FUND_CURRENCY => factor.to_string(),
                     _ => String::new(),
                 },
@@ -3325,6 +3401,72 @@ pub fn position_key(id: &str) -> Result<(i64, String)> {
 /// second one arrives this becomes a field on the book.
 pub use ratio_store::BASE_CURRENCY as FUND_CURRENCY;
 
+/// How `ListAccounts` folds the journal.
+///
+/// `Current` is the maintained projection — inception-to-date, including
+/// undated entries. A period fold re-reads the journal and skips any entry
+/// that names no day, because an undated entry has no period.
+enum AccountFold {
+    Current,
+    Activity(PeriodWindow),
+}
+
+#[derive(Clone, Debug)]
+struct PeriodWindow {
+    start: String,
+    end: String,
+}
+
+/// AIP-132 List requests carry `filter` (AIP-160), not a custom period field.
+/// `capital-2026-03` — hyphen because `param_of` does not decode.
+fn list_accounts_window(filter: &str) -> (&str, &str) {
+    if let Some(rest) = filter.strip_prefix("capital-") {
+        ("capital", rest)
+    } else {
+        (filter, "")
+    }
+}
+
+/// A month (`YYYY-MM`) or a year (`YYYY`) as an inclusive calendar window.
+///
+/// ⛔ THE LAST DAY IS THE CALENDAR'S, NOT DAY 31. `2026-02` ending on the
+/// 31st would either refuse a real February or, worse, carry into March the
+/// way an unvalidated ISO date once did.
+fn parse_period(spec: &str) -> Result<PeriodWindow> {
+    let spec = spec.trim();
+    if spec.len() == 4 && spec.bytes().all(|b| b.is_ascii_digit()) {
+        let y = spec;
+        let start = format!("{y}-01-01");
+        let end = format!("{y}-12-31");
+        ratio_common::days_from_iso_date(&start)
+            .with_context(|| format!("{spec:?} is not a year"))?;
+        ratio_common::days_from_iso_date(&end)?;
+        return Ok(PeriodWindow { start, end });
+    }
+    if spec.len() == 7 && spec.as_bytes().get(4) == Some(&b'-') {
+        let y: i32 = spec[..4]
+            .parse()
+            .with_context(|| format!("{spec:?} is not a month (YYYY-MM)"))?;
+        let m: i32 = spec[5..]
+            .parse()
+            .with_context(|| format!("{spec:?} is not a month (YYYY-MM)"))?;
+        if !(1..=12).contains(&m) {
+            bail!("{spec:?} names month {m}");
+        }
+        if !(0..=9999).contains(&y) {
+            bail!("{spec:?} names year {y}");
+        }
+        let start = format!("{y:04}-{m:02}-01");
+        let (ny, nm) = if m == 12 { (y + 1, 1) } else { (y, m + 1) };
+        let next = format!("{ny:04}-{nm:02}-01");
+        let next_d = ratio_common::days_from_iso_date(&next)?;
+        let end = ratio_common::iso_date_from_days(next_d - 1);
+        ratio_common::days_from_iso_date(&start)?;
+        ratio_common::days_from_iso_date(&end)?;
+        return Ok(PeriodWindow { start, end });
+    }
+    bail!("{spec:?} is not a month (YYYY-MM) or a year (YYYY)")
+}
 
 /// One view's NAV in minor units, and how long the fold that struck it took.
 ///
@@ -4048,6 +4190,222 @@ mod tests {
             !membership.contains("org:org_01a\tmine"),
             "a personal create must not grant the org: {membership}"
         );
+    }
+
+    fn capital_req(
+        book: &str,
+        id: &str,
+        rule: &str,
+        amount: &str,
+        year: i32,
+        month: i32,
+        day: i32,
+    ) -> pb::ApplyEventRequest {
+        pb::ApplyEventRequest {
+            parent: format!("funds/{book}"),
+            rule_id: rule.into(),
+            event_id: id.into(),
+            amount: amount.into(),
+            days: String::new(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: Some(ratio_proto::date_proto::google::r#type::Date {
+                year,
+                month,
+                day,
+            }),
+            validate_only: false,
+        }
+    }
+
+    fn capital_view(book: &str) -> String {
+        format!("funds/{book}/views/{}", ratio_rules::UNDECLARED_VIEW)
+    }
+
+    #[test]
+    fn contributing_and_distributing_conserves_and_opens_no_lot() {
+        // ⭐ CAPITAL IS EQUITY, NOT A SALE. contribute_lp / distribute_lp carry
+        // no instrument and no per-instrument leg, so the walk that opens lots
+        // skips them. The entry still conserves; the trial balance still ties.
+        let root = fresh("capital-contrib-dist");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "100.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "d-lp", "distribute_lp", "25.00", 2026, 3, 15))
+            .unwrap();
+
+        let view = capital_view("partners");
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        assert!(
+            capital.iter().any(|a| a.display_name == "Partner capital — LP"),
+            "capital names chart_for(Investment) partners, not a blotter: {capital:?}"
+        );
+        assert!(capital.iter().any(|a| a.display_name == "Distributions"));
+        assert!(
+            capital.iter().all(|a| a.display_name != "Unrealized gain"),
+            "a mark must not look like a contribution: {capital:?}"
+        );
+        let lp = capital
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(lp.credit, "10000", "100.00 contributed: {lp:?}");
+        assert_eq!(lp.debit, "2500", "25.00 distributed: {lp:?}");
+        assert_eq!(lp.balance, "-7500", "ending capital is credit-normal: {lp:?}");
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
+
+        let proj = c.projection("partners").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a contribution must not claim lot relief"
+        );
+        assert!(
+            proj.positions(ratio_rules::UNDECLARED_VIEW)
+                .unwrap()
+                .value
+                .held
+                .is_empty(),
+            "capital that opened a position invented a holding"
+        );
+    }
+
+    #[test]
+    fn transferring_lp_to_gp_conserves_and_leaves_book_capital_unchanged() {
+        let root = fresh("capital-xfer");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "100.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "x-1", "transfer_lp_gp", "40.00", 2026, 3, 2))
+            .unwrap();
+
+        let view = capital_view("partners");
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        let gp = capital.iter().find(|a| a.display_name == "Partner capital — GP").unwrap();
+        assert_eq!(lp.balance, "-6000", "LP kept 60.00: {lp:?}");
+        assert_eq!(gp.balance, "-4000", "GP received 40.00: {gp:?}");
+        let ending: i64 = capital.iter().map(|a| a.balance.parse::<i64>().unwrap()).sum();
+        assert_eq!(ending, -10000, "book capital is unchanged by a transfer: {capital:?}");
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
+    }
+
+    #[test]
+    fn allocating_a_fee_across_partners_keeps_the_trial_balance_tied() {
+        // Accrue the fee at book level, then close it into LP and GP capital
+        // with exact integer shares — 60.00 and 40.00 of 100.00, not 60%.
+        let root = fresh("capital-alloc");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "600.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "c-gp", "contribute_gp", "400.00", 2026, 3, 1))
+            .unwrap();
+        // Exact integer shares, not a percentage: 60.00 and 40.00 of the fee.
+        c.apply_event(&capital_req("partners", "f-lp", "allocate_fee_lp", "60.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "f-gp", "allocate_fee_gp", "40.00", 2026, 3, 10))
+            .unwrap();
+
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
+        let view = capital_view("partners");
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        let gp = capital.iter().find(|a| a.display_name == "Partner capital — GP").unwrap();
+        assert_eq!(lp.balance, "-54000", "LP 600.00 − 60.00: {lp:?}");
+        assert_eq!(gp.balance, "-36000", "GP 400.00 − 40.00: {gp:?}");
+        let all = c.list_accounts(&view, "").unwrap().accounts;
+        let expense = all.iter().find(|a| a.display_name == "Management fee expense").unwrap();
+        assert_eq!(expense.credit, "10000", "fee closed into capital, not rounded: {expense:?}");
+        assert!(
+            all.iter().any(|a| a.display_name == "Unrealized gain"),
+            "the whole chart still has valuation equity"
+        );
+        assert!(c.list_accounts(&view, "capital").unwrap().accounts.iter().all(|a| {
+            a.display_name != "Unrealized gain"
+        }));
+    }
+
+    #[test]
+    fn a_period_capital_keeps_one_month_and_drops_an_undated_entry() {
+        let root = fresh("capital-period");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        c.apply_event(&capital_req("partners", "mar", "contribute_lp", "40.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "apr", "contribute_lp", "60.00", 2026, 4, 2))
+            .unwrap();
+        {
+            let mut req = capital_req("partners", "undated", "contribute_lp", "99.00", 2026, 3, 1);
+            req.trade_date = None;
+            c.apply_event(&req).unwrap();
+        }
+
+        let view = capital_view("partners");
+        let march = c.list_accounts(&view, "capital-2026-03").unwrap().accounts;
+        let lp = march
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .expect("capital names the LP account");
+        assert_eq!(lp.credit, "4000", "March is 40.00, not 40+60+99: {lp:?}");
+        assert_eq!(lp.posting_count, "1");
+        let year = c.list_accounts(&view, "capital-2026").unwrap().accounts;
+        let lp_y = year.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        assert_eq!(lp_y.credit, "10000", "the year is March+April, not the undated: {lp_y:?}");
+        let all = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp_all = all.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        assert_eq!(
+            lp_all.credit, "19900",
+            "inception includes the undated entry the period fold refused: {lp_all:?}"
+        );
+    }
+
+    #[test]
+    fn parse_period_ends_february_on_the_calendar() {
+        let w = parse_period("2026-02").unwrap();
+        assert_eq!(w.start, "2026-02-01");
+        assert_eq!(w.end, "2026-02-28");
+        let leap = parse_period("2024-02").unwrap();
+        assert_eq!(leap.end, "2024-02-29");
+        let y = parse_period("2026").unwrap();
+        assert_eq!(y.start, "2026-01-01");
+        assert_eq!(y.end, "2026-12-31");
+        assert!(parse_period("2026-13").is_err());
+        assert!(parse_period("soon").is_err());
     }
 
     #[test]

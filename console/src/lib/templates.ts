@@ -24,7 +24,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "INVESTMENT",
     label: "Investment / Fund",
-    blurb: "Positions at fair value, contributions, realized and unrealized gain. Does not file a fund.",
+    blurb: "Positions at fair value, contributions, distributions, and partner capital. Does not file a fund.",
   },
   {
     kind: "PROJECT",

@@ -127,9 +127,10 @@ fn kv(text: &str, key: &str) -> Option<String> {
     None
 }
 
-/// The chart a new book starts with. Same accounts `ratio init` writes for
-/// investment; personal and project are different partitions of the same
-/// conserved quantities.
+/// The chart a new book starts with. Personal and project are different
+/// partitions of the same conserved quantities. Investment used to be the
+/// nine accounts `ratio init` writes; CreateBook adds distribution and
+/// partner-capital equity so a fund book is not only a trading blotter.
 pub fn chart_for(kind: BookKind) -> Vec<Account> {
     let acct = |dim: i64, name: &str, t: AccountTypeRecord| Account {
         dim,
@@ -144,9 +145,20 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
             acct(10, "Management fee expense", AccountTypeRecord::Expense),
             acct(20, "Capital contributions", AccountTypeRecord::Equity),
             acct(21, "Unrealized gain", AccountTypeRecord::Equity),
+            // ⭐ THE COUNTERPART THAT WAS MISSING. Contributions without
+            // distributions made every return of capital an invented account.
+            acct(22, "Distributions", AccountTypeRecord::Equity),
+            acct(23, "Allocations", AccountTypeRecord::Equity),
+            acct(24, "Capital transfers", AccountTypeRecord::Equity),
             acct(30, "Dividend income", AccountTypeRecord::Income),
             acct(31, "Realized gain on investments", AccountTypeRecord::Income),
             acct(40, "Management fee payable", AccountTypeRecord::Liability),
+            // ⭐ PARTNER-SCOPED CAPITAL IS MORE EQUITY DIMS, NOT A SECOND
+            // LEDGER. LP and GP partition where capital sits; they do not
+            // net to zero, and they roll up to book capital. Conservation
+            // is untouched — `Ratio.Ingest.partition_preserves_conservation`.
+            acct(50, "Partner capital — LP", AccountTypeRecord::Equity),
+            acct(51, "Partner capital — GP", AccountTypeRecord::Equity),
         ],
         BookKind::Personal => vec![
             acct(1, "Cash and bank", AccountTypeRecord::Asset),
@@ -168,7 +180,227 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
     }
 }
 
-/// Create the directory, the chart, an empty configuration, and the sidecar.
+/// Equity that is capital activity — not unrealized gain.
+///
+/// ⛔ UNREALIZED GAIN IS VALUATION, NOT WHO PUT MONEY IN. Folding it into
+/// partner capital would make a mark-to-market look like a contribution.
+/// Matching is by display name so a book that kept the old nine-account
+/// chart still cites "Capital contributions", and a book that added
+/// partner dims cites those too.
+pub fn is_capital_account(display_name: &str) -> bool {
+    matches!(
+        display_name,
+        "Capital contributions" | "Distributions" | "Allocations" | "Capital transfers"
+    ) || display_name.starts_with("Partner capital")
+}
+
+/// The configuration CreateBook activates. Kind selects the rules the
+/// operator can apply; an empty file is still a configuration.
+///
+/// ⚠ `kind = "trade"` HERE IS THE RULE SCHEMA, NOT A SALE. RuleKind has
+/// no "transfer" / "contribute" variant. These templates carry no
+/// `per_instrument` leg, so the lot walk skips them — same door Personal
+/// transfers use.
+pub fn config_for(kind: BookKind) -> &'static str {
+    match kind {
+        BookKind::Investment => INVESTMENT_CONFIG,
+        BookKind::Personal | BookKind::Project => "# ratio configuration\nrules = []\n",
+    }
+}
+
+/// Partner-capital and book-level contribute / distribute / allocate /
+/// transfer templates against `chart_for(Investment)`.
+///
+/// Amounts are exact minor units. An allocation across partners is two
+/// (or more) events with integer shares — a percentage that will not
+/// divide is a misstatement, not a rounding error.
+const INVESTMENT_CONFIG: &str = r#"# ratio configuration
+# Capital activity. Not a return, not IRR, not attribution.
+
+[[rule]]
+id = "contribute"
+kind = "trade"
+description = "Book-level contribution: cash in, capital contributions up"
+
+[[rule.posting]]
+account = 2
+weight = 1
+
+[[rule.posting]]
+account = 20
+weight = -1
+
+[[rule]]
+id = "distribute"
+kind = "trade"
+description = "Book-level distribution: distributions up, cash out"
+
+[[rule.posting]]
+account = 22
+weight = 1
+
+[[rule.posting]]
+account = 2
+weight = -1
+
+[[rule]]
+id = "allocate_gain"
+kind = "trade"
+description = "Close realized gain into allocations (book-level)"
+
+[[rule.posting]]
+account = 31
+weight = 1
+
+[[rule.posting]]
+account = 23
+weight = -1
+
+[[rule]]
+id = "allocate_fee"
+kind = "trade"
+description = "Close management fee expense into allocations (book-level)"
+
+[[rule.posting]]
+account = 23
+weight = 1
+
+[[rule.posting]]
+account = 10
+weight = -1
+
+[[rule]]
+id = "contribute_lp"
+kind = "trade"
+description = "LP contribution: cash in, partner capital up"
+
+[[rule.posting]]
+account = 2
+weight = 1
+
+[[rule.posting]]
+account = 50
+weight = -1
+
+[[rule]]
+id = "contribute_gp"
+kind = "trade"
+description = "GP contribution: cash in, partner capital up"
+
+[[rule.posting]]
+account = 2
+weight = 1
+
+[[rule.posting]]
+account = 51
+weight = -1
+
+[[rule]]
+id = "distribute_lp"
+kind = "trade"
+description = "LP distribution: partner capital down, cash out"
+
+[[rule.posting]]
+account = 50
+weight = 1
+
+[[rule.posting]]
+account = 2
+weight = -1
+
+[[rule]]
+id = "distribute_gp"
+kind = "trade"
+description = "GP distribution: partner capital down, cash out"
+
+[[rule.posting]]
+account = 51
+weight = 1
+
+[[rule.posting]]
+account = 2
+weight = -1
+
+[[rule]]
+id = "transfer_lp_gp"
+kind = "trade"
+description = "Transfer capital LP → GP"
+
+[[rule.posting]]
+account = 50
+weight = 1
+
+[[rule.posting]]
+account = 51
+weight = -1
+
+[[rule]]
+id = "transfer_gp_lp"
+kind = "trade"
+description = "Transfer capital GP → LP"
+
+[[rule.posting]]
+account = 51
+weight = 1
+
+[[rule.posting]]
+account = 50
+weight = -1
+
+[[rule]]
+id = "allocate_gain_lp"
+kind = "trade"
+description = "Allocate realized gain to LP (exact amount, not a percentage)"
+
+[[rule.posting]]
+account = 31
+weight = 1
+
+[[rule.posting]]
+account = 50
+weight = -1
+
+[[rule]]
+id = "allocate_gain_gp"
+kind = "trade"
+description = "Allocate realized gain to GP (exact amount, not a percentage)"
+
+[[rule.posting]]
+account = 31
+weight = 1
+
+[[rule.posting]]
+account = 51
+weight = -1
+
+[[rule]]
+id = "allocate_fee_lp"
+kind = "trade"
+description = "Allocate management fee to LP by closing the expense into capital"
+
+[[rule.posting]]
+account = 50
+weight = 1
+
+[[rule.posting]]
+account = 10
+weight = -1
+
+[[rule]]
+id = "allocate_fee_gp"
+kind = "trade"
+description = "Allocate management fee to GP by closing the expense into capital"
+
+[[rule.posting]]
+account = 51
+weight = 1
+
+[[rule.posting]]
+account = 10
+weight = -1
+"#;
+
+/// Create the directory, the chart, the kind's configuration, and the sidecar.
 ///
 /// ⛔ NO FUND AND NO ORG ARE WRITTEN. A caller that wants either files the
 /// book afterwards. Create is the independent book.
@@ -178,7 +410,7 @@ pub fn initialize(path: &Path, id: &str, display: &str, kind: BookKind) -> Resul
     }
     let mut b = FileBook::open(path)?;
     b.put_accounts(&chart_for(kind))?;
-    let digest = b.put(b"# ratio configuration\nrules = []\n")?;
+    let digest = b.put(config_for(kind).as_bytes())?;
     b.set_active(&digest)?;
     BookMeta {
         kind,
@@ -265,7 +497,61 @@ mod tests {
         assert!(investment
             .iter()
             .any(|a| a.display_name == "Investments at fair value"));
+        assert!(investment
+            .iter()
+            .any(|a| a.display_name == "Distributions"));
+        assert!(investment
+            .iter()
+            .any(|a| a.display_name == "Partner capital — LP"));
+        assert!(investment
+            .iter()
+            .any(|a| a.display_name == "Partner capital — GP"));
+        assert!(
+            !investment
+                .iter()
+                .any(|a| a.display_name == "Unrealized gain" && is_capital_account(&a.display_name)),
+            "unrealized gain is valuation, not capital activity"
+        );
+        assert!(is_capital_account("Capital contributions"));
+        assert!(is_capital_account("Distributions"));
+        assert!(is_capital_account("Partner capital — LP"));
+        assert!(!is_capital_account("Unrealized gain"));
+        assert!(!is_capital_account("Investments at fair value"));
         assert!(project.iter().any(|a| a.display_name == "Work in progress"));
+    }
+
+    #[test]
+    fn initialize_investment_seeds_contribute_and_distribute_and_partners() {
+        let dir = std::env::temp_dir().join("ratio-book-init-investment-capital");
+        let _ = std::fs::remove_dir_all(&dir);
+        initialize(&dir, "partners", "Partners", BookKind::Investment).unwrap();
+        let chart = FileBook::open(&dir).unwrap().accounts().unwrap();
+        assert_eq!(chart, chart_for(BookKind::Investment));
+        let b = FileBook::open(&dir).unwrap();
+        let digest = b.active().unwrap().expect("CreateBook activates a config");
+        let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let set = ratio_rules::RuleSet::from_toml(&text).unwrap();
+        for id in [
+            "contribute",
+            "distribute",
+            "contribute_lp",
+            "contribute_gp",
+            "distribute_lp",
+            "transfer_lp_gp",
+            "allocate_gain_lp",
+            "allocate_fee_lp",
+        ] {
+            assert!(set.rule(id).is_some(), "missing {id} in {text}");
+        }
+        assert!(
+            set.rules.iter().all(|r| r.legs.iter().all(|l| !l.per_instrument)),
+            "capital rules must not open lots"
+        );
+        let findings = ratio_rules::check(&set, &chart);
+        assert!(
+            findings.iter().all(|f| f.is_question),
+            "seeded capital rules must balance against the chart: {findings:?}"
+        );
     }
 
     #[test]

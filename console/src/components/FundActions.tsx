@@ -4,8 +4,8 @@ import { useSelectedLayoutSegments } from "next/navigation";
 import { Priority, useKBar, useRegisterActions, type Action } from "@/lib/kbar";
 import { candidatesForId, hrefForResourceName } from "@/lib/deeplink";
 import { BASIS_LABEL } from "@/lib/format";
-import { SCREENS, screenHref } from "@/lib/screens";
-import type { View } from "@/wire/types";
+import { defaultScreen, screenHref, screensFor, ticketsFor } from "@/lib/screens";
+import type { BookKind, View } from "@/wire/types";
 import { usePaletteNavigator } from "./Palette";
 
 /**
@@ -33,10 +33,12 @@ export function FundActions({
   fund,
   views,
   defaultView,
+  kind = "INVESTMENT",
 }: {
   fund: string;
   views: View[];
   defaultView: string;
+  kind?: BookKind;
 }) {
   const go = usePaletteNavigator();
   const segments = useSelectedLayoutSegments();
@@ -45,8 +47,9 @@ export function FundActions({
   const view = (underView ? segments[1] : undefined) ?? defaultView;
   // Stay on the same screen when switching books, exactly as `ViewSwitch` does.
   // A control-plane screen is not view-scoped, so switching from one lands on
-  // the exceptions queue.
-  const screen = (underView ? segments[2] : undefined) ?? "breaks";
+  // the kind's first figure.
+  const places = screensFor(kind);
+  const screen = (underView ? segments[2] : undefined) ?? defaultScreen(kind);
 
   const actions: Action[] = [
     // ⛔ NO `subtitle` ON A SCREEN, AND THE REASON IS THE SEARCH RATHER THAN THE
@@ -56,7 +59,7 @@ export function FundActions({
     // fragment of a fund's name ("global") match all eight screens, all four
     // tickets and both books of record. The label is the answer; the URL is
     // where it goes.
-    ...SCREENS.map((s) => ({
+    ...places.map((s) => ({
       id: `screen:${s.segment}`,
       name: s.label,
       keywords: `${s.segment},screen,tab`,
@@ -93,7 +96,7 @@ export function FundActions({
     // ⛔ THESE OPEN A TICKET AND NOTHING ELSE. `/record` and `/trade` are one RPC
     // asked for two ways, and all four screens enforce "preview, then post" on
     // themselves. The palette is a way to reach the form, never a way past it.
-    ...TICKETS.map((t) => ({
+    ...ticketsFor(kind).map((t) => ({
       id: `write:${t.segment}`,
       name: t.label,
       keywords: t.keywords,
@@ -106,27 +109,13 @@ export function FundActions({
     fund,
     view,
     screen,
+    kind,
     views.map((v) => `${v.name}:${v.declared}`).join(","),
     go,
   ]);
 
   return <DeepLinks fund={fund} view={view} />;
 }
-
-const TICKETS = [
-  {
-    segment: "trade",
-    label: "Trade ticket",
-    keywords: "trade,buy,sell,instrument,units,price",
-  },
-  { segment: "record", label: "Record an event", keywords: "record,event,rule,apply" },
-  {
-    segment: "ingest",
-    label: "Ingest a delivery",
-    keywords: "ingest,delivery,file,custodian,admit",
-  },
-  { segment: "mark", label: "Mark positions", keywords: "mark,price,valuation,marks" },
-] as const;
 
 /**
  * A pasted identifier, turned into somewhere to go.

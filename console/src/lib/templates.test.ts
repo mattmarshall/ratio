@@ -14,6 +14,8 @@ describe("book templates", () => {
     const byKind = Object.fromEntries(BOOK_TEMPLATES.map((t) => [t.kind, t.blurb]));
     expect(byKind.PERSONAL).toMatch(/Cash and bank/);
     expect(byKind.INVESTMENT).toMatch(/fair value/);
+    expect(byKind.INVESTMENT).toMatch(/distributions/);
+    expect(byKind.INVESTMENT).toMatch(/partner capital/);
     expect(byKind.INVESTMENT).toMatch(/Does not file a fund/);
     expect(byKind.PROJECT).toMatch(/work in progress/);
   });

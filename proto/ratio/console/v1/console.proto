@@ -1817,8 +1817,13 @@ message ListAccountsRequest {
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
 
   // `posted` for accounts that have postings on them, `abnormal` for those
-  // sitting on the wrong side; empty for the whole chart. Three chips, not an
-  // expression language — same reasoning as ListBreaks.
+  // sitting on the wrong side; `capital` for partner / contribution /
+  // distribution / allocation / transfer equity (not unrealized gain);
+  // `capital-YYYY` / `capital-YYYY-MM` for that activity in a calendar
+  // window. Empty for the whole chart. AIP-160 on the List filter field,
+  // not a custom period field — hyphen because the query parser does not
+  // decode. Bare `capital` is inception-to-date; a dated suffix drops
+  // undated entries, which have no period.
   string filter = 4 [(google.api.field_behavior) = OPTIONAL];
 }
 
