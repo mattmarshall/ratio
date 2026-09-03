@@ -10,11 +10,13 @@ the REALIZED GAIN — the same holding and the same trade produce different
 taxable income under different methods, with no figure on the balance sheet
 moving.
 
-⛔ AND THE SPACE IS NOT ALL ORDERINGS. Three shapes, and only the first is a
+⛔ AND THE SPACE IS NOT ALL ORDERINGS. Four shapes, and only the first is a
 sort:
 
-  ORDERING          FIFO, LIFO, HIFO, LOFO, long-term-first, and the
-                    tax-minimising combinations. Pick a key, sort, walk.
+  ORDERING          FIFO, LIFO, HIFO, LOFO, long-term-first. Pick a key,
+                    sort, walk.
+  MINTAX            ranks at a PRICE. Same lots, two prices, two answers.
+                    `Ratio.Lots.MinTax`. Not a function of the lots.
   SPECIFIC ID       the client names the lots. Not an ordering — a selection,
                     and one that may take from the middle of the holding.
   AVERAGE COST      no lot is chosen at all. The holding is pooled at a
@@ -207,7 +209,9 @@ prices, and the example proved nothing. `decide` reported the theorem false.
 ⚠ SO THE METHOD CANNOT BE A SORT ON THE HOLDING, and an engine that models every
 method as an ordering has no place to put this one. That is the same shape as
 average cost not being a lot walk, and it is why `Order` is a closed enum of the
-methods that ARE orderings rather than an open list of "methods". -/
+methods that ARE orderings rather than an open list of "methods". The ranking
+itself — and the proof that no `Order` reproduces both answers — is
+`Ratio.Lots.MinTax`. -/
 theorem a_tax_minimising_method_is_not_a_function_of_the_lots :
     (taxCost 2 (50 - 10) true > taxCost 2 (50 - 12) false)
     ∧ (taxCost 2 (5 - 10) true < taxCost 2 (5 - 12) false) := by

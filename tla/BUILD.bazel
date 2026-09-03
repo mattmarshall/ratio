@@ -638,3 +638,35 @@ tla_check(
     tags = ["manual"],
     deps = [":period_close"],
 )
+
+# Tax-minimising relief is a ranking at a PRICE, not a sort of the holding.
+#
+# ⛔ `Ratio.Lots.MinTax` proves the arithmetic of one sale. This is the
+# engine that pretends MinTax is another Method — sort once, walk, never
+# look at the price — and the obligation that it is not.
+# `//tla:sort_and_walk_mintax_check` is the probe: TreatAsOrder, and
+# TheLotTakenMinimisesTax goes red.
+tla_library(
+    name = "mintax_engine",
+    srcs = ["MinTaxEngine.tla"],
+)
+
+tla_check(
+    name = "mintax_engine_check",
+    size = "medium",
+    config = "MCMinTaxEngine.cfg",
+    module = "MCMinTaxEngine.tla",
+    deps = [":mintax_engine"],
+)
+
+# ⛔ Sort-and-walk: the holding is ordered once, without the sale price.
+# Prefer-long picks lot B at 50 (right) and at 5 (wrong). The books tie.
+# TheLotTakenMinimisesTax MUST go red.
+tla_check(
+    name = "sort_and_walk_mintax_check",
+    size = "medium",
+    config = "SortAndWalkMinTax.cfg",
+    module = "SortAndWalkMinTax.tla",
+    tags = ["manual"],
+    deps = [":mintax_engine"],
+)
