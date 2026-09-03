@@ -4,9 +4,8 @@ export const dynamic = "force-dynamic";
 
 /** The console with no session: a prompt, not a wall of refusals.
  *
- * The button is a plain link to `/api/auth/login`, which stashes a PKCE
- * verifier and hands the tab to the Cognito Hosted UI. Nothing about the flow
- * runs in this page — see `lib/oidc.ts` for why that is the point. */
+ * The button is a plain link to `/api/auth/login`, which is the AuthKit
+ * initiate-login URL. Nothing about the flow runs in this page. */
 export default async function SignIn({
   searchParams,
 }: {
@@ -24,7 +23,7 @@ export default async function SignIn({
       </header>
       <div className="signin-body">
         <h1>Sign in</h1>
-        <p>This console shows only the funds you administer. Sign in to continue.</p>
+        <p>This console shows the books you may open. Sign in to continue.</p>
         {/* ⚠ TWO DIFFERENT FAILURES, AND TELLING THEM APART SAVES AN AFTERNOON.
             `error=1` is a sign-in that started and did not finish — a stale
             code, a mismatched state, a refused exchange — and trying again is

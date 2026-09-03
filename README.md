@@ -3,16 +3,17 @@
   <img alt="ratio" width="240" src="https://raw.githubusercontent.com/mattmarshall/ratio/main/images/wordmark-light.png">
 </picture>
 
-**A fund accounting kernel whose core properties are machine-checked.**
+**An accounting book whose core properties are machine-checked.**
 
-Ratio keeps a fund's books as an append-only journal of conserved postings and
+Ratio keeps the books as an append-only journal of conserved postings and
 proves what must be true of them: value is conserved on every dimension, a trial
-balance ties because the kernel says so rather than because a check passed, a NAV
-cites the journal prefix it was folded from, and a sale gives up the lots the
-fund's administration agreement dictates. The proofs are Lean 4, the concurrency
-and staleness arguments are TLA+, the running system is Rust — and parts of the
-Rust are **emitted from the Lean**, so the theorem and the code make the same
-decision.
+balance ties because the kernel says so rather than because a check passed, a
+figure cites the journal prefix it was folded from, and a sale gives up the lots
+the terms dictate. The same kernel serves personal finance, investment
+accounting and project finance — different charts and dimensions, not forked
+products. The proofs are Lean 4, the concurrency and staleness arguments are
+TLA+, the running system is Rust — and parts of the Rust are **emitted from the
+Lean**, so the theorem and the code make the same decision.
 
 ### ▶ [Try the live demo](https://ratio-ims.vercel.app/)
 
@@ -43,8 +44,8 @@ bazel run //crates/ratio -- watch --book <dir>   # the API and the screens — o
 No database, no daemon, no container: the journal is a file and the
 configuration is content-addressed beside it.
 
-The **operations console** — the authenticated, multi-fund one, with a URL for
-every break, strike and configuration — is a separate Next.js application in
+The **operations console** — the authenticated one, with a URL for every book,
+break, strike and configuration — is a separate Next.js application in
 [`console/`](console/), deployed to Vercel while the API keeps deploying to AWS.
 It runs against the loopback server above with no identity provider and no
 secrets:
@@ -60,7 +61,7 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
   or anything emitted from Lean.
 - **[DEVELOPING.md](DEVELOPING.md)** — build, layout, and workflow.
 - **[deploy/README.md](deploy/README.md)** — the hosted demo: the stacks, the
-  Cognito setup, and how sign-in and tenancy work.
+  WorkOS AuthKit setup, and how sign-in and tenancy work.
 - **[Whitepaper](paper/)** · **[Marketing site](https://mattmarshall.github.io/ratio/)**
   · **[PLAN.md](PLAN.md)** (⚠ written 2026-08-07, since overtaken in places).
 

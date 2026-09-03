@@ -31,6 +31,10 @@ pub struct Route {
 /// first, so literals precede patterns. The test asserts the SET matches the
 /// contract; this ordering is the implementation's own business.
 pub const ROUTES: &[Route] = &[
+    // Literals before patterns: `/v1/{name=books/*}` would swallow `/v1/books`.
+    Route { method: "GET", template: "/v1/books" },
+    Route { method: "GET", template: "/v1/{name=books/*}" },
+    Route { method: "POST", template: "/v1/books" },
     Route { method: "GET", template: "/v1/funds" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/views" },
     Route { method: "GET", template: "/v1/{name=funds/*/views/*}:reconcile" },
@@ -101,6 +105,9 @@ pub fn serve(
     if method == "POST" {
         // Each write is named here rather than inferred, so adding a method
         // cannot quietly widen what POST reaches.
+        if rest == "books" {
+            return to_json(&console.create_book(create_book_request(query, body)?)?);
+        }
         let fund = |suffix: &str| -> Option<String> {
             rest.strip_suffix(suffix)?
                 .strip_prefix("funds/")
@@ -122,7 +129,7 @@ pub fn serve(
         bail!("{path:?} does not accept POST");
     }
     if method != "GET" {
-        bail!("the console API is read-only apart from :applyEvent; {method} is not accepted");
+        bail!("the console API is read-only apart from CreateBook and the :custom writes; {method} is not accepted");
     }
     let rest = path
         .strip_prefix("/v1/")
@@ -133,6 +140,8 @@ pub fn serve(
     // a slice pattern so an unhandled shape is a compile-time hole rather than
     // a runtime fallthrough.
     let json = match seg.as_slice() {
+        ["books"] => to_json(&console.list_books()?)?,
+        ["books", id] => to_json(&console.get_book(&format!("books/{id}"))?)?,
         ["funds"] => to_json(&console.list_funds()?)?,
         ["funds", id, "views"] => to_json(&console.list_views(&format!("funds/{id}"))?)?,
         ["funds", id, "views", v] if v.ends_with(":reconcile") => {
@@ -340,6 +349,43 @@ fn date_from_json(v: &serde_json::Value) -> Option<ratio_proto::date_proto::goog
         year: num("year"),
         month: num("month"),
         day: num("day"),
+    })
+}
+
+/// The HTTP body is the `book` field (`body: "book"`); `bookId` is the query.
+fn create_book_request(query: &str, body: &str) -> Result<pb::CreateBookRequest> {
+    let v: serde_json::Value =
+        serde_json::from_str(if body.trim().is_empty() { "{}" } else { body })
+            .context("the request body is not JSON")?;
+    // Accept either the Book itself or `{ "book": { … } }` so a caller that
+    // wraps the resource still lands. The `"book"` literal is what
+    // `//proto:mirrors_test` looks for on this decoder.
+    let book_v = v.get("book").unwrap_or(&v);
+    let text = |obj: &serde_json::Value, k: &str| -> Result<String> {
+        match obj.get(k) {
+            None | Some(serde_json::Value::Null) => Ok(String::new()),
+            Some(serde_json::Value::String(s)) => Ok(s.clone()),
+            Some(other) => bail!("{k} must be a string, not {other}"),
+        }
+    };
+    let kind = match book_v.get("kind") {
+        None | Some(serde_json::Value::Null) => 0,
+        Some(serde_json::Value::String(s)) => match s.as_str() {
+            "PERSONAL" | "KIND_PERSONAL" => 1,
+            "INVESTMENT" | "KIND_INVESTMENT" => 2,
+            "PROJECT" | "KIND_PROJECT" => 3,
+            _ => 0,
+        },
+        Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(0) as i32,
+        Some(other) => bail!("kind must be a string or number, not {other}"),
+    };
+    Ok(pb::CreateBookRequest {
+        book: Some(pb::Book {
+            display_name: text(book_v, "displayName")?,
+            kind,
+            ..Default::default()
+        }),
+        book_id: param_of(query, "bookId").to_string(),
     })
 }
 
@@ -657,6 +703,45 @@ impl JsonView for pb::ListFundsResponse {
         format!(
             "{{\"funds\":[{}],\"nextPageToken\":{}}}",
             self.funds.iter().map(|f| f.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+fn book_kind_name(v: i32) -> &'static str {
+    match v {
+        1 => "PERSONAL",
+        2 => "INVESTMENT",
+        3 => "PROJECT",
+        _ => "UNSPECIFIED",
+    }
+}
+
+impl JsonView for pb::Book {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"displayName\":{},\"kind\":{},\"currencyCode\":{},\
+             \"fund\":{},\"organization\":{},\"defaultView\":{},\
+             \"entryCount\":{},\"configDigest\":{},\"trialBalanceDifference\":{}}}",
+            q(&self.name),
+            q(&self.display_name),
+            q(book_kind_name(self.kind)),
+            q(&self.currency_code),
+            q(&self.fund),
+            q(&self.organization),
+            q(&self.default_view),
+            q(&self.entry_count.to_string()),
+            q(&self.config_digest),
+            q(&self.trial_balance_difference)
+        )
+    }
+}
+
+impl JsonView for pb::ListBooksResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"books\":[{}],\"nextPageToken\":{}}}",
+            self.books.iter().map(|b| b.to_json()).collect::<Vec<_>>().join(","),
             q(&self.next_page_token)
         )
     }

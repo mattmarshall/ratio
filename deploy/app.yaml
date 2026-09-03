@@ -38,8 +38,9 @@ Parameters:
       application deployed to Vercel; this function no longer serves it. Two
       things read this: the function redirects / and /app there (so the "Try the
       live demo" links in README.md and on the marketing site keep working), and
-      the Cognito app client registers ${ConsoleOrigin}/api/auth/callback as a
-      callback URL.
+      AuthKit registers ${ConsoleOrigin}/callback as the redirect URI. The
+      Cognito pool below is left in place unused so this stack does not destroy
+      a live user pool; it is not the sign-in path.
 
       ⛔ COGNITO ACCEPTS NO WILDCARDS. Every origin that must complete a sign-in
       has to be listed on the client below, which is why exactly three are —
@@ -49,6 +50,15 @@ Parameters:
 
       Empty leaves the demo with no console to point at. Set it via the
       CONSOLE_ORIGIN repository variable.
+  WorkOsClientId:
+    Type: String
+    Default: "client_placeholder"
+    Description: >
+      WorkOS AuthKit client id (the audience the JWT authorizer checks). The
+      console holds WORKOS_CLIENT_ID / WORKOS_API_KEY / WORKOS_COOKIE_PASSWORD
+      as Vercel env; this value is what API Gateway verifies on /v1. A
+      placeholder deploys the stack without a live WorkOS app; replace it
+      before turning RATIO_DEMO_OPEN off. Never a secret.
   GoogleClientId:
     Type: String
     Default: ""
@@ -152,9 +162,9 @@ Resources:
           # console serves at /authconfig.json to start the sign-in; the domain
           # is also what the CSP admits to connect-src for the token exchange.
           RATIO_AUTH: required
-          RATIO_COGNITO_ISSUER: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
-          RATIO_COGNITO_CLIENT_ID: !Ref UserPoolClient
-          RATIO_COGNITO_DOMAIN: !Sub "ratio-demo-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com"
+          # WorkOS is the IdP on /v1. Cognito resources remain in this template
+          # so a stack update does not destroy the live pool; they are unused.
+          RATIO_WORKOS_CLIENT_ID: !Ref WorkOsClientId
           # ⚠ AN OPEN DEMO. Its audience is not known ahead of time, so it cannot
           # be an allow-list of emails: RATIO_DEMO_OPEN grants any AUTHENTICATED
           # caller every fund, while the write stays signed with their id.
@@ -416,11 +426,11 @@ Resources:
     Properties:
       ApiId: !Ref Api
       AuthorizerType: JWT
-      Name: cognito-jwt
+      Name: workos-jwt
       IdentitySource: ["$request.header.Authorization"]
       JwtConfiguration:
-        Audience: [!Ref UserPoolClient]
-        Issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+        Audience: [!Ref WorkOsClientId]
+        Issuer: "https://api.workos.com/"
 
   # ⛔ A SECOND ROUTE, AND THE ONE EXCEPTION TO THE ONE-ROUTE RULE ABOVE. It is a
   # COARSE prefix split, not a per-resource table: everything under /v1 requires

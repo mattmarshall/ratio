@@ -468,9 +468,17 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             "200 OK",
             "application/json",
             auth_config_json(
-                &std::env::var("RATIO_COGNITO_ISSUER").unwrap_or_default(),
-                &std::env::var("RATIO_COGNITO_CLIENT_ID").unwrap_or_default(),
-                &std::env::var("RATIO_COGNITO_DOMAIN").unwrap_or_default(),
+                if std::env::var("RATIO_WORKOS_CLIENT_ID")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .is_some()
+                {
+                    "https://api.workos.com/"
+                } else {
+                    ""
+                },
+                &std::env::var("RATIO_WORKOS_CLIENT_ID").unwrap_or_default(),
+                "",
                 // ⛔ THE SAME ACCESSOR THE `/` REDIRECT USES, NOT A FRESH
                 // `env::var`. `console_url()` applies `safe_redirect()`, so a
                 // control character in the CloudFormation value is stripped
@@ -1333,13 +1341,11 @@ fn console_url() -> String {
 /// `RATIO_CONSOLE_ORIGIN` and signs in against `http://localhost:3000`.
 fn auth_config_json(issuer: &str, client_id: &str, domain: &str, console_origin: &str) -> String {
     format!(
-        // ⛔ `/api/auth/callback`, ON THE CONSOLE'S OWN ORIGIN. It used to be
-        // `/app` — this binary's own page — because the browser ran the code
-        // exchange. It does not: the console's server does, and this path must
-        // match a registered Cognito callback URL in deploy/app.yaml or the
-        // sign-in is refused by the IdP.
+        // ⛔ `/callback`, AuthKit's documented redirect URI. The console no
+        // longer runs a Cognito Hosted UI exchange. Empty clientId means a
+        // local `ratio watch` with no identity provider.
         "{{\"issuer\":{},\"clientId\":{},\"domain\":{},\"scopes\":[\"openid\",\"email\"],\
-         \"redirectPath\":\"/api/auth/callback\",\"consoleOrigin\":{}}}",
+         \"redirectPath\":\"/callback\",\"consoleOrigin\":{}}}",
         quote(issuer),
         quote(client_id),
         quote(domain),
@@ -2859,7 +2865,7 @@ mod tests {
             "the console origin must be published verbatim: {cfg}"
         );
         // The path is separate from the origin and the console joins the two.
-        assert!(cfg.contains(r#""redirectPath":"/api/auth/callback""#));
+        assert!(cfg.contains(r#""redirectPath":"/callback""#));
 
         // ⚠ EMPTY IS A REAL ANSWER, NOT A MISSING FIELD. A local `ratio watch`
         // sets no `RATIO_CONSOLE_URL`, and the console reads empty as "nothing

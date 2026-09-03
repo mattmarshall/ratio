@@ -22,7 +22,10 @@
 
 const API = process.env.RATIO_API_ORIGIN?.replace(/\/+$/, "");
 const DECLARED = process.env.RATIO_CONSOLE_ORIGIN?.replace(/\/+$/, "");
-const KEYS = process.env.RATIO_SESSION_KEYS;
+const WORKOS_CLIENT = process.env.WORKOS_CLIENT_ID;
+const WORKOS_KEY = process.env.WORKOS_API_KEY;
+const WORKOS_COOKIE = process.env.WORKOS_COOKIE_PASSWORD;
+const WORKOS_REDIRECT = process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI;
 // Set by Vercel on every build. Distinguishes "deploying" from "a laptop with
 // one variable exported", which changes what counts as a missing value.
 const DEPLOYING = Boolean(process.env.VERCEL);
@@ -99,7 +102,7 @@ try {
 }
 
 // ---------------------------------------------------------------------------
-// The origin the sign-in will hand to Cognito
+// The origin the API publishes (still fetched so a wrong RATIO_API_ORIGIN fails here)
 // ---------------------------------------------------------------------------
 
 // ⚠ A DISAGREEMENT IS NOT FATAL, BECAUSE THE CONSOLE RESOLVES IT CORRECTLY.
@@ -109,7 +112,7 @@ try {
 if (published && DECLARED && published !== DECLARED) {
   warn(
     `RATIO_CONSOLE_ORIGIN is ${DECLARED} but the API publishes ${published}.`,
-    "\n   The published value is what Cognito registered and what the console will use.",
+    "\n   The published value is the console origin the API was deployed with.",
     "\n   Unset RATIO_CONSOLE_ORIGIN, or correct it to match.",
   );
 }
@@ -128,42 +131,49 @@ if (DEPLOYING && published === "" && !DECLARED) {
   fail(
     "no console origin: the API publishes none and RATIO_CONSOLE_ORIGIN is not set.",
     "\n   Set the CONSOLE_ORIGIN repository variable so deploy.yml passes it to",
-    "\n   CloudFormation — that registers the Cognito callback and publishes it here.",
+    "\n   CloudFormation — that publishes it here and redirects / and /app.",
   );
 }
 
 // ---------------------------------------------------------------------------
-// The session key
+// WorkOS AuthKit — the one IdP on this path
 // ---------------------------------------------------------------------------
 
-// ⛔ NOTHING BELOW PRINTS THE VALUE, ONLY ITS SHAPE. This is the repository's
-// one runtime secret. A build log is not a place a key goes, and a check that
-// leaks what it is checking is worse than no check.
-if (!KEYS) {
-  if (DEPLOYING) {
-    fail(
-      "RATIO_SESSION_KEYS is not set. The sign-in would fail at the callback,",
-      "\n   after the person has already authenticated — the worst place to find out.",
-      "\n   Generate one with: openssl rand -base64 32",
-    );
+// ⛔ NOTHING BELOW PRINTS A SECRET, ONLY ITS SHAPE. AuthKit encrypts its
+// session with WORKOS_COOKIE_PASSWORD (≥32 characters). A build log is not
+// a place a key goes.
+if (DEPLOYING) {
+  if (!WORKOS_CLIENT) {
+    fail("WORKOS_CLIENT_ID is not set. AuthKit cannot start a sign-in.");
+  } else {
+    ok("WORKOS_CLIENT_ID is set");
   }
-} else {
-  const entries = KEYS.split(",").map((k) => k.trim()).filter(Boolean);
-  const bad = entries
-    .map((k, i) => [i, Buffer.from(k, "base64").length])
-    .filter(([, len]) => len !== 32);
-  if (!entries.length) {
-    fail("RATIO_SESSION_KEYS is set but empty.");
-  } else if (bad.length) {
+  if (!WORKOS_KEY) {
+    fail("WORKOS_API_KEY is not set. AuthKit cannot exchange a code.");
+  } else {
+    ok("WORKOS_API_KEY is set");
+  }
+  if (!WORKOS_COOKIE || WORKOS_COOKIE.length < 32) {
     fail(
-      `RATIO_SESSION_KEYS entry ${bad.map(([i]) => i).join(", ")} decodes to`,
-      `${bad.map(([, l]) => l).join(", ")} bytes; each must be 32.`,
+      "WORKOS_COOKIE_PASSWORD is missing or shorter than 32 characters.",
       "\n   Generate one with: openssl rand -base64 32",
     );
   } else {
-    // ⚠ The count, not the keys. More than one is a rotation in progress, which
-    // is the design — the first seals, every one opens.
-    ok(`${entries.length} session key(s), all 32 bytes`);
+    ok("WORKOS_COOKIE_PASSWORD is at least 32 characters");
+  }
+  if (!WORKOS_REDIRECT) {
+    fail(
+      "NEXT_PUBLIC_WORKOS_REDIRECT_URI is not set.",
+      "\n   AuthKit expects the same URI registered on the WorkOS application,",
+      "\n   typically https://<console-host>/callback",
+    );
+  } else if (!WORKOS_REDIRECT.endsWith("/callback")) {
+    fail(
+      "NEXT_PUBLIC_WORKOS_REDIRECT_URI must end with /callback (AuthKit's route).",
+      `\n   It is currently ${WORKOS_REDIRECT}`,
+    );
+  } else {
+    ok("NEXT_PUBLIC_WORKOS_REDIRECT_URI ends with /callback");
   }
 }
 

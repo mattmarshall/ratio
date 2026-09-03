@@ -117,8 +117,8 @@ bazel run //crates/ratio -- watch --book <dir>   # the API on :7373
 cd console && pnpm dev                            # the console on :3000
 ```
 
-⭐ **A local run needs no Cognito, no secret and no network.** `ratio watch` sets
-none of the `RATIO_COGNITO_*` variables, so `/authconfig.json` answers with empty
+⭐ **A local run needs no WorkOS, no secret and no network.** `ratio watch` sets
+none of the `RATIO_WORKOS_*` variables, so `/authconfig.json` answers with empty
 strings, the console skips its sign-in gate, and the server answers as
 `Subject::Local` — unrestricted, and not a tenant.
 

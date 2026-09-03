@@ -1,4 +1,6 @@
+import { authkit } from "@workos-inc/authkit-nextjs";
 import { NextResponse, type NextRequest } from "next/server";
+import { workosConfigured } from "@/lib/workos";
 
 // The Content-Security-Policy, with a per-request nonce.
 //
@@ -42,7 +44,7 @@ const POLICY = (nonce: string) =>
 
 // ⚠ `proxy`, not `middleware`. Next 16 renamed the convention and warns on the
 // old filename; the export name follows the file.
-export default function proxy(req: NextRequest) {
+export default async function proxy(req: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
 
   const headers = new Headers(req.headers);
@@ -54,7 +56,24 @@ export default function proxy(req: NextRequest) {
   // making them find it again is the old console's behaviour with extra steps.
   headers.set("x-pathname", req.nextUrl.pathname + req.nextUrl.search);
 
+  // AuthKit's composable helper refreshes the session cookie. Route protection
+  // stays in `caller()` / `withAuth()`, the same page-based pattern the docs
+  // describe — this proxy already has CSP work that `authkitMiddleware()`
+  // would replace. https://workos.com/docs/authkit/nextjs
+  let authkitHeaders = new Headers();
+  if (workosConfigured()) {
+    const result = await authkit(req);
+    authkitHeaders = result.headers;
+  }
+
   const res = NextResponse.next({ request: { headers } });
+  for (const [key, value] of authkitHeaders) {
+    if (key.toLowerCase() === "set-cookie") {
+      res.headers.append(key, value);
+    } else {
+      res.headers.set(key, value);
+    }
+  }
   res.headers.set("Content-Security-Policy", POLICY(nonce));
   return res;
 }

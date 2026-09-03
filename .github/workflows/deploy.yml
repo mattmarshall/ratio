@@ -311,7 +311,7 @@ jobs:
           # broken deployed one, so the deploy is where it must be caught.
           deny "an unwired scale runner" '"runner":null' "${URL}scale-runs.json"
 
-          want "the auth config" '"redirectPath":"/api/auth/callback"' "${URL}authconfig.json"
+          want "the auth config" '"redirectPath":"/callback"' "${URL}authconfig.json"
 
           # ⛔ THE CONSOLE TAKES ITS OAuth `redirect_uri` FROM THIS FIELD, so a
           # wrong value here refuses every sign-in — and refuses it at the IdP,

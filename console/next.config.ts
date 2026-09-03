@@ -36,6 +36,22 @@ const nextConfig: NextConfig = {
   // `export const dynamic = "force-dynamic"` — this is the belt to that braces,
   // because a page prerendered at build time serving a stale NAV is the worst
   // failure available to this product.
+  // Nested book screens reuse the fund pages. `/books`, `/books/new` and
+  // `/books/[book]` have their own files, so afterFiles rewrites do not steal
+  // them. A personal book never has to live under `/funds/{fund}/…`.
+  async rewrites() {
+    return [
+      {
+        source: "/books/:book/views/:path*",
+        destination: "/funds/:book/views/:path*",
+      },
+      {
+        source: "/books/:book/:path*",
+        destination: "/funds/:book/:path*",
+      },
+    ];
+  },
+
   async headers() {
     return [
       {

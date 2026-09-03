@@ -29,10 +29,11 @@ Two things about that are load-bearing here:
   console traffic at all, and the **absence** of `authorization` from
   `AllowHeaders` is now a fence rather than an oversight — it is what makes a
   browser-direct call impossible. Do not add it.
-- **The Cognito callback moved to the console's origin.** `CallbackURLs` is
-  `${ConsoleOrigin}/api/auth/callback` plus `http://localhost:3000/...`, and
-  `/authconfig.json` advertises `"redirectPath":"/api/auth/callback"`. Those two
-  must agree or every sign-in is refused by the IdP.
+- **AuthKit's redirect URI is on the console's origin.** `/authconfig.json`
+  advertises `"redirectPath":"/callback"`. Register
+  `${ConsoleOrigin}/callback` (and `http://localhost:3000/callback`) on the
+  WorkOS application. Cognito resources remain in the template unused so a
+  stack update does not destroy the live pool.
 
 Set `ConsoleOrigin` through the **`CONSOLE_ORIGIN` repository variable** (a
 hostname is not a secret, so a variable rather than a secret — same reasoning as

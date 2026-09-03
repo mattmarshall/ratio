@@ -6,6 +6,8 @@ import breakFixture from "../../fixtures/break.json";
 import breaksFixture from "../../fixtures/breaks.json";
 import changeLogFixture from "../../fixtures/changeLogEntries.json";
 import explainFixture from "../../fixtures/explain.json";
+import bookFixture from "../../fixtures/book.json";
+import booksFixture from "../../fixtures/books.json";
 import fundFixture from "../../fixtures/fund.json";
 import lotsFixture from "../../fixtures/lots.json";
 import navStrikesFixture from "../../fixtures/navStrikes.json";
@@ -72,6 +74,9 @@ vi.mock("next/navigation", async () => {
 });
 
 const wire = {
+  listBooks: async () => booksFixture,
+  getBook: async () => bookFixture,
+  createBook: async () => bookFixture,
   getFund: async () => fundFixture,
   getView: async () => viewFixture,
   listViews: async () => viewsFixture,
@@ -120,6 +125,31 @@ const params = <T,>(v: T) => Promise.resolve(v);
 async function renderAsync(el: Promise<React.ReactNode>) {
   render((await el) as React.ReactElement);
 }
+
+describe("a first-class book", () => {
+  it("lists an independent book without a fund parent", async () => {
+    const Books = (await import("./books/page")).default;
+    await renderAsync(Books());
+    expect(screen.getByText("Household")).toBeDefined();
+    expect(screen.getByText(/independent/)).toBeDefined();
+    expect(screen.getByText("New book")).toBeDefined();
+  });
+
+  it("opens a book as its own page", async () => {
+    const Book = (await import("./books/[book]/page")).default;
+    await renderAsync(Book({ params: params({ book: "household" }) }));
+    expect(screen.getByRole("heading", { name: "Household" })).toBeDefined();
+    expect(screen.getByText("Personal")).toBeDefined();
+    expect(screen.getByText("independent")).toBeDefined();
+  });
+
+  it("gives a book of record a page of its own", async () => {
+    const View = (await import("./funds/[fund]/views/[view]/page")).default;
+    await renderAsync(View({ params: params({ fund: FUND, view: VIEW }) }));
+    expect(screen.getByText(/Exceptions/)).toBeDefined();
+    expect(screen.getByText(/Book/)).toBeDefined();
+  });
+});
 
 describe("the trial balance", () => {
   it("shows the untranslated per-currency split beneath a translated total", async () => {

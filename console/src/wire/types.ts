@@ -20,12 +20,46 @@
 /** Money and counts. A string because the server sends int64 as a string. */
 export type Int64 = string;
 
+export type BookKind = "PERSONAL" | "INVESTMENT" | "PROJECT" | "UNSPECIFIED";
+
 export type FundState =
   | "AWAITING_PRICES"
   | "BLOCKED"
   | "IN_REVIEW"
   | "STRUCK"
   | "UNSPECIFIED";
+
+/**
+ * A journal and its content-addressed configuration.
+ *
+ * ⭐ THE UNIT THAT OWNS THE BOOKS. A fund and a WorkOS organization are
+ * optional layers, not parents. Kind selects the chart, not a fork of the
+ * kernel.
+ */
+export interface Book {
+  name: string;
+  displayName: string;
+  kind: BookKind;
+  currencyCode: string;
+  /** `funds/{fund}`, or empty when the book is independent. */
+  fund: string;
+  /** WorkOS organization id, or empty. */
+  organization: string;
+  defaultView: string;
+  entryCount: Int64;
+  configDigest: string;
+  trialBalanceDifference: Int64;
+}
+
+export interface ListBooksResponse {
+  books: Book[];
+  nextPageToken: string;
+}
+
+export interface CreateBookRequest {
+  book: Book;
+  bookId: string;
+}
 
 export type Severity = "LOW" | "MEDIUM" | "HIGH" | "UNSPECIFIED";
 

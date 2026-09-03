@@ -30,6 +30,7 @@ import type {
   AdmitFactsResponse,
   ApplyEventRequest,
   ApplyEventResponse,
+  Book,
   Break,
   ChangeLogEntry,
   ConfigVersion,
@@ -40,7 +41,9 @@ import type {
   Fund,
   IngestDeliveryRequest,
   IngestDeliveryResponse,
+  CreateBookRequest,
   ListAccountsResponse,
+  ListBooksResponse,
   ListBreaksResponse,
   ListChangeLogEntriesResponse,
   ListConfigVersionsResponse,
@@ -119,18 +122,16 @@ function origin(): string {
 
 /** How a caller supplies the verified identity for one request. */
 export interface Caller {
-  /** The Cognito **id** token, or null on a local run with no identity provider.
+  /** The WorkOS access token, or null on a local run with no identity provider.
    *
-   * ⛔ THE ID TOKEN, NOT THE ACCESS TOKEN, AND THE REFLEX IS TO GET THIS WRONG.
-   * The gateway's JWT authorizer accepts either — an id token's `aud` is the
-   * client id, which is what `Audience` validates — but only the id token
-   * carries the `email` claim the tenant boundary matches on at
-   * `Console::book_path`. A Cognito access token has `sub` and `client_id` and
-   * NO email, so every signed-in person would land on an empty fund rail.
+   * ⛔ THE ACCESS TOKEN, NOT A COGNITO ID TOKEN. AuthKit's `withAuth()` hands
+   * this back; the gateway's JWT authorizer checks issuer `https://api.workos.com/`
+   * and audience = the WorkOS client id. Membership matches on `sub`, email,
+   * or `org:{org_id}` at `Console::book_path`.
    *
-   * ⚠ AND THE DEMO WOULD NOT SHOW IT. `RATIO_DEMO_OPEN=1` grants any
-   * authenticated caller every fund, so this mistake is invisible in production
-   * and surfaces the day tenancy is switched on for a real customer. */
+   * ⚠ AND THE DEMO WOULD NOT SHOW A TENANCY MISTAKE. `RATIO_DEMO_OPEN=1` grants
+   * any authenticated caller every book, so a token that carries no email is
+   * invisible in production and surfaces the day tenancy is switched on. */
   idToken: string | null;
 }
 
@@ -176,6 +177,24 @@ function q(params: Record<string, string | undefined>): string {
   const s = p.toString();
   return s ? `?${s}` : "";
 }
+
+// ── Books ──────────────────────────────────────────────────────────────────
+// GET /v1/books
+export const listBooks = (c: Caller) =>
+  send<ListBooksResponse>(c, `/books`);
+// GET /v1/{name=books/*}
+export const getBook = (c: Caller, book: string) =>
+  send<Book>(c, `/books/${book}`);
+// POST /v1/books
+export const createBook = (
+  c: Caller,
+  bookId: string,
+  book: Pick<CreateBookRequest["book"], "displayName" | "kind">,
+) =>
+  send<Book>(c, `/books${q({ bookId })}`, {
+    displayName: book.displayName,
+    kind: book.kind,
+  });
 
 // ── Funds ──────────────────────────────────────────────────────────────────
 // GET /v1/funds

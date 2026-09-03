@@ -1,0 +1,12 @@
+{
+  "name": "books/household",
+  "displayName": "Household",
+  "kind": "PERSONAL",
+  "currencyCode": "USD",
+  "fund": "",
+  "organization": "",
+  "defaultView": "book",
+  "entryCount": "0",
+  "configDigest": "",
+  "trialBalanceDifference": "0"
+}
