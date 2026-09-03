@@ -453,6 +453,10 @@ lean_test(
 # while cost is conserved, the trial balance ties and the digest reproduces. The
 # figure that goes wrong is the realized gain, which has no counterparty and so
 # no reconciliation reaches it.
+#
+# `attachTo` is the write: a mutation of a lot the sale did not relieve. The
+# search is over the remainder, so writing a Taken lot is unrepresentable.
+# `//tla:wash_engine_check` is the sequence that write sits in.
 lean_test(
     name = "lots_wash_proof_test",
     size = "small",
