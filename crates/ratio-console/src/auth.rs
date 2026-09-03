@@ -1,16 +1,24 @@
-//! Who is asking, and which funds they may open.
+//! Who is asking, and which books they may open.
 //!
-//! ⛔ AUTHORIZATION LIVES HERE AND AT `Console::book_path`, NOT AT THE GATEWAY.
+//! ⛔ AUTHORIZATION LIVES HERE AND AT `Console::open_book`, NOT AT THE GATEWAY.
 //! The API Gateway's JWT authorizer proves a token is real, unexpired and ours;
-//! it cannot know which funds a person administers. That is a property of the
-//! book set, and it is enforced at the one place a fund id becomes a path, where
-//! the test suite can break it. A boundary that lived only in CloudFormation
-//! would be a boundary this crate's tests could not see — and the repository has
-//! recorded three separate cases where a "boundary" turned out to be a comment
-//! or a naming convention rather than an enforced constraint.
+//! it cannot know which books a person administers. That is a property of the
+//! book set, and it is enforced at the one place a book id becomes a `FileBook`,
+//! where the test suite can break it. A boundary that lived only in a handler
+//! (or only in CloudFormation) would be a boundary one forgotten `FileBook::open`
+//! away from being bypassed — the same shape as a config that is read by nobody.
+//!
+//! ⭐ A BOOK IS THE TENANT, NOT A FUND OR A WORKOS ORG. CreateBook writes an
+//! independent journal: no fund, no organization. `MEMBERSHIP.tsv` grants a
+//! WorkOS `sub` (or email) that one book. An `org:{id}` line is a separate
+//! operator grant, never implied by the creator sitting in an org, and never
+//! implied by optional `fund` / `organization` keys on `book.toml`.
 
 use std::collections::BTreeSet;
+use std::io;
 use std::path::Path;
+
+use anyhow::{bail, Result};
 
 /// The identity a request carries, resolved from the gateway's verified claims.
 ///
@@ -35,7 +43,7 @@ pub enum Subject {
         /// required parent of one.
         organization: String,
         /// Legacy Cognito groups claim. Membership is deliberately NOT keyed
-        /// on it — see `funds_for`.
+        /// on it — see `membership_for`.
         groups: Vec<String>,
     },
 }
@@ -43,7 +51,7 @@ pub enum Subject {
 impl Subject {
     /// The stable identifier recorded as the actor on a write.
     ///
-    /// ⛔ THE COGNITO `sub`, NOT A SESSION TOKEN. A NAV is signed once and read
+    /// ⛔ THE WORKOS `sub`, NOT A SESSION TOKEN. A NAV is signed once and read
     /// for years; the signature must outlive the session that produced it, so
     /// what is recorded is the subject and the moment — an opaque, stable id
     /// (falling back to the email only if a `sub` claim were ever absent).
@@ -104,36 +112,105 @@ pub fn from_request_context(header: &str) -> Option<Subject> {
     Some(Subject::Member { sub, email, organization, groups })
 }
 
-/// The funds `who` may open, read from `<root>/MEMBERSHIP.tsv`.
+/// What a subject may open, resolved from `<root>/MEMBERSHIP.tsv`.
 ///
-/// Lines are `<subject-id>\t<fund-id>`, where `<subject-id>` is matched against
+/// ⛔ AN EMPTY GRANT AND AN UNREADABLE FILE ARE DIFFERENT ANSWERS. A missing
+/// file is "this operator administers nothing" — `ListBooks` / `ListFunds`
+/// return `[]`. A file that exists and cannot be read is a refusal: treating it
+/// as empty would hide a broken tenant boundary behind an authorized-looking
+/// empty list. `Local` is unrestricted and never consults the file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Scope {
+    /// The CLI, loopback, and the open demo. Every book; not a tenant.
+    Unrestricted,
+    /// An authenticated member. The set may be empty — that is a real answer.
+    Granted(BTreeSet<String>),
+    /// `MEMBERSHIP.tsv` existed and could not be read. Not an empty grant.
+    Unreadable,
+}
+
+impl Scope {
+    /// Whether `id` is a book this scope may open.
+    ///
+    /// `Unreadable` is an error, not `false`: a caller who cannot resolve
+    /// membership must not be told "no fund", which is also how a missing book
+    /// answers.
+    pub fn allows(&self, id: &str) -> Result<bool> {
+        match self {
+            Scope::Unrestricted => Ok(true),
+            Scope::Granted(set) => Ok(set.contains(id)),
+            Scope::Unreadable => bail!("membership could not be read"),
+        }
+    }
+
+    /// Drop ids this scope may not see. `Unreadable` refuses rather than
+    /// emptying the list.
+    pub fn retain(&self, ids: &mut Vec<String>) -> Result<()> {
+        match self {
+            Scope::Unrestricted => Ok(()),
+            Scope::Granted(set) => {
+                ids.retain(|id| set.contains(id));
+                Ok(())
+            }
+            Scope::Unreadable => bail!("membership could not be read"),
+        }
+    }
+}
+
+/// Resolve the caller's scope from identity and `MEMBERSHIP.tsv`.
+///
+/// `Local` is unrestricted. A `Member` is `Granted` from the file, or
+/// `Unreadable` when the file exists and cannot be read.
+pub fn scope_for(root: &Path, who: &Subject) -> Scope {
+    match who {
+        Subject::Local => Scope::Unrestricted,
+        member => match membership_for(root, member) {
+            Ok(set) => Scope::Granted(set),
+            Err(_) => Scope::Unreadable,
+        },
+    }
+}
+
+/// The books `who` may open, read from `<root>/MEMBERSHIP.tsv`.
+///
+/// Lines are `<subject-id>\t<book-id>`, where `<subject-id>` is matched against
 /// the caller's `sub` OR their email — an administrator is provisioned by
-/// whichever the operator knows. A missing file grants nothing, which is a valid
-/// empty answer (`ListFunds` returns `[]`), NOT an error: an operator with no
-/// funds yet and an operator whose grants failed to load must not look alike,
-/// and the file simply not being there is the former.
+/// whichever the operator knows. A missing file grants nothing (`Ok` empty),
+/// which is a valid empty answer (`ListBooks` / `ListFunds` return `[]`), NOT
+/// an error. A file that exists and cannot be read is `Err`.
 ///
 /// ⚠ TSV, KEYED ON SCALAR CLAIMS. A `cognito:groups` claim serializes in the
 /// request context as a bracketed, space-joined string — brittle to parse and
 /// capped per user. Keying membership on the scalar `sub`/`email` keeps the
 /// grant out of the token's shape, and out of the identity provider entirely: a
-/// fund's administration agreement is not something to re-express as an IdP
-/// group.
-pub fn funds_for(root: &Path, who: &Subject) -> BTreeSet<String> {
+/// book's administration agreement is not something to re-express as an IdP
+/// group. An `org:{organization}` line is an explicit operator grant, never
+/// implied by optional fund/org metadata on the book.
+pub fn membership_for(root: &Path, who: &Subject) -> Result<BTreeSet<String>> {
     let (sub, email, org) = match who {
         // `Local` is unrestricted and never consults this file; returning the
         // empty set here would be read as "sees nothing", the exact opposite.
-        Subject::Local => return BTreeSet::new(),
+        Subject::Local => return Ok(BTreeSet::new()),
         Subject::Member { sub, email, organization, .. } => {
             (sub.as_str(), email.as_str(), organization.as_str())
         }
     };
+    let path = root.join("MEMBERSHIP.tsv");
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(BTreeSet::new()),
+        Err(e) => bail!("membership could not be read: {e}"),
+    };
+    Ok(grants_in(&text, sub, email, org))
+}
+
+/// Parse grants from TSV text. `funds_for` uses this after a successful read.
+fn grants_in(text: &str, sub: &str, email: &str, org: &str) -> BTreeSet<String> {
     let org_key = if org.is_empty() {
         String::new()
     } else {
         format!("org:{org}")
     };
-    let text = std::fs::read_to_string(root.join("MEMBERSHIP.tsv")).unwrap_or_default();
     text.lines()
         .filter_map(|line| {
             let mut it = line.split('\t');
@@ -146,6 +223,16 @@ pub fn funds_for(root: &Path, who: &Subject) -> BTreeSet<String> {
             (matches && !fund.is_empty()).then(|| fund.to_string())
         })
         .collect()
+}
+
+/// The funds `who` may open, ignoring a membership-file read failure.
+///
+/// ⛔ DO NOT USE THIS TO DECIDE A LIST. A read failure becomes the empty set,
+/// which is the authorized-empty / refusal collapse `membership_for` exists
+/// to refuse. Kept for call sites that already treated a missing file as
+/// empty and do not serve a list.
+pub fn funds_for(root: &Path, who: &Subject) -> BTreeSet<String> {
+    membership_for(root, who).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -227,12 +314,40 @@ mod tests {
         let none = funds_for(&dir, &member("stranger", "stranger@x.test"));
         assert!(none.is_empty());
 
-        // A missing file is the empty set, not a panic.
+        // A missing file is the empty set, not a panic — authorized empty.
+        assert!(membership_for(&dir.join("nope"), &member("abc-123", "a@x.test"))
+            .unwrap()
+            .is_empty());
         assert!(funds_for(&dir.join("nope"), &member("abc-123", "a@x.test")).is_empty());
 
         // `Local` never consults the file and is unrestricted elsewhere; here it
         // is simply the empty set (unused for `Local`, which bypasses the check).
         assert!(funds_for(&dir, &Subject::Local).is_empty());
+        assert_eq!(scope_for(&dir, &Subject::Local), Scope::Unrestricted);
+    }
+
+    #[test]
+    fn an_unreadable_membership_file_is_a_refusal_not_an_empty_grant() {
+        // ⛔ A DIRECTORY NAMED MEMBERSHIP.tsv IS THE READ FAILURE THIS DISTINGUISHES.
+        // unwrap_or_default on read_to_string would turn it into [], and ListBooks
+        // would look like an authorized empty set.
+        let dir = std::env::temp_dir().join("ratio-auth-membership-unreadable");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join("MEMBERSHIP.tsv")).unwrap();
+
+        let who = member("abc-123", "a@x.test");
+        let err = membership_for(&dir, &who).unwrap_err().to_string();
+        assert!(
+            err.contains("membership could not be read"),
+            "a broken membership file must refuse, not look empty: {err}"
+        );
+        assert_eq!(scope_for(&dir, &who), Scope::Unreadable);
+        assert!(Scope::Unreadable.allows("ashcombe").is_err());
+        let mut ids = vec!["ashcombe".into()];
+        let retain = Scope::Unreadable.retain(&mut ids).unwrap_err().to_string();
+        assert!(retain.contains("membership could not be read"), "{retain}");
+        assert_eq!(ids, vec!["ashcombe".to_string()], "a refusal must not empty the list");
     }
 
     #[test]

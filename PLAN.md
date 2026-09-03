@@ -12,9 +12,16 @@ is an eight-week plan for a product nobody was buying.
 > feature and `//:plan_refusals_test` is untouched. ⚠️ **Stated plainly, as it
 > must be: none of this moves the wedge's one remaining open gap — a real
 > customer's period reconciling.** It is prerequisite to a paid pilot, not a
-> substitute for one. The tenancy, identity, attribution and security-header work
-> landed and is CI-verified; it *activates* on the live demo only when the
-> Cognito authorizer and durable store are deployed.
+> substitute for one. The identity, attribution and security-header work
+> landed and is CI-verified. **#23 — per-book tenant isolation — is enforced
+> in CI** at `Console::open_book` (not only handlers): membership is the
+> creator's WorkOS `sub`, not an implied org; `ListBooks` / `ListFunds`
+> distinguish an authorized empty set from an unreadable membership file;
+> every live `ROUTES` entry is classified and a caller scoped to book A
+> cannot read book B. It is not a client portal. Live activation still
+> depends on the WorkOS subject reaching the API (#22 leftovers), not on a
+> second identity product. Durable writes are #24 (closed). The
+> Cognito-era activation sentence is historical.
 
 Three constraints set everything below:
 

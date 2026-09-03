@@ -21,7 +21,7 @@ import { workosConfigured } from "./workos";
  *     `Authorization` header is sent.
  *
  * ⚠ THIS IS NOT AN AUTHORIZATION DECISION AND MUST NOT BE READ AS ONE. Which
- * books a subject may open is decided in Rust at `Console::book_path`, against
+ * books a subject may open is decided in Rust at `Console::open_book`, against
  * `MEMBERSHIP.tsv`, where the test suite can break it. All this does is decide
  * which token to send. A book a caller may not see is refused with the same
  * error as one that does not exist, and that refusal comes from the server.

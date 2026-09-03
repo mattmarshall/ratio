@@ -229,6 +229,29 @@ fn security_headers(
     h
 }
 
+/// Status for a failed `/v1` call, from the console's sentence.
+///
+/// ⛔ `membership could not be read` IS 403, NOT 200 WITH []. An authorized
+/// empty list and a refusal must not look alike on the wire either.
+fn v1_error_status(msg: &str) -> &'static str {
+    if msg.contains("membership could not be read") {
+        "403 Forbidden"
+    } else if msg.contains("no fund")
+        || msg.contains("no route")
+        || msg.contains("no break")
+        || msg.contains("no change-log")
+        || msg.contains("no entry")
+    {
+        "404 Not Found"
+    } else if msg.contains("read-only") || msg.contains("does not accept POST") {
+        "405 Method Not Allowed"
+    } else if msg.contains("already in this journal") {
+        "409 Conflict"
+    } else {
+        "400 Bad Request"
+    }
+}
+
 fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let req = match read_request(&mut reader) {
@@ -373,7 +396,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             // `Local` console. So a removed or misconfigured authorizer produces
             // refusal, not open access, and the boundary does not depend on a
             // CloudFormation resource the test suite cannot see. Authorization
-            // (which funds this subject may open) stays in Rust, at `book_path`.
+            // (which books this subject may open) stays in Rust, at `open_book`.
             let auth_required = std::env::var("RATIO_AUTH").as_deref() == Ok("required");
             if subject.is_none() && auth_required {
                 // A shape the SPA renders as a sign-in prompt, not a blank page.
@@ -403,21 +426,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
                 // rather than by guessing from the path.
                 Err(e) => {
                     let msg = format!("{e:#}");
-                    let status = if msg.contains("no fund") || msg.contains("no route")
-                        || msg.contains("no break") || msg.contains("no change-log")
-                        || msg.contains("no entry")
-                    {
-                        "404 Not Found"
-                    } else if msg.contains("read-only") || msg.contains("does not accept POST") {
-                        "405 Method Not Allowed"
-                    } else if msg.contains("already in this journal") {
-                        // A repeated event id is a conflict, not a malformed
-                        // request — the caller sent something well-formed that
-                        // the journal already has.
-                        "409 Conflict"
-                    } else {
-                        "400 Bad Request"
-                    };
+                    let status = v1_error_status(&msg);
                     (status, "application/json", format!("{{\"error\":{}}}", quote(&msg)))
                     }
                 }
@@ -2824,6 +2833,20 @@ mod tests {
         // FIRST colon must keep them in the value, or the claims are truncated.
         assert!(r.auth_context.contains("\"sub\":\"u1\""));
         assert!(r.auth_context.starts_with('{') && r.auth_context.ends_with('}'));
+    }
+
+    #[test]
+    fn an_unreadable_membership_is_forbidden_not_an_empty_list() {
+        assert_eq!(
+            v1_error_status("membership could not be read: Is a directory"),
+            "403 Forbidden"
+        );
+        assert_eq!(v1_error_status("no fund \"b\""), "404 Not Found");
+        assert_ne!(
+            v1_error_status("membership could not be read"),
+            "400 Bad Request",
+            "a refusal must not look like a malformed list request"
+        );
     }
 
     #[test]

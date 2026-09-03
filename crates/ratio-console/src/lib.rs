@@ -25,7 +25,7 @@ pub mod auth;
 pub mod book;
 pub mod transcode;
 
-pub use auth::Subject;
+pub use auth::{Scope, Subject};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -126,12 +126,13 @@ pub struct Console {
     /// correct about freshness would be a cache that could be wrong about it.
     projections: std::sync::Mutex<BTreeMap<String, ratio_project::Projection>>,
 
-    /// The funds the caller may open, resolved ONCE from `MEMBERSHIP.tsv` at
-    /// construction so `book_path` is a set lookup rather than a file read per
-    /// handler. `None` means unrestricted — the `Local` identity, which is not a
-    /// tenant. `Some(set)` restricts, and an empty set is a real, valid answer
-    /// (the operator is a member of nothing) rather than a refusal.
-    allowed: Option<BTreeSet<String>>,
+    /// What the caller may open, resolved ONCE from `MEMBERSHIP.tsv` at
+    /// construction so `open_book` is a set lookup rather than a file read per
+    /// handler. `Unrestricted` is `Local` and the open demo — not a tenant.
+    /// `Granted` restricts, and an empty set is a real, valid answer (the
+    /// operator is a member of nothing) rather than a refusal. `Unreadable` is
+    /// the refusal: the membership file existed and could not be read.
+    scope: Scope,
 
     /// Who a write on this console is attributed to. A `Member`'s stable id, or
     /// `RATIO_ACTOR` for the `Local` CLI/loopback console — resolved from the
@@ -149,7 +150,11 @@ impl Console {
         // The CLI/loopback console attributes writes to RATIO_ACTOR, the same
         // string `ratio approve` and `ratio strike` record. Not authentication —
         // there is none on a loopback surface — but the honest local identity.
-        Self::build(root.as_ref().to_path_buf(), None, std::env::var("RATIO_ACTOR").ok())
+        Self::build(
+            root.as_ref().to_path_buf(),
+            Scope::Unrestricted,
+            std::env::var("RATIO_ACTOR").ok(),
+        )
     }
 
     /// The same console, attributing writes to a name the caller has already
@@ -170,23 +175,20 @@ impl Console {
         self
     }
 
-    /// The console scoped to an authenticated subject: it sees only the funds
-    /// `MEMBERSHIP.tsv` grants them, enforced at `book_path`. This is the only
+    /// The console scoped to an authenticated subject: it sees only the books
+    /// `MEMBERSHIP.tsv` grants them, enforced at `open_book`. This is the only
     /// constructor the network server uses; the membership set is resolved here,
     /// once, from the funds root.
     pub fn scoped(root: impl AsRef<Path>, subject: Subject) -> Self {
         let root = root.as_ref().to_path_buf();
-        let allowed = match &subject {
-            Subject::Local => None,
-            member => Some(auth::funds_for(&root, member)),
-        };
+        let scope = auth::scope_for(&root, &subject);
         // A Member's writes are signed with their verified id; a Local scoped
         // console (unusual) falls back to RATIO_ACTOR like `new`.
         let actor = match subject.actor() {
             Some(a) => Some(a.to_string()),
             None => std::env::var("RATIO_ACTOR").ok(),
         };
-        Self::build(root, allowed, actor)
+        Self::build(root, scope, actor)
     }
 
     /// The console for an OPEN, shared demo: any authenticated subject sees
@@ -195,10 +197,10 @@ impl Console {
     /// ⛔ NOT THE TENANT PATH, AND DELIBERATELY SEPARATE FROM `scoped`. A demo
     /// whose audience is not known ahead of time cannot be an allow-list of
     /// emails; instead every signed-in caller is granted every fund
-    /// (`allowed = None`, exactly as `Local` is) while the subject's id is kept
+    /// (`Unrestricted`, exactly as `Local` is) while the subject's id is kept
     /// as the actor — so "anyone who signs in sees the demo" costs nothing in
-    /// attribution and, crucially, nothing in the tenancy code: `funds_for`,
-    /// `book_path`'s membership check and their tests are untouched. The server
+    /// attribution and, crucially, nothing in the tenancy code: `scope_for`,
+    /// `open_book`'s membership check and their tests are untouched. The server
     /// selects this only when `RATIO_DEMO_OPEN` is set; every real deployment
     /// scopes. Sign-in is still required — this changes what an authenticated
     /// caller may see, not whether one is needed.
@@ -208,17 +210,17 @@ impl Console {
             Some(a) => Some(a.to_string()),
             None => std::env::var("RATIO_ACTOR").ok(),
         };
-        Self::build(root, None, actor)
+        Self::build(root, Scope::Unrestricted, actor)
     }
 
-    fn build(root: PathBuf, allowed: Option<BTreeSet<String>>, actor: Option<String>) -> Self {
+    fn build(root: PathBuf, scope: Scope, actor: Option<String>) -> Self {
         Console {
             root,
             max_entries: std::env::var("RATIO_MAX_API_ENTRIES")
                 .ok()
                 .and_then(|v| v.parse().ok()),
             projections: Default::default(),
-            allowed,
+            scope,
             actor,
         }
     }
@@ -311,12 +313,10 @@ impl Console {
         // ⛔ WHAT THE CALLER MAY SEE, not what is on disk. An operator restricted
         // to some books gets exactly those; an operator restricted to NONE gets
         // an empty list — a valid answer, not a refusal, and the two must not
-        // look alike. `book_path` re-guards each id a list then reads, so this
-        // filter is the visible half of a boundary the storage layer enforces
-        // regardless of it.
-        if let Some(allowed) = &self.allowed {
-            ids.retain(|id| allowed.contains(id));
-        }
+        // look alike. `Unreadable` refuses here rather than emptying the list.
+        // `open_book` re-guards each id a list then reads, so this filter is the
+        // visible half of a boundary the storage layer enforces regardless of it.
+        self.scope.retain(&mut ids)?;
         Ok(ids)
     }
 
@@ -348,18 +348,18 @@ impl Console {
         if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
             bail!("{id:?} is not a fund id");
         }
-        // ⛔ TENANCY IS ENFORCED HERE, at the one place a fund id becomes a
-        // path — not in the handlers, which are one forgotten call away from
-        // bypassing it. A fund the caller may not see is refused with the SAME
-        // error as a fund that does not exist, and BEFORE the filesystem is
-        // touched, so a caller scoped to one fund can neither read another's
-        // book nor learn that it exists by watching which denial they get.
-        // `Local` (the CLI) is unrestricted; a person at a terminal is not a
-        // tenant. `allowed` is `None` for it and `Some(set)` for a `Member`.
-        if let Some(allowed) = &self.allowed {
-            if !allowed.contains(id) {
-                bail!("no fund {id:?}");
-            }
+        // ⛔ TENANCY IS ENFORCED HERE AND AT `open_book`. A path is not enough:
+        // handlers open through `open_book` / `open_file_book` so a forgotten
+        // `FileBook::open(self.root.join(id))` is a source-text failure, not a
+        // leak. A book the caller may not see is refused with the SAME error as
+        // a book that does not exist, and BEFORE the filesystem is touched, so
+        // a caller scoped to one book can neither read another's nor learn that
+        // it exists by watching which denial they get. `Unreadable` is a
+        // different sentence — a broken membership file must not look like
+        // "no fund". `Local` is unrestricted; a person at a terminal is not a
+        // tenant.
+        if !self.scope.allows(id)? {
+            bail!("no fund {id:?}");
         }
         if self.root.join("accounts.json").is_file() {
             if id != "demo" {
@@ -372,6 +372,38 @@ impl Console {
             bail!("no fund {id:?}");
         }
         Ok(p)
+    }
+
+    /// Open a book the caller is authorized to see.
+    ///
+    /// ⭐ THE STORAGE-LAYER DOOR. Handlers take an id, not a path they joined.
+    /// Tenancy is decided before `FileBook::open` runs, so a forgotten call
+    /// that still goes through here cannot leak book B to a caller scoped to A.
+    fn open_book(&self, id: &str) -> Result<(PathBuf, FileBook)> {
+        let path = self.book_path(id)?;
+        let book = self.open_file_book(&path)?;
+        Ok((path, book))
+    }
+
+    /// Open a book at a path that has already been authorized, and check again.
+    ///
+    /// ⛔ THE SECOND CHECK IS THE POINT. A handler that joins `self.root` to an
+    /// id and calls this still hits `scope.allows`. `FileBook::open` itself is
+    /// unrestricted — that is the CLI contract — so production code must not
+    /// call it. The source-text test is what makes a forgotten join fail the
+    /// build rather than the demo.
+    fn open_file_book(&self, path: &Path) -> Result<FileBook> {
+        let id = if path == self.root.as_path() {
+            "demo"
+        } else {
+            path.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+        };
+        if !id.is_empty() && !self.scope.allows(id)? {
+            bail!("no fund {id:?}");
+        }
+        FileBook::open(path)
     }
 
     // ── Console methods ───────────────────────────────────────────────────
@@ -562,7 +594,7 @@ impl Console {
         fold: AccountFold,
     ) -> Result<Vec<pb::Account>> {
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         // ⛔ TRANSLATED INTO THE FUND'S CURRENCY, because a `pb::Account` is
         // ONE ROW PER DIMENSION and the fold underneath is one row per
         // (dimension, currency). Summing the pairs raw is precisely the flat
@@ -803,7 +835,7 @@ impl Console {
         if meta.kind != book::BookKind::Personal {
             return Ok(vec![]);
         }
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let chart = b.accounts()?;
         let Some(digest) = b.active()? else {
             return Ok(vec![]);
@@ -823,7 +855,7 @@ impl Console {
         // or "no fund" and "not a dimension" tell an outsider which is which.
         let path = self.book_path(&fund)?;
         let dim: i64 = dim_str.parse().with_context(|| format!("{dim_str:?} is not a dimension"))?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let proj = self.projection(&fund)?;
 
         let mut running = 0i64;
@@ -870,7 +902,7 @@ impl Console {
         let fund = resource_id(parent, "funds")?;
         // ⛔ TENANCY BEFORE THE WALK. Same reason as GetEntry.
         let path = self.book_path(&fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let chart = b.accounts()?;
         let default_view = self.default_view_of(&fund)?;
         let mut out = Vec::new();
@@ -897,7 +929,7 @@ impl Console {
         // denial must not depend on the caller's id, or "no fund" and "no
         // entry" tell an outsider which is which.
         let path = self.book_path(&fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let chart = b.accounts()?;
         let default_view = self.default_view_of(&fund)?;
         let mut found = None;
@@ -984,7 +1016,7 @@ impl Console {
 
     fn rules_of(&self, fund: &str) -> Result<Vec<pb::Rule>> {
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let chart = b.accounts()?;
         let Some(digest) = b.active()? else { return Ok(Vec::new()) };
         let set = RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))?;
@@ -1133,7 +1165,7 @@ impl Console {
             }
         };
 
-        let mut b = FileBook::open(&path)?;
+        let mut b = self.open_file_book(&path)?;
         let digest = b.active()?.context("no configuration is in force on this fund")?;
         let chart = b.accounts()?;
         let set = RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))?;
@@ -1256,7 +1288,7 @@ impl Console {
     pub fn list_deliveries(&self, parent: &str) -> Result<pb::ListDeliveriesResponse> {
         let fund = resource_id(parent, "funds")?;
         let path = self.book_path(&fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
         let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
         let resolved = ratio_ingest::resolve_all(&facts, &master);
@@ -1344,7 +1376,7 @@ impl Console {
 
     fn facts_of(&self, fund: &str, filter: &str) -> Result<Vec<pb::Fact>> {
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
         if facts.is_empty() {
             return Ok(Vec::new());
@@ -1370,7 +1402,7 @@ impl Console {
 
     fn pending_of(&self, fund: &str) -> Result<Vec<pb::PendingFact>> {
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
         if facts.is_empty() {
             return Ok(Vec::new());
@@ -1492,7 +1524,7 @@ impl Console {
 
     fn positions_of(&self, fund: &str, view: &str) -> Result<Vec<pb::Position>> {
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         // ⛔ THE VIEW'S POSITIONS, OFF THE MAINTAINED FOLD — not
         // `b.positions()`, whose whole-journal answer is one view's wearing no
         // label. A trade in flight under a settlement view is cash there and a
@@ -1638,7 +1670,7 @@ impl Console {
 
     fn templates_of(&self, fund: &str) -> Result<Vec<pb::Template>> {
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let Some(digest) = b.active()? else { return Ok(Vec::new()) };
         let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
         Ok(ratio_ingest::TemplateSet::from_toml(&text)?
@@ -1664,7 +1696,7 @@ impl Console {
     ) -> Result<pb::IngestDeliveryResponse> {
         let fund = resource_id(&req.parent, "funds")?;
         let path = self.book_path(&fund)?;
-        let mut b = FileBook::open(&path)?;
+        let mut b = self.open_file_book(&path)?;
 
         let digest = b.active()?.context("no configuration is in force on this fund")?;
         let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
@@ -1769,7 +1801,7 @@ impl Console {
     /// nothing that can disagree with the journal, because it is the journal.
     pub fn stale_strikes(&self, fund: &str) -> Result<Vec<(String, String, String)>> {
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
 
         // Where each action landed in the journal, if it landed at all.
         // ⛔ STREAMED. Bounded by the number of ACTIONS, not by the journal.
@@ -1841,7 +1873,7 @@ impl Console {
         s: ratio_ingest::actions::Split,
     ) -> Result<(i64, i64)> {
         let path = self.book_path(fund)?;
-        let mut b = FileBook::open(&path)?;
+        let mut b = self.open_file_book(&path)?;
         let digest = b.active()?.context("no configuration is in force")?;
 
         let entry_id = format!("action-{action_id}");
@@ -1927,7 +1959,7 @@ impl Console {
         let previous = self.default_view_nav(&fund)?;
 
         let path = self.book_path(&fund)?;
-        let mut b = FileBook::open(&path)?;
+        let mut b = self.open_file_book(&path)?;
         let digest = b.active()?.context("no configuration is in force")?;
         let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
         let rules = RuleSet::from_toml(&text)?;
@@ -2080,7 +2112,7 @@ impl Console {
         use ratio_ingest::value::{mark_price, observations};
 
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
         let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
         let observed = observations(&ratio_ingest::resolve_all(&facts, &master))?;
@@ -2118,7 +2150,7 @@ impl Console {
         let path = self.book_path(&fund)?;
         let previous = self.default_view_nav(&fund)?;
 
-        let mut b = FileBook::open(&path)?;
+        let mut b = self.open_file_book(&path)?;
         let digest = b.active()?.context("no configuration is in force")?;
         let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
         let templates = ratio_ingest::TemplateSet::from_toml(&text)?;
@@ -2341,7 +2373,7 @@ impl Console {
         if let Some(actor) = &self.actor {
             book::grant(&self.root, actor, id)?;
         }
-        // ⚠ Do not call `book_path` here: `allowed` is computed once at
+        // ⚠ Do not call `open_book` here: `scope` is computed once at
         // construction. The grant is on disk; the next request sees it.
         let meta = book::BookMeta::load(&path, id);
         Ok(pb::Book {
@@ -2389,7 +2421,7 @@ impl Console {
     /// in HANDOFF.md's failure table.
     fn default_view_of(&self, fund: &str) -> Result<String> {
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         Ok(match b.active()? {
             Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))
                 .unwrap_or_default()
@@ -2407,7 +2439,7 @@ impl Console {
     fn default_view_nav(&self, fund: &str) -> Result<String> {
         let view = self.default_view_of(fund)?;
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
         let proj = self.projection(fund)?;
         Ok(nav_from(&b, &proj, &view, &rates)?.0.to_string())
@@ -2416,7 +2448,7 @@ impl Console {
     pub fn get_fund(&self, name: &str) -> Result<pb::Fund> {
         let id = resource_id(name, "funds").context("bad fund name")?;
         let path = self.book_path(&id)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let tb = b.trial_balance()?;
 
         // ⛔ THE TERMS THE ACTIVE CONFIGURATION DECLARES, read rather than
@@ -2516,7 +2548,7 @@ impl Console {
     pub fn list_views(&self, parent: &str) -> Result<pb::ListViewsResponse> {
         let id = resource_id(parent, "funds").context("bad parent")?;
         let path = self.book_path(&id)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let set = match b.active()? {
             Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))
                 .unwrap_or_default(),
@@ -2541,7 +2573,7 @@ impl Console {
     pub fn get_view(&self, name: &str) -> Result<pb::View> {
         let (id, view) = view_scoped_parent(name).context("bad view name")?;
         let path = self.book_path(&id)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let set = match b.active()? {
             Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))
                 .unwrap_or_default(),
@@ -2667,7 +2699,7 @@ impl Console {
         let retainage_payable = credit_if_posted(named("Retainage payable"));
 
         let phase_budget: BTreeMap<i64, i64> = {
-            let b = FileBook::open(&path)?;
+            let b = self.open_file_book(&path)?;
             match b.active()? {
                 Some(digest) => match RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))
                 {
@@ -2727,7 +2759,7 @@ impl Console {
         if against.is_empty() {
             bail!("reconciling is a question about two views — name the other with ?against=");
         }
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
         let proj = self.projection(&id)?;
         let by_dim: BTreeMap<i64, AccountTypeRecord> =
@@ -2850,7 +2882,7 @@ impl Console {
             base.to_string()
         };
 
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let chart = b.accounts()?;
         let load = |d: &str| -> Result<RuleSet> {
             if d.is_empty() {
@@ -2903,7 +2935,7 @@ impl Console {
     /// that admits a gap.
     fn config_versions(&self, fund: &str) -> Result<Vec<pb::ConfigVersion>> {
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let active = b.active()?.map(|d| d.as_str().to_string()).unwrap_or_default();
         let chart = b.accounts()?;
 
@@ -3051,7 +3083,7 @@ impl Console {
     /// is the only honest option.
     fn announcements(&self, fund: &str) -> Result<Vec<(ratio_store::AnnouncementRecord, usize)>> {
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         // ⛔ STREAMED. Bounded by the number of ANNOUNCEMENTS.
         let mut out: Vec<(ratio_store::AnnouncementRecord, usize)> = Vec::new();
         {
@@ -3089,7 +3121,7 @@ impl Console {
     /// Every announced action on a fund, with what the journal says about it.
     fn corporate_actions(&self, fund: &str) -> Result<Vec<pb::CorporateAction>> {
         let path = self.book_path(fund)?;
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
 
         // Where each action landed, if it landed. Same derivation as
         // `stale_strikes` — one reading of the journal, not two conventions.
@@ -3207,7 +3239,7 @@ impl Console {
         let s = ratio_nav::get(&path, &view, &id)?;
         let cal = ratio_nav::closure::rate_for(&path);
 
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let accounts = b.accounts()?.len() as i64;
         let proj = self.projection(&fund)?;
         let (shape, refusal) = match ratio_nav::shape_of(&proj, &view, accounts, cal) {
@@ -3339,7 +3371,7 @@ impl Console {
     /// A fold over the plane, newest wins. Nothing is indexed and nothing is
     /// retracted: a correction is a later record for the same break name.
     fn explanations_of(&self, book: &Path) -> Result<BTreeMap<String, BreakExplanation>> {
-        let b = FileBook::open(book)?;
+        let b = self.open_file_book(book)?;
         let mut out: BTreeMap<String, BreakExplanation> = BTreeMap::new();
         for e in b.records::<BreakExplanation>(Plane::Explanations)? {
             out.insert(e.break_id.clone(), e);
@@ -3403,7 +3435,7 @@ impl Console {
             );
         }
 
-        let b = FileBook::open(&path)?;
+        let b = self.open_file_book(&path)?;
         let mut position = 0u64;
         b.for_each_entry_since(0, &mut |_| {
             position += 1;
@@ -3424,7 +3456,7 @@ impl Console {
             journal_digest: String::new(),
         };
 
-        let mut w = FileBook::open(&path)?;
+        let mut w = self.open_file_book(&path)?;
         w.append_record(Plane::Explanations, &record)?;
         self.record_change(&path, "accepted", break_name, &record.config_digest)?;
         Ok(to_pb_explanation(&record))
@@ -3511,7 +3543,7 @@ impl Console {
             // want of an unrelated file.
             return self.lot_breaks_for(fund, view);
         };
-        let b = FileBook::open(book)?;
+        let b = self.open_file_book(book)?;
         let dims: BTreeMap<String, i64> =
             b.accounts()?.into_iter().map(|a| (a.display_name, a.dim)).collect();
         // ⛔ ONE PASS, FOR THE DIMENSIONS THAT ACTUALLY HAVE BREAKS. This held
@@ -4340,7 +4372,7 @@ fn project_budget_of(path: &Path) -> String {
 /// `funds/a/views/v` → `("a", "v")`.
 ///
 /// ⛔ A VIEW IS NOT A TENANCY BOUNDARY, and this deliberately does not check
-/// one. `book_path` remains the single place a fund id becomes a path; adding a
+/// one. `open_book` remains the place a fund id becomes a `FileBook`; adding a
 /// second check here would be a second place to forget it, and the id it
 /// returns still has to go through that door.
 pub fn view_scoped_parent(parent: &str) -> Result<(String, String)> {
@@ -4480,7 +4512,7 @@ mod tests {
     }
 
     /// A body that parses for each write route, so the request reaches
-    /// `book_path` and the tenancy denial is what the route fails on — not a
+    /// `open_book` and the tenancy denial is what the route fails on — not a
     /// malformed body, which would let the test pass without testing the guard.
     fn post_body(template: &str) -> &'static str {
         if template.ends_with(":mark") {
@@ -4490,11 +4522,32 @@ mod tests {
         }
     }
 
+    /// How a live `ROUTES` entry participates in tenancy.
+    ///
+    /// ⛔ DERIVED, NOT AN ALLOWLIST. A template that matches none of these
+    /// arms is a route added later — exactly the one that would leak if the
+    /// test skipped anything it did not recognize.
+    fn classify_route(route: &transcode::Route) -> &'static str {
+        if route.template.contains("funds/*") || route.template.contains("books/*") {
+            "scoped"
+        } else if route.method == "POST" && route.template == "/v1/books" {
+            "create"
+        } else if route.template == "/v1/funds" || route.template == "/v1/books" {
+            "list"
+        } else {
+            panic!(
+                "unclassified live route {} {} — classify it as scoped, list, or create; \
+                 a hand-maintained skip list is the allowlist #23 refuses",
+                route.method, route.template
+            );
+        }
+    }
+
     #[test]
     fn a_subject_scoped_to_one_fund_cannot_reach_another_through_any_route() {
         // Two real funds under one root; the subject is granted only `a`. `b` is
         // a book ON DISK — that is what makes this a real negative test. With the
-        // `book_path` guard removed, every route below would reach `b` and
+        // `open_book` guard removed, every route below would reach `b` and
         // return its data, so these assertions go red for the right reason
         // rather than because `b` happened not to exist (which the pre-existing
         // "no fund" existence check would have reported anyway).
@@ -4513,44 +4566,56 @@ mod tests {
             },
         );
 
-        // Every route that names a fund, instantiated against `b`, is refused —
-        // and refused as "no fund", the same answer a nonexistent fund gets, so
-        // `b`'s existence does not leak. The list is the LIVE `ROUTES` slice, so
-        // a route added later is covered here without anyone remembering to.
-        let mut checked = 0;
+        // Every live route is classified from the table. Scoped templates
+        // instantiated against `b` are refused as "no fund", the same answer a
+        // nonexistent fund gets, so `b`'s existence does not leak.
+        let mut scoped = 0;
         let mut view_scoped = 0;
+        let mut lists = 0;
+        let mut creates = 0;
         for route in transcode::ROUTES {
-            if !route.template.contains("funds/*") && !route.template.contains("books/*") {
-                continue; // enumerations (/v1/funds, /v1/books) are tested below.
+            match classify_route(route) {
+                "scoped" => {
+                    if route.template.contains("views/*") {
+                        view_scoped += 1;
+                    }
+                    let path = expand_template(route.template, "b");
+                    let body = post_body(route.template);
+                    let msg = match transcode::serve(&console, route.method, &path, "", body) {
+                        Err(e) => format!("{e:#}"),
+                        Ok(leaked) => panic!(
+                            "{} {} reached fund b — the tenant boundary is not enforced on \
+                             this route. Served: {leaked}",
+                            route.method, path
+                        ),
+                    };
+                    assert!(
+                        msg.contains("no fund"),
+                        "{} {} failed, but not as a tenancy denial: {msg}",
+                        route.method,
+                        path
+                    );
+                    scoped += 1;
+                }
+                "list" => lists += 1,
+                "create" => creates += 1,
+                other => panic!("classify_route returned {other}"),
             }
-            if route.template.contains("views/*") {
-                view_scoped += 1;
-            }
-            let path = expand_template(route.template, "b");
-            let body = post_body(route.template);
-            let msg = match transcode::serve(&console, route.method, &path, "", body) {
-                Err(e) => format!("{e:#}"),
-                Ok(leaked) => panic!(
-                    "{} {} reached fund b — the tenant boundary is not enforced on \
-                     this route. Served: {leaked}",
-                    route.method, path
-                ),
-            };
-            assert!(
-                msg.contains("no fund"),
-                "{} {} failed, but not as a tenancy denial: {msg}",
-                route.method,
-                path
-            );
-            checked += 1;
         }
-        assert!(checked >= 36, "expected every fund route covered, only saw {checked}");
+        assert_eq!(
+            scoped + lists + creates,
+            transcode::ROUTES.len(),
+            "every live route must be classified"
+        );
+        assert!(scoped >= 36, "expected every fund/book route covered, only saw {scoped}");
+        assert_eq!(lists, 2, "ListBooks and ListFunds");
+        assert_eq!(creates, 1, "CreateBook");
 
         // ⛔ AND THE VIEW-SCOPED ONES ARE AMONG THEM. Fifteen routes now carry a
         // `views/{view}` segment, and `expand_template` fills the second `*`
         // with a placeholder id — so a boundary enforced only on `funds/*` and
         // forgotten one level in is what this second floor catches. Drop the
-        // segment from the templates and `checked` still clears its floor while
+        // segment from the templates and `scoped` still clears its floor while
         // this drops to zero, which is the failure that would otherwise be
         // invisible.
         assert!(
@@ -6035,7 +6100,7 @@ mod tests {
             .unwrap();
         assert_eq!(created.name, "books/mine");
 
-        // ⚠ `allowed` is computed once. The grant is on disk; a new Console
+        // ⚠ `scope` is computed once. The grant is on disk; a new Console
         // is what a subsequent HTTP request constructs.
         let again = Console::scoped(&root, subject);
         assert_eq!(again.get_book("books/mine").unwrap().name, "books/mine");
@@ -6883,6 +6948,200 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         let err = console.get_book("books/theirs").unwrap_err().to_string();
         assert!(err.contains("no fund"), "{err}");
         assert!(console.get_book("books/ours").is_ok());
+    }
+
+    fn member(sub: &str, email: &str, org: &str) -> Subject {
+        Subject::Member {
+            sub: sub.into(),
+            email: email.into(),
+            organization: org.into(),
+            groups: vec![],
+        }
+    }
+
+    #[test]
+    fn list_books_and_list_funds_distinguish_authorized_empty_from_refusal() {
+        // Two books on disk; the subject is granted neither. That is `[]`,
+        // not an error — they are a member of nothing. A broken membership
+        // file on the same disk is the other answer, and must not look alike.
+        let root = fresh("tenancy-empty-vs-refusal");
+        book(&root.join("a"));
+        book(&root.join("b"));
+
+        let stranger = Console::scoped(&root, member("stranger", "s@x.test", ""));
+        let books = stranger.list_books().unwrap();
+        let funds = stranger.list_funds().unwrap();
+        assert!(books.books.is_empty(), "authorized empty must be []: {:?}", books.books);
+        assert!(funds.funds.is_empty(), "authorized empty must be []: {:?}", funds.funds);
+        let listed = transcode::serve(&stranger, "GET", "/v1/books", "", "").unwrap();
+        assert!(listed.contains("\"books\":[]"), "authorized empty on the wire: {listed}");
+
+        std::fs::create_dir_all(root.join("MEMBERSHIP.tsv")).unwrap();
+        let broken = Console::scoped(&root, member("stranger", "s@x.test", ""));
+        let books_err = broken.list_books().unwrap_err().to_string();
+        let funds_err = broken.list_funds().unwrap_err().to_string();
+        assert!(
+            books_err.contains("membership could not be read"),
+            "ListBooks must refuse, not return []: {books_err}"
+        );
+        assert!(
+            funds_err.contains("membership could not be read"),
+            "ListFunds must refuse, not return []: {funds_err}"
+        );
+        let via_route = transcode::serve(&broken, "GET", "/v1/books", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(via_route.contains("membership could not be read"), "{via_route}");
+        let via_funds = transcode::serve(&broken, "GET", "/v1/funds", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(via_funds.contains("membership could not be read"), "{via_funds}");
+    }
+
+    #[test]
+    fn open_book_refuses_a_path_join_that_skips_the_handler() {
+        // ⭐ THE STORAGE-LAYER CLAIM. A handler that does
+        // `FileBook::open(self.root.join("b"))` is the bypass. `open_file_book`
+        // re-checks membership from the path, so joining the root is not enough.
+        let root = fresh("tenancy-open-bypass");
+        book(&root.join("a"));
+        book(&root.join("b"));
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "S\ta\n").unwrap();
+        let console = Console::scoped(&root, member("S", "s@x.test", ""));
+
+        let err = match console.open_book("b") {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("open_book must refuse book b"),
+        };
+        assert!(err.contains("no fund"), "{err}");
+        assert!(console.open_book("a").is_ok());
+
+        let joined = root.join("b");
+        let bypass = match console.open_file_book(&joined) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("open_file_book must refuse a joined path to b"),
+        };
+        assert!(
+            bypass.contains("no fund"),
+            "joining the root and opening must still refuse: {bypass}"
+        );
+        // The kernel itself is unrestricted — that is the CLI contract, and
+        // why production code must not call it.
+        assert!(FileBook::open(&joined).is_ok());
+    }
+
+    #[test]
+    fn production_handlers_open_books_only_through_the_storage_layer() {
+        // ⛔ A FORGOTTEN FileBook::open IS THE BYPASS. Before the test module,
+        // the only remaining `FileBook::open` calls take a Path (the
+        // `open_file_book` door, and free functions that receive an already
+        // authorized path). A handler that joins `self.root` to an id and
+        // opens would mention `FileBook::open(&path)` or `self.root`.
+        let production = include_str!("lib.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source");
+        let mut opens = Vec::new();
+        for (i, line) in production.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("//") || trimmed.starts_with("///") || trimmed.starts_with("//!")
+            {
+                continue;
+            }
+            if trimmed.contains("FileBook::open") {
+                opens.push((i + 1, trimmed.to_string()));
+            }
+        }
+        assert!(
+            opens.iter().all(|(_, l)| l.contains("FileBook::open(path)")),
+            "production FileBook::open must take an authorized Path, not a joined id: {opens:?}"
+        );
+        assert_eq!(
+            opens.len(),
+            3,
+            "open_file_book plus household_terms_of and project_budget_of: {opens:?}"
+        );
+        assert!(
+            !production
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//") && !l.trim_start().starts_with("///"))
+                .any(|l| l.contains("FileBook::open") && l.contains("self.root")),
+            "FileBook::open must not be reached from a joined root"
+        );
+    }
+
+    #[test]
+    fn a_personal_book_is_not_visible_to_the_creator_org() {
+        // ⭐ INDEPENDENCE. Create grants the WorkOS sub, not org:{id}. Filing
+        // optional org metadata on the sidecar also grants nothing — membership
+        // is MEMBERSHIP.tsv, not book.toml.
+        let root = fresh("tenancy-personal-not-org");
+        book(&root.join("legacy"));
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "user_1\tlegacy\n").unwrap();
+        let creator = member("user_1", "a@x.test", "org_01a");
+        Console::scoped(&root, creator.clone())
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Household".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "household".into(),
+            })
+            .unwrap();
+
+        let path = root.join("household");
+        let mut meta = book::BookMeta::load(&path, "household");
+        meta.organization = Some("org_01a".into());
+        meta.write(&path).unwrap();
+        assert!(meta.fund.is_none(), "CreateBook must not file a fund");
+
+        let creator_again = Console::scoped(&root, creator);
+        let books = creator_again.list_books().unwrap().books;
+        assert!(books.iter().any(|b| b.name == "books/household"), "{books:?}");
+        let funds = creator_again.list_funds().unwrap().funds;
+        assert!(
+            funds.iter().all(|f| f.name != "funds/household"),
+            "an independent personal book must not appear as a fund: {funds:?}"
+        );
+
+        let colleague = Console::scoped(&root, member("user_2", "b@x.test", "org_01a"));
+        let theirs = colleague.list_books().unwrap();
+        assert!(
+            theirs.books.is_empty(),
+            "a fellow org member must not inherit a personal book: {:?}",
+            theirs.books
+        );
+        let err = colleague.get_book("books/household").unwrap_err().to_string();
+        assert!(err.contains("no fund"), "{err}");
+        let err = transcode::serve(&colleague, "GET", "/v1/funds/household/views/book/accounts", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no fund"), "{err}");
+    }
+
+    #[test]
+    fn an_explicit_org_grant_is_not_implied_by_book_metadata() {
+        let root = fresh("tenancy-org-grant-is-explicit");
+        book(&root.join("shared"));
+        {
+            let mut meta = book::BookMeta::load(&root.join("shared"), "shared");
+            meta.organization = Some("org_01a".into());
+            meta.fund = Some("shared".into());
+            meta.write(&root.join("shared")).unwrap();
+        }
+        // No MEMBERSHIP line. book.toml names the org; that is filing, not a grant.
+        let in_org = Console::scoped(&root, member("user_1", "a@x.test", "org_01a"));
+        assert!(in_org.list_books().unwrap().books.is_empty());
+        assert!(in_org.list_funds().unwrap().funds.is_empty());
+        assert!(in_org.get_book("books/shared").is_err());
+
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "org:org_01a\tshared\n").unwrap();
+        let granted = Console::scoped(&root, member("user_1", "a@x.test", "org_01a"));
+        assert!(granted.get_book("books/shared").is_ok());
+        assert_eq!(granted.list_funds().unwrap().funds.len(), 1);
+        let other_org = Console::scoped(&root, member("user_1", "a@x.test", "org_01b"));
+        assert!(other_org.list_funds().unwrap().funds.is_empty());
     }
 
     #[test]

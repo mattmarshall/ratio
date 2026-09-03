@@ -132,7 +132,7 @@ export interface Caller {
    * ⛔ THE ACCESS TOKEN, NOT A COGNITO ID TOKEN. AuthKit's `withAuth()` hands
    * this back; the gateway's JWT authorizer checks issuer `https://api.workos.com/`
    * and audience = the WorkOS client id. Membership matches on `sub`, email,
-   * or `org:{org_id}` at `Console::book_path`.
+   * or `org:{org_id}` at `Console::open_book`.
    *
    * ⚠ AND THE DEMO WOULD NOT SHOW A TENANCY MISTAKE. `RATIO_DEMO_OPEN=1` grants
    * any authenticated caller every book, so a token that carries no email is
