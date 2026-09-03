@@ -84,6 +84,11 @@ id() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d[sys.
 
 get break.json      "funds/${FUND}/breaks/$(id breaks.json breaks)"
 get postings.json   "funds/${FUND}/accounts/$(id accounts.json accounts)/postings"
+# The journal — list then the one posting cites. Id from the captured
+# posting, not a hard-coded one: a seed that renumbers entries would
+# otherwise leave this file pointing at a row the book no longer has.
+get entries.json    "funds/${FUND}/entries"
+get entry.json      "funds/${FUND}/entries/$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["postings"][0]["entryId"])' "$OUT/postings.json")"
 get lots.json       "funds/${FUND}/positions/$(id positions.json positions)/lots"
 get replay.json     "funds/${STRUCK}/navStrikes/$(id navStrikes.json navStrikes):replay"
 # ⛔ `$STRUCK`, FOR THE REASON `replay.json` USES IT — a plan explains a STRIKE,

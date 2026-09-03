@@ -134,7 +134,7 @@ const TICKETS = [
  * ⛔ ITS OWN COMPONENT SO ONLY IT RE-RENDERS PER KEYSTROKE. This is the one place
  * in the palette that subscribes to the search query, and a subscriber re-renders
  * on every character typed. Keeping the static registrations above out of that
- * path is what stops eleven actions being rebuilt eleven times a word.
+ * path is what stops twelve actions being rebuilt twelve times a word.
  */
 function DeepLinks({ fund, view }: { fund: string; view: string }) {
   const go = usePaletteNavigator();

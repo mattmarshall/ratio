@@ -10,7 +10,7 @@
 // `//console:route_manifest_test` holds this file to that from both sides:
 //
 //   * every route named here has a `page.tsx` (or `layout.tsx`) on disk, and
-//   * every one of the 38 RPCs in console.proto is read by something here.
+//   * every one of the 40 RPCs in console.proto is read by something here.
 //
 // ⚠ THAT COUNT IS PROSE AND NOTHING CHECKS IT, WHICH IS WHY IT WAS WRONG BY
 // THREE. It read 34 while the contract carried 37 — the RPCs arrived, the test
@@ -148,6 +148,21 @@ export const ROUTES: readonly Route[] = [
     path: "/books/[book]/views/[view]/accounts/[account]/postings/[posting]",
     file: "books/[book]/views/[view]/accounts/[account]/postings/[posting]/page.tsx",
     reads: ["getPosting"],
+  },
+  // ── The journal ──────────────────────────────────────────────────────────
+  //
+  // ⛔ NOT `/books/[book]/changes/[entry]`. That is the change log — a
+  // proposal or an approval. This is a conserved posting in the journal, the
+  // thing every posting cites and #52 asked for a URL for.
+  {
+    path: "/books/[book]/entries",
+    file: "books/[book]/entries/page.tsx",
+    reads: ["listEntries"],
+  },
+  {
+    path: "/books/[book]/entries/[entry]",
+    file: "books/[book]/entries/[entry]/page.tsx",
+    reads: ["getEntry"],
   },
 
   // ── Positions ────────────────────────────────────────────────────────────

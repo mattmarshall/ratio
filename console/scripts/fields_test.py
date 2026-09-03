@@ -190,6 +190,25 @@ NEEDLES: list[tuple[str, str]] = [
         "Nothing matches.",
         "an empty palette reads as a broken one rather than as an answer",
     ),
+    # ── the journal entry ───────────────────────────────────────────────────
+    # ⚠ #52: a resource declared in the contract, carried on every posting,
+    # and given no page. The posting screen printed `entry {id}` as text.
+    # These needles go red if that page is deleted or the provenance link
+    # becomes plain text again.
+    (
+        "The postings it produced",
+        "the journal entry page is gone — the citation hop #52 closed",
+    ),
+    (
+        "Nothing has been posted to this book",
+        "the journal list is gone — GetEntry without ListEntries is the AIP-121 hole",
+    ),
+    (
+        "Journal entry",
+        "the journal entry page has no accessible name, so the phone check "
+        "cannot tell it rendered",
+    ),
+
     # ⛔ AND NO `startTransition` NEEDLE, THOUGH THE PALETTE NEEDS ONE AS MUCH AS
     # `FilterChips` DOES. Both that file and `PlanControls` already contain the
     # literal, so the case would pass with the palette's transition dropped — the

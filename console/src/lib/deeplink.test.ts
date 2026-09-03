@@ -53,6 +53,7 @@ describe("a pasted resource name", () => {
       `/books/${FUND}/views/${VIEW}/accounts/1010/postings/p-1`,
     ],
     [`funds/${FUND}/rules/perf_fee`, `/books/${FUND}/rules/perf_fee`],
+    [`funds/${FUND}/entries/5`, `/books/${FUND}/entries/5`],
     [`funds/${FUND}/deliveries/7c1e0d`, `/books/${FUND}/data/deliveries/7c1e0d`],
     [`funds/${FUND}/pendingFacts/pf-1`, `/books/${FUND}/data/pending/pf-1`],
     [
@@ -104,11 +105,16 @@ describe("a pasted resource name", () => {
     expect(route?.file).toBe("books/[book]/views/[view]/page.tsx");
   });
 
-  it("refuses a resource this console gives no url", () => {
-    // ⛔ `funds/{fund}/entries/{entry}` IS IN THE CONTRACT AND HAS NO SCREEN. An
-    // entry is cited by postings and rendered inside them. Inventing a URL here
-    // would offer a 404 in the same voice as the fifteen that work.
-    expect(hrefForResourceName(`funds/${FUND}/entries/5`)).toBeNull();
+  it("lands a journal entry on the entry itself", () => {
+    // ⭐ #52. `entries/[entry]` is a page. Refusing the name hid the citation
+    // the posting screen already printed. The translated URL has to be a
+    // route the tree actually serves — a string that matches and a file that
+    // is missing is how this started.
+    const href = hrefForResourceName(`funds/${FUND}/entries/5`);
+    expect(href).toBe(`/books/${FUND}/entries/5`);
+    const route = ROUTES.find((r) => r.path === "/books/[book]/entries/[entry]");
+    expect(route?.file).toBe("books/[book]/entries/[entry]/page.tsx");
+    expect(route?.reads).toContain("getEntry");
   });
 
   it("refuses a collection with nothing in it", () => {
@@ -149,7 +155,7 @@ describe("a bare id", () => {
 
   it("offers the same candidates whatever the id looks like", () => {
     // ⛔ THE POINT, STATED AS AN EQUALITY. A date, a ticker, a GL code and a
-    // slug all get the same eleven routes, because the namespaces collide and
+    // slug all get the same twelve routes, because the namespaces collide and
     // the console cannot check. Any shape-based ranking breaks this.
     const keys = (id: string) => candidatesForId(FUND, VIEW, id).map((c) => c.key);
     expect(keys("2026-02-26")).toEqual(keys("ACME"));
@@ -172,6 +178,7 @@ describe("a bare id", () => {
       `/books/${FUND}/views/${VIEW}/breaks/`,
       `/books/${FUND}/views/${VIEW}/positions/`,
       `/books/${FUND}/views/${VIEW}/accounts/`,
+      `/books/${FUND}/entries/`,
       `/books/${FUND}/views/${VIEW}/strikes/`,
       `/books/${FUND}/rules/`,
       `/books/${FUND}/changes/`,

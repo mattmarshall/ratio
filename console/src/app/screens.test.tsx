@@ -5,7 +5,10 @@ import accountsFixture from "../../fixtures/accounts.json";
 import breakFixture from "../../fixtures/break.json";
 import breaksFixture from "../../fixtures/breaks.json";
 import changeLogFixture from "../../fixtures/changeLogEntries.json";
+import entriesFixture from "../../fixtures/entries.json";
+import entryFixture from "../../fixtures/entry.json";
 import explainFixture from "../../fixtures/explain.json";
+import postingsFixture from "../../fixtures/postings.json";
 import bookFixture from "../../fixtures/book.json";
 import booksFixture from "../../fixtures/books.json";
 import fundFixture from "../../fixtures/fund.json";
@@ -91,6 +94,9 @@ const wire = {
   getBreak: async () => breakFixture,
   listBreaks: async () => breaksFixture,
   listAccounts: async () => accountsFixture,
+  getPosting: async () => postingsFixture.postings[0],
+  listEntries: async () => entriesFixture,
+  getEntry: async () => entryFixture,
   listPositions: async () => positionsFixture,
   listLots: async () => lotsFixture,
   listNavStrikes: async () => navStrikesFixture,
@@ -270,6 +276,64 @@ describe("a first-class book", () => {
     } finally {
       wire.getView = real;
     }
+  });
+});
+
+describe("a journal entry", () => {
+  it("lists the journal and links each row to the entry", async () => {
+    const Entries = (await import("./books/[book]/entries/page")).default;
+    await renderAsync(Entries({ params: params({ book: FUND }) }));
+    expect(screen.getByLabelText("Journal")).toBeDefined();
+    expect(screen.getByText("journal order")).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: /Purchase of 1,000 ACME/ }).getAttribute("href"),
+    ).toBe(`/books/${FUND}/entries/e-0004`);
+    for (const a of document.querySelectorAll("a[href]")) {
+      expect(a.getAttribute("href")).not.toMatch(/\/funds\//);
+    }
+  });
+
+  it("gives an entry a page of its own", async () => {
+    // ⭐ #52. The posting screen printed `entry {id}` as text because this
+    // URL 404'd. The page is the citation — the memo, the configuration,
+    // the postings — and a render without the layout still has to show them.
+    const Entry = (await import("./books/[book]/entries/[entry]/page")).default;
+    await renderAsync(Entry({ params: params({ book: FUND, entry: "e-0004" }) }));
+    expect(screen.getByRole("heading", { name: "Purchase of 1,000 ACME" })).toBeDefined();
+    expect(screen.getByLabelText("Journal entry")).toBeDefined();
+    expect(screen.getByText("The postings it produced")).toBeDefined();
+    expect(screen.getByText("Cash and equivalents")).toBeDefined();
+    expect(screen.getByText("-332,880.00")).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "Cash and equivalents" }).getAttribute("href"),
+    ).toBe(`/books/${FUND}/views/${VIEW}/accounts/1010`);
+    expect(screen.getByRole("link", { name: "Journal" }).getAttribute("href")).toBe(
+      `/books/${FUND}/entries`,
+    );
+    expect(screen.getByRole("link", { name: "Book" }).getAttribute("href")).toBe(
+      `/books/${FUND}`,
+    );
+    for (const a of document.querySelectorAll("a[href]")) {
+      expect(a.getAttribute("href")).not.toMatch(/\/funds\//);
+    }
+  });
+
+  it("links posting provenance to the entry, not to plain text", async () => {
+    const Posting = (
+      await import("./books/[book]/views/[view]/accounts/[account]/postings/[posting]/page")
+    ).default;
+    await renderAsync(
+      Posting({
+        params: params({
+          book: FUND,
+          view: VIEW,
+          account: "1010",
+          posting: "e-0004.0",
+        }),
+      }),
+    );
+    const link = screen.getByRole("link", { name: "entry e-0004" });
+    expect(link.getAttribute("href")).toBe(`/books/${FUND}/entries/e-0004`);
   });
 });
 

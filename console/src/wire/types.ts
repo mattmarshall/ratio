@@ -697,6 +697,11 @@ export interface Entry {
   postings: EntryPosting[];
 }
 
+export interface ListEntriesResponse {
+  entries: Entry[];
+  nextPageToken: string;
+}
+
 /**
  * What recording an event produced.
  *

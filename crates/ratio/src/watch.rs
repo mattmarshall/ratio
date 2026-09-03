@@ -405,6 +405,7 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
                     let msg = format!("{e:#}");
                     let status = if msg.contains("no fund") || msg.contains("no route")
                         || msg.contains("no break") || msg.contains("no change-log")
+                        || msg.contains("no entry")
                     {
                         "404 Not Found"
                     } else if msg.contains("read-only") || msg.contains("does not accept POST") {
