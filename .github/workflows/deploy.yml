@@ -353,17 +353,70 @@ jobs:
           # BECAUSE it matched. It is racy below the 64KB pipe buffer and
           # reliable above it, which is why the 196KB console page failed here
           # while the smaller screens passed. Capture, then match.
+          #
+          # ⛔ JOURNAL-BACKED PUBLIC JSON 503s DURING HYDRATE.
+          #
+          # After #136, /healthz, /version and /authconfig.json answer
+          # while FileBook::open is still putting seed lines. /balance.json,
+          # /rules.json, /breaks.json and /mcp wait 200ms then return
+          # 503 + Retry-After: 2 + `{"error":"the journal is still hydrating"}`.
+          # Run 33800551926: CloudFormation succeeded, the function served
+          # 454684d, and `want "a book that ties"` died on that 503.
+          # `curl -sf` treats any non-2xx as "could not fetch". Retry only
+          # that hydrate signal; a 500, a 404, an untied book, or a 503
+          # without the body still fail closed.
+          fetch_when_ready() {  # fetch_when_ready <url> [curl args...]
+            local url="$1"; shift
+            local i code tmp
+            tmp="$(mktemp)"
+            _fetch_code=""
+            _fetch_body=""
+            for i in $(seq 1 16); do
+              code="$(curl -sS -o "$tmp" -w '%{http_code}' "$@" "$url")" || {
+                rm -f "$tmp"
+                return 1
+              }
+              _fetch_body="$(cat "$tmp")"
+              _fetch_code="$code"
+              if [ "$code" = "503" ]; then
+                case "$_fetch_body" in
+                  *hydrating*)
+                    echo "  still hydrating $url (attempt $i)"
+                    sleep 2
+                    continue
+                    ;;
+                esac
+              fi
+              rm -f "$tmp"
+              return 0
+            done
+            rm -f "$tmp"
+            echo "::error::still hydrating after 32s: $url"
+            return 1
+          }
+
           want() {  # want <name> <pattern> <url>
-            local body
-            body="$(curl -sf "$3")" || { echo "::error::$1: could not fetch $3"; exit 1; }
-            case "$body" in
+            fetch_when_ready "$3" || { echo "::error::$1: could not fetch $3"; exit 1; }
+            [ "$_fetch_code" = "200" ] || {
+              echo "::error::$1: HTTP $_fetch_code fetching $3"
+              exit 1
+            }
+            case "$_fetch_body" in
               *"$2"*) ;;
               *) echo "::error::$1: expected '$2'"; exit 1 ;;
             esac
           }
 
           deny() {
-            case "$(curl -sf "$3" || echo FETCH-FAILED)" in
+            fetch_when_ready "$3" || { echo "::error::$1: could not fetch $3"; exit 1; }
+            # A lasting 503 (not the hydrate body — those retried above) is
+            # a real failure. Other non-200s still only fail if they carry
+            # the forbidden pattern: the traversal probe is a 404 on purpose.
+            if [ "$_fetch_code" = "503" ]; then
+              echo "::error::$1: HTTP 503 fetching $3"
+              exit 1
+            fi
+            case "$_fetch_body" in
               *"$2"*) echo "::error::$1: found '$2' and should not have"; exit 1 ;;
             esac
           }
@@ -479,8 +532,15 @@ jobs:
           }
 
           # MCP answers, and the fence still holds on a public endpoint.
-          TOOLS="$(curl -sf -X POST "${URL}mcp" -H 'content-type: application/json' \
-                    -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
+          # ⚠ /mcp is in route_needs_hydrated_book — same 503 as balance.json.
+          fetch_when_ready "${URL}mcp" -X POST -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+            || { echo "::error::MCP did not answer"; exit 1; }
+          [ "$_fetch_code" = "200" ] || {
+            echo "::error::MCP returned HTTP $_fetch_code, not 200"
+            exit 1
+          }
+          TOOLS="$_fetch_body"
           case "$TOOLS" in
             *propose_rule*) ;;
             *) echo "::error::MCP did not list its tools"; exit 1 ;;

@@ -419,6 +419,29 @@ def main(app_path, bootstrap_path, workflow_path):
         )
     else:
         print("  ok  smoke still asserts difference:0.00 on /balance.json")
+    # ⛔ AFTER #136 THE BOOK JSON 503s WHILE /version IS ALREADY THE NEW SHA.
+    # Run 33800551926: CloudFormation succeeded, Lambda served 454684d,
+    # /authconfig.json and /scale-runs.json were 200, /balance.json was
+    # still hydrating. `curl -sf` reported "could not fetch". A check that
+    # only looks for difference:0.00 still passes if want() fails closed
+    # on the first 503 — the string is in the file. The retry has to be
+    # in the fetch path, and it must not also retry a 500. `flow` is
+    # comment-stripped, so a sentence describing the retry does not count.
+    if "hydrating" not in flow:
+        fail(
+            f"{workflow_path} does not look for the journal-hydrate body "
+            "before asserting /balance.json — that is run 33800551926, "
+            "not a check to drop"
+        )
+    else:
+        print("  ok  smoke looks for the hydrate 503 body")
+    if '"503"' not in flow:
+        fail(
+            f"{workflow_path} does not special-case HTTP 503 — a retry of "
+            "every curl failure would also wait out a lasting 500"
+        )
+    else:
+        print("  ok  smoke special-cases HTTP 503 rather than every failure")
     if "v1/funds" not in flow or "401" not in flow:
         fail(
             f"{workflow_path} no longer asserts unauthenticated /v1/funds is 401 — "
