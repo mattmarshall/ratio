@@ -34,7 +34,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "OPERATING",
     label: "Operating business",
-    blurb: "Cash, accounts receivable, accounts payable, operating revenue and expense, and owner equity. Independent of a Fund and of an organization. Cites a balance sheet and a period income statement that tie to the trial balance. AR/AP aging is a follow-on — no due date and no open-item application.",
+    blurb: "Cash, Accounts receivable, Accounts payable, Operating revenue, Operating expenses, and Owner equity. Independent of a Fund and of an organization. Cites a balance sheet and a period income statement that tie to the trial balance. AR/AP aging is a follow-on — no due date and no open-item application.",
   },
 ];
 

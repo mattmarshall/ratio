@@ -41,6 +41,8 @@ describe("book templates", () => {
     expect(byKind.OPERATING).toMatch(/Accounts receivable/);
     expect(byKind.OPERATING).toMatch(/Accounts payable/);
     expect(byKind.OPERATING).toMatch(/Operating revenue/);
+    expect(byKind.OPERATING).toMatch(/Operating expenses/);
+    expect(byKind.OPERATING).toMatch(/Owner equity/);
     expect(byKind.OPERATING).toMatch(/Independent of a Fund/);
     expect(byKind.OPERATING).toMatch(/AR\/AP aging is a follow-on/);
     expect(byKind.OPERATING).toMatch(/no due date/);

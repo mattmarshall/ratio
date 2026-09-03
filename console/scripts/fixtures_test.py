@@ -38,6 +38,7 @@ FIXTURES = {
     "break.json": "Break",
     "accounts.json": "ListAccountsResponse",
     "householdAccounts.json": "ListAccountsResponse",
+    "operatingAccounts.json": "ListAccountsResponse",
     "capitalAccounts.json": "ListAccountsResponse",
     "capitalCommitments.json": "ListAccountsResponse",
     "postings.json": "ListPostingsResponse",
