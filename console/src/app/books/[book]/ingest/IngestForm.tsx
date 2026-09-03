@@ -74,7 +74,7 @@ export function IngestForm({
       name="Origin"
       value={origin}
       onValue={setOrigin}
-      hint="custodian/positions-2026-02-26.csv"
+      hint="origin/file.csv"
     />
   );
   const contentField = (

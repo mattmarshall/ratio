@@ -12,6 +12,8 @@ export default async function Ingest({
 }) {
   const { book: fund } = await params;
   const c = await caller();
+  // The book's configuration is already kind-aware (CreateBook writes one
+  // mapping per kind). The mock subsets the mixed fixture the same way.
   const { templates } = await listTemplates(c, fund);
 
   return <IngestForm fund={fund} templates={templates} />;

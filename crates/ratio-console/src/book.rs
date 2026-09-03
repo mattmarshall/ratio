@@ -10,6 +10,20 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use ratio_store::{Account, AccountTypeRecord, ConfigStore, FileBook};
 
+/// The ingest template CreateBook writes for this kind.
+///
+/// ⭐ KIND-AWARE, NOT A SHARED MENU. A Personal book that offered
+/// `custodian-positions` would be asking a household to pick a fund feed.
+/// The live list is the book's own configuration; this id is what
+/// [`config_for`] puts there, and what the console catalog filters on.
+pub fn ingest_template_id(kind: BookKind) -> &'static str {
+    match kind {
+        BookKind::Personal => "bank-statement",
+        BookKind::Investment => "custodian-positions",
+        BookKind::Project => "project-invoices",
+    }
+}
+
 /// What a book is used for. Same kernel; different chart.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BookKind {
@@ -168,7 +182,227 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
     }
 }
 
-/// Create the directory, the chart, an empty configuration, and the sidecar.
+/// The opening configuration CreateBook writes: posting rules that hit
+/// [`chart_for`] and one ingest template for this kind.
+///
+/// ⛔ NOT THE DEMO FUND'S TRADE FILE. `deploy/seed-demo-book.sh` still owns
+/// `prime_equity_trades` — delivery → resolve → admit, with VWRL left pending
+/// so an operator has a fact they can open. CreateBook seeds the *kind's*
+/// column contract so a blank book can read a file; it does not invent a
+/// journal to reconcile against.
+pub fn config_for(kind: BookKind) -> &'static str {
+    match kind {
+        BookKind::Personal => PERSONAL_CONFIG,
+        BookKind::Investment => INVESTMENT_CONFIG,
+        BookKind::Project => PROJECT_CONFIG,
+    }
+}
+
+/// Bank / card CSV → cash and expense claims. Amounts are a money column
+/// (never a float); `Kind` picks the rule so a signed-amount inference
+/// cannot silently flip income and a card charge.
+const PERSONAL_CONFIG: &str = r#"
+[[rule]]
+id = "living_expense"
+kind = "trade"
+description = "Living expenses up, cash and bank down"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "household_income"
+kind = "trade"
+description = "Cash and bank up, income down"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 30
+weight = -1
+
+[[rule]]
+id = "card_charge"
+kind = "trade"
+description = "Living expenses up, credit cards and loans up"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[template]]
+id = "bank-statement"
+reads = "csv"
+
+  [[template.entity]]
+  name = "payee"
+  kind = "counterparty"
+  absent = "pend"
+  by = [{ attribute = "name", column = "Memo" }]
+
+  [template.fact]
+  kind = "statement"
+  reference = "Ref"
+  entities = { payee = "payee" }
+
+  [[template.fact.value]]
+  field = "dated"
+  as = "date"
+  column = "Date"
+  format = "MM/DD/YYYY"
+
+  [[template.fact.value]]
+  field = "amount"
+  as = "money"
+  column = "Amount"
+  currency = "Ccy"
+
+  [[template.fact.value]]
+  field = "memo"
+  as = "text"
+  column = "Memo"
+
+  [[template.fact.value]]
+  field = "account"
+  as = "text"
+  column = "Account"
+
+  [[template.fact.value]]
+  field = "kind"
+  as = "enum"
+  column = "Kind"
+  map = { expense = "expense", income = "income", card = "card" }
+
+  [template.fact.posts]
+  by = "kind"
+  amount = "amount"
+  rules = { expense = "living_expense", income = "household_income", card = "card_charge" }
+  dated = "dated"
+"#;
+
+/// Custodian positions snapshot. REFERENCE DATA: no `posts` block, so a row
+/// is recorded and citable and never touches the journal. The column
+/// contract is one real file: LineRef, AsOf, ISIN, Ticker, Exch, Quantity,
+/// MarketValue, Ccy.
+///
+/// ⚠ THE CLOSED LOOP IS `prime_equity_trades` IN `deploy/seed-demo-book.sh`.
+/// That path delivers, resolves, admits, and leaves VWRL pending — a break
+/// an operator can open. A CreateBook investment book has no journal yet,
+/// so seeding the trade file here would be a mapping with nothing to post.
+const INVESTMENT_CONFIG: &str = r#"
+[[template]]
+id = "custodian-positions"
+reads = "csv"
+
+  [[template.entity]]
+  name = "holding"
+  kind = "instrument"
+  absent = "pend"
+  by = [
+    { attribute = "isin", column = "ISIN" },
+    { attribute = "ticker", column = "Ticker", within = { attribute = "exchange", column = "Exch" } },
+  ]
+
+  [template.fact]
+  kind = "position"
+  reference = "LineRef"
+  entities = { holding = "holding" }
+
+  [[template.fact.value]]
+  field = "asOf"
+  as = "date"
+  column = "AsOf"
+  format = "YYYY-MM-DD"
+
+  [[template.fact.value]]
+  field = "quantity"
+  as = "decimal"
+  column = "Quantity"
+
+  [[template.fact.value]]
+  field = "marketValue"
+  as = "money"
+  column = "MarketValue"
+  currency = "Ccy"
+"#;
+
+/// Vendor invoice / cost CSV → project costs and payables claims.
+const PROJECT_CONFIG: &str = r#"
+[[rule]]
+id = "project_cost"
+kind = "trade"
+description = "Project costs up, cash down"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "vendor_invoice"
+kind = "trade"
+description = "Project costs up, payables up"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[template]]
+id = "project-invoices"
+reads = "csv"
+
+  [[template.entity]]
+  name = "vendor"
+  kind = "counterparty"
+  absent = "pend"
+  by = [{ attribute = "name", column = "Vendor" }]
+
+  [template.fact]
+  kind = "invoice"
+  reference = "InvoiceRef"
+  entities = { vendor = "vendor" }
+
+  [[template.fact.value]]
+  field = "dated"
+  as = "date"
+  column = "Date"
+  format = "YYYY-MM-DD"
+
+  [[template.fact.value]]
+  field = "amount"
+  as = "money"
+  column = "Amount"
+  currency = "Ccy"
+
+  [[template.fact.value]]
+  field = "memo"
+  as = "text"
+  column = "Memo"
+  optional = true
+
+  [[template.fact.value]]
+  field = "kind"
+  as = "enum"
+  column = "Kind"
+  map = { cost = "cost", invoice = "invoice" }
+
+  [template.fact.posts]
+  by = "kind"
+  amount = "amount"
+  rules = { cost = "project_cost", invoice = "vendor_invoice" }
+  dated = "dated"
+"#;
+
+/// Create the directory, the chart, the kind's opening ingest configuration,
+/// and the sidecar.
 ///
 /// ⛔ NO FUND AND NO ORG ARE WRITTEN. A caller that wants either files the
 /// book afterwards. Create is the independent book.
@@ -178,7 +412,7 @@ pub fn initialize(path: &Path, id: &str, display: &str, kind: BookKind) -> Resul
     }
     let mut b = FileBook::open(path)?;
     b.put_accounts(&chart_for(kind))?;
-    let digest = b.put(b"# ratio configuration\nrules = []\n")?;
+    let digest = b.put(config_for(kind).as_bytes())?;
     b.set_active(&digest)?;
     BookMeta {
         kind,
@@ -279,5 +513,166 @@ mod tests {
         assert!(m.organization.is_none());
         let chart = FileBook::open(&dir).unwrap().accounts().unwrap();
         assert_eq!(chart, chart_for(BookKind::Project));
+    }
+
+    #[test]
+    fn each_kind_seeds_its_own_ingest_template_and_not_the_others() {
+        // ⭐ THE CLAIM #72 IS ABOUT. A Personal book that listed
+        // `custodian-positions` would force a household to pick a fund feed.
+        // CreateBook writes the kind's mapping into the opening configuration,
+        // so ListTemplates is kind-aware because the book only has its own.
+        for kind in [BookKind::Personal, BookKind::Investment, BookKind::Project] {
+            let set = ratio_ingest::TemplateSet::from_toml(config_for(kind)).unwrap();
+            let ids: Vec<&str> = set.templates.iter().map(|t| t.id.as_str()).collect();
+            assert_eq!(ids, vec![ingest_template_id(kind)], "{kind:?}: {ids:?}");
+            let t = set.template(ingest_template_id(kind)).unwrap();
+            assert!(t.check().is_empty(), "{kind:?}: {:?}", t.check());
+        }
+        let personal = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Personal)).unwrap();
+        assert!(personal.template("custodian-positions").is_none());
+        assert!(personal.template("project-invoices").is_none());
+        let project = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Project)).unwrap();
+        assert!(project.template("custodian-positions").is_none());
+        assert!(project.template("bank-statement").is_none());
+    }
+
+    #[test]
+    fn seeded_rules_balance_against_the_kind_chart() {
+        // ⛔ A TEMPLATE THAT POSTS AT A RULE THE CHART CANNOT EXPRESS would
+        // admit a fact and then refuse the entry. The opening configuration
+        // is checked the same way an approval is.
+        for kind in [BookKind::Personal, BookKind::Investment, BookKind::Project] {
+            let set = ratio_rules::RuleSet::from_toml(config_for(kind)).unwrap();
+            let findings = ratio_rules::check(&set, &chart_for(kind));
+            assert!(
+                findings.is_empty(),
+                "{kind:?} opening rules do not check: {findings:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bank_statement_row_becomes_a_money_claim_not_a_float() {
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Personal)).unwrap();
+        let t = set.template("bank-statement").unwrap();
+        let csv = "\
+Ref,Date,Amount,Ccy,Memo,Account,Kind
+T-1,03/01/2026,45.20,USD,GROCERY STORE,checking,expense
+T-2,03/02/2026,3200.00,USD,ACME PAYROLL,checking,income
+T-3,03/03/2026,89.00,USD,ELECTRIC CO,card,card
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(p.facts.len(), 3);
+        assert_eq!(
+            p.facts[0].values.get("amount"),
+            Some(&ratio_ingest::Value::Money {
+                minor: 4520,
+                currency: "USD".into()
+            }),
+        );
+        assert_eq!(
+            p.facts[1].values.get("amount"),
+            Some(&ratio_ingest::Value::Money {
+                minor: 320_000,
+                currency: "USD".into()
+            }),
+        );
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[0]).unwrap();
+        assert_eq!(rule, "living_expense");
+        assert_eq!(minor, 4520);
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[1]).unwrap();
+        assert_eq!(rule, "household_income");
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[2]).unwrap();
+        assert_eq!(rule, "card_charge");
+        // A payee nobody has added pends — the same shape as a missing
+        // instrument on the fund path. Adding it later clears without
+        // re-ingesting.
+        let resolved = ratio_ingest::resolve_all(&p.facts, &[]);
+        assert!(resolved.iter().all(|r| !r.is_admissible()));
+    }
+
+    #[test]
+    fn a_project_invoice_row_claims_the_vendor_and_picks_cost_or_payable() {
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Project)).unwrap();
+        let t = set.template("project-invoices").unwrap();
+        let csv = "\
+InvoiceRef,Date,Amount,Ccy,Vendor,Memo,Kind
+INV-1,2026-03-01,1200.00,USD,ACME STEEL,steel delivery,invoice
+INV-2,2026-03-02,450.00,USD,CITY POWER,,cost
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(p.facts.len(), 2);
+        assert_eq!(
+            p.facts[0].values.get("amount"),
+            Some(&ratio_ingest::Value::Money {
+                minor: 120_000,
+                currency: "USD".into()
+            }),
+        );
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[0]).unwrap();
+        assert_eq!(rule, "vendor_invoice");
+        assert_eq!(minor, 120_000);
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[1]).unwrap();
+        assert_eq!(rule, "project_cost");
+        // Optional memo: the cost row left it blank and still mapped.
+        assert!(p.facts[1].values.get("memo").is_none());
+    }
+
+    #[test]
+    fn custodian_positions_record_and_never_post() {
+        // ⭐ A MODE, NOT A GAP. The snapshot is what a recon reads against.
+        // Seeding a `posts` block would invent journal entries a blank
+        // investment book does not have counterparties for.
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Investment)).unwrap();
+        let t = set.template("custodian-positions").unwrap();
+        assert!(t.fact.posts.is_none());
+        let csv = "\
+LineRef,AsOf,ISIN,Ticker,Exch,Quantity,MarketValue,Ccy
+P-1,2026-02-26,US9229087690,VTI,ARCX,1000,262500.00,USD
+P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(p.facts.len(), 2);
+        assert_eq!(
+            p.facts[0].values.get("marketValue"),
+            Some(&ratio_ingest::Value::Money {
+                minor: 26_250_000,
+                currency: "USD".into()
+            }),
+        );
+        assert!(ratio_ingest::posting_for(t, &p.facts[0]).is_err());
+        // Blank ISIN drops that rung; ticker within exchange remains.
+        let holding = p.facts[1].entities.get("holding").unwrap();
+        assert_eq!(holding.rungs.len(), 1);
+        assert_eq!(holding.rungs[0][0].attr, "ticker");
+    }
+
+    #[test]
+    fn initialize_writes_the_kind_template_into_the_opening_config() {
+        let dir = std::env::temp_dir().join("ratio-book-init-personal-ingest");
+        let _ = std::fs::remove_dir_all(&dir);
+        initialize(&dir, "household", "Household", BookKind::Personal).unwrap();
+        let b = FileBook::open(&dir).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let set = ratio_ingest::TemplateSet::from_toml(&text).unwrap();
+        assert_eq!(set.templates.len(), 1);
+        assert_eq!(set.templates[0].id, "bank-statement");
+        assert!(set.template("custodian-positions").is_none());
+    }
+
+    fn sample_delivery() -> ratio_ingest::Delivery {
+        ratio_ingest::Delivery {
+            digest: "a".repeat(64),
+            origin: "fixture.csv".into(),
+            received: 1,
+            bytes: 1,
+        }
     }
 }
