@@ -3,7 +3,7 @@ import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
 import { ofType, sheetFoots, sheetTotals, shown } from "@/lib/statement";
-import { listAccounts } from "@/wire/client";
+import { getBook, listAccounts } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 import type { Account } from "@/wire/types";
 
@@ -33,13 +33,17 @@ async function Sheet({
   const year = utcYear();
   const last = previousMonth(month);
   const c = await caller();
-  const { accounts } = await listAccounts(
-    c,
-    book,
-    view,
-    period ? "sheet" : undefined,
-    period || undefined,
-  );
+  const [b, { accounts }] = await Promise.all([
+    getBook(c, book),
+    listAccounts(
+      c,
+      book,
+      view,
+      period ? "sheet" : undefined,
+      period || undefined,
+    ),
+  ]);
+  const operating = b.kind === "OPERATING";
 
   const filters: readonly Filter[] = [
     { key: "", label: "Now" },
@@ -125,13 +129,29 @@ async function Sheet({
 
       <p className="note">
         <Link href={`/books/${book}/views/${view}/pnl?period=${encodeURIComponent(period || month)}`}>
-          Period P&L
+          {operating ? "Income statement" : "Period P&L"}
         </Link>
-        {" · "}
-        <Link href={`/books/${book}/transfer`}>Transfer</Link>
+        {operating ? (
+          <>
+            {" · "}
+            <Link href={`/books/${book}/record`}>Record a sale or an expense</Link>
+          </>
+        ) : (
+          <>
+            {" · "}
+            <Link href={`/books/${book}/transfer`}>Transfer</Link>
+          </>
+        )}
         {" · "}
         <Link href={`/books/${book}/views/${view}/accounts`}>Trial balance</Link>
       </p>
+      {operating ? (
+        <p className="note">
+          AR/AP aging is a follow-on — no due date and no open-item application.
+          Receivable and payable here are control-account balances that tie to
+          the trial balance, not aged open items.
+        </p>
+      ) : null}
     </>
   );
 }

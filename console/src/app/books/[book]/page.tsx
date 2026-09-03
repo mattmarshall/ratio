@@ -17,8 +17,10 @@ export const dynamic = "force-dynamic";
  * ⭐ KIND SELECTS THE PLACES. A personal book that listed Exceptions / NAV
  * would be a fake label on fund-ops screens (#65, #83). A project book
  * that listed them is the same defect (#66, #85). An investment book cites
- * capital first, then the ABOR warehouse (#70). The hub is how you open
- * the citable figures after CreateBook.
+ * capital first, then the ABOR warehouse (#70). An operating book cites
+ * a balance sheet and period income statement, not Fund NAV and not
+ * Project `/billing` (#108). The hub is how you open the citable figures
+ * after CreateBook.
  */
 export default async function BookPage({
   params,
@@ -33,6 +35,7 @@ export default async function BookPage({
     : null;
   const personal = b.kind === "PERSONAL";
   const project = b.kind === "PROJECT";
+  const operating = b.kind === "OPERATING";
   const places = screensFor(b.kind);
 
   return (
@@ -54,7 +57,7 @@ export default async function BookPage({
         <dd>{b.configDigest || "none"}</dd>
         <dt>Default view</dt>
         <dd>{b.defaultView || "—"}</dd>
-        {view && !project ? (
+        {view && !project && !operating ? (
           <>
             <dt>
               {personal ? "Net worth" : "NAV"}, in {b.defaultView}
@@ -114,6 +117,14 @@ export default async function BookPage({
       {project && b.defaultView ? (
         <p className="note">
           <Link href={`/books/${book}/record`}>Record a cost, bill, collection, retainage hold, change order, or capitalize WIP</Link>
+        </p>
+      ) : null}
+      {operating && b.defaultView ? (
+        <p className="note">
+          <Link href={`/books/${book}/record`}>Record a sale, invoice, collection, bill, or expense</Link>
+          {" · "}
+          AR/AP aging is a follow-on — invoices and bills post to control
+          accounts; due-date buckets are not on this book
         </p>
       ) : null}
       {b.fund ? (

@@ -1,0 +1,3 @@
+InvoiceRef,Date,Amount,Ccy,Customer,Memo,Kind
+INV-1,2026-03-01,1500.00,USD,ACME STUDIO,March retainer,invoice
+INV-2,2026-03-15,1500.00,USD,ACME STUDIO,,collect

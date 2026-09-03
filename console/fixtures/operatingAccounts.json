@@ -1,0 +1,143 @@
+{
+  "accounts": [
+    {
+      "name": "funds/studio/views/book/accounts/1",
+      "displayName": "Cash",
+      "dimension": "1",
+      "type": "ASSET",
+      "debit": "110000",
+      "credit": "2000",
+      "balance": "108000",
+      "abnormal": false,
+      "postingCount": "3",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "110000",
+          "credit": "2000",
+          "balance": "108000",
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
+        }
+      ]
+    },
+    {
+      "name": "funds/studio/views/book/accounts/2",
+      "displayName": "Accounts receivable",
+      "dimension": "2",
+      "type": "ASSET",
+      "debit": "40000",
+      "credit": "0",
+      "balance": "40000",
+      "abnormal": false,
+      "postingCount": "1",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "40000",
+          "credit": "0",
+          "balance": "40000",
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
+        }
+      ]
+    },
+    {
+      "name": "funds/studio/views/book/accounts/10",
+      "displayName": "Operating expenses",
+      "dimension": "10",
+      "type": "EXPENSE",
+      "debit": "10000",
+      "credit": "0",
+      "balance": "10000",
+      "abnormal": false,
+      "postingCount": "2",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "10000",
+          "credit": "0",
+          "balance": "10000",
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
+        }
+      ]
+    },
+    {
+      "name": "funds/studio/views/book/accounts/20",
+      "displayName": "Owner equity",
+      "dimension": "20",
+      "type": "EQUITY",
+      "debit": "0",
+      "credit": "100000",
+      "balance": "-100000",
+      "abnormal": false,
+      "postingCount": "1",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "0",
+          "credit": "100000",
+          "balance": "-100000",
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
+        }
+      ]
+    },
+    {
+      "name": "funds/studio/views/book/accounts/30",
+      "displayName": "Operating revenue",
+      "dimension": "30",
+      "type": "REVENUE",
+      "debit": "0",
+      "credit": "50000",
+      "balance": "-50000",
+      "abnormal": false,
+      "postingCount": "2",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "0",
+          "credit": "50000",
+          "balance": "-50000",
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
+        }
+      ]
+    },
+    {
+      "name": "funds/studio/views/book/accounts/40",
+      "displayName": "Accounts payable",
+      "dimension": "40",
+      "type": "LIABILITY",
+      "debit": "0",
+      "credit": "8000",
+      "balance": "-8000",
+      "abnormal": false,
+      "postingCount": "1",
+      "currencyTotals": [
+        {
+          "currencyCode": "USD",
+          "debit": "0",
+          "credit": "8000",
+          "balance": "-8000",
+          "rate": "",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
+        }
+      ]
+    }
+  ],
+  "nextPageToken": ""
+}

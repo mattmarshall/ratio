@@ -23,11 +23,12 @@ export const dynamic = "force-dynamic";
  * recognition convention and never one of them being three entries behind.
  * `//tla:views_check`'s `EveryViewFoldsTheSamePrefix`.
  *
- * ⭐ A PERSONAL OR PROJECT BOOK DOES NOT WEAR NAV CHROME. The same
- * `netAssetValue` is assets minus liabilities — net worth on a household,
- * cash + WIP − payables on a project — and open breaks are a fund-ops
- * queue. Unplaceable stays on a personal book: an undated entry is in no
- * period P&L.
+ * ⭐ A PERSONAL, PROJECT, OR OPERATING BOOK DOES NOT WEAR NAV CHROME. The
+ * same `netAssetValue` is assets minus liabilities — net worth on a
+ * household, cash + WIP − payables on a project, cash + AR − AP on an
+ * operating company — and open breaks are a fund-ops queue. Unplaceable
+ * stays on a personal or operating book: an undated entry is in no
+ * period income statement.
  */
 export default async function ViewLayout({
   children,
@@ -46,6 +47,7 @@ export default async function ViewLayout({
   const book = await or404(bookOf(fund));
   const personal = book.kind === "PERSONAL";
   const project = book.kind === "PROJECT";
+  const operating = book.kind === "OPERATING";
   const tb = (BigInt(v.totalDebit) - BigInt(v.totalCredit)).toString();
 
   return (
@@ -65,7 +67,7 @@ export default async function ViewLayout({
               tone={v.unplaceableEntryCount === "0" ? "tied" : "at-risk"}
             />
           </>
-        ) : project ? (
+        ) : project || operating ? (
           <>
             <Stat
               k="Assets less liabilities"
@@ -78,6 +80,18 @@ export default async function ViewLayout({
               sub="debits minus credits"
               tone={tb === "0" ? "tied" : "at-risk"}
             />
+            {operating ? (
+              <Stat
+                k="Unplaceable"
+                v={count(v.unplaceableEntryCount)}
+                sub={
+                  v.unplaceableEntryCount === "1"
+                    ? "entry with no date — in no period"
+                    : "entries with no date — in no period"
+                }
+                tone={v.unplaceableEntryCount === "0" ? "tied" : "at-risk"}
+              />
+            ) : null}
           </>
         ) : (
           <>

@@ -44,6 +44,21 @@
       "budget": "",
       "envelopes": [],
       "loans": []
+    },
+    {
+      "name": "books/studio",
+      "displayName": "Studio",
+      "kind": "OPERATING",
+      "currencyCode": "USD",
+      "fund": "",
+      "organization": "",
+      "defaultView": "book",
+      "entryCount": "0",
+      "configDigest": "",
+      "trialBalanceDifference": "0",
+      "budget": "",
+      "envelopes": [],
+      "loans": []
     }
   ],
   "nextPageToken": ""

@@ -68,7 +68,9 @@ async function Capital({
         ? "Personal"
         : b.kind === "PROJECT"
           ? "Project"
-          : "not an investment book";
+          : b.kind === "OPERATING"
+            ? "Operating"
+            : "not an investment book";
     return (
       <div className="empty err" role="status">
         Capital activity is an Investment figure — this book is {kind}.

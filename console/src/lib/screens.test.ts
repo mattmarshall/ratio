@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   defaultScreen,
   INVESTMENT_SCREENS,
+  OPERATING_SCREENS,
   PERSONAL_SCREENS,
   PROJECT_SCREENS,
   screensFor,
@@ -77,7 +78,37 @@ describe("screensFor", () => {
     expect(labels).toContain("Exceptions");
     expect(labels).toContain("NAV");
     expect(labels).not.toContain("Cash flow");
+    expect(labels).not.toContain("Income statement");
     expect(defaultScreen("UNSPECIFIED")).toBe("breaks");
+    expect(screensFor("UNSPECIFIED")).not.toEqual(screensFor("OPERATING"));
+  });
+
+  it("an operating book opens a sheet and income statement, not Fund or Project chrome", () => {
+    const segments = screensFor("OPERATING").map((s) => s.segment);
+    expect(segments.slice(0, 3)).toEqual(["sheet", "pnl", "accounts"]);
+    const labels = screensFor("OPERATING").map((s) => s.label);
+    expect(labels).toContain("Balance sheet");
+    expect(labels).toContain("Income statement");
+    expect(labels).toContain("Trial balance");
+    expect(labels).not.toContain("Exceptions");
+    expect(labels).not.toContain("NAV");
+    expect(labels).not.toContain("Positions");
+    expect(labels).not.toContain("WIP");
+    expect(labels).not.toContain("Billing");
+    expect(labels).not.toContain("Net-worth bridge");
+    expect(labels).not.toContain("Cash flow");
+    expect(labels).not.toContain("Loan schedule");
+    expect(labels).not.toContain("Capital activity");
+    expect(defaultScreen("OPERATING")).toBe("sheet");
+    expect(ticketsFor("OPERATING").map((t) => t.segment)).toEqual([
+      "record",
+      "ingest",
+    ]);
+    expect(ticketsFor("OPERATING").some((t) => t.segment === "trade")).toBe(false);
+    expect(ticketsFor("OPERATING").some((t) => t.segment === "mark")).toBe(false);
+    expect(ticketsFor("OPERATING").some((t) => t.segment === "transfer")).toBe(
+      false,
+    );
   });
 
   it("figure screens are view-scoped", () => {
@@ -92,6 +123,9 @@ describe("screensFor", () => {
       ),
       ...INVESTMENT_SCREENS.filter((x) =>
         ["capital", "nav"].includes(x.segment),
+      ),
+      ...OPERATING_SCREENS.filter((x) =>
+        ["sheet", "pnl"].includes(x.segment),
       ),
     ]) {
       expect(s.scoped).toBe(true);

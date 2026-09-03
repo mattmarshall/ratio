@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import accountsFixture from "../../fixtures/accounts.json";
 import householdAccountsFixture from "../../fixtures/householdAccounts.json";
+import operatingAccountsFixture from "../../fixtures/operatingAccounts.json";
 import capitalAccountsFixture from "../../fixtures/capitalAccounts.json";
 import capitalCommitmentsFixture from "../../fixtures/capitalCommitments.json";
 import breakFixture from "../../fixtures/break.json";
@@ -180,7 +181,7 @@ describe("a first-class book", () => {
     expect(screen.queryByText("Harbourline Global Value")).toBeNull();
   });
 
-  it("offers the three book templates CreateBook already knows", async () => {
+  it("offers the book templates CreateBook already knows", async () => {
     const NewBook = (await import("./books/new/page")).default;
     render(<NewBook />);
     expect(screen.getByText("Personal finance")).toBeDefined();
@@ -189,6 +190,9 @@ describe("a first-class book", () => {
     expect(screen.getByText(/Does not file a fund/)).toBeDefined();
     expect(screen.getByText("Project")).toBeDefined();
     expect(screen.getByText(/work in progress/)).toBeDefined();
+    expect(screen.getByText("Operating business")).toBeDefined();
+    expect(screen.getByText(/AR\/AP aging is a follow-on/)).toBeDefined();
+    expect(screen.getByText(/Independent of a Fund/)).toBeDefined();
     expect(
       (screen.getByRole("radio", { name: /Personal finance/ }) as HTMLInputElement)
         .checked,
@@ -226,6 +230,21 @@ describe("a first-class book", () => {
     expect(screen.queryByText("capital-calls")).toBeNull();
     expect(screen.queryByText("bank-statement")).toBeNull();
     expect(screen.queryByText("loan-payment")).toBeNull();
+  });
+
+  it("lists the Operating invoice and bill templates and not the fund snapshot", async () => {
+    const Templates = (await import("./books/[book]/data/templates/page")).default;
+    await renderAsync(Templates({ params: params({ book: "studio" }) }));
+    expect(screen.getByText("customer-invoices")).toBeDefined();
+    expect(screen.getByText("vendor-bills")).toBeDefined();
+    expect(screen.getByText("invoice")).toBeDefined();
+    expect(screen.getByText("bill")).toBeDefined();
+    expect(screen.queryByText("custodian-positions")).toBeNull();
+    expect(screen.queryByText("project-invoices")).toBeNull();
+    expect(screen.queryByText("bank-statement")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: /customer-invoices/ }).getAttribute("href"),
+    ).toBe("/books/studio/data/templates/customer-invoices");
   });
 
   it("keeps the custodian snapshot and the trade file on an Investment book", async () => {
@@ -311,6 +330,41 @@ describe("a first-class book", () => {
       expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
       expect(screen.queryByRole("link", { name: "Cash flow" })).toBeNull();
       expect(screen.getByText(/unset/)).toBeDefined();
+    } finally {
+      wire.getBook = real;
+    }
+  });
+
+  it("an operating book opens a sheet and income statement, not Exceptions, NAV, or Billing", async () => {
+    const studio = booksFixture.books.find((b) => b.kind === "OPERATING")!;
+    const real = wire.getBook;
+    wire.getBook = (async () => ({ ...studio, defaultView: "book" })) as typeof wire.getBook;
+    try {
+      const Book = (await import("./books/[book]/page")).default;
+      await renderAsync(Book({ params: params({ book: "studio" }) }));
+      expect(screen.getByRole("heading", { name: "Studio" })).toBeDefined();
+      expect(screen.getByText("Operating")).toBeDefined();
+      expect(screen.getByText("independent")).toBeDefined();
+      expect(
+        screen.getByRole("link", { name: "Balance sheet" }).getAttribute("href"),
+      ).toBe("/books/studio/views/book/sheet");
+      expect(
+        screen.getByRole("link", { name: "Income statement" }).getAttribute("href"),
+      ).toBe("/books/studio/views/book/pnl");
+      expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
+      expect(
+        screen.getByText(/AR\/AP aging is a follow-on/),
+      ).toBeDefined();
+      expect(
+        screen.getByText(/due-date buckets are not on this book/),
+      ).toBeDefined();
+      expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Billing" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "WIP" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Net-worth bridge" })).toBeNull();
+      expect(screen.queryByText(/Net worth/)).toBeNull();
     } finally {
       wire.getBook = real;
     }
@@ -2408,6 +2462,89 @@ describe("a household statement", () => {
         }),
       );
       expect(calls[0]?.slice(1)).toEqual(["household", "book", "pnl", "2026-03"]);
+    } finally {
+      wire.listAccounts = real;
+    }
+  });
+});
+
+describe("an operating-business statement", () => {
+  async function withOperatingAccounts<T>(fn: () => Promise<T>): Promise<T> {
+    const real = wire.listAccounts;
+    wire.listAccounts = (async () =>
+      operatingAccountsFixture) as typeof wire.listAccounts;
+    try {
+      return await fn();
+    } finally {
+      wire.listAccounts = real;
+    }
+  }
+
+  it("renders chart_for(Operating) on a citable balance sheet", async () => {
+    await withOperatingAccounts(async () => {
+      const Sheet = (await import("./books/[book]/views/[view]/sheet/page")).default;
+      await renderAsync(
+        Sheet({
+          params: params({ book: "studio", view: "book" }),
+          searchParams: params({}),
+        }),
+      );
+      expect(screen.getByLabelText("Balance sheet")).toBeDefined();
+      for (const name of [
+        "Cash",
+        "Accounts receivable",
+        "Accounts payable",
+        "Owner equity",
+      ]) {
+        expect(screen.getByText(name)).toBeDefined();
+      }
+      expect(screen.queryByText("Cash and bank")).toBeNull();
+      expect(screen.queryByText("Living expenses")).toBeNull();
+      expect(screen.queryByText("Work in progress")).toBeNull();
+      expect(screen.getByRole("link", { name: "Income statement" })).toBeDefined();
+      expect(screen.queryByRole("link", { name: "Transfer" })).toBeNull();
+      expect(
+        screen.getByText(/no due date and no open-item application/),
+      ).toBeDefined();
+      expect(screen.getByText(/Assets equal liabilities, equity and surplus/)).toBeDefined();
+    });
+  });
+
+  it("renders a period income statement and says it is not since inception", async () => {
+    await withOperatingAccounts(async () => {
+      const PnL = (await import("./books/[book]/views/[view]/pnl/page")).default;
+      await renderAsync(
+        PnL({
+          params: params({ book: "studio", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("Period income statement")).toBeDefined();
+      expect(screen.getByText("Operating expenses")).toBeDefined();
+      expect(screen.getAllByText("Operating revenue").length).toBeGreaterThan(0);
+      expect(screen.getByText(/not since inception/)).toBeDefined();
+      expect(screen.queryByText("Cash")).toBeNull();
+      expect(screen.getByRole("link", { name: "Balance sheet" })).toBeDefined();
+      expect(screen.queryByRole("link", { name: "Transfer" })).toBeNull();
+    });
+  });
+
+  it("asks ListAccounts for a period window on the income statement", async () => {
+    const calls: unknown[][] = [];
+    const real = wire.listAccounts;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      calls.push(args);
+      return operatingAccountsFixture;
+    }) as typeof wire.listAccounts;
+    try {
+      const PnL = (await import("./books/[book]/views/[view]/pnl/page")).default;
+      await renderAsync(
+        PnL({
+          params: params({ book: "studio", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(calls[0]?.slice(1)).toEqual(["studio", "book", "pnl", "2026-03"]);
     } finally {
       wire.listAccounts = real;
     }

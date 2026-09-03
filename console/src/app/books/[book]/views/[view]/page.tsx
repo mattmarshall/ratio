@@ -30,6 +30,7 @@ export default async function ViewPage({
   const basis = basisOf(v.basis, v.settlementOpenDays);
   const personal = b.kind === "PERSONAL";
   const project = b.kind === "PROJECT";
+  const operating = b.kind === "OPERATING";
   const places = screensFor(b.kind).filter((s) => s.scoped);
   const tb = (BigInt(v.totalDebit) - BigInt(v.totalCredit)).toString();
 
@@ -43,12 +44,12 @@ export default async function ViewPage({
         <dt>
           {personal
             ? "Net worth"
-            : project
+            : project || operating
               ? "Assets less liabilities"
               : "Net asset value"}
         </dt>
         <dd className="num">{money(v.netAssetValue)}</dd>
-        {personal ? null : project ? (
+        {personal ? null : project || operating ? (
           <>
             <dt>Trial balance</dt>
             <dd className="num">{money(tb)}</dd>
@@ -63,7 +64,7 @@ export default async function ViewPage({
             <dd className="num">{count(v.unplaceableEntryCount)}</dd>
           </>
         )}
-        {personal ? (
+        {personal || operating ? (
           <>
             <dt>Unplaceable</dt>
             <dd className="num">{count(v.unplaceableEntryCount)}</dd>

@@ -6748,6 +6748,11 @@ mod tests {
                     ("purchase-orders", true),
                 ],
             ),
+            (
+                "studio",
+                book::BookKind::Operating,
+                &[("customer-invoices", true), ("vendor-bills", true)],
+            ),
         ] {
             console
                 .create_book(pb::CreateBookRequest {
@@ -7230,6 +7235,214 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
         // The baseline is still the configuration total; actuals are the journal.
         assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
+    }
+
+    fn operating_req(id: &str, rule: &str, amount: &str, y: i32, m: i32, d: i32) -> pb::ApplyEventRequest {
+        pb::ApplyEventRequest {
+            parent: "funds/studio".into(),
+            rule_id: rule.into(),
+            event_id: id.into(),
+            amount: amount.into(),
+            days: String::new(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: Some(ratio_proto::date_proto::google::r#type::Date {
+                year: y,
+                month: m,
+                day: d,
+            }),
+            validate_only: false,
+        }
+    }
+
+    #[test]
+    fn an_operating_book_can_be_created_with_no_fund_and_no_org() {
+        // ⭐ #108. Kind selects the operating chart. Create files neither a
+        // fund nor an organization. UNSPECIFIED is not this kind.
+        let root = fresh("create-operating-book");
+        let console = Console::new(&root);
+        let created = console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Studio".into(),
+                    kind: book::BookKind::Operating.proto(),
+                    ..Default::default()
+                }),
+                book_id: "studio".into(),
+            })
+            .unwrap();
+        assert_eq!(created.name, "books/studio");
+        assert_eq!(created.display_name, "Studio");
+        assert_eq!(created.kind, book::BookKind::Operating.proto());
+        assert!(created.fund.is_empty(), "CreateBook must not file a fund: {:?}", created.fund);
+        assert!(
+            created.organization.is_empty(),
+            "CreateBook must not file an org: {:?}",
+            created.organization
+        );
+        assert!(
+            created.budget.is_empty(),
+            "CreateBook must not invent an operating budget: {:?}",
+            created.budget
+        );
+        assert!(created.envelopes.is_empty());
+        assert!(created.loans.is_empty());
+
+        let books = console.list_books().unwrap().books;
+        assert!(books.iter().any(|b| b.name == "books/studio"));
+        let funds = console.list_funds().unwrap().funds;
+        assert!(
+            funds.iter().all(|f| f.name != "funds/studio"),
+            "an independent operating book must not appear as a fund: {funds:?}"
+        );
+
+        let refused = console.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Ghost".into(),
+                kind: 0,
+                ..Default::default()
+            }),
+            book_id: "ghost".into(),
+        });
+        assert!(
+            refused.is_err(),
+            "KIND_UNSPECIFIED is not a hidden operating template"
+        );
+        assert!(
+            refused.unwrap_err().to_string().contains("required"),
+            "the refusal must name the missing kind"
+        );
+    }
+
+    #[test]
+    fn an_operating_sheet_and_period_pnl_tie_to_the_trial_balance() {
+        // ⭐ THE FIGURES #108 ASKS FOR. Invoice + cash sale + vendor bill +
+        // cash expense + owner contribution. The books tie; the sheet foots
+        // as A = L + E + surplus; the March P&L keeps March and drops April
+        // and an undated entry. AR/AP are control-account balances, not
+        // aged open items.
+        let root = fresh("operating-sheet-pnl");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Studio".into(),
+                kind: book::BookKind::Operating.proto(),
+                ..Default::default()
+            }),
+            book_id: "studio".into(),
+        })
+        .unwrap();
+        c.apply_event(&operating_req("eq", "contribute_equity", "1000.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&operating_req("inv", "invoice_customer", "400.00", 2026, 3, 5))
+            .unwrap();
+        c.apply_event(&operating_req("cash", "receive_revenue", "100.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&operating_req("bill", "vendor_bill", "80.00", 2026, 3, 12))
+            .unwrap();
+        c.apply_event(&operating_req("exp", "pay_expense", "20.00", 2026, 3, 15))
+            .unwrap();
+        c.apply_event(&operating_req("apr", "pay_expense", "50.00", 2026, 4, 2))
+            .unwrap();
+        {
+            let mut undated = operating_req("undated", "pay_expense", "99.00", 2026, 3, 1);
+            undated.trade_date = None;
+            c.apply_event(&undated).unwrap();
+        }
+
+        let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
+        assert_eq!(c.get_fund("funds/studio").unwrap().trial_balance_difference, "0");
+
+        let sheet = c.list_accounts(&view, "sheet").unwrap().accounts;
+        let by: std::collections::BTreeMap<_, _> =
+            sheet.iter().map(|a| (a.display_name.as_str(), a)).collect();
+        assert!(by.contains_key("Cash"), "the sheet names chart_for(Operating): {sheet:?}");
+        assert!(by.contains_key("Accounts receivable"));
+        assert!(by.contains_key("Accounts payable"));
+        assert!(by.contains_key("Owner equity"));
+        assert!(by.contains_key("Operating revenue"));
+        assert!(by.contains_key("Operating expenses"));
+        assert!(
+            !by.contains_key("Living expenses"),
+            "an operating sheet is not a household: {sheet:?}"
+        );
+        assert!(
+            !by.contains_key("Work in progress"),
+            "an operating sheet is not a project job: {sheet:?}"
+        );
+
+        // Raw debit-minus-credit: A + L + E + I + X = 0 when the books tie.
+        let raw: i64 = sheet.iter().map(|a| a.balance.parse::<i64>().unwrap()).sum();
+        assert_eq!(raw, 0, "sheet accounts must conserve: {sheet:?}");
+
+        // Cash: +1000 contrib +100 sale −20 March expense −50 April −99 undated.
+        assert_eq!(by.get("Cash").unwrap().balance, "93100");
+        // AR billed, not collected.
+        assert_eq!(by.get("Accounts receivable").unwrap().balance, "40000");
+        // AP billed, not paid.
+        assert_eq!(by.get("Accounts payable").unwrap().balance, "-8000");
+        assert_eq!(by.get("Owner equity").unwrap().balance, "-100000");
+        assert_eq!(by.get("Operating revenue").unwrap().balance, "-50000");
+        // Expenses: 80 bill + 20 cash + 50 April + 99 undated.
+        assert_eq!(by.get("Operating expenses").unwrap().balance, "24900");
+
+        let march = c.list_accounts(&view, "pnl-2026-03").unwrap().accounts;
+        assert!(
+            march.iter().all(|a| a.r#type == pb::account::Type::Revenue as i32
+                || a.r#type == pb::account::Type::Expense as i32),
+            "a period income statement is not a balance sheet: {march:?}"
+        );
+        let rev = march.iter().find(|a| a.display_name == "Operating revenue").unwrap();
+        assert_eq!(rev.credit, "50000", "March revenue is invoice+cash, not April: {rev:?}");
+        let exp = march.iter().find(|a| a.display_name == "Operating expenses").unwrap();
+        assert_eq!(exp.debit, "10000", "March is 80+20, not 80+20+50+99: {exp:?}");
+        assert_eq!(exp.posting_count, "2");
+
+        let year = c.list_accounts(&view, "pnl-2026").unwrap().accounts;
+        let exp_y = year.iter().find(|a| a.display_name == "Operating expenses").unwrap();
+        assert_eq!(exp_y.debit, "15000", "the year is March+April, still not the undated 99");
+
+        let refused = c.list_accounts(&view, "pnl");
+        assert!(
+            refused.is_err(),
+            "a period income statement without a period is the cumulative default this refuses"
+        );
+
+        let proj = c.projection("studio").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "an operating invoice must not claim lot relief"
+        );
+    }
+
+    #[test]
+    fn an_operating_book_is_refused_household_and_project_filters() {
+        let root = fresh("operating-not-household");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Studio".into(),
+                kind: book::BookKind::Operating.proto(),
+                ..Default::default()
+            }),
+            book_id: "studio".into(),
+        })
+        .unwrap();
+        let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let budget = c.list_accounts(&view, "budget-2026-03").expect_err("not household");
+        assert!(budget.to_string().contains("household"), "{budget}");
+        let cashflow = c.list_accounts(&view, "cashflow-2026-03").expect_err("not household");
+        assert!(cashflow.to_string().contains("household"), "{cashflow}");
+        let change = c.list_accounts(&view, "change-2026-03").expect_err("not a project");
+        assert!(change.to_string().contains("project"), "{change}");
+        let nav = c.list_accounts(&view, "nav-2026-03").expect_err("not investment");
+        assert!(nav.to_string().contains("Investment"), "{nav}");
+        let progress = c
+            .project_progress(&view)
+            .expect_err("operating books have no progress billing");
+        assert!(progress.to_string().contains("not a project"), "{progress}");
+        assert!(!progress.to_string().contains("0"), "a refusal must not look like a zero figure: {progress}");
     }
 
     #[test]

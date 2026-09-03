@@ -402,6 +402,7 @@ fn book_from_json(v: &serde_json::Value) -> Result<pb::Book> {
             "PERSONAL" | "KIND_PERSONAL" => 1,
             "INVESTMENT" | "KIND_INVESTMENT" => 2,
             "PROJECT" | "KIND_PROJECT" => 3,
+            "OPERATING" | "KIND_OPERATING" => 4,
             _ => 0,
         },
         Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(0) as i32,
@@ -738,6 +739,7 @@ fn book_kind_name(v: i32) -> &'static str {
         1 => "PERSONAL",
         2 => "INVESTMENT",
         3 => "PROJECT",
+        4 => "OPERATING",
         _ => "UNSPECIFIED",
     }
 }

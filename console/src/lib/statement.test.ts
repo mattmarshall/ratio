@@ -23,6 +23,28 @@ function acct(type: Account["type"], balance: string): Account {
   };
 }
 
+describe("an operating-business statement", () => {
+  it("foots when assets equal liabilities, equity and surplus", () => {
+    // Cash 108.00, AR 40.00, AP 8.00, owner equity 100.00, revenue 50.00, expenses 10.00.
+    const t = sheetTotals([
+      acct("ASSET", "10800"),
+      acct("ASSET", "4000"),
+      acct("LIABILITY", "-800"),
+      acct("EQUITY", "-10000"),
+      acct("REVENUE", "-5000"),
+      acct("EXPENSE", "1000"),
+    ]);
+    expect(t.surplus).toBe(-4000n);
+    expect(sheetFoots(t)).toBe(true);
+    expect(shown("asset", t.assets)).toBe("148.00");
+    expect(shown("liability", t.liabilities)).toBe("8.00");
+    expect(shown("equity", t.equity)).toBe("100.00");
+    expect(shown("income", t.income)).toBe("50.00");
+    expect(shown("expense", t.expenses)).toBe("10.00");
+    expect(shown("equity", t.surplus)).toBe("40.00");
+  });
+});
+
 describe("a household statement", () => {
   it("foots when assets equal liabilities, equity and surplus", () => {
     // Cash 100.00, a card 30.00, opening equity 50.00, income 40.00, spend 20.00.

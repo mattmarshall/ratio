@@ -92,6 +92,10 @@ const INGEST_TEMPLATE_KIND = {
   "prime_equity_trades": "INVESTMENT",
   "capital-calls": "INVESTMENT",
   "project-invoices": "PROJECT",
+  "change-orders": "PROJECT",
+  "purchase-orders": "PROJECT",
+  "customer-invoices": "OPERATING",
+  "vendor-bills": "OPERATING",
 };
 
 function bookKind(bookId) {
