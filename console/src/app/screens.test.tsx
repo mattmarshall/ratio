@@ -199,6 +199,7 @@ describe("a first-class book", () => {
     expect(screen.getByText("statement")).toBeDefined();
     expect(screen.getByText("posts")).toBeDefined();
     expect(screen.queryByText("custodian-positions")).toBeNull();
+    expect(screen.queryByText("prime_equity_trades")).toBeNull();
     expect(
       screen.getByRole("link", { name: /bank-statement/ }).getAttribute("href"),
     ).toBe("/books/household/data/templates/bank-statement");
@@ -210,10 +211,11 @@ describe("a first-class book", () => {
     expect(screen.getByText("project-invoices")).toBeDefined();
     expect(screen.getByText("invoice")).toBeDefined();
     expect(screen.queryByText("custodian-positions")).toBeNull();
+    expect(screen.queryByText("prime_equity_trades")).toBeNull();
     expect(screen.queryByText("bank-statement")).toBeNull();
   });
 
-  it("keeps the custodian positions mapping on an Investment book", async () => {
+  it("keeps the custodian snapshot and the trade file on an Investment book", async () => {
     const Templates = (await import("./books/[book]/data/templates/page")).default;
     await renderAsync(
       Templates({ params: params({ book: "harbourline-global-value" }) }),
@@ -221,6 +223,12 @@ describe("a first-class book", () => {
     expect(screen.getByText("custodian-positions")).toBeDefined();
     expect(screen.getByText("position")).toBeDefined();
     expect(screen.getByText("records")).toBeDefined();
+    expect(screen.getByText("prime_equity_trades")).toBeDefined();
+    expect(screen.getByText("trade")).toBeDefined();
+    expect(screen.getByText("posts")).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: /prime_equity_trades/ }).getAttribute("href"),
+    ).toBe("/books/harbourline-global-value/data/templates/prime_equity_trades");
     expect(screen.queryByText("bank-statement")).toBeNull();
     expect(screen.queryByText("project-invoices")).toBeNull();
   });

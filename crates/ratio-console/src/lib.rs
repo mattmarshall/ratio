@@ -5011,10 +5011,25 @@ mod tests {
     fn list_templates_after_create_book_is_the_kind_seed_and_not_a_shared_menu() {
         let root = fresh("create-kind-templates");
         let console = Console::new(&root);
-        for (id, kind, template_id, posts) in [
-            ("house", book::BookKind::Personal, "bank-statement", true),
-            ("fund", book::BookKind::Investment, "custodian-positions", false),
-            ("bridge", book::BookKind::Project, "project-invoices", true),
+        for (id, kind, expected) in [
+            (
+                "house",
+                book::BookKind::Personal,
+                &[("bank-statement", true)] as &[(&str, bool)],
+            ),
+            (
+                "fund",
+                book::BookKind::Investment,
+                &[
+                    ("custodian-positions", false),
+                    ("prime_equity_trades", true),
+                ],
+            ),
+            (
+                "bridge",
+                book::BookKind::Project,
+                &[("project-invoices", true)],
+            ),
         ] {
             console
                 .create_book(pb::CreateBookRequest {
@@ -5032,17 +5047,170 @@ mod tests {
                 .templates;
             assert_eq!(
                 listed.iter().map(|t| t.template_id.as_str()).collect::<Vec<_>>(),
-                vec![template_id],
+                expected.iter().map(|(tid, _)| *tid).collect::<Vec<_>>(),
                 "{id}"
             );
-            assert_eq!(listed[0].posts, posts, "{id}");
+            for (t, (tid, posts)) in listed.iter().zip(expected.iter()) {
+                assert_eq!(t.posts, *posts, "{id} {tid}");
+            }
         }
         // Cross-kind GetTemplate refuses rather than serving the fund snapshot
-        // under a household URL.
+        // or the trade file under a household URL.
         assert!(console
             .get_template("funds/house/templates/custodian-positions")
             .is_err());
+        assert!(console
+            .get_template("funds/house/templates/prime_equity_trades")
+            .is_err());
     }
+
+    #[test]
+    fn a_createbook_investment_book_admits_trades_and_leaves_one_pending() {
+        // ⭐ #76. Delivery → resolve → admit on a blank Investment book, with
+        // no recon-posted journal pretending to be history. VWRL is unmatched
+        // the same way `LEAVE_ONE_PENDING` leaves it — a fact an operator
+        // opens from `/books/{id}` via Data → Pending.
+        let root = fresh("create-invest-trades");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Alpha".into(),
+                    kind: book::BookKind::Investment.proto(),
+                    ..Default::default()
+                }),
+                book_id: "alpha".into(),
+            })
+            .unwrap();
+
+        {
+            use ratio_store::{FileBook, Plane};
+            let mut b = FileBook::open(root.join("alpha")).unwrap();
+            let add = |b: &mut FileBook, id: &str, kind, name: &str, attrs: &[(&str, &str)]| {
+                b.append_record(
+                    Plane::Entities,
+                    &ratio_ingest::Entity {
+                        id: id.into(),
+                        kind,
+                        display_name: name.into(),
+                        attributes: attrs
+                            .iter()
+                            .map(|(k, v)| (k.to_string(), v.to_string()))
+                            .collect(),
+                    },
+                )
+                .unwrap();
+            };
+            add(
+                &mut b,
+                "cp-prime",
+                ratio_ingest::EntityKind::Counterparty,
+                "Prime Brokerage",
+                &[("code", "PRME")],
+            );
+            add(
+                &mut b,
+                "inst-vti",
+                ratio_ingest::EntityKind::Instrument,
+                "Vanguard Total Stock Market ETF",
+                &[
+                    ("isin", "US9229087690"),
+                    ("ticker", "VTI"),
+                    ("exchange", "ARCX"),
+                ],
+            );
+            add(
+                &mut b,
+                "inst-voo",
+                ratio_ingest::EntityKind::Instrument,
+                "Vanguard S&P 500 ETF",
+                &[
+                    ("isin", "US9229083632"),
+                    ("ticker", "VOO"),
+                    ("exchange", "ARCX"),
+                ],
+            );
+            // VWRL is deliberately absent — that is the pending fact.
+            use ratio_store::Journal;
+            let mut n = 0usize;
+            b.for_each_entry_since(0, &mut |_| {
+                n += 1;
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(n, 0, "CreateBook must not invent journal history");
+        }
+
+        let ingested = console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/alpha".into(),
+                template_id: "prime_equity_trades".into(),
+                content: PRIME_TRADES_CSV.into(),
+                origin: "prime-trades.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(ingested.rejected.is_empty(), "{:?}", ingested.rejected);
+        assert_eq!(ingested.fact_count, "3");
+        assert_eq!(ingested.pending.len(), 1, "{:?}", ingested.pending);
+        assert_eq!(ingested.pending[0].reference, "PB-0043");
+
+        let admitted = console
+            .admit_facts(&pb::AdmitFactsRequest {
+                parent: "funds/alpha".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
+        assert_eq!(admitted.posted_count, "2", "VTI and VOO post; VWRL does not");
+        assert_eq!(admitted.pending_count, "1");
+
+        let pending = console
+            .list_pending_facts("funds/alpha")
+            .unwrap()
+            .pending_facts;
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].reference, "PB-0043");
+        assert_eq!(pending[0].template_id, "prime_equity_trades");
+        assert_eq!(pending[0].kind, "trade");
+        let opened = console.get_pending_fact(&pending[0].name).unwrap();
+        assert_eq!(opened.reference, "PB-0043");
+        assert!(
+            opened.detail.contains("VWRL") || opened.detail.contains("IE00B3RBWM25"),
+            "the reason names what it looked for: {}",
+            opened.detail
+        );
+
+        {
+            use ratio_store::{FileBook, Journal};
+            let b = FileBook::open(root.join("alpha")).unwrap();
+            let mut ids = Vec::new();
+            b.for_each_entry_since(0, &mut |e| {
+                ids.push(e.id.clone());
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(ids, vec!["PB-0041", "PB-0042"]);
+            assert!(
+                !ids.iter().any(|id| id.starts_with('t') || id.starts_with("sub-")),
+                "recon-seeded history leaked onto a CreateBook book: {ids:?}"
+            );
+        }
+        let fund = console.get_fund("funds/alpha").unwrap();
+        assert_eq!(
+            fund.trial_balance_difference, "0",
+            "admitted trades must still conserve: {fund:?}"
+        );
+        assert_eq!(fund.entry_count, 2);
+    }
+
+    /// Same rows `console/fixtures/samples/prime_equity_trades.csv` carries.
+    const PRIME_TRADES_CSV: &str = "\
+TradeRef,ISIN,Symbol,Exch,Broker,B/S,Quantity,Price,Ccy,TradeDate
+PB-0041,US9229087690,VTI,ARCX,PRME,B,1000,250.00,USD,02/24/2026
+PB-0042,,VOO,ARCX,PRME,B,400,450.00,USD,02/25/2026
+PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
+";
 
     #[test]
     fn a_subject_scoped_to_one_book_cannot_read_another() {

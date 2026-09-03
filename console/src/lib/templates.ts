@@ -46,12 +46,13 @@ export const KIND_SHORT: Record<BookKind, string> = {
  * ⭐ THE LIVE LIST IS THE BOOK'S CONFIGURATION. This catalog is the filter
  * that stops a mixed fixture — or a recapture that still only has the fund
  * snapshot — from offering `custodian-positions` on a Personal book. An id
- * that belongs to no kind (the demo book's `prime_equity_trades`) is treated
- * as Investment: that is the book that holds the closed loop.
+ * that belongs to no kind (the demo book's `vendor_eod_prices`) is treated
+ * as Investment: prices ride the same book as the trade loop.
  */
 export const INGEST_TEMPLATE_KIND: Readonly<Record<string, Exclude<BookKind, "UNSPECIFIED">>> = {
   "bank-statement": "PERSONAL",
   "custodian-positions": "INVESTMENT",
+  "prime_equity_trades": "INVESTMENT",
   "project-invoices": "PROJECT",
 };
 
