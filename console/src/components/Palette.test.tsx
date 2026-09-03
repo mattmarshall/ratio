@@ -148,6 +148,20 @@ describe("the command palette", () => {
     await waitFor(() => expect(screen.queryByText("Northstar Multi-Strategy")).toBeNull());
   });
 
+  it("opens the book collection without going through a fund", async () => {
+    renderConsole();
+    await type("your books");
+    fireEvent.click(await row("Your books"));
+    expect(push).toHaveBeenCalledWith("/books");
+  });
+
+  it("reaches CreateBook from the palette", async () => {
+    renderConsole();
+    await type("new book");
+    fireEvent.click(await row("New book"));
+    expect(push).toHaveBeenCalledWith("/books/new");
+  });
+
   it("sends a fund exactly where the rail sends it", async () => {
     renderConsole();
     await type("northstar");
@@ -177,8 +191,8 @@ describe("the command palette", () => {
     ["Exceptions", `/funds/${FUND}/views/${VIEW}/breaks`],
     ["Trial balance", `/funds/${FUND}/views/${VIEW}/accounts`],
     ["Positions", `/funds/${FUND}/views/${VIEW}/positions`],
-    ["Data", `/funds/${FUND}/data`],
     ["NAV", `/funds/${FUND}/views/${VIEW}/strikes`],
+    ["Data", `/funds/${FUND}/data`],
     ["Configuration", `/funds/${FUND}/config`],
     ["Rules", `/funds/${FUND}/rules`],
     ["Change log", `/funds/${FUND}/changes`],

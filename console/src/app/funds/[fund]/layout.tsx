@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { FundActions } from "@/components/FundActions";
-import { ScreenTabs } from "@/components/ScreenTabs";
-import { ViewSwitch } from "@/components/ViewSwitch";
+import { PlaceHead } from "@/components/PlaceHead";
 import { caller } from "@/lib/caller";
 import { count } from "@/lib/format";
 import { getFund, listViews } from "@/wire/client";
@@ -9,8 +8,9 @@ import { getFund, listViews } from "@/wire/client";
 export const dynamic = "force-dynamic";
 
 /**
- * One fund's heading: what it is, which books of record it keeps, and the
- * screens under it.
+ * Identity of the open book. Each job under it is its own page — this
+ * layout names the book and, on a figure page, which book of record
+ * produced the numbers. It does not list the jobs.
  *
  * ⭐ ONE `GetFund` AND ONE `ListViews` FOR EVERY SCREEN UNDER THIS FUND. A
  * layout renders once per fund and persists across navigation within it, so no
@@ -50,25 +50,24 @@ export default async function FundLayout({
           mounts one level up — which is where the provider has to be, and this is
           where `listViews` has already been called. Neither costs a request. */}
       <FundActions fund={fund} views={views} defaultView={defaultView} />
-      <div className="qhead">
-        <h1>{f.displayName}</h1>
-        <div className="subhead">
-          <span>
-            {f.currencyCode} · {count(f.entryCount)} entries
-          </span>
-          {f.configDigest ? (
+      <PlaceHead
+        fund={fund}
+        displayName={f.displayName}
+        views={views}
+        defaultView={defaultView}
+        meta={
+          <>
             <span>
-              configuration <code>{f.configDigest.slice(0, 7)}</code>
+              {f.currencyCode} · {count(f.entryCount)} entries
             </span>
-          ) : null}
-          <ViewSwitch fund={fund} views={views} defaultView={defaultView} />
-          <ScreenTabs
-            fund={fund}
-            view={defaultView}
-            pending={f.pendingFactCount}
-          />
-        </div>
-      </div>
+            {f.configDigest ? (
+              <span>
+                configuration <code>{f.configDigest.slice(0, 7)}</code>
+              </span>
+            ) : null}
+          </>
+        }
+      />
 
       {children}
     </main>

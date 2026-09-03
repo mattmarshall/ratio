@@ -8,12 +8,10 @@ bazel run //crates/ratio -- watch --book <dir>   # the API on :7373
 pnpm install && pnpm dev                          # the console on :3000
 ```
 
-⭐ **A local run needs no Cognito, no secret and no network.** `ratio watch` sets
-none of the `RATIO_COGNITO_*` variables, so `/authconfig.json` answers with empty
-strings, this app skips its sign-in gate, and the server answers as
-`Subject::Local` — unrestricted, and not a tenant. That is the same test the old
-console's `authConfigured()` made, kept because it is what makes the thing
-runnable on a laptop.
+⭐ **A local run needs no WorkOS, no secret and no network.** `ratio watch` sets
+none of the `WORKOS_*` / `RATIO_WORKOS_*` variables, so `/authconfig.json`
+answers with empty strings, this app skips its sign-in gate, and the server
+answers as `Subject::Local` — unrestricted, and not a tenant.
 
 ## Why this exists rather than the page that was in the binary
 
@@ -225,46 +223,45 @@ in this repository that were green, covered the code, and tested nothing.
 
 ## Environment
 
-Two required, one optional.
+Two required on a laptop; four more on a Vercel deploy (AuthKit).
 
 | | |
 |---|---|
 | `RATIO_API_ORIGIN` | where the API is — **scheme and host, no path**. `http://127.0.0.1:7373` locally |
-| `RATIO_SESSION_KEYS` | comma-separated base64 32-byte keys, newest first. A keyring so rotation does not sign everyone out |
-| `RATIO_CONSOLE_ORIGIN` | *optional.* This app's own origin, for the OAuth `redirect_uri`. Only consulted when the API publishes none — which means local development |
+| `RATIO_CONSOLE_ORIGIN` | *optional locally.* This app's own origin |
+| `WORKOS_CLIENT_ID` | Ratio Staging: `client_01M1JJZT4T0NN1WWT65NE6CV3W`. Empty skips IdP. **Never copied from another product** |
+| `WORKOS_API_KEY` | AuthKit API key. Placeholder only in docs; never commit a real one |
+| `WORKOS_COOKIE_PASSWORD` | ≥32 characters; `openssl rand -base64 32` |
+| `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | Must match a Redirect URI on the attached WorkOS application |
 
-⛔ **The console origin comes from the API, not from here.** `deploy/app.yaml`
-builds the Cognito app client's callback URL and the API's `RATIO_CONSOLE_URL`
-out of one `ConsoleOrigin` parameter, and the API publishes it at
-`/authconfig.json` as `consoleOrigin`. That is the byte-identical string Cognito
-compares the `redirect_uri` against, so taking it from there means it cannot
-disagree. It once did: Vercel held `https://ratio-console.vercel.app` while
-Cognito had `https://ratio-ims.vercel.app`, and every sign-in failed. The
-variable survives as an override for `next dev`, where a local `ratio watch`
-publishes an empty origin because it has no console to point at.
+⭐ **WorkOS AuthKit is the sign-in path.** Cognito is not consulted. The API
+Gateway JWT authorizer uses issuer `https://api.workos.com/` and audience =
+`WORKOS_CLIENT_ID`. Membership is still `MEMBERSHIP.tsv`: `sub`, email, or
+`org:{workos_org_id}`. Creating a book grants only the creator's `sub`.
 
-⛔ **Still never the `Host` header.** Whoever chooses this value chooses where an
-authorization code is delivered. `/authconfig.json` is the same TLS document
-already trusted for `issuer`, `clientId` and `domain` — a forged `domain` sends
-somebody to an attacker's hosted UI, which is worse than a forged redirect —
-so reading one more field of it adds no trust the console did not already extend.
-Deriving it from the request would have added one.
+The callback path is the one [AuthKit for Next.js](https://workos.com/docs/authkit/nextjs)
+and the [authkit-nextjs README](https://github.com/workos/authkit-nextjs)
+name (`handleAuth()` at `/app/callback/route.ts`), not Cognito's
+`/api/auth/callback`. The Sign-in URL is `/sign-in`
+(`app/sign-in/route.ts` in that README).
+
+This repo does not compile a client id. Set `WORKOS_CLIENT_ID` to the
+Ratio project's public identifier for the environment you are attaching:
+
+| | Staging (local / AuthKit sandbox) | Production (Vercel) |
+|---|---|---|
+| `WORKOS_CLIENT_ID` | `client_01M1JJZT4T0NN1WWT65NE6CV3W` | `client_01M1JJZTFXFDZJ0XJM1NPNSEJB` |
+| Redirect URI | `http://localhost:3000/callback` and `https://ratio-ims.vercel.app/callback` | `https://ratio-ims.vercel.app/callback` |
+| Sign-in URL | `http://localhost:3000/sign-in` | `https://ratio-ims.vercel.app/sign-in` |
+| Sign-out URI | `http://localhost:3000` | `https://ratio-ims.vercel.app` |
+
+`WORKOS_API_KEY` and `WORKOS_COOKIE_PASSWORD` are secrets. They are never
+committed. `/login` and `/api/auth/login` are the same initiate-login
+handler as `/sign-in`. `/api/auth/callback` only sends the browser to
+`/signin` (the prompt page).
 
 ⚠ **A wrong value fails the build, not the sign-in.** `pnpm build` runs
 `scripts/preflight.mjs` first: it fetches `${RATIO_API_ORIGIN}/authconfig.json`
-and exits non-zero on a 404 or a wrong shape, and checks the session keyring's
-length without printing it. A 5xx or an unreachable host only warns — transient
-is not misconfigured. **With `RATIO_API_ORIGIN` unset it skips everything**,
-which is what keeps CI hermetic and `next dev` offline.
-
-⛔ **No refresh token in the cookie.** A Cognito refresh token is good for thirty
-days and a cookie is a bearer; id + refresh sealed also exceeds the 4096-byte
-cookie limit, which a federated Google token would find first. The session is
-about an hour and then you sign in again — which is exactly what the old console
-did.
-
-⚠ **Cognito accepts no wildcards in callback URLs**, so a Vercel preview on its
-own generated hostname cannot sign in. Previews render from `fixtures/`. If live
-preview data is ever needed, the pattern is a bounce through a registered origin
-carrying the preview host in the OAuth `state`, **with a server-side allowlist on
-the way back** — without one that is an open redirect on a route carrying tokens.
+and, on Vercel, checks the WorkOS variables without printing secrets. **With
+`RATIO_API_ORIGIN` unset it skips everything**, which is what keeps CI hermetic
+and `next dev` offline.

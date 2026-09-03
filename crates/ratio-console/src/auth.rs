@@ -25,13 +25,17 @@ pub enum Subject {
     Local,
     /// An authenticated caller, identified by the claims the gateway verified.
     Member {
-        /// The Cognito `sub` — an opaque, stable identifier.
+        /// The IdP `sub` — an opaque, stable identifier (WorkOS user id).
         sub: String,
         /// The verified email, used as a human-readable fallback identity and as
         /// an alternate membership key.
         email: String,
-        /// The `cognito:groups` claim, carried for future use. Membership is
-        /// deliberately NOT keyed on it — see `funds_for`.
+        /// Optional WorkOS organization id. Membership may also grant
+        /// `org:{organization}` — an org is a tenant around books, not a
+        /// required parent of one.
+        organization: String,
+        /// Legacy Cognito groups claim. Membership is deliberately NOT keyed
+        /// on it — see `funds_for`.
         groups: Vec<String>,
     },
 }
@@ -96,7 +100,8 @@ pub fn from_request_context(header: &str) -> Option<Subject> {
                 .collect()
         })
         .unwrap_or_default();
-    Some(Subject::Member { sub, email, groups })
+    let organization = claim("org_id");
+    Some(Subject::Member { sub, email, organization, groups })
 }
 
 /// The funds `who` may open, read from `<root>/MEMBERSHIP.tsv`.
@@ -115,11 +120,18 @@ pub fn from_request_context(header: &str) -> Option<Subject> {
 /// fund's administration agreement is not something to re-express as an IdP
 /// group.
 pub fn funds_for(root: &Path, who: &Subject) -> BTreeSet<String> {
-    let (sub, email) = match who {
+    let (sub, email, org) = match who {
         // `Local` is unrestricted and never consults this file; returning the
         // empty set here would be read as "sees nothing", the exact opposite.
         Subject::Local => return BTreeSet::new(),
-        Subject::Member { sub, email, .. } => (sub.as_str(), email.as_str()),
+        Subject::Member { sub, email, organization, .. } => {
+            (sub.as_str(), email.as_str(), organization.as_str())
+        }
+    };
+    let org_key = if org.is_empty() {
+        String::new()
+    } else {
+        format!("org:{org}")
     };
     let text = std::fs::read_to_string(root.join("MEMBERSHIP.tsv")).unwrap_or_default();
     text.lines()
@@ -127,7 +139,10 @@ pub fn funds_for(root: &Path, who: &Subject) -> BTreeSet<String> {
             let mut it = line.split('\t');
             let holder = it.next()?.trim();
             let fund = it.next()?.trim();
-            let matches = !holder.is_empty() && (holder == sub || holder == email);
+            let matches = !holder.is_empty()
+                && (holder == sub
+                    || holder == email
+                    || (!org_key.is_empty() && holder == org_key));
             (matches && !fund.is_empty()).then(|| fund.to_string())
         })
         .collect()
@@ -138,17 +153,23 @@ mod tests {
     use super::*;
 
     fn member(sub: &str, email: &str) -> Subject {
-        Subject::Member { sub: sub.into(), email: email.into(), groups: vec![] }
+        Subject::Member {
+            sub: sub.into(),
+            email: email.into(),
+            organization: String::new(),
+            groups: vec![],
+        }
     }
 
     #[test]
     fn verified_claims_become_a_member_and_the_actor_is_the_stable_sub() {
-        let header = r#"{"authorizer":{"jwt":{"claims":{"sub":"abc-123","email":"a@x.test","cognito:groups":"[admins ops]"}}}}"#;
+        let header = r#"{"authorizer":{"jwt":{"claims":{"sub":"abc-123","email":"a@x.test","org_id":"org_01x","cognito:groups":"[admins ops]"}}}}"#;
         let s = from_request_context(header).expect("claims present");
         match &s {
-            Subject::Member { sub, email, groups } => {
+            Subject::Member { sub, email, organization, groups } => {
                 assert_eq!(sub.as_str(), "abc-123");
                 assert_eq!(email.as_str(), "a@x.test");
+                assert_eq!(organization.as_str(), "org_01x");
                 // The bracketed, space-joined group string is parsed, but it is
                 // NOT what authorization keys on.
                 assert_eq!(groups, &vec!["admins".to_string(), "ops".to_string()]);
@@ -212,5 +233,26 @@ mod tests {
         // `Local` never consults the file and is unrestricted elsewhere; here it
         // is simply the empty set (unused for `Local`, which bypasses the check).
         assert!(funds_for(&dir, &Subject::Local).is_empty());
+    }
+
+    #[test]
+    fn membership_matches_a_workos_organization_and_not_another() {
+        let dir = std::env::temp_dir().join("ratio-auth-org-membership");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("MEMBERSHIP.tsv"), "org:org_01a\tashcombe\norg:org_01b\tbellwether\n")
+            .unwrap();
+
+        let in_a = Subject::Member {
+            sub: "user_1".into(),
+            email: "a@x.test".into(),
+            organization: "org_01a".into(),
+            groups: vec![],
+        };
+        let granted = funds_for(&dir, &in_a);
+        assert!(granted.contains("ashcombe") && granted.len() == 1);
+
+        let in_none = member("user_1", "a@x.test");
+        assert!(funds_for(&dir, &in_none).is_empty());
     }
 }

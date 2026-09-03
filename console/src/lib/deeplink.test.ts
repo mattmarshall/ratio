@@ -25,8 +25,9 @@ describe("a pasted resource name", () => {
   // ⚠ WHEN THE CONTRACT GROWS A RESOURCE, IT GETS A LINE HERE. The palette is
   // the only reader that translates a whole name, so nothing else would notice.
   const patterns: ReadonlyArray<readonly [string, string]> = [
+    [`books/${FUND}`, `/books/${FUND}`],
     [`funds/${FUND}`, `/funds/${FUND}`],
-    [`funds/${FUND}/views/${VIEW}`, `/funds/${FUND}/views/${VIEW}/breaks`],
+    [`funds/${FUND}/views/${VIEW}`, `/funds/${FUND}/views/${VIEW}`],
     [
       `funds/${FUND}/views/${VIEW}/breaks/cash-usd-2026-02-26`,
       `/funds/${FUND}/views/${VIEW}/breaks/cash-usd-2026-02-26`,
@@ -85,11 +86,10 @@ describe("a pasted resource name", () => {
     expect(hrefForResourceName(`funds/${FUND}/templates/t`)).toContain("/data/");
   });
 
-  it("lands a book of record on its queue rather than on a layout", () => {
-    // ⛔ `views/[view]` is a layout, not a route. Without this the palette sends
-    // an operator to a header with nothing under it.
+  it("lands a book of record on the view itself", () => {
+    // #53: `views/[view]` is now a page. Redirecting past it hid the citation.
     expect(hrefForResourceName(`funds/${FUND}/views/${VIEW}`)).toBe(
-      `/funds/${FUND}/views/${VIEW}/breaks`,
+      `/funds/${FUND}/views/${VIEW}`,
     );
   });
 

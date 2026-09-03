@@ -10,13 +10,20 @@
 // module is a bundling boundary, not a home for data. `BASIS_LABEL` in
 // `lib/format.ts` is the precedent.
 
+export type ScreenGroup = "book" | "agreement";
+
 export interface Screen {
   /** The URL segment, which is also the segment `useSelectedLayoutSegments` reports. */
   readonly segment: string;
-  /** What the tab and the palette call it. */
+  /** What the place and the palette call it. */
   readonly label: string;
   /** Whether the screen belongs to a book of record. See the ⚠ below. */
   readonly scoped: boolean;
+  /**
+   * Book figures vs what was agreed. Not cosmetic: mixing them in one
+   * tab strip is how a personal book inherits a fund warehouse.
+   */
+  readonly group: ScreenGroup;
 }
 
 /**
@@ -28,14 +35,22 @@ export interface Screen {
  * lies about what it is showing.
  */
 export const SCREENS: readonly Screen[] = [
-  { segment: "breaks", label: "Exceptions", scoped: true },
-  { segment: "accounts", label: "Trial balance", scoped: true },
-  { segment: "positions", label: "Positions", scoped: true },
-  { segment: "data", label: "Data", scoped: false },
-  { segment: "strikes", label: "NAV", scoped: true },
-  { segment: "config", label: "Configuration", scoped: false },
-  { segment: "rules", label: "Rules", scoped: false },
-  { segment: "changes", label: "Change log", scoped: false },
+  { segment: "breaks", label: "Exceptions", scoped: true, group: "book" },
+  { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
+  { segment: "positions", label: "Positions", scoped: true, group: "book" },
+  { segment: "strikes", label: "NAV", scoped: true, group: "book" },
+  { segment: "data", label: "Data", scoped: false, group: "agreement" },
+  { segment: "config", label: "Configuration", scoped: false, group: "agreement" },
+  { segment: "rules", label: "Rules", scoped: false, group: "agreement" },
+  { segment: "changes", label: "Change log", scoped: false, group: "agreement" },
+];
+
+export const SCREEN_GROUPS: ReadonlyArray<{
+  id: ScreenGroup;
+  label: string;
+}> = [
+  { id: "book", label: "Book" },
+  { id: "agreement", label: "Agreement" },
 ];
 
 /**
@@ -46,8 +61,13 @@ export const SCREENS: readonly Screen[] = [
  * or `rules` would silently shadow that screen. `routes.ts` makes the same point
  * where it declares the view layer.
  */
-export function screenHref(fund: string, view: string, s: Screen): string {
+export function screenHref(
+  id: string,
+  view: string,
+  s: Screen,
+  root: "funds" | "books" = "funds",
+): string {
   return s.scoped
-    ? `/funds/${fund}/views/${view}/${s.segment}`
-    : `/funds/${fund}/${s.segment}`;
+    ? `/${root}/${id}/views/${view}/${s.segment}`
+    : `/${root}/${id}/${s.segment}`;
 }

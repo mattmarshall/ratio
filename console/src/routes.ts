@@ -40,8 +40,21 @@ export interface Route {
 
 export const ROUTES: readonly Route[] = [
   // ── Chrome ───────────────────────────────────────────────────────────────
-  { path: "/", file: "page.tsx", reads: ["listFunds"] },
+  { path: "/", file: "page.tsx", reads: ["listBooks"] },
   { path: "/signin", file: "signin/page.tsx", reads: [] },
+  { path: "/books", file: "books/page.tsx", reads: ["listBooks"] },
+  { path: "(layout)/books", file: "books/layout.tsx", reads: ["listBooks"] },
+  { path: "/books/new", file: "books/new/page.tsx", reads: ["createBook"] },
+  {
+    path: "/books/[book]",
+    file: "books/[book]/page.tsx",
+    reads: ["getBook", "getView"],
+  },
+  {
+    path: "/funds/[fund]/views/[view]",
+    file: "funds/[fund]/views/[view]/page.tsx",
+    reads: ["getView"],
+  },
   { path: "/funds", file: "funds/page.tsx", reads: ["listFunds"] },
   // The rail. Every fund-scoped page renders inside it.
   { path: "(layout)/funds", file: "funds/layout.tsx", reads: ["listFunds"] },

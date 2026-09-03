@@ -26,13 +26,15 @@ syntax = "proto3";
 // `ratio/console/v1/console.proto` so the path matches the package (AIP-191).
 // ⛔ ITS OWN PACKAGE, not `ratio.v1`.
 //
-// The console is a BFF over its own resource hierarchy (`funds/…`), while the
-// kernel contracts are keyed on `books/…`. Both need an `Account` and a
-// `Posting`, and they are not the same message: the kernel's carry integers
-// and classification, the console's carry rendered strings and a running
-// balance. Sharing a package made that a protoc error — "ratio.v1.Account is
-// already defined" — and the fix is not to rename the console's messages into
-// something they are not. It is to say that these are two APIs.
+// The console is a BFF over a resource hierarchy whose first-class unit is
+// `books/…`. `funds/…` is an optional organizational layer for the
+// investment case — a view of a fund is not a Book. The kernel contracts are
+// also keyed on books. Both APIs need an `Account` and a `Posting`, and they
+// are not the same message: the kernel's carry integers and classification,
+// the console's carry rendered strings and a running balance. Sharing a
+// package made that a protoc error — "ratio.v1.Account is already defined" —
+// and the fix is not to rename the console's messages into something they
+// are not. It is to say that these are two APIs.
 package ratio.console.v1;
 
 import "google/api/annotations.proto";
@@ -51,7 +53,40 @@ option java_outer_classname = "ConsoleProto";
 service Console {
   option (google.api.default_host) = "ratio.fastverk.dev";
 
+  // Lists the books this operator may open. (AIP-132)
+  //
+  // ⭐ A BOOK IS THE THING THAT OWNS A JOURNAL. A fund and a WorkOS
+  // organization are optional layers over it, not parents. A personal or
+  // project book appears here and not in ListFunds.
+  rpc ListBooks(ListBooksRequest) returns (ListBooksResponse) {
+    option (google.api.http) = {get: "/v1/books"};
+  }
+
+  // Gets one book — the journal, the chart kind, and the optional fund or
+  // organization it is filed under. (AIP-131)
+  rpc GetBook(GetBookRequest) returns (Book) {
+    option (google.api.http) = {get: "/v1/{name=books/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+  // Creates a book with no fund and no organization. (AIP-133)
+  //
+  // ⛔ THE JOURNAL IS THE STORE. This writes a directory of files — a chart,
+  // an empty configuration, a sidecar — not a row in a database. The same
+  // kernel serves personal finance, investment accounting and project
+  // finance; only the chart and the terms change.
+  rpc CreateBook(CreateBookRequest) returns (Book) {
+    option (google.api.http) = {
+      post: "/v1/books"
+      body: "book"
+    };
+    option (google.api.method_signature) = "book,book_id";
+  }
+
   // Lists the funds this operator is responsible for. (AIP-132)
+  //
+  // ⚠ OPTIONAL LAYER. A fund is a book that is filed as one. Independent
+  // books do not appear here — see ListBooks.
   rpc ListFunds(ListFundsRequest) returns (ListFundsResponse) {
     option (google.api.http) = {get: "/v1/funds"};
   }
@@ -421,6 +456,89 @@ service Console {
     option (google.api.http) = {get: "/v1/{parent=funds/*}/changeLogEntries"};
     option (google.api.method_signature) = "parent";
   }
+}
+
+// A journal and its content-addressed configuration.
+//
+// ⭐ THIS IS THE UNIT THAT OWNS THE BOOKS. The kernel has always treated a
+// directory as a book — an append-only journal plus the configuration each
+// entry pinned. The control plane used to call that directory a Fund. A fund
+// is now an optional filing of a book, and a WorkOS organization is an
+// optional tenant around a set of books. Neither is required to create one.
+//
+// Kind selects the chart and the terms, not a fork of the kernel. Personal
+// finance, investment accounting and project finance are one Book with
+// different accounts.
+message Book {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Book"
+    pattern: "books/{book}"
+    singular: "book"
+    plural: "books"
+  };
+
+  // What this book is used for. The kernel is the same; the chart is not.
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    // Household or personal ledger.
+    KIND_PERSONAL = 1;
+    // Fund or investment book — the chart `ratio init` has always written.
+    KIND_INVESTMENT = 2;
+    // A single project: costs, funding, revenue.
+    KIND_PROJECT = 3;
+  }
+
+  // The resource name: `books/{book}`.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  string display_name = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  Kind kind = 3 [(google.api.field_behavior) = REQUIRED];
+
+  // ISO 4217. The base the figures are labelled in.
+  string currency_code = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Optional fund this book is filed under, as `funds/{fund}`. Empty when
+  // the book is independent.
+  string fund = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Optional WorkOS organization id. Empty when the book is not in an org.
+  // Membership still grants the book by subject; this field only says whether
+  // an org layer was recorded.
+  string organization = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string default_view = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  int64 entry_count = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  string config_digest = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Debits minus credits — the same zero in every view.
+  string trial_balance_difference = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListBooksRequest {
+  int32 page_size = 1 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 2 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListBooksResponse {
+  repeated Book books = 1;
+  string next_page_token = 2;
+}
+
+message GetBookRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Book"
+  ];
+}
+
+message CreateBookRequest {
+  // The book to create. Only `display_name` and `kind` are taken as input.
+  Book book = 1 [(google.api.field_behavior) = REQUIRED];
+  // Caller-chosen id. Becomes `books/{book_id}`.
+  string book_id = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 // A fund on a valuation date.

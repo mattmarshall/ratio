@@ -3,7 +3,9 @@ import "server-only";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 
-// Who is signed in, and the token the API is called with.
+// Deprecated: AuthKit owns the session cookie (`WORKOS_COOKIE_PASSWORD`).
+// Kept so a rollback has the old envelope; nothing on the sign-in path
+// reads it. Who is signed in, and the token the API is called with.
 //
 // ⛔ THE ID TOKEN LIVES HERE AND NOWHERE THE BROWSER CAN REACH. The console it
 // replaces kept it in `sessionStorage`, which any script on the page can read.

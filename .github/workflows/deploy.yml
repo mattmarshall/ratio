@@ -151,6 +151,10 @@ jobs:
           # instead of redirecting, and Cognito registers only the localhost
           # callback. See the ⛔ on CallbackURLs in deploy/app.yaml.
           CONSOLE_ORIGIN: ${{ vars.CONSOLE_ORIGIN }}
+          # Ratio WorkOS Production client id. A VARIABLE — it is a public
+          # identifier, not a secret. Unset uses the app.yaml default.
+          # Do not point this at another product.
+          WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID }}
           # The verified SES identity the report email sends from. A repository
           # VARIABLE like the others — an address is not a secret. Unset means
           # no email, which is the correct state until SES verifies.
@@ -176,7 +180,8 @@ jobs:
               GoogleClientSecret="${GOOGLE_CLIENT_SECRET}" \
               ConsoleOrigin="${CONSOLE_ORIGIN}" \
               DemoMember="${DEMO_MEMBERS:-demo@ratio.fastverk.dev}" \
-              ScaleSender="${SCALE_SENDER}"
+              ScaleSender="${SCALE_SENDER}" \
+              WorkOsClientId="${WORKOS_CLIENT_ID:-client_01M1JJZTFXFDZJ0XJM1NPNSEJB}"
 
       - name: Smoke test the deployed demo
         env:
@@ -311,7 +316,7 @@ jobs:
           # broken deployed one, so the deploy is where it must be caught.
           deny "an unwired scale runner" '"runner":null' "${URL}scale-runs.json"
 
-          want "the auth config" '"redirectPath":"/api/auth/callback"' "${URL}authconfig.json"
+          want "the auth config" '"redirectPath":"/callback"' "${URL}authconfig.json"
 
           # ⛔ THE CONSOLE TAKES ITS OAuth `redirect_uri` FROM THIS FIELD, so a
           # wrong value here refuses every sign-in — and refuses it at the IdP,

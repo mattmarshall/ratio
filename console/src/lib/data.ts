@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { listFunds } from "@/wire/client";
+import { listBooks, listFunds } from "@/wire/client";
 import { caller } from "./caller";
 
 /**
@@ -20,4 +20,9 @@ import { caller } from "./caller";
 export const funds = cache(async () => {
   const c = await caller();
   return (await listFunds(c)).funds;
+});
+
+export const books = cache(async () => {
+  const c = await caller();
+  return (await listBooks(c)).books;
 });

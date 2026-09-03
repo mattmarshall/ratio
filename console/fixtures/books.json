@@ -1,0 +1,29 @@
+{
+  "books": [
+    {
+      "name": "books/household",
+      "displayName": "Household",
+      "kind": "PERSONAL",
+      "currencyCode": "USD",
+      "fund": "",
+      "organization": "",
+      "defaultView": "book",
+      "entryCount": "0",
+      "configDigest": "",
+      "trialBalanceDifference": "0"
+    },
+    {
+      "name": "books/harbourline-global-value",
+      "displayName": "Harbourline Global Value",
+      "kind": "INVESTMENT",
+      "currencyCode": "USD",
+      "fund": "funds/harbourline-global-value",
+      "organization": "",
+      "defaultView": "abor",
+      "entryCount": "6",
+      "configDigest": "9f2c1ab7de40551c",
+      "trialBalanceDifference": "0"
+    }
+  ],
+  "nextPageToken": ""
+}

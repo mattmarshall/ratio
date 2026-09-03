@@ -15,6 +15,7 @@
     "check": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
+    "@workos-inc/authkit-nextjs": "4.3.1",
     "kbar": "1.0.0",
     "next": "16.3.0",
     "react": "19.2.8",
@@ -23,7 +24,9 @@
   },
   "pnpm": {
     "//": "pnpm refuses to guess which packages may run lifecycle hooks, and it is right to: a postinstall is arbitrary code executing during an install. esbuild's downloads its platform binary and vitest needs it, so it is declared here explicitly rather than allowed globally. Same reasoning as the file this replaces, web/pnpm-workspace.yaml.",
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "devDependencies": {
     "@testing-library/dom": "10.4.1",

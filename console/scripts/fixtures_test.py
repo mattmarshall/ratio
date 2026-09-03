@@ -27,6 +27,8 @@ from pathlib import Path
 
 # fixture file -> the message it is a body of.
 FIXTURES = {
+    "books.json": "ListBooksResponse",
+    "book.json": "Book",
     "funds.json": "ListFundsResponse",
     "fund.json": "Fund",
     "views.json": "ListViewsResponse",

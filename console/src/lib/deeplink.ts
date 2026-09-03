@@ -23,6 +23,7 @@
  * uses for the fifteen that work. Delete this note when a page lands.
  */
 export const COLLECTION_TO_SEGMENT: Record<string, string> = {
+  books: "books",
   funds: "funds",
   views: "views",
   breaks: "breaks",
@@ -41,19 +42,6 @@ export const COLLECTION_TO_SEGMENT: Record<string, string> = {
 };
 
 /**
- * ⛔ A VIEW HAS NO PAGE OF ITS OWN — see #53. `funds/{f}/views/{v}` is a real
- * resource that `ListViews` returns, and `views/[view]/` holds a `layout.tsx`
- * with no `page.tsx`, so the segment is not routable. A name that stops at a view
- * opens the queue instead, which is where `FundRail` sends every click for the
- * same reason.
- *
- * ⚠ THIS CONSTANT IS A WORKAROUND AND SHOULD NOT OUTLIVE THE GAP. If #53 lands a
- * page, the honest translation is the URL itself and this goes away — a palette
- * that keeps redirecting past a screen that exists is hiding it.
- */
-const VIEW_LANDING = "breaks";
-
-/**
  * A full AIP resource name → the console URL for it, or `null`.
  *
  * ⭐ EXACT, AND THE ONLY TIER THAT IS. The string itself says which resource it
@@ -66,7 +54,7 @@ const VIEW_LANDING = "breaks";
  */
 export function hrefForResourceName(name: string): string | null {
   const trimmed = name.trim().replace(/^\/+/, "").replace(/\/+$/, "");
-  if (!trimmed.startsWith("funds/")) return null;
+  if (!trimmed.startsWith("funds/") && !trimmed.startsWith("books/")) return null;
 
   const parts = trimmed.split("/");
   // Resource names are collection/id pairs all the way down. An odd count is a
@@ -83,11 +71,7 @@ export function hrefForResourceName(name: string): string | null {
     out.push(segment, encodeURIComponent(id));
   }
 
-  const href = `/${out.join("/")}`;
-  // `funds/f/views/abor` — a book of record, with no page under it.
-  return parts.length === 4 && parts[2] === "views"
-    ? `${href}/${VIEW_LANDING}`
-    : href;
+  return `/${out.join("/")}`;
 }
 
 /** One route a bare id might name. Never a claim that it does. */

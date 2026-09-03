@@ -22,6 +22,7 @@
 //! beside it.
 
 pub mod auth;
+pub mod book;
 pub mod transcode;
 
 pub use auth::Subject;
@@ -290,11 +291,11 @@ impl Console {
         self
     }
 
-    /// The funds, in a stable order.
+    /// Every book directory the subject may see, in a stable order.
     ///
     /// Sorted by id rather than by anything derived, so the list does not
     /// reorder under an operator between two glances at the same screen.
-    fn fund_ids(&self) -> Result<Vec<String>> {
+    fn listed_ids(&self) -> Result<Vec<String>> {
         let mut ids: Vec<String> = if self.root.join("accounts.json").is_file() {
             vec!["demo".to_string()]
         } else {
@@ -308,13 +309,34 @@ impl Console {
             v
         };
         // ⛔ WHAT THE CALLER MAY SEE, not what is on disk. An operator restricted
-        // to some funds gets exactly those; an operator restricted to NONE gets
+        // to some books gets exactly those; an operator restricted to NONE gets
         // an empty list — a valid answer, not a refusal, and the two must not
-        // look alike. `book_path` re-guards each id `list_funds` then reads, so
-        // this filter is the visible half of a boundary the storage layer
-        // enforces regardless of it.
+        // look alike. `book_path` re-guards each id a list then reads, so this
+        // filter is the visible half of a boundary the storage layer enforces
+        // regardless of it.
         if let Some(allowed) = &self.allowed {
             ids.retain(|id| allowed.contains(id));
+        }
+        Ok(ids)
+    }
+
+    fn book_ids(&self) -> Result<Vec<String>> {
+        self.listed_ids()
+    }
+
+    /// Books that carry a fund layer — a missing sidecar (legacy) or an explicit
+    /// `fund` in `book.toml`. An independent book CreateBook wrote is absent.
+    fn fund_ids(&self) -> Result<Vec<String>> {
+        let mut ids = Vec::new();
+        for id in self.listed_ids()? {
+            let path = if self.root.join("accounts.json").is_file() {
+                self.root.clone()
+            } else {
+                self.root.join(&id)
+            };
+            if book::BookMeta::load(&path, &id).fund.is_some() {
+                ids.push(id);
+            }
         }
         Ok(ids)
     }
@@ -1784,6 +1806,77 @@ impl Console {
         Ok(pb::ListFundsResponse { funds, next_page_token: String::new() })
     }
 
+    pub fn list_books(&self) -> Result<pb::ListBooksResponse> {
+        let mut books = Vec::new();
+        for id in self.book_ids()? {
+            books.push(self.get_book(&format!("books/{id}"))?);
+        }
+        Ok(pb::ListBooksResponse { books, next_page_token: String::new() })
+    }
+
+    pub fn get_book(&self, name: &str) -> Result<pb::Book> {
+        let id = resource_id(name, "books").context("bad book name")?;
+        let path = self.book_path(&id)?;
+        let meta = book::BookMeta::load(&path, &id);
+        // Figures are the same ones GetFund already folds. GetFund still
+        // answers for any book directory so existing screens and rewrites keep
+        // working; the sidecar is what distinguishes a fund listing from a book.
+        let fund = self.get_fund(&format!("funds/{id}"))?;
+        Ok(pb::Book {
+            name: format!("books/{id}"),
+            display_name: meta.display_name,
+            kind: meta.kind.proto(),
+            currency_code: fund.currency_code,
+            fund: meta.fund.map(|f| format!("funds/{f}")).unwrap_or_default(),
+            organization: meta.organization.unwrap_or_default(),
+            default_view: fund.default_view,
+            entry_count: fund.entry_count,
+            config_digest: fund.config_digest,
+            trial_balance_difference: fund.trial_balance_difference,
+        })
+    }
+
+    pub fn create_book(&self, req: pb::CreateBookRequest) -> Result<pb::Book> {
+        let id = req.book_id.trim();
+        if id.is_empty()
+            || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            bail!("{id:?} is not a book id");
+        }
+        let Some(spec) = req.book else {
+            bail!("book is required");
+        };
+        let path = self.root.join(id);
+        if path.join("accounts.json").is_file() || path.join("book.toml").is_file() {
+            bail!("books/{id} already exists");
+        }
+        let kind = book::BookKind::from_proto(spec.kind)?;
+        let display = if spec.display_name.trim().is_empty() {
+            display_name(id)
+        } else {
+            spec.display_name.trim().to_string()
+        };
+        book::initialize(&path, id, &display, kind)?;
+        if let Some(actor) = &self.actor {
+            book::grant(&self.root, actor, id)?;
+        }
+        // ⚠ Do not call `book_path` here: `allowed` is computed once at
+        // construction. The grant is on disk; the next request sees it.
+        let meta = book::BookMeta::load(&path, id);
+        Ok(pb::Book {
+            name: format!("books/{id}"),
+            display_name: meta.display_name,
+            kind: meta.kind.proto(),
+            currency_code: String::new(),
+            fund: String::new(),
+            organization: String::new(),
+            default_view: String::new(),
+            entry_count: 0,
+            config_digest: String::new(),
+            trial_balance_difference: "0".into(),
+        })
+    }
+
     /// Check a view exists on this fund, and that the projection can answer for
     /// it.
     ///
@@ -3023,10 +3116,15 @@ fn newest_report(book: &Path) -> Result<Option<kernel::BreakReport>> {
                 .collect()
         })
         .unwrap_or_default();
+    // ⚠ MTIME FIRST, THEN PATH. Two reports written in one filesystem
+    // timestamp (the test helper's `r0.pb` / `r1.pb`) used to order
+    // arbitrarily, so "the later figure retires the explanation" was a
+    // coin flip on a fast disk.
     found.sort_by_key(|p| {
-        std::fs::metadata(p)
+        let mtime = std::fs::metadata(p)
             .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        (mtime, p.clone())
     });
     match found.last() {
         None => Ok(None),
@@ -3076,7 +3174,7 @@ fn cause_text(cause: i32) -> String {
 }
 
 /// A book id turned into something a person would read.
-fn display_name(id: &str) -> String {
+pub(crate) fn display_name(id: &str) -> String {
     id.split(['-', '_'])
         .filter(|s| !s.is_empty())
         .map(|w| {
@@ -3556,7 +3654,12 @@ mod tests {
 
         let console = Console::scoped(
             &root,
-            Subject::Member { sub: "S".into(), email: "s@example.test".into(), groups: vec![] },
+            Subject::Member {
+                sub: "S".into(),
+                email: "s@example.test".into(),
+                organization: String::new(),
+                groups: vec![],
+            },
         );
 
         // Every route that names a fund, instantiated against `b`, is refused —
@@ -3566,8 +3669,8 @@ mod tests {
         let mut checked = 0;
         let mut view_scoped = 0;
         for route in transcode::ROUTES {
-            if !route.template.contains("funds/*") {
-                continue; // /v1/funds is the enumeration, tested separately below.
+            if !route.template.contains("funds/*") && !route.template.contains("books/*") {
+                continue; // enumerations (/v1/funds, /v1/books) are tested below.
             }
             if route.template.contains("views/*") {
                 view_scoped += 1;
@@ -3618,6 +3721,12 @@ mod tests {
         let funds = transcode::serve(&console, "GET", "/v1/funds", "", "").unwrap();
         assert!(funds.contains("funds/a"), "the subject's fund is missing: {funds}");
         assert!(!funds.contains("funds/b"), "another tenant's fund leaked into the list: {funds}");
+
+        // The same boundary on the book collection: `b` is on disk and absent
+        // from the list, and GetBook refuses it as "no fund".
+        let books = transcode::serve(&console, "GET", "/v1/books", "", "").unwrap();
+        assert!(books.contains("books/a"), "the subject's book is missing: {books}");
+        assert!(!books.contains("books/b"), "another tenant's book leaked into the list: {books}");
     }
 
     #[test]
@@ -3649,7 +3758,12 @@ mod tests {
         std::fs::write(root.join("MEMBERSHIP.tsv"), "S\ta\n").unwrap();
 
         let subject =
-            Subject::Member { sub: "S".into(), email: "s@x.test".into(), groups: vec![] };
+            Subject::Member {
+                sub: "S".into(),
+                email: "s@x.test".into(),
+                organization: String::new(),
+                groups: vec![],
+            };
         let console = Console::open(&root, subject);
 
         // `b` is granted by nobody and is seen anyway — the whole point. If open
@@ -3681,7 +3795,12 @@ mod tests {
         std::fs::write(root.join("MEMBERSHIP.tsv"), "signer-sub\ta\n").unwrap();
         let console = Console::scoped(
             &root,
-            Subject::Member { sub: "signer-sub".into(), email: "s@x.test".into(), groups: vec![] },
+            Subject::Member {
+                sub: "signer-sub".into(),
+                email: "s@x.test".into(),
+                organization: String::new(),
+                groups: vec![],
+            },
         );
         let book_a = root.join("a");
         let digest = FileBook::open(&book_a).unwrap().active().unwrap().unwrap();
@@ -3854,6 +3973,101 @@ mod tests {
         // to find the things that stop a NAV.
         let blocking = c.list_breaks(&demo_view(), "blocking").unwrap().breaks;
         assert!(blocking.iter().any(|b| b.name.contains("lot-")));
+    }
+
+    #[test]
+    fn a_book_can_be_created_with_no_fund_and_no_org() {
+        // ⭐ THE INDEPENDENCE CONTRACT. Create writes a sidecar that names no
+        // fund and no organization. ListBooks includes it; ListFunds does not.
+        // The same kernel, a different chart — not a second ledger.
+        let root = fresh("create-independent-book");
+        let console = Console::new(&root);
+        let created = console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Household".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "household".into(),
+            })
+            .unwrap();
+        assert_eq!(created.name, "books/household");
+        assert_eq!(created.display_name, "Household");
+        assert_eq!(created.kind, book::BookKind::Personal.proto());
+        assert!(created.fund.is_empty(), "CreateBook must not file a fund: {:?}", created.fund);
+        assert!(
+            created.organization.is_empty(),
+            "CreateBook must not file an org: {:?}",
+            created.organization
+        );
+
+        let books = console.list_books().unwrap().books;
+        assert!(books.iter().any(|b| b.name == "books/household"));
+        let funds = console.list_funds().unwrap().funds;
+        assert!(
+            funds.iter().all(|f| f.name != "funds/household"),
+            "an independent book must not appear as a fund: {funds:?}"
+        );
+
+        // GetFund still answers — existing screens and /books/:id rewrites
+        // keep working against the same directory.
+        assert_eq!(console.get_fund("funds/household").unwrap().name, "funds/household");
+    }
+
+    #[test]
+    fn create_book_grants_the_creator_and_not_their_org() {
+        let root = fresh("create-grants-sub");
+        book(&root.join("legacy"));
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "user_1\tlegacy\n").unwrap();
+        let subject = Subject::Member {
+            sub: "user_1".into(),
+            email: "a@x.test".into(),
+            organization: "org_01a".into(),
+            groups: vec![],
+        };
+        let created = Console::scoped(&root, subject.clone())
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Mine".into(),
+                    kind: book::BookKind::Project.proto(),
+                    ..Default::default()
+                }),
+                book_id: "mine".into(),
+            })
+            .unwrap();
+        assert_eq!(created.name, "books/mine");
+
+        // ⚠ `allowed` is computed once. The grant is on disk; a new Console
+        // is what a subsequent HTTP request constructs.
+        let again = Console::scoped(&root, subject);
+        assert_eq!(again.get_book("books/mine").unwrap().name, "books/mine");
+        let membership = std::fs::read_to_string(root.join("MEMBERSHIP.tsv")).unwrap();
+        assert!(membership.contains("user_1\tmine"), "{membership}");
+        assert!(
+            !membership.contains("org:org_01a\tmine"),
+            "a personal create must not grant the org: {membership}"
+        );
+    }
+
+    #[test]
+    fn a_subject_scoped_to_one_book_cannot_read_another() {
+        let root = fresh("book-tenancy");
+        book(&root.join("ours"));
+        book(&root.join("theirs"));
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "S\tours\n").unwrap();
+        let console = Console::scoped(
+            &root,
+            Subject::Member {
+                sub: "S".into(),
+                email: "s@example.test".into(),
+                organization: String::new(),
+                groups: vec![],
+            },
+        );
+        let err = console.get_book("books/theirs").unwrap_err().to_string();
+        assert!(err.contains("no fund"), "{err}");
+        assert!(console.get_book("books/ours").is_ok());
     }
 
     #[test]

@@ -1,0 +1,80 @@
+import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { View } from "@/wire/types";
+import { PlaceHead } from "./PlaceHead";
+
+const segments = vi.hoisted(() => ({ current: ["views", "abor", "breaks"] }));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: () => {}, replace: () => {}, refresh: () => {} }),
+  usePathname: () => "/books/household/views/abor/breaks",
+  useSelectedLayoutSegments: () => segments.current,
+}));
+
+const views = [
+  {
+    name: "funds/household/views/abor",
+    displayName: "ABOR",
+    basis: "TRADE_DATE",
+    declared: true,
+  },
+  {
+    name: "funds/household/views/book",
+    displayName: "Book",
+    basis: "RECORDED",
+    declared: false,
+  },
+] as View[];
+
+describe("PlaceHead", () => {
+  beforeEach(() => {
+    segments.current = ["views", "abor", "breaks"];
+  });
+
+  it("titles the open place and does not draw a tab strip", () => {
+    const { container } = render(
+      <PlaceHead
+        fund="household"
+        displayName="Household"
+        views={views}
+        defaultView="abor"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Exceptions" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Household" }).getAttribute("href")).toBe(
+      "/books/household",
+    );
+    expect(container.querySelector(".screens")).toBeNull();
+    expect(container.querySelectorAll(".places a").length).toBe(0);
+  });
+
+  it("keeps the book-of-record switch on a figure page", () => {
+    render(
+      <PlaceHead
+        fund="household"
+        displayName="Household"
+        views={views}
+        defaultView="abor"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByLabelText("Book of record")).toBeDefined();
+    expect(screen.getByText("ABOR")).toBeDefined();
+  });
+
+  it("does not put a book of record on an agreement page", () => {
+    segments.current = ["config"];
+    render(
+      <PlaceHead
+        fund="household"
+        displayName="Household"
+        views={views}
+        defaultView="abor"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Configuration" })).toBeDefined();
+    expect(screen.queryByLabelText("Book of record")).toBeNull();
+  });
+});

@@ -1,18 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useSelectedLayoutSegments } from "next/navigation";
+import { usePathname, useSelectedLayoutSegments } from "next/navigation";
 import { BASIS_LABEL } from "@/lib/format";
 import type { View } from "@/wire/types";
 
 /**
  * Which book of record the figures on this screen come from.
  *
- * ⭐ IN THE FUND HEADER, BESIDE THE CURRENCY, AND NOT AMONG THE SCREEN TABS. A
+ * ⭐ ON FIGURE PAGES ONLY, BESIDE THE CURRENCY, NEVER AMONG JOB LINKS. A
  * view is a property of the ANSWER, exactly as the reporting currency is —
  * every figure below it means something different depending on which one is
- * selected. Rendering it as a ninth screen tab would say a view is a place to
- * navigate to, which is the one thing it is not.
+ * selected. Rendering it as a ninth tab, or on Configuration, would say a
+ * view is a place — or that a rule set belongs to ABOR. Both are lies.
  *
  * ⚠ A CLIENT COMPONENT FOR ONE REASON: to know which view is open and which
  * screen to stay on. The list is fetched on the server and handed down; nothing
@@ -29,11 +29,13 @@ export function ViewSwitch({
 }) {
   // ["views", "<view>", "breaks"] under a view; ["config"] at fund level.
   const segments = useSelectedLayoutSegments();
+  const pathname = usePathname();
+  const root = pathname.startsWith("/books/") ? "books" : "funds";
   const underView = segments[0] === "views";
   const open = underView ? segments[1] : defaultView;
   // Stay on the same screen when switching views. A control-plane screen is not
-  // view-scoped, so switching from one lands on the exceptions queue.
-  const screen = underView && segments[2] ? segments[2] : "breaks";
+  // view-scoped, so this control is not shown there.
+  const screen = underView && segments[2] ? segments[2] : "";
 
   // ⚠ A single view is still reported, not hidden. A book with one view has
   // one, and a reader who cannot see which basis produced a figure is the
@@ -45,7 +47,11 @@ export function ViewSwitch({
         return (
           <Link
             key={v.name}
-            href={`/funds/${fund}/views/${id}/${screen}`}
+            href={
+              screen
+                ? `/${root}/${fund}/views/${id}/${screen}`
+                : `/${root}/${fund}/views/${id}`
+            }
             aria-current={id === open ? "page" : undefined}
             title={BASIS_LABEL[v.basis]}
           >

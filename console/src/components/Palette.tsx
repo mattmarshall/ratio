@@ -140,6 +140,39 @@ function FundRegistrar({ funds }: { funds: Fund[] }) {
   return null;
 }
 
+/**
+ * The book collection, independent of any fund.
+ *
+ * ⭐ A PERSONAL OR PROJECT BOOK HAS NO `/funds/{fund}` URL. The rail only
+ * lists books that carry a fund layer. These two actions are the door that
+ * does not require one.
+ */
+function BookDoors() {
+  const go = usePaletteNavigator();
+  useRegisterActions(
+    [
+      {
+        id: "books:list",
+        name: "Your books",
+        subtitle: "/books",
+        keywords: "books,personal,project,independent",
+        section: { name: "Books", priority: Priority.HIGH },
+        perform: go("/books"),
+      },
+      {
+        id: "books:new",
+        name: "New book",
+        subtitle: "/books/new",
+        keywords: "create,new,independent",
+        section: { name: "Books", priority: Priority.HIGH },
+        perform: go("/books/new"),
+      },
+    ],
+    [go],
+  );
+  return null;
+}
+
 /** Renders the expensive half, and only once somebody has asked for it. */
 function PaletteMount() {
   const { showing } = useKBar((state) => ({
@@ -152,6 +185,7 @@ export function Palette({ funds, children }: { funds: Fund[]; children: ReactNod
   return (
     <KBarProvider options={PALETTE_OPTIONS}>
       <FundRegistrar funds={funds} />
+      <BookDoors />
       {children}
       <PaletteMount />
     </KBarProvider>

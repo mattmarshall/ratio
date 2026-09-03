@@ -2,8 +2,11 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 
-// Sign-in: OIDC authorization-code + PKCE against the Cognito Hosted UI, run
-// entirely on the server.
+// Deprecated on the sign-in path. WorkOS AuthKit is the IdP
+// (`@workos-inc/authkit-nextjs`, `/callback`). This module still fetches
+// `/authconfig.json` so `redirect.ts` and preflight can see the API origin.
+//
+// Was: OIDC authorization-code + PKCE against the Cognito Hosted UI.
 //
 // ⛔ THE FLOW MOVED OFF THE BROWSER, AND THAT IS THE POINT OF THE MOVE. The
 // console this replaces ran PKCE in the page: the verifier sat in
