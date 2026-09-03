@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import accountsFixture from "../../fixtures/accounts.json";
+import householdAccountsFixture from "../../fixtures/householdAccounts.json";
 import breakFixture from "../../fixtures/break.json";
 import breaksFixture from "../../fixtures/breaks.json";
 import changeLogFixture from "../../fixtures/changeLogEntries.json";
@@ -82,7 +83,14 @@ vi.mock("next/navigation", async () => {
 const wire = {
   listBooks: async () => booksFixture,
   listFunds: async () => fundsFixture,
-  getBook: async () => bookFixture,
+  // ⭐ KIND IS A PROPERTY OF THE BOOK, NOT OF THE SUITE. A mock that always
+  // returned the household fixture made every fund view wear personal chrome
+  // the moment GetBook started being read beside GetView.
+  getBook: async (_c: unknown, book: string) => {
+    const id = String(book).replace(/^books\//, "");
+    const found = booksFixture.books.find((b) => b.name === `books/${id}`);
+    return found ?? bookFixture;
+  },
   createBook: async () => bookFixture,
   getFund: async () => fundFixture,
   getView: async () => viewFixture,
@@ -189,19 +197,38 @@ describe("a first-class book", () => {
     expect(screen.getByRole("heading", { name: "Household" })).toBeDefined();
     expect(screen.getByText("Personal")).toBeDefined();
     expect(screen.getByText("independent")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Balance sheet" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Period P&L" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Configuration" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Transfer between accounts" })).toBeDefined();
+    expect(screen.getByText(/Net worth/)).toBeDefined();
+    // ⛔ THE LABEL IS NOT THE PRODUCT. A personal hub that still offered
+    // Exceptions / Positions / NAV would be fund-ops screens with a household
+    // name on them — issue #65.
+    expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
   });
 
   it("sends every job to /books/{book}/… and never through /funds", async () => {
     const Book = (await import("./books/[book]/page")).default;
     await renderAsync(Book({ params: params({ book: "household" }) }));
+    expect(screen.getByRole("link", { name: "Balance sheet" }).getAttribute("href")).toBe(
+      "/books/household/views/book/sheet",
+    );
+    expect(screen.getByRole("link", { name: "Period P&L" }).getAttribute("href")).toBe(
+      "/books/household/views/book/pnl",
+    );
     const trial = screen.getByRole("link", { name: "Trial balance" });
     expect(trial.getAttribute("href")).toBe(
       "/books/household/views/book/accounts",
     );
     const config = screen.getByRole("link", { name: "Configuration" });
     expect(config.getAttribute("href")).toBe("/books/household/config");
+    expect(
+      screen.getByRole("link", { name: "Transfer between accounts" }).getAttribute("href"),
+    ).toBe("/books/household/transfer");
     for (const a of document.querySelectorAll("a[href]")) {
       expect(a.getAttribute("href")).not.toMatch(/\/funds\//);
     }
@@ -269,6 +296,105 @@ describe("a first-class book", () => {
       expect(screen.getByText(/the journal's own order/)).toBeDefined();
     } finally {
       wire.getView = real;
+    }
+  });
+
+  it("opens a personal book of record as net worth, not NAV", async () => {
+    // ⚠ A DISTINCT VIEW ID FROM THE RECORDED-BASIS CASE ABOVE. `viewOf` is
+    // React-cached per (book, view) for the process, so reusing `book`
+    // would serve that test's override and this would never see the
+    // default fixture.
+    const View = (await import("./books/[book]/views/[view]/page")).default;
+    await renderAsync(View({ params: params({ book: "household", view: "hearth" }) }));
+    expect(screen.getByText("Net worth")).toBeDefined();
+    expect(screen.queryByText("Net asset value")).toBeNull();
+    expect(screen.queryByText("Open difference")).toBeNull();
+    expect(screen.queryByText("Open breaks")).toBeNull();
+    expect(screen.getByRole("link", { name: "Balance sheet" }).getAttribute("href")).toBe(
+      "/books/household/views/hearth/sheet",
+    );
+    expect(screen.getByRole("link", { name: "Period P&L" }).getAttribute("href")).toBe(
+      "/books/household/views/hearth/pnl",
+    );
+    expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
+  });
+});
+
+describe("a household statement", () => {
+  async function withHouseholdAccounts<T>(fn: () => Promise<T>): Promise<T> {
+    const real = wire.listAccounts;
+    wire.listAccounts = (async () =>
+      householdAccountsFixture) as typeof wire.listAccounts;
+    try {
+      return await fn();
+    } finally {
+      wire.listAccounts = real;
+    }
+  }
+
+  it("renders chart_for(Personal) on a citable balance sheet", async () => {
+    await withHouseholdAccounts(async () => {
+      const Sheet = (await import("./books/[book]/views/[view]/sheet/page")).default;
+      await renderAsync(
+        Sheet({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({}),
+        }),
+      );
+      expect(screen.getByLabelText("Balance sheet")).toBeDefined();
+      for (const name of [
+        "Cash and bank",
+        "Investments",
+        "Credit cards and loans",
+        "Opening equity",
+      ]) {
+        expect(screen.getByText(name)).toBeDefined();
+      }
+      expect(screen.queryByText("Cash and equivalents")).toBeNull();
+      expect(screen.queryByText("Investments at fair value")).toBeNull();
+      expect(screen.getByRole("link", { name: "Period P&L" })).toBeDefined();
+      expect(screen.getByRole("link", { name: "Transfer" })).toBeDefined();
+    });
+  });
+
+  it("renders a period P&L and says it is not since inception", async () => {
+    await withHouseholdAccounts(async () => {
+      const PnL = (await import("./books/[book]/views/[view]/pnl/page")).default;
+      await renderAsync(
+        PnL({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("Period profit and loss")).toBeDefined();
+      expect(screen.getByText("Living expenses")).toBeDefined();
+      expect(screen.getByText("Taxes")).toBeDefined();
+      expect(screen.getAllByText("Income").length).toBeGreaterThan(0);
+      expect(screen.getByText(/not since inception/)).toBeDefined();
+      expect(screen.queryByText("Cash and bank")).toBeNull();
+      expect(screen.getByRole("link", { name: "Balance sheet" })).toBeDefined();
+    });
+  });
+
+  it("asks ListAccounts for a period window on the P&L", async () => {
+    const calls: unknown[][] = [];
+    const real = wire.listAccounts;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      calls.push(args);
+      return householdAccountsFixture;
+    }) as typeof wire.listAccounts;
+    try {
+      const PnL = (await import("./books/[book]/views/[view]/pnl/page")).default;
+      await renderAsync(
+        PnL({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(calls[0]?.slice(1)).toEqual(["household", "book", "pnl", "2026-03"]);
+    } finally {
+      wire.listAccounts = real;
     }
   });
 });
@@ -636,6 +762,15 @@ describe("the write screens", () => {
     accounts: ["Investments at fair value", "Cash and equivalents"],
   };
 
+  const XFER_CASH_INV = {
+    name: "funds/household/rules/xfer_cash_investments",
+    ruleId: "xfer_cash_investments",
+    kind: "TRADE" as const,
+    description: "Move cash to investments",
+    form: "debit Investments, credit Cash and bank",
+    accounts: ["Investments", "Cash and bank"],
+  };
+
   /** ⚠ `view: ""` and no holdings is the cold-landing case — see the page. */
   async function ticket(rules = [TRADE_RULE], positions = [], view = "") {
     const { TradeTicket } = await import("./books/[book]/trade/TradeTicket");
@@ -684,6 +819,7 @@ describe("the write screens", () => {
     const { MarkForm } = await import("./books/[book]/mark/MarkForm");
     const { IngestForm } = await import("./books/[book]/ingest/IngestForm");
     const { TradeTicket } = await import("./books/[book]/trade/TradeTicket");
+    const { TransferForm } = await import("./books/[book]/transfer/TransferForm");
 
     for (const [what, el] of [
       ["record", <RecordForm key="r" fund={FUND} rules={rulesFixture.rules as Rule[]} />],
@@ -701,6 +837,10 @@ describe("the write screens", () => {
           positions={[]}
           view=""
         />,
+      ],
+      [
+        "transfer",
+        <TransferForm key="x" fund="household" rules={[XFER_CASH_INV]} />,
       ],
     ] as const) {
       const { unmount } = render(el);
@@ -1036,6 +1176,41 @@ describe("the write screens", () => {
       target: { value: "1.005" },
     });
     expect(screen.getByText(/more than two decimal places/)).toBeDefined();
+  });
+
+  it("posts a household transfer without an instrument or a quantity", async () => {
+    // ⭐ CASH → INVESTMENTS IS A TRANSFER, NOT A SALE. The ticket that
+    // asked for units would open a lot; this one must not even have the
+    // fields.
+    const { TransferForm } = await import("./books/[book]/transfer/TransferForm");
+    render(<TransferForm fund="household" rules={[XFER_CASH_INV]} />);
+    expect(screen.getByText(/this is not a trade/)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    fireEvent.change(screen.getByLabelText("From"), {
+      target: { value: "Cash and bank" },
+    });
+    fireEvent.change(screen.getByLabelText("To"), {
+      target: { value: "Investments" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "250.00" },
+    });
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-03-15" },
+    });
+    expect(screen.getByText("xfer_cash_investments")).toBeDefined();
+    expect(screen.queryByLabelText("Instrument")).toBeNull();
+    expect(screen.queryByLabelText("Units")).toBeNull();
+    const form = document.querySelector("form")!;
+    const sent = Object.fromEntries(new FormData(form).entries());
+    expect(sent).toMatchObject({
+      fund: "household",
+      ruleId: "xfer_cash_investments",
+      amount: "250.00",
+      date: "2026-03-15",
+    });
+    expect(sent).not.toHaveProperty("instrument");
+    expect(sent).not.toHaveProperty("quantity");
   });
 });
 

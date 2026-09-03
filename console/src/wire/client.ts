@@ -343,10 +343,11 @@ export const listAccounts = (
   fund: string,
   view: string,
   filter?: string,
+  period?: string,
 ) =>
   send<ListAccountsResponse>(
     c,
-    `/funds/${fund}/views/${view}/accounts${q({ filter })}`,
+    `/funds/${fund}/views/${view}/accounts${q({ filter, period })}`,
   );
 // GET /v1/{name=funds/*/views/*/accounts/*}
 export const getAccount = (c: Caller, fund: string, view: string, id: string) =>

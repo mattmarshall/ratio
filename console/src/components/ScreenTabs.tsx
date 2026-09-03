@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useSelectedLayoutSegments } from "next/navigation";
-import { SCREENS, SCREEN_GROUPS, screenHref } from "@/lib/screens";
+import { screensFor, SCREEN_GROUPS, screenHref } from "@/lib/screens";
+import type { BookKind } from "@/wire/types";
 
 /**
  * Places under one book, grouped — figures vs what was agreed.
@@ -15,20 +16,23 @@ export function ScreenTabs({
   fund,
   view,
   pending,
+  kind = "INVESTMENT",
 }: {
   fund: string;
   view: string;
   pending: string;
+  kind?: BookKind;
 }) {
   const segments = useSelectedLayoutSegments();
   const here = segments[0] === "views" ? segments[2] : segments[0];
+  const screens = screensFor(kind);
 
   return (
     <nav className="places" aria-label="Places">
       {SCREEN_GROUPS.map((g) => (
         <div key={g.id} className="placegroup">
           <span className="placehead">{g.label}</span>
-          {SCREENS.filter((s) => s.group === g.id).map((s) => (
+          {screens.filter((s) => s.group === g.id).map((s) => (
             <Link
               key={s.segment}
               href={screenHref(fund, view, s, "books")}

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { getView, listBooks, listFunds } from "@/wire/client";
+import { getBook, getView, listBooks, listFunds } from "@/wire/client";
 import { caller } from "./caller";
 
 /**
@@ -25,6 +25,11 @@ export const funds = cache(async () => {
 export const books = cache(async () => {
   const c = await caller();
   return (await listBooks(c)).books;
+});
+
+export const bookOf = cache(async (book: string) => {
+  const c = await caller();
+  return getBook(c, book);
 });
 
 /**
