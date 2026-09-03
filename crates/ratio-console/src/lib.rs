@@ -404,9 +404,9 @@ impl Console {
     /// refused. A non-personal book is refused.
     /// `change-2026-03` is March approved change orders (Loan fold: window)
     /// activity, as-of-end balance) on a project book; bare `change` is
-    /// refused. The project's committed spend stays the unfiltered fold —
-    /// a project's period is still the project; the chip is which COs
-    /// were approved in-window. `nav-2026-03` is the same Loan-shaped fold
+    /// refused. Incurred cost and awarded commitments stay the unfiltered
+    /// fold — a project's period is still the project; the chip is which
+    /// COs were approved in-window. `nav-2026-03` is the same Loan-shaped fold
     /// over the Investment chart — a period NAV roll-forward, not a strike.
     /// Bare `nav` is refused; a non-investment book is refused. Commitment
     /// and undrawn stay on the chart (they are equity) and cancel in NAV.
@@ -6444,6 +6444,151 @@ mod tests {
     }
 
     #[test]
+    fn awarded_commitments_stay_unset_until_posted_and_do_not_inflate_actual() {
+        // ⭐ THE CLAIM #104 IS ABOUT. Awarded commitments are a conserved
+        // equity pair keyed by work package. Remaining to spend is
+        // revised − incurred − awarded. Treating an unposted award as
+        // zero would print budget − actual as headroom; folding the pair
+        // into project costs would inflate incurred. A release draws the
+        // memorandum; vendor_invoice / project_cost stay the actual.
+        let root = fresh("project-awarded-commitments");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let unset = c.list_accounts(&view, "").unwrap().accounts;
+        let site_po = unset
+            .iter()
+            .find(|a| a.display_name == "Awarded commitments — Site and mobilization")
+            .expect("seeded awarded-commitment account");
+        assert_eq!(
+            site_po.posting_count, "0",
+            "a new project has posted no purchase order: {site_po:?}"
+        );
+        assert_eq!(
+            c.get_book("books/bridge").unwrap().budget,
+            "",
+            "CreateBook must not invent a contract baseline"
+        );
+
+        let path = root.join("bridge");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str(
+            "\n[project]\nbudget = 1000000\n[[project.phase]]\naccount = 11\nbudget = 400000\n",
+        );
+        let next = b.put(text.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+        assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
+
+        // Budget set, still no award: remaining cannot be budget − actual.
+        let still_unawarded = c.list_accounts(&view, "").unwrap().accounts;
+        assert!(
+            still_unawarded
+                .iter()
+                .filter(|a| a.display_name.starts_with("Awarded commitments"))
+                .all(|a| a.posting_count == "0"),
+            "setting [project] budget must not invent an awarded commitment: {still_unawarded:?}"
+        );
+
+        c.apply_event(&project_event("po-site-1", "award_commitment_site", "3000.00"))
+            .unwrap();
+        c.apply_event(&project_event("po-all-1", "award_commitment", "500.00"))
+            .unwrap();
+        c.apply_event(&project_event("cost-site", "project_cost_site", "250.00"))
+            .unwrap();
+
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        let proj = c.projection("bridge").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "an awarded commitment must not claim lot relief"
+        );
+
+        let after = c.get_book("books/bridge").unwrap();
+        assert_eq!(
+            after.budget, "1000000",
+            "an award must not rewrite [project] budget: {}",
+            after.budget
+        );
+        let fig = c.project_progress(&view).unwrap();
+        let site = fig.phases.iter().find(|p| p.account == "11").expect("site");
+        assert_eq!(
+            site.cost, "25000",
+            "an award must not inflate actual cost: {:?}",
+            site.cost
+        );
+        assert_eq!(
+            site.budget, "400000",
+            "an award must not rewrite the phase baseline: {:?}",
+            site.budget
+        );
+
+        let accounts = c.list_accounts(&view, "").unwrap().accounts;
+        let site_po = accounts
+            .iter()
+            .find(|a| a.display_name == "Awarded commitments — Site and mobilization")
+            .unwrap();
+        assert_eq!(site_po.credit, "300000");
+        assert_ne!(site_po.posting_count, "0");
+        let unpart = accounts
+            .iter()
+            .find(|a| a.display_name == "Awarded commitments")
+            .unwrap();
+        assert_eq!(unpart.credit, "50000");
+        let structure = accounts
+            .iter()
+            .find(|a| a.display_name == "Awarded commitments — Structure")
+            .unwrap();
+        assert_eq!(
+            structure.posting_count, "0",
+            "an unposted phase award stays unset, not a silent zero: {structure:?}"
+        );
+
+        // remaining = revised − incurred − awarded
+        // revised = 1000000 (no CO); incurred = site cost 25000; awarded = 350000
+        let awarded: i64 = 300_000 + 50_000;
+        let incurred: i64 = 25_000;
+        assert_eq!(1_000_000 - incurred - awarded, 625_000);
+
+        c.apply_event(&project_event("po-site-r", "release_commitment_site", "800.00"))
+            .unwrap();
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        let after_release = c.list_accounts(&view, "").unwrap().accounts;
+        let site_net = after_release
+            .iter()
+            .find(|a| a.display_name == "Awarded commitments — Site and mobilization")
+            .unwrap();
+        assert_eq!(
+            site_net.credit.parse::<i64>().unwrap() - site_net.debit.parse::<i64>().unwrap(),
+            220_000
+        );
+        let site_after = c
+            .project_progress(&view)
+            .unwrap()
+            .phases
+            .into_iter()
+            .find(|p| p.account == "11")
+            .unwrap();
+        assert_eq!(
+            site_after.cost, "25000",
+            "releasing a commitment must not invent or erase actual: {:?}",
+            site_after.cost
+        );
+        assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
+    }
+
+    #[test]
     fn a_phase_budget_is_the_configuration_total_not_a_second_ledger() {
         let root = fresh("project-phase-budget");
         let c = Console::new(&root);
@@ -6532,7 +6677,11 @@ mod tests {
             (
                 "bridge",
                 book::BookKind::Project,
-                &[("project-invoices", true), ("change-orders", true)],
+                &[
+                    ("project-invoices", true),
+                    ("change-orders", true),
+                    ("purchase-orders", true),
+                ],
             ),
         ] {
             console

@@ -385,7 +385,9 @@ the conserved one, and the kernel never said it was.
   one conserved entry), `project-invoices` (Project: vendor invoice/cost CSV
   → costs and payables), `change-orders` (Project: Kind `approve_co_site` /
   `deduct_co_site` / … → the work-package equity pair; no entity master —
-  the phase is a chart dim), and on Investment `custodian-positions`
+  the phase is a chart dim), `purchase-orders` (Project: Kind
+  `award_commitment_site` / `release_commitment_site` / … → the awarded-
+  commitment equity pair on the same grain), and on Investment `custodian-positions`
   (holdings snapshot, recorded and never posted), `prime_equity_trades`
   (the same trade column contract the demo delivers: `B/S` →
   `equity_purchase` / `disposal_proceeds`, amount `consideration`, dated by
@@ -486,6 +488,25 @@ the conserved one, and the kernel never said it was.
   client portal, GC/sub marketplace, e-signature, full AIA G702 product UI,
   CRM, or a live construction job — CreateBook seeds the patterns; the
   seeded demo funds remain investment books.
+- ⚠ **A project committed-cost / remaining-to-spend walk-through (#104 / #27).**
+  CreateBook(Project) seeds `Awarded commitments` / `Commitment authorization`
+  keyed by work package (site / structure / finishes, plus unpartitioned)
+  as equity, the `award_commitment_*` / `release_commitment_*` rules, and
+  the `purchase-orders` ingest mapping. Record or ingest
+  `award_commitment_site`: the trial balance still ties, no lot opens,
+  actual cost is unchanged, and `/budget` cites awarded committed cost
+  on the same grain as cost-by-package. Remaining to spend is revised −
+  incurred − awarded. A book that has never posted an award shows
+  **unset**, not a fake zero committed — `postingCount === "0"` is the
+  distinction; treating awarded as zero would print budget − actual as
+  headroom. A posted award then a matching release is a real zero
+  committed. `/budget` says plainly that it does not forecast — EAC and
+  cost to complete are not a journal fact. Over/under-billing
+  (costs in excess of billings) is not this page; billed minus earned
+  stays on `/billing`. ⛔ The walk-through cannot show scheduling, Gantt,
+  resource loading, e-procurement, a vendor portal, AIA G702 product UI,
+  a client portal, e-signature, or CRM. Remaining to bill stays on #100.
+  The seeded demo funds remain investment books.
 - ⚠ **A project remaining-to-bill / collections walk-through (#100 / #27).**
   `/billing` cites remaining to bill (revised − billed) and collections vs
   billed (cash against AR: billed − outstanding receivable − retainage

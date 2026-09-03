@@ -48,6 +48,13 @@
             "factKind": "change",
             "form": "template change-orders {\n  reads      csv with header\n  grain      one change per row\n\n  fact       change\n    reference   from \"ChangeRef\"\n    dated       from \"Date\" as date \"YYYY-MM-DD\"\n    amount      from \"Amount\" as money in \"Ccy\"\n    memo        from \"Memo\" as text optional\n    kind        from \"Kind\" as { approve_co: approve_co, approve_co_finishes: approve_co_finishes, approve_co_site: approve_co_site, approve_co_structure: approve_co_structure, deduct_co: deduct_co, deduct_co_finishes: deduct_co_finishes, deduct_co_site: deduct_co_site, deduct_co_structure: deduct_co_structure }\n\n  posts      by \"kind\"\n    amount      amount\n    dated       dated\n    approve_co  -> approve_co\n    approve_co_finishes-> approve_co_finishes\n    approve_co_site-> approve_co_site\n    approve_co_structure-> approve_co_structure\n    deduct_co   -> deduct_co\n    deduct_co_finishes-> deduct_co_finishes\n    deduct_co_site-> deduct_co_site\n    deduct_co_structure-> deduct_co_structure\n}\n",
             "posts": true
+        },
+        {
+            "name": "funds/bridge/templates/purchase-orders",
+            "templateId": "purchase-orders",
+            "factKind": "purchase",
+            "form": "template purchase-orders {\n  reads      csv with header\n  grain      one purchase per row\n\n  fact       purchase\n    reference   from \"PurchaseRef\"\n    dated       from \"Date\" as date \"YYYY-MM-DD\"\n    amount      from \"Amount\" as money in \"Ccy\"\n    memo        from \"Memo\" as text optional\n    kind        from \"Kind\" as { award_commitment: award_commitment, award_commitment_finishes: award_commitment_finishes, award_commitment_site: award_commitment_site, award_commitment_structure: award_commitment_structure, release_commitment: release_commitment, release_commitment_finishes: release_commitment_finishes, release_commitment_site: release_commitment_site, release_commitment_structure: release_commitment_structure }\n\n  posts      by \"kind\"\n    amount      amount\n    dated       dated\n    award_commitment-> award_commitment\n    award_commitment_finishes-> award_commitment_finishes\n    award_commitment_site-> award_commitment_site\n    award_commitment_structure-> award_commitment_structure\n    release_commitment-> release_commitment\n    release_commitment_finishes-> release_commitment_finishes\n    release_commitment_site-> release_commitment_site\n    release_commitment_structure-> release_commitment_structure\n}\n",
+            "posts": true
         }
     ],
     "nextPageToken": ""

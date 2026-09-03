@@ -31,7 +31,7 @@ pub fn ingest_template_ids(kind: BookKind) -> &'static [&'static str] {
             "prime_equity_trades",
             "capital-calls",
         ],
-        BookKind::Project => &["project-invoices", "change-orders"],
+        BookKind::Project => &["project-invoices", "change-orders", "purchase-orders"],
     }
 }
 
@@ -241,6 +241,23 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
             acct(40, "Payables", AccountTypeRecord::Liability),
             acct(41, "Progress billings", AccountTypeRecord::Liability),
             acct(42, "Retainage payable", AccountTypeRecord::Liability),
+            // ⭐ AWARDED COMMITMENTS ARE EQUITY, NOT A COST AND NOT A
+            // PAYABLE. An open subcontract is cost the job has agreed to
+            // and has not yet incurred. Putting it on the expense side
+            // would inflate actual; putting remaining as an asset would
+            // make an un-incurred PO look like money that arrived. Both
+            // sides of the pair are equity so they cancel if folded into
+            // funding, and `/budget` cites the credit-normal awarded
+            // side. Grain is the work package — same accounts cost-by-
+            // package already uses — not a second WBS vocabulary.
+            acct(60, "Commitment authorization", AccountTypeRecord::Equity),
+            acct(61, "Commitment authorization — Site and mobilization", AccountTypeRecord::Equity),
+            acct(62, "Commitment authorization — Structure", AccountTypeRecord::Equity),
+            acct(63, "Commitment authorization — Finishes and closeout", AccountTypeRecord::Equity),
+            acct(64, "Awarded commitments", AccountTypeRecord::Equity),
+            acct(65, "Awarded commitments — Site and mobilization", AccountTypeRecord::Equity),
+            acct(66, "Awarded commitments — Structure", AccountTypeRecord::Equity),
+            acct(67, "Awarded commitments — Finishes and closeout", AccountTypeRecord::Equity),
         ],
     }
 }
@@ -281,6 +298,22 @@ pub fn is_change_order_account(display_name: &str) -> bool {
         || display_name == "Change-order authorization"
         || display_name.starts_with("Approved change orders — ")
         || display_name.starts_with("Change-order authorization — ")
+}
+
+/// Awarded purchase orders / subcontracts and their authorizing contra.
+///
+/// ⛔ THESE ARE NOT PROJECT COSTS AND NOT VENDOR PAYABLES. Folding an
+/// award into incurred would treat an open PO as spend. Citing it as a
+/// payable would mix a memorandum with an invoice. Both sides are equity
+/// so they conserve; `/budget` cites the credit-normal awarded side.
+/// ⛔ NOT `is_commitment_account`. That name is the partner-capital pair
+/// on an Investment book (`Commitments — LP`). "Awarded commitments"
+/// starts with Awarded, so the two classifiers do not collide.
+pub fn is_awarded_commitment_account(display_name: &str) -> bool {
+    display_name == "Awarded commitments"
+        || display_name == "Commitment authorization"
+        || display_name.starts_with("Awarded commitments — ")
+        || display_name.starts_with("Commitment authorization — ")
 }
 
 /// The opening configuration CreateBook writes: posting rules that hit
@@ -1063,9 +1096,13 @@ reads = "csv"
 /// WIP capitalization (`capitalize_wip` / `recognize_wip`) is #66 / PR #80.
 /// Progress billing is #85 / PR #88. Change orders are #91. Remaining to
 /// bill and collections vs billed (#100) compose onto `/billing` from the
-/// same journal — they do not add a rule. `/wip` and `/billing` stay two
-/// URLs; change orders, remaining-to-bill, and collections compose onto
-/// `/budget` and `/billing` rather than a third chrome list.
+/// same journal — they do not add a rule. Awarded commitments and remaining
+/// to spend (#104) compose onto `/budget` the same way: `award_commitment_*`
+/// / `release_commitment_*` are the pair; remaining to spend is revised −
+/// incurred − awarded and stays unset until those inputs can support it.
+/// `/wip` and `/billing` stay two URLs; change orders, remaining-to-bill,
+/// collections, and committed cost compose onto `/budget` and `/billing`
+/// rather than a third chrome list.
 ///
 /// Phase budget: `[[project.phase]] account = <dim> budget = <minor units>`.
 /// Omitting the row means no baseline, not a budget of zero.
@@ -1076,12 +1113,16 @@ reads = "csv"
 /// unpartitioned `project_cost` / `vendor_invoice` rules. Per-phase mapping
 /// is a later operator choice, not a CreateBook invention. `change-orders`
 /// maps `approve_co_*` / `deduct_co_*` onto the work-package pair.
+/// `purchase-orders` maps `award_commitment_*` / `release_commitment_*`
+/// onto the awarded-commitment pair — same grain, not a second WBS.
 const PROJECT_CONFIG: &str = r#"# Project posting rules. Amount given; no instrument, so no lot.
 # Work packages are accounts 11–13, not instruments.
 # Progress-bill and earn-progress are independent: billed and earned can diverge.
 # Retainage is a transfer, not a baked-in split — omit it and the figure stays unset.
 # Change orders are a conserved equity pair keyed by work package. They do not
 # rewrite [project] budget — that key is the original baseline.
+# Awarded commitments are a second conserved equity pair on the same grain:
+# an open subcontract is not incurred cost and not a vendor payable.
 # Phase budget: [[project.phase]] account = <dim> budget = <minor units>.
 
 [[rule]]
@@ -1398,6 +1439,104 @@ weight = 1
 account = 24
 weight = -1
 
+# Awarded commitments. Not a cost, not a payable, not a purchasing product.
+# An award is the pair: authorization up, awarded commitments up. A release
+# reverses that pair as the cost is incurred (vendor_invoice / project_cost
+# stay the actual). Grain is the work package — site / structure / finishes
+# — matching cost-by-phase, not a second breakdown. Unpartitioned
+# award_commitment / release_commitment hit the unpartitioned pair.
+# Remaining to spend is composed on /budget: revised − incurred − awarded.
+# Unset awarded is not a fake zero; treating it as zero would print
+# budget − actual as headroom.
+
+[[rule]]
+id = "award_commitment"
+kind = "trade"
+description = "Award an unpartitioned purchase order: authorization up, awarded commitments up"
+[[rule.posting]]
+account = 60
+weight = 1
+[[rule.posting]]
+account = 64
+weight = -1
+
+[[rule]]
+id = "award_commitment_site"
+kind = "trade"
+description = "Award a site-and-mobilization purchase order"
+[[rule.posting]]
+account = 61
+weight = 1
+[[rule.posting]]
+account = 65
+weight = -1
+
+[[rule]]
+id = "award_commitment_structure"
+kind = "trade"
+description = "Award a structure purchase order"
+[[rule.posting]]
+account = 62
+weight = 1
+[[rule.posting]]
+account = 66
+weight = -1
+
+[[rule]]
+id = "award_commitment_finishes"
+kind = "trade"
+description = "Award a finishes-and-closeout purchase order"
+[[rule.posting]]
+account = 63
+weight = 1
+[[rule.posting]]
+account = 67
+weight = -1
+
+[[rule]]
+id = "release_commitment"
+kind = "trade"
+description = "Release an unpartitioned purchase order: reverse the award pair as cost is incurred"
+[[rule.posting]]
+account = 64
+weight = 1
+[[rule.posting]]
+account = 60
+weight = -1
+
+[[rule]]
+id = "release_commitment_site"
+kind = "trade"
+description = "Release a site-and-mobilization purchase order"
+[[rule.posting]]
+account = 65
+weight = 1
+[[rule.posting]]
+account = 61
+weight = -1
+
+[[rule]]
+id = "release_commitment_structure"
+kind = "trade"
+description = "Release a structure purchase order"
+[[rule.posting]]
+account = 66
+weight = 1
+[[rule.posting]]
+account = 62
+weight = -1
+
+[[rule]]
+id = "release_commitment_finishes"
+kind = "trade"
+description = "Release a finishes-and-closeout purchase order"
+[[rule.posting]]
+account = 67
+weight = 1
+[[rule.posting]]
+account = 63
+weight = -1
+
 [[template]]
 id = "project-invoices"
 reads = "csv"
@@ -1479,6 +1618,44 @@ reads = "csv"
   by = "kind"
   amount = "amount"
   rules = { approve_co = "approve_co", approve_co_site = "approve_co_site", approve_co_structure = "approve_co_structure", approve_co_finishes = "approve_co_finishes", deduct_co = "deduct_co", deduct_co_site = "deduct_co_site", deduct_co_structure = "deduct_co_structure", deduct_co_finishes = "deduct_co_finishes" }
+  dated = "dated"
+
+[[template]]
+id = "purchase-orders"
+reads = "csv"
+
+  [template.fact]
+  kind = "purchase"
+  reference = "PurchaseRef"
+
+  [[template.fact.value]]
+  field = "dated"
+  as = "date"
+  column = "Date"
+  format = "YYYY-MM-DD"
+
+  [[template.fact.value]]
+  field = "amount"
+  as = "money"
+  column = "Amount"
+  currency = "Ccy"
+
+  [[template.fact.value]]
+  field = "memo"
+  as = "text"
+  column = "Memo"
+  optional = true
+
+  [[template.fact.value]]
+  field = "kind"
+  as = "enum"
+  column = "Kind"
+  map = { award_commitment = "award_commitment", award_commitment_site = "award_commitment_site", award_commitment_structure = "award_commitment_structure", award_commitment_finishes = "award_commitment_finishes", release_commitment = "release_commitment", release_commitment_site = "release_commitment_site", release_commitment_structure = "release_commitment_structure", release_commitment_finishes = "release_commitment_finishes" }
+
+  [template.fact.posts]
+  by = "kind"
+  amount = "amount"
+  rules = { award_commitment = "award_commitment", award_commitment_site = "award_commitment_site", award_commitment_structure = "award_commitment_structure", award_commitment_finishes = "award_commitment_finishes", release_commitment = "release_commitment", release_commitment_site = "release_commitment_site", release_commitment_structure = "release_commitment_structure", release_commitment_finishes = "release_commitment_finishes" }
   dated = "dated"
 "#;
 
@@ -1615,6 +1792,12 @@ mod tests {
         assert!(project
             .iter()
             .any(|a| a.display_name == "Change-order authorization — Structure"));
+        assert!(project
+            .iter()
+            .any(|a| a.display_name == "Awarded commitments — Site and mobilization"));
+        assert!(project
+            .iter()
+            .any(|a| a.display_name == "Commitment authorization — Structure"));
     }
 
     #[test]
@@ -1814,6 +1997,77 @@ template change-orders {
     }
 
     #[test]
+    fn a_purchase_order_row_posts_the_phase_rule_and_not_a_float() {
+        // ⭐ KIND NAMES THE WORK PACKAGE. Phase grain is the rule, not a
+        // second WBS and not a payable. An award is the memorandum; the
+        // vendor invoice stays the actual.
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Project)).unwrap();
+        let t = set.template("purchase-orders").unwrap();
+        assert!(t.fact.posts.is_some());
+        assert!(
+            t.entities.is_empty(),
+            "a purchase order is a chart dim, not an entity master"
+        );
+        let csv = "\
+PurchaseRef,Date,Amount,Ccy,Memo,Kind
+PO-1,2026-03-15,3000.00,USD,site subcontract,award_commitment_site
+PO-2,2026-04-01,800.00,USD,,release_commitment_site
+PO-3,2026-03-20,500.00,USD,allowance,award_commitment
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(p.facts.len(), 3);
+        assert_eq!(
+            p.facts[0].values.get("amount"),
+            Some(&ratio_ingest::Value::Money {
+                minor: 300_000,
+                currency: "USD".into()
+            }),
+        );
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[0]).unwrap();
+        assert_eq!(rule, "award_commitment_site");
+        assert_eq!(minor, 300_000);
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[1]).unwrap();
+        assert_eq!(rule, "release_commitment_site");
+        assert_eq!(minor, 80_000);
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[2]).unwrap();
+        assert_eq!(rule, "award_commitment");
+        assert_eq!(ratio_ingest::dated_of(t, &p.facts[0]), Some("2026-03-15"));
+        let form = t.render();
+        assert_eq!(
+            form,
+            "\
+template purchase-orders {
+  reads      csv with header
+  grain      one purchase per row
+
+  fact       purchase
+    reference   from \"PurchaseRef\"
+    dated       from \"Date\" as date \"YYYY-MM-DD\"
+    amount      from \"Amount\" as money in \"Ccy\"
+    memo        from \"Memo\" as text optional
+    kind        from \"Kind\" as { award_commitment: award_commitment, award_commitment_finishes: award_commitment_finishes, award_commitment_site: award_commitment_site, award_commitment_structure: award_commitment_structure, release_commitment: release_commitment, release_commitment_finishes: release_commitment_finishes, release_commitment_site: release_commitment_site, release_commitment_structure: release_commitment_structure }
+
+  posts      by \"kind\"
+    amount      amount
+    dated       dated
+    award_commitment-> award_commitment
+    award_commitment_finishes-> award_commitment_finishes
+    award_commitment_site-> award_commitment_site
+    award_commitment_structure-> award_commitment_structure
+    release_commitment-> release_commitment
+    release_commitment_finishes-> release_commitment_finishes
+    release_commitment_site-> release_commitment_site
+    release_commitment_structure-> release_commitment_structure
+}
+"
+        );
+        let resolved = ratio_ingest::resolve_all(&p.facts, &[]);
+        assert!(resolved.iter().all(|r| r.is_admissible()));
+    }
+
+    #[test]
     fn custodian_positions_record_and_never_post() {
         // ⭐ A MODE, NOT A GAP. The snapshot is what a recon reads against.
         // Seeding a `posts` block would invent journal entries a blank
@@ -1941,6 +2195,21 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
         assert!(!is_change_order_account("Funding"));
         assert!(!is_change_order_account("Project costs"));
         assert!(!is_change_order_account("Site and mobilization"));
+        assert!(is_awarded_commitment_account("Awarded commitments"));
+        assert!(is_awarded_commitment_account(
+            "Awarded commitments — Site and mobilization"
+        ));
+        assert!(is_awarded_commitment_account(
+            "Commitment authorization — Structure"
+        ));
+        assert!(!is_awarded_commitment_account("Funding"));
+        assert!(!is_awarded_commitment_account("Payables"));
+        assert!(!is_awarded_commitment_account("Site and mobilization"));
+        assert!(
+            !is_commitment_account("Awarded commitments"),
+            "project awarded commitments are not the partner-capital pair"
+        );
+        assert!(!is_change_order_account("Awarded commitments"));
     }
 
     #[test]
@@ -2123,6 +2392,8 @@ template capital-calls {
         assert!(set.rule("project_cost_site").is_some());
         assert!(set.rule("approve_co_site").is_some());
         assert!(set.rule("deduct_co_site").is_some());
+        assert!(set.rule("award_commitment_site").is_some());
+        assert!(set.rule("release_commitment_site").is_some());
         assert!(
             set.rules.iter().all(|r| r.legs.iter().all(|l| !l.per_instrument)),
             "a project phase is an account, not an instrument — a per_instrument \
@@ -2139,11 +2410,13 @@ template capital-calls {
             "project rules must not check against an empty chart: {against_empty:?}"
         );
         // Wave 2 (#75) ingest mapping is additive. Change orders (#91) are a
-        // second template, not a rewrite of project-invoices.
+        // second template, not a rewrite of project-invoices. Awarded
+        // commitments (#104) are a third, not a rewrite of either.
         let ingest = ratio_ingest::TemplateSet::from_toml(PROJECT_CONFIG).unwrap();
-        assert_eq!(ingest.templates.len(), 2);
+        assert_eq!(ingest.templates.len(), 3);
         assert_eq!(ingest.templates[0].id, "project-invoices");
         assert_eq!(ingest.templates[1].id, "change-orders");
+        assert_eq!(ingest.templates[2].id, "purchase-orders");
     }
 
     #[test]
@@ -2159,11 +2432,12 @@ template capital-calls {
         assert!(set.rule("progress_bill").is_some(), "{text}");
         assert!(set.rule("hold_retainage").is_some(), "{text}");
         assert!(set.rule("approve_co_site").is_some(), "{text}");
+        assert!(set.rule("award_commitment_site").is_some(), "{text}");
         assert!(set.project.is_none());
         let ingest = ratio_ingest::TemplateSet::from_toml(&text).unwrap();
         assert_eq!(
             ingest.templates.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
-            vec!["project-invoices", "change-orders"]
+            vec!["project-invoices", "change-orders", "purchase-orders"]
         );
     }
 

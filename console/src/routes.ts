@@ -238,10 +238,11 @@ export const ROUTES: readonly Route[] = [
   //
   // ⭐ ONE `/budget` URL. Kind selects the roll-up: household period spend
   // against `[personal] budget`, or project original vs revised contract
-  // against journal costs. Approved change orders compose onto this page
-  // and `/billing`; remaining-to-bill and collections live on `/billing`.
-  // They are not a second chrome list. A second path would be a second
-  // answer.
+  // against journal costs and awarded commitments. Approved change orders
+  // compose onto this page and `/billing`; remaining-to-bill and
+  // collections live on `/billing`; remaining to spend and committed cost
+  // live here. They are not a second chrome list. A second path would be
+  // a second answer.
   {
     path: "/books/[book]/views/[view]/budget",
     file: "books/[book]/views/[view]/budget/page.tsx",

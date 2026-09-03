@@ -8,11 +8,13 @@
 // (`Book.budget`) — the original contract. Billing is billed vs earned,
 // retainage, and cost by phase from `projectProgress`. Approved change
 // orders are a conserved equity pair on the same chart; they adjust the
-// revised contract without rewriting that key. Remaining to bill is
-// revised − billed; collections vs billed is cash against AR (billed −
-// outstanding receivable − retainage held). Those stay two URLs;
-// change orders, remaining-to-bill, and collections compose onto both
-// rather than a third chrome list.
+// revised contract without rewriting that key. Awarded commitments are a
+// second equity pair on the same work-package grain — open POs, not
+// incurred cost. Remaining to spend is revised − incurred − awarded.
+// Remaining to bill is revised − billed; collections vs billed is cash
+// against AR (billed − outstanding receivable − retainage held). Those
+// stay two URLs; change orders, remaining-to-bill, collections, and
+// committed cost compose onto both rather than a third chrome list.
 
 import { money } from "./format";
 import type { Account } from "@/wire/types";
@@ -86,9 +88,31 @@ export function isChangeOrderAccount(displayName: string): boolean {
   return isApprovedChangeOrder(displayName) || isChangeOrderAuthorization(displayName);
 }
 
-/** Funding received — not the change-order memorandum pair. */
+export function isAwardedCommitment(displayName: string): boolean {
+  return (
+    displayName === "Awarded commitments" ||
+    displayName.startsWith("Awarded commitments — ")
+  );
+}
+
+export function isCommitmentAuthorization(displayName: string): boolean {
+  return (
+    displayName === "Commitment authorization" ||
+    displayName.startsWith("Commitment authorization — ")
+  );
+}
+
+export function isAwardedCommitmentAccount(displayName: string): boolean {
+  return isAwardedCommitment(displayName) || isCommitmentAuthorization(displayName);
+}
+
+/** Funding received — not the change-order or awarded-commitment pair. */
 export function isFundingAccount(a: Account): boolean {
-  return a.type === "EQUITY" && !isChangeOrderAccount(a.displayName);
+  return (
+    a.type === "EQUITY" &&
+    !isChangeOrderAccount(a.displayName) &&
+    !isAwardedCommitmentAccount(a.displayName)
+  );
 }
 
 /**
@@ -109,6 +133,20 @@ export function phaseKeyForExpense(displayName: string): string {
   return displayName === "Project costs" ? "" : displayName;
 }
 
+/**
+ * Work-package key for an awarded-commitment account.
+ *
+ * Unpartitioned `"Awarded commitments"` maps to `""` (the `Project costs`
+ * expense). `"Awarded commitments — Site and mobilization"` maps to that
+ * phase's display name, so cost-by-phase and awards share one grain.
+ */
+export function awardedCommitmentPhase(displayName: string): string | null {
+  if (displayName === "Awarded commitments") return "";
+  const prefix = "Awarded commitments — ";
+  if (displayName.startsWith(prefix)) return displayName.slice(prefix.length);
+  return null;
+}
+
 export interface ProjectRollup {
   readonly cash: bigint;
   readonly wip: bigint;
@@ -120,8 +158,17 @@ export interface ProjectRollup {
   readonly payables: bigint;
   /** costs.balance + wip.balance — incurred, not double-counted on recognize. */
   readonly incurred: bigint;
-  /** incurred + unpaid payables. */
+  /**
+   * incurred + liability balances. ⚠ NOT awarded committed cost — that
+   * is `awarded`. This field is the payables-inclusive roll-up the page
+   * used to print as "committed"; remaining to spend does not use it.
+   */
   readonly committed: bigint;
+  /**
+   * Credit-normal awarded commitments, or null when none have posted.
+   * ⛔ NOT A FAKE ZERO. `postingCount === "0"` on every award account is unset.
+   */
+  readonly awarded: bigint | null;
   /** Configuration total, or null when unset. The original contract. */
   readonly baseline: bigint | null;
   /**
@@ -133,6 +180,11 @@ export interface ProjectRollup {
   readonly revised: bigint | null;
   /** revised − committed when a revised contract is set. */
   readonly variance: bigint | null;
+  /**
+   * Remaining to spend: revised − incurred − awarded.
+   * ⛔ UNSET when the revised contract or awarded side cannot support it.
+   */
+  readonly remainingToSpend: bigint | null;
 }
 
 /**
@@ -149,9 +201,11 @@ export interface ProjectRollup {
  * contract plus those billing cuts. Folding them into committed spend
  * here would make `/budget` answer a different question.
  *
- * ⚠ CHANGE ORDERS ARE NOT FUNDING AND NOT COST. They are excluded from
- * `funding` the way commitments are excluded from book capital. Variance
- * is against the revised contract, not a mutated baseline.
+ * ⚠ CHANGE ORDERS AND AWARDED COMMITMENTS ARE NOT FUNDING AND NOT COST.
+ * They are excluded from `funding` the way partner commitments are
+ * excluded from book capital. Remaining to spend is against the revised
+ * contract and the awarded pair, not a mutated baseline and not
+ * budget − actual with a fake-zero award.
  */
 export function projectRollup(
   accounts: readonly Account[],
@@ -182,7 +236,9 @@ export function projectRollup(
   const baseline = budget.trim() === "" ? null : raw(budget);
   const approved = approvedChangeOrders(accounts);
   const revised = revisedContract(baseline, approved);
+  const awarded = awardedCommitments(accounts);
   const variance = revised === null ? null : revised - committed;
+  const remainingToSpend = remainingToSpendOf(revised, incurred, awarded);
   return {
     cash,
     wip,
@@ -194,10 +250,12 @@ export function projectRollup(
     payables,
     incurred,
     committed,
+    awarded,
     baseline,
     approved,
     revised,
     variance,
+    remainingToSpend,
   };
 }
 
@@ -316,4 +374,55 @@ export function phaseApproved(
   const a = accounts.find((x) => x.displayName === want);
   if (!a || !isPosted(a)) return null;
   return creditNormal(a);
+}
+
+/**
+ * Credit-normal awarded commitments across work packages.
+ *
+ * `null` when no awarded-commitment account has a posting — not a
+ * committed cost of zero. A posted net of nothing (award then release
+ * the same amount) is a real zero.
+ */
+export function awardedCommitments(accounts: readonly Account[]): bigint | null {
+  const lines = accounts.filter((a) => isAwardedCommitment(a.displayName));
+  if (lines.length === 0) return null;
+  if (!lines.some(isPosted)) return null;
+  return lines.filter(isPosted).reduce((n, a) => n + creditNormal(a), 0n);
+}
+
+/**
+ * Awarded commitments for one work-package expense account.
+ *
+ * `Project costs` pairs with the unpartitioned award account. A phase
+ * with no posting stays unset, not a silent zero against that phase.
+ */
+export function phaseAwarded(
+  accounts: readonly Account[],
+  expenseDisplayName: string,
+): bigint | null {
+  const want =
+    expenseDisplayName === "Project costs"
+      ? "Awarded commitments"
+      : `Awarded commitments — ${expenseDisplayName}`;
+  const a = accounts.find((x) => x.displayName === want);
+  if (!a || !isPosted(a)) return null;
+  return creditNormal(a);
+}
+
+/**
+ * Remaining to spend: revised − incurred − awarded.
+ *
+ * ⛔ UNSET STAYS UNSET. An unknown baseline cannot produce a remainder.
+ * An unawarded job is not awarded-zero — treating awarded as 0 would
+ * print budget − actual as headroom and look like a measured leftover.
+ * A posted award of nothing against a set revised is a real zero
+ * committed, and remaining equals revised − incurred.
+ */
+export function remainingToSpendOf(
+  revised: bigint | null,
+  incurred: bigint,
+  awarded: bigint | null,
+): bigint | null {
+  if (revised === null || awarded === null) return null;
+  return revised - incurred - awarded;
 }

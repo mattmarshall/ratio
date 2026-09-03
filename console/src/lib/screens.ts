@@ -14,7 +14,8 @@
 // / NAV would be a fake label on fund-ops screens — issue #65 (sheet/P&L)
 // and #83 (budget). A project book that wore that warehouse is #66 (budget/WIP)
 // and #85 (billing); remaining-to-bill and collections compose onto
-// `/billing` (#100). An investment book cites partner capital first — funded
+// `/billing` (#100); awarded commitments and remaining to spend compose
+// onto `/budget` (#104). An investment book cites partner capital first — funded
 // activity, commitment / undrawn, and a per-partner capital account
 // statement on the same `/capital` URL (#70, #82, #102) — then a period
 // NAV roll-forward (#96), then the ABOR warehouse. The
@@ -85,12 +86,14 @@ export const PERSONAL_SCREENS: readonly Screen[] = [
 /**
  * Project figures. Budget vs actual, WIP capitalization, and progress billing.
  *
- * ⛔ `/billing` IS NOT `/budget`. Budget is authorized spend vs committed
- * cost — original contract, approved change orders, revised. Billing is
- * billed vs earned, retainage, cost by phase, remaining to bill (revised
- * − billed), and collections vs billed (cash against AR). Change orders,
- * remaining-to-bill, and collections compose onto those URLs; they are
- * not a third chrome list. One chrome list (`screensFor`).
+ * ⛔ `/billing` IS NOT `/budget`. Budget is authorized spend vs incurred
+ * and awarded committed cost — original contract, approved change
+ * orders, revised, remaining to spend (revised − incurred − awarded).
+ * Billing is billed vs earned, retainage, cost by phase, remaining to
+ * bill (revised − billed), and collections vs billed (cash against AR).
+ * Change orders, remaining-to-bill, collections, and committed cost
+ * compose onto those URLs; they are not a third chrome list. One chrome
+ * list (`screensFor`). This page does not forecast.
  *
  * Trial balance stays: it is the conservation view of the same accounts, and
  * a figure that could not be checked against it would be a picture.
@@ -205,7 +208,7 @@ const PROJECT_TICKETS: readonly Ticket[] = [
   {
     segment: "record",
     label: "Record an event",
-    keywords: "record,event,rule,apply,cost,wip,bill,retainage,change order",
+    keywords: "record,event,rule,apply,cost,wip,bill,retainage,change order,commitment,purchase order",
   },
   {
     segment: "ingest",
