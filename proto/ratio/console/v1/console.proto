@@ -2011,16 +2011,20 @@ message ListAccountsRequest {
   // allocation / transfer equity and commitment / undrawn equity
   // (not unrealized gain). `budget-YYYY[-MM]`
   // is household spend in a calendar window. `loan-YYYY[-MM]` is a household
-  // loan roll-forward keyed by named liability. All are presentations of the
-  // same chart; they do not invent accounts.
+  // loan roll-forward keyed by named liability. `bridge-YYYY[-MM]` is the
+  // household net-worth bridge. `cashflow-YYYY[-MM]` is the household period
+  // cash-flow (operating / investing / financing). All are presentations of
+  // the same chart; they do not invent accounts.
   //
   // ⛔ A MONTH OR YEAR IS A SUFFIX, NOT A SECOND FIELD. AIP-132 List requests
   // carry parent, page_size, page_token, and filter. `pnl-2026-03` is March;
   // `pnl-2026` is the year; `sheet-2026-03` is as-of that month end;
   // `capital-2026-03` is March capital activity; `budget-2026-03` is March
   // household spend; `loan-2026-03` is March loan activity with the as-of-end
-  // balance (beginning = ending − (debit − credit)). Bare `pnl` / `budget` /
-  // `loan` is refused — cumulative income, spend, or liability is an
+  // balance (beginning = ending − (debit − credit)); `bridge-2026-03` and
+  // `cashflow-2026-03` are the same Loan-shaped fold over the personal chart.
+  // Bare `pnl` / `budget` / `loan` / `bridge` / `cashflow` is refused —
+  // cumulative income, spend, liability, net worth, or cash is an
   // ABOR-shaped figure wearing the wrong label. Bare `capital` is
   // inception-to-date. An entry with no date is not in any period fold.
   // Hyphens, not colons: the transcode does not percent-decode query values.

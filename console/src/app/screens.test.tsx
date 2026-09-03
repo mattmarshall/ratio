@@ -267,6 +267,7 @@ describe("a first-class book", () => {
     expect(screen.getByRole("link", { name: "Balance sheet" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Period P&L" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Net-worth bridge" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Cash flow" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Budget vs actual" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Loan schedule" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
@@ -306,6 +307,7 @@ describe("a first-class book", () => {
       expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
       expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
       expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Cash flow" })).toBeNull();
       expect(screen.getByText(/unset/)).toBeDefined();
     } finally {
       wire.getBook = real;
@@ -332,6 +334,7 @@ describe("a first-class book", () => {
       expect(screen.getByRole("link", { name: /^NAV$/ })).toBeDefined();
       expect(screen.getByRole("link", { name: "Exceptions" })).toBeDefined();
       expect(screen.getByRole("link", { name: "Positions" })).toBeDefined();
+      expect(screen.queryByRole("link", { name: "Cash flow" })).toBeNull();
     } finally {
       wire.getBook = realBook;
       wire.getView = realView;
@@ -1119,6 +1122,9 @@ describe("a first-class book", () => {
     expect(screen.getByRole("link", { name: "Net-worth bridge" }).getAttribute("href")).toBe(
       "/books/household/views/book/bridge",
     );
+    expect(screen.getByRole("link", { name: "Cash flow" }).getAttribute("href")).toBe(
+      "/books/household/views/book/cashflow",
+    );
     const trial = screen.getByRole("link", { name: "Trial balance" });
     expect(trial.getAttribute("href")).toBe(
       "/books/household/views/book/accounts",
@@ -1245,6 +1251,7 @@ describe("a first-class book", () => {
     await renderAsync(Book({ params: params({ book: FUND }) }));
     expect(screen.queryByRole("link", { name: "Loan schedule" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Net-worth bridge" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Cash flow" })).toBeNull();
   });
 
   it("cites an unset household loan schedule rather than a roll-forward of zeros", async () => {
@@ -1578,6 +1585,296 @@ describe("a first-class book", () => {
     const Bridge = (await import("./books/[book]/views/[view]/bridge/page")).default;
     await expect(
       Bridge({
+        params: params({ book: FUND, view: VIEW }),
+        searchParams: params({ period: "2026-03" }),
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("cites an unset cash-flow rather than a measured zero cash", async () => {
+    const CashFlow = (await import("./books/[book]/views/[view]/cashflow/page")).default;
+    const real = wire.listAccounts;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/1",
+          displayName: "Cash and bank",
+          dimension: "1",
+          type: "ASSET",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/2",
+          displayName: "Investments",
+          dimension: "2",
+          type: "ASSET",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/30",
+          displayName: "Income",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        CashFlow({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(
+        screen.getByText(/Beginning and ending stay unset — not a measured zero cash/),
+      ).toBeDefined();
+      expect(screen.getByLabelText("Cash flow")).toBeDefined();
+      expect(screen.getAllByText("—").length).toBeGreaterThan(2);
+      expect(screen.queryByText("0.00")).toBeNull();
+      expect(screen.getByText("no purchase account distinct from a transfer")).toBeDefined();
+    } finally {
+      wire.listAccounts = real;
+    }
+  });
+
+  it("cites operating, investing and financing and leaves the cash tie visible", async () => {
+    const CashFlow = (await import("./books/[book]/views/[view]/cashflow/page")).default;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    wire.getBook = (async () => ({
+      ...bookFixture,
+      loans: [{ dimension: "41", interest: "12" }],
+    })) as unknown as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/1",
+          displayName: "Cash and bank",
+          dimension: "1",
+          type: "ASSET",
+          debit: "3000",
+          credit: "2100",
+          balance: "10000900",
+          abnormal: false,
+          postingCount: "5",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/2",
+          displayName: "Investments",
+          dimension: "2",
+          type: "ASSET",
+          debit: "500",
+          credit: "0",
+          balance: "500",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/41",
+          displayName: "Mortgage",
+          dimension: "41",
+          type: "LIABILITY",
+          debit: "800",
+          credit: "0",
+          balance: "-9999200",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/30",
+          displayName: "Income",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "3000",
+          balance: "-3000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/10",
+          displayName: "Living expenses",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "600",
+          credit: "0",
+          balance: "600",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/12",
+          displayName: "Mortgage interest",
+          dimension: "12",
+          type: "EXPENSE",
+          debit: "200",
+          credit: "0",
+          balance: "200",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/40",
+          displayName: "Credit cards",
+          dimension: "40",
+          type: "LIABILITY",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/20",
+          displayName: "Opening equity",
+          dimension: "20",
+          type: "EQUITY",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        CashFlow({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("Cash flow")).toBeDefined();
+      expect(
+        screen.getByText("beginning plus operating plus investing plus financing"),
+      ).toBeDefined();
+      expect(screen.getByText("100,000.00")).toBeDefined();
+      expect(screen.getByText("100,009.00")).toBeDefined();
+      expect(screen.getByText("9.00")).toBeDefined();
+      expect(screen.getByText("30.00")).toBeDefined();
+      expect(screen.getByText("22.00")).toBeDefined();
+      expect(screen.getAllByText("-5.00").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("-8.00").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("no purchase account distinct from a transfer")).toBeDefined();
+      expect(
+        screen.getByText(/Inflow is positive, outflow is negative — cash, not net worth/),
+      ).toBeDefined();
+      expect(screen.queryByText(/Beginning and ending stay unset/)).toBeNull();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("names unnamed loan activity on cash-flow instead of absorbing it", async () => {
+    const CashFlow = (await import("./books/[book]/views/[view]/cashflow/page")).default;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    wire.getBook = (async () => ({
+      ...bookFixture,
+      loans: [],
+    })) as unknown as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/1",
+          displayName: "Cash and bank",
+          dimension: "1",
+          type: "ASSET",
+          debit: "0",
+          credit: "800",
+          balance: "99200",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/41",
+          displayName: "Mortgage",
+          dimension: "41",
+          type: "LIABILITY",
+          debit: "800",
+          credit: "0",
+          balance: "-99200",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        CashFlow({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByText("Unclassified")).toBeDefined();
+      expect(screen.getByRole("link", { name: "Mortgage" })).toBeDefined();
+      expect(
+        screen.getByText("not a named loan and not a transfer — open the account"),
+      ).toBeDefined();
+      expect(
+        screen.getAllByText("no [personal.loan] on the configuration in force").length,
+      ).toBeGreaterThanOrEqual(1);
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("asks ListAccounts for a period window on the cash-flow statement", async () => {
+    const calls: unknown[][] = [];
+    const real = wire.listAccounts;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      calls.push(args);
+      return { accounts: [], nextPageToken: "" };
+    }) as typeof wire.listAccounts;
+    try {
+      const CashFlow = (await import("./books/[book]/views/[view]/cashflow/page")).default;
+      await renderAsync(
+        CashFlow({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(calls[0]?.slice(1)).toEqual(["household", "book", "cashflow", "2026-03"]);
+    } finally {
+      wire.listAccounts = real;
+    }
+  });
+
+  it("404s a cash-flow statement on a book that is not Personal", async () => {
+    const CashFlow = (await import("./books/[book]/views/[view]/cashflow/page")).default;
+    await expect(
+      CashFlow({
         params: params({ book: FUND, view: VIEW }),
         searchParams: params({ period: "2026-03" }),
       }),
@@ -1921,6 +2218,9 @@ describe("a first-class book", () => {
     );
     expect(screen.getByRole("link", { name: "Net-worth bridge" }).getAttribute("href")).toBe(
       "/books/household/views/hearth/bridge",
+    );
+    expect(screen.getByRole("link", { name: "Cash flow" }).getAttribute("href")).toBe(
+      "/books/household/views/hearth/cashflow",
     );
     expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
     expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();

@@ -388,6 +388,27 @@ NEEDLES: list[tuple[str, str]] = [
         "no purchase account distinct from a transfer",
         "asset purchases would be invented rather than left unset",
     ),
+    # ── household period cash-flow (#98) ────────────────────────────────────
+    # ⚠ THE UNSET SENTENCE, NOT THE TAB LABEL. `screens.ts` already says
+    # "Cash flow"; a page that rendered $0.00 cash on an empty book
+    # would still contain the label and stay green. The refusal copy is
+    # what goes red if someone "helps" by showing zeros.
+    (
+        "Beginning and ending stay unset — not a measured zero cash",
+        "an empty household journal would render a fake zero cash",
+    ),
+    (
+        "beginning plus operating plus investing plus financing",
+        "the cash-flow page would stop showing the conserved tie",
+    ),
+    (
+        "working capital — a charge is not a cash outflow",
+        "a card charge would look like operating cash spent",
+    ),
+    (
+        "not a named loan and not a transfer — open the account",
+        "unclassified movement would be absorbed instead of named",
+    ),
     # ── investment period NAV roll-forward (#96) ────────────────────────────
     # ⚠ THE UNSET SENTENCE, NOT THE TAB LABEL. `screens.ts` already says
     # "NAV roll-forward"; a page that rendered $0.00 NAV on an empty book

@@ -663,6 +663,50 @@ away from two entries:**
 a real customer's period reconciling. It widens the funnel's mouth; the funnel
 still ends at a conversation, not a sign-up.
 
+### Amendment, 2026-09-03 — a household cash-flow statement, and nothing on the refusal list moved
+
+Personal books already cited a sheet, a period P&L, a net-worth bridge, budget
+vs actual, and a loan roll-forward. The bridge explained why **net worth**
+moved. It did not answer where **cash** went. Operators rebuilt that story in a
+spreadsheet beside a book that already tied.
+
+What landed is a citeable period figure at `/books/{id}/views/{view}/cashflow`,
+folded from the same journal as every other household figure (`filter=
+cashflow-YYYY[-MM]`, the Loan-shaped window the bridge already uses). No new
+RPC, no second store, no proto resource. Kind still selects the chrome from
+one `screensFor` list — Fund, Project, and Investment books do not wear it.
+
+**The split the chart can support.** Operating / investing / financing,
+reconstructed from each non-cash account's period net (cash from an account
+= −(debit − credit)), which is conservation itself:
+
+- **Operating** — income, expenses (including loan interest), and Credit cards
+  as working capital. A card charge is Dr expense / Cr cards and does not
+  move cash; omitting the card plug would make a charge look like a cash
+  outflow.
+- **Investing** — Investments, the same account the net-worth bridge names as
+  a transfer. Asset purchases stay unset: `chart_for(Personal)` has no
+  purchase account distinct from that transfer.
+- **Financing** — named-loan principal and draws (`[personal.loan]`, the same
+  plug `/loans` cites) and Opening equity (household in/out).
+
+A liability the book never named as a loan is a residual line an operator can
+open, not silent absorption into financing. Beginning cash plus classified
+movement equals ending cash when both cuts exist.
+
+**Unset stays unset.** Beginning cash is unset when every account's beginning
+is 0 (no dated prefix before the window). Ending cash is unset when nothing
+dated has landed. An empty journal is not a measured $0.00 cash. Spending
+down to zero is a real zero.
+
+**What a walk-through can and cannot show** (demo readiness, #27). It can
+show beginning and ending cash for a month or year, the three activity
+classes, and the conserved tie. It cannot show a cash forecast, envelope
+coaching, bank OAuth, a credit score, a fire number, or a client portal.
+Envelope budgeting stays on #83; loan schedules on #87; the net-worth
+bridge on #94. None of those are on the *Explicitly not building* list, and
+this amendment adds none of them.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,
