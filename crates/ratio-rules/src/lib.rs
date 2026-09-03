@@ -528,6 +528,9 @@ impl Default for RuleSet {
             views: Vec::new(),
             calendars: Vec::new(),
             project: None,
+            // ⛔ NONE IS UNSET, NOT AN EMPTY LOAN TABLE. A derived Default
+            // that put `Some(PersonalTerms { loan: {} })` here would make
+            // "nobody said" indistinguishable from "said, named none".
             personal: None,
         }
     }
