@@ -540,7 +540,7 @@ impl Console {
             s.1 += (credit * factor / scale) as i64;
             *counts.entry(dim).or_default() += postings;
             split.entry(dim).or_default().push(pb::CurrencyTotal {
-                currency_code: ccy.unwrap_or_default(),
+                currency_code: ccy_ref.unwrap_or("").to_string(),
                 debit: debit.to_string(),
                 credit: credit.to_string(),
                 balance: (debit - credit).to_string(),
