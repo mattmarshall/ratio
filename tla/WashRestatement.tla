@@ -27,6 +27,12 @@
 (* recomputes leaves two different answers to "what was the realized gain in *)
 (* March", both reproducible, both digested, and no record that they differ. *)
 (*                                                                          *)
+(* ⭐ A RESTATEMENT CITES THE STRIKE IT SUPERSEDES. `cites` is the day the    *)
+(* figure was struck, and `figureIntact` is whether that number is still the *)
+(* one that was struck. Overwriting the figure keeps the identity and        *)
+(* changes the number — `Ratio.Lots.WashRestatement.rewriteInPlace`, which   *)
+(* is the defect, not a restatement.                                        *)
+(*                                                                          *)
 (* ⛔ AND THE TEMPTING FIX IS WRONG. Applying the adjustment only to periods  *)
 (* still open — prospectively — keeps every struck figure stable and reports *)
 (* a realized gain the tax rule does not agree with. It trades a visible     *)
@@ -41,7 +47,8 @@ CONSTANTS
     MaxDay,          \* bound, not a property
     QualifyOpenWindow, \* the fix. FALSE strikes a figure that can still move,
                        \* with nothing on it saying so.
-    RestateOnLateWash  \* the fix. FALSE recomputes silently.
+    RestateOnLateWash, \* the fix. FALSE recomputes silently.
+    MutateStruckFigure \* the defect. TRUE overwrites the struck figure in place.
 
 VARIABLES
     day,          \* the clock
@@ -50,9 +57,11 @@ VARIABLES
     struck,       \* [Sales -> Nat] the day a NAV reported this sale's gain, 0 = never
     qualified,    \* SUBSET Sales — struck while the window was still open, and said so
     restated,     \* SUBSET Sales — a later repurchase moved a struck figure, and said so
+    cites,        \* [Sales -> Nat] the strike day a restatement cites, 0 = none
+    figureIntact, \* [Sales -> BOOLEAN] FALSE iff the struck figure was overwritten
     lastOp
 
-vars == <<day, soldOn, boughtOn, struck, qualified, restated, lastOp>>
+vars == <<day, soldOn, boughtOn, struck, qualified, restated, cites, figureIntact, lastOp>>
 
 Unsold == 0
 
@@ -76,6 +85,8 @@ TypeOK ==
     /\ struck \in [Sales -> 0..MaxDay]
     /\ qualified \subseteq Sales
     /\ restated \subseteq Sales
+    /\ cites \in [Sales -> 0..MaxDay]
+    /\ figureIntact \in [Sales -> BOOLEAN]
 
 Init ==
     /\ day = 1
@@ -84,18 +95,20 @@ Init ==
     /\ struck = [s \in Sales |-> Unsold]
     /\ qualified = {}
     /\ restated = {}
+    /\ cites = [s \in Sales |-> Unsold]
+    /\ figureIntact = [s \in Sales |-> TRUE]
     /\ lastOp = "init"
 
 Tick ==
     /\ day < MaxDay
     /\ day' = day + 1
-    /\ UNCHANGED <<soldOn, boughtOn, struck, qualified, restated>>
+    /\ UNCHANGED <<soldOn, boughtOn, struck, qualified, restated, cites, figureIntact>>
     /\ lastOp' = "tick"
 
 Sell(s) ==
     /\ soldOn[s] = Unsold
     /\ soldOn' = [soldOn EXCEPT ![s] = day]
-    /\ UNCHANGED <<day, boughtOn, struck, qualified, restated>>
+    /\ UNCHANGED <<day, boughtOn, struck, qualified, restated, cites, figureIntact>>
     /\ lastOp' = "sell"
 
 \* The replacement purchase. It can land before the sale as easily as after,
@@ -111,8 +124,20 @@ Repurchase(s) ==
          /\ soldOn[s] # Unsold
          /\ boughtOn' [s] >= soldOn[s] - Window
          /\ boughtOn' [s] <= soldOn[s] + Window
-       THEN restated' = restated \cup {s}
-       ELSE UNCHANGED restated
+       THEN /\ restated' = restated \cup {s}
+            /\ cites' = [cites EXCEPT ![s] = struck[s]]
+       ELSE UNCHANGED <<restated, cites>>
+    \* ⛔ THE SILENT REWRITE. Overwriting the struck figure keeps the
+    \* citeable identity and changes the number. `Ratio.Lots.WashRestatement.
+    \* rewriting_in_place_keeps_the_id_and_changes_the_figure`. A restatement
+    \* is a new record that cites; this is not one.
+    /\ IF MutateStruckFigure
+         /\ struck[s] # Unsold
+         /\ soldOn[s] # Unsold
+         /\ boughtOn' [s] >= soldOn[s] - Window
+         /\ boughtOn' [s] <= soldOn[s] + Window
+       THEN figureIntact' = [figureIntact EXCEPT ![s] = FALSE]
+       ELSE UNCHANGED figureIntact
     /\ UNCHANGED <<day, soldOn, struck, qualified>>
     /\ lastOp' = "repurchase"
 
@@ -128,7 +153,7 @@ Strike(s) ==
     /\ IF QualifyOpenWindow /\ WindowOpen(s)
        THEN qualified' = qualified \cup {s}
        ELSE UNCHANGED qualified
-    /\ UNCHANGED <<day, soldOn, boughtOn, restated>>
+    /\ UNCHANGED <<day, soldOn, boughtOn, restated, cites, figureIntact>>
     /\ lastOp' = "strike"
 
 \* Everything that can happen, has. The explicit self-loop keeps a finished
@@ -166,5 +191,19 @@ AStruckGainThatMovedSaysSo ==
 AClosedWindowIsNotQualified ==
     \A s \in Sales :
         (s \in qualified) => (struck[s] # Unsold /\ struck[s] <= soldOn[s] + Window)
+
+\* ⭐ THE CITE. A restatement names the strike it supersedes. A flag that
+\* does not cite can be true of a different sale than the one that moved —
+\* which is how a restatement follows a position rather than a figure.
+ARestatementCitesTheStrikeItSupersedes ==
+    \A s \in Sales :
+        (s \in restated) => (cites[s] = struck[s] /\ struck[s] # Unsold)
+
+\* ⛔ THE STRUCK FIGURE IS NOT REWRITTEN. The identity still cites; the
+\* number must still be the one that was struck. `MutateStruckFigure`
+\* flips this. `Ratio.Lots.WashRestatement.rewriting_in_place_keeps_the_
+\* id_and_changes_the_figure`.
+AStruckFigureIsNotRewritten ==
+    \A s \in Sales : figureIntact[s]
 
 =============================================================================

@@ -525,6 +525,24 @@ struct LotBook {
     breaks: Vec<String>,
 }
 
+/// A sale whose wash window is still open at a named day.
+///
+/// ⭐ THIS IS WHAT A STRIKE READS TO QUALIFY. The fold remembers leftovers
+/// so the write can still land; a strike taken while any of these exist
+/// reports a figure that can still move.
+/// `Ratio.Lots.WashRestatement.an_open_window_is_qualified`.
+///
+/// ⚠ A LEFTOVER AFTER THE WINDOW CLOSED IS NOT THIS. `pending_wash` stays
+/// until a replacement matches; qualification asks whether the window is
+/// still open on the day being struck, not whether a leftover exists.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OpenWashWindow {
+    pub sold_on: relief::Day,
+    pub window: i64,
+    pub remaining_units: i64,
+    pub remaining_loss: i64,
+}
+
 /// A sale's leftover wash, waiting for a replacement to open.
 ///
 /// Window and terms are the SALE's — pinned by the configuration that entry
@@ -1599,7 +1617,9 @@ impl Projection {
                         // every deferral — which is how a generated book
                         // that never elected wash stopped partitioning.
                         // Qualification / restatement of the posted figure
-                        // is `WashRestatement`, and it is not this fold.
+                        // is `Ratio.Lots.WashRestatement`, and it is not
+                        // this fold — a restatement cites the strike, it
+                        // does not rewrite the journal's posted gain.
                         let split = gain_leg.and_then(|g| classify(&r, g, trade_day, terms));
                         if let Some((short, long)) = split {
                             *fold.lots.short_term.entry(ccy.clone()).or_default() += short;
@@ -1676,6 +1696,39 @@ impl Projection {
         };
         Ok(AsOf {
             value,
+            prefix: self.at,
+            view: view.to_string(),
+            through: Self::through_of(fold),
+        })
+    }
+
+    /// Sales whose wash window is still open on `as_of`.
+    ///
+    /// ⭐ THE VALUE A STRIKE READS TO QUALIFY. Empty means nothing can still
+    /// move this prefix's realized gain; nonempty means the strike must say
+    /// so. `Ratio.Lots.WashRestatement`.
+    ///
+    /// ⛔ `as_of` IS REQUIRED. Guessing the day from the view's frontier
+    /// would qualify (or not) a strike against a clock nobody named.
+    pub fn open_wash_windows(
+        &self,
+        view: &str,
+        as_of: relief::Day,
+    ) -> Result<AsOf<Vec<OpenWashWindow>>> {
+        let fold = self.fold_of(view)?;
+        let mut out = Vec::new();
+        for w in &fold.lots.pending_wash {
+            if relief::window_still_open(w.window, w.sold_on, as_of)? {
+                out.push(OpenWashWindow {
+                    sold_on: w.sold_on,
+                    window: w.window,
+                    remaining_units: w.remaining_units,
+                    remaining_loss: w.remaining_loss,
+                });
+            }
+        }
+        Ok(AsOf {
+            value: out,
             prefix: self.at,
             view: view.to_string(),
             through: Self::through_of(fold),
@@ -3656,6 +3709,59 @@ mod tests {
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].cost, 900, "the write landed after the repurchase opened");
         assert_eq!(left[0].acquired, Some(day("2026-01-01")));
+    }
+
+    #[test]
+    fn a_strike_day_reads_whether_a_wash_window_is_still_open() {
+        // ⭐ `Ratio.Lots.WashRestatement`. Sale first, no replacement yet:
+        // the leftover is pending. A strike on 20 June sees the window
+        // open; one on 16 July does not. After the repurchase attaches,
+        // nothing is pending — the figure already moved.
+        let d = book_with_wash("wash-qualify", 30, "fifo");
+        buy_on(&d, "orig", 100, 2000, "2026-01-01");
+        dispose(&d, "s", 100, 1000, "2026-06-15");
+
+        let p = Projection::of_book(&d).unwrap();
+        let open = p.open_wash_windows(B, day("2026-06-20")).unwrap();
+        assert_eq!(open.value.len(), 1, "the window is still open");
+        assert_eq!(open.value[0].sold_on, day("2026-06-15"));
+        assert_eq!(open.value[0].remaining_loss, -1000);
+        assert!(
+            p.open_wash_windows(B, day("2026-07-16"))
+                .unwrap()
+                .value
+                .is_empty(),
+            "day 31 is outside a 30-day window"
+        );
+
+        let s = relief::strike_gain(
+            relief::StrikeId {
+                prefix: open.prefix as u64,
+            },
+            30,
+            open.value[0].sold_on,
+            day("2026-06-20"),
+            open.value[0].remaining_loss,
+        )
+        .unwrap();
+        assert!(s.qualified);
+        // The later repurchase moves the leftover. Restate cites the
+        // prefix; the struck figure is untouched.
+        let r = relief::restate(&s, 30, day("2026-06-20"), -600).expect("moved");
+        assert_eq!(r.cites.prefix, open.prefix as u64);
+        assert_eq!(s.figure, -1000);
+        assert_eq!(r.original, -1000);
+        assert_eq!(r.moved_to, -600);
+
+        buy_on(&d, "repl", 100, 1000, "2026-06-20");
+        let p = Projection::of_book(&d).unwrap();
+        assert!(
+            p.open_wash_windows(B, day("2026-06-20"))
+                .unwrap()
+                .value
+                .is_empty(),
+            "the write landed; nothing is still pending"
+        );
     }
 
     #[test]

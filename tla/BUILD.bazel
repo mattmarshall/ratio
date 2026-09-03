@@ -369,6 +369,20 @@ tla_check(
     deps = [":wash_restatement"],
 )
 
+# ⛔ Qualified, restated, and the struck figure overwritten anyway. The
+# identity still cites; the number is somebody else's.
+# AStruckFigureIsNotRewritten goes red.
+# `Ratio.Lots.WashRestatement.rewriting_in_place_keeps_the_id_and_changes_
+# the_figure`.
+tla_check(
+    name = "mutating_wash_restatement_check",
+    size = "medium",
+    config = "MutatingWashRestatement.cfg",
+    module = "MutatingWashRestatement.tla",
+    tags = ["manual"],
+    deps = [":wash_restatement"],
+)
+
 # The write the wash rule is: a deferred loss lands on a lot the sale did not
 # relieve.
 #

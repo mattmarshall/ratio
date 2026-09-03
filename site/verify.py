@@ -85,6 +85,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ Average cost landed as a pool, not a Method; PLAN named it in
     # the same-commit amendment.
     "Average cost is a pool",
+    # ⚠ WashRestatement landed as a citeable record; PLAN named it in
+    # the same-commit amendment.
+    "WashRestatement is a citeable record",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -98,6 +101,7 @@ ROADMAP_ENGINE_BUILT = [
     "MinTax is a ranking at a price",
     "SpecID is a named selection",
     "Average cost is a pool",
+    "WashRestatement is a citeable record",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",
