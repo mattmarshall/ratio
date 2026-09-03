@@ -2695,7 +2695,7 @@ describe("an operating-business statement", () => {
       expect(screen.getByText("150.00")).toBeDefined();
       expect(screen.getByText("500.00")).toBeDefined();
       expect(screen.getByText("200.00")).toBeDefined();
-      expect(screen.getByText("-50.00")).toBeDefined();
+      expect(screen.getAllByText("-50.00").length).toBe(2);
       expect(screen.getByText("working capital — an invoice is not a cash inflow")).toBeDefined();
       expect(screen.getByText("working capital — a vendor bill is not a cash outflow")).toBeDefined();
       expect(screen.getByText(/no investing account on this chart/)).toBeDefined();
