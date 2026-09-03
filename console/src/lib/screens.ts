@@ -15,8 +15,9 @@
 // and #83 (budget). A project book that wore that warehouse is #66 (budget/WIP)
 // and #85 (billing). An investment book cites partner capital first — funded
 // activity and commitment / undrawn on the same `/capital` URL (#70, #82) —
-// then the ABOR warehouse. The agreement screens stay shared: a rule set is the
-// same document whichever chart it posted.
+// then a period NAV roll-forward (#96), then the ABOR warehouse. The
+// agreement screens stay shared: a rule set is the same document whichever
+// chart it posted.
 
 import type { BookKind } from "@/wire/types";
 
@@ -104,9 +105,12 @@ export const PROJECT_SCREENS: readonly Screen[] = [
  * money out, and what remains callable, on the same journal. Commitment
  * and undrawn stay on `/capital` — one capital story, not a second URL.
  * A book that has never posted a commitment shows unset, not a callable zero.
+ * `/nav` is the period roll-forward (beginning → plugs → ending), not a
+ * replacement for `/strikes` (ABOR NAV). Unset stays unset.
  */
 export const INVESTMENT_SCREENS: readonly Screen[] = [
   { segment: "capital", label: "Capital activity", scoped: true, group: "book" },
+  { segment: "nav", label: "NAV roll-forward", scoped: true, group: "book" },
   { segment: "breaks", label: "Exceptions", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   { segment: "positions", label: "Positions", scoped: true, group: "book" },

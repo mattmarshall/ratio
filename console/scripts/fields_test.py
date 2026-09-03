@@ -355,6 +355,24 @@ NEEDLES: list[tuple[str, str]] = [
         "no purchase account distinct from a transfer",
         "asset purchases would be invented rather than left unset",
     ),
+    # ── investment period NAV roll-forward (#96) ────────────────────────────
+    # ⚠ THE UNSET SENTENCE, NOT THE TAB LABEL. `screens.ts` already says
+    # "NAV roll-forward"; a page that rendered $0.00 NAV on an empty book
+    # would still contain the label and stay green. The refusal copy is
+    # what goes red if someone "helps" by showing zeros. `/strikes` stays
+    # the ABOR NAV — this is the period reconciling figure.
+    (
+        "Beginning and ending stay unset — not a measured zero NAV",
+        "an empty investment journal would render a fake zero NAV",
+    ),
+    (
+        "equity, so they cancel — remaining undrawn is on Capital",
+        "the roll-forward would stop saying commitment does not move NAV",
+    ),
+    (
+        "unset — Unrealized gain did not move this window, not a silent zero mark",
+        "unrealized would render as a silent zero mark",
+    ),
 ]
 
 

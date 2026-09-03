@@ -402,7 +402,10 @@ impl Console {
     /// activity, as-of-end balance) on a project book; bare `change` is
     /// refused. The project's committed spend stays the unfiltered fold —
     /// a project's period is still the project; the chip is which COs
-    /// were approved in-window.
+    /// were approved in-window. `nav-2026-03` is the same Loan-shaped fold
+    /// over the Investment chart — a period NAV roll-forward, not a strike.
+    /// Bare `nav` is refused; a non-investment book is refused. Commitment
+    /// and undrawn stay on the chart (they are equity) and cancel in NAV.
     pub fn list_accounts(
         &self,
         parent: &str,
@@ -465,11 +468,26 @@ impl Console {
                 bail!("change orders in period need a month (YYYY-MM) or a year (YYYY)");
             }
         }
+        if kind == "nav" {
+            let path = self.book_path(&fund)?;
+            let meta = book::BookMeta::load(&path, &fund);
+            if meta.kind != book::BookKind::Investment {
+                bail!(
+                    "period NAV roll-forward is an Investment figure — this book is {}",
+                    meta.kind.as_str()
+                );
+            }
+            if period.is_empty() {
+                bail!("a period NAV roll-forward needs a month (YYYY-MM) or a year (YYYY)");
+            }
+        }
         let fold = match (kind, period) {
             ("pnl", p) => AccountFold::Activity(parse_period(p)?),
             ("capital", p) if !p.is_empty() => AccountFold::Activity(parse_period(p)?),
             ("budget", p) => AccountFold::Activity(parse_period(p)?),
-            ("loan", p) | ("bridge", p) | ("change", p) => AccountFold::Loan(parse_period(p)?),
+            ("loan", p) | ("bridge", p) | ("change", p) | ("nav", p) => {
+                AccountFold::Loan(parse_period(p)?)
+            }
             (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
             _ => AccountFold::Current,
         };
@@ -4004,8 +4022,8 @@ struct PeriodWindow {
 
 /// AIP-132 List requests carry `filter` (AIP-160), not a custom period field.
 /// `pnl-2026-03` / `sheet-2026` / `capital-2026-03` / `budget-2026-03` /
-/// `loan-2026-03` / `bridge-2026-03` / `change-2026-03` — hyphen because
-/// `param_of` does not decode.
+/// `loan-2026-03` / `bridge-2026-03` / `change-2026-03` / `nav-2026-03` —
+/// hyphen because `param_of` does not decode.
 fn list_accounts_window(filter: &str) -> (&str, &str) {
     if let Some(rest) = filter.strip_prefix("pnl-") {
         ("pnl", rest)
@@ -4021,6 +4039,8 @@ fn list_accounts_window(filter: &str) -> (&str, &str) {
         ("bridge", rest)
     } else if let Some(rest) = filter.strip_prefix("change-") {
         ("change", rest)
+    } else if let Some(rest) = filter.strip_prefix("nav-") {
+        ("nav", rest)
     } else {
         (filter, "")
     }
@@ -5358,6 +5378,153 @@ mod tests {
         assert!(
             capital.iter().all(|a| a.display_name != "Unrealized gain"),
             "valuation equity is not a commitment: {capital:?}"
+        );
+    }
+
+    #[test]
+    fn a_period_nav_roll_forward_cites_two_cuts_and_refuses_a_fake_zero() {
+        // ⭐ THE CLAIM #96 IS ABOUT. Two as-of cuts from one Loan-shaped
+        // fold over the Investment chart. An empty book is not a measured
+        // zero NAV. Commitment / undrawn are on the chart and cancel —
+        // they must not inflate the A−L figure. Partner credits this
+        // window are the same In column `/capital` already cites.
+        let root = fresh("period-nav-rollforward");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Partners".into(),
+                    kind: book::BookKind::Investment.proto(),
+                    ..Default::default()
+                }),
+                book_id: "rollfwd".into(),
+            })
+            .unwrap();
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Household".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "rollfwd-house".into(),
+            })
+            .unwrap();
+
+        let view = capital_view("rollfwd");
+        let bare = console.list_accounts(&view, "nav").unwrap_err().to_string();
+        assert!(bare.contains("month"), "{bare}");
+
+        let empty = console.list_accounts(&view, "nav-2026-03").unwrap();
+        assert!(
+            empty.accounts.iter().all(|a| a.balance == "0" && a.debit == "0" && a.credit == "0"),
+            "an empty journal is zeros on the chart, not a NAV figure: {:?}",
+            empty.accounts
+        );
+        assert!(
+            empty.accounts.iter().any(|a| a.display_name == "Cash and equivalents"),
+            "the whole chart is the source of the rows: {:?}",
+            empty.accounts
+        );
+        assert!(
+            empty.accounts.iter().any(|a| a.display_name == "Unrealized gain"),
+            "unrealized stays on the roll-forward chart: {:?}",
+            empty.accounts
+        );
+        assert!(
+            empty.accounts.iter().any(|a| a.display_name == "Partner capital — LP"),
+            "partner capital is the same account /capital cites: {:?}",
+            empty.accounts
+        );
+
+        let house = format!(
+            "funds/rollfwd-house/views/{}",
+            ratio_rules::UNDECLARED_VIEW
+        );
+        let personal = console.list_accounts(&house, "nav-2026-03").unwrap_err().to_string();
+        assert!(personal.contains("Investment"), "{personal}");
+
+        console
+            .apply_event(&capital_req("rollfwd", "feb-c", "contribute_lp", "100.00", 2026, 2, 1))
+            .unwrap();
+        console
+            .apply_event(&capital_req("rollfwd", "feb-k", "commit_lp", "50.00", 2026, 2, 1))
+            .unwrap();
+        console
+            .apply_event(&capital_req("rollfwd", "mar-c", "contribute_lp", "40.00", 2026, 3, 10))
+            .unwrap();
+        console
+            .apply_event(&capital_req("rollfwd", "mar-d", "distribute_lp", "10.00", 2026, 3, 15))
+            .unwrap();
+        console
+            .apply_event(&capital_req("rollfwd", "mar-call", "call_lp", "20.00", 2026, 3, 20))
+            .unwrap();
+        {
+            let mut req = capital_req("rollfwd", "undated", "contribute_lp", "99.00", 2026, 3, 1);
+            req.trade_date = None;
+            console.apply_event(&req).unwrap();
+        }
+
+        let listed = console.list_accounts(&view, "nav-2026-03").unwrap();
+        let by: BTreeMap<_, _> = listed
+            .accounts
+            .iter()
+            .map(|a| (a.display_name.as_str(), a))
+            .collect();
+        let cash = by.get("Cash and equivalents").expect("cash");
+        let lp = by.get("Partner capital — LP").expect("lp");
+        let commitments = by.get("Commitments — LP").expect("commitments");
+        let undrawn = by.get("Undrawn commitments — LP").expect("undrawn");
+        let unreal = by.get("Unrealized gain").expect("unrealized");
+
+        // Ending cash = 100 + 40 − 10 + 20 = 150.00; undated 99 is dropped.
+        assert_eq!(cash.balance, "15000", "{cash:?}");
+        assert_eq!(cash.debit, "6000", "March contribute 40 + call 20: {cash:?}");
+        assert_eq!(cash.credit, "1000", "March distribute 10: {cash:?}");
+        let cash_end: i64 = cash.balance.parse().unwrap();
+        let cash_d: i64 = cash.debit.parse().unwrap();
+        let cash_c: i64 = cash.credit.parse().unwrap();
+        assert_eq!(cash_end - (cash_d - cash_c), 10_000, "February contribution is the beginning cut");
+
+        // Partner In this window is contribute 40 + call 20 — the same
+        // credits `capital-2026-03` reports. The February 100 is beginning.
+        assert_eq!(lp.credit, "6000", "{lp:?}");
+        assert_eq!(lp.debit, "1000", "{lp:?}");
+        let capital = console.list_accounts(&view, "capital-2026-03").unwrap();
+        let cap_lp = capital
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(cap_lp.credit, lp.credit, "roll-forward In is /capital In");
+        assert_eq!(cap_lp.debit, lp.debit, "roll-forward Out is /capital Out");
+
+        // Commitment posted in February; March draws 20. Both sides equity.
+        assert_eq!(commitments.debit, "2000", "the call drew 20.00: {commitments:?}");
+        assert_eq!(undrawn.credit, "2000", "{undrawn:?}");
+        assert_eq!(unreal.debit, "0");
+        assert_eq!(unreal.credit, "0");
+
+        // NAV = A + L. Commitment / undrawn must not appear in it.
+        let nav_end: i64 = listed
+            .accounts
+            .iter()
+            .filter(|a| {
+                a.r#type == pb::account::Type::Asset as i32
+                    || a.r#type == pb::account::Type::Liability as i32
+            })
+            .map(|a| a.balance.parse::<i64>().unwrap())
+            .sum();
+        assert_eq!(nav_end, 15_000, "ending NAV is cash, not cash plus undrawn");
+        let undrawn_end: i64 = undrawn.balance.parse().unwrap();
+        assert_ne!(
+            nav_end + undrawn_end,
+            15_000,
+            "treating undrawn as an asset would inflate NAV by the unfunded line"
+        );
+        assert_eq!(
+            console.get_fund("funds/rollfwd").unwrap().trial_balance_difference,
+            "0"
         );
     }
 

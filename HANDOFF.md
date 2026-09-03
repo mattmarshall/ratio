@@ -435,6 +435,16 @@ the conserved one, and the kernel never said it was.
   carried-interest formula, a client portal, or CRM. The seeded demo fund
   has no commitment postings, so its `/capital` must refuse undrawn the
   same way — a silent 0.00 there would be the defect.
+- ⚠ **A period NAV roll-forward walk-through (#96 / #27).** It can show
+  beginning and ending NAV for a month or year, cite ΔNAV against the
+  same contribution / distribution accounts `/capital` already names, and
+  income / expense / unrealized when those accounts moved. Commitment and
+  undrawn stay equity and cancel — they do not inflate NAV. An empty
+  journal, or a cut with no dated prefix, stays **unset** — not a measured
+  $0.00 NAV. A commitment-only prefix that nets to zero NAV is a real
+  zero. It cannot show IRR, TVPI / DPI, a waterfall, carried interest, a
+  client portal, or wash sales. NAV strikes stay on `/strikes`. Remaining
+  undrawn stays on `/capital`.
 - ⚠ **A project change-order walk-through (#91 / #27).** CreateBook(Project)
   seeds `Approved change orders` / `Change-order authorization` keyed by
   work package (site / structure / finishes, plus unpartitioned) as equity,

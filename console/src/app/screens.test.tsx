@@ -326,7 +326,10 @@ describe("a first-class book", () => {
       expect(capital.getAttribute("href")).toBe(
         "/books/harbourline-global-value/views/abor/capital",
       );
-      expect(screen.getByRole("link", { name: "NAV" })).toBeDefined();
+      expect(
+        screen.getByRole("link", { name: "NAV roll-forward" }).getAttribute("href"),
+      ).toBe("/books/harbourline-global-value/views/abor/nav");
+      expect(screen.getByRole("link", { name: /^NAV$/ })).toBeDefined();
       expect(screen.getByRole("link", { name: "Exceptions" })).toBeDefined();
       expect(screen.getByRole("link", { name: "Positions" })).toBeDefined();
     } finally {
@@ -413,6 +416,252 @@ describe("a first-class book", () => {
     expect(screen.getByText(/Capital activity is an Investment figure/)).toBeDefined();
     expect(screen.getByText(/Personal/)).toBeDefined();
     expect(screen.queryByLabelText("Capital activity")).toBeNull();
+  });
+
+  it("cites an unset NAV roll-forward rather than a measured zero", async () => {
+    const harbour = booksFixture.books.find((b) => b.kind === "INVESTMENT")!;
+    const Nav = (await import("./books/[book]/views/[view]/nav/page")).default;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/2",
+          displayName: "Cash and equivalents",
+          dimension: "2",
+          type: "ASSET",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/50",
+          displayName: "Partner capital — LP",
+          dimension: "50",
+          type: "EQUITY",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/21",
+          displayName: "Unrealized gain",
+          dimension: "21",
+          type: "EQUITY",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        Nav({
+          params: params({ book: "harbourline-global-value", view: "abor" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(
+        screen.getByText(/Beginning and ending stay unset — not a measured zero NAV/),
+      ).toBeDefined();
+      expect(screen.getByLabelText("NAV roll-forward")).toBeDefined();
+      expect(screen.getAllByText("—").length).toBeGreaterThan(2);
+      expect(screen.queryByText("0.00")).toBeNull();
+      expect(
+        screen.getByText(/unset — Unrealized gain did not move this window/),
+      ).toBeDefined();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("cites ΔNAV against capital plugs and leaves commitment off the identity", async () => {
+    const harbour = booksFixture.books.find((b) => b.kind === "INVESTMENT")!;
+    const Nav = (await import("./books/[book]/views/[view]/nav/page")).default;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/2",
+          displayName: "Cash and equivalents",
+          dimension: "2",
+          type: "ASSET",
+          debit: "6000",
+          credit: "1000",
+          balance: "15000",
+          abnormal: false,
+          postingCount: "3",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/1",
+          displayName: "Investments at fair value",
+          dimension: "1",
+          type: "ASSET",
+          debit: "2000",
+          credit: "0",
+          balance: "2000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/40",
+          displayName: "Management fee payable",
+          dimension: "40",
+          type: "LIABILITY",
+          debit: "0",
+          credit: "500",
+          balance: "-500",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/50",
+          displayName: "Partner capital — LP",
+          dimension: "50",
+          type: "EQUITY",
+          debit: "1000",
+          credit: "4000",
+          balance: "-13000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/30",
+          displayName: "Dividend income",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "2000",
+          balance: "-2000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/10",
+          displayName: "Management fee expense",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "500",
+          credit: "0",
+          balance: "500",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/21",
+          displayName: "Unrealized gain",
+          dimension: "21",
+          type: "EQUITY",
+          debit: "0",
+          credit: "2000",
+          balance: "-2000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/54",
+          displayName: "Undrawn commitments — LP",
+          dimension: "54",
+          type: "EQUITY",
+          debit: "0",
+          credit: "0",
+          balance: "5000",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        Nav({
+          params: params({ book: "harbourline-global-value", view: "abor" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("NAV roll-forward")).toBeDefined();
+      expect(
+        screen.getByText(
+          /beginning plus contributions minus distributions plus income minus expenses/,
+        ),
+      ).toBeDefined();
+      expect(screen.getByText("100.00")).toBeDefined();
+      expect(screen.getByText("40.00")).toBeDefined();
+      expect(screen.getByText("10.00")).toBeDefined();
+      expect(screen.getAllByText("20.00").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("5.00")).toBeDefined();
+      expect(screen.getAllByText("165.00").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("65.00")).toBeDefined();
+      expect(
+        screen.getByText(/equity, so they cancel — remaining undrawn is on Capital/),
+      ).toBeDefined();
+      expect(screen.queryByText(/Beginning and ending stay unset/)).toBeNull();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("asks ListAccounts for a period window on the NAV roll-forward", async () => {
+    const harbour = booksFixture.books.find((b) => b.kind === "INVESTMENT")!;
+    const calls: unknown[][] = [];
+    const realBook = wire.getBook;
+    const real = wire.listAccounts;
+    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      calls.push(args);
+      return { accounts: [], nextPageToken: "" };
+    }) as typeof wire.listAccounts;
+    try {
+      const Nav = (await import("./books/[book]/views/[view]/nav/page")).default;
+      await renderAsync(
+        Nav({
+          params: params({ book: "harbourline-global-value", view: "abor" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(calls[0]?.slice(1)).toEqual([
+        "harbourline-global-value",
+        "abor",
+        "nav",
+        "2026-03",
+      ]);
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = real;
+    }
+  });
+
+  it("404s a NAV roll-forward on a book that is not Investment", async () => {
+    const Nav = (await import("./books/[book]/views/[view]/nav/page")).default;
+    await expect(
+      Nav({
+        params: params({ book: "household", view: "book" }),
+        searchParams: params({ period: "2026-03" }),
+      }),
+    ).rejects.toThrow();
   });
 
   it("a personal book is not sent to project WIP or fund Exceptions", async () => {

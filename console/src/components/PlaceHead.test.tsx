@@ -77,6 +77,21 @@ describe("PlaceHead", () => {
     expect(screen.getByRole("heading", { name: "Capital activity" })).toBeDefined();
   });
 
+  it("titles the period NAV roll-forward, not the ABOR strike", () => {
+    segments.current = ["views", "abor", "nav"];
+    render(
+      <PlaceHead
+        fund="partners"
+        displayName="Partners"
+        views={views}
+        defaultView="abor"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "NAV roll-forward" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: /^NAV$/ })).toBeNull();
+  });
+
   it("does not put a book of record on an agreement page", () => {
     segments.current = ["config"];
     render(
