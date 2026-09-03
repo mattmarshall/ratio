@@ -1,9 +1,9 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
-**State**: bazel tests green, 20 `lean_test`, 22 `tla_check`, 15 `manual`
+**State**: bazel tests green, 23 `lean_test`, 40 `tla_check`, 25 `manual`
 probes all red for the reasons they name.
 
-Issues #4 and #7 are closed. Open work is #5, #6, #8, #9. This file is the part
+Issues #4, #5 and #7 are closed. Open work is #6, #8, #9. This file is the part
 that does not fit in an issue: what was learned, what is load-bearing, and what
 will bite. MinTax (#9) now has a Lean ranking, a TLA probe that fails if it
 is treated as a Method, and a Rust election that is not a `LotMethod`
