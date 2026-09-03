@@ -16,14 +16,20 @@
           "debit": "20000000",
           "credit": "1712000",
           "balance": "18288000",
-          "rate": "1000000"
+          "rate": "1000000",
+          "rateFact": "",
+          "deliveryDigest": "",
+          "configDigest": ""
         },
         {
           "currencyCode": "EUR",
           "debit": "15000000",
           "credit": "0",
           "balance": "15000000",
-          "rate": "1082400"
+          "rate": "1082400",
+          "rateFact": "funds/harbourline-global-value/facts/aabbccddeeff0011-2",
+          "deliveryDigest": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+          "configDigest": "9f2c1ab7de40551c9f2c1ab7de40551c9f2c1ab7de40551c9f2c1ab7de40551c"
         }
       ]
     }

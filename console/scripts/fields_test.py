@@ -222,6 +222,23 @@ NEEDLES: list[tuple[str, str]] = [
     # the rename instead, where an assertion can see it — and note that a needle
     # placed in THAT file would pass vacuously too, because the exclusion below is
     # `.test.tsx` only.
+    # ── the fact plane ──────────────────────────────────────────────────────
+    (
+        "a correction is a new row",
+        "the facts list would not say that a correction is a new fact",
+    ),
+    (
+        "A later fact superseded this one",
+        "a superseded fact would read as the one in force",
+    ),
+    (
+        "Never marked — this is cost, not a price",
+        "an unmarked position would look priced",
+    ),
+    (
+        "Price from",
+        "a marked position would not open the price fact it cites",
+    ),
 ]
 
 

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { LotBook } from "@/components/LotBook";
 import { caller } from "@/lib/caller";
@@ -37,6 +38,23 @@ async function PositionDetail({
           <dt>Marked</dt>
           <dd>{isoDate(p.markDate)}</dd>
         </dl>
+        {p.priceFact ? (
+          <p className="note">
+            Price from{" "}
+            <Link
+              href={`/books/${fund}/data/facts/${p.priceFact.split("/").pop()}`}
+            >
+              {p.deliveryDigest.slice(0, 12) || "the recorded fact"}
+            </Link>
+            {p.configDigest
+              ? ` · config ${p.configDigest.slice(0, 12)}`
+              : ""}
+          </p>
+        ) : (
+          <p className="note">
+            Never marked — this is cost, not a price. There is no fact to open.
+          </p>
+        )}
       </div>
 
       <div className="dsec">

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { Commit, Derived, Field, Ticket, type Step } from "@/components/Ticket";
 import { count, money } from "@/lib/format";
@@ -67,7 +68,7 @@ export function MarkForm({ fund }: { fund: string }) {
         "A NAV struck over a position nobody has priced is wrong in a way nobody can see.",
       ],
       answer: null,
-      body: r ? <Marks r={r} /> : <p className="why">Preview to see the marks.</p>,
+      body: r ? <Marks fund={fund} r={r} /> : <p className="why">Preview to see the marks.</p>,
     },
   ];
 
@@ -98,16 +99,18 @@ export function MarkForm({ fund }: { fund: string }) {
       {result && !result.ok ? (
         <div className="empty err">{result.error}</div>
       ) : null}
-      {r ? <Marks r={r} detail /> : null}
+      {r ? <Marks fund={fund} r={r} detail /> : null}
     </Ticket>
   );
 }
 
 /** The marks, what could not be priced, and what would not divide. */
 function Marks({
+  fund,
   r,
   detail,
 }: {
+  fund: string;
   r: NonNullable<Extract<MarkResult, { ok: true }>["response"]>;
   detail?: boolean;
 }) {
@@ -147,6 +150,16 @@ function Marks({
                 <div className="p1">{m.instrumentLabel || m.instrument}</div>
                 <div className="p2 num">
                   {count(m.quantity)} at {money(m.price)} · {isoDate(m.priceDate)}
+                  {m.priceFact ? (
+                    <>
+                      {" · "}
+                      <Link
+                        href={`/books/${fund}/data/facts/${m.priceFact.split("/").pop()}`}
+                      >
+                        {m.deliveryDigest.slice(0, 12) || "fact"}
+                      </Link>
+                    </>
+                  ) : null}
                 </div>
               </span>
               <span className="num">

@@ -40,6 +40,7 @@ import type {
   Entry,
   ListEntriesResponse,
   ExplainNavStrikeResponse,
+  Fact,
   Fund,
   IngestDeliveryRequest,
   IngestDeliveryResponse,
@@ -51,6 +52,7 @@ import type {
   ListConfigVersionsResponse,
   ListCorporateActionsResponse,
   ListDeliveriesResponse,
+  ListFactsResponse,
   ListFundsResponse,
   ListLotsResponse,
   ListNavStrikesResponse,
@@ -301,6 +303,12 @@ export const listPendingFacts = (c: Caller, fund: string) =>
 // GET /v1/{name=funds/*/pendingFacts/*}
 export const getPendingFact = (c: Caller, fund: string, id: string) =>
   send<PendingFact>(c, `/funds/${fund}/pendingFacts/${id}`);
+// GET /v1/{parent=funds/*}/facts
+export const listFacts = (c: Caller, fund: string, filter?: string) =>
+  send<ListFactsResponse>(c, `/funds/${fund}/facts${q({ filter })}`);
+// GET /v1/{name=funds/*/facts/*}
+export const getFact = (c: Caller, fund: string, id: string) =>
+  send<Fact>(c, `/funds/${fund}/facts/${id}`);
 
 // ── Positions and lots ─────────────────────────────────────────────────────
 // GET /v1/{parent=funds/*/views/*}/positions

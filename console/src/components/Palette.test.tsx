@@ -312,7 +312,7 @@ describe("the command palette", () => {
     renderConsole();
     // ⚠ A RESOURCE NAME IT CANNOT TRANSLATE, WHICH IS THE ONLY WAY TO EMPTY THIS
     // PALETTE. Any bare word of two characters or more is a plausible id, so
-    // "Open by id" always has twelve routes to offer — a garbage query still
+    // "Open by id" always has thirteen routes to offer — a garbage query still
     // fills the list. A string with slashes in it is a NAME, and a name the
     // table does not know produces nothing at all.
     await type(`funds/${FUND}/whatever/x`);

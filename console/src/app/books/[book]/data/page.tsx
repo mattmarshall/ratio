@@ -23,6 +23,8 @@ export default async function Data({
         <span className="sortnote">
           <Link href={`/books/${fund}/ingest`}>Read a file</Link>
           {" · "}
+          <Link href={`/books/${fund}/data/facts`}>Facts</Link>
+          {" · "}
           <Link href={`/books/${fund}/data/templates`}>Templates</Link>
         </span>
       </div>

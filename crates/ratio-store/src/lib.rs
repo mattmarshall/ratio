@@ -40,7 +40,7 @@ pub use objects::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use ratio_chart::{trial_balance, AccountType, Posting, TrialBalance};
+use ratio_chart::{AccountType, Posting, TrialBalance};
 use ratio_kernel::{transaction_is_balanced, Transaction};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -466,17 +466,144 @@ impl From<AccountTypeRecord> for AccountType {
 }
 
 /// The content-addressed configuration store — PLAN.md's seam, verbatim.
+///
+/// ⭐ THIS TRAIT IS THE CONTROL PLANE. v1 is [`DirectoryConfigStore`] (a
+/// directory, SHA-256, and an atomic pointer file). The destination is crova
+/// behind `put`/`get` and geetch behind `history` and the review that gates
+/// `set_active`. Callers depend on these five methods, so that swap is a new
+/// `impl`, not a rewrite. geetch/crova stay out until PLAN's trigger: a second
+/// customer, or compliance-reviewed change control a pointer file cannot satisfy.
 pub trait ConfigStore {
     /// Store `bytes` and return their content address.
     fn put(&mut self, bytes: &[u8]) -> Result<Digest>;
     /// Retrieve the bytes at `digest`.
     fn get(&self, digest: &Digest) -> Result<Vec<u8>>;
     /// Promote `digest` to active. The only way policy moves.
+    ///
+    /// ⛔ ATOMIC ON THE POINTER. A half-written ACTIVE would make "which rules
+    /// produced this figure?" unanswerable — every posting names a digest, and
+    /// the pointer is how a reader finds the one in force now.
     fn set_active(&mut self, digest: &Digest) -> Result<()>;
     /// The active configuration, if one has been promoted.
     fn active(&self) -> Result<Option<Digest>>;
     /// Every configuration ever promoted, newest first.
     fn history(&self) -> Result<Vec<Digest>>;
+}
+
+/// v1 ConfigStore: a directory, SHA-256, and a pointer file.
+///
+/// PLAN.md's afternoon shape. `FileBook` delegates here so the journal and the
+/// control plane do not share one type — later crova/geetch sit behind this
+/// struct, not behind the book.
+///
+/// ```text
+/// <dir>/
+///   <digest>     configuration bytes, addressed by content
+///   ACTIVE       the digest currently in force (replaced by rename)
+///   HISTORY      every promotion, one digest per line, oldest first
+/// ```
+pub struct DirectoryConfigStore {
+    dir: PathBuf,
+}
+
+impl DirectoryConfigStore {
+    /// Open a store, creating the directory if it is not there.
+    pub fn open(dir: impl AsRef<Path>) -> Result<Self> {
+        let dir = dir.as_ref().to_path_buf();
+        fs::create_dir_all(&dir)
+            .with_context(|| format!("creating config store at {}", dir.display()))?;
+        Ok(Self { dir })
+    }
+
+    fn blob_path(&self, digest: &Digest) -> PathBuf {
+        self.dir.join(digest.as_str())
+    }
+
+    /// Write `contents` over `path` by creating a sibling and renaming.
+    ///
+    /// ⛔ RENAME, NOT `fs::write`. A crash in the middle of a write leaves a
+    /// truncated ACTIVE, which `Digest::parse` then refuses, which looks like
+    /// "no configuration is in force" on a book that has one. rename(2) on
+    /// POSIX replaces the destination atomically; a reader sees the old
+    /// pointer or the new one, never a prefix of the hex.
+    fn replace_atomically(path: &Path, contents: &str) -> Result<()> {
+        let tmp = path.with_extension("tmp");
+        {
+            let mut f = File::create(&tmp)
+                .with_context(|| format!("creating {}", tmp.display()))?;
+            f.write_all(contents.as_bytes())
+                .with_context(|| format!("writing {}", tmp.display()))?;
+            f.sync_all()
+                .with_context(|| format!("syncing {}", tmp.display()))?;
+        }
+        fs::rename(&tmp, path)
+            .with_context(|| format!("promoting {} into place", path.display()))?;
+        Ok(())
+    }
+}
+
+impl ConfigStore for DirectoryConfigStore {
+    fn put(&mut self, bytes: &[u8]) -> Result<Digest> {
+        let digest = Digest::of(bytes);
+        let path = self.blob_path(&digest);
+        // Content-addressed: identical bytes are already stored, and rewriting
+        // them would be a no-op at best and a corruption window at worst.
+        if !path.exists() {
+            fs::write(&path, bytes)
+                .with_context(|| format!("writing config {}", digest.short()))?;
+        }
+        Ok(digest)
+    }
+
+    fn get(&self, digest: &Digest) -> Result<Vec<u8>> {
+        fs::read(self.blob_path(digest)).with_context(|| format!("no config {}", digest.short()))
+    }
+
+    fn set_active(&mut self, digest: &Digest) -> Result<()> {
+        // Promoting something that was never stored would leave every entry
+        // posted afterwards pointing at nothing.
+        if !self.blob_path(digest).exists() {
+            bail!("cannot promote {}: not stored", digest.short());
+        }
+        // HISTORY first, then the pointer. A crash between them leaves a
+        // promotion that is not yet active — re-running set_active is how that
+        // recovers. The other order leaves ACTIVE naming a digest HISTORY
+        // never recorded, which is the one a reader cannot reconstruct.
+        let mut hist = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(self.dir.join("HISTORY"))
+            .context("opening HISTORY")?;
+        writeln!(hist, "{digest}").context("appending to HISTORY")?;
+        hist.sync_all().context("syncing HISTORY")?;
+        Self::replace_atomically(&self.dir.join("ACTIVE"), digest.as_str())
+            .context("writing ACTIVE")?;
+        Ok(())
+    }
+
+    fn active(&self) -> Result<Option<Digest>> {
+        let path = self.dir.join("ACTIVE");
+        if !path.exists() {
+            return Ok(None);
+        }
+        let s = fs::read_to_string(&path).context("reading ACTIVE")?;
+        Ok(Some(Digest::parse(s.trim())?))
+    }
+
+    fn history(&self) -> Result<Vec<Digest>> {
+        let path = self.dir.join("HISTORY");
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let s = fs::read_to_string(&path).context("reading HISTORY")?;
+        let mut out: Vec<Digest> = s
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| Digest::parse(l.trim()))
+            .collect::<Result<_>>()?;
+        out.reverse(); // newest first
+        Ok(out)
+    }
 }
 
 /// The append-only record of what happened.
@@ -841,63 +968,27 @@ impl FileBook {
     }
 }
 
+impl FileBook {
+    fn configs(&self) -> Result<DirectoryConfigStore> {
+        DirectoryConfigStore::open(self.config_dir())
+    }
+}
+
 impl ConfigStore for FileBook {
     fn put(&mut self, bytes: &[u8]) -> Result<Digest> {
-        let digest = Digest::of(bytes);
-        let path = self.config_dir().join(digest.as_str());
-        // Content-addressed: identical bytes are already stored, and rewriting
-        // them would be a no-op at best and a corruption window at worst.
-        if !path.exists() {
-            fs::write(&path, bytes)
-                .with_context(|| format!("writing config {}", digest.short()))?;
-        }
-        Ok(digest)
+        self.configs()?.put(bytes)
     }
-
     fn get(&self, digest: &Digest) -> Result<Vec<u8>> {
-        let path = self.config_dir().join(digest.as_str());
-        fs::read(&path).with_context(|| format!("no config {}", digest.short()))
+        self.configs()?.get(digest)
     }
-
     fn set_active(&mut self, digest: &Digest) -> Result<()> {
-        // Promoting something that was never stored would leave every entry
-        // posted afterwards pointing at nothing.
-        if !self.config_dir().join(digest.as_str()).exists() {
-            bail!("cannot promote {}: not stored", digest.short());
-        }
-        fs::write(self.config_dir().join("ACTIVE"), digest.as_str())
-            .context("writing ACTIVE")?;
-        let mut hist = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(self.config_dir().join("HISTORY"))
-            .context("opening HISTORY")?;
-        writeln!(hist, "{digest}").context("appending to HISTORY")?;
-        Ok(())
+        self.configs()?.set_active(digest)
     }
-
     fn active(&self) -> Result<Option<Digest>> {
-        let path = self.config_dir().join("ACTIVE");
-        if !path.exists() {
-            return Ok(None);
-        }
-        let s = fs::read_to_string(&path).context("reading ACTIVE")?;
-        Ok(Some(Digest::parse(s.trim())?))
+        self.configs()?.active()
     }
-
     fn history(&self) -> Result<Vec<Digest>> {
-        let path = self.config_dir().join("HISTORY");
-        if !path.exists() {
-            return Ok(Vec::new());
-        }
-        let s = fs::read_to_string(&path).context("reading HISTORY")?;
-        let mut out: Vec<Digest> = s
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .map(|l| Digest::parse(l.trim()))
-            .collect::<Result<_>>()?;
-        out.reverse(); // newest first
-        Ok(out)
+        self.configs()?.history()
     }
 }
 
@@ -1380,6 +1471,52 @@ mod tests {
         b.set_active(&d2).unwrap();
         assert_eq!(b.history().unwrap(), vec![d2.clone(), d1]);
         assert_eq!(b.active().unwrap(), Some(d2));
+    }
+
+    #[test]
+    fn put_does_not_promote_and_identical_bytes_store_once() {
+        // ⭐ PLAN's seam: put is content-addressed and is not set_active.
+        // A store that promoted on write would make "which rules are in force"
+        // the last thing anybody saved, including a draft.
+        let dir = tmp();
+        let mut s = DirectoryConfigStore::open(&dir).unwrap();
+        let d = s.put(b"fee = 75bp").unwrap();
+        assert_eq!(s.active().unwrap(), None, "put must not move the pointer");
+        assert_eq!(s.put(b"fee = 75bp").unwrap(), d, "identical bytes, one digest");
+        assert!(
+            dir.join(d.as_str()).exists(),
+            "the blob is a file named by the hash",
+        );
+        s.set_active(&d).unwrap();
+        assert_eq!(s.active().unwrap(), Some(d.clone()));
+        assert_eq!(s.history().unwrap(), vec![d]);
+    }
+
+    #[test]
+    fn promoting_something_unstored_does_not_move_the_pointer() {
+        let mut s = DirectoryConfigStore::open(tmp()).unwrap();
+        let ghost = Digest::of(b"never stored");
+        assert!(s.set_active(&ghost).is_err());
+        assert_eq!(s.active().unwrap(), None);
+        assert!(s.history().unwrap().is_empty(), "a refused promotion is not history");
+    }
+
+    #[test]
+    fn set_active_replaces_the_pointer_atomically() {
+        // After a promotion the pointer is a complete digest, never a prefix:
+        // replace_atomically renames into place. A reader that saw a truncated
+        // ACTIVE would report "no configuration" on a book that has one.
+        let dir = tmp();
+        let mut s = DirectoryConfigStore::open(&dir).unwrap();
+        let d1 = s.put(b"one").unwrap();
+        let d2 = s.put(b"two").unwrap();
+        s.set_active(&d1).unwrap();
+        s.set_active(&d2).unwrap();
+        let raw = fs::read_to_string(dir.join("ACTIVE")).unwrap();
+        assert_eq!(raw, d2.as_str(), "ACTIVE is the digest, not a partial write");
+        assert_eq!(s.active().unwrap(), Some(d2.clone()));
+        assert_eq!(s.history().unwrap()[0], d2);
+        assert!(!dir.join("ACTIVE.tmp").exists(), "the temp does not linger");
     }
 
     #[test]

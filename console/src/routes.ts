@@ -271,6 +271,16 @@ export const ROUTES: readonly Route[] = [
     reads: ["getPendingFact"],
   },
   {
+    path: "/books/[book]/data/facts",
+    file: "books/[book]/data/facts/page.tsx",
+    reads: ["listFacts"],
+  },
+  {
+    path: "/books/[book]/data/facts/[fact]",
+    file: "books/[book]/data/facts/[fact]/page.tsx",
+    reads: ["getFact"],
+  },
+  {
     path: "/books/[book]/data/templates",
     file: "books/[book]/data/templates/page.tsx",
     reads: ["listTemplates"],

@@ -78,6 +78,8 @@ ROADMAP_ENGINE_BUILT = [
     "FX translation",
     "corporate actions",
     "persistence without a database",
+    "ConfigStore",
+    "fact plane",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",
@@ -89,6 +91,8 @@ ROADMAP_PHASE_ONE_MUST_NOT_STAY_OPEN = [
     "multi-currency",
     "corporate actions",
     "persistence without a database",
+    "Control plane",
+    "Fact plane",
 ]
 
 MIN_KB, MAX_KB = 60, 2048
