@@ -4,12 +4,15 @@ import { caller } from "@/lib/caller";
 import {
   activityOf,
   bookCapital,
+  capitalShown,
   endingCapital,
   isPosted,
+  partnerCapitalAccounts,
   partnersOf,
   remainingUndrawn,
   undrawnFigure,
   undrawnOf,
+  type PartnerCapitalAccount,
 } from "@/lib/capital";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
 import { money } from "@/lib/format";
@@ -39,6 +42,14 @@ export const dynamic = "force-dynamic";
  * inception-to-date, including undated entries. A dated suffix drops them.
  * Remaining undrawn is the since-inception figure; a month chip is the
  * window's commits and calls, not outstanding.
+ *
+ * ⭐ THE CAPITAL ACCOUNT STATEMENT COMPOSES ON THIS URL. Beginning →
+ * contributions → distributions → allocated plugs → ending, partner by
+ * partner. Period rows read the Loan-shaped `nav-*` fold `/nav` already
+ * cites — `capital-*` is Activity, and that fold makes every beginning
+ * 0. Allocated income / expense / unrealized stay unset: there is no
+ * partner dim on those accounts, and an equal share of book NAV is the
+ * defect. One chrome list (`screensFor`); `/strikes` stays ABOR NAV.
  */
 async function Capital({
   params,
@@ -72,6 +83,15 @@ async function Capital({
   const window = filter.startsWith("capital-") ? filter.slice("capital-".length) : "";
   const dated = window.length > 0;
   const { accounts } = await listAccounts(c, book, view, filter);
+  // Period statements need the Loan-shaped fold. `capital-*` is Activity
+  // (beginning always 0); `nav-*` is the two-cut fold `/nav` already cites.
+  const periodAccounts = dated
+    ? (await listAccounts(c, book, view, "nav", window)).accounts
+    : accounts;
+  const statements = partnerCapitalAccounts(
+    periodAccounts,
+    dated ? "period" : "inception",
+  );
 
   const partners = partnersOf(accounts);
   const activity = activityOf(accounts);
@@ -149,6 +169,29 @@ async function Capital({
         </div>
       </div>
 
+      <div className="tb" role="table" aria-label="Capital account statement">
+        {statements.length === 0 ? (
+          <div className="posgroup">
+            <div className="posacct">Capital account</div>
+            <div className="tbrow static" role="row">
+              <span role="cell">
+                No partner-capital accounts
+                <span className="at">
+                  a partner cut is unset, not an equal share of book NAV
+                </span>
+              </span>
+              <span role="cell" className="num">
+                —
+              </span>
+            </div>
+          </div>
+        ) : (
+          statements.map((s) => (
+            <Statement key={s.accountName} row={s} dated={dated} />
+          ))
+        )}
+      </div>
+
       <div className="tb" role="table" aria-label="Undrawn commitment">
         <div className="tbrow tbhead" role="row">
           <span role="columnheader">Account</span>
@@ -182,8 +225,10 @@ async function Capital({
       </div>
 
       <p className="note">
-        Record a contribution, distribution, commitment, or capital call against
-        the seeded capital rules.
+        Allocated income, expense, and unrealized stay unset until a
+        partner-cut exists — not an equal share of book NAV, not a silent
+        zero. Book plugs remain on the NAV roll-forward. Not IRR, not a
+        waterfall.
         {" · "}
         <Link href={`/books/${book}/record`}>Record an event</Link>
         {" · "}
@@ -259,6 +304,109 @@ function Row({
         {money(endingCapital(a).toString())}
       </span>
     </Link>
+  );
+}
+
+function Statement({
+  row: s,
+  dated,
+}: {
+  row: PartnerCapitalAccount;
+  dated: boolean;
+}) {
+  const beginningWhy = dated
+    ? s.beginning === null
+      ? "beginning stays unset until a dated prefix can support the cut — not a measured zero"
+      : "as-of the day before this window — the same Loan-shaped fold /nav cites"
+    : "since inception has no prior prefix — not a measured zero beginning";
+  const endingWhy = dated
+    ? s.ending === null
+      ? "ending stays unset until a dated journal can support the cut"
+      : "as-of this window's last day, credit-normal"
+    : s.ending === null
+      ? "unset — this partner has not posted, not a measured zero capital"
+      : "inception-to-date ending — the same Ending the activity table cites";
+  return (
+    <div className="posgroup">
+      <div className="posacct">Capital account — {s.grain}</div>
+      <div className="tbrow static" role="row">
+        <span role="cell">
+          Beginning
+          <span className="at">{beginningWhy}</span>
+        </span>
+        <span role="cell" className="num">
+          {capitalShown(s.beginning)}
+        </span>
+      </div>
+      <div className="tbrow static" role="row">
+        <span role="cell">
+          Contributions
+          <span className="at">
+            {s.contributions === null
+              ? "unset — no partner cut this window"
+              : "period credits on this partner — the same In above, not an equal share"}
+          </span>
+        </span>
+        <span role="cell" className="num">
+          {capitalShown(s.contributions)}
+        </span>
+      </div>
+      <div className="tbrow static" role="row">
+        <span role="cell">
+          Distributions
+          <span className="at">
+            {s.distributions === null
+              ? "unset — no partner cut this window"
+              : "period debits on this partner — the same Out above"}
+          </span>
+        </span>
+        <span role="cell" className="num">
+          {capitalShown(s.distributions)}
+        </span>
+      </div>
+      <div className="tbrow static" role="row">
+        <span role="cell">
+          Allocated income
+          <span className="at">
+            unset — no partner-cut of period income, not an equal share of book NAV
+          </span>
+        </span>
+        <span role="cell" className="num">
+          {capitalShown(s.allocatedIncome)}
+        </span>
+      </div>
+      <div className="tbrow static" role="row">
+        <span role="cell">
+          Allocated expense
+          <span className="at">
+            unset — no partner-cut of period expense, not a silent zero share
+          </span>
+        </span>
+        <span role="cell" className="num">
+          {capitalShown(s.allocatedExpense)}
+        </span>
+      </div>
+      <div className="tbrow static" role="row">
+        <span role="cell">
+          Unrealized
+          <span className="at">
+            unset — no partner-cut of Unrealized gain — not a silent equal allocation
+          </span>
+        </span>
+        <span role="cell" className="num">
+          {capitalShown(s.unrealized)}
+        </span>
+      </div>
+      <div className="tbfoot static" role="row">
+        <span role="cell">
+          Ending
+          <small>{endingWhy}</small>
+        </span>
+        <span role="cell" className="num">
+          {capitalShown(s.ending)}
+        </span>
+      </div>
+    </div>
   );
 }
 

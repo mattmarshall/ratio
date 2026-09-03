@@ -15,8 +15,9 @@
 // and #83 (budget). A project book that wore that warehouse is #66 (budget/WIP)
 // and #85 (billing); remaining-to-bill and collections compose onto
 // `/billing` (#100). An investment book cites partner capital first — funded
-// activity and commitment / undrawn on the same `/capital` URL (#70, #82) —
-// then a period NAV roll-forward (#96), then the ABOR warehouse. The
+// activity, commitment / undrawn, and a per-partner capital account
+// statement on the same `/capital` URL (#70, #82, #102) — then a period
+// NAV roll-forward (#96), then the ABOR warehouse. The
 // agreement screens stay shared: a rule set is the same document whichever
 // chart it posted.
 
@@ -107,9 +108,14 @@ export const PROJECT_SCREENS: readonly Screen[] = [
  * book of record still has to strike. Capital is who put money in and took
  * money out, and what remains callable, on the same journal. Commitment
  * and undrawn stay on `/capital` — one capital story, not a second URL.
- * A book that has never posted a commitment shows unset, not a callable zero.
- * `/nav` is the period roll-forward (beginning → plugs → ending), not a
- * replacement for `/strikes` (ABOR NAV). Unset stays unset.
+ * The per-partner capital account (beginning → contributions →
+ * distributions → allocated plugs → ending) composes onto that same
+ * URL. Allocated income / expense / unrealized stay unset when the
+ * journal has no partner cut — never a fake zero share, never a silent
+ * equal split of book NAV. A book that has never posted a commitment
+ * shows unset, not a callable zero. `/nav` is the period roll-forward
+ * (beginning → plugs → ending), not a replacement for `/strikes`
+ * (ABOR NAV). Unset stays unset.
  */
 export const INVESTMENT_SCREENS: readonly Screen[] = [
   { segment: "capital", label: "Capital activity", scoped: true, group: "book" },

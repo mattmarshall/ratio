@@ -445,6 +445,19 @@ the conserved one, and the kernel never said it was.
   zero. It cannot show IRR, TVPI / DPI, a waterfall, carried interest, a
   client portal, or wash sales. NAV strikes stay on `/strikes`. Remaining
   undrawn stays on `/capital`.
+- ⚠ **A per-partner capital-account walk-through (#102 / #27).** `/capital`
+  cites beginning → contributions → distributions → allocated income /
+  expense / unrealized → ending for each partner, composed from the same
+  partner In / Out #70 already names and the Loan-shaped `nav-*` fold
+  #96 already uses. Allocated plugs stay **unset** — the journal has no
+  ownership percentage, and an equal split of book NAV or a silent 0.00
+  share is the defect. `allocate_*_lp` posts an exact amount into partner
+  capital (already on In / Out). Since inception leaves beginning unset;
+  `capital-*` is Activity and cannot name a beginning stock. ⛔ The
+  walk-through cannot show IRR, TVPI / DPI, a waterfall, carried interest,
+  management-fee billing as a desk product, an LP portal, a future call
+  schedule, or K-1 packaging. `/strikes` stays ABOR NAV. Remaining undrawn
+  stays on #82. Book NAV roll-forward stays on #96.
 - ⚠ **A project change-order walk-through (#91 / #27).** CreateBook(Project)
   seeds `Approved change orders` / `Change-order authorization` keyed by
   work package (site / structure / finishes, plus unpartitioned) as equity,

@@ -132,15 +132,24 @@ __STYLE__
           distributions, transfers, ending capital) and partner-scoped
           commitments / undrawn on the same journal as NAV and exceptions —
           not a return, a benchmark, or attribution. Undrawn stays unset
-          until a commitment posts, not a callable zero. A period NAV
+          until a commitment posts, not a callable zero. The same
+          <code>/capital</code> URL cites a per-partner capital account
+          for a period: beginning capital → contributions → distributions
+          → allocated income/expense and unrealized → ending capital.
+          Allocated plugs stay unset when the journal has no partner cut —
+          never a fake zero share, never a silent equal split of book NAV.
+          A period NAV
           roll-forward at <code>/nav</code> cites beginning NAV →
           contributions → distributions → income/expense / unrealized →
           ending NAV for a month or year — two as-of cuts, unset when
           either cut has no journal prefix, never a fake zero NAV.
           Commitment and undrawn cancel in that figure. It is not IRR, a
           waterfall, or a replacement for NAV strikes. A capital-call
-          walk-through can record or ingest a call against a commitment; it
-          cannot show IRR, a waterfall, or a future call schedule. Fund books
+          walk-through can record or ingest a call against a commitment; a
+          capital-account walk-through can cite each partner's beginning,
+          activity, and ending against those same facts. Neither can show
+          IRR, a waterfall, a future call schedule, management-fee billing,
+          an LP portal, or K-1 packaging. Fund books
           keep the operations surface. A live walk-through does not yet post a
           construction job — CreateBook seeds the patterns; the seeded demo
           funds remain investment books.</li>
@@ -163,7 +172,9 @@ __STYLE__
           bank-feed OAuth or a client portal — and on the fund side it is
           still the exception queue, a difference at its own address, and
           whether a fund can close. Household budget envelopes, a project
-          budget, and partner capital accounts are now on the console.</li>
+          budget, and per-partner capital account statements (beginning →
+          activity → allocated plugs unset until a partner cut exists →
+          ending — not an equal split of book NAV) are now on the console.</li>
         </ul>
       </div>
     </div>
@@ -311,7 +322,7 @@ __STYLE__
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet, period P&amp;L, and net-worth bridge with transfers that are not trades, household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return) and a period NAV roll-forward (unset, not a fake zero), the exception queue, a difference at its own address, a book's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet, period P&amp;L, and net-worth bridge with transfers that are not trades, household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), a per-partner capital account statement (beginning → activity → allocated plugs stay unset without a partner cut, never an equal split of book NAV), and a period NAV roll-forward (unset, not a fake zero), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue

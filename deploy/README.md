@@ -286,8 +286,12 @@ commitment postings. CreateBook(Investment)
 lands on capital activity (funded partners plus commitment / undrawn —
 unset until a commitment posts, not a callable zero), then the fund ABOR
 warehouse. A capital-call walk-through can record `commit_lp` / `call_lp`
-or ingest `capital-calls`; it cannot show IRR, a waterfall, or a future
-call schedule. The live demo does not seed those baselines or any
+or ingest `capital-calls`; a capital-account walk-through can cite each
+partner's beginning, contributions, distributions, and ending on the
+same `/capital` page. Allocated income / expense / unrealized stay
+unset — not an equal share of book NAV. Neither can show IRR, a
+waterfall, a future call schedule, management-fee billing, an LP
+portal, or K-1 packaging. The live demo does not seed those baselines or any
 commitment postings.
 
 `entrypoint.sh` copies the seeded chart and config to `/tmp` at start, because a
