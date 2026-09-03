@@ -64,7 +64,10 @@ prefixes; the identity is which prefix was read. Rewriting the number while
 keeping this id is the silent defect — the digest still cites, and the
 number is somebody else's. -/
 structure StrikeId where
-  prefix : Nat
+  /-- The journal position the strike folded. Not `prefix` — that token
+  is a structure-field modifier in Lean 4, so a field of that name
+  parsed as no field at all. -/
+  pos : Nat
 deriving DecidableEq, Repr
 
 /-- A realized gain that was struck — the number somebody was paid on.
