@@ -67,6 +67,12 @@ BUILT=(
   # the lines is the cost of noticing.
   "independent Books"
   "WorkOS AuthKit"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED THEM, WHICH IS THE PROTOCOL.
+  # Wash sales are not on the refusal list — this check would have
+  # stayed green whatever was built. The sentence it matches is in the
+  # 2026-09-03 wash-sales amendment. #133 / #138 landed the engine
+  # without this file moving; adding the line is the cost of noticing.
+  "wash sales"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

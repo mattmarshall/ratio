@@ -88,8 +88,11 @@ __STYLE__
           is the store; a trial balance is a fold of it.</li>
           <li>Multi-currency, with conservation per currency and FX translation
           on every read.</li>
-          <li>Tax lots and the cost-basis methods a book elects, and corporate
-          actions in factor form — nothing in the journal is rewritten.</li>
+          <li>Tax lots and the cost-basis methods a book elects — including
+          wash sales when a fund writes a wash window
+          (<code>wash_window_days</code>; silence stays unset, not a
+          silent 30) — and corporate actions in factor form — nothing
+          in the journal is rewritten.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>That threshold as a term of the configuration rather than a
@@ -163,7 +166,12 @@ __STYLE__
           capital-account walk-through can cite each partner's beginning,
           activity, and ending against those same facts. Neither can show
           IRR, a waterfall, a future call schedule, management-fee billing,
-          an LP portal, or K-1 packaging. Fund books
+          an LP portal, or K-1 packaging. A live walk-through of
+          investment lot relief can elect a wash window, attach a
+          deferred loss to an open replacement, and show a later sale
+          taking the adjusted basis; silence stays unset, not a silent
+          30. It cannot show a restatement of a struck figure, a wash
+          flag on the console, or a non-US holding-period variant. Fund books
           keep the operations surface. An Operating book cites a balance
           sheet, a period income statement, and a period cash-flow
           statement that tie to the trial

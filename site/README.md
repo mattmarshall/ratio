@@ -258,9 +258,11 @@ page would read as a reference customer. Keep it unnamed.
   trust has to be accurate about itself, or it argues against itself.
 - **The roadmap's built / not-yet-built columns are checked against PLAN.md.**
   `verify.py` fails if the page still lists tax lots, FX translation, corporate
-  actions, or journal persistence as unbuilt, or if it claims Postgres is
-  running. Postgres stays on the spec side: Stage E is open, and PLAN's
-  "four of these were built" table records it as spec-only.
+  actions, journal persistence, or wash sales as unbuilt, or if it claims
+  Postgres is running. Postgres stays on the spec side: Stage E is open, and
+  PLAN's "four of these were built" table records it as spec-only. Wash
+  sales are the engine window and the attach write (#133 / #138), not a
+  console cite or `WashRestatement`.
 
 ## American English
 

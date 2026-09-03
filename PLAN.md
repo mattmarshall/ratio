@@ -976,6 +976,56 @@ performance reporting, a tax-filing workflow, or a general
 workflow engine. Aging is the same-day amendment above. The close may
 remain CLI/API.
 
+### Amendment, 2026-09-03 — wash sales in the lot-relief engine, and nothing on the refusal list moved
+
+The lot engine relieved under the method a book elected. A repurchase
+inside a jurisdiction's window did not disallow the loss or attach it
+to the replacement. Conservation held, the trial balance tied, and the
+realized gain was somebody else's — the figure with no counterparty.
+This file named tax lots and cost basis as built and said nothing
+about wash sales.
+
+What landed is the wash window as a term of the configuration, the
+write onto an open replacement, and the fold that applies both
+halves, on main via #133 (Lean / TLA) and #138 (Rust).
+
+**The window is a jurisdiction's number, not a constant in the
+arithmetic.** `RuleSet.wash_window_days: Option<i64>` is resolved per
+entry the way `lot_method` and `long_term_days` are. A fund that wants
+US wash writes `wash_window_days = 30`. `Ratio.Lots.Wash`.
+`//tla:wash_engine_check`. The window reaches both ways. The probe
+`//tla:unattached_wash_check` flips the write off and
+`ADisallowedLossIsOnTheReplacement` goes red.
+
+**Attach, then re-rank.** `attachTo` / `Holding::attach` writes the
+disallowed amount onto an open replacement — never a lot the sale
+took. Ranked methods re-key so later HIFO/LOFO sees the new basis;
+FIFO keeps sequence order. A negative deferral is refused (that would
+be washing a gain). `a_gain_is_never_washed`.
+`disallowing_without_attaching_destroys_the_loss`.
+
+**The fold plans, then writes.** After a sale, match oldest in-window
+open lots; after a purchase, match `pending_wash` against the new
+lots. A split that will not divide refuses before any write lands.
+Holding-period transfer is the US rule already named in Lean
+(`replacementAcquired`); the replacement's acquisition date becomes
+the original lot's, not the repurchase's.
+
+**Unset stays unset.** A book that never elected a window has no
+window — not a silent 30. Silence does not serialize (digest-stable).
+A silent 30 would have restated every in-window loss on every
+existing book. A negative window is refused.
+
+**What a walk-through can and cannot show** (demo readiness, #27). It
+can elect a wash window, attach a deferred loss to an open
+replacement, and show a later sale taking the adjusted basis. It
+cannot show `WashRestatement` (a struck figure that a later repurchase
+moved must not change silently), a wash flag on the console or in the
+demo, or a non-US holding-period variant. Those remain on #5. This
+amendment does not close #5. MinTax stays on #9. None of those are on
+the *Explicitly not building* list, and this amendment adds none of
+them.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

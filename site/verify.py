@@ -71,6 +71,9 @@ PLAN_MARKS_ENGINE_DONE = [
     "multi-currency and FX",
     "corporate actions",
     "Built with no database at all",
+    # ⚠ #133 / #138 landed the wash window and the Rust engine; PLAN
+    # named tax lots and said nothing. Same class of defect as #67.
+    "wash sales",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -80,6 +83,7 @@ ROADMAP_ENGINE_BUILT = [
     "persistence without a database",
     "ConfigStore",
     "fact plane",
+    "wash sales",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",
