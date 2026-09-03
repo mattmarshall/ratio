@@ -640,6 +640,52 @@ Resources:
         - {Key: project, Value: ratio}
         - {Key: purpose, Value: demo}
 
+  # ⛔ THE GRANT CI CAN APPLY. The execution role's identity policy in
+  # bootstrap.yaml already names s3:GetObject/PutObject on journals/*
+  # (issue #24, Sid TheJournal). Bootstrap is applied by hand. That Sid
+  # shipped in #84 and the live role never received it — so after #126
+  # bound before hydrate, GET /balance.json died:
+  #
+  #   ratio-demo-execution is not authorized to perform s3:PutObject on
+  #   arn:aws:s3:::ratio-demo-scale-…/journals/book/journal/0000…1
+  #   because no identity-based policy allows the action
+  #
+  # Same account: a resource-based Allow is enough even with no identity
+  # Allow. The deploy role already has s3:PutBucketPolicy on this bucket
+  # and cannot iam:PutRolePolicy on ratio-demo-execution. Putting the
+  # grant here is what makes the next app deploy apply it.
+  #
+  # ⛔ NO DeleteObject. Same reason as TheJournal: a delete is a
+  # truncation wearing an IAM grant. PutObject is the conditional PUT
+  # (`If-None-Match:*`) hydrate and append both use — `tla/S3Journal.tla`.
+  # GetObject and ListBucket are the read that /balance.json does after
+  # the seed lines have been claimed.
+  ScaleBucketJournalPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ScaleBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: TheExecutionRoleWritesTheJournal
+            Effect: Allow
+            Principal:
+              AWS: !Ref ExecutionRoleArn
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+            Resource: !Sub "${ScaleBucket.Arn}/journals/*"
+          - Sid: TheExecutionRoleListsTheJournal
+            Effect: Allow
+            Principal:
+              AWS: !Ref ExecutionRoleArn
+            Action:
+              - s3:ListBucket
+            Resource: !GetAtt ScaleBucket.Arn
+            Condition:
+              StringLike:
+                s3:prefix: "journals/*"
+
   # ── The two roles a task assumes ────────────────────────────────────────
   #
   # ⛔ THEY ARE DIFFERENT ROLES BECAUSE THEY ACT AT DIFFERENT TIMES. The
