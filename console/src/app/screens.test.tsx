@@ -258,7 +258,7 @@ describe("a first-class book", () => {
       calendar: "",
       declared: false,
       recognisedThrough: null,
-    })) as typeof wire.getView;
+    })) as unknown as typeof wire.getView;
     try {
       const View = (await import("./books/[book]/views/[view]/page")).default;
       await renderAsync(View({ params: params({ book: "household", view: "book" }) }));
