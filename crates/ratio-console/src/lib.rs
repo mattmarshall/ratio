@@ -537,6 +537,65 @@ impl Console {
         Ok(pb::ListPostingsResponse { postings: out, next_page_token: String::new() })
     }
 
+    /// One journal entry, and the postings the rule produced.
+    ///
+    /// ⭐ THE CITATION HOP. A posting names this id; this is what makes that
+    /// name a URL rather than plain text. Same `pb::Entry` ApplyEvent returns,
+    /// built by the same helper, so a commit and a later Get cannot disagree
+    /// about the resource they both claim to be.
+    pub fn get_entry(&self, name: &str) -> Result<pb::Entry> {
+        let (fund, id) = nested_id(name, "funds", "entries")?;
+        // ⛔ TENANCY BEFORE THE LOOKUP. A caller who may not see this book is
+        // refused here — not after we have said whether the entry exists. The
+        // denial must not depend on the caller's id, or "no fund" and "no
+        // entry" tell an outsider which is which.
+        let path = self.book_path(&fund)?;
+        let b = FileBook::open(&path)?;
+        let chart = b.accounts()?;
+        let default_view = self.default_view_of(&fund)?;
+        let mut found = None;
+        b.for_each_entry_since(0, &mut |e| {
+            if e.id == id {
+                found = Some(e.clone());
+            }
+            Ok(())
+        })?;
+        let entry = found.with_context(|| format!("no entry {id:?} in this journal"))?;
+        Ok(Self::entry_of(&fund, &default_view, &chart, &entry))
+    }
+
+    /// The wire `Entry` for one journal row — ApplyEvent and GetEntry share it.
+    ///
+    /// ⚠ ACCOUNT NAMES ARE VIEW-SCOPED. GetEntry is a fund-level RPC, and a
+    /// name that omitted the view would not resolve. Both callers name the
+    /// default view, the same one ApplyEvent's NAV quote is about.
+    fn entry_of(
+        fund: &str,
+        view: &str,
+        chart: &[ratio_store::Account],
+        entry: &ratio_store::JournalEntry,
+    ) -> pb::Entry {
+        pb::Entry {
+            name: format!("funds/{fund}/entries/{}", entry.id),
+            entry_id: entry.id.clone(),
+            memo: entry.memo.clone(),
+            config_digest: entry.config.as_str().to_string(),
+            postings: entry
+                .postings
+                .iter()
+                .map(|p| pb::EntryPosting {
+                    account: format!("funds/{fund}/views/{view}/accounts/{}", p.dim),
+                    display_name: chart
+                        .iter()
+                        .find(|a| a.dim == p.dim)
+                        .map(|a| a.display_name.clone())
+                        .unwrap_or_else(|| format!("dimension {}", p.dim)),
+                    amount: p.amount.to_string(),
+                })
+                .collect(),
+        }
+    }
+
     pub fn get_posting(&self, name: &str) -> Result<pb::Posting> {
         // `funds/f/views/v/accounts/1/postings/t1.0` — one segment deeper than
         // `view_scoped_id` handles, and the id itself contains a dot rather than
@@ -794,7 +853,7 @@ impl Console {
 
         let entry = ratio_store::JournalEntry {
             id: id.to_string(),
-            memo: memo.clone(),
+            memo,
             config: digest.clone(),
             postings: postings.clone(),
             trade_date,
@@ -843,27 +902,7 @@ impl Console {
         };
 
         Ok(pb::ApplyEventResponse {
-            entry: Some(pb::Entry {
-                name: format!("funds/{fund}/entries/{id}"),
-                entry_id: id.to_string(),
-                memo,
-                config_digest: digest.as_str().to_string(),
-                postings: postings
-                    .iter()
-                    .map(|p| pb::EntryPosting {
-                        account: format!(
-                            "funds/{fund}/views/{default_view}/accounts/{}",
-                            p.dim
-                        ),
-                        display_name: chart
-                            .iter()
-                            .find(|a| a.dim == p.dim)
-                            .map(|a| a.display_name.clone())
-                            .unwrap_or_else(|| format!("dimension {}", p.dim)),
-                        amount: p.amount.to_string(),
-                    })
-                    .collect(),
-            }),
+            entry: Some(Self::entry_of(&fund, &default_view, &chart, &entry)),
             validate_only: req.validate_only,
             net_asset_value,
             previous_net_asset_value: previous,
@@ -5327,7 +5366,78 @@ mod tests {
             // And each line is citable on its own.
             let one = c.get_posting(&lines[0].name).unwrap();
             assert_eq!(one.entry_id, lines[0].entry_id);
+            // ⭐ THE HOP THE POSTING USED TO PRINT AS TEXT. The id GetPosting
+            // carries is a GetEntry name, and the two agree about the memo
+            // and the configuration that produced the line.
+            let entry = c
+                .get_entry(&format!("funds/demo/entries/{}", one.entry_id))
+                .unwrap();
+            assert_eq!(entry.entry_id, one.entry_id);
+            assert_eq!(entry.memo, one.memo);
+            assert_eq!(entry.config_digest, one.config_digest);
+            assert_eq!(entry.name, format!("funds/demo/entries/{}", one.entry_id));
+            assert!(
+                entry.postings.iter().any(|p| p.amount == one.amount),
+                "the entry must carry the posting that cited it"
+            );
         }
+    }
+
+    #[test]
+    fn a_journal_entry_is_citable_by_id() {
+        let d = fresh("getentry");
+        book(&d);
+        let c = Console::new(&d);
+        let e = c.get_entry("funds/demo/entries/t1").unwrap();
+        assert_eq!(e.entry_id, "t1");
+        assert_eq!(e.memo, "buy");
+        assert_eq!(e.name, "funds/demo/entries/t1");
+        assert!(!e.config_digest.is_empty(), "an entry cites the configuration that posted it");
+        assert_eq!(e.postings.len(), 2, "a buy moves two accounts");
+        // ⚠ VIEW-SCOPED, so a pasted name resolves after the jobs moved under
+        // `/books`. A fund-only account name would 404 in the confident voice.
+        assert!(
+            e.postings.iter().all(|p| p.account.contains("/views/book/accounts/")),
+            "account names must name the default view: {:?}",
+            e.postings.iter().map(|p| &p.account).collect::<Vec<_>>(),
+        );
+        let miss = c.get_entry("funds/demo/entries/nope");
+        assert!(miss.is_err(), "an id the journal does not have is an absence");
+        assert!(
+            format!("{:#}", miss.unwrap_err()).contains("no entry"),
+            "the 404 mapping in watch.rs keys on this phrase",
+        );
+    }
+
+    #[test]
+    fn apply_event_and_get_entry_agree_about_what_was_posted() {
+        // ⭐ TWO PATHS, ONE RESOURCE. ApplyEvent returns an Entry; GetEntry
+        // must return the same one, or a citation from the ticket to the
+        // journal page is a different figure wearing the same id.
+        let d = fresh("entryroundtrip");
+        book(&d);
+        promote(&d, R1, "e.marsh", "fee_q2");
+        let c = Console::new(&d);
+        let done = c
+            .apply_event(&pb::ApplyEventRequest {
+                parent: "funds/demo".into(),
+                rule_id: "fee".into(),
+                event_id: "acc-cite".into(),
+                amount: "1000000.00".into(),
+                days: "30".into(),
+                instrument: String::new(),
+                quantity: String::new(),
+                trade_date: None,
+                validate_only: false,
+            })
+            .unwrap();
+        let posted = done.entry.expect("a commit returns the entry");
+        let fetched = c.get_entry(&posted.name).unwrap();
+        assert_eq!(fetched.name, posted.name);
+        assert_eq!(fetched.entry_id, posted.entry_id);
+        assert_eq!(fetched.memo, posted.memo);
+        assert_eq!(fetched.config_digest, posted.config_digest);
+        assert_eq!(fetched.postings, posted.postings);
     }
 
     #[test]

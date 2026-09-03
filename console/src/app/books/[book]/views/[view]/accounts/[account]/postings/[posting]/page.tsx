@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { caller } from "@/lib/caller";
 import { money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
@@ -36,7 +37,7 @@ async function PostingDetail({
         <div className="prov">
           configuration <span className="g">{p.configDigest.slice(0, 12)}…</span>
           <br />
-          entry {p.entryId}
+          <Link href={`/books/${fund}/entries/${p.entryId}`}>entry {p.entryId}</Link>
         </div>
       </div>
     </aside>

@@ -37,6 +37,7 @@ import type {
   CorporateAction,
   Delivery,
   DiffConfigVersionsResponse,
+  Entry,
   ExplainNavStrikeResponse,
   Fund,
   IngestDeliveryRequest,
@@ -273,6 +274,9 @@ export const listRules = (c: Caller, fund: string) =>
 // GET /v1/{name=funds/*/rules/*}
 export const getRule = (c: Caller, fund: string, id: string) =>
   send<Rule>(c, `/funds/${fund}/rules/${id}`);
+// GET /v1/{name=funds/*/entries/*}
+export const getEntry = (c: Caller, fund: string, id: string) =>
+  send<Entry>(c, `/funds/${fund}/entries/${id}`);
 // GET /v1/{parent=funds/*}/templates
 export const listTemplates = (c: Caller, fund: string) =>
   send<ListTemplatesResponse>(c, `/funds/${fund}/templates`);

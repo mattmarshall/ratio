@@ -1,0 +1,13 @@
+{
+  "name": "funds/harbourline-global-value/entries/e-0004",
+  "entryId": "e-0004",
+  "memo": "Purchase of 1,000 ACME",
+  "configDigest": "9f2c1ab7de40551c",
+  "postings": [
+    {
+      "account": "funds/harbourline-global-value/views/abor/accounts/1010",
+      "displayName": "Cash and equivalents",
+      "amount": "-33288000"
+    }
+  ]
+}

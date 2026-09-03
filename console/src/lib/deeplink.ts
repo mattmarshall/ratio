@@ -16,11 +16,9 @@
  * a whole resource name is translated — and therefore the only place the rename
  * can be wrong.
  *
- * ⚠ `funds/{fund}/entries/{entry}` IS ABSENT BECAUSE THERE IS NO SCREEN — see
- * #52. It is a real pattern in the contract, the posting screen prints the entry
- * id it came from as plain text, and no RPC fetches one. A translator that
- * invented `/books/f/entries/5` would be offering a 404 in the confident voice it
- * uses for the fifteen that work. Delete this note when a page lands.
+ * ⭐ `entries` LANDS ON `/books/{book}/entries/{entry}` — the page #52 asked
+ * for. The contract name stays `funds/{fund}/entries/{entry}`; the rewrite
+ * below is the same one every other book job takes.
  */
 export const COLLECTION_TO_SEGMENT: Record<string, string> = {
   books: "books",
@@ -32,6 +30,7 @@ export const COLLECTION_TO_SEGMENT: Record<string, string> = {
   positions: "positions",
   lots: "lots",
   rules: "rules",
+  entries: "entries",
   navStrikes: "strikes",
   changeLogEntries: "changes",
   configVersions: "config",
@@ -127,6 +126,8 @@ export function candidatesForId(
       href: `${scoped}/positions/${e}`, keywords: "position,instrument,holding,lots" },
     { key: "accounts", label: `Open “${raw}” as an account`,
       href: `${scoped}/accounts/${e}`, keywords: "account,ledger,trial balance,dimension" },
+    { key: "entries", label: `Open “${raw}” as a journal entry`,
+      href: `${plain}/entries/${e}`, keywords: "entry,journal,posting,provenance" },
     { key: "strikes", label: `Open “${raw}” as a NAV strike`,
       href: `${scoped}/strikes/${e}`, keywords: "strike,nav,valuation,date" },
     { key: "rules", label: `Open “${raw}” as a rule`,

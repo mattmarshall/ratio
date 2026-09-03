@@ -74,6 +74,7 @@ pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/{name=funds/*/templates/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/rules" },
     Route { method: "GET", template: "/v1/{name=funds/*/rules/*}" },
+    Route { method: "GET", template: "/v1/{name=funds/*/entries/*}" },
     // The one write. A custom method (AIP-136) because recording an event is a
     // domain operation with a computed result, not a Create of the thing the
     // caller sent.
@@ -193,6 +194,9 @@ pub fn serve(
         }
         ["funds", id, "rules"] => to_json(&console.list_rules(&format!("funds/{id}"))?)?,
         ["funds", id, "rules", r] => to_json(&console.get_rule(&format!("funds/{id}/rules/{r}"))?)?,
+        ["funds", id, "entries", e] => {
+            to_json(&console.get_entry(&format!("funds/{id}/entries/{e}"))?)?
+        }
         ["funds", id, "deliveries"] => {
             to_json(&console.list_deliveries(&format!("funds/{id}"))?)?
         }

@@ -70,19 +70,20 @@ fetched from the browser at all — there is no search RPC in the contract, and
 ⛔ **So a pasted id offers every route it could name and guesses none.** The id
 namespaces collide and it is not close: a break is `cash-usd-2026-02-26`, a NAV
 strike is `2026-02-26`, an account is `1010` and so is a lot. Nothing here can
-look any of them up, so `deeplink.ts` offers all eleven under *Open by id* and
+look any of them up, so `deeplink.ts` offers all twelve under *Open by id* and
 shows the URL each would go to. A palette that picked one would be the console
 asserting a fact it has not checked. A pasted *resource name* is different — the
 string says which resource it is, so that resolves to exactly one URL, through the
-one table in this codebase that translates a whole name. ⚠ Seven of its fifteen
+one table in this codebase that translates a whole name. ⚠ Seven of its
 collections are spelled differently on the two sides (`navStrikes` → `strikes`,
 `changeLogEntries` → `changes`, and five more), which is why the table exists and
 why `deeplink.test.ts` pins every one.
 
-⚠ **Two contract resources have no screen, and the palette is where that showed
-up**: `funds/{fund}/entries/{entry}` (#52) and `funds/{fund}/views/{view}` (#53).
-`hrefForResourceName` refuses the first and lands the second on its queue, both
-with the issue number at the line that does it.
+⚠ **#52 and #53 were the two contract resources with no screen**, and the
+palette is where that showed up. Both now have pages: a view lands on
+`/books/{book}/views/{view}`, and a journal entry lands on
+`/books/{book}/entries/{entry}`. The posting screen's provenance is a link,
+not `entry {id}` as plain text.
 
 ⚠ **kbar's `KBarAnimator` and `KBarPositioner` are not used**, and that is
 deliberate — the animator is invisible without the Web Animations API and builds

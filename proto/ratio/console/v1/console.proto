@@ -258,6 +258,18 @@ service Console {
     };
   }
 
+  // Gets one journal entry, with the postings the rule produced. (AIP-131)
+  //
+  // ⭐ THE CITATION HOP. Every posting names the entry it came from. Without
+  // this, that name is an identifier printed as text — the chain the console
+  // exists to keep open. The resource pattern stays `funds/{fund}/entries/{entry}`
+  // because that is what ApplyEvent already writes; the console URL is
+  // `/books/{book}/entries/{entry}`, rewritten like every other book job.
+  rpc GetEntry(GetEntryRequest) returns (Entry) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/entries/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
   // Files received on the data plane, newest first. (AIP-132)
   rpc ListDeliveries(ListDeliveriesRequest) returns (ListDeliveriesResponse) {
     option (google.api.http) = {get: "/v1/{parent=funds/*}/deliveries"};
@@ -1930,7 +1942,14 @@ message Entry {
 }
 
 message EntryPosting {
-  // The account, as a resource name: `funds/{fund}/accounts/{account}`.
+  // The account, as a resource name:
+  // `funds/{fund}/views/{view}/accounts/{account}`.
+  //
+  // ⚠ VIEW-SCOPED, even though GetEntry is a fund-level RPC. A name that
+  // omitted the view would not resolve after the jobs moved under `/books`;
+  // ApplyEvent and GetEntry both name the book's default view, the same one
+  // ApplyEvent's NAV quote is about. The chart itself does not depend on a
+  // view; only its totals do.
   string account = 1 [
     (google.api.field_behavior) = OUTPUT_ONLY,
     (google.api.resource_reference).type = "ratio.fastverk.dev/Account"
@@ -1940,6 +1959,13 @@ message EntryPosting {
 
   // Minor units, as a string. Signed: a debit is positive.
   string amount = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message GetEntryRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Entry"
+  ];
 }
 
 message GetRuleRequest {

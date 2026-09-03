@@ -69,6 +69,7 @@ const ROUTES = [
   [/^\/v1\/funds\/[^/]+\/corporateActions\/[^/:]+$/, "corporateActions:first"],
   [/^\/v1\/funds\/[^/]+\/changeLogEntries$/, "changeLogEntries"],
   [/^\/v1\/funds\/[^/]+\/changeLogEntries\/[^/:]+$/, "changeLogEntries:first"],
+  [/^\/v1\/funds\/[^/]+\/entries\/[^/:]+$/, "entry"],
 ];
 
 function body(name) {

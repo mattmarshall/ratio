@@ -274,6 +274,16 @@ describe("the command palette", () => {
     );
   });
 
+  it("opens a pasted journal entry on the entry itself", async () => {
+    // ⭐ #52. The name every posting cites used to match nothing because
+    // there was no screen. The palette must not keep compensating that way.
+    renderConsole();
+    await type(`funds/${FUND}/entries/5`);
+    await waitFor(() => expect(screen.getAllByText(/^Open funds\//)).toHaveLength(1));
+    fireEvent.click(await row(/^Open funds\//));
+    expect(push).toHaveBeenCalledWith(`/books/${FUND}/entries/5`);
+  });
+
   it("opens a pasted book of record on the view itself", async () => {
     // ⭐ #53. The name ListViews returns used to land on breaks because the
     // view segment had no page. The palette must not compensate that way.
@@ -302,14 +312,10 @@ describe("the command palette", () => {
     renderConsole();
     // ⚠ A RESOURCE NAME IT CANNOT TRANSLATE, WHICH IS THE ONLY WAY TO EMPTY THIS
     // PALETTE. Any bare word of two characters or more is a plausible id, so
-    // "Open by id" always has eleven routes to offer — a garbage query still
+    // "Open by id" always has twelve routes to offer — a garbage query still
     // fills the list. A string with slashes in it is a NAME, and a name the
     // table does not know produces nothing at all.
-    //
-    // ⭐ This is exactly the entry resource of #52: declared in the contract,
-    // carried in payloads, and given no screen. The palette says so instead of
-    // inventing `/books/{f}/entries/5`.
-    await type(`funds/${FUND}/entries/5`);
+    await type(`funds/${FUND}/whatever/x`);
     expect(await screen.findByText("Nothing matches.")).toBeTruthy();
     // ⛔ The listbox stays in the document even with nothing in it: `KBarSearch`
     // points `aria-controls` at its id, and removing it leaves a combobox naming
