@@ -138,4 +138,34 @@ describe("authenticated /books", () => {
     expect(layoutErr).not.toBeInstanceOf(AuthError);
     expect(signInRedirect(layoutErr)).toBe("/signin?returnTo=%2Fbooks");
   });
+
+  // ⛔ THE OTHER PRODUCTION FAILURE, NAMED. AuthKit had a session; the
+  // API was rolling and GET /books answered 503; `listBooks` threw
+  // `Refused`; `orAuth` rethrew it; Next redacted the page to digest
+  // `2106392403`. A 503 is not a missing session — the operator stays
+  // on /books and can try again.
+  it("renders a recoverable status when the API answers 503, instead of throwing Refused", async () => {
+    vi.resetModules();
+    const { Refused } = await import("@/wire/client");
+    listBooks.mockRejectedValue(new Refused(503, "unavailable"));
+    listFunds.mockRejectedValue(new Refused(503, "unavailable"));
+    headersMock.mockResolvedValue(
+      new Headers({
+        "x-workos-middleware": "true",
+        "x-workos-session": "sealed",
+        "x-pathname": "/books",
+      }),
+    );
+
+    const { default: Books } = await import("./page");
+    await renderAsync(Books());
+    expect(screen.getByRole("status").textContent).toContain(
+      "temporarily unavailable",
+    );
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+
+    const { default: BooksLayout } = await import("./layout");
+    await renderAsync(BooksLayout({ children: null }));
+    expect(screen.getAllByRole("status").length).toBeGreaterThan(0);
+  });
 });

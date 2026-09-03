@@ -91,6 +91,11 @@ describe("orAuth", () => {
     await expect(
       orAuth(Promise.reject(new Refused(400, "no figure"))),
     ).rejects.toBeInstanceOf(Refused);
+    // ⛔ A 503 IS orTransient'S JOB, NOT A SIGN-IN. Folding it in here
+    // would send a signed-in operator to /signin while the API rolls.
+    await expect(
+      orAuth(Promise.reject(new Refused(503, "unavailable"))),
+    ).rejects.toBeInstanceOf(Refused);
   });
 
   it("returns the value when the read succeeded", async () => {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Unavailable } from "@/components/Unavailable";
 import { WorkspaceSwitch } from "@/components/WorkspaceSwitch";
 import { books as booksForRequest } from "@/lib/data";
 import { count } from "@/lib/format";
@@ -13,7 +14,11 @@ export const dynamic = "force-dynamic";
  * the same list filtered by the template CreateBook wrote.
  */
 export default async function Projects() {
-  const books = (await booksForRequest()).filter((b) => b.kind === "PROJECT");
+  const booksRead = await booksForRequest();
+  if (booksRead.unavailable !== null) {
+    return <Unavailable why={booksRead.unavailable} />;
+  }
+  const books = booksRead.value.filter((b) => b.kind === "PROJECT");
 
   return (
     <main className="queue">
