@@ -84,6 +84,12 @@ __STYLE__
           proved rather than assumed.</li>
           <li>A linted service contract, and a server that refuses any
           transaction which fails to balance.</li>
+          <li>The append-only journal — persistence without a database. The log
+          is the store; a trial balance is a fold of it.</li>
+          <li>Multi-currency, with conservation per currency and FX translation
+          on every read.</li>
+          <li>Tax lots and the cost-basis methods a book elects, and corporate
+          actions in factor form — nothing in the journal is rewritten.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>That threshold as a term of the configuration rather than a
@@ -94,6 +100,10 @@ __STYLE__
           <li>The gate on a close: a fund refuses its own NAV while a difference
           that matters is unexplained, a trade does not resolve, or a position is
           unpriced.</li>
+          <li>Books as the unit the console addresses — Personal, Fund, and
+          Project templates — each job at its own URL. The screens behind those
+          templates are still the operations surface, not three finished
+          products.</li>
         </ul>
       </div>
       <div class="r-spec">
@@ -101,13 +111,15 @@ __STYLE__
         <ul>
           <li>Both planes described on the <a href="platform.html">platform
           page</a> — the versioned control plane and the typed fact plane.</li>
-          <li>Persistence, multi-currency, tax lots, corporate actions.</li>
+          <li>Postgres for transactional state. The journal is the store today;
+          a relational engine is still ahead.</li>
           <li>Every one of the sixteen capability areas below, at varying
           depths of specification.</li>
           <li>The workload planner, the authoring assistant, and every interface
           shown anywhere on this site apart from one: an operations console
-          exists, and it is narrow — the exception queue, a difference at its own
-          address, and whether a fund can close.</li>
+          exists, it addresses books, and it is still narrow — the exception
+          queue, a difference at its own address, and whether a fund can
+          close.</li>
         </ul>
       </div>
     </div>
@@ -115,8 +127,8 @@ __STYLE__
     <div class="r-note">
       <p>Two things are true at once, and it is worth stating both. The part
       that is hard to get right — a ledger that cannot go out of balance, and a
-      way to prove it — is done. The part that is merely a lot of work is almost
-      entirely ahead. Anyone evaluating Ratio today is evaluating a foundation
+      way to prove it — is done. The part that is merely a lot of work is still
+      mostly ahead. Anyone evaluating Ratio today is evaluating a foundation
       and a plan, not a product they could run a fund on this quarter.</p>
     </div>
   </div>
@@ -151,7 +163,7 @@ __STYLE__
           <rect x="202" y="34" width="176" height="72" rx="3" fill="none" style="stroke:var(--partial)" stroke-width="2"/>
           <text class="svg-lab" x="218" y="58" style="fill:var(--partial)">Phase one</text>
           <text class="svg-lab-sm svg-text" x="218" y="78">books you can keep</text>
-          <text class="svg-lab-sm" x="218" y="96" style="fill:var(--partial)">next</text>
+          <text class="svg-lab-sm" x="218" y="96" style="fill:var(--partial)">under way</text>
 
           <!-- 2..4 -->
           <rect x="404" y="34" width="176" height="72" rx="3" fill="none" class="svg-rule2" stroke-width="1.4" stroke-dasharray="5 4"/>
@@ -172,10 +184,10 @@ __STYLE__
           </g>
 
           <!-- where the product actually is -->
-          <line x1="188" y1="118" x2="188" y2="152" stroke-width="1.6" style="stroke:var(--yes)"/>
-          <circle cx="188" cy="118" r="4" style="fill:var(--yes)"/>
-          <text class="svg-lab" x="200" y="150" style="fill:var(--yes)">Ratio is here</text>
-          <text class="svg-lab-sm svg-muted" x="200" y="170">the foundation is done; the surface is not</text>
+          <line x1="220" y1="118" x2="220" y2="152" stroke-width="1.6" style="stroke:var(--yes)"/>
+          <circle cx="220" cy="118" r="4" style="fill:var(--yes)"/>
+          <text class="svg-lab" x="232" y="150" style="fill:var(--yes)">Ratio is here</text>
+          <text class="svg-lab-sm svg-muted" x="232" y="170">phase one is under way; the surface is not</text>
 
           <text class="svg-lab-sm svg-muted" x="0" y="206">Nothing later can be built honestly before the phase above it exists — you cannot</text>
           <text class="svg-lab-sm svg-muted" x="0" y="224">reconcile before you can persist, or report performance before you can close a period.</text>
@@ -209,19 +221,20 @@ __STYLE__
     <div class="r-phase">
       <div class="r-phase-head">
         <h3>Phase one — books you can actually keep</h3>
-        <span class="r-status-pill now">Next</span>
+        <span class="r-status-pill now">Under way</span>
       </div>
-      <p>Everything required before a real fund's data can be loaded at all:
-      somewhere to put it, the two planes that decide and apply policy, and the
-      instrument coverage that a first fund needs.</p>
+      <p>The journal, the lots, the currencies, and the actions a first book
+      needs are in the engine. What is still ahead is the two planes that
+      decide and apply policy, and a first custodian feed that is not a file
+      already in hand.</p>
       <ul class="r-deliver">
-        <li class="o">Persistence and the append-only record</li>
+        <li class="d">The append-only journal — persistence without a database</li>
         <li class="o">Control plane: versioned, reviewed, atomic</li>
         <li class="o">Fact plane: prices and FX with provenance</li>
-        <li class="o">Multi-currency and FX revaluation</li>
-        <li class="o">Tax lots and cost-basis methods</li>
-        <li class="o">Corporate actions</li>
-        <li class="o">Chart of accounts and posting rules</li>
+        <li class="d">Multi-currency and FX translation</li>
+        <li class="d">Tax lots and cost-basis methods</li>
+        <li class="d">Corporate actions</li>
+        <li class="d">Chart of accounts and posting rules</li>
         <li class="o">First custodian feed, end to end</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> the accounting half of
@@ -251,7 +264,7 @@ __STYLE__
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: the exception queue, a difference at its own address, a fund's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project templates), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue
