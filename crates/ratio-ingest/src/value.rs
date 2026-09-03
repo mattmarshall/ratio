@@ -303,13 +303,15 @@ mod tests {
         let first = rate("r1", "EUR", 108_00);
         let correction = rate("r2", "EUR", 110_00);
         let gbp = rate("r3", "GBP", 127_00);
-        let cur = current_rates(&[first.clone(), correction.clone(), gbp]);
+        let in_force = [first.clone(), correction.clone(), gbp];
+        let cur = current_rates(&in_force);
         assert_eq!(cur["EUR"].id, "r2");
         assert_eq!(cur["EUR"].values["rate"].as_minor(), Some(110_00));
         assert_eq!(cur["GBP"].id, "r3");
         assert_eq!(cur.len(), 2);
         // And flipping the first two would silently pick the stale rate.
-        let stale = current_rates(&[correction, first]);
+        let reversed = [correction, first];
+        let stale = current_rates(&reversed);
         assert_eq!(stale["EUR"].id, "r1", "append order is the only order");
     }
 }

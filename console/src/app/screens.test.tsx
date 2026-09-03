@@ -412,9 +412,11 @@ describe("the fact plane", () => {
     expect(screen.getByText("EUR at 1.08")).toBeDefined();
     expect(screen.getByText("fx")).toBeDefined();
     // ⛔ Take configDigest off the fixture and the config link vanishes.
+    const first = factsFixture.facts[0];
+    if (!first) throw new Error("facts fixture is empty");
     expect(
       screen.getByRole("link", { name: /9f2c1ab7de40/ }).getAttribute("href"),
-    ).toBe(`/books/${FUND}/config/${factsFixture.facts[0].configDigest}`);
+    ).toBe(`/books/${FUND}/config/${first.configDigest}`);
   });
 });
 

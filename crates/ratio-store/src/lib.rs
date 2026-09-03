@@ -40,7 +40,7 @@ pub use objects::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use ratio_chart::{trial_balance, AccountType, Posting, TrialBalance};
+use ratio_chart::{AccountType, Posting, TrialBalance};
 use ratio_kernel::{transaction_is_balanced, Transaction};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
