@@ -48,6 +48,7 @@ const ROUTES = [
   [/^\/v1\/funds\/[^/]+\/views$/, "views"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/:]+$/, "view"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+:reconcile$/, "reconcile"],
+  [/^\/v1\/funds\/[^/]+\/views\/[^/]+:projectProgress$/, "projectProgress"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/breaks$/, "breaks"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/breaks\/[^/:]+$/, "break"],
   [/^\/v1\/funds\/[^/]+\/views\/[^/]+\/accounts$/, "accounts"],
@@ -115,6 +116,18 @@ function body(name, path) {
   if (name === "templates") return JSON.stringify(templatesDoc(path));
   if (name === "templates:first") {
     return JSON.stringify(templatesDoc(path).templates[0]);
+  }
+  // ⭐ KIND SELECTS CHROME. Book layout reads GetBook on every job page.
+  // Serving the captured household singleton for every id would put NAV
+  // tiles on a project book and billing on a personal one. Pick from the
+  // captured list when the id is one of those books; otherwise the
+  // singleton — same derivation as every other mock route.
+  if (name === "book") {
+    const id = path.split("/").pop();
+    const books = JSON.parse(fixture("books"));
+    const hit = books.books.find((b) => b.name === `books/${id}`);
+    if (hit) return JSON.stringify(hit);
+    return fixture("book");
   }
   if (!name.endsWith(":first")) return fixture(name);
   const doc = JSON.parse(fixture(name.slice(0, -":first".length)));

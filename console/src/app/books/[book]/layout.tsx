@@ -50,7 +50,7 @@ export default async function BookLayout({
           tickets and id deep-links with the palette that `books/layout.tsx`
           mounts one level up — which is where the provider has to be, and this
           is where `listViews` has already been called. Neither costs a request. */}
-      <FundActions fund={book} views={views} defaultView={defaultView} />
+      <FundActions fund={book} views={views} defaultView={defaultView} kind={b.kind} />
       <PlaceHead
         fund={book}
         displayName={b.displayName}

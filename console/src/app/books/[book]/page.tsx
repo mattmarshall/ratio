@@ -2,7 +2,7 @@ import Link from "next/link";
 import { caller } from "@/lib/caller";
 import { count } from "@/lib/format";
 import { or404 } from "@/lib/or404";
-import { SCREENS, SCREEN_GROUPS, screenHref } from "@/lib/screens";
+import { SCREEN_GROUPS, screenHref, screensFor } from "@/lib/screens";
 import { KIND_SHORT } from "@/lib/templates";
 import { getBook, getView } from "@/wire/client";
 
@@ -13,6 +13,10 @@ export const dynamic = "force-dynamic";
  *
  * A fund is an optional filing. This screen does not send a personal or
  * project book through `/funds/{fund}/…` to be opened.
+ *
+ * ⭐ KIND SELECTS THE PLACES. A project book that listed Exceptions / NAV
+ * would be a fake label on fund-ops screens. The hub is how you open the
+ * citable billed-vs-earned and retainage figures after CreateBook.
  */
 export default async function BookPage({
   params,
@@ -25,6 +29,8 @@ export default async function BookPage({
   const view = b.defaultView
     ? await or404(getView(c, book, b.defaultView))
     : null;
+  const project = b.kind === "PROJECT";
+  const places = screensFor(b.kind);
 
   return (
     <>
@@ -45,7 +51,7 @@ export default async function BookPage({
         <dd>{b.configDigest || "none"}</dd>
         <dt>Default view</dt>
         <dd>{b.defaultView || "—"}</dd>
-        {view ? (
+        {view && !project ? (
           <>
             <dt>NAV, in {b.defaultView}</dt>
             <dd className="num">{view.netAssetValue}</dd>
@@ -56,7 +62,7 @@ export default async function BookPage({
         {SCREEN_GROUPS.map((g) => (
           <div key={g.id} className="placegroup">
             <span className="placehead">{g.label}</span>
-            {SCREENS.filter((s) => s.group === g.id).map((s) => {
+            {places.filter((s) => s.group === g.id).map((s) => {
               const href =
                 s.scoped && !b.defaultView
                   ? undefined
@@ -75,6 +81,11 @@ export default async function BookPage({
           </div>
         ))}
       </nav>
+      {project && b.defaultView ? (
+        <p className="note">
+          <Link href={`/books/${book}/record`}>Record a bill, retainage hold, or cost</Link>
+        </p>
+      ) : null}
       {b.fund ? (
         <p className="note">
           <Link href={`/${b.fund}`}>Fund filing</Link>

@@ -73,6 +73,7 @@ const SCREENS = [
   [`/books/${F}/views/abor/positions/x`, '[aria-label="Position detail"]'],
   [`/books/${F}/views/abor/positions/x/lots/x`, '[aria-label="Lot detail"]'],
   [`/books/${F}/views/abor/reconcile?against=ibor`, "main"],
+  ["/books/bridge/views/book/billing", "main"],
   [`/books/${S}/views/abor/strikes`, "main"],
   [`/books/${S}/views/abor/strikes/x`, '[aria-label="NAV strike"]'],
   [`/books/${S}/views/abor/strikes/x/plan`, '[aria-label="How this NAV was computed"]'],

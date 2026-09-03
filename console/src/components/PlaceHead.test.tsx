@@ -77,4 +77,18 @@ describe("PlaceHead", () => {
     expect(screen.getByRole("heading", { name: "Configuration" })).toBeDefined();
     expect(screen.queryByLabelText("Book of record")).toBeNull();
   });
+
+  it("titles billing on a project figure page", () => {
+    segments.current = ["views", "book", "billing"];
+    render(
+      <PlaceHead
+        fund="bridge"
+        displayName="Bridge"
+        views={views}
+        defaultView="book"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Billing" })).toBeDefined();
+  });
 });

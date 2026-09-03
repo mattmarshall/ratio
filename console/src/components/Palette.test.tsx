@@ -227,6 +227,39 @@ describe("the command palette", () => {
     }
   });
 
+  it("offers billing on a project book and not a trade ticket", async () => {
+    const { unmount } = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="bridge"
+          views={views}
+          defaultView="book"
+          kind="PROJECT"
+        />
+      </Palette>,
+    );
+    await type("Billing");
+    fireEvent.click(await row("Billing"));
+    // The layout-segment mock still reports the open view as `abor`.
+    expect(push).toHaveBeenCalledWith("/books/bridge/views/abor/billing");
+    push.mockClear();
+    unmount();
+
+    const { unmount: unmount2 } = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="bridge"
+          views={views}
+          defaultView="book"
+          kind="PROJECT"
+        />
+      </Palette>,
+    );
+    await type("Trade ticket");
+    expect(screen.queryByText("Trade ticket")).toBeNull();
+    unmount2();
+  });
+
   it("keeps the screen when it switches the book of record", async () => {
     renderConsole();
     const view = views[0]!;

@@ -83,7 +83,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "(layout)/books/[book]/views/[view]",
     file: "books/[book]/views/[view]/layout.tsx",
-    reads: ["getView"],
+    reads: ["getView", "getBook"],
   },
   // ⚠ Where the view-dependent screens USED to live without a view segment.
   // A redirect, not a deletion: these URLs have been sent to people, and the
@@ -114,6 +114,11 @@ export const ROUTES: readonly Route[] = [
     path: "/books/[book]/views/[view]/reconcile",
     file: "books/[book]/views/[view]/reconcile/page.tsx",
     reads: ["reconcileViews"],
+  },
+  {
+    path: "/books/[book]/views/[view]/billing",
+    file: "books/[book]/views/[view]/billing/page.tsx",
+    reads: ["projectProgress"],
   },
   {
     path: "/funds/[fund]",

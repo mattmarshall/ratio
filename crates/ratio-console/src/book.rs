@@ -8,6 +8,7 @@
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use ratio_rules::{check, RuleSet};
 use ratio_store::{Account, AccountTypeRecord, ConfigStore, FileBook};
 
 /// The ingest templates CreateBook writes for this kind, in the order
@@ -179,10 +180,18 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
         BookKind::Project => vec![
             acct(1, "Cash", AccountTypeRecord::Asset),
             acct(2, "Work in progress", AccountTypeRecord::Asset),
+            acct(3, "Accounts receivable", AccountTypeRecord::Asset),
+            acct(4, "Retainage receivable", AccountTypeRecord::Asset),
+            acct(5, "Unbilled receivables", AccountTypeRecord::Asset),
             acct(10, "Project costs", AccountTypeRecord::Expense),
+            acct(11, "Site and mobilization", AccountTypeRecord::Expense),
+            acct(12, "Structure", AccountTypeRecord::Expense),
+            acct(13, "Finishes and closeout", AccountTypeRecord::Expense),
             acct(20, "Funding", AccountTypeRecord::Equity),
             acct(30, "Project revenue", AccountTypeRecord::Income),
             acct(40, "Payables", AccountTypeRecord::Liability),
+            acct(41, "Progress billings", AccountTypeRecord::Liability),
+            acct(42, "Retainage payable", AccountTypeRecord::Liability),
         ],
     }
 }
@@ -414,12 +423,44 @@ reads = "csv"
   dated = "traded"
 "#;
 
-/// Vendor invoice / cost CSV → project costs and payables claims.
-const PROJECT_CONFIG: &str = r#"
+/// Project posting rules plus the vendor-invoice ingest template.
+///
+/// ⭐ THE ACCOUNT NUMBERS ARE `chart_for(Project)`'S. `initialize` runs
+/// `check` against that chart before the digest is activated, so a drift
+/// between the two is a refused create rather than a book that cannot post.
+///
+/// ⭐ WORK PACKAGES ARE ACCOUNTS, NOT INSTRUMENTS. Site / structure /
+/// finishes partition project costs the way the chart partitions anything
+/// else. Tagging a cost with an instrument would open a tax lot, and a
+/// phase is not a security.
+///
+/// Progress-bill credits billings; earn-progress credits revenue. The two
+/// are independent, so billed-to-date and earned-to-date can diverge while
+/// every entry still conserves. Retainage is a transfer off AR (or onto
+/// payables) — not a percentage baked into the bill — so a contract with
+/// no holdback never posts it, and the figure stays unset rather than 0%.
+///
+/// ⚠ WIP CAPITALIZATION RULES ARE #66 / PR #80. This template does not
+/// seed them, so the two PRs do not each own the same `[[rule]]` ids.
+/// The WIP *account* stays on the chart; the transfer pattern lands with
+/// that issue.
+///
+/// Phase budget: `[[project.phase]] account = <dim> budget = <minor units>`.
+/// Omitting the row means no baseline, not a budget of zero.
+///
+/// The `project-invoices` template still maps `cost`/`invoice` onto the
+/// unpartitioned `project_cost` / `vendor_invoice` rules. Per-phase mapping
+/// is a later operator choice, not a CreateBook invention.
+const PROJECT_CONFIG: &str = r#"# Project posting rules. Amount given; no instrument, so no lot.
+# Work packages are accounts 11–13, not instruments.
+# Progress-bill and earn-progress are independent: billed and earned can diverge.
+# Retainage is a transfer, not a baked-in split — omit it and the figure stays unset.
+# Phase budget: [[project.phase]] account = <dim> budget = <minor units>.
+
 [[rule]]
 id = "project_cost"
 kind = "trade"
-description = "Project costs up, cash down"
+description = "Unpartitioned project costs paid from cash"
 [[rule.posting]]
 account = 10
 weight = 1
@@ -428,11 +469,187 @@ account = 1
 weight = -1
 
 [[rule]]
+id = "project_cost_site"
+kind = "trade"
+description = "Site and mobilization paid from cash"
+[[rule.posting]]
+account = 11
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "project_cost_structure"
+kind = "trade"
+description = "Structure paid from cash"
+[[rule.posting]]
+account = 12
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "project_cost_finishes"
+kind = "trade"
+description = "Finishes and closeout paid from cash"
+[[rule.posting]]
+account = 13
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
 id = "vendor_invoice"
 kind = "trade"
-description = "Project costs up, payables up"
+description = "Unpartitioned project costs on a vendor invoice"
 [[rule.posting]]
 account = 10
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "vendor_invoice_site"
+kind = "trade"
+description = "Site and mobilization on a vendor invoice"
+[[rule.posting]]
+account = 11
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "vendor_invoice_structure"
+kind = "trade"
+description = "Structure on a vendor invoice"
+[[rule.posting]]
+account = 12
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "vendor_invoice_finishes"
+kind = "trade"
+description = "Finishes and closeout on a vendor invoice"
+[[rule.posting]]
+account = 13
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "pay_vendor"
+kind = "trade"
+description = "Pay a vendor from cash"
+[[rule.posting]]
+account = 40
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "receive_funding"
+kind = "trade"
+description = "Funding received to cash"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 20
+weight = -1
+
+[[rule]]
+id = "recognize_revenue"
+kind = "trade"
+description = "Project revenue received to cash"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 30
+weight = -1
+
+[[rule]]
+id = "progress_bill"
+kind = "trade"
+description = "Progress bill: receivable against billings on account"
+[[rule.posting]]
+account = 3
+weight = 1
+[[rule.posting]]
+account = 41
+weight = -1
+
+[[rule]]
+id = "hold_retainage"
+kind = "trade"
+description = "Hold retainage from a receivable until a milestone clears"
+[[rule.posting]]
+account = 4
+weight = 1
+[[rule.posting]]
+account = 3
+weight = -1
+
+[[rule]]
+id = "release_retainage"
+kind = "trade"
+description = "Release retainage onto the receivable"
+[[rule.posting]]
+account = 3
+weight = 1
+[[rule.posting]]
+account = 4
+weight = -1
+
+[[rule]]
+id = "collect_receivable"
+kind = "trade"
+description = "Collect a billed receivable into cash"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 3
+weight = -1
+
+[[rule]]
+id = "earn_progress"
+kind = "trade"
+description = "Recognize earned progress against unbilled receivables"
+[[rule.posting]]
+account = 5
+weight = 1
+[[rule.posting]]
+account = 30
+weight = -1
+
+[[rule]]
+id = "hold_vendor_retainage"
+kind = "trade"
+description = "Hold retainage from a vendor payable"
+[[rule.posting]]
+account = 40
+weight = 1
+[[rule.posting]]
+account = 42
+weight = -1
+
+[[rule]]
+id = "release_vendor_retainage"
+kind = "trade"
+description = "Release vendor retainage back onto payables"
+[[rule.posting]]
+account = 42
 weight = 1
 [[rule.posting]]
 account = 40
@@ -493,9 +710,27 @@ pub fn initialize(path: &Path, id: &str, display: &str, kind: BookKind) -> Resul
     if path.join("accounts.json").is_file() || path.join("book.toml").is_file() {
         bail!("book {id:?} already exists");
     }
+    let chart = chart_for(kind);
+    let cfg = config_for(kind);
+    let set = RuleSet::from_toml(cfg).context("the template configuration is not TOML")?;
+    let errors: Vec<_> = check(&set, &chart)
+        .into_iter()
+        .filter(|f| !f.is_question)
+        .collect();
+    if !errors.is_empty() {
+        bail!(
+            "the {:?} template's rules do not check against its chart: {}",
+            kind.as_str(),
+            errors
+                .iter()
+                .map(|f| format!("{}: {}", f.rule, f.message))
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
     let mut b = FileBook::open(path)?;
-    b.put_accounts(&chart_for(kind))?;
-    let digest = b.put(config_for(kind).as_bytes())?;
+    b.put_accounts(&chart)?;
+    let digest = b.put(cfg.as_bytes())?;
     b.set_active(&digest)?;
     BookMeta {
         kind,
@@ -584,6 +819,9 @@ mod tests {
             .iter()
             .any(|a| a.display_name == "Investments at fair value"));
         assert!(project.iter().any(|a| a.display_name == "Work in progress"));
+        assert!(project.iter().any(|a| a.display_name == "Progress billings"));
+        assert!(project.iter().any(|a| a.display_name == "Retainage receivable"));
+        assert!(project.iter().any(|a| a.display_name == "Site and mobilization"));
     }
 
     #[test]
@@ -812,6 +1050,58 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
         })
         .unwrap();
         assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn project_template_rules_check_against_its_chart() {
+        // ⭐ A RULE THAT NAMES AN ACCOUNT THE CHART DOES NOT HAVE WOULD CREATE
+        // a book that cannot post. initialize refuses that; this test is what
+        // notices the two drifting apart before a create is attempted.
+        let set = RuleSet::from_toml(PROJECT_CONFIG).unwrap();
+        let findings = check(&set, &chart_for(BookKind::Project));
+        assert!(
+            findings.iter().all(|f| f.is_question),
+            "project rules must check against chart_for(Project): {findings:?}"
+        );
+        assert!(set.rule("progress_bill").is_some());
+        assert!(set.rule("hold_retainage").is_some());
+        assert!(set.rule("earn_progress").is_some());
+        assert!(set.rule("project_cost_site").is_some());
+        assert!(
+            set.rules.iter().all(|r| r.legs.iter().all(|l| !l.per_instrument)),
+            "a project phase is an account, not an instrument — a per_instrument \
+             leg would open a lot"
+        );
+        assert!(
+            set.project.is_none(),
+            "a new project has no phase baseline until someone sets [[project.phase]]"
+        );
+        let against_empty = check(&set, &[]);
+        assert!(
+            against_empty.iter().any(|f| !f.is_question),
+            "project rules must not check against an empty chart: {against_empty:?}"
+        );
+        // Wave 2 (#75) ingest mapping is additive: still one template, still
+        // unpartitioned cost/invoice rules. Not a per-phase ingest menu.
+        let ingest = ratio_ingest::TemplateSet::from_toml(PROJECT_CONFIG).unwrap();
+        assert_eq!(ingest.templates.len(), 1);
+        assert_eq!(ingest.templates[0].id, "project-invoices");
+    }
+
+    #[test]
+    fn initialize_seeds_progress_billing_and_no_phase_budget() {
+        let dir = std::env::temp_dir().join("ratio-book-init-project-billing");
+        let _ = std::fs::remove_dir_all(&dir);
+        initialize(&dir, "bridge", "Bridge", BookKind::Project).unwrap();
+        let b = FileBook::open(&dir).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let set = RuleSet::from_toml(&text).unwrap();
+        assert!(set.rule("progress_bill").is_some(), "{text}");
+        assert!(set.rule("hold_retainage").is_some(), "{text}");
+        assert!(set.project.is_none());
+        let ingest = ratio_ingest::TemplateSet::from_toml(&text).unwrap();
+        assert_eq!(ingest.templates[0].id, "project-invoices");
     }
 
     fn sample_delivery() -> ratio_ingest::Delivery {

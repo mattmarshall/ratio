@@ -101,9 +101,14 @@ __STYLE__
           that matters is unexplained, a trade does not resolve, or a position is
           unpriced.</li>
           <li>Books as the unit the console addresses — Personal, Fund, and
-          Project templates — each job at its own URL. The screens behind those
-          templates are still the operations surface, not three finished
-          products.</li>
+          Project templates — each job at its own URL. A Project book cites
+          billed vs earned, retainage outstanding, and cost by work-package
+          account; billed / earned / retainage stay unset until posted, not a
+          fake zero. Personal household figures and Investment partner capital
+          are still the operations surface. A live walk-through does not yet
+          post a construction job — CreateBook seeds the patterns; the seeded
+          demo funds remain investment books. Client portal, CRM, Gantt, and
+          milestone-gated periods are still out of scope.</li>
           <li>A versioned ConfigStore — directory, hash, atomic pointer — and a
           fact plane whose prices and FX an operator can open from a figure.</li>
         </ul>
@@ -269,7 +274,7 @@ __STYLE__
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: books (Personal, Fund, Project templates), the exception queue, a difference at its own address, a book's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project templates — a Project book cites billed vs earned, retainage, and cost by work package), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue

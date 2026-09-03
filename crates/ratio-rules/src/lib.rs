@@ -247,6 +247,81 @@ pub struct RuleSet {
     /// is worse than a restatement, because a restatement announces itself.
     #[serde(rename = "calendar", default, skip_serializing_if = "Vec::is_empty")]
     pub calendars: Vec<Calendar>,
+
+    /// Project-finance terms. Absent on personal and investment books.
+    ///
+    /// ⛔ PHASE BUDGETS ARE CONFIGURATION TOTALS, NOT A SECOND LEDGER. Actual
+    /// costs are the journal, partitioned by work-package *account* — not by
+    /// instrument, which would open a lot. `None` (or a phase row with no
+    /// `budget`) means no baseline has been set, not a budget of zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<ProjectTerms>,
+}
+
+/// Authorized spend a project book cites against work-package accounts.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectTerms {
+    /// Book-level baseline in minor units. Omitted means unset.
+    ///
+    /// ⚠ SAME SHAPE PR #80 ADDS FOR `/budget`. This field is parsed so the
+    /// two PRs do not invent two `[project]` tables; this issue's citable
+    /// figure is billed/retainage/phase, not the book-level roll-up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<i64>,
+    /// Per work-package account. `account` is a chart dimension.
+    #[serde(rename = "phase", default, skip_serializing_if = "Vec::is_empty")]
+    pub phases: Vec<PhaseBudget>,
+}
+
+/// Authorized spend on one work-package account.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PhaseBudget {
+    /// Chart dimension — `chart_for(Project)`'s site / structure / finishes
+    /// accounts, or an operator-added partition of the same kind.
+    pub account: i64,
+    /// Minor units. Omitted means this phase has no baseline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<i64>,
+}
+
+impl ProjectTerms {
+    /// ⛔ CHECKED WHEN THE CONFIGURATION IS READ. A negative budget inverts
+    /// variance; two rows for one account are two answers under one name.
+    pub fn check(&self) -> Result<()> {
+        if let Some(b) = self.budget {
+            if b < 0 {
+                bail!(
+                    "a project budget is not negative — it is an authorized magnitude, \
+                     not a posting"
+                );
+            }
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for p in &self.phases {
+            if p.account <= 0 {
+                bail!(
+                    "a phase budget names account {}, which is not a chart dimension",
+                    p.account
+                );
+            }
+            if !seen.insert(p.account) {
+                bail!(
+                    "this configuration declares a phase budget for account {} twice. \
+                     A figure cited against that account could not pick one",
+                    p.account
+                );
+            }
+            if let Some(b) = p.budget {
+                if b < 0 {
+                    bail!(
+                        "a phase budget is not negative — it is an authorized magnitude, \
+                         not a posting"
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 /// How a view decides the day it recognises an entry on.
@@ -362,6 +437,7 @@ impl Default for RuleSet {
             // failure the whole `declared` distinction exists for.
             views: Vec::new(),
             calendars: Vec::new(),
+            project: None,
         }
     }
 }
@@ -865,6 +941,9 @@ impl RuleSet {
         // first has to roll a trade over one.
         for c in &set.calendars {
             c.check()?;
+        }
+        if let Some(p) = &set.project {
+            p.check()?;
         }
         let mut seen = std::collections::BTreeSet::new();
         for v in &set.views {
@@ -1764,6 +1843,32 @@ calendar = "us-settlement"
         let toml = RuleSet::from_toml("rules = []\n").unwrap().to_toml().unwrap();
         assert!(!toml.contains("view"), "{toml}");
         assert!(!toml.contains("calendar"), "{toml}");
+        assert!(!toml.contains("project"), "{toml}");
+    }
+
+    #[test]
+    fn a_phase_budget_round_trips_and_a_negative_or_duplicate_is_refused() {
+        let set = RuleSet::from_toml(
+            "rules = []\n[[project.phase]]\naccount = 11\nbudget = 400000\n",
+        )
+        .unwrap();
+        assert_eq!(set.project.as_ref().unwrap().phases[0].account, 11);
+        assert_eq!(set.project.as_ref().unwrap().phases[0].budget, Some(400_000));
+        let back = RuleSet::from_toml(&set.to_toml().unwrap()).unwrap();
+        assert_eq!(back.project, set.project);
+
+        let e = RuleSet::from_toml("rules = []\n[[project.phase]]\naccount = 11\nbudget = -1\n")
+            .expect_err("a negative phase budget must not parse")
+            .to_string();
+        assert!(e.contains("not negative"), "{e}");
+
+        let e = RuleSet::from_toml(
+            "rules = []\n[[project.phase]]\naccount = 11\nbudget = 1\n\
+             [[project.phase]]\naccount = 11\nbudget = 2\n",
+        )
+        .expect_err("two budgets for one account must not parse")
+        .to_string();
+        assert!(e.contains("twice"), "{e}");
     }
 
     #[test]

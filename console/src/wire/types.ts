@@ -207,6 +207,31 @@ export interface View {
   journalPosition: Int64;
 }
 
+/**
+ * Billed vs earned, retainage, and cost by work-package account.
+ *
+ * Empty billed / earned / retainage / phase budget means unset — not a
+ * fake zero. Cost `"0"` on a seeded phase is a true zero (nothing posted).
+ */
+export interface ProjectProgressResponse {
+  name: string;
+  billed: Int64;
+  earned: Int64;
+  billedMinusEarned: Int64;
+  retainageReceivable: Int64;
+  retainagePayable: Int64;
+  phases: PhaseCost[];
+}
+
+/** Cost (and optional authorized spend) on one work-package account. */
+export interface PhaseCost {
+  account: string;
+  displayName: string;
+  cost: Int64;
+  /** Empty when `[project.phase]` omits this account. `"0"` is a set baseline. */
+  budget: Int64;
+}
+
 /** One entry two views disagree about, and what it is worth. */
 export interface RecognitionDifference {
   entryId: string;

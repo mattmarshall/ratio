@@ -29,7 +29,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "PROJECT",
     label: "Project",
-    blurb: "Cash, work in progress, project costs, funding, and revenue.",
+    blurb: "Cash, work in progress, project costs by work package, progress billings, and retainage.",
   },
 ];
 

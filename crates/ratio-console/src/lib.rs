@@ -2299,6 +2299,99 @@ impl Console {
 
     /// What two books of record over one journal disagree about.
     ///
+    /// Billed vs earned, retainage outstanding, and cost by work-package
+    /// account — for a project book of record.
+    ///
+    /// ⛔ REFUSES ANY OTHER KIND. Serving zeros to a personal or investment
+    /// book would look like "nothing billed this period" rather than "this
+    /// is not a project figure".
+    ///
+    /// ⭐ UNSET STAYS UNSET. `billed` / `earned` / retainage are empty until
+    /// those accounts have a posting. A seeded phase account with no
+    /// postings reports cost `"0"` — that is a true zero — and an omitted
+    /// `[project.phase] budget` stays empty, which is the #66 honesty.
+    pub fn project_progress(&self, name: &str) -> Result<pb::ProjectProgressResponse> {
+        let (fund, view) = view_scoped_parent(name).context("bad view name")?;
+        let path = self.book_path(&fund)?;
+        let meta = book::BookMeta::load(&path, &fund);
+        if meta.kind != book::BookKind::Project {
+            bail!(
+                "progress billing is a project figure — this book is {}, not a project",
+                meta.kind.as_str()
+            );
+        }
+
+        let accounts = self.accounts_of(&fund, &view)?;
+        let named = |n: &str| accounts.iter().find(|a| a.display_name == n);
+        let posted = |a: &pb::Account| a.posting_count != "0";
+        let credit_if_posted = |a: Option<&pb::Account>| match a {
+            Some(a) if posted(a) => a.credit.clone(),
+            _ => String::new(),
+        };
+        let balance_if_posted = |a: Option<&pb::Account>| match a {
+            Some(a) if posted(a) => a.balance.clone(),
+            _ => String::new(),
+        };
+
+        let billed = credit_if_posted(named("Progress billings"));
+        let earned = credit_if_posted(named("Project revenue"));
+        let billed_minus_earned = match (billed.parse::<i64>(), earned.parse::<i64>()) {
+            (Ok(b), Ok(e)) if !billed.is_empty() && !earned.is_empty() => (b - e).to_string(),
+            _ => String::new(),
+        };
+        let retainage_receivable = balance_if_posted(named("Retainage receivable"));
+        // Credit-normal outstanding: the liability's credit, once something
+        // has posted. Empty until then — a payable of zero is a fake holdback.
+        let retainage_payable = credit_if_posted(named("Retainage payable"));
+
+        let phase_budget: BTreeMap<i64, i64> = {
+            let b = FileBook::open(&path)?;
+            match b.active()? {
+                Some(digest) => match RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))
+                {
+                    Ok(set) => set
+                        .project
+                        .map(|p| {
+                            p.phases
+                                .into_iter()
+                                .filter_map(|ph| ph.budget.map(|n| (ph.account, n)))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    Err(_) => BTreeMap::new(),
+                },
+                None => BTreeMap::new(),
+            }
+        };
+
+        let phases = accounts
+            .iter()
+            .filter(|a| a.r#type == pb::account::Type::Expense as i32)
+            .map(|a| {
+                let dim: i64 = a.dimension.parse().unwrap_or(0);
+                pb::PhaseCost {
+                    account: a.dimension.clone(),
+                    display_name: a.display_name.clone(),
+                    cost: a.balance.clone(),
+                    budget: phase_budget
+                        .get(&dim)
+                        .map(|n| n.to_string())
+                        .unwrap_or_default(),
+                }
+            })
+            .collect();
+
+        Ok(pb::ProjectProgressResponse {
+            name: format!("funds/{fund}/views/{view}"),
+            billed,
+            earned,
+            billed_minus_earned,
+            retainage_receivable,
+            retainage_payable,
+            phases,
+        })
+    }
+
     /// ⭐ A DERIVATION, NOT A SUBTRACTION. `Projection::reconcile` walks the two
     /// bands — bounded by the settlement lag, never the journal — and returns
     /// the LIST of entries one view recognises and the other does not, with the
@@ -4302,6 +4395,187 @@ mod tests {
             !membership.contains("org:org_01a\tmine"),
             "a personal create must not grant the org: {membership}"
         );
+    }
+
+    fn project_event(id: &str, rule: &str, amount: &str) -> pb::ApplyEventRequest {
+        pb::ApplyEventRequest {
+            parent: "funds/bridge".into(),
+            rule_id: rule.into(),
+            event_id: id.into(),
+            amount: amount.into(),
+            days: String::new(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: None,
+            validate_only: false,
+        }
+    }
+
+    #[test]
+    fn progress_billing_and_retainage_conserve_and_open_no_lot() {
+        // ⭐ BILL / HOLD / EARN / COLLECT ARE CONSERVED TRANSFERS, NOT SALES.
+        // The project template's rules carry no instrument, so the walk that
+        // opens lots skips them. The trial balance still ties. Billed is the
+        // progress-billings credit; earned is the revenue credit; they diverge
+        // until both have posted.
+        let root = fresh("project-billing");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let unset = c.project_progress(&view).unwrap();
+        assert!(
+            unset.billed.is_empty() && unset.earned.is_empty(),
+            "a new project has not billed or earned: billed={:?} earned={:?}",
+            unset.billed,
+            unset.earned
+        );
+        assert!(
+            unset.retainage_receivable.is_empty() && unset.retainage_payable.is_empty(),
+            "retainage must stay unset until a hold posts: recv={:?} pay={:?}",
+            unset.retainage_receivable,
+            unset.retainage_payable
+        );
+        assert!(
+            unset.billed_minus_earned.is_empty(),
+            "comparing two unsets must not invent a caught-up zero: {:?}",
+            unset.billed_minus_earned
+        );
+        assert!(
+            unset.phases.iter().all(|p| p.budget.is_empty()),
+            "CreateBook must not invent a phase baseline: {:?}",
+            unset.phases
+        );
+
+        c.apply_event(&project_event("bill-1", "progress_bill", "1000.00"))
+            .unwrap();
+        let billed_only = c.project_progress(&view).unwrap();
+        assert_eq!(billed_only.billed, "100000");
+        assert!(billed_only.earned.is_empty());
+        assert!(
+            billed_only.billed_minus_earned.is_empty(),
+            "one side posted must not invent a caught-up zero: {:?}",
+            billed_only.billed_minus_earned
+        );
+
+        c.apply_event(&project_event("hold-1", "hold_retainage", "100.00"))
+            .unwrap();
+        c.apply_event(&project_event("earn-1", "earn_progress", "800.00"))
+            .unwrap();
+        c.apply_event(&project_event("cost-site", "project_cost_site", "250.00"))
+            .unwrap();
+
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        let proj = c.projection("bridge").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a progress bill must not claim lot relief"
+        );
+
+        let fig = c.project_progress(&view).unwrap();
+        assert_eq!(fig.billed, "100000");
+        assert_eq!(fig.earned, "80000");
+        assert_eq!(fig.billed_minus_earned, "20000");
+        assert_eq!(fig.retainage_receivable, "10000");
+        assert!(fig.retainage_payable.is_empty(), "{:?}", fig.retainage_payable);
+
+        let site = fig
+            .phases
+            .iter()
+            .find(|p| p.display_name == "Site and mobilization")
+            .expect("site phase");
+        assert_eq!(site.cost, "25000");
+        assert!(site.budget.is_empty(), "unset budget is empty, not zero: {:?}", site.budget);
+        let structure = fig
+            .phases
+            .iter()
+            .find(|p| p.display_name == "Structure")
+            .expect("structure phase");
+        assert_eq!(structure.cost, "0");
+        assert!(structure.budget.is_empty());
+
+        c.apply_event(&project_event("vhold-1", "hold_vendor_retainage", "50.00"))
+            .unwrap();
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
+        let after_vendor = c.project_progress(&view).unwrap();
+        assert_eq!(after_vendor.retainage_payable, "5000");
+        assert_eq!(after_vendor.retainage_receivable, "10000");
+    }
+
+    #[test]
+    fn a_phase_budget_is_the_configuration_total_not_a_second_ledger() {
+        let root = fresh("project-phase-budget");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Bridge".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "bridge".into(),
+        })
+        .unwrap();
+
+        let path = root.join("bridge");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str("\n[[project.phase]]\naccount = 11\nbudget = 400000\n");
+        let next = b.put(text.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let fig = c.project_progress(&view).unwrap();
+        let site = fig
+            .phases
+            .iter()
+            .find(|p| p.account == "11")
+            .expect("site");
+        assert_eq!(site.budget, "400000");
+        assert_eq!(site.cost, "0");
+        let unpartitioned = fig
+            .phases
+            .iter()
+            .find(|p| p.account == "10")
+            .expect("unpartitioned");
+        assert!(
+            unpartitioned.budget.is_empty(),
+            "an omitted phase budget is unset, not zero: {:?}",
+            unpartitioned.budget
+        );
+    }
+
+    #[test]
+    fn project_progress_refuses_a_personal_book() {
+        let root = fresh("project-progress-kind");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        let err = c
+            .project_progress(&format!(
+                "funds/household/views/{}",
+                ratio_rules::UNDECLARED_VIEW
+            ))
+            .expect_err("personal books have no progress billing")
+            .to_string();
+        assert!(err.contains("not a project"), "{err}");
+        assert!(!err.contains("0"), "a refusal must not look like a zero figure: {err}");
     }
 
     #[test]
