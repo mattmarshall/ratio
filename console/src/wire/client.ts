@@ -369,8 +369,8 @@ export const getLot = (
 //
 // ⛔ AIP-132: a List request has no `period` field. A month or year rides on
 // `filter` as `pnl-YYYY-MM` / `sheet-YYYY` / `capital-YYYY-MM` /
-// `budget-YYYY-MM` / `loan-YYYY-MM` / `bridge-YYYY-MM` / `change-YYYY-MM` — hyphen because
-// transcode does not percent-decode.
+// `budget-YYYY-MM` / `loan-YYYY-MM` / `bridge-YYYY-MM` / `change-YYYY-MM` /
+// `nav-YYYY-MM` — hyphen because transcode does not percent-decode.
 // Pages still pass the two pieces; this is where they join.
 export const listAccounts = (
   c: Caller,

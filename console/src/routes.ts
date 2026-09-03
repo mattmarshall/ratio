@@ -166,6 +166,15 @@ export const ROUTES: readonly Route[] = [
     file: "books/[book]/views/[view]/capital/page.tsx",
     reads: ["getBook", "listAccounts"],
   },
+  // Period NAV roll-forward. Same chrome source as capital. Beginning and
+  // ending are the Loan-shaped fold (`nav-YYYY-MM`); named plugs cite the
+  // same contribution / distribution accounts `/capital` already names.
+  // `/strikes` stays the ABOR NAV.
+  {
+    path: "/books/[book]/views/[view]/nav",
+    file: "books/[book]/views/[view]/nav/page.tsx",
+    reads: ["getBook", "listAccounts"],
+  },
   {
     path: "/books/[book]/views/[view]/accounts/[account]",
     file: "books/[book]/views/[view]/accounts/[account]/page.tsx",

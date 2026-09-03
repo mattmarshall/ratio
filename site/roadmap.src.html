@@ -103,11 +103,15 @@ __STYLE__
           <li>Books as the unit the console addresses — Personal, Fund, and
           Project templates — each job at its own URL. Kind selects the chrome:
           a personal book opens a citable balance sheet, a period P&amp;L
-          (month or year, not since inception), household budget vs actual
-          against living expenses — the baseline is a configuration total,
-          unset until someone sets it, not a fake zero — and a loan
-          roll-forward for named liabilities (not a client portal, a
-          credit-score product, or refinance shopping). Transfers between
+          (month or year, not since inception), a net-worth bridge
+          (beginning / income / expense / ending, with principal and
+          transfers named as plugs that do not move NW — unset, not a
+          measured zero, when the journal has no dated prefix), household
+          budget vs actual against living expenses — the baseline is a
+          configuration total, unset until someone sets it, not a fake
+          zero — and a loan roll-forward for named liabilities (not a
+          client portal, a credit-score product, or refinance shopping).
+          Transfers between
           household accounts post without claiming lot relief. A Project book
           cites budget vs actual and WIP capitalization at <code>/budget</code>
           and <code>/wip</code>, and billed vs earned, retainage, and cost by
@@ -122,7 +126,13 @@ __STYLE__
           distributions, transfers, ending capital) and partner-scoped
           commitments / undrawn on the same journal as NAV and exceptions —
           not a return, a benchmark, or attribution. Undrawn stays unset
-          until a commitment posts, not a callable zero. A capital-call
+          until a commitment posts, not a callable zero. A period NAV
+          roll-forward at <code>/nav</code> cites beginning NAV →
+          contributions → distributions → income/expense / unrealized →
+          ending NAV for a month or year — two as-of cuts, unset when
+          either cut has no journal prefix, never a fake zero NAV.
+          Commitment and undrawn cancel in that figure. It is not IRR, a
+          waterfall, or a replacement for NAV strikes. A capital-call
           walk-through can record or ingest a call against a commitment; it
           cannot show IRR, a waterfall, or a future call schedule. Fund books
           keep the operations surface. A live walk-through does not yet post a
@@ -295,7 +305,7 @@ __STYLE__
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet and period P&amp;L with transfers that are not trades, household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, and original vs revised contract (approved change orders keyed by phase — unset until posted), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), the exception queue, a difference at its own address, a book's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project templates), a household balance sheet, period P&amp;L, and net-worth bridge with transfers that are not trades, household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, and original vs revised contract (approved change orders keyed by phase — unset until posted), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return) and a period NAV roll-forward (unset, not a fake zero), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue

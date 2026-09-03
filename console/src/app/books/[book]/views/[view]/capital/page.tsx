@@ -191,6 +191,8 @@ async function Capital({
         {" · "}
         <Link href={`/books/${book}/views/${view}/accounts`}>Trial balance</Link>
         {" · "}
+        <Link href={`/books/${book}/views/${view}/nav`}>NAV roll-forward</Link>
+        {" · "}
         <Link href={`/books/${book}/views/${view}/strikes`}>NAV</Link>
       </p>
     </>

@@ -193,13 +193,14 @@ describe("the command palette", () => {
   // green, covered the code and tested nothing; this was very nearly a fourth,
   // and the sabotage run is the only reason it is not.
   //
-  // ⚠ THE VIEW SEGMENTS ARE THE POINT OF THE TABLE. Four of these are folded
+  // ⚠ THE VIEW SEGMENTS ARE THE POINT OF THE TABLE. Five of these are folded
   // from a journal prefix and belong to a book of record; four are what was
   // AGREED and do not. Flip one either way and this goes red — which is what
   // `scoped` is for, because getting it wrong is a URL that lies about which
   // book produced the figures on it.
   const EXPECTED_SCREENS: ReadonlyArray<readonly [string, string]> = [
     ["Capital activity", `/books/${FUND}/views/${VIEW}/capital`],
+    ["NAV roll-forward", `/books/${FUND}/views/${VIEW}/nav`],
     ["Exceptions", `/books/${FUND}/views/${VIEW}/breaks`],
     ["Trial balance", `/books/${FUND}/views/${VIEW}/accounts`],
     ["Positions", `/books/${FUND}/views/${VIEW}/positions`],

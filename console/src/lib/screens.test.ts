@@ -53,6 +53,7 @@ describe("screensFor", () => {
   it("an investment book cites capital first, then the ABOR warehouse", () => {
     const labels = screensFor("INVESTMENT").map((s) => s.label);
     expect(labels[0]).toBe("Capital activity");
+    expect(labels[1]).toBe("NAV roll-forward");
     expect(labels).toContain("Exceptions");
     expect(labels).toContain("NAV");
     expect(labels).toContain("Positions");
@@ -83,7 +84,9 @@ describe("screensFor", () => {
       ...PROJECT_SCREENS.filter((x) =>
         ["budget", "wip", "billing"].includes(x.segment),
       ),
-      ...INVESTMENT_SCREENS.filter((x) => x.segment === "capital"),
+      ...INVESTMENT_SCREENS.filter((x) =>
+        ["capital", "nav"].includes(x.segment),
+      ),
     ]) {
       expect(s.scoped).toBe(true);
       expect(s.group).toBe("book");
