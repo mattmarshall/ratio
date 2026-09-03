@@ -92,7 +92,7 @@ describe("capital activity", () => {
       acct("Commitments — GP", "0", "0", "0"),
       acct("Undrawn commitments — GP", "0", "0", "0"),
     ];
-    expect(isPosted(unset[1])).toBe(false);
+    expect(isPosted(unset[1]!)).toBe(false);
     expect(undrawnFigure(unset)).toBeNull();
     expect(remainingCommitment(unset)).toBeNull();
     expect(commitmentIdentityHolds(unset)).toBe(true);
@@ -109,8 +109,8 @@ describe("capital activity", () => {
       acct("Commitments — GP", "0", "0", "0"),
       acct("Undrawn commitments — GP", "0", "0", "0"),
     ];
-    expect(remainingUndrawn(accounts[2])).toBe(6000n);
-    expect(endingCapital(accounts[1])).toBe(6000n);
+    expect(remainingUndrawn(accounts[2]!)).toBe(6000n);
+    expect(endingCapital(accounts[1]!)).toBe(6000n);
     expect(undrawnFigure(accounts)).toBe(6000n);
     expect(remainingCommitment(accounts)).toBe(6000n);
     expect(commitmentIdentityHolds(accounts)).toBe(true);

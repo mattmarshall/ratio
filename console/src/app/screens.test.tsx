@@ -236,7 +236,7 @@ describe("a first-class book", () => {
     expect(screen.getByText("records")).toBeDefined();
     expect(screen.getByText("prime_equity_trades")).toBeDefined();
     expect(screen.getByText("trade")).toBeDefined();
-    expect(screen.getByText("posts")).toBeDefined();
+    expect(screen.getAllByText("posts").length).toBeGreaterThan(1);
     expect(screen.getByText("capital-calls")).toBeDefined();
     expect(
       screen.getByRole("link", { name: /prime_equity_trades/ }).getAttribute("href"),
@@ -389,7 +389,7 @@ describe("a first-class book", () => {
       );
       expect(screen.getByLabelText("Undrawn commitment")).toBeDefined();
       expect(screen.getByText("Undrawn commitments — LP")).toBeDefined();
-      expect(screen.getByText("60.00")).toBeDefined();
+      expect(screen.getAllByText("60.00").length).toBeGreaterThan(1);
       expect(screen.getByText("Undrawn commitments — GP")).toBeDefined();
       expect(screen.getAllByText("unset").length).toBeGreaterThan(0);
       expect(screen.queryByText(/not a callable zero/)).toBeNull();
