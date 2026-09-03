@@ -3189,9 +3189,12 @@ describe("the fund overview", () => {
     // say so; a book that declares none is relieved oldest-first by CUSTOM, and
     // printing "a term of the administration agreement" over that is asserting
     // something nobody agreed to.
+    // Two rows now share the elected-term claim: lot method and wash window.
+    // getByText would fail the moment a second term is cited, which is the
+    // opposite of what this assertion is for.
     expect(
-      screen.getByText(/a term of the administration agreement/),
-    ).toBeDefined();
+      screen.getAllByText(/a term of the administration agreement/).length,
+    ).toBe(2);
   });
 
   it("cites a declared wash window and leaves the US transfer in force", async () => {
