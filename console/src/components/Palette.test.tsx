@@ -321,6 +321,7 @@ describe("the command palette", () => {
     for (const [label, href] of [
       ["Balance sheet", `/books/studio/views/${VIEW}/sheet`],
       ["Income statement", `/books/studio/views/${VIEW}/pnl`],
+      ["Cash flow", `/books/studio/views/${VIEW}/cashflow`],
       ["Trial balance", `/books/studio/views/${VIEW}/accounts`],
     ] as const) {
       const { unmount } = renderOperating();

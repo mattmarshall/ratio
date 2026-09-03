@@ -163,10 +163,11 @@ export const ROUTES: readonly Route[] = [
     file: "books/[book]/views/[view]/bridge/page.tsx",
     reads: ["getBook", "listAccounts"],
   },
-  // Household period cash-flow. Same chrome source as the bridge. Beginning
-  // and ending cash are the Loan-shaped fold (`cashflow-YYYY-MM`); movement
-  // classifies into operating / investing / financing from the same accounts
-  // the bridge already names. Unset stays unset.
+  // Period cash-flow for Personal and Operating. Same chrome source as
+  // the other figure screens — one `screensFor` list, kind selects it.
+  // Beginning and ending cash are the Loan-shaped fold (`cashflow-YYYY-MM`);
+  // movement classifies into operating / investing / financing from the
+  // accounts `chart_for` wrote. Unset stays unset.
   {
     path: "/books/[book]/views/[view]/cashflow",
     file: "books/[book]/views/[view]/cashflow/page.tsx",

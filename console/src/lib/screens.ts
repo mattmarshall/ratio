@@ -20,8 +20,10 @@
 // statement on the same `/capital` URL (#70, #82, #102) — then a period
 // NAV roll-forward (#96), then the ABOR warehouse. An
 // operating-business book cites the same sheet + period income statement
-// + trial balance as a close surface (#108) — not Fund NAV, not Project
-// `/billing`, and not a second meaning of UNSPECIFIED. The
+// + trial balance as a close surface (#108), and a period cash-flow
+// statement on the same `/cashflow` URL Personal already uses (#118) —
+// not Fund NAV, not Project `/billing`, and not a second meaning of
+// UNSPECIFIED. The
 // agreement screens stay shared: a rule set is the same document whichever
 // chart it posted.
 
@@ -137,12 +139,18 @@ export const INVESTMENT_SCREENS: readonly Screen[] = [
 
 /**
  * Operating-company figures. Balance sheet, period income statement,
- * trial balance — not ABOR, not a project job, not a household.
+ * period cash-flow, trial balance — not ABOR, not a project job, not
+ * a household warehouse.
  *
  * ⛔ `/billing` IS A PROJECT JOB FIGURE. Putting it here would imply
  * entity-wide AR/AP aging. The journal has no due date and no
  * invoice/bill application, so aging is a named follow-on, not a
  * generic "billing" tab. One chrome list (`screensFor`).
+ *
+ * `/cashflow` IS THE SAME URL PERSONAL ALREADY USES. Kind selects
+ * the list; the page classifies from `chart_for(Operating)` (AR/AP
+ * working capital, owner equity) rather than household loans. Investing
+ * stays unset — the chart has no PPE / securities account.
  *
  * Sheet and P&L reuse the existing `/sheet` and `/pnl` pages: grouping
  * is by account type, and `chart_for(Operating)` is the chart. Trial
@@ -152,6 +160,7 @@ export const INVESTMENT_SCREENS: readonly Screen[] = [
 export const OPERATING_SCREENS: readonly Screen[] = [
   { segment: "sheet", label: "Balance sheet", scoped: true, group: "book" },
   { segment: "pnl", label: "Income statement", scoped: true, group: "book" },
+  { segment: "cashflow", label: "Cash flow", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   ...AGREEMENT,
 ];

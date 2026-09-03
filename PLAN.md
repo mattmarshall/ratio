@@ -713,8 +713,10 @@ kind the console offers cannot go unrecorded here again:
   billed. Unset until the journal can support them. The budget page does
   not forecast.
 - `OPERATING` — an ordinary operating business: cash, AR, AP, operating
-  revenue / expense, owner equity. Sheet and period income statement
-  that tie to the trial balance. AR/AP aging is a named follow-on
+  revenue / expense, owner equity. Sheet, period income statement, and
+  period cash-flow (the same-day amendment below) that tie to the trial
+  balance. Investing stays unset — the chart has no PPE account.
+  AR/AP aging is a named follow-on
   (#117) — no due date, no open-item application.
 
 **The wedge is still the revenue path.** A paid shadow run on a real
@@ -757,7 +759,7 @@ production-complete, and do not read a walk-through as demo-ready (#27).
 `screensFor` as the one chrome list; the AuthKit callback (`/sign-in`,
 `/callback`) in place of Cognito's Hosted UI. The domain figures above
 composed onto existing URLs — `/capital`, `/billing`, `/budget`,
-`/sheet`, `/pnl` — rather than minting a chrome list per issue.
+`/sheet`, `/pnl`, `/cashflow` — rather than minting a chrome list per issue.
 
 **What it did NOT buy, and this is the honest half.** Period close
 (#114) is the Stage 1 door ("no effect on a closed period"); this
@@ -777,8 +779,9 @@ What landed is a citeable period figure at `/books/{id}/views/{view}/cashflow`,
 folded from the same journal as every other household figure (`filter=
 cashflow-YYYY[-MM]`, the Loan-shaped window the bridge already uses). No new
 RPC, no second store, no proto resource. Kind still selects the chrome from
-one `screensFor` list — Fund, Project, Investment, and Operating books
-do not wear it.
+one `screensFor` list — Fund, Project, and Investment books do not wear
+the household statement. Operating composes onto the same URL (amendment
+below); it does not fork `screensFor`.
 
 **The split the chart can support.** Operating / investing / financing,
 reconstructed from each non-cash account's period net (cash from an account
@@ -809,6 +812,54 @@ classes, and the conserved tie. It cannot show a cash forecast, envelope
 coaching, bank OAuth, a credit score, a fire number, or a client portal.
 Envelope budgeting stays on #83; loan schedules on #87; the net-worth
 bridge on #94. None of those are on the *Explicitly not building* list, and
+this amendment adds none of them.
+
+### Amendment, 2026-09-03 — an operating-company cash-flow statement, and nothing on the refusal list moved
+
+OPERATING books already cited a balance sheet, a period income statement, and
+a trial balance (#108). PERSONAL books already cited a period cash-flow
+statement at `/cashflow` (#98). An ordinary operating company still could not
+answer where **cash** went for the same period its P&L covers. Operators
+rebuilt that story in a spreadsheet beside a book that already tied.
+
+What landed is the same citeable period figure at
+`/books/{id}/views/{view}/cashflow`, folded from the same journal
+(`filter=cashflow-YYYY[-MM]`). No new RPC, no second store, no proto
+resource. Kind still selects the chrome from one `screensFor` list — the
+screen is added to `OPERATING_SCREENS`. Fund, Project, and Investment books
+do not wear it. This is not AR/AP aging (#117), not a period close (#114),
+not a bank reconciliation, and not a forecast.
+
+**The split the Operating chart can support.** Operating / investing /
+financing, reconstructed from each non-cash account's period net (cash from
+an account = −(debit − credit)), which is conservation itself:
+
+- **Operating** — operating revenue, operating expenses, Accounts receivable
+  and Accounts payable as working capital. An invoice is Dr AR / Cr revenue
+  and does not move cash; a vendor bill is Dr expense / Cr AP. Omitting
+  those plugs would make accrual look like cash.
+- **Investing** — unset. `chart_for(Operating)` has no PPE / securities
+  account. A 0.00 investing class would invent one.
+- **Financing** — Owner equity (contribution and draw). There is no
+  `[personal.loan]`. A chart without Owner equity leaves financing unset,
+  not a silent 0.00 draw.
+
+A move the chart cannot name is a residual line an operator can open, not
+silent absorption. Beginning cash plus classified movement equals ending
+cash when both cuts exist.
+
+**Unset stays unset.** Beginning cash is unset when every account's beginning
+is 0 (no dated prefix before the window). Ending cash is unset when nothing
+dated has landed. An empty journal is not a measured $0.00 cash. Spending
+down to zero is a real zero.
+
+**What a walk-through can and cannot show** (demo readiness, #27). It can
+show beginning and ending cash for a month or year, the operating and
+financing classes the journal supports, and the conserved tie. It cannot
+show AR/AP aging, a period close, a bank reconciliation, a cash forecast,
+payroll, tax filing, inventory/COGS, payment initiation, bank OAuth, or a
+client portal. Sheet / P&L stay on #108; aging stays on #117; period close
+stays on #114. None of those are on the *Explicitly not building* list, and
 this amendment adds none of them.
 
 ## The control plane: geetch and crova

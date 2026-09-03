@@ -445,6 +445,23 @@ NEEDLES: list[tuple[str, str]] = [
         "no due date and no open-item application",
         "the sheet would stop saying receivable/payable are control accounts",
     ),
+    # ── operating period cash-flow (#118) ───────────────────────────────────
+    # ⚠ THE UNSET SENTENCE AND THE CHART-HONEST SPLIT, NOT THE TAB LABEL.
+    # `screens.ts` already says "Cash flow"; a page that rendered $0.00
+    # cash on an empty operating book, or a 0.00 investing class the
+    # chart cannot name, would still contain the label and stay green.
+    (
+        "beginning plus operating plus financing",
+        "the operating cash-flow page would stop showing the conserved tie",
+    ),
+    (
+        "working capital — an invoice is not a cash inflow",
+        "an unpaid invoice would look like operating cash received",
+    ),
+    (
+        "no investing account on this chart — chart_for(Operating)",
+        "operating cash-flow would invent a PPE / securities class",
+    ),
 ]
 
 
