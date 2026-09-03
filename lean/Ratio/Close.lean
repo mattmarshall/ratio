@@ -244,8 +244,6 @@ audited verb. -/
 theorem a_close_only_moves_forward (t d : Day)
     (h : close (some t) d = some d) : t < d := by
   simp [close] at h
-  split_ifs at h with ht
-  · contradiction
-  · exact Int.not_le.mp ht
+  exact h
 
 end Ratio.Close
