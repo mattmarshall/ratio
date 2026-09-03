@@ -222,12 +222,13 @@ reads = "csv"
   # contract a custodian holdings file arrives under. REFERENCE DATA: no
   # `posts` block — recorded, resolved and citable, never booked.
   #
-  # ⭐ THE CLOSED LOOP THIS SCRIPT ALREADY IS: `prime_equity_trades` above
-  # is delivered (`prime-trades.csv`), resolved against the master, admitted,
-  # and — when `LEAVE_ONE_PENDING` is set — leaves VWRL unmatched so the
-  # pending-fact screen has a row an operator can open. That is the
-  # roadmap's "first custodian feed, end to end". This snapshot is the
-  # other half of the same feed: holdings as of a day, not trades.
+  # ⭐ THE TRADE HALF IS NOW ALSO A CREATEBOOK SEED. `prime_equity_trades`
+  # above is the same column contract `config_for(Investment)` writes; a
+  # blank Investment book can deliver, resolve, admit, and — when the
+  # master lacks VWRL — leave a pending fact an operator opens from
+  # `/books/{id}`. THIS SCRIPT still posts recon history below so the
+  # blocked-NAV story has a break. That is a different book. Do not copy
+  # those journal rows onto CreateBook.
   [[template]]
   id = "custodian-positions"
   reads = "csv"

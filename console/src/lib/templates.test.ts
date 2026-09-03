@@ -28,9 +28,10 @@ describe("book templates", () => {
 });
 
 describe("ingest templates", () => {
-  it("seeds one mapping per CreateBook kind, and the fixture carries each", () => {
+  it("seeds the CreateBook mappings, and the fixture carries each", () => {
     expect(INGEST_TEMPLATE_KIND["bank-statement"]).toBe("PERSONAL");
     expect(INGEST_TEMPLATE_KIND["custodian-positions"]).toBe("INVESTMENT");
+    expect(INGEST_TEMPLATE_KIND["prime_equity_trades"]).toBe("INVESTMENT");
     expect(INGEST_TEMPLATE_KIND["project-invoices"]).toBe("PROJECT");
     const ids = templatesFixture.templates.map((t) => t.templateId);
     for (const id of Object.keys(INGEST_TEMPLATE_KIND)) {
@@ -38,34 +39,37 @@ describe("ingest templates", () => {
     }
   });
 
-  it("will not offer a fund snapshot on a Personal or Project book", () => {
+  it("will not offer a fund snapshot or trade file on a Personal or Project book", () => {
     const listed = templatesFixture.templates;
     const personal = templatesForKind("PERSONAL", listed).map((t) => t.templateId);
     const project = templatesForKind("PROJECT", listed).map((t) => t.templateId);
     const investment = templatesForKind("INVESTMENT", listed).map((t) => t.templateId);
     expect(personal).toEqual(["bank-statement"]);
     expect(project).toEqual(["project-invoices"]);
-    expect(investment).toEqual(["custodian-positions"]);
+    expect(investment).toEqual(["custodian-positions", "prime_equity_trades"]);
     expect(personal).not.toContain("custodian-positions");
+    expect(personal).not.toContain("prime_equity_trades");
     expect(project).not.toContain("custodian-positions");
+    expect(project).not.toContain("prime_equity_trades");
   });
 
-  it("leaves a demo trade file visible on the book that holds it", () => {
-    // ⚠ seed-demo-book.sh's e2e path. Not a CreateBook seed; filtering it
-    // out of an Investment list would hide the closed loop the roadmap names.
+  it("leaves an unlisted price file visible on the Investment book that holds it", () => {
+    // ⚠ seed-demo-book.sh's vendor_eod_prices. Not a CreateBook seed; the
+    // default-to-Investment filter is what keeps it on the fund that has it
+    // without offering it to a household.
     const extra = [
       ...templatesFixture.templates,
       {
-        name: "funds/harbourline-global-value/templates/prime_equity_trades",
-        templateId: "prime_equity_trades",
-        factKind: "trade",
-        form: "one trade per row",
-        posts: true,
+        name: "funds/harbourline-global-value/templates/vendor_eod_prices",
+        templateId: "vendor_eod_prices",
+        factKind: "price",
+        form: "one price per row",
+        posts: false,
       },
     ];
     expect(
       templatesForKind("INVESTMENT", extra).map((t) => t.templateId),
-    ).toEqual(["custodian-positions", "prime_equity_trades"]);
+    ).toEqual(["custodian-positions", "prime_equity_trades", "vendor_eod_prices"]);
     expect(
       templatesForKind("PERSONAL", extra).map((t) => t.templateId),
     ).toEqual(["bank-statement"]);
@@ -95,6 +99,12 @@ describe("ingest templates", () => {
     expect(need("custodian-positions").factKind).toBe("position");
     expect(need("custodian-positions").posts).toBe(false);
     expect(need("custodian-positions").form).toMatch(/posts      nothing/);
+    expect(need("prime_equity_trades").factKind).toBe("trade");
+    expect(need("prime_equity_trades").posts).toBe(true);
+    expect(need("prime_equity_trades").form).toMatch(/template prime_equity_trades \{/);
+    expect(need("prime_equity_trades").form).toMatch(/one trade per row/);
+    expect(need("prime_equity_trades").form).toMatch(/amount      consideration/);
+    expect(need("prime_equity_trades").form).toMatch(/buy         -> equity_purchase/);
   });
 
   it("sample CSVs name the columns the seeded templates read", () => {
@@ -110,11 +120,16 @@ describe("ingest templates", () => {
     expect(sampleHeader("custodian-positions.csv")).toBe(
       "LineRef,AsOf,ISIN,Ticker,Exch,Quantity,MarketValue,Ccy",
     );
+    expect(sampleHeader("prime_equity_trades.csv")).toBe(
+      "TradeRef,ISIN,Symbol,Exch,Broker,B/S,Quantity,Price,Ccy,TradeDate",
+    );
     const forms = Object.fromEntries(
       templatesFixture.templates.map((t) => [t.templateId, t.form]),
     );
     expect(forms["bank-statement"]).toMatch(/from "Memo"/);
     expect(forms["project-invoices"]).toMatch(/from "Vendor"/);
     expect(forms["custodian-positions"]).toMatch(/from "ISIN"/);
+    expect(forms["prime_equity_trades"]).toMatch(/from "B\/S"/);
+    expect(forms["prime_equity_trades"]).toMatch(/from "TradeDate"/);
   });
 });
