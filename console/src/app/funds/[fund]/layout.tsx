@@ -62,13 +62,13 @@ export default async function FundLayout({
             </span>
           ) : null}
           <ViewSwitch fund={fund} views={views} defaultView={defaultView} />
-          <ScreenTabs
-            fund={fund}
-            view={defaultView}
-            pending={f.pendingFactCount}
-          />
         </div>
       </div>
+      <ScreenTabs
+        fund={fund}
+        view={defaultView}
+        pending={f.pendingFactCount}
+      />
 
       {children}
     </main>

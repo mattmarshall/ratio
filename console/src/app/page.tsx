@@ -17,8 +17,5 @@ export default async function Home() {
   if (!books.length) redirect("/books");
   const first = books[0]!;
   const id = first.name.replace(/^books\//, "");
-  if (first.defaultView) {
-    redirect(`/books/${id}/views/${first.defaultView}/breaks`);
-  }
   redirect(`/books/${id}`);
 }

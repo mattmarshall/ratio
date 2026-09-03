@@ -101,21 +101,25 @@ Matthew names by setting those variables — do not copy a client id from
 another product.
 
 The callback path is the one [AuthKit for Next.js](https://workos.com/docs/authkit/nextjs)
-documents, not the old Cognito `/api/auth/callback`. That page recommends
-`http://localhost:3000/callback` and puts `handleAuth()` in
-`/app/callback/route.ts`. The initiate-login example is `/login`.
+and the [authkit-nextjs README](https://github.com/workos/authkit-nextjs)
+document: `handleAuth()` at `/app/callback/route.ts`, recommended URI
+`http://localhost:3000/callback`. The Sign-in URL is `/sign-in`
+(`app/sign-in/route.ts` in that README) — already registered on the Ratio
+WorkOS application.
 
-Register these on the attached WorkOS application:
+This repository does not compile a client id. The Ratio project's public
+identifiers, for the env var only:
 
-| | Production console | Local `next dev` |
+| | Staging (local / AuthKit sandbox) | Production (Vercel) |
 |---|---|---|
-| **Redirect URI** | `https://ratio-ims.vercel.app/callback` | `http://localhost:3000/callback` |
-| **Initiate login URL** | `https://ratio-ims.vercel.app/login` | `http://localhost:3000/login` |
-| **Sign-out URI** | `https://ratio-ims.vercel.app/signin` | `http://localhost:3000/signin` |
+| `WORKOS_CLIENT_ID` | `client_01M1JJZT4T0NN1WWT65NE6CV3W` | `client_01M1JJZTFXFDZJ0XJM1NPNSEJB` |
+| Redirect URI | `http://localhost:3000/callback` (default) and `https://ratio-ims.vercel.app/callback` | `https://ratio-ims.vercel.app/callback` |
+| Sign-in URL | `http://localhost:3000/sign-in` | `https://ratio-ims.vercel.app/sign-in` |
+| Sign-out URI | `http://localhost:3000` | `https://ratio-ims.vercel.app` |
 
-`/api/auth/login` is the same initiate-login handler as `/login`, kept so an
-old bookmark still starts AuthKit. `/api/auth/callback` only redirects to
-`/signin`; it cannot complete a sign-in.
+`WORKOS_API_KEY` is a secret (`sk_…`). Do not commit it. `/login` and
+`/api/auth/login` are the same initiate-login handler as `/sign-in`.
+`/api/auth/callback` only redirects to `/signin` (the prompt page).
 
 Local `next dev` and `ratio watch` leave every `WORKOS_*` variable unset.
 That is `Subject::Local`, not a second IdP.

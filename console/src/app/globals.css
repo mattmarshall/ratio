@@ -286,35 +286,28 @@ a.brandlink{color:inherit;text-decoration:none}
   text-decoration-color:var(--crit);opacity:.75}
 .now{color:#C6D3CB}
 
-/* The screen tabs. ⛔ `.screens`, NOT `.views` — a view is now a book of
-   record (ABOR, IBOR) and these are the screens under one of them. Two things
-   under one word in one header is how a console starts lying about which
-   figure it is showing.
-
-   ⛔ THESE ARE LINKS NOW, AND THE SELECTORS HAD TO LEARN IT. They were <button>
-   flipping a useState; every one is a URL. That is the whole point of this
-   console — a break an operator finds has to be a break they can send someone —
-   and a control that cannot be middle-clicked, opened in a new tab or copied
-   out of the address bar is not a link no matter what it looks like.
-
-   ⚠ AND `aria-pressed` BECAME `aria-current`. A link is not a toggle: pressed
-   describes a button that stays down, current describes the page you are on.
-   Both are matched below only because the trial-balance and break filters are
-   still genuine buttons — they narrow a list rather than navigate. */
-/* ⚠ THE TAB ROW SCROLLS, THE PAGE DOES NOT — the same rule the plan diagram
-   follows. Eight screens are wider than a phone and wider than the queue on a
-   narrow laptop; without this the row set the min-content width of the whole
-   column and dragged every figure on the screen sideways with it. */
-.screens{display:flex;gap:2px;margin-left:14px;padding:2px;border-radius:9px;
-  background:var(--raised);border:1px solid var(--rule);
-  max-width:100%;overflow-x:auto}
-.screens button,.screens a{padding:4px 12px;border:0;border-radius:7px;
-  background:transparent;color:var(--text-2);font-size:12.5px;font-weight:600;
-  cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;
-  flex:none;white-space:nowrap}
-.screens button:hover,.screens a:hover{color:var(--text)}
-.screens button[aria-pressed="true"],.screens a[aria-current="page"]{
-  background:var(--surface);color:var(--text);box-shadow:0 1px 2px var(--shadow)}
+/* Places under a book. ⛔ NOT `.screens` AS ONE TAB STRIP. Eight equal
+   tabs mixed figures with agreements and made a personal book look like a
+   fund warehouse. Two groups, wrapping, so a phone does not scroll the
+   page sideways. `.screens` remains only as a legacy selector some tests
+   still allow to scroll; these places wrap instead. */
+.places{display:flex;flex-wrap:wrap;gap:16px 28px;margin:0 0 18px;
+  padding:12px 0;border-bottom:1px solid var(--rule)}
+.places-hub{border-bottom:0;padding-top:4px}
+.placegroup{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px;
+  min-width:min(100%,220px)}
+.placehead{font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-2);margin-right:4px}
+.places a,.placeoff{font-size:13px;font-weight:600;text-decoration:none;
+  color:var(--text-2)}
+.places a:hover{color:var(--text)}
+.places a[aria-current="page"]{color:var(--text);text-decoration:underline;
+  text-underline-offset:3px}
+.placeoff{display:inline-flex;flex-direction:column;opacity:.55}
+.placeoff small{font-size:10.5px;font-weight:500;letter-spacing:0;
+  text-transform:none}
+.places .pip{margin-left:6px;padding:0 5px;border-radius:999px;font-size:10.5px;
+  font-weight:700;background:var(--warn);color:var(--ground)}
 
 /* The trial balance.
    A four-column grid rather than a <table>: the rows are buttons, and a button
@@ -401,8 +394,6 @@ a.brandlink{color:inherit;text-decoration:none}
   box-shadow:inset 0 0 0 1px var(--rule-2)}
 /* A count on the tab, because a blocking condition an operator only sees after
    clicking is one they will miss. */
-.screens .pip{margin-left:6px;padding:0 5px;border-radius:999px;font-size:10.5px;
-  font-weight:700;background:var(--warn);color:var(--ground)}
 /* The file itself. Monospace because what is pasted here is a machine's
    output and a column that does not line up is harder to check. */
 .form textarea{padding:9px 11px;border-radius:8px;font-size:12px;line-height:1.5;
@@ -872,7 +863,7 @@ a.brandlink{color:inherit;text-decoration:none}
 
   .qhead{padding:14px 14px 10px}
   .qhead h1{font-size:19px}
-  .screens{margin-left:0}
+  .places{margin-left:0}
   /* ⛔ `minmax(0,1fr)` FOR THE SAME REASON AS `.body`'s column: bare 1fr lets
      the widest figure set the track, and four of them beat a phone by 4px. */
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}

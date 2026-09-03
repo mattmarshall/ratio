@@ -240,18 +240,25 @@ Gateway JWT authorizer uses issuer `https://api.workos.com/` and audience =
 `org:{workos_org_id}`. Creating a book grants only the creator's `sub`.
 
 The callback path is the one [AuthKit for Next.js](https://workos.com/docs/authkit/nextjs)
-names (`handleAuth()` at `/app/callback/route.ts`), not Cognito's
-`/api/auth/callback`. Register these on whichever WorkOS application is
-attached — this repo does not pick one:
+and the [authkit-nextjs README](https://github.com/workos/authkit-nextjs)
+name (`handleAuth()` at `/app/callback/route.ts`), not Cognito's
+`/api/auth/callback`. The Sign-in URL is `/sign-in`
+(`app/sign-in/route.ts` in that README).
 
-| | Production console | Local `next dev` |
+This repo does not compile a client id. Set `WORKOS_CLIENT_ID` to the
+Ratio project's public identifier for the environment you are attaching:
+
+| | Staging (local / AuthKit sandbox) | Production (Vercel) |
 |---|---|---|
-| Redirect URI | `https://ratio-ims.vercel.app/callback` | `http://localhost:3000/callback` |
-| Initiate login URL | `https://ratio-ims.vercel.app/login` | `http://localhost:3000/login` |
-| Sign-out URI | `https://ratio-ims.vercel.app/signin` | `http://localhost:3000/signin` |
+| `WORKOS_CLIENT_ID` | `client_01M1JJZT4T0NN1WWT65NE6CV3W` | `client_01M1JJZTFXFDZJ0XJM1NPNSEJB` |
+| Redirect URI | `http://localhost:3000/callback` and `https://ratio-ims.vercel.app/callback` | `https://ratio-ims.vercel.app/callback` |
+| Sign-in URL | `http://localhost:3000/sign-in` | `https://ratio-ims.vercel.app/sign-in` |
+| Sign-out URI | `http://localhost:3000` | `https://ratio-ims.vercel.app` |
 
-`/api/auth/login` is the same initiate-login handler as `/login`.
-`/api/auth/callback` only sends the browser to `/signin`.
+`WORKOS_API_KEY` and `WORKOS_COOKIE_PASSWORD` are secrets. They are never
+committed. `/login` and `/api/auth/login` are the same initiate-login
+handler as `/sign-in`. `/api/auth/callback` only sends the browser to
+`/signin` (the prompt page).
 
 ⚠ **A wrong value fails the build, not the sign-in.** `pnpm build` runs
 `scripts/preflight.mjs` first: it fetches `${RATIO_API_ORIGIN}/authconfig.json`

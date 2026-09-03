@@ -4,8 +4,9 @@ export const dynamic = "force-dynamic";
 
 /** The console with no session: a prompt, not a wall of refusals.
  *
- * The button is a plain link to `/login`, the initiate-login URL
- * AuthKit-for-Next.js documents. Nothing about the flow runs in this page. */
+ * The button is a plain link to `/sign-in`, the Sign-in URL AuthKit's
+ * Next.js README names (`app/sign-in/route.ts`) and the Ratio WorkOS
+ * application already has registered. Nothing about the flow runs here. */
 export default async function SignIn({
   searchParams,
 }: {
@@ -13,8 +14,8 @@ export default async function SignIn({
 }) {
   const { returnTo, error } = await searchParams;
   const href = returnTo
-    ? `/login?returnTo=${encodeURIComponent(returnTo)}`
-    : "/login";
+    ? `/sign-in?returnTo=${encodeURIComponent(returnTo)}`
+    : "/sign-in";
 
   return (
     <div className="app signin">

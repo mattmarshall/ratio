@@ -2,6 +2,7 @@ import Link from "next/link";
 import { caller } from "@/lib/caller";
 import { count } from "@/lib/format";
 import { or404 } from "@/lib/or404";
+import { SCREENS, SCREEN_GROUPS, screenHref } from "@/lib/screens";
 import { getBook, getView } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
@@ -57,17 +58,32 @@ export default async function BookPage({
           </>
         ) : null}
       </dl>
-      {b.defaultView ? (
+      <nav className="places places-hub" aria-label="Places">
+        {SCREEN_GROUPS.map((g) => (
+          <div key={g.id} className="placegroup">
+            <span className="placehead">{g.label}</span>
+            {SCREENS.filter((s) => s.group === g.id).map((s) => {
+              const href =
+                s.scoped && !b.defaultView
+                  ? undefined
+                  : screenHref(book, b.defaultView, s, "books");
+              return href ? (
+                <Link key={s.segment} href={href}>
+                  {s.label}
+                </Link>
+              ) : (
+                <span key={s.segment} className="placeoff">
+                  {s.label}
+                  <small>needs a book of record</small>
+                </span>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
+      {b.fund ? (
         <p className="note">
-          <Link href={`/books/${book}/views/${b.defaultView}/breaks`}>
-            Open the exceptions queue
-          </Link>
-          {b.fund ? (
-            <>
-              {" · "}
-              <Link href={`/${b.fund}`}>Fund view</Link>
-            </>
-          ) : null}
+          <Link href={`/${b.fund}`}>Fund filing</Link>
         </p>
       ) : null}
     </main>

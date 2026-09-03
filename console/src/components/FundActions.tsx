@@ -60,7 +60,10 @@ export function FundActions({
       id: `screen:${s.segment}`,
       name: s.label,
       keywords: `${s.segment},screen,tab`,
-      section: { name: "Screens", priority: Priority.HIGH },
+      section: {
+        name: s.group === "book" ? "Book" : "Agreement",
+        priority: Priority.HIGH,
+      },
       perform: go(screenHref(fund, view, s)),
     })),
 

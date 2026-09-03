@@ -150,6 +150,8 @@ describe("a first-class book", () => {
     expect(screen.getByRole("heading", { name: "Household" })).toBeDefined();
     expect(screen.getByText("Personal")).toBeDefined();
     expect(screen.getByText("independent")).toBeDefined();
+    expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Configuration" })).toBeDefined();
   });
 
   it("gives a book of record a page of its own", async () => {
@@ -942,7 +944,7 @@ describe("sign-in", () => {
     const deep = "/funds/harbourline-global-value/breaks/cash-usd-2026-02-26";
     await renderAsync(SignIn({ searchParams: params({ returnTo: deep }) }));
     const href = document.querySelector(".signin-btn")?.getAttribute("href");
-    expect(href).toBe(`/login?returnTo=${encodeURIComponent(deep)}`);
+    expect(href).toBe(`/sign-in?returnTo=${encodeURIComponent(deep)}`);
   });
 
   it("names the signed-in principal and offers the way out", async () => {

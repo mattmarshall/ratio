@@ -38,9 +38,7 @@ export default async function Books() {
         ) : null}
         {books.map((b) => {
           const id = b.name.replace(/^books\//, "");
-          const href = b.defaultView
-            ? `/books/${id}/views/${b.defaultView}/breaks`
-            : `/books/${id}`;
+          const href = `/books/${id}`;
           return (
             <li key={b.name}>
               <Link className="row" href={href}>
