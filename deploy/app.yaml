@@ -159,9 +159,10 @@ Resources:
       # CPU, which Lambda allocates in proportion. It is the cheapest point at
       # which a cold start stays under half a second.
       MemorySize: 512
-      # Every request is a table render or one JSON-RPC call. Anything taking
-      # longer than this is stuck, and should fail rather than bill.
-      Timeout: 15
+      # list/detail folds over S3 journals need headroom; 15s was killing
+      # hydrate mid-seed. Authenticated /v1 list still has to finish inside
+      # the HTTP API's 30s integration cap below.
+      Timeout: 60
       ReservedConcurrentExecutions: !If
         - ReserveConcurrency
         - !Ref ReservedConcurrency
@@ -230,6 +231,12 @@ Resources:
           # URL. Set, append is LIST then conditional PUT at max+1
           # (`tla/S3Journal.tla`). The seeded chart and config still copy into
           # /tmp — they are not the system of record for a write.
+          #
+          # ⭐ MUST STAY SET. Clearing this was an ops workaround when
+          # hydrate re-claimed every seed line and list folded every object
+          # — that hung /v1/books. hydrate_jsonl now short-circuits on
+          # SeqLog height and list reads local files; do not leave
+          # production dependent on unsetting the bucket.
           RATIO_JOURNAL_BUCKET: !Ref ScaleBucket
           RATIO_JOURNAL_PREFIX: journals/
           # The report email: who it is from, and where its permalink points.
@@ -293,7 +300,9 @@ Resources:
       # 2.0 is what the Lambda Web Adapter expects; on 1.0 it sees a different
       # event shape and every request 500s.
       PayloadFormatVersion: "2.0"
-      TimeoutInMillis: 15000
+      # Must stay ≥ function work for authenticated /v1 list; was 15000
+      # matching the old function timeout. HTTP API max is 30000.
+      TimeoutInMillis: 30000
 
   # One catch-all route. The application does its own routing — adding routes
   # here would mean two route tables that have to agree, and they would not.
