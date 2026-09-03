@@ -10,7 +10,7 @@
 // `//console:route_manifest_test` holds this file to that from both sides:
 //
 //   * every route named here has a `page.tsx` (or `layout.tsx`) on disk, and
-//   * every one of the 40 RPCs in console.proto is read by something here.
+//   * every one of the 41 RPCs in console.proto is read by something here.
 //
 // ⚠ THAT COUNT IS PROSE AND NOTHING CHECKS IT, WHICH IS WHY IT WAS WRONG BY
 // THREE. It read 34 while the contract carried 37 — the RPCs arrived, the test
@@ -233,6 +233,14 @@ export const ROUTES: readonly Route[] = [
     path: "/books/[book]/views/[view]/pnl",
     file: "books/[book]/views/[view]/pnl/page.tsx",
     reads: ["listAccounts"],
+  },
+  {
+    // ⭐ OPERATING ONLY. Due-date buckets on AR/AP control accounts.
+    // Project `/billing` is one job's billed/earned/collections — not
+    // this figure. Empty filter is now; `?period=` is the as-of cut.
+    path: "/books/[book]/views/[view]/aging",
+    file: "books/[book]/views/[view]/aging/page.tsx",
+    reads: ["getBook", "operatingAging"],
   },
 
   // ── Kind-selected figures ────────────────────────────────────────────────

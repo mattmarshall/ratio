@@ -254,6 +254,36 @@ export interface ProjectProgressResponse {
   phases: PhaseCost[];
 }
 
+/**
+ * Aged AR and AP open items for an operating book.
+ *
+ * Empty buckets mean the schedule is unset, not a book of zeros. A set
+ * schedule writes `"0"` for an empty dated bucket. `undated` stays empty
+ * when every remaining item has a due date.
+ */
+export interface OperatingAgingResponse {
+  name: string;
+  receivable: AgingSchedule | null;
+  payable: AgingSchedule | null;
+  journalPosition: Int64;
+}
+
+/**
+ * One control account's aged open items.
+ *
+ * ⛔ EMPTY `current` MEANS UNSET, not current-bucket zero. A missing due
+ * date is not current. `"0"` is a real empty dated window.
+ */
+export interface AgingSchedule {
+  current: Int64;
+  days130: Int64;
+  days3160: Int64;
+  days6190: Int64;
+  daysOver90: Int64;
+  undated: Int64;
+  control: Int64;
+}
+
 /** Cost (and optional authorized spend) on one work-package account. */
 export interface PhaseCost {
   account: string;
@@ -790,6 +820,16 @@ export interface ApplyEventRequest {
   quantity: string;
   /** The day it was dealt. ⛔ What a lot's holding period is established from. */
   tradeDate: CalendarDate | null;
+  /**
+   * When an invoice or bill is due. Absent cannot be aged — not a
+   * default of the trade date, which would put every invoice in current.
+   */
+  dueDate?: CalendarDate | null;
+  /**
+   * The invoice or bill event id a collection or payment applies to.
+   * Empty leaves that side's aging unset — no FIFO, no equal split.
+   */
+  application?: string;
   validateOnly: boolean;
 }
 

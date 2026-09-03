@@ -1168,6 +1168,36 @@ impl Console {
             }
         };
 
+        // Same calendar check as trade_date. Absent is honest: a missing due
+        // date cannot be aged, and defaulting it to the trade date would put
+        // every invoice in current the day it was raised.
+        let due_date = match &req.due_date {
+            None => None,
+            Some(d) => {
+                let iso = format!("{:04}-{:02}-{:02}", d.year, d.month, d.day);
+                ratio_common::days_from_iso_date(&iso)
+                    .with_context(|| format!("{iso:?} is not a due date"))?;
+                Some(iso)
+            }
+        };
+
+        let application = req.application.trim();
+        let application = if application.is_empty() {
+            None
+        } else {
+            if application.len() > 64
+                || !application
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+            {
+                bail!(
+                    "{:?} is not an open-item id — letters, digits, - _ . and at most 64 of them",
+                    req.application
+                );
+            }
+            Some(application.to_string())
+        };
+
         let mut b = self.open_file_book(&path)?;
         let digest = b.active()?.context("no configuration is in force on this fund")?;
         let chart = b.accounts()?;
@@ -1235,6 +1265,8 @@ impl Console {
             postings: postings.clone(),
             trade_date,
             announcement: None,
+            due_date,
+            application,
         };
 
         // The kernel refuses an unbalanced entry at the door, so `append` is
@@ -1931,6 +1963,8 @@ impl Console {
         
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         })?;
         Ok((moved, dim_touched))
     }
@@ -2072,6 +2106,8 @@ impl Console {
                         
                             trade_date: None,
                             announcement: None,
+            due_date: None,
+            application: None,
                         })?;
                     }
                     posted += 1;
@@ -2284,6 +2320,20 @@ impl Console {
                     // is the honest answer for a file that carries none.
                     trade_date: ratio_ingest::dated_of(t, &r.fact).map(str::to_string),
                     announcement: None,
+                    due_date: r
+                        .fact
+                        .values
+                        .get("dueDate")
+                        .and_then(ratio_ingest::Value::as_date)
+                        .map(str::to_string),
+                    application: r
+                        .fact
+                        .values
+                        .get("application")
+                        .and_then(ratio_ingest::Value::as_text)
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string),
                 })?;
             }
             n += 1;
@@ -2746,6 +2796,81 @@ impl Console {
             retainage_receivable,
             retainage_payable,
             phases,
+        })
+    }
+
+    /// Aged AR/AP open items for an operating book of record.
+    ///
+    /// ⛔ REFUSES ANY OTHER KIND. Serving current-bucket zeros to a
+    /// project or household would look like entity-wide aging that
+    /// those journals cannot support. Project `/billing` is one job's
+    /// billed/earned/collections — not this figure.
+    ///
+    /// ⭐ UNSET STAYS UNSET. A missing due date is not current. A
+    /// collection or payment that does not name its invoice/bill
+    /// leaves that side unset — remaining per item is unknown, and
+    /// FIFO or an equal split would make the buckets look exact
+    /// while being somebody else's. Over-application unsets too.
+    pub fn operating_aging(
+        &self,
+        name: &str,
+        filter: &str,
+    ) -> Result<pb::OperatingAgingResponse> {
+        let (fund, view) = view_scoped_parent(name).context("bad view name")?;
+        let path = self.book_path(&fund)?;
+        let meta = book::BookMeta::load(&path, &fund);
+        if meta.kind != book::BookKind::Operating {
+            bail!(
+                "AR/AP aging is an operating figure — this book is {}, not an operating company",
+                meta.kind.as_str()
+            );
+        }
+
+        let (as_of, dated_only) = aging_cut(filter)?;
+        let b = self.open_file_book(&path)?;
+        let chart = b.accounts()?;
+        let ar_dim = chart
+            .iter()
+            .find(|a| a.display_name == "Accounts receivable")
+            .map(|a| a.dim);
+        let ap_dim = chart
+            .iter()
+            .find(|a| a.display_name == "Accounts payable")
+            .map(|a| a.dim);
+
+        let mut prefix = 0i64;
+        let mut ar = AgingFold::default();
+        let mut ap = AgingFold::default();
+        b.for_each_entry_since(0, &mut |e| {
+            prefix += 1;
+            if dated_only {
+                let Some(day) = e.trade_date.as_deref() else {
+                    return Ok(());
+                };
+                if day > as_of.as_str() {
+                    return Ok(());
+                }
+            }
+            if let Some(dim) = ar_dim {
+                if let Some(amt) = posting_on(e, dim) {
+                    // AR debit opens an invoice; credit is a collection.
+                    ar.ingest(e, amt, amt > 0);
+                }
+            }
+            if let Some(dim) = ap_dim {
+                if let Some(amt) = posting_on(e, dim) {
+                    // AP credit opens a bill; debit is a payment.
+                    ap.ingest(e, amt, amt < 0);
+                }
+            }
+            Ok(())
+        })?;
+
+        Ok(pb::OperatingAgingResponse {
+            name: format!("funds/{fund}/views/{view}"),
+            receivable: Some(ar.finish(&as_of, true)),
+            payable: Some(ap.finish(&as_of, false)),
+            journal_position: prefix,
         })
     }
 
@@ -4142,6 +4267,221 @@ fn parse_period(spec: &str) -> Result<PeriodWindow> {
     bail!("{spec:?} is not a month (YYYY-MM) or a year (YYYY)")
 }
 
+/// As-of day and whether undated journal entries are excluded.
+///
+/// Empty filter is now (UTC today), every entry. A month or year is the
+/// last calendar day of that period, dated entries only — the same cut
+/// the operating sheet uses. A full ISO day is that day, dated only.
+fn aging_cut(filter: &str) -> Result<(String, bool)> {
+    let spec = filter.trim();
+    if spec.is_empty() {
+        return Ok((utc_today()?, false));
+    }
+    if spec.len() == 10 && spec.as_bytes().get(4) == Some(&b'-') && spec.as_bytes().get(7) == Some(&b'-')
+    {
+        ratio_common::days_from_iso_date(spec)
+            .with_context(|| format!("{spec:?} is not a day"))?;
+        return Ok((spec.to_string(), true));
+    }
+    let window = parse_period(spec)?;
+    Ok((window.end, true))
+}
+
+fn utc_today() -> Result<String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("the clock is before the epoch")?
+        .as_secs();
+    Ok(ratio_common::iso_date_from_days((secs / 86_400) as i64))
+}
+
+fn posting_on(e: &ratio_store::JournalEntry, dim: i64) -> Option<i64> {
+    let amt: i64 = e
+        .postings
+        .iter()
+        .filter(|p| p.dim == dim)
+        .map(|p| p.amount)
+        .sum();
+    if amt == 0 {
+        None
+    } else {
+        Some(amt)
+    }
+}
+
+/// One control account's open items, accumulated from the journal.
+///
+/// `amount` is the posting on that control: AR debit is positive (an
+/// invoice opens; a collection reduces). AP credit is negative (a bill
+/// opens; a payment reduces).
+#[derive(Default)]
+struct AgingFold {
+    items: BTreeMap<String, OpenItem>,
+    unapplied: bool,
+    over_applied: bool,
+    posted: bool,
+    control: i64,
+}
+
+struct OpenItem {
+    remaining: i64,
+    due_date: Option<String>,
+}
+
+impl AgingFold {
+    fn ingest(&mut self, e: &ratio_store::JournalEntry, amount: i64, opens: bool) {
+        self.posted = true;
+        self.control += amount;
+        if !opens {
+            // Collection or payment. Without an application the remaining
+            // per item is unknown — do not invent FIFO or an equal split.
+            let target = e
+                .application
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let Some(target) = target else {
+                self.unapplied = true;
+                return;
+            };
+            match self.items.get_mut(target) {
+                Some(item) => item.remaining += amount,
+                None => self.unapplied = true,
+            }
+            return;
+        }
+        let item = self.items.entry(e.id.clone()).or_insert(OpenItem {
+            remaining: 0,
+            due_date: e.due_date.clone(),
+        });
+        item.remaining += amount;
+        if item.due_date.is_none() {
+            item.due_date = e.due_date.clone();
+        }
+    }
+
+    fn finish(&self, as_of: &str, debit_normal: bool) -> pb::AgingSchedule {
+        let control = if self.posted {
+            self.control.to_string()
+        } else {
+            String::new()
+        };
+        if !self.posted {
+            return pb::AgingSchedule {
+                control,
+                ..Default::default()
+            };
+        }
+
+        // A reduction that does not name its item: remaining per item is
+        // unknown. Do not invent FIFO or an equal split.
+        if self.unapplied {
+            return pb::AgingSchedule {
+                control,
+                ..Default::default()
+            };
+        }
+
+        let mut current = 0i64;
+        let mut d1 = 0i64;
+        let mut d31 = 0i64;
+        let mut d61 = 0i64;
+        let mut d90 = 0i64;
+        let mut undated = 0i64;
+        let mut any_open = false;
+        let mut any_dated = false;
+        let mut crossed = false;
+
+        let as_of_days = match ratio_common::days_from_iso_date(as_of) {
+            Ok(d) => d,
+            Err(_) => {
+                return pb::AgingSchedule {
+                    control,
+                    ..Default::default()
+                };
+            }
+        };
+
+        for item in self.items.values() {
+            if item.remaining == 0 {
+                continue;
+            }
+            // Over-application: remaining flipped past zero.
+            if debit_normal && item.remaining < 0 || !debit_normal && item.remaining > 0 {
+                crossed = true;
+                break;
+            }
+            any_open = true;
+            let Some(due) = item.due_date.as_deref() else {
+                undated += item.remaining;
+                continue;
+            };
+            let Ok(due_days) = ratio_common::days_from_iso_date(due) else {
+                undated += item.remaining;
+                continue;
+            };
+            any_dated = true;
+            let past = as_of_days - due_days;
+            if past <= 0 {
+                current += item.remaining;
+            } else if past <= 30 {
+                d1 += item.remaining;
+            } else if past <= 60 {
+                d31 += item.remaining;
+            } else if past <= 90 {
+                d61 += item.remaining;
+            } else {
+                d90 += item.remaining;
+            }
+        }
+
+        if crossed || self.over_applied {
+            return pb::AgingSchedule {
+                control,
+                ..Default::default()
+            };
+        }
+
+        // No remaining open items: a fully collected book is a real zero
+        // schedule when every reduction named its item. Empty AR is unset
+        // (handled by !posted above).
+        if !any_open {
+            return pb::AgingSchedule {
+                current: "0".into(),
+                days_1_30: "0".into(),
+                days_31_60: "0".into(),
+                days_61_90: "0".into(),
+                days_over_90: "0".into(),
+                undated: String::new(),
+                control,
+            };
+        }
+
+        // Remaining items exist but none carry a due date: cannot age.
+        if !any_dated {
+            return pb::AgingSchedule {
+                control,
+                ..Default::default()
+            };
+        }
+
+        pb::AgingSchedule {
+            current: current.to_string(),
+            days_1_30: d1.to_string(),
+            days_31_60: d31.to_string(),
+            days_61_90: d61.to_string(),
+            days_over_90: d90.to_string(),
+            undated: if undated == 0 {
+                String::new()
+            } else {
+                undated.to_string()
+            },
+            control,
+        }
+    }
+}
+
 
 /// One view's NAV in minor units, and how long the fold that struck it took.
 ///
@@ -4464,6 +4804,8 @@ mod tests {
             
                 trade_date: None,
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .unwrap();
         };
@@ -4787,6 +5129,8 @@ mod tests {
                 postings: vec![PostingRecord::new(1, 5_000_000), PostingRecord::new(2, -5_000_000)],
                 trade_date: None,
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .unwrap();
         }
@@ -4829,6 +5173,8 @@ mod tests {
                 postings: vec![PostingRecord::new(1, 11), PostingRecord::new(2, -11)],
                 trade_date: None,
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .unwrap();
         }
@@ -4861,6 +5207,8 @@ mod tests {
                 ],
                 trade_date: None,
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .unwrap();
             b.append(&JournalEntry {
@@ -4873,6 +5221,8 @@ mod tests {
                 ],
                 trade_date: None,
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .unwrap();
         }
@@ -4971,6 +5321,7 @@ mod tests {
                 day: d,
             }),
             validate_only: false,
+            ..Default::default()
         }
     }
 
@@ -5200,6 +5551,7 @@ mod tests {
                 day,
             }),
             validate_only: false,
+            ..Default::default()
         }
     }
 
@@ -5716,6 +6068,8 @@ mod tests {
             ],
             trade_date: Some("2026-02-01".into()),
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
         // $18,000 auto in February.
@@ -5729,6 +6083,8 @@ mod tests {
             ],
             trade_date: Some("2026-02-01".into()),
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
         // March mortgage: $800 principal + $200 interest against cash.
@@ -5743,6 +6099,8 @@ mod tests {
             ],
             trade_date: Some("2026-03-01".into()),
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
         // March auto: $350 principal + $45 interest.
@@ -5757,6 +6115,8 @@ mod tests {
             ],
             trade_date: Some("2026-03-15".into()),
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
         // A card charge the same month — not a declared loan.
@@ -5770,6 +6130,8 @@ mod tests {
             ],
             trade_date: Some("2026-03-20".into()),
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
         drop(b);
@@ -5871,6 +6233,8 @@ mod tests {
             ],
             trade_date: Some("2026-02-01".into()),
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
         drop(b);
@@ -6007,6 +6371,8 @@ mod tests {
             ],
             trade_date: Some("2026-02-01".into()),
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
         drop(b);
@@ -6141,6 +6507,7 @@ mod tests {
                 Some(ratio_proto::date_proto::google::r#type::Date { year, month, day })
             },
             validate_only: false,
+            ..Default::default()
         }
     }
 
@@ -7255,7 +7622,28 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
                 day: d,
             }),
             validate_only: false,
+            ..Default::default()
         }
+    }
+
+    fn operating_req_aged(
+        id: &str,
+        rule: &str,
+        amount: &str,
+        y: i32,
+        m: i32,
+        d: i32,
+        due: Option<(i32, i32, i32)>,
+        application: &str,
+    ) -> pb::ApplyEventRequest {
+        let mut req = operating_req(id, rule, amount, y, m, d);
+        req.due_date = due.map(|(yy, mm, dd)| ratio_proto::date_proto::google::r#type::Date {
+            year: yy,
+            month: mm,
+            day: dd,
+        });
+        req.application = application.into();
+        req
     }
 
     #[test]
@@ -7446,6 +7834,356 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             .expect_err("operating books have no progress billing");
         assert!(progress.to_string().contains("not a project"), "{progress}");
         assert!(!progress.to_string().contains("0"), "a refusal must not look like a zero figure: {progress}");
+
+        // Empty AR/AP: aging is unset, not a book of current-bucket zeros.
+        let empty = c.operating_aging(&view, "2026-04-15").unwrap();
+        let ar = empty.receivable.as_ref().expect("a schedule object");
+        let ap = empty.payable.as_ref().expect("a schedule object");
+        assert!(ar.current.is_empty(), "empty AR must not look current: {ar:?}");
+        assert!(ar.control.is_empty(), "unposted AR has no control: {ar:?}");
+        assert!(ap.current.is_empty(), "empty AP must not look current: {ap:?}");
+        assert!(ap.control.is_empty(), "unposted AP has no control: {ap:?}");
+    }
+
+    fn aging_of<'a>(r: &'a pb::OperatingAgingResponse, receivable: bool) -> &'a pb::AgingSchedule {
+        if receivable {
+            r.receivable.as_ref().expect("receivable")
+        } else {
+            r.payable.as_ref().expect("payable")
+        }
+    }
+
+    #[test]
+    fn operating_aging_cites_dated_open_items_and_ties_to_the_control() {
+        // ⭐ THE FIGURE #117 ASKS FOR. Two invoices and a named collection;
+        // a bill. As-of is a day, not utc_today, so the buckets do not
+        // move when the suite runs tomorrow.
+        let root = fresh("operating-aging-cite");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Studio".into(),
+                kind: book::BookKind::Operating.proto(),
+                ..Default::default()
+            }),
+            book_id: "studio".into(),
+        })
+        .unwrap();
+        c.apply_event(&operating_req_aged(
+            "inv-current",
+            "invoice_customer",
+            "400.00",
+            2026,
+            3,
+            5,
+            Some((2026, 4, 20)),
+            "",
+        ))
+        .unwrap();
+        c.apply_event(&operating_req_aged(
+            "inv-30",
+            "invoice_customer",
+            "200.00",
+            2026,
+            3,
+            1,
+            Some((2026, 3, 16)),
+            "",
+        ))
+        .unwrap();
+        c.apply_event(&operating_req_aged(
+            "col-1",
+            "collect_receivable",
+            "100.00",
+            2026,
+            4,
+            1,
+            None,
+            "inv-current",
+        ))
+        .unwrap();
+        c.apply_event(&operating_req_aged(
+            "bill-60",
+            "vendor_bill",
+            "80.00",
+            2026,
+            3,
+            12,
+            Some((2026, 3, 1)),
+            "",
+        ))
+        .unwrap();
+
+        let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
+        assert_eq!(c.get_fund("funds/studio").unwrap().trial_balance_difference, "0");
+
+        let aged = c.operating_aging(&view, "2026-04-15").unwrap();
+        let ar = aging_of(&aged, true);
+        // inv-current remaining 300, due 20 Apr → current; inv-30 200, due 16 Mar
+        // is 30 days past → 1–30. Collection named the invoice.
+        assert_eq!(ar.current, "30000", "{ar:?}");
+        assert_eq!(ar.days_1_30, "20000", "{ar:?}");
+        assert_eq!(ar.days_31_60, "0", "{ar:?}");
+        assert_eq!(ar.days_61_90, "0", "{ar:?}");
+        assert_eq!(ar.days_over_90, "0", "{ar:?}");
+        assert!(ar.undated.is_empty(), "every remaining invoice has a due date: {ar:?}");
+        assert_eq!(ar.control, "50000", "400 + 200 − 100: {ar:?}");
+        let ar_sum: i64 = [&ar.current, &ar.days_1_30, &ar.days_31_60, &ar.days_61_90, &ar.days_over_90]
+            .iter()
+            .map(|s| s.parse::<i64>().unwrap())
+            .sum();
+        assert_eq!(ar_sum, ar.control.parse::<i64>().unwrap());
+
+        let ap = aging_of(&aged, false);
+        // due 1 Mar, as-of 15 Apr → 45 days past → 31–60. Credit-normal raw.
+        assert_eq!(ap.current, "0", "{ap:?}");
+        assert_eq!(ap.days_1_30, "0", "{ap:?}");
+        assert_eq!(ap.days_31_60, "-8000", "{ap:?}");
+        assert_eq!(ap.days_61_90, "0", "{ap:?}");
+        assert_eq!(ap.days_over_90, "0", "{ap:?}");
+        assert!(ap.undated.is_empty(), "{ap:?}");
+        assert_eq!(ap.control, "-8000", "{ap:?}");
+    }
+
+    #[test]
+    fn operating_aging_stays_unset_when_a_remaining_item_has_no_due_date() {
+        // ⛔ A MISSING DUE DATE IS NOT CURRENT. Treating it as the trade
+        // date — or as today — would put every undated invoice in current.
+        let root = fresh("operating-aging-undated");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Studio".into(),
+                kind: book::BookKind::Operating.proto(),
+                ..Default::default()
+            }),
+            book_id: "studio".into(),
+        })
+        .unwrap();
+        c.apply_event(&operating_req("inv-bare", "invoice_customer", "400.00", 2026, 3, 5))
+            .unwrap();
+        c.apply_event(&operating_req_aged(
+            "bill-bare",
+            "vendor_bill",
+            "80.00",
+            2026,
+            3,
+            12,
+            None,
+            "",
+        ))
+        .unwrap();
+
+        let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let aged = c.operating_aging(&view, "2026-04-15").unwrap();
+        let ar = aging_of(&aged, true);
+        assert!(ar.current.is_empty(), "undated AR must not look current: {ar:?}");
+        assert!(ar.days_1_30.is_empty(), "{ar:?}");
+        assert_eq!(ar.control, "40000", "the control is still the sheet figure: {ar:?}");
+        let ap = aging_of(&aged, false);
+        assert!(ap.current.is_empty(), "undated AP must not look current: {ap:?}");
+        assert_eq!(ap.control, "-8000", "{ap:?}");
+    }
+
+    #[test]
+    fn operating_aging_stays_unset_when_a_collection_does_not_name_its_invoice() {
+        // ⛔ NO FIFO AND NO EQUAL SPLIT. Remaining per item is unknown.
+        let root = fresh("operating-aging-unapplied");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Studio".into(),
+                kind: book::BookKind::Operating.proto(),
+                ..Default::default()
+            }),
+            book_id: "studio".into(),
+        })
+        .unwrap();
+        c.apply_event(&operating_req_aged(
+            "inv-1",
+            "invoice_customer",
+            "400.00",
+            2026,
+            3,
+            5,
+            Some((2026, 4, 20)),
+            "",
+        ))
+        .unwrap();
+        c.apply_event(&operating_req("col-orphan", "collect_receivable", "100.00", 2026, 4, 1))
+            .unwrap();
+
+        let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let aged = c.operating_aging(&view, "2026-04-15").unwrap();
+        let ar = aging_of(&aged, true);
+        assert!(ar.current.is_empty(), "unapplied collection must unset AR: {ar:?}");
+        assert_eq!(ar.control, "30000", "the control still ties: {ar:?}");
+    }
+
+    #[test]
+    fn operating_aging_keeps_dated_buckets_and_an_undated_residual() {
+        let root = fresh("operating-aging-mix");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Studio".into(),
+                kind: book::BookKind::Operating.proto(),
+                ..Default::default()
+            }),
+            book_id: "studio".into(),
+        })
+        .unwrap();
+        c.apply_event(&operating_req_aged(
+            "inv-dated",
+            "invoice_customer",
+            "400.00",
+            2026,
+            3,
+            5,
+            Some((2026, 4, 20)),
+            "",
+        ))
+        .unwrap();
+        c.apply_event(&operating_req("inv-undated", "invoice_customer", "200.00", 2026, 3, 6))
+            .unwrap();
+
+        let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let aged = c.operating_aging(&view, "2026-04-15").unwrap();
+        let ar = aging_of(&aged, true);
+        assert_eq!(ar.current, "40000", "{ar:?}");
+        assert_eq!(ar.undated, "20000", "{ar:?}");
+        assert_eq!(ar.control, "60000", "{ar:?}");
+        assert_eq!(
+            ar.current.parse::<i64>().unwrap() + ar.undated.parse::<i64>().unwrap(),
+            ar.control.parse::<i64>().unwrap()
+        );
+    }
+
+    #[test]
+    fn a_fully_collected_invoice_is_a_real_zero_schedule() {
+        let root = fresh("operating-aging-collected");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Studio".into(),
+                kind: book::BookKind::Operating.proto(),
+                ..Default::default()
+            }),
+            book_id: "studio".into(),
+        })
+        .unwrap();
+        c.apply_event(&operating_req_aged(
+            "inv-1",
+            "invoice_customer",
+            "400.00",
+            2026,
+            3,
+            5,
+            Some((2026, 4, 20)),
+            "",
+        ))
+        .unwrap();
+        c.apply_event(&operating_req_aged(
+            "col-1",
+            "collect_receivable",
+            "400.00",
+            2026,
+            4,
+            1,
+            None,
+            "inv-1",
+        ))
+        .unwrap();
+
+        let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let aged = c.operating_aging(&view, "2026-04-15").unwrap();
+        let ar = aging_of(&aged, true);
+        assert_eq!(ar.current, "0", "fully collected is a real zero, not unset: {ar:?}");
+        assert_eq!(ar.days_1_30, "0", "{ar:?}");
+        assert!(ar.undated.is_empty(), "{ar:?}");
+        assert_eq!(ar.control, "0", "{ar:?}");
+        let ap = aging_of(&aged, false);
+        assert!(ap.current.is_empty(), "AP never posted: {ap:?}");
+        assert!(ap.control.is_empty(), "{ap:?}");
+    }
+
+    #[test]
+    fn over_application_unsets_aging_rather_than_flipping_a_bucket() {
+        let root = fresh("operating-aging-over");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Studio".into(),
+                kind: book::BookKind::Operating.proto(),
+                ..Default::default()
+            }),
+            book_id: "studio".into(),
+        })
+        .unwrap();
+        c.apply_event(&operating_req_aged(
+            "inv-1",
+            "invoice_customer",
+            "100.00",
+            2026,
+            3,
+            5,
+            Some((2026, 4, 20)),
+            "",
+        ))
+        .unwrap();
+        c.apply_event(&operating_req_aged(
+            "col-1",
+            "collect_receivable",
+            "150.00",
+            2026,
+            4,
+            1,
+            None,
+            "inv-1",
+        ))
+        .unwrap();
+
+        let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let aged = c.operating_aging(&view, "2026-04-15").unwrap();
+        let ar = aging_of(&aged, true);
+        assert!(ar.current.is_empty(), "over-applied remaining must not age: {ar:?}");
+        assert_eq!(ar.control, "-5000", "the control still reports the books: {ar:?}");
+    }
+
+    #[test]
+    fn operating_aging_is_refused_on_a_household_and_a_project() {
+        let root = fresh("aging-kind-refuse");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        let household = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let personal = c.operating_aging(&household, "2026-04-15").expect_err("not operating");
+        assert!(personal.to_string().contains("operating"), "{personal}");
+        assert!(
+            !personal.to_string().contains("0"),
+            "a refusal must not look like a zero figure: {personal}"
+        );
+
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Job".into(),
+                kind: book::BookKind::Project.proto(),
+                ..Default::default()
+            }),
+            book_id: "job".into(),
+        })
+        .unwrap();
+        let job = format!("funds/job/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let project = c.operating_aging(&job, "2026-04-15").expect_err("not operating");
+        assert!(project.to_string().contains("operating"), "{project}");
+        assert!(!project.to_string().contains("0"), "a refusal must not look like a zero figure: {project}");
     }
 
     #[test]
@@ -7936,6 +8674,8 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             ],
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
         drop(b);
@@ -8207,6 +8947,8 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
                 ],
                 trade_date: None,
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .unwrap();
             b.append(&JournalEntry {
@@ -8219,6 +8961,8 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
                 ],
                 trade_date: None,
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .unwrap();
         }
@@ -8254,6 +8998,8 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             postings: vec![ratio_store::PostingRecord::new(1, -1_000_000)],
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap_err();
 
@@ -8380,6 +9126,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             quantity: String::new(),
             trade_date: None,
             validate_only,
+            ..Default::default()
         };
 
         // A preview returns the entry and the NAV it WOULD produce…
@@ -8450,6 +9197,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             quantity: String::new(),
             trade_date: None,
             validate_only,
+            ..Default::default()
         };
 
         // `book()` posts three entries, so a ceiling of three is already met.
@@ -8490,6 +9238,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
                 day: 26,
             }),
             validate_only: false,
+            ..Default::default()
         }
     }
 
@@ -8647,6 +9396,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
                 quantity: String::new(),
                 trade_date: None,
                 validate_only: false,
+                ..Default::default()
             });
             assert!(r.is_err(), "{bad:?} should not be accepted as an event id");
         }
@@ -8661,6 +9411,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             quantity: String::new(),
             trade_date: None,
             validate_only: true,
+            ..Default::default()
         })
         .unwrap();
         assert_eq!(ok.entry.unwrap().memo, "acc-2 via fee");
@@ -8793,6 +9544,8 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
         drop(b);
@@ -8905,6 +9658,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
                 quantity: String::new(),
                 trade_date: None,
                 validate_only: false,
+                ..Default::default()
             })
             .unwrap();
         let posted = done.entry.expect("a commit returns the entry");
@@ -9165,6 +9919,8 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             ],
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
         drop(b);

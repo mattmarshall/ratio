@@ -486,6 +486,8 @@ mod tests {
             
                 trade_date: None,
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .unwrap();
         }

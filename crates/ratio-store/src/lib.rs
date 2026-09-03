@@ -366,6 +366,29 @@ pub struct JournalEntry {
     /// still reads. An append-only log you cannot read is not a record.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub announcement: Option<AnnouncementRecord>,
+
+    /// When an invoice or bill is due, `YYYY-MM-DD`.
+    ///
+    /// ⛔ ABSENT MEANS THE ITEM CANNOT BE AGED. Treating a missing due date
+    /// as current would put undated AR in the current bucket and misstate
+    /// the aged schedule while the control account still ties. Same
+    /// honesty bar as `trade_date`: both defaults are wrong, so there is
+    /// no default.
+    ///
+    /// `#[serde(default)]` so every journal written before this field
+    /// existed still reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due_date: Option<String>,
+
+    /// The open item (invoice or bill entry id) a collection or payment
+    /// applies to.
+    ///
+    /// ⛔ ABSENT ON A REDUCTION MEANS THE SIDE CANNOT BE AGED. A collection
+    /// that does not name its invoice cannot be allocated, so remaining
+    /// per item is unknown. Inventing FIFO or an equal split would make
+    /// the buckets look exact while being somebody else's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub application: Option<String>,
 }
 
 impl JournalEntry {
@@ -1264,6 +1287,8 @@ mod position_tests {
         
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
         b.append(&JournalEntry {
@@ -1277,6 +1302,8 @@ mod position_tests {
         
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
 
@@ -1332,6 +1359,8 @@ mod tests {
                 .collect(),
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         }
     }
 
@@ -1367,6 +1396,8 @@ mod tests {
             postings: vec![in_ccy(1, 10_000, "USD"), in_ccy(2, -10_000, "EUR")],
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         };
         assert!(!e.conserves_every_currency());
         let err = b.append(&e).unwrap_err();
@@ -1392,6 +1423,8 @@ mod tests {
                 ],
                 trade_date: None,
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .is_ok());
     }
@@ -1420,6 +1453,8 @@ mod tests {
             postings: vec![in_ccy(1, 500, "USD"), PostingRecord::new(2, -500)],
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         };
         assert!(!e.conserves_every_currency());
         assert!(b.append(&e).is_err());

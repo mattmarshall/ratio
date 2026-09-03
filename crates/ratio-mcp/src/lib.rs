@@ -578,6 +578,8 @@ fn tool_post_events(book: &std::path::Path, args: &Value) -> Result<String> {
         
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         })?;
         posted += 1;
     }

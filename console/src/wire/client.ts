@@ -69,6 +69,7 @@ import type {
   PendingFact,
   Position,
   Posting,
+  OperatingAgingResponse,
   ProjectProgressResponse,
   ReconcileViewsResponse,
   ReplayNavStrikeResponse,
@@ -247,6 +248,23 @@ export const projectProgress = (c: Caller, fund: string, view: string) =>
   send<ProjectProgressResponse>(
     c,
     `/funds/${fund}/views/${view}:projectProgress`,
+  );
+
+/**
+ * Aged AR/AP open items. Operating books only — other kinds are
+ * refused, not served current-bucket zeros. Empty filter is now;
+ * `YYYY-MM` / `YYYY` / `YYYY-MM-DD` is that cut, dated entries only.
+ */
+// GET /v1/{name=funds/*/views/*}:operatingAging
+export const operatingAging = (
+  c: Caller,
+  fund: string,
+  view: string,
+  filter?: string,
+) =>
+  send<OperatingAgingResponse>(
+    c,
+    `/funds/${fund}/views/${view}:operatingAging${q({ filter })}`,
   );
 
 // ── Breaks ─────────────────────────────────────────────────────────────────

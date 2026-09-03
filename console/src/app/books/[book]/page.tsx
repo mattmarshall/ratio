@@ -18,9 +18,9 @@ export const dynamic = "force-dynamic";
  * would be a fake label on fund-ops screens (#65, #83). A project book
  * that listed them is the same defect (#66, #85). An investment book cites
  * capital first, then the ABOR warehouse (#70). An operating book cites
- * a balance sheet, period income statement, and period cash-flow, not
- * Fund NAV and not Project `/billing` (#108, #118). The hub is how you
- * open the citable figures after CreateBook.
+ * a balance sheet, period income statement, period cash-flow, and
+ * AR/AP aging, not Fund NAV and not Project `/billing` (#108, #118,
+ * #117). The hub is how you open the citable figures after CreateBook.
  */
 export default async function BookPage({
   params,
@@ -123,8 +123,7 @@ export default async function BookPage({
         <p className="note">
           <Link href={`/books/${book}/record`}>Record a sale, invoice, collection, bill, or expense</Link>
           {" · "}
-          AR/AP aging is a follow-on — invoices and bills post to control
-          accounts; due-date buckets are not on this book
+          control balances on the sheet; aged open items by due date
         </p>
       ) : null}
       {b.fund ? (

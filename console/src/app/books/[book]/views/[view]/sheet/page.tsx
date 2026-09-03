@@ -153,9 +153,13 @@ async function Sheet({
       </p>
       {operating ? (
         <p className="note">
-          AR/AP aging is a follow-on — no due date and no open-item application.
           Receivable and payable here are control-account balances that tie to
-          the trial balance, not aged open items.
+          the trial balance.
+          {" · "}
+          <Link href={`/books/${book}/views/${view}/aging${period ? `?period=${encodeURIComponent(period)}` : ""}`}>
+            AR/AP aging
+          </Link>
+          {" cites due-date buckets; a missing due date is not current."}
         </p>
       ) : null}
     </>

@@ -270,9 +270,10 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
         // are the partitions an ordinary service company or studio cites.
         // Inventory, payroll, tax, and prepaid/accrued are not invented
         // here — a silent zero on those would be a QuickBooks clone.
-        // AR and AP are control accounts the sheet cites; aging them by
-        // due date needs invoice/bill application the journal does not
-        // have, so that figure stays a named follow-on.
+        // AR and AP are control accounts the sheet cites. Aging them by
+        // due date needs a due date on the invoice/bill and application
+        // of collections/payments to those items — optional on the
+        // journal, unset on `/aging` when either cut is missing.
         BookKind::Operating => vec![
             acct(1, "Cash", AccountTypeRecord::Asset),
             acct(2, "Accounts receivable", AccountTypeRecord::Asset),
@@ -1690,15 +1691,17 @@ reads = "csv"
 /// ⛔ NOT A PROJECT JOB AND NOT A HOUSEHOLD. `invoice_customer` is entity-wide
 /// AR against operating revenue — not progress billings, not retainage, not
 /// billed-vs-earned. `vendor_bill` is entity-wide AP against operating
-/// expense — not a work-package cost. There is no due-date field and no
-/// application of a collection to an invoice: aging would invent both.
+/// expense — not a work-package cost. Due date and open-item application
+/// are optional on the journal; `/aging` stays unset when either is
+/// missing rather than inventing current or an equal split.
 ///
 /// Cash sales and cash expenses stay available so a studio that never
 /// invoices can still cite a period income statement. Owner contribution
 /// and draw are equity, not revenue or expense.
 const OPERATING_CONFIG: &str = r#"# Operating-company posting rules. Amount given; no instrument, so no lot.
-# AR and AP are control accounts. Aging them is a follow-on: no due date,
-# no invoice/bill application, no silent "current" bucket.
+# AR and AP are control accounts. DueDate and AppliesTo are optional:
+# aging stays unset when a remaining item has no due date or a reduction
+# does not name the invoice/bill it applies to — no silent "current" bucket.
 
 [[rule]]
 id = "invoice_customer"
@@ -1827,6 +1830,19 @@ reads = "csv"
   column = "Kind"
   map = { invoice = "invoice", collect = "collect" }
 
+  [[template.fact.value]]
+  field = "dueDate"
+  as = "date"
+  column = "DueDate"
+  format = "YYYY-MM-DD"
+  optional = true
+
+  [[template.fact.value]]
+  field = "application"
+  as = "text"
+  column = "AppliesTo"
+  optional = true
+
   [template.fact.posts]
   by = "kind"
   amount = "amount"
@@ -1871,6 +1887,19 @@ reads = "csv"
   as = "enum"
   column = "Kind"
   map = { bill = "bill", pay = "pay" }
+
+  [[template.fact.value]]
+  field = "dueDate"
+  as = "date"
+  column = "DueDate"
+  format = "YYYY-MM-DD"
+  optional = true
+
+  [[template.fact.value]]
+  field = "application"
+  as = "text"
+  column = "AppliesTo"
+  optional = true
 
   [template.fact.posts]
   by = "kind"
@@ -2917,16 +2946,42 @@ INV-2,2026-03-15,1500.00,USD,ACME STUDIO,,collect
         let (rule, _) = ratio_ingest::posting_for(t, &p.facts[1]).unwrap();
         assert_eq!(rule, "collect_receivable");
         assert!(p.facts[0].values.get("due").is_none());
-        assert!(p.facts[0].values.get("dueDate").is_none());
+        assert!(
+            p.facts[0].values.get("dueDate").is_none(),
+            "a column the row omitted must stay absent, not a guessed due date"
+        );
+        assert!(p.facts[0].values.get("application").is_none());
         assert_eq!(ratio_ingest::dated_of(t, &p.facts[0]), Some("2026-03-01"));
         let form = t.render();
         assert!(form.contains("template customer-invoices {"), "{form}");
         assert!(form.contains("one invoice per row"), "{form}");
         assert!(form.contains("invoice     -> invoice_customer"), "{form}");
         assert!(form.contains("collect     -> collect_receivable"), "{form}");
-        assert!(
-            !form.contains("Due"),
-            "a due date the engine cannot age would be stored-but-unread: {form}"
+        assert!(form.contains("dueDate"), "{form}");
+        assert!(form.contains("optional"), "{form}");
+        assert!(form.contains("application"), "{form}");
+    }
+
+    #[test]
+    fn a_customer_invoice_row_reads_due_date_and_application_when_present() {
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Operating)).unwrap();
+        let t = set.template("customer-invoices").unwrap();
+        let csv = "\
+InvoiceRef,Date,DueDate,Amount,Ccy,Customer,Memo,Kind,AppliesTo
+INV-1,2026-03-01,2026-03-31,1500.00,USD,ACME STUDIO,March retainer,invoice,
+COL-1,2026-03-15,,400.00,USD,ACME STUDIO,,collect,INV-1
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(
+            p.facts[0].values.get("dueDate").and_then(ratio_ingest::Value::as_date),
+            Some("2026-03-31")
+        );
+        assert!(p.facts[1].values.get("dueDate").is_none());
+        assert_eq!(
+            p.facts[1].values.get("application").and_then(ratio_ingest::Value::as_text),
+            Some("INV-1")
         );
     }
 
@@ -2950,11 +3005,14 @@ BILL-2,2026-03-20,240.00,USD,CITY POWER,,pay
         let (rule, _) = ratio_ingest::posting_for(t, &p.facts[1]).unwrap();
         assert_eq!(rule, "pay_vendor");
         assert!(p.facts[0].values.get("due").is_none());
+        assert!(p.facts[0].values.get("dueDate").is_none());
         let form = t.render();
         assert!(form.contains("template vendor-bills {"), "{form}");
         assert!(form.contains("one bill per row"), "{form}");
         assert!(form.contains("bill        -> vendor_bill"), "{form}");
         assert!(form.contains("pay         -> pay_vendor"), "{form}");
+        assert!(form.contains("dueDate"), "{form}");
+        assert!(form.contains("application"), "{form}");
     }
 
     #[test]

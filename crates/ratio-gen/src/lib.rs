@@ -394,6 +394,8 @@ pub fn generate_books_with_progress(
             // thing about the day that matters.
             trade_date: Some(ratio_common::iso_date_from_days(FIRST_TRADE_DAY - 30 + k)),
             announcement: None,
+            due_date: None,
+            application: None,
         })?;
         written += 1;
     }
@@ -432,6 +434,8 @@ pub fn generate_books_with_progress(
             // undated entry is not an option.
             trade_date: Some(ratio_common::iso_date_from_days(FIRST_TRADE_DAY - 20 + c)),
             announcement: None,
+            due_date: None,
+            application: None,
         })?;
         written += 1;
     }
@@ -525,6 +529,8 @@ pub fn generate_books_with_progress(
                 ],
                 trade_date: Some(day.clone()),
                 announcement: None,
+            due_date: None,
+            application: None,
             });
             written += 1;
             open.push(ratio_project::relief::Lot {
@@ -595,6 +601,8 @@ pub fn generate_books_with_progress(
                     // holding period is exactly `keep` steps.
                     trade_date: Some(day.clone()),
                     announcement: None,
+            due_date: None,
+            application: None,
                 });
                 written += 1;
             }
@@ -643,6 +651,8 @@ pub fn generate_books_with_progress(
                 ex_date: "2026-01-15".into(),
                 announced: ANNOUNCED_AT,
             }),
+            due_date: None,
+            application: None,
         })?;
         written += 1;
     }
@@ -678,6 +688,8 @@ pub fn generate_books_with_progress(
             ],
             trade_date: Some(ratio_common::iso_date_from_days(day)),
             announcement: None,
+            due_date: None,
+            application: None,
         })?;
         written += 1;
     }
@@ -1162,6 +1174,8 @@ mod tests {
                 ],
                 trade_date: None,
                 announcement: None,
+            due_date: None,
+            application: None,
             })
             .unwrap_err();
         let msg = format!("{err:#}");

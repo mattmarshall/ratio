@@ -2083,6 +2083,8 @@ mod tests {
             
                 trade_date: None,
                 announcement: None,
+                due_date: None,
+                application: None,
             })
             .unwrap();
         }
@@ -2135,6 +2137,8 @@ mod tests {
             ],
             trade_date: None,
             announcement: None,
+                due_date: None,
+                application: None,
         })
         .unwrap();
     }
@@ -2158,6 +2162,8 @@ mod tests {
             ],
             trade_date: Some(day.into()),
             announcement: None,
+                due_date: None,
+                application: None,
         })
         .unwrap();
     }
@@ -2436,6 +2442,8 @@ mod tests {
                 ],
                 trade_date: None,
                 announcement: None,
+                due_date: None,
+                application: None,
             })
             .unwrap();
         }
@@ -2499,6 +2507,8 @@ mod tests {
             ],
             trade_date: None,
             announcement: None,
+                due_date: None,
+                application: None,
         })
         .unwrap();
 
@@ -2604,6 +2614,8 @@ mod tests {
             ],
             trade_date: None,
             announcement: None,
+                due_date: None,
+                application: None,
         })
         .unwrap();
     }
@@ -2693,6 +2705,8 @@ mod tests {
                 ex_date: ex.into(),
                 announced: 0,
             }),
+            due_date: None,
+            application: None,
         }
     }
 
@@ -2775,6 +2789,8 @@ mod tests {
             }],
             trade_date: None,
             announcement: None,
+                due_date: None,
+                application: None,
         });
         let p = Projection::rebuild(&js, FIFO);
 
@@ -2859,6 +2875,8 @@ mod tests {
                 ],
                 trade_date: None,
                 announcement: None,
+                due_date: None,
+                application: None,
             })
             .unwrap();
         }
@@ -2932,6 +2950,8 @@ mod tests {
                 ],
                 trade_date: None,
                 announcement: None,
+                due_date: None,
+                application: None,
             })
             .unwrap();
         }
@@ -2978,6 +2998,8 @@ mod tests {
                 ],
                 trade_date: None,
                 announcement: None,
+                due_date: None,
+                application: None,
             })
             .unwrap();
         }
@@ -3062,6 +3084,8 @@ mod tests {
             postings,
             trade_date: Some(day.into()),
             announcement: None,
+                due_date: None,
+                application: None,
         })
         .unwrap();
     }
@@ -3165,6 +3189,8 @@ mod tests {
             ],
             trade_date: None,
             announcement: None,
+                due_date: None,
+                application: None,
         })
         .unwrap();
         drop(b);
@@ -3220,6 +3246,8 @@ mod tests {
                 ],
                 trade_date: None,
                 announcement: None,
+                due_date: None,
+                application: None,
             })
             .unwrap();
         }
@@ -3335,6 +3363,8 @@ mod tests {
             ],
             trade_date: Some("the fifth of March".into()),
             announcement: None,
+                due_date: None,
+                application: None,
         })
         .unwrap();
         drop(b);
@@ -3385,6 +3415,8 @@ mod tests {
                 postings: vec![PostingRecord::new(1, 100), PostingRecord::new(2, -100)],
                 trade_date: None,
                 announcement: None,
+                due_date: None,
+                application: None,
             })
             .collect();
         b.append_all(&entries).unwrap();
@@ -3492,6 +3524,8 @@ calendar = "wk"
             postings: vec![PostingRecord::new(2, amount), PostingRecord::new(3, -amount)],
             trade_date: Some(day.into()),
             announcement: None,
+                due_date: None,
+                application: None,
         })
         .unwrap();
     }

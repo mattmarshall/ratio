@@ -548,6 +548,8 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str)
                     ex_date: ex_date.to_string(),
                     announced: now(),
                 }),
+                due_date: None,
+                application: None,
             })?;
         }
     }
@@ -1497,6 +1499,8 @@ fn apply(book: PathBuf, file: &str) -> Result<()> {
         
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         })?;
         posted += 1;
     }
@@ -1525,6 +1529,8 @@ fn post(book: PathBuf, file: &str) -> Result<()> {
         
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         };
         // The book refuses an unbalanced entry; report every one rather than
         // stopping at the first, so a bad file is fixed in one pass.
@@ -2716,6 +2722,8 @@ weight = -1
             ],
             trade_date: None,
             announcement: None,
+            due_date: None,
+            application: None,
         })
         .unwrap();
 
