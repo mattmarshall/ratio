@@ -4783,17 +4783,22 @@ mod tests {
         // keep working against the same directory.
         assert_eq!(console.get_fund("funds/household").unwrap().name, "funds/household");
 
-        // ⭐ KIND-AWARE INGEST. CreateBook wrote `bank-statement`, so the
-        // templates list a Personal book offers is not the fund snapshot.
+        // ⭐ KIND-AWARE INGEST. CreateBook wrote `bank-statement` and
+        // `loan-payment`, so the templates list a Personal book offers is
+        // not the fund snapshot.
         let templates = console
             .list_templates("funds/household")
             .unwrap()
             .templates;
         assert_eq!(
             templates.iter().map(|t| t.template_id.as_str()).collect::<Vec<_>>(),
-            vec!["bank-statement"]
+            vec!["bank-statement", "loan-payment"]
         );
         assert!(templates[0].posts, "a statement row can post");
+        assert!(
+            templates.iter().any(|t| t.template_id == "loan-payment" && t.posts),
+            "loan-payment posts interest and principal"
+        );
         assert!(
             templates[0].form.contains("one statement per row"),
             "the rendered form is what the console prints: {}",
