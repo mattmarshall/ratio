@@ -306,7 +306,9 @@ describe("a first-class book", () => {
         }),
       );
       expect(screen.getByText("5,000.00")).toBeDefined();
-      expect(screen.getByText("40.00")).toBeDefined();
+      // Living expenses and the spent total are the same figure here —
+      // one category, one window. Two cells, not a second ledger.
+      expect(screen.getAllByText("40.00").length).toBe(2);
       expect(screen.getByText(/envelope 4,000\.00/)).toBeDefined();
       expect(screen.getByText(/remaining authorization, not annualized/)).toBeDefined();
     } finally {

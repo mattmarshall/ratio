@@ -203,7 +203,6 @@ NEEDLES: list[tuple[str, str]] = [
         "not a second ledger — journal expenses against a",
         "budget vs actual would look like a second accounting system",
     ),
-]
     # ⛔ AND NO `startTransition` NEEDLE, THOUGH THE PALETTE NEEDS ONE AS MUCH AS
     # `FilterChips` DOES. Both that file and `PlanControls` already contain the
     # literal, so the case would pass with the palette's transition dropped — the
