@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Unavailable } from "@/components/Unavailable";
 import { WorkspaceSwitch } from "@/components/WorkspaceSwitch";
 import { books as booksForRequest } from "@/lib/data";
 import { count } from "@/lib/format";
@@ -8,7 +9,11 @@ export const dynamic = "force-dynamic";
 
 /** Every book this operator may open — funds are an optional layer, not a parent. */
 export default async function Books() {
-  const books = await booksForRequest();
+  const booksRead = await booksForRequest();
+  if (booksRead.unavailable !== null) {
+    return <Unavailable why={booksRead.unavailable} />;
+  }
+  const books = booksRead.value;
 
   return (
     <main className="queue">

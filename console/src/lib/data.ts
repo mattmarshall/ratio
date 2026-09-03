@@ -4,6 +4,8 @@ import { cache } from "react";
 import { getBook, getView, listBooks, listFunds } from "@/wire/client";
 import { caller } from "./caller";
 import { orAuth } from "./orAuth";
+import { orTransient, type OrTransient } from "./orTransient";
+import type { Book, Fund } from "@/wire/types";
 
 /**
  * The reads a layout and its page both need, memoized for one request.
@@ -20,20 +22,28 @@ import { orAuth } from "./orAuth";
  *
  * ⚠ A 401 AFTER `caller()` IS STILL A MISSING SESSION. `caller()` only
  * redirects when AuthKit has no session. A session the gateway will not
- * accept still reaches the list call; `orAuth` turns that `AuthError` into
- * the same `/signin?returnTo=…` so layout and page cannot each throw through
- * the error boundary.
+ * accept still reaches the list call; `orTransient` runs `orAuth` so that
+ * `AuthError` still becomes `/signin?returnTo=…`.
+ *
+ * ⛔ A 503 IS NOT A MISSING SESSION. Digest `2106392403` was `Refused: 503`
+ * on GET /books while the API deploy was rolling. `orAuth` rethrew it;
+ * Next redacted the page to `#441`. `orTransient` turns status ≥ 500
+ * into a value the layout can render. It does not redirect — that would
+ * be a second AuthError path, and it would send a signed-in operator
+ * to `/signin`.
  */
-export const funds = cache(async () => {
+export const funds = cache(async (): Promise<OrTransient<Fund[]>> => {
   const c = await caller();
-  // ⚠ `caller()` only redirects when AuthKit has no session. A session the
-  // gateway will not accept still reaches the list call; `orAuth` is the 401.
-  return (await orAuth(listFunds(c))).funds;
+  const r = await orTransient(listFunds(c));
+  if (r.unavailable !== null) return r;
+  return { unavailable: null, value: r.value.funds };
 });
 
-export const books = cache(async () => {
+export const books = cache(async (): Promise<OrTransient<Book[]>> => {
   const c = await caller();
-  return (await orAuth(listBooks(c))).books;
+  const r = await orTransient(listBooks(c));
+  if (r.unavailable !== null) return r;
+  return { unavailable: null, value: r.value.books };
 });
 
 /**

@@ -4,6 +4,7 @@ import { Brand } from "@/components/Brand";
 import { CommandHint } from "@/components/CommandHint";
 import { Palette } from "@/components/Palette";
 import { Who } from "@/components/Who";
+import { Unavailable } from "@/components/Unavailable";
 import { books as booksForRequest, funds as fundsForRequest } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -19,8 +20,16 @@ export default async function ProjectsLayout({
 }: {
   children: ReactNode;
 }) {
-  const books = await booksForRequest();
-  const funds = await fundsForRequest();
+  const booksRead = await booksForRequest();
+  const fundsRead = await fundsForRequest();
+  if (booksRead.unavailable !== null) {
+    return <Unavailable why={booksRead.unavailable} />;
+  }
+  if (fundsRead.unavailable !== null) {
+    return <Unavailable why={fundsRead.unavailable} />;
+  }
+  const books = booksRead.value;
+  const funds = fundsRead.value;
   const projects = books.filter((b) => b.kind === "PROJECT");
 
   return (

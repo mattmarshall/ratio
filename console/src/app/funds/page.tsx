@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Unavailable } from "@/components/Unavailable";
 import { WorkspaceSwitch } from "@/components/WorkspaceSwitch";
 import { funds as fundsForRequest } from "@/lib/data";
 import { count, STATE_CLASS, STATE_LABEL } from "@/lib/format";
@@ -7,7 +8,11 @@ export const dynamic = "force-dynamic";
 
 /** Every fund this operator administers, with what each one is waiting on. */
 export default async function Funds() {
-  const funds = await fundsForRequest();
+  const fundsRead = await fundsForRequest();
+  if (fundsRead.unavailable !== null) {
+    return <Unavailable why={fundsRead.unavailable} />;
+  }
+  const funds = fundsRead.value;
 
   return (
     <main className="queue">

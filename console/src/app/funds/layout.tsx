@@ -5,6 +5,7 @@ import { CommandHint } from "@/components/CommandHint";
 import { FundRail } from "@/components/FundRail";
 import { Palette } from "@/components/Palette";
 import { Who } from "@/components/Who";
+import { Unavailable } from "@/components/Unavailable";
 import { funds as fundsForRequest } from "@/lib/data";
 
 // ⛔ Never prerendered. This reads a fund's state, and a page baked at build
@@ -28,7 +29,11 @@ export default async function FundsLayout({
 }: {
   children: ReactNode;
 }) {
-  const funds = await fundsForRequest();
+  const fundsRead = await fundsForRequest();
+  if (fundsRead.unavailable !== null) {
+    return <Unavailable why={fundsRead.unavailable} />;
+  }
+  const funds = fundsRead.value;
 
   return (
     <Palette funds={funds}>
