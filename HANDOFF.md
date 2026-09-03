@@ -374,17 +374,21 @@ the conserved one, and the kernel never said it was.
   as-of a past day is stamped today. Surfaced while building the gate and
   deliberately not fixed there — it changes the strike id, the `NAVS` ledger's
   meaning and `one_answer_per_day`'s subject, and belongs in its own commit.
-- ⭐ **CreateBook seeds one ingest template per kind** — `bank-statement`
+- ⭐ **CreateBook seeds ingest templates per kind** — `bank-statement`
   (Personal: bank/card CSV → cash and expense claims), `project-invoices`
-  (Project: vendor invoice/cost CSV → costs and payables), `custodian-positions`
-  (Investment: holdings snapshot, recorded and never posted). The live list is
-  the book's configuration, so a household book cannot be asked to pick a fund
-  feed. `console/src/lib/templates.ts` `templatesForKind` is the fixture-side
-  filter; `//crates/ratio-console:ratio-console_test` holds the seed.
-  ⚠ The closed investment loop is still `prime_equity_trades` in
-  `deploy/seed-demo-book.sh`: deliver `prime-trades.csv`, resolve, admit, and
-  leave VWRL pending when `LEAVE_ONE_PENDING` is set — a fact an operator can
-  open. CreateBook does not invent that journal on a blank book.
+  (Project: vendor invoice/cost CSV → costs and payables), and on Investment
+  both `custodian-positions` (holdings snapshot, recorded and never posted)
+  and `prime_equity_trades` (the same trade column contract the demo
+  delivers: `B/S` → `equity_purchase` / `disposal_proceeds`, amount
+  `consideration`, dated by the trade date). The live list is the book's
+  configuration, so a household book cannot be asked to pick a fund feed.
+  `console/src/lib/templates.ts` `templatesForKind` is the fixture-side
+  filter; `//crates/ratio-console:ratio-console_test` holds the seed and the
+  closed loop: CreateBook → entity master → ingest → admit, journal only
+  the admitted trades, VWRL left pending the same way `LEAVE_ONE_PENDING`
+  does. ⛔ The demo script still posts recon history so the blocked-NAV
+  story has a break; that is a different book. A blank CreateBook
+  investment book does not invent those rows.
 - ⚠ **`console/scripts/capture_fixtures.sh` takes `navStrikes.json` and
   `replay.json` from `RATIO_FIXTURE_STRUCK_FUND`, not from `RATIO_FIXTURE_FUND`.**
   The fixture fund is the BLOCKED book on purpose, and a blocked book now has no

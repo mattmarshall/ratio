@@ -80,10 +80,12 @@ const ROUTES = [
 ];
 
 // CreateBook seed ids. An id that is not in this map (the demo book's
-// `prime_equity_trades`) is treated as Investment — that is the closed loop.
+// `vendor_eod_prices`) is treated as Investment — prices ride the same
+// book as the trade loop.
 const INGEST_TEMPLATE_KIND = {
   "bank-statement": "PERSONAL",
   "custodian-positions": "INVESTMENT",
+  "prime_equity_trades": "INVESTMENT",
   "project-invoices": "PROJECT",
 };
 

@@ -8,6 +8,13 @@
             "posts": false
         },
         {
+            "name": "funds/harbourline-global-value/templates/prime_equity_trades",
+            "templateId": "prime_equity_trades",
+            "factKind": "trade",
+            "form": "template prime_equity_trades {\n  reads      csv with header\n  grain      one trade per row\n\n  entity     security  (instrument)\n    by     isin   from \"ISIN\"\n    or     ticker from \"Symbol\" within exchange from \"Exch\"\n    absent   pend\n\n  entity     broker  (counterparty)\n    by     code   from \"Broker\"\n    absent   pend\n\n  fact       trade\n    reference    from \"TradeRef\"\n    broker       broker\n    security     security\n    side         from \"B/S\" as { B: buy, S: sell }\n    quantity     from \"Quantity\" as decimal\n    price        from \"Price\" as money in \"Ccy\"\n    traded       from \"TradeDate\" as date \"MM/DD/YYYY\"\n\n  posts      by \"side\"\n    amount      consideration\n    dated       traded\n    buy         -> equity_purchase\n    sell        -> disposal_proceeds\n}\n",
+            "posts": true
+        },
+        {
             "name": "funds/household/templates/bank-statement",
             "templateId": "bank-statement",
             "factKind": "statement",
