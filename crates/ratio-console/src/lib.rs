@@ -6700,12 +6700,18 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         std::fs::write(root.join("MEMBERSHIP.tsv"), "S\ta\n").unwrap();
         let console = Console::scoped(&root, member("S", "s@x.test", ""));
 
-        let err = console.open_book("b").unwrap_err().to_string();
+        let err = match console.open_book("b") {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("open_book must refuse book b"),
+        };
         assert!(err.contains("no fund"), "{err}");
         assert!(console.open_book("a").is_ok());
 
         let joined = root.join("b");
-        let bypass = console.open_file_book(&joined).unwrap_err().to_string();
+        let bypass = match console.open_file_book(&joined) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("open_file_book must refuse a joined path to b"),
+        };
         assert!(
             bypass.contains("no fund"),
             "joining the root and opening must still refuse: {bypass}"
