@@ -78,6 +78,10 @@ PLAN_MARKS_ENGINE_DONE = [
     # the same-commit amendment. The public roadmap lagged. Same class
     # of defect as #67 / wash sales.
     "MinTax is a ranking at a price",
+    # ⚠ #143 landed SpecID as a named selection; PLAN named it in
+    # the same-commit amendment. The public roadmap lagged. Same class
+    # of defect as #67 / wash sales / MinTax.
+    "SpecID is a named selection",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -89,6 +93,7 @@ ROADMAP_ENGINE_BUILT = [
     "fact plane",
     "wash sales",
     "MinTax is a ranking at a price",
+    "SpecID is a named selection",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",

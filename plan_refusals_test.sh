@@ -79,6 +79,12 @@ BUILT=(
   # 2026-09-03 MinTax amendment. #141 landed the ranking without this
   # file moving; adding the line is the cost of noticing.
   "MinTax is a ranking at a price"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED THEM, WHICH IS THE PROTOCOL.
+  # SpecID is not on the refusal list — this check would have stayed
+  # green whatever was built. The sentence it matches is in the
+  # 2026-09-03 SpecID amendment. #143 landed the named selection
+  # without this file moving; adding the line is the cost of noticing.
+  "SpecID is a named selection"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
