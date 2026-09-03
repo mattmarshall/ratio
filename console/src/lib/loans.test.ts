@@ -84,7 +84,9 @@ describe("a loan roll-forward is the journal against named liabilities", () => {
     ];
     const r = loanRollup(accounts, loans);
     // ending − (debit − credit) = −10_000_000 − (500_000 − 1_000_000)
-    expect(r.rows[0]!.beginning).toBe(-10_500_000n);
+    // = −10_000_000 − (−500_000) = −9_500_000. Drew 10_000, paid 5_000
+    // principal, so the book started at 95_000 not 105_000.
+    expect(r.rows[0]!.beginning).toBe(-9_500_000n);
     expect(r.rows[0]!.drawn).toBe(1_000_000n);
     expect(r.rows[0]!.principalPaid).toBe(500_000n);
   });
