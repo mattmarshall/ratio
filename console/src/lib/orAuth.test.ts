@@ -18,6 +18,18 @@ vi.mock("next/headers", () => ({
   headers: () => headersMock(),
 }));
 
+// ⚠ `orAuth` imports `signInHref` from `caller`, and `caller` imports
+// AuthKit. Vitest cannot resolve AuthKit's `next/cache` import; the
+// authenticated `/books` suite already mocks the same module for that
+// reason. `signInHref` itself only reads `x-pathname`.
+vi.mock("@workos-inc/authkit-nextjs", () => ({
+  withAuth: async () => ({ user: null, accessToken: null }),
+}));
+
+vi.mock("./workos", () => ({
+  workosConfigured: () => false,
+}));
+
 /** Next's `redirect()` throws; the destination lives on `digest`. */
 function signInRedirect(e: unknown): string | null {
   if (!(e instanceof Error)) return null;

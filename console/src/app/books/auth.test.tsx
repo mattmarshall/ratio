@@ -47,8 +47,8 @@ vi.mock("@/wire/client", async () => {
   );
   return {
     ...actual,
-    listBooks: (...args: unknown[]) => listBooks(...args),
-    listFunds: (...args: unknown[]) => listFunds(...args),
+    listBooks,
+    listFunds,
   };
 });
 
