@@ -246,11 +246,24 @@ def main(app_path, bootstrap_path, workflow_path):
     # (run 33784570568, #122). A comment that names the rejected host
     # must not satisfy or fail this, which is why both documents are
     # comment-stripped. `flow` is already stripped above.
+    #
+    # ⚠ THE PATH UNDER /user_management/{client_id} IS THE REAL ISSUER.
+    # AuthKit session tokens mint that iss. A prefix match on
+    # https://api.workos.com would fail the correct default, so these
+    # patterns end at an optional trailing slash and then the quote.
+    # ⚠ `com/"?` IS THE WRONG OPTIONAL. That requires the slash and then
+    # an optional quote — it misses Default: "https://api.workos.com"
+    # and only catches the trailing-slash form. `com/?"` is the other
+    # way around.
     app_code = "\n".join(
         line for line in app.splitlines()
         if not line.lstrip().startswith("#")
     )
-    if re.search(r'Issuer:\s+"https://api\.workos\.com', app_code):
+    if re.search(
+        r'(?:Issuer|Default):\s+"https://api\.workos\.com/?"\s*$',
+        app_code,
+        re.M,
+    ):
         fail(
             f"{app_path} sets the JWT authorizer issuer to the bare "
             "https://api.workos.com host, which has no OIDC discovery — "
@@ -259,21 +272,44 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  Authorizer issuer is not the bare api.workos.com host")
 
-    if "https://auth.ratio.marsh.build" not in app_code:
+    PRODUCTION_ISSUER = (
+        "https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB"
+    )
+    if f'Default: "{PRODUCTION_ISSUER}"' not in app_code:
         fail(
-            f"{app_path} does not name the production AuthKit issuer "
-            "https://auth.ratio.marsh.build"
+            f"{app_path} does not default WorkOsIssuer to the AuthKit "
+            f"session-token issuer {PRODUCTION_ISSUER}"
         )
     else:
-        print("  ok  the app stack names the production AuthKit issuer")
+        print("  ok  the app stack defaults WorkOsIssuer to the session-token issuer")
 
-    if re.search(r'WorkOsIssuer="https://api\.workos\.com', flow):
+    if re.search(
+        r'Default:\s+"https://auth\.ratio\.marsh\.build/?"\s*$',
+        app_code,
+        re.M,
+    ):
+        fail(
+            f"{app_path} defaults WorkOsIssuer to the AuthKit custom domain — "
+            "session tokens mint iss under api.workos.com/user_management/"
+        )
+    else:
+        print("  ok  WorkOsIssuer default is not the hosted AuthKit hostname")
+
+    if re.search(r'WorkOsIssuer="https://api\.workos\.com/?"', flow):
         fail(
             f"{workflow_path} passes the bare api.workos.com host as "
             "WorkOsIssuer — CloudFormation will refuse the authorizer"
         )
     else:
         print("  ok  the workflow does not pass the bare api.workos.com issuer")
+
+    if PRODUCTION_ISSUER not in flow:
+        fail(
+            f"{workflow_path} does not fall back to the AuthKit "
+            f"session-token issuer {PRODUCTION_ISSUER}"
+        )
+    else:
+        print("  ok  the workflow falls back to the session-token issuer")
 
     if 'WorkOsIssuer="${ISSUER}"' not in flow:
         fail(

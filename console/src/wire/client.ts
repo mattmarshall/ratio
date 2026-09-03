@@ -134,10 +134,11 @@ export interface Caller {
    *
    * ⛔ THE ACCESS TOKEN, NOT A COGNITO ID TOKEN. AuthKit's `withAuth()` hands
    * this back; the gateway's JWT authorizer checks issuer
-   * `https://auth.ratio.marsh.build` (the production AuthKit custom domain;
-   * `https://api.workos.com/` has no OIDC discovery) and audience = the
-   * WorkOS client id. Membership matches on `sub`, email, or
-   * `org:{org_id}` at `Console::open_book`.
+   * `https://api.workos.com/user_management/{client_id}` (the `iss` session
+   * tokens mint; `https://api.workos.com/` has no OIDC discovery) and
+   * audience = the WorkOS client id. The hosted AuthKit UI on
+   * `auth.ratio.marsh.build` is not the token issuer. Membership matches
+   * on `sub`, email, or `org:{org_id}` at `Console::open_book`.
    *
    * ⚠ AND THE DEMO WOULD NOT SHOW A TENANCY MISTAKE. `RATIO_DEMO_OPEN=1` grants
    * any authenticated caller every book, so a token that carries no email is

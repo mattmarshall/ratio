@@ -66,17 +66,21 @@ Parameters:
       client id.
   WorkOsIssuer:
     Type: String
-    Default: "https://auth.ratio.marsh.build"
+    Default: "https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB"
     Description: >
       OIDC issuer the HTTP API JWT authorizer checks. Must serve
       /.well-known/openid-configuration — CloudFormation fetches that
       document when it creates AWS::ApiGatewayV2::Authorizer and refuses
       a 404. The bare https://api.workos.com/ host does not have one
       (verified 2026-09-03), which is why every deploy since the WorkOS
-      cut rolled back at Authorizer. Production AuthKit custom domain is
-      https://auth.ratio.marsh.build (issuer is that host, no trailing
-      slash). Audience stays WorkOsClientId. Do not point this at
-      another product's AuthKit domain.
+      cut rolled back at Authorizer. AuthKit session access tokens (from
+      /user_management/authenticate) mint iss as
+      https://api.workos.com/user_management/{client_id} — Production
+      client_01M1JJZTFXFDZJ0XJM1NPNSEJB, no trailing slash. The custom
+      AuthKit domain https://auth.ratio.marsh.build stays for the hosted
+      login UI; it is not the token issuer. Audience stays
+      WorkOsClientId. Do not point this at another product's AuthKit
+      domain.
   GoogleClientId:
     Type: String
     Default: ""

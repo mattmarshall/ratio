@@ -146,11 +146,15 @@ It is not a secret. The Production id to put in the variable is
 `client_01M1JJZTFXFDZJ0XJM1NPNSEJB`.
 
 **API Gateway** issuer is `WorkOsIssuer`. Default and workflow fallback are
-`https://auth.ratio.marsh.build` (the production AuthKit custom domain).
-That host serves `/.well-known/openid-configuration`; the bare
-`https://api.workos.com/` host does not, and CloudFormation refuses it.
-Optional repository variable `WORKOS_ISSUER` overrides the default; the
-workflow rejects the bare WorkOS API host by name.
+`https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB`
+— the `iss` AuthKit session access tokens mint (WorkOS JWT template
+preview for Production `client_01M1JJZTFXFDZJ0XJM1NPNSEJB`). The bare
+`https://api.workos.com/` host has no `/.well-known/openid-configuration`,
+and CloudFormation refuses it. `https://auth.ratio.marsh.build` is the
+hosted AuthKit UI custom domain, not the token issuer — keep its DNS;
+do not point the authorizer at it. Optional repository variable
+`WORKOS_ISSUER` overrides the default; the workflow rejects the bare
+WorkOS API host by name.
 
 `WORKOS_API_KEY` is a secret (`sk_…`). Do not commit it. `/login` and
 `/api/auth/login` are the same initiate-login handler as `/sign-in`.
@@ -352,12 +356,13 @@ The split of responsibility is the load-bearing decision:
 
 - **Authentication** — "the token is real, unexpired, ours" — is the API
   Gateway JWT authorizer, issuer `WorkOsIssuer` (production default
-  `https://auth.ratio.marsh.build`, the AuthKit custom domain that serves
-  `/.well-known/openid-configuration`), audience = `WorkOsClientId` (the
+  `https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB`,
+  the `iss` AuthKit session tokens mint), audience = `WorkOsClientId` (the
   same value as `WORKOS_CLIENT_ID`, from the stack parameter, never a
   literal in this repository). The bare `https://api.workos.com/` host is
   not an OIDC issuer — CloudFormation refuses it — and must not be
-  passed. The server does no crypto.
+  passed. The hosted AuthKit UI stays on `https://auth.ratio.marsh.build`;
+  that hostname is not the token issuer. The server does no crypto.
   The authorizer puts the verified claims on the request context, which
   the Lambda Web Adapter forwards as `x-amzn-request-context` — a header the
   gateway synthesizes, so a client cannot forge its own claims. The Cognito
