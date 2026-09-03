@@ -53,6 +53,44 @@ BANNED_EVERYWHERE = [
 # Phrases that legitimately contain a banned substring.
 LICENSE_EXCEPTIONS = ["not permissively licensed"]
 
+# ⛔ ISSUE #67. The roadmap's "not yet built" column listed persistence,
+# multi-currency, tax lots and corporate actions after PLAN.md had marked
+# them done. That is the same class of defect as the refusal list lagging
+# the repo: two documents disagreed, and nothing said so.
+#
+# Each PLAN phrase must still appear in PLAN.md, or this check is vacuous —
+# the same failure plan_refusals_test.sh names. Each page phrase must appear
+# in the built column and must not appear in the spec column.
+#
+# ⚠ POSTGRES IS THE EXPLICIT EXCEPTION. PLAN's "four of these were built"
+# table includes Postgres as "spec only"; Stage E is still open. Requiring
+# the page to call Postgres built would enforce a lie. It belongs on the
+# spec side, and must not be claimed as a running engine.
+PLAN_MARKS_ENGINE_DONE = [
+    "tax lots and cost basis",
+    "multi-currency and FX",
+    "corporate actions",
+    "Built with no database at all",
+]
+ROADMAP_ENGINE_BUILT = [
+    "append-only journal",
+    "tax lots",
+    "FX translation",
+    "corporate actions",
+    "persistence without a database",
+]
+ROADMAP_ENGINE_NOT_BUILT = [
+    "Postgres",
+]
+# An open phase-one deliverable that still names one of these is the
+# original defect in checklist form.
+ROADMAP_PHASE_ONE_MUST_NOT_STAY_OPEN = [
+    "tax lots",
+    "multi-currency",
+    "corporate actions",
+    "persistence without a database",
+]
+
 MIN_KB, MAX_KB = 60, 2048
 
 errors: list[str] = []
@@ -193,10 +231,80 @@ def main() -> int:
         else:
             print("  ok  index.html carries no technical vocabulary")
 
+    check_roadmap_against_plan(out)
+
     for e in errors:
         print(e)
     print(f"\n{len(errors)} problem(s)" if errors else "\nall checks passed")
     return 1 if errors else 0
+
+
+def column_text(doc: str, cls: str) -> str:
+    m = re.search(rf'<div class="{cls}">(.*?)</div>', doc, flags=re.S)
+    return re.sub(r"\s+", " ", visible_text(m.group(1))) if m else ""
+
+
+def flatten(text: str) -> str:
+    return re.sub(r"\s+", " ", text)
+
+
+def check_roadmap_against_plan(out: pathlib.Path) -> None:
+    """The status columns must not contradict PLAN.md on engine work."""
+    roadmap = out / "roadmap.html"
+    if not roadmap.is_file():
+        return
+    plan_path = pathlib.Path(__file__).resolve().parent.parent / "PLAN.md"
+    src = "site/roadmap.src.html"
+    if not plan_path.is_file():
+        err(src, f"PLAN.md not found at {plan_path} — this check would pass "
+                 "for any columns, which is how a check like this stops working")
+        return
+
+    plan = flatten(plan_path.read_text())
+    missing_plan = [p for p in PLAN_MARKS_ENGINE_DONE if p not in plan]
+    if missing_plan:
+        err("PLAN.md", "engine-done phrase missing, so the roadmap check "
+                       f"would assert nothing: {', '.join(missing_plan)}")
+        return
+
+    doc = roadmap.read_text()
+    built = column_text(doc, "r-built")
+    spec = column_text(doc, "r-spec")
+    if not built or not spec:
+        err(src, "roadmap is missing the built or spec status column")
+        return
+
+    for phrase in ROADMAP_ENGINE_BUILT:
+        if not re.search(re.escape(phrase), built, re.I):
+            err(src, f"built column does not mention \"{phrase}\", which "
+                     "PLAN.md marks done")
+        if re.search(re.escape(phrase), spec, re.I):
+            err(src, f"spec column still lists \"{phrase}\" as not yet built, "
+                     "and PLAN.md marks it done")
+
+    for phrase in ROADMAP_ENGINE_NOT_BUILT:
+        if re.search(re.escape(phrase), built, re.I):
+            err(src, f"built column claims \"{phrase}\", which is still "
+                     "Stage E / spec-only — see PLAN.md and issue #8")
+        if not re.search(re.escape(phrase), spec, re.I):
+            err(src, f"spec column does not mention \"{phrase}\", so the "
+                     "exception that keeps Stage E honest has nowhere to sit")
+
+    # Phase-one open bullets. class="o" is the hollow marker; a done item
+    # that still carries it is the checklist form of the same lag.
+    open_items = [
+        flatten(html.unescape(re.sub(r"<[^>]+>", " ", item)))
+        for item in re.findall(r'<li class="o">(.*?)</li>', doc, flags=re.S)
+    ]
+    for phrase in ROADMAP_PHASE_ONE_MUST_NOT_STAY_OPEN:
+        hits = [item for item in open_items if re.search(re.escape(phrase), item, re.I)]
+        if hits:
+            err(src, f"phase-one checklist still marks \"{phrase}\" open: "
+                     + "; ".join(hits))
+
+    if not any(e.startswith(f"::error file={src}::") or
+               e.startswith("::error file=PLAN.md::") for e in errors):
+        print("  ok  roadmap status columns agree with PLAN.md on engine work")
 
 
 if __name__ == "__main__":

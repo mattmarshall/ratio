@@ -256,6 +256,11 @@ page would read as a reference customer. Keep it unnamed.
 - **The status sections are the point, not a hedge.** Ratio's product surface is
   far behind its foundation. A site that asks the reader to check rather than
   trust has to be accurate about itself, or it argues against itself.
+- **The roadmap's built / not-yet-built columns are checked against PLAN.md.**
+  `verify.py` fails if the page still lists tax lots, FX translation, corporate
+  actions, or journal persistence as unbuilt, or if it claims Postgres is
+  running. Postgres stays on the spec side: Stage E is open, and PLAN's
+  "four of these were built" table records it as spec-only.
 
 ## American English
 
