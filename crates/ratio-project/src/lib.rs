@@ -1489,12 +1489,22 @@ impl Projection {
             let leftover = {
                 let held = fold.lots.open.entry(key.clone()).or_default();
                 let relieving = std::time::Instant::now();
-                // ⛔ MINTAX IS NOT A METHOD. When the entry's configuration
-                // elected the ranking, the sale PRICE comes from the cash
-                // posting (the trade's proceeds) and the walk re-ranks.
-                // Treating it as `held.relieve(method, …)` is
-                // `//tla:sort_and_walk_mintax_check`.
-                let relieved = if let Some(weight) = terms.min_tax_short_weight {
+                // ⛔ SPECID IS NOT A METHOD, AND NEITHER IS MINTAX. A named
+                // selection is an attested per-sale choice; a ranking takes
+                // a PRICE. Treating either as `held.relieve(method, …)` is
+                // the TLA probe that goes red.
+                let relieved = if let Some(named) = &entry.identified_lots {
+                    if terms.min_tax_short_weight.is_some() {
+                        Err(anyhow::anyhow!(
+                            "this sale names lots for specific identification and its \
+                             configuration elects min-tax. Two answers for one sale. \
+                             Drop identified_lots, or drop min_tax_short_weight. \
+                             See Ratio.Lots.SpecId"
+                        ))
+                    } else {
+                        held.relieve_spec_id(-qty, named)
+                    }
+                } else if let Some(weight) = terms.min_tax_short_weight {
                     min_tax_sale(held, entry, &terms, trade_day, -qty, weight)
                 } else {
                     held.relieve(method, -qty)
@@ -1522,7 +1532,9 @@ impl Projection {
                         // operator would read to investigate a drift asserted the
                         // very thing that was wrong.
                         if -p.amount != r.cost {
-                            let how = if terms.min_tax_short_weight.is_some() {
+                            let how = if entry.identified_lots.is_some() {
+                                "specific-identification"
+                            } else if terms.min_tax_short_weight.is_some() {
                                 "min-tax-at-the-sale-price"
                             } else {
                                 method.describe()
@@ -2334,6 +2346,7 @@ mod tests {
                 announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
             })
             .unwrap();
         }
@@ -2388,6 +2401,7 @@ mod tests {
             announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
         })
         .unwrap();
     }
@@ -2413,6 +2427,7 @@ mod tests {
             announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
         })
         .unwrap();
     }
@@ -2693,6 +2708,7 @@ mod tests {
                 announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
             })
             .unwrap();
         }
@@ -2758,6 +2774,7 @@ mod tests {
             announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
         })
         .unwrap();
 
@@ -2865,6 +2882,7 @@ mod tests {
             announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
         })
         .unwrap();
     }
@@ -2956,6 +2974,7 @@ mod tests {
             }),
             due_date: None,
             application: None,
+            identified_lots: None,
         }
     }
 
@@ -3040,6 +3059,7 @@ mod tests {
             announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
         });
         let p = Projection::rebuild(&js, FIFO);
 
@@ -3126,6 +3146,7 @@ mod tests {
                 announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
             })
             .unwrap();
         }
@@ -3201,6 +3222,7 @@ mod tests {
                 announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
             })
             .unwrap();
         }
@@ -3249,6 +3271,7 @@ mod tests {
                 announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
             })
             .unwrap();
         }
@@ -3337,6 +3360,34 @@ mod tests {
             relief::relieve_by(relief::Method::from(set.effective_lot_method()), &held, units)
                 .unwrap()
         };
+        dispose_relieved(d, id, units, proceeds, day, r, None);
+    }
+
+    fn dispose_identified(
+        d: &std::path::Path,
+        id: &str,
+        units: i64,
+        proceeds: i64,
+        day: &str,
+        named: &[u64],
+    ) {
+        let p = Projection::of_book(d).unwrap();
+        let held = p.lots_of(B, 1, "vti").unwrap().value;
+        let r = relief::relieve_spec_id(&held, units, named).unwrap();
+        dispose_relieved(d, id, units, proceeds, day, r, Some(named.to_vec()));
+    }
+
+    fn dispose_relieved(
+        d: &std::path::Path,
+        id: &str,
+        units: i64,
+        proceeds: i64,
+        day: &str,
+        r: relief::Relieved,
+        identified: Option<Vec<u64>>,
+    ) {
+        let mut b = FileBook::open(d).unwrap();
+        let c = b.active().unwrap().unwrap();
         let postings =
             relief::sale_postings(ROLES, None, "vti", units, r.cost, proceeds).unwrap();
         b.append(&JournalEntry {
@@ -3346,8 +3397,9 @@ mod tests {
             postings,
             trade_date: Some(day.into()),
             announcement: None,
-                due_date: None,
-                application: None,
+            due_date: None,
+            application: None,
+            identified_lots: identified,
         })
         .unwrap();
     }
@@ -3453,6 +3505,7 @@ mod tests {
             announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
         })
         .unwrap();
         drop(b);
@@ -3672,6 +3725,71 @@ mod tests {
         assert_eq!(left[0].cost, 12, "FIFO took A; B remains — no price ranking");
     }
 
+    // ── specific identification, on a real book ────────────────────────────
+
+    fn spec_holding(d: &std::path::Path) {
+        // Three one-unit lots: 10, 40, 70. The middle one is the case no
+        // Order can pick. `Ratio.Lots.SpecId.specHolding`.
+        buy_on(d, "a", 1, 10, "2026-01-01");
+        buy_on(d, "b", 1, 40, "2026-01-02");
+        buy_on(d, "c", 1, 70, "2026-01-03");
+    }
+
+    #[test]
+    fn specid_on_the_book_takes_the_named_lot() {
+        // ⭐ `Ratio.Lots.SpecId.specid_takes_from_the_middle`.
+        let d = book_with_gains("specid-middle", 365);
+        spec_holding(&d);
+        let seqs: Vec<u64> = Projection::of_book(&d)
+            .unwrap()
+            .lots_of(B, 1, "vti")
+            .unwrap()
+            .value
+            .iter()
+            .map(|l| l.seq)
+            .collect();
+        assert_eq!(seqs.len(), 3);
+        dispose_identified(&d, "s", 1, 50, "2026-06-01", &[seqs[1]]);
+        let left = Projection::of_book(&d).unwrap().lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left.len(), 2);
+        let costs: Vec<i64> = left.iter().map(|l| l.cost).collect();
+        assert_eq!(costs, vec![10, 70], "named the middle; ends remain");
+    }
+
+    #[test]
+    fn specid_unnamed_on_the_book_is_a_break_not_fifo() {
+        // ⛔ UNSET ≠ EMPTY. Some([]) is SpecID elected and lots unnamed.
+        // FIFO would take the first lot (10). Refuse instead.
+        let d = book_with_gains("specid-unnamed", 365);
+        spec_holding(&d);
+        let mut b = FileBook::open(&d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        let postings = relief::sale_postings(ROLES, None, "vti", 1, 10, 50).unwrap();
+        b.append(&JournalEntry {
+            id: "s".into(),
+            memo: "sell".into(),
+            config: c,
+            postings,
+            trade_date: Some("2026-06-01".into()),
+            announcement: None,
+            due_date: None,
+            application: None,
+            identified_lots: Some(vec![]),
+        })
+        .unwrap();
+        drop(b);
+        let p = Projection::of_book(&d).unwrap();
+        let breaks = p.lot_breaks(B).unwrap();
+        assert!(!breaks.is_empty(), "unnamed SpecID must break, not walk FIFO");
+        let msg = breaks.join("\n");
+        assert!(
+            msg.contains("no lots were named") || msg.contains("unnamed"),
+            "{msg}"
+        );
+        let left = p.lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left.len(), 3, "the holding is untouched");
+    }
+
     // ── currencies ─────────────────────────────────────────────────────────
 
     /// A book holding one hundred of the base and ninety of a foreign currency,
@@ -3700,6 +3818,7 @@ mod tests {
                 announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
             })
             .unwrap();
         }
@@ -3817,6 +3936,7 @@ mod tests {
             announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
         })
         .unwrap();
         drop(b);
@@ -3869,6 +3989,7 @@ mod tests {
                 announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
             })
             .collect();
         b.append_all(&entries).unwrap();
@@ -3978,6 +4099,7 @@ calendar = "wk"
             announcement: None,
                 due_date: None,
                 application: None,
+                identified_lots: None,
         })
         .unwrap();
     }

@@ -488,6 +488,7 @@ mod tests {
                 announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
             })
             .unwrap();
         }

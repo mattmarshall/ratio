@@ -1046,7 +1046,9 @@ fn unsupported_method(toml_src: &str) -> Option<&'static str> {
             "specific identification is not an ordering, so it is not a lot method: the client \
              names the lots PER SALE, possibly from the middle of a holding and possibly \
              partially. It is an instruction carried on the disposal, not a term of the rule \
-             set. See Ratio.Lots.Methods.specific_identification_takes_from_the_middle",
+             set. Carry the names on the sale as identified_lots; an empty list refuses \
+             rather than walking FIFO. See Ratio.Lots.SpecId and \
+             Ratio.Lots.Methods.specific_identification_takes_from_the_middle",
         ),
         "average_cost" | "average" | "pooled" => Some(
             "average cost is not an ordering, so it is not a lot method: it POOLS the holding, \

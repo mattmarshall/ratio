@@ -670,3 +670,36 @@ tla_check(
     tags = ["manual"],
     deps = [":mintax_engine"],
 )
+
+# Specific identification is a SELECTION the taxpayer names, not a sort
+# of the holding.
+#
+# ⛔ `Ratio.Lots.SpecId` proves the arithmetic of one sale. This is the
+# engine that pretends SpecID is another Method — sort once, walk, never
+# look at the name — and the obligation that it is not.
+# `//tla:sort_and_walk_specid_check` is the probe: TreatAsOrder, and
+# TheLotTakenIsTheOneNamed goes red.
+tla_library(
+    name = "specid_engine",
+    srcs = ["SpecIdEngine.tla"],
+)
+
+tla_check(
+    name = "specid_engine_check",
+    size = "medium",
+    config = "MCSpecIdEngine.cfg",
+    module = "MCSpecIdEngine.tla",
+    deps = [":specid_engine"],
+)
+
+# ⛔ Sort-and-walk: the holding is ordered once, without the taxpayer's
+# name. FIFO picks lot A; the taxpayer named lot B. The books tie.
+# TheLotTakenIsTheOneNamed MUST go red.
+tla_check(
+    name = "sort_and_walk_specid_check",
+    size = "medium",
+    config = "SortAndWalkSpecId.cfg",
+    module = "SortAndWalkSpecId.tla",
+    tags = ["manual"],
+    deps = [":specid_engine"],
+)

@@ -19,6 +19,7 @@ sort:
                     `Ratio.Lots.MinTax`. Not a function of the lots.
   SPECIFIC ID       the client names the lots. Not an ordering — a selection,
                     and one that may take from the middle of the holding.
+                    `Ratio.Lots.SpecId`. The holding alone does not pick.
   AVERAGE COST      no lot is chosen at all. The holding is pooled at a
                     weighted basis, and "which lot" is not a question the
                     method can answer. `average_cost_is_not_a_lot_walk`.
@@ -303,14 +304,19 @@ The client names the lots. That may take from the middle of a holding, may take
 partially from several, and cannot be expressed as "sort and walk" — which is
 why it is a separate shape rather than another `Order`.
 
-Modelled as the ordering that puts the named lots first, which is faithful for
-relief and NOT faithful in general: a selection naming more units than the sale
+Modelled here as the ordering that puts the named lots first, which is faithful
+for a well-formed selection and NOT faithful in general: a selection naming more
+units than the sale, naming a lot the holding does not have, or naming nothing,
 is a client instruction that contradicts itself, and an ordering cannot say so.
+The surface that can is `Ratio.Lots.SpecId`.
 -/
 def selectFirst (named : List Nat) (ls : List Lot) : List Lot :=
   ls.filter (fun l => named.contains l.seq) ++ ls.filter (fun l => !named.contains l.seq)
 
-/-- **A named selection takes what it names**, even from the middle. -/
+/-- **A named selection takes what it names**, even from the middle.
+
+The well-formed case `selectFirst` gets right. The refusals — and the proof
+that no `Order` produces this basis — are `Ratio.Lots.SpecId`. -/
 theorem specific_identification_takes_from_the_middle :
     (relieveFifo (selectFirst [2] [⟨1, 1, 10⟩, ⟨2, 1, 40⟩, ⟨3, 1, 70⟩]) 1).map
         (fun r => takenCost r.1)

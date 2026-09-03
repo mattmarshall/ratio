@@ -488,3 +488,25 @@ lean_test(
     ],
     entry = "Ratio/Lots/MinTax.lean",
 )
+
+# ⛔ A SELECTION the taxpayer names, not a sort of the holding.
+#
+# `Ratio.Lots.Methods` already said specific identification is not an
+# `Order`: the client names the lots, possibly from the middle.
+# `selectFirst` puts those names first and cannot refuse a contradictory
+# instruction. This file is the surface that can — unknown, overspecified,
+# insufficient and unnamed selections refuse rather than walk.
+#
+# `//tla:specid_engine_check` is the sequence: a sort-and-walk that never
+# sees the name cannot take the middle lot.
+# `//tla:sort_and_walk_specid_check` is the probe.
+lean_test(
+    name = "lots_specid_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Lots.lean",
+        "Ratio/Lots/Methods.lean",
+        "Ratio/Lots/SpecId.lean",
+    ],
+    entry = "Ratio/Lots/SpecId.lean",
+)

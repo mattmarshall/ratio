@@ -1296,6 +1296,7 @@ impl Console {
             announcement: None,
             due_date,
             application,
+            identified_lots: None,
         };
 
         // The kernel refuses an unbalanced entry at the door, so `append` is
@@ -1994,6 +1995,7 @@ impl Console {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })?;
         Ok((moved, dim_touched))
     }
@@ -2137,6 +2139,7 @@ impl Console {
                             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
                         })?;
                     }
                     posted += 1;
@@ -2363,6 +2366,7 @@ impl Console {
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
                         .map(str::to_string),
+                    identified_lots: None,
                 })?;
             }
             n += 1;
@@ -3426,6 +3430,7 @@ impl Console {
                 // closing posting in a current bucket.
                 due_date: None,
                 application: None,
+                identified_lots: None,
             };
             b.append(&entry)?;
             (Some(id), Some(dest_amt), digest.as_str().to_string())
@@ -5158,6 +5163,7 @@ mod tests {
                 announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
             })
             .unwrap();
         };
@@ -5483,6 +5489,7 @@ mod tests {
                 announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
             })
             .unwrap();
         }
@@ -5527,6 +5534,7 @@ mod tests {
                 announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
             })
             .unwrap();
         }
@@ -5561,6 +5569,7 @@ mod tests {
                 announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
             })
             .unwrap();
             b.append(&JournalEntry {
@@ -5575,6 +5584,7 @@ mod tests {
                 announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
             })
             .unwrap();
         }
@@ -6422,6 +6432,7 @@ mod tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
         // $18,000 auto in February.
@@ -6437,6 +6448,7 @@ mod tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
         // March mortgage: $800 principal + $200 interest against cash.
@@ -6453,6 +6465,7 @@ mod tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
         // March auto: $350 principal + $45 interest.
@@ -6469,6 +6482,7 @@ mod tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
         // A card charge the same month — not a declared loan.
@@ -6484,6 +6498,7 @@ mod tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
         drop(b);
@@ -6587,6 +6602,7 @@ mod tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
         drop(b);
@@ -6725,6 +6741,7 @@ mod tests {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
         drop(b);
@@ -9068,6 +9085,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
         drop(b);
@@ -9341,6 +9359,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
                 announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
             })
             .unwrap();
             b.append(&JournalEntry {
@@ -9355,6 +9374,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
                 announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
             })
             .unwrap();
         }
@@ -9392,6 +9412,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap_err();
 
@@ -9938,6 +9959,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
         drop(b);
@@ -10313,6 +10335,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
         drop(b);

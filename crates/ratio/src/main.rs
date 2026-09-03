@@ -559,6 +559,7 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str)
                 }),
                 due_date: None,
                 application: None,
+                identified_lots: None,
             })?;
         }
     }
@@ -1510,6 +1511,7 @@ fn apply(book: PathBuf, file: &str) -> Result<()> {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })?;
         posted += 1;
     }
@@ -1540,6 +1542,7 @@ fn post(book: PathBuf, file: &str) -> Result<()> {
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         };
         // The book refuses an unbalanced entry; report every one rather than
         // stopping at the first, so a bad file is fixed in one pass.
@@ -2766,6 +2769,7 @@ weight = -1
             announcement: None,
             due_date: None,
             application: None,
+            identified_lots: None,
         })
         .unwrap();
 
