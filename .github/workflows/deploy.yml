@@ -157,6 +157,11 @@ jobs:
           # become a hard-coded production identifier. Do not point this at
           # another product.
           WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID }}
+          # Optional. Unset means the production AuthKit custom domain
+          # (https://auth.ratio.marsh.build), which serves OIDC discovery.
+          # The bare https://api.workos.com/ host does not, and CloudFormation
+          # refuses it as an AWS::ApiGatewayV2::Authorizer issuer.
+          WORKOS_ISSUER: ${{ vars.WORKOS_ISSUER }}
           # The verified SES identity the report email sends from. A repository
           # VARIABLE like the others — an address is not a secret. Unset means
           # no email, which is the correct state until SES verifies.
@@ -185,6 +190,22 @@ jobs:
             echo "::error::WORKOS_CLIENT_ID is unset. Set the repository variable to the Ratio Production AuthKit client id documented in deploy/README.md — a missing value must not become a hard-coded identifier."
             exit 1
           fi
+          # ⛔ THE BARE api.workos.com HOST HAS NO OIDC DISCOVERY.
+          # CloudFormation rejects Issuer: https://api.workos.com/ with
+          # "must have a valid discovery endpoint ended with
+          # /.well-known/openid-configuration" (run 33784570568, #122).
+          # Production AuthKit custom domain is auth.ratio.marsh.build
+          # (verified; issuer is that host, no trailing slash).
+          PRODUCTION_ISSUER='https://auth.ratio.marsh.build'
+          BARE_WORKOS_ISSUER='https://api.workos.com'
+          ISSUER="${WORKOS_ISSUER:-$PRODUCTION_ISSUER}"
+          ISSUER="${ISSUER%/}"
+          case "$ISSUER" in
+            "${BARE_WORKOS_ISSUER}")
+              echo "::error::WORKOS_ISSUER is the bare host ${ISSUER}, which has no OIDC discovery. Production AuthKit issuer is ${PRODUCTION_ISSUER}."
+              exit 1
+              ;;
+          esac
 
           # ⛔ CAPABILITY_NAMED_IAM, BECAUSE THE STACK CREATES TWO NAMED ROLES.
           # The scale runner's task role and task execution role are named
@@ -249,6 +270,7 @@ jobs:
               DemoMember="${DEMO_MEMBERS:-demo@ratio.fastverk.dev}" \
               ScaleSender="${SCALE_SENDER}" \
               WorkOsClientId="${WORKOS_CLIENT_ID}" \
+              WorkOsIssuer="${ISSUER}" \
             || { dump_stack_failure; exit 1; }
 
       - name: Smoke test the deployed demo
@@ -257,6 +279,10 @@ jobs:
           # CloudFormation; the step below reads it back out of the running
           # process to prove it arrived. See the /authconfig.json check.
           CONSOLE_ORIGIN: ${{ vars.CONSOLE_ORIGIN }}
+          # Same optional override the Deploy step uses. Unset means the
+          # production AuthKit custom domain, asserted below against
+          # /authconfig.json so a drift from the authorizer is visible here.
+          WORKOS_ISSUER: ${{ vars.WORKOS_ISSUER }}
           # The verified SES identity the report email sends from. A repository
           # VARIABLE like the others — an address is not a secret. Unset means
           # no email, which is the correct state until SES verifies.
@@ -385,6 +411,14 @@ jobs:
           deny "an unwired scale runner" '"runner":null' "${URL}scale-runs.json"
 
           want "the auth config" '"redirectPath":"/callback"' "${URL}authconfig.json"
+          # ⛔ THE AUTHORIZER AND THIS DOCUMENT MUST NAME THE SAME ISSUER.
+          # https://api.workos.com/ has no OIDC discovery; CloudFormation
+          # refuses it. The production AuthKit custom domain does, and is
+          # the issuer the stack now passes. Same default as the Deploy step.
+          ISSUER="${WORKOS_ISSUER:-https://auth.ratio.marsh.build}"
+          ISSUER="${ISSUER%/}"
+          want "the auth config issuer" "\"issuer\":\"${ISSUER}\"" \
+            "${URL}authconfig.json"
 
           # ⛔ THE CONSOLE TAKES ITS OAuth `redirect_uri` FROM THIS FIELD, so a
           # wrong value here refuses every sign-in — and refuses it at the IdP,

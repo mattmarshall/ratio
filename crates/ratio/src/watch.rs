@@ -508,15 +508,13 @@ fn handle(mut stream: TcpStream, book: &Path) -> Result<()> {
             "200 OK",
             "application/json",
             auth_config_json(
-                if std::env::var("RATIO_WORKOS_CLIENT_ID")
-                    .ok()
-                    .filter(|s| !s.is_empty())
-                    .is_some()
-                {
-                    "https://api.workos.com/"
-                } else {
-                    ""
-                },
+                // ⛔ NOT https://api.workos.com/. That host has no
+                // /.well-known/openid-configuration (404). CloudFormation
+                // refuses it as an AWS::ApiGatewayV2::Authorizer issuer.
+                // The value is RATIO_WORKOS_ISSUER — the same WorkOsIssuer
+                // the template hands the authorizer — so this document
+                // cannot publish a host the gateway would reject.
+                &std::env::var("RATIO_WORKOS_ISSUER").unwrap_or_default(),
                 &std::env::var("RATIO_WORKOS_CLIENT_ID").unwrap_or_default(),
                 "",
                 // ⛔ THE SAME ACCESSOR THE `/` REDIRECT USES, NOT A FRESH

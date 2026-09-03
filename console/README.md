@@ -237,7 +237,9 @@ Two required on a laptop; four more on a Vercel deploy (AuthKit).
 | `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | Must match a Redirect URI on the attached WorkOS application |
 
 ⭐ **WorkOS AuthKit is the sign-in path.** Cognito is not consulted. The API
-Gateway JWT authorizer uses issuer `https://api.workos.com/` and audience =
+Gateway JWT authorizer uses issuer `https://auth.ratio.marsh.build` (the
+production AuthKit custom domain; it serves OIDC discovery, the bare
+`https://api.workos.com/` host does not) and audience =
 `WORKOS_CLIENT_ID`. Membership is still `MEMBERSHIP.tsv`: `sub`, email, or
 `org:{workos_org_id}`. Creating a book grants only the creator's `sub`.
 

@@ -64,6 +64,19 @@ Parameters:
       WORKOS_API_KEY / WORKOS_COOKIE_PASSWORD as Vercel env; this value is
       what API Gateway verifies on /v1. Do not substitute another product's
       client id.
+  WorkOsIssuer:
+    Type: String
+    Default: "https://auth.ratio.marsh.build"
+    Description: >
+      OIDC issuer the HTTP API JWT authorizer checks. Must serve
+      /.well-known/openid-configuration — CloudFormation fetches that
+      document when it creates AWS::ApiGatewayV2::Authorizer and refuses
+      a 404. The bare https://api.workos.com/ host does not have one
+      (verified 2026-09-03), which is why every deploy since the WorkOS
+      cut rolled back at Authorizer. Production AuthKit custom domain is
+      https://auth.ratio.marsh.build (issuer is that host, no trailing
+      slash). Audience stays WorkOsClientId. Do not point this at
+      another product's AuthKit domain.
   GoogleClientId:
     Type: String
     Default: ""
@@ -170,6 +183,9 @@ Resources:
           # WorkOS is the IdP on /v1. Cognito resources remain in this template
           # so a stack update does not destroy the live pool; they are unused.
           RATIO_WORKOS_CLIENT_ID: !Ref WorkOsClientId
+          # Same issuer the JWT authorizer checks, so /authconfig.json
+          # cannot publish a host CloudFormation would refuse.
+          RATIO_WORKOS_ISSUER: !Ref WorkOsIssuer
           # ⚠ AN OPEN DEMO. Its audience is not known ahead of time, so it cannot
           # be an allow-list of emails: RATIO_DEMO_OPEN grants any AUTHENTICATED
           # caller every fund, while the write stays signed with their id.
@@ -443,7 +459,7 @@ Resources:
       IdentitySource: ["$request.header.Authorization"]
       JwtConfiguration:
         Audience: [!Ref WorkOsClientId]
-        Issuer: "https://api.workos.com/"
+        Issuer: !Ref WorkOsIssuer
 
   # ⛔ A SECOND ROUTE, AND THE ONE EXCEPTION TO THE ONE-ROUTE RULE ABOVE. It is a
   # COARSE prefix split, not a per-resource table: everything under /v1 requires

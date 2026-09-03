@@ -145,6 +145,13 @@ Deploy step by name rather than silently becoming a production identifier.
 It is not a secret. The Production id to put in the variable is
 `client_01M1JJZTFXFDZJ0XJM1NPNSEJB`.
 
+**API Gateway** issuer is `WorkOsIssuer`. Default and workflow fallback are
+`https://auth.ratio.marsh.build` (the production AuthKit custom domain).
+That host serves `/.well-known/openid-configuration`; the bare
+`https://api.workos.com/` host does not, and CloudFormation refuses it.
+Optional repository variable `WORKOS_ISSUER` overrides the default; the
+workflow rejects the bare WorkOS API host by name.
+
 `WORKOS_API_KEY` is a secret (`sk_…`). Do not commit it. `/login` and
 `/api/auth/login` are the same initiate-login handler as `/sign-in`.
 `/api/auth/callback` only redirects to `/signin` (the prompt page).
@@ -335,9 +342,13 @@ to load and start the sign-in.
 The split of responsibility is the load-bearing decision:
 
 - **Authentication** — "the token is real, unexpired, ours" — is the API
-  Gateway JWT authorizer, issuer `https://api.workos.com/`, audience =
-  `WorkOsClientId` (the same value as `WORKOS_CLIENT_ID`, from the stack
-  parameter, never a literal in this repository). The server does no crypto.
+  Gateway JWT authorizer, issuer `WorkOsIssuer` (production default
+  `https://auth.ratio.marsh.build`, the AuthKit custom domain that serves
+  `/.well-known/openid-configuration`), audience = `WorkOsClientId` (the
+  same value as `WORKOS_CLIENT_ID`, from the stack parameter, never a
+  literal in this repository). The bare `https://api.workos.com/` host is
+  not an OIDC issuer — CloudFormation refuses it — and must not be
+  passed. The server does no crypto.
   The authorizer puts the verified claims on the request context, which
   the Lambda Web Adapter forwards as `x-amzn-request-context` — a header the
   gateway synthesizes, so a client cannot forge its own claims. The Cognito

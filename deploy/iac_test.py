@@ -240,6 +240,50 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  WorkOsClientId has no template default")
 
+    # ⛔ THE BARE api.workos.com HOST IS NOT AN OIDC ISSUER.
+    # CloudFormation AWS::ApiGatewayV2::Authorizer fetches
+    # {issuer}/.well-known/openid-configuration and refuses a 404
+    # (run 33784570568, #122). A comment that names the rejected host
+    # must not satisfy or fail this, which is why both documents are
+    # comment-stripped. `flow` is already stripped above.
+    app_code = "\n".join(
+        line for line in app.splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    if re.search(r'Issuer:\s+"https://api\.workos\.com', app_code):
+        fail(
+            f"{app_path} sets the JWT authorizer issuer to the bare "
+            "https://api.workos.com host, which has no OIDC discovery — "
+            "CloudFormation will UPDATE_FAILED at Authorizer"
+        )
+    else:
+        print("  ok  Authorizer issuer is not the bare api.workos.com host")
+
+    if "https://auth.ratio.marsh.build" not in app_code:
+        fail(
+            f"{app_path} does not name the production AuthKit issuer "
+            "https://auth.ratio.marsh.build"
+        )
+    else:
+        print("  ok  the app stack names the production AuthKit issuer")
+
+    if re.search(r'WorkOsIssuer="https://api\.workos\.com', flow):
+        fail(
+            f"{workflow_path} passes the bare api.workos.com host as "
+            "WorkOsIssuer — CloudFormation will refuse the authorizer"
+        )
+    else:
+        print("  ok  the workflow does not pass the bare api.workos.com issuer")
+
+    if 'WorkOsIssuer="${ISSUER}"' not in flow:
+        fail(
+            f"{workflow_path} does not pass WorkOsIssuer from the resolved "
+            "issuer — the authorizer and /authconfig.json would then depend "
+            "on a template default the smoke test cannot see arrive"
+        )
+    else:
+        print("  ok  WorkOsIssuer is passed from the resolved issuer")
+
     if failures:
         print(f"\n{len(failures)} problem(s): the app stack and the deploy role disagree "
               "about what may be created", file=sys.stderr)
