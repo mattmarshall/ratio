@@ -28,6 +28,10 @@ pub struct Observation {
     pub minor: i64,
     /// Which delivery said so, so a mark can name its evidence.
     pub delivery: String,
+    /// The fact that recorded this observation, so a figure can open it.
+    pub fact_id: String,
+    /// The config digest that fact pinned (`Provenance.template`).
+    pub config: String,
 }
 
 /// The price to mark at: the most recent observation on or before the day.
@@ -72,7 +76,15 @@ pub fn mark_delta(carrying: i64, market: i64) -> i64 {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Valuation {
     /// Worth this, and the book should move by that much.
-    Marked { market: i64, delta: i64, price: i64, on_day: String, delivery: String },
+    Marked {
+        market: i64,
+        delta: i64,
+        price: i64,
+        on_day: String,
+        delivery: String,
+        fact_id: String,
+        config: String,
+    },
     /// Nothing was observed on or before the day.
     ///
     /// ⛔ NOT A ZERO MARK. Zero says "worth what it cost"; this says "we do not
@@ -100,6 +112,8 @@ pub fn value_position(
             price: o.minor,
             on_day: o.on_day.clone(),
             delivery: o.delivery.clone(),
+            fact_id: o.fact_id.clone(),
+            config: o.config.clone(),
         },
         None => Valuation::Inexact {
             price: o.minor,
@@ -142,9 +156,27 @@ pub fn observations(
             on_day: day.to_string(),
             minor,
             delivery: r.fact.provenance.delivery.clone(),
+            fact_id: r.fact.id.clone(),
+            config: r.fact.provenance.template.clone(),
         });
     }
     Ok(out)
+}
+
+/// The rate fact currently in force for each currency.
+///
+/// ⛔ LAST IN APPEND ORDER WINS. A correction is a new fact, never an edit, so
+/// the later record is the one a figure must cite. `Rates::of_facts` reads the
+/// same way: two readers of one log that picked different rows would translate
+/// a NAV into two numbers.
+pub fn current_rates(facts: &[crate::Fact]) -> std::collections::BTreeMap<String, &crate::Fact> {
+    let mut out = std::collections::BTreeMap::new();
+    for f in facts.iter().filter(|f| f.kind == "rate") {
+        if let Some(ccy) = f.values.get("currency").and_then(crate::Value::as_text) {
+            out.insert(ccy.to_string(), f);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -152,7 +184,13 @@ mod tests {
     use super::*;
 
     fn obs(day: &str, minor: i64) -> Observation {
-        Observation { on_day: day.into(), minor, delivery: "d".into() }
+        Observation {
+            on_day: day.into(),
+            minor,
+            delivery: "d".into(),
+            fact_id: "f".into(),
+            config: "c".into(),
+        }
     }
 
     #[test]
@@ -202,6 +240,8 @@ mod tests {
                 price: 250_00,
                 on_day: "2026-02-26".into(),
                 delivery: "d".into(),
+                fact_id: "f".into(),
+                config: "c".into(),
             },
             "a position already at market moves by nothing",
         );
@@ -230,5 +270,46 @@ mod tests {
         let Valuation::Marked { delta: d3, .. } = later else { panic!() };
         assert_eq!(d3, 1_000_00);
         assert_eq!(d1 + d2 + d3, 2_000_00, "the marks sum to the total movement");
+    }
+
+    fn rate(id: &str, ccy: &str, minor: i64) -> crate::Fact {
+        crate::Fact {
+            id: id.into(),
+            kind: "rate".into(),
+            reference: ccy.into(),
+            entities: Default::default(),
+            values: [
+                ("currency".into(), crate::Value::Text { text: ccy.into() }),
+                ("rate".into(), crate::Value::Decimal { minor }),
+            ]
+            .into_iter()
+            .collect(),
+            provenance: crate::Provenance {
+                delivery: format!("d-{id}"),
+                row: 2,
+                template: "cfg".into(),
+                template_id: "fx".into(),
+                received: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn a_corrected_rate_is_a_new_fact_and_the_later_one_is_in_force() {
+        // ⭐ THE PLATFORM PAGE CLAIM, AS A FOLD. Corrections are new facts;
+        // in-place edit is unrepresentable because the log only appends. The
+        // later EUR fact is the one a figure must cite — citing the first
+        // would translate at a rate nobody believes anymore.
+        let first = rate("r1", "EUR", 108_00);
+        let correction = rate("r2", "EUR", 110_00);
+        let gbp = rate("r3", "GBP", 127_00);
+        let cur = current_rates(&[first.clone(), correction.clone(), gbp]);
+        assert_eq!(cur["EUR"].id, "r2");
+        assert_eq!(cur["EUR"].values["rate"].as_minor(), Some(110_00));
+        assert_eq!(cur["GBP"].id, "r3");
+        assert_eq!(cur.len(), 2);
+        // And flipping the first two would silently pick the stale rate.
+        let stale = current_rates(&[correction, first]);
+        assert_eq!(stale["EUR"].id, "r1", "append order is the only order");
     }
 }

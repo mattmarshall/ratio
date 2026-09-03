@@ -8,9 +8,9 @@
 /**
  * The collection in a resource name → the segment(s) in its URL.
  *
- * ⛔ SEVEN OF THESE DISAGREE, AND THAT IS EXACTLY WHAT DRIFTS. `console.proto`
+ * ⛔ EIGHT OF THESE DISAGREE, AND THAT IS EXACTLY WHAT DRIFTS. `console.proto`
  * says `navStrikes` and the URL says `strikes`; `changeLogEntries` → `changes`;
- * `configVersions` → `config`; `corporateActions` → `actions`; and the three
+ * `configVersions` → `config`; `corporateActions` → `actions`; and the four
  * data-plane collections are all nested under `data/`. Every other screen in this
  * console builds its href from parts it already holds, so this is the only place
  * a whole resource name is translated — and therefore the only place the rename
@@ -37,6 +37,7 @@ export const COLLECTION_TO_SEGMENT: Record<string, string> = {
   corporateActions: "actions",
   deliveries: "data/deliveries",
   pendingFacts: "data/pending",
+  facts: "data/facts",
   templates: "data/templates",
 };
 
@@ -142,6 +143,8 @@ export function candidatesForId(
       href: `${plain}/data/deliveries/${e}`, keywords: "delivery,data,ingest,file" },
     { key: "pending", label: `Open “${raw}” as a pending fact`,
       href: `${plain}/data/pending/${e}`, keywords: "pending,fact,unadmitted,data" },
+    { key: "facts", label: `Open “${raw}” as a fact`,
+      href: `${plain}/data/facts/${e}`, keywords: "fact,price,rate,fx,provenance,data" },
     { key: "templates", label: `Open “${raw}” as a template`,
       href: `${plain}/data/templates/${e}`, keywords: "template,mapping,data" },
   ];

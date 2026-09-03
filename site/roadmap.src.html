@@ -224,13 +224,15 @@ __STYLE__
         <span class="r-status-pill now">Under way</span>
       </div>
       <p>The journal, the lots, the currencies, and the actions a first book
-      needs are in the engine. What is still ahead is the two planes that
-      decide and apply policy, and a first custodian feed that is not a file
-      already in hand.</p>
+      needs are in the engine. The control plane is a versioned ConfigStore
+      (directory, hash, atomic pointer) and the fact plane admits prices and
+      FX with provenance an operator can open from a figure. What is still
+      ahead is a first custodian feed that is not a file already in hand.
+      Reviewed change control (geetch/crova) waits for a second customer.</p>
       <ul class="r-deliver">
         <li class="d">The append-only journal — persistence without a database</li>
-        <li class="o">Control plane: versioned, reviewed, atomic</li>
-        <li class="o">Fact plane: prices and FX with provenance</li>
+        <li class="d">Control plane: versioned, reviewed, atomic</li>
+        <li class="d">Fact plane: prices and FX with provenance</li>
         <li class="d">Multi-currency and FX translation</li>
         <li class="d">Tax lots and cost-basis methods</li>
         <li class="d">Corporate actions</li>

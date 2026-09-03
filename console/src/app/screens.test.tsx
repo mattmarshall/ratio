@@ -8,6 +8,7 @@ import changeLogFixture from "../../fixtures/changeLogEntries.json";
 import entriesFixture from "../../fixtures/entries.json";
 import entryFixture from "../../fixtures/entry.json";
 import explainFixture from "../../fixtures/explain.json";
+import factsFixture from "../../fixtures/facts.json";
 import postingsFixture from "../../fixtures/postings.json";
 import bookFixture from "../../fixtures/book.json";
 import booksFixture from "../../fixtures/books.json";
@@ -98,7 +99,10 @@ const wire = {
   listEntries: async () => entriesFixture,
   getEntry: async () => entryFixture,
   listPositions: async () => positionsFixture,
+  getPosition: async () => positionsFixture.positions[0],
   listLots: async () => lotsFixture,
+  listFacts: async () => factsFixture,
+  getFact: async () => factsFixture.facts[0],
   listNavStrikes: async () => navStrikesFixture,
   getNavStrike: async () => navStrikesFixture.navStrikes[0],
   replayNavStrike: async () => replayFixture,
@@ -350,6 +354,14 @@ describe("the trial balance", () => {
     expect(screen.getByText("USD")).toBeDefined();
     expect(screen.getByText("EUR")).toBeDefined();
     expect(document.querySelectorAll(".ccyrow").length).toBe(2);
+    // ⭐ EUR opens the rate fact the translation cited. USD has no rate fact —
+    // a fund does not record what a dollar is worth in dollars — so it is not
+    // a link. Take rateFact off the EUR row and this goes red.
+    const eur = screen.getByRole("link", { name: "EUR" });
+    expect(eur.getAttribute("href")).toBe(
+      `/books/${FUND}/data/facts/aabbccddeeff0011-2`,
+    );
+    expect(screen.queryByRole("link", { name: "USD" })).toBeNull();
   });
 });
 
@@ -360,12 +372,49 @@ describe("positions", () => {
     expect(screen.getByText(/40 open lots/)).toBeDefined();
   });
 
+  it("opens the price fact a marked position cites", async () => {
+    const Position = (
+      await import("./books/[book]/views/[view]/positions/[position]/page")
+    ).default;
+    await renderAsync(
+      Position({ params: params({ book: FUND, view: VIEW, position: "ACME" }) }),
+    );
+    // ⛔ Take priceFact off the fixture and this goes red — a figure that
+    // cannot be opened is a figure that can only be trusted.
+    expect(screen.getByText(/Price from/)).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: /aabbccddeeff/ }).getAttribute("href"),
+    ).toBe(`/books/${FUND}/data/facts/aabbccddeeff0011-3`);
+  });
+
   it("renders the lot book, and says when a lot has no trade date", async () => {
     const { LotBook } = await import("@/components/LotBook");
     await renderAsync(LotBook({ fund: FUND, view: VIEW, position: "ACME" }));
     expect(document.querySelectorAll(".lotrow").length).toBe(2);
     // A lot the engine cannot classify says so rather than showing a guess.
     expect(screen.getByText("no trade date")).toBeDefined();
+  });
+});
+
+describe("the fact plane", () => {
+  it("lists recorded facts and marks the one a correction superseded", async () => {
+    const Facts = (await import("./books/[book]/data/facts/page")).default;
+    await renderAsync(Facts({ params: params({ book: FUND }) }));
+    expect(screen.getByText("EUR at 1.08")).toBeDefined();
+    expect(screen.getByText("EUR at 1.07")).toBeDefined();
+    expect(screen.getByText("superseded")).toBeDefined();
+    expect(screen.getByText(/a correction is a new row/)).toBeDefined();
+  });
+
+  it("opens one fact with the config digest the ingest run pinned", async () => {
+    const Fact = (await import("./books/[book]/data/facts/[fact]/page")).default;
+    await renderAsync(Fact({ params: params({ book: FUND, fact: "aabbccddeeff0011-2" }) }));
+    expect(screen.getByText("EUR at 1.08")).toBeDefined();
+    expect(screen.getByText("fx")).toBeDefined();
+    // ⛔ Take configDigest off the fixture and the config link vanishes.
+    expect(
+      screen.getByRole("link", { name: /9f2c1ab7de40/ }).getAttribute("href"),
+    ).toBe(`/books/${FUND}/config/${factsFixture.facts[0].configDigest}`);
   });
 });
 

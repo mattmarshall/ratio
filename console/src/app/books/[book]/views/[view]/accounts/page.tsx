@@ -81,14 +81,25 @@ async function Accounts({
                     over a sum — a flat total hides a currency mismatch, and this
                     repository has already shipped a NAV that did exactly that. */}
                 {a.currencyTotals.length > 1
-                  ? a.currencyTotals.map((t) => (
-                      <div className="ccyrow" key={a.name + t.currencyCode}>
-                        <span>{t.currencyCode}</span>
-                        <span className="num">{money(t.debit)}</span>
-                        <span className="num">{money(t.credit)}</span>
-                        <span className="num">{money(t.balance)}</span>
-                      </div>
-                    ))
+                  ? a.currencyTotals.map((t) => {
+                      const factId = t.rateFact.split("/").pop();
+                      return (
+                        <div className="ccyrow" key={a.name + t.currencyCode}>
+                          <span>
+                            {t.rateFact && factId ? (
+                              <Link href={`/books/${fund}/data/facts/${factId}`}>
+                                {t.currencyCode}
+                              </Link>
+                            ) : (
+                              t.currencyCode
+                            )}
+                          </span>
+                          <span className="num">{money(t.debit)}</span>
+                          <span className="num">{money(t.credit)}</span>
+                          <span className="num">{money(t.balance)}</span>
+                        </div>
+                      );
+                    })
                   : null}
               </div>
             );

@@ -197,14 +197,14 @@ impl Rates {
     /// `Ratio.Closure.fx_does_not_grow_with_the_chart`. Three currencies is
     /// three rows at five holdings or five hundred.
     pub fn of_facts(base: &str, facts: &[ratio_ingest::Fact]) -> Self {
+        // ⛔ SAME FOLD AS `current_rates`. A NAV that translated at one rate
+        // and a screen that cited another would be the books tying on the
+        // wrong number, with provenance pointing at the right one.
         Self::of(
             base,
-            facts.iter().filter(|f| f.kind == "rate").filter_map(|f| {
-                Some((
-                    f.values.get("currency")?.as_text()?.to_string(),
-                    f.values.get("rate")?.as_minor()?,
-                ))
-            }),
+            ratio_ingest::value::current_rates(facts)
+                .into_iter()
+                .filter_map(|(ccy, f)| Some((ccy, f.values.get("rate")?.as_minor()?))),
         )
     }
 

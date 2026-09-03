@@ -1,0 +1,27 @@
+{
+  "facts": [
+    {
+      "name": "funds/harbourline-global-value/facts/aabbccddeeff0011-2",
+      "kind": "rate",
+      "reference": "EURUSD",
+      "assertion": "EUR at 1.08",
+      "deliveryDigest": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+      "row": "2",
+      "templateId": "fx",
+      "configDigest": "9f2c1ab7de40551c9f2c1ab7de40551c9f2c1ab7de40551c9f2c1ab7de40551c",
+      "superseded": false
+    },
+    {
+      "name": "funds/harbourline-global-value/facts/ccddeeff00112233-2",
+      "kind": "rate",
+      "reference": "EURUSD",
+      "assertion": "EUR at 1.07",
+      "deliveryDigest": "ccddeeff00112233445566778899aabbccddeeff00112233445566778899aabb",
+      "row": "2",
+      "templateId": "fx",
+      "configDigest": "9f2c1ab7de40551c9f2c1ab7de40551c9f2c1ab7de40551c9f2c1ab7de40551c",
+      "superseded": true
+    }
+  ],
+  "nextPageToken": ""
+}
