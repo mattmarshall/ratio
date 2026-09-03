@@ -22,7 +22,7 @@
 //! gain is wrong — which is the figure nobody reconciles because it has no
 //! counterparty.
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 
 use crate::generated_lots::{lot_is_sound, partial_cost, partial_divides, takes_whole_lot};
 
@@ -481,6 +481,88 @@ impl Holding {
         }
     }
 
+    /// The open lot with this acquisition ordinal, if the holding still has it.
+    pub fn get(&self, seq: u64) -> Option<&Lot> {
+        self.seq.iter().chain(self.ranked.values()).find(|l| l.seq == seq)
+    }
+
+    /// Take one open lot out by ordinal. ⛔ A `Taken` lot is already gone, so
+    /// this is how `attach` refuses to write one: the search is over what
+    /// remains, not a check somebody has to remember.
+    fn take_seq(&mut self, seq: u64) -> Option<Lot> {
+        if let Some(i) = self.seq.iter().position(|l| l.seq == seq) {
+            return self.seq.remove(i);
+        }
+        let key = self.ranked.iter().find(|(_, l)| l.seq == seq).map(|(k, _)| *k)?;
+        self.ranked.remove(&key)
+    }
+
+    /// Put an open lot back, keeping FIFO/LIFO in `seq` order and re-ranking
+    /// the methods whose key includes cost or date.
+    ///
+    /// ⛔ NOT `push`. `push` appends; a wash write that pulled a lot from the
+    /// middle and pushed it on the end would make FIFO give up the wrong
+    /// remainder on the next sale. Ranked methods must re-key: attaching a
+    /// deferral changes per-unit cost, and
+    /// `Ratio.Lots.Wash.a_wash_write_changes_what_a_later_method_gives_up`.
+    fn insert_open(&mut self, lot: Lot) -> Result<()> {
+        if !lot_is_sound(lot.units, lot.cost) {
+            bail!(
+                "lot {} holds {} units and carries {} — a holding of nothing that owes \
+                 something is not a lot, and relieving it would give away its basis for \
+                 no units at all",
+                lot.seq,
+                lot.units,
+                lot.cost
+            );
+        }
+        match Self::rank(self.order, &lot) {
+            None => {
+                let pos = self.seq.iter().position(|l| l.seq > lot.seq).unwrap_or(self.seq.len());
+                self.seq.insert(pos, lot);
+            }
+            Some(r) => {
+                self.ranked.insert(r, lot);
+            }
+        }
+        Ok(())
+    }
+
+    /// Attach a deferred loss to one open lot. `Ratio.Lots.Wash.attachTo`.
+    ///
+    /// ⛔ A WRITE TO A LOT THE ENGINE DID NOT RELIEVE. The search is over the
+    /// holding — the remainder — so a lot the sale took is not a candidate.
+    /// A negative `d` is refused: that would reduce basis, which is washing
+    /// a gain, which `a_gain_is_never_washed` already forbids.
+    ///
+    /// ⚠ `acquired` IS THE US HOLDING-PERIOD TRANSFER. The replacement's
+    /// acquisition date for the period becomes the original lot's, not the
+    /// repurchase's. `Ratio.Lots.Wash.replacementAcquired`. `None` leaves
+    /// the repurchase date alone.
+    pub fn attach(&mut self, seq: u64, d: i64, acquired: Option<Day>) -> Result<()> {
+        if d < 0 {
+            bail!(
+                "a negative deferral of {d} is not a wash — that would reduce basis, \
+                 which is washing a gain, and Ratio.Lots.Wash.a_gain_is_never_washed \
+                 forbids it"
+            );
+        }
+        let mut lot = self.take_seq(seq).ok_or_else(|| {
+            anyhow::anyhow!(
+                "lot {seq} is not open — the wash write searches the remainder, and a \
+                 lot the sale took is not a candidate"
+            )
+        })?;
+        lot.cost = ratio_common::checked::add(lot.cost, d, "the replacement lot's basis")?;
+        if let Some(day) = acquired {
+            // `Ratio.Lots.Wash.replacementAcquired`: the original's date, not
+            // the repurchase's. Getting this wrong moves a later disposal
+            // between two tax rates and changes no total.
+            lot.acquired = Some(day);
+        }
+        self.insert_open(lot)
+    }
+
     /// Give up `want` units under `method`, mutating the holding.
     ///
     /// ⛔ A MUTATION, NOT A TRANSFORMATION. `relieve_by` returned a whole new
@@ -765,6 +847,213 @@ pub fn sale_postings(
             quantity: None,
         },
     ])
+}
+
+/// Whether a repurchase falls inside the disallowance window of a sale.
+///
+/// `Ratio.Lots.Wash.inWashWindow`. ⛔ BOTH SIDES, and the window is a
+/// parameter — a jurisdiction's number, never a constant in the arithmetic.
+/// `the_window_reaches_backwards_too`, `the_window_is_a_jurisdiction_number`.
+pub fn in_wash_window(window: i64, sale_day: Day, buy_day: Day) -> bool {
+    let delta = i64::from(buy_day) - i64::from(sale_day);
+    -window <= delta && delta <= window
+}
+
+/// The disallowed portion of a loss, as a POSITIVE magnitude.
+///
+/// `Ratio.Lots.Wash.disallowed`. `loss` is signed the way [`Relief::gain`]
+/// is: negative when money was lost. A gain is never washed. The match is
+/// capped at what was sold. A split that will not divide is refused rather
+/// than rounded — `partial_relief_is_exactly_pro_rata`'s discipline.
+pub fn disallowed(loss: i64, sold_units: i64, bought_units: i64) -> Result<i64> {
+    if loss >= 0 {
+        return Ok(0);
+    }
+    if sold_units <= 0 {
+        bail!(
+            "washing a sale of {sold_units} units is not a wash — there is nothing \
+             to match against"
+        );
+    }
+    let matched = bought_units.min(sold_units);
+    if matched <= 0 {
+        return Ok(0);
+    }
+    // ⛔ NEGATE THEN MULTIPLY, EACH CHECKED. `-loss * matched` as a bare
+    // expression wraps before anything looks, and the wrapped product is
+    // what a remainder test would then bless. `Ratio.Bounded`.
+    let magnitude = ratio_common::checked::neg(loss, "the loss being washed")?;
+    let product = ratio_common::checked::mul(magnitude, matched, "a pro-rata wash split")?;
+    if product.rem_euclid(sold_units) != 0 {
+        bail!(
+            "washing {matched} of {sold_units} sold units does not divide the {magnitude} \
+             loss into whole minor units — which way to round is a term of an \
+             administration agreement, not a property of arithmetic"
+        );
+    }
+    Ok(product.div_euclid(sold_units))
+}
+
+/// What the sale recognizes once the disallowance is applied.
+///
+/// `Ratio.Lots.Wash.recognizedNow`. `loss` is negative and `d` is the
+/// positive amount deferred, so this moves the figure towards zero.
+pub fn recognized_now(loss: i64, d: i64) -> Result<i64> {
+    ratio_common::checked::add(loss, d, "the recognized loss after wash")
+}
+
+/// The replacement lot's basis, with the deferred loss attached.
+///
+/// `Ratio.Lots.Wash.replacementBasis`.
+pub fn replacement_basis(cost: i64, d: i64) -> Result<i64> {
+    ratio_common::checked::add(cost, d, "the replacement lot's basis")
+}
+
+/// The replacement's acquisition date for holding-period purposes: the
+/// original lot's, not the repurchase's.
+///
+/// `Ratio.Lots.Wash.replacementAcquired`. The US rule. Getting this wrong
+/// changes no total and moves a disposal between two tax rates.
+pub fn replacement_acquired(original_acquired: Option<Day>, _repurchased_on: Option<Day>) -> Option<Day> {
+    original_acquired
+}
+
+/// Attach a deferred loss to one open lot in a remainder list.
+///
+/// `Ratio.Lots.Wash.attachTo`. ⛔ SEARCHES THE LIST IT WAS HANDED, which is
+/// the remainder after relief. A lot the sale took is not in it, so writing
+/// a `Taken` lot is unrepresentable rather than a check.
+pub fn attach_to(lots: &[Lot], seq: u64, d: i64) -> Result<Vec<Lot>> {
+    if d < 0 {
+        bail!(
+            "a negative deferral of {d} is not a wash — that would reduce basis, \
+             which is washing a gain, and Ratio.Lots.Wash.a_gain_is_never_washed \
+             forbids it"
+        );
+    }
+    let mut found = false;
+    let mut out = Vec::with_capacity(lots.len());
+    for l in lots {
+        if l.seq == seq {
+            found = true;
+            out.push(Lot {
+                seq: l.seq,
+                units: l.units,
+                cost: replacement_basis(l.cost, d)?,
+                acquired: l.acquired,
+            });
+        } else {
+            out.push(l.clone());
+        }
+    }
+    if !found {
+        bail!(
+            "lot {seq} is not open — the wash write searches the remainder, and a \
+             lot the sale took is not a candidate"
+        );
+    }
+    Ok(out)
+}
+
+/// What matching a sale against open replacements produced.
+///
+/// `remaining_*` is what no open lot could take — a later repurchase inside
+/// the window still can. `//tla:wash_engine_check` is the sequence.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WashMatch {
+    /// Total deferral written onto open replacements.
+    pub attached: i64,
+    /// Sold units not yet matched to a replacement.
+    pub remaining_units: i64,
+    /// The unmatched loss, still signed as [`Relief::gain`].
+    pub remaining_loss: i64,
+}
+
+/// Plan, then write, a wash against the lots still open in `held`.
+///
+/// ⛔ THE HOLDING IS THE REMAINDER. Lots the sale just took are gone, so
+/// attaching to one of them refuses. Candidates are open lots whose
+/// acquisition day sits inside `window` either side of `sale_day`.
+///
+/// ⚠ MATCHES OLDEST REPLACEMENT FIRST, and attaches each lot's share of
+/// the disallowance. A split that will not divide refuses before any write
+/// lands — the same all-or-nothing as a refused relief.
+pub fn wash_open(
+    held: &mut Holding,
+    loss: i64,
+    sold_units: i64,
+    sale_day: Day,
+    window: i64,
+    original_acquired: Option<Day>,
+    taken: &[Taken],
+) -> Result<WashMatch> {
+    if loss >= 0 || sold_units <= 0 {
+        return Ok(WashMatch { attached: 0, remaining_units: sold_units.max(0), remaining_loss: loss });
+    }
+
+    // ⛔ A PARTIAL REMAINDER OF A SOLD LOT IS NOT A REPURCHASE. It is still
+    // open, still in the window if the lot was bought recently, and attaching
+    // to it would write the deferral onto shares the sale did not replace.
+    // `attaching_cannot_write_a_lot_the_sale_took` — the seq the sale took
+    // is not a candidate, even when some of it remains.
+    let taken_seqs: std::collections::BTreeSet<u64> = taken.iter().map(|t| t.seq).collect();
+    let mut candidates: Vec<(u64, i64)> = held
+        .lots()
+        .into_iter()
+        .filter(|l| !taken_seqs.contains(&l.seq))
+        .filter(|l| l.acquired.is_some_and(|b| in_wash_window(window, sale_day, b)))
+        .map(|l| (l.seq, l.units))
+        .collect();
+    // Oldest replacement first — a stable match, not whatever the method
+    // would give up next. The method already decided which lots were sold.
+    candidates.sort_by_key(|(seq, _)| *seq);
+
+    let mut remaining_sold = sold_units;
+    let mut remaining_loss = loss;
+    let mut plan: Vec<(u64, i64)> = Vec::new();
+    for (seq, units) in candidates {
+        if remaining_sold <= 0 || remaining_loss >= 0 {
+            break;
+        }
+        let bought = units.min(remaining_sold);
+        let d = disallowed(remaining_loss, remaining_sold, bought)?;
+        if d > 0 {
+            plan.push((seq, d));
+            remaining_loss = recognized_now(remaining_loss, d)?;
+        }
+        remaining_sold -= bought;
+    }
+
+    let mut attached = 0i64;
+    for (seq, d) in plan {
+        held.attach(seq, d, original_acquired)?;
+        attached = ratio_common::checked::add(attached, d, "the attached deferral")?;
+    }
+    Ok(WashMatch { attached, remaining_units: remaining_sold, remaining_loss })
+}
+
+/// Match one newly opened lot against a leftover wash from an earlier sale.
+///
+/// The forward half of the window: the sale happened, no replacement was
+/// open, and this purchase landed inside it. Same arithmetic as
+/// [`wash_open`]; the write still has to land on an open lot.
+pub fn wash_purchase(
+    held: &mut Holding,
+    replacement_seq: u64,
+    bought_units: i64,
+    remaining_loss: i64,
+    remaining_sold: i64,
+    original_acquired: Option<Day>,
+) -> Result<(i64, i64, i64)> {
+    if remaining_loss >= 0 || remaining_sold <= 0 || bought_units <= 0 {
+        return Ok((0, remaining_sold.max(0), remaining_loss));
+    }
+    let bought = bought_units.min(remaining_sold);
+    let d = disallowed(remaining_loss, remaining_sold, bought)?;
+    if d > 0 {
+        held.attach(replacement_seq, d, original_acquired)?;
+    }
+    Ok((d, remaining_sold - bought, recognized_now(remaining_loss, d)?))
 }
 
 #[cfg(test)]
@@ -1262,6 +1551,216 @@ mod tests {
         // wrapped product PASSES `partial_divides` — the proof cannot see it
         // because in `Int` the multiplication simply happened.
         let err = relieve(&[l(1, 1_000_000, i64::MAX / 2)], 999_999).unwrap_err();
+        assert!(format!("{err:#}").contains("64 bits"), "{err:#}");
+    }
+
+    // ── wash sales — `Ratio.Lots.Wash` ────────────────────────────────────
+
+    #[test]
+    fn the_window_reaches_backwards_too() {
+        // ⛔ A FORWARD-ONLY ENGINE IS GREEN ON EVERY OTHER THEOREM. A
+        // repurchase five days BEFORE the sale is inside a thirty-day window.
+        assert!(in_wash_window(30, 100, 95));
+        assert!(in_wash_window(30, 100, 105));
+        assert!(!in_wash_window(30, 100, 69));
+        assert!(!in_wash_window(30, 100, 131));
+        // The threshold is configuration: same two dates, two windows.
+        assert!(in_wash_window(30, 0, 25));
+        assert!(!in_wash_window(10, 0, 25));
+    }
+
+    #[test]
+    fn a_gain_is_never_washed() {
+        assert_eq!(disallowed(40, 100, 100).unwrap(), 0);
+        assert_eq!(disallowed(40, 1, 1_000).unwrap(), 0);
+    }
+
+    #[test]
+    fn repurchasing_everything_defers_the_whole_loss() {
+        assert_eq!(disallowed(-1000, 100, 100).unwrap(), 1000);
+    }
+
+    #[test]
+    fn repurchasing_more_than_was_sold_defers_no_more() {
+        assert_eq!(disallowed(-1000, 100, 250).unwrap(), 1000);
+    }
+
+    #[test]
+    fn repurchasing_part_defers_exactly_that_part() {
+        // Forty of a hundred: 400 of the 1000 loss is deferred.
+        assert_eq!(disallowed(-1000, 100, 40).unwrap(), 400);
+    }
+
+    #[test]
+    fn a_wash_split_that_does_not_divide_is_refused() {
+        let err = disallowed(-1000, 3, 1).unwrap_err();
+        assert!(format!("{err:#}").contains("administration agreement"), "{err:#}");
+    }
+
+    #[test]
+    fn the_wash_rule_moves_a_loss_it_does_not_remove_it() {
+        // ⭐ Recognize the reduced loss now, sell the replacement later against
+        // its adjusted basis: the two disposals sum to the unwashed total.
+        let loss = -1000i64;
+        let d = 1000i64;
+        let replacement_cost = 5000i64;
+        let later_proceeds = 5000i64;
+        let now = recognized_now(loss, d).unwrap();
+        let later = later_proceeds - replacement_basis(replacement_cost, d).unwrap();
+        assert_eq!(now + later, loss + (later_proceeds - replacement_cost));
+        // And the first-half-only engine destroys the loss.
+        assert_ne!(now + (later_proceeds - replacement_cost), loss + (later_proceeds - replacement_cost));
+    }
+
+    #[test]
+    fn attaching_cannot_write_a_lot_the_sale_took() {
+        // ⛔ THE SEARCH IS OVER THE REMAINDER. After relieving seq 1, attaching
+        // to 1 refuses; attaching to the open replacement writes.
+        let r = relieve(&[l(1, 1, 10), l(2, 1, 40)], 1).unwrap();
+        let err = attach_to(&r.left, 1, 100).unwrap_err();
+        assert!(format!("{err:#}").contains("not open"), "{err:#}");
+        assert_eq!(attach_to(&r.left, 2, 100).unwrap(), vec![l(2, 1, 140)]);
+
+        let mut h = Holding::new(Method::Fifo);
+        h.push(l(1, 1, 10)).unwrap();
+        h.push(l(2, 1, 40)).unwrap();
+        h.relieve(Method::Fifo, 1).unwrap();
+        let err = h.attach(1, 100, None).unwrap_err();
+        assert!(format!("{err:#}").contains("not open"), "{err:#}");
+        h.attach(2, 100, None).unwrap();
+        assert_eq!(h.get(2).unwrap().cost, 140);
+    }
+
+    #[test]
+    fn a_negative_deferral_is_refused() {
+        assert!(attach_to(&[l(1, 1, 10)], 1, -1).is_err());
+        let mut h = Holding::new(Method::Fifo);
+        h.push(l(1, 1, 10)).unwrap();
+        let err = h.attach(1, -1, None).unwrap_err();
+        assert!(format!("{err:#}").contains("washing a gain"), "{err:#}");
+        assert_eq!(h.lots()[0].cost, 10, "and it did not write");
+    }
+
+    #[test]
+    fn a_later_sale_of_the_replacement_takes_the_adjusted_basis() {
+        let held = attach_to(&[l(2, 1, 40)], 2, 1000).unwrap();
+        let r = relieve(&held, 1).unwrap();
+        assert_eq!(r.cost, 1040);
+    }
+
+    #[test]
+    fn a_wash_write_changes_what_a_later_method_gives_up() {
+        // ⛔ THE OTHER DIRECTION OF `the_method_decides_whether_there_is_a_
+        // loss_to_wash`. After attaching 20, HIFO picks the replacement it
+        // previously ignored.
+        let lots = [l(1, 1, 25), l(2, 1, 10)];
+        assert_eq!(relieve_by(Method::Hifo, &lots, 1).unwrap().cost, 25);
+        let washed = attach_to(&lots, 2, 20).unwrap();
+        assert_eq!(relieve_by(Method::Hifo, &washed, 1).unwrap().cost, 30);
+
+        // And the holding re-ranks: same numbers, mutating the open lot.
+        let mut h = Holding::new(Method::Hifo);
+        h.push(l(1, 1, 25)).unwrap();
+        h.push(l(2, 1, 10)).unwrap();
+        h.attach(2, 20, None).unwrap();
+        assert_eq!(h.relieve(Method::Hifo, 1).unwrap().cost, 30);
+    }
+
+    #[test]
+    fn the_method_decides_whether_there_is_a_loss_to_wash() {
+        // Same holding, same trade at 20, same repurchase of 1. FIFO gives up
+        // the cheap lot and realizes a GAIN — nothing to wash. LIFO gives up
+        // the dear one and realizes a LOSS the repurchase defers entirely.
+        let lots = [l(1, 1, 10), l(2, 1, 40)];
+        let fifo = relieve_by(Method::Fifo, &lots, 1).unwrap();
+        let lifo = relieve_by(Method::Lifo, &lots, 1).unwrap();
+        assert_eq!(disallowed(fifo.gain(20).unwrap(), 1, 1).unwrap(), 0);
+        assert_eq!(disallowed(lifo.gain(20).unwrap(), 1, 1).unwrap(), 20);
+    }
+
+    #[test]
+    fn the_transferred_period_decides_the_rate() {
+        // Acquired day 0, washed by a repurchase on day 300, disposed day 400.
+        // From the original: 400 days, long-term. From the repurchase: 100,
+        // short. Same units, same basis, same proceeds, different rate.
+        let transferred = replacement_acquired(Some(0), Some(300));
+        assert_eq!(transferred, Some(0));
+        assert!(400 - transferred.unwrap() as i64 >= 365);
+        assert!(400 - 300 < 365);
+    }
+
+    #[test]
+    fn an_in_window_repurchase_raises_the_replacement_basis() {
+        // Buy the replacement five days before the sale (the harvest shape).
+        let mut h = Holding::new(Method::Fifo);
+        h.push(dated(1, 100, 2000, "2026-01-01")).unwrap();
+        h.push(dated(2, 40, 500, "2026-06-10")).unwrap();
+        let taken = h.relieve(Method::Fifo, 100).unwrap();
+        assert_eq!(taken.cost, 2000);
+        let loss = taken.gain(1000).unwrap(); // −1000
+        let sale = ratio_common::days_from_iso_date("2026-06-15").unwrap() as Day;
+        let w = wash_open(&mut h, loss, 100, sale, 30, taken.taken[0].acquired, &taken.taken).unwrap();
+        assert_eq!(w.attached, 400, "forty of a hundred, pro rata");
+        assert_eq!(h.get(2).unwrap().cost, 900, "500 + 400");
+        assert_eq!(
+            h.get(2).unwrap().acquired,
+            taken.taken[0].acquired,
+            "the period transfers with the basis"
+        );
+        // And a later relief of the replacement takes the adjusted basis.
+        assert_eq!(h.relieve(Method::Fifo, 40).unwrap().cost, 900);
+    }
+
+    #[test]
+    fn an_out_of_window_repurchase_does_not_raise_the_replacement_basis() {
+        let mut h = Holding::new(Method::Fifo);
+        h.push(dated(1, 100, 2000, "2026-01-01")).unwrap();
+        h.push(dated(2, 40, 500, "2026-04-01")).unwrap(); // well before
+        let taken = h.relieve(Method::Fifo, 100).unwrap();
+        let loss = taken.gain(1000).unwrap();
+        let sale = ratio_common::days_from_iso_date("2026-06-15").unwrap() as Day;
+        let w = wash_open(&mut h, loss, 100, sale, 30, taken.taken[0].acquired, &taken.taken).unwrap();
+        assert_eq!(w.attached, 0);
+        assert_eq!(h.get(2).unwrap().cost, 500, "untouched");
+        assert_eq!(h.get(2).unwrap().acquired, dated(2, 40, 500, "2026-04-01").acquired);
+    }
+
+    #[test]
+    fn a_partial_remainder_of_the_sold_lot_is_not_a_replacement() {
+        // Buy 100 and sell 40 inside the window. The 60 left were never
+        // repurchased — they are the same lot the sale took.
+        let mut h = Holding::new(Method::Fifo);
+        h.push(dated(1, 100, 2000, "2026-06-01")).unwrap();
+        let taken = h.relieve(Method::Fifo, 40).unwrap();
+        assert_eq!(taken.cost, 800);
+        let loss = taken.gain(200).unwrap();
+        let sale = ratio_common::days_from_iso_date("2026-06-15").unwrap() as Day;
+        let w = wash_open(&mut h, loss, 40, sale, 30, taken.taken[0].acquired, &taken.taken)
+            .unwrap();
+        assert_eq!(w.attached, 0);
+        assert_eq!(h.get(1).unwrap().cost, 1200, "the remainder is untouched");
+    }
+
+    #[test]
+    fn a_forward_repurchase_attaches_when_the_replacement_opens() {
+        // Sale first, then the buy — the natural implementation, and the
+        // other half of the window.
+        let mut h = Holding::new(Method::Fifo);
+        h.push(dated(1, 100, 2000, "2026-01-01")).unwrap();
+        let taken = h.relieve(Method::Fifo, 100).unwrap();
+        let loss = taken.gain(1000).unwrap();
+        h.push(dated(2, 40, 500, "2026-06-20")).unwrap();
+        let (d, remaining_units, remaining_loss) =
+            wash_purchase(&mut h, 2, 40, loss, 100, taken.taken[0].acquired).unwrap();
+        assert_eq!(d, 400);
+        assert_eq!(remaining_units, 60);
+        assert_eq!(remaining_loss, -600);
+        assert_eq!(h.get(2).unwrap().cost, 900);
+    }
+
+    #[test]
+    fn an_overflowing_wash_split_is_refused() {
+        let err = disallowed(i64::MIN, 2, 1).unwrap_err();
         assert!(format!("{err:#}").contains("64 bits"), "{err:#}");
     }
 }
