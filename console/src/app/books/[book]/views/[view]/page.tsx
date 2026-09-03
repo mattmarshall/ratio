@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { viewOf } from "@/lib/data";
+import { bookOf, viewOf } from "@/lib/data";
 import { isoDate } from "@/lib/dates";
 import { basisOf, count, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
+import { defaultScreen } from "@/lib/screens";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
  * and used to land on the exceptions queue because the segment had a layout
  * and no page. The URL is now the citation.
  *
- * ⚠ THE FOUR STAT TILES IN THE LAYOUT ARE CHROME ON EVERY CHILD. They are
+ * ⚠ THE STAT TILES IN THE LAYOUT ARE CHROME ON EVERY CHILD. They are
  * restated here because this page is what you send, and because a render test
  * mounts the page without the layout. `viewOf` is the one GetView both share.
  */
@@ -25,7 +26,10 @@ export default async function ViewPage({
 }) {
   const { book, view } = await params;
   const v = await or404(viewOf(book, view));
+  const b = await or404(bookOf(book));
+  const personal = b.kind === "PERSONAL";
   const basis = basisOf(v.basis, v.settlementOpenDays);
+  const figure = defaultScreen(b.kind);
 
   return (
     <section className="lots">
@@ -34,14 +38,23 @@ export default async function ViewPage({
         <span className="sortnote">{basis}</span>
       </div>
       <dl className="kv">
-        <dt>Net asset value</dt>
-        <dd className="num">{money(v.netAssetValue)}</dd>
-        <dt>Open difference</dt>
-        <dd className="num">{money(v.openDifference)}</dd>
-        <dt>Open breaks</dt>
-        <dd className="num">{count(v.openBreakCount)}</dd>
-        <dt>Unplaceable</dt>
-        <dd className="num">{count(v.unplaceableEntryCount)}</dd>
+        {personal ? (
+          <>
+            <dt>Assets less liabilities</dt>
+            <dd className="num">{money(v.netAssetValue)}</dd>
+          </>
+        ) : (
+          <>
+            <dt>Net asset value</dt>
+            <dd className="num">{money(v.netAssetValue)}</dd>
+            <dt>Open difference</dt>
+            <dd className="num">{money(v.openDifference)}</dd>
+            <dt>Open breaks</dt>
+            <dd className="num">{count(v.openBreakCount)}</dd>
+            <dt>Unplaceable</dt>
+            <dd className="num">{count(v.unplaceableEntryCount)}</dd>
+          </>
+        )}
         <dt>Basis</dt>
         <dd>
           {basis}
@@ -57,7 +70,9 @@ export default async function ViewPage({
         </dd>
       </dl>
       <p className="note">
-        <Link href={`/books/${book}/views/${view}/breaks`}>Exceptions</Link>
+        <Link href={`/books/${book}/views/${view}/${figure}`}>
+          {personal ? "Budget vs actual" : "Exceptions"}
+        </Link>
         {" · "}
         <Link href={`/books/${book}/views/${view}/accounts`}>Trial balance</Link>
         {" · "}

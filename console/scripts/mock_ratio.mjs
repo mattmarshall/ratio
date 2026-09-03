@@ -71,7 +71,19 @@ const ROUTES = [
   [/^\/v1\/funds\/[^/]+\/changeLogEntries\/[^/:]+$/, "changeLogEntries:first"],
 ];
 
-function body(name) {
+function body(name, path) {
+  // ⭐ KIND SELECTS CHROME. GetBook used to serve `book.json` (a personal
+  // household) for every id, which was invisible while the hub ignored
+  // kind. A personal book now lands on budget vs actual; serving Household
+  // for `harbourline-global-value` would put fund-ops URLs behind household
+  // places. Look the id up in the captured list.
+  if (name === "book") {
+    const id = path.split("/").pop();
+    const books = JSON.parse(fixture("books")).books;
+    const found = books.find((b) => b.name === `books/${id}`);
+    if (found) return JSON.stringify(found);
+    return fixture("book");
+  }
   if (!name.endsWith(":first")) return fixture(name);
   const doc = JSON.parse(fixture(name.slice(0, -":first".length)));
   const key = Object.keys(doc).find((k) => Array.isArray(doc[k]));
@@ -97,7 +109,7 @@ export function serve(port = 4373) {
         return;
       }
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(body(hit[1]));
+      res.end(body(hit[1], path));
     });
     server.listen(port, "127.0.0.1", () => resolve(server));
   });

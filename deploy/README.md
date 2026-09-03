@@ -267,6 +267,13 @@ reviews a binary diff. It contains a four-rule configuration, a replayed
 quarter, one break of `2000.00`, and one proposal nobody has approved (so the
 rules screen has both of its columns).
 
+That seeded book is a **fund**. A household budget vs actual is a different
+walk-through: CreateBook(Personal), then `[personal] budget` on the
+configuration that book pins, then `/books/{id}/views/{view}/budget` for a
+month or a year. Unset shows as unset, not a fake zero. The live demo does
+not seed that baseline, and it does not show a household sheet/P&L (#65)
+or a project budget (#66).
+
 `entrypoint.sh` copies it to `/tmp` at start, because a Lambda filesystem is
 read-only elsewhere. That also means **every cold start resets the demo**,
 which is what you want in front of a customer.

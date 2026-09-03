@@ -190,6 +190,20 @@ NEEDLES: list[tuple[str, str]] = [
         "Nothing matches.",
         "an empty palette reads as a broken one rather than as an answer",
     ),
+    # ── household budget vs actual (#83) ────────────────────────────────────
+    (
+        "Budget vs actual",
+        "the household budget figure is gone from the console",
+    ),
+    (
+        "no [personal] budget on the configuration in force",
+        "an unset household budget would read as a fake zero",
+    ),
+    (
+        "not a second ledger — journal expenses against a",
+        "budget vs actual would look like a second accounting system",
+    ),
+]
     # ⛔ AND NO `startTransition` NEEDLE, THOUGH THE PALETTE NEEDS ONE AS MUCH AS
     # `FilterChips` DOES. Both that file and `PlanControls` already contain the
     # literal, so the case would pass with the palette's transition dropped — the

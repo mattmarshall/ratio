@@ -8,6 +8,7 @@
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use ratio_rules::{check, RuleSet};
 use ratio_store::{Account, AccountTypeRecord, ConfigStore, FileBook};
 
 /// What a book is used for. Same kernel; different chart.
@@ -168,7 +169,150 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
     }
 }
 
-/// Create the directory, the chart, an empty configuration, and the sidecar.
+/// The configuration a new book starts with.
+///
+/// Investment and project still write an empty rule set — those charts wait
+/// on rules an operator approves (project WIP is #66). Personal writes the
+/// household spend and transfer rules so a book created from the template
+/// can post living expenses without inventing a fund trade.
+fn configuration_for(kind: BookKind) -> &'static str {
+    match kind {
+        BookKind::Personal => PERSONAL_CONFIG,
+        BookKind::Investment | BookKind::Project => "# ratio configuration\nrules = []\n",
+    }
+}
+
+/// Household rules. `kind = "trade"` because the amount is given; none of
+/// the legs is `per_instrument`, so a posting opens no lot and relieves
+/// none. Cash → investments is a personal transfer, not a lot-relieving
+/// sale; living expenses are a conserved spend, not a NAV mark.
+///
+/// ⭐ THE ACCOUNT NUMBERS ARE `chart_for(Personal)`'S. `initialize` runs
+/// `check` against that chart before the digest is activated, so a drift
+/// between the two is a refused create rather than a book that cannot post.
+///
+/// Budget vs actual: set `[personal] budget = <minor units>` on this
+/// configuration, and optionally `[personal.envelope]` keyed by chart
+/// dimension (10 living expenses, 11 taxes). Actuals are the journal.
+/// Omitting the table means no baseline has been set — not a budget of
+/// zero.
+const PERSONAL_CONFIG: &str = r#"# Household posting rules. Amount given; no instrument, so no lot.
+# Budget vs actual: set `[personal] budget = <minor units>` here.
+# Optional `[personal.envelope]` is keyed by chart dimension (10, 11).
+# Actuals are living expenses and taxes on this chart — not a second ledger.
+
+[[rule]]
+id = "xfer_cash_investments"
+kind = "trade"
+description = "Move cash to investments"
+[[rule.posting]]
+account = 2
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "xfer_investments_cash"
+kind = "trade"
+description = "Move investments to cash"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 2
+weight = -1
+
+[[rule]]
+id = "xfer_cash_cards"
+kind = "trade"
+description = "Pay a credit card from cash"
+[[rule.posting]]
+account = 40
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "xfer_cards_cash"
+kind = "trade"
+description = "Draw cash on a credit card"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "xfer_investments_cards"
+kind = "trade"
+description = "Pay a credit card from investments"
+[[rule.posting]]
+account = 40
+weight = 1
+[[rule.posting]]
+account = 2
+weight = -1
+
+[[rule]]
+id = "xfer_cards_investments"
+kind = "trade"
+description = "Invest with a credit card"
+[[rule.posting]]
+account = 2
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "spend_cash"
+kind = "trade"
+description = "Living expenses paid from cash"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "spend_card"
+kind = "trade"
+description = "Living expenses put on a card"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 40
+weight = -1
+
+[[rule]]
+id = "pay_tax"
+kind = "trade"
+description = "Taxes paid from cash"
+[[rule.posting]]
+account = 11
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "receive_income"
+kind = "trade"
+description = "Income received to cash"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 30
+weight = -1
+"#;
+
+/// Create the directory, the chart, a kind-appropriate configuration, and the sidecar.
 ///
 /// ⛔ NO FUND AND NO ORG ARE WRITTEN. A caller that wants either files the
 /// book afterwards. Create is the independent book.
@@ -176,9 +320,27 @@ pub fn initialize(path: &Path, id: &str, display: &str, kind: BookKind) -> Resul
     if path.join("accounts.json").is_file() || path.join("book.toml").is_file() {
         bail!("book {id:?} already exists");
     }
+    let chart = chart_for(kind);
+    let cfg = configuration_for(kind);
+    let set = RuleSet::from_toml(cfg).context("the template configuration is not TOML")?;
+    let errors: Vec<_> = check(&set, &chart)
+        .into_iter()
+        .filter(|f| !f.is_question)
+        .collect();
+    if !errors.is_empty() {
+        bail!(
+            "the {:?} template's rules do not check against its chart: {}",
+            kind.as_str(),
+            errors
+                .iter()
+                .map(|f| format!("{}: {}", f.rule, f.message))
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+    }
     let mut b = FileBook::open(path)?;
-    b.put_accounts(&chart_for(kind))?;
-    let digest = b.put(b"# ratio configuration\nrules = []\n")?;
+    b.put_accounts(&chart)?;
+    let digest = b.put(cfg.as_bytes())?;
     b.set_active(&digest)?;
     BookMeta {
         kind,
@@ -279,5 +441,42 @@ mod tests {
         assert!(m.organization.is_none());
         let chart = FileBook::open(&dir).unwrap().accounts().unwrap();
         assert_eq!(chart, chart_for(BookKind::Project));
+    }
+
+    #[test]
+    fn personal_template_rules_check_against_its_chart_and_seed_no_budget() {
+        // ⭐ A RULE THAT NAMES AN ACCOUNT THE CHART DOES NOT HAVE WOULD CREATE
+        // a book that cannot post. initialize refuses that; this test is what
+        // notices the two drifting apart before a create is attempted.
+        let set = RuleSet::from_toml(PERSONAL_CONFIG).unwrap();
+        let findings = check(&set, &chart_for(BookKind::Personal));
+        assert!(
+            findings.iter().all(|f| f.is_question),
+            "personal rules must check against chart_for(Personal): {findings:?}"
+        );
+        assert!(set.rule("spend_cash").is_some());
+        assert!(set.rule("pay_tax").is_some());
+        assert!(
+            set.personal.is_none(),
+            "a new household has no baseline until someone sets [personal] budget"
+        );
+        let against_empty = check(&set, &[]);
+        assert!(
+            against_empty.iter().any(|f| !f.is_question),
+            "personal rules must not check against an empty chart: {against_empty:?}"
+        );
+    }
+
+    #[test]
+    fn initialize_seeds_the_household_rules_and_no_personal_budget() {
+        let dir = std::env::temp_dir().join("ratio-book-init-personal-rules");
+        let _ = std::fs::remove_dir_all(&dir);
+        initialize(&dir, "household", "Household", BookKind::Personal).unwrap();
+        let b = FileBook::open(&dir).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let set = RuleSet::from_toml(&text).unwrap();
+        assert!(set.rule("spend_cash").is_some(), "{text}");
+        assert!(set.personal.is_none());
     }
 }

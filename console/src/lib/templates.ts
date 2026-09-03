@@ -19,7 +19,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "PERSONAL",
     label: "Personal finance",
-    blurb: "Cash and bank, living expenses, income, and a credit-card liability.",
+    blurb: "Cash and bank, living expenses, income, and a credit-card liability. A household budget is a configuration total, not a second ledger.",
   },
   {
     kind: "INVESTMENT",

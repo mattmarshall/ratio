@@ -77,4 +77,18 @@ describe("PlaceHead", () => {
     expect(screen.getByRole("heading", { name: "Configuration" })).toBeDefined();
     expect(screen.queryByLabelText("Book of record")).toBeNull();
   });
+
+  it("titles household budget vs actual", () => {
+    segments.current = ["views", "book", "budget"];
+    render(
+      <PlaceHead
+        fund="household"
+        displayName="Household"
+        views={views}
+        defaultView="book"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Budget vs actual" })).toBeDefined();
+  });
 });

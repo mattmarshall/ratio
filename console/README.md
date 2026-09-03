@@ -38,7 +38,7 @@ src/wire/client.ts   ⛔ server-only. One typed fn per google.api.http rule
 src/lib/session.ts   the httpOnly cookie the id token lives in
 src/lib/oidc.ts      authorization-code + PKCE, run on the SERVER
 src/routes.ts        every screen, and which RPCs it reads
-src/lib/screens.ts   the eight screens under a fund — read by the tabs AND ⌘K
+src/lib/screens.ts   kind selects the places under a book — read by the hub AND ⌘K
 src/lib/deeplink.ts  a pasted resource name → a URL here, or a refusal
 src/app/             the screens
 src/components/      what more than one screen renders — including `Ticket`

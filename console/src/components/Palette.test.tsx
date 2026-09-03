@@ -216,6 +216,38 @@ describe("the command palette", () => {
     }
   });
 
+  it("a personal book is offered Budget vs actual and not Exceptions", async () => {
+    const { unmount } = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("Budget vs actual");
+    fireEvent.click(await row("Budget vs actual"));
+    expect(push).toHaveBeenCalledWith("/books/household/views/book/budget");
+    push.mockClear();
+    unmount();
+
+    const again = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("Exceptions");
+    expect(screen.queryByText("Exceptions")).toBeNull();
+    again.unmount();
+  });
+
   it("offers the header's screens and no others", async () => {
     // ⭐ THE PALETTE AND THE HEADER ARE ONE LIST, said where it can be checked.
     // `ScreenTabs` and `FundActions` both read `@/lib/screens`, so this is what

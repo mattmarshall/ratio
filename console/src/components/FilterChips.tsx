@@ -32,11 +32,14 @@ export function FilterChips({
   active,
   label,
   note,
+  param = "filter",
 }: {
   filters: readonly Filter[];
   active: string;
   label: string;
   note: string;
+  /** Query key. Period chips use `period`; list chips keep `filter`. */
+  param?: string;
 }) {
   const router = useRouter();
   const path = usePathname();
@@ -52,7 +55,9 @@ export function FilterChips({
           aria-pressed={active === f.key}
           onClick={() =>
             start(() => {
-              router.replace(f.key ? `${path}?filter=${encodeURIComponent(f.key)}` : path);
+              router.replace(
+                f.key ? `${path}?${param}=${encodeURIComponent(f.key)}` : path,
+              );
             })
           }
         >

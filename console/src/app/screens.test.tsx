@@ -23,7 +23,7 @@ import viewsFixture from "../../fixtures/views.json";
 // `string`. `//console:fixtures_test` checks their SHAPE against console.proto
 // on every build, which is the check a cast here would otherwise be pretending
 // to be.
-import type { Rule } from "@/wire/types";
+import type { Book, Rule } from "@/wire/types";
 
 // ⛔ THE SUCCESSOR TO `//web:rendered_test`, AND ITS REASON IS UNCHANGED.
 //
@@ -82,7 +82,10 @@ vi.mock("next/navigation", async () => {
 const wire = {
   listBooks: async () => booksFixture,
   listFunds: async () => fundsFixture,
-  getBook: async () => bookFixture,
+  getBook: async (_c: unknown, id: string) => {
+    const books = (booksFixture as { books: Book[] }).books;
+    return books.find((b) => b.name === `books/${id}`) ?? bookFixture;
+  },
   createBook: async () => bookFixture,
   getFund: async () => fundFixture,
   getView: async () => viewFixture,
@@ -191,6 +194,10 @@ describe("a first-class book", () => {
     expect(screen.getByText("independent")).toBeDefined();
     expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Configuration" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Budget vs actual" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
+    expect(screen.getByText("unset — [personal] budget on the configuration")).toBeDefined();
   });
 
   it("sends every job to /books/{book}/… and never through /funds", async () => {
@@ -200,11 +207,118 @@ describe("a first-class book", () => {
     expect(trial.getAttribute("href")).toBe(
       "/books/household/views/book/accounts",
     );
+    const budget = screen.getByRole("link", { name: "Budget vs actual" });
+    expect(budget.getAttribute("href")).toBe(
+      "/books/household/views/book/budget",
+    );
     const config = screen.getByRole("link", { name: "Configuration" });
     expect(config.getAttribute("href")).toBe("/books/household/config");
     for (const a of document.querySelectorAll("a[href]")) {
       expect(a.getAttribute("href")).not.toMatch(/\/funds\//);
     }
+  });
+
+  it("cites household budget vs actual and does not invent a zero baseline", async () => {
+    const Budget = (await import("./books/[book]/views/[view]/budget/page")).default;
+    const real = wire.listAccounts;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/10",
+          displayName: "Living expenses",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "4000",
+          credit: "0",
+          balance: "4000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/household/views/book/accounts/11",
+          displayName: "Taxes",
+          dimension: "11",
+          type: "EXPENSE",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        Budget({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("Budget vs actual")).toBeDefined();
+      expect(screen.getByText("Living expenses")).toBeDefined();
+      expect(screen.getByText("Taxes")).toBeDefined();
+      expect(
+        screen.getByText("no [personal] budget on the configuration in force"),
+      ).toBeDefined();
+      expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    } finally {
+      wire.listAccounts = real;
+    }
+  });
+
+  it("a set household budget is a figure, and a project hub is not sent there", async () => {
+    const Budget = (await import("./books/[book]/views/[view]/budget/page")).default;
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    wire.getBook = (async () => ({
+      ...(bookFixture as object),
+      budget: "500000",
+      envelopes: [
+        { dimension: "10", budget: "400000" },
+        { dimension: "11", budget: "100000" },
+      ],
+    })) as unknown as typeof wire.getBook;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/10",
+          displayName: "Living expenses",
+          dimension: "10",
+          type: "EXPENSE",
+          debit: "4000",
+          credit: "0",
+          balance: "4000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        Budget({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByText("5,000.00")).toBeDefined();
+      expect(screen.getByText("40.00")).toBeDefined();
+      expect(screen.getByText(/envelope 4,000\.00/)).toBeDefined();
+      expect(screen.getByText(/remaining authorization, not annualized/)).toBeDefined();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+
+    const Book = (await import("./books/[book]/page")).default;
+    await renderAsync(Book({ params: params({ book: "bridge" }) }));
+    expect(screen.getByRole("heading", { name: "Bridge" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: "Budget vs actual" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Exceptions" })).toBeDefined();
   });
 
   it("gives a book of record a page of its own", async () => {

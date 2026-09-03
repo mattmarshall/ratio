@@ -515,6 +515,30 @@ message Book {
 
   // Debits minus credits — the same zero in every view.
   string trial_balance_difference = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Authorized household spend, minor units. Empty when this book has no
+  // `[personal] budget` in the configuration in force — including every
+  // investment and project book, and a household nobody has set a baseline
+  // on. Project budget is a separate term (#66); this field does not
+  // invent one.
+  //
+  // ⛔ A CONFIGURATION TOTAL, NOT A SECOND LEDGER. Actuals are the trial
+  // balance's expense accounts in the period the figure names. `0` is a
+  // set baseline of nothing; empty is unset.
+  string budget = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Per-category household envelopes from `[personal.envelope]`. Keyed by
+  // chart dimension. Unset categories are omitted, not sent as `"0"`.
+  repeated HouseholdEnvelope envelopes = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One declared household envelope. Absent from `Book.envelopes` when that
+// category has no `[personal.envelope]` entry — not a fake zero.
+message HouseholdEnvelope {
+  // Chart dimension as decimal. Living expenses is `10`, taxes `11`.
+  string dimension = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Minor units. Never empty on this message — unset envelopes are omitted.
+  string budget = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message ListBooksRequest {
@@ -1817,8 +1841,12 @@ message ListAccountsRequest {
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
 
   // `posted` for accounts that have postings on them, `abnormal` for those
-  // sitting on the wrong side; empty for the whole chart. Three chips, not an
-  // expression language — same reasoning as ListBreaks.
+  // sitting on the wrong side; empty for the whole chart. Household budget
+  // vs actual is `budget-YYYY-MM` (a month) or `budget-YYYY` (a year),
+  // folded into this field because AIP-132 List requests have no custom
+  // `period`. Bare `budget` is refused — cumulative spend is the
+  // ABOR-shaped default a household figure exists to reject. Hyphens,
+  // because the transcoder does not percent-decode.
   string filter = 4 [(google.api.field_behavior) = OPTIONAL];
 }
 

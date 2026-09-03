@@ -49,6 +49,23 @@ export interface Book {
   entryCount: Int64;
   configDigest: string;
   trialBalanceDifference: Int64;
+  /**
+   * Authorized household spend, minor units. Empty when unset — every
+   * investment and project book, and a household nobody has given a
+   * `[personal] budget`. `0` is a set baseline of nothing.
+   */
+  budget: Int64;
+  /**
+   * Declared `[personal.envelope]` rows. Unset categories are omitted,
+   * not sent as `"0"`.
+   */
+  envelopes: HouseholdEnvelope[];
+}
+
+/** One declared household envelope. Absent when that category is unset. */
+export interface HouseholdEnvelope {
+  dimension: string;
+  budget: Int64;
 }
 
 export interface ListBooksResponse {
