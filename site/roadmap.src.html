@@ -174,8 +174,15 @@ __STYLE__
           → allocated income/expense and unrealized → ending capital.
           Allocated plugs stay unset when the configuration names no
           partner cut — never a fake zero share, never a silent equal
-          split of book NAV. A written <code>[[partner_cut]]</code>
+          split of book NAV.           A written <code>[[partner_cut]]</code>
           fills the plugs when the figure divides.
+          A subscription or redemption posts as a conserved journal
+          fact with a measured unit quantity — not a lot. Units in
+          issue stay unset until that event posts, never a fake zero;
+          a full redemption is a real zero. <code>/capital</code> and
+          <code>/nav</code> cite the same units; explain
+          <code>capital_txns</code> counts unit-capital entries when
+          the chart is in hand, and stays blank when it is not.
           A period NAV
           roll-forward at <code>/nav</code> cites beginning NAV →
           contributions → distributions → income/expense / unrealized →

@@ -494,6 +494,14 @@ NEEDLES: list[tuple[str, str]] = [
         "unset — Unrealized gain did not move this window, not a silent zero mark",
         "unrealized would render as a silent zero mark",
     ),
+    (
+        "unset — no subscription has posted units, not a fake zero",
+        "NAV would render units in issue as a silent zero before a subscription",
+    ),
+    (
+        "unset — no units issued on this partner, not a fake zero",
+        "partner units would render as a silent zero before a subscription",
+    ),
     # ── operating AR/AP aging (#117) ────────────────────────────────────────
     # ⚠ THE HONESTY SENTENCE, NOT THE TAB LABEL. `screens.ts` already says
     # "AR/AP aging"; a page that rendered current-bucket zeros on undated

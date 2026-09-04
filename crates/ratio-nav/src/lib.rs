@@ -468,9 +468,11 @@ pub fn shape_of(
     view: &str,
     accounts: i64,
     cal: &closure::Calibration,
+    capital_txns: Option<i64>,
 ) -> Result<explain::Shape> {
     let securities = proj.positions(view)?.value.held.len() as i64;
     let open_lots = proj.open_lots(view)?;
+    let capital_counted = capital_txns.is_some();
     let dials = closure::Dials {
         securities,
         currencies: proj.currency_count(view)?,
@@ -485,19 +487,20 @@ pub fn shape_of(
         // a panic on the NAV path.
         lots_per: if securities > 0 { open_lots / securities } else { 0 },
         open_actions: proj.open_action_count(),
-        // ⛔ NOT A COUNT, AND NOT A CLAIM THAT THERE WERE NONE. Counting
-        // subscriptions and redemptions needs the chart roles, and a projection
-        // deliberately does not know the chart. The model needs an `i64` here,
-        // so the term is passed as zero and the step that reports it carries no
-        // estimate at all — a rendered zero would be a guess wearing a decimal
-        // point, which is the failure `Calibration::provenance` exists for.
-        capital_txns: 0,
+        // ⛔ ZERO HERE IS THE MODEL'S TYPE, NOT A COUNT. Projection does not
+        // know the chart. A caller that counted unit-capital entries
+        // (Console, which has the roles) passes `Some(n)` and the capital
+        // node shows it. `None` keeps the node blank — a rendered zero
+        // would be a guess wearing a decimal point.
+        // `Ratio.Partners.Units`.
+        capital_txns: capital_txns.unwrap_or(0),
     };
     Ok(explain::Shape {
         estimate: closure::estimate(dials, cal)?,
         accounts,
         total_rows: proj.total_rows(view)?,
         open_lots_held: open_lots,
+        capital_counted,
     })
 }
 

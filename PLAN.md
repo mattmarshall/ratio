@@ -1667,6 +1667,62 @@ two Form 8949 boxes. The tax-pack walk-through cites the same
 unset. It cannot show a tax-lot planner UI. That is not a
 leftover of #9.
 
+### Amendment, 2026-09-04 — subscriptions and redemptions are unit movements
+
+Period NAV already cited contribution / distribution *money*.
+Unitization was the other half: a subscription issues units, a
+redemption retires them, and units in issue stay **unset** until a
+unit event posts. A silent 0 on a PE-style contribution is the
+defect. After a full redemption, `"0"` is a real zero.
+
+What landed is the movement, as journal facts plus a measured
+quantity — not a lot, not an equal-split of book units:
+
+- Lean: `Ratio.Partners.Units`. A movement names cash and a
+  non-zero unit count of the same sign. Money conserves; units do
+  not enter conservation. `unitsInIssue [] = none`. Redeeming when
+  unset, redeeming zero, and over-redemption refuse. Allocating
+  units across partners is the named cut, not 1/N.
+- Rules: `subscribe` / `redeem` (book-level, no 1/N split) and
+  `subscribe_lp` / `subscribe_gp` / `redeem_lp` / `redeem_gp`.
+  `measured = true` on the capital / equity leg. The operator types
+  a positive count; credit issues `+q`, debit retires `−q`.
+  `contribute_*` stays money-only.
+- `/capital` and `/nav` cite ending units from the same folds they
+  already use. Empty is unset. Console explain counts journal
+  entries that posted a quantity onto a capital account and shows
+  that count on the capital node — a contribution without units
+  does not count. `shape_of` without a chart still leaves the node
+  blank.
+
+**What this is NOT, because leftovers stay named on #181:**
+
+- Not a **CreateBook / live-demo seed of unitized capital**. The
+  rules exist; the demo's opening `sub-0001` is still a money-only
+  post onto Capital contributions, with no quantity. Units on that
+  book stay unset — correctly — and the walk-through still has to
+  record `subscribe_lp` itself.
+- Not a **period issued / redeemed plug or a per-share NAV**.
+  `/nav` cites ending units in issue and the same contribution /
+  distribution *money* it already named. Issued and redeemed this
+  window, and NAV per unit, stay unbuilt.
+- Not an **LP portal, drip, or payment initiation** (Connect —
+  #161 / #150).
+- Not a **seeded demo cut** or a fold of per-entry specials (#180).
+- Not an ingest template for subscriptions.
+
+Nothing on the *Explicitly not building* list moved. This amendment
+does not close #181. It does not close #180.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can record `subscribe_lp` with a unit count, cite those units on
+`/capital` and `/nav`, redeem down to a real zero, and leave units
+unset on a contribute-only book — including the live demo, whose
+opening subscription has no units. It cannot show a seeded unit
+movement, a per-share figure, period issued/redeemed as their own
+plugs, an LP portal, or a 1/N split of book units. Those remain on
+#181 (seed / NAV leftovers) or Connect.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

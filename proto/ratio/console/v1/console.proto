@@ -2176,6 +2176,12 @@ message Account {
   // Empty on a single-currency fund: there is nothing a split would add.
   repeated CurrencyTotal currency_totals = 10
       [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whole units issued on this account, as a measure. Empty when no posting
+  // on this account carried a quantity — unset, not a fake zero. A
+  // fully-redeemed line (posted, remaining 0) is "0".
+  // `Ratio.Partners.no_movement_is_unset`.
+  string units = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One account's activity in one denomination, before any translation.
@@ -2356,6 +2362,11 @@ message Rule {
 
   // The accounts it posts to, as display names, in leg order.
   repeated string accounts = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // True when a leg carries partner / fund units (measured quantity, no
+  // instrument). A subscription or redemption names the units; a
+  // contribution does not. `Ratio.Partners.Units`.
+  bool measured = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message ListRulesRequest {

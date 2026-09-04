@@ -20,6 +20,7 @@ const acct = (
   abnormal: false,
   postingCount: "1",
   currencyTotals: [],
+  units: "",
 });
 
 describe("a loan roll-forward is the journal against named liabilities", () => {

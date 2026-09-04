@@ -26,6 +26,7 @@ const acct = (
   abnormal: false,
   postingCount,
   currencyTotals: [],
+  units: "",
 });
 
 const close = (surplus: string, dest = "25"): PeriodClose => ({

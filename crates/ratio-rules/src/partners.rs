@@ -428,4 +428,103 @@ mod tests {
         assert_eq!(got.get("GP"), Some(&12));
         assert_eq!(got.values().sum::<i64>(), 100);
     }
+
+    #[test]
+    fn no_unit_movement_is_unset_not_a_fake_zero() {
+        // `Ratio.Partners.no_movement_is_unset`.
+        assert_eq!(units_in_issue(&[]), None);
+        assert_ne!(units_in_issue(&[]), Some(0));
+    }
+
+    #[test]
+    fn a_subscription_then_a_redemption_leaves_the_difference() {
+        // 10 issued, 4 retired → 6. `Ratio.Partners` example.
+        assert_eq!(units_in_issue(&[10, -4]), Some(6));
+        assert_eq!(redeem(Some(10), 4).unwrap(), Some(6));
+        assert_eq!(redeem(Some(10), 10).unwrap(), Some(0));
+    }
+
+    #[test]
+    fn a_zero_unit_movement_is_refused() {
+        assert!(!well_formed_move(100, 0));
+        assert!(well_formed_move(100, 10));
+        assert!(well_formed_move(-40, -4));
+        assert!(!well_formed_move(100, -10));
+    }
+
+    #[test]
+    fn cannot_redeem_when_unset_or_more_than_issued() {
+        let err = redeem(None, 4).unwrap_err().to_string();
+        assert!(err.contains("unset") || err.contains("nobody issued"), "{err}");
+        let err = redeem(Some(10), 11).unwrap_err().to_string();
+        assert!(err.contains("11") && err.contains("10"), "{err}");
+        let err = redeem(Some(10), 0).unwrap_err().to_string();
+        assert!(err.contains("zero") || err.contains("not a redemption"), "{err}");
+    }
+
+    #[test]
+    fn allocating_units_without_a_cut_is_unset() {
+        // `Ratio.Partners.allocating_units_without_a_cut_is_unset`.
+        assert_eq!(allocate(30, &[]).unwrap(), None);
+    }
+}
+
+/// A partner-unit movement is well-formed when cash and units are
+/// non-zero and the same sign. `Ratio.Partners.wellFormedMove`.
+///
+/// Zero units is a contribution, not a subscription. Opposite signs
+/// would issue units while paying cash out.
+pub fn well_formed_move(cash: i64, units: i64) -> bool {
+    if units == 0 || cash == 0 {
+        return false;
+    }
+    match checked::mul(cash, units, "unit movement") {
+        Ok(p) => p > 0,
+        Err(_) => false,
+    }
+}
+
+/// Units in issue from signed movements (positive issued, negative
+/// retired). Empty is unset — not a measured zero.
+/// `Ratio.Partners.no_movement_is_unset`.
+pub fn units_in_issue(units: &[i64]) -> Option<i64> {
+    if units.is_empty() {
+        return None;
+    }
+    let mut n: i64 = 0;
+    for &u in units {
+        n = match checked::add(n, u, "units in issue") {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+    }
+    Some(n)
+}
+
+/// Redeem `units` from an outstanding figure.
+///
+/// Unset outstanding cannot redeem. Over-redemption refuses. Zero
+/// units is not a redemption. `Ratio.Partners.cannot_redeem_when_unset`.
+pub fn redeem(outstanding: Option<i64>, units: i64) -> Result<Option<i64>> {
+    let Some(n) = outstanding else {
+        bail!(
+            "cannot redeem {units} units when units in issue are unset — \
+             nobody issued them. A contribution is not a subscription. \
+             Ratio.Partners.cannot_redeem_when_unset"
+        );
+    };
+    if units <= 0 {
+        bail!(
+            "zero units is not a redemption — omit the field for a \
+             distribution, or name the units. Ratio.Partners.a_zero_redeem_is_refused"
+        );
+    }
+    if units > n {
+        bail!(
+            "cannot redeem {units} units when {n} are in issue. \
+             Over-redemption refuses rather than going negative. \
+             Ratio.Partners.cannot_redeem_more_than_issued"
+        );
+    }
+    Ok(Some(checked::sub(n, units, "redeem")?))
 }

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { caller } from "@/lib/caller";
-import { hundredths } from "@/lib/trade";
+import { hundredths, wholeUnits } from "@/lib/trade";
 import { applyEvent, AuthError, Refused } from "@/wire/client";
 import type { ApplyEventResponse } from "@/wire/types";
 
@@ -41,6 +41,7 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
   const eventId = String(form.get("eventId") ?? "");
   const amount = String(form.get("amount") ?? "").trim();
   const days = String(form.get("days") ?? "").trim();
+  const quantity = String(form.get("quantity") ?? "").trim();
   // ⚠ The default is a PREVIEW. A form that posts by default is a form that
   // posts by accident.
   const validateOnly = form.get("commit") === null;
@@ -51,6 +52,10 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
   if (days && !/^\d+$/.test(days)) {
     return { ok: false, error: "Days is a whole number." };
   }
+  if (quantity) {
+    const q = wholeUnits(quantity);
+    if (!q.ok) return { ok: false, error: q.error };
+  }
 
   try {
     const c = await caller();
@@ -59,11 +64,11 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
       eventId,
       amount,
       days,
-      // ⚠ EMPTY ON PURPOSE, AND NOT AN OVERSIGHT. This screen records an event
-      // of any kind — a fee, a subscription, an accrual — and most of them
-      // concern no instrument. `/trade` is the screen that fills these in.
+      // ⚠ INSTRUMENT STAYS EMPTY. This screen records a fee, a
+      // subscription, an accrual — not a trade. Quantity is filled for
+      // a measured (partner-unit) rule; `/trade` is the lot screen.
       instrument: "",
-      quantity: "",
+      quantity,
       tradeDate: null,
       validateOnly,
     });
@@ -80,7 +85,9 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
     return {
       ok: true,
       response,
-      signature: [ruleId, amount, days, eventId].map((s) => s.trim()).join(" "),
+      signature: [ruleId, amount, days, quantity, eventId]
+        .map((s) => s.trim())
+        .join(" "),
     };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: "Sign in required." };

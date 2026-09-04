@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   beginningOf,
+  bookUnits,
   expenseShown,
   incomeShown,
   navOf,
   navRollForward,
   navShown,
   outflowShown,
+  unitsOf,
+  unitsShown,
 } from "./nav";
 import type { Account } from "@/wire/types";
 
@@ -29,6 +32,7 @@ const acct = (
   abnormal: false,
   postingCount,
   currencyTotals: [],
+  units: "",
 });
 
 describe("a period NAV roll-forward", () => {
@@ -53,6 +57,9 @@ describe("a period NAV roll-forward", () => {
     expect(r.unrealized).toBeNull();
     expect(navShown(r.beginning)).toBe("—");
     expect(navShown(0n)).toBe("0.00");
+    expect(bookUnits(accounts)).toBeNull();
+    expect(unitsShown(null)).toBe("—");
+    expect(unitsShown(0n)).toBe("0");
   });
 
   it("treats a commitment-only prefix that nets to zero NAV as a real beginning", () => {
@@ -167,5 +174,28 @@ describe("a period NAV roll-forward", () => {
     const dropped = navRollForward(withoutGp);
     expect(dropped.contributions).toBe(6_000n);
     expect(dropped.contributions === 10_000n).toBe(false);
+  });
+
+  it("leaves units in issue unset until a unit event posts, and treats a full redeem as zero", () => {
+    const contributeOnly: Account[] = [
+      acct("2", "Cash and equivalents", "ASSET", "10000", "0", "10000"),
+      acct("50", "Partner capital — LP", "EQUITY", "0", "10000", "-10000"),
+    ];
+    expect(unitsOf(contributeOnly[1]!)).toBeNull();
+    expect(bookUnits(contributeOnly)).toBeNull();
+    expect(bookUnits(contributeOnly) === 0n).toBe(false);
+
+    const subscribed = contributeOnly.map((a) =>
+      a.displayName.startsWith("Partner capital") ? { ...a, units: "10" } : a,
+    );
+    expect(unitsOf(subscribed[1]!)).toBe(10n);
+    expect(bookUnits(subscribed)).toBe(10n);
+
+    const redeemed = subscribed.map((a) =>
+      a.displayName.startsWith("Partner capital") ? { ...a, units: "0" } : a,
+    );
+    expect(unitsOf(redeemed[1]!)).toBe(0n);
+    expect(bookUnits(redeemed)).toBe(0n);
+    expect(unitsShown(0n)).toBe("0");
   });
 });

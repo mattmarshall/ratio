@@ -184,6 +184,12 @@ pub struct Shape {
     /// down — `lots_per` is an average this crate derives by dividing. The
     /// sidecar quotes this one, because it is the number the claim is about.
     pub open_lots_held: i64,
+    /// Whether `capital_txns` was counted from the chart.
+    ///
+    /// ⛔ FALSE MEANS BLANK, NOT ZERO. Projection does not know capital
+    /// roles. When true, the capital node shows the count and the chosen
+    /// totals include it, so the steps still add to the figure beside them.
+    pub capital_counted: bool,
 }
 
 /// What an instrumented fold saw.
@@ -718,20 +724,41 @@ pub fn plan_of(
         None,
         None,
     );
+    let capital_counted = shape.map(|s| s.capital_counted).unwrap_or(false);
+    let capital_n = est.map(|e| e.dials.capital_txns);
     b.node(
         "capital",
         "Capital Activity",
-        "not estimated".into(),
+        if capital_counted {
+            format!(
+                "{}",
+                plural(
+                    capital_n.unwrap_or(0),
+                    "unit movement",
+                    "unit movements",
+                )
+            )
+        } else {
+            "not estimated".into()
+        },
         Group::Maintained,
         Role::Chosen,
         "Ratio.Closure.capitalCost",
-        vec!["⛔ NOT ESTIMATED, AND NOT ZERO EITHER. Counting subscriptions and \
-              redemptions needs the chart roles, and the maintained projection \
-              deliberately does not know the chart. A zero here would be a guess \
-              wearing a decimal point, so the term is left blank and the totals \
-              beside it say they exclude it."
-            .into()],
-        None,
+        if capital_counted {
+            vec!["⭐ COUNTED FROM THE CHART. Entries that posted a quantity onto \
+                  a capital account. A contribution without units does not \
+                  count — that is funded capital, not unitization. \
+                  Ratio.Partners.Units"
+                .into()]
+        } else {
+            vec!["⛔ NOT ESTIMATED, AND NOT ZERO EITHER. Counting subscriptions \
+                  and redemptions needs the chart roles, and the maintained \
+                  projection deliberately does not know the chart. A zero here \
+                  would be a guess wearing a decimal point, so the term is left \
+                  blank and the totals beside it say they exclude it."
+                .into()]
+        },
+        if capital_counted { capital_n } else { None },
         None,
         None,
     );
@@ -953,6 +980,24 @@ mod tests {
             accounts: 12,
             total_rows: 36,
             open_lots_held: 20_000_000,
+            capital_counted: false,
+        }
+    }
+
+    fn shape_with_capital(n: i64) -> Shape {
+        let d = Dials {
+            securities: 500,
+            currencies: 3,
+            lots_per: 40_000,
+            open_actions: 1,
+            capital_txns: n,
+        };
+        Shape {
+            estimate: estimate(d, &cal()).unwrap(),
+            accounts: 12,
+            total_rows: 36,
+            open_lots_held: 20_000_000,
+            capital_counted: true,
         }
     }
 
@@ -973,7 +1018,33 @@ mod tests {
         // dials say so: a book with capital activity would make this assertion
         // wrong in a way that is the model's honesty rather than a defect.
         assert_eq!(p.shape.as_ref().unwrap().estimate.dials.capital_txns, 0);
+        assert!(!p.shape.as_ref().unwrap().capital_counted);
         assert_eq!(Some(summed), p.chosen_reads);
+    }
+
+    #[test]
+    fn counted_capital_txns_appear_on_the_node_and_in_the_total() {
+        // ⛔ COUNTING WITHOUT SHOWING IS THE DEFECT HANDOFF NAMED. The
+        // model includes `capital_txns` in `factored_reads`; the node
+        // that hid it made the steps stop adding to the figure beside
+        // them. Two unit movements is a real count, not a guess.
+        let s = shape_with_capital(2);
+        let p = plan_of(
+            "funds/f/views/abor/navStrikes/x",
+            &strike(),
+            Some(&s),
+            "",
+            None,
+            &cal(),
+        );
+        let capital = p.nodes.iter().find(|n| n.id == "capital").unwrap();
+        assert_eq!(capital.estimated_reads, Some(2));
+        assert!(
+            capital.detail.contains("2"),
+            "the node must cite the count, not stay blank: {}",
+            capital.detail
+        );
+        assert_eq!(Some(p.chosen_reads_in(Group::Maintained)), p.chosen_reads);
     }
 
     #[test]

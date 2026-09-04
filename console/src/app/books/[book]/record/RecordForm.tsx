@@ -10,7 +10,7 @@ import {
   type Step,
 } from "@/components/Ticket";
 import { money } from "@/lib/format";
-import { hundredths } from "@/lib/trade";
+import { hundredths, wholeUnits } from "@/lib/trade";
 import type { Rule } from "@/wire/types";
 import { submit, type Result } from "./actions";
 
@@ -41,10 +41,12 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
   const [ruleId, setRuleId] = useState("");
   const [amount, setAmount] = useState("");
   const [days, setDays] = useState("");
+  const [units, setUnits] = useState("");
   const [eventId, setEventId] = useState("");
 
   const rule = rules.find((r) => r.ruleId === ruleId) ?? null;
   const accrual = rule?.kind === ACCRUAL;
+  const measured = Boolean(rule?.measured);
 
   // ⛔ THE SAME PARSER THE SERVER USES, AND THIS FIELD USED TO LIE ABOUT ITSELF.
   // `ApplyEventRequest.amount` is "a DECIMAL string as a person types it", and
@@ -54,12 +56,18 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
   // large. Nothing downstream would have said a word: the entry balances at any
   // size, and the trial balance ties on it.
   const parsed = amount ? hundredths(amount, "an amount") : null;
+  const unitsParsed = measured && units ? wholeUnits(units) : null;
   const daysOk = !days || /^\d+$/.test(days);
 
   const complete =
-    Boolean(ruleId) && parsed?.ok === true && (!accrual || /^\d+$/.test(days));
+    Boolean(ruleId) &&
+    parsed?.ok === true &&
+    (!accrual || /^\d+$/.test(days)) &&
+    (!measured || unitsParsed?.ok === true);
 
-  const now = [ruleId, amount.trim(), days.trim(), eventId.trim()].join(" ");
+  const now = [ruleId, amount.trim(), days.trim(), units.trim(), eventId.trim()].join(
+    " ",
+  );
   const previewed =
     result?.ok === true && result.response.validateOnly && result.signature === now;
 
@@ -86,6 +94,15 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
   );
   const daysField = (
     <Field name="Days" value={days} onValue={setDays} mode="numeric" hint="90" />
+  );
+  const unitsField = (
+    <Field
+      name="Units"
+      value={units}
+      onValue={setUnits}
+      mode="numeric"
+      hint="10"
+    />
   );
   const idField = (
     <Field
@@ -120,6 +137,18 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
       />
       {accrual && parsed.ok ? (
         <Derived k="Days" v={days || "—"} from="at the rule's own rate" />
+      ) : null}
+      {measured && unitsParsed ? (
+        <Derived
+          k="Units"
+          v={unitsParsed.ok ? unitsParsed.minor.toString() : "—"}
+          bad={!unitsParsed.ok}
+          from={
+            unitsParsed.ok
+              ? "whole units, issued or retired by the rule"
+              : unitsParsed.error
+          }
+        />
       ) : null}
     </>
   ) : null;
@@ -184,6 +213,22 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
           } satisfies Step,
         ]
       : []),
+    ...(measured
+      ? [
+          {
+            id: "units",
+            label: "Units",
+            ask: "How many units does this issue or retire?",
+            why: [
+              "A subscription names the units; a contribution does not.",
+              "Whole units, refused rather than rounded. Quantity without an instrument opens no lot.",
+              "The operator types a positive count. The rule decides whether they are issued or retired.",
+            ],
+            answer: unitsParsed?.ok ? unitsParsed.minor.toString() : null,
+            body: unitsField,
+          } satisfies Step,
+        ]
+      : []),
     {
       id: "id",
       label: "Event id",
@@ -221,8 +266,14 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
           <>
             Record <code>{ruleId}</code> for{" "}
             <b className="num">{money(parsed.minor.toString())}</b>
-            {accrual ? <> over {days} days</> : null} as{" "}
-            <code>{eventId.trim() || "an id the server picks"}</code>.
+            {accrual ? <> over {days} days</> : null}
+            {measured && unitsParsed?.ok ? (
+              <>
+                {" "}
+                · <b className="num">{unitsParsed.minor.toString()}</b> units
+              </>
+            ) : null}{" "}
+            as <code>{eventId.trim() || "an id the server picks"}</code>.
           </>
         ) : (
           "A rule, and the figure it applies to. Which accounts move is the configuration's decision, not this form's."
@@ -235,6 +286,7 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
             {rulePicker}
             {amountField}
             {accrual ? daysField : null}
+            {measured ? unitsField : null}
             {idField}
           </div>
           {ruleForm}
@@ -247,6 +299,7 @@ export function RecordForm({ fund, rules }: { fund: string; rules: Rule[] }) {
           <input type="hidden" name="ruleId" value={ruleId} />
           <input type="hidden" name="amount" value={amount} />
           <input type="hidden" name="days" value={accrual ? days : ""} />
+          <input type="hidden" name="quantity" value={measured ? units : ""} />
           <input type="hidden" name="eventId" value={eventId} />
           <Commit
             preview="Preview"

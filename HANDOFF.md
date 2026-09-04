@@ -361,13 +361,15 @@ the conserved one, and the kernel never said it was.
   measures one lower than it estimates, always, and the node carries a note
   saying why. Read as a defect it would send somebody looking for a missing
   rate; the missing one is the denomination the figure is reported in.
-- ⚠ **`capital_txns` IS PASSED AS ZERO AND REPORTED AS BLANK, AND THE TWO ARE
-  NOT THE SAME CLAIM.** Counting subscriptions and redemptions needs the chart
-  roles and `Projection` deliberately does not know the chart, so the model gets
-  a zero it needs to typecheck and the screen gets nothing. ⛔ Every total on
-  that screen therefore EXCLUDES capital activity and says so. A future change
-  that starts counting it must move both, or the steps will stop adding to the
-  figure beside them.
+- ⚠ **`capital_txns` IS COUNTED WHEN THE CHART IS IN HAND, AND BLANK WHEN IT
+  IS NOT.** Projection still does not know the chart, so `shape_of` without a
+  count passes zero to the model and the capital node stays blank — those two
+  remain different claims. Console `ExplainNavStrike` counts journal entries
+  that posted a quantity onto a capital account (`count_unit_capital_entries`)
+  and passes `Some(n)`. A contribution without units does not count. When
+  counted, the node shows `n` and `estimated_reads` includes it, so the steps
+  still add to the figure beside them. ⛔ A silent rendered zero on the
+  uncounted path is still the defect.
 - ⛔ **`explain.json` IS THE ONE FIXTURE IN `console/fixtures/` THAT WAS NEVER
   CAPTURED.** Bazel could not fetch two `tomato-bazel` modules in the
   environment it was written in (403 under an egress policy), so no `ratio
@@ -538,7 +540,21 @@ the conserved one, and the kernel never said it was.
   `/strikes` stays ABOR NAV. Remaining undrawn stays on #82. Book NAV
   roll-forward stays on #96. This file does not close #180: per-entry
   specials are stored and not yet folded into the plugs, and
-  CreateBook still writes no cut. It does not close #181.
+  CreateBook still writes no cut.
+- ⚠ **A subscription / redemption walk-through (#181 / #27).** Record
+  `subscribe_lp` with a unit count: cash and partner capital move, the
+  trial balance still ties, no lot opens, `/capital` cites the partner's
+  units, `/nav` cites units in issue, and explain `capital_txns` counts
+  the entry. `contribute_lp` is still funded capital without units —
+  those stay **unset**, not a silent 0. Redeeming when unset, redeeming
+  zero, and over-redemption refuse. A full redeem is `"0"`, a real
+  zero. Book-level `subscribe` / `redeem` do not split 1/N across
+  partners. ⛔ The walk-through cannot show a CreateBook / live-demo
+  seed of unitized capital (the demo's `sub-0001` is money-only; units
+  stay unset), a per-share NAV, period issued/redeemed as separate
+  plugs, an ingest template, an LP portal, drip, or payment
+  initiation. This file does not close #181: those seed and NAV
+  leftovers stay on the issue. It does not close #180.
 - ⚠ **A project change-order walk-through (#91 / #27).** CreateBook(Project)
   seeds `Approved change orders` / `Change-order authorization` keyed by
   work package (site / structure / finishes, plus unpartitioned) as equity,

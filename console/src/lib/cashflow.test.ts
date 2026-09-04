@@ -27,6 +27,7 @@ const acct = (
   abnormal: false,
   postingCount: "1",
   currencyTotals: [],
+  units: "",
 });
 
 describe("a household cash-flow statement", () => {
