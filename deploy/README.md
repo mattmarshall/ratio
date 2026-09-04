@@ -340,12 +340,16 @@ portal, or K-1 packaging. The live demo does not seed those baselines or any
 commitment postings.
 
 `entrypoint.sh` copies the seeded chart and config to `/tmp` at start, because a
-Lambda filesystem is read-only elsewhere. **The journal is not that copy.** When
-`RATIO_JOURNAL_BUCKET` is set (the app stack sets it to the scale bucket, prefix
-`journals/`), append is one object per entry with a conditional PUT — `tla/S3Journal.tla`,
-issue #24. A posted entry survives the next cold start, and two containers
-share one log rather than silently forking under one URL. Unset, `/tmp` is
-still the system of record, which is the local `ratio watch` shape.
+Lambda filesystem is read-only elsewhere. **The demo API journal is that `/tmp`
+copy.** `RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX` are unset on the
+`ratio-demo` Function: S3 journal hydrate on the shared Lambda caused production
+503 `"the journal is still hydrating"` on `/books` (orTransient). Ops cleared
+both env vars on live `ratio-demo` (account `320473299741`, us-east-1); Timeout
+was already 60; `/v1/books` then returned 401, not 503. The template must not
+put them back — `//deploy:iac_test` fails if it does. Scale still uses
+ScaleBucket (`RATIO_SCALE_BUCKET`, cluster, task). When those journal vars *are*
+set (local / a future durable-write path), append is one object per entry with
+a conditional PUT — `tla/S3Journal.tla`, issue #24.
 
 ⭐ **The write grant lives on the bucket, because that is what CI can apply.**
 `install_journal_store` / hydrate / append are a conditional `s3:PutObject`

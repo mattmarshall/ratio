@@ -509,32 +509,55 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  smoke asserts the Connect API")
 
+    # ⛔ THE DEPLOYED DEMO API MUST NOT HYDRATE FROM S3 ON COLD START.
+    # Ops cleared RATIO_JOURNAL_BUCKET + RATIO_JOURNAL_PREFIX from live
+    # Lambda ratio-demo (account 320473299741, us-east-1) after production
+    # /books showed "the journal is still hydrating" (orTransient on API
+    # 503). Timeout was already 60. /v1/books then returned 401, not 503.
+    # The next CloudFormation deploy would restore those two env vars
+    # from this template and the hang. Unset is /tmp journals — the
+    # local `ratio watch` shape. Scale still uses ScaleBucket; this
+    # check is the Function Environment only. A sentence describing
+    # the vars in a comment must not satisfy or fail this — `app_code`
+    # is comment-stripped. Same pattern as RATIO_DEMO_OPEN.
+    if re.search(r"^\s+RATIO_JOURNAL_BUCKET:", app_code, re.M):
+        fail(
+            f"{app_path} still sets RATIO_JOURNAL_BUCKET on the function — "
+            "a deploy would restore S3 journal hydrate and 503 /v1/books"
+        )
+    else:
+        print("  ok  RATIO_JOURNAL_BUCKET is unset on the deployed function")
+    if re.search(r"^\s+RATIO_JOURNAL_PREFIX:", app_code, re.M):
+        fail(
+            f"{app_path} still sets RATIO_JOURNAL_PREFIX on the function — "
+            "a deploy would restore S3 journal hydrate and 503 /v1/books"
+        )
+    else:
+        print("  ok  RATIO_JOURNAL_PREFIX is unset on the deployed function")
+
+    # Scale still needs ScaleBucket (RATIO_SCALE_BUCKET, cluster, task).
+    # Unsetting the journal pair must not drop the scale path.
+    if not re.search(r"^\s+RATIO_SCALE_BUCKET:\s+!Ref\s+ScaleBucket\s*$", app_code, re.M):
+        fail(
+            f"{app_path} dropped RATIO_SCALE_BUCKET — stopping API journal "
+            "hydrate must not break the scale runner's bucket"
+        )
+    else:
+        print("  ok  RATIO_SCALE_BUCKET still names ScaleBucket for scale")
+
     # ⛔ THE JOURNAL GRANT MUST LIVE IN THE APP STACK, NOT ONLY IN BOOTSTRAP.
     # Issue #129: Sid TheJournal was added to bootstrap.yaml in #84, and
     # README said "re-run bootstrap once". Nobody did. After #126 bound
     # before hydrate, /healthz lived and /balance.json died on
     # s3:PutObject AccessDenied for journals/book/journal/0000…1.
     # A grant only in the hand-applied stack is a grant the next deploy
-    # cannot apply. The app stack must allow the execution role to
-    # PutObject under journals/ on the same bucket RATIO_JOURNAL_BUCKET names.
+    # cannot apply. The API function no longer names the bucket; the
+    # policy stays so a later scale / durable-write path can. Prefix
+    # is the scale-bucket journals/ prefix, not a Function env var.
     #
     # ⚠ COMMENT-STRIPPED. A sentence describing the grant must not satisfy
     # this — same shape as the CAPABILITY_NAMED_IAM check above.
-    if "RATIO_JOURNAL_BUCKET: !Ref ScaleBucket" not in app_code:
-        fail(
-            f"{app_path} does not set RATIO_JOURNAL_BUCKET to ScaleBucket — "
-            "hydrate would write a bucket the IAM grant does not name"
-        )
-    else:
-        print("  ok  RATIO_JOURNAL_BUCKET is the scale bucket")
-
-    prefix_m = re.search(r"RATIO_JOURNAL_PREFIX:\s+(\S+)", app_code)
-    if prefix_m is None:
-        fail(f"{app_path} does not set RATIO_JOURNAL_PREFIX")
-        journal_prefix = None
-    else:
-        journal_prefix = prefix_m.group(1)
-        print(f"  ok  RATIO_JOURNAL_PREFIX is {journal_prefix}")
+    journal_prefix = "journals/"
 
     journal_policy = None
     for m in re.finditer(
@@ -660,6 +683,17 @@ def main(app_path, bootstrap_path, workflow_path):
         )
     else:
         print("  ok  RATIO_DEMO_MEMBER still seeds membership on the demo")
+
+    # Function timeout stays 60 — list/detail folds need the headroom;
+    # 15s killed hydrate mid-seed. Ops already set 60. A comment that
+    # names 60 must not satisfy this (`app_code` is comment-stripped).
+    if not re.search(r"^      Timeout:\s+60\s*$", app_code, re.M):
+        fail(
+            f"{app_path} Function Timeout is no longer 60 — authenticated "
+            "/v1 list still has to finish inside the HTTP API's 30s cap"
+        )
+    else:
+        print("  ok  Function Timeout is 60")
 
     if failures:
         print(f"\n{len(failures)} problem(s): the app stack and the deploy role disagree "

@@ -27,7 +27,10 @@ is an eight-week plan for a product nobody was buying.
 > `/user_management/{client_id}` — one authorizer cannot OR those).
 > `RATIO_DEMO_OPEN` defaults off on the deployed demo — AuthKit
 > sessions isolate via membership. first-party Connect apps call
-> ConnectApiUrl. Live leftovers on issue 22 are unused Cognito
+> ConnectApiUrl. The demo API Lambda leaves
+> `RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX` unset (local
+> `/tmp` journals; S3 hydrate 503ed production `/books`). Scale
+> keeps ScaleBucket. Live leftovers on issue 22 are unused Cognito
 > CloudFormation resources, `DEMO_MEMBERS` naming a live WorkOS
 > `sub`, and WorkOS dashboard registration. Durable
 > writes are #24 (closed). The Cognito-era activation sentence is
@@ -311,9 +314,14 @@ Production has the env (#68 closed). Write-route actor binding landed
 close record actor = WorkOS `sub`. Connect tokens accepted with
 catalog scopes on `/v1`. `RATIO_DEMO_OPEN` defaults off on the
 deployed demo. first-party Connect apps call ConnectApiUrl.
-Live leftovers remain on issue 22 — unused Cognito resources in
-the deploy templates, `DEMO_MEMBERS` naming a live WorkOS `sub`,
-and WorkOS dashboard registration. Do not
+The demo API Lambda leaves `RATIO_JOURNAL_BUCKET` /
+`RATIO_JOURNAL_PREFIX` unset so cold starts write `/tmp`
+journals — S3 hydrate on that function 503ed production
+`/books` with “the journal is still hydrating”. Scale still
+uses ScaleBucket. Live leftovers remain on issue 22 — unused
+Cognito resources in the deploy templates, `DEMO_MEMBERS`
+naming a live WorkOS `sub`, and WorkOS dashboard registration.
+Do not
 read this paragraph as production-complete.
 The retired `https://ratio-ims.vercel.app` host still resolves;
 `deploy.yml` refuses it as `CONSOLE_ORIGIN`.
@@ -3549,3 +3557,31 @@ access token against ConnectApiUrl, and a missing token / DemoUrl
 collision / 401 membership refuse. It cannot show a live
 two-app walk-through without Dashboard registration, unused
 Cognito resources removed, or bank / calendar OAuth.
+
+### Amendment, 2026-09-04 — demo API Lambda does not hydrate the journal from S3
+
+Ops cleared `RATIO_JOURNAL_BUCKET` and `RATIO_JOURNAL_PREFIX`
+from live Lambda `ratio-demo` (account `320473299741`,
+us-east-1) after production `/books` showed “the journal is
+still hydrating” (orTransient on API 503). Timeout was already
+60. `/v1/books` then returned 401, not 503. The app stack still
+set both env vars on the Function, so the next CloudFormation
+deploy would restore the hang.
+
+What landed is the durable unset, not a new store:
+
+- `deploy/app.yaml` no longer sets `RATIO_JOURNAL_BUCKET` or
+  `RATIO_JOURNAL_PREFIX` on the `ratio-demo` Function
+  (Connect is the same Lambda, second HTTP API). Unset is
+  `/tmp` journals — the local `ratio watch` shape.
+- `Timeout: 60` stays. ScaleBucket, the scale cluster / task,
+  and `RATIO_SCALE_*` stay. The journal bucket policy stays
+  so a later durable-write path can; it is not the API
+  hydrate dial.
+- `//deploy:iac_test` fails if the Function Environment sets
+  either journal var again, and fails if `RATIO_SCALE_BUCKET`
+  is dropped with them.
+
+This amendment does not close #22 (unused Cognito resources,
+`DEMO_MEMBERS` naming a live WorkOS `sub`, WorkOS dashboard
+registration). It does not reopen #24. It does not close #150.
