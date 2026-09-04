@@ -109,6 +109,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ #178 landed Personal currency declaration; PLAN named it in
     # the same-commit amendment.
     "Personal books declare currencies",
+    # ⚠ #188 landed NAV gate reasons as citeable copy; PLAN named it
+    # in the same-commit amendment. Same class of defect as #67.
+    "NAV gate reasons stay citeable",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -130,6 +133,7 @@ ROADMAP_ENGINE_BUILT = [
     "multi-view FX / translation refuses stay citeable",
     "parallel mutable shadow book",
     "Personal books declare currencies",
+    "NAV gate reasons stay citeable",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",

@@ -3963,6 +3963,42 @@ describe("the fund overview", () => {
     await renderAsync(Overview({ params: params({ fund: FUND }) }));
     expect(screen.getByText("Tax lots")).toBeDefined();
   });
+
+  it("cites NAV gate reasons instead of a bare HTTP 400", async () => {
+    // ⭐ THE DEFECT THIS ISSUE EXISTS TO PREVENT. The kernel already
+    // folds what blocks (`blocking_at`); chrome that printed only
+    // BLOCKED — or threw the refuse as HTTP 400 — hid the unexplained
+    // break, the unpriced position, and the unresolved trade.
+    const Overview = (await import("./funds/[fund]/page")).default;
+    await renderAsync(Overview({ params: params({ fund: FUND }) }));
+    const status = screen.getByRole("status").textContent;
+    expect(status).toContain("not ready to strike a NAV");
+    expect(status).toContain("unexplained break");
+    expect(status).toContain("unresolved trade");
+    expect(status).toContain("unpriced — not held at zero");
+    expect(status).toContain("Cash and equivalents");
+    expect(status).toContain("XS2434590128");
+    expect(status).toContain("VWRL");
+    expect(screen.queryByText(/^400$/)).toBeNull();
+  });
+
+  it("cites a thrown NAV-gate Refused as the sentence, not a status number", async () => {
+    const real = wire.getFund;
+    const SENTENCE =
+      "REFUSED — this fund is not ready to strike a NAV: unexplained break on Cash";
+    wire.getFund = (async () => {
+      const { Refused } = await import("@/wire/client");
+      throw new Refused(400, SENTENCE);
+    }) as typeof wire.getFund;
+    try {
+      const Overview = (await import("./funds/[fund]/page")).default;
+      await renderAsync(Overview({ params: params({ fund: "gate-refused" }) }));
+      expect(screen.getByRole("status").textContent).toContain("unexplained break");
+      expect(screen.queryByText(/^400$/)).toBeNull();
+    } finally {
+      wire.getFund = real;
+    }
+  });
 });
 
 describe("a NAV strike", () => {
@@ -4880,6 +4916,25 @@ describe("a refusal", () => {
     } finally {
       wire.listBreaks = real;
     }
+  });
+
+  it("cites NAV gate reasons on the view chrome before the figures", async () => {
+    // ⭐ SAME DEFECT, ON EVERY FIGURE PAGE. The layout is the chrome an
+    // operator reads before the NAV tile. A unique view id so React
+    // `cache` does not serve a sibling test's GetView.
+    const Layout = (await import("./books/[book]/views/[view]/layout")).default;
+    await renderAsync(
+      Layout({
+        children: null,
+        params: params({ book: FUND, view: "nav-gate" }),
+      }),
+    );
+    const status = screen.getByRole("status").textContent;
+    expect(status).toContain("not ready to strike a NAV");
+    expect(status).toContain("unexplained break");
+    expect(status).toContain("unresolved trade");
+    expect(status).toContain("unpriced — not held at zero");
+    expect(screen.queryByText(/^400$/)).toBeNull();
   });
 
   it("renders the sentence on the layout, which gates every view screen", async () => {

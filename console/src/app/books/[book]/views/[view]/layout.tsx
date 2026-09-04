@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { NavGateCite } from "@/components/NavGate";
 import { Refusal } from "@/components/Refusal";
 import { Stat } from "@/components/Stat";
 import { bookOf, viewOf } from "@/lib/data";
@@ -52,6 +53,10 @@ export default async function ViewLayout({
 
   return (
     <>
+      {/* ⛔ BEFORE THE FIGURES. A NAV that does not say why it cannot be
+          struck is a figure an operator will read as ready. Personal /
+          project / operating books do not strike a NAV. */}
+      {personal || project || operating ? null : <NavGateCite gate={v.navGate} />}
       <div className="stats">
         {personal ? (
           <>

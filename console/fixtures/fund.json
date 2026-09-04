@@ -17,6 +17,17 @@
   "washWindowDeclared": true,
   "washKeepHoldingPeriod": false,
   "minTaxShortWeight": "0",
-  "minTaxDeclared": false,
-  "averageCost": false
+      "minTaxDeclared": false,
+      "averageCost": false,
+      "navGate": {
+        "unexplainedBreaks": [
+          "Cash and equivalents — the custodian statement and the journal disagree"
+        ],
+        "unresolvedTrades": [
+          "XS2434590128 — the instrument master has nothing under this identifier"
+        ],
+        "unpriced": [
+          "VWRL — 250 units"
+        ]
+      }
 }

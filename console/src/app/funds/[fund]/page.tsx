@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { NavGateCite } from "@/components/NavGate";
+import { withRefusal } from "@/components/Refusal";
 import { caller } from "@/lib/caller";
 import { count, gain, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
@@ -21,7 +23,7 @@ export const dynamic = "force-dynamic";
 function electedClaim(declared: boolean, unset: string) {
   return declared ? " a term of the administration agreement" : ` ${unset}`;
 }
-export default async function FundOverview({
+async function FundOverview({
   params,
 }: {
   params: Promise<{ fund: string }>;
@@ -40,6 +42,7 @@ export default async function FundOverview({
 
   return (
     <>
+      <NavGateCite gate={f.navGate} />
       <section className="lots">
         <div className="loghead">
           <span>Lot terms</span>
@@ -171,3 +174,5 @@ export default async function FundOverview({
     </>
   );
 }
+
+export default withRefusal(FundOverview);

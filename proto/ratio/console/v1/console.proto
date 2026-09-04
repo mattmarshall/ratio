@@ -962,6 +962,16 @@ message Fund {
   // `wash_keep_holding_period`.
   bool average_cost = 32 [(google.api.field_behavior) = OUTPUT_ONLY];
 
+  // Why this fund cannot strike a NAV. Same fold as `state == BLOCKED`
+  // (`Console::blocking_at`). Absent on ListFunds — the index does not
+  // fold. Present on GetFund even when nothing blocks (empty lists),
+  // so chrome can tell "checked, clear" from "the list did not look".
+  //
+  // ⛔ NOT A SECOND GATE. The badge and this list are one derivation.
+  // Unpriced stays empty unless a valuation date was named — the same
+  // limit a bare `ratio strike` already has.
+  NavGate nav_gate = 33 [(google.api.field_behavior) = OUTPUT_ONLY];
+
   // ⛔ MOVED TO `View`, NOT DELETED, AND RESERVED SO THE NUMBERS CANNOT COME
   // BACK MEANING SOMETHING ELSE. Every one of these depends on WHICH ENTRIES
   // ARE RECOGNISED, so a fund-level answer is an answer for a view it does not
@@ -971,6 +981,22 @@ message Fund {
   reserved "net_asset_value", "open_difference", "total_debit", "total_credit",
     "realized_gain", "basis_relieved", "short_term_gain", "long_term_gain",
     "unclassified_gain", "open_lot_count", "position_count", "nav_strike";
+}
+
+// Citeable copy of what blocks a NAV strike.
+//
+// ⭐ THREE FIRST-CLASS REASONS, THE SAME VOCABULARY THE CLI REFUSAL PRINTS.
+// An unexplained HIGH break, a pending fact that does not resolve
+// (unresolved trade / unidentified), and a position with no price on a
+// named day. Chrome cites these sentences; it does not invent a fourth
+// kind or a `Method` / `Order` / `lot_method` variant.
+message NavGate {
+  // Unexplained HIGH breaks. Each cite names the account and the cause.
+  repeated string unexplained_breaks = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Pending facts that do not resolve — unidentified / unresolved trades.
+  repeated string unresolved_trades = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Positions with no price on or before a named day. Empty without as-of.
+  repeated string unpriced = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One lens over one journal: which entries it recognises, and the figures that
@@ -1124,6 +1150,12 @@ message View {
   // `EveryViewFoldsTheSamePrefix`, and `views_at_two_prefixes_check` is what it
   // looks like when this stops being true.
   int64 journal_position = 24 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Why this fund cannot strike a NAV. Copied from GetFund — one
+  // `blocking_at` fold, not a second gate. Absent on ListViews (the
+  // collection does not fold). Present on GetView even when nothing
+  // blocks, same as `Fund.nav_gate`.
+  NavGate nav_gate = 25 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One entry that two views disagree about, and what it is worth.
