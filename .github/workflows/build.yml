@@ -72,6 +72,23 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # Stage E live apply. `//...` stays hermetic (the denotational store).
+    # `//crates/ratio-sql-project:pg_engine_test` is tagged `manual` so it
+    # is not in that set; the step below runs it by name. Journal stays SoR.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ratio
+          POSTGRES_PASSWORD: ratio
+          POSTGRES_DB: ratio
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ratio -d ratio"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -114,3 +131,17 @@ jobs:
       - name: What ran
         if: always()
         run: bazel query 'tests(//...)' --output=label 2>/dev/null | sort
+
+      # ⛔ NOT A SKIP. RATIO_PG_URL unset fails the target. postgresql-client
+      # is `psql`; the crate talks to the service through that, not a rust
+      # postgres crate (the package stays off the Cargo workspace).
+      - name: Live projection engine
+        env:
+          RATIO_PG_URL: postgres://ratio:ratio@127.0.0.1:5432/ratio
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq postgresql-client
+          bazel test --lockfile_mode=error --test_output=errors \
+            --test_env=RATIO_PG_URL \
+            -- \
+            //crates/ratio-sql-project:pg_engine_test

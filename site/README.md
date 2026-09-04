@@ -260,10 +260,14 @@ page would read as a reference customer. Keep it unnamed.
   `verify.py` fails if the page still lists tax lots, FX translation, corporate
   actions, journal persistence, wash sales, MinTax ranking, SpecID named
   selection, or average-cost pooling as unbuilt, or if it claims Postgres is
-  running. A live Postgres engine stays on the spec side: #153 landed
+  the interactive-scale engine. Applying the projection schema to a live
+  engine is Built; planner pushdown, console/API through the store, and
+  the 20M-lot claim stay on the spec side (#8 / #159). #153 landed
   the lots/positions projection schema and digest replay; PLAN's
   "four of these were built" table still records the running engine as
-  spec-only, and #8 / #159 keep the live table and the 20M-lot claim.
+  spec-only. The demo API hydrates ScaleBucket `journals/` so
+  CreateBook survives a cold start — do not revive the #230
+  `/tmp`-only wipe.
   Wash sales
   are the engine window and the attach write (#133 / #138) plus
   `WashRestatement` as a citeable record and the non-US

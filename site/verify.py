@@ -62,12 +62,12 @@ LICENSE_EXCEPTIONS = ["not permissively licensed"]
 # the same failure plan_refusals_test.sh names. Each page phrase must appear
 # in the built column and must not appear in the spec column.
 #
-# ⚠ POSTGRES THE RUNNING ENGINE IS THE EXPLICIT EXCEPTION. #153 landed
-# the lots/positions projection schema and digest replay; PLAN names
-# that phrase as built. A live Postgres process and the 20M-lot claim
-# stay #8 / #159. Requiring the page to call Postgres built would
-# enforce a lie. It belongs on the spec side, and must not be claimed
-# as a running engine.
+# ⚠ POSTGRES THE INTERACTIVE-SCALE ENGINE IS THE EXPLICIT EXCEPTION.
+# #153 landed the lots/positions projection schema; the projection
+# schema applies to a live engine is a later Built phrase. Requiring
+# the page to call "Postgres" built would still enforce a lie: planner
+# pushdown, console/API through the store, and the 20M-lot claim stay
+# #8 / #159. That word belongs on the spec side.
 PLAN_MARKS_ENGINE_DONE = [
     "tax lots and cost basis",
     "multi-currency and FX",
@@ -127,6 +127,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # it in the same-commit amendment. A live Postgres engine stays
     # spec-only — see ROADMAP_ENGINE_NOT_BUILT.
     "the lots/positions projection",
+    # ⚠ Applying the schema to a live engine is Built; the word
+    # "Postgres" as the interactive-scale engine stays spec-only.
+    "the projection schema applies to a live engine",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -153,6 +156,7 @@ ROADMAP_ENGINE_BUILT = [
     "point-in-time / restatement reporting stays citeable",
     "kind-aware IA",
     "lots/positions projection",
+    "the projection schema applies to a live engine",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",

@@ -7,8 +7,10 @@ Issues #4, #5, #7, and #9 are closed. #5's leftover was the console
 wash-flag cite; that cite landed. #9's leftovers were the MinTax /
 SpecID / average-cost engines, their console cites, and the pooled
 holding-period category rule; those landed. #153 landed the
-lots/positions projection schema and digest replay; #8 and #159
-stay open (live engine, planner pushdown, measured 20M lots).
+lots/positions projection schema and digest replay; the
+projection schema applies to a live engine. #8 and #159
+stay open (planner pushdown, console/API through the store,
+measured 20M lots).
 Open work is #6, #8. This
 file is the part that does not fit in an issue: what was learned, what
 is load-bearing, and what will bite. Wash sales have a Lean/TLA model
@@ -123,10 +125,14 @@ replays a journal prefix into `lots` / `positions` / `aggregates`
 under one watermark (`ratio_nav::prefix_digest`). A stale
 watermark refuses. Relief loads the rows and calls
 `relieve_by` — physical seq order is not FIFO. The journal
-stays the system of record. This file closes #153. It does
-not close #8 or #159. A live Postgres engine, planner
-pushdown, and the measured 20M-lot claim stay on those
-cards. leftover #22 stays on WorkOS.
+stays the system of record. This file closes #153.
+The projection schema applies to a live engine: `PgProjection`
+runs `schema.sql` through `psql`, commits one watermark, and
+refuses a stale pin. `PRIMARY KEY` cannot hold a NULL rest-map
+row — `UNIQUE NULLS NOT DISTINCT` is the uniqueness the
+denotational store already had. Planner pushdown, console/API
+reads through the store, and the measured 20M-lot claim stay
+on #8 / #159. leftover #22 stays on WorkOS.
 The demo API hydrates ScaleBucket `journals/` so CreateBook
 survives a cold start; this file does not reopen the #230
 `/tmp`-only wipe. Hydrate 503 is transient only.
@@ -1189,7 +1195,7 @@ than one that is entirely unclassified.
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `PoolPeriodEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine — one pass, N view folds, each with a monotonic cut on the journal's own clock and a band bounded by the settlement lag. ⚠ every memory figure in this file is a ONE-VIEW figure; each view carries its own lot book |
-| `crates/ratio-sql-project` | Stage E table snapshot of that fold. One watermark (`prefix` + `ratio_nav::prefix_digest`); lots / positions / aggregates replaced together. A stale pin refuses. Relief is `relieve_by`, not `ORDER BY seq`. Journal stays SoR. Live Postgres / 20M-lot claim stay #8 / #159 |
+| `crates/ratio-sql-project` | Stage E table snapshot of that fold. One watermark (`prefix` + `ratio_nav::prefix_digest`); lots / positions / aggregates replaced together. A stale pin refuses. Relief is `relieve_by`, not `ORDER BY seq`. Journal stays SoR. `PgProjection` applies `schema.sql` to a live engine via `psql`. Planner pushdown / console-API / 20M-lot claim stay #8 / #159 |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
 | `crates/ratio-console` | the console's BFF — 40 RPCs, transcoded onto `/v1`. Personal `forecast-YYYY[-MM]` folds posted `scheduled` / `forecast` journal kinds only; unset when none. Connect predictors post that material; they do not close #163 |
 | `crates/ratio-nav/src/explain.rs` | what a strike DOES, as a plan. ⛔ a description of two code paths, not a planner over them — nothing chooses |

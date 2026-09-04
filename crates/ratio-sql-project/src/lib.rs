@@ -27,23 +27,27 @@
 //! Lagging is what `AsOf` makes safe on the in-memory path — the caller pins
 //! what it read. A SQL read path has no such type. Asking for the journal
 //! head while the snapshot is behind would answer with somebody else's day.
-//! [`SqlProjection::require_caught_up`] refuses when the watermark is not
-//! exactly the pin. `//tla:unpinned_projection_check`.
+//! [`SqlProjection::require_caught_up`] and [`PgProjection::require_caught_up`]
+//! refuse when the watermark is not exactly the pin.
+//! `//tla:unpinned_projection_check`.
 //!
 //! # ⛔ Relief is not `ORDER BY seq`
 //!
 //! Seq is the acquisition ordinal. FIFO uses it. HIFO, LIFO, LOFO, and the
 //! holding-period methods do not. A planner-style scan that takes the head of
 //! a seq index is the silent SQL FIFO `//tla:stale_method_relief_check` exists
-//! to catch. [`SqlProjection::relieve`] loads the rows and calls
-//! [`ratio_project::relief::relieve_by`] under the elected method. MinTax,
-//! SpecID, average cost, and wash stay elections — not a `Method` variant.
+//! to catch. [`SqlProjection::relieve`] and [`PgProjection::relieve`] load
+//! the rows and call [`ratio_project::relief::relieve_by`] under the elected
+//! method. MinTax, SpecID, average cost, and wash stay elections — not a
+//! `Method` variant.
 //!
 //! # What this is not
 //!
-//! A live Postgres process, planner pushdown proved against
-//! `Pg.Rel.Semantics`, or the measured 20M-lot claim. Those stay #8 / #159.
-//! `Ratio.Exec` still holds: a database does not change the IO floor.
+//! Planner pushdown proved against `Pg.Rel.Semantics`, console/API reads
+//! through the store, or the measured 20M-lot claim. Those stay #8 / #159.
+//! `Ratio.Exec` still holds: a database does not change the IO floor. The
+//! live apply is [`PgProjection`]; the running read model is still the
+//! in-memory `Projection`.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -52,9 +56,12 @@ use anyhow::{bail, Result};
 use ratio_project::{relief, AsOf, Projection, Totals};
 use ratio_store::{FileBook, Journal, JournalEntry};
 
-/// The Postgres contract this store implements. Apply it to a server when
-/// #159 measures a live engine; the denotational tables below are the same
-/// shape either way.
+mod pg;
+pub use pg::PgProjection;
+
+/// The Postgres contract this store implements. [`PgProjection::apply_schema`]
+/// applies it to a live engine; the denotational tables below are the same
+/// shape. Interactive scale stays #159.
 pub const SCHEMA_SQL: &str = include_str!("../schema.sql");
 
 /// The journal prefix a figure must be folded from, content-addressed.
@@ -120,8 +127,9 @@ pub struct AggregateRow {
 /// The Stage E store: four tables, one watermark, journal remains SoR.
 ///
 /// ⚠ IN-PROCESS, BECAUSE THE SEMANTICS ARE WHAT THE TLA NAMED. A live
-/// Postgres is the same rows behind a different engine. CI must stay able to
-/// refuse a stale watermark and a silent FIFO without standing up a server.
+/// engine is [`PgProjection`] — the same rows behind `psql`. CI must stay
+/// able to refuse a stale watermark and a silent FIFO without standing up
+/// a server; `//crates/ratio-sql-project:pg_engine_test` is the live walk.
 #[derive(Clone, Debug, Default)]
 pub struct SqlProjection {
     watermarks: BTreeMap<String, Watermark>,
@@ -160,42 +168,20 @@ impl SqlProjection {
     /// ⛔ REPLACE, NEVER APPEND ONTO EXISTING ROWS. Re-folding onto state
     /// already held double-counts; `//tla:rebuild_double_counts_check`.
     pub fn replay_book(&mut self, book_id: &str, path: &Path) -> Result<Watermark> {
-        let book = FileBook::open(path)?;
-        let entries = book.entries()?;
-        let pin = JournalPin::of(&entries)?;
-        if let Some(have) = self.watermarks.get(book_id) {
-            if have.prefix > pin.prefix {
-                bail!(
-                    "projection {book_id} is at prefix {} digest {}; the journal is shorter \
-                     ({}). A rewind would un-apply entries the snapshot has already folded, \
-                     and there is nothing to un-apply them with. The journal is the system \
-                     of record — restore it, or drop this snapshot",
-                    have.prefix,
-                    have.digest,
-                    pin.prefix
-                );
-            }
-            if have.prefix == pin.prefix && have.digest != pin.digest {
-                bail!(
-                    "projection {book_id} is at prefix {} but the journal digest is {}, not \
-                     {}. The file was replaced. Replay from empty, not onto this snapshot",
-                    have.prefix,
-                    pin.digest,
-                    have.digest
-                );
-            }
-        }
-        let projection = Projection::of_book(path)?;
-        if projection.prefix() != pin.prefix {
-            bail!(
-                "fold prefix {} is not the journal height {} — the snapshot would pin a \
-                 prefix it did not fold",
-                projection.prefix(),
-                pin.prefix
-            );
-        }
-        let snapshot = Snapshot::from_projection(book_id, &projection, pin)?;
+        let snapshot = fold_book_snapshot(book_id, path)?;
+        let pin = JournalPin {
+            prefix: snapshot.watermark.prefix,
+            digest: snapshot.watermark.digest.clone(),
+        };
+        refuse_replay_onto(self.watermarks.get(book_id), &pin, book_id)?;
         self.commit(snapshot)
+    }
+
+    /// The SQL a live engine would apply for this book. The fold is the
+    /// same as [`Self::replay_book`]; the bytes are what [`PgProjection`]
+    /// commits. Tests inspect the transaction without a server.
+    pub fn replay_sql(book_id: &str, path: &Path) -> Result<String> {
+        crate::pg::commit_sql(&fold_book_snapshot(book_id, path)?)
     }
 
     /// Fold a slice under one method. For tests that are not a `FileBook`.
@@ -374,8 +360,55 @@ impl SqlProjection {
     }
 }
 
+/// Fold the journal at `path` into one snapshot. Shared by the in-process
+/// store and the live engine so they cannot disagree on what "replay" is.
+fn fold_book_snapshot(book_id: &str, path: &Path) -> Result<Snapshot> {
+    let book = FileBook::open(path)?;
+    let entries = book.entries()?;
+    let pin = JournalPin::of(&entries)?;
+    let projection = Projection::of_book(path)?;
+    if projection.prefix() != pin.prefix {
+        bail!(
+            "fold prefix {} is not the journal height {} — the snapshot would pin a \
+             prefix it did not fold",
+            projection.prefix(),
+            pin.prefix
+        );
+    }
+    Snapshot::from_projection(book_id, &projection, pin)
+}
+
+/// Refuse a rewind or a same-height digest swap. The journal is SoR; there
+/// is nothing to un-apply a folded prefix with.
+fn refuse_replay_onto(have: Option<&Watermark>, pin: &JournalPin, book_id: &str) -> Result<()> {
+    let Some(have) = have else {
+        return Ok(());
+    };
+    if have.prefix > pin.prefix {
+        bail!(
+            "projection {book_id} is at prefix {} digest {}; the journal is shorter \
+             ({}). A rewind would un-apply entries the snapshot has already folded, \
+             and there is nothing to un-apply them with. The journal is the system \
+             of record — restore it, or drop this snapshot",
+            have.prefix,
+            have.digest,
+            pin.prefix
+        );
+    }
+    if have.prefix == pin.prefix && have.digest != pin.digest {
+        bail!(
+            "projection {book_id} is at prefix {} but the journal digest is {}, not \
+             {}. The file was replaced. Replay from empty, not onto this snapshot",
+            have.prefix,
+            pin.digest,
+            have.digest
+        );
+    }
+    Ok(())
+}
+
 /// Rows built off ONE `Projection` at ONE prefix, then committed together.
-struct Snapshot {
+pub(crate) struct Snapshot {
     watermark: Watermark,
     lots: BTreeMap<LotKey, relief::Lot>,
     positions: BTreeMap<PositionKey, (i64, i64)>,
@@ -590,9 +623,11 @@ mod tests {
             "CREATE TABLE lots",
             "CREATE TABLE positions",
             "CREATE TABLE aggregates",
+            "UNIQUE NULLS NOT DISTINCT",
             "journal.jsonl STAYS THE SYSTEM OF RECORD",
             "ONE WATERMARK, NOT ONE PER TABLE",
             "ORDER BY seq IS NOT FIFO RELIEF",
+            "PRIMARY KEY CANNOT HOLD A NULL",
         ] {
             assert!(sql.contains(needle), "schema lost {needle:?}");
         }
@@ -771,5 +806,42 @@ mod tests {
         let msg = format!("{err:#}");
         assert!(msg.contains("digest"), "{msg}");
         assert!(msg.contains("replaced"), "{msg}");
+    }
+
+    #[test]
+    fn commit_sql_is_one_transaction_that_replaces_and_is_not_a_fifo_walk() {
+        // ⭐ THE LIVE ENGINE'S WRITE, WITHOUT A SERVER. A commit that appended
+        // onto existing rows, omitted BEGIN, or walked `ORDER BY seq` would
+        // be the silent defects `//tla:rebuild_double_counts_check` and
+        // `//tla:stale_method_relief_check` name — and a unit test that only
+        // ran against BTreeMap would not see them.
+        let (d, _) = seed(
+            "sql-shape",
+            b"lot_method = \"hifo\"\nrules = []\n",
+            &[("vti", 1_000, 10), ("vti", 10_000, 10)],
+        );
+        let sql = SqlProjection::replay_sql("sql-shape", &d).unwrap();
+        assert!(sql.contains("BEGIN;"), "{sql}");
+        assert!(sql.contains("COMMIT;"), "{sql}");
+        let del_lots = sql.find("DELETE FROM lots").expect("replace starts with delete");
+        let ins_mark = sql
+            .find("INSERT INTO projection_watermark")
+            .expect("watermark is written");
+        let ins_lots = sql.find("INSERT INTO lots").expect("lots are written");
+        assert!(del_lots < ins_mark, "children go before the watermark insert");
+        assert!(ins_mark < ins_lots, "watermark is in place before child rows");
+        assert!(
+            !sql.to_ascii_lowercase().contains("order by seq"),
+            "the write is not a FIFO walk: {sql}"
+        );
+        assert!(
+            !sql.contains("lot_method"),
+            "the schema must not invent a Method column: {sql}"
+        );
+        assert!(
+            sql.contains("INSERT INTO positions"),
+            "rest-map and held rows share the commit"
+        );
+        assert!(sql.contains("INSERT INTO aggregates"), "{sql}");
     }
 }

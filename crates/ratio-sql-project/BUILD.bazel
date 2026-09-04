@@ -7,9 +7,10 @@ exports_files(["Cargo.toml", "schema.sql"])
 # ⛔ Stage E table projection. `//tla:sql_projection_check` is the safety
 # argument: a figure is folded from ONE journal prefix across every table.
 # `schema.sql` is the Postgres contract; the crate is the denotational store
-# those tables name. The journal stays the system of record.
+# those tables name, and `PgProjection` applies the same file to a live
+# engine. The journal stays the system of record.
 #
-# ⚠ A live Postgres process and the 20M-lot interactive claim stay #8 / #159.
+# ⚠ Planner pushdown and the 20M-lot interactive claim stay #8 / #159.
 # This package must not grow a silent SQL FIFO: relief goes through
 # `ratio_project::relief`, which is the walk `Ratio.Lots` proves.
 
@@ -34,4 +35,34 @@ rust_test(
     crate = ":ratio-sql-project",
     compile_data = ["schema.sql"],
     edition = "2021",
+)
+
+# ⛔ NOT A TLA PROBE. `manual` keeps this out of `bazel test //...` so a
+# developer without a server stays green — the same tag the probes use for
+# the opposite reason (those must FAIL). CI runs this target by name
+# against a Postgres service container and it must PASS. A skip-if-unset
+# would be the green suite that tests nothing.
+#
+# `no-sandbox` + `requires-network`: the test talks to localhost via `psql`
+# on PATH. A hermetic sandbox has neither.
+rust_test(
+    name = "pg_engine_test",
+    srcs = ["tests/pg_live.rs"],
+    crate_name = "pg_engine_test",
+    crate_root = "tests/pg_live.rs",
+    edition = "2021",
+    size = "small",
+    tags = [
+        "manual",
+        "no-sandbox",
+        "requires-network",
+    ],
+    deps = [
+        ":ratio-sql-project",
+        "//crates/ratio-nav",
+        "//crates/ratio-project",
+        "//crates/ratio-rules",
+        "//crates/ratio-store",
+        "@crates//:anyhow",
+    ],
 )

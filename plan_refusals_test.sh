@@ -300,6 +300,12 @@ BUILT=(
   # registration stay leftover on issue 22. The sentence it matches
   # is in the 2026-09-04 Cognito-teardown amendment.
   "unused Cognito CloudFormation resources removed"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Applying the projection schema to a live engine is not on the
+  # refusal list — planner pushdown, console/API through the store,
+  # and the 20M-lot claim stay leftover. The sentence it matches is
+  # in the 2026-09-04 live-engine amendment.
+  "the projection schema applies to a live engine"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
