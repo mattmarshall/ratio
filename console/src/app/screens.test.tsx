@@ -569,8 +569,9 @@ describe("a first-class book", () => {
       expect(screen.getByText("LP 40.00")).toBeDefined();
       expect(screen.queryByText("GP 8.00")).toBeNull();
       expect(screen.queryByText("LP 32.00")).toBeNull();
+      // The row is an <a role="row"> — query the row, not a nested link.
       expect(
-        screen.getByRole("link", { name: /Capital call/ }).getAttribute("href"),
+        screen.getByRole("row", { name: /Capital call/ }).getAttribute("href"),
       ).toBe("/books/harbourline-global-value/entries/call-1");
       expect(screen.getByText(/posted amounts, not a waterfall/)).toBeDefined();
     } finally {
