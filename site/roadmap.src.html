@@ -428,11 +428,13 @@ __STYLE__
           <code>RATIO_DEMO_OPEN</code> defaults off on the deployed
           demo, so two AuthKit subjects isolate via membership.
           first-party Connect apps call ConnectApiUrl.
-          The demo API Lambda leaves
-          <code>RATIO_JOURNAL_BUCKET</code> /
-          <code>RATIO_JOURNAL_PREFIX</code> unset (local
-          <code>/tmp</code> journals; S3 hydrate 503ed production
-          <code>/books</code>). Scale keeps ScaleBucket.
+          The demo API Lambda hydrates ScaleBucket
+          <code>journals/</code>
+          (<code>RATIO_JOURNAL_BUCKET</code> /
+          <code>RATIO_JOURNAL_PREFIX</code>) so CreateBook
+          survives a cold start. Hydrate 503 is transient
+          only. The 40GB scale fold stays on Fargate
+          ScaleTask. Scale keeps ScaleBucket.
           Unused Cognito CloudFormation resources are removed.
           <code>DEMO_MEMBERS</code> naming a live WorkOS
           <code>sub</code> and WorkOS dashboard registration remain
