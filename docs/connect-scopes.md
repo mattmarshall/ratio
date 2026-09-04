@@ -57,7 +57,7 @@ the grant for when that door exists; it does not mint the RPC.
 | `books:ingest` | Deliveries into the ingest plane | `Ingest` | Not a bank-OAuth product |
 | `journals:read` | Entries, digests, prefix | journal fold / prefix reads | — |
 | `journals:post` | Post **allowlisted** templates for this `client_id` | `ApplyEvent` | Not a general append; see [allowlist](#journalspost-allowlist) |
-| `statements:read` | Sheet / P&L / cash-flow / aging / close status | kind-selected chrome | Not a forecast, not a credit score |
+| `statements:read` | Sheet / P&L / cash-flow / aging / close status / Personal cash forecast | kind-selected chrome | Not a bank-balance predictor, not a credit score |
 | `views:read` | As-of cuts; which views a book declares | `ListViews` / `GetView` | — |
 | `positions:read` | Holdings | positions fold | — |
 | `lots:read` | Open lots, realized gains, wash flags when cited | lot book | Not a Method, not an Order |
@@ -125,7 +125,7 @@ The issue's refuse list, said here so a later RPC does not "just" add them:
 
 client portal · bank OAuth · CRM · tax e-file · vendor portal · waterfall
 engine · GC/sub marketplace · e-signature · AIA G702 product UI · payroll ·
-inventory / COGS · credit score · cash forecast · equalization
+inventory / COGS · credit score · bank balance predictors · equalization
 calculation · drip subscription packaging · side-pocket ops ·
 FX rate providers (fact apps; #178).
 

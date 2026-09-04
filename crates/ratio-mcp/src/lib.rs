@@ -582,6 +582,7 @@ fn tool_post_events(book: &std::path::Path, args: &Value) -> Result<String> {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })?;
         posted += 1;
     }

@@ -582,6 +582,7 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str)
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
             })?;
         }
     }
@@ -1551,6 +1552,7 @@ fn apply(book: PathBuf, file: &str) -> Result<()> {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })?;
         posted += 1;
     }
@@ -2890,6 +2892,7 @@ weight = -1
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
 

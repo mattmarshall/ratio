@@ -2727,6 +2727,148 @@ describe("a first-class book", () => {
         }),
       );
       expect(calls[0]?.slice(1)).toEqual(["household", "book", "cashflow", "2026-03"]);
+      expect(calls[1]?.slice(1)).toEqual(["household", "book", "forecast", "2026-03"]);
+    } finally {
+      wire.listAccounts = real;
+    }
+  });
+
+  it("cites an unset cash forecast rather than a measured zero", async () => {
+    const CashFlow = (await import("./books/[book]/views/[view]/cashflow/page")).default;
+    const real = wire.listAccounts;
+    wire.listAccounts = (async () => ({
+      accounts: [
+        {
+          name: "funds/household/views/book/accounts/1",
+          displayName: "Cash and bank",
+          dimension: "1",
+          type: "ASSET",
+          debit: "0",
+          credit: "0",
+          balance: "0",
+          abnormal: false,
+          postingCount: "0",
+          currencyTotals: [],
+          units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
+        },
+      ],
+      nextPageToken: "",
+    })) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        CashFlow({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("Cash forecast")).toBeDefined();
+      expect(
+        screen.getByText(
+          /no scheduled or forecast journal in this window — unset, not a measured zero/,
+        ),
+      ).toBeDefined();
+      expect(screen.queryByText("0.00")).toBeNull();
+    } finally {
+      wire.listAccounts = real;
+    }
+  });
+
+  it("cites scheduled net cash from the forecast fold", async () => {
+    const CashFlow = (await import("./books/[book]/views/[view]/cashflow/page")).default;
+    const real = wire.listAccounts;
+    wire.listAccounts = (async (
+      _c: unknown,
+      _book: string,
+      _view: string,
+      filter?: string,
+    ) => {
+      if (filter === "forecast") {
+        return {
+          accounts: [
+            {
+              name: "funds/household/views/book/accounts/1",
+              displayName: "Cash and bank",
+              dimension: "1",
+              type: "ASSET",
+              debit: "4000",
+              credit: "1000",
+              balance: "3000",
+              abnormal: false,
+              postingCount: "2",
+              currencyTotals: [],
+              units: "",
+              unitsIssued: "",
+              unitsRedeemed: "",
+            },
+            {
+              name: "funds/household/views/book/accounts/30",
+              displayName: "Income",
+              dimension: "30",
+              type: "REVENUE",
+              debit: "0",
+              credit: "4000",
+              balance: "-4000",
+              abnormal: false,
+              postingCount: "1",
+              currencyTotals: [],
+              units: "",
+              unitsIssued: "",
+              unitsRedeemed: "",
+            },
+            {
+              name: "funds/household/views/book/accounts/10",
+              displayName: "Living expenses",
+              dimension: "10",
+              type: "EXPENSE",
+              debit: "1000",
+              credit: "0",
+              balance: "1000",
+              abnormal: false,
+              postingCount: "1",
+              currencyTotals: [],
+              units: "",
+              unitsIssued: "",
+              unitsRedeemed: "",
+            },
+          ],
+          nextPageToken: "",
+        };
+      }
+      return {
+        accounts: [
+          {
+            name: "funds/household/views/book/accounts/1",
+            displayName: "Cash and bank",
+            dimension: "1",
+            type: "ASSET",
+            debit: "0",
+            credit: "0",
+            balance: "0",
+            abnormal: false,
+            postingCount: "0",
+            currencyTotals: [],
+            units: "",
+            unitsIssued: "",
+            unitsRedeemed: "",
+          },
+        ],
+        nextPageToken: "",
+      };
+    }) as unknown as typeof wire.listAccounts;
+    try {
+      await renderAsync(
+        CashFlow({
+          params: params({ book: "household", view: "book" }),
+          searchParams: params({ period: "2026-03" }),
+        }),
+      );
+      expect(screen.getByLabelText("Cash forecast")).toBeDefined();
+      expect(screen.getByText("30.00")).toBeDefined();
+      expect(
+        screen.getByText(/posted scheduled_\* \/ forecast_\* entries this window/),
+      ).toBeDefined();
     } finally {
       wire.listAccounts = real;
     }
@@ -3500,6 +3642,7 @@ describe("an operating-business statement", () => {
         }),
       );
       expect(calls[0]?.slice(1)).toEqual(["studio", "book", "cashflow", "2026-03"]);
+      expect(calls).toHaveLength(1);
     } finally {
       wire.listAccounts = real;
     }

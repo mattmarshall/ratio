@@ -155,6 +155,37 @@ export interface CashFlowStatement {
 }
 
 /**
+ * Citeable Personal cash forecast: net cash from posted scheduled /
+ * forecast journal kinds in the window.
+ *
+ * ⛔ UNSET WHEN NONE EXIST. ListAccounts under `forecast-*` is
+ * Activity-shaped over those kinds only. An empty fold is zeros on
+ * the chart — that is not a measured $0.00. A posted income and
+ * spend that net to zero is a real zero (something moved).
+ *
+ * ⛔ NOT ENVELOPES, NOT PAYROLL, NOT A BANK PREDICTOR. Those stay
+ * refused or Connect. This helper only reads the fold.
+ */
+export interface CashForecast {
+  /** Net cash from scheduled/forecast entries, or null when none exist. */
+  readonly net: bigint | null;
+}
+
+/** Fold `forecast-*` accounts into one citeable figure. */
+export function cashForecast(accounts: readonly Account[]): CashForecast {
+  const set = accounts.some((a) => raw(a.balance) !== 0n || moved(a));
+  if (!set) {
+    return { net: null };
+  }
+  const cashAccounts = accounts.filter(isCashAccount);
+  const net = cashAccounts.reduce(
+    (n, a) => n + raw(a.debit) - raw(a.credit),
+    0n,
+  );
+  return { net };
+}
+
+/**
  * Roll a Loan-shaped personal chart into a period cash-flow statement.
  *
  * ListAccounts under `cashflow-*` puts period activity in debit/credit and

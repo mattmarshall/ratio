@@ -241,6 +241,17 @@ BUILT=(
   # Personal, broker OAuth, and tax e-file stay refused. The
   # sentence it matches is in the 2026-09-04 #187 amendment.
   "optional lot relief on household Investments"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Point-in-time / restatement reporting is not on the refusal
+  # list — performance attribution and rewrite-in-place stay
+  # refused. The sentence it matches is in the 2026-09-04 #186
+  # amendment that landed on main (#219).
+  "point-in-time / restatement reporting stays citeable"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # A Personal cash forecast is not on the refusal list — envelopes,
+  # payroll, and bank-balance predictors stay refused or Connect. The
+  # sentence it matches is in the 2026-09-04 #163 amendment.
+  "a Personal cash forecast"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

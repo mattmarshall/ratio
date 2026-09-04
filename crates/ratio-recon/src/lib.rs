@@ -565,6 +565,7 @@ pub fn replay(events: &[Event], set: &RuleSet, config: &Digest) -> Result<Vec<Jo
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         });
     }
     Ok(entries)
@@ -1929,6 +1930,7 @@ weight = -1
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         }
     }
 

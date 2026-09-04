@@ -5,6 +5,7 @@ import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
 import {
   cashFlowStatement,
+  cashForecast,
   cashShown,
   operatingCashFlowStatement,
 } from "@/lib/cashflow";
@@ -35,6 +36,11 @@ export const dynamic = "force-dynamic";
  * purchase account distinct from a cash↔investments transfer.
  *
  * Fund, project, and investment books 404 rather than wearing this label.
+ *
+ * Personal books also cite a cash forecast from `filter=forecast-YYYY[-MM]`:
+ * posted `scheduled_*` / `forecast_*` journal kinds only. Unset when none
+ * exist — not a fake zero. Envelopes, payroll, and bank predictors stay
+ * refused or Connect. Operating does not wear the forecast cite.
  */
 async function CashFlow({
   params,
@@ -56,6 +62,11 @@ async function CashFlow({
   if (!personal && !operating) notFound();
 
   const { accounts } = await listAccounts(c, book, view, "cashflow", window);
+  const forecast = personal
+    ? cashForecast(
+        (await listAccounts(c, book, view, "forecast", window)).accounts,
+      )
+    : null;
   const r = operating
     ? operatingCashFlowStatement(accounts)
     : cashFlowStatement(accounts, b.loans ?? []);
@@ -88,7 +99,11 @@ async function CashFlow({
         active={window}
         param="period"
         label="Period"
-        note={`${periodLabel(window)} — dated entries only, not a forecast`}
+        note={
+          personal
+            ? `${periodLabel(window)} — dated actuals; forecast cites scheduled / forecast kinds only`
+            : `${periodLabel(window)} — dated entries only, not a forecast`
+        }
       />
 
       {bothUnset ? (
@@ -378,6 +393,28 @@ async function CashFlow({
           </div>
         ) : null}
       </div>
+
+      {personal && forecast ? (
+        <div className="tb" role="table" aria-label="Cash forecast">
+          <div className="posgroup">
+            <div className="posacct">Forecast</div>
+            <div className="tbrow static" role="row">
+              <span role="cell">
+                Scheduled net cash
+                <span className="at">
+                  {forecast.net === null
+                    ? "no scheduled or forecast journal in this window — unset, not a measured zero"
+                    : "posted scheduled_* / forecast_* entries this window — not a bank predictor, not envelopes, not payroll"}
+                </span>
+              </span>
+              <span role="cell" className="num">
+                {cashShown(forecast.net)}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <p className="note">
         Inflow is positive, outflow is negative — cash, not{" "}
         {operating ? "accrual profit" : "net worth"}.

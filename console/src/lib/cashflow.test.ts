@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   beginningOf,
   cashFlowStatement,
+  cashForecast,
   cashFrom,
   cashShown,
   isCashAccount,
@@ -358,5 +359,36 @@ describe("an operating-company cash-flow statement", () => {
     expect(r.income).toBe(1_000n);
     expect(r.operating).toBe(1_000n);
     expect(cashFrom(accounts[1]!)).toBe(1_000n);
+  });
+});
+
+describe("a household cash forecast", () => {
+  it("stays unset when no scheduled or forecast entry moved", () => {
+    const accounts: Account[] = [
+      acct("1", "Cash and bank", "ASSET", "0", "0", "0"),
+      acct("30", "Income", "REVENUE", "0", "0", "0"),
+      acct("10", "Living expenses", "EXPENSE", "0", "0", "0"),
+    ];
+    const r = cashForecast(accounts);
+    expect(r.net).toBeNull();
+    expect(cashShown(r.net)).toBe("—");
+  });
+
+  it("cites scheduled net cash and treats a net-zero fold as a real zero", () => {
+    const moved: Account[] = [
+      acct("1", "Cash and bank", "ASSET", "4000", "1000", "3000"),
+      acct("30", "Income", "REVENUE", "0", "4000", "-4000"),
+      acct("10", "Living expenses", "EXPENSE", "1000", "0", "1000"),
+    ];
+    expect(cashForecast(moved).net).toBe(3000n);
+    expect(cashShown(cashForecast(moved).net)).toBe("30.00");
+
+    const even: Account[] = [
+      acct("1", "Cash and bank", "ASSET", "1000", "1000", "0"),
+      acct("30", "Income", "REVENUE", "0", "1000", "-1000"),
+      acct("10", "Living expenses", "EXPENSE", "1000", "0", "1000"),
+    ];
+    expect(cashForecast(even).net).toBe(0n);
+    expect(cashShown(cashForecast(even).net)).toBe("0.00");
   });
 });

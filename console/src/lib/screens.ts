@@ -74,8 +74,9 @@ export const FUND_SCREENS: readonly Screen[] = [
 
 /**
  * Household figures. Balance sheet, period P&L, the net-worth bridge,
- * the period cash-flow statement, the period close, budget vs actual,
- * and the loan roll-forward — not ABOR. `[personal] lot_relief`
+ * the period cash-flow statement (and a citeable forecast from posted
+ * scheduled / forecast journal kinds — unset when none exist), the
+ * period close, budget vs actual, and the loan roll-forward — not ABOR. `[personal] lot_relief`
  * elects the lot engines already on the book; it does not add
  * Positions / NAV / Exceptions to this list.
  *
