@@ -66,9 +66,10 @@ LICENSE_EXCEPTIONS = ["not permissively licensed"]
 # #153 landed the lots/positions projection schema; the projection
 # schema applies to a live engine is a later Built phrase. Requiring
 # the page to call "Postgres" built would still enforce a lie: the
-# 20M-lot claim stays #159. Console/API reads through the store
-# and planner pushdown vs Pg.Rel.Semantics are later Built phrases.
-# That word belongs on the spec side.
+# 40GB journal fold and interactive-scale engine word stay #8.
+# Console/API reads through the store, planner pushdown vs
+# Pg.Rel.Semantics, and the measured 20M-lot fold are later Built
+# phrases. That word belongs on the spec side.
 PLAN_MARKS_ENGINE_DONE = [
     "tax lots and cost basis",
     "multi-currency and FX",
@@ -137,6 +138,10 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ Planner pushdown vs Pg.Rel.Semantics is Built; the word
     # "Postgres" as the interactive-scale engine stays spec-only.
     "planner pushdown vs Pg.Rel.Semantics",
+    # ⚠ The measured 20M-lot fold is Built; the word "Postgres"
+    # as the interactive-scale engine stays spec-only. The 40GB
+    # journal fold stays on Fargate. Same class of defect as #67.
+    "the measured 20M-lot fold",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -166,6 +171,7 @@ ROADMAP_ENGINE_BUILT = [
     "the projection schema applies to a live engine",
     "console/API reads through the store",
     "planner pushdown vs Pg.Rel.Semantics",
+    "the measured 20M-lot fold",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",

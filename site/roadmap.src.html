@@ -152,7 +152,14 @@ __STYLE__
           scan they name; a filter on the NULL-extended side of
           a watermark ⋉ lots join stays refused. Relief is
           still <code>relieve_by</code>, not
-          <code>ORDER BY seq</code>.</li>
+          <code>ORDER BY seq</code>.
+          the measured 20M-lot fold — HANDOFF geometry
+          10,000 × 2,000 = 20,000,000 lots through
+          <code>relieve_by</code> in 17.4 s, digest
+          <code>bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3</code>.
+          Journal stays the system of record. The 140-million-entry
+          / 40GB journal fold stays on Fargate ScaleTask. The demo
+          Lambda does not host twenty million lots.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>live custodian statement ingest — a CreateBook Investment book
@@ -462,11 +469,13 @@ __STYLE__
           the seam; a forge is still ahead.</li>
           <li>Postgres for a live relational engine at interactive
           scale. The schema applies, console/API reads can
-          use the snapshot, and the Stage E rewrite surface is
-          proved; twenty million lots as a routine table stays
-          <a href="https://github.com/mattmarshall/ratio/issues/159">#159</a>
-          under umbrella
-          <a href="https://github.com/mattmarshall/ratio/issues/8">#8</a>.</li>
+          use the snapshot, the Stage E rewrite surface is
+          proved, and a twenty-million-lot projection fold was
+          measured in-repo; the demo Lambda still does not host
+          those rows, and the 40GB journal fold stays on Fargate.
+          Umbrella
+          <a href="https://github.com/mattmarshall/ratio/issues/8">#8</a>
+          stays open.</li>
           <li>Every one of the sixteen capability areas below, at varying
           depths of specification.</li>
           <li>The workload planner, the authoring assistant, and every interface

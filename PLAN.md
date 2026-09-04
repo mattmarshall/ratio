@@ -3944,3 +3944,74 @@ as a routine table. That remains #159.
 The demo API hydrates ScaleBucket `journals/` so CreateBook
 survives a cold start; this amendment does not reopen the
 #230 `/tmp`-only wipe.
+
+### Amendment, 2026-09-04 — the measured 20M-lot fold
+
+[#159](https://github.com/mattmarshall/ratio/issues/159) leftover after
+the Stage E interactive path (#153 / #234 / #235 / #236): a visitor
+still could not RUN a twenty-million-lot fold as a routine
+measurement. The geometry HANDOFF already named is 10,000 securities
+× 2,000 lots = 20,000,000 rows, not `ratio closure`'s 500 × 40,000
+dial. This slice measures that projection fold in-repo. It leaves
+the #8 umbrella open.
+
+**What this amendment records.**
+
+- **Geometry.** `Geometry::HANDOFF` is 10,000 × 2,000. A 500 × 40,000
+  product is a different fund (`//:scale_shapes_test`). Acquired
+  stays unset. Relief is `relieve_by` (HIFO takes the dear lot;
+  a seq scan takes the cheap one). MinTax, SpecID, average cost,
+  and wash stay elections.
+- **Path.** `//crates/ratio-sql-project:fold_scale_test` generates
+  the open-lot projection, digests every row, relieves every
+  holding, and publishes
+  `crates/ratio-sql-project/fold_scale.recorded.json`. Measured
+  on a 4 vCPU / 15 GiB Linux fastbuild: **17.4 s**, digest
+  `bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3`.
+  Small geometries load the same rows into `SqlProjection` /
+  `PgProjection`; the HANDOFF row refuses `load_scale` (that
+  would be 20M string-keyed INSERTs, not the claim).
+- **Journal stays SoR.** This is a projection load of the open-lot
+  geometry, not a replay of the ~140 million entries / ~40 GB
+  journal. That fold stays on Fargate ScaleTask / ScaleBucket.
+  `Ratio.Exec` still holds: a database does not change the IO
+  floor. Pushdown vs `Pg.Rel.Semantics` was already Built.
+
+**the measured 20M-lot fold** is the Built phrase this amendment
+adds.
+
+**What this is NOT:**
+
+- **Not closing #8.** The umbrella stays open. The public roadmap
+  still does not call Postgres the interactive-scale engine.
+- **Not the 140M-entry / 40GB journal fold.** ScaleTask /
+  ScaleBucket stay the place that fold runs. This process does
+  not have those secrets and does not claim it ran that task.
+- **Not claiming the demo Lambda hosts 20M lots.** A visitor
+  still cannot RUN the forty-gigabyte journal in a request.
+- **Not moving authority off `journal.jsonl`.** Replay and
+  content-addressed digests remain the product.
+- **Not CRM, a reporting warehouse in core, a client portal, or
+  a `screensFor` fork.** Connect apps can warehouse.
+  Equalization, drip, and side-pocket stay Connect (#177).
+- **Not a silent SQL FIFO.** `ORDER BY seq` is display order.
+  HIFO still takes the dear lot.
+- **Not re-deriving planner pushdown.** That phrase is already
+  Built.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #159. It does not close #8. It does not reopen
+#153, #234, #235, or #236. leftover #22 stays on WorkOS.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can run `bazel test //crates/ratio-sql-project:fold_scale_test`,
+see 20,000,000 lots, see digest
+`bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3`,
+see HIFO cost 2,000,000 against a seq-scan cost of 1,000, and
+cite the recorded JSON from the scale screen. It cannot show a
+visitor folding the 140-million-entry journal inside a Lambda
+request, or twenty million lots as a browser table. Those remain
+the #8 umbrella / ScaleTask path.
+The demo API hydrates ScaleBucket `journals/` so CreateBook
+survives a cold start; this amendment does not reopen the
+#230 `/tmp`-only wipe.

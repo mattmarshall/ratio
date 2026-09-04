@@ -24,8 +24,9 @@
 //!
 //! # What this is not
 //!
-//! The measured 20M-lot claim. That stays #159. `Ratio.Exec` still holds:
-//! a database does not change the IO floor.
+//! The 140M-entry / 40GB journal fold. `Ratio.Exec` still holds:
+//! a database does not change the IO floor. The measured 20M-lot
+//! projection fold is [`crate::fold_scale`].
 
 use anyhow::{bail, Result};
 

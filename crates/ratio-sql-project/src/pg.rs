@@ -269,7 +269,7 @@ impl PgProjection {
         })
     }
 
-    fn commit(&self, snap: &Snapshot) -> Result<Watermark> {
+    pub(crate) fn commit(&self, snap: &Snapshot) -> Result<Watermark> {
         self.exec(&commit_sql(snap)?)?;
         Ok(snap.watermark.clone())
     }

@@ -2450,6 +2450,16 @@ const SCALE_BODY: &str = r##"<div class="wrap">
     <code>ratio bench --securities 500 --lots-per 40000 --currencies 3</code>,
     or fold a book you already have with
     <code>ratio bench --fold --book DIR</code>.</p>
+    <p class="note">⭐ <strong>Stage E projection fold, measured.</strong>
+    10,000 securities × 2,000 lots = 20,000,000 rows through
+    <code>relieve_by</code> in 17.4 s
+    (digest <code>bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3</code>).
+    That is the open-lot geometry HANDOFF named, not the 140-million-entry
+    / 40GB journal (Fargate ScaleTask) and not this page's 500 × 40,000
+    dial. Journal stays the system of record. The demo Lambda does not
+    host twenty million lots.
+    Cite: <code>bazel test //crates/ratio-sql-project:fold_scale_test</code>
+    and <code>crates/ratio-sql-project/fold_scale.recorded.json</code>.</p>
   </section>
 </div>
 </details>
@@ -3834,5 +3844,21 @@ mod tests {
                 "{name} assigns innerHTML — build with the DOM instead"
             );
         }
+    }
+
+    #[test]
+    fn the_scale_page_cites_the_measured_stage_e_fold() {
+        // ⛔ THE DIGEST IS THE CITATION. A page that quotes 20M lots
+        // without the digest that fold_scale_test locked is the
+        // unshowable claim this screen exists to refuse.
+        assert!(
+            SCALE_BODY.contains(crate::scale::STAGE_E_FOLD_DIGEST),
+            "SCALE_BODY dropped the Stage E digest"
+        );
+        assert!(SCALE_BODY.contains("10,000 securities × 2,000 lots"));
+        assert!(SCALE_BODY.contains("relieve_by"));
+        assert!(SCALE_BODY.contains("The demo Lambda does not"));
+        assert!(SCALE_BODY.contains("host twenty million lots"));
+        assert!(SCALE_BODY.contains("fold_scale.recorded.json"));
     }
 }

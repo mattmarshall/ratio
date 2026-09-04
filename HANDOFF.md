@@ -10,9 +10,12 @@ holding-period category rule; those landed. #153 landed the
 lots/positions projection schema and digest replay; the
 projection schema applies to a live engine; console/API
 reads through the store when `RATIO_PG_URL` is set; planner
-pushdown is proved against `Pg.Rel.Semantics`. #8 and
-#159 stay open (umbrella leftovers; measured 20M lots).
-#6 is closed. Open work is #8 / #159. This
+pushdown is proved against `Pg.Rel.Semantics`. #8 stays open (umbrella leftovers; the public
+roadmap still does not call Postgres the interactive-scale
+engine). #159 is closed: the HANDOFF 10,000 × 2,000
+projection fold was measured in-repo (17.4 s, digest
+`bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3`).
+#6 is closed. Open work is #8. This
 file is the part that does not fit in an issue: what was learned, what
 is load-bearing, and what will bite. Wash sales have a Lean/TLA model
 and a Rust window (`RuleSet.wash_window_days`). `WashRestatement` is a
@@ -101,7 +104,6 @@ reads) and on the fund overview / view chrome — never a bare HTTP
 400. Unpriced stays empty on that field unless a valuation date
 was named; the mark ticket cites unpriced when a date is. No new
 gate semantics. This file closes #188. It does not close #26.
-#159 stays blocked.
 Kind-aware IA (#175): `screensFor` already hid Exceptions /
 Positions / NAV on Personal / Project / Operating; a typed URL,
 legacy `/breaks` redirect, or palette "Open by id" row still
@@ -113,7 +115,6 @@ strikes through `requireFundOps`, and falling back to the
 household fixture 404s those pages. Leftover typed `/wip` /
 `/billing` on Personal and typed `/sheet` / `/pnl` on Investment
 stay on #26. This file closes #175. It does not close #26.
-#159 stays blocked.
 Point-in-time / restatement reporting stays citeable (#186):
 console `/asof` browses a pinned prefix + config digest from a
 close or a strike, and WashRestatement as a citeable record
@@ -139,8 +140,12 @@ pins stay unset, the journal stays SoR. Planner pushdown vs
 (`lean/Ratio/Sql/Pushdown.lean`, `src/plan.rs`): filters push
 into the scan they name; a NULL-extended-side pushdown is a
 refuse; relief is still `relieve_by`. The measured 20M-lot
-claim stays on #159. leftover #22
-stays on WorkOS.
+fold is `fold_scale` / `//crates/ratio-sql-project:fold_scale_test`
+(10,000 × 2,000 = 20,000,000 lots, 17.4 s, digest
+`bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3`).
+The 140M-entry / 40GB journal fold stays on Fargate ScaleTask.
+leftover #22 stays on WorkOS. This file closes #159. It does
+not close #8.
 The demo API hydrates ScaleBucket `journals/` so CreateBook
 survives a cold start; this file does not reopen the #230
 `/tmp`-only wipe. Hydrate 503 is transient only.
@@ -1124,6 +1129,16 @@ running the other, both captioned "twenty million tax lots", gives two figures
 that each tie and describe different books. `//:scale_shapes_test` holds the
 shapes the scale screen offers to the rows in this table.
 
+⭐ **STAGE E PROJECTION FOLD, MEASURED.** `fold_scale` walks that geometry —
+10,000 × 2,000 = 20,000,000 lots — through `relieve_by`, not a journal of
+140 million entries. Fastbuild on 4 vCPU / 15 GiB Linux: **17.4 s**, digest
+`bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3`, HIFO
+cost 2,000,000 against a seq-scan cost of 1,000. Cite
+`crates/ratio-sql-project/fold_scale.recorded.json` and
+`//crates/ratio-sql-project:fold_scale_test`. The 40GB journal fold stays
+on Fargate ScaleTask. The demo Lambda does not host these rows. Journal
+stays SoR. This closes #159. It does not close #8.
+
 ⛔ **AND THE REAL LIMIT WAS NEVER TIME, IT WAS MEMORY.** Every fold in this
 codebase materialized what it folded: 1.85 GB resident to fold 1.77M entries into
 a projection holding 8 MB of lots, and `ratio balance` — which prints a dozen
@@ -1203,7 +1218,7 @@ than one that is entirely unclassified.
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `PoolPeriodEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine — one pass, N view folds, each with a monotonic cut on the journal's own clock and a band bounded by the settlement lag. ⚠ every memory figure in this file is a ONE-VIEW figure; each view carries its own lot book |
-| `crates/ratio-sql-project` | Stage E table snapshot of that fold. One watermark (`prefix` + `ratio_nav::prefix_digest`); lots / positions / aggregates replaced together. A stale pin refuses. Relief is `relieve_by`, not `ORDER BY seq`. Journal stays SoR. `PgProjection` applies `schema.sql` to a live engine via `psql`. `ProjectionReads` is the console/API door when `RATIO_PG_URL` is set. Planner pushdown vs `Pg.Rel.Semantics` is `src/plan.rs` (filter-into-scan; outer-join pushdown refused). The 20M-lot claim stays #159 |
+| `crates/ratio-sql-project` | Stage E table snapshot of that fold. One watermark (`prefix` + `ratio_nav::prefix_digest`); lots / positions / aggregates replaced together. A stale pin refuses. Relief is `relieve_by`, not `ORDER BY seq`. Journal stays SoR. `PgProjection` applies `schema.sql` to a live engine via `psql`. `ProjectionReads` is the console/API door when `RATIO_PG_URL` is set. Planner pushdown vs `Pg.Rel.Semantics` is `src/plan.rs` (filter-into-scan; outer-join pushdown refused). The measured 20M-lot fold is `fold_scale` (HANDOFF 10,000 × 2,000, digest `bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3`, 17.4 s). The 140M-entry / 40GB journal fold stays on Fargate ScaleTask |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
 | `crates/ratio-console` | the console's BFF — 40 RPCs, transcoded onto `/v1`. Lots / positions / Current aggregates read `ProjectionReads` when `RATIO_PG_URL` is set; unset is the in-memory fold. Personal `forecast-YYYY[-MM]` folds posted `scheduled` / `forecast` journal kinds only; unset when none. Connect predictors post that material; they do not close #163 |
 | `crates/ratio-nav/src/explain.rs` | what a strike DOES, as a plan. ⛔ a description of two code paths, not a planner over them — nothing chooses |

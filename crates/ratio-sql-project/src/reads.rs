@@ -22,8 +22,9 @@
 //!
 //! # What this is not
 //!
-//! The measured 20M-lot claim. That stays leftover on #159. Planner
-//! pushdown vs `Pg.Rel.Semantics` is [`crate::plan`].
+//! The 140M-entry / 40GB journal fold. Planner
+//! pushdown vs `Pg.Rel.Semantics` is [`crate::plan`]. The measured
+//! 20M-lot projection fold is [`crate::fold_scale`].
 
 use std::path::Path;
 use std::sync::Mutex;
