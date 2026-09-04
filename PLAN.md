@@ -3768,3 +3768,59 @@ It can show CreateBook surviving a cold start because the
 journal is on ScaleBucket `journals/`. It cannot show a
 lasting `/books` hang from hydrating the 40GB scale fold
 on this Lambda — that fold stays on Fargate.
+
+### Amendment, 2026-09-04 — the projection schema applies to a live engine
+
+[#8](https://github.com/mattmarshall/ratio/issues/8) leftover after
+[#153](https://github.com/mattmarshall/ratio/issues/153): apply
+`crates/ratio-sql-project/schema.sql` to a real server and exercise
+replay plus fail-closed watermark reads against the same tables.
+The journal stays the system of record. This slice does that. It
+leaves the umbrella open.
+
+**What this amendment records.**
+
+- **Apply.** `PgProjection::apply_schema` runs the contract on a
+  live engine through `psql`. The crate stays off the Cargo
+  workspace — no rust-postgres member, no crate_universe churn.
+- **NULL-as-unset survives the engine.** A `PRIMARY KEY` that
+  included `instrument` or `currency` made those columns `NOT
+  NULL` on Postgres; the rest map and an unset currency could not
+  be stored. `UNIQUE NULLS NOT DISTINCT` is the uniqueness the
+  denotational store already had. `acquired` NULL is still unset.
+- **Replay / refuse / relief.** One transaction replaces every
+  table and the watermark. A stale pin refuses.
+  `PgProjection::relieve` loads the rows and calls `relieve_by`.
+  Physical seq order is not FIFO. CI runs
+  `//crates/ratio-sql-project:pg_engine_test` against a Postgres
+  16 service container; `RATIO_PG_URL` unset is a refuse, not a
+  skip. The denotational store still runs in `bazel test //...`.
+
+**the projection schema applies to a live engine** is the Built
+phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not planner pushdown.** `Pg.Rel.Semantics` / tomato-bazel
+  `rules_postgres` stay leftover on #8.
+- **Not wiring the console or the API through the store.** The
+  in-memory `Projection` remains the running read model.
+- **Not the measured 20M-lot claim.** That stays #159.
+- **Not moving authority off `journal.jsonl`.** Replay and
+  content-addressed digests remain the product.
+- **Not claiming Postgres as the interactive-scale engine.** The
+  public roadmap still names that word on the spec side.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment leaves #8 and #159 open. It does not reopen #153. leftover
+#22 stays on WorkOS.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can apply the schema to a server, replay a book, see a NULL
+rest-map row land, see HIFO take the dear lot, and see a stale
+watermark refuse. It cannot show a planner rewrite, a console
+screen that reads the store, or twenty million lots as a routine
+table. Those remain #8 / #159.
+The demo API hydrates ScaleBucket `journals/` so CreateBook
+survives a cold start; this amendment does not reopen the
+#230 `/tmp`-only wipe.

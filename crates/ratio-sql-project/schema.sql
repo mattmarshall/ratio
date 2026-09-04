@@ -29,8 +29,14 @@
 -- and only CPU divides; no plan beats the IO floor. These tables make a
 -- prefix addressable. They do not invent a cheaper fold.
 --
--- Leftover on #8 / #159: applying this file to a live Postgres, planner
--- pushdown proved against Pg.Rel.Semantics, and the measured 20M-lot claim.
+-- Leftover on #8 / #159: planner pushdown proved against Pg.Rel.Semantics,
+-- wiring console/API reads through the store, and the measured 20M-lot claim.
+-- Applying this file to a live engine is `PgProjection` (psql).
+--
+-- ⛔ PRIMARY KEY CANNOT HOLD A NULL. Postgres makes every PK column NOT NULL,
+-- so `instrument` / `currency` as a PK would refuse the rest map and an
+-- unset currency — both are NULL-as-unset, same as `acquired`. UNIQUE
+-- NULLS NOT DISTINCT is the uniqueness the denotational store already has.
 
 CREATE TABLE projection_watermark (
     book_id         text PRIMARY KEY,
@@ -57,7 +63,7 @@ CREATE TABLE positions (
     instrument  text,
     cost        bigint NOT NULL,
     quantity    bigint NOT NULL,
-    PRIMARY KEY (book_id, view_id, dim, instrument)
+    UNIQUE NULLS NOT DISTINCT (book_id, view_id, dim, instrument)
 );
 
 -- debit / credit are the fold's i128 accumulators, stored as text so a
@@ -70,5 +76,5 @@ CREATE TABLE aggregates (
     debit       text NOT NULL,
     credit      text NOT NULL,
     postings    bigint NOT NULL,
-    PRIMARY KEY (book_id, view_id, dim, currency)
+    UNIQUE NULLS NOT DISTINCT (book_id, view_id, dim, currency)
 );

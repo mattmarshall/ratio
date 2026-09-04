@@ -26,12 +26,17 @@ CARGO_BAZEL_REPIN=1 bazel build //...
 Bazelisk (or Bazel at the version in `.bazelversion`), a JDK for TLC, and
 Python 3 for the lint and mirror tests. The Lean toolchain, the Rust toolchain
 and every crate are fetched hermetically — there is nothing else to install, and
-nothing to run as a service.
+nothing to run as a service for `bazel test //...`.
+
+The live projection engine (`//crates/ratio-sql-project:pg_engine_test`) is
+tagged `manual` so it is not in that set. It needs `psql` and a Postgres
+16 server; see [Live projection engine](#live-projection-engine) below.
 
 ## What runs in CI
 
 `bazel build //...` then `bazel test //...`, plus `console.yml` for a change
-under `console/`. ⚠ Bazel alone WAS the whole gate and no longer is — it has no
+under `console/`, plus the live projection engine against a Postgres 16
+service container. ⚠ Bazel alone WAS the whole gate and no longer is — it has no
 JavaScript toolchain since the console left the binary. Bazel covers:
 
 | | |
@@ -40,7 +45,8 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//lean:audit_proofs_test` | no `sorry`, `admit`, `axiom` or `native_decide`; every file sets `warningAsError` |
 | `//tla:*_check` | seven model checks |
 | `//tla:probes_test` | every failure-path probe can still say what it claims |
-| `//crates/*:*_test` | the Rust |
+| `//crates/*:*_test` | the Rust (except `pg_engine_test`, below) |
+| `//crates/ratio-sql-project:pg_engine_test` | live apply of `schema.sql` — tagged `manual`, run by name in `build.yml` |
 | `//proto:ratio_aip_lint`, `//proto:mirrors_test` | the wire contract, and its two hand-written mirrors |
 | `//crates/ratio-console:transcode_test` | the route table against the proto |
 | `//demo:rehearse_test`, `//demo:shadow_run_test` | the demo and the shadow run, end to end |
@@ -85,6 +91,34 @@ It checks each went red **for the reason its config names**. That distinction is
 the point: a probe that dies on a missing constant exits exactly like one whose
 invariant was violated, and adding a `CONSTANT` to a spec has already turned a
 neighbouring probe into a test of nothing.
+
+**The live projection engine is also tagged `manual`, for the opposite
+reason.** It must PASS, and it needs a server, so it is not in `//...`.
+`build.yml` runs `//crates/ratio-sql-project:pg_engine_test` by name.
+
+## Live projection engine
+
+`crates/ratio-sql-project/schema.sql` is the Postgres contract. The
+denotational store (`SqlProjection`) always runs in `//...`. Applying the
+same file to a live engine is `PgProjection` (via `psql`). Relief stays
+`relieve_by`. The journal stays the system of record.
+
+```bash
+# Docker
+docker run -d --name ratio-pg \
+  -e POSTGRES_USER=ratio -e POSTGRES_PASSWORD=ratio -e POSTGRES_DB=ratio \
+  -p 5432:5432 postgres:16
+export RATIO_PG_URL=postgres://ratio:ratio@127.0.0.1:5432/ratio
+bazel test --test_env=RATIO_PG_URL --test_output=errors \
+  //crates/ratio-sql-project:pg_engine_test
+```
+
+A local cluster works the same way: create a role and database, point
+`RATIO_PG_URL` at them, keep `psql` on `PATH`. `RATIO_PG_URL` unset is a
+refuse, not a skip.
+
+Planner pushdown vs `Pg.Rel.Semantics`, console/API reads through the
+store, and the measured 20M-lot claim stay leftover.
 
 ## Layout
 

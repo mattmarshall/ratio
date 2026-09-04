@@ -138,7 +138,11 @@ __STYLE__
           positions, and aggregates, replayed from the journal
           digest. A stale watermark refuses rather than
           answering. Elected relief is not a SQL FIFO scan.
-          The journal stays the system of record.</li>
+          The journal stays the system of record.
+          the projection schema applies to a live engine —
+          replay and a stale watermark refuse against the same
+          tables. A NULL rest-map row lands. Relief is still
+          the proved walk.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>live custodian statement ingest — a CreateBook Investment book
@@ -447,8 +451,9 @@ __STYLE__
           <li>Reviewed change control (geetch/crova). Today's pointer file is
           the seam; a forge is still ahead.</li>
           <li>Postgres for a live relational engine at interactive
-          scale. The journal is still the store; twenty million
-          lots as a routine table and planner pushdown stay
+          scale. The schema applies; planner pushdown, console
+          and API reads through the store, and twenty million
+          lots as a routine table stay
           <a href="https://github.com/mattmarshall/ratio/issues/8">#8</a>
           /
           <a href="https://github.com/mattmarshall/ratio/issues/159">#159</a>.</li>
