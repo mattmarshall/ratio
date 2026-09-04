@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { FundActions } from "@/components/FundActions";
 import { PlaceHead } from "@/components/PlaceHead";
-import { caller } from "@/lib/caller";
+import { Unavailable } from "@/components/Unavailable";
+import { bookRecord, viewsOf } from "@/lib/data";
 import { count } from "@/lib/format";
-import { getBook, listViews } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +30,12 @@ export const dynamic = "force-dynamic";
  * the contract kept; the console URL is `/books/{book}/…`. GetFund still
  * answers for any book directory, including one CreateBook wrote with no
  * fund sidecar.
+ *
+ * ⛔ BARE `await getBook` / `listViews` WAS THE OTHER #441. After the
+ * prefetch matcher fix, a 401 or 503 from these reads still left the
+ * server component. `bookRecord` / `viewsOf` wrap `orTransient` (5xx →
+ * `<Unavailable>`) and `orAuth` (401 → `/signin`), the same door the
+ * collection layout already uses.
  */
 export default async function BookLayout({
   children,
@@ -39,9 +45,16 @@ export default async function BookLayout({
   params: Promise<{ book: string }>;
 }) {
   const { book } = await params;
-  const c = await caller();
-  const b = await getBook(c, book);
-  const { views } = await listViews(c, book);
+  const bookRead = await bookRecord(book);
+  const viewsRead = await viewsOf(book);
+  if (bookRead.unavailable !== null) {
+    return <Unavailable why={bookRead.unavailable} />;
+  }
+  if (viewsRead.unavailable !== null) {
+    return <Unavailable why={viewsRead.unavailable} />;
+  }
+  const b = bookRead.value;
+  const views = viewsRead.value;
   const defaultView = b.defaultView;
 
   return (

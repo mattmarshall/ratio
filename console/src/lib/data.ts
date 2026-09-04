@@ -1,11 +1,17 @@
 import "server-only";
 
 import { cache } from "react";
-import { getBook, getView, listBooks, listFunds } from "@/wire/client";
+import {
+  getBook,
+  getFund,
+  getView,
+  listBooks,
+  listFunds,
+  listViews,
+} from "@/wire/client";
 import { caller } from "./caller";
-import { orAuth } from "./orAuth";
 import { orTransient, type OrTransient } from "./orTransient";
-import type { Book, Fund } from "@/wire/types";
+import type { Book, Fund, View } from "@/wire/types";
 
 /**
  * The reads a layout and its page both need, memoized for one request.
@@ -47,17 +53,50 @@ export const books = cache(async (): Promise<OrTransient<Book[]>> => {
 });
 
 /**
+ * The open book's identity — GetBook for `/books/[book]` chrome.
+ *
+ * ⛔ BARE `getBook` HERE WAS THE OTHER #441. The collection layout wraps
+ * ListBooks; this identity layout did not. A 401 or 503 after AuthKit
+ * middleware ran left the server component and Next redacted it.
+ */
+export const bookRecord = cache(async (id: string): Promise<OrTransient<Book>> => {
+  const c = await caller();
+  return orTransient(getBook(c, id));
+});
+
+/**
+ * The open fund filing — GetFund for `/funds/[fund]` chrome.
+ *
+ * Same wrap as `bookRecord`. A fund URL is a filing over a book, not a
+ * second kernel; the hole was the same bare await.
+ */
+export const fundRecord = cache(
+  async (id: string): Promise<OrTransient<Fund>> => {
+    const c = await caller();
+    return orTransient(getFund(c, id));
+  },
+);
+
+/** ListViews for the identity layout. AIP parent is still `funds/*`. */
+export const viewsOf = cache(async (id: string): Promise<OrTransient<View[]>> => {
+  const c = await caller();
+  const r = await orTransient(listViews(c, id));
+  if (r.unavailable !== null) return r;
+  return { unavailable: null, value: r.value.views };
+});
+
+/**
  * The book a view layout needs in order to pick chrome.
  *
  * ⭐ KIND SELECTS WHETHER NAV TILES BELONG HERE. A personal book's view still
  * folds a journal prefix; it does not strike a NAV. A project book's view
  * does the same. Asking GetBook twice would be two Lambdas for one URL.
  * `cache` is the same door `viewOf` uses.
+ *
+ * `orTransient` (not bare `orAuth`): a rolling API's 503 is a value the
+ * layout can render, the same as ListBooks. 401 still becomes `/signin`.
  */
-export const bookOf = cache(async (id: string) => {
-  const c = await caller();
-  return orAuth(getBook(c, id));
-});
+export const bookOf = bookRecord;
 
 /**
  * The book of record a view layout and its page both render.
@@ -67,7 +106,9 @@ export const bookOf = cache(async (id: string) => {
  * Asking twice would be two Lambdas for one URL. `cache` is the same door
  * `funds` and `books` already use.
  */
-export const viewOf = cache(async (fund: string, view: string) => {
-  const c = await caller();
-  return orAuth(getView(c, fund, view));
-});
+export const viewOf = cache(
+  async (fund: string, view: string): Promise<OrTransient<View>> => {
+    const c = await caller();
+    return orTransient(getView(c, fund, view));
+  },
+);

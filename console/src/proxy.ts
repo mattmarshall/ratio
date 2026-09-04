@@ -75,16 +75,13 @@ export default async function proxy(req: NextRequest) {
   return res;
 }
 
+// ⛔ PREFETCH MUST STILL RUN AUTHKIT. Next's matcher `missing` list used to
+// skip `next-router-prefetch` / `purpose: prefetch`. Client navigations and
+// RSC fetches to `/books/[book]` arrive as prefetch; middleware never set
+// `x-workos-middleware`; `withAuth()` threw; Next redacted to digest
+// `2094318646`. AuthKit's catch-all (authkit-nextjs README) excludes only
+// static assets — not prefetch. A route that can call `withAuth()` is a
+// route this matcher must hit.
 export const config = {
-  matcher: [
-    // Everything except Next's own static output and the favicon — those are
-    // immutable files with no document to protect.
-    {
-      source: "/((?!_next/static|_next/image|favicon.ico).*)",
-      missing: [
-        { type: "header", key: "next-router-prefetch" },
-        { type: "header", key: "purpose", value: "prefetch" },
-      ],
-    },
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

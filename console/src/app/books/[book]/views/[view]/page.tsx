@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Unavailable } from "@/components/Unavailable";
 import { bookOf, viewOf } from "@/lib/data";
 import { isoDate } from "@/lib/dates";
 import { basisOf, count, money } from "@/lib/format";
@@ -25,8 +26,16 @@ export default async function ViewPage({
   params: Promise<{ book: string; view: string }>;
 }) {
   const { book, view } = await params;
-  const v = await or404(viewOf(book, view));
-  const b = await or404(bookOf(book));
+  const viewRead = await or404(viewOf(book, view));
+  if (viewRead.unavailable !== null) {
+    return <Unavailable why={viewRead.unavailable} />;
+  }
+  const bookRead = await or404(bookOf(book));
+  if (bookRead.unavailable !== null) {
+    return <Unavailable why={bookRead.unavailable} />;
+  }
+  const v = viewRead.value;
+  const b = bookRead.value;
   const basis = basisOf(v.basis, v.settlementOpenDays);
   const personal = b.kind === "PERSONAL";
   const project = b.kind === "PROJECT";
