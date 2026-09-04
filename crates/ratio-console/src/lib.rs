@@ -282,7 +282,6 @@ impl Console {
             Subject::Member { .. } => Self::scoped(root, subject),
         }
     }
-}
 
     fn build(
         root: PathBuf,
