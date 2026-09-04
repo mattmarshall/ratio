@@ -1,0 +1,46 @@
+{
+  "name": "Ratio bank feed",
+  "book_kind": "PERSONAL",
+  "issue": 165,
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "books:read",
+      "statements:read",
+      "journals:post"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read"
+    ]
+  },
+  "journals_post_allowlist": {
+    "client_id": "client_ratio_bank_feed",
+    "templates": [
+      "living_expense",
+      "household_income",
+      "card_charge",
+      "xfer_cash_investments",
+      "xfer_investments_cash",
+      "xfer_cash_cards",
+      "xfer_cards_cash",
+      "xfer_investments_cards",
+      "xfer_cards_investments",
+      "spend_cash",
+      "spend_card",
+      "receive_income"
+    ]
+  },
+  "bank_oauth": {
+    "status": "not wired",
+    "note": "Live bank or custodian OAuth (Plaid, MX, TrueLayer, or similar) is leftover on #165. This scaffold accepts a normalized feed row, not a provider SDK."
+  },
+  "grant_path": {
+    "status": "not built",
+    "note": "Connect access tokens are not accepted on /v1. Token validation is #151 / leftover #22. This file does not close #150 or #165."
+  }
+}

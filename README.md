@@ -67,6 +67,10 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
 - **[docs/connect-scopes.md](docs/connect-scopes.md)** — WorkOS Connect
   scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)).
   Contract only; the grant path is not built.
+- **[connect/bank-feed/](connect/bank-feed/)** — first-party Connect app
+  that maps household bank rows onto Personal templates
+  ([#165](https://github.com/mattmarshall/ratio/issues/165)). Scaffold;
+  Connect tokens are not accepted on `/v1`, and live bank OAuth is leftover.
 
 ## License
 

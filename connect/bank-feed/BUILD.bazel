@@ -1,0 +1,28 @@
+package(default_visibility = ["//visibility:public"])
+
+# The bank-feed Connect app is a sibling tree. Bazel does not build a
+# WorkOS binary here; it holds the mapper to the catalog, to
+# CreateBook(Personal), and to the refusals the issue named.
+#
+# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. deliver() must refuse.
+# Token validation is #151 / leftover #22. Live bank OAuth is leftover
+# on #165.
+sh_test(
+    name = "mapper_test",
+    size = "small",
+    srcs = ["mapper_test.sh"],
+    args = [
+        "$(rootpath mapper.py)",
+        "$(rootpath mapper_test.py)",
+        "$(rootpath app.json)",
+        "$(rootpath //crates/ratio-console:src/book.rs)",
+        "$(rootpath //:docs/connect-scopes.md)",
+    ],
+    data = [
+        "mapper.py",
+        "mapper_test.py",
+        "app.json",
+        "//crates/ratio-console:src/book.rs",
+        "//:docs/connect-scopes.md",
+    ],
+)

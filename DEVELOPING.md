@@ -45,6 +45,7 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//crates/ratio-console:transcode_test` | the route table against the proto |
 | `//demo:rehearse_test`, `//demo:shadow_run_test` | the demo and the shadow run, end to end |
 | `//:connect_scopes_test` | PLAN, HANDOFF and `docs/connect-scopes.md` still name the same Connect grants and leftovers — not that a token is accepted |
+| `//connect/bank-feed:mapper_test` | Personal bank-feed mapper (#165): canonical scopes, empty-allowlist / closed-through / conservation refusals — not that a token is accepted |
 | `//marketing:language_test` | the licensing language sweep |
 
 `paths-ignore` covers `site/**` and `**/*.md` only. `marketing/`, `paper/` and
@@ -85,6 +86,7 @@ tla/              the specs, their MC configs, and the failure-path probes
 crates/           the Rust. `ratio` is the binary; the rest are libraries
 proto/            the wire types, AIP-linted
 console/          the operations console (Next.js, deployed to Vercel — NOT built by Bazel)
+connect/          first-party WorkOS Connect apps (sibling trees; not kernel RPCs)
 demo/             the five-minute demo and the shadow run, as shell tests
 deploy/           the Lambda that serves the API and the three public screens
 site/ paper/ marketing/ competitive/   the written material
