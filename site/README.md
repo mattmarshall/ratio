@@ -260,8 +260,11 @@ page would read as a reference customer. Keep it unnamed.
   `verify.py` fails if the page still lists tax lots, FX translation, corporate
   actions, journal persistence, wash sales, MinTax ranking, SpecID named
   selection, or average-cost pooling as unbuilt, or if it claims Postgres is
-  running. Postgres stays on the spec side: Stage E is open, and PLAN's
-  "four of these were built" table records it as spec-only. Wash sales
+  running. A live Postgres engine stays on the spec side: #153 landed
+  the lots/positions projection schema and digest replay; PLAN's
+  "four of these were built" table still records the running engine as
+  spec-only, and #8 / #159 keep the live table and the 20M-lot claim.
+  Wash sales
   are the engine window and the attach write (#133 / #138) plus
   `WashRestatement` as a citeable record and the non-US
   holding-period variant as an election

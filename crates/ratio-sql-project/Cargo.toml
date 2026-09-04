@@ -1,0 +1,10 @@
+[package]
+name = "ratio-sql-project"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"

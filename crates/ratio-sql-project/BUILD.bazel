@@ -1,0 +1,37 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml", "schema.sql"])
+
+# ⛔ Stage E table projection. `//tla:sql_projection_check` is the safety
+# argument: a figure is folded from ONE journal prefix across every table.
+# `schema.sql` is the Postgres contract; the crate is the denotational store
+# those tables name. The journal stays the system of record.
+#
+# ⚠ A live Postgres process and the 20M-lot interactive claim stay #8 / #159.
+# This package must not grow a silent SQL FIFO: relief goes through
+# `ratio_project::relief`, which is the walk `Ratio.Lots` proves.
+
+rust_library(
+    name = "ratio-sql-project",
+    srcs = glob(["src/*.rs"]),
+    compile_data = ["schema.sql"],
+    crate_name = "ratio_sql_project",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    deps = [
+        "//crates/ratio-nav",
+        "//crates/ratio-project",
+        "//crates/ratio-rules",
+        "//crates/ratio-store",
+        "@crates//:anyhow",
+    ],
+)
+
+rust_test(
+    name = "ratio-sql-project_test",
+    crate = ":ratio-sql-project",
+    compile_data = ["schema.sql"],
+    edition = "2021",
+)

@@ -289,6 +289,11 @@ BUILT=(
   # on issue 22. The sentence it matches is in the 2026-09-04
   # Connect grant-path amendment.
   "first-party Connect apps call ConnectApiUrl"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The lots/positions projection is not on the refusal list —
+  # a live Postgres engine and the 20M-lot claim stay #8 / #159.
+  # The sentence it matches is in the 2026-09-04 #153 amendment.
+  "the lots/positions projection"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

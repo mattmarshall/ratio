@@ -1382,6 +1382,22 @@ impl Projection {
         })
     }
 
+    /// The running totals, as of the prefix folded, under one book of record.
+    ///
+    /// ⛔ SAME DOOR AS `positions`. A Stage E table snapshot that extracted
+    /// totals by reaching into the fold would be a second read path, and two
+    /// paths are two chances to pin different prefixes. `AsOf` carries the
+    /// prefix the caller must write onto the watermark.
+    pub fn totals(&self, view: &str) -> Result<AsOf<&Totals>> {
+        let fold = self.fold_of(view)?;
+        Ok(AsOf {
+            value: &fold.totals,
+            prefix: self.at,
+            view: view.to_string(),
+            through: Self::through_of(fold),
+        })
+    }
+
     /// Total cost held in one instrument, across every account.
     pub fn cost_of(&self, view: &str, instrument: &str) -> Result<AsOf<i64>> {
         let fold = self.fold_of(view)?;
