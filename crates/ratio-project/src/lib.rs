@@ -4089,6 +4089,45 @@ mod tests {
         assert_eq!(left.len(), 2, "the holding is untouched");
     }
 
+    #[test]
+    fn a_pool_with_a_shared_date_classifies() {
+        // ⭐ `Ratio.Lots.PoolPeriod.a_shared_long_date_classifies_long`.
+        // Two lots acquired the same day. The pool carries that day.
+        // Sold more than a year later: long, not unclassified.
+        let d = book_with_average_cost("pool-shared-date");
+        buy_on(&d, "a", 1, 10, "2024-01-01");
+        buy_on(&d, "b", 1, 10, "2024-01-01");
+        dispose(&d, "s", 1, 50, "2026-06-30");
+        let p = Projection::of_book(&d).unwrap();
+        let r = p.realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
+        // Credit-normal: proceeds 50, pooled basis 10, gain −40.
+        assert_eq!(r.gain, -40);
+        assert_eq!(r.long_term, -40, "the shared date is long");
+        assert_eq!(r.short_term, 0);
+        assert_eq!(r.unclassified(), 0);
+        let left = p.lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left[0].acquired, Some(day("2024-01-01")));
+    }
+
+    #[test]
+    fn a_pool_with_mixed_dates_stays_unclassified() {
+        // ⭐ `Ratio.Lots.PoolPeriod.treating_mixed_dates_as_an_order_invents_a_category`.
+        // Day-2024 and day-2026. FIFO would take the old lot and invent
+        // long-term. The pool carries neither date. The books still tie.
+        let d = book_with_average_cost("pool-mixed-dates");
+        buy_on(&d, "a", 1, 10, "2024-01-01");
+        buy_on(&d, "b", 1, 10, "2026-06-01");
+        dispose(&d, "s", 1, 50, "2026-06-30");
+        let p = Projection::of_book(&d).unwrap();
+        let r = p.realized(B, Some(ROLES), &Rates::none()).unwrap().value.unwrap();
+        assert_eq!(r.gain, -40, "the total is exact and ties to the chart");
+        assert_eq!(r.short_term, 0);
+        assert_eq!(r.long_term, 0);
+        assert_eq!(r.unclassified(), -40, "no category was invented");
+        let left = p.lots_of(B, 1, "vti").unwrap().value;
+        assert_eq!(left[0].acquired, None, "the remainder stays unset too");
+    }
+
     // ── currencies ─────────────────────────────────────────────────────────
 
     /// A book holding one hundred of the base and ninety of a foreign currency,

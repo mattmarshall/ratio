@@ -123,6 +123,11 @@ BUILT=(
   # product door the catalog already named. The sentence it matches
   # is in the 2026-09-04 goals amendment.
   "a Personal net-worth goals Connect app"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The pooled holding-period category is not on the refusal list —
+  # this check would have stayed green whatever was built. The
+  # sentence it matches is in the 2026-09-04 PoolPeriod amendment.
+  "the pooled holding-period category is a date"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

@@ -782,3 +782,35 @@ tla_check(
     tags = ["manual"],
     deps = [":average_cost_engine"],
 )
+
+# The date a pooled holding carries, not a category.
+#
+# ⛔ `Ratio.Lots.PoolPeriod` proves the arithmetic of one pool date.
+# This is the engine that pretends the rule is another Order — FIFO
+# on mixed dates, invent long-term — and the obligation that it is
+# not. `//tla:sort_and_walk_pool_period_check` is the probe:
+# TreatAsOrder, and ThePoolDateStaysUnset goes red.
+tla_library(
+    name = "pool_period_engine",
+    srcs = ["PoolPeriodEngine.tla"],
+)
+
+tla_check(
+    name = "pool_period_engine_check",
+    size = "medium",
+    config = "MCPoolPeriodEngine.cfg",
+    module = "MCPoolPeriodEngine.tla",
+    deps = [":pool_period_engine"],
+)
+
+# ⛔ Sort-and-walk: mixed dates take FIFO's oldest date. Day 0 is
+# long at dispose 400; the pool should stay unset. The books tie.
+# ThePoolDateStaysUnset MUST go red.
+tla_check(
+    name = "sort_and_walk_pool_period_check",
+    size = "medium",
+    config = "SortAndWalkPoolPeriod.cfg",
+    module = "SortAndWalkPoolPeriod.tla",
+    tags = ["manual"],
+    deps = [":pool_period_engine"],
+)

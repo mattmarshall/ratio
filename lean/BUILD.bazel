@@ -571,6 +571,29 @@ lean_test(
     entry = "Ratio/Partners/Cut.lean",
 )
 
+# ⛔ The date a pooled holding carries, not a category.
+#
+# `Ratio.Lots.AverageCost` pools the basis. US single-category invents
+# FIFO's oldest date on a mixed pool and classifies the sale long-term.
+# Double-category invents two pools. Both invent a short-vs-long answer
+# the lots do not support. This file is the honest rule — a shared date
+# when every lot agrees, unset when mixed or missing. Not an `Order`,
+# not a `Method`, not a `lot_method` variant.
+#
+# `//tla:pool_period_engine_check` is the sequence: treating mixed
+# dates as FIFO invents long-term. The probe
+# `//tla:sort_and_walk_pool_period_check` flips the dial.
+lean_test(
+    name = "lots_pool_period_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Lots.lean",
+        "Ratio/Lots/Methods.lean",
+        "Ratio/Lots/PoolPeriod.lean",
+    ],
+    entry = "Ratio/Lots/PoolPeriod.lean",
+)
+
 # ⛔ A jurisdiction that does NOT transfer the holding period.
 #
 # `Ratio.Lots.Wash.replacementAcquired` is the US rule. Assuming it

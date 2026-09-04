@@ -13,12 +13,12 @@ docs/connect-scopes.md.
 `journals:post`. A tax pack is a read of cites, not a rewrite.
 
 ⭐ A HOLDING-PERIOD CATEGORY IS A DATE AGREEMENT, NOT A GUESS.
-When the acquired dates on a disposal disagree — the average-cost
-pool leftover on #9 — the pack leaves the category unset. Inventing
-FIFO's oldest date makes a mixed pool long-term. Inventing two boxes
-makes it both. Conservation holds; the figure that goes wrong is the
-rate. `Ratio.Lots.Methods.the_threshold_day_is_long_term` is the
-boundary when the dates agree.
+When the acquired dates on a disposal disagree, the pack leaves
+the category unset — `Ratio.Lots.PoolPeriod`. Inventing FIFO's
+oldest date makes a mixed pool long-term. Inventing two Form 8949
+boxes makes it both. Conservation holds; the figure that goes
+wrong is the rate. `Ratio.Lots.Methods.the_threshold_day_is_long_term`
+is the boundary when the dates agree.
 
 ⭐ MONEY IS MINOR UNITS, PARSED BY SPLITTING ON THE POINT. A float
 is how a cent disappears. A third decimal place is refused.
@@ -359,7 +359,8 @@ def holding_period_category(
     ⛔ MIXED DATES STAY UNSET. US single-category would invent FIFO's
     oldest date and classify the sale long-term. Double-category would
     invent two boxes. Both invent a short-vs-long answer the lots do
-    not support. #9 leftover; the tax pack must not close it by guessing.
+    not support. The kernel rule is `Ratio.Lots.PoolPeriod`; the
+    tax pack cites it rather than inventing a box.
 
     ⭐ `the_threshold_day_is_long_term`. Held exactly `long_term_days`
     is LONG. Off by one moves a disposal between tax rates and nothing
@@ -383,7 +384,7 @@ def holding_period_category(
             + shown
             + ") — a pooled holding-period category would invent "
             "FIFO's oldest date or two Form 8949 boxes. Mixed dates "
-            "stay unset (#9 leftover)"
+            "stay unset (Ratio.Lots.PoolPeriod)"
         )
     acquired = next(iter(distinct))
     assert acquired is not None
@@ -572,7 +573,7 @@ def build_pack(
             msg = str(e)
             # ⛔ ONLY DATE-AGREEMENT / MISSING-DATE REFUSALS BECOME A
             # COMPANION ROW. A wrapped amount or a forged wash code still
-            # fails the pack — those are not #9 leftovers.
+            # fails the pack — those are not PoolPeriod leftovers.
             date_reasons = (
                 "acquired dates disagree",
                 "no acquisition date",

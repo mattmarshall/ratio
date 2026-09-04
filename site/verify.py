@@ -91,6 +91,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ The non-US holding-period variant landed as an election; PLAN
     # named it in the same-commit amendment.
     "the non-US holding-period variant is an election",
+    # ⚠ The pooled holding-period category landed as a date, not a
+    # Method; PLAN named it in the same-commit amendment.
+    "the pooled holding-period category is a date",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -106,6 +109,7 @@ ROADMAP_ENGINE_BUILT = [
     "Average cost is a pool",
     "WashRestatement is a citeable record",
     "the non-US holding-period variant is an election",
+    "the pooled holding-period category is a date",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",

@@ -6,7 +6,8 @@ package(default_visibility = ["//visibility:public"])
 #
 # ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_cites() must refuse.
 # Token validation is #151 / leftover #22. IRS e-file is refused.
-# Mixed acquired dates must not invent a holding-period category (#9).
+# Mixed acquired dates stay unset — Ratio.Lots.PoolPeriod, not a
+# silent FIFO-oldest category and not two Form 8949 boxes.
 sh_test(
     name = "pack_test",
     size = "small",

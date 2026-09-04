@@ -21,11 +21,11 @@ This is a scaffold. A green pack builder is not a filed return.
   `"wash"` stay refused.
 - Holding-period category when acquisition dates **agree**:
   `the_threshold_day_is_long_term`. Held exactly the threshold is LONG.
-- When dates **disagree** — the average-cost pool leftover on
-  [#9](https://github.com/mattmarshall/ratio/issues/9) — the category
-  stays unset. The pack does not invent FIFO's oldest date or two
-  boxes. Those rows land on `unclassified.csv` with the ambiguity
-  named. PR #154 may still be open; this app does not close #9.
+- When dates **disagree**, the category stays unset. The kernel
+  rule is [`Ratio.Lots.PoolPeriod`](../../lean/Ratio/Lots/PoolPeriod.lean);
+  this file cites it. The pack does not invent FIFO's oldest date
+  or two Form 8949 boxes. Those rows land on `unclassified.csv`
+  with the ambiguity named.
 - Wash is a `WashRestatement` cite (code `W` + adjustment). The
   strike is not rewritten.
 - Unset elections stay unset: `wash_window_days` is not a silent 30,
@@ -92,10 +92,10 @@ a mixed-date pool landing on `unclassified.csv` rather than inventing
 FIFO's oldest date, a wash cite as code `W`, and `lot_method = "wash"`
 being rejected.
 
-It cannot show a Connect token opening a book, an IRS e-file, a CPA
-portal, or a pooled holding-period category when dates disagree
-(#9 leftover). BookKind PERSONAL chrome is unchanged. `screensFor`
-is not forked.
+It cannot show a Connect token opening a book, an IRS e-file, or a
+CPA portal. Mixed dates stay unclassified — that is
+`Ratio.Lots.PoolPeriod`, not an invented box. BookKind PERSONAL
+chrome is unchanged. `screensFor` is not forked.
 
 ## Leftovers — this does not close #166
 
@@ -104,13 +104,15 @@ is not forked.
    JWT.
 2. **Live CPA / IRS submission.** Never in core. A filed return, a
    MeF transmission, and a CPA portal stay leftover on this issue.
-3. **#9 pooled holding-period category** (PR #154 may still be open).
-   This pack refuses to invent a box; it does not write the kernel
-   `pool_acquired` rule.
+3. **Pooled holding-period category.** Mixed acquisition dates stay
+   unset. The kernel rule is `Ratio.Lots.PoolPeriod`; this file
+   cites it. The leftover that stays open is the grant path and
+   IRS e-file (#166), not the category itself.
 4. **#150's read-only reference skeleton** (`books:read` +
    `statements:read` only) is a different app. This one requests
    `lots:read` and `config:read` and does not open the door.
 
 Does not close #165 (grant-path + live bank OAuth leftovers stay
 on #165). Does not start #168 (net-worth goals). Does not close
-#150 or #9.
+#150. The category rule is `Ratio.Lots.PoolPeriod`; this file
+does not reopen #9.

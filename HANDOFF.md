@@ -1,30 +1,32 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
-**State**: bazel tests green, 28 `lean_test`, 46 `tla_check`, 29 `manual`
+**State**: bazel tests green, 29 `lean_test`, 49 `tla_check`, 30 `manual`
 probes all red for the reasons they name.
 
-Issues #4 and #7 are closed. #5's leftover was the console wash-flag
-cite; that cite landed (`wash_window_days` and
-`wash_keep_holding_period` on the fund lot-terms screen; unset stays
-unset, not a silent 30; keep is `Some(true)` or silence, not a third
-meaning). Open work is #6, #8, #9. This file is the part
-that does not fit in an issue: what was learned, what is load-bearing, and what
-will bite. Wash sales have a Lean/TLA model and a Rust window
-(`RuleSet.wash_window_days`). `WashRestatement` is a citeable record
-(`Ratio.Lots.WashRestatement`; a restatement cites the strike, it does
-not rewrite it). The non-US holding-period variant is an election
-(`wash_keep_holding_period`; unset stays unset, not a silent keep;
-the US `replacementAcquired` transfer stays in force until somebody
-writes the keep). MinTax, SpecID, and average cost (#9) each have a Lean
-surface, a TLA probe that fails if they are treated as a Method, and a
-Rust election that is not a `LotMethod` variant. The console cites those
-elections (lot-terms for `min_tax_short_weight` and `average_cost`;
-journal entry for `identified_lots`; unset stays unset). #9 stays open
-for the pooled holding-period leftover. The household tax-pack
-Connect app (`connect/tax-pack/`, #166) refuses to invent a
-short-vs-long box when those dates disagree; that does not close
-#9 and it does not close #166 (grant path and IRS e-file remain).
-This file does not close #9.
+Issues #4, #5, #7, and #9 are closed. #5's leftover was the console
+wash-flag cite; that cite landed. #9's leftovers were the MinTax /
+SpecID / average-cost engines, their console cites, and the pooled
+holding-period category rule; those landed. Open work is #6, #8. This
+file is the part that does not fit in an issue: what was learned, what
+is load-bearing, and what will bite. Wash sales have a Lean/TLA model
+and a Rust window (`RuleSet.wash_window_days`). `WashRestatement` is a
+citeable record (`Ratio.Lots.WashRestatement`; a restatement cites the
+strike, it does not rewrite it). The non-US holding-period variant is
+an election (`wash_keep_holding_period`; unset stays unset, not a
+silent keep; the US `replacementAcquired` transfer stays in force
+until somebody writes the keep). MinTax, SpecID, and average cost
+each have a Lean surface, a TLA probe that fails if they are treated
+as a Method, and a Rust election that is not a `LotMethod` variant.
+The console cites those elections (lot-terms for
+`min_tax_short_weight` and `average_cost`; journal entry for
+`identified_lots`; unset stays unset). The pooled holding-period
+category is a date (`Ratio.Lots.PoolPeriod`; a shared acquisition
+date is carried when every lot agrees; mixed or missing dates stay
+unset; no category is invented — not FIFO's oldest date, not two
+Form 8949 boxes). The household tax-pack Connect app
+(`connect/tax-pack/`, #166) cites that same rule; it does not
+close #166 (grant path and IRS e-file remain). This file closes
+#9. It does not reopen #5.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 
@@ -147,6 +149,16 @@ the conserved one, and the kernel never said it was.
   `//tla:sort_and_walk_average_cost_check` is the engine that pretends
   otherwise. 10 / 40 / 70 pools to 40 (a lot's own basis); the
   load-bearing holding is 10 / 20 / 60, which pools to 30.
+- **The pooled holding-period category is not a `Method`.**
+  `Ratio.Lots.PoolPeriod` carries a shared acquisition date when
+  every lot agrees; mixed or missing dates stay unset. US
+  single-category would take FIFO's oldest date and invent
+  long-term; double-category would invent two pools. No
+  `lot_method` variant and no RuleSet election — unset is not a
+  silent long and not a silent short. Day 0 / day 400 / dispose
+  400 / threshold 365: FIFO is long, the other lot is short, the
+  pool is neither. `//tla:sort_and_walk_pool_period_check` is the
+  engine that pretends the rule is an Order.
 - **The non-US wash holding period is not a `Method`.**
   `Ratio.Lots.WashHolding` elects whether a replacement keeps its own
   acquisition date; `lot_method = "wash"` stays refused. The election
@@ -864,11 +876,11 @@ than one that is entirely unclassified.
 
 | | |
 |---|---|
-| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Partners/Cut`, `Actions/Factor`, `Closure`, `Exec` |
+| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,PoolPeriod,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Partners/Cut`, `Actions/Factor`, `Closure`, `Exec` |
 | `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `wash_keep_holding_period`, `min_tax_short_weight`, `average_cost`, `tolerance`, `partner_cut`, `special_allocation` — the administration agreement, as configuration |
 | `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
-| `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
+| `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `PoolPeriodEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine — one pass, N view folds, each with a monotonic cut on the journal's own clock and a band bounded by the settlement lag. ⚠ every memory figure in this file is a ONE-VIEW figure; each view carries its own lot book |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
 | `crates/ratio-console` | the console's BFF — 40 RPCs, transcoded onto `/v1` |
@@ -878,7 +890,7 @@ than one that is entirely unclassified.
 | `AGENTS.md` | the rules, for a person or a model, and the dispatch contract (one issue → one cloud agent → one PR). Replaces the two stale LLM guides |
 | `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Contract only — token validation is #151 / leftover #22. Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation |
 | `connect/bank-feed/` | First-party Connect app for Personal bank feeds ([#165](https://github.com/mattmarshall/ratio/issues/165)). Mapper + allowlist + closed-through / conservation refusals. Grant path is not built; live bank OAuth is leftover. Does not close #165 |
-| `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — no invented FIFO oldest or two boxes. Grant path is not built; IRS e-file is refused. Does not close #166 or #9 |
+| `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — `Ratio.Lots.PoolPeriod`, not an invented FIFO oldest date or two Form 8949 boxes. Grant path is not built; IRS e-file is refused. Does not close #166 |
 | `connect/goals/` | First-party Connect app for Personal net-worth goals and what-if scenarios ([#168](https://github.com/mattmarshall/ratio/issues/168)). Cites sheet / bridge / cash-flow; opt-in scenario journals on allowlisted Personal templates; closed-through and empty-allowlist refuse. Grant path is not built. Not a cash forecast. Does not close #168 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after

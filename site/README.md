@@ -275,8 +275,12 @@ page would read as a reference customer. Keep it unnamed.
   not an Order, and is citeable on the journal entry when a sale
   carries names. Average cost is a pool (`average_cost = true`;
   unset, not a silent true), not an Order, and the lot-terms screen
-  cites the pool when a book writes it. The leftover is the pooled
-  holding-period category rule (mixed dates stay unset).
+  cites the pool when a book writes it. The pooled holding-period
+  category is a date (a shared acquisition date is carried when
+  every lot agrees; mixed or missing dates stay unset; no
+  category is invented — not FIFO's oldest date, not two Form
+  8949 boxes). The household tax-pack Connect app cites the same
+  rule; it does not invent a box of its own.
 
 ## American English
 

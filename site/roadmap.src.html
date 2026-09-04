@@ -102,11 +102,15 @@ __STYLE__
           unset, not a silent true; <code>lot_method = "average_cost"</code>
           stays refused), WashRestatement is a citeable record
           (a struck figure a later wash moved is qualified or
-          restated; the strike is not rewritten), and the non-US holding-period variant is an election
+          restated; the strike is not rewritten), the non-US holding-period variant is an election
           (<code>wash_keep_holding_period = true</code>; unset stays
           unset, not a silent keep; the US transfer stays in force
           until somebody writes the keep;
-          <code>lot_method = "wash"</code> stays refused) — and corporate actions in factor
+          <code>lot_method = "wash"</code> stays refused), and the pooled holding-period category is a date
+          (a shared acquisition date is carried when every lot
+          agrees; mixed or missing dates stay unset; no category
+          is invented; treating mixed dates as FIFO invents
+          long-term) — and corporate actions in factor
           form — nothing in the journal is rewritten.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
@@ -205,6 +209,11 @@ __STYLE__
           The non-US holding-period variant is an election
           (<code>wash_keep_holding_period = true</code>; unset stays
           unset, not a silent keep).
+          The pooled holding-period category is a date: a shared
+          acquisition date is carried when every lot agrees;
+          mixed or missing dates stay unset — no category is
+          invented, and treating mixed dates as FIFO invents
+          long-term.
           The fund lot-terms screen cites the wash window
           (<code>wash_window_days</code>; silence stays unset, not a
           silent 30) and the keep election when a book writes it
@@ -215,14 +224,14 @@ __STYLE__
           not a silent true). SpecID is citeable on the journal
           entry when a sale carries <code>identified_lots</code>
           (unnamed refuses, not FIFO).
-          It cannot show a pooled holding-period category (mixed
-          dates stay unset). A household
+          A household
           <a href="https://github.com/mattmarshall/ratio/tree/main/connect/tax-pack">tax-pack Connect app</a>
           (<a href="https://github.com/mattmarshall/ratio/issues/166">#166</a>)
           emits 8949-ish CSV from those lot and wash cites; mixed dates
-          stay unclassified rather than inventing FIFO's oldest date or
-          two boxes. It cannot show a Connect token opening a book, IRS
-          e-file, or a CPA portal. A household
+          stay unclassified — the same <code>Ratio.Lots.PoolPeriod</code>
+          rule, not an invented FIFO oldest date or two Form 8949 boxes.
+          It cannot show a Connect token opening a book, IRS e-file, a
+          CPA portal, or a tax-lot planner UI. A household
           <a href="https://github.com/mattmarshall/ratio/tree/main/connect/goals">net-worth goals Connect app</a>
           (<a href="https://github.com/mattmarshall/ratio/issues/168">#168</a>)
           cites sheet net worth against a named target and overlays

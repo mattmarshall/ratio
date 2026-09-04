@@ -1170,9 +1170,15 @@ pub fn pooled_basis(lots: &[Lot]) -> Result<i64> {
 
 /// The acquisition date the pool carries, if every lot agrees.
 ///
-/// ⛔ DOES NOT INVENT A DATE. Mixed or missing dates stay unset. A
-/// holding-period split of a pool is a leftover on #9, not a guess.
-fn pool_acquired(lots: &[Lot]) -> Option<Day> {
+/// `Ratio.Lots.PoolPeriod.poolAcquired`. A shared date is carried.
+/// Mixed or missing dates stay unset. No category is invented —
+/// US single-category would take FIFO's oldest date; double-category
+/// would invent two pools. `//tla:sort_and_walk_pool_period_check`
+/// is the engine that pretends the rule is an Order.
+///
+/// ⛔ DOES NOT INVENT A DATE. Unset is not a silent long and not a
+/// silent short. `classify` leaves the gain unclassified.
+pub fn pool_acquired(lots: &[Lot]) -> Option<Day> {
     let mut dates = lots.iter().map(|l| l.acquired);
     let first = dates.next()??;
     for d in dates {
@@ -1211,6 +1217,8 @@ pub fn relieve_average_cost(lots: &[Lot], want: i64) -> Result<Relieved> {
     let taken_cost = ratio_common::checked::mul(unit, want, "the pooled basis given up")?;
     let left_units = ratio_common::checked::sub(units, want, "the pooled remainder")?;
     let left_cost = ratio_common::checked::sub(cost, taken_cost, "the pooled leftover cost")?;
+    // ⭐ `Ratio.Lots.PoolPeriod.poolAcquired`. Shared date or unset.
+    // Not FIFO's oldest date. `//tla:sort_and_walk_pool_period_check`.
     let acquired = pool_acquired(lots);
     let taken = vec![Taken {
         seq: 0,
@@ -2901,5 +2909,66 @@ mod tests {
         let lots = [l(1, 1, i64::MAX), l(2, 1, 1)];
         let err = relieve_average_cost(&lots, 1).unwrap_err();
         assert!(format!("{err:#}").contains("64 bits"), "{err:#}");
+    }
+
+    // ── pooled holding period — `Ratio.Lots.PoolPeriod` ─────────────────
+
+    #[test]
+    fn a_shared_date_is_carried() {
+        // ⭐ `Ratio.Lots.PoolPeriod.a_shared_date_is_carried`.
+        let lots = [dated(1, 1, 10, "2024-01-01"), dated(2, 1, 20, "2024-01-01")];
+        assert_eq!(pool_acquired(&lots), lots[0].acquired);
+        let r = relieve_average_cost(&lots, 1).unwrap();
+        assert_eq!(r.taken[0].acquired, lots[0].acquired);
+        assert_eq!(r.left[0].acquired, lots[0].acquired);
+    }
+
+    #[test]
+    fn mixed_dates_stay_unset() {
+        // ⭐ `Ratio.Lots.PoolPeriod.mixed_dates_stay_unset`.
+        let lots = [dated(1, 1, 10, "2024-01-01"), dated(2, 1, 20, "2026-06-01")];
+        assert_eq!(pool_acquired(&lots), None);
+        let r = relieve_average_cost(&lots, 1).unwrap();
+        assert_eq!(r.taken[0].acquired, None);
+        assert_eq!(r.left[0].acquired, None);
+    }
+
+    #[test]
+    fn a_missing_date_stays_unset() {
+        // `Ratio.Lots.PoolPeriod.a_missing_date_stays_unset`.
+        let lots = [dated(1, 1, 10, "2024-01-01"), l(2, 1, 20)];
+        assert_eq!(pool_acquired(&lots), None);
+    }
+
+    #[test]
+    fn an_empty_pool_has_no_date() {
+        // `Ratio.Lots.PoolPeriod.an_empty_pool_has_no_date`.
+        assert_eq!(pool_acquired(&[]), None);
+    }
+
+    #[test]
+    fn all_missing_stays_unset() {
+        // `Ratio.Lots.PoolPeriod.all_missing_stays_unset`.
+        assert_eq!(pool_acquired(&[l(1, 1, 10), l(2, 1, 20)]), None);
+    }
+
+    #[test]
+    fn treating_mixed_dates_as_an_order_invents_a_category() {
+        // ⭐ `Ratio.Lots.PoolPeriod.treating_mixed_dates_as_an_order_invents_a_category`.
+        // Day 0 / day 400 / dispose 400 / threshold 365. FIFO takes day 0
+        // and classifies long. The other lot is short. The pool stays unset.
+        assert!(is_long_term(365, 0, 400));
+        assert!(!is_long_term(365, 400, 400));
+        let lots = [
+            Lot { seq: 1, units: 1, cost: 10, acquired: Some(0) },
+            Lot { seq: 2, units: 1, cost: 20, acquired: Some(400) },
+        ];
+        assert_eq!(pool_acquired(&lots), None);
+        let fifo = relieve_by(Method::Fifo, &lots, 1).unwrap();
+        assert_eq!(fifo.taken[0].acquired, Some(0), "FIFO invents the oldest date");
+        assert!(
+            is_long_term(365, fifo.taken[0].acquired.unwrap(), 400),
+            "and that date is long — the category the pool refused"
+        );
     }
 }
