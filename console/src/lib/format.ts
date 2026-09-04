@@ -23,6 +23,17 @@ export function count(n: string): string {
 }
 
 /**
+ * The collection crumb: `Books / N` when ListBooks returned rows.
+ *
+ * ⛔ EMPTY IS SILENCE, NOT ZERO. Printing `Books / 0` over an open book
+ * whose list came back empty is a lie about the listing. The empty
+ * collection page already says "No books yet."
+ */
+export function listedCrumb(noun: string, n: number): { noun: string; n: string | null } {
+  return n === 0 ? { noun, n: null } : { noun, n: count(String(n)) };
+}
+
+/**
  * A credit-normal figure, as a reader expects to see it.
  *
  * ⛔ A REALIZED GAIN READS NEGATIVE IN THE RAW FIGURE. `Ratio.Lots.Posting` has
