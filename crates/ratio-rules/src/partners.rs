@@ -442,6 +442,20 @@ mod tests {
         assert_eq!(units_in_issue(&[10, -4]), Some(6));
         assert_eq!(redeem(Some(10), 4).unwrap(), Some(6));
         assert_eq!(redeem(Some(10), 10).unwrap(), Some(0));
+        // Issued and redeemed stay apart — the net is not the plug.
+        // `Ratio.Partners.periodIssued` / `periodRedeemed`.
+        assert_eq!(period_issued(&[]), None);
+        assert_eq!(period_redeemed(&[]), None);
+        assert_eq!(period_issued(&[10]), Some(10));
+        assert_eq!(period_redeemed(&[10]), None);
+        assert_eq!(period_issued(&[-4]), None);
+        assert_eq!(period_redeemed(&[-4]), Some(4));
+        assert_eq!(period_issued(&[10, -4]), Some(10));
+        assert_eq!(period_redeemed(&[10, -4]), Some(4));
+        assert_eq!(
+            period_issued(&[10, -4]).unwrap() - period_redeemed(&[10, -4]).unwrap(),
+            units_in_issue(&[10, -4]).unwrap()
+        );
     }
 
     #[test]
@@ -494,6 +508,38 @@ pub fn units_in_issue(units: &[i64]) -> Option<i64> {
     let mut n: i64 = 0;
     for &u in units {
         n = match checked::add(n, u, "units in issue") {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+    }
+    Some(n)
+}
+
+/// Period units issued. Empty, or a window with only redemptions, is
+/// unset — not a silent zero issue. `Ratio.Partners.no_issue_is_unset`.
+pub fn period_issued(units: &[i64]) -> Option<i64> {
+    if !units.iter().any(|&u| u > 0) {
+        return None;
+    }
+    let mut n: i64 = 0;
+    for &u in units.iter().filter(|&&u| u > 0) {
+        n = match checked::add(n, u, "units issued") {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+    }
+    Some(n)
+}
+
+/// Period units redeemed (absolute). Empty, or a window with only
+/// subscriptions, is unset. `Ratio.Partners.no_redeem_is_unset`.
+pub fn period_redeemed(units: &[i64]) -> Option<i64> {
+    if !units.iter().any(|&u| u < 0) {
+        return None;
+    }
+    let mut n: i64 = 0;
+    for &u in units.iter().filter(|&&u| u < 0) {
+        n = match checked::add(n, -u, "units redeemed") {
             Ok(v) => v,
             Err(_) => return None,
         };

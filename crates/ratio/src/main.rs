@@ -35,6 +35,10 @@ struct EntryInput {
     /// walked FIFO — the same trap as a missing `lot_method`.
     #[serde(default)]
     identified_lots: Option<Vec<u64>>,
+    /// Day the entry happened. Omitted stays undated — period NAV
+    /// skips undated entries the same way the money fold does.
+    #[serde(default)]
+    trade_date: Option<String>,
 }
 
 const USAGE: &str = "\
@@ -1546,7 +1550,7 @@ fn post(book: PathBuf, file: &str) -> Result<()> {
             memo: input.memo,
             config: config.clone(),
             postings: input.postings,
-            trade_date: None,
+            trade_date: input.trade_date,
             announcement: None,
             due_date: None,
             application: None,

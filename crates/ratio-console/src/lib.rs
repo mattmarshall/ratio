@@ -875,6 +875,20 @@ impl Console {
                         _ => Vec::new(),
                     },
                     units: units
+                        .ending
+                        .get(&a.dim)
+                        .map(|n| n.to_string())
+                        .unwrap_or_default(),
+                    // Period plugs. Empty when this window had no issue /
+                    // redeem on the dim — unset, not a silent zero.
+                    // `Ratio.Partners.no_issue_is_unset`.
+                    units_issued: units
+                        .issued
+                        .get(&a.dim)
+                        .map(|n| n.to_string())
+                        .unwrap_or_default(),
+                    units_redeemed: units
+                        .redeemed
                         .get(&a.dim)
                         .map(|n| n.to_string())
                         .unwrap_or_default(),
@@ -4524,17 +4538,25 @@ fn fact_name(fund: &str, id: &str) -> String {
     format!("funds/{fund}/facts/{}", id.replace(':', "-"))
 }
 
-/// Signed units posted to each dimension, or absent when no posting on
-/// that dim carried a quantity. Current includes undated; dated folds
-/// skip them the same way the money fold does. Activity is the window
-/// net; Current / AsOf / Loan are the ending stock.
-/// `Ratio.Partners.no_movement_is_unset`.
+/// Ending units plus period issued / redeemed, per dimension.
+///
+/// Ending is absent when no posting on that dim carried a quantity.
+/// Issued / redeemed are absent when the fold's *window* had no
+/// subscription / redemption — a contribute-only month stays unset,
+/// not a silent zero issue. Current / AsOf have no period window, so
+/// those plugs stay empty. `Ratio.Partners.no_issue_is_unset`.
+struct UnitsFold {
+    ending: BTreeMap<i64, i64>,
+    issued: BTreeMap<i64, i64>,
+    redeemed: BTreeMap<i64, i64>,
+}
+
 fn units_folded(
     b: &FileBook,
     proj: &ratio_project::Projection,
     view: &str,
     fold: &AccountFold,
-) -> Result<BTreeMap<i64, i64>> {
+) -> Result<UnitsFold> {
     let activity = matches!(fold, AccountFold::Activity(_));
     let closing: BTreeSet<String> = if activity {
         b.closes()?
@@ -4544,7 +4566,9 @@ fn units_folded(
     } else {
         BTreeSet::new()
     };
-    let mut units: BTreeMap<i64, i64> = BTreeMap::new();
+    let mut ending: BTreeMap<i64, i64> = BTreeMap::new();
+    let mut issued: BTreeMap<i64, i64> = BTreeMap::new();
+    let mut redeemed: BTreeMap<i64, i64> = BTreeMap::new();
     b.for_each_entry_since(0, &mut |entry| {
         if activity && closing.contains(&entry.id) {
             return Ok(());
@@ -4552,8 +4576,11 @@ fn units_folded(
         if !proj.recognised(view, entry)? {
             return Ok(());
         }
-        match fold {
-            AccountFold::Current => {}
+        let in_window = match fold {
+            // ⛔ NO PERIOD WINDOW. Ending units still fold; issued /
+            // redeemed stay unset rather than pretending all history
+            // is this period. `Ratio.Partners.no_issue_is_unset`.
+            AccountFold::Current => false,
             AccountFold::AsOf(w) | AccountFold::Loan(w) => {
                 let Some(day) = entry.trade_date.as_deref() else {
                     return Ok(());
@@ -4561,6 +4588,9 @@ fn units_folded(
                 if day > w.end.as_str() {
                     return Ok(());
                 }
+                matches!(fold, AccountFold::Loan(_))
+                    && day >= w.start.as_str()
+                    && day <= w.end.as_str()
             }
             AccountFold::Activity(w) => {
                 let Some(day) = entry.trade_date.as_deref() else {
@@ -4569,17 +4599,27 @@ fn units_folded(
                 if day < w.start.as_str() || day > w.end.as_str() {
                     return Ok(());
                 }
+                true
             }
-        }
+        };
         for p in &entry.postings {
             if let Some(q) = p.quantity {
-                let slot = units.entry(p.dim).or_insert(0);
+                let slot = ending.entry(p.dim).or_insert(0);
                 *slot = ratio_common::checked::add(*slot, q, "units")?;
+                if in_window {
+                    if q > 0 {
+                        let slot = issued.entry(p.dim).or_insert(0);
+                        *slot = ratio_common::checked::add(*slot, q, "units issued")?;
+                    } else if q < 0 {
+                        let slot = redeemed.entry(p.dim).or_insert(0);
+                        *slot = ratio_common::checked::add(*slot, -q, "units redeemed")?;
+                    }
+                }
             }
         }
         Ok(())
     })?;
-    Ok(units)
+    Ok(UnitsFold { ending, issued, redeemed })
 }
 
 /// Signed units posted to one dimension, or unset when no posting on
@@ -6498,6 +6538,22 @@ mod tests {
             .unwrap();
         assert_eq!(lp_mar.credit, "15000", "{lp_mar:?}");
         assert_eq!(lp_mar.units, "10", "{lp_mar:?}");
+        assert_eq!(lp_mar.units_issued, "10", "March issued the subscription: {lp_mar:?}");
+        assert_eq!(
+            lp_mar.units_redeemed, "",
+            "March redeemed nothing — unset, not a silent zero: {lp_mar:?}"
+        );
+
+        // A window with no unit event leaves issued/redeemed unset. Ending
+        // units are still the as-of stock (the March subscription).
+        let feb = c.list_accounts(&view, "nav-2026-02").unwrap().accounts;
+        let lp_feb = feb
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(lp_feb.units, "", "February as-of is before the issue: {lp_feb:?}");
+        assert_eq!(lp_feb.units_issued, "", "no February issue: {lp_feb:?}");
+        assert_eq!(lp_feb.units_redeemed, "", "no February redeem: {lp_feb:?}");
     }
 
     #[test]
@@ -6602,6 +6658,14 @@ mod tests {
             .find(|a| a.display_name == "Partner capital — LP")
             .unwrap();
         assert_eq!(lp.units, "6", "10 issued − 4 redeemed: {lp:?}");
+        let mar = c.list_accounts(&view, "nav-2026-03").unwrap().accounts;
+        let lp_mar = mar
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(lp_mar.units_issued, "10", "March issued 10: {lp_mar:?}");
+        assert_eq!(lp_mar.units_redeemed, "4", "March redeemed 4: {lp_mar:?}");
+        assert_eq!(lp_mar.units, "6", "ending is the net, not the issued plug: {lp_mar:?}");
         assert_eq!(lp.debit, "4000", "{lp:?}");
         assert_eq!(
             c.get_fund("funds/redeem").unwrap().trial_balance_difference,
@@ -6645,6 +6709,87 @@ mod tests {
         assert!(
             missing.contains("units") || missing.contains("contribution"),
             "subscribe without quantity must refuse: {missing}"
+        );
+    }
+
+    #[test]
+    fn createbook_admits_a_subscription_file_and_cites_the_units() {
+        // ⭐ THE CREATEBOOK SEED IS THE TEMPLATE, NOT A JOURNAL. CreateBook
+        // writes no history; ingest + admit of `subscriptions` is the
+        // unitized path the live demo's opening `sub-0001` now takes.
+        let root = fresh("unit-ingest");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Ingested".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "ingested".into(),
+        })
+        .unwrap();
+        {
+            use ratio_store::Journal;
+            let mut n = 0usize;
+            FileBook::open(root.join("ingested"))
+                .unwrap()
+                .for_each_entry_since(0, &mut |_| {
+                    n += 1;
+                    Ok(())
+                })
+                .unwrap();
+            assert_eq!(n, 0, "CreateBook must not invent journal history");
+        }
+
+        let ingested = c
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/ingested".into(),
+                template_id: "subscriptions".into(),
+                content: "\
+Ref,Date,Amount,Ccy,Quantity,Kind
+SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
+"
+                .into(),
+                origin: "subs.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(ingested.rejected.is_empty(), "{:?}", ingested.rejected);
+        assert_eq!(ingested.fact_count, "1");
+
+        let admitted = c
+            .admit_facts(&pb::AdmitFactsRequest {
+                parent: "funds/ingested".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert_eq!(admitted.posted_count, "1", "{admitted:?}");
+        assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
+
+        let view = capital_view("ingested");
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp = capital
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(lp.units, "10", "admitted subscription issued 10: {lp:?}");
+        assert_eq!(lp.credit, "10000", "{lp:?}");
+        let mar = c.list_accounts(&view, "nav-2026-03").unwrap().accounts;
+        let lp_mar = mar
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(lp_mar.units_issued, "10", "{lp_mar:?}");
+        assert_eq!(lp_mar.units_redeemed, "", "{lp_mar:?}");
+        assert_eq!(
+            c.get_fund("funds/ingested").unwrap().trial_balance_difference,
+            "0"
+        );
+        let proj = c.projection("ingested").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "an ingested subscription must not open a lot"
         );
     }
 
@@ -8379,6 +8524,7 @@ mod tests {
                     ("custodian-positions", false),
                     ("prime_equity_trades", true),
                     ("capital-calls", true),
+                    ("subscriptions", true),
                 ],
             ),
             (

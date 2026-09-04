@@ -2025,6 +2025,57 @@ missing incurred cite leaving EAC blank rather than inventing
 show a Connect token opening a book, EAC fields on `/budget`, or
 live EAC product UX beyond the pack.
 
+### Amendment, 2026-09-04 — unitized seed, period issued/redeemed, per-share
+
+#196 landed subscribe / redeem as conserved unit movements.
+Leftovers stayed on #181: the live demo's `sub-0001` was still
+money-only, `/nav` had no period issued / redeemed plug and no
+per-share figure, and CreateBook seeded no ingest mapping.
+
+What landed is those leftovers, cited honestly:
+
+- Lean: `Ratio.Partners.periodIssued` / `periodRedeemed`. Empty, or
+  a window with only the other kind of movement, is unset — not a
+  silent zero issue or a silent zero redemption. Issued minus
+  redeemed is the signed net ending units already sum.
+  `Ratio.Closure.perShare` was already the one division that must
+  round; residual is accounted for.
+- Live demo: `sub-0001` posts 500,000 units on Capital
+  contributions, dated 2026-01-01. Units in issue are citeable.
+  CreateBook still writes no journal history — the seed is the
+  `subscriptions` ingest mapping plus this opening post.
+- `/nav` cites period issued / redeemed from the Loan fold's
+  window, and per-share from ending NAV / units in issue
+  (Euclidean, matching Lean). Unset when the window has no unit
+  event, or units are unset or zero — never a fake zero plug or a
+  divided-by-zero per-share. Residual stays with the fund.
+- Ingest: `subscriptions` maps Kind × Amount × Quantity onto
+  `subscribe` / `subscribe_lp` / `subscribe_gp` / `redeem` /
+  `redeem_lp` / `redeem_gp`. Quantity is decimal hundredths →
+  whole units on admit. `contribute_*` stays money-only.
+
+**What this is NOT:**
+
+- Not an **LP portal, drip, or payment initiation** (Connect —
+  #161 / #150).
+- Not a **seeded demo cut** or a fold of per-entry specials (#180).
+- Not a **`screensFor` fork**, and not a `Method` / `Order` /
+  `lot_method` variant.
+- Not a CreateBook journal posting. CreateBook writes the
+  template; the live demo posts `sub-0001`.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #181. It does not close #180. It does not
+close #172, #169, or #22.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can open the live demo and cite units in issue, January issued,
+and per-share NAV on `/nav`; ingest or record `subscribe_lp`;
+leave issued / redeemed / per-share unset on a contribute-only
+window or a book with no units. It cannot show an LP portal, a
+1/N split of book units, or a seeded partner cut. Those remain on
+Connect or #180.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

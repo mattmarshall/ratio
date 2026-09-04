@@ -499,6 +499,18 @@ NEEDLES: list[tuple[str, str]] = [
         "NAV would render units in issue as a silent zero before a subscription",
     ),
     (
+        "unset — no subscription posted units this window, not a silent zero issue",
+        "NAV would render period issued as a silent zero before a subscription",
+    ),
+    (
+        "unset — no redemption posted this window, not a silent zero redemption",
+        "NAV would render period redeemed as a silent zero before a redemption",
+    ),
+    (
+        "unset — no units in issue, not a fake zero per-share",
+        "NAV would render a fake zero per-share before any units posted",
+    ),
+    (
         "unset — no units issued on this partner, not a fake zero",
         "partner units would render as a silent zero before a subscription",
     ),

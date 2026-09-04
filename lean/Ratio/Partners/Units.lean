@@ -76,6 +76,76 @@ theorem units_in_issue_are_the_sum (m : Movement) (ms : List Movement) :
 example : unitsInIssue [⟨0, 100, 10⟩, ⟨0, -40, -4⟩] = some 6 := by
   decide
 
+/-- Positive units in a window. A redemption does not count as issued. -/
+def issuedOf : List Movement → Int
+  | [] => 0
+  | m :: ms => (if 0 < m.units then m.units else 0) + issuedOf ms
+
+/-- Absolute retired units in a window. A subscription does not count. -/
+def redeemedOf : List Movement → Int
+  | [] => 0
+  | m :: ms => (if m.units < 0 then -m.units else 0) + redeemedOf ms
+
+def hasIssue : List Movement → Bool
+  | [] => false
+  | m :: ms => decide (0 < m.units) || hasIssue ms
+
+def hasRedeem : List Movement → Bool
+  | [] => false
+  | m :: ms => decide (m.units < 0) || hasRedeem ms
+
+/-- Period issued. Empty, or a window with only redemptions, is unset —
+not a silent zero issue. -/
+def periodIssued (ms : List Movement) : Option Int :=
+  if hasIssue ms then some (issuedOf ms) else none
+
+/-- Period redeemed. Empty, or a window with only subscriptions, is unset —
+not a silent zero redemption. -/
+def periodRedeemed (ms : List Movement) : Option Int :=
+  if hasRedeem ms then some (redeemedOf ms) else none
+
+theorem no_issue_is_unset : periodIssued [] = none := rfl
+
+theorem no_redeem_is_unset : periodRedeemed [] = none := rfl
+
+/-- A subscription window issues and does not redeem. -/
+example : periodIssued [⟨0, 100, 10⟩] = some 10 := by
+  decide
+
+example : periodRedeemed [⟨0, 100, 10⟩] = none := by
+  decide
+
+/-- A redemption window redeems and does not issue. -/
+example : periodIssued [⟨0, -40, -4⟩] = none := by
+  decide
+
+example : periodRedeemed [⟨0, -40, -4⟩] = some 4 := by
+  decide
+
+/-- Issued and redeemed in one window stay apart — the net is not the plug. -/
+example : periodIssued [⟨0, 100, 10⟩, ⟨0, -40, -4⟩] = some 10 := by
+  decide
+
+example : periodRedeemed [⟨0, 100, 10⟩, ⟨0, -40, -4⟩] = some 4 := by
+  decide
+
+/-- Issued minus redeemed is the signed net the ending units already sum. -/
+theorem issued_minus_redeemed_is_the_net :
+    (ms : List Movement) → issuedOf ms - redeemedOf ms = issuedSum ms
+  | [] => by simp [issuedOf, redeemedOf, issuedSum]
+  | m :: ms => by
+    have ih := issued_minus_redeemed_is_the_net ms
+    simp [issuedOf, redeemedOf, issuedSum]
+    split_ifs with hPos hNeg
+    · have : ¬ m.units < 0 := by omega
+      simp [this] at *
+      omega
+    · simp [hNeg] at *
+      omega
+    · have : m.units = 0 := by omega
+      simp [this] at *
+      omega
+
 /-- Money legs: cash in, capital up (or the reverse). Units do not
 appear — they are measured. -/
 def cashLeg (m : Movement) : Int := m.cash

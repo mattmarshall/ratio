@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   beginningOf,
+  bookIssued,
+  bookRedeemed,
   bookUnits,
   expenseShown,
   incomeShown,
@@ -8,6 +10,8 @@ import {
   navRollForward,
   navShown,
   outflowShown,
+  perShareOf,
+  perShareShown,
   unitsOf,
   unitsShown,
 } from "./nav";
@@ -33,6 +37,8 @@ const acct = (
   postingCount,
   currencyTotals: [],
   units: "",
+  unitsIssued: "",
+  unitsRedeemed: "",
 });
 
 describe("a period NAV roll-forward", () => {
@@ -58,8 +64,14 @@ describe("a period NAV roll-forward", () => {
     expect(navShown(r.beginning)).toBe("—");
     expect(navShown(0n)).toBe("0.00");
     expect(bookUnits(accounts)).toBeNull();
+    expect(bookIssued(accounts)).toBeNull();
+    expect(bookRedeemed(accounts)).toBeNull();
+    expect(r.issued).toBeNull();
+    expect(r.redeemed).toBeNull();
+    expect(r.perShare).toBeNull();
     expect(unitsShown(null)).toBe("—");
     expect(unitsShown(0n)).toBe("0");
+    expect(perShareShown(null)).toBe("—");
   });
 
   it("treats a commitment-only prefix that nets to zero NAV as a real beginning", () => {
@@ -197,5 +209,65 @@ describe("a period NAV roll-forward", () => {
     expect(unitsOf(redeemed[1]!)).toBe(0n);
     expect(bookUnits(redeemed)).toBe(0n);
     expect(unitsShown(0n)).toBe("0");
+  });
+
+  it("cites period issued and redeemed when the window posted them, and leaves them unset otherwise", () => {
+    const contributeOnly: Account[] = [
+      acct("2", "Cash and equivalents", "ASSET", "10000", "0", "10000"),
+      acct("50", "Partner capital — LP", "EQUITY", "0", "10000", "-10000"),
+    ];
+    const r0 = navRollForward(contributeOnly);
+    expect(r0.issued).toBeNull();
+    expect(r0.redeemed).toBeNull();
+    expect(r0.issued === 0n).toBe(false);
+    expect(r0.redeemed === 0n).toBe(false);
+
+    const both: Account[] = [
+      {
+        ...acct("2", "Cash and equivalents", "ASSET", "6000", "4000", "12000"),
+        units: "",
+      },
+      {
+        ...acct("50", "Partner capital — LP", "EQUITY", "4000", "10000", "-16000"),
+        units: "6",
+        unitsIssued: "10",
+        unitsRedeemed: "4",
+      },
+    ];
+    const r = navRollForward(both);
+    expect(r.issued).toBe(10n);
+    expect(r.redeemed).toBe(4n);
+    expect(bookIssued(both)).toBe(10n);
+    expect(bookRedeemed(both)).toBe(4n);
+    // ⛔ THE NET IS NOT THE PLUG. Issued 10 / redeemed 4 is not "issued 6".
+    expect(r.issued === 6n).toBe(false);
+    expect(bookUnits(both)).toBe(6n);
+  });
+
+  it("cites Euclidean per-share when units exist and leaves it unset otherwise", () => {
+    // `Ratio.Closure.perShare 1000 3 = (333, 1)` and `perShare (-7) 3 = (-3, 2)`.
+    expect(perShareOf(1000n, 3n)).toEqual({ perUnit: 333n, residual: 1n });
+    expect(perShareOf(-7n, 3n)).toEqual({ perUnit: -3n, residual: 2n });
+    expect(3n * -3n + 2n).toBe(-7n);
+    expect(perShareOf(1000n, 0n)).toBeNull();
+    expect(perShareOf(1000n, null)).toBeNull();
+    expect(perShareOf(null, 10n)).toBeNull();
+
+    const subscribed: Account[] = [
+      acct("2", "Cash and equivalents", "ASSET", "10000", "0", "10000"),
+      { ...acct("50", "Partner capital — LP", "EQUITY", "0", "10000", "-10000"), units: "10" },
+    ];
+    const r = navRollForward(subscribed);
+    expect(r.ending).toBe(10_000n);
+    expect(r.perShare).toEqual({ perUnit: 1000n, residual: 0n });
+    expect(perShareShown(r.perShare)).toBe("10.00");
+
+    const fullRedeem = subscribed.map((a) =>
+      a.displayName.startsWith("Partner capital") ? { ...a, units: "0" } : a,
+    );
+    const done = navRollForward(fullRedeem);
+    expect(bookUnits(fullRedeem)).toBe(0n);
+    expect(done.perShare).toBeNull();
+    expect(perShareShown(done.perShare)).toBe("—");
   });
 });

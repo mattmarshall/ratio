@@ -552,17 +552,21 @@ the conserved one, and the kernel never said it was.
 - ⚠ **A subscription / redemption walk-through (#181 / #27).** Record
   `subscribe_lp` with a unit count: cash and partner capital move, the
   trial balance still ties, no lot opens, `/capital` cites the partner's
-  units, `/nav` cites units in issue, and explain `capital_txns` counts
-  the entry. `contribute_lp` is still funded capital without units —
-  those stay **unset**, not a silent 0. Redeeming when unset, redeeming
-  zero, and over-redemption refuse. A full redeem is `"0"`, a real
-  zero. Book-level `subscribe` / `redeem` do not split 1/N across
-  partners. ⛔ The walk-through cannot show a CreateBook / live-demo
-  seed of unitized capital (the demo's `sub-0001` is money-only; units
-  stay unset), a per-share NAV, period issued/redeemed as separate
-  plugs, an ingest template, an LP portal, drip, or payment
-  initiation. This file does not close #181: those seed and NAV
-  leftovers stay on the issue. It does not close #180.
+  units, `/nav` cites units in issue, issued / redeemed this window,
+  and per-share NAV (Euclidean; residual stays with the fund), and
+  explain `capital_txns` counts the entry. `contribute_lp` is still
+  funded capital without units — those stay **unset**, not a silent 0.
+  Issued / redeemed / per-share stay **unset** when the window has no
+  unit event or no units in issue — never a fake zero plug or a
+  divided-by-zero per-share. Redeeming when unset, redeeming zero, and
+  over-redemption refuse. A full redeem is `"0"`, a real zero.
+  Book-level `subscribe` / `redeem` do not split 1/N across partners.
+  CreateBook seeds the `subscriptions` ingest mapping; the live demo's
+  `sub-0001` posts 500,000 units on Capital contributions, dated, so
+  `/nav` can cite them. Ingest or record `subscribe_lp`. ⛔ The
+  walk-through cannot show an LP portal, drip, or payment initiation
+  (Connect — #161 / #150). This file closes #181. It does not close
+  #180.
 - ⚠ **A management-fee accrual walk-through (#182 / #27).** Write
   `management_fee_accrual` (75 bp, act/365, expense 10 / payable 40)
   and accrue a dividing basis: expense debit and payable credit
@@ -571,8 +575,8 @@ the conserved one, and the kernel never said it was.
   rule — the figure stays **unset**, not a silent 0. A zero-day
   no-op and same-sign legs refuse. ⛔ The walk-through cannot show
   an invoice PDF, an LP statement, or payment collection — those
-  stay Connect (`fees:read` / `fees:accrue`). This file closes
-  #182. It does not close #181. It does not close #180.
+  stay Connect (`fees:read` / `fees:accrue`).   This file closes
+  #182. It does not reopen #181. It does not close #180.
 - ⚠ **A project change-order walk-through (#91 / #27).** CreateBook(Project)
   seeds `Approved change orders` / `Change-order authorization` keyed by
   work package (site / structure / finishes, plus unpartitioned) as equity,

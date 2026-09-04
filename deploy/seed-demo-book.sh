@@ -313,10 +313,16 @@ RATIO_ACTOR="${RATIO_ACTOR:-e.marsh}" "$RATIO" approve management_fee --book "$O
 # An opening subscription is posted directly rather than through a rule: a
 # fund's opening balance is not one of the transaction types the recon scope
 # covers, and pretending it were would widen the scope to flatter the demo.
+#
+# ⭐ UNITIZED, NOT MONEY-ONLY. Quantity on the capital leg is what makes
+# units in issue citeable. A silent money-only post labelled "subscription"
+# is the leftover #181 named. 500,000 units at $1,000 is an exact
+# per-share at open (`Ratio.Closure.perShare`). Dated so period NAV
+# can cite issued / per-share — undated entries are skipped by that fold.
 cat > opening.json <<'JSON'
-[{"id":"sub-0001","memo":"Opening subscription","postings":[
+[{"id":"sub-0001","memo":"Opening subscription","trade_date":"2026-01-01","postings":[
   {"dim":2,"amount":50000000000},
-  {"dim":20,"amount":-50000000000}]}]
+  {"dim":20,"amount":-50000000000,"quantity":500000}]}]
 JSON
 "$RATIO" post opening.json --book "$OUT" >/dev/null
 

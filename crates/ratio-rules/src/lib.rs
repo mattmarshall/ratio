@@ -29,8 +29,9 @@ pub use render::render;
 /// Partner allocation cut — named weights, not a partner count.
 mod partners;
 pub use partners::{
-    allocate, apply_facts, check_cut, check_specials, cut_for, redeem, units_in_issue,
-    well_formed_move, AllocationFact, AllocationKind, PartnerShare, SpecialAllocation,
+    allocate, apply_facts, check_cut, check_specials, cut_for, period_issued, period_redeemed,
+    redeem, units_in_issue, well_formed_move, AllocationFact, AllocationKind, PartnerShare,
+    SpecialAllocation,
 };
 
 /// Management-fee accrual — elected terms, conserved receivable/expense.

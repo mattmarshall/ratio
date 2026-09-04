@@ -109,6 +109,16 @@ grep -q "average_cost" "$BLOCKED/config/$active" \
 grep -q '"identified_lots"' "$BLOCKED/journal.jsonl" \
   || fail "harbourline has no SpecID sale — the walk-through cannot cite named lots"
 
+# ⭐ UNITIZED OPENING. A money-only sub-0001 labelled "subscription" is
+# the leftover #181 named — units stayed unset and the walk-through had
+# to record subscribe_lp itself. Quantity on the capital leg, dated.
+grep -q '"id":"sub-0001"' "$BLOCKED/journal.jsonl" \
+  || fail "harbourline has no opening subscription"
+grep -q '"quantity":500000' "$BLOCKED/journal.jsonl" \
+  || fail "harbourline opening subscription has no units — money-only sub-0001 is the leftover"
+grep -q '"trade_date":"2026-01-01"' "$BLOCKED/journal.jsonl" \
+  || fail "harbourline opening subscription is undated — period NAV would skip it"
+
 # Calderwood elects the Lean example's min-tax weight. Empty book, so
 # writing 2 cannot restate a sale. Silence on harbourline stays unset.
 CAL="$OUT/calderwood-income"

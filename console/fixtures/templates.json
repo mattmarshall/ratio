@@ -22,6 +22,13 @@
             "posts": true
         },
         {
+            "name": "funds/harbourline-global-value/templates/subscriptions",
+            "templateId": "subscriptions",
+            "factKind": "capital",
+            "form": "template subscriptions {\n  reads      csv with header\n  grain      one capital per row\n\n  fact       capital\n    reference   from \"Ref\"\n    dated       from \"Date\" as date \"YYYY-MM-DD\"\n    amount      from \"Amount\" as money in \"Ccy\"\n    quantity    from \"Quantity\" as decimal\n    kind        from \"Kind\" as { redeem: redeem, redeem_gp: redeem_gp, redeem_lp: redeem_lp, subscribe: subscribe, subscribe_gp: subscribe_gp, subscribe_lp: subscribe_lp }\n\n  posts      by \"kind\"\n    amount      amount\n    dated       dated\n    redeem      -> redeem\n    redeem_gp   -> redeem_gp\n    redeem_lp   -> redeem_lp\n    subscribe   -> subscribe\n    subscribe_gp-> subscribe_gp\n    subscribe_lp-> subscribe_lp\n}\n",
+            "posts": true
+        },
+        {
             "name": "funds/household/templates/bank-statement",
             "templateId": "bank-statement",
             "factKind": "statement",
