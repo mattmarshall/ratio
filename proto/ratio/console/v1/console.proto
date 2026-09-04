@@ -655,6 +655,40 @@ message Book {
   //
   // ⚠ Field 13: budget is 11, envelopes 12. This must not collide.
   repeated LoanSchedule loans = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Partner allocation cut from the active configuration.
+  //
+  // ⛔ EMPTY IS UNSET, NOT A SILENT 1/N. Allocated income / expense /
+  // unrealized on `/capital` stay unset when this list is empty.
+  // Writing equal weights is an election; inventing them from the
+  // partner count is not. `Ratio.Partners.no_cut_is_unset`.
+  //
+  // ⚠ Field 14. loans is 13.
+  repeated PartnerShare partner_cut = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Standing special allocations by kind, replacing the default cut
+  // for that kind. Empty is silence — that kind uses `partner_cut`,
+  // or stays unset. Exact amounts are journal facts, not this list.
+  repeated SpecialAllocation special_allocations = 15
+      [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One named weight in a partner cut. Absent from `Book.partner_cut`
+// when nobody said — not a fabricated equal share.
+message PartnerShare {
+  // The grain on `Partner capital — LP` (`LP`), not a chart dimension.
+  string partner = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Positive integer share of the whole. The total is the sum, not
+  // 100 and not the partner count.
+  int64 weight = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// A standing special: this partner's weight of this kind.
+message SpecialAllocation {
+  string partner = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // `income` / `expense` / `unrealized`.
+  string kind = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 weight = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One declared household envelope. Absent from `Book.envelopes` when that

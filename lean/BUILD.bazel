@@ -556,6 +556,21 @@ lean_test(
     entry = "Ratio/Lots/AverageCost.lean",
 )
 
+# ⛔ A partner allocation cut, not a silent 1/N of book NAV.
+#
+# `/capital` allocated income / expense / unrealized stay unset without
+# a named cut. Inventing an equal split from the partner count would
+# print somebody else's share while the books still tie. This file is
+# the cut: named weights that must divide exactly, specials that
+# replace the default for one kind, journal facts that are exact
+# amounts. `Some []` refuses the SpecID way.
+lean_test(
+    name = "partners_cut_proof_test",
+    size = "small",
+    srcs = ["Ratio/Partners/Cut.lean"],
+    entry = "Ratio/Partners/Cut.lean",
+)
+
 # ⛔ A jurisdiction that does NOT transfer the holding period.
 #
 # `Ratio.Lots.Wash.replacementAcquired` is the US rule. Assuming it

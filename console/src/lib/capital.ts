@@ -155,16 +155,35 @@ function endingSet(accounts: readonly Account[]): boolean {
 
 export type CapitalCut = "inception" | "period";
 
+/** One named weight. The total is the sum, not 100 and not the count. */
+export interface PartnerShare {
+  readonly partner: string;
+  readonly weight: bigint;
+}
+
+export type PartnerCut = readonly PartnerShare[];
+
+export type AllocationKind = "income" | "expense" | "unrealized";
+
+/** A standing special: this partner's weight of this kind. */
+export interface SpecialAllocation {
+  readonly partner: string;
+  readonly kind: AllocationKind;
+  readonly weight: bigint;
+}
+
 /**
  * One partner's capital account statement for a window.
  *
  * Beginning / ending are credit-normal stocks. Contributions and
  * distributions are this partner's period credits and debits — the same
  * In / Out the activity table already cites — not an equal slice of the
- * book. Allocated income, expense, and unrealized stay unset: the
- * Investment chart has no partner dim on those accounts, and
- * `allocate_*_lp` closes an exact amount into partner capital (already
- * in In / Out). A silent 0.00 share or a 50/50 split is the defect.
+ * book. Allocated income, expense, and unrealized stay unset without a
+ * named partner cut — the Investment chart has no partner dim on those
+ * accounts, and `allocate_*_lp` closes an exact amount into partner
+ * capital (already in In / Out). A silent 0.00 share or a 50/50 split
+ * of book NAV is the defect. A written `[[partner_cut]]` fills the
+ * plugs; a figure that will not divide leaves them unset.
  */
 export interface PartnerCapitalAccount {
   readonly displayName: string;
@@ -191,20 +210,67 @@ export function capitalShown(n: bigint | null): string {
 }
 
 /**
+ * Apply a named cut to a book figure.
+ *
+ * ⛔ EMPTY IS UNSET, NOT 1/N. `Ratio.Partners.no_cut_is_unset`.
+ * A figure that will not divide returns null for every partner —
+ * a partial fill would look exact for the ones that happened to
+ * land. `Ratio.Partners.a_slice_is_exactly_pro_rata`.
+ */
+export function applyCut(
+  figure: bigint | null,
+  cut: PartnerCut | null | undefined,
+): Map<string, bigint> | null {
+  if (figure === null) return null;
+  if (!cut || cut.length === 0) return null;
+  const seen = new Set<string>();
+  let total = 0n;
+  for (const s of cut) {
+    if (s.weight <= 0n) return null;
+    if (!s.partner || seen.has(s.partner)) return null;
+    seen.add(s.partner);
+    total += s.weight;
+  }
+  if (total <= 0n) return null;
+  const out = new Map<string, bigint>();
+  for (const s of cut) {
+    const prod = figure * s.weight;
+    if (prod % total !== 0n) return null;
+    out.set(s.partner, prod / total);
+  }
+  return out;
+}
+
+/**
+ * The cut that applies to a kind: standing specials if any were
+ * named, otherwise the default. `Ratio.Partners.cutFor`.
+ */
+export function cutForKind(
+  kind: AllocationKind,
+  cut: PartnerCut | null | undefined,
+  specials: readonly SpecialAllocation[] | null | undefined,
+): PartnerCut | null {
+  const named = (specials ?? []).filter((s) => s.kind === kind);
+  if (named.length === 0) return cut && cut.length > 0 ? cut : null;
+  return named.map((s) => ({ partner: s.partner, weight: s.weight }));
+}
+
+/**
  * Partner-cut of a book income / expense / unrealized figure.
  *
- * ⛔ NEVER EQUAL-SPLIT, NEVER A FAKE ZERO. The journal has no ownership
- * percentage. `allocate_gain_lp` posts an exact integer into partner
- * capital — that credit is already on In. Dividing book NAV or period
- * income by the partner count invents a share nobody posted. Returning
- * `0n` would be the other lie: a measured zero share of a figure that
- * did move.
+ * ⛔ NEVER EQUAL-SPLIT, NEVER A FAKE ZERO. An empty cut is unset —
+ * dividing by the partner count invents a share nobody posted.
+ * Returning `0n` would be the other lie: a measured zero share of a
+ * figure that did move. `Ratio.Partners.no_cut_is_unset`.
  */
 export function allocatedPlug(
-  _bookFigure: bigint | null,
-  _partnerCount: number,
+  bookFigure: bigint | null,
+  cut: PartnerCut | null | undefined,
+  partner: string,
 ): bigint | null {
-  return null;
+  const shares = applyCut(bookFigure, cut);
+  if (!shares) return null;
+  return shares.get(partner) ?? null;
 }
 
 /**
@@ -221,29 +287,34 @@ export function allocatedPlug(
 export function partnerCapitalAccounts(
   accounts: readonly Account[],
   cut: CapitalCut,
+  partnerCut?: PartnerCut | null,
+  specials?: readonly SpecialAllocation[] | null,
 ): PartnerCapitalAccount[] {
   const partners = partnersOf(accounts as Account[]);
-  const n = partners.length;
   const bookHasPrefix = cut === "period" && prefixSet(accounts);
   const bookHasEnding =
     cut === "inception" ? partners.some(isPosted) : endingSet(accounts);
 
   // Book-level plugs exist so a caller can see we refused them. They
-  // do not enter any partner line.
+  // do not enter any partner line without a named cut.
   const bookIncome = periodType(accounts, "REVENUE");
   const bookExpense = periodType(accounts, "EXPENSE");
   const bookUnreal = accounts
     .filter((a) => a.displayName === "Unrealized gain")
     .reduce((s, a) => s + (raw(a.debit) - raw(a.credit)), 0n);
-  const incomePlug = bookHasEnding ? bookIncome : null;
+  const incomePlug = bookHasEnding ? creditNormal(bookIncome) : null;
   const expensePlug = bookHasEnding ? bookExpense : null;
   const unrealPlug = bookHasEnding &&
     accounts.some((a) => a.displayName === "Unrealized gain" && moved(a))
-    ? bookUnreal
+    ? creditNormal(bookUnreal)
     : null;
+  const incomeCut = cutForKind("income", partnerCut, specials);
+  const expenseCut = cutForKind("expense", partnerCut, specials);
+  const unrealCut = cutForKind("unrealized", partnerCut, specials);
 
   return partners.map((a) => {
     const posted = isPosted(a);
+    const grain = partnerGrain(a.displayName);
     const beginning = bookHasPrefix ? creditNormal(beginningOf(a)) : null;
     const contributions =
       bookHasEnding && (cut === "period" || posted) ? raw(a.credit) : null;
@@ -259,14 +330,14 @@ export function partnerCapitalAccounts(
           : null;
     return {
       displayName: a.displayName,
-      grain: partnerGrain(a.displayName),
+      grain,
       accountName: a.name,
       beginning,
       contributions,
       distributions,
-      allocatedIncome: allocatedPlug(incomePlug, n),
-      allocatedExpense: allocatedPlug(expensePlug, n),
-      unrealized: allocatedPlug(unrealPlug, n),
+      allocatedIncome: allocatedPlug(incomePlug, incomeCut, grain),
+      allocatedExpense: allocatedPlug(expensePlug, expenseCut, grain),
+      unrealized: allocatedPlug(unrealPlug, unrealCut, grain),
       ending,
     };
   });

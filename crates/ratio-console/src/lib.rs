@@ -1306,6 +1306,7 @@ impl Console {
             due_date,
             application,
             identified_lots: None,
+            special_allocations: None,
         };
 
         // The kernel refuses an unbalanced entry at the door, so `append` is
@@ -2005,6 +2006,7 @@ impl Console {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })?;
         Ok((moved, dim_touched))
     }
@@ -2149,6 +2151,7 @@ impl Console {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
                         })?;
                     }
                     posted += 1;
@@ -2376,6 +2379,7 @@ impl Console {
                         .filter(|s| !s.is_empty())
                         .map(str::to_string),
                     identified_lots: None,
+                    special_allocations: None,
                 })?;
             }
             n += 1;
@@ -2427,7 +2431,8 @@ impl Console {
         let path = self.book_path(id)?;
         let meta = book::BookMeta::load(&path, id);
         let (config_digest, set) = local_config(&path);
-        let effective = set.unwrap_or_default();
+        let effective = set.clone().unwrap_or_default();
+        let (partner_cut, special_allocations) = partner_terms_of(set.as_ref());
         Ok(pb::Book {
             name: format!("books/{id}"),
             display_name: meta.display_name,
@@ -2442,6 +2447,8 @@ impl Console {
             budget: String::new(),
             envelopes: Vec::new(),
             loans: Vec::new(),
+            partner_cut,
+            special_allocations,
         })
     }
 
@@ -2530,6 +2537,8 @@ impl Console {
         let fund = self.get_fund(&format!("funds/{id}"))?;
         let (budget, envelopes) = budget_terms_of(&path, meta.kind);
         let loans = self.loan_schedules_of(&id)?;
+        let (_, set) = local_config(&path);
+        let (partner_cut, special_allocations) = partner_terms_of(set.as_ref());
         Ok(pb::Book {
             name: format!("books/{id}"),
             display_name: meta.display_name,
@@ -2544,6 +2553,8 @@ impl Console {
             budget,
             envelopes,
             loans,
+            partner_cut,
+            special_allocations,
         })
     }
 
@@ -2588,6 +2599,8 @@ impl Console {
             budget: String::new(),
             envelopes: Vec::new(),
             loans: Vec::new(),
+            partner_cut: Vec::new(),
+            special_allocations: Vec::new(),
         })
     }
 
@@ -3491,6 +3504,7 @@ impl Console {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
             };
             b.append(&entry)?;
             (Some(id), Some(dest_amt), digest.as_str().to_string())
@@ -5066,6 +5080,34 @@ fn view_pb(fund: &str, set: &ratio_rules::RuleSet, v: &ratio_rules::View) -> pb:
 /// Personal-only. Empty when unset — including every investment book, and a
 /// household or project nobody has given a baseline. `0` is a set baseline of
 /// nothing and is returned as `"0"`. Unset stays unset, not a fake zero.
+/// Partner cut and standing specials from a parsed rule set.
+///
+/// ⛔ EMPTY IS UNSET. A missing configuration, or one that named no
+/// `[[partner_cut]]`, is not a silent 1/N.
+/// `Ratio.Partners.no_cut_is_unset`.
+fn partner_terms_of(set: Option<&RuleSet>) -> (Vec<pb::PartnerShare>, Vec<pb::SpecialAllocation>) {
+    let Some(s) = set else {
+        return (Vec::new(), Vec::new());
+    };
+    (
+        s.partner_cut
+            .iter()
+            .map(|p| pb::PartnerShare {
+                partner: p.partner.clone(),
+                weight: p.weight,
+            })
+            .collect(),
+        s.special_allocations
+            .iter()
+            .map(|a| pb::SpecialAllocation {
+                partner: a.partner.clone(),
+                kind: a.kind.as_str().into(),
+                weight: a.weight,
+            })
+            .collect(),
+    )
+}
+
 fn budget_terms_of(path: &Path, kind: book::BookKind) -> (String, Vec<pb::HouseholdEnvelope>) {
     match kind {
         book::BookKind::Personal => household_terms_of(path),
@@ -5224,6 +5266,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
             })
             .unwrap();
         };
@@ -5550,6 +5593,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
             })
             .unwrap();
         }
@@ -5595,6 +5639,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
             })
             .unwrap();
         }
@@ -5630,6 +5675,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
             })
             .unwrap();
             b.append(&JournalEntry {
@@ -5645,6 +5691,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
             })
             .unwrap();
         }
@@ -6112,6 +6159,57 @@ mod tests {
     }
 
     #[test]
+    fn a_named_partner_cut_is_cited_and_silence_is_not_one_over_n() {
+        // `Ratio.Partners.no_cut_is_unset`. CreateBook writes no cut.
+        // Writing 80/20 is the election; inventing 50/50 from two
+        // partners is the defect.
+        let root = fresh("partner-cut");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "partners".into(),
+        })
+        .unwrap();
+        let before = c.get_book("books/partners").unwrap();
+        assert!(
+            before.partner_cut.is_empty(),
+            "CreateBook must not invent a cut: {:?}",
+            before.partner_cut
+        );
+        assert!(before.special_allocations.is_empty());
+
+        let path = root.join("partners");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().expect("CreateBook writes a config");
+        let current = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let with_cut = format!(
+            "{current}\n[[partner_cut]]\npartner = \"LP\"\nweight = 80\n\n\
+             [[partner_cut]]\npartner = \"GP\"\nweight = 20\n\n\
+             [[special_allocation]]\npartner = \"GP\"\nkind = \"expense\"\nweight = 1\n"
+        );
+        let next = b.put(with_cut.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+        drop(b);
+
+        let after = c.get_book("books/partners").unwrap();
+        assert_eq!(after.partner_cut.len(), 2, "{after:?}");
+        assert_eq!(after.partner_cut[0].partner, "LP");
+        assert_eq!(after.partner_cut[0].weight, 80);
+        assert_eq!(after.partner_cut[1].partner, "GP");
+        assert_eq!(after.partner_cut[1].weight, 20);
+        assert_eq!(after.special_allocations.len(), 1);
+        assert_eq!(after.special_allocations[0].partner, "GP");
+        assert_eq!(after.special_allocations[0].kind, "expense");
+        assert_eq!(after.special_allocations[0].weight, 1);
+        // ⛔ NOT 1/N. Two partners is not 50/50.
+        assert_ne!(after.partner_cut[0].weight, after.partner_cut[1].weight);
+    }
+
+    #[test]
     fn a_period_capital_keeps_one_month_and_drops_an_undated_entry() {
         let root = fresh("capital-period");
         let c = Console::new(&root);
@@ -6493,6 +6591,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         // $18,000 auto in February.
@@ -6509,6 +6608,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         // March mortgage: $800 principal + $200 interest against cash.
@@ -6526,6 +6626,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         // March auto: $350 principal + $45 interest.
@@ -6543,6 +6644,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         // A card charge the same month — not a declared loan.
@@ -6559,6 +6661,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         drop(b);
@@ -6663,6 +6766,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         drop(b);
@@ -6802,6 +6906,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         drop(b);
@@ -9234,6 +9339,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         drop(b);
@@ -9508,6 +9614,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
             })
             .unwrap();
             b.append(&JournalEntry {
@@ -9523,6 +9630,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
             })
             .unwrap();
         }
@@ -9561,6 +9669,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap_err();
 
@@ -10108,6 +10217,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         drop(b);
@@ -10228,6 +10338,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
                 due_date: None,
                 application: None,
                 identified_lots: Some(vec![3]),
+                special_allocations: None,
             })
             .unwrap();
         }
@@ -10528,6 +10639,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         drop(b);

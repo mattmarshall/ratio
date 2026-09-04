@@ -3,7 +3,9 @@ import type { Account } from "@/wire/types";
 import {
   activityOf,
   allocatedPlug,
+  applyCut,
   bookCapital,
+  cutForKind,
   capitalShown,
   commitmentIdentityHolds,
   endingCapital,
@@ -161,9 +163,11 @@ describe("a per-partner capital account statement", () => {
   it("names the partner grain and leaves allocated plugs unset, not a silent zero", () => {
     expect(partnerGrain("Partner capital — LP")).toBe("LP");
     expect(partnerGrain("Partner capital — GP")).toBe("GP");
-    expect(allocatedPlug(-3000n, 2)).toBeNull();
-    expect(allocatedPlug(0n, 2)).toBeNull();
-    expect(allocatedPlug(null, 0)).toBeNull();
+    expect(allocatedPlug(-3000n, null, "LP")).toBeNull();
+    expect(allocatedPlug(0n, [], "LP")).toBeNull();
+    expect(allocatedPlug(null, [{ partner: "LP", weight: 80n }], "LP")).toBeNull();
+    expect(applyCut(-3000n, null)).toBeNull();
+    expect(applyCut(-3000n, [])).toBeNull();
     expect(capitalShown(null)).toBe("—");
     expect(capitalShown(0n)).toBe("0.00");
   });
@@ -206,7 +210,49 @@ describe("a per-partner capital account statement", () => {
     expect(lp!.unrealized === -1_000n).toBe(false);
     expect(lp!.allocatedIncome === 0n).toBe(false);
     expect(lp!.unrealized === 0n).toBe(false);
-    expect(allocatedPlug(-3000n, 2) === -1500n).toBe(false);
+    expect(allocatedPlug(-3000n, null, "LP") === -1500n).toBe(false);
+    expect(applyCut(-3000n, null)?.get("LP") === -1500n).toBe(false);
+  });
+
+  it("fills allocated plugs only when a named cut divides the figure", () => {
+    // 80/20 of 30.00 income is 24.00 / 6.00, not 15.00 / 15.00.
+    const cut = [
+      { partner: "LP", weight: 80n },
+      { partner: "GP", weight: 20n },
+    ];
+    const accounts = [
+      periodAcct("2", "Cash and equivalents", "ASSET", "6000", "1000", "15000"),
+      periodAcct("50", "Partner capital — LP", "EQUITY", "1000", "4000", "-13000"),
+      periodAcct("51", "Partner capital — GP", "EQUITY", "0", "2000", "-2000"),
+      periodAcct("30", "Dividend income", "REVENUE", "0", "3000", "-3000"),
+      periodAcct("21", "Unrealized gain", "EQUITY", "0", "2000", "-2000"),
+      periodAcct("10", "Management fee expense", "EXPENSE", "500", "0", "500"),
+    ];
+    const [lp, gp] = partnerCapitalAccounts(accounts, "period", cut);
+    expect(lp!.allocatedIncome).toBe(2_400n);
+    expect(gp!.allocatedIncome).toBe(600n);
+    expect(lp!.unrealized).toBe(1_600n);
+    expect(gp!.unrealized).toBe(400n);
+    expect(lp!.allocatedExpense).toBe(400n);
+    expect(gp!.allocatedExpense).toBe(100n);
+    expect(lp!.allocatedIncome === 1_500n).toBe(false);
+    expect(applyCut(3000n, cut)?.get("LP")).toBe(2_400n);
+    expect(applyCut(3000n, cut)?.get("LP") === 1_500n).toBe(false);
+
+    // A figure that will not divide leaves every partner unset.
+    const odd = applyCut(101n, cut);
+    expect(odd).toBeNull();
+    expect(allocatedPlug(101n, cut, "LP")).toBeNull();
+
+    // Standing special: 100% of expense to GP, default 80/20 elsewhere.
+    const specials = [{ partner: "GP", kind: "expense" as const, weight: 1n }];
+    expect(cutForKind("expense", cut, specials)).toEqual([
+      { partner: "GP", weight: 1n },
+    ]);
+    const [lp2, gp2] = partnerCapitalAccounts(accounts, "period", cut, specials);
+    expect(gp2!.allocatedExpense).toBe(500n);
+    expect(lp2!.allocatedExpense).toBeNull();
+    expect(lp2!.allocatedIncome).toBe(2_400n);
   });
 
   it("does not silently equal-split contributions across partners", () => {

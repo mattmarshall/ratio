@@ -12,7 +12,10 @@ import {
   remainingUndrawn,
   undrawnFigure,
   undrawnOf,
+  type AllocationKind,
   type PartnerCapitalAccount,
+  type PartnerCut,
+  type SpecialAllocation,
 } from "@/lib/capital";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
 import { money } from "@/lib/format";
@@ -47,9 +50,11 @@ export const dynamic = "force-dynamic";
  * contributions → distributions → allocated plugs → ending, partner by
  * partner. Period rows read the Loan-shaped `nav-*` fold `/nav` already
  * cites — `capital-*` is Activity, and that fold makes every beginning
- * 0. Allocated income / expense / unrealized stay unset: there is no
- * partner dim on those accounts, and an equal share of book NAV is the
- * defect. One chrome list (`screensFor`); `/strikes` stays ABOR NAV.
+ * 0. Allocated income / expense / unrealized stay unset without a
+ * named `[[partner_cut]]` — never a fake zero share, never a silent
+ * equal split of book NAV. A written cut fills the plugs when the
+ * figure divides. One chrome list (`screensFor`); `/strikes` stays
+ * ABOR NAV.
  */
 async function Capital({
   params,
@@ -93,6 +98,8 @@ async function Capital({
   const statements = partnerCapitalAccounts(
     periodAccounts,
     dated ? "period" : "inception",
+    wireCut(b.partnerCut),
+    wireSpecials(b.specialAllocations),
   );
 
   const partners = partnersOf(accounts);
@@ -228,9 +235,10 @@ async function Capital({
 
       <p className="note">
         Allocated income, expense, and unrealized stay unset until a
-        partner-cut exists — not an equal share of book NAV, not a silent
-        zero. Book plugs remain on the NAV roll-forward. Not IRR, not a
-        waterfall.
+        named partner-cut exists — not an equal share of book NAV, not a
+        silent zero. A written <code>[[partner_cut]]</code> fills the
+        plugs when the figure divides. Book plugs remain on the NAV
+        roll-forward. Not IRR, not a waterfall.
         {" · "}
         <Link href={`/books/${book}/record`}>Record an event</Link>
         {" · "}
@@ -370,7 +378,9 @@ function Statement({
         <span role="cell">
           Allocated income
           <span className="at">
-            unset — no partner-cut of period income, not an equal share of book NAV
+            {s.allocatedIncome === null
+              ? "unset — no partner-cut of period income, not an equal share of book NAV"
+              : "this partner's share of period income under the named cut — not an equal split"}
           </span>
         </span>
         <span role="cell" className="num">
@@ -381,7 +391,9 @@ function Statement({
         <span role="cell">
           Allocated expense
           <span className="at">
-            unset — no partner-cut of period expense, not a silent zero share
+            {s.allocatedExpense === null
+              ? "unset — no partner-cut of period expense, not a silent zero share"
+              : "this partner's share of period expense under the named cut — not a silent zero"}
           </span>
         </span>
         <span role="cell" className="num">
@@ -392,7 +404,9 @@ function Statement({
         <span role="cell">
           Unrealized
           <span className="at">
-            unset — no partner-cut of Unrealized gain — not a silent equal allocation
+            {s.unrealized === null
+              ? "unset — no partner-cut of Unrealized gain — not a silent equal allocation"
+              : "this partner's share of Unrealized gain under the named cut — not an equal split"}
           </span>
         </span>
         <span role="cell" className="num">
@@ -444,6 +458,31 @@ function UndrawnRow({
       </span>
     </Link>
   );
+}
+
+function wireCut(
+  rows: { partner: string; weight: string }[] | undefined,
+): PartnerCut | null {
+  if (!rows || rows.length === 0) return null;
+  return rows.map((r) => ({ partner: r.partner, weight: BigInt(r.weight) }));
+}
+
+function wireSpecials(
+  rows: { partner: string; kind: string; weight: string }[] | undefined,
+): SpecialAllocation[] | null {
+  if (!rows || rows.length === 0) return null;
+  const out: SpecialAllocation[] = [];
+  for (const r of rows) {
+    if (r.kind !== "income" && r.kind !== "expense" && r.kind !== "unrealized") {
+      continue;
+    }
+    out.push({
+      partner: r.partner,
+      kind: r.kind as AllocationKind,
+      weight: BigInt(r.weight),
+    });
+  }
+  return out.length === 0 ? null : out;
 }
 
 export default withRefusal(Capital);

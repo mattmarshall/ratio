@@ -66,6 +66,33 @@ export interface Book {
    * roll-forward of zeros on a book that never named a loan.
    */
   loans: LoanSchedule[];
+  /**
+   * Partner allocation cut from the active configuration.
+   *
+   * ⛔ EMPTY IS UNSET, NOT A SILENT 1/N. Allocated plugs on `/capital`
+   * stay unset when this list is empty. `Ratio.Partners.no_cut_is_unset`.
+   */
+  partnerCut: PartnerShare[];
+  /**
+   * Standing specials by kind. Empty is silence — that kind uses
+   * `partnerCut`, or stays unset.
+   */
+  specialAllocations: SpecialAllocation[];
+}
+
+/** One named weight in a partner cut. */
+export interface PartnerShare {
+  partner: string;
+  /** Positive integer share of the whole, as an int64 string. */
+  weight: Int64;
+}
+
+/** A standing special: this partner's weight of this kind. */
+export interface SpecialAllocation {
+  partner: string;
+  /** `income` / `expense` / `unrealized`. */
+  kind: string;
+  weight: Int64;
 }
 
 /** One declared household envelope. Absent when that category is unset. */

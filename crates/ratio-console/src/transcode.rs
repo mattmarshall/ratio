@@ -776,7 +776,8 @@ impl JsonView for pb::Book {
             "{{\"name\":{},\"displayName\":{},\"kind\":{},\"currencyCode\":{},\
              \"fund\":{},\"organization\":{},\"defaultView\":{},\
              \"entryCount\":{},\"configDigest\":{},\"trialBalanceDifference\":{},\
-             \"budget\":{},\"envelopes\":[{}],\"loans\":[{}]}}",
+             \"budget\":{},\"envelopes\":[{}],\"loans\":[{}],\
+             \"partnerCut\":[{}],\"specialAllocations\":[{}]}}",
             q(&self.name),
             q(&self.display_name),
             q(book_kind_name(self.kind)),
@@ -789,7 +790,30 @@ impl JsonView for pb::Book {
             q(&self.trial_balance_difference),
             q(&self.budget),
             self.envelopes.iter().map(|e| e.to_json()).collect::<Vec<_>>().join(","),
-            self.loans.iter().map(|l| l.to_json()).collect::<Vec<_>>().join(",")
+            self.loans.iter().map(|l| l.to_json()).collect::<Vec<_>>().join(","),
+            self.partner_cut.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
+            self.special_allocations.iter().map(|s| s.to_json()).collect::<Vec<_>>().join(",")
+        )
+    }
+}
+
+impl JsonView for pb::PartnerShare {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"partner\":{},\"weight\":{}}}",
+            q(&self.partner),
+            q(&self.weight.to_string())
+        )
+    }
+}
+
+impl JsonView for pb::SpecialAllocation {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"partner\":{},\"kind\":{},\"weight\":{}}}",
+            q(&self.partner),
+            q(&self.kind),
+            q(&self.weight.to_string())
         )
     }
 }
