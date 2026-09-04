@@ -1584,6 +1584,7 @@ fn post(book: PathBuf, file: &str) -> Result<()> {
             application: None,
             identified_lots: input.identified_lots,
             special_allocations: None,
+            kind: None,
         };
         // The book refuses an unbalanced entry; report every one rather than
         // stopping at the first, so a bad file is fixed in one pass.

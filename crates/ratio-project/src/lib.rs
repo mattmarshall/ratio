@@ -3509,6 +3509,7 @@ mod tests {
             application: None,
             identified_lots: identified,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
     }
@@ -4004,6 +4005,7 @@ mod tests {
             application: None,
             identified_lots: Some(vec![]),
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         drop(b);

@@ -10770,6 +10770,7 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
                 application: None,
                 identified_lots: Some(vec![0]),
                 special_allocations: None,
+                kind: None,
             })
             .unwrap();
         }
@@ -14158,6 +14159,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
                 application: None,
                 identified_lots: Some(vec![3]),
                 special_allocations: None,
+                kind: None,
             })
             .unwrap();
         }
