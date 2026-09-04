@@ -1367,6 +1367,42 @@ entry. Silence stays unset — not a silent 2, not a silent true,
 not a silent FIFO. It cannot show a pooled holding-period
 category (mixed dates stay unset). That remains on #9.
 
+### Amendment, 2026-09-04 — Phase-four marketplace begins as WorkOS Connect scopes
+
+The destination page still sells a third-party marketplace. The temptation
+is to grow `ratio watch` / `Console` until every portal, feed, and vendor
+app has a kernel method. That is RPC sprawl. Breadth belongs in
+[WorkOS Connect](https://workos.com/docs/authkit/connect) applications that
+present a scoped token. The core stays the journal, the lots, the
+statements, and AuthKit tenancy.
+
+**What this amendment freezes.** The resource:action catalog in
+[`docs/connect-scopes.md`](docs/connect-scopes.md)
+([#150](https://github.com/mattmarshall/ratio/issues/150)). A Connect app
+is granted a subset of those scopes, and only after the AuthKit subject is
+in the book's membership. A scope is not a new RPC. A missing kernel door
+stays missing.
+
+**Hard non-scopes, by absence.** `rules:approve`, `config:promote`, and
+portal impersonation are not in the catalog and must not be added. Payment
+initiation is a separate compliance app, if it is ever built. The fence
+that keeps a model from approving a rule is the same fence: a write that
+must be a person is not a scope somebody could later relax.
+
+**What this is NOT, because the adjacent refusals are one word away:**
+
+- **Not token validation.** The API authorizer that accepts a Connect
+  access token is #151 / leftover #22. This file does not close #150.
+- **Not a reference Connect app.** A read-only books + statements skeleton
+  is leftover on #150.
+- **Not the client portal, bank OAuth, CRM connectors, tax e-file, a
+  vendor portal, or a waterfall.** Those stay Connect-apps or stay
+  refused. Nothing on the *Explicitly not building* list moved.
+
+**What a walk-through can and cannot show** (demo readiness, #27). It can
+show the frozen table and the refuse list. It cannot show a third-party
+token opening a book. Live activation leftovers remain on #22.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

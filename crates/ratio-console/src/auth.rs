@@ -32,6 +32,12 @@ pub enum Subject {
     /// The CLI and loopback surfaces. Unrestricted; not a tenant.
     Local,
     /// An authenticated caller, identified by the claims the gateway verified.
+    ///
+    /// ⚠ A WORKOS CONNECT ACCESS TOKEN IS NOT THIS VARIANT YET. The catalog
+    /// is `docs/connect-scopes.md` (#150). Accepting those scopes without
+    /// bypassing book membership is #151 / leftover #22. Do not treat a
+    /// session JWT as a Connect grant, and do not mint `rules:approve` or
+    /// `config:promote`.
     Member {
         /// The IdP `sub` — an opaque, stable identifier (WorkOS user id).
         sub: String,

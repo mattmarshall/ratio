@@ -64,6 +64,9 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
   WorkOS AuthKit setup, and how sign-in and tenancy work.
 - **[Whitepaper](paper/)** · **[Marketing site](https://mattmarshall.github.io/ratio/)**
   · **[PLAN.md](PLAN.md)** (⚠ written 2026-08-07, since overtaken in places).
+- **[docs/connect-scopes.md](docs/connect-scopes.md)** — WorkOS Connect
+  scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)).
+  Contract only; the grant path is not built.
 
 ## License
 

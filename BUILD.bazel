@@ -6,6 +6,9 @@ exports_files(["Cargo.toml"])
 # PLAN.md is DATA to the console-side BookKind check.
 exports_files(["PLAN.md"])
 
+# The Connect catalog is DATA to //:connect_scopes_test.
+exports_files(["docs/connect-scopes.md"])
+
 # ⛔ The deploy workflow is DATA to a test, because the capability flag it passes
 # is part of whether `deploy/app.yaml` can be deployed at all. See
 # `//deploy:iac_test`.
@@ -63,5 +66,29 @@ sh_test(
     data = [
         "HANDOFF.md",
         "//crates/ratio:src/scale.rs",
+    ],
+)
+
+# The Connect catalog is a contract. This holds PLAN.md, HANDOFF.md and
+# docs/connect-scopes.md to the same frozen strings — same spirit as the
+# two checks above, and the same honest limitation: it cannot say the
+# grant path exists, only that the three documents cannot drift apart.
+#
+# ⚠ CI SKIPS `**/*.md`, so a docs-only edit of the catalog would not run
+# this. The script is the code half; adding or renaming a scope is a
+# change to this file as well, which is the moment somebody notices.
+sh_test(
+    name = "connect_scopes_test",
+    size = "small",
+    srcs = ["connect_scopes_test.sh"],
+    args = [
+        "$(location docs/connect-scopes.md)",
+        "$(location PLAN.md)",
+        "$(location HANDOFF.md)",
+    ],
+    data = [
+        "docs/connect-scopes.md",
+        "PLAN.md",
+        "HANDOFF.md",
     ],
 )
