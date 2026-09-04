@@ -12671,6 +12671,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
     }
@@ -12711,6 +12712,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
     }
