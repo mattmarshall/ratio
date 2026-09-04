@@ -2984,7 +2984,7 @@ describe("a first-class book", () => {
 
   it("names a settlement view's convention and the day it has recognised through", async () => {
     const real = wire.getView;
-    wire.getView = (async () => viewsFixture.views[1]) as typeof wire.getView;
+    wire.getView = (async () => viewsFixture.views[1]) as unknown as typeof wire.getView;
     try {
       const View = (await import("./books/[book]/views/[view]/page")).default;
       await renderAsync(View({ params: params({ book: FUND, view: "ibor" }) }));
