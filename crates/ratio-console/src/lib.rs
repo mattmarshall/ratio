@@ -9756,7 +9756,7 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
     }
 
     fn elect_household_lots(root: &std::path::Path, id: &str, extra: &str) {
-        use ratio_store::{FileBook, Journal};
+        use ratio_store::FileBook;
         let mut b = FileBook::open(root.join(id)).unwrap();
         let digest = b.active().unwrap().unwrap();
         let text = String::from_utf8_lossy(&b.get(&digest).unwrap()).into_owned();
