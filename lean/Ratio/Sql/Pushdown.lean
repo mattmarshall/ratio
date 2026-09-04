@@ -47,12 +47,12 @@ def lotsWidth : Nat := 8
 def watermarkWidth : Nat := 3
 
 /-- Pin: book = `book` ∧ prefix = `prefix` ∧ digest = `digest` (cols 0,1,2). -/
-def pinPred (book prefix digest : Int) : Pred :=
-  .and (.eqNum 0 book) (.and (.eqNum 1 prefix) (.eqNum 2 digest))
+def pinPred (book jprefix digest : Int) : Pred :=
+  .and (.eqNum 0 book) (.and (.eqNum 1 jprefix) (.eqNum 2 digest))
 
 /-- Filter the watermark scan down to one pin. Empty is a refuse, not lots. -/
-def pinPlan (book prefix digest : Int) : Plan :=
-  .filter (pinPred book prefix digest) (.scan watermark)
+def pinPlan (book jprefix digest : Int) : Plan :=
+  .filter (pinPred book jprefix digest) (.scan watermark)
 
 /-- Filter the lots scan to one holding. Keys are Int-encoded in the model;
 the Rust door carries the same positions as strings. -/
@@ -70,8 +70,8 @@ def joined : Plan :=
   .leftJoin (.scan watermark) (.scan lots) lotsWidth
 
 /-- Sound shape: pin pushed into the preserved (watermark) scan. -/
-def pinPushed (book prefix digest : Int) : Plan :=
-  .leftJoin (pinPlan book prefix digest) (.scan lots) lotsWidth
+def pinPushed (book jprefix digest : Int) : Plan :=
+  .leftJoin (pinPlan book jprefix digest) (.scan lots) lotsWidth
 
 /-- `acquired = day` on the JOINED row (watermark 3 + lots col 7). -/
 def acquiredOnJoin (day : Int) : Pred :=
@@ -108,9 +108,9 @@ theorem cell_append_left (r s : Row) (i : Nat) (h : i < r.length) :
 once the watermark row is at least width 3. That is the `hp` of
 `pushdown_into_the_preserved_side_is_sound` on a well-typed snapshot. -/
 theorem pin_reads_only_the_watermark_prefix
-    (book prefix digest : Int) (r s : Row) (hr : 3 ≤ r.length) :
-    evalPred (pinPred book prefix digest) (r ++ s)
-      = evalPred (pinPred book prefix digest) r := by
+    (book jprefix digest : Int) (r s : Row) (hr : 3 ≤ r.length) :
+    evalPred (pinPred book jprefix digest) (r ++ s)
+      = evalPred (pinPred book jprefix digest) r := by
   have h0 : 0 < r.length := Nat.lt_of_lt_of_le (by decide : 0 < 3) hr
   have h1 : 1 < r.length := Nat.lt_of_lt_of_le (by decide : 1 < 3) hr
   have h2 : 2 < r.length := Nat.lt_of_lt_of_le (by decide : 2 < 3) hr
@@ -125,14 +125,14 @@ every watermark row — then pushing it into the watermark scan is `≡`.
 This is not a new rewrite. It is `pushdown_into_the_preserved_side_is_
 sound` at the Stage E catalog. -/
 theorem stage_e_pin_pushes_into_the_watermark
-    (book prefix digest : Int)
+    (book jprefix digest : Int)
     (hp : ∀ r s : Row,
-        evalPred (pinPred book prefix digest) (r ++ s)
-          = evalPred (pinPred book prefix digest) r) :
-    Plan.filter (pinPred book prefix digest) joined
-      ≡ pinPushed book prefix digest :=
+        evalPred (pinPred book jprefix digest) (r ++ s)
+          = evalPred (pinPred book jprefix digest) r) :
+    Plan.filter (pinPred book jprefix digest) joined
+      ≡ pinPushed book jprefix digest :=
   pushdown_into_the_preserved_side_is_sound
-    (pinPred book prefix digest) (.scan watermark) (.scan lots) lotsWidth hp
+    (pinPred book jprefix digest) (.scan watermark) (.scan lots) lotsWidth hp
 
 /- ── The Stage E outer-join trap ─────────────────────────────────────── -/
 
