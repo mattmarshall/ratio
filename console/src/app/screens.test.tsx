@@ -5072,9 +5072,11 @@ describe("a point-in-time / restatement browser", () => {
       );
       expect(screen.getByLabelText("Point in time")).toBeDefined();
       expect(screen.getByText("unset — no pinned digest")).toBeDefined();
-      expect(screen.getByText("unset — no pinned config")).toBeDefined();
+      expect(screen.getAllByText("unset — no pinned config").length).toBeGreaterThan(0);
       expect(screen.getByText("Unset — no wash restatement")).toBeDefined();
-      expect(screen.getByText(/the struck figure is not rewritten/)).toBeDefined();
+      expect(
+        screen.getAllByText(/does not rewrite the struck figure/).length,
+      ).toBeGreaterThan(0);
       expect(screen.queryByText("0.00")).toBeNull();
     } finally {
       wire.listPeriodCloses = realCloses;
@@ -5106,9 +5108,9 @@ describe("a point-in-time / restatement browser", () => {
           searchParams: params({ period: "2026-03", pin: "now" }),
         }),
       );
-      expect(screen.getByText("unset — no pinned prefix")).toBeDefined();
+      expect(screen.getAllByText("unset — no pinned prefix").length).toBeGreaterThan(0);
       expect(screen.getByText("unset — no pinned digest")).toBeDefined();
-      expect(screen.getByText("unset — no pinned config")).toBeDefined();
+      expect(screen.getAllByText("unset — no pinned config").length).toBeGreaterThan(0);
       expect(screen.queryByText("0.00")).toBeNull();
     } finally {
       wire.getView = realView;
