@@ -42,6 +42,24 @@ async function EntryDetail({
               {e.configDigest.slice(0, 12)}…
             </Link>
           </dd>
+          <dt>Identified lots</dt>
+          <dd>
+            {/* ⛔ NOT A SILENT FIFO. A sale that names nothing is not
+                SpecID. An empty list that is elected is unnamed and
+                refuses. `lot_method = "specific_id"` stays refused. */}
+            {e.identifiedLotsDeclared
+              ? e.identifiedLots.length
+                ? e.identifiedLots.join(", ")
+                : "unnamed"
+              : "—"}
+            <span className="sub">
+              {e.identifiedLotsDeclared
+                ? e.identifiedLots.length
+                  ? " named on this sale — not a lot method"
+                  : " elected and unnamed — the engine refuses"
+                : " this sale does not name lots"}
+            </span>
+          </dd>
         </dl>
       </div>
       <div className="dsec postings">

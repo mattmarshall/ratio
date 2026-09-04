@@ -413,6 +413,24 @@ CSV
 "$RATIO" admit --book "$OUT" >/dev/null
 "$RATIO" mark --as-of 2026-02-26 --book "$OUT" >/dev/null
 
+# ── SpecID, as a citeable sale — not a lot_method ─────────────────────────
+#
+# A zero-gain round-trip on an instrument nothing else holds, so the
+# recon figures, the 2,000.00 break, and the struck NAV do not move.
+# The buy's journal position is the lot sequence SpecID names.
+# `lot_method = "specific_id"` stays refused. This book elects neither
+# min-tax nor average cost, so naming lots is one answer, not two.
+SPEC_AT="$(grep -c . "$OUT/journal.jsonl")"
+cat > specid.json <<JSON
+[{"id":"specid-buy","memo":"SpecID walk-through buy","postings":[
+  {"dim":1,"amount":10000,"instrument":"SPEC","quantity":100},
+  {"dim":2,"amount":-10000}]},
+ {"id":"specid-sell","memo":"SpecID walk-through sale","identified_lots":[${SPEC_AT}],"postings":[
+  {"dim":2,"amount":10000},
+  {"dim":1,"amount":-10000,"instrument":"SPEC","quantity":-100}]}]
+JSON
+"$RATIO" post specid.json --book "$OUT" >/dev/null
+
 # A proposal nobody has approved, so the rules screen shows both columns — the
 # gap between them is what the demo is about.
 mkdir -p "$OUT/proposals"
@@ -441,6 +459,8 @@ BAL="$("$RATIO" balance --book "$OUT")"
 grep -q "^Difference  *0.00  *0.00" <<<"$BAL" || { echo "book does not tie:"; echo "$BAL"; exit 1; }
 ENTRIES="$(grep -c . "$OUT/journal.jsonl")"
 [ "$ENTRIES" -ge 7 ] || { echo "expected at least 7 entries, got $ENTRIES"; exit 1; }
+grep -q '"identified_lots"' "$OUT/journal.jsonl" \
+  || { echo "no SpecID sale — the walk-through cannot cite named lots"; exit 1; }
 # A position, so the positions screen is not five rows of "Not attributed".
 grep -q '"instrument"' "$OUT/journal.jsonl" \
   || { echo "no posting carries an instrument, so there are no positions"; exit 1; }

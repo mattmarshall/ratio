@@ -548,7 +548,9 @@ impl JsonView for pb::Fund {
              \"configDigest\":{},\"defaultView\":{},\"viewCount\":{},\
              \"lotMethod\":{},\"lotMethodDeclared\":{},\"longTermDays\":{},\
              \"washWindowDays\":{},\"washWindowDeclared\":{},\
-             \"washKeepHoldingPeriod\":{}}}",
+             \"washKeepHoldingPeriod\":{},\
+             \"minTaxShortWeight\":{},\"minTaxDeclared\":{},\
+             \"averageCost\":{}}}",
             q(&self.name), q(&self.display_name), q(&self.currency_code),
             q(state_name(self.state)),
             q(&self.trial_balance_difference),
@@ -558,7 +560,9 @@ impl JsonView for pb::Fund {
             q(&self.lot_method), self.lot_method_declared,
             q(&self.long_term_days.to_string()),
             q(&self.wash_window_days.to_string()), self.wash_window_declared,
-            self.wash_keep_holding_period
+            self.wash_keep_holding_period,
+            q(&self.min_tax_short_weight.to_string()), self.min_tax_declared,
+            self.average_cost
         )
     }
 }
@@ -845,6 +849,11 @@ fn strings(v: &[String]) -> String {
     v.iter().map(|s| q(s)).collect::<Vec<_>>().join(",")
 }
 
+/// proto3 JSON: every int64 is a string, including a repeated field.
+fn int64s(v: &[i64]) -> String {
+    v.iter().map(|n| q(&n.to_string())).collect::<Vec<_>>().join(",")
+}
+
 impl JsonView for pb::Rule {
     fn to_json(&self) -> String {
         format!(
@@ -889,9 +898,11 @@ impl JsonView for pb::Entry {
     fn to_json(&self) -> String {
         format!(
             "{{\"name\":{},\"entryId\":{},\"memo\":{},\"configDigest\":{},\
-             \"postings\":[{}]}}",
+             \"postings\":[{}],\"identifiedLots\":[{}],\
+             \"identifiedLotsDeclared\":{}}}",
             q(&self.name), q(&self.entry_id), q(&self.memo), q(&self.config_digest),
-            self.postings.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(",")
+            self.postings.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
+            int64s(&self.identified_lots), self.identified_lots_declared
         )
     }
 }

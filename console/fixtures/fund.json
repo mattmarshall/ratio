@@ -15,5 +15,8 @@
   "longTermDays": "365",
   "washWindowDays": "30",
   "washWindowDeclared": true,
-  "washKeepHoldingPeriod": false
+  "washKeepHoldingPeriod": false,
+  "minTaxShortWeight": "0",
+  "minTaxDeclared": false,
+  "averageCost": false
 }

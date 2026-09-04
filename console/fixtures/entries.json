@@ -11,7 +11,9 @@
           "displayName": "Cash and equivalents",
           "amount": "-33288000"
         }
-      ]
+      ],
+      "identifiedLots": [],
+      "identifiedLotsDeclared": false
     }
   ],
   "nextPageToken": ""

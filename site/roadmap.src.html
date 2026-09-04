@@ -206,9 +206,15 @@ __STYLE__
           The fund lot-terms screen cites the wash window
           (<code>wash_window_days</code>; silence stays unset, not a
           silent 30) and the keep election when a book writes it
-          (unset stays the US transfer — not a third meaning).
-          It cannot show lot-relief UI screens for MinTax, SpecID, or average
-          cost. Fund books
+          (unset stays the US transfer — not a third meaning),
+          the min-tax weight (<code>min_tax_short_weight</code>;
+          unset stays unset, not a silent 2) and the average-cost
+          pool (<code>average_cost = true</code>; unset stays unset,
+          not a silent true). SpecID is citeable on the journal
+          entry when a sale carries <code>identified_lots</code>
+          (unnamed refuses, not FIFO).
+          It cannot show a pooled holding-period category (mixed
+          dates stay unset). Fund books
           keep the operations surface. An Operating book cites a balance
           sheet, a period income statement, and a period cash-flow
           statement that tie to the trial

@@ -17,9 +17,10 @@ not rewrite it). The non-US holding-period variant is an election
 the US `replacementAcquired` transfer stays in force until somebody
 writes the keep). MinTax, SpecID, and average cost (#9) each have a Lean
 surface, a TLA probe that fails if they are treated as a Method, and a
-Rust election that is not a `LotMethod` variant. #9 stays open for the
-console cite and the pooled holding-period leftover. This file does not
-close #9.
+Rust election that is not a `LotMethod` variant. The console cites those
+elections (lot-terms for `min_tax_short_weight` and `average_cost`;
+journal entry for `identified_lots`; unset stays unset). #9 stays open
+for the pooled holding-period leftover. This file does not close #9.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 

@@ -268,11 +268,15 @@ page would read as a reference customer. Keep it unnamed.
   (`wash_keep_holding_period`; unset, not a silent keep). The
   console cites those flags on the fund lot-terms screen; unset
   stays unset. MinTax is a ranking at a price
-  (`min_tax_short_weight`; unset, not a silent 2), not an Order. SpecID
-  is a named selection (`identified_lots`; unnamed or overspecified
-  refuse; `lot_method = "specific_id"` stays refused), not an Order,
-  not a UI. Average cost is a pool (`average_cost = true`; unset, not
-  a silent true), not an Order, and not a console election screen.
+  (`min_tax_short_weight`; unset, not a silent 2), not an Order, and
+  the fund lot-terms screen cites the weight when a book writes it.
+  SpecID is a named selection (`identified_lots`; unnamed or
+  overspecified refuse; `lot_method = "specific_id"` stays refused),
+  not an Order, and is citeable on the journal entry when a sale
+  carries names. Average cost is a pool (`average_cost = true`;
+  unset, not a silent true), not an Order, and the lot-terms screen
+  cites the pool when a book writes it. The leftover is the pooled
+  holding-period category rule (mixed dates stay unset).
 
 ## American English
 

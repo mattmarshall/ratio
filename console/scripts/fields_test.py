@@ -93,6 +93,44 @@ NEEDLES: list[tuple[str, str]] = [
         "nobody wrote keep",
         "unset keep would read as an elected US transfer",
     ),
+    # ── MinTax / SpecID / average-cost cites (#9 leftover) ───────────────
+    # ⚠ THE UNSET SENTENCES, NOT THE TAB LABEL. A page that printed "2"
+    # over a book that never elected a weight would still contain
+    # "Min-tax" and stay green. Silence is unset, not a silent 2; the
+    # pool is Some(true) or unset — Some(false) is refused at read.
+    # SpecID is per-sale, not a fund term.
+    (
+        "Min-tax short weight",
+        "the min-tax weight row is gone — the #9 leftover the engine already had",
+    ),
+    (
+        "this configuration declares no min-tax weight",
+        "an unset min-tax weight would read as a silent 2",
+    ),
+    (
+        "Average cost",
+        "the average-cost row is gone — the #9 leftover the engine already had",
+    ),
+    (
+        "this configuration declares no average-cost pool",
+        "an unset average-cost pool would read as a silent true",
+    ),
+    (
+        "pooled basis",
+        "the average-cost election would not be citeable",
+    ),
+    (
+        "Identified lots",
+        "the SpecID row is gone — named lots would not be citeable on a sale",
+    ),
+    (
+        "this sale does not name lots",
+        "an unset SpecID sale would read as a silent FIFO",
+    ),
+    (
+        "named on this sale — not a lot method",
+        "a SpecID sale would not say the names are not a Method",
+    ),
     ("Realized gain", "the realized gain row is gone"),
     ("Short-term", "the short-term split is gone"),
     ("Long-term", "the long-term split is gone"),

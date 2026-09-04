@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Seed the demo with seven funds, each in a state the console has to render and
+# Seed the demo with eight funds, each in a state the console has to render and
 # each showing something the others cannot.
 #
 # Each is a REAL book built through the same code path — same chart, same rules,
@@ -57,6 +57,15 @@ B="$OUT/northstar-multi-strategy"
 # ── 3. Awaiting prices: a chart and a configuration, no entries ────────────
 #    Which is every fund at nine in the morning.
 "$RATIO" init --book "$OUT/calderwood-income" >/dev/null
+# ⛔ NOT A SILENT 2. Calderwood is the empty morning book, so writing the
+# Lean example's weight here cannot restate a sale. Harbourline leaves
+# the field unset — a walk-through can point at both. `lot_method =
+# "min_tax"` stays refused; this book declares no lot_method.
+cat > "$WORK/calderwood-mintax.toml" <<'TOML'
+rules = []
+min_tax_short_weight = 2
+TOML
+"$RATIO" config set "$WORK/calderwood-mintax.toml" --book "$OUT/calderwood-income" >/dev/null
 
 # ── 4. A fund with twenty years of trading behind it ───────────────────────
 #
@@ -144,4 +153,19 @@ RATIO_ACTOR=e.marsh "$RATIO" strike --book "$OUT/pennington-select-income" >/dev
 "$RATIO" strike --book "$OUT/marlowe-dual-basis" --view abor >/dev/null
 "$RATIO" strike --book "$OUT/marlowe-dual-basis" --view ibor >/dev/null
 
-echo "seeded 7 funds at $OUT"
+# ── 8. Average-cost pool, and nothing else ────────────────────────────────
+#
+# ⛔ CANNOT SHARE A BOOK WITH `lot_method` OR `min_tax_short_weight`. The
+# recon books have sales whose posted basis is not the pooled figure, so
+# electing the pool there would invent a lot break. An empty book can
+# cite the election the way Calderwood cites the min-tax weight.
+# `lot_method = "average_cost"` stays refused. Unset stays unset — this
+# is the book that writes `true`.
+"$RATIO" init --book "$OUT/kestrel-pooled-basis" >/dev/null
+cat > "$WORK/kestrel-average-cost.toml" <<'TOML'
+rules = []
+average_cost = true
+TOML
+"$RATIO" config set "$WORK/kestrel-average-cost.toml" --book "$OUT/kestrel-pooled-basis" >/dev/null
+
+echo "seeded 8 funds at $OUT"
