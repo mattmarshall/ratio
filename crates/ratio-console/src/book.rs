@@ -1259,6 +1259,20 @@ reads = "csv"
   rules = { subscribe = "subscribe", subscribe_lp = "subscribe_lp", subscribe_gp = "subscribe_gp", redeem = "redeem", redeem_lp = "redeem_lp", redeem_gp = "redeem_gp" }
   dated = "dated"
 
+# Partner allocation cut. Named weights, not a partner count.
+# Empty is unset — allocated plugs stay unset, not a silent 1/N.
+# CreateBook(Investment) writes LP 80 / GP 20 so the live demo can
+# cite a dividing figure. Writing equal weights is an election;
+# inventing them from the partner count is not.
+# `Ratio.Partners.no_cut_is_unset`.
+[[partner_cut]]
+partner = "LP"
+weight = 80
+
+[[partner_cut]]
+partner = "GP"
+weight = 20
+
 # Where a period close rolls surplus. Absent is unset — not Capital contributions.
 [close]
 equity_destination = 25
@@ -2917,6 +2931,19 @@ template subscriptions {
         assert!(
             findings.iter().all(|f| f.is_question),
             "seeded capital rules must balance against the chart: {findings:?}"
+        );
+        assert_eq!(set.partner_cut.len(), 2, "CreateBook(Investment) writes the cut");
+        assert_eq!(set.partner_cut[0].partner, "LP");
+        assert_eq!(set.partner_cut[0].weight, 80);
+        assert_eq!(set.partner_cut[1].partner, "GP");
+        assert_eq!(set.partner_cut[1].weight, 20);
+        assert_ne!(
+            set.partner_cut[0].weight, set.partner_cut[1].weight,
+            "two partners is not 50/50"
+        );
+        assert!(
+            set.special_allocations.is_empty(),
+            "CreateBook writes no standing special"
         );
     }
 

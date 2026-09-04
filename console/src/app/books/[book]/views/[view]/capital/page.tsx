@@ -7,11 +7,13 @@ import {
   capitalShown,
   endingCapital,
   isPosted,
+  factsInWindow,
   partnerCapitalAccounts,
   partnersOf,
   remainingUndrawn,
   undrawnFigure,
   undrawnOf,
+  type AllocationFact,
   type AllocationKind,
   type PartnerCapitalAccount,
   type PartnerCut,
@@ -101,6 +103,7 @@ async function Capital({
     dated ? "period" : "inception",
     wireCut(b.partnerCut),
     wireSpecials(b.specialAllocations),
+    factsInWindow(wireFacts(b.allocationFacts), window),
   );
 
   const partners = partnersOf(accounts);
@@ -255,9 +258,13 @@ async function Capital({
       <p className="note">
         Allocated income, expense, and unrealized stay unset until a
         named partner-cut exists — not an equal share of book NAV, not a
-        silent zero. A written <code>[[partner_cut]]</code> fills the
-        plugs when the figure divides. Book plugs remain on the NAV
-        roll-forward. Not IRR, not a waterfall.
+        silent zero. CreateBook(Investment) writes
+        <code>[[partner_cut]]</code> LP 80 / GP 20 so the live demo
+        fills when the figure divides. A book that omits the table
+        stays unset. Journal specials fold first; a remainder uses
+        the cut. Unnamed <code>[]</code> refuses rather than inventing
+        1/N. Book plugs remain on the NAV roll-forward. Not IRR, not
+        a waterfall.
         Fee receivable stays unset without an elected
         <code>management_fee_accrual</code> — never a silent zero.
         Invoice and LP statements stay Connect.
@@ -517,6 +524,27 @@ function wireSpecials(
       partner: r.partner,
       kind: r.kind as AllocationKind,
       weight: BigInt(r.weight),
+    });
+  }
+  return out.length === 0 ? null : out;
+}
+
+function wireFacts(
+  rows:
+    | { partner: string; kind: string; amount: string; tradeDate?: string }[]
+    | undefined,
+): AllocationFact[] | null {
+  if (!rows || rows.length === 0) return null;
+  const out: AllocationFact[] = [];
+  for (const r of rows) {
+    if (r.kind !== "income" && r.kind !== "expense" && r.kind !== "unrealized") {
+      continue;
+    }
+    out.push({
+      partner: r.partner,
+      kind: r.kind as AllocationKind,
+      amount: BigInt(r.amount),
+      tradeDate: r.tradeDate ?? "",
     });
   }
   return out.length === 0 ? null : out;

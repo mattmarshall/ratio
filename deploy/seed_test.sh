@@ -97,6 +97,18 @@ BLOCKED="$OUT/harbourline-global-value"
 active=$(cat "$BLOCKED/config/ACTIVE")
 grep -q "wash_window_days = 30" "$BLOCKED/config/$active" \
   || fail "harbourline elects no wash window — the walk-through cannot cite one"
+grep -q 'partner = "LP"' "$BLOCKED/config/$active" \
+  || fail "harbourline elects no partner cut — the walk-through cannot cite allocated plugs"
+grep -q 'weight = 80' "$BLOCKED/config/$active" \
+  || fail "harbourline cut is not LP 80 — inventing 1/N is the defect"
+grep -q 'weight = 20' "$BLOCKED/config/$active" \
+  || fail "harbourline cut is not GP 20 — two partners is not 50/50"
+# ⛔ NOT 1/N. Equal weights would still be an election, but the
+# walk-through names 80/20. A seed that wrote 1, 1 cannot show it.
+lp_w=$(awk '/\[\[partner_cut\]\]/{p=1;next} p&&/weight/{print $3;exit}' "$BLOCKED/config/$active")
+gp_w=$(awk '/\[\[partner_cut\]\]/{n++} n==2&&/weight/{print $3;exit}' "$BLOCKED/config/$active")
+[ -n "$lp_w" ] && [ -n "$gp_w" ] || fail "harbourline partner_cut weights missing"
+[ "$lp_w" != "$gp_w" ] || fail "harbourline cut is equal weights ($lp_w) — that is 1/N wearing an election"
 grep -q "wash_keep_holding_period" "$BLOCKED/config/$active" \
   && fail "harbourline wrote keep — the demo is a US transfer, unset stays unset"
 grep -q "min_tax_short_weight" "$BLOCKED/config/$active" \

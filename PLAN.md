@@ -710,8 +710,9 @@ kind the console offers cannot go unrecorded here again:
   Ingest: `bank-statement`, `loan-payment`.
 - `INVESTMENT` — fund administration as one kind of four, not the product:
   partner capital (beginning → contributions → distributions → allocated
-  plugs → ending; unset without a partner cut; never an equal split of
-  book NAV), commitments / undrawn, period NAV roll-forward, then the
+  plugs → ending; CreateBook writes `[[partner_cut]]` LP 80 / GP 20;
+  omitted table stays unset; never an equal split of book NAV),
+  commitments / undrawn, period NAV roll-forward, then the
   ABOR warehouse. Does not file a Fund.
 - `PROJECT` — a job, not an entity: original vs revised contract, awarded
   committed cost, remaining to spend, remaining to bill, collections vs
@@ -2125,6 +2126,54 @@ and ingest a `change-orders` / `purchase-orders` CSV under those
 templates. It cannot show a Connect token opening a book, an
 estimating-tool OAuth grant, EAC fields on `/budget`, or a vendor
 portal.
+
+### Amendment, 2026-09-04 — CreateBook writes the cut, and `/capital` folds journal specials
+
+[#180](https://github.com/mattmarshall/ratio/issues/180) leftovers after
+#191: CreateBook / the seeded demo still wrote no `[[partner_cut]]`, so
+live allocated plugs stayed unset, and per-entry `special_allocations`
+were stored but not walked by `/capital`. The cut engine itself
+(`Ratio.Partners.Cut`, named weights, refuse undividable figures) was
+already Built.
+
+What landed is the seed and the fold:
+
+- CreateBook(Investment) writes `[[partner_cut]]` LP 80 / GP 20. The
+  live demo seed writes the same table. Two partners is not 50/50.
+  Personal / Project / Operating still write no cut. A book that
+  omits the table stays unset — not a silent 1/N.
+- GetBook cites journal `allocation_facts` (partner, kind, amount,
+  trade date). GetEntry cites per-entry specials the SpecID way
+  (`special_allocations_declared`). `Some([])` still refuses at the
+  store door.
+- `/capital` folds those facts (`Ratio.Partners.applyFacts`): named
+  amounts first, remainder under the cut. Facts that cover the
+  figure are the allocation. An overshoot refuses. A remainder
+  without a cut stays unset. A dated window drops undated and
+  out-of-window facts. Standing config specials still replace the
+  default cut for one kind.
+
+**What this is NOT:**
+
+- Not an **LP portal, K-1 pack, or waterfall**. Those stay Connect
+  (#161 / #150).
+- Not a **`screensFor` fork**, and not a `Method` / `Order` /
+  `lot_method` variant.
+- Not a CreateBook journal posting. CreateBook writes the cut as
+  configuration; the journal stays empty until someone posts.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #180. It does not close #161. It does not
+reopen #181 or #191.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can CreateBook(Investment) or open the live demo and cite
+allocated income of a dividing figure on `/capital` under LP 80 /
+GP 20; write a journal special and see the fold (named amount,
+then the remainder cut); leave plugs unset when the table is
+omitted, the figure will not divide, or a leftover has no cut.
+It cannot show an LP portal, a K-1, a waterfall, or IRR. Those
+remain Connect.
 
 ## The control plane: geetch and crova
 

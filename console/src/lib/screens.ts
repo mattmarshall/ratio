@@ -127,8 +127,9 @@ export const PROJECT_SCREENS: readonly Screen[] = [
  * distributions → allocated plugs → ending) composes onto that same
  * URL. Allocated income / expense / unrealized stay unset when the
  * configuration names no partner cut — never a fake zero share, never
- * a silent equal split of book NAV. A written `[[partner_cut]]` fills
- * the plugs when the figure divides. A book that has never posted a commitment
+ * a silent equal split of book NAV. CreateBook(Investment) writes
+ * `[[partner_cut]]` LP 80 / GP 20. Journal specials fold first; a
+ * remainder uses the cut. A book that has never posted a commitment
  * shows unset, not a callable zero. `/nav` is the period roll-forward
  * (beginning → plugs → ending), not a replacement for `/strikes`
  * (ABOR NAV). Unset stays unset.

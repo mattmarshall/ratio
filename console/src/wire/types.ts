@@ -86,6 +86,12 @@ export interface Book {
    * when that rule posts. `Ratio.Fees.no_terms_leaves_receivable_unset`.
    */
   feeReceivable: Int64;
+  /**
+   * Journal specials GetBook walked. Empty is silence — no entry
+   * named a special. `/capital` folds these into allocated plugs;
+   * a remainder uses `partnerCut`. `Ratio.Partners.applyFacts`.
+   */
+  allocationFacts: AllocationFact[];
 }
 
 /** One named weight in a partner cut. */
@@ -101,6 +107,16 @@ export interface SpecialAllocation {
   /** `income` / `expense` / `unrealized`. */
   kind: string;
   weight: Int64;
+}
+
+/** An exact amount named on a journal entry. Not a weight. */
+export interface AllocationFact {
+  partner: string;
+  /** `income` / `expense` / `unrealized`. */
+  kind: string;
+  amount: Int64;
+  /** `YYYY-MM-DD`. Empty when the entry is undated. */
+  tradeDate: string;
 }
 
 /** One declared household envelope. Absent when that category is unset. */
@@ -935,6 +951,16 @@ export interface Entry {
    * stays refused.
    */
   identifiedLotsDeclared: boolean;
+  /**
+   * Exact partner specials this entry names. Meaningful only when
+   * `specialAllocationsDeclared` is true.
+   */
+  specialAllocations: AllocationFact[];
+  /**
+   * ⛔ Whether this entry ELECTS per-entry specials. `false` is
+   * silence. `true` with an empty list is unnamed and refuses.
+   */
+  specialAllocationsDeclared: boolean;
 }
 
 export interface ListEntriesResponse {

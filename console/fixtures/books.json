@@ -16,7 +16,8 @@
       "loans": [],
       "partnerCut": [],
       "specialAllocations": [],
-      "feeReceivable": ""
+      "feeReceivable": "",
+      "allocationFacts": []
     },
     {
       "name": "books/harbourline-global-value",
@@ -34,7 +35,8 @@
       "loans": [],
       "partnerCut": [],
       "specialAllocations": [],
-      "feeReceivable": ""
+      "feeReceivable": "",
+      "allocationFacts": []
     },
     {
       "name": "books/bridge",
@@ -52,7 +54,8 @@
       "loans": [],
       "partnerCut": [],
       "specialAllocations": [],
-      "feeReceivable": ""
+      "feeReceivable": "",
+      "allocationFacts": []
     },
     {
       "name": "books/studio",
@@ -70,7 +73,8 @@
       "loans": [],
       "partnerCut": [],
       "specialAllocations": [],
-      "feeReceivable": ""
+      "feeReceivable": "",
+      "allocationFacts": []
     }
   ],
   "nextPageToken": ""

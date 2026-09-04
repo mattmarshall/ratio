@@ -128,6 +128,20 @@ blocks_nav = 100000
 # until somebody writes the keep. `lot_method = "wash"` stays refused.
 wash_window_days = 30
 
+# ── partner allocation cut, declared rather than left out ─────────────
+#
+# Same distinction `lot_method` keeps: a book that never elects a cut
+# leaves allocated plugs unset — not a silent 1/N. 80/20 is the
+# walk-through. CreateBook(Investment) writes the same table.
+# Inventing 50/50 from two partners is the defect.
+[[partner_cut]]
+partner = "LP"
+weight = 80
+
+[[partner_cut]]
+partner = "GP"
+weight = 20
+
 # ── the mapping, in the SAME configuration as the rules above ─────────────
 #
 # That is the claim, made real: one digest fixes how a file becomes an event

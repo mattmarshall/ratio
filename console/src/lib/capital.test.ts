@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { Account } from "@/wire/types";
 import {
   activityOf,
+  allocatedFromFacts,
   allocatedPlug,
   applyCut,
+  applyFacts,
   bookCapital,
   cutForKind,
+  factsInWindow,
   capitalShown,
   commitmentIdentityHolds,
   endingCapital,
@@ -255,6 +258,77 @@ describe("a per-partner capital account statement", () => {
     expect(gp2!.allocatedExpense).toBe(500n);
     expect(lp2!.allocatedExpense).toBeNull();
     expect(lp2!.allocatedIncome).toBe(2_400n);
+  });
+
+  it("folds journal specials into allocated plugs and refuses unnamed 1/N", () => {
+    // `Ratio.Partners.applyFacts`. 40 named + 80/20 of leftover 60.
+    const cut = [
+      { partner: "LP", weight: 80n },
+      { partner: "GP", weight: 20n },
+    ];
+    const facts = [
+      { partner: "GP", kind: "income" as const, amount: 1_000n, tradeDate: "2026-03-15" },
+    ];
+    const covered = applyFacts(3_000n, facts, "income", cut);
+    expect(covered?.get("GP")).toBe(1_400n);
+    expect(covered?.get("LP")).toBe(1_600n);
+    expect([...covered!.values()].reduce((s, n) => s + n, 0n)).toBe(3_000n);
+    expect(covered?.get("LP") === 1_500n).toBe(false);
+    expect(allocatedFromFacts(3_000n, facts, "income", cut, "GP")).toBe(1_400n);
+
+    // Unnamed [] refuses rather than splitting.
+    expect(applyFacts(3_000n, [], "income", cut)).toBeNull();
+    expect(applyFacts(3_000n, [], "income", cut)?.get("LP") === 1_500n).toBe(false);
+
+    // Overshoot refuses. No remainder cut with a leftover refuses.
+    expect(
+      applyFacts(
+        10n,
+        [{ partner: "GP", kind: "income" as const, amount: 12n, tradeDate: "" }],
+        "income",
+        cut,
+      ),
+    ).toBeNull();
+    expect(
+      applyFacts(
+        100n,
+        [{ partner: "GP", kind: "income" as const, amount: 40n, tradeDate: "" }],
+        "income",
+        null,
+      ),
+    ).toBeNull();
+
+    // Facts that cover the figure are the allocation.
+    const whole = applyFacts(
+      3_000n,
+      [{ partner: "GP", kind: "income" as const, amount: 3_000n, tradeDate: "" }],
+      "income",
+      [],
+    );
+    expect(whole?.get("GP")).toBe(3_000n);
+    expect(whole?.has("LP")).toBe(false);
+
+    // A dated window drops undated and out-of-window facts.
+    const mixed = [
+      { partner: "GP", kind: "income" as const, amount: 1_000n, tradeDate: "2026-03-15" },
+      { partner: "GP", kind: "income" as const, amount: 500n, tradeDate: "2026-02-01" },
+      { partner: "GP", kind: "income" as const, amount: 200n, tradeDate: "" },
+    ];
+    expect(factsInWindow(mixed, "2026-03")).toEqual([mixed[0]]);
+    expect(factsInWindow(mixed, "")).toEqual(mixed);
+    expect(factsInWindow(mixed, "2026-04")).toBeNull();
+
+    const accounts = [
+      periodAcct("2", "Cash and equivalents", "ASSET", "6000", "1000", "15000"),
+      periodAcct("50", "Partner capital — LP", "EQUITY", "1000", "4000", "-13000"),
+      periodAcct("51", "Partner capital — GP", "EQUITY", "0", "2000", "-2000"),
+      periodAcct("30", "Dividend income", "REVENUE", "0", "3000", "-3000"),
+    ];
+    const [lp, gp] = partnerCapitalAccounts(accounts, "period", cut, null, facts);
+    expect(lp!.allocatedIncome).toBe(1_600n);
+    expect(gp!.allocatedIncome).toBe(1_400n);
+    expect(lp!.allocatedIncome === 2_400n).toBe(false);
+    expect(lp!.allocatedIncome === 1_500n).toBe(false);
   });
 
   it("does not silently equal-split contributions across partners", () => {

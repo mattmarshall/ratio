@@ -1057,6 +1057,22 @@ impl Console {
                 .map(|v| v.iter().map(|&n| n as i64).collect())
                 .unwrap_or_default(),
             identified_lots_declared: entry.identified_lots.is_some(),
+            special_allocations: entry
+                .special_allocations
+                .as_ref()
+                .map(|facts| {
+                    facts
+                        .iter()
+                        .map(|f| pb::AllocationFact {
+                            partner: f.partner.clone(),
+                            kind: f.kind.clone(),
+                            amount: f.amount,
+                            trade_date: entry.trade_date.clone().unwrap_or_default(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            special_allocations_declared: entry.special_allocations.is_some(),
         }
     }
 
@@ -2567,6 +2583,7 @@ impl Console {
             special_allocations,
             // Index must not fold. Empty is unset — GetBook cites the figure.
             fee_receivable: String::new(),
+            allocation_facts: Vec::new(),
         })
     }
 
@@ -2658,6 +2675,7 @@ impl Console {
         let (_, set) = local_config(&path);
         let (partner_cut, special_allocations) = partner_terms_of(set.as_ref());
         let fee_receivable = self.fee_receivable_of(&id, &fund.default_view, set.as_ref())?;
+        let allocation_facts = self.allocation_facts_of(&id)?;
         Ok(pb::Book {
             name: format!("books/{id}"),
             display_name: meta.display_name,
@@ -2675,6 +2693,7 @@ impl Console {
             partner_cut,
             special_allocations,
             fee_receivable,
+            allocation_facts,
         })
     }
 
@@ -2704,6 +2723,30 @@ impl Console {
         let debit: i64 = acct.debit.parse().context("fee receivable debit")?;
         let credit: i64 = acct.credit.parse().context("fee receivable credit")?;
         Ok((credit - debit).to_string())
+    }
+
+    /// Journal specials GetBook walked. Empty is silence — no entry
+    /// named a special. `Some([])` refuses at the store door, so it
+    /// never appears here. `/capital` folds these.
+    /// `Ratio.Partners.applyFacts`.
+    fn allocation_facts_of(&self, id: &str) -> Result<Vec<pb::AllocationFact>> {
+        let path = self.book_path(id)?;
+        let b = self.open_file_book(&path)?;
+        let mut out = Vec::new();
+        b.for_each_entry_since(0, &mut |e| {
+            if let Some(facts) = &e.special_allocations {
+                for f in facts {
+                    out.push(pb::AllocationFact {
+                        partner: f.partner.clone(),
+                        kind: f.kind.clone(),
+                        amount: f.amount,
+                        trade_date: e.trade_date.clone().unwrap_or_default(),
+                    });
+                }
+            }
+            Ok(())
+        })?;
+        Ok(out)
     }
 
     pub fn create_book(&self, req: pb::CreateBookRequest) -> Result<pb::Book> {
@@ -2737,6 +2780,10 @@ impl Console {
         // be the storage-layer bypass the source-text test refuses.
         self.record_change(&path, "created", id, digest.as_str())?;
         let meta = book::BookMeta::load(&path, id);
+        // Cite what initialize wrote. Do not re-open the book — scope
+        // was computed at construction. `config_for` is the same blob.
+        let set = RuleSet::from_toml(book::config_for(kind)).ok();
+        let (partner_cut, special_allocations) = partner_terms_of(set.as_ref());
         Ok(pb::Book {
             name: format!("books/{id}"),
             display_name: meta.display_name,
@@ -2751,9 +2798,10 @@ impl Console {
             budget: String::new(),
             envelopes: Vec::new(),
             loans: Vec::new(),
-            partner_cut: Vec::new(),
-            special_allocations: Vec::new(),
+            partner_cut,
+            special_allocations,
             fee_receivable: String::new(),
+            allocation_facts: Vec::new(),
         })
     }
 
@@ -6867,54 +6915,130 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
     }
 
     #[test]
-    fn a_named_partner_cut_is_cited_and_silence_is_not_one_over_n() {
-        // `Ratio.Partners.no_cut_is_unset`. CreateBook writes no cut.
-        // Writing 80/20 is the election; inventing 50/50 from two
-        // partners is the defect.
+    fn create_book_investment_writes_the_named_cut_not_one_over_n() {
+        // CreateBook(Investment) writes LP 80 / GP 20. Two partners
+        // is not 50/50. Personal still writes no cut.
+        // `Ratio.Partners.no_cut_is_unset`.
         let root = fresh("partner-cut");
+        let c = Console::new(&root);
+        let created = c
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Partners".into(),
+                    kind: book::BookKind::Investment.proto(),
+                    ..Default::default()
+                }),
+                book_id: "partners".into(),
+            })
+            .unwrap();
+        assert_eq!(created.partner_cut.len(), 2, "{created:?}");
+        assert_eq!(created.partner_cut[0].partner, "LP");
+        assert_eq!(created.partner_cut[0].weight, 80);
+        assert_eq!(created.partner_cut[1].partner, "GP");
+        assert_eq!(created.partner_cut[1].weight, 20);
+        assert!(created.special_allocations.is_empty());
+        assert!(created.allocation_facts.is_empty());
+        // ⛔ NOT 1/N. Two partners is not 50/50.
+        assert_ne!(created.partner_cut[0].weight, created.partner_cut[1].weight);
+
+        let cited = c.get_book("books/partners").unwrap();
+        assert_eq!(cited.partner_cut.len(), 2, "{cited:?}");
+        assert_eq!(cited.partner_cut[0].weight, 80);
+        assert_eq!(cited.partner_cut[1].weight, 20);
+        assert_ne!(cited.partner_cut[0].weight, cited.partner_cut[1].weight);
+        assert!(cited.allocation_facts.is_empty(), "empty journal: {:?}", cited.allocation_facts);
+
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        let personal = c.get_book("books/household").unwrap();
+        assert!(
+            personal.partner_cut.is_empty(),
+            "CreateBook(Personal) must not invent a cut: {:?}",
+            personal.partner_cut
+        );
+    }
+
+    #[test]
+    fn journal_specials_are_cited_on_get_book_and_get_entry() {
+        // Standing specials stay config. Per-entry facts are journal
+        // amounts. GetBook walks them so `/capital` can fold.
+        // `Ratio.Partners.applyFacts`.
+        let root = fresh("partner-facts");
         let c = Console::new(&root);
         c.create_book(pb::CreateBookRequest {
             book: Some(pb::Book {
-                display_name: "Partners".into(),
+                display_name: "Facts".into(),
                 kind: book::BookKind::Investment.proto(),
                 ..Default::default()
             }),
-            book_id: "partners".into(),
+            book_id: "facts".into(),
         })
         .unwrap();
-        let before = c.get_book("books/partners").unwrap();
-        assert!(
-            before.partner_cut.is_empty(),
-            "CreateBook must not invent a cut: {:?}",
-            before.partner_cut
-        );
-        assert!(before.special_allocations.is_empty());
 
-        let path = root.join("partners");
+        let path = root.join("facts");
         let mut b = FileBook::open(&path).unwrap();
         let digest = b.active().unwrap().expect("CreateBook writes a config");
         let current = String::from_utf8(b.get(&digest).unwrap()).unwrap();
-        let with_cut = format!(
-            "{current}\n[[partner_cut]]\npartner = \"LP\"\nweight = 80\n\n\
-             [[partner_cut]]\npartner = \"GP\"\nweight = 20\n\n\
-             [[special_allocation]]\npartner = \"GP\"\nkind = \"expense\"\nweight = 1\n"
+        let with_special = format!(
+            "{current}\n[[special_allocation]]\npartner = \"GP\"\nkind = \"expense\"\nweight = 1\n"
         );
-        let next = b.put(with_cut.as_bytes()).unwrap();
+        let next = b.put(with_special.as_bytes()).unwrap();
         b.set_active(&next).unwrap();
+        b.append(&ratio_store::JournalEntry {
+            id: "special-income".into(),
+            memo: "named special".into(),
+            config: next,
+            postings: vec![
+                ratio_store::PostingRecord::new(2, 4_000),
+                ratio_store::PostingRecord::new(30, -4_000),
+            ],
+            trade_date: Some("2026-03-15".into()),
+            announcement: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: Some(vec![ratio_store::SpecialAllocationFact {
+                partner: "GP".into(),
+                kind: "income".into(),
+                amount: 4_000,
+            }]),
+        })
+        .unwrap();
         drop(b);
 
-        let after = c.get_book("books/partners").unwrap();
-        assert_eq!(after.partner_cut.len(), 2, "{after:?}");
-        assert_eq!(after.partner_cut[0].partner, "LP");
-        assert_eq!(after.partner_cut[0].weight, 80);
-        assert_eq!(after.partner_cut[1].partner, "GP");
-        assert_eq!(after.partner_cut[1].weight, 20);
+        let after = c.get_book("books/facts").unwrap();
+        assert_eq!(after.partner_cut.len(), 2, "seeded cut stays: {after:?}");
         assert_eq!(after.special_allocations.len(), 1);
         assert_eq!(after.special_allocations[0].partner, "GP");
         assert_eq!(after.special_allocations[0].kind, "expense");
-        assert_eq!(after.special_allocations[0].weight, 1);
-        // ⛔ NOT 1/N. Two partners is not 50/50.
-        assert_ne!(after.partner_cut[0].weight, after.partner_cut[1].weight);
+        assert_eq!(after.allocation_facts.len(), 1, "{after:?}");
+        assert_eq!(after.allocation_facts[0].partner, "GP");
+        assert_eq!(after.allocation_facts[0].kind, "income");
+        assert_eq!(after.allocation_facts[0].amount, 4_000);
+        assert_eq!(after.allocation_facts[0].trade_date, "2026-03-15");
+
+        let named = c.get_entry("funds/facts/entries/special-income").unwrap();
+        assert!(named.special_allocations_declared, "somebody named a special");
+        assert_eq!(named.special_allocations.len(), 1);
+        assert_eq!(named.special_allocations[0].partner, "GP");
+        assert_eq!(named.special_allocations[0].amount, 4_000);
+
+        let listed = c.list_entries("funds/facts").unwrap().entries;
+        let silent = listed.iter().find(|e| e.entry_id != "special-income");
+        if let Some(one) = silent {
+            assert!(
+                !one.special_allocations_declared,
+                "an entry that names nothing is not a special"
+            );
+            assert!(one.special_allocations.is_empty());
+        }
     }
 
     fn elect_management_fee(root: &std::path::Path, book: &str) {

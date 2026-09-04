@@ -538,17 +538,20 @@ the conserved one, and the kernel never said it was.
   partner In / Out #70 already names and the Loan-shaped `nav-*` fold
   #96 already uses. Allocated plugs stay **unset** without a named
   `[[partner_cut]]` — an equal split of book NAV or a silent 0.00 share
-  is the defect. A written cut fills the plugs when the figure divides
-  (`Ratio.Partners.Cut`; `RuleSet.partner_cut`). `allocate_*_lp` posts
-  an exact amount into partner capital (already on In / Out). Since
+  is the defect. CreateBook(Investment) and the live demo write
+  `[[partner_cut]]` LP 80 / GP 20 so allocated plugs fill when the
+  figure divides (`Ratio.Partners.Cut`; `RuleSet.partner_cut`). A
+  book that omits the table stays unset. Journal specials fold
+  first (`Ratio.Partners.applyFacts`); a remainder uses the cut.
+  GetBook cites `allocation_facts`. `allocate_*_lp` posts an exact
+  amount into partner capital (already on In / Out). Since
   inception leaves beginning unset; `capital-*` is Activity and cannot
   name a beginning stock. ⛔ The walk-through cannot show IRR, TVPI /
   DPI, a waterfall, carried interest, management-fee billing as a desk
   product, an LP portal, a future call schedule, or K-1 packaging.
   `/strikes` stays ABOR NAV. Remaining undrawn stays on #82. Book NAV
-  roll-forward stays on #96. This file does not close #180: per-entry
-  specials are stored and not yet folded into the plugs, and
-  CreateBook still writes no cut.
+  roll-forward stays on #96. This file closes #180. LP portal / K-1 /
+  waterfall stay Connect (#161).
 - ⚠ **A subscription / redemption walk-through (#181 / #27).** Record
   `subscribe_lp` with a unit count: cash and partner capital move, the
   trial balance still ties, no lot opens, `/capital` cites the partner's
@@ -565,7 +568,7 @@ the conserved one, and the kernel never said it was.
   `sub-0001` posts 500,000 units on Capital contributions, dated, so
   `/nav` can cite them. Ingest or record `subscribe_lp`. ⛔ The
   walk-through cannot show an LP portal, drip, or payment initiation
-  (Connect — #161 / #150). This file closes #181. It does not close
+  (Connect — #161 / #150). This file closes #181. It does not reopen
   #180.
 - ⚠ **A management-fee accrual walk-through (#182 / #27).** Write
   `management_fee_accrual` (75 bp, act/365, expense 10 / payable 40)
@@ -576,7 +579,7 @@ the conserved one, and the kernel never said it was.
   no-op and same-sign legs refuse. ⛔ The walk-through cannot show
   an invoice PDF, an LP statement, or payment collection — those
   stay Connect (`fees:read` / `fees:accrue`).   This file closes
-  #182. It does not reopen #181. It does not close #180.
+  #182. It does not reopen #181. It does not reopen #180.
 - ⚠ **A project change-order walk-through (#91 / #27).** CreateBook(Project)
   seeds `Approved change orders` / `Change-order authorization` keyed by
   work package (site / structure / finishes, plus unpartitioned) as equity,

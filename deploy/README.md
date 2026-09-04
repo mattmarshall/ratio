@@ -319,8 +319,10 @@ unit event or no units — not a fake zero. A capital-account
 walk-through can cite each partner's beginning, contributions,
 distributions, and ending on the same `/capital` page. Allocated
 income / expense / unrealized stay unset without a named
-`[[partner_cut]]` — not an equal share of book NAV. A written cut
-fills the plugs when the figure divides. Neither can show IRR, a
+`[[partner_cut]]` — not an equal share of book NAV. CreateBook(Investment)
+and this seed write LP 80 / GP 20 so allocated plugs fill when the
+figure divides. Journal specials fold first; a remainder uses the
+cut. Neither can show IRR, a
 waterfall, a future call schedule, management-fee billing, an LP
 portal, or K-1 packaging. The live demo does not seed those baselines or any
 commitment postings.
