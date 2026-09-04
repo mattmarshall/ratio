@@ -3812,7 +3812,17 @@ impl Console {
                 // `stale_strikes`: a strike pins a journal position and an
                 // applied action is a journal entry, so nothing is stored.
                 let stale = self.stale_strikes(&id).unwrap_or_default();
-                let wash = wash_source(&path, &id, |fund| self.projection(fund));
+                let wash = wash_source(
+                    &path,
+                    &id,
+                    || {
+                        self.open_file_book(&path)
+                            .ok()
+                            .and_then(|b| b.entries().ok())
+                            .unwrap_or_default()
+                    },
+                    |fund| self.projection(fund),
+                );
                 ratio_nav::list_in(&path, &view)?
                     .into_iter()
                     .map(|s| {
@@ -3844,7 +3854,17 @@ impl Console {
             .filter(|(strike, _, _)| *strike == s.id)
             .map(|(_, _, why)| why)
             .collect();
-        let wash = wash_source(&path, &fund, |fund| self.projection(fund));
+        let wash = wash_source(
+            &path,
+            &fund,
+            || {
+                self.open_file_book(&path)
+                    .ok()
+                    .and_then(|b| b.entries().ok())
+                    .unwrap_or_default()
+            },
+            |fund| self.projection(fund),
+        );
         Ok(to_pb(&fund, &s, &why, wash_cite_for_strike(&s, &wash)))
     }
 
@@ -4778,6 +4798,7 @@ struct WashSource {
 fn wash_source(
     path: &Path,
     fund: &str,
+    entries: impl FnOnce() -> Vec<ratio_store::JournalEntry>,
     projection: impl FnOnce(&str) -> Result<ratio_project::Projection>,
 ) -> WashSource {
     let (_, rules) = local_config(path);
@@ -4791,15 +4812,15 @@ fn wash_source(
             proj: None,
         };
     }
-    let entries = FileBook::open(path)
-        .ok()
-        .and_then(|b| b.entries().ok())
-        .unwrap_or_default();
+    // ⛔ NOT FileBook::open. The caller already authorized the path
+    // (`book_path` / `open_file_book`). A raw open here is the bypass
+    // `production_handlers_open_books_only_through_the_storage_layer`
+    // exists to catch.
     let proj = projection(fund).ok();
     WashSource {
         window,
         roles,
-        entries,
+        entries: entries(),
         proj,
     }
 }
@@ -11223,8 +11244,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // `open_file_book` door, and free functions that receive an already
         // authorized path). A handler that joins `self.root` to an id and
         // opens would mention `FileBook::open(&path)` or `self.root`.
-        // `wash_source` is the fourth: it reads the journal only after
-        // `book_path` has already authorized the directory.
+        // Wash cites go through `open_file_book`, not a fourth raw open.
         let production = include_str!("lib.rs")
             .split("#[cfg(test)]")
             .next()
@@ -11246,8 +11266,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         );
         assert_eq!(
             opens.len(),
-            4,
-            "open_file_book plus household_terms_of, project_budget_of, and wash_source: {opens:?}"
+            3,
+            "open_file_book plus household_terms_of and project_budget_of: {opens:?}"
         );
         assert!(
             !production
