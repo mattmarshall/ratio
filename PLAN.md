@@ -30,11 +30,11 @@ is an eight-week plan for a product nobody was buying.
 > ConnectApiUrl. The demo API Lambda leaves
 > `RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX` unset (local
 > `/tmp` journals; S3 hydrate 503ed production `/books`). Scale
-> keeps ScaleBucket. Live leftovers on issue 22 are unused Cognito
-> CloudFormation resources, `DEMO_MEMBERS` naming a live WorkOS
-> `sub`, and WorkOS dashboard registration. Durable
-> writes are #24 (closed). The Cognito-era activation sentence is
-> historical.
+> keeps ScaleBucket. Unused Cognito CloudFormation resources are
+> removed — AuthKit is the sole IdP. Live leftovers on issue 22
+> are `DEMO_MEMBERS` naming a live WorkOS `sub` and WorkOS
+> dashboard registration. Durable writes are #24 (closed). The
+> Cognito-era activation sentence is historical.
 
 Three constraints set everything below:
 
@@ -318,8 +318,8 @@ The demo API Lambda leaves `RATIO_JOURNAL_BUCKET` /
 `RATIO_JOURNAL_PREFIX` unset so cold starts write `/tmp`
 journals — S3 hydrate on that function 503ed production
 `/books` with “the journal is still hydrating”. Scale still
-uses ScaleBucket. Live leftovers remain on issue 22 — unused
-Cognito resources in the deploy templates, `DEMO_MEMBERS`
+uses ScaleBucket. Unused Cognito CloudFormation resources are
+removed. Live leftovers remain on issue 22 — `DEMO_MEMBERS`
 naming a live WorkOS `sub`, and WorkOS dashboard registration.
 Do not
 read this paragraph as production-complete.
@@ -792,9 +792,9 @@ Connect tokens accepted with catalog scopes on `/v1`. API Gateway
 JWT verifies Connect tokens on the Connect HTTP API (AuthKit
 custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the
 deployed demo. first-party Connect apps call ConnectApiUrl.
-Live leftovers remain on issue 22 — unused Cognito resources in
-the deploy templates, `DEMO_MEMBERS` naming a live WorkOS `sub`,
-and WorkOS dashboard registration. Do not
+Unused Cognito CloudFormation resources are removed. Live
+leftovers remain on issue 22 — `DEMO_MEMBERS` naming a live
+WorkOS `sub`, and WorkOS dashboard registration. Do not
 read this paragraph as production-complete, and do
 not read a walk-through as demo-ready (#27).
 
@@ -3657,3 +3657,61 @@ routine Postgres table, a planner rewrite, or a console screen
 that reads the store. Those remain #8 / #159.
 The demo API journal-env unset (#230) stays; this amendment
 does not reopen it.
+
+### Amendment, 2026-09-04 — unused Cognito CloudFormation resources removed
+
+The leftover on issue 22 after #230 was unused Cognito
+UserPool / UserPoolClient / UserPoolDomain /
+UserPoolIdentityProvider resources still declared in
+`deploy/app.yaml`, with outputs `UserPoolId` /
+`UserPoolClientId` / `HostedUiDomain`, and a `DEMO_MEMBERS`
+default of `demo@ratio.fastverk.dev` — a Cognito-era address
+that never appears on an AuthKit token. AuthKit was already
+the sign-in path. The unused pool was left so a stack update
+would not destroy it. Nothing live referenced it.
+
+What landed is the teardown, not a second IdP:
+
+- `deploy/app.yaml` no longer creates or exports those Cognito
+  resources, nor the Google Client parameters that existed only
+  for the unused Hosted UI. The next stack update deletes the
+  unused live pool. WorkOS JWT authorizers, DemoUrl,
+  ConnectApiUrl, ScaleBucket, and the #230 journal-env unset
+  stay.
+- `DemoMember` defaults to empty. `deploy.yml` passes
+  `DEMO_MEMBERS` with an empty fallback — not
+  `demo@ratio.fastverk.dev`. Activation is a WorkOS `sub`
+  (email optional). Empty writes no membership seed.
+- Bootstrap keeps `cognito-idp:Delete*` so CloudFormation can
+  tear the unused pool down, and drops `Create*`.
+- `//deploy:iac_test` fails if a Cognito type, output, Google
+  parameter, or the Cognito-era email default returns.
+
+**unused Cognito CloudFormation resources removed** is the
+Built phrase this amendment adds.
+
+**What this is NOT, because leftovers stay named on issue 22:**
+
+- **Not WorkOS dashboard registration.** A human still
+  registers first-party Connect applications, redirect, and a
+  live token. This repository does not invent those clicks.
+- **Not naming a live WorkOS `sub` in `DEMO_MEMBERS`.** The
+  template and docs are WorkOS-`sub` based. Empty is the
+  honest default. Setting the repository variable to a live
+  `sub` is operator work — this file does not invent one.
+- **Not live bank / calendar OAuth product UI**, licensed AIA
+  PDF, IRS e-file, or a kernel blob store.
+- **Not #152 custom domain, #8 live Postgres, #159 scale, or
+  Connect app features.**
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not finish #150. It does not reopen #151. It
+does not finish #163, #165, #166, #168, #169, #172, #184,
+#179, or #185. leftover #22 stays open.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show the app stack with no Cognito resources and
+AuthKit / Connect JWT authorizers still in place. It cannot
+show a live two-app walk-through without Dashboard
+registration, or seeded funds granted to a live WorkOS `sub`
+until an operator sets `DEMO_MEMBERS`.

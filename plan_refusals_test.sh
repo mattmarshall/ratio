@@ -267,26 +267,26 @@ BUILT=(
   "an audit-export Connect app"
   # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
   # The Connect authorizer is not on the refusal list — live provider
-  # OAuth and unused Cognito resources stay leftover on issue 22.
+  # OAuth stays leftover on issue 22.
   # The sentence it matches is in the 2026-09-04 Connect-authorizer
   # amendment.
   "Connect tokens accepted with catalog scopes"
   # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
   # The Connect HTTP API JWT authorizer is not on the refusal list —
-  # live OAuth and unused Cognito stay leftover on issue 22. The
+  # live OAuth stays leftover on issue 22. The
   # sentence it matches is in the 2026-09-04 Connect-gateway amendment.
   "API Gateway JWT verifies Connect tokens"
   # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
   # Unsetting the deployed open-demo dial is not on the refusal list —
-  # live provider OAuth and unused Cognito stay leftover on issue 22.
+  # live provider OAuth stays leftover on issue 22.
   # The sentence it matches is in the 2026-09-04 deployed-demo dial
   # amendment.
   "RATIO_DEMO_OPEN defaults off on the deployed demo"
   # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
   # Opening fetch/deliver against ConnectApiUrl is not on the
-  # refusal list — WorkOS dashboard registration, DEMO_MEMBERS
-  # naming a live WorkOS sub, and unused Cognito stay leftover
-  # on issue 22. The sentence it matches is in the 2026-09-04
+  # refusal list — WorkOS dashboard registration and DEMO_MEMBERS
+  # naming a live WorkOS sub stay leftover on issue 22. The
+  # sentence it matches is in the 2026-09-04
   # Connect grant-path amendment.
   "first-party Connect apps call ConnectApiUrl"
   # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
@@ -294,6 +294,12 @@ BUILT=(
   # a live Postgres engine and the 20M-lot claim stay #8 / #159.
   # The sentence it matches is in the 2026-09-04 #153 amendment.
   "the lots/positions projection"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Removing unused Cognito resources is not on the refusal list —
+  # DEMO_MEMBERS naming a live WorkOS sub and WorkOS dashboard
+  # registration stay leftover on issue 22. The sentence it matches
+  # is in the 2026-09-04 Cognito-teardown amendment.
+  "unused Cognito CloudFormation resources removed"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

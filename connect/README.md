@@ -34,6 +34,6 @@ Without one, `fetch_*` / `deliver` refuse because no token was presented
 ## Leftovers (issue 22 stays open)
 
 Human WorkOS dashboard registration, `DEMO_MEMBERS` naming a live
-WorkOS `sub`, unused Cognito CloudFormation resources. Bank / calendar
+WorkOS `sub`. Unused Cognito CloudFormation resources are removed. Bank / calendar
 OAuth product UI, licensed AIA forms, IRS e-file, and a kernel blob
 store stay refused on the apps that name them.

@@ -20,16 +20,17 @@ Parameters:
       was just built".
   DemoMember:
     Type: String
-    Default: demo@ratio.fastverk.dev
+    Default: ""
     Description: >
       Who every seeded fund is granted to in MEMBERSHIP.tsv, comma-separated.
-      Each value is a WorkOS `sub` or a verified email the tenant boundary
-      matches. AuthKit access tokens always carry `sub`; email is optional, so
-      a Cognito-era address that never appears on the token grants nobody the
-      seeded rail. A mismatch signs the user in successfully and then shows
-      an empty fund rail. Set the list via the DEMO_MEMBERS repository
-      variable; entrypoint.sh writes the grant on each start. See
-      deploy/README.md.
+      Each value is a WorkOS `sub` (email optional if the access token
+      carries one). AuthKit access tokens always carry `sub`; a Cognito-era
+      address that never appears on the token grants nobody the seeded rail.
+      Empty writes no membership seed — every AuthKit session sees
+      authorized-empty for the seeded funds until DEMO_MEMBERS names a live
+      WorkOS `sub` or someone CreateBooks (which grants the creator's `sub`).
+      Set the list via the DEMO_MEMBERS repository variable. Do not invent a
+      `sub` in this template. See deploy/README.md.
   ConsoleOrigin:
     Type: String
     Default: ""
@@ -39,15 +40,10 @@ Parameters:
       application deployed to Vercel; this function no longer serves it. Two
       things read this: the function redirects / and /app there (so the "Try the
       live demo" links in README.md and on the marketing site keep working), and
-      AuthKit registers ${ConsoleOrigin}/callback as the redirect URI. The
-      Cognito pool below is left in place unused so this stack does not destroy
-      a live user pool; it is not the sign-in path.
-
-      ⛔ COGNITO ACCEPTS NO WILDCARDS. Every origin that must complete a sign-in
-      has to be listed on the client below, which is why exactly three are —
-      production, one stable preview alias, and localhost. A Vercel preview on
-      its own generated hostname cannot sign in, by design: previews render from
-      console/fixtures/ instead.
+      AuthKit registers ${ConsoleOrigin}/callback as the redirect URI. WorkOS
+      AuthKit is the sole IdP. Unused Cognito UserPool / Client / Domain /
+      IdentityProvider resources are not in this template — the next stack
+      update deletes them. Do not put them back.
 
       Empty leaves the demo with no console to point at. Production is
       https://ratio.marsh.build, set via the CONSOLE_ORIGIN repository
@@ -100,23 +96,6 @@ Parameters:
       minted here is refused there. Do not point it at the bare
       https://api.workos.com/ host (no OIDC discovery). Do not
       substitute another product's AuthKit domain.
-  GoogleClientId:
-    Type: String
-    Default: ""
-    Description: >
-      OAuth client id of the Google app that backs "Continue with Google". Empty
-      disables Google sign-in entirely (the pool keeps email/password), so this
-      template deploys the same with or without it — set the id and secret as
-      repository secrets and the next deploy lights Google up. Passed from CI, not
-      committed.
-  GoogleClientSecret:
-    Type: String
-    Default: ""
-    NoEcho: true
-    Description: >
-      OAuth client secret paired with GoogleClientId. NoEcho so it is masked in
-      stack events and not returned by describe-stacks. Passed from a repository
-      secret; never committed.
   ScaleSender:
     Type: String
     Default: ""
@@ -145,15 +124,6 @@ Parameters:
 
 Conditions:
   ReserveConcurrency: !Not [!Equals [!Ref ReservedConcurrency, 0]]
-  # Google sign-in is added only when an id has been supplied. The client's
-  # provider list and the identity provider itself are both gated on this, so a
-  # deploy with no Google secrets set is a valid, working demo (email/password
-  # only) rather than a broken one.
-  HasGoogle: !Not [!Equals [!Ref GoogleClientId, ""]]
-  # The console lives elsewhere, and might not be deployed yet. Same shape as
-  # HasGoogle and for the same reason: a stack with no console origin set is a
-  # working demo (the three public screens and the API) rather than a broken one.
-  HasConsole: !Not [!Equals [!Ref ConsoleOrigin, ""]]
 
 Resources:
   # Created explicitly rather than left to Lambda, which creates log groups
@@ -200,12 +170,9 @@ Resources:
           # ⛔ AUTH ACTIVATION. With RATIO_AUTH=required the server fails closed
           # on any /v1 request the JWT authorizer did not verify, and tenancy at
           # book_path then scopes each caller to the funds MEMBERSHIP grants
-          # them. The COGNITO_* values are the public client configuration the
-          # console serves at /authconfig.json to start the sign-in; the domain
-          # is also what the CSP admits to connect-src for the token exchange.
+          # them. WorkOS AuthKit is the sole IdP; /authconfig.json publishes
+          # the WorkOS issuer the JWT authorizer checks.
           RATIO_AUTH: required
-          # WorkOS is the IdP on /v1. Cognito resources remain in this template
-          # so a stack update does not destroy the live pool; they are unused.
           RATIO_WORKOS_CLIENT_ID: !Ref WorkOsClientId
           # Same issuer the JWT authorizer checks, so /authconfig.json
           # cannot publish a host CloudFormation would refuse.
@@ -236,8 +203,8 @@ Resources:
           # ⚠ AND THE ABSENCE OF THEM IS A VALID STATE. A local `ratio watch`
           # sets none of these, and the scale screen serves its estimate and its
           # recorded figures with the button disabled — the same shape as
-          # `RATIO_COGNITO_*` being unset meaning "no identity provider here"
-          # rather than "misconfigured".
+          # WorkOS client / issuer being unset meaning "no identity
+          # provider here" rather than "misconfigured".
           RATIO_SCALE_CLUSTER: !Ref ScaleCluster
           RATIO_SCALE_TASK: !Ref ScaleTask
           RATIO_SCALE_SUBNET: !Ref ScaleSubnet
@@ -360,124 +327,12 @@ Resources:
 
   # ── Identity ──────────────────────────────────────────────────────────────
   #
-  # Cognito Hosted UI on the DEFAULT (cognito-prefix) domain — NOT a custom
-  # Hosted-UI domain, which provisions a CloudFront distribution this account
-  # refuses (see the Api comment). Invite-only: a demo has a known set of
-  # people, and public sign-up on an internet-facing pool is an abuse surface
-  # with no upside here.
-  UserPool:
-    Type: AWS::Cognito::UserPool
-    Properties:
-      UserPoolName: ratio-demo
-      UsernameAttributes: [email]
-      AutoVerifiedAttributes: [email]
-      AdminCreateUserConfig:
-        AllowAdminCreateUserOnly: true
-      Policies:
-        PasswordPolicy:
-          MinimumLength: 12
-          RequireLowercase: true
-          RequireUppercase: true
-          RequireNumbers: true
-          RequireSymbols: false
-
-  # "Continue with Google", added only when a client id is supplied. Google is a
-  # native Cognito social provider, so no shim is needed; the Hosted UI renders
-  # the button automatically once this exists and the app client lists it.
+  # WorkOS AuthKit is the sole IdP. Unused Cognito UserPool / UserPoolClient /
+  # UserPoolDomain / UserPoolIdentityProvider resources are not in this
+  # template — the next stack update deletes the live unused pool. Do not
+  # put them back. Google social sign-in, if wanted, is an AuthKit
+  # connection in the WorkOS dashboard, not a Cognito identity provider.
   #
-  # ⚠ FEDERATION AUTO-PROVISIONS. AdminCreateUserOnly above blocks the Hosted
-  # UI's sign-up form, but a first Google sign-in still creates a pool user —
-  # federation does not consult that setting. That is not an open door to data:
-  # the tenant boundary at book_path scopes by email, so a Google account not in
-  # MEMBERSHIP.tsv signs in and sees an EMPTY rail, not another fund's book. Close
-  # it hard with a pre-sign-up trigger if the empty console itself must be private.
-  #
-  # ⚠ THE EMAIL IS MAPPED, and it is load-bearing: the console sends the id token
-  # and the server authorizes on its `email` claim, so a Google user is granted
-  # funds by the same MEMBERSHIP.tsv email as a native one.
-  GoogleIdp:
-    Type: AWS::Cognito::UserPoolIdentityProvider
-    Condition: HasGoogle
-    Properties:
-      UserPoolId: !Ref UserPool
-      ProviderName: Google
-      ProviderType: Google
-      ProviderDetails:
-        client_id: !Ref GoogleClientId
-        client_secret: !Ref GoogleClientSecret
-        authorize_scopes: "openid email profile"
-      # Only the email is mapped — it is what the tenant boundary matches on, and
-      # it is what the id token must carry. (Mapping email_verified is a common
-      # source of first-deploy attribute errors and buys nothing here.)
-      AttributeMapping:
-        email: email
-
-  # A PUBLIC client (no secret): a browser cannot keep one, which is why the
-  # console uses authorization-code + PKCE. The access token is what the
-  # authorizer validates — Cognito access tokens carry client_id rather than
-  # aud, so the audience below IS the client id.
-  UserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      UserPoolId: !Ref UserPool
-      ClientName: ratio-console
-      GenerateSecret: false
-      AllowedOAuthFlowsUserPoolClient: true
-      AllowedOAuthFlows: [code]
-      AllowedOAuthScopes: [openid, email]
-      # COGNITO keeps the email/password form; Google is added when configured.
-      #
-      # ⛔ THE Google ENTRY IS `!Ref GoogleIdp`, NOT THE LITERAL "Google", AND THE
-      # DEPENDENCY THAT BUYS IS THE WHOLE POINT. A static `DependsOn: GoogleIdp`
-      # is rejected at validation when HasGoogle is false ("Unresolved resource
-      # dependencies [GoogleIdp]") because the provider is conditioned out. A
-      # `!Ref` inside the matching `!If` branch is evaluated ONLY when HasGoogle is
-      # true — so when Google is off this resolves to `[COGNITO]` with no dangling
-      # reference, and when Google is on the `!Ref` both yields the provider name
-      # and orders its creation before this client update. (Ref on a Cognito
-      # identity provider returns its ProviderName, i.e. "Google".)
-      SupportedIdentityProviders: !If
-        - HasGoogle
-        - [COGNITO, !Ref GoogleIdp]
-        - [COGNITO]
-      ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
-      # ⛔ THE CALLBACK IS ON THE CONSOLE'S ORIGIN NOW, NOT THIS API'S. The old
-      # console ran authorization-code + PKCE in the browser and came back to
-      # /app — a page this function served. The console is a Next.js application
-      # on its own host; it runs the exchange on its server and comes back to
-      # /api/auth/callback there. The path is also what /authconfig.json
-      # advertises as `redirectPath`, and the two must agree.
-      #
-      # ⛔ COGNITO ACCEPTS NO WILDCARDS, so every origin that must sign in is
-      # listed. localhost is registered because Cognito permits plain http for
-      # it and nowhere else, which is what makes `next dev` against the deployed
-      # pool possible at all. A Vercel preview on its own generated hostname is
-      # NOT here and cannot sign in — previews render from console/fixtures/,
-      # which is simpler than the alternative. The alternative, if it is ever
-      # needed, is a bounce through a registered origin carrying the preview's
-      # host in the OAuth `state`, WITH a server-side allowlist on the way back:
-      # without one that is an open redirect on a route that carries tokens.
-      CallbackURLs: !If
-        - HasConsole
-        - - !Sub "${ConsoleOrigin}/api/auth/callback"
-          - "http://localhost:3000/api/auth/callback"
-        # A client must have at least one callback URL, and until the console is
-        # deployed there is no real one — so this names the loopback developer
-        # flow rather than a URL that 404s.
-        - - "http://localhost:3000/api/auth/callback"
-      LogoutURLs: !If
-        - HasConsole
-        - - !Sub "${ConsoleOrigin}/signin"
-          - "http://localhost:3000/signin"
-        - - "http://localhost:3000/signin"
-
-  UserPoolDomain:
-    Type: AWS::Cognito::UserPoolDomain
-    Properties:
-      UserPoolId: !Ref UserPool
-      # Globally unique across all of Cognito; the account id makes it so.
-      Domain: !Sub "ratio-demo-${AWS::AccountId}"
-
   # The gateway proves the token is real, unexpired and ours; the server
   # (book_path) decides which funds it may open. The identity source is the
   # bearer the console sends.
@@ -950,15 +805,6 @@ Outputs:
   McpEndpoint:
     Description: POST JSON-RPC here. Same tools as `ratio mcp`, same fence.
     Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/mcp"
-  UserPoolId:
-    Description: The Cognito pool. Create the demo user here (see deploy/README.md).
-    Value: !Ref UserPool
-  UserPoolClientId:
-    Description: The public app client the console signs in with.
-    Value: !Ref UserPoolClient
-  HostedUiDomain:
-    Description: The Cognito Hosted UI domain the console signs in against.
-    Value: !Sub "ratio-demo-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com"
   ConnectApiUrl:
     Description: >
       /v1 for WorkOS Connect access tokens. JWT authorizer proves the

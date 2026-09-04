@@ -32,8 +32,9 @@ Two things about that are load-bearing here:
 - **AuthKit's redirect URI is on the console's origin.** The path is the one
   AuthKit-for-Next.js documents (`handleAuth()` at `/app/callback/route.ts`),
   not Cognito's `/api/auth/callback`. See [WorkOS AuthKit](#workos-authkit--project-agnostic)
-  for the exact URIs to register. Cognito resources remain in the template
-  unused so a stack update does not destroy the live pool.
+  for the exact URIs to register. Unused Cognito UserPool / Client / Domain /
+  IdentityProvider resources are not in the template — the next stack update
+  deletes them. WorkOS AuthKit is the sole IdP.
 
 Set `ConsoleOrigin` through the **`CONSOLE_ORIGIN` repository variable** (a
 hostname is not a secret, so a variable rather than a secret — same reasoning as
@@ -44,16 +45,15 @@ unset and CI fails with that name — locally, an empty parameter still means
 the three public screens, the API and MCP all serve, and `/` says what it
 serves instead of redirecting.
 
-⭐ **One parameter, three consumers, no second copy.** `ConsoleOrigin` becomes
-the leftover Cognito `CallbackURLs` entry (unused; AuthKit is the sign-in
-path), the `RATIO_CONSOLE_URL` that makes `/` and `/app` redirect, **and**
-the `consoleOrigin` field in `/authconfig.json` that the console reads its
-OAuth `redirect_uri` back out of. The console does not hold its
-own copy, because it did once and the two disagreed — Vercel had
-`https://ratio-console.vercel.app` while Cognito had `https://ratio-ims.vercel.app`,
-and nothing compared them until somebody clicked Sign in. The deploy smoke test
-now asserts the published field equals `CONSOLE_ORIGIN`, so a typo here goes red
-in this workflow.
+⭐ **One parameter, two consumers, no second copy.** `ConsoleOrigin` becomes
+the `RATIO_CONSOLE_URL` that makes `/` and `/app` redirect **and** the
+`consoleOrigin` field in `/authconfig.json` that the console reads its
+OAuth `redirect_uri` back out of. AuthKit is the sign-in path. The console
+does not hold its own copy, because it did once and the two disagreed —
+Vercel had `https://ratio-console.vercel.app` while a Cognito-era client
+had `https://ratio-ims.vercel.app`, and nothing compared them until
+somebody clicked Sign in. The deploy smoke test now asserts the published
+field equals `CONSOLE_ORIGIN`, so a typo here goes red in this workflow.
 
 ### What Vercel needs
 
@@ -229,7 +229,7 @@ organization. Region `us-east-1`.
 | stack | what | deployed by |
 |---|---|---|
 | `ratio-demo-bootstrap` | ECR repository, GitHub OIDC provider, deploy role, execution role, budget | a human, once |
-| `ratio-demo-app` | the function, the HTTP API, the log group, the Cognito pool + JWT authorizer | CI, on every push |
+| `ratio-demo-app` | the function, the HTTP APIs, the log group, the WorkOS JWT authorizers | CI, on every push |
 
 ⛔ **Anything about the ACCOUNT rather than the demo lives in
 [`mattmarshall/cloud-org`](https://github.com/mattmarshall/cloud-org)**, not
@@ -396,8 +396,8 @@ The split of responsibility is the load-bearing decision:
   does no crypto.
   The authorizer puts the verified claims on the request context, which
   the Lambda Web Adapter forwards as `x-amzn-request-context` — a header the
-  gateway synthesizes, so a client cannot forge its own claims. The Cognito
-  pool remains in the template unused so a stack update does not destroy it.
+  gateway synthesizes, so a client cannot forge its own claims. Unused
+  Cognito resources are not in the template.
 - **Authorization** — "this subject may open this fund" — is entirely in Rust,
   at `Console::book_path`, where the test suite can break it. A fund a caller
   may not see is refused with the *same* error as one that does not exist. With
@@ -422,45 +422,36 @@ of a book) sees that rail; a second subject sees authorized-empty / refuse.
 unchanged), and the shared-rail path is a separate `Console::open` constructor.
 Set `RATIO_DEMO_OPEN=1` only on a local `ratio watch` or a CI job that is
 deliberately showing the shared rail. Connect tokens never take it (#151).
-The sections below (`DEMO_MEMBERS`, invited user) describe the membership
-seed the live demo uses.
+The section below (`DEMO_MEMBERS`) describes the membership seed the live
+demo uses.
 
-### Creating the invited demo user
+### Activating a demo member (WorkOS `sub`)
 
-The pool is **invite-only** (`AllowAdminCreateUserOnly`) — a public sign-up form
-on an internet-facing pool is an abuse surface with no upside for a demo with a
-known audience. Create the one demo user by hand, with the email that
-`RATIO_DEMO_MEMBER` names (default `demo@ratio.fastverk.dev`):
-
-```sh
-POOL="$(aws cloudformation describe-stacks --stack-name ratio-demo-app \
-  --query 'Stacks[0].Outputs[?OutputKey==`UserPoolId`].OutputValue' --output text)"
-
-aws cognito-idp admin-create-user \
-  --user-pool-id "$POOL" \
-  --username demo@ratio.fastverk.dev \
-  --user-attributes Name=email,Value=demo@ratio.fastverk.dev Name=email_verified,Value=true \
-  --desired-delivery-mediums EMAIL
-```
-
-Cognito emails a temporary password; the first sign-in forces a reset. To skip
-the email (e.g. a shared demo credential), follow with
-`admin-set-user-password --permanent`.
-
-⛔ **The email must equal `RATIO_DEMO_MEMBER`.** The tenant boundary matches on
-it, so a mismatch signs the user in successfully and then shows an *empty* fund
-rail — a green sign-in that looks like a broken demo. If you invite a user under
-a different address, override the `DemoMember` parameter to match, or the grant
-names a subject who never signs in.
+WorkOS AuthKit is the sole IdP. There is no Cognito pool, no Hosted UI, and
+no `admin-create-user` recipe. Sign-in is AuthKit on
+`https://ratio.marsh.build`. Membership is a grant to a WorkOS `sub`.
 
 ⭐ **The console sends the WorkOS *access* token as the API bearer.** AuthKit's
 `withAuth()` hands that token over; the gateway authorizer's audience is the
 WorkOS client id. Membership matches on `sub`, email if present, or
 `org:{workos_org_id}`. A Cognito id token is not consulted.
 
-⚠ The leftover Cognito user-creation and Google-provider steps below apply
-only to the unused pool. Google and email sign-in for the live console are
-AuthKit's, configured on the attached WorkOS application.
+Set the repository **variable** (Settings → Secrets and variables → Actions →
+Variables) `DEMO_MEMBERS` to a comma-separated list of WorkOS `sub` values,
+optionally with a verified email the token actually carries, e.g.
+`user_01ABC…,you@firm.example`. AuthKit access tokens always carry `sub`;
+email is optional, so an email-only list that never appears on the token
+grants nobody the seeded rail. `deploy.yml` passes it as the `DemoMember`
+parameter and `entrypoint.sh` grants each member every seeded fund. A
+variable, not a secret — a `sub` is not one — so no identifier is committed.
+
+⚠ **Empty / unset is the honest default.** The template no longer falls back
+to `demo@ratio.fastverk.dev`. That Cognito-era address never appears on an
+AuthKit token. Unset writes no `MEMBERSHIP.tsv` seed: every AuthKit session
+sees authorized-empty for the seeded funds until `DEMO_MEMBERS` names a live
+WorkOS `sub`, or someone CreateBooks (which grants the creator's `sub`).
+Naming a live `sub` is an operator leftover on issue 22 — this repository
+does not invent one.
 
 ⚠ **`RATIO_DEMO_OPEN=1` HIDES A MEMBERSHIP MISMATCH COMPLETELY.** An open
 demo grants any authenticated AuthKit caller every fund, so sending a
@@ -468,58 +459,14 @@ token whose `sub` / email is not on `RATIO_DEMO_MEMBER` still shows a
 full rail. The deployed demo leaves the dial unset so that mistake is
 visible. Set the dial only locally or in CI.
 
-### Signing in with Google
+### WorkOS dashboard registration (operator leftover)
 
-Google is a native Cognito social provider, wired in `app.yaml` and gated on
-`GoogleClientId` being non-empty — so the pool ships email/password-only until
-you supply the credentials, then lights up "Continue with Google" on the next
-deploy. Four steps:
+First-party Connect apps still need a human to register the Connect
+application, redirect, and a live token in the WorkOS dashboard. This
+repository does not invent those clicks. Leftover on issue 22.
 
-1. **Create a Google OAuth 2.0 "Web application" client** (Google Cloud console →
-   APIs & Services → Credentials). Set:
-   - Authorized redirect URI:
-     `https://ratio-demo-320473299741.auth.us-east-1.amazoncognito.com/oauth2/idpresponse`
-   - Authorized JavaScript origin:
-     `https://ratio-demo-320473299741.auth.us-east-1.amazoncognito.com`
-2. **Store the credentials as repository secrets** (GitHub → repo Settings →
-   Secrets and variables → Actions): `GOOGLE_OAUTH_CLIENT_ID` and
-   `GOOGLE_OAUTH_CLIENT_SECRET`. `deploy.yml` reads them as env vars and passes
-   them to CloudFormation; they are never committed.
-3. **Grant the Google account membership.** Google signs a user in as their real
-   email, and the tenant boundary matches on `sub` or email — so that identity
-   must be a demo member or the sign-in lands on an empty rail. Set the
-   repository **variable** (Settings → Secrets and variables → Actions →
-   Variables) `DEMO_MEMBERS` to a comma-separated list of WorkOS `sub` values
-   and/or emails, e.g. `user_01…,you@gmail.com`. AuthKit access tokens always
-   carry `sub`; email is optional, so an email-only list that never appears on
-   the token grants nobody the seeded rail. `deploy.yml` passes it as the
-   `DemoMember` parameter and `entrypoint.sh` grants each member every seeded
-   fund. A variable, not a secret — an email or `sub` is not one — so no
-   address is committed. Unset keeps the Cognito-era default
-   `demo@ratio.fastverk.dev`.
-4. **Grant the deploy role the identity-provider permissions** (once) and
-   redeploy. The deploy role needs `cognito-idp:*IdentityProvider*` to create the
-   Google provider — the same shape as the pool grant. Either re-run
-   `bootstrap.yaml`, or extend the inline policy in CloudShell:
-
-   ```sh
-   aws iam put-role-policy --role-name ratio-demo-deploy \
-     --policy-name manage-the-demo-user-pool \
-     --policy-document "$(aws iam get-role-policy --role-name ratio-demo-deploy \
-        --policy-name manage-the-demo-user-pool --query PolicyDocument --output json \
-        | python3 -c 'import json,sys; d=json.load(sys.stdin); d["Statement"][0]["Action"] += [
-          "cognito-idp:CreateIdentityProvider","cognito-idp:UpdateIdentityProvider",
-          "cognito-idp:DeleteIdentityProvider","cognito-idp:DescribeIdentityProvider",
-          "cognito-idp:ListIdentityProviders"]; print(json.dumps(d))')"
-   ```
-
-   Then trigger a deploy (push, or run the `deploy` workflow) so CloudFormation
-   creates the provider.
-
-⚠ **Federation auto-provisions.** A first Google sign-in creates a pool user even
-though the pool is invite-only — federation ignores that setting. The tenant
-boundary still gates funds, so a Google account not in `DEMO_MEMBERS` signs in
-and sees an *empty* rail, never another fund's data.
+Google and email sign-in for the live console are AuthKit's, configured on
+the attached WorkOS application — not a Cognito social provider.
 
 ### The smoke test after auth
 
@@ -527,12 +474,12 @@ CI's smoke test asserts the boundary is *live* — `/v1/funds` without a token
 returns `401` — but it cannot assert `/v1` **content** (a held position, the
 three fund states, the NAV replay) without a token, and CI holds no user
 credential. Those checks moved out of the public smoke test. To exercise the
-authenticated path end to end, sign in through the Hosted UI on the live URL and
-confirm the fund rail shows the eight seeded funds and the principal chip shows
-the signed-in email; or script an `initiate-auth` against the pool with a
-smoke user's permanent password and replay one `/v1/funds` call with the
-returned access token. The public `/balance.json` and `/breaks.json` checks
-still prove a real book shipped, so blank-book protection is intact.
+authenticated path end to end, sign in through AuthKit on
+`https://ratio.marsh.build` and confirm the fund rail shows the funds
+`DEMO_MEMBERS` grants (or an authorized-empty rail if the variable is unset)
+and the principal chip shows the signed-in subject. The public
+`/balance.json` and `/breaks.json` checks still prove a real book shipped,
+so blank-book protection is intact.
 
 ## One-time setup
 

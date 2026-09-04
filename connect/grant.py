@@ -28,7 +28,8 @@ This is not a second IdP. Token mint is WorkOS Connect
 ⛔ NEVER TREAT `org:{id}` AS MEMBERSHIP. The kernel still decides.
 
 Leftover on issue 22: WorkOS dashboard registration, `DEMO_MEMBERS`
-naming a live WorkOS `sub`, unused Cognito CloudFormation resources.
+naming a live WorkOS `sub`. Unused Cognito CloudFormation resources
+are removed.
 Bank / calendar OAuth product UI stay refused on those apps.
 """
 

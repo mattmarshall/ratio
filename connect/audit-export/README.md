@@ -134,8 +134,8 @@ Exceptions, and NAV strikes stay the core cites.
    accepts catalog scopes after membership. API Gateway JWT verifies
    Connect tokens. A human still has to register the Connect
    application and present a live token. `DEMO_MEMBERS` naming a
-   live WorkOS `sub` and unused Cognito CloudFormation resources
-   stay leftover. Write-route actor binding landed (#151); this app
+   live WorkOS `sub` stays leftover. Unused Cognito CloudFormation
+   resources are removed. Write-route actor binding landed (#151); this app
    does not reopen it.
 2. **A live walk-through ZIP** still needs that Dashboard
    registration. Unit tests inject a transport. A green cite is
