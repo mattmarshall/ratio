@@ -45,7 +45,9 @@ const USAGE: &str = "\
 ratio — a ledger that cannot go out of balance
 
 usage:
-  ratio init [--book DIR]              create a book and seed a chart of accounts
+  ratio init [--kind KIND] [--book DIR]  create a book and seed a chart of accounts
+                                       --kind uses the CreateBook chart and templates
+                                       (investment · personal · project · operating)
   ratio config set FILE [--book DIR]   store a configuration and promote it
   ratio config show [--book DIR]       the active configuration and its history
   ratio rules check FILE [--book DIR]  check a rule set against the chart
@@ -63,6 +65,9 @@ usage:
   ratio replay ID [--view V]           re-derive a strike and prove it again
   ratio recon TXNS.csv POSITIONS.csv   shadow-run a period and report breaks
         [--book DIR] [--out FILE.pb] [--post]
+  ratio recon --from-ingest            compare ingested custodian-positions
+        [--book DIR] [--out FILE.pb]   to the journal; writes the break report
+                                       the NAV gate reads. Posts nothing.
   ratio watch [--book DIR] [--port N]  live trial balance in a browser
   ratio ingest FILE --template ID      read a counterparty file into facts
   ratio pending [--book DIR]           facts held back, and what blocks each
@@ -149,6 +154,7 @@ fn main() -> Result<()> {
             Ok(())
         }
         ["init"] => init(book),
+        ["init", "--kind", k] => init_with_kind(book, k),
         ["config", "set", file] => config_set(book, file),
         ["config", "show"] => config_show(book),
         ["rules", "check", file] => rules_check(book, file),
@@ -174,6 +180,8 @@ fn main() -> Result<()> {
             let f = flags(rest)?;
             replay_strike(book, id, f.get("--view").map(String::as_str))
         }
+        ["recon", "--from-ingest"] => recon_from_ingest_cmd(book, None),
+        ["recon", "--from-ingest", "--out", out] => recon_from_ingest_cmd(book, Some(out)),
         ["recon", txns, positions] => recon(book, txns, positions, None, false),
         ["recon", txns, positions, "--post"] => recon(book, txns, positions, None, true),
         ["recon", txns, positions, "--out", out] => {
@@ -1356,6 +1364,22 @@ fn split_book_flag(args: &[String]) -> Result<(Vec<String>, PathBuf)> {
     Ok((positional, book))
 }
 
+/// CreateBook from the CLI: the kind-selected chart and ingest templates,
+/// empty journal. Bare `ratio init` stays the shadow-run chart — changing
+/// that default would rewrite every Stage 3 script.
+fn init_with_kind(book: PathBuf, kind: &str) -> Result<()> {
+    let kind = ratio_console::book::BookKind::parse(kind)?;
+    let id = book_label(&book);
+    ratio_console::book::initialize(&book, &id, &id, kind)?;
+    println!("initialized {} book at {}", kind.as_str(), book.display());
+    println!("  accounts  {}", ratio_console::book::chart_for(kind).len());
+    println!(
+        "  templates {}",
+        ratio_console::book::ingest_template_ids(kind).join(", ")
+    );
+    Ok(())
+}
+
 pub(crate) fn init(book: PathBuf) -> Result<()> {
     let mut b = FileBook::open(&book)?;
     if b.accounts()?.is_empty() {
@@ -2316,6 +2340,41 @@ fn recon(
     });
 }
 
+/// Live ingest recon: ingested `custodian-positions` against the journal.
+///
+/// Does not post. The trades already reached the book through admit. The
+/// report is the same artifact the NAV gate reads.
+fn recon_from_ingest_cmd(book: PathBuf, out: Option<&str>) -> Result<()> {
+    let fund = if book.join("accounts.json").is_file() {
+        "demo"
+    } else {
+        book.file_name()
+            .and_then(|s| s.to_str())
+            .context("the book path has no name")?
+    };
+    let report = ratio_console::Console::new(&book).recon_from_ingest(fund)?;
+    print!("{}", ratio_recon::render(&report));
+
+    if let Some(path) = out {
+        use prost::Message;
+        let id = format!("{}-live", report.config_digest);
+        std::fs::write(
+            path,
+            report.to_proto(&book_label(&book), &id).encode_to_vec(),
+        )
+        .with_context(|| format!("writing {path}"))?;
+        println!("\nwrote {path}");
+    }
+
+    std::process::exit(if !report.was_reconciled() {
+        3
+    } else if report.breaks.is_empty() {
+        0
+    } else {
+        2
+    });
+}
+
 /// Serve the MCP tools on stdio, for a model to call.
 ///
 /// Note what this cannot do: promote a rule. `approve` below is a CLI command
@@ -2628,6 +2687,25 @@ mod tests {
     fn a_missing_book_directory_is_an_error_not_a_default() {
         let args = vec!["--book".to_string()];
         assert!(split_book_flag(&args).is_err());
+    }
+
+    #[test]
+    fn init_kind_investment_seeds_the_custodian_templates_and_no_journal() {
+        let dir = std::env::temp_dir().join("ratio-init-kind-investment-feed");
+        let _ = std::fs::remove_dir_all(&dir);
+        init_with_kind(dir.clone(), "investment").unwrap();
+        let b = FileBook::open(&dir).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        assert!(text.contains("id = \"custodian-positions\""), "{text}");
+        assert!(text.contains("id = \"prime_equity_trades\""), "{text}");
+        let mut n = 0usize;
+        b.for_each_entry_since(0, &mut |_| {
+            n += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(n, 0, "CreateBook must not invent journal history");
     }
 
     /// A book with a chart and an empty rule set, plus a proposal on disk —

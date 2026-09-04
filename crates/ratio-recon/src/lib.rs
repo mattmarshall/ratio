@@ -132,6 +132,27 @@ pub fn equity_long_only_single_ccy(base_currency: &str) -> Scope {
     }
 }
 
+/// Live ingest recon: the journal against ingested `custodian-positions`.
+///
+/// Not a transaction replay. The trades already reached the journal through
+/// admit; this scope compares the Investments carrying value to the
+/// statement's summed market value. A holdings snapshot is not a statement
+/// about cash — cash is out of this compare on purpose, or every purchase
+/// would report a cash break the custodian never spoke to.
+pub fn custodian_positions_live(base_currency: &str) -> Scope {
+    Scope {
+        label: "custodian-positions-live".into(),
+        base_currency: base_currency.to_string(),
+        types: BTreeMap::new(),
+        exclusions: vec![
+            "broker-specific OAuth and multi-custodian adapters — those are Connect apps".into(),
+            "foreign currency holdings — a second currency needs an FX policy".into(),
+            "quantity-level instrument addresses — this run compares the Investments account".into(),
+            "reconciliation at a fund's volume — that is the Phase two leftover".into(),
+        ],
+    }
+}
+
 /// Why a row was refused. Mirrors `ratio.v1.Refusal`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -139,6 +160,8 @@ pub enum Refusal {
     ForeignCurrency,
     DisposalWithoutBasis,
     NoRuleForType,
+    /// A holdings row that did not resolve. Live ingest only.
+    Unidentified,
 }
 
 impl From<Refusal> for pb::Refusal {
@@ -148,6 +171,7 @@ impl From<Refusal> for pb::Refusal {
             Refusal::ForeignCurrency => pb::Refusal::ForeignCurrency,
             Refusal::DisposalWithoutBasis => pb::Refusal::DisposalWithoutBasis,
             Refusal::NoRuleForType => pb::Refusal::NoRuleForType,
+            Refusal::Unidentified => pb::Refusal::UnidentifiedEntity,
         }
     }
 }
@@ -615,6 +639,62 @@ pub fn compare(
     breaks
 }
 
+/// Compare the journal's Investments carrying value to a custodian statement.
+///
+/// ⛔ ONLY THAT ACCOUNT. A holdings snapshot does not speak about cash; putting
+/// the rest of the trial balance in `ratio` would report every purchase as a
+/// cash break the custodian never claimed. `compare` already treats an omitted
+/// zero as agreement — the trap is including cash on Ratio's side at all.
+///
+/// One unidentified or foreign-currency holding refuses the whole run: a
+/// partial statement compared against the journal manufactures a break for
+/// every line it skipped.
+pub fn reconcile_holdings(
+    journal_investments: i64,
+    custodian_market_value: i64,
+    investments_dim: i64,
+    investments_name: &str,
+    journal_posting_count: usize,
+    journal_entry_count: i64,
+    holdings_compared: i64,
+    book_ties: bool,
+    config: &Digest,
+    exceptions: Vec<Exception>,
+) -> BreakReport {
+    let scope = custodian_positions_live("USD");
+    if !exceptions.is_empty() {
+        return BreakReport {
+            config_digest: config.as_str().to_string(),
+            scope,
+            transactions_replayed: 0,
+            entries_posted: 0,
+            breaks: Vec::new(),
+            exceptions,
+            book_ties,
+        };
+    }
+    let ratio = BTreeMap::from([(investments_dim, journal_investments)]);
+    let reported = BTreeMap::from([(investments_dim, custodian_market_value)]);
+    // Empty entries: the live path already posted. `compare` uses them only
+    // for the basis sentence, which we overwrite with the journal count.
+    let mut breaks = compare(&ratio, &reported, &[], &[]);
+    for b in &mut breaks {
+        b.display_name = investments_name.to_string();
+        b.ratio_basis = format!(
+            "{journal_posting_count} posting(s) under this configuration"
+        );
+    }
+    BreakReport {
+        config_digest: config.as_str().to_string(),
+        scope,
+        transactions_replayed: holdings_compared,
+        entries_posted: journal_entry_count,
+        breaks,
+        exceptions: Vec::new(),
+        book_ties,
+    }
+}
+
 /// Run the whole thing.
 #[allow(clippy::too_many_arguments)]
 pub fn reconcile(
@@ -818,22 +898,41 @@ pub fn render(r: &BreakReport) -> String {
         out.push('\n');
     }
 
-    out.push_str(&format!(
-        "{} transaction(s) replayed into {} entrie(s)\n",
-        r.transactions_replayed, r.entries_posted
-    ));
+    if r.scope.label == "custodian-positions-live" {
+        out.push_str(&format!(
+            "{} holding(s) compared against the journal's Investments figure\n",
+            r.transactions_replayed
+        ));
+        out.push_str(&format!(
+            "journal     {} entrie(s) already admitted — this run posts nothing\n",
+            r.entries_posted
+        ));
+    } else {
+        out.push_str(&format!(
+            "{} transaction(s) replayed into {} entrie(s)\n",
+            r.transactions_replayed, r.entries_posted
+        ));
+    }
     out.push_str(&format!("book ties  {}\n", if r.book_ties { "yes" } else { "NO" }));
     out.push_str(&format!("config     {}\n", r.config_digest));
     out.push_str(&format!("scope      {}\n", r.scope.label));
     for x in &r.scope.exclusions {
         out.push_str(&format!("  excludes {x}\n"));
     }
-    out.push_str(
-        "\nEvery Ratio figure above was produced by that configuration, and\n\
-         re-running it reproduces them exactly. Add `--post` to write the\n\
-         entries into the book, then `ratio explain <account>` reads back the\n\
-         postings behind any one figure.\n",
-    );
+    if r.scope.label == "custodian-positions-live" {
+        out.push_str(
+            "\nEvery Ratio figure above was produced by that configuration, and\n\
+             re-running it reproduces them exactly. The journal was not rewritten.\n\
+             `ratio strike` refuses while an unexplained difference remains.\n",
+        );
+    } else {
+        out.push_str(
+            "\nEvery Ratio figure above was produced by that configuration, and\n\
+             re-running it reproduces them exactly. Add `--post` to write the\n\
+             entries into the book, then `ratio explain <account>` reads back the\n\
+             postings behind any one figure.\n",
+        );
+    }
     out
 }
 
@@ -1394,6 +1493,7 @@ weight = -1
             (Refusal::ForeignCurrency, 2),
             (Refusal::DisposalWithoutBasis, 3),
             (Refusal::NoRuleForType, 4),
+            (Refusal::Unidentified, 5),
         ] {
             assert_eq!(pb::Refusal::from(r) as i32, want, "{r:?}");
         }
@@ -1601,5 +1701,82 @@ weight = -1
         let text = render(&r);
         assert!(text.contains("excludes"), "{text}");
         assert!(text.contains("corporate actions"), "{text}");
+    }
+
+    #[test]
+    fn holdings_compare_names_the_investments_difference_and_not_cash() {
+        // ⭐ THE LIVE FEED COMPARE. Book cost 430,000.00; custodian MV
+        // 439,200.00 — the sample `custodian-positions` fixture. Cash is
+        // on the journal from the purchases and must not appear: a
+        // holdings snapshot never claimed it.
+        let r = reconcile_holdings(
+            43_000_000,
+            43_920_000,
+            1,
+            "Investments at fair value",
+            2,
+            2,
+            2,
+            true,
+            &digest(),
+            vec![],
+        );
+        assert!(r.was_reconciled(), "{}", render(&r));
+        assert_eq!(r.breaks.len(), 1, "{:?}", r.breaks);
+        assert_eq!(r.breaks[0].account, 1);
+        assert_eq!(r.breaks[0].display_name, "Investments at fair value");
+        assert_eq!(r.breaks[0].ratio_amount, 43_000_000);
+        assert_eq!(r.breaks[0].reported_amount, 43_920_000);
+        assert_eq!(r.breaks[0].difference, -920_000);
+        assert_eq!(r.breaks[0].cause, Cause::AmountDiffers);
+        assert_eq!(r.scope.label, "custodian-positions-live");
+        let text = render(&r);
+        assert!(text.contains("BREAKS"), "{text}");
+        assert!(text.contains("9200.00") || text.contains("9,200.00") || text.contains("-9200.00"), "{text}");
+        assert!(text.contains("posts nothing"), "{text}");
+        assert!(!text.contains("Cash"), "{text}");
+    }
+
+    #[test]
+    fn unidentified_holdings_produce_no_breaks() {
+        let r = reconcile_holdings(
+            43_000_000,
+            43_920_000,
+            1,
+            "Investments at fair value",
+            2,
+            2,
+            0,
+            true,
+            &digest(),
+            vec![Exception {
+                transaction_id: "P-9".into(),
+                refusal: Refusal::Unidentified,
+                detail: "holding did not resolve".into(),
+            }],
+        );
+        assert!(!r.was_reconciled());
+        assert!(r.breaks.is_empty(), "a refused run must report no breaks: {:?}", r.breaks);
+        let text = render(&r);
+        assert!(text.starts_with("NOT RECONCILED"), "{text}");
+        assert!(text.contains("P-9"), "{text}");
+    }
+
+    #[test]
+    fn agreeing_holdings_are_clean() {
+        let r = reconcile_holdings(
+            43_000_000,
+            43_000_000,
+            1,
+            "Investments at fair value",
+            2,
+            2,
+            2,
+            true,
+            &digest(),
+            vec![],
+        );
+        assert!(r.is_clean(), "{}", render(&r));
+        assert!(render(&r).contains("posts nothing"));
     }
 }

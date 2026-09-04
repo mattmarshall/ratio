@@ -114,6 +114,10 @@ __STYLE__
           form — nothing in the journal is rewritten.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
+          <li>live custodian statement ingest — a CreateBook Investment book
+          ingests a holdings snapshot and a trade file, admits identified
+          trades, compares the journal to the statement, and refuses the NAV
+          while the difference is unexplained. Broker OAuth stays Connect.</li>
           <li>That threshold as a term of the configuration rather than a
           constant in the software — declared or taken by custom, and the
           reconciliation reports which.</li>
@@ -485,8 +489,10 @@ __STYLE__
       (directory, hash, atomic pointer) and the fact plane admits prices and
       FX with provenance an operator can open from a figure. A CreateBook
       Investment book now carries the trade column contract, so delivery,
-      resolve and admit run without inventing journal history. Reviewed
-      change control (geetch/crova) waits for a second customer.</p>
+      resolve, admit, and live custodian statement ingest run without
+      inventing journal history: ingested holdings compare to the journal
+      and the NAV gate sees the break. Reviewed change control
+      (geetch/crova) waits for a second customer.</p>
       <ul class="r-deliver">
         <li class="d">The append-only journal — persistence without a database</li>
         <li class="d">Control plane: versioned, atomic — ConfigStore seam</li>

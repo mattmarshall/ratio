@@ -94,6 +94,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ The pooled holding-period category landed as a date, not a
     # Method; PLAN named it in the same-commit amendment.
     "the pooled holding-period category is a date",
+    # ⚠ #155 landed live custodian statement ingest; PLAN named it in
+    # the same-commit amendment.
+    "live custodian statement ingest",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -110,6 +113,7 @@ ROADMAP_ENGINE_BUILT = [
     "WashRestatement is a citeable record",
     "the non-US holding-period variant is an election",
     "the pooled holding-period category is a date",
+    "live custodian statement ingest",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",
@@ -123,6 +127,7 @@ ROADMAP_PHASE_ONE_MUST_NOT_STAY_OPEN = [
     "persistence without a database",
     "Control plane",
     "Fact plane",
+    "First custodian feed",
 ]
 
 MIN_KB, MAX_KB = 60, 2048

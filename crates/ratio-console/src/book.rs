@@ -724,7 +724,8 @@ equity_destination = 25
 /// every lot this file opens is refused by every holding-period method.
 ///
 /// ⚠ THE JOURNAL STAYS EMPTY UNTIL A FILE IS ADMITTED. Seeding counterparties
-/// or opening balances here would be the fake history #76 refuses.
+/// or opening balances here would be the fake history #76 refuses. The live
+/// feed (#155) is ingest + admit + `recon --from-ingest` on this seed.
 const INVESTMENT_CONFIG: &str = r#"
 # Capital activity. Not a return, not IRR, not attribution.
 

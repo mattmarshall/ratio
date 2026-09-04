@@ -2288,6 +2288,57 @@ page with journal provenance. It cannot show a Stripe or ACH
 processor, a Connect token opening a book, AIA G702 product UI, a
 client portal, or a vendor portal.
 
+### Amendment, 2026-09-04 — live custodian statement ingest
+
+[#155](https://github.com/mattmarshall/ratio/issues/155) asked for the
+first live feed end-to-end: one statement ingest path into the journal
+with refuse-on-unbalanced / unidentified, scaled enough to show the
+recon gate (a difference at its own address), without a raw sideload.
+CreateBook already seeded `custodian-positions` (recorded, never
+posted) and `prime_equity_trades`. The Stage 3 wedge (`ratio recon`
+over a different CSV contract, `--post` inventing journal history)
+was the demo's blocked-NAV story, not the live path.
+
+**What this amendment records.** The live path is ingest → admit →
+`ratio recon --from-ingest`. Identified trades post through the
+seeded rules; unidentified facts stay pending and do not post; the
+kernel still refuses an unbalanced entry at the door. Ingested
+`custodian-positions` facts are compared to the journal's
+Investments carrying value — only that account, because a holdings
+snapshot is not a statement about cash. One unidentified or
+foreign-currency holding refuses the whole run and writes no
+breaks. A difference is a `BreakReport` the NAV gate already reads,
+at `funds/{id}/views/{view}/breaks/1`. No new `Method` / `Order` /
+`lot_method` variant. No `screensFor` fork. Lot method and wash stay
+the elections Config/RuleSet already cites. **live custodian
+statement ingest** is the Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not broker OAuth or multi-custodian adapters.** Those stay
+  Connect apps with `journal:append` + `breaks:read` (#150).
+- **Not a client document portal** (Connect `partners:read` / files).
+- **Not an LP portal, equalization, drip, or side-pocket.** Those
+  stay Connect (#161 / #177). This file does not reopen #177.
+- **Not reconciliation at a fund's volume.** That Phase two line
+  stays open.
+- **Not a second store, and not a shadow-run sideload.** The demo
+  seed still posts recon history on a *different* book so the
+  blocked-NAV story has a break. A blank CreateBook book does not.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #155. It does not close #150, #161, or #177. It
+does not reopen #180 or #181.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can CreateBook(Investment) or `ratio init --kind investment`,
+ingest `prime_equity_trades` and `custodian-positions`, admit the
+identified trades, run `ratio recon --from-ingest`, open the
+Investments difference at its own address, and see `ratio strike`
+refuse while that break is unexplained. It cannot show a broker
+OAuth grant, a multi-custodian adapter, an LP portal, or a fund-
+volume feed. Those remain Connect or the Phase two leftover.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

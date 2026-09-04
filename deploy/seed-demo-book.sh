@@ -245,13 +245,12 @@ reads = "csv"
   # contract a custodian holdings file arrives under. REFERENCE DATA: no
   # `posts` block — recorded, resolved and citable, never booked.
   #
-  # ⭐ THE TRADE HALF IS NOW ALSO A CREATEBOOK SEED. `prime_equity_trades`
-  # above is the same column contract `config_for(Investment)` writes; a
-  # blank Investment book can deliver, resolve, admit, and — when the
-  # master lacks VWRL — leave a pending fact an operator opens from
-  # `/books/{id}`. THIS SCRIPT still posts recon history below so the
-  # blocked-NAV story has a break. That is a different book. Do not copy
-  # those journal rows onto CreateBook.
+  # ⭐ THE LIVE FEED (#155) IS INGEST + ADMIT + `recon --from-ingest`.
+  # A blank Investment book can deliver, resolve, admit, compare these
+  # holdings to the journal, and show the NAV gate. THIS SCRIPT still
+  # posts recon history below so the blocked-NAV *demo* story has a
+  # break. That is a different book. Do not copy those journal rows
+  # onto CreateBook.
   [[template]]
   id = "custodian-positions"
   reads = "csv"

@@ -489,6 +489,14 @@ or `sidepocket:*`.
   `//crates/ratio-console:ratio-console_test` holds the seed and the closed
   loop: CreateBook → entity master → ingest → admit, journal only the
   admitted trades, VWRL left pending the same way `LEAVE_ONE_PENDING` does.
+  ⭐ **The live custodian loop (#155) is that path plus recon.** Ingest
+  `prime_equity_trades` and `custodian-positions`, admit, then
+  `ratio recon --from-ingest` (or `Console::recon_from_ingest`). The
+  holdings snapshot is compared to the journal's Investments carrying
+  value — cash is out of the compare, or every purchase is a false
+  break. One unidentified holding refuses the whole run and writes no
+  report. A difference is the same `BreakReport` the NAV gate already
+  reads. `demo/custodian-feed.sh` is the CLI walk-through.
   ⛔ The demo script still posts recon history so the blocked-NAV story has
   a break; that is a different book. A blank CreateBook investment book does
   not invent those rows.
@@ -526,6 +534,17 @@ or `sidepocket:*`.
   cash forecast, envelope coaching, bank OAuth, a credit score, or a client
   portal. Envelope budgeting is #83; loan schedules are #87; the net-worth
   bridge is #94.
+- ⭐ **A live custodian-feed walk-through (#155 / #27) can show, and cannot show.**
+  CreateBook(Investment) or `ratio init --kind investment`, add the
+  master, ingest `prime_equity_trades` and `custodian-positions`, admit,
+  `ratio recon --from-ingest`: the Investments difference has an address,
+  `ratio strike` refuses, the trial balance still ties, the journal was
+  not rewritten. Unidentified holdings refuse the whole run (exit 3, no
+  breaks). It cannot show broker OAuth, a multi-custodian adapter, an
+  LP portal, equalization / drip / side-pocket, or a feed at a fund's
+  volume. Those stay Connect (#150 / #161 / #177) or the Phase two
+  leftover. This file closes #155. It does not reopen #177, #180, or
+  #181.
 - ⭐ **A capital-call walk-through (#82) can show, and cannot show.**
   CreateBook(Investment) seeds partner-scoped `Commitments — LP/GP` and
   `Undrawn commitments — LP/GP` (equity, so they cancel in the NAV filter)
