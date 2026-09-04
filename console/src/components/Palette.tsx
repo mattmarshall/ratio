@@ -141,22 +141,6 @@ function FundRegistrar({ funds }: { funds: Fund[] }) {
 }
 
 /**
- * ⛔ NOT BARE RESOURCE IDS. DeepLinks takes the first search token as an
- * id and offers "Open … as an exception". "independent" is how a reader
- * reaches the book collection (the test cannot type "your books" —
- * that also matches break id `your`). Treating the keyword as a break
- * id sent that click to `/breaks/independent`.
- */
-export const WORKSPACE_DOOR_TOKENS = new Set([
-  "independent",
-  "books",
-  "personal",
-  "project",
-  "projects",
-  "workspace",
-]);
-
-/**
  * The book collection, independent of any fund.
  *
  * ⭐ A PERSONAL OR PROJECT BOOK HAS NO `/funds/{fund}` URL. The rail only

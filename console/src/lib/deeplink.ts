@@ -80,6 +80,21 @@ export function hrefForResourceName(name: string): string | null {
   return href.replace(/^\/funds\/([^/]+)\//, "/books/$1/");
 }
 
+/**
+ * ⛔ NOT BARE RESOURCE IDS. These are keywords on the workspace doors
+ * ("Your books" / "Your projects"). DeepLinks takes the first search
+ * token as an id; treating `independent` as a break sent that click
+ * to `/breaks/independent` instead of `/books`.
+ */
+export const WORKSPACE_DOOR_TOKENS = new Set([
+  "independent",
+  "books",
+  "personal",
+  "project",
+  "projects",
+  "workspace",
+]);
+
 /** One route a bare id might name. Never a claim that it does. */
 export interface Candidate {
   /** Stable across keystrokes for one id, so kbar re-registers rather than churns. */
@@ -123,7 +138,15 @@ export function candidatesForId(
   const raw = id.trim();
   // ⚠ One character matches everything and helps nobody; an id with a slash in
   // it is a resource name, which `hrefForResourceName` answers exactly.
-  if (raw.length < 2 || raw.includes("/")) return [];
+  // A workspace-door keyword is how the palette reaches `/books`; it is
+  // not a pasted id — see WORKSPACE_DOOR_TOKENS.
+  if (
+    raw.length < 2 ||
+    raw.includes("/") ||
+    WORKSPACE_DOOR_TOKENS.has(raw.toLowerCase())
+  ) {
+    return [];
+  }
   const e = encodeURIComponent(raw);
 
   const scoped = `/books/${book}/views/${view}`;

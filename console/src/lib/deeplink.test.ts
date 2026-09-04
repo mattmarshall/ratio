@@ -228,6 +228,17 @@ describe("a bare id", () => {
     expect(candidatesForId(FUND, VIEW, `funds/${FUND}`)).toHaveLength(0);
   });
 
+  it("stays quiet on a workspace-door keyword, even on an Investment book", () => {
+    // ⭐ "independent" REACHES /books. Offering it as a break is how
+    // "Your books" landed on `/breaks/independent` after #218.
+    expect(candidatesForId(FUND, VIEW, "independent")).toEqual([]);
+    expect(candidatesForId(FUND, VIEW, "books")).toEqual([]);
+    expect(candidatesForId(FUND, VIEW, "independent", "INVESTMENT")).toEqual([]);
+    expect(candidatesForId("household", "book", "independent", "PERSONAL")).toEqual(
+      [],
+    );
+  });
+
   it("separates its keywords with commas", () => {
     // ⚠ kbar's Fuse config reads this field as `keywords.split(",")`. Spaces
     // would make each one a single long token that matches nothing.

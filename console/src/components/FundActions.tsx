@@ -6,7 +6,7 @@ import { candidatesForId, hrefForResourceName } from "@/lib/deeplink";
 import { BASIS_LABEL } from "@/lib/format";
 import { defaultScreen, screenHref, screensFor, ticketsFor } from "@/lib/screens";
 import type { BookKind, View } from "@/wire/types";
-import { WORKSPACE_DOOR_TOKENS, usePaletteNavigator } from "./Palette";
+import { usePaletteNavigator } from "./Palette";
 
 /**
  * What the palette can reach while a fund is open.
@@ -146,38 +146,33 @@ function DeepLinks({
   // namespace this console cannot look up.
   const token = search.trim().split(/\s+/)[0] ?? "";
 
-  // ⛔ WORKSPACE DOORS ARE NOT PASTED IDS. "independent" reaches
-  // "Your books"; offering it as a break sent that row to fund-ops.
-  const door = WORKSPACE_DOOR_TOKENS.has(token.toLowerCase());
-  const exact = door ? null : hrefForResourceName(token);
-  const actions: Action[] = door
-    ? []
-    : exact
-      ? [
-          {
-            id: "jump:exact",
-            name: `Open ${token}`,
-            subtitle: exact,
-            keywords: "resource,name,paste,open",
-            // ⭐ NOT A GUESS, SO IT OUTRANKS EVERYTHING. The string itself says
-            // which resource it names.
-            section: { name: "Open", priority: Priority.HIGH },
-            perform: go(exact),
-          },
-        ]
-      : candidatesForId(fund, view, token, kind).map((c) => ({
-          id: `jump:${c.key}`,
-          name: c.label,
-          // ⛔ THE URL, SHOWN RATHER THAN ASSERTED. Nothing here has checked that
-          // this resource exists — there is no search RPC and the browser may not
-          // call the API — so the row shows where it would go and lets the reader
-          // judge. A row reading "Break cash-usd-2026-02-26" would be a claim about
-          // the book.
-          subtitle: c.href,
-          keywords: c.keywords,
-          section: { name: "Open by id", priority: Priority.LOW },
-          perform: go(c.href),
-        }));
+  const exact = hrefForResourceName(token);
+  const actions: Action[] = exact
+    ? [
+        {
+          id: "jump:exact",
+          name: `Open ${token}`,
+          subtitle: exact,
+          keywords: "resource,name,paste,open",
+          // ⭐ NOT A GUESS, SO IT OUTRANKS EVERYTHING. The string itself says
+          // which resource it names.
+          section: { name: "Open", priority: Priority.HIGH },
+          perform: go(exact),
+        },
+      ]
+    : candidatesForId(fund, view, token, kind).map((c) => ({
+        id: `jump:${c.key}`,
+        name: c.label,
+        // ⛔ THE URL, SHOWN RATHER THAN ASSERTED. Nothing here has checked that
+        // this resource exists — there is no search RPC and the browser may not
+        // call the API — so the row shows where it would go and lets the reader
+        // judge. A row reading "Break cash-usd-2026-02-26" would be a claim about
+        // the book.
+        subtitle: c.href,
+        keywords: c.keywords,
+        section: { name: "Open by id", priority: Priority.LOW },
+        perform: go(c.href),
+      }));
 
   useRegisterActions(actions, [fund, view, token, kind, go]);
   return null;
