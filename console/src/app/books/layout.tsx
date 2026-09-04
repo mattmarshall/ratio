@@ -6,6 +6,7 @@ import { Palette } from "@/components/Palette";
 import { Who } from "@/components/Who";
 import { Unavailable } from "@/components/Unavailable";
 import { books as booksForRequest, funds as fundsForRequest } from "@/lib/data";
+import { count } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,14 @@ export default async function BooksLayout({
             <Brand />
           </Link>
           <span className="crumb">
-            Books <span aria-hidden="true">/</span> <b>{books.length}</b>
+            {books.length === 0 ? (
+              "Books"
+            ) : (
+              <>
+                Books <span aria-hidden="true">/</span>{" "}
+                <b>{count(String(books.length))}</b>
+              </>
+            )}
           </span>
           <span className="spacer" />
           <Link href="/funds" className="crumb">

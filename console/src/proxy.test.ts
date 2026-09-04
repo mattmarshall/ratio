@@ -77,6 +77,13 @@ describe("AuthKit proxy matcher", () => {
     }
   });
 
+  it("allows the WorkOS and Google hosts a profile photo is served from", () => {
+    const src = readFileSync(join(process.cwd(), "src/proxy.ts"), "utf8");
+    expect(src).toContain("https://workoscdn.com");
+    expect(src).toContain("https://*.googleusercontent.com");
+    expect(src).toMatch(/img-src 'self' data:/);
+  });
+
   it("still partitions AuthKit headers onto the request (#112)", () => {
     const src = readFileSync(join(process.cwd(), "src/proxy.ts"), "utf8");
     expect(src).toContain("mergeAuthkitProxyHeaders");

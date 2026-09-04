@@ -97,6 +97,36 @@ describe("authenticated /books", () => {
     expect(screen.getByText("e.marsh@example.com")).toBeDefined();
   });
 
+  it("the header crumb counts the books ListBooks returned", async () => {
+    headersMock.mockResolvedValue(
+      new Headers({
+        "x-workos-middleware": "true",
+        "x-workos-session": "sealed",
+      }),
+    );
+    const { default: BooksLayout } = await import("./layout");
+    await renderAsync(BooksLayout({ children: null }));
+    const crumb = document.querySelector(".crumb");
+    expect(crumb?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+      `Books / ${booksFixture.books.length}`,
+    );
+  });
+
+  it("does not print Books / 0 when the list is empty", async () => {
+    listBooks.mockResolvedValue({ books: [], nextPageToken: "" });
+    headersMock.mockResolvedValue(
+      new Headers({
+        "x-workos-middleware": "true",
+        "x-workos-session": "sealed",
+      }),
+    );
+    const { default: BooksLayout } = await import("./layout");
+    await renderAsync(BooksLayout({ children: null }));
+    const crumb = document.querySelector(".crumb");
+    expect(crumb?.textContent?.trim()).toBe("Books");
+    expect(crumb?.textContent).not.toMatch(/\/\s*0/);
+  });
+
   // ⛔ THE PRODUCTION FAILURE, NAMED. AuthKit had a session, so `caller()`
   // sent the bearer; the gateway refused it (audience / `WORKOS_CLIENT_ID`);
   // `listBooks` threw `AuthError`; layout and page both awaited the same

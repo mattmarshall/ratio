@@ -36,7 +36,10 @@ const POLICY = (nonce: string) =>
     // is a defacement, not an exfiltration, and `default-src 'self'` still
     // forbids the network call that would make it one.
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
+    // WorkOS copies the Google (and other IdP) face to workoscdn.com.
+    // googleusercontent.com is the pass-through when the session still
+    // carries the provider URL. Neither is needed until Who renders <img>.
+    "img-src 'self' data: https://workoscdn.com https://*.googleusercontent.com",
     // The console talks to itself and to nothing else. Its API calls are made
     // by the server, not by this page.
     "connect-src 'self'",

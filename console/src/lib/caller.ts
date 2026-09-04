@@ -57,11 +57,21 @@ export async function signInHref(): Promise<string> {
 export interface Principal {
   sub: string;
   email: string;
+  /** WorkOS `user.profilePictureUrl`. Empty when the IdP sent no photo. */
+  profilePictureUrl: string | null;
+  firstName: string | null;
+  lastName: string | null;
 }
 
 export async function principal(): Promise<Principal | null> {
   if (!workosConfigured()) return null;
   const { user } = await withAuth();
   if (!user) return null;
-  return { sub: user.id, email: user.email };
+  return {
+    sub: user.id,
+    email: user.email,
+    profilePictureUrl: user.profilePictureUrl || null,
+    firstName: user.firstName || null,
+    lastName: user.lastName || null,
+  };
 }
