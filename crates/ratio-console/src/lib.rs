@@ -10338,6 +10338,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
                 due_date: None,
                 application: None,
                 identified_lots: Some(vec![3]),
+                special_allocations: None,
             })
             .unwrap();
         }
