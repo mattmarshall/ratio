@@ -77,7 +77,8 @@ get periodCloses.json       "funds/${FUND}/views/abor/periodCloses"
 get configVersions.json     "funds/${FUND}/configVersions"
 get rules.json              "funds/${FUND}/rules"
 get templates.json          "funds/${FUND}/templates"
-# ⚠ THAT CAPTURE IS THE FUND BOOK. CreateBook also seeds `bank-statement`
+# ⚠ THAT CAPTURE IS THE FUND BOOK. CreateBook also seeds `bank-statement`,
+# `loan-payment`, `brokerage-statement` and `brokerage-positions`
 # (Personal), `project-invoices`, `change-orders` and `purchase-orders`
 # (Project). After a recapture, merge those rows back from git —
 # `console/src/lib/templates.test.ts` fails if a CreateBook id is missing,

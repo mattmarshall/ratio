@@ -24,6 +24,8 @@ describe("book templates", () => {
     expect(byKind.PERSONAL).toMatch(/Cash and bank/);
     expect(byKind.PERSONAL).toMatch(/configuration total/);
     expect(byKind.PERSONAL).toMatch(/named loans/);
+    expect(byKind.PERSONAL).toMatch(/brokerage-statement/);
+    expect(byKind.PERSONAL).toMatch(/Lot relief stays unset/);
     expect(byKind.INVESTMENT).toMatch(/fair value/);
     expect(byKind.INVESTMENT).toMatch(/distributions/);
     expect(byKind.INVESTMENT).toMatch(/partner capital/);
@@ -60,6 +62,8 @@ describe("ingest templates", () => {
   it("seeds the CreateBook mappings, and the fixture carries each", () => {
     expect(INGEST_TEMPLATE_KIND["bank-statement"]).toBe("PERSONAL");
     expect(INGEST_TEMPLATE_KIND["loan-payment"]).toBe("PERSONAL");
+    expect(INGEST_TEMPLATE_KIND["brokerage-statement"]).toBe("PERSONAL");
+    expect(INGEST_TEMPLATE_KIND["brokerage-positions"]).toBe("PERSONAL");
     expect(INGEST_TEMPLATE_KIND["custodian-positions"]).toBe("INVESTMENT");
     expect(INGEST_TEMPLATE_KIND["prime_equity_trades"]).toBe("INVESTMENT");
     expect(INGEST_TEMPLATE_KIND["capital-calls"]).toBe("INVESTMENT");
@@ -81,7 +85,12 @@ describe("ingest templates", () => {
     const project = templatesForKind("PROJECT", listed).map((t) => t.templateId);
     const investment = templatesForKind("INVESTMENT", listed).map((t) => t.templateId);
     const operating = templatesForKind("OPERATING", listed).map((t) => t.templateId);
-    expect(personal).toEqual(["bank-statement", "loan-payment"]);
+    expect(personal).toEqual([
+      "bank-statement",
+      "loan-payment",
+      "brokerage-statement",
+      "brokerage-positions",
+    ]);
     expect(project).toEqual(["project-invoices", "change-orders", "purchase-orders"]);
     expect(operating).toEqual(["customer-invoices", "vendor-bills"]);
     expect(investment).toEqual([
@@ -128,7 +137,12 @@ describe("ingest templates", () => {
     ]);
     expect(
       templatesForKind("PERSONAL", extra).map((t) => t.templateId),
-    ).toEqual(["bank-statement", "loan-payment"]);
+    ).toEqual([
+      "bank-statement",
+      "loan-payment",
+      "brokerage-statement",
+      "brokerage-positions",
+    ]);
     expect(
       templatesForKind("PROJECT", extra).map((t) => t.templateId),
     ).toEqual(["project-invoices", "change-orders", "purchase-orders"]);
@@ -152,6 +166,17 @@ describe("ingest templates", () => {
     expect(need("bank-statement").posts).toBe(true);
     expect(need("bank-statement").form).toMatch(/template bank-statement \{/);
     expect(need("bank-statement").form).toMatch(/one statement per row/);
+    expect(need("brokerage-statement").factKind).toBe("trade");
+    expect(need("brokerage-statement").posts).toBe(true);
+    expect(need("brokerage-statement").form).toMatch(/template brokerage-statement \{/);
+    expect(need("brokerage-statement").form).toMatch(/one trade per row/);
+    expect(need("brokerage-statement").form).toMatch(/amount      consideration/);
+    expect(need("brokerage-statement").form).toMatch(/buy         -> xfer_cash_investments/);
+    expect(need("brokerage-statement").form).toMatch(/sell        -> xfer_investments_cash/);
+    expect(need("brokerage-statement").form).not.toMatch(/equity_purchase/);
+    expect(need("brokerage-positions").factKind).toBe("position");
+    expect(need("brokerage-positions").posts).toBe(false);
+    expect(need("brokerage-positions").form).toMatch(/posts      nothing/);
     expect(need("project-invoices").factKind).toBe("invoice");
     expect(need("project-invoices").posts).toBe(true);
     expect(need("project-invoices").form).toMatch(/template project-invoices \{/);
@@ -216,6 +241,12 @@ describe("ingest templates", () => {
     expect(sampleHeader("bank-statement.csv")).toBe(
       "Ref,Date,Amount,Ccy,Memo,Account,Kind",
     );
+    expect(sampleHeader("brokerage-statement.csv")).toBe(
+      "TradeRef,ISIN,Symbol,Exch,Broker,B/S,Quantity,Price,Ccy,TradeDate",
+    );
+    expect(sampleHeader("brokerage-positions.csv")).toBe(
+      "LineRef,AsOf,ISIN,Ticker,Exch,Quantity,MarketValue,Ccy",
+    );
     expect(sampleHeader("project-invoices.csv")).toBe(
       "InvoiceRef,Date,Amount,Ccy,Vendor,Memo,Kind",
     );
@@ -247,6 +278,9 @@ describe("ingest templates", () => {
       templatesFixture.templates.map((t) => [t.templateId, t.form]),
     );
     expect(forms["bank-statement"]).toMatch(/from "Memo"/);
+    expect(forms["brokerage-statement"]).toMatch(/from "B\/S"/);
+    expect(forms["brokerage-statement"]).toMatch(/from "TradeDate"/);
+    expect(forms["brokerage-positions"]).toMatch(/from "ISIN"/);
     expect(forms["project-invoices"]).toMatch(/from "Vendor"/);
     expect(forms["custodian-positions"]).toMatch(/from "ISIN"/);
     expect(forms["prime_equity_trades"]).toMatch(/from "B\/S"/);

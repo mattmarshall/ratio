@@ -65,9 +65,11 @@ usage:
   ratio replay ID [--view V]           re-derive a strike and prove it again
   ratio recon TXNS.csv POSITIONS.csv   shadow-run a period and report breaks
         [--book DIR] [--out FILE.pb] [--post]
-  ratio recon --from-ingest            compare ingested custodian-positions
-        [--book DIR] [--out FILE.pb]   to the journal; writes the break report
-                                       the NAV gate reads. Posts nothing.
+  ratio recon --from-ingest            compare ingested holdings
+        [--book DIR] [--out FILE.pb]   (custodian-positions or brokerage-positions)
+                                       to the journal. Posts nothing. On an
+                                       Investment book the NAV gate reads the
+                                       report; a Personal book has no NAV.
   ratio watch [--book DIR] [--port N]  live trial balance in a browser
   ratio ingest FILE --template ID      read a counterparty file into facts
   ratio pending [--book DIR]           facts held back, and what blocks each
@@ -2340,10 +2342,11 @@ fn recon(
     });
 }
 
-/// Live ingest recon: ingested `custodian-positions` against the journal.
+/// Live ingest recon: ingested holdings against the journal.
 ///
-/// Does not post. The trades already reached the book through admit. The
-/// report is the same artifact the NAV gate reads.
+/// Does not post. The trades already reached the book through admit.
+/// Investment books compare `custodian-positions` (the NAV gate reads the
+/// report). Personal books compare `brokerage-positions` (no NAV gate).
 fn recon_from_ingest_cmd(book: PathBuf, out: Option<&str>) -> Result<()> {
     let fund = if book.join("accounts.json").is_file() {
         "demo"
@@ -2687,6 +2690,28 @@ mod tests {
     fn a_missing_book_directory_is_an_error_not_a_default() {
         let args = vec!["--book".to_string()];
         assert!(split_book_flag(&args).is_err());
+    }
+
+    #[test]
+    fn init_kind_personal_seeds_the_brokerage_templates_and_no_journal() {
+        let dir = std::env::temp_dir().join("ratio-init-kind-personal-brokerage");
+        let _ = std::fs::remove_dir_all(&dir);
+        init_with_kind(dir.clone(), "personal").unwrap();
+        let b = FileBook::open(&dir).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        assert!(text.contains("id = \"brokerage-statement\""), "{text}");
+        assert!(text.contains("id = \"brokerage-positions\""), "{text}");
+        assert!(text.contains("xfer_cash_investments"), "{text}");
+        assert!(!text.contains("id = \"custodian-positions\""), "{text}");
+        assert!(!text.contains("id = \"prime_equity_trades\""), "{text}");
+        let mut n = 0usize;
+        b.for_each_entry_since(0, &mut |_| {
+            n += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(n, 0, "CreateBook must not invent journal history");
     }
 
     #[test]

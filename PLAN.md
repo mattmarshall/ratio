@@ -707,7 +707,8 @@ kind the console offers cannot go unrecorded here again:
 
 - `PERSONAL` — household: sheet, period P&L, net-worth bridge, cash-flow
   (the same-day amendment below), budget vs actual, named-loan roll-forward.
-  Ingest: `bank-statement`, `loan-payment`.
+  Ingest: `bank-statement`, `loan-payment`, `brokerage-statement`,
+  `brokerage-positions`.
 - `INVESTMENT` — fund administration as one kind of four, not the product:
   partner capital (beginning → contributions → distributions → allocated
   plugs → ending; CreateBook writes `[[partner_cut]]` LP 80 / GP 20;
@@ -2507,6 +2508,60 @@ matching `org_id` staying out, and `journal:append` being rejected
 as a scope. It cannot show a Connect token opening a book, a
 mega-book in the kernel, EAC / forecast, AIA G702 product UI, or a
 vendor portal.
+
+### Amendment, 2026-09-04 — Personal brokerage statement ingest
+
+[#167](https://github.com/mattmarshall/ratio/issues/167) asked for
+BookKind-aware brokerage / custodian CSV ingest into the journal for
+Personal books — #72 parity with the fund trade loop (#155) and the
+Project job-cost loop (#171) — without a second recon engine, without
+lot relief on household Investments, and without broker OAuth.
+
+**What this amendment records.** CreateBook(Personal) seeds
+`brokerage-statement` and `brokerage-positions` beside
+`bank-statement` and `loan-payment`. The column contract is the same
+custodian / broker CSV the fund path already reads (`B/S`, ISIN /
+ticker, consideration). Identified buys and sells post as household
+transfers (`xfer_cash_investments` / `xfer_investments_cash`) onto
+the Investments asset — not `equity_purchase`. Holdings are
+recorded and never posted. `ratio recon --from-ingest` is the same
+engine: unidentified or foreign-currency holdings refuse the whole
+run and write no breaks; a difference is a `BreakReport` at the
+Investments account; exit 2 is a break, exit 3 is a refusal. The
+kernel still refuses an unbalanced entry at the door. No new
+`Method` / `Order` / `lot_method` variant. No `screensFor` fork.
+Lot relief stays unset (#187). A Personal book has no NAV gate —
+`ratio strike` is not this path. Broker OAuth stays Connect.
+**Personal brokerage statement ingest** is the Built phrase this
+amendment adds.
+
+**What this is NOT:**
+
+- **Not broker OAuth or multi-broker adapters.** Those stay Connect
+  apps (#165 / #150). Grant path leftover #22 / #150. This file does
+  not close #22. It does not close #150. It does not reopen #151.
+- **Not optional lot relief on household Investments.** That door
+  is #187. A buy that opened a lot would be that issue wearing an
+  ingest sticker.
+- **Not cash forecast, envelope depth, or household multi-currency.**
+  Those doors are #163, #164, #178.
+- **Not a second recon engine**, and not a `screensFor` fork. The
+  write is `ingest` / `admit` on the seeded templates; the compare
+  is `recon --from-ingest`.
+
+Nothing on the *Explicitly not building* list moved. This amendment
+closes #167. It does not close #187, #165, #163, #164, #178, #155,
+#150, or #22.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can CreateBook a Personal book, ingest a brokerage / custodian
+CSV under `brokerage-statement` and `brokerage-positions`, admit
+the identified transfers onto `journal.jsonl`, leave an unmatched
+instrument pending, run `ratio recon --from-ingest`, and see an
+unidentified or foreign-currency holding refuse the whole run
+(exit 3, no breaks). It cannot show a broker OAuth grant, a lot
+opening on Investments, a household NAV, a cash forecast, or
+envelope coaching.
 
 ## The control plane: geetch and crova
 

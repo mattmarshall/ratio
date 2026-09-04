@@ -37,6 +37,17 @@ sh_test(
     data = ["//crates/ratio"],
 )
 
+# Personal brokerage statement ingest — issue #167. CreateBook Personal book,
+# ingest trades + holdings, admit, recon --from-ingest. Same three exit
+# codes; no NAV gate (household Investments is a transfer).
+sh_test(
+    name = "brokerage_feed_test",
+    size = "small",
+    srcs = ["brokerage-feed.sh"],
+    args = ["$(rootpath //crates/ratio)"],
+    data = ["//crates/ratio"],
+)
+
 # `ratio bench` renders one run as a report and as JSON. This holds the two to
 # the same figures — the defect it is for is a second MEASUREMENT rather than a
 # second rendering, which would give two answers that both tie and disagree.

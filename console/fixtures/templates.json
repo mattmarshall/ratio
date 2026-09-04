@@ -43,6 +43,20 @@
             "posts": true
         },
         {
+            "name": "funds/household/templates/brokerage-statement",
+            "templateId": "brokerage-statement",
+            "factKind": "trade",
+            "form": "template brokerage-statement {\n  reads      csv with header\n  grain      one trade per row\n\n  entity     security  (instrument)\n    by     isin   from \"ISIN\"\n    or     ticker from \"Symbol\" within exchange from \"Exch\"\n    absent   pend\n\n  entity     broker  (counterparty)\n    by     code   from \"Broker\"\n    absent   pend\n\n  fact       trade\n    reference    from \"TradeRef\"\n    broker       broker\n    security     security\n    side         from \"B/S\" as { B: buy, S: sell }\n    quantity     from \"Quantity\" as decimal\n    price        from \"Price\" as money in \"Ccy\"\n    traded       from \"TradeDate\" as date \"MM/DD/YYYY\"\n\n  posts      by \"side\"\n    amount      consideration\n    dated       traded\n    buy         -> xfer_cash_investments\n    sell        -> xfer_investments_cash\n}\n",
+            "posts": true
+        },
+        {
+            "name": "funds/household/templates/brokerage-positions",
+            "templateId": "brokerage-positions",
+            "factKind": "position",
+            "form": "template brokerage-positions {\n  reads      csv with header\n  grain      one position per row\n\n  entity     holding  (instrument)\n    by     isin   from \"ISIN\"\n    or     ticker from \"Ticker\" within exchange from \"Exch\"\n    absent   pend\n\n  fact       position\n    reference    from \"LineRef\"\n    holding      holding\n    asOf         from \"AsOf\" as date \"YYYY-MM-DD\"\n    quantity     from \"Quantity\" as decimal\n    marketValue  from \"MarketValue\" as money in \"Ccy\"\n\n  posts      nothing — reference data, recorded and never booked\n}\n",
+            "posts": false
+        },
+        {
             "name": "funds/bridge/templates/project-invoices",
             "templateId": "project-invoices",
             "factKind": "invoice",

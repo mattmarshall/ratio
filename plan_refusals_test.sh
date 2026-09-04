@@ -215,6 +215,17 @@ BUILT=(
   # FX rate vendors and a silent 0.00 difference stay refused. The
   # sentence it matches is in the 2026-09-04 #160 amendment.
   "multi-view FX / translation refuses stay citeable"
+  # ⚠ ON MAIN WITH THE #179 AMENDMENT. The sentence it matches is in
+  # the 2026-09-04 program-rollup amendment. Grant path leftover #22
+  # stays; this line is the cost of noticing if the phrase later
+  # lands on the refusal list as if the door were shut.
+  "a Project program-rollup Connect app"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Personal brokerage statement ingest is not on the refusal list —
+  # broker OAuth, lot relief on household Investments, and a second
+  # recon engine stay refused. The sentence it matches is in the
+  # 2026-09-04 #167 amendment.
+  "Personal brokerage statement ingest"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

@@ -482,7 +482,11 @@ or `sidepocket:*`.
 - ⭐ **CreateBook seeds ingest templates per kind** — `bank-statement`
   (Personal: bank/card CSV → cash and expense claims) **and** `loan-payment`
   (Personal: principal + interest columns → two balanced rules merged into
-  one conserved entry),   `project-invoices` (Project: job-cost / AP / progress-bill CSV
+  one conserved entry), `brokerage-statement` (Personal: the same
+  custodian / broker CSV the fund trade loop reads → household
+  transfers onto Investments, not lot-opening purchases) **and**
+  `brokerage-positions` (Personal: holdings snapshot, recorded and
+  never posted; live recon reuses the fund refuse paths),   `project-invoices` (Project: job-cost / AP / progress-bill CSV
   → `project_cost*` / `vendor_invoice*` / `progress_bill` / `pay_vendor` /
   `earn_progress`; an unidentified vendor pends; `hold_retainage` and
   `capitalize_wip` in Kind are refused — ingest does not invent retainage
@@ -507,7 +511,9 @@ or `sidepocket:*`.
   admitted trades, VWRL left pending the same way `LEAVE_ONE_PENDING` does;
   a Project book runs the same loop on `project-invoices` (identified AP /
   progress-bill / cost post, UNKNOWN SUB pending, retainage and WIP kinds
-  refused).
+  refused); a Personal book runs it on `brokerage-statement` /
+  `brokerage-positions` (identified buys post as transfers, VWRL pending,
+  unidentified or foreign-currency holdings refuse the live recon).
   ⭐ **The live custodian loop (#155) is that path plus recon.** Ingest
   `prime_equity_trades` and `custodian-positions`, admit, then
   `ratio recon --from-ingest` (or `Console::recon_from_ingest`). The
@@ -564,6 +570,20 @@ or `sidepocket:*`.
   volume. Those stay Connect (#150 / #161 / #177) or the Phase two
   leftover. This file closes #155. It does not reopen #177, #180, or
   #181.
+- ⭐ **A household brokerage-statement walk-through (#167 / #27) can show, and cannot show.**
+  CreateBook(Personal) or `ratio init --kind personal`, add the
+  master, ingest `brokerage-statement` and `brokerage-positions`,
+  admit: identified buys land as transfers on Investments, the trial
+  balance still ties, the lot book stays empty, an unmatched
+  instrument pends. `ratio recon --from-ingest` compares the holdings
+  snapshot to the journal's Investments carrying value — the same
+  engine as #155, exit 2 on a difference, exit 3 on unidentified or
+  foreign-currency holdings, no silent 0. `demo/brokerage-feed.sh` is
+  the CLI walk-through. It cannot show broker OAuth, a lot opening on
+  Investments, a household NAV, a cash forecast, envelope coaching,
+  or household multi-currency. Those stay Connect (#165 / #150) or
+  their own issues (#187, #163, #164, #178). This file closes #167.
+  It does not close #187, #165, #163, #164, #178, #155, or #150.
 - ⭐ **A capital-call walk-through (#82) can show, and cannot show.**
   CreateBook(Investment) seeds partner-scoped `Commitments — LP/GP` and
   `Undrawn commitments — LP/GP` (equity, so they cancel in the NAV filter)

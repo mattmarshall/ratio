@@ -210,6 +210,8 @@ describe("a first-class book", () => {
     await renderAsync(Templates({ params: params({ book: "household" }) }));
     expect(screen.getByText("bank-statement")).toBeDefined();
     expect(screen.getByText("loan-payment")).toBeDefined();
+    expect(screen.getByText("brokerage-statement")).toBeDefined();
+    expect(screen.getByText("brokerage-positions")).toBeDefined();
     expect(screen.getByText("statement")).toBeDefined();
     expect(screen.getByText("payment")).toBeDefined();
     expect(screen.getAllByText("posts").length).toBeGreaterThan(0);
@@ -223,6 +225,12 @@ describe("a first-class book", () => {
     expect(
       screen.getByRole("link", { name: /loan-payment/ }).getAttribute("href"),
     ).toBe("/books/household/data/templates/loan-payment");
+    expect(
+      screen.getByRole("link", { name: /brokerage-statement/ }).getAttribute("href"),
+    ).toBe("/books/household/data/templates/brokerage-statement");
+    expect(
+      screen.getByRole("link", { name: /brokerage-positions/ }).getAttribute("href"),
+    ).toBe("/books/household/data/templates/brokerage-positions");
   });
 
   it("lists the Project invoice template and not the fund snapshot", async () => {
@@ -238,6 +246,8 @@ describe("a first-class book", () => {
     expect(screen.queryByText("subscriptions")).toBeNull();
     expect(screen.queryByText("bank-statement")).toBeNull();
     expect(screen.queryByText("loan-payment")).toBeNull();
+    expect(screen.queryByText("brokerage-statement")).toBeNull();
+    expect(screen.queryByText("brokerage-positions")).toBeNull();
   });
 
   it("lists the Operating invoice and bill templates and not the fund snapshot", async () => {
@@ -250,6 +260,8 @@ describe("a first-class book", () => {
     expect(screen.queryByText("custodian-positions")).toBeNull();
     expect(screen.queryByText("project-invoices")).toBeNull();
     expect(screen.queryByText("bank-statement")).toBeNull();
+    expect(screen.queryByText("brokerage-statement")).toBeNull();
+    expect(screen.queryByText("brokerage-positions")).toBeNull();
     expect(
       screen.getByRole("link", { name: /customer-invoices/ }).getAttribute("href"),
     ).toBe("/books/studio/data/templates/customer-invoices");
@@ -273,6 +285,8 @@ describe("a first-class book", () => {
     ).toBe("/books/harbourline-global-value/data/templates/prime_equity_trades");
     expect(screen.queryByText("bank-statement")).toBeNull();
     expect(screen.queryByText("loan-payment")).toBeNull();
+    expect(screen.queryByText("brokerage-statement")).toBeNull();
+    expect(screen.queryByText("brokerage-positions")).toBeNull();
     expect(screen.queryByText("project-invoices")).toBeNull();
   });
 

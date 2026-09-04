@@ -2538,29 +2538,38 @@ impl Console {
         })
     }
 
-    /// Compare ingested `custodian-positions` facts to the journal.
+    /// Compare ingested holdings facts to the journal.
     ///
-    /// ⭐ THE LIVE FEED PATH #155 ASKS FOR. Trades already reached the
-    /// journal through admit. This writes a `BreakReport` from the
-    /// holdings snapshot — the same artifact `ratio recon --post` stores
-    /// — so the NAV gate and the exceptions screen see the difference at
-    /// its own address. It does not post. It does not invent a second store.
+    /// ⭐ THE LIVE FEED PATH #155 ASKS FOR, AND #167 REUSES. Trades already
+    /// reached the journal through admit. This writes a `BreakReport` from
+    /// the holdings snapshot — the same artifact `ratio recon --post` stores
+    /// — so the exceptions screen (and the NAV gate, on an Investment book)
+    /// see the difference at its own address. It does not post. It does not
+    /// invent a second store. It does not fork a second recon engine.
     ///
-    /// One unidentified or foreign-currency holding refuses the whole
-    /// run (no breaks): a partial statement compared against the journal
-    /// manufactures a break for every line it skipped.
+    /// Investment books compare `custodian-positions` to "Investments at
+    /// fair value". Personal books compare `brokerage-positions` to
+    /// "Investments". One unidentified or foreign-currency holding refuses
+    /// the whole run (no breaks): a partial statement compared against the
+    /// journal manufactures a break for every line it skipped.
     pub fn recon_from_ingest(&self, fund: &str) -> Result<ratio_recon::BreakReport> {
         let path = self.book_path(fund)?;
         let b = self.open_file_book(&path)?;
         let digest = b.active()?.context("no configuration is in force")?;
         let chart = b.accounts()?;
-        let investments = chart
+        let (investments, scope, template_id) = if let Some(a) = chart
             .iter()
             .find(|a| a.display_name == "Investments at fair value")
-            .context(
-                "this book has no Investments at fair value account — \
-                 live custodian recon is an Investment-book path",
-            )?;
+        {
+            (a, ratio_recon::custodian_positions_live("USD"), "custodian-positions")
+        } else if let Some(a) = chart.iter().find(|a| a.display_name == "Investments") {
+            (a, ratio_recon::brokerage_positions_live("USD"), "brokerage-positions")
+        } else {
+            anyhow::bail!(
+                "this book has no Investments account — live holdings recon \
+                 is an Investment- or Personal-book path"
+            );
+        };
 
         let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
         let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
@@ -2617,8 +2626,8 @@ impl Console {
         }
         if holdings == 0 && exceptions.is_empty() {
             bail!(
-                "no custodian-positions facts on this book — ingest a holdings \
-                 snapshot under the custodian-positions template first"
+                "no {template_id} facts on this book — ingest a holdings \
+                 snapshot under the {template_id} template first"
             );
         }
 
@@ -2639,7 +2648,7 @@ impl Console {
             Ok(())
         })?;
 
-        let report = ratio_recon::reconcile_holdings(
+        let report = ratio_recon::reconcile_holdings_as(
             journal_investments,
             market_value,
             inv_dim,
@@ -2650,6 +2659,7 @@ impl Console {
             all_sum == 0,
             &digest,
             exceptions,
+            scope,
         );
 
         if report.was_reconciled() {
@@ -6228,21 +6238,34 @@ mod tests {
         // keep working against the same directory.
         assert_eq!(console.get_fund("funds/household").unwrap().name, "funds/household");
 
-        // ⭐ KIND-AWARE INGEST. CreateBook wrote `bank-statement` and
-        // `loan-payment`, so the templates list a Personal book offers is
-        // not the fund snapshot.
+        // ⭐ KIND-AWARE INGEST. CreateBook wrote the household mappings,
+        // so the templates list a Personal book offers is not the fund
+        // snapshot. Brokerage CSV is a household feed, not `custodian-positions`.
         let templates = console
             .list_templates("funds/household")
             .unwrap()
             .templates;
         assert_eq!(
             templates.iter().map(|t| t.template_id.as_str()).collect::<Vec<_>>(),
-            vec!["bank-statement", "loan-payment"]
+            vec![
+                "bank-statement",
+                "loan-payment",
+                "brokerage-statement",
+                "brokerage-positions"
+            ]
         );
         assert!(templates[0].posts, "a statement row can post");
         assert!(
             templates.iter().any(|t| t.template_id == "loan-payment" && t.posts),
             "loan-payment posts interest and principal"
+        );
+        assert!(
+            templates.iter().any(|t| t.template_id == "brokerage-statement" && t.posts),
+            "brokerage-statement posts household transfers"
+        );
+        assert!(
+            templates.iter().any(|t| t.template_id == "brokerage-positions" && !t.posts),
+            "brokerage-positions records and never posts"
         );
         assert!(
             templates[0].form.contains("one statement per row"),
@@ -8761,7 +8784,12 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             (
                 "house",
                 book::BookKind::Personal,
-                &[("bank-statement", true), ("loan-payment", true)] as &[(&str, bool)],
+                &[
+                    ("bank-statement", true),
+                    ("loan-payment", true),
+                    ("brokerage-statement", true),
+                    ("brokerage-positions", false),
+                ] as &[(&str, bool)],
             ),
             (
                 "fund",
@@ -8818,6 +8846,12 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             .is_err());
         assert!(console
             .get_template("funds/house/templates/prime_equity_trades")
+            .is_err());
+        assert!(console
+            .get_template("funds/house/templates/brokerage-statement")
+            .is_ok());
+        assert!(console
+            .get_template("funds/fund/templates/brokerage-statement")
             .is_err());
     }
 
@@ -9200,8 +9234,11 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
     }
 
     #[test]
-    fn a_personal_book_refuses_live_custodian_recon() {
-        let root = fresh("create-personal-no-custodian-recon");
+    fn a_personal_book_without_holdings_refuses_live_recon() {
+        // ⭐ THE ACCOUNT IS THERE; THE FACTS ARE NOT. A blank household
+        // that invented a 0.00 Investments difference would be the silent
+        // zero this path refuses. Same exit as "no custodian-positions".
+        let root = fresh("create-personal-no-brokerage-recon");
         let console = Console::new(&root);
         console
             .create_book(pb::CreateBookRequest {
@@ -9215,8 +9252,340 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
             .unwrap();
         let err = console.recon_from_ingest("house").unwrap_err().to_string();
         assert!(
-            err.contains("Investments at fair value") || err.contains("Investment-book"),
-            "{err}"
+            err.contains("brokerage-positions"),
+            "a blank household must name the template it is missing: {err}"
+        );
+        assert!(
+            !err.contains("0.00") && !err.contains("silent"),
+            "a missing snapshot must not look like a zero figure: {err}"
+        );
+    }
+
+    #[test]
+    fn a_createbook_personal_book_admits_a_brokerage_statement_and_leaves_one_pending() {
+        // ⭐ #167. Delivery → resolve → admit on a blank Personal book, the
+        // same seam the fund trade loop uses. VWRL is unmatched the same
+        // way it is on prime_equity_trades. Buys post as transfers onto
+        // Investments — the lot book stays empty.
+        let root = fresh("create-personal-brokerage");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Household".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "house".into(),
+            })
+            .unwrap();
+        add_prime_entities(&root, "house");
+        {
+            use ratio_store::{FileBook, Journal};
+            let b = FileBook::open(root.join("house")).unwrap();
+            let mut n = 0usize;
+            b.for_each_entry_since(0, &mut |_| {
+                n += 1;
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(n, 0, "CreateBook must not invent journal history");
+        }
+
+        let ingested = console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/house".into(),
+                template_id: "brokerage-statement".into(),
+                content: PRIME_TRADES_CSV.into(),
+                origin: "brokerage-statement.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(ingested.rejected.is_empty(), "{:?}", ingested.rejected);
+        assert_eq!(ingested.fact_count, "3");
+        assert_eq!(ingested.pending.len(), 1, "{:?}", ingested.pending);
+        assert_eq!(ingested.pending[0].reference, "PB-0043");
+
+        let admitted = console
+            .admit_facts(&pb::AdmitFactsRequest {
+                parent: "funds/house".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
+        assert_eq!(admitted.posted_count, "2", "VTI and VOO post; VWRL does not");
+        assert_eq!(admitted.pending_count, "1");
+
+        let pending = console
+            .list_pending_facts("funds/house")
+            .unwrap()
+            .pending_facts;
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].reference, "PB-0043");
+        assert_eq!(pending[0].template_id, "brokerage-statement");
+        assert_eq!(pending[0].kind, "trade");
+        let opened = console.get_pending_fact(&pending[0].name).unwrap();
+        assert!(
+            opened.detail.contains("VWRL") || opened.detail.contains("IE00B3RBWM25"),
+            "the reason names what it looked for: {}",
+            opened.detail
+        );
+
+        {
+            use ratio_store::{FileBook, Journal};
+            let b = FileBook::open(root.join("house")).unwrap();
+            let mut ids = Vec::new();
+            b.for_each_entry_since(0, &mut |e| {
+                ids.push(e.id.clone());
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(ids, vec!["PB-0041", "PB-0042"]);
+        }
+        let fund = console.get_fund("funds/house").unwrap();
+        assert_eq!(
+            fund.trial_balance_difference, "0",
+            "admitted brokerage rows must still conserve: {fund:?}"
+        );
+        assert_eq!(fund.entry_count, 2);
+
+        let view = format!("funds/house/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let sheet = console.list_accounts(&view, "sheet").unwrap().accounts;
+        let inv = sheet
+            .iter()
+            .find(|a| a.display_name == "Investments")
+            .expect("household Investments");
+        assert_eq!(
+            inv.balance, "43000000",
+            "two buys landed as transfers (430,000.00 minor units): {inv:?}"
+        );
+        assert_eq!(inv.posting_count, "2", "each buy is a posting, not a lot: {inv:?}");
+        let proj = console.projection("house").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a household brokerage ingest must not claim lot relief"
+        );
+        assert!(
+            proj.positions(ratio_rules::UNDECLARED_VIEW)
+                .unwrap()
+                .value
+                .held
+                .is_empty(),
+            "a transfer that opened a position invented a fund holding"
+        );
+    }
+
+    #[test]
+    fn a_createbook_personal_book_ingests_a_brokerage_statement_and_recons() {
+        // ⭐ #167. CreateBook → entity master → ingest trades + holdings →
+        // admit → live recon. Investments carrying value vs statement MV.
+        // No recon-posted journal. No NAV gate — Personal has none.
+        let root = fresh("create-personal-brokerage-feed");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Household".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "feed".into(),
+            })
+            .unwrap();
+        add_prime_entities(&root, "feed");
+
+        console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/feed".into(),
+                template_id: "brokerage-statement".into(),
+                content: PRIME_TRADES_USD_CSV.into(),
+                origin: "brokerage-statement.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/feed".into(),
+                template_id: "brokerage-positions".into(),
+                content: CUSTODIAN_POSITIONS_CSV.into(),
+                origin: "brokerage-positions.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        let admitted = console
+            .admit_facts(&pb::AdmitFactsRequest {
+                parent: "funds/feed".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
+        assert_eq!(admitted.posted_count, "2");
+        assert_eq!(admitted.recorded_count, "2", "positions record, they do not post");
+
+        let report = console.recon_from_ingest("feed").unwrap();
+        assert!(report.was_reconciled(), "{}", ratio_recon::render(&report));
+        assert_eq!(report.scope.label, "brokerage-positions-live");
+        assert_eq!(report.breaks.len(), 1, "{:?}", report.breaks);
+        assert_eq!(report.breaks[0].display_name, "Investments");
+        // Book cost 430,000.00; statement MV 439,200.00.
+        assert_eq!(report.breaks[0].ratio_amount, 43_000_000);
+        assert_eq!(report.breaks[0].reported_amount, 43_920_000);
+        assert_eq!(report.breaks[0].difference, -920_000);
+        let text = ratio_recon::render(&report);
+        assert!(text.contains("BREAKS"), "{text}");
+        assert!(text.contains("posts nothing"), "{text}");
+        assert!(!text.contains("ratio strike"), "{text}");
+        assert!(
+            root.join("feed/reports").read_dir().unwrap().next().is_some(),
+            "the live run must store the report"
+        );
+
+        {
+            use ratio_store::{FileBook, Journal};
+            let b = FileBook::open(root.join("feed")).unwrap();
+            let mut n = 0usize;
+            b.for_each_entry_since(0, &mut |_| {
+                n += 1;
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(n, 2, "live recon must not invent journal history");
+        }
+        let fund = console.get_fund("funds/feed").unwrap();
+        assert_eq!(fund.trial_balance_difference, "0");
+        assert_eq!(fund.entry_count, 2);
+    }
+
+    #[test]
+    fn unidentified_brokerage_holdings_refuse_the_live_recon() {
+        let root = fresh("create-personal-unidentified-holdings");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Gap".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "gap".into(),
+            })
+            .unwrap();
+        add_prime_entities(&root, "gap");
+        console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/gap".into(),
+                template_id: "brokerage-statement".into(),
+                content: PRIME_TRADES_USD_CSV.into(),
+                origin: "brokerage-statement.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        console
+            .admit_facts(&pb::AdmitFactsRequest {
+                parent: "funds/gap".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/gap".into(),
+                template_id: "brokerage-positions".into(),
+                content: "\
+LineRef,AsOf,ISIN,Ticker,Exch,Quantity,MarketValue,Ccy
+P-1,2026-02-26,US9229087690,VTI,ARCX,1000,262500.00,USD
+P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
+"
+                .into(),
+                origin: "brokerage-positions.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+
+        let report = console.recon_from_ingest("gap").unwrap();
+        assert!(!report.was_reconciled());
+        assert!(report.breaks.is_empty(), "{:?}", report.breaks);
+        assert!(
+            report.exceptions.iter().any(|e| e.transaction_id == "P-9"),
+            "{:?}",
+            report.exceptions
+        );
+        let text = ratio_recon::render(&report);
+        assert!(text.starts_with("NOT RECONCILED"), "{text}");
+        assert!(text.contains("P-9"), "{text}");
+        assert!(
+            !root.join("gap/reports").is_dir()
+                || root.join("gap/reports").read_dir().unwrap().next().is_none(),
+            "a refused live run must not store a report"
+        );
+    }
+
+    #[test]
+    fn a_foreign_currency_brokerage_holding_refuses_the_live_recon() {
+        let root = fresh("create-personal-fx-holdings");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Fx".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "fx".into(),
+            })
+            .unwrap();
+        add_prime_entities(&root, "fx");
+        {
+            use ratio_store::{FileBook, Plane};
+            let mut b = FileBook::open(root.join("fx")).unwrap();
+            b.append_record(
+                Plane::Entities,
+                &ratio_ingest::Entity {
+                    id: "inst-vwrl".into(),
+                    kind: ratio_ingest::EntityKind::Instrument,
+                    display_name: "Vanguard FTSE All-World".into(),
+                    attributes: [
+                        ("isin".into(), "IE00B3RBWM25".into()),
+                        ("ticker".into(), "VWRL".into()),
+                        ("exchange".into(), "XAMS".into()),
+                    ]
+                    .into_iter()
+                    .collect(),
+                },
+            )
+            .unwrap();
+        }
+        console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/fx".into(),
+                template_id: "brokerage-positions".into(),
+                content: "\
+LineRef,AsOf,ISIN,Ticker,Exch,Quantity,MarketValue,Ccy
+P-1,2026-02-26,IE00B3RBWM25,VWRL,XAMS,250,28100.00,EUR
+"
+                .into(),
+                origin: "brokerage-positions.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+
+        let report = console.recon_from_ingest("fx").unwrap();
+        assert!(!report.was_reconciled());
+        assert!(report.breaks.is_empty(), "{:?}", report.breaks);
+        assert!(
+            report
+                .exceptions
+                .iter()
+                .any(|e| e.refusal == ratio_recon::Refusal::ForeignCurrency
+                    && e.transaction_id == "P-1"),
+            "{:?}",
+            report.exceptions
+        );
+        let text = ratio_recon::render(&report);
+        assert!(text.contains("EUR"), "{text}");
+        assert!(
+            !text.contains("0.00") || text.contains("EUR"),
+            "a foreign-currency holding must not become a silent USD 0: {text}"
         );
     }
 

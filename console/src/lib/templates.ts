@@ -19,7 +19,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "PERSONAL",
     label: "Personal finance",
-    blurb: "Cash and bank, living expenses, income, named loans, and a credit-card liability. A household budget is a configuration total, not a second ledger.",
+    blurb: "Cash and bank, living expenses, income, named loans, and a credit-card liability. A household budget is a configuration total, not a second ledger. `brokerage-statement` / `brokerage-positions` ingest a custodian or broker CSV onto Investments as transfers — an unmatched instrument pends, unidentified or foreign-currency holdings refuse the live recon, never a silent 0. Lot relief stays unset.",
   },
   {
     kind: "INVESTMENT",
@@ -58,6 +58,8 @@ export const KIND_SHORT: Record<BookKind, string> = {
 export const INGEST_TEMPLATE_KIND: Readonly<Record<string, Exclude<BookKind, "UNSPECIFIED">>> = {
   "bank-statement": "PERSONAL",
   "loan-payment": "PERSONAL",
+  "brokerage-statement": "PERSONAL",
+  "brokerage-positions": "PERSONAL",
   "custodian-positions": "INVESTMENT",
   "prime_equity_trades": "INVESTMENT",
   "capital-calls": "INVESTMENT",
