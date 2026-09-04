@@ -10,7 +10,9 @@ use std::path::Path;
 
 use ratio_project::{relief, Projection};
 use ratio_rules::UNDECLARED_VIEW as B;
-use ratio_sql_project::{JournalPin, PgProjection, ProjectionReads, StoreConfig, Watermark};
+use ratio_sql_project::{
+    fold, Geometry, JournalPin, PgProjection, ProjectionReads, StoreConfig, Watermark,
+};
 use ratio_store::{
     Account, AccountTypeRecord as A, ConfigStore, FileBook, Journal, JournalEntry,
     PostingRecord,
@@ -320,6 +322,42 @@ fn projection_reads_connect_applies_a_missing_schema() {
     let again = ProjectionReads::connect(&cfg).unwrap();
     let lots = again.lots_of("connect", B, 1, "vti", &pin).unwrap();
     assert_eq!(lots.value.len(), 1, "reconnect must see the first replay");
+}
+
+#[test]
+fn a_small_handoff_shaped_load_relieves_through_relieve_by() {
+    // ⭐ SAME GENERATOR AS THE 20M FOLD, ON A LIVE ENGINE. The HANDOFF
+    // row refuses load_scale (it would emit 20M INSERTs). This is the
+    // table path at a size the server already has; the measured 20M
+    // claim is `//crates/ratio-sql-project:fold_scale_test`.
+    let g = Geometry {
+        securities: 5,
+        lots_per: 8,
+    };
+    let report = fold(g).unwrap();
+    let pg = live("scale");
+    let mark = pg.load_scale("scale", g).unwrap();
+    assert_eq!(mark.digest, report.digest);
+    let pin = JournalPin {
+        prefix: mark.prefix,
+        digest: mark.digest.clone(),
+    };
+    let inst = g.instrument(0);
+    let got = pg
+        .relieve(
+            "scale",
+            B,
+            1,
+            &inst,
+            relief::Method::Hifo,
+            10,
+            &pin,
+        )
+        .unwrap();
+    assert_eq!(got.value.cost, report.hifo_cost, "HIFO takes the dear lot");
+    assert_ne!(got.value.cost, report.seq_scan_cost);
+    let lots = pg.lots_of("scale", B, 1, &inst, &pin).unwrap();
+    assert!(lots.value.iter().all(|l| l.acquired.is_none()), "unset stays unset");
 }
 
 #[test]

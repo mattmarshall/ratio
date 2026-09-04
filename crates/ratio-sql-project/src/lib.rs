@@ -43,13 +43,14 @@
 //!
 //! # What this is not
 //!
-//! The measured 20M-lot claim. That stays leftover on #159. Planner
-//! pushdown vs `Pg.Rel.Semantics` is [`plan`]: Stage E filters push into
-//! the scan they name; a filter on the NULL-extended side of a
-//! watermark ⋉ lots join is refused. `Ratio.Exec` still holds: a
+//! The 140-million-entry / 40GB journal fold (Fargate ScaleTask).
+//! Planner pushdown vs `Pg.Rel.Semantics` is [`plan`]: Stage E filters
+//! push into the scan they name; a filter on the NULL-extended side of
+//! a watermark ⋉ lots join is refused. `Ratio.Exec` still holds: a
 //! database does not change the IO floor. The live apply is
 //! [`PgProjection`]. Console / API reads of lots, positions, and Current
 //! aggregates go through [`ProjectionReads`] when `RATIO_PG_URL` is set.
+//! The measured 20M-lot projection fold is [`fold_scale`].
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -58,9 +59,11 @@ use anyhow::{bail, Result};
 use ratio_project::{relief, AsOf, Projection, Totals};
 use ratio_store::{FileBook, Journal, JournalEntry};
 
+pub mod fold_scale;
 mod pg;
 mod plan;
 mod reads;
+pub use fold_scale::{fold, lots_for, Geometry, Report, HANDOFF_LOTS_PER, HANDOFF_SECURITIES};
 pub use pg::PgProjection;
 pub use plan::{
     aggregates_plan, denote, eval_pred, lots_plan, pin_plan, positions_plan, push_below_outer_join,
@@ -70,7 +73,7 @@ pub use reads::{current_balances, split_positions, ProjectionReads, StoreConfig}
 
 /// The Postgres contract this store implements. [`PgProjection::apply_schema`]
 /// applies it to a live engine; the denotational tables below are the same
-/// shape. Interactive scale stays #159.
+/// shape. The measured 20M-lot fold is [`fold_scale`].
 pub const SCHEMA_SQL: &str = include_str!("../schema.sql");
 
 /// The journal prefix a figure must be folded from, content-addressed.
@@ -355,7 +358,7 @@ impl SqlProjection {
     }
 
     /// Replace every table for one book. The only write.
-    fn commit(&mut self, snap: Snapshot) -> Result<Watermark> {
+    pub(crate) fn commit(&mut self, snap: Snapshot) -> Result<Watermark> {
         self.watermarks.remove(&snap.watermark.book_id);
         self.lots.retain(|(b, _, _, _, _), _| b != &snap.watermark.book_id);
         self.positions.retain(|(b, _, _, _), _| b != &snap.watermark.book_id);
@@ -425,6 +428,20 @@ pub(crate) struct Snapshot {
 }
 
 impl Snapshot {
+    pub(crate) fn from_parts(
+        watermark: Watermark,
+        lots: BTreeMap<LotKey, relief::Lot>,
+        positions: BTreeMap<PositionKey, (i64, i64)>,
+        aggregates: BTreeMap<AggregateKey, (i128, i128, i64)>,
+    ) -> Self {
+        Self {
+            watermark,
+            lots,
+            positions,
+            aggregates,
+        }
+    }
+
     fn from_projection(book_id: &str, projection: &Projection, pin: JournalPin) -> Result<Self> {
         if projection.prefix() != pin.prefix {
             bail!(

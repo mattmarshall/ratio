@@ -91,6 +91,30 @@ pub const SHAPES: [Shape; 3] = [
     },
 ];
 
+/// Recorded Stage E projection fold of the HANDOFF geometry.
+///
+/// ⛔ NOT THE 140M-ENTRY / 40GB JOURNAL FOLD. That stays on Fargate
+/// ScaleTask. This is 10,000 × 2,000 open lots through `relieve_by`,
+/// digest `STAGE_E_FOLD_DIGEST`, measured by
+/// `//crates/ratio-sql-project:fold_scale_test`. The demo Lambda does
+/// not host these rows. Journal stays SoR.
+///
+/// ⚠ ALLOWED DEAD ON THE BINARY. `//:scale_shapes_test` reads these
+/// as source text; the test crate uses them. A helper that only the
+/// tests called would be the same unused-on-the-binary warning.
+#[allow(dead_code)]
+pub const STAGE_E_FOLD_SECURITIES: i64 = 10_000;
+#[allow(dead_code)]
+pub const STAGE_E_FOLD_LOTS_PER: i64 = 2_000;
+#[allow(dead_code)]
+pub const STAGE_E_FOLD_LOTS: i64 = 20_000_000;
+/// Fastbuild, 4 vCPU / 15 GiB Linux. Timing varies; the digest does not.
+#[allow(dead_code)]
+pub const STAGE_E_FOLD_MS: i64 = 17_388;
+#[allow(dead_code)]
+pub const STAGE_E_FOLD_DIGEST: &str =
+    "bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3";
+
 /// What the account will let this demo spend on folds in a calendar month.
 ///
 /// ⚠ WELL UNDER THE $5 BUDGET ON PURPOSE. The budget covers the function, the
@@ -1701,5 +1725,17 @@ mod tests {
         // headline demonstration is unavailable most of the month.
         let full = shape("full").unwrap();
         assert!(full.cents * 30 < CEILING_CENTS, "a daily full fold does not fit the ceiling");
+    }
+
+    #[test]
+    fn the_stage_e_fold_cite_is_the_handoff_geometry_not_the_dial() {
+        // ⛔ 500 × 40,000 IS ALSO TWENTY MILLION LOTS. The Stage E
+        // measurement is the recorded row: 10,000 × 2,000.
+        assert_eq!(STAGE_E_FOLD_SECURITIES, 10_000);
+        assert_eq!(STAGE_E_FOLD_LOTS_PER, 2_000);
+        assert_eq!(STAGE_E_FOLD_LOTS, 20_000_000);
+        assert_ne!(STAGE_E_FOLD_SECURITIES, 500);
+        assert_eq!(STAGE_E_FOLD_DIGEST.len(), 64);
+        assert!(STAGE_E_FOLD_MS > 0);
     }
 }

@@ -2,7 +2,7 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["Cargo.toml", "schema.sql"])
+exports_files(["Cargo.toml", "schema.sql", "fold_scale.recorded.json"])
 
 # ⛔ Stage E table projection. `//tla:sql_projection_check` is the safety
 # argument: a figure is folded from ONE journal prefix across every table.
@@ -10,12 +10,12 @@ exports_files(["Cargo.toml", "schema.sql"])
 # those tables name, and `PgProjection` applies the same file to a live
 # engine. The journal stays the system of record.
 #
-# ⚠ The 20M-lot interactive claim stays leftover on #159. Planner
-# pushdown vs `Pg.Rel.Semantics` is `src/plan.rs` — filters push into
-# the scan they name; a NULL-extended-side pushdown is a refuse.
-# Console / API reads go through `ProjectionReads` when `RATIO_PG_URL`
-# is set. The journal stays the system of record. This package must
-# not grow a silent SQL FIFO: relief goes through
+# ⚠ The 140M-entry / 40GB journal fold stays on Fargate ScaleTask.
+# The measured 20M-lot projection fold is `:fold_scale_test` (HANDOFF
+# geometry 10,000 × 2,000). Planner pushdown vs `Pg.Rel.Semantics` is
+# `src/plan.rs`. Console / API reads go through `ProjectionReads`
+# when `RATIO_PG_URL` is set. The journal stays the system of record.
+# This package must not grow a silent SQL FIFO: relief goes through
 # `ratio_project::relief`, which is the walk `Ratio.Lots` proves.
 
 rust_library(
@@ -68,5 +68,21 @@ rust_test(
         "//crates/ratio-rules",
         "//crates/ratio-store",
         "@crates//:anyhow",
+    ],
+)
+
+# ⭐ THE 20M CLAIM. HANDOFF geometry 10,000 × 2,000, folded through
+# `relieve_by`, digest published. Not the 140M-entry journal. `large`
+# because twenty million lots are the thing being measured — a small
+# stand-in would be the green suite that tests nothing.
+rust_test(
+    name = "fold_scale_test",
+    srcs = ["tests/fold_scale.rs"],
+    crate_name = "fold_scale_test",
+    crate_root = "tests/fold_scale.rs",
+    edition = "2021",
+    size = "large",
+    deps = [
+        ":ratio-sql-project",
     ],
 )

@@ -73,3 +73,31 @@ grep -A 8 'name: "full"' "$SHAPES_RS" | grep -q 'securities: 10_000' \
 
 echo "  ok  the full shape is the recorded 10,000 x 2,000, not the dialled 500 x 40,000"
 echo "  ok  $checked shapes, all of them measured in HANDOFF.md"
+
+# ⭐ STAGE E PROJECTION FOLD. Same geometry, not the 140M-entry journal.
+# scale.rs, HANDOFF.md, and fold_scale.recorded.json must name one digest.
+RECORDED="${3:-}"
+[ -n "$RECORDED" ] && [ -f "$RECORDED" ] || fail "no fold_scale.recorded.json at ${RECORDED:-<unset>}"
+
+digest="$(awk '/^pub const STAGE_E_FOLD_DIGEST/ { getline; gsub(/[^0-9a-f]/, ""); print; exit }' "$SHAPES_RS")"
+[ "${#digest}" -eq 64 ] || fail "STAGE_E_FOLD_DIGEST is not a 64-hex digest in $SHAPES_RS"
+
+grep -q 'STAGE_E_FOLD_SECURITIES: i64 = 10_000' "$SHAPES_RS" \
+  || fail "STAGE_E_FOLD_SECURITIES is not 10,000 — that is the wrong geometry"
+grep -q 'STAGE_E_FOLD_LOTS_PER: i64 = 2_000' "$SHAPES_RS" \
+  || fail "STAGE_E_FOLD_LOTS_PER is not 2,000"
+grep -q 'STAGE_E_FOLD_LOTS: i64 = 20_000_000' "$SHAPES_RS" \
+  || fail "STAGE_E_FOLD_LOTS is not 20,000,000"
+
+grep -q "$digest" "$HANDOFF" \
+  || fail "HANDOFF.md does not cite Stage E digest $digest"
+grep -q "$digest" "$RECORDED" \
+  || fail "fold_scale.recorded.json does not cite Stage E digest $digest"
+grep -q '"lots": 20000000' "$RECORDED" \
+  || fail "recorded artifact is not 20,000,000 lots"
+grep -q 'relieve_by' "$RECORDED" \
+  || fail "recorded artifact dropped relieve_by"
+grep -q 'journal.jsonl stays SoR' "$RECORDED" \
+  || fail "recorded artifact dropped the journal-stays-SoR sentence"
+
+echo "  ok  Stage E fold cite is 10,000 x 2,000 / 20,000,000 lots, digest $digest"

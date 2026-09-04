@@ -47,6 +47,7 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//tla:probes_test` | every failure-path probe can still say what it claims |
 | `//crates/*:*_test` | the Rust (except `pg_engine_test`, below) |
 | `//crates/ratio-sql-project:pg_engine_test` | live apply of `schema.sql` — tagged `manual`, run by name in `build.yml` |
+| `//crates/ratio-sql-project:fold_scale_test` | measured 20M-lot fold of the HANDOFF geometry (10,000 × 2,000); in `//...` |
 | `//proto:ratio_aip_lint`, `//proto:mirrors_test` | the wire contract, and its two hand-written mirrors |
 | `//crates/ratio-console:transcode_test` | the route table against the proto |
 | `//demo:rehearse_test`, `//demo:shadow_run_test` | the demo and the shadow run, end to end |
@@ -125,7 +126,9 @@ answering with empty lots.
 
 Planner pushdown vs `Pg.Rel.Semantics` is
 `//lean:sql_pushdown_proof_test` and `src/plan.rs`. The measured
-20M-lot claim stays leftover on #159.
+20M-lot fold is `//crates/ratio-sql-project:fold_scale_test`
+(HANDOFF 10,000 × 2,000). The 140M-entry / 40GB journal fold
+stays on Fargate ScaleTask.
 
 ## Layout
 

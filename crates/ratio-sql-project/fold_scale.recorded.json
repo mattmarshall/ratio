@@ -1,0 +1,17 @@
+{
+  "securities": 10000,
+  "lots_per": 2000,
+  "lots": 20000000,
+  "geometry": "10000 x 2000",
+  "digest": "bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3",
+  "fold_ms": 17388,
+  "hifo_cost": 2000000,
+  "fifo_cost": 1000,
+  "seq_scan_cost": 1000,
+  "aggregate_debit": 20109990000000,
+  "aggregate_units": 200000000,
+  "acquired": "unset",
+  "relief": "relieve_by",
+  "host": "4 vCPU, 15 GiB, Linux, bazel test //crates/ratio-sql-project:fold_scale_test",
+  "journal": "projection load of the HANDOFF geometry; not the 140M-entry / 40GB journal. journal.jsonl stays SoR"
+}

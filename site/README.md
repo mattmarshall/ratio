@@ -262,9 +262,11 @@ page would read as a reference customer. Keep it unnamed.
   selection, or average-cost pooling as unbuilt, or if it claims Postgres is
   the interactive-scale engine. Applying the projection schema to a live
   engine is Built; console/API reads through the store is Built;
-  planner pushdown vs Pg.Rel.Semantics is Built.
-  The 20M-lot claim stays on the spec side (#159) under umbrella
-  #8. #153 landed
+  planner pushdown vs Pg.Rel.Semantics is Built;
+  the measured 20M-lot fold is Built (HANDOFF 10,000 × 2,000,
+  17.4 s, digest cited on the scale screen). The 40GB journal
+  fold and calling Postgres the interactive-scale engine stay
+  on the spec side under umbrella #8. #153 landed
   the lots/positions projection schema and digest replay; PLAN's
   "four of these were built" table still records the running engine as
   spec-only. The demo API hydrates ScaleBucket `journals/` so

@@ -316,6 +316,12 @@ BUILT=(
   # the 20M-lot claim stays leftover on #159. The sentence it matches
   # is in the 2026-09-04 pushdown amendment.
   "planner pushdown vs Pg.Rel.Semantics"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The measured 20M-lot fold is not on the refusal list — the 40GB
+  # journal fold and calling Postgres the interactive-scale engine
+  # stay leftover on #8. The sentence it matches is in the
+  # 2026-09-04 measured-fold amendment.
+  "the measured 20M-lot fold"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
