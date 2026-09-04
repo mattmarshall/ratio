@@ -297,8 +297,8 @@ packages, and remaining to spend (revised − incurred − awarded) — and
 bill (revised − billed), and collections vs billed (cash against AR).
 A change-order walk-through can record `approve_co_site` / `deduct_co_site`
 or ingest `change-orders` from the same `/budget` page; a remaining-to-bill /
-collections walk-through can cite those leftovers on `/billing` after
-`progress_bill` / `collect_receivable`; a committed-cost walk-through can
+collections walk-through can record `collect_receivable` from the same
+`/billing` page after `progress_bill` has posted the receivable; a committed-cost walk-through can
 record `award_commitment_site` / `release_commitment_site` or ingest
 `purchase-orders` from that same `/budget` page. `/budget` does not forecast — EAC and cost to complete
 are refused rather than implied by remaining to spend. None of those

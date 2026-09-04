@@ -385,6 +385,14 @@ NEEDLES: list[tuple[str, str]] = [
         "unset until a progress bill posts — not a fake zero collected",
         "an unbilled job would show collected 0.00",
     ),
+    (
+        "Post a collection",
+        "a Project /billing page would cite collections but could not post them",
+    ),
+    (
+        "A collection stays unset on this page until billed and",
+        "the /billing write would stop saying unset-until-posted",
+    ),
     # ⛔ AND NO `startTransition` NEEDLE, THOUGH THE PALETTE NEEDS ONE AS MUCH AS
     # `FilterChips` DOES. Both that file and `PlanControls` already contain the
     # literal, so the case would pass with the palette's transition dropped — the

@@ -194,6 +194,11 @@ BUILT=(
   # #177 amendment. Adding the line is the cost of noticing if the
   # phrase later lands on the refusal list as if the door were shut.
   "equalization, drip, and side-pocket stay Connect"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Cash application on /billing is not on the refusal list —
+  # payment processors and a fake collected 0.00 stay refused. The
+  # sentence it matches is in the 2026-09-04 #173 amendment.
+  "cash application on /billing"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

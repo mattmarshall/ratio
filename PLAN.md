@@ -716,7 +716,8 @@ kind the console offers cannot go unrecorded here again:
   ABOR warehouse. Does not file a Fund.
 - `PROJECT` — a job, not an entity: original vs revised contract, awarded
   committed cost, remaining to spend, remaining to bill, collections vs
-  billed. Unset until the journal can support them. The budget page does
+  billed. Unset until the journal can support them. Project `/billing`
+  posts a cash application (`collect_receivable`). The budget page does
   not forecast.
 - `OPERATING` — an ordinary operating business: cash, AR, AP, operating
   revenue / expense, owner equity. Sheet, period income statement, and
@@ -2235,6 +2236,55 @@ are not filed; drip stays on #161.
 It can show this table and the refuse-in-kernel list. It cannot
 show an equalization credit, a drip election, or a side-pocket
 class in `ratio watch`. Those remain Connect, unbuilt.
+
+### Amendment, 2026-09-04 — Project `/billing` posts a cash application
+
+[#173](https://github.com/mattmarshall/ratio/issues/173) asked for a
+collection (cash applied to AR) to be posted from the existing Project
+`/billing` chrome, unset until billed and receivable can support the
+cut, and without a payment-processor integration in the kernel.
+Collections vs billed was already a citeable figure; the leftover was
+that the walk-through had to leave `/billing` to `/record` to write
+the cash application.
+
+**What this amendment records.** Project `/billing` posts a collection
+through the same `ApplyEvent` `/record` uses. The rule is
+`collect_receivable` CreateBook already seeded — cash up, receivable
+down. A tampered form that sends `progress_bill`, `project_cost`, or
+`equity_purchase` is refused. No new journal kind. No new ingest
+template — `project-invoices` is vendor cost / AP, not customer cash.
+Facts stay unset until billed and AR can support the cut: an unbilled
+job is not collected 0.00, and a billed figure with no AR posting
+stays unset. Billed but uncollected is a real zero collected. No new
+`Method` / `Order` / `lot_method` variant. PERSONAL / INVESTMENT /
+OPERATING `screensFor` paths are unchanged. Stripe / ACH / payment
+processors stay Connect. **cash application on /billing** is the
+Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not a payment processor.** Stripe / ACH settlement journals stay
+  Connect apps posting through `journals:post`. Grant path leftover
+  #22 / #150. This file does not close #22. It does not close #150.
+  It does not reopen #151.
+- **Not billed-vs-earned / retainage / remaining-to-bill math.**
+  Those cuts already land. This page does not invent them.
+- **Not EAC / forecast, not a vendor portal, not AIA G702.** Those
+  doors are #169, #172, #184.
+- **Not a `screensFor` fork**, and not a kernel RPC. The write is
+  `ApplyEvent` on the seeded rule.
+
+Nothing on the *Explicitly not building* list moved. This amendment
+closes #173. It does not close #169, #172, #184, #100, #85, #150,
+or #22.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can open a Project `/billing`, leave collected unset before AR
+has posted, preview then post `collect_receivable`, and cite the
+moved collections vs billed / outstanding receivable on the same
+page with journal provenance. It cannot show a Stripe or ACH
+processor, a Connect token opening a book, AIA G702 product UI, a
+client portal, or a vendor portal.
 
 ## The control plane: geetch and crova
 

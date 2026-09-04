@@ -1496,6 +1496,26 @@ describe("a first-class book", () => {
     }
   });
 
+  it("asks ListRules so /billing can post the same collect_receivable /record uses", async () => {
+    const books: unknown[] = [];
+    const real = wire.listRules;
+    wire.listRules = (async (...args: unknown[]) => {
+      books.push(args[1]);
+      return { rules: [], nextPageToken: "" };
+    }) as typeof wire.listRules;
+    try {
+      const Billing = (await import("./books/[book]/views/[view]/billing/page"))
+        .default;
+      await renderAsync(
+        Billing({ params: params({ book: "bridge", view: "book" }) }),
+      );
+      expect(books).toEqual(["bridge"]);
+      expect(screen.getByText("No collection rule in force")).toBeDefined();
+    } finally {
+      wire.listRules = real;
+    }
+  });
+
   it("asks ListRules so /budget can post the same CO / award kinds /record uses", async () => {
     const books: unknown[] = [];
     const real = wire.listRules;
@@ -2693,6 +2713,11 @@ describe("a first-class book", () => {
     expect(
       screen.getByText(/unset — accounts receivable has not posted, so cash against AR cannot be cited/),
     ).toBeDefined();
+    expect(screen.getByText("Post a collection")).toBeDefined();
+    expect(
+      screen.getByText(/A collection stays unset on this page until billed and/),
+    ).toBeDefined();
+    expect(screen.getByText("No collection rule in force")).toBeDefined();
     const remaining = screen.getByText("Remaining to bill").closest("[role=row]");
     expect(remaining?.textContent).toContain("—");
     expect(remaining?.textContent).not.toMatch(/0\.00/);
@@ -4131,6 +4156,16 @@ describe("the write screens", () => {
     measured: false,
   };
 
+  const COLLECT_AR = {
+    name: "funds/bridge/rules/collect_receivable",
+    ruleId: "collect_receivable",
+    kind: "TRADE" as const,
+    description: "Collect a billed receivable into cash",
+    form: "debit cash, credit accounts receivable",
+    accounts: ["Cash", "Accounts receivable"],
+    measured: false,
+  };
+
   const AWARD_SITE = {
     name: "funds/bridge/rules/award_commitment_site",
     ruleId: "award_commitment_site",
@@ -4193,9 +4228,9 @@ describe("the write screens", () => {
 
   // ── the pattern ────────────────────────────────────────────────────────
   //
-  // ⭐ ALL FOUR WRITES, NOT JUST THE NEW ONE. The four were four forms doing the
-  // same thing four ways; a test that only held the newest one to the pattern
-  // would let the other three drift straight back.
+  // ⭐ EVERY WRITE SCREEN, NOT JUST THE NEW ONE. These were forms doing the
+  // same thing several ways; a test that only held the newest one to the
+  // pattern would let the others drift straight back.
 
   it("offers both ways through, on every screen that writes", async () => {
     const { RecordForm } = await import("./books/[book]/record/RecordForm");
@@ -4205,6 +4240,9 @@ describe("the write screens", () => {
     const { TransferForm } = await import("./books/[book]/transfer/TransferForm");
     const { BudgetPostForm } = await import(
       "./books/[book]/views/[view]/budget/BudgetPostForm"
+    );
+    const { BillingPostForm } = await import(
+      "./books/[book]/views/[view]/billing/BillingPostForm"
     );
 
     for (const [what, el] of [
@@ -4231,6 +4269,10 @@ describe("the write screens", () => {
       [
         "budget-post",
         <BudgetPostForm key="b" fund="bridge" rules={[CO_SITE, AWARD_SITE]} />,
+      ],
+      [
+        "billing-post",
+        <BillingPostForm key="c" fund="bridge" rules={[COLLECT_AR]} />,
       ],
     ] as const) {
       const { unmount } = render(el);
@@ -4689,6 +4731,71 @@ describe("the write screens", () => {
       target: { value: "PO-1" },
     });
     expect(post.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("posts collect_receivable from /billing without inventing a journal kind", async () => {
+    const { BillingPostForm } = await import(
+      "./books/[book]/views/[view]/billing/BillingPostForm"
+    );
+    render(<BillingPostForm fund="bridge" rules={[COLLECT_AR]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "400.00" },
+    });
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-03-15" },
+    });
+    fireEvent.change(screen.getByLabelText("Reference"), {
+      target: { value: "COL-1" },
+    });
+    expect(screen.getAllByText("collect_receivable").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("400.00").length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText("Instrument")).toBeNull();
+    expect(screen.queryByLabelText("Units")).toBeNull();
+    const form = document.querySelector("form")!;
+    const sent = Object.fromEntries(new FormData(form).entries());
+    expect(sent).toMatchObject({
+      fund: "bridge",
+      ruleId: "collect_receivable",
+      amount: "400.00",
+      dated: "2026-03-15",
+      eventId: "COL-1",
+    });
+    expect(sent).not.toHaveProperty("instrument");
+    expect(sent).not.toHaveProperty("quantity");
+  });
+
+  it("keeps a /billing Post shut until a preview matches these inputs", async () => {
+    const { BillingPostForm } = await import(
+      "./books/[book]/views/[view]/billing/BillingPostForm"
+    );
+    render(<BillingPostForm fund="bridge" rules={[COLLECT_AR]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    const post = screen.getByRole("button", { name: "Post" });
+    expect(post.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "400.00" },
+    });
+    fireEvent.change(screen.getByLabelText("Reference"), {
+      target: { value: "COL-1" },
+    });
+    expect(post.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("will not offer a collection when collect_receivable is not in force", async () => {
+    const { BillingPostForm } = await import(
+      "./books/[book]/views/[view]/billing/BillingPostForm"
+    );
+    render(<BillingPostForm fund="bridge" rules={[CO_SITE, AWARD_SITE]} />);
+    expect(screen.getByText("No collection rule in force")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    const sent = Object.fromEntries(
+      new FormData(document.querySelector("form")!).entries(),
+    );
+    expect(sent.ruleId).toBe("");
+    expect(
+      screen.getByRole("button", { name: "Post" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 });
 

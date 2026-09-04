@@ -117,10 +117,12 @@ export const ROUTES: readonly Route[] = [
   },
   // Remaining to bill and collections vs billed compose here from
   // ListAccounts + projectProgress + [project] budget — not a second URL.
+  // A Project book posts a cash application on this page (`listRules` +
+  // `collect_receivable`). `ApplyEvent` is the `/record` write.
   {
     path: "/books/[book]/views/[view]/billing",
     file: "books/[book]/views/[view]/billing/page.tsx",
-    reads: ["projectProgress", "getBook", "listAccounts"],
+    reads: ["projectProgress", "getBook", "listAccounts", "listRules"],
   },
   {
     path: "/funds/[fund]",
