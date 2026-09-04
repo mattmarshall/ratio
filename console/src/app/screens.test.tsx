@@ -800,6 +800,8 @@ describe("a first-class book", () => {
           postingCount: "3",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/50",
@@ -813,6 +815,8 @@ describe("a first-class book", () => {
           postingCount: "2",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/51",
@@ -826,6 +830,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/30",
@@ -839,6 +845,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -847,7 +855,7 @@ describe("a first-class book", () => {
     wire.listAccounts = (async (...args: unknown[]) => {
       if (args[3] === "nav") return period;
       return capitalAccountsFixture;
-    }) as typeof wire.listAccounts;
+    }) as unknown as typeof wire.listAccounts;
     try {
       const Capital = (await import("./books/[book]/views/[view]/capital/page"))
         .default;
