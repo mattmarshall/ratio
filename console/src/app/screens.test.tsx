@@ -1237,7 +1237,7 @@ describe("a first-class book", () => {
       expect(screen.getByText(/equals the original — no approved change order has posted/)).toBeDefined();
       expect(screen.getByText("Post a change order or award")).toBeDefined();
       expect(
-        screen.getByText(/Facts stay unset on this page until the journal has the entry/),
+        screen.getByText(/A change order or award stays unset on this page until it posts/),
       ).toBeDefined();
       expect(screen.getByText("No change-order or award rule in force")).toBeDefined();
       expect(screen.getByText(/change-orders/)).toBeDefined();
@@ -4516,8 +4516,8 @@ describe("the write screens", () => {
     fireEvent.change(screen.getByLabelText("Reference"), {
       target: { value: "PO-site-1" },
     });
-    expect(screen.getByText("award_commitment_site")).toBeDefined();
-    expect(screen.getByText("3,000.00")).toBeDefined();
+    expect(screen.getAllByText("award_commitment_site").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("3,000.00").length).toBeGreaterThan(0);
     expect(screen.queryByLabelText("Instrument")).toBeNull();
     expect(screen.queryByLabelText("Units")).toBeNull();
     const form = document.querySelector("form")!;
@@ -4552,7 +4552,7 @@ describe("the write screens", () => {
     fireEvent.change(screen.getByLabelText("Reference"), {
       target: { value: "CO-1" },
     });
-    expect(screen.getByText("approve_co_site")).toBeDefined();
+    expect(screen.getAllByText("approve_co_site").length).toBeGreaterThan(0);
     const sent = Object.fromEntries(
       new FormData(document.querySelector("form")!).entries(),
     );

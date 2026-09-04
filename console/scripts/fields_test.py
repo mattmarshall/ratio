@@ -366,8 +366,8 @@ NEEDLES: list[tuple[str, str]] = [
         "a Project /budget page would cite awards but could not post them",
     ),
     (
-        "Facts stay unset on this page until the journal has the entry",
-        "the post form would stop saying unset-until-posted",
+        "A change order or award stays unset on this page until it posts",
+        "the /budget write would stop saying unset-until-posted",
     ),
     (
         "revised minus billed — the citeable leftover, not a spreadsheet rebuild",

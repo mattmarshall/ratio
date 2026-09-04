@@ -2099,7 +2099,7 @@ kind-selected catalog. Facts stay unset until posted:
 award as 0 would print budget − actual as headroom. No new journal
 kind. No new `Method` / `Order` / `lot_method` variant. PERSONAL /
 INVESTMENT / OPERATING `screensFor` paths are unchanged. `/budget`
-still does not forecast. **change-order and award ingest on `/budget`**
+still does not forecast. **change-order and award ingest on /budget**
 is the Built phrase this amendment adds.
 
 **What this is NOT:**
