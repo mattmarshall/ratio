@@ -124,6 +124,12 @@ BUILT=(
   # is in the 2026-09-04 goals amendment.
   "a Personal net-worth goals Connect app"
   # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The Project vendor-portal Connect app is not on the refusal list —
+  # a vendor user directory / AIA G702 product UI / EAC stay refused;
+  # this is the product door the catalog already named. The sentence
+  # it matches is in the 2026-09-04 vendor-portal amendment.
+  "a Project vendor-portal Connect app"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
   # The pooled holding-period category is not on the refusal list —
   # this check would have stayed green whatever was built. The
   # sentence it matches is in the 2026-09-04 PoolPeriod amendment.

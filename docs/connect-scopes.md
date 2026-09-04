@@ -212,9 +212,15 @@ open:
    this leftover either: it requests `billing:read` and `budget:read`,
    it does not open the grant path, and this file still does not close
    #184.
+   A first-party vendor / GC portal scaffold lives at
+   `connect/vendor-portal/`
+   ([#172](https://github.com/mattmarshall/ratio/issues/172)). It is not
+   this leftover either: it requests `billing:read`, `budget:read`, and
+   `journals:post` for allowlisted `vendor_invoice*` templates, it does
+   not open the grant path, and this file still does not close #172.
 5. **`webhooks:journal`, `audit:export`, `nav:strike` as a write RPC** —
    reserved scopes; the surfaces are not built.
 
 This file does not close #150. Nothing here closes #5 (console wash
 flag), #9 (lot-relief UI cites / pooled holding-period leftover),
-#22, #166, #168, or #184.
+#22, #166, #168, #172, or #184.

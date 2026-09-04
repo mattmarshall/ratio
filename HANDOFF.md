@@ -599,7 +599,8 @@ the conserved one, and the kernel never said it was.
   cost to complete are not a journal fact. Over/under-billing
   (costs in excess of billings) is not this page; billed minus earned
   stays on `/billing`. ⛔ The walk-through cannot show scheduling, Gantt,
-  resource loading, e-procurement, a vendor portal, AIA G702 product UI,
+  resource loading, e-procurement, a live vendor-portal Connect grant,
+  AIA G702 product UI,
   a client portal, e-signature, or CRM. Remaining to bill stays on #100.
   The seeded demo funds remain investment books.
 - ⚠ **A project remaining-to-bill / collections walk-through (#100 / #27).**
@@ -935,6 +936,7 @@ than one that is entirely unclassified.
 | `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — `Ratio.Lots.PoolPeriod`, not an invented FIFO oldest date or two Form 8949 boxes. Grant path is not built; IRS e-file is refused. Does not close #166 |
 | `connect/goals/` | First-party Connect app for Personal net-worth goals and what-if scenarios ([#168](https://github.com/mattmarshall/ratio/issues/168)). Cites sheet / bridge / cash-flow; opt-in scenario journals on allowlisted Personal templates; closed-through and empty-allowlist refuse. Grant path is not built. Not a cash forecast. Does not close #168 |
 | `connect/aia-pay-app/` | First-party Connect app for Project G702/G703-ish pay-app export ([#184](https://github.com/mattmarshall/ratio/issues/184)). CSV from `/billing` + `/budget` cites (revised contract, billed, retainage, change orders). Missing cites stay unset — no silent billed / retainage / CO zeros. Grant path leftover #22; licensed AIA PDF is refused. Does not close #184. Does not reopen #151 |
+| `connect/vendor-portal/` | First-party Connect app for a Project vendor / GC portal ([#172](https://github.com/mattmarshall/ratio/issues/172)). Cites billed / earned / retainage / collections from `/billing`; remaining-to-bill and cash-against-AR stay unset until the journal can support them. Vendor invoices are allowlisted `journals:post` for `vendor_invoice*` — not `journal:append`. Grant path is not built. No vendor user directory in core. No AIA G702 product UI (#184). No EAC / forecast (#169). Does not close #172 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.
