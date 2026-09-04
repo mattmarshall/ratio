@@ -581,6 +581,7 @@ fn tool_post_events(book: &std::path::Path, args: &Value) -> Result<String> {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })?;
         posted += 1;
     }

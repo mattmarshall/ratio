@@ -168,8 +168,10 @@ __STYLE__
           <code>/capital</code> URL cites a per-partner capital account
           for a period: beginning capital → contributions → distributions
           → allocated income/expense and unrealized → ending capital.
-          Allocated plugs stay unset when the journal has no partner cut —
-          never a fake zero share, never a silent equal split of book NAV.
+          Allocated plugs stay unset when the configuration names no
+          partner cut — never a fake zero share, never a silent equal
+          split of book NAV. A written <code>[[partner_cut]]</code>
+          fills the plugs when the figure divides.
           A period NAV
           roll-forward at <code>/nav</code> cites beginning NAV →
           contributions → distributions → income/expense / unrealized →
@@ -258,8 +260,9 @@ __STYLE__
           still the exception queue, a difference at its own address, and
           whether a fund can close. Household budget envelopes, a project
           budget, and per-partner capital account statements (beginning →
-          activity → allocated plugs unset until a partner cut exists →
-          ending — not an equal split of book NAV) are now on the console.</li>
+          activity → allocated plugs unset until a named
+          <code>[[partner_cut]]</code> exists → ending — not an equal
+          split of book NAV) are now on the console.</li>
         </ul>
       </div>
     </div>
@@ -408,7 +411,7 @@ __STYLE__
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: books (Personal, Fund, Project, Operating templates), a household balance sheet, period P&amp;L, net-worth bridge with transfers that are not trades, and a period cash-flow statement (operating / investing / financing; unset, not a fake zero cash), household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), awarded committed cost keyed to those work packages (unset until an award posts, not a fake zero), remaining to spend (revised − incurred − awarded, unset until budget, actual, and awarded can support it — no EAC / no forecast), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it), an Operating book that cites a balance sheet, period income statement, period cash-flow statement, and AR/AP aging against the trial balance (AR/AP as working capital, owner equity as financing, investing unset — no PPE account; aging at /aging — missing due date is undated not current, buckets foot to control), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), a per-partner capital account statement (beginning → activity → allocated plugs stay unset without a partner cut, never an equal split of book NAV), a period NAV roll-forward (unset, not a fake zero), and period close at /close on every kind (closed-through day, prefix and digest; surplus into retained earnings; provisional when open, unset when the journal cannot support a close — never a fake closed period), the exception queue, a difference at its own address, a book's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project, Operating templates), a household balance sheet, period P&amp;L, net-worth bridge with transfers that are not trades, and a period cash-flow statement (operating / investing / financing; unset, not a fake zero cash), household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), awarded committed cost keyed to those work packages (unset until an award posts, not a fake zero), remaining to spend (revised − incurred − awarded, unset until budget, actual, and awarded can support it — no EAC / no forecast), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it), an Operating book that cites a balance sheet, period income statement, period cash-flow statement, and AR/AP aging against the trial balance (AR/AP as working capital, owner equity as financing, investing unset — no PPE account; aging at /aging — missing due date is undated not current, buckets foot to control), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), a per-partner capital account statement (beginning → activity → allocated plugs stay unset without a named [[partner_cut]], never an equal split of book NAV), a period NAV roll-forward (unset, not a fake zero), and period close at /close on every kind (closed-through day, prefix and digest; surplus into retained earnings; provisional when open, unset when the journal cannot support a close — never a fake closed period), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue

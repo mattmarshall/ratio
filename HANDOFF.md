@@ -1,6 +1,6 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
-**State**: bazel tests green, 27 `lean_test`, 46 `tla_check`, 29 `manual`
+**State**: bazel tests green, 28 `lean_test`, 46 `tla_check`, 29 `manual`
 probes all red for the reasons they name.
 
 Issues #4 and #7 are closed. #5's leftover was the console wash-flag
@@ -510,15 +510,19 @@ the conserved one, and the kernel never said it was.
   cites beginning → contributions → distributions → allocated income /
   expense / unrealized → ending for each partner, composed from the same
   partner In / Out #70 already names and the Loan-shaped `nav-*` fold
-  #96 already uses. Allocated plugs stay **unset** — the journal has no
-  ownership percentage, and an equal split of book NAV or a silent 0.00
-  share is the defect. `allocate_*_lp` posts an exact amount into partner
-  capital (already on In / Out). Since inception leaves beginning unset;
-  `capital-*` is Activity and cannot name a beginning stock. ⛔ The
-  walk-through cannot show IRR, TVPI / DPI, a waterfall, carried interest,
-  management-fee billing as a desk product, an LP portal, a future call
-  schedule, or K-1 packaging. `/strikes` stays ABOR NAV. Remaining undrawn
-  stays on #82. Book NAV roll-forward stays on #96.
+  #96 already uses. Allocated plugs stay **unset** without a named
+  `[[partner_cut]]` — an equal split of book NAV or a silent 0.00 share
+  is the defect. A written cut fills the plugs when the figure divides
+  (`Ratio.Partners.Cut`; `RuleSet.partner_cut`). `allocate_*_lp` posts
+  an exact amount into partner capital (already on In / Out). Since
+  inception leaves beginning unset; `capital-*` is Activity and cannot
+  name a beginning stock. ⛔ The walk-through cannot show IRR, TVPI /
+  DPI, a waterfall, carried interest, management-fee billing as a desk
+  product, an LP portal, a future call schedule, or K-1 packaging.
+  `/strikes` stays ABOR NAV. Remaining undrawn stays on #82. Book NAV
+  roll-forward stays on #96. This file does not close #180: per-entry
+  specials are stored and not yet folded into the plugs, and
+  CreateBook still writes no cut. It does not close #181.
 - ⚠ **A project change-order walk-through (#91 / #27).** CreateBook(Project)
   seeds `Approved change orders` / `Change-order authorization` keyed by
   work package (site / structure / finishes, plus unpartitioned) as equity,
@@ -856,8 +860,8 @@ than one that is entirely unclassified.
 
 | | |
 |---|---|
-| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Actions/Factor`, `Closure`, `Exec` |
-| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `wash_keep_holding_period`, `min_tax_short_weight`, `average_cost`, `tolerance` — the administration agreement, as configuration |
+| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Partners/Cut`, `Actions/Factor`, `Closure`, `Exec` |
+| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `wash_keep_holding_period`, `min_tax_short_weight`, `average_cost`, `tolerance`, `partner_cut`, `special_allocation` — the administration agreement, as configuration |
 | `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |

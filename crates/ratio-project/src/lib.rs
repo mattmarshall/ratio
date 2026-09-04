@@ -2425,6 +2425,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
             })
             .unwrap();
         }
@@ -2480,6 +2481,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
         })
         .unwrap();
     }
@@ -2506,6 +2508,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
         })
         .unwrap();
     }
@@ -2787,6 +2790,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
             })
             .unwrap();
         }
@@ -2853,6 +2857,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
         })
         .unwrap();
 
@@ -2961,6 +2966,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
         })
         .unwrap();
     }
@@ -3053,6 +3059,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         }
     }
 
@@ -3138,6 +3145,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
         });
         let p = Projection::rebuild(&js, FIFO);
 
@@ -3225,6 +3233,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
             })
             .unwrap();
         }
@@ -3301,6 +3310,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
             })
             .unwrap();
         }
@@ -3350,6 +3360,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
             })
             .unwrap();
         }
@@ -3480,6 +3491,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: identified,
+            special_allocations: None,
         })
         .unwrap();
     }
@@ -3586,6 +3598,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
         })
         .unwrap();
         drop(b);
@@ -3972,6 +3985,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: Some(vec![]),
+            special_allocations: None,
         })
         .unwrap();
         drop(b);
@@ -4062,6 +4076,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         drop(b);
@@ -4103,6 +4118,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
             })
             .unwrap();
         }
@@ -4221,6 +4237,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
         })
         .unwrap();
         drop(b);
@@ -4274,6 +4291,7 @@ mod tests {
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
             })
             .collect();
         b.append_all(&entries).unwrap();
@@ -4384,6 +4402,7 @@ calendar = "wk"
                 due_date: None,
                 application: None,
                 identified_lots: None,
+                special_allocations: None,
         })
         .unwrap();
     }

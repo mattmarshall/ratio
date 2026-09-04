@@ -124,8 +124,9 @@ export const PROJECT_SCREENS: readonly Screen[] = [
  * The per-partner capital account (beginning → contributions →
  * distributions → allocated plugs → ending) composes onto that same
  * URL. Allocated income / expense / unrealized stay unset when the
- * journal has no partner cut — never a fake zero share, never a silent
- * equal split of book NAV. A book that has never posted a commitment
+ * configuration names no partner cut — never a fake zero share, never
+ * a silent equal split of book NAV. A written `[[partner_cut]]` fills
+ * the plugs when the figure divides. A book that has never posted a commitment
  * shows unset, not a callable zero. `/nav` is the period roll-forward
  * (beginning → plugs → ending), not a replacement for `/strikes`
  * (ABOR NAV). Unset stays unset.

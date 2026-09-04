@@ -1403,6 +1403,51 @@ must be a person is not a scope somebody could later relax.
 show the frozen table and the refuse list. It cannot show a third-party
 token opening a book. Live activation leftovers remain on #22.
 
+### Amendment, 2026-09-04 — the partner allocation cut is named weights, not 1/N
+
+PLAN / `/capital` already said allocated income / expense / unrealized
+stay **unset** without a partner cut — never a silent equal split of
+book NAV. Capital accounts and commitments were Built (#70 / #82 /
+#102). The cut that fills those plugs was the gap (#180).
+
+What landed is the cut, as config plus journal facts:
+
+- Lean: `Ratio.Partners.Cut`. A cut is named weights, not a partner
+  count. `None` and an empty list are unset (`no_cut_is_unset`). A
+  figure that will not divide is refused rather than rounded
+  (`a_slice_is_exactly_pro_rata`). When every slice divides, the
+  shares sum to the figure. A standing special replaces the default
+  for one kind. A journal fact is an exact amount; `Some []` refuses
+  the SpecID way.
+- Rust: `[[partner_cut]]` / `[[special_allocation]]` on the rule set.
+  Empty is unset, not 1/N. Zero or duplicate weights refuse at read.
+  `allocate` checks the product before the divisibility guard.
+  `JournalEntry.special_allocations` carries per-entry exact amounts;
+  `Some([])` refuses at the door.
+- `/capital` fills allocated lines only when GetBook cites a cut and
+  the figure divides. CreateBook does not write a cut.
+
+**What this is NOT, because leftovers stay named on #180:**
+
+- Not a **fold of per-entry specials into the `/capital` plugs**.
+  Standing config specials apply; journal facts are stored and
+  refused when unnamed, and the statement does not yet walk them.
+- Not a **seeded demo cut**. CreateBook(Investment) still writes no
+  `[[partner_cut]]`. The live demo's allocated plugs stay unset.
+- Not an **LP portal, K-1 pack, or waterfall**. Those stay Connect
+  (#161 / #150). This amendment does not close #181.
+
+Nothing on the *Explicitly not building* list moved. This amendment
+does not close #180. It does not close #181.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can write `[[partner_cut]]` LP 80 / GP 20, cite allocated income
+of a dividing figure on `/capital`, and leave plugs unset when the
+table is omitted or the figure will not divide. It cannot show a
+seeded demo cut, a fold of per-entry specials, IRR, a waterfall, an
+LP portal, or K-1 packaging. Those remain on #180 (cut leftovers)
+and Connect.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

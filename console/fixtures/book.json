@@ -11,5 +11,7 @@
   "trialBalanceDifference": "0",
   "budget": "",
   "envelopes": [],
-  "loans": []
+  "loans": [],
+  "partnerCut": [],
+  "specialAllocations": []
 }

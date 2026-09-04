@@ -26,6 +26,13 @@
 mod render;
 pub use render::render;
 
+/// Partner allocation cut — named weights, not a partner count.
+mod partners;
+pub use partners::{
+    allocate, apply_facts, check_cut, check_specials, cut_for, AllocationFact, AllocationKind,
+    PartnerShare, SpecialAllocation,
+};
+
 /// The grading decision, authored in Lean.
 mod generated_tolerance;
 
@@ -373,6 +380,31 @@ pub struct RuleSet {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub personal: Option<PersonalTerms>,
 
+    /// Partner allocation weights. The cut that fills allocated income /
+    /// expense / unrealized on `/capital`.
+    ///
+    /// ⛔ EMPTY MEANS NOBODY SAID, AND THAT IS NOT A SILENT 1/N.
+    /// Dividing book NAV by the partner count invents a share nobody
+    /// posted. Omit the table. A written `[[partner_cut]]` is the
+    /// election. Weights must be positive and partners unique.
+    /// `Ratio.Partners.no_cut_is_unset`.
+    #[serde(rename = "partner_cut", default, skip_serializing_if = "Vec::is_empty")]
+    pub partner_cut: Vec<PartnerShare>,
+
+    /// Standing special allocations by kind, replacing the default cut
+    /// for that kind.
+    ///
+    /// ⛔ A WEIGHT, NOT AN AMOUNT. 100% of expense to the GP is one
+    /// row with `weight = 1`. Exact amounts are journal facts.
+    /// Empty is silence — that kind uses `partner_cut`, or stays unset.
+    /// `Ratio.Partners.cutFor`.
+    #[serde(
+        rename = "special_allocation",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub special_allocations: Vec<SpecialAllocation>,
+
     /// Where a period close rolls surplus.
     ///
     /// ⛔ ABSENT MEANS NOBODY SAID, AND THAT IS NOT A DEFAULT TO OPENING
@@ -654,6 +686,11 @@ impl Default for RuleSet {
             // Opening equity or Funding would invent a destination nobody
             // named. `Ratio.Close.missing_destination_refuses_the_close`.
             close: None,
+            // ⛔ EMPTY IS UNSET, NOT 1/N. A derived Default that invented
+            // equal weights from a partner count would print somebody
+            // else's share. `Ratio.Partners.no_cut_is_unset`.
+            partner_cut: Vec::new(),
+            special_allocations: Vec::new(),
         }
     }
 }
@@ -1257,6 +1294,11 @@ impl RuleSet {
         if let Some(p) = &set.personal {
             p.check()?;
         }
+        // ⛔ A CUT IS NAMED WEIGHTS, NOT A PARTNER COUNT. Checked when
+        // the configuration is READ: a zero weight or a duplicate
+        // partner is wrong the moment it is written down.
+        partners::check_cut(&set.partner_cut)?;
+        partners::check_specials(&set.special_allocations)?;
         let mut seen = std::collections::BTreeSet::new();
         for v in &set.views {
             v.check(&set.calendars)?;
@@ -2472,6 +2514,77 @@ calendar = "us-settlement"
             .expect_err("keep without a window cannot be applied")
             .to_string();
         assert!(orphan.contains("wash_window_days"), "{orphan}");
+    }
+
+    #[test]
+    fn a_partner_cut_nobody_declared_is_absent_rather_than_one_over_n() {
+        // ⛔ NOT A SILENT 1/N. Empty is unset. Allocated plugs stay
+        // unset. Writing equal weights is an election; inventing them
+        // from a partner count is not. `Ratio.Partners.no_cut_is_unset`.
+        assert!(RuleSet::default().partner_cut.is_empty());
+        assert!(RuleSet::from_toml("rules = []\n").unwrap().partner_cut.is_empty());
+
+        let set = RuleSet::from_toml(
+            "rules = []\n\n[[partner_cut]]\npartner = \"LP\"\nweight = 80\n\n\
+             [[partner_cut]]\npartner = \"GP\"\nweight = 20\n",
+        )
+        .unwrap();
+        assert_eq!(
+            set.partner_cut,
+            vec![
+                crate::PartnerShare { partner: "LP".into(), weight: 80 },
+                crate::PartnerShare { partner: "GP".into(), weight: 20 },
+            ]
+        );
+
+        let toml = RuleSet::from_toml("rules = []\n").unwrap().to_toml().unwrap();
+        assert!(
+            !toml.contains("partner_cut"),
+            "silence must not write a cut: {toml}"
+        );
+        let named = set.to_toml().unwrap();
+        assert!(named.contains("partner_cut"), "{named}");
+        assert!(named.contains("LP"), "{named}");
+
+        let zero = RuleSet::from_toml(
+            "rules = []\n\n[[partner_cut]]\npartner = \"LP\"\nweight = 0\n",
+        )
+        .expect_err("zero is not a weight")
+        .to_string();
+        assert!(zero.contains("not a weight"), "{zero}");
+
+        let dup = RuleSet::from_toml(
+            "rules = []\n\n[[partner_cut]]\npartner = \"LP\"\nweight = 50\n\n\
+             [[partner_cut]]\npartner = \"LP\"\nweight = 50\n",
+        )
+        .expect_err("two rows for one partner")
+        .to_string();
+        assert!(dup.contains("twice"), "{dup}");
+    }
+
+    #[test]
+    fn a_standing_special_replaces_the_default_for_that_kind() {
+        let set = RuleSet::from_toml(
+            "rules = []\n\n[[partner_cut]]\npartner = \"LP\"\nweight = 80\n\n\
+             [[partner_cut]]\npartner = \"GP\"\nweight = 20\n\n\
+             [[special_allocation]]\npartner = \"GP\"\nkind = \"expense\"\nweight = 1\n",
+        )
+        .unwrap();
+        assert_eq!(set.special_allocations.len(), 1);
+        assert_eq!(set.special_allocations[0].kind, crate::AllocationKind::Expense);
+        let expense = crate::cut_for(
+            crate::AllocationKind::Expense,
+            &set.partner_cut,
+            &set.special_allocations,
+        );
+        assert_eq!(expense.len(), 1);
+        assert_eq!(expense[0].partner, "GP");
+        let denied = RuleSet::from_toml(
+            "rules = []\n\n[[special_allocation]]\npartner = \"GP\"\nkind = \"fee\"\nweight = 1\n",
+        )
+        .expect_err("fee is not a kind")
+        .to_string();
+        assert!(denied.contains("unknown") || denied.contains("fee") || denied.contains("TOML"), "{denied}");
     }
 
     #[test]

@@ -619,6 +619,110 @@ describe("a first-class book", () => {
     }
   });
 
+  it("fills allocated plugs from a named partner cut and still refuses 1/N", async () => {
+    const harbour = {
+      ...booksFixture.books.find((b) => b.kind === "INVESTMENT")!,
+      partnerCut: [
+        { partner: "LP", weight: "80" },
+        { partner: "GP", weight: "20" },
+      ],
+    };
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    const period = {
+      accounts: [
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/2",
+          displayName: "Cash and equivalents",
+          dimension: "2",
+          type: "ASSET",
+          debit: "6000",
+          credit: "1000",
+          balance: "15000",
+          abnormal: false,
+          postingCount: "3",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/50",
+          displayName: "Partner capital — LP",
+          dimension: "50",
+          type: "EQUITY",
+          debit: "1000",
+          credit: "4000",
+          balance: "-13000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/51",
+          displayName: "Partner capital — GP",
+          dimension: "51",
+          type: "EQUITY",
+          debit: "0",
+          credit: "2000",
+          balance: "-2000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/30",
+          displayName: "Dividend income",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "3000",
+          balance: "-3000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/21",
+          displayName: "Unrealized gain",
+          dimension: "21",
+          type: "EQUITY",
+          debit: "0",
+          credit: "2000",
+          balance: "-2000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+        },
+      ],
+      nextPageToken: "",
+    };
+    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      if (args[3] === "nav") return period;
+      return capitalAccountsFixture;
+    }) as typeof wire.listAccounts;
+    try {
+      const Capital = (await import("./books/[book]/views/[view]/capital/page"))
+        .default;
+      await renderAsync(
+        Capital({
+          params: params({ book: "harbourline-global-value", view: "abor" }),
+          searchParams: params({ filter: "capital-2026-03" }),
+        }),
+      );
+      // 80/20 of 30.00 is 24.00 / 6.00, not 15.00 / 15.00.
+      expect(screen.getByText("24.00")).toBeDefined();
+      expect(screen.getByText("6.00")).toBeDefined();
+      expect(screen.queryByText("15.00")).toBeNull();
+      expect(
+        screen.getAllByText(
+          /this partner's share of period income under the named cut/,
+        ).length,
+      ).toBeGreaterThan(0);
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
   it("refuses capital activity on a personal book", async () => {
     const Capital = (await import("./books/[book]/views/[view]/capital/page"))
       .default;

@@ -775,6 +775,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
             })
             .unwrap();
         }
@@ -828,6 +829,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
 
@@ -1015,6 +1017,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
             })
             .unwrap();
         }

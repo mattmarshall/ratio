@@ -402,6 +402,27 @@ pub struct JournalEntry {
     /// existed still reads.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identified_lots: Option<Vec<u64>>,
+
+    /// Exact partner specials this entry names. `Ratio.Partners.Fact`.
+    ///
+    /// ⛔ NOT A WEIGHT, AND NOT A SILENT 1/N. Each row is an amount
+    /// somebody attested. `None` means this entry carries no special.
+    /// `Some([])` is elected and unnamed and refuses — the SpecID
+    /// shape. `Ratio.Partners.unnamed_facts_refuse`.
+    ///
+    /// `#[serde(default)]` so every journal written before this field
+    /// existed still reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub special_allocations: Option<Vec<SpecialAllocationFact>>,
+}
+
+/// An exact amount named on an entry. Not a configuration weight.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpecialAllocationFact {
+    pub partner: String,
+    /// `income` / `expense` / `unrealized`.
+    pub kind: String,
+    pub amount: i64,
 }
 
 /// A period close: the citeable boundary per book of record.
@@ -465,6 +486,42 @@ impl JournalEntry {
     /// Whether the entry conserves value.
     pub fn is_balanced(&self) -> bool {
         transaction_is_balanced(&self.transaction()) && self.conserves_every_currency()
+    }
+
+    /// Refuse an unnamed or unparseable special-allocation election.
+    ///
+    /// ⭐ `None` IS SILENCE. `Some([])` is elected and unnamed — that
+    /// refuses rather than inventing 1/N.
+    /// `Ratio.Partners.unnamed_facts_refuse`.
+    pub fn refuse_special_allocations(&self) -> Result<()> {
+        let Some(facts) = &self.special_allocations else {
+            return Ok(());
+        };
+        if facts.is_empty() {
+            bail!(
+                "entry {:?} names special_allocations and the list is empty — \
+                 that is an unnamed election, not silence. Omit the field. A \
+                 silent 1/N is the defect. Ratio.Partners.unnamed_facts_refuse",
+                self.id
+            );
+        }
+        for f in facts {
+            if f.partner.trim().is_empty() {
+                bail!(
+                    "entry {:?} names a special allocation without a partner",
+                    self.id
+                );
+            }
+            if !matches!(f.kind.as_str(), "income" | "expense" | "unrealized") {
+                bail!(
+                    "entry {:?} special allocation kind {:?} is not income, \
+                     expense, or unrealized",
+                    self.id,
+                    f.kind
+                );
+            }
+        }
+        Ok(())
     }
 }
 
@@ -1184,6 +1241,7 @@ impl Journal for FileBook {
             );
         }
         self.refuse_closed_period(entry)?;
+        entry.refuse_special_allocations()?;
         let line = serde_json::to_string(entry).context("serializing entry")?;
         if let Some(log) = self.journal_log() {
             log.append(line.as_bytes())?;
@@ -1244,6 +1302,7 @@ impl Journal for FileBook {
                 );
             }
             self.refuse_closed_period(entry)?;
+            entry.refuse_special_allocations()?;
         }
         if let Some(log) = self.journal_log() {
             // Each entry is its own claim. Sharing a file handle is the jsonl
@@ -1439,6 +1498,7 @@ mod position_tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
         b.append(&JournalEntry {
@@ -1455,6 +1515,7 @@ mod position_tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         })
         .unwrap();
 
@@ -1513,6 +1574,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         }
     }
 
@@ -1535,6 +1597,37 @@ mod tests {
     }
 
     #[test]
+    fn unnamed_special_allocations_are_refused_not_split() {
+        // `Ratio.Partners.unnamed_facts_refuse`. Some([]) is elected
+        // and unnamed — that refuses, it does not invent 1/N.
+        let (mut b, cfg) = book();
+        let mut e = entry("s", &cfg, &[(1, 100), (2, -100)]);
+        e.special_allocations = Some(vec![]);
+        let err = b.append(&e).unwrap_err().to_string();
+        assert!(err.contains("unnamed"), "{err}");
+        e.special_allocations = Some(vec![crate::SpecialAllocationFact {
+            partner: String::new(),
+            kind: "income".into(),
+            amount: 100,
+        }]);
+        let err = b.append(&e).unwrap_err().to_string();
+        assert!(err.contains("without a partner"), "{err}");
+        e.special_allocations = Some(vec![crate::SpecialAllocationFact {
+            partner: "LP".into(),
+            kind: "fee".into(),
+            amount: 100,
+        }]);
+        let err = b.append(&e).unwrap_err().to_string();
+        assert!(err.contains("not income"), "{err}");
+        e.special_allocations = Some(vec![crate::SpecialAllocationFact {
+            partner: "LP".into(),
+            kind: "income".into(),
+            amount: 100,
+        }]);
+        b.append(&e).unwrap();
+    }
+
+    #[test]
     fn a_flat_total_of_zero_across_two_currencies_is_refused() {
         // ⛔ `Ratio.Chart.Dimensions.a_flat_total_hides_a_currency_mismatch`. A
         // hundred dollars against a hundred euros sums to zero and exchanges
@@ -1551,6 +1644,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         };
         assert!(!e.conserves_every_currency());
         let err = b.append(&e).unwrap_err();
@@ -1579,6 +1673,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
             })
             .is_ok());
     }
@@ -1610,6 +1705,7 @@ mod tests {
             due_date: None,
             application: None,
             identified_lots: None,
+            special_allocations: None,
         };
         assert!(!e.conserves_every_currency());
         assert!(b.append(&e).is_err());
