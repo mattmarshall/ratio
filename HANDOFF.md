@@ -69,8 +69,11 @@ is the election, first code is the reporting base, empty is unset
 named declared code; the journal door still refuses unbalanced
 FX; a missing rate reuses the #160 `Rates` refuse. FX rate
 providers stay Connect. This file does not close #178 (live rate
-Connect apps and a `/trade` picker remain). It does not start
-#163, #164, or #187.
+Connect apps and a `/trade` picker remain). Optional lot relief
+on household Investments (#187): `[personal] lot_relief = true`
+elects the wash / MinTax / SpecID / average-cost engines already
+on the book; unset stays unset. This file closes #187. It does
+not start #163 or #164.
 NAV gate refuse reasons stay citeable (#188): unexplained break,
 unpriced, and unresolved trade are first-class copy on GetFund /
 GetView (`nav_gate`, the same `blocking_at` fold the badge already
@@ -516,9 +519,10 @@ or `sidepocket:*`.
 - ⭐ **CreateBook seeds ingest templates per kind** — `bank-statement`
   (Personal: bank/card CSV → cash and expense claims) **and** `loan-payment`
   (Personal: principal + interest columns → two balanced rules merged into
-  one conserved entry), `brokerage-statement` (Personal: the same
+  one conserved entry),   `brokerage-statement` (Personal: the same
   custodian / broker CSV the fund trade loop reads → household
-  transfers onto Investments, not lot-opening purchases) **and**
+  transfers onto Investments, not lot-opening purchases, unless
+  `[personal] lot_relief = true` remaps the admit path) **and**
   `brokerage-positions` (Personal: holdings snapshot, recorded and
   never posted; live recon reuses the fund refuse paths),   `project-invoices` (Project: job-cost / AP / progress-bill CSV
   → `project_cost*` / `vendor_invoice*` / `progress_bill` / `pay_vendor` /
@@ -545,8 +549,9 @@ or `sidepocket:*`.
   admitted trades, VWRL left pending the same way `LEAVE_ONE_PENDING` does;
   a Project book runs the same loop on `project-invoices` (identified AP /
   progress-bill / cost post, UNKNOWN SUB pending, retainage and WIP kinds
-  refused); a Personal book runs it on `brokerage-statement` /
-  `brokerage-positions` (identified buys post as transfers, VWRL pending,
+  refused);   a Personal book runs it on `brokerage-statement` /
+  `brokerage-positions` (identified buys post as transfers unless
+  `[personal] lot_relief` is elected, VWRL pending,
   unidentified or foreign-currency holdings refuse the live recon).
   ⭐ **The live custodian loop (#155) is that path plus recon.** Ingest
   `prime_equity_trades` and `custodian-positions`, admit, then
@@ -613,11 +618,26 @@ or `sidepocket:*`.
   snapshot to the journal's Investments carrying value — the same
   engine as #155, exit 2 on a difference, exit 3 on unidentified or
   foreign-currency holdings, no silent 0. `demo/brokerage-feed.sh` is
-  the CLI walk-through. It cannot show broker OAuth, a lot opening on
-  Investments, a household NAV, a cash forecast, envelope coaching,
-  or household multi-currency. Those stay Connect (#165 / #150) or
-  their own issues (#187, #163, #164, #178). This file closes #167.
-  It does not close #187, #165, #163, #164, #178, #155, or #150.
+  the CLI walk-through. It cannot show broker OAuth, a household NAV,
+  a cash forecast, envelope coaching, or household multi-currency.
+  Lot opening is the #187 election, not this ingest. Those stay
+  Connect (#165 / #150) or their own issues (#163, #164, #178). This
+  file closes #167. It does not close #165, #163, #164, #178, #155,
+  or #150.
+- ⭐ **A household lot-relief walk-through (#187 / #27) can show, and cannot show.**
+  CreateBook(Personal) leaves `[personal] lot_relief` unset — a
+  brokerage buy is a transfer, the lot book stays empty. Elect
+  `lot_relief = true` with `[chart_roles]` (investments = 2, cash =
+  1, realized_gain = 31): an instrumented `equity_purchase` opens a
+  lot, `equity_disposal` relieves it, and GetFund cites wash /
+  min-tax / average-cost the same way the fund path does. SpecID is
+  `identified_lots` on the sale. `Some(false)` is refused at read.
+  A transfer still does not open a lot. `screensFor(PERSONAL)` is
+  unchanged — no Positions / NAV / Exceptions. It cannot show fund
+  ABOR chrome on that household, a broker OAuth grant, IRS e-file, a
+  household NAV, a cash forecast, or envelope coaching. This file
+  closes #187. It does not close #165, #166, #163, #164, #178, or
+  #150.
 - ⭐ **A capital-call walk-through (#82) can show, and cannot show.**
   CreateBook(Investment) seeds partner-scoped `Commitments — LP/GP` and
   `Undrawn commitments — LP/GP` (equity, so they cancel in the NAV filter)
@@ -1082,7 +1102,7 @@ than one that is entirely unclassified.
 | | |
 |---|---|
 | `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,PoolPeriod,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Partners/{Cut,Units}`, `Fees/Accrual`, `Actions/Factor`, `Closure`, `Exec` |
-| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `wash_keep_holding_period`, `min_tax_short_weight`, `average_cost`, `tolerance`, `partner_cut`, `special_allocation`, `fee_terms` (`management_fee_accrual`) — the administration agreement, as configuration |
+| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `wash_keep_holding_period`, `min_tax_short_weight`, `average_cost`, `[personal] currencies` (household reporting codes; empty is unset, not a silent USD), `[personal] lot_relief` (household Investments; unset stays unset), `tolerance`, `partner_cut`, `special_allocation`, `fee_terms` (`management_fee_accrual`) — the administration agreement, as configuration |
 | `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `PoolPeriodEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |

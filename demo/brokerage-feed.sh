@@ -6,7 +6,8 @@
 # This covers what they cannot: the CLI verbs a walk-through actually types,
 # the three exit codes on `--from-ingest`, and that the journal is not rewritten.
 # It does not call `ratio strike` — a household Investments account is a
-# transfer, not a fund NAV gate.
+# transfer unless `[personal] lot_relief` is elected, and even then this
+# walk-through does not strike a fund NAV.
 #
 # Usage:  demo/brokerage-feed.sh path/to/ratio
 set -euo pipefail

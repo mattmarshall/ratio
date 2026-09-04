@@ -95,7 +95,9 @@ being rejected.
 It cannot show a Connect token opening a book, an IRS e-file, or a
 CPA portal. Mixed dates stay unclassified — that is
 `Ratio.Lots.PoolPeriod`, not an invented box. BookKind PERSONAL
-chrome is unchanged. `screensFor` is not forked.
+chrome is unchanged. `screensFor` is not forked. Household lots stay
+unset until `[personal] lot_relief = true` (#187); this pack cites
+those engines and does not elect them.
 
 ## Leftovers — this does not close #166
 

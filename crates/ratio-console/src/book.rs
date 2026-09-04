@@ -9,7 +9,7 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 use ratio_rules::{check, RuleSet};
-use ratio_store::{Account, AccountTypeRecord, ConfigStore, Digest, FileBook};
+use ratio_store::{Account, AccountTypeRecord, ConfigStore, Digest, FileBook, PostingRecord};
 
 /// The ingest templates CreateBook writes for this kind, in the order
 /// [`config_for`] lists them.
@@ -20,8 +20,9 @@ use ratio_store::{Account, AccountTypeRecord, ConfigStore, Digest, FileBook};
 /// [`config_for`] puts there, and what the console catalog filters on.
 ///
 /// Personal is four mappings on purpose: bank / card, named-loan
-/// payments, the brokerage trade column contract (household transfers,
-/// not lots), and the holdings snapshot (recorded, never booked).
+/// payments, the brokerage trade column contract (household transfers
+/// by default; `[personal] lot_relief` remaps onto lot-opening rules),
+/// and the holdings snapshot (recorded, never booked).
 /// Investment is four mappings on purpose: the holdings snapshot (recorded,
 /// never booked), the trade column contract that posts, the capital-call
 /// contract (`commit_*` / `call_*`), and subscriptions / redemptions
@@ -234,6 +235,12 @@ pub fn chart_for(kind: BookKind) -> Vec<Account> {
             // refuses_the_close`.
             acct(25, "Retained earnings", AccountTypeRecord::Equity),
             acct(30, "Income", AccountTypeRecord::Income),
+            // ⭐ WHERE AN ELECTED HOUSEHOLD SALE POSTS THE GAIN.
+            // Unset lot relief never touches it. Colliding this with
+            // Income would mix salary with taxable lots; colliding it
+            // with Investments would net the gain against the disposal.
+            // `Ratio.Lots.Posting.a_collided_chart_hides_the_gain`.
+            acct(31, "Realized gain on investments", AccountTypeRecord::Income),
             acct(40, "Credit cards", AccountTypeRecord::Liability),
             acct(41, "Mortgage", AccountTypeRecord::Liability),
             acct(42, "Auto loan", AccountTypeRecord::Liability),
@@ -392,6 +399,61 @@ pub fn config_for(kind: BookKind) -> &'static str {
     }
 }
 
+/// Whether a household book has elected tax lots on Investments.
+///
+/// ⛔ UNSET STAYS UNSET. Only `[personal] lot_relief = true` elects.
+/// Transfers, bank ingest, and an unelected brokerage admit stay
+/// lot-less. This is the door #187 asked for, not a Method variant.
+pub fn household_lots_are_elected(set: &RuleSet) -> bool {
+    set.personal_lot_relief_elected()
+}
+
+/// Remap a seeded household transfer onto a lot-opening rule.
+///
+/// Brokerage-statement still *names* `xfer_cash_investments` /
+/// `xfer_investments_cash` so an unelected book cannot silently
+/// open a lot by reading the template. Admit consults the election
+/// and picks `equity_purchase` / `equity_disposal` when someone
+/// wrote it.
+pub fn remap_household_lot_rule<'a>(set: &RuleSet, template_id: &str, rule_id: &'a str) -> &'a str {
+    if !household_lots_are_elected(set) || template_id != "brokerage-statement" {
+        return rule_id;
+    }
+    match rule_id {
+        "xfer_cash_investments" => "equity_purchase",
+        "xfer_investments_cash" => "equity_disposal",
+        _ => rule_id,
+    }
+}
+
+/// Refuse a Personal posting that would open a lot nobody elected.
+///
+/// ⛔ THE BOOKS WOULD TIE. `compile` will attach instrument and
+/// quantity to a `per_instrument` leg even when the household never
+/// wrote `[personal] lot_relief`. The trial balance would still
+/// conserve. This is the door that keeps that from looking like an
+/// election.
+pub fn refuse_unelected_household_lots(
+    kind: BookKind,
+    set: &RuleSet,
+    postings: &[PostingRecord],
+) -> Result<()> {
+    if kind != BookKind::Personal || household_lots_are_elected(set) {
+        return Ok(());
+    }
+    if postings
+        .iter()
+        .any(|p| p.instrument.is_some() && p.quantity.is_some())
+    {
+        bail!(
+            "household Investments does not claim lot relief — elect \
+             [personal] lot_relief = true. Unset stays unset, not a silent \
+             lot. See Ratio.Lots"
+        );
+    }
+    Ok(())
+}
+
 /// Bank / card CSV → cash and expense claims. Amounts are a money column
 /// (never a float); `Kind` picks the rule so a signed-amount inference
 /// cannot silently flip income and a card charge.
@@ -404,9 +466,11 @@ pub fn config_for(kind: BookKind) -> &'static str {
 ///
 /// Brokerage / custodian CSV (#167): the same column contract the fund
 /// trade loop reads (`B/S`, ISIN / ticker, consideration), posted as
-/// household transfers onto Investments — not `equity_purchase`.
+/// household transfers onto Investments — not `equity_purchase`,
+/// unless `[personal] lot_relief = true` remaps the admit path.
 /// Holdings are reference data (`brokerage-positions`); live recon
-/// reuses the fund refuse paths. Lot relief stays unset (#187).
+/// reuses the fund refuse paths. `[personal] lot_relief` stays unset
+/// until elected — not a silent lot.
 /// ⛔ `[personal] currencies` IS NOT SEEDED. CreateBook writes no
 /// denomination. A silent USD on an undeclared household is the
 /// defect #178 named. Writing the list is the election.
@@ -621,6 +685,32 @@ weight = 1
 account = 1
 weight = -1
 
+# Lot-opening rules. Unused until `[personal] lot_relief = true`.
+# Transfers stay uninstrumented; these two are the elected path.
+[[rule]]
+id = "equity_purchase"
+kind = "trade"
+description = "Buy: investments up, cash down — opens a lot when elected"
+[[rule.posting]]
+account = 2
+weight = 1
+per_instrument = true
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "equity_disposal"
+kind = "trade"
+description = "Sell: cash up, investments down — relieves a lot when elected"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 2
+weight = -1
+per_instrument = true
+
 [[template]]
 id = "bank-statement"
 reads = "csv"
@@ -727,8 +817,9 @@ reads = "csv"
     rules = { mortgage = "mortgage_interest", auto = "auto_interest", student = "student_interest" }
 
 # Brokerage / custodian CSV. Same columns as the fund trade file; the
-# rules are household transfers, not lot-opening purchases. A per-instrument
-# leg here would be #187 wearing an ingest sticker.
+# seeded rules are household transfers. `[personal] lot_relief = true`
+# remaps buy/sell onto equity_purchase / equity_disposal at admit —
+# the election, not a silent per-instrument transfer.
 [[template]]
 id = "brokerage-statement"
 reads = "csv"
@@ -2355,6 +2446,12 @@ mod tests {
         assert_ne!(operating, investment);
         assert!(personal.iter().any(|a| a.display_name == "Cash and bank"));
         assert!(
+            personal
+                .iter()
+                .any(|a| a.display_name == "Realized gain on investments"),
+            "an elected household sale needs a gain account distinct from Income: {personal:?}"
+        );
+        assert!(
             personal.iter().any(|a| a.display_name == "Retained earnings"),
             "period close needs a named equity destination: {personal:?}"
         );
@@ -2532,7 +2629,7 @@ T-3,03/03/2026,89.00,USD,ELECTRIC CO,card,card
     fn a_brokerage_statement_row_posts_a_transfer_not_a_lot() {
         // ⭐ #167. Same custodian/broker columns as prime_equity_trades;
         // the household rule is a transfer onto Investments. A buy that
-        // picked equity_purchase would open a lot #187 has not elected.
+        // picked equity_purchase would open a lot nobody elected.
         let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Personal)).unwrap();
         let t = set.template("brokerage-statement").unwrap();
         assert!(t.fact.posts.is_some());
@@ -3236,8 +3333,33 @@ template subscriptions {
             "a personal book must be able to transfer without a trade"
         );
         assert!(
-            set.rules.iter().all(|r| r.legs.iter().all(|l| !l.per_instrument)),
+            set.rules
+                .iter()
+                .filter(|r| r.id.starts_with("xfer_")
+                    || r.id.ends_with("_expense")
+                    || r.id.ends_with("_income")
+                    || r.id.ends_with("_charge")
+                    || r.id.starts_with("spend_")
+                    || r.id.starts_with("pay_")
+                    || r.id.starts_with("receive_")
+                    || r.id.ends_with("_interest")
+                    || r.id.ends_with("_principal"))
+                .all(|r| r.legs.iter().all(|l| !l.per_instrument)),
             "a household transfer that is per-instrument would open a lot"
+        );
+        let purchase = set.rule("equity_purchase").expect("missing equity_purchase");
+        assert!(
+            purchase.legs.iter().any(|l| l.per_instrument),
+            "equity_purchase must be able to open a lot when elected"
+        );
+        let disposal = set.rule("equity_disposal").expect("missing equity_disposal");
+        assert!(
+            disposal.legs.iter().any(|l| l.per_instrument),
+            "equity_disposal must be able to relieve a lot when elected"
+        );
+        assert!(
+            !set.personal_lot_relief_elected(),
+            "CreateBook must not elect household lots"
         );
         assert!(
             set.personal.is_none(),
@@ -3255,6 +3377,56 @@ template subscriptions {
         let set = RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest).unwrap())).unwrap();
         assert!(set.rule("xfer_cash_investments").is_some());
         assert_eq!(b.accounts().unwrap(), chart_for(BookKind::Personal));
+    }
+
+    #[test]
+    fn a_household_lot_election_remaps_brokerage_and_leaves_transfers() {
+        // ⭐ #187. The template still names a transfer. Admit remaps only
+        // when someone elected, and only for brokerage-statement. A
+        // silent remap would open lots on every existing household.
+        let silent = RuleSet::from_toml(PERSONAL_CONFIG).unwrap();
+        assert_eq!(
+            remap_household_lot_rule(&silent, "brokerage-statement", "xfer_cash_investments"),
+            "xfer_cash_investments"
+        );
+        assert_eq!(
+            remap_household_lot_rule(&silent, "brokerage-statement", "xfer_investments_cash"),
+            "xfer_investments_cash"
+        );
+
+        let elected = RuleSet::from_toml(&format!(
+            "{PERSONAL_CONFIG}\n[personal]\nlot_relief = true\n\
+             [chart_roles]\ninvestments = 2\ncash = 1\nrealized_gain = 31\n"
+        ))
+        .unwrap();
+        assert!(household_lots_are_elected(&elected));
+        assert_eq!(
+            remap_household_lot_rule(&elected, "brokerage-statement", "xfer_cash_investments"),
+            "equity_purchase"
+        );
+        assert_eq!(
+            remap_household_lot_rule(&elected, "brokerage-statement", "xfer_investments_cash"),
+            "equity_disposal"
+        );
+        assert_eq!(
+            remap_household_lot_rule(&elected, "bank-statement", "xfer_cash_investments"),
+            "xfer_cash_investments",
+            "a bank row is not a lot"
+        );
+        assert_eq!(
+            remap_household_lot_rule(&elected, "brokerage-statement", "living_expense"),
+            "living_expense"
+        );
+
+        let lot = PostingRecord::of(2, 100, "VTI", Some(1));
+        refuse_unelected_household_lots(BookKind::Personal, &silent, &[lot.clone()]).unwrap_err();
+        refuse_unelected_household_lots(BookKind::Personal, &elected, &[lot]).unwrap();
+        refuse_unelected_household_lots(
+            BookKind::Investment,
+            &silent,
+            &[PostingRecord::of(1, 100, "VTI", Some(1))],
+        )
+        .unwrap();
     }
 
     #[test]

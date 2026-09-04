@@ -1421,6 +1421,7 @@ impl Console {
         let mut postings = ratio_rules::compile(rule, &event)?;
         let meta = book::BookMeta::load(&path, &fund);
         stamp_event_currency(meta.kind, &set, &req.currency_code, &mut postings)?;
+        book::refuse_unelected_household_lots(meta.kind, &set, &postings)?;
 
         if rule.id == ratio_rules::FEE_RULE_ID {
             // ⛔ THE POSTING IS THE PROVED PAIR. A zero amount is not an
@@ -2420,6 +2421,7 @@ impl Console {
         let fund = resource_id(&req.parent, "funds")?;
         let path = self.book_path(&fund)?;
         let previous = self.default_view_nav(&fund)?;
+        let kind = book::BookMeta::load(&path, &fund).kind;
 
         let mut b = self.open_file_book(&path)?;
         let digest = b.active()?.context("no configuration is in force")?;
@@ -2462,7 +2464,20 @@ impl Console {
                 continue;
             }
             let pairs = match ratio_ingest::postings_for(t, &r.fact) {
-                Ok(v) => v,
+                Ok(v) => v
+                    .into_iter()
+                    .map(|(rule_id, amount)| {
+                        (
+                            book::remap_household_lot_rule(
+                                &rules,
+                                &r.fact.provenance.template_id,
+                                &rule_id,
+                            )
+                            .to_string(),
+                            amount,
+                        )
+                    })
+                    .collect::<Vec<_>>(),
                 Err(e) => {
                     refused.push(format!("{}: {e:#}", r.fact.reference));
                     continue;
@@ -2528,6 +2543,7 @@ impl Console {
                 continue;
             }
             let postings = ratio_rules::merge_postings(postings)?;
+            book::refuse_unelected_household_lots(kind, &rules, &postings)?;
             if !req.validate_only {
                 b.append(&ratio_store::JournalEntry {
                     id: r.fact.reference.clone(),
@@ -9736,6 +9752,273 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
                 .held
                 .is_empty(),
             "a transfer that opened a position invented a fund holding"
+        );
+    }
+
+    fn elect_household_lots(root: &std::path::Path, id: &str, extra: &str) {
+        use ratio_store::{FileBook, Journal};
+        let mut b = FileBook::open(root.join(id)).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let text = String::from_utf8_lossy(&b.get(&digest).unwrap()).into_owned();
+        let elected = format!(
+            "{extra}\n{text}\n[personal]\nlot_relief = true\n\
+             [chart_roles]\ninvestments = 2\ncash = 1\nrealized_gain = 31\n"
+        );
+        let d = b.put(elected.as_bytes()).unwrap();
+        b.set_active(&d).unwrap();
+    }
+
+    fn household_trade(
+        parent: &str,
+        id: &str,
+        rule: &str,
+        amount: &str,
+        instrument: &str,
+        quantity: &str,
+        y: i32,
+        m: i32,
+        d: i32,
+    ) -> pb::ApplyEventRequest {
+        let mut req = household_req(id, rule, amount, y, m, d);
+        req.parent = parent.into();
+        req.instrument = instrument.into();
+        req.quantity = quantity.into();
+        req
+    }
+
+    #[test]
+    fn an_unelected_household_purchase_is_refused_rather_than_opening_a_lot() {
+        // ⛔ UNSET STAYS UNSET. equity_purchase is on the seed so an
+        // elected book can post. Using it without the election would
+        // open a lot on every household that typed an instrument.
+        let root = fresh("personal-lot-unelected");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+        let err = c
+            .apply_event(&household_trade(
+                "funds/household",
+                "buy-1",
+                "equity_purchase",
+                "100.00",
+                "VTI",
+                "10",
+                2026,
+                2,
+                24,
+            ))
+            .expect_err("an unelected purchase must not open a lot");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("lot relief"), "{msg}");
+        let proj = c.projection("household").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a refused purchase must not leave a lot behind"
+        );
+    }
+
+    #[test]
+    fn an_elected_household_investment_opens_and_relieves_a_lot() {
+        // ⭐ #187. The election is [personal] lot_relief, not a Method
+        // variant. A transfer still does not open a lot. A purchase
+        // does; a disposal relieves it. GetFund cites the engines
+        // already on main.
+        let root = fresh("personal-lot-elected");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "lots".into(),
+        })
+        .unwrap();
+        elect_household_lots(
+            &root,
+            "lots",
+            "wash_window_days = 30\nmin_tax_short_weight = 2\n",
+        );
+
+        c.apply_event(&{
+            let mut req = household_req("xfer-1", "xfer_cash_investments", "50.00", 2026, 2, 1);
+            req.parent = "funds/lots".into();
+            req
+        })
+        .unwrap();
+        let proj = c.projection("lots").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "an elected household transfer is still a transfer"
+        );
+
+        c.apply_event(&household_trade(
+            "funds/lots",
+            "buy-1",
+            "equity_purchase",
+            "100.00",
+            "VTI",
+            "10",
+            2026,
+            2,
+            24,
+        ))
+        .unwrap();
+        let proj = c.projection("lots").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            1,
+            "an elected purchase must open a lot"
+        );
+        assert!(
+            !proj
+                .positions(ratio_rules::UNDECLARED_VIEW)
+                .unwrap()
+                .value
+                .held
+                .is_empty(),
+            "the lot book and the position must agree that VTI is held"
+        );
+
+        c.apply_event(&household_trade(
+            "funds/lots",
+            "sell-1",
+            "equity_disposal",
+            "100.00",
+            "VTI",
+            "10",
+            2026,
+            3,
+            15,
+        ))
+        .unwrap();
+        let proj = c.projection("lots").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "an elected disposal must relieve the lot"
+        );
+
+        let fund = c.get_fund("funds/lots").unwrap();
+        assert!(fund.wash_window_declared, "the wash engine is citeable");
+        assert_eq!(fund.wash_window_days, 30);
+        assert!(fund.min_tax_declared, "the min-tax engine is citeable");
+        assert_eq!(fund.min_tax_short_weight, 2);
+        assert!(!fund.average_cost, "unset is not a pool");
+        assert!(!fund.lot_method_declared, "lot relief is not a Method");
+    }
+
+    #[test]
+    fn an_elected_household_brokerage_ingest_opens_lots() {
+        // ⭐ #187. Same file as #167; the election remaps the admit
+        // path onto equity_purchase. VWRL still pends.
+        let root = fresh("personal-lot-ingest");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "house".into(),
+        })
+        .unwrap();
+        elect_household_lots(&root, "house", "average_cost = true\n");
+        add_prime_entities(&root, "house");
+        c.ingest_delivery(&pb::IngestDeliveryRequest {
+            parent: "funds/house".into(),
+            template_id: "brokerage-statement".into(),
+            content: PRIME_TRADES_CSV.into(),
+            origin: "brokerage-statement.csv".into(),
+            validate_only: false,
+        })
+        .unwrap();
+        let admitted = c
+            .admit_facts(&pb::AdmitFactsRequest {
+                parent: "funds/house".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
+        assert_eq!(admitted.posted_count, "2");
+        let proj = c.projection("house").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            2,
+            "two identified buys must open two lots"
+        );
+        let fund = c.get_fund("funds/house").unwrap();
+        assert!(fund.average_cost, "the average-cost engine is citeable");
+        assert!(!fund.min_tax_declared, "a pool is not a min-tax weight");
+        assert_eq!(fund.trial_balance_difference, "0");
+    }
+
+    #[test]
+    fn identified_lots_on_a_household_sale_are_cited_when_elected() {
+        // ⛔ NOT A SILENT FIFO. SpecID is per-sale. The journal page
+        // cites the names the same way the fund path does — no ABOR
+        // chrome, no new Method.
+        let root = fresh("personal-lot-specid");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "spec".into(),
+        })
+        .unwrap();
+        elect_household_lots(&root, "spec", "");
+        c.apply_event(&household_trade(
+            "funds/spec",
+            "buy-1",
+            "equity_purchase",
+            "100.00",
+            "VTI",
+            "10",
+            2026,
+            2,
+            24,
+        ))
+        .unwrap();
+        {
+            use ratio_store::{FileBook, Journal, JournalEntry, PostingRecord};
+            let mut b = FileBook::open(root.join("spec")).unwrap();
+            let cfg = b.active().unwrap().unwrap();
+            b.append(&JournalEntry {
+                id: "specid-sale".into(),
+                memo: "named lots".into(),
+                config: cfg,
+                postings: vec![
+                    PostingRecord::new(1, 10_000),
+                    PostingRecord::of(2, -10_000, "VTI", Some(-10)),
+                ],
+                trade_date: Some("2026-03-15".into()),
+                announcement: None,
+                due_date: None,
+                application: None,
+                identified_lots: Some(vec![0]),
+                special_allocations: None,
+            })
+            .unwrap();
+        }
+        let named = c.get_entry("funds/spec/entries/specid-sale").unwrap();
+        assert!(named.identified_lots_declared, "somebody named lots");
+        assert_eq!(named.identified_lots, vec![0]);
+        let silent = c.get_entry("funds/spec/entries/buy-1").unwrap();
+        assert!(
+            !silent.identified_lots_declared,
+            "a purchase that names nothing is not SpecID"
         );
     }
 

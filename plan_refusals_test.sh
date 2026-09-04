@@ -236,6 +236,11 @@ BUILT=(
   # a silent USD and a Personal-only FX engine stay refused. The
   # sentence it matches is in the 2026-09-04 #178 amendment.
   "Personal books declare currencies"
+  # Optional lot relief on household Investments is not on the
+  # refusal list — a new Method variant, fund ABOR chrome on
+  # Personal, broker OAuth, and tax e-file stay refused. The
+  # sentence it matches is in the 2026-09-04 #187 amendment.
+  "optional lot relief on household Investments"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

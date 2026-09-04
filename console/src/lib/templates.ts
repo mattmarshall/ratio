@@ -19,7 +19,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "PERSONAL",
     label: "Personal finance",
-    blurb: "Cash and bank, living expenses, income, named loans, and a credit-card liability. A household budget is a configuration total, not a second ledger. `brokerage-statement` / `brokerage-positions` ingest a custodian or broker CSV onto Investments as transfers — an unmatched instrument pends, unidentified or foreign-currency holdings refuse the live recon, never a silent 0. Lot relief stays unset.",
+    blurb: "Cash and bank, living expenses, income, named loans, and a credit-card liability. A household budget is a configuration total, not a second ledger. `brokerage-statement` / `brokerage-positions` ingest a custodian or broker CSV onto Investments as transfers — an unmatched instrument pends, unidentified or foreign-currency holdings refuse the live recon, never a silent 0. Lot relief stays unset until `[personal] lot_relief = true` elects the wash / MinTax / SpecID / average-cost engines already on the book — not a silent lot, not fund ABOR chrome.",
   },
   {
     kind: "INVESTMENT",

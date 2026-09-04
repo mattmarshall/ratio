@@ -154,7 +154,7 @@ pub fn holdings_live(base_currency: &str, label: &str) -> Scope {
             "foreign currency holdings — a second currency needs an FX policy".into(),
             "quantity-level instrument addresses — this run compares the Investments account".into(),
             "reconciliation at a fund's volume — that is the Phase two leftover".into(),
-            "optional lot relief on household Investments — that is #187".into(),
+            "fund ABOR chrome on a Personal book — lot relief does not fork screensFor".into(),
         ],
     }
 }
@@ -1009,8 +1009,9 @@ pub fn render(r: &BreakReport) -> String {
             // Personal books have no NAV gate. Naming strike here would
             // pretend a fund close applies to a household transfer account.
             out.push_str(
-                "Household Investments is a transfer account — this run does not \
-open lots and does not strike a NAV.\n",
+                "Household Investments is a transfer account unless \
+[personal] lot_relief is elected — this run compares carrying value \
+and does not strike a NAV.\n",
             );
         }
     } else {

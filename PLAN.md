@@ -708,7 +708,10 @@ kind the console offers cannot go unrecorded here again:
 - `PERSONAL` — household: sheet, period P&L, net-worth bridge, cash-flow
   (the same-day amendment below), budget vs actual, named-loan roll-forward.
   Ingest: `bank-statement`, `loan-payment`, `brokerage-statement`,
-  `brokerage-positions`.
+  `brokerage-positions`. `[personal] currencies` is the election —
+  empty is unset, not a silent USD. Lot relief stays unset until
+  `[personal] lot_relief` elects the engines already on the book.
+
 - `INVESTMENT` — fund administration as one kind of four, not the product:
   partner capital (beginning → contributions → distributions → allocated
   plugs → ending; CreateBook writes `[[partner_cut]]` LP 80 / GP 20;
@@ -2721,6 +2724,59 @@ and on every view screen, rather than a bare HTTP 400. It cannot
 show a point-in-time restatement browser, a capital-call notice,
 or the rest of the #26 console buildout. Those remain #186 /
 #157 / #26.
+
+### Amendment, 2026-09-04 — optional lot relief on household Investments
+
+[#187](https://github.com/mattmarshall/ratio/issues/187) asked for an
+optional election so PERSONAL books can use the wash / MinTax /
+SpecID / average-cost lot engines already on main — for tax cites —
+without fund ABOR chrome. #167 posted brokerage buys as household
+transfers and left this door named.
+
+**What this amendment records.** `[personal] lot_relief = true` elects
+the existing engines. `None` stays unset — CreateBook, bank ingest,
+and an unelected brokerage admit still post transfers, and the lot
+book stays empty. `Some(false)` is refused at read — omit the field.
+The election is not a `Method` / `Order` / `lot_method` variant;
+`lot_method = "wash" | "min_tax" | "average_cost" | "specific_id"`
+stays refused. Electing requires `[chart_roles]` (investments / cash
+/ realized_gain on `chart_for(Personal)`), or a sale cannot post a
+gain the chart has not named. Brokerage-statement still *names*
+`xfer_cash_investments` / `xfer_investments_cash`; admit remaps onto
+`equity_purchase` / `equity_disposal` only when someone wrote the
+election. GetFund cites wash / min-tax / average-cost the same way
+the fund path does; SpecID stays per-sale on the journal entry.
+`screensFor` is not forked — PERSONAL does not wear Positions / NAV
+/ Exceptions. Bank OAuth and tax e-file stay Connect.
+**optional lot relief on household Investments** is the Built phrase
+this amendment adds.
+
+**What this is NOT:**
+
+- **Not a new Method / Order / lot_method variant.** MinTax, SpecID,
+  average cost, and wash keep the election shapes already on main
+  (`min_tax_short_weight`, `identified_lots`, `average_cost`,
+  `wash_window_days` / `wash_keep_holding_period`).
+- **Not fund ABOR chrome on a Personal book.** Positions, NAV
+  strikes, and Exceptions stay off `screensFor(PERSONAL)`.
+- **Not broker OAuth or tax e-file.** Those doors are #165 / #166 /
+  Connect. This file does not close #165. It does not close #166.
+- **Not household multi-currency, cash forecast, or envelope
+  coaching.** Those doors are #178, #163, #164.
+
+Nothing on the *Explicitly not building* list moved. This amendment
+closes #187. It does not close #165, #166, #163, #164, #178, #167,
+#155, #150, or #22.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can CreateBook a Personal book, leave lot relief unset (a
+brokerage buy is still a transfer), elect `[personal] lot_relief =
+true` with `[chart_roles]`, post or admit an instrumented buy that
+opens a lot, dispose it under the engines already on main, and
+point at wash / min-tax / average-cost on GetFund and at
+`identified_lots` on the journal entry. It cannot show Positions /
+NAV chrome on that household, a broker OAuth grant, IRS e-file, a
+household NAV, a cash forecast, or envelope coaching.
 
 ## The control plane: geetch and crova
 
