@@ -154,7 +154,10 @@ describe("the command palette", () => {
 
   it("opens the book collection without going through a fund", async () => {
     renderConsole();
-    await type("your books");
+    // ⚠ NOT "your books". This test opens on `/breaks`, and kbar
+    // also indexes a break id `your`. "independent" is a keyword on
+    // the book-collection action only.
+    await type("independent");
     fireEvent.click(await row("Your books"));
     expect(push).toHaveBeenCalledWith("/books");
   });
