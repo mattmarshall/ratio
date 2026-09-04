@@ -2493,7 +2493,19 @@ describe("a first-class book", () => {
       ...bookFixture,
       loans: [{ dimension: "41", interest: "12" }],
     })) as unknown as typeof wire.getBook;
-    wire.listAccounts = (async () => ({
+    wire.listAccounts = (async (
+      _c: unknown,
+      _book: string,
+      _view: string,
+      filter?: string,
+    ) => {
+      // ⛔ ACTUALS ARE NOT A FORECAST. The page also fetches
+      // `forecast-YYYY-MM`. Replaying this fixture there would cite
+      // 9.00 twice — a fake scheduled net from period cash-flow.
+      if (filter === "forecast") {
+        return { accounts: [], nextPageToken: "" };
+      }
+      return {
       accounts: [
         {
           name: "funds/household/views/book/accounts/1",
@@ -2617,7 +2629,8 @@ describe("a first-class book", () => {
         },
       ],
       nextPageToken: "",
-    })) as unknown as typeof wire.listAccounts;
+    };
+    }) as unknown as typeof wire.listAccounts;
     try {
       await renderAsync(
         CashFlow({
@@ -2655,7 +2668,16 @@ describe("a first-class book", () => {
       ...bookFixture,
       loans: [],
     })) as unknown as typeof wire.getBook;
-    wire.listAccounts = (async () => ({
+    wire.listAccounts = (async (
+      _c: unknown,
+      _book: string,
+      _view: string,
+      filter?: string,
+    ) => {
+      if (filter === "forecast") {
+        return { accounts: [], nextPageToken: "" };
+      }
+      return {
       accounts: [
         {
           name: "funds/household/views/book/accounts/1",
@@ -2689,7 +2711,8 @@ describe("a first-class book", () => {
         },
       ],
       nextPageToken: "",
-    })) as unknown as typeof wire.listAccounts;
+    };
+    }) as unknown as typeof wire.listAccounts;
     try {
       await renderAsync(
         CashFlow({
