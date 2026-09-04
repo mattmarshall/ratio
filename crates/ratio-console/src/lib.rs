@@ -216,6 +216,24 @@ impl Console {
         Self::build(root, Scope::Unrestricted, actor)
     }
 
+    /// The console the network server builds for one verified subject.
+    ///
+    /// ⛔ CONNECT TOKENS NEVER TAKE THE OPEN DEMO. `RATIO_DEMO_OPEN` grants
+    /// any AuthKit session every fund so a shared demo can be shown to an
+    /// audience that is not known ahead of time. A Connect token that rode
+    /// that path would be a third-party app seeing every book — the ACL
+    /// bypass #151 names. Connect is always [`scoped`](Self::scoped).
+    /// The authorizer that will accept Connect scopes on `/v1` is leftover
+    /// on #22; this constructor is the fence if one arrives.
+    pub fn for_request(root: impl AsRef<Path>, subject: Subject, demo_open: bool) -> Self {
+        match &subject {
+            Subject::Local => Self::new(root),
+            Subject::Member { connect: true, .. } => Self::scoped(root, subject),
+            Subject::Member { .. } if demo_open => Self::open(root, subject),
+            Subject::Member { .. } => Self::scoped(root, subject),
+        }
+    }
+
     fn build(root: PathBuf, scope: Scope, actor: Option<String>) -> Self {
         Console {
             root,
@@ -244,8 +262,9 @@ impl Console {
             .map(|d| d.as_secs())
             .unwrap_or(0);
         // A tab or newline in any field would split the record. The actor is a
-        // Cognito id or email and the rest are ids/digests, none of which carry
-        // either, but a stray control character is dropped rather than trusted.
+        // WorkOS `sub` or email and the rest are ids/digests, none of which
+        // carry either, but a stray control character is dropped rather than
+        // trusted.
         let clean = |s: &str| -> String {
             s.chars().filter(|c| *c != '\t' && *c != '\n' && *c != '\r').collect()
         };
@@ -2630,12 +2649,16 @@ impl Console {
         } else {
             spec.display_name.trim().to_string()
         };
-        book::initialize(&path, id, &display, kind)?;
+        let digest = book::initialize(&path, id, &display, kind)?;
         if let Some(actor) = &self.actor {
             book::grant(&self.root, actor, id)?;
         }
-        // ⚠ Do not call `open_book` here: `scope` is computed once at
-        // construction. The grant is on disk; the next request sees it.
+        // The grant is on disk; `scope` was computed at construction, so
+        // do not call `open_book` here. The next request sees the grant.
+        // Record who created it — the same CHANGELOG every other write uses.
+        // Digest comes from initialize: a second FileBook::open here would
+        // be the storage-layer bypass the source-text test refuses.
+        self.record_change(&path, "created", id, digest.as_str())?;
         let meta = book::BookMeta::load(&path, id);
         Ok(pb::Book {
             name: format!("books/{id}"),
@@ -5549,6 +5572,7 @@ mod tests {
                 email: "s@example.test".into(),
                 organization: String::new(),
                 groups: vec![],
+                connect: false,
             },
         );
 
@@ -5665,6 +5689,7 @@ mod tests {
                 email: "s@x.test".into(),
                 organization: String::new(),
                 groups: vec![],
+                connect: false,
             };
         let console = Console::open(&root, subject);
 
@@ -5702,6 +5727,7 @@ mod tests {
                 email: "s@x.test".into(),
                 organization: String::new(),
                 groups: vec![],
+                connect: false,
             },
         );
         let book_a = root.join("a");
@@ -7463,6 +7489,7 @@ mod tests {
             email: "a@x.test".into(),
             organization: "org_01a".into(),
             groups: vec![],
+            connect: false,
         };
         let created = Console::scoped(&root, subject.clone())
             .create_book(pb::CreateBookRequest {
@@ -8325,6 +8352,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
                 email: "s@example.test".into(),
                 organization: String::new(),
                 groups: vec![],
+                connect: false,
             },
         );
         let err = console.get_book("books/theirs").unwrap_err().to_string();
@@ -8338,6 +8366,7 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             email: email.into(),
             organization: org.into(),
             groups: vec![],
+            connect: false,
         }
     }
 
@@ -8378,6 +8407,229 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             .unwrap_err()
             .to_string();
         assert!(via_funds.contains("membership could not be read"), "{via_funds}");
+    }
+
+    #[test]
+    fn user_a_creates_a_book_and_user_b_gets_authorized_empty_never_the_journal() {
+        // ⭐ #151 ACCEPTANCE. Fresh user A creates a book and posts. User B
+        // sees `[]` / "no fund", never A's journal. The write is attributed
+        // to A's WorkOS `sub`, not an org and not a string the body supplied.
+        let root = fresh("tenancy-a-vs-b-actor");
+        let a = member("user_a", "a@x.test", "org_01a");
+        let b = member("user_b", "b@x.test", "org_01a");
+
+        let created = Console::for_request(&root, a.clone(), false)
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Household".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "household".into(),
+            })
+            .unwrap();
+        assert_eq!(created.name, "books/household");
+
+        // The grant is on disk; the next request constructs a new Console.
+        let alice = Console::for_request(&root, a, false);
+        let posted = transcode::serve(
+            &alice,
+            "POST",
+            "/v1/funds/household:applyEvent",
+            "",
+            r#"{"ruleId":"receive_income","eventId":"inc-1","amount":"30.00","tradeDate":{"year":2026,"month":3,"day":5},"actor":"forged"}"#,
+        )
+        .unwrap();
+        assert!(posted.contains("inc-1"), "A's write must land: {posted}");
+
+        let log = alice.change_log_for(&root.join("household"), "household").unwrap();
+        let created_line = log.iter().find(|e| e.action == "created").expect("create is in the log");
+        assert_eq!(created_line.actor.as_str(), "user_a");
+        let posted_line = log.iter().find(|e| e.action == "posted").expect("the write is in the log");
+        assert_eq!(
+            posted_line.actor.as_str(),
+            "user_a",
+            "actor is the WorkOS sub, never a body string or an org"
+        );
+        assert_ne!(posted_line.actor.as_str(), "forged");
+        assert_ne!(posted_line.actor.as_str(), "org_01a");
+        assert_ne!(posted_line.actor.as_str(), "org:org_01a");
+
+        let bob = Console::for_request(&root, b, false);
+        let books = bob.list_books().unwrap();
+        assert!(books.books.is_empty(), "B is a member of nothing: {:?}", books.books);
+        let funds = bob.list_funds().unwrap();
+        assert!(funds.funds.is_empty(), "B is a member of nothing: {:?}", funds.funds);
+        let listed = transcode::serve(&bob, "GET", "/v1/books", "", "").unwrap();
+        assert!(listed.contains("\"books\":[]"), "authorized empty on the wire: {listed}");
+        assert!(!listed.contains("household"), "A's book leaked into B's list: {listed}");
+
+        let get = transcode::serve(&bob, "GET", "/v1/books/household", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(get.contains("no fund"), "GetBook must refuse as no fund: {get}");
+        let write = transcode::serve(
+            &bob,
+            "POST",
+            "/v1/funds/household:applyEvent",
+            "",
+            r#"{"ruleId":"receive_income","eventId":"sneak","amount":"1.00","tradeDate":{"year":2026,"month":3,"day":6}}"#,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(write.contains("no fund"), "B must not post on A's book: {write}");
+        let journal = transcode::serve(&bob, "GET", "/v1/funds/household/entries", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(journal.contains("no fund"), "B must not read A's journal: {journal}");
+    }
+
+    #[test]
+    fn write_handlers_record_the_verified_sub_and_connect_never_takes_the_open_demo() {
+        // applyEvent / ingest / admit / period close go through the handlers,
+        // not `record_change` directly — a test that only calls the helper
+        // stays green if a handler forgets it. A Connect token with DEMO_OPEN
+        // still cannot see a book it was not granted.
+        let root = fresh("write-handlers-actor");
+        let a = member("user_a", "a@x.test", "");
+        Console::for_request(&root, a.clone(), false)
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Alpha".into(),
+                    kind: book::BookKind::Investment.proto(),
+                    ..Default::default()
+                }),
+                book_id: "alpha".into(),
+            })
+            .unwrap();
+
+        {
+            use ratio_store::Plane;
+            let mut book = FileBook::open(root.join("alpha")).unwrap();
+            let add = |b: &mut FileBook, id: &str, kind, name: &str, attrs: &[(&str, &str)]| {
+                b.append_record(
+                    Plane::Entities,
+                    &ratio_ingest::Entity {
+                        id: id.into(),
+                        kind,
+                        display_name: name.into(),
+                        attributes: attrs
+                            .iter()
+                            .map(|(k, v)| (k.to_string(), v.to_string()))
+                            .collect(),
+                    },
+                )
+                .unwrap();
+            };
+            add(
+                &mut book,
+                "cp-prime",
+                ratio_ingest::EntityKind::Counterparty,
+                "Prime Brokerage",
+                &[("code", "PRME")],
+            );
+            add(
+                &mut book,
+                "inst-vti",
+                ratio_ingest::EntityKind::Instrument,
+                "Vanguard Total Stock Market ETF",
+                &[("isin", "US9229087690"), ("ticker", "VTI"), ("exchange", "ARCX")],
+            );
+            add(
+                &mut book,
+                "inst-voo",
+                ratio_ingest::EntityKind::Instrument,
+                "Vanguard S&P 500 ETF",
+                &[("isin", "US9229083632"), ("ticker", "VOO"), ("exchange", "ARCX")],
+            );
+        }
+
+        let alice = Console::for_request(&root, a.clone(), false);
+        let ingested = alice
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/alpha".into(),
+                template_id: "prime_equity_trades".into(),
+                content: PRIME_TRADES_CSV.into(),
+                origin: "prime-trades.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(ingested.rejected.is_empty(), "{:?}", ingested.rejected);
+        let admitted = alice
+            .admit_facts(&pb::AdmitFactsRequest {
+                parent: "funds/alpha".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert_eq!(admitted.posted_count, "2", "VTI and VOO post; VWRL does not");
+
+        let log = alice.change_log_for(&root.join("alpha"), "alpha").unwrap();
+        for action in ["created", "ingested", "admitted"] {
+            let line = log.iter().find(|e| e.action == action).unwrap_or_else(|| {
+                panic!("{action} missing from CHANGELOG: {log:?}")
+            });
+            assert_eq!(line.actor.as_str(), "user_a", "{action} actor");
+        }
+
+        // Period close on a Personal book, actor = WorkOS sub.
+        Console::for_request(&root, a.clone(), false)
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Household".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "household".into(),
+            })
+            .unwrap();
+        let closer = Console::for_request(&root, a.clone(), false);
+        closer
+            .apply_event(&household_req("inc", "receive_income", "30.00", 2026, 3, 5))
+            .unwrap();
+        closer
+            .apply_event(&household_req("spend", "spend_cash", "6.00", 2026, 3, 8))
+            .unwrap();
+        let rec = closer
+            .close_period("household", ratio_rules::UNDECLARED_VIEW, "2026-03-31")
+            .unwrap();
+        assert_eq!(rec.actor, "user_a");
+        let close_log = closer
+            .change_log_for(&root.join("household"), "household")
+            .unwrap();
+        let closed = close_log.iter().find(|e| e.action == "closed").expect("closed");
+        assert_eq!(closed.actor.as_str(), "user_a");
+
+        // ⛔ CONNECT + DEMO_OPEN IS THE BYPASS. The shared demo grants any
+        // AuthKit session every fund. A Connect token must stay scoped.
+        let connect = Subject::Member {
+            sub: "user_connect".into(),
+            email: "c@x.test".into(),
+            organization: "org_01a".into(),
+            groups: vec![],
+            connect: true,
+        };
+        let via_open = Console::for_request(&root, connect, true);
+        let books = via_open.list_books().unwrap();
+        assert!(
+            books.books.is_empty(),
+            "Connect + DEMO_OPEN must be authorized-empty, not every book: {:?}",
+            books.books
+        );
+        let sneak = transcode::serve(&via_open, "GET", "/v1/books/alpha", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(sneak.contains("no fund"), "Connect must not open A's book: {sneak}");
+
+        // An AuthKit session under DEMO_OPEN still sees the demo — that path
+        // is unchanged and is leftover on #22.
+        let session = member("user_demo", "d@x.test", "");
+        let demo = Console::for_request(&root, session, true);
+        let seen = demo.list_books().unwrap();
+        assert!(
+            seen.books.iter().any(|b| b.name == "books/alpha"),
+            "AuthKit + DEMO_OPEN still lists the shared demo: {:?}",
+            seen.books
+        );
     }
 
     #[test]

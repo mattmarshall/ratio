@@ -623,9 +623,11 @@ fn handle(mut stream: TcpStream, book: &Path, hydrate: &HydrateGate) -> Result<(
                 // its tests are unchanged, so turning this off restores per-fund
                 // scoping with no other edit.
                 let open = std::env::var("RATIO_DEMO_OPEN").map(|v| !v.is_empty()).unwrap_or(false);
+                // ⛔ CONNECT TOKENS NEVER TAKE `open`. `Console::for_request`
+                // is the one production constructor: AuthKit sessions may
+                // see the shared demo; a Connect token is always scoped.
                 let c = match subject {
-                    Some(s) if open => ratio_console::Console::open(root, s),
-                    Some(s) => ratio_console::Console::scoped(root, s),
+                    Some(s) => ratio_console::Console::for_request(root, s, open),
                     None => ratio_console::Console::new(root),
                 };
                 match ratio_console::transcode::serve(&c, m, p, &req.query, &req.body) {

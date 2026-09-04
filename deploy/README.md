@@ -45,9 +45,10 @@ the three public screens, the API and MCP all serve, and `/` says what it
 serves instead of redirecting.
 
 ⭐ **One parameter, three consumers, no second copy.** `ConsoleOrigin` becomes
-the Cognito `CallbackURLs` entry, the `RATIO_CONSOLE_URL` that makes `/` and
-`/app` redirect, **and** the `consoleOrigin` field in `/authconfig.json` that the
-console reads its OAuth `redirect_uri` back out of. The console does not hold its
+the leftover Cognito `CallbackURLs` entry (unused; AuthKit is the sign-in
+path), the `RATIO_CONSOLE_URL` that makes `/` and `/app` redirect, **and**
+the `consoleOrigin` field in `/authconfig.json` that the console reads its
+OAuth `redirect_uri` back out of. The console does not hold its
 own copy, because it did once and the two disagreed — Vercel had
 `https://ratio-console.vercel.app` while Cognito had `https://ratio-ims.vercel.app`,
 and nothing compared them until somebody clicked Sign in. The deploy smoke test

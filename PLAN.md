@@ -18,10 +18,12 @@ is an eight-week plan for a product nobody was buying.
 > creator's WorkOS `sub`, not an implied org; `ListBooks` / `ListFunds`
 > distinguish an authorized empty set from an unreadable membership file;
 > every live `ROUTES` entry is classified and a caller scoped to book A
-> cannot read book B. It is not a client portal. Live activation still
-> depends on the WorkOS subject reaching the API (#22 leftovers), not on a
-> second identity product. Durable writes are #24 (closed). The
-> Cognito-era activation sentence is historical.
+> cannot read book B. It is not a client portal. Authenticated writes
+> record actor = WorkOS `sub` (#151). Live leftovers on #22 are a
+> Connect token on `/v1`, the shared demo's `RATIO_DEMO_OPEN`, unused
+> Cognito resources in the deploy template, and a live two-user
+> walk-through on the open demo host. Durable writes are #24 (closed).
+> The Cognito-era activation sentence is historical.
 
 Three constraints set everything below:
 
@@ -296,9 +298,12 @@ with a route per resource, so a break, a NAV strike or a configuration version
 can be sent to somebody rather than described. Sign-in is WorkOS AuthKit, not
 Cognito; the browser never calls AWS, because the console's own server holds
 the token and makes the call. AuthKit is the code path (#63). Vercel
-Production has the env (#68 closed). Live activation leftovers remain on
-#22 — write-route actor binding, API authorizer leftovers, Cognito leftovers
-in the deploy templates. Do not read this paragraph as production-complete.
+Production has the env (#68 closed). Write-route actor binding landed
+(#151): `applyEvent` / `ingest` / `admit` / `mark` / CreateBook / period
+close record actor = WorkOS `sub`. Live leftovers remain on #22 — a
+Connect token on `/v1`, the shared demo's `RATIO_DEMO_OPEN`, unused
+Cognito resources in the deploy templates. Do not read this paragraph as
+production-complete.
 The retired `https://ratio-ims.vercel.app` host still resolves;
 `deploy.yml` refuses it as `CONSOLE_ORIGIN`.
 
@@ -756,10 +761,11 @@ to it and both still stand:**
 
 **Sign-in is WorkOS AuthKit**, on `https://ratio.marsh.build`. Cognito
 is not the code path. AuthKit is in the code (#63). Vercel Production
-has the env (#68 closed). Live activation leftovers remain on #22 —
-write-route actor binding, API authorizer leftovers, Cognito leftovers
-in the deploy templates. Do not read this paragraph as
-production-complete, and do not read a walk-through as demo-ready (#27).
+has the env (#68 closed). Write-route actor binding landed (#151).
+Live leftovers remain on #22 — a Connect token on `/v1`, the shared
+demo's `RATIO_DEMO_OPEN`, unused Cognito resources in the deploy
+templates. Do not read this paragraph as production-complete, and do
+not read a walk-through as demo-ready (#27).
 
 **What it cost.** A Book proto resource; `book.toml`; `CreateBook` /
 `ListBooks` / `GetBook`; kind-selected charts and ingest templates;
@@ -1722,6 +1728,50 @@ opening subscription has no units. It cannot show a seeded unit
 movement, a per-share figure, period issued/redeemed as their own
 plugs, an LP portal, or a 1/N split of book units. Those remain on
 #181 (seed / NAV leftovers) or Connect.
+
+### Amendment, 2026-09-04 — write-route actor is the WorkOS `sub`, not a caller string
+
+#151. The JWT authorizer already proved audience and issuer. The leftover
+was the subject reaching the write handlers as the journal/audit actor
+PLAN requires for period close, and a Connect-shaped token riding
+`RATIO_DEMO_OPEN` or an `org:{id}` grant.
+
+What landed is the production constructor and the handler tests, not a
+new identity product:
+
+- `Console::for_request` is the one path `ratio watch` builds for `/v1`.
+  An AuthKit session may take the open demo. A Connect token (`azp`,
+  `scope`, or a `client_id` that is not this app) is always `scoped`.
+- `applyEvent` / `ingest` / `admit` / CreateBook / period close record
+  `ChangeLogEntry.actor` = the verified `sub`. A body field named
+  `actor` is ignored. CreateBook grants the creator's `sub`, not their
+  org, and writes a `created` line.
+- User A creates a book and posts; user B gets authorized-empty / "no
+  fund", never A's journal. ListBooks / ListFunds still distinguish
+  that empty set from an unreadable membership file.
+- A Connect token does not match `org:{id}` membership. That line is
+  an AuthKit operator grant, not a third-party inheritance.
+
+**What this is NOT, because leftovers stay named on #22:**
+
+- **Not a Connect authorizer.** `/v1` still proves an AuthKit session
+  JWT. Accepting Connect scopes is leftover on #22 / #150. This file
+  does not close #22.
+- **Not unsetting `RATIO_DEMO_OPEN`.** The shared execute-api demo
+  still grants any AuthKit session every fund. Isolation holds on the
+  `scoped` path in CI. A live two-user walk-through on that host will
+  not show isolation until the dial is off.
+- **Not removing Cognito CloudFormation resources.** They stay unused
+  so a stack update does not destroy the live pool.
+
+Nothing on the *Explicitly not building* list moved. This amendment
+closes the #151 write-route leftover. It does not close #22.
+
+**What a walk-through can and cannot show** (demo readiness, #27). It
+can show a signed-in operator's `sub` on a posted event and a period
+close, and a second subject receiving `[]` / refuse for that book
+when the console is `scoped`. It cannot show a Connect token opening
+a book, and it cannot show two users isolated on the open demo host.
 
 ## The control plane: geetch and crova
 

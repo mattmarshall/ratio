@@ -271,6 +271,15 @@ __STYLE__
           funds remain investment books.</li>
           <li>A versioned ConfigStore — directory, hash, atomic pointer — and a
           fact plane whose prices and FX an operator can open from a figure.</li>
+          <li>Sign-in is WorkOS AuthKit. A book is the tenant: membership is
+          the creator's WorkOS <code>sub</code>, not an implied org.
+          Authenticated writes record that <code>sub</code> as the actor
+          (period close included). A second subject sees an authorized-empty
+          list or a refuse, never the first subject's journal, on the
+          scoped path. A Connect token does not inherit an org grant and
+          does not take the open demo. The authorizer that accepts a
+          Connect token on <code>/v1</code>, and two users isolated on the
+          shared open demo, are leftover.</li>
         </ul>
       </div>
       <div class="r-spec">

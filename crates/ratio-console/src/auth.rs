@@ -33,11 +33,13 @@ pub enum Subject {
     Local,
     /// An authenticated caller, identified by the claims the gateway verified.
     ///
-    /// ⚠ A WORKOS CONNECT ACCESS TOKEN IS NOT THIS VARIANT YET. The catalog
-    /// is `docs/connect-scopes.md` (#150). Accepting those scopes without
-    /// bypassing book membership is #151 / leftover #22. Do not treat a
-    /// session JWT as a Connect grant, and do not mint `rules:approve` or
-    /// `config:promote`.
+    /// ⚠ A WORKOS CONNECT ACCESS TOKEN IS THIS VARIANT WITH `connect: true`.
+    /// The catalog is `docs/connect-scopes.md` (#150). The authorizer that
+    /// accepts those scopes on `/v1` is leftover on #22. Until it does, a
+    /// Connect-shaped JWT that arrives anyway still goes through membership:
+    /// never `RATIO_DEMO_OPEN`, never an implied `org:{id}` grant. Do not
+    /// treat a session JWT as a Connect grant, and do not mint
+    /// `rules:approve` or `config:promote`.
     Member {
         /// The IdP `sub` — an opaque, stable identifier (WorkOS user id).
         sub: String,
@@ -46,11 +48,15 @@ pub enum Subject {
         email: String,
         /// Optional WorkOS organization id. Membership may also grant
         /// `org:{organization}` — an org is a tenant around books, not a
-        /// required parent of one.
+        /// required parent of one. A Connect token never matches that line.
         organization: String,
         /// Legacy Cognito groups claim. Membership is deliberately NOT keyed
         /// on it — see `membership_for`.
         groups: Vec<String>,
+        /// True when the verified claims look like a WorkOS Connect (OAuth /
+        /// M2M) token rather than an AuthKit session. The actor is still
+        /// `sub`. The grant is still membership. The open demo is not.
+        connect: bool,
     },
 }
 
@@ -72,6 +78,11 @@ impl Subject {
                 Some(if !sub.is_empty() { sub } else { email })
             }
         }
+    }
+
+    /// Whether this subject is a Connect token, not an AuthKit session.
+    pub fn is_connect(&self) -> bool {
+        matches!(self, Subject::Member { connect: true, .. })
     }
 }
 
@@ -115,7 +126,28 @@ pub fn from_request_context(header: &str) -> Option<Subject> {
         })
         .unwrap_or_default();
     let organization = claim("org_id");
-    Some(Subject::Member { sub, email, organization, groups })
+    let connect = is_connect_claims(claims, &claim);
+    Some(Subject::Member { sub, email, organization, groups, connect })
+}
+
+/// Whether verified JWT claims look like a WorkOS Connect token.
+///
+/// ⛔ AUTHKIT SESSION TOKENS ARE NOT CONNECT. They carry `sid` and a
+/// `client_id` equal to this deployment's AuthKit app. Connect OAuth / M2M
+/// tokens carry an OAuth `scope` or `azp`, or a `client_id` that is not
+/// this app. The API Gateway audience still rejects most of those today;
+/// this is the in-process fence for when one arrives, so
+/// `RATIO_DEMO_OPEN` cannot become a book-ACL bypass.
+fn is_connect_claims(claims: &serde_json::Value, claim: &dyn Fn(&str) -> String) -> bool {
+    if claims.get("azp").and_then(serde_json::Value::as_str).is_some_and(|s| !s.is_empty()) {
+        return true;
+    }
+    if claims.get("scope").and_then(serde_json::Value::as_str).is_some_and(|s| !s.is_empty()) {
+        return true;
+    }
+    let client_id = claim("client_id");
+    let ours = std::env::var("RATIO_WORKOS_CLIENT_ID").unwrap_or_default();
+    !ours.is_empty() && !client_id.is_empty() && client_id != ours
 }
 
 /// What a subject may open, resolved from `<root>/MEMBERSHIP.tsv`.
@@ -193,12 +225,12 @@ pub fn scope_for(root: &Path, who: &Subject) -> Scope {
 /// group. An `org:{organization}` line is an explicit operator grant, never
 /// implied by optional fund/org metadata on the book.
 pub fn membership_for(root: &Path, who: &Subject) -> Result<BTreeSet<String>> {
-    let (sub, email, org) = match who {
+    let (sub, email, org, connect) = match who {
         // `Local` is unrestricted and never consults this file; returning the
         // empty set here would be read as "sees nothing", the exact opposite.
         Subject::Local => return Ok(BTreeSet::new()),
-        Subject::Member { sub, email, organization, .. } => {
-            (sub.as_str(), email.as_str(), organization.as_str())
+        Subject::Member { sub, email, organization, connect, .. } => {
+            (sub.as_str(), email.as_str(), organization.as_str(), *connect)
         }
     };
     let path = root.join("MEMBERSHIP.tsv");
@@ -207,12 +239,17 @@ pub fn membership_for(root: &Path, who: &Subject) -> Result<BTreeSet<String>> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(BTreeSet::new()),
         Err(e) => bail!("membership could not be read: {e}"),
     };
-    Ok(grants_in(&text, sub, email, org))
+    Ok(grants_in(&text, sub, email, org, connect))
 }
 
 /// Parse grants from TSV text. `funds_for` uses this after a successful read.
-fn grants_in(text: &str, sub: &str, email: &str, org: &str) -> BTreeSet<String> {
-    let org_key = if org.is_empty() {
+///
+/// ⛔ A CONNECT TOKEN NEVER MATCHES `org:{id}`. That line is an operator
+/// grant for an AuthKit session sitting in the org, not a third-party app
+/// inheriting every book the org administers. Connect matches `sub` / email
+/// only — unset org access, not an implied org.
+fn grants_in(text: &str, sub: &str, email: &str, org: &str, connect: bool) -> BTreeSet<String> {
+    let org_key = if connect || org.is_empty() {
         String::new()
     } else {
         format!("org:{org}")
@@ -251,6 +288,17 @@ mod tests {
             email: email.into(),
             organization: String::new(),
             groups: vec![],
+            connect: false,
+        }
+    }
+
+    fn connect_member(sub: &str, email: &str, org: &str) -> Subject {
+        Subject::Member {
+            sub: sub.into(),
+            email: email.into(),
+            organization: org.into(),
+            groups: vec![],
+            connect: true,
         }
     }
 
@@ -259,13 +307,17 @@ mod tests {
         let header = r#"{"authorizer":{"jwt":{"claims":{"sub":"abc-123","email":"a@x.test","org_id":"org_01x","cognito:groups":"[admins ops]"}}}}"#;
         let s = from_request_context(header).expect("claims present");
         match &s {
-            Subject::Member { sub, email, organization, groups } => {
+            Subject::Member { sub, email, organization, groups, connect } => {
                 assert_eq!(sub.as_str(), "abc-123");
                 assert_eq!(email.as_str(), "a@x.test");
                 assert_eq!(organization.as_str(), "org_01x");
                 // The bracketed, space-joined group string is parsed, but it is
                 // NOT what authorization keys on.
                 assert_eq!(groups, &vec!["admins".to_string(), "ops".to_string()]);
+                assert!(
+                    !connect,
+                    "an AuthKit-shaped session (no azp/scope) is not a Connect token"
+                );
             }
             Subject::Local => panic!("verified claims must not resolve to Local"),
         }
@@ -369,11 +421,59 @@ mod tests {
             email: "a@x.test".into(),
             organization: "org_01a".into(),
             groups: vec![],
+            connect: false,
         };
         let granted = funds_for(&dir, &in_a);
         assert!(granted.contains("ashcombe") && granted.len() == 1);
 
         let in_none = member("user_1", "a@x.test");
         assert!(funds_for(&dir, &in_none).is_empty());
+    }
+
+    #[test]
+    fn a_connect_token_is_detected_from_azp_or_scope_and_is_not_an_authkit_session() {
+        let azp = r#"{"authorizer":{"jwt":{"claims":{"sub":"user_c","email":"c@x.test","azp":"client_connect_app"}}}}"#;
+        let s = from_request_context(azp).expect("claims present");
+        assert!(s.is_connect(), "azp marks a Connect token");
+        assert_eq!(s.actor(), Some("user_c"));
+
+        let scope = r#"{"authorizer":{"jwt":{"claims":{"sub":"user_c","email":"c@x.test","scope":"books:read"}}}}"#;
+        assert!(from_request_context(scope).expect("scope").is_connect());
+
+        // AuthKit session shape: sub, sid, client_id, no azp/scope.
+        let session = r#"{"authorizer":{"jwt":{"claims":{"sub":"user_a","email":"a@x.test","sid":"session_1","client_id":"client_authkit"}}}}"#;
+        assert!(
+            !from_request_context(session).expect("session").is_connect(),
+            "an AuthKit session is not a Connect token"
+        );
+    }
+
+    #[test]
+    fn a_connect_token_does_not_inherit_an_org_grant() {
+        // ⛔ IMPLIED-ORG IS THE BYPASS. An AuthKit operator in org_01a may
+        // hold `org:org_01a`. A Connect token carrying the same org_id must
+        // not see those books — membership is the subject's `sub`, not the
+        // org the token happened to name.
+        let dir = std::env::temp_dir().join("ratio-auth-connect-no-org");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("MEMBERSHIP.tsv"),
+            "org:org_01a\tashcombe\nuser_c\tmine\n",
+        )
+        .unwrap();
+
+        let connect = connect_member("user_c", "c@x.test", "org_01a");
+        let granted = funds_for(&dir, &connect);
+        assert!(
+            granted.contains("mine") && granted.len() == 1,
+            "Connect matches its sub and not the org: {granted:?}"
+        );
+
+        let stranger = connect_member("user_other", "o@x.test", "org_01a");
+        assert!(
+            funds_for(&dir, &stranger).is_empty(),
+            "a Connect token with only an org_id sees authorized-empty"
+        );
     }
 }

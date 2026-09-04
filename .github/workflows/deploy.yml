@@ -464,9 +464,9 @@ jobs:
 
           # The sign-in flow can still bootstrap: /authconfig.json is public and
           # names the identity provider. ⛔ The path changed with the console —
-          # it is the console's own callback route now, and it MUST match a
-          # registered Cognito callback URL or every sign-in is refused by the
-          # IdP with an error the console cannot explain.
+          # it is the console's own AuthKit callback route now, and it MUST
+          # match a registered WorkOS redirect URI or every sign-in is refused
+          # by the IdP with an error the console cannot explain.
           # The scale screen is public and must stay that way — it is the one
           # place the twenty-million-lot claim can be checked by somebody with
           # no account. ⚠ Asserting the RECORDED figure, not a live one: no
@@ -500,9 +500,10 @@ jobs:
           # ⛔ THE CONSOLE TAKES ITS OAuth `redirect_uri` FROM THIS FIELD, so a
           # wrong value here refuses every sign-in — and refuses it at the IdP,
           # with an error the console cannot explain because it never sees it.
-          # The field and the Cognito CallbackURLs are built from one
-          # ConsoleOrigin parameter, which is the point: this asserts the
-          # parameter arrived, not that two things agree.
+          # The field and RATIO_CONSOLE_URL are built from one ConsoleOrigin
+          # parameter, which is the point: this asserts the parameter arrived,
+          # not that two things agree. Cognito CallbackURLs in the template
+          # are leftover unused resources (#22), not the sign-in path.
           #
           # ⚠ Only when CONSOLE_ORIGIN was actually passed to the stack. The
           # Deploy step now refuses unset and the retired Vercel hostname, so

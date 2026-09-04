@@ -9,7 +9,7 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 use ratio_rules::{check, RuleSet};
-use ratio_store::{Account, AccountTypeRecord, ConfigStore, FileBook};
+use ratio_store::{Account, AccountTypeRecord, ConfigStore, Digest, FileBook};
 
 /// The ingest templates CreateBook writes for this kind, in the order
 /// [`config_for`] lists them.
@@ -2044,7 +2044,7 @@ equity_destination = 25
 ///
 /// ⛔ NO FUND AND NO ORG ARE WRITTEN. A caller that wants either files the
 /// book afterwards. Create is the independent book.
-pub fn initialize(path: &Path, id: &str, display: &str, kind: BookKind) -> Result<()> {
+pub fn initialize(path: &Path, id: &str, display: &str, kind: BookKind) -> Result<Digest> {
     if path.join("accounts.json").is_file() || path.join("book.toml").is_file() {
         bail!("book {id:?} already exists");
     }
@@ -2081,7 +2081,7 @@ pub fn initialize(path: &Path, id: &str, display: &str, kind: BookKind) -> Resul
         organization: None,
     }
     .write(path)?;
-    Ok(())
+    Ok(digest)
 }
 
 /// Grant `who` this book in `MEMBERSHIP.tsv`, so the next request can open it.
