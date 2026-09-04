@@ -32,7 +32,7 @@ pub struct PartnerShare {
 ///
 /// ⛔ THESE THREE, AND NO OTHER. A kind nobody named is not a silent
 /// income row.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AllocationKind {
     Income,
