@@ -1448,6 +1448,49 @@ seeded demo cut, a fold of per-entry specials, IRR, a waterfall, an
 LP portal, or K-1 packaging. Those remain on #180 (cut leftovers)
 and Connect.
 
+### Amendment, 2026-09-04 — a Personal bank-feed Connect app, and the grant path still does not open
+
+[#165](https://github.com/mattmarshall/ratio/issues/165) asked for bank-feed
+OAuth into Personal books without stuffing OAuth into `ratio watch`. The
+catalog already said bank OAuth stays a Connect app. What landed is that
+app as a sibling tree, not a kernel method.
+
+**What this amendment records.** [`connect/bank-feed/`](connect/bank-feed/)
+is a first-party WorkOS Connect OAuth application for `BookKind` PERSONAL.
+It declares `books:read`, `statements:read`, and `journals:post` — the
+frozen names, not the issue body's stale alias `journal:append`. Feed rows
+map to CreateBook(Personal) templates already on the book
+(`living_expense`, `household_income`, `card_charge`, transfers, `spend_*`,
+`receive_income`). `journals:post` is allowlisted per `client_id`; an empty
+allowlist refuses every post. A dated row on or before closed-through
+refuses the batch. Instantiated legs must conserve in every currency;
+`[USD +100, EUR −100]` is not a posting. Money is minor units, split on
+the point. No new `Method` / `Order` / `lot_method` variant. PERSONAL
+chrome is unchanged — `screensFor` is not forked.
+
+**What this is NOT:**
+
+- **Not token validation.** Connect access tokens are still not accepted
+  on `/v1`. `deliver()` refuses. The authorizer is #151 / leftover #22.
+  This file does not close #150.
+- **Not live bank OAuth.** No Plaid / MX / TrueLayer token. The mapper
+  accepts a normalized row. Provider wiring stays leftover on #165.
+- **Not #150's read-only reference skeleton.** That leftover is
+  `books:read` + `statements:read` proving the door opens. This app
+  requests `journals:post` and does not open the door.
+- **Not a kernel RPC, not `ratio watch`, not Console product UI.** The
+  append ACL and the closed-through gate stay where they are.
+
+Nothing on the *Explicitly not building* list moved. Client portal, CRM,
+tax e-file, vendor portal, and waterfall stay Connect-apps or stay
+refused. This file does not close #165 — grant path and live provider
+remain. It does not start #166 or #168.
+
+**What a walk-through can and cannot show** (demo readiness, #27). It can
+show a fixture expense mapping to `living_expense`, a closed March
+refusing a 15 March row, and `journal:append` being rejected as a scope.
+It cannot show a Connect token opening a book or a live bank login.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

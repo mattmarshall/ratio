@@ -188,6 +188,10 @@ open:
    enforced at `ApplyEvent`, empty-refuses.
 4. **Reference Connect app skeleton** — read-only `books:read` +
    `statements:read`, proving the door opens without a new RPC.
+   A first-party bank-feed scaffold lives at `connect/bank-feed/`
+   ([#165](https://github.com/mattmarshall/ratio/issues/165)). It is not
+   this leftover: it requests `journals:post`, it does not open the grant
+   path, and this file still does not close #150 or #165.
 5. **`webhooks:journal`, `audit:export`, `nav:strike` as a write RPC** —
    reserved scopes; the surfaces are not built.
 

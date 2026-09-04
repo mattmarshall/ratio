@@ -255,8 +255,11 @@ __STYLE__
           depths of specification.</li>
           <li>The workload planner, the authoring assistant, and every interface
           shown anywhere on this site apart from one: an operations console
-          exists and addresses books. What it still does not have is
-          bank-feed OAuth or a client portal — and on the fund side it is
+          exists and addresses books. A bank-feed Connect app scaffold maps
+          household rows to allowlisted Personal templates; live bank OAuth
+          and a Connect token on <code>/v1</code> are leftover on
+          <a href="https://github.com/mattmarshall/ratio/issues/165">#165</a>.
+          What it still does not have is a client portal — and on the fund side it is
           still the exception queue, a difference at its own address, and
           whether a fund can close. Household budget envelopes, a project
           budget, and per-partner capital account statements (beginning →
@@ -457,7 +460,11 @@ __STYLE__
       than hard. The marketplace begins as a
       <a href="https://github.com/mattmarshall/ratio/blob/main/docs/connect-scopes.md">WorkOS Connect scope catalog</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/150">#150</a>),
-      not as more kernel RPCs. The grant path is not built.</p>
+      not as more kernel RPCs. A first-party
+      <a href="https://github.com/mattmarshall/ratio/tree/main/connect/bank-feed">bank-feed Connect app</a>
+      (<a href="https://github.com/mattmarshall/ratio/issues/165">#165</a>)
+      maps household rows to allowlisted Personal templates; the grant path
+      is not built, and live bank OAuth is leftover on that issue.</p>
       <ul class="r-deliver">
         <li class="o">Custodian and administrator feed catalog</li>
         <li class="o">Market-data vendor coverage</li>

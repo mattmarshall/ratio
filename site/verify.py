@@ -341,12 +341,17 @@ def check_roadmap_against_plan(out: pathlib.Path) -> None:
         "WorkOS Connect",
         "#150",
         "connect-scopes.md",
+        # #165 landed a Personal bank-feed scaffold in this tree. A public
+        # page that drops the pointer while PLAN records the app is the
+        # same lag as the built column forgetting tax lots.
+        "#165",
+        "bank-feed",
     )
     if not all(n in doc for n in phase_four_needles):
         missing = [n for n in phase_four_needles if n not in doc]
         err(src, "phase four does not point at the Connect catalog "
-                 f"({', '.join(missing)}); PLAN.md amendment 2026-09-04 "
-                 "and issue #150")
+                 f"({', '.join(missing)}); PLAN.md amendments 2026-09-04 "
+                 "and issues #150 / #165")
     elif not any(e.startswith(f"::error file={src}::") or
                  e.startswith("::error file=PLAN.md::") for e in errors):
         print("  ok  roadmap status columns agree with PLAN.md on engine work")
