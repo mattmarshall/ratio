@@ -160,6 +160,14 @@ __STYLE__
           Journal stays the system of record. The 140-million-entry
           / 40GB journal fold stays on Fargate ScaleTask. The demo
           Lambda does not host twenty million lots.</li>
+          <li>Postgres as the interactive-scale engine — the
+          projection path. Schema apply, console/API store
+          reads, planner pushdown vs Pg.Rel.Semantics, and
+          the measured 20M-lot fold are Built. The journal
+          stays the system of record. The ~140-million-entry
+          / ~40GB journal fold stays on Fargate ScaleTask /
+          ScaleBucket. The demo Lambda does not host twenty
+          million lots as a browser table.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>live custodian statement ingest — a CreateBook Investment book
@@ -467,15 +475,6 @@ __STYLE__
         <ul>
           <li>Reviewed change control (geetch/crova). Today's pointer file is
           the seam; a forge is still ahead.</li>
-          <li>Postgres for a live relational engine at interactive
-          scale. The schema applies, console/API reads can
-          use the snapshot, the Stage E rewrite surface is
-          proved, and a twenty-million-lot projection fold was
-          measured in-repo; the demo Lambda still does not host
-          those rows, and the 40GB journal fold stays on Fargate.
-          Umbrella
-          <a href="https://github.com/mattmarshall/ratio/issues/8">#8</a>
-          stays open.</li>
           <li>Every one of the sixteen capability areas below, at varying
           depths of specification.</li>
           <li>The workload planner, the authoring assistant, and every interface

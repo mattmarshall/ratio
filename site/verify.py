@@ -62,14 +62,12 @@ LICENSE_EXCEPTIONS = ["not permissively licensed"]
 # the same failure plan_refusals_test.sh names. Each page phrase must appear
 # in the built column and must not appear in the spec column.
 #
-# ⚠ POSTGRES THE INTERACTIVE-SCALE ENGINE IS THE EXPLICIT EXCEPTION.
-# #153 landed the lots/positions projection schema; the projection
-# schema applies to a live engine is a later Built phrase. Requiring
-# the page to call "Postgres" built would still enforce a lie: the
-# 40GB journal fold and interactive-scale engine word stay #8.
-# Console/API reads through the store, planner pushdown vs
-# Pg.Rel.Semantics, and the measured 20M-lot fold are later Built
-# phrases. That word belongs on the spec side.
+# ⚠ POSTGRES AS THE INTERACTIVE-SCALE ENGINE IS NOW BUILT (#8).
+# #153 / #234 / #235 / #236 / #159 landed the projection path;
+# the 2026-09-04 carve-close records the public claim. The 40GB
+# journal fold stays on Fargate ScaleTask; leftover #22 stays
+# WorkOS operator. Requiring the word on the spec side would
+# now enforce a lie.
 PLAN_MARKS_ENGINE_DONE = [
     "tax lots and cost basis",
     "multi-currency and FX",
@@ -126,22 +124,20 @@ PLAN_MARKS_ENGINE_DONE = [
     # same-commit amendment. Same class of defect as #67.
     "kind-aware IA",
     # ⚠ #153 landed the lots/positions projection schema; PLAN named
-    # it in the same-commit amendment. A live Postgres engine stays
-    # spec-only — see ROADMAP_ENGINE_NOT_BUILT.
+    # it in the same-commit amendment.
     "the lots/positions projection",
-    # ⚠ Applying the schema to a live engine is Built; the word
-    # "Postgres" as the interactive-scale engine stays spec-only.
+    # ⚠ Applying the schema to a live engine is Built.
     "the projection schema applies to a live engine",
-    # ⚠ Console/API reads through the store is Built; the 20M-lot
-    # claim stays leftover. Planner pushdown is the next mark.
+    # ⚠ Console/API reads through the store is Built.
     "console/API reads through the store",
-    # ⚠ Planner pushdown vs Pg.Rel.Semantics is Built; the word
-    # "Postgres" as the interactive-scale engine stays spec-only.
+    # ⚠ Planner pushdown vs Pg.Rel.Semantics is Built.
     "planner pushdown vs Pg.Rel.Semantics",
-    # ⚠ The measured 20M-lot fold is Built; the word "Postgres"
-    # as the interactive-scale engine stays spec-only. The 40GB
-    # journal fold stays on Fargate. Same class of defect as #67.
+    # ⚠ The measured 20M-lot fold is Built. The 40GB journal
+    # fold stays on Fargate. Same class of defect as #67.
     "the measured 20M-lot fold",
+    # ⚠ #8 carve-close: the public roadmap now calls Postgres
+    # the interactive-scale engine (projection path).
+    "Postgres as the interactive-scale engine",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -172,9 +168,12 @@ ROADMAP_ENGINE_BUILT = [
     "console/API reads through the store",
     "planner pushdown vs Pg.Rel.Semantics",
     "the measured 20M-lot fold",
+    "Postgres as the interactive-scale engine",
 ]
+# Empty: Stage E leftover that kept "Postgres" on the spec side
+# closed with #8. The 40GB journal fold is named as a caveat on
+# the Built side, not a Designed engine claim.
 ROADMAP_ENGINE_NOT_BUILT = [
-    "Postgres",
 ]
 # An open phase-one deliverable that still names one of these is the
 # original defect in checklist form.
@@ -382,10 +381,10 @@ def check_roadmap_against_plan(out: pathlib.Path) -> None:
     for phrase in ROADMAP_ENGINE_NOT_BUILT:
         if re.search(re.escape(phrase), built, re.I):
             err(src, f"built column claims \"{phrase}\", which is still "
-                     "Stage E / spec-only — see PLAN.md and issue #8")
+                     "spec-only — see PLAN.md")
         if not re.search(re.escape(phrase), spec, re.I):
-            err(src, f"spec column does not mention \"{phrase}\", so the "
-                     "exception that keeps Stage E honest has nowhere to sit")
+            err(src, f"spec column does not mention \"{phrase}\", so a "
+                     "leftover the plan still withholds has nowhere to sit")
 
     # Phase-one open bullets. class="o" is the hollow marker; a done item
     # that still carries it is the checklist form of the same lag.

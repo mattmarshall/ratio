@@ -4015,3 +4015,58 @@ the #8 umbrella / ScaleTask path.
 The demo API hydrates ScaleBucket `journals/` so CreateBook
 survives a cold start; this amendment does not reopen the
 #230 `/tmp`-only wipe.
+
+### Amendment, 2026-09-04 — Postgres as the interactive-scale engine
+
+[#8](https://github.com/mattmarshall/ratio/issues/8) leftover after
+the Stage E interactive path (#153 / #234 / #235 / #236) and the
+measured 20M-lot fold (#159 / #237): the public roadmap still named
+Postgres on the spec side. The projection path is already Built.
+This amendment records the claim. The journal stays the system of
+record.
+
+**What this amendment records.**
+
+- **Claim.** The public roadmap moves Postgres for a live relational
+  engine at interactive scale from Designed to Built. Schema apply,
+  console/API store reads, planner pushdown vs `Pg.Rel.Semantics`,
+  and the measured 20M-lot fold are already Built. This phrase is
+  the honesty that closes the umbrella.
+- **Journal stays SoR.** Replay and content-addressed digests remain
+  the product. Postgres holds the derived transactional state.
+
+**Postgres as the interactive-scale engine** is the Built phrase
+this amendment adds.
+
+**What this is NOT:**
+
+- **Not reopening #159.** The measured 20M-lot fold is already
+  closed. This file does not reopen #153, #234, #235, #236, or
+  #159.
+- **Not the 140M-entry / 40GB journal fold.** ScaleTask /
+  ScaleBucket stay the place that fold runs. This process does
+  not invent a 40GB ScaleTask run.
+- **Not claiming the demo Lambda hosts 20M lots.** A visitor
+  still cannot browse twenty million lots as a browser table.
+- **Not moving authority off `journal.jsonl`.** Replay and
+  content-addressed digests remain the product.
+- **Not ACM / custom domain (#152).**
+- **Not leftover #22.** `DEMO_MEMBERS` naming a live WorkOS
+  `sub` and WorkOS dashboard registration stay WorkOS operator
+  work.
+- **Not Connect apps.** Client / LP / vendor portals, bank
+  OAuth, G702, tax packs, EAC stay Connect.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #8. It does not reopen #153, #234, #235,
+#236, or #159. leftover #22 stays on WorkOS.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can cite the Stage E store, the proved pushdown, and the
+recorded 20M-lot fold. It cannot show a visitor folding the
+140-million-entry journal inside a Lambda request, or twenty
+million lots as a browser table. Those remain the ScaleTask
+path.
+The demo API hydrates ScaleBucket `journals/` so CreateBook
+survives a cold start; this amendment does not reopen the
+#230 `/tmp`-only wipe.
