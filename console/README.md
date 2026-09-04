@@ -35,8 +35,8 @@ It worked, and it cost three things:
 ```
 src/wire/types.ts    the wire types, hand-written to mirror console.proto
 src/wire/client.ts   ⛔ server-only. One typed fn per google.api.http rule
-src/lib/session.ts   the httpOnly cookie the id token lives in
-src/lib/oidc.ts      authorization-code + PKCE, run on the SERVER
+src/lib/session.ts   leftover Cognito cookie envelope — unused on the AuthKit path
+src/lib/oidc.ts      fetches `/authconfig.json` for the API origin; AuthKit owns sign-in
 src/routes.ts        every screen, and which RPCs it reads
 src/lib/screens.ts   kind selects the places under a book — read by the hub AND ⌘K
 src/lib/deeplink.ts  a pasted resource name → a URL here, or a refusal

@@ -12,9 +12,11 @@ match every app is the failure this catalog exists to prevent.
 
 ⚠ **The catalog is frozen. The grant path is not built.** A Connect access
 token is not accepted on `/v1`. The API authorizer still proves an AuthKit
-session JWT (#151 / leftover #22). Do not read a row below as a door that
-opens. #150 stays open until the authorizer accepts these scopes without
-bypassing book membership.
+session JWT (leftover #22). A Connect-shaped token that arrives anyway
+is `scoped`, records actor = WorkOS `sub`, and does not match `org:{id}`
+(#151). Do not read a row below as a door that opens. #150 stays open
+until the authorizer accepts these scopes without bypassing book
+membership. This file does not close #22.
 
 ---
 
@@ -180,10 +182,13 @@ The catalog is this file and the PLAN amendment. The rest of #150 is still
 open:
 
 1. **API authorizer accepts Connect access tokens** with these scopes —
-   depends on #151 / leftover #22 (write-route actor = WorkOS `sub`,
-   production membership check, Cognito leftovers in deploy templates).
-2. **Book ACL on every Connect grant.** A token with `books:read` still
-   returns authorized-empty for a book the subject does not administer.
+   leftover on #22. Write-route actor = WorkOS `sub` and the in-process
+   ACL fence landed in #151. Cognito leftovers in the deploy template
+   stay on #22.
+2. **Book ACL on every Connect grant.** A Connect-shaped token is always
+   `scoped` and does not inherit `org:{id}`. Authorized-empty for a book
+   the subject does not administer. The authorizer still does not accept
+   the token — leftover on #22.
 3. **`journals:post` allowlist** keyed by `client_id` — the map above,
    enforced at `ApplyEvent`, empty-refuses.
 4. **Reference Connect app skeleton** — read-only `books:read` +
