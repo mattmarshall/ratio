@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 /**
@@ -75,10 +77,8 @@ describe("AuthKit proxy matcher", () => {
     }
   });
 
-  it("still partitions AuthKit headers onto the request (#112)", async () => {
-    const src = await import("node:fs").then((fs) =>
-      fs.readFileSync(new URL("./proxy.ts", import.meta.url), "utf8"),
-    );
+  it("still partitions AuthKit headers onto the request (#112)", () => {
+    const src = readFileSync(join(process.cwd(), "src/proxy.ts"), "utf8");
     expect(src).toContain("mergeAuthkitProxyHeaders");
     expect(src).toContain("applyResponseHeaders");
   });
