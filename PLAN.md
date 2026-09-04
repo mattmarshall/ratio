@@ -1134,6 +1134,7 @@ What landed is the decision surface and the engine, as its own election:
 
 - Not a **console / proto UI** for electing the pool, nor MinTax or
   SpecID screens. Those stay leftovers on #9.
+  *(the console cites are a later amendment.)*
 - Not a **holding-period category rule** for the pool (US single vs
   double category). A shared acquisition date is carried when every
   lot agrees; mixed or missing dates stay unset. No category is
@@ -1293,6 +1294,7 @@ What landed is the cite, not new arithmetic:
 
 - Not a **tax-lot planner UI**, and not MinTax / SpecID /
   average-cost console cites. Those stay leftovers on #9.
+  *(the console cites are a later amendment.)*
 
 Nothing on the *Explicitly not building* list moved. This
 amendment closes the #5 leftover. It does not close #9.
@@ -1304,6 +1306,66 @@ can point at keep when a book writes it. Silence stays unset, not
 a silent 30, and unset keep stays the US transfer. It cannot show
 lot-relief UI screens for MinTax, SpecID, or average cost. Those
 remain on #9.
+*(the console cites are the next amendment.)*
+
+### Amendment, 2026-09-04 — the console cites the MinTax, SpecID, and average-cost elections
+
+The engine halves of #9 were already on main: MinTax as a ranking
+at a price (`min_tax_short_weight`; unset stays unset, not a
+silent 2; `lot_method = "min_tax"` stays refused), SpecID as a
+named selection (`identified_lots` on the sale; unnamed or
+overspecified refuse; `lot_method = "specific_id"` stays
+refused), and average cost as a pool (`average_cost = true`;
+unset stays unset, not a silent true; `lot_method =
+"average_cost"` stays refused). A live walk-through still could
+not point at those elections the way it can point at lot method
+and the wash window. Built named the engine; cannot-show still
+said the console could not show the cites. That honesty gap was
+the product leftover.
+
+What landed is the cite, not new arithmetic:
+
+- The fund lot-terms screen reads `min_tax_short_weight` and
+  `average_cost` from the configuration already on `RuleSet`,
+  sharing the elected-term claim with lot method and wash.
+  Unset stays unset — the weight is not printed when nobody
+  wrote one (not a silent 2), and the pool is not printed as a
+  silent true. `Some(true)` elects the pool. The two cannot
+  share a configuration with each other or with `lot_method`.
+- SpecID is per-sale, not a fund term. The journal-entry page
+  cites `identified_lots` when a sale carries names, and says
+  so when it does not. Unnamed (`Some([])`) is elected and
+  refuses — not FIFO.
+- Proto / wire / fixtures / `fields_test` needles / rendered
+  screens hold the phrases, so the rows cannot silently
+  disappear. The demo seed writes `min_tax_short_weight = 2`
+  on Calderwood (empty, so the weight cannot restate a sale),
+  `average_cost = true` on Kestrel (a book that cannot share
+  the pool with lot_method or min-tax), and a zero-gain SpecID
+  sale on the recon books so a walk-through can open the
+  names. Harbourline leaves min-tax and the pool unset.
+
+**What this is NOT, because one leftover stays named on #9:**
+
+- Not a **holding-period category rule** for the average-cost
+  pool (US single vs double category). A shared acquisition
+  date is carried when every lot agrees; mixed or missing
+  dates stay unset. No category is invented.
+- Not a **tax-lot planner UI**. This is a field cite, the same
+  shape as lot method and wash.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not close #9. The pooled holding-period leftover
+stays.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+A fund admin walk-through can point at the min-tax weight on
+Calderwood's lot-terms screen and the average-cost pool on
+Kestrel's, the same way it points at lot method and the wash
+window, and can point at named lots on a SpecID sale's journal
+entry. Silence stays unset — not a silent 2, not a silent true,
+not a silent FIFO. It cannot show a pooled holding-period
+category (mixed dates stay unset). That remains on #9.
 
 ## The control plane: geetch and crova
 

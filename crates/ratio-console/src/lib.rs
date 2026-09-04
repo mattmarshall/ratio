@@ -1004,6 +1004,15 @@ impl Console {
                     amount: p.amount.to_string(),
                 })
                 .collect(),
+            // ⛔ NOT A SILENT FIFO. `None` is not SpecID. `Some([])` is
+            // elected and unnamed — the engine refuses. The declared flag
+            // is what keeps those two from collapsing on the wire.
+            identified_lots: entry
+                .identified_lots
+                .as_ref()
+                .map(|v| v.iter().map(|&n| n as i64).collect())
+                .unwrap_or_default(),
+            identified_lots_declared: entry.identified_lots.is_some(),
         }
     }
 
@@ -2436,21 +2445,24 @@ impl Console {
         })
     }
 
-    /// Wash terms the active configuration declares — or silence.
+    /// Lot-relief elections the active configuration declares — or silence.
     ///
-    /// ⛔ NOT A SILENT 30. `wash_window_days: None` is unset, and a screen that
-    /// printed 30 over that would restate every in-window loss on a book that
-    /// never elected the rule. `wash_keep_holding_period == Some(true)` is the
-    /// only keep the wire can carry; `Some(false)` is refused at read and is
-    /// not a third UI meaning.
-    fn wash_cite(set: Option<&RuleSet>) -> (i64, bool, bool) {
+    /// ⛔ NOT A SILENT 30, NOT A SILENT 2, NOT A SILENT TRUE. Each `None` is
+    /// unset. A screen that printed a default over that would restate every
+    /// sale on a book that never elected the rule. Keep / average-cost
+    /// `Some(false)` is refused at read and is not a third UI meaning.
+    /// `lot_method = "wash" | "min_tax" | "average_cost"` stays refused.
+    fn lot_elections(set: Option<&RuleSet>) -> (i64, bool, bool, i64, bool, bool) {
         match set {
             Some(s) => (
                 s.wash_window_days.unwrap_or(0),
                 s.wash_window_days.is_some(),
                 s.wash_keep_holding_period == Some(true),
+                s.min_tax_short_weight.unwrap_or(0),
+                s.min_tax_short_weight.is_some(),
+                s.average_cost == Some(true),
             ),
-            None => (0, false, false),
+            None => (0, false, false, 0, false, false),
         }
     }
 
@@ -2469,8 +2481,14 @@ impl Console {
         } else {
             pb::fund::State::Unspecified
         };
-        let (wash_window_days, wash_window_declared, wash_keep_holding_period) =
-            Self::wash_cite(set.as_ref());
+        let (
+            wash_window_days,
+            wash_window_declared,
+            wash_keep_holding_period,
+            min_tax_short_weight,
+            min_tax_declared,
+            average_cost,
+        ) = Self::lot_elections(set.as_ref());
         Ok(pb::Fund {
             name: format!("funds/{id}"),
             display_name: meta.display_name,
@@ -2492,6 +2510,9 @@ impl Console {
             wash_window_days,
             wash_window_declared,
             wash_keep_holding_period,
+            min_tax_short_weight,
+            min_tax_declared,
+            average_cost,
             pending_fact_count: "0".into(),
             trial_balance_difference: String::new(),
             entry_count,
@@ -2678,8 +2699,14 @@ impl Console {
         } else {
             pb::fund::State::Struck
         };
-        let (wash_window_days, wash_window_declared, wash_keep_holding_period) =
-            Self::wash_cite(set.as_ref());
+        let (
+            wash_window_days,
+            wash_window_declared,
+            wash_keep_holding_period,
+            min_tax_short_weight,
+            min_tax_declared,
+            average_cost,
+        ) = Self::lot_elections(set.as_ref());
 
         Ok(pb::Fund {
             name: format!("funds/{id}"),
@@ -2716,6 +2743,9 @@ impl Console {
             wash_window_days,
             wash_window_declared,
             wash_keep_holding_period,
+            min_tax_short_weight,
+            min_tax_declared,
+            average_cost,
             pending_fact_count: pending.len().to_string(),
             // ⭐ THE ONE TRIAL-BALANCE FIGURE THAT IS NOT VIEW-DEPENDENT, AND ITS
             // STAYING HERE IS THE CHECK THAT THE LINE IS DRAWN RIGHT. A view
@@ -8912,6 +8942,55 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
     }
 
     #[test]
+    fn a_declared_min_tax_weight_is_cited_and_silence_is_not_two() {
+        // ⛔ THE LOT-METHOD TRAP, FOR THE WEIGHT. A book that never elected
+        // min-tax has no weight — not a silent 2. Two is the Lean example;
+        // it is not applied to a book that never named the rule.
+        let d = fresh("mintax-cite");
+        book(&d);
+        let silent = Console::new(&d).get_fund("funds/demo").unwrap();
+        assert!(!silent.min_tax_declared, "nobody said");
+        assert_eq!(silent.min_tax_short_weight, 0, "and the wire does not invent 2");
+        assert!(!silent.average_cost, "unset is not a pool");
+
+        let mut b = FileBook::open(&d).unwrap();
+        let weight = b.put(b"rules = []\nmin_tax_short_weight = 2\n").unwrap();
+        b.set_active(&weight).unwrap();
+        let elected = Console::new(&d).get_fund("funds/demo").unwrap();
+        assert!(elected.min_tax_declared, "somebody said");
+        assert_eq!(elected.min_tax_short_weight, 2);
+        assert!(!elected.average_cost, "min-tax is not a pool");
+
+        let listed = Console::new(&d).list_funds().unwrap().funds;
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].min_tax_declared);
+        assert_eq!(listed[0].min_tax_short_weight, 2);
+    }
+
+    #[test]
+    fn a_declared_average_cost_pool_is_cited_and_silence_is_not_true() {
+        // ⛔ THE LOT-METHOD TRAP, FOR THE POOL. A book that never elected
+        // average cost is not pooled — not a silent true. Some(false) is
+        // refused at read and is not a third UI meaning.
+        let d = fresh("average-cost-cite");
+        book(&d);
+        let silent = Console::new(&d).get_fund("funds/demo").unwrap();
+        assert!(!silent.average_cost, "nobody said");
+        assert!(!silent.min_tax_declared, "and min-tax stays unset");
+
+        let mut b = FileBook::open(&d).unwrap();
+        let pool = b.put(b"rules = []\naverage_cost = true\n").unwrap();
+        b.set_active(&pool).unwrap();
+        let elected = Console::new(&d).get_fund("funds/demo").unwrap();
+        assert!(elected.average_cost, "somebody said");
+        assert!(!elected.min_tax_declared, "a pool is not a min-tax weight");
+
+        let listed = Console::new(&d).list_funds().unwrap().funds;
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].average_cost);
+    }
+
+    #[test]
     fn resource_names_are_parsed_strictly() {
         assert_eq!(resource_id("funds/abc", "funds").unwrap(), "abc");
         assert!(resource_id("funds/abc/breaks/1", "funds").is_err());
@@ -10118,7 +10197,51 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
             let one = c.get_entry(&e.name).unwrap();
             assert_eq!(one.entry_id, e.entry_id);
             assert_eq!(one.postings, e.postings);
+            assert!(
+                !one.identified_lots_declared,
+                "a seeded buy does not elect SpecID"
+            );
+            assert!(one.identified_lots.is_empty());
         }
+    }
+
+    #[test]
+    fn identified_lots_on_a_sale_are_cited_and_silence_is_not_fifo() {
+        // ⛔ NOT A SILENT FIFO. `None` is not SpecID. `Some([3])` is the
+        // names the taxpayer wrote. The declared flag is what keeps those
+        // from collapsing on the wire the way proto3 empty-repeated would.
+        let d = fresh("specid-cite");
+        book(&d);
+        {
+            let mut b = FileBook::open(&d).unwrap();
+            let cfg = b.active().unwrap().unwrap();
+            b.append(&JournalEntry {
+                id: "specid-sale".into(),
+                memo: "named lots".into(),
+                config: cfg,
+                postings: vec![
+                    ratio_store::PostingRecord::new(2, 10_000),
+                    ratio_store::PostingRecord::new(1, -10_000),
+                ],
+                trade_date: None,
+                announcement: None,
+                due_date: None,
+                application: None,
+                identified_lots: Some(vec![3]),
+            })
+            .unwrap();
+        }
+        let c = Console::new(&d);
+        let named = c.get_entry("funds/demo/entries/specid-sale").unwrap();
+        assert!(named.identified_lots_declared, "somebody named lots");
+        assert_eq!(named.identified_lots, vec![3]);
+
+        let silent = c.get_entry("funds/demo/entries/t1").unwrap();
+        assert!(
+            !silent.identified_lots_declared,
+            "a sale that names nothing is not SpecID"
+        );
+        assert!(silent.identified_lots.is_empty(), "and the wire does not invent FIFO names");
     }
 
     #[test]

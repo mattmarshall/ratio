@@ -28,6 +28,13 @@ struct EntryInput {
     #[serde(default)]
     memo: String,
     postings: Vec<PostingRecord>,
+    /// Lots the taxpayer named on this sale. `Ratio.Lots.SpecId`.
+    ///
+    /// ⛔ OMITTED IS NOT SPECID. The CLI used to drop this field, so a
+    /// walk-through that posted named lots stored silence and the engine
+    /// walked FIFO — the same trap as a missing `lot_method`.
+    #[serde(default)]
+    identified_lots: Option<Vec<u64>>,
 }
 
 const USAGE: &str = "\
@@ -1542,7 +1549,7 @@ fn post(book: PathBuf, file: &str) -> Result<()> {
             announcement: None,
             due_date: None,
             application: None,
-            identified_lots: None,
+            identified_lots: input.identified_lots,
         };
         // The book refuses an unbalanced entry; report every one rather than
         // stopping at the first, so a bad file is fixed in one pass.

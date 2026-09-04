@@ -2985,6 +2985,9 @@ describe("a journal entry", () => {
     expect(screen.getByRole("heading", { name: "Purchase of 1,000 ACME" })).toBeDefined();
     expect(screen.getByLabelText("Journal entry")).toBeDefined();
     expect(screen.getByText("The postings it produced")).toBeDefined();
+    expect(screen.getByText("Identified lots")).toBeDefined();
+    expect(screen.getByText(/this sale does not name lots/)).toBeDefined();
+    expect(screen.queryByText(/named on this sale/)).toBeNull();
     expect(screen.getByText("Cash and equivalents")).toBeDefined();
     expect(screen.getByText("-332,880.00")).toBeDefined();
     expect(
@@ -2998,6 +3001,26 @@ describe("a journal entry", () => {
     );
     for (const a of document.querySelectorAll("a[href]")) {
       expect(a.getAttribute("href")).not.toMatch(/\/funds\//);
+    }
+  });
+
+  it("cites named lots on a SpecID sale and does not invent FIFO", async () => {
+    const real = wire.getEntry;
+    wire.getEntry = (async () => ({
+      ...entryFixture,
+      memo: "SpecID walk-through sale",
+      identifiedLots: ["3"],
+      identifiedLotsDeclared: true,
+    })) as typeof wire.getEntry;
+    try {
+      const Entry = (await import("./books/[book]/entries/[entry]/page")).default;
+      await renderAsync(Entry({ params: params({ book: FUND, entry: "e-0004" }) }));
+      expect(screen.getByText("Identified lots")).toBeDefined();
+      expect(screen.getByText("3")).toBeDefined();
+      expect(screen.getByText(/named on this sale — not a lot method/)).toBeDefined();
+      expect(screen.queryByText(/this sale does not name lots/)).toBeNull();
+    } finally {
+      wire.getEntry = real;
     }
   });
 
@@ -3189,9 +3212,10 @@ describe("the fund overview", () => {
     // say so; a book that declares none is relieved oldest-first by CUSTOM, and
     // printing "a term of the administration agreement" over that is asserting
     // something nobody agreed to.
-    // Two rows now share the elected-term claim: lot method and wash window.
-    // getByText would fail the moment a second term is cited, which is the
-    // opposite of what this assertion is for.
+    // Lot method and wash window share the elected-term claim on the
+    // harbourline fixture (min-tax and average-cost stay unset). getByText
+    // would fail the moment a second term is cited, which is the opposite
+    // of what this assertion is for.
     expect(
       screen.getAllByText(/a term of the administration agreement/).length,
     ).toBe(2);
@@ -3228,6 +3252,67 @@ describe("the fund overview", () => {
       expect(screen.queryByText("30 days")).toBeNull();
       expect(screen.queryByText("Wash holding period")).toBeNull();
       expect(screen.queryByText("US transfer stays in force")).toBeNull();
+    } finally {
+      wire.getFund = real;
+    }
+  });
+
+  it("does not invent a min-tax weight when nobody elected one", async () => {
+    const Overview = (await import("./funds/[fund]/page")).default;
+    await renderAsync(Overview({ params: params({ fund: FUND }) }));
+    expect(screen.getByText("Min-tax short weight")).toBeDefined();
+    // ⛔ NOT A SILENT 2. The fixture leaves the weight unset, so the row
+    // must say so — printing 2 over that is the lot-method trap again.
+    expect(screen.getByText(/this configuration declares no min-tax weight/)).toBeDefined();
+  });
+
+  it("cites a declared min-tax weight and does not invent a silent two", async () => {
+    const real = wire.getFund;
+    wire.getFund = (async () => ({
+      ...fundFixture,
+      minTaxShortWeight: "2",
+      minTaxDeclared: true,
+    })) as typeof wire.getFund;
+    try {
+      const Overview = (await import("./funds/[fund]/page")).default;
+      await renderAsync(Overview({ params: params({ fund: FUND }) }));
+      expect(screen.getByText("Min-tax short weight").nextElementSibling?.textContent).toMatch(
+        /^2/,
+      );
+      expect(screen.queryByText(/declares no min-tax weight/)).toBeNull();
+      // Lot method, wash window, and the min-tax weight now share the claim.
+      expect(
+        screen.getAllByText(/a term of the administration agreement/).length,
+      ).toBe(3);
+    } finally {
+      wire.getFund = real;
+    }
+  });
+
+  it("does not invent an average-cost pool when nobody elected one", async () => {
+    const Overview = (await import("./funds/[fund]/page")).default;
+    await renderAsync(Overview({ params: params({ fund: FUND }) }));
+    expect(screen.getByText("Average cost")).toBeDefined();
+    expect(
+      screen.getByText(/this configuration declares no average-cost pool/),
+    ).toBeDefined();
+    expect(screen.queryByText("pooled basis")).toBeNull();
+  });
+
+  it("cites the average-cost pool and does not invent a silent true", async () => {
+    const real = wire.getFund;
+    wire.getFund = (async () => ({
+      ...fundFixture,
+      averageCost: true,
+    })) as typeof wire.getFund;
+    try {
+      const Overview = (await import("./funds/[fund]/page")).default;
+      await renderAsync(Overview({ params: params({ fund: FUND }) }));
+      expect(screen.getByText("pooled basis")).toBeDefined();
+      expect(screen.queryByText(/declares no average-cost pool/)).toBeNull();
+      expect(
+        screen.getAllByText(/a term of the administration agreement/).length,
+      ).toBe(3);
     } finally {
       wire.getFund = real;
     }

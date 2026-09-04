@@ -23,11 +23,13 @@ rm -rf "$OUT"
 
 fail() { echo "  x $*" >&2; exit 1; }
 
-# Seven funds — four states, a fifth that differs from one of them by one line
-# of configuration, a sixth that differs from another by one person's act, and a
-# seventh that differs from itself: one journal read under two books of record.
+# Eight funds — four states, a fifth that differs from one of them by one line
+# of configuration, a sixth that differs from another by one person's act, a
+# seventh that differs from itself: one journal read under two books of record,
+# and an eighth that elects the average-cost pool (which cannot share a book
+# with lot_method or min-tax).
 n=$(find "$OUT" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')
-[ "$n" -eq 7 ] || fail "expected 7 funds, found $n"
+[ "$n" -eq 8 ] || fail "expected 8 funds, found $n"
 
 GEN="$OUT/ashcombe-global-equity"
 [ -d "$GEN" ] || fail "the generated fund is missing"
@@ -97,6 +99,35 @@ grep -q "wash_window_days = 30" "$BLOCKED/config/$active" \
   || fail "harbourline elects no wash window — the walk-through cannot cite one"
 grep -q "wash_keep_holding_period" "$BLOCKED/config/$active" \
   && fail "harbourline wrote keep — the demo is a US transfer, unset stays unset"
+grep -q "min_tax_short_weight" "$BLOCKED/config/$active" \
+  && fail "harbourline wrote min-tax — unset stays unset, not a silent 2"
+grep -q "average_cost" "$BLOCKED/config/$active" \
+  && fail "harbourline wrote average cost — unset stays unset, not a silent true"
+# ⛔ THE WALK-THROUGH HAS TO BE ABLE TO POINT AT THE NAMES. SpecID is
+# per-sale, not a fund term. The zero-gain SPEC round-trip carries the
+# lot the taxpayer named.
+grep -q '"identified_lots"' "$BLOCKED/journal.jsonl" \
+  || fail "harbourline has no SpecID sale — the walk-through cannot cite named lots"
+
+# Calderwood elects the Lean example's min-tax weight. Empty book, so
+# writing 2 cannot restate a sale. Silence on harbourline stays unset.
+CAL="$OUT/calderwood-income"
+[ -d "$CAL" ] || fail "calderwood is missing"
+cal_active=$(cat "$CAL/config/ACTIVE")
+grep -q "min_tax_short_weight = 2" "$CAL/config/$cal_active" \
+  || fail "calderwood elects no min-tax weight — the walk-through cannot cite one"
+cal_entries="$(grep -c . "$CAL/journal.jsonl" 2>/dev/null || echo 0)"
+[ "$cal_entries" -eq 0 ] || fail "calderwood grew a journal ($cal_entries) — it is the empty morning book"
+
+# Kestrel elects the pool. Cannot share harbourline (sales) or
+# calderwood (min-tax).
+KESTREL="$OUT/kestrel-pooled-basis"
+[ -d "$KESTREL" ] || fail "kestrel is missing"
+kestrel_active=$(cat "$KESTREL/config/ACTIVE")
+grep -q "average_cost = true" "$KESTREL/config/$kestrel_active" \
+  || fail "kestrel elects no average-cost pool — the walk-through cannot cite one"
+grep -q "min_tax_short_weight" "$KESTREL/config/$kestrel_active" \
+  && fail "kestrel wrote min-tax — two elections for one sale"
 if "$RATIO" strike --book "$BLOCKED" >/dev/null 2>&1; then
   fail "a blocked fund struck a NAV"
 fi
@@ -193,4 +224,4 @@ grep -q "RECOGNISED IN abor, NOT YET IN ibor" <<<"$rec" \
 awk '/RECOGNISED IN abor, NOT YET IN ibor/{getline; if ($0 ~ /nothing in flight/) exit 1; exit 0}' <<<"$rec" \
   || fail "abor recognises the settlement tail and ibor does not — that list cannot be empty"
 
-echo "  ok  7 funds, $lots open tax lots, FIFO $a vs HIFO $b, ABOR $abor vs IBOR $ibor, reconciled entry by entry, blocked refuses and explained strikes"
+echo "  ok  8 funds, $lots open tax lots, FIFO $a vs HIFO $b, ABOR $abor vs IBOR $ibor, reconciled entry by entry, blocked refuses and explained strikes"

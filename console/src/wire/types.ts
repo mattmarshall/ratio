@@ -182,6 +182,29 @@ export interface Fund {
    * Fund. Do not invent a third UI meaning.
    */
   washKeepHoldingPeriod: boolean;
+  /**
+   * Short-term tax weight for min-tax relief, when the configuration
+   * declares one.
+   *
+   * ⛔ Meaningful only when `minTaxDeclared` is true. A book that never
+   * elected a weight has no weight — not a silent 2. Printing this as an
+   * agreed term without checking the flag is the lot-method trap again.
+   */
+  minTaxShortWeight: Int64;
+  /**
+   * ⛔ Whether the configuration DECLARES a min-tax weight, or merely has
+   * none. Proto3 int64 defaults to 0, and 0 is not an election. Absence is
+   * this flag false. `lot_method = "min_tax"` stays refused.
+   */
+  minTaxDeclared: boolean;
+  /**
+   * Whether the configuration elects the average-cost pool.
+   *
+   * ⛔ `false` is unset — not a silent true, and not an election of "do
+   * not pool". `Some(false)` is refused at read and never appears on a
+   * valid Fund. `lot_method = "average_cost"` stays refused.
+   */
+  averageCost: boolean;
 }
 
 /**
@@ -842,6 +865,21 @@ export interface Entry {
   memo: string;
   configDigest: string;
   postings: EntryPosting[];
+  /**
+   * Lots the taxpayer named on this sale, as journal positions.
+   *
+   * ⛔ Meaningful only when `identifiedLotsDeclared` is true. Proto3
+   * repeated defaults to empty; an empty list that is elected is unnamed
+   * and refuses rather than walking FIFO.
+   */
+  identifiedLots: Int64[];
+  /**
+   * ⛔ Whether this sale ELECTS specific identification. `false` is not
+   * SpecID — the sale does not name lots. `true` with an empty
+   * `identifiedLots` is elected and unnamed. `lot_method = "specific_id"`
+   * stays refused.
+   */
+  identifiedLotsDeclared: boolean;
 }
 
 export interface ListEntriesResponse {

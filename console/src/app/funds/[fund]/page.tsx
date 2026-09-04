@@ -13,8 +13,14 @@ export const dynamic = "force-dynamic";
  * exceptions queue, which answers "what is wrong" without ever answering "where
  * does this fund stand". The lot terms below are the part worth having in one
  * place: the method, whether it was elected or defaulted, the wash window
- * (or silence — not a silent 30), and the gain they produced.
+ * (or silence — not a silent 30), the min-tax weight and average-cost pool
+ * when a book writes them (unset stays unset), and the gain they produced.
  */
+
+/** Shared elected-term claim — lot method, wash, min-tax, and average cost. */
+function electedClaim(declared: boolean, unset: string) {
+  return declared ? " a term of the administration agreement" : ` ${unset}`;
+}
 export default async function FundOverview({
   params,
 }: {
@@ -49,9 +55,10 @@ export default async function FundOverview({
                 prints "a term of the administration agreement" over a defaulted
                 method is asserting something nobody agreed to. */}
             <span className="sub">
-              {f.lotMethodDeclared
-                ? " a term of the administration agreement"
-                : " this configuration declares no method"}
+              {electedClaim(
+                f.lotMethodDeclared,
+                "this configuration declares no method",
+              )}
             </span>
           </dd>
           <dt>Wash window</dt>
@@ -62,9 +69,10 @@ export default async function FundOverview({
                 every in-window loss on every existing book. */}
             {f.washWindowDeclared ? `${f.washWindowDays} days` : "—"}
             <span className="sub">
-              {f.washWindowDeclared
-                ? " a term of the administration agreement"
-                : " this configuration declares no wash window"}
+              {electedClaim(
+                f.washWindowDeclared,
+                "this configuration declares no wash window",
+              )}
             </span>
           </dd>
           {f.washWindowDeclared ? (
@@ -86,6 +94,33 @@ export default async function FundOverview({
               </dd>
             </>
           ) : null}
+          <dt>Min-tax short weight</dt>
+          <dd>
+            {/* ⛔ NOT A SILENT 2. A book that never elected a weight has no
+                weight. Two is the Lean example; it is not applied to a book
+                that never named the rule. `lot_method = "min_tax"` stays
+                refused. */}
+            {f.minTaxDeclared ? f.minTaxShortWeight : "—"}
+            <span className="sub">
+              {electedClaim(
+                f.minTaxDeclared,
+                "this configuration declares no min-tax weight",
+              )}
+            </span>
+          </dd>
+          <dt>Average cost</dt>
+          <dd>
+            {/* ⛔ FALSE IS UNSET, NOT A SILENT TRUE. Some(false) is refused
+                at read. Unset is not a pool; Some(true) elects the pool.
+                `lot_method = "average_cost"` stays refused. */}
+            {f.averageCost ? "pooled basis" : "—"}
+            <span className="sub">
+              {electedClaim(
+                f.averageCost,
+                "this configuration declares no average-cost pool",
+              )}
+            </span>
+          </dd>
           <dt>Realized gain, in {f.defaultView}</dt>
           {/* Credit-normal: `gain` flips the sign in exactly one place, because
               applied per call site it gets applied twice somewhere and nowhere

@@ -105,6 +105,12 @@ BUILT=(
   # would have stayed green whatever was built. The sentence it matches
   # is in the 2026-09-03 console-cite amendment.
   "the console cites the wash election"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The MinTax / SpecID / average-cost console cites are not on the
+  # refusal list — this check would have stayed green whatever was
+  # built. The sentence it matches is in the 2026-09-04 console-cite
+  # amendment.
+  "the console cites the MinTax, SpecID, and average-cost elections"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

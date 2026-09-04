@@ -844,6 +844,36 @@ message Fund {
   // refused.
   bool wash_keep_holding_period = 29 [(google.api.field_behavior) = OUTPUT_ONLY];
 
+  // Short-term tax weight for min-tax relief, when the configuration
+  // declares one. Relative to long-term = 1.
+  //
+  // ⛔ NOT A `lot_method`, AND NOT A SILENT 2. MinTax ranks at a sale
+  // PRICE; an ordering does not take one. `lot_method = "min_tax"`
+  // stays refused. This field is only meaningful when
+  // `min_tax_declared` is true — proto3 int64 defaults to 0, and a
+  // client that reports 2 (or 0) as an agreed term without checking
+  // that flag asserts a decision nobody made. Same trap as
+  // `wash_window_days`.
+  int64 min_tax_short_weight = 30 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether the configuration DECLARES a min-tax weight, or merely has
+  // none.
+  //
+  // ⛔ THE FIELD ABOVE CANNOT CARRY THIS AND MUST NOT BE ASKED TO.
+  // Absence is `min_tax_declared = false`, not a zero that looks like
+  // an election. Two is the Lean example's weight; it is not applied
+  // to a book that never named the rule.
+  bool min_tax_declared = 31 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether the configuration elects the average-cost pool.
+  //
+  // ⛔ FALSE IS UNSET, NOT A SILENT TRUE, AND NOT AN ELECTION OF
+  // "do not pool". `average_cost = false` is refused at read and
+  // never appears on a valid Fund — omit the field. `lot_method =
+  // "average_cost"` stays refused. Same shape as
+  // `wash_keep_holding_period`.
+  bool average_cost = 32 [(google.api.field_behavior) = OUTPUT_ONLY];
+
   // ⛔ MOVED TO `View`, NOT DELETED, AND RESERVED SO THE NUMBERS CANNOT COME
   // BACK MEANING SOMETHING ELSE. Every one of these depends on WHICH ENTRIES
   // ARE RECOGNISED, so a fund-level answer is an answer for a view it does not
@@ -2325,6 +2355,27 @@ message Entry {
   string config_digest = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   repeated EntryPosting postings = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Lots the taxpayer named on this sale. `Ratio.Lots.SpecId`.
+  //
+  // ⛔ NOT A `lot_method`. Specific identification is an attested
+  // per-sale choice, not a sort of the holding.
+  // `lot_method = "specific_id"` stays refused. Meaningful only when
+  // `identified_lots_declared` is true — proto3 repeated defaults to
+  // empty, and an empty list that is elected is unnamed and refuses
+  // rather than walking FIFO. Absence is the flag false, not a silent
+  // FIFO.
+  repeated int64 identified_lots = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether this sale ELECTS specific identification, or merely has
+  // no names.
+  //
+  // ⛔ THE FIELD ABOVE CANNOT CARRY THIS AND MUST NOT BE ASKED TO.
+  // `None` on the journal is not SpecID. `Some([])` is elected and
+  // unnamed — refuse, not FIFO. The wire distinguishes those with
+  // this flag; an empty `identified_lots` plus `declared = false` is
+  // silence, not an unnamed election.
+  bool identified_lots_declared = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message EntryPosting {
