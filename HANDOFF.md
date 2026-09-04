@@ -40,6 +40,13 @@ see (`books:read` membership; an `org_id` claim is not membership)
 and sums only the books that cited each figure — never a silent
 program billed or collected of 0.00. That does not close #179
 (grant path leftover #22 and live OAuth remain).
+Personal cash-forecast Connect predictors
+(`connect/bank-balance-predictor/` and `connect/calendar-bills/`,
+#163) post allowlisted `forecast_*` / `scheduled_*` journal
+material and read statements; they do not invent envelopes or
+payroll, and they do not grow a kernel RPC. That does not close
+#163 (grant path leftover #22 and live bank / calendar OAuth
+remain). It does not reopen #164.
 Equalization, drip, and side-pocket stay Connect (#177) — a
 PLAN decision, not a landing. None of the three changes
 conservation or journal integrity; do not implement them as
@@ -619,11 +626,15 @@ or `sidepocket:*`.
   forecast (#163) cites scheduled net cash from posted `scheduled_*` /
   `forecast_*` journal kinds on the same `/cashflow` URL
   (`filter=forecast-YYYY[-MM]`); unset when none exist — not a
-  measured $0.00. Actuals folds skip those kinds. It cannot show
-  envelope coaching, payroll, a bank-balance predictor, calendar
-  bills sync, bank OAuth, a credit score, or a client portal.
-  Envelope budgeting is #164; loan schedules are #87; the net-worth
-  bridge is #94. This file does not close #163.
+  measured $0.00. Actuals folds skip those kinds. Connect predictor
+  scaffolds (`connect/bank-balance-predictor/`,
+  `connect/calendar-bills/`) can show a fixture row mapping onto
+  those templates and the closed-through / empty-allowlist /
+  `journal:append` refusals. They cannot show a live bank or
+  calendar OAuth grant, a Connect token opening a book, envelope
+  coaching, payroll, a credit score, or a client portal. Envelope
+  budgeting is #164; loan schedules are #87; the net-worth bridge
+  is #94. This file does not close #163. It does not reopen #164.
 - ⭐ **A live custodian-feed walk-through (#155 / #27) can show, and cannot show.**
   CreateBook(Investment) or `ratio init --kind investment`, add the
   master, ingest `prime_equity_trades` and `custodian-positions`, admit,
@@ -1142,7 +1153,7 @@ than one that is entirely unclassified.
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `PoolPeriodEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine — one pass, N view folds, each with a monotonic cut on the journal's own clock and a band bounded by the settlement lag. ⚠ every memory figure in this file is a ONE-VIEW figure; each view carries its own lot book |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
-| `crates/ratio-console` | the console's BFF — 40 RPCs, transcoded onto `/v1`. Personal `forecast-YYYY[-MM]` folds posted `scheduled` / `forecast` journal kinds only; unset when none. Does not close #163 |
+| `crates/ratio-console` | the console's BFF — 40 RPCs, transcoded onto `/v1`. Personal `forecast-YYYY[-MM]` folds posted `scheduled` / `forecast` journal kinds only; unset when none. Connect predictors post that material; they do not close #163 |
 | `crates/ratio-nav/src/explain.rs` | what a strike DOES, as a plan. ⛔ a description of two code paths, not a planner over them — nothing chooses |
 | `console/` | the console itself. Next.js on Vercel; ⛔ Bazel does not build it |
 | `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9 |
@@ -1155,6 +1166,8 @@ than one that is entirely unclassified.
 | `connect/vendor-portal/` | First-party Connect app for a Project vendor / GC portal ([#172](https://github.com/mattmarshall/ratio/issues/172)). Cites billed / earned / retainage / collections from `/billing`; remaining-to-bill and cash-against-AR stay unset until the journal can support them. Vendor invoices are allowlisted `journals:post` for `vendor_invoice*` — not `journal:append`. Grant path is not built. No vendor user directory in core. No AIA G702 product UI (#184). No EAC / forecast (#169). Does not close #172 |
 | `connect/eac-forecast/` | First-party Connect app for Project EAC / forecast ([#169](https://github.com/mattmarshall/ratio/issues/169)). CSV / JSON from `/budget` + `/billing` cites. Remaining to spend is revised − incurred − awarded; EAC / ETC stay unset until that cut can support a figure — never a silent 0.00. Read-only: no forecast template, `journal:append` refused. Grant path leftover #22; live EAC product UX and `/budget` EAC fields stay refused. Does not close #169. Does not reopen #151 |
 | `connect/program-rollup/` | First-party Connect app for Project multi-contract / program roll-up ([#179](https://github.com/mattmarshall/ratio/issues/179)). CSV / JSON from per-book `/budget` + `/billing` cites across PROJECT books the subject can see (`books:read` membership; an `org_id` claim is not membership). Program totals sum only set cites — never a silent billed / collected 0.00 for a book that lacks the cite. Read-only: no `journals:post`. No mega-book, no fifth kind, no `screensFor` fork. Grant path leftover #22. Does not close #179. Does not close #169, #172, or #184. Does not reopen #151 |
+| `connect/bank-balance-predictor/` | First-party Connect app for Personal bank-balance predictors ([#163](https://github.com/mattmarshall/ratio/issues/163)). Maps predicted movements (or a predicted ending balance against cited cash) onto allowlisted `forecast_income` / `forecast_spend`. Unset cited cash is not a silent 0.00 baseline. Closed-through and empty-allowlist refuse. `journal:append` is an alias. Payroll / envelope kinds refuse. Grant path leftover #22; live bank OAuth leftover. Does not close #163. Does not reopen #164. Does not redo #218 |
+| `connect/calendar-bills/` | First-party Connect app for Personal calendar bills sync ([#163](https://github.com/mattmarshall/ratio/issues/163)). Maps dated occurrences onto allowlisted `scheduled_income` / `scheduled_spend`. Recurrence stays in the calendar — an `rrule` is refused rather than expanded. Closed-through and empty-allowlist refuse. `journal:append` is an alias. Payroll / envelope kinds refuse. Grant path leftover #22; live calendar OAuth leftover. Does not close #163. Does not reopen #164. Does not redo #218 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.

@@ -252,6 +252,13 @@ BUILT=(
   # payroll, and bank-balance predictors stay refused or Connect. The
   # sentence it matches is in the 2026-09-04 #163 amendment.
   "a Personal cash forecast"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED THEM, WHICH IS THE PROTOCOL.
+  # The Personal cash-forecast Connect predictors are not on the
+  # refusal list — live bank / calendar OAuth and a Connect token on
+  # /v1 stay leftover; envelopes / payroll stay refused. The sentences
+  # they match are in the 2026-09-04 #163 Connect amendment.
+  "a Personal bank-balance predictor Connect app"
+  "a Personal calendar-bills Connect app"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
