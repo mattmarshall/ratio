@@ -3585,3 +3585,75 @@ What landed is the durable unset, not a new store:
 This amendment does not close #22 (unused Cognito resources,
 `DEMO_MEMBERS` naming a live WorkOS `sub`, WorkOS dashboard
 registration). It does not reopen #24. It does not close #150.
+
+### Amendment, 2026-09-04 — the lots/positions projection
+
+[#153](https://github.com/mattmarshall/ratio/issues/153) is the
+delivery slice under umbrella
+[#8](https://github.com/mattmarshall/ratio/issues/8): a projection
+schema for derived lots, positions, and aggregates, replayed from
+the journal digest, so interactive scale toward the 20M-lot claim
+on [#159](https://github.com/mattmarshall/ratio/issues/159) has a
+place to sit. The journal stays the system of record. Postgres
+does not become one.
+
+**What this amendment records.** The schema is real, not only TLA:
+
+- **Schema.** `crates/ratio-sql-project/schema.sql` names
+  `projection_watermark`, `lots`, `positions`, and `aggregates`.
+  One watermark, not one per table —
+  `//tla:sql_projection_check`'s `AFigureIsFoldedFromOnePrefix`.
+  `acquired` NULL is unset, not a default. `ORDER BY seq` is not
+  FIFO relief.
+- **Replay.** `SqlProjection::replay_book` folds the journal
+  through the proved `Projection` (each entry's pinned config
+  names the method) and replaces every table plus the watermark
+  in one commit. The watermark is the prefix and
+  `ratio_nav::prefix_digest`. A replaced journal at the same
+  height refuses. A rebuild does not append onto existing rows —
+  `//tla:rebuild_double_counts_check`.
+- **Fail closed.** A read that pins the journal head while the
+  snapshot lags (or leads, or disagrees on the digest) refuses.
+  `//tla:unpinned_projection_check`. Zeros from an empty store
+  are also a refuse — they look like a fund.
+- **Relief stays the proved walk.** `SqlProjection::relieve`
+  loads the rows and calls `ratio_project::relief::relieve_by`
+  under the elected method. Physical storage is seq-keyed, so a
+  silent SQL FIFO would take the cheap lot on a HIFO book; the
+  test that names that sabotage stays red if the walk is
+  replaced by the index. MinTax, SpecID, average cost, and wash
+  stay elections — no new `Method` / `Order` / `lot_method`
+  variant.
+
+**the lots/positions projection** is the Built phrase this
+amendment adds.
+
+**What this is NOT:**
+
+- **Not a live Postgres engine.** The crate is the denotational
+  store the schema names. Applying the SQL to a server, planner
+  pushdown proved against `Pg.Rel.Semantics`, and the measured
+  20M-lot interactive claim stay #8 / #159. `Ratio.Exec` still
+  holds: a database does not change the IO floor.
+- **Not moving authority off `journal.jsonl`.** Replay and
+  content-addressed digests remain the product.
+- **Not CRM, a reporting warehouse in core, a client portal, or
+  a `screensFor` fork.** Connect `statements:read` / `lots:read`
+  apps can warehouse. Equalization, drip, and side-pocket stay
+  Connect (#177).
+- **Not wiring the console or the API through the store.** The
+  in-memory `Projection` remains the running read model. Stage E
+  is the schema and the refuse.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #153. It does not close #8 or #159. It does
+not reopen #160, #158, or #151. leftover #22 stays on WorkOS.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can replay a book into the snapshot, see HIFO take the dear
+lot while a seq scan would take the cheap one, and see a stale
+watermark refuse. It cannot show twenty million lots as a
+routine Postgres table, a planner rewrite, or a console screen
+that reads the store. Those remain #8 / #159.
+The demo API journal-env unset (#230) stays; this amendment
+does not reopen it.
