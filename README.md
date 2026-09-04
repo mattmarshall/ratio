@@ -76,6 +76,11 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
   ([#166](https://github.com/mattmarshall/ratio/issues/166)). Scaffold;
   mixed dates stay unclassified; Connect tokens are not accepted on
   `/v1`; IRS e-file is refused.
+- **[connect/goals/](connect/goals/)** — first-party Connect app
+  for household net-worth goals and what-if scenarios
+  ([#168](https://github.com/mattmarshall/ratio/issues/168)). Scaffold;
+  cites sheet / bridge / cash-flow; scenario journals post only on
+  opt-in; Connect tokens are not accepted on `/v1`; not a cash forecast.
 
 ## License
 

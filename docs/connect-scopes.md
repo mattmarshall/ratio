@@ -197,9 +197,14 @@ open:
    this leftover either: it requests `lots:read` and `config:read`, it
    does not open the grant path, and this file still does not close
    #166.
+   A first-party net-worth goals scaffold lives at `connect/goals/`
+   ([#168](https://github.com/mattmarshall/ratio/issues/168)). It is not
+   this leftover either: it requests `journals:post` for opt-in
+   scenario journals, it does not open the grant path, and this file
+   still does not close #168.
 5. **`webhooks:journal`, `audit:export`, `nav:strike` as a write RPC** —
    reserved scopes; the surfaces are not built.
 
 This file does not close #150. Nothing here closes #5 (console wash
 flag), #9 (lot-relief UI cites / pooled holding-period leftover),
-#22, or #166.
+#22, #166, or #168.
