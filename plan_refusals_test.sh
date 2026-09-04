@@ -117,6 +117,12 @@ BUILT=(
   # already named. The sentence it matches is in the 2026-09-04
   # tax-pack amendment.
   "a Personal tax-pack Connect app"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The Personal net-worth goals Connect app is not on the refusal
+  # list — a cash forecast / FIRE number stays refused; this is the
+  # product door the catalog already named. The sentence it matches
+  # is in the 2026-09-04 goals amendment.
+  "a Personal net-worth goals Connect app"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

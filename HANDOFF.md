@@ -879,6 +879,7 @@ than one that is entirely unclassified.
 | `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Contract only — token validation is #151 / leftover #22. Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation |
 | `connect/bank-feed/` | First-party Connect app for Personal bank feeds ([#165](https://github.com/mattmarshall/ratio/issues/165)). Mapper + allowlist + closed-through / conservation refusals. Grant path is not built; live bank OAuth is leftover. Does not close #165 |
 | `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — no invented FIFO oldest or two boxes. Grant path is not built; IRS e-file is refused. Does not close #166 or #9 |
+| `connect/goals/` | First-party Connect app for Personal net-worth goals and what-if scenarios ([#168](https://github.com/mattmarshall/ratio/issues/168)). Cites sheet / bridge / cash-flow; opt-in scenario journals on allowlisted Personal templates; closed-through and empty-allowlist refuse. Grant path is not built. Not a cash forecast. Does not close #168 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.

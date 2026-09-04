@@ -1,0 +1,45 @@
+{
+  "name": "Ratio net-worth goals",
+  "book_kind": "PERSONAL",
+  "issue": 168,
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "statements:read",
+      "journals:post"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read"
+    ]
+  },
+  "journals_post_allowlist": {
+    "client_id": "client_ratio_goals",
+    "templates": [
+      "living_expense",
+      "household_income",
+      "card_charge",
+      "xfer_cash_investments",
+      "xfer_investments_cash",
+      "xfer_cash_cards",
+      "xfer_cards_cash",
+      "xfer_investments_cards",
+      "xfer_cards_investments",
+      "spend_cash",
+      "spend_card",
+      "receive_income"
+    ]
+  },
+  "scenario_journals": {
+    "status": "opt-in only",
+    "note": "Scenario journals post only when the household administrator opts in. Non-opt-in must not post. Empty journals:post allowlist refuses every post. Closed-through refuses the batch. This is not a cash forecast and not a FIRE number."
+  },
+  "grant_path": {
+    "status": "not built",
+    "note": "Connect access tokens are not accepted on /v1. Token validation is #151 / leftover #22. This file does not close #150 or #168."
+  }
+}

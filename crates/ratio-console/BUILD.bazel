@@ -5,9 +5,10 @@ package(default_visibility = ["//visibility:public"])
 exports_files([
     "Cargo.toml",
     "src/transcode.rs",
-    # The bank-feed Connect mapper (#165) holds its Personal template
-    # ids to CreateBook's live list. Exporting the source is a
-    # cross-check, not a kernel RPC.
+    # The bank-feed Connect mapper (#165) and the net-worth goals
+    # Connect app (#168) hold their Personal template ids to
+    # CreateBook's live list. Exporting the source is a cross-check,
+    # not a kernel RPC.
     "src/book.rs",
 ])
 

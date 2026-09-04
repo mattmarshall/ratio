@@ -1546,6 +1546,60 @@ pool landing unclassified rather than inventing FIFO's oldest date, and
 opening a book, an IRS e-file, or a pooled holding-period category when
 dates disagree.
 
+### Amendment, 2026-09-04 — a Personal net-worth goals Connect app, and the grant path still does not open
+
+[#168](https://github.com/mattmarshall/ratio/issues/168) asked for
+net-worth goals and what-if scenarios on Personal books without stuffing
+goal-tracking into `ratio watch` or growing a kernel RPC. Sheet, bridge,
+and cash-flow stay core. The catalog already said breadth is a Connect
+app. What landed is that app as a sibling tree, not a kernel method.
+
+**What this amendment records.** [`connect/goals/`](connect/goals/)
+is a first-party WorkOS Connect OAuth application for `BookKind` PERSONAL.
+It declares `statements:read` and `journals:post` — the frozen names,
+not the issue body's stale alias `journal:append`. Goal progress cites
+the sheet net worth already in core against a named target. Unset stays
+unset. A scenario overlays discrete CreateBook(Personal) templates
+already on the book (`living_expense`, `household_income`, `card_charge`,
+transfers, `spend_*`, `receive_income`). Scenario journals post only
+when the household administrator opts in. `journals:post` is allowlisted
+per `client_id`; an empty allowlist refuses every post. A dated opt-in
+post on or before closed-through refuses the batch. Instantiated legs
+must conserve in every currency; `[USD +100, EUR −100]` is not a
+posting. Money is minor units, split on the point. Required monthly
+savings and a FIRE number refuse — this is not a cash forecast. No new
+`Method` / `Order` / `lot_method` variant. PERSONAL chrome is unchanged
+— `screensFor` is not forked. **a Personal net-worth goals Connect app**
+is the Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not token validation.** Connect access tokens are still not accepted
+  on `/v1`. `fetch_statements()` and `deliver()` refuse. The authorizer
+  is #151 / leftover #22. This file does not close #150.
+- **Not a cash forecast, not a FIRE number, not envelope coaching.**
+  Those stay refused or cannot-show. A scenario is discrete hypothetical
+  posts, not a compounding path.
+- **Not a kernel Goal RPC, not `ratio watch`, not Console product UI.**
+  Sheet / bridge / cash-flow stay the core cites.
+- **Not #150's read-only reference skeleton.** That leftover is
+  `books:read` + `statements:read` proving the door opens. This app
+  requests `journals:post` for opt-in scenario posts and does not open
+  the door.
+
+Nothing on the *Explicitly not building* list moved. Client portal, CRM,
+tax e-file, vendor portal, and waterfall stay Connect-apps or stay
+refused. This file does not close #168 — grant path and live OAuth
+remain. It does not close #165 or #166.
+
+**What a walk-through can and cannot show** (demo readiness, #27). It can
+show a fixture sheet of $50,000 against a $75,000 target as short, an
+unset sheet leaving progress unset, extra income raising projected net
+worth, a card charge that does not move cash, a closed March refusing an
+opted-in 15 March post, and `journal:append` being rejected as a scope.
+It cannot show a Connect token opening a book, a cash forecast, or a
+FIRE number.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

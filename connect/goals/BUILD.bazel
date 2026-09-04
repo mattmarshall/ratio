@@ -1,0 +1,34 @@
+package(default_visibility = ["//visibility:public"])
+
+# The net-worth goals Connect app is a sibling tree. Bazel does not
+# build a WorkOS binary here; it holds the goal / scenario model to
+# the catalog, to CreateBook(Personal), and to the refusals the
+# issue named.
+#
+# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_statements() and
+# deliver() must refuse. Token validation is #151 / leftover #22.
+# Non-opt-in must not post. Closed-through refuses the write.
+# No kernel Goal RPC.
+sh_test(
+    name = "goals_test",
+    size = "small",
+    srcs = ["goals_test.sh"],
+    args = [
+        "$(rootpath goals.py)",
+        "$(rootpath goals_test.py)",
+        "$(rootpath app.json)",
+        "$(rootpath //crates/ratio-console:src/book.rs)",
+        "$(rootpath //:docs/connect-scopes.md)",
+        "$(rootpath //console:src/lib/screens.ts)",
+        "$(rootpath //proto:ratio/console/v1/console.proto)",
+    ],
+    data = [
+        "goals.py",
+        "goals_test.py",
+        "app.json",
+        "//crates/ratio-console:src/book.rs",
+        "//:docs/connect-scopes.md",
+        "//console:src/lib/screens.ts",
+        "//proto:ratio/console/v1/console.proto",
+    ],
+)
