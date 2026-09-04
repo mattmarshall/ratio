@@ -1,3 +1,5 @@
+import Ratio.Partners.Cut
+
 set_option warningAsError true
 /-! `Ratio.Partners.Units` — subscriptions and redemptions as unit movements.
 
@@ -82,6 +84,7 @@ def capitalLeg (m : Movement) : Int := -m.cash
 theorem a_movement_conserves (m : Movement) :
     cashLeg m + capitalLeg m = 0 := by
   simp [cashLeg, capitalLeg]
+  omega
 
 /-- Redeem `units` from an outstanding figure.
 
