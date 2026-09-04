@@ -41,6 +41,6 @@
   },
   "grant_path": {
     "status": "not built",
-    "note": "Connect access tokens are not accepted on /v1. Token validation is #151 / leftover #22. This file does not close #150 or #165."
+    "note": "In-process /v1 accepts Connect catalog scopes after membership. leftover #22: API Gateway JWT authorizer still AuthKit-session only — a live Connect token can still 401 at the edge. Write-route actor binding landed (#151). This file leaves #150 and #165 open."
   }
 }

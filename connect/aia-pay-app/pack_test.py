@@ -457,7 +457,7 @@ class ManifestHonesty(unittest.TestCase):
         for scope in p.CANONICAL_SCOPES:
             self.assertIn(f"`{scope}`", text)
         self.assertIn("`projects:billing:read`", text)
-        self.assertIn("grant path is not built", text)
+        self.assertIn("leftover #22", text)
         self.assertIn("AIA G702 product UI", text)
 
     def test_project_term_field_names_are_the_ones_ruleset_already_stores(self):

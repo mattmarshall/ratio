@@ -113,9 +113,11 @@ chrome is unchanged. `screensFor` is not forked. `/billing` and
 
 ## Leftovers — this does not close #172
 
-1. **API authorizer accepts Connect access tokens** with these scopes
-   (#150 / leftover #22). `/v1` still proves an AuthKit session JWT.
-   Write-route actor binding landed (#151); this app does not reopen it.
+1. **API Gateway JWT authorizer still AuthKit-session only**
+   (leftover on issue 22). In-process `/v1` accepts Connect catalog
+   scopes after membership. A live Connect token can still 401 at
+   the edge. Write-route actor binding landed (#151); this app
+   does not reopen it.
 2. **Live Connect OAuth.** Dashboard registration, redirect, and a
    token that `/v1` accepts.
 3. **Vendor user directory in Ratio core.** Never. Membership is the
@@ -128,8 +130,8 @@ chrome is unchanged. `screensFor` is not forked. `/billing` and
    `billing:read`, `budget:read`, and `journals:post` and does not
    open the door.
 
-Does not close #22 (grant-path leftovers stay there). Does not close
-#184 (AIA G702 product UI). Does not close #169 (EAC / forecast).
+Leaves issue 22 open for grant-path leftovers. Leaves #184
+open (AIA G702 product UI). Does not close #169 (EAC / forecast).
 Does not close #161 (LP portal). Does not close #165, #166, #168, or
 #150. Does not grow `ratio watch` or Console chrome for vendor
 product UI.

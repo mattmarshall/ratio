@@ -81,7 +81,7 @@ the grant for when that door exists; it does not mint the RPC.
 | `breaks:explain` | Person-attributed explanations | `Mark` / accept | The explainer is a person; a Connect app attributes, it does not invent |
 | `closes:read` | Close records, closed-through day | `ListPeriodCloses` / `GetPeriodClose` | Not `ratio close` — that stays a person at a terminal |
 | `config:read` | RuleSet / lot-terms cites, config digests | configuration screens | Not an editor |
-| `audit:export` | Evidence pack | Connect scaffold (`connect/audit-export/`); grant path leftover #22 | A pack is a read of cites, not a rewrite |
+| `audit:export` | Evidence pack | Connect scaffold (`connect/audit-export/`); in-process grant Built; leftover is the AuthKit-only gateway issuer | A pack is a read of cites, not a rewrite |
 | `deliveries:write` | Fact-plane deliveries | `Ingest` | High trust; same membership door |
 | `facts:admit` | Admit facts | `Admit` | High trust; provenance stays required |
 | `webhooks:journal` | Subscribe to append / close events | not built | Not a second journal |

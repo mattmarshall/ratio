@@ -120,9 +120,11 @@ Exceptions, and NAV strikes stay the core cites.
 
 ## Leftovers — this does not close #185
 
-1. **API authorizer accepts Connect access tokens** with these scopes
-   (#150 / leftover #22). `/v1` still proves an AuthKit session JWT.
-   Write-route actor binding landed (#151); this app does not reopen it.
+1. **API Gateway JWT authorizer still AuthKit-session only**
+   (leftover on issue 22). In-process `/v1` accepts Connect catalog
+   scopes after membership. A live Connect token can still 401 at
+   the edge. Write-route actor binding landed (#151); this app
+   does not reopen it.
 2. **Live Connect OAuth.** Dashboard registration, redirect, and a
    token that `/v1` accepts.
 3. **Live `fetch_cites()` / `deliver()` of a ZIP against `/v1`.**
@@ -133,7 +135,7 @@ Exceptions, and NAV strikes stay the core cites.
    `audit:export` and the read scopes above and does not open the
    door.
 
-Does not close #22 (grant-path leftovers stay there). Does not
-close #150. Does not reopen #151. Does not start #161 (LP portal).
+Leaves issue 22 open for grant-path leftovers. Leaves #150
+open. Does not reopen #151. Does not start #161 (LP portal).
 Does not grow `ratio watch` or Console chrome for an audit ZIP.
 Does not add a blob store to the kernel.
