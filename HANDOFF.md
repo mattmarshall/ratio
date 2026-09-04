@@ -867,7 +867,7 @@ than one that is entirely unclassified.
 | `crates/ratio-nav/src/explain.rs` | what a strike DOES, as a plan. ⛔ a description of two code paths, not a planner over them — nothing chooses |
 | `console/` | the console itself. Next.js on Vercel; ⛔ Bazel does not build it |
 | `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9 |
-| `AGENTS.md` | the rules, for a person or a model. Replaces the two stale LLM guides |
+| `AGENTS.md` | the rules, for a person or a model, and the dispatch contract (one issue → one cloud agent → one PR). Replaces the two stale LLM guides |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.
