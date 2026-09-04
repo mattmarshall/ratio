@@ -34,6 +34,13 @@ The Project EAC / forecast Connect app (`connect/eac-forecast/`,
 remaining-to-spend stays revised − incurred − awarded, never a
 silent EAC of 0. That does not close #169 (grant path leftover
 #22 and live EAC product UX remain).
+Equalization, drip, and side-pocket stay Connect (#177) — a
+PLAN decision, not a landing. None of the three changes
+conservation or journal integrity; do not implement them as
+kernel primitives, `screensFor` forks, or `Method` / `Order` /
+`lot_method` variants. Drip elections stay on #161. Equalization
+and side-pocket first-party apps are not filed. This file
+closes the #177 decision. It does not close #161 or #150.
 This file closes #9. It does not reopen #5 or #151.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
@@ -124,6 +131,17 @@ sum. The correction is a classification, and it is the whole chart design:
 
 A chart of accounts is the partitioning dimension people argue about. It is not
 the conserved one, and the kernel never said it was.
+
+⛔ **Equalization, drip, and side-pocket stay Connect (#177).** None
+changes `Conserves`. A late-subscriber credit is a valuation of NAV
+and the named cut; a drip is `distribute_*` then `subscribe_*`; a
+side pocket is a share-class / instrument partition plus a named
+cut. Inventing `equalize` / `drip` / `SidePocket` as a journal
+primitive, a `screensFor` fork, or a `Method` / `Order` /
+`lot_method` variant is the coverage-creep this repository already
+named. A silent 1/N of pocket NAV is the defect #180 already
+refused. Drip elections stay on #161. Do not mint `equalization:*`
+or `sidepocket:*`.
 
 ---
 
@@ -548,10 +566,11 @@ the conserved one, and the kernel never said it was.
   inception leaves beginning unset; `capital-*` is Activity and cannot
   name a beginning stock. ⛔ The walk-through cannot show IRR, TVPI /
   DPI, a waterfall, carried interest, management-fee billing as a desk
-  product, an LP portal, a future call schedule, or K-1 packaging.
-  `/strikes` stays ABOR NAV. Remaining undrawn stays on #82. Book NAV
-  roll-forward stays on #96. This file closes #180. LP portal / K-1 /
-  waterfall stay Connect (#161).
+  product, an LP portal, a future call schedule, K-1 packaging,
+  equalization, or a side-pocket class. `/strikes` stays ABOR NAV.
+  Remaining undrawn stays on #82. Book NAV roll-forward stays on #96.
+  This file closes #180. LP portal / K-1 / waterfall stay Connect
+  (#161). Equalization, drip, and side-pocket stay Connect (#177).
 - ⚠ **A subscription / redemption walk-through (#181 / #27).** Record
   `subscribe_lp` with a unit count: cash and partner capital move, the
   trial balance still ties, no lot opens, `/capital` cites the partner's
@@ -568,8 +587,10 @@ the conserved one, and the kernel never said it was.
   `sub-0001` posts 500,000 units on Capital contributions, dated, so
   `/nav` can cite them. Ingest or record `subscribe_lp`. ⛔ The
   walk-through cannot show an LP portal, drip, or payment initiation
-  (Connect — #161 / #150). This file closes #181. It does not reopen
-  #180.
+  (Connect — #161 / #150). Equalization, drip, and side-pocket stay
+  Connect (#177) — a drip is still two existing postings plus an
+  election, not a kernel primitive. This file closes #181. It does
+  not reopen #180. It does not close #161.
 - ⚠ **A management-fee accrual walk-through (#182 / #27).** Write
   `management_fee_accrual` (75 bp, act/365, expense 10 / payable 40)
   and accrue a dividing basis: expense debit and payable credit
@@ -951,7 +972,7 @@ than one that is entirely unclassified.
 | `console/` | the console itself. Next.js on Vercel; ⛔ Bazel does not build it |
 | `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9 |
 | `AGENTS.md` | the rules, for a person or a model, and the dispatch contract (one issue → one cloud agent → one PR). Replaces the two stale LLM guides |
-| `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Contract only — authorizer acceptance is leftover #22. Write-route actor = WorkOS `sub`; a Connect-shaped token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}` (#151). Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation |
+| `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Contract only — authorizer acceptance is leftover #22. Write-route actor = WorkOS `sub`; a Connect-shaped token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}` (#151). Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation. Equalization, drip, and side-pocket stay Connect ([#177](https://github.com/mattmarshall/ratio/issues/177)) — existing scopes, no new grants; drip on #161; equalization / side-pocket apps not filed |
 | `connect/bank-feed/` | First-party Connect app for Personal bank feeds ([#165](https://github.com/mattmarshall/ratio/issues/165)). Mapper + allowlist + closed-through / conservation refusals. Grant path is not built; live bank OAuth is leftover. Does not close #165 |
 | `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — `Ratio.Lots.PoolPeriod`, not an invented FIFO oldest date or two Form 8949 boxes. Grant path is not built; IRS e-file is refused. Does not close #166 |
 | `connect/goals/` | First-party Connect app for Personal net-worth goals and what-if scenarios ([#168](https://github.com/mattmarshall/ratio/issues/168)). Cites sheet / bridge / cash-flow; opt-in scenario journals on allowlisted Personal templates; closed-through and empty-allowlist refuse. Grant path is not built. Not a cash forecast. Does not close #168 |

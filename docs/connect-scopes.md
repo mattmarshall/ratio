@@ -125,10 +125,24 @@ The issue's refuse list, said here so a later RPC does not "just" add them:
 
 client portal · bank OAuth · CRM · tax e-file · vendor portal · waterfall
 engine · GC/sub marketplace · e-signature · AIA G702 product UI · payroll ·
-inventory / COGS · credit score · cash forecast.
+inventory / COGS · credit score · cash forecast · equalization
+calculation · drip subscription packaging · side-pocket ops.
 
 Each of those may *read* through a scope above. None of them becomes a
 kernel method.
+
+⭐ **equalization, drip, and side-pocket stay Connect**
+([#177](https://github.com/mattmarshall/ratio/issues/177)). Not core:
+none of the three changes conservation or journal integrity. Equalization
+is a valuation of NAV and the named cut; the books half is already
+`subscribe_*`. A drip is `distribute_*` then `subscribe_*` plus an LP
+election (#161). A side pocket is a share-class / instrument partition
+and a named partner cut — a silent 1/N of pocket NAV is the defect #180
+already refused. Do not mint `equalization:*` or `sidepocket:*`. Existing
+scopes: `nav:read`, `partners:read`, `capital:read`, `positions:read`,
+`config:read`, `journals:post`. Drip elections stay on #161. Equalization
+and side-pocket first-party apps are not filed. The PLAN amendment
+closes the decision card; this file does not close #161 or #150.
 
 ---
 

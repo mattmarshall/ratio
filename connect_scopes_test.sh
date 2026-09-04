@@ -118,6 +118,18 @@ done
 grep -qF -- "does not close #150" <<<"$WHOLE_PLAN" \
   || { echo "  x PLAN.md must say it does not close #150" >&2; bad=1; }
 
+# #177: equalization / drip / side-pocket stay Connect, not kernel
+# primitives. A catalog or plan that drops the decision is the same
+# lag as a scope rename nobody noticed.
+for phrase in "equalization, drip, and side-pocket stay Connect" "#177"; do
+  grep -qiF -- "$phrase" <<<"$CAT" \
+    || { echo "  x catalog dropped $phrase" >&2; bad=1; }
+  grep -qiF -- "$phrase" <<<"$WHOLE_PLAN" \
+    || { echo "  x PLAN.md dropped $phrase" >&2; bad=1; }
+  grep -qiF -- "$phrase" <<<"$WHOLE_HANDOFF" \
+    || { echo "  x HANDOFF.md dropped $phrase" >&2; bad=1; }
+done
+
 # ⛔ lots:elect is SpecID names, not a Method / Order. The same sentence
 # this repository uses for MinTax / SpecID / average cost.
 grep -qF -- 'lot_method = "specific_id"' "$CATALOG" \
