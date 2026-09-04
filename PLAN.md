@@ -1834,6 +1834,56 @@ prior leaving previous certificates unset, and `projects:billing:read`
 being rejected as a scope. It cannot show a Connect token opening a
 book, a licensed AIA PDF, or live G702 product UX beyond the pack.
 
+### Amendment, 2026-09-04 — management-fee accrual posts receivable/expense
+
+Stage 1 already had the accrual *rule*: `rate_bp`, a day-count, a
+balanced template. Posting **accrual → receivable/expense** on the
+journal was the books half (#182). Invoice PDF / LP statements /
+payment collection stay Connect (`fees:read` / `fees:accrue`).
+
+What landed is the election plus the conserved posting:
+
+- Lean: `Ratio.Fees.Accrual`. Terms are an election (`None` is
+  unset, not a silent 0 bp). A zero rate is not well-formed. The
+  posting is expense debit and receivable credit of one amount
+  (`a_posting_conserves`). Same-sign legs are not an accrual. A
+  zero amount is not a posting. The citeable receivable stays
+  unset without terms — even if some other rule moved the payable
+  — and an empty journal stays unset. Accrued then paid is a real
+  zero.
+- Rust: `RuleSet.fee_terms` reads `management_fee_accrual`.
+  CreateBook writes no fee rule. `accrue` returns the conserved
+  pair or `None`. `compile` of the elected rule is that pair.
+  GetBook.`fee_receivable` is empty without terms or without a
+  post. ApplyEvent refuses a zero-day no-op and a same-sign
+  template.
+- `/capital` cites the receivable. Empty is unset.
+
+**What this is NOT:**
+
+- Not **invoice packaging, LP email, or payment collection**.
+  Those stay Connect (#150 / `fees:read` / `fees:accrue`).
+- Not a **seeded demo fee**. CreateBook writes no
+  `management_fee_accrual`, so the live demo's receivable stays
+  unset — correctly.
+- Not a **`screensFor` fork**, and not a `Method` / `Order` /
+  `lot_method` variant.
+- Not #181 leftovers (demo seed money-only unitization, NAV
+  issued/redeemed plugs, per-share NAV).
+- Not #180 leftovers (specials fold, seed cut, no LP portal).
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #182. Invoice / LP leftovers were never this
+issue's — they stay Connect.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can write `management_fee_accrual` at 75 bp act/365, accrue a
+dividing basis, cite a conserved expense / payable on the journal
+and the receivable on `/capital` / GetBook, and leave the figure
+unset on a book that never elected the rule — including the live
+demo. It cannot show an invoice PDF, an LP statement, or a
+payment. Those remain Connect.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

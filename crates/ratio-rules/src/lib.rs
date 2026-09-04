@@ -33,6 +33,10 @@ pub use partners::{
     well_formed_move, AllocationFact, AllocationKind, PartnerShare, SpecialAllocation,
 };
 
+/// Management-fee accrual — elected terms, conserved receivable/expense.
+mod fees;
+pub use fees::{accrue as accrue_fee, fee_receivable, FeeTerms, FEE_RULE_ID};
+
 /// The grading decision, authored in Lean.
 mod generated_tolerance;
 
@@ -1507,6 +1511,14 @@ pub fn check(set: &RuleSet, chart: &[Account]) -> Vec<Finding> {
         // ── accruals need a rate and a convention; others need neither ─────
         match rule.kind {
             RuleKind::Accrual => {
+                if rule.id == crate::FEE_RULE_ID && rule.rate_bp == Some(0) {
+                    out.push(Finding::error(
+                        &rule.id,
+                        "has a rate of 0 bp. That is not a fee election — omit the rule. \
+                         A silent zero receivable is the defect. \
+                         Ratio.Fees.no_terms_leaves_receivable_unset",
+                    ));
+                }
                 if rule.rate_bp.is_none() {
                     out.push(Finding::error(
                         &rule.id,
@@ -1703,15 +1715,25 @@ fn accrual_amount(rule: &Rule, event: &Event) -> Result<i64> {
     let days = event
         .days
         .with_context(|| format!("event {:?} accrues but does not say over how many days", event.id))?;
-    if days < 0 {
-        anyhow::bail!("event {:?} accrues over {days} days", event.id);
-    }
+    computed_accrual(rate, day_count, event.amount, days)
+        .with_context(|| format!("accrual for {:?} does not fit in i64", event.id))
+}
 
-    let numerator = (event.amount as i128) * (rate as i128) * (days as i128);
+/// Stage 1's integer accrual. Shared with [`fees::accrue`] so the
+/// elected fee path and `compile` cannot come to two amounts.
+pub(crate) fn computed_accrual(
+    rate: i64,
+    day_count: DayCount,
+    basis: i64,
+    days: i64,
+) -> Result<i64> {
+    if days < 0 {
+        anyhow::bail!("an accrual over {days} days");
+    }
+    let numerator = (basis as i128) * (rate as i128) * (days as i128);
     let denominator = 10_000i128 * day_count.denominator();
     let rounded = round_half_up(numerator, denominator);
-    i64::try_from(rounded)
-        .with_context(|| format!("accrual for {:?} does not fit in i64", event.id))
+    i64::try_from(rounded).context("an accrual does not fit in i64")
 }
 
 /// Integer division rounding half away from zero.

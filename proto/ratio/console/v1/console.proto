@@ -671,6 +671,18 @@ message Book {
   // or stays unset. Exact amounts are journal facts, not this list.
   repeated SpecialAllocation special_allocations = 15
       [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Accrued management-fee receivable, minor units.
+  //
+  // ⛔ EMPTY IS UNSET, NOT A SILENT 0. CreateBook writes no fee rule, so
+  // a new Investment book has no terms and no receivable. Writing
+  // `management_fee_accrual` is the election; the figure fills when that
+  // rule posts. A book that never elected a fee must not report that
+  // the fund owes nothing. Paid in full after a post is `"0"` — a real
+  // zero. `Ratio.Fees.no_terms_leaves_receivable_unset`.
+  //
+  // Invoice PDF / LP statements stay Connect. Field 16. specials are 15.
+  string fee_receivable = 16 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One named weight in a partner cut. Absent from `Book.partner_cut`

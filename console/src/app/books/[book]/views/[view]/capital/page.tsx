@@ -234,12 +234,33 @@ async function Capital({
         </div>
       </div>
 
+      <div className="tb" role="table" aria-label="Fee receivable">
+        <div className="tbrow static" role="row">
+          <span role="cell">
+            Fee receivable
+            <span className="at">
+              {b.feeReceivable === ""
+                ? "unset — no elected fee terms, not a silent zero receivable"
+                : b.feeReceivable === "0"
+                  ? "accrued then paid — a real zero, not unset"
+                  : "accrued management fee on the journal — expense debit, receivable credit"}
+            </span>
+          </span>
+          <span role="cell" className="num">
+            {b.feeReceivable === "" ? "—" : money(b.feeReceivable)}
+          </span>
+        </div>
+      </div>
+
       <p className="note">
         Allocated income, expense, and unrealized stay unset until a
         named partner-cut exists — not an equal share of book NAV, not a
         silent zero. A written <code>[[partner_cut]]</code> fills the
         plugs when the figure divides. Book plugs remain on the NAV
         roll-forward. Not IRR, not a waterfall.
+        Fee receivable stays unset without an elected
+        <code>management_fee_accrual</code> — never a silent zero.
+        Invoice and LP statements stay Connect.
         {" · "}
         <Link href={`/books/${book}/record`}>Record an event</Link>
         {" · "}

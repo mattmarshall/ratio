@@ -134,6 +134,38 @@ BUILT=(
   # catalog already named. The sentence it matches is in the 2026-09-04
   # pay-app amendment.
   "a Project AIA pay-app Connect app"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The partner allocation cut is not on the refusal list — this check
+  # would have stayed green whatever was built. The sentence it matches
+  # is in the 2026-09-04 partner-cut amendment. #191 landed the cut
+  # without this file moving; adding the line is the cost of noticing.
+  "the partner allocation cut is named weights"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The Personal bank-feed Connect app is not on the refusal list —
+  # bank OAuth product UI stays refused; this is the product door the
+  # catalog already named. The sentence it matches is in the 2026-09-04
+  # bank-feed amendment. #192 landed the scaffold without this file
+  # moving; adding the line is the cost of noticing.
+  "a Personal bank-feed Connect app"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Unit-movement subscriptions are not on the refusal list — this
+  # check would have stayed green whatever was built. The sentence it
+  # matches is in the 2026-09-04 unit-movement amendment. #196 landed
+  # them without this file moving; adding the line is the cost of
+  # noticing.
+  "subscriptions and redemptions are unit movements"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The write-route actor binding is not on the refusal list — this
+  # check would have stayed green whatever was built. The sentence it
+  # matches is in the 2026-09-04 write-route amendment. #198 landed
+  # the `sub` without this file moving; adding the line is the cost
+  # of noticing. Leftovers stay on #22.
+  "write-route actor is the WorkOS \`sub\`"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Management-fee accrual on the journal is not on the refusal list —
+  # invoice / LP packaging stays Connect. The sentence it matches is
+  # in the 2026-09-04 fee-accrual amendment.
+  "management-fee accrual posts receivable/expense"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

@@ -610,6 +610,19 @@ lean_test(
     entry = "Ratio/Partners/Units.lean",
 )
 
+# ⛔ Management-fee accrual as a conserved receivable/expense posting.
+#
+# Stage 1 already has the rule (rate, day-count, balanced template).
+# The books half: an elected rule posts, and the receivable stays
+# unset when fee terms are absent — never a silent zero receivable.
+# Same-sign legs are not an accrual. Invoice / LP stay Connect.
+lean_test(
+    name = "fees_accrual_proof_test",
+    size = "small",
+    srcs = ["Ratio/Fees/Accrual.lean"],
+    entry = "Ratio/Fees/Accrual.lean",
+)
+
 # ⛔ A jurisdiction that does NOT transfer the holding period.
 #
 # `Ratio.Lots.Wash.replacementAcquired` is the US rule. Assuming it

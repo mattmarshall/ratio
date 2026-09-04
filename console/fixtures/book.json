@@ -13,5 +13,6 @@
   "envelopes": [],
   "loans": [],
   "partnerCut": [],
-  "specialAllocations": []
+  "specialAllocations": [],
+  "feeReceivable": ""
 }

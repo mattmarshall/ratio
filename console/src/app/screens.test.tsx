@@ -467,6 +467,10 @@ describe("a first-class book", () => {
       expect(
         screen.getByText(/unset — no commitment has been posted, not a callable zero/),
       ).toBeDefined();
+      expect(screen.getByLabelText("Fee receivable")).toBeDefined();
+      expect(
+        screen.getByText(/unset — no elected fee terms, not a silent zero receivable/),
+      ).toBeDefined();
       expect(screen.getByText("unset")).toBeDefined();
     } finally {
       wire.getBook = realBook;

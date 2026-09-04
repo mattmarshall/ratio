@@ -78,6 +78,14 @@ export interface Book {
    * `partnerCut`, or stays unset.
    */
   specialAllocations: SpecialAllocation[];
+  /**
+   * Accrued management-fee receivable, minor units.
+   *
+   * ⛔ EMPTY IS UNSET, NOT A SILENT 0. CreateBook writes no fee rule.
+   * Writing `management_fee_accrual` is the election; the figure fills
+   * when that rule posts. `Ratio.Fees.no_terms_leaves_receivable_unset`.
+   */
+  feeReceivable: Int64;
 }
 
 /** One named weight in a partner cut. */
