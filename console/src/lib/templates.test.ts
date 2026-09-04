@@ -25,7 +25,9 @@ describe("book templates", () => {
     expect(byKind.PERSONAL).toMatch(/configuration total/);
     expect(byKind.PERSONAL).toMatch(/named loans/);
     expect(byKind.PERSONAL).toMatch(/brokerage-statement/);
-    expect(byKind.PERSONAL).toMatch(/Lot relief stays unset/);
+    expect(byKind.PERSONAL).toMatch(/Lot relief stays unset until/);
+    expect(byKind.PERSONAL).toMatch(/lot_relief/);
+    expect(byKind.PERSONAL).toMatch(/not fund ABOR chrome/);
     expect(byKind.INVESTMENT).toMatch(/fair value/);
     expect(byKind.INVESTMENT).toMatch(/distributions/);
     expect(byKind.INVESTMENT).toMatch(/partner capital/);

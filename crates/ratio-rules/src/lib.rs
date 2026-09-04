@@ -528,6 +528,22 @@ pub struct PersonalTerms {
     /// `Ratio.Chart.Dimensions`: each code is its own conservation law.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub currencies: Vec<String>,
+    /// Whether household Investments posts open tax lots.
+    ///
+    /// ⛔ NOT A `LotMethod`, AND NOT A SILENT TRUE. Household transfers
+    /// avoid claiming lot relief by default. `None` is unset — buys land
+    /// as transfers, the lot book stays empty. `Some(true)` elects the
+    /// wash / MinTax / SpecID / average-cost engines already on the
+    /// book. `Some(false)` is refused at read — omit the field.
+    /// `lot_method = "wash" | "min_tax" | "average_cost"` stays refused.
+    ///
+    /// ⛔ AND IT CANNOT BE ELECTED WITHOUT `[chart_roles]`. A sale
+    /// cannot post a gain the chart has not named. The check lives on
+    /// [`RuleSet::from_toml`], next to the other election refuses.
+    ///
+    /// [`RuleSet::from_toml`]: RuleSet::from_toml
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lot_relief: Option<bool>,
 }
 
 impl PersonalTerms {
@@ -598,6 +614,19 @@ impl PersonalTerms {
                 bail!(
                     "this configuration declares {code} twice. A figure cited \
                      against that currency could not pick one"
+                );
+            }
+        }
+        // ⛔ FALSE IS NOT AN ELECTION. Omitting the field is how a
+        // household stays on transfers. Writing false would make
+        // "somebody said no" look like a term, and a silent true
+        // would open a lot on every existing Personal book.
+        if let Some(flag) = self.lot_relief {
+            if !flag {
+                bail!(
+                    "[personal] lot_relief = false is not an election — omit the field. \
+                     None means nobody said, and household Investments stays a \
+                     transfer. See Ratio.Lots"
                 );
             }
         }
@@ -766,6 +795,18 @@ impl RuleSet {
     /// raw field is one reporting whether a fund actually elected a method.
     pub fn effective_lot_method(&self) -> LotMethod {
         self.lot_method.unwrap_or_default()
+    }
+
+    /// Whether a household book has elected tax lots on Investments.
+    ///
+    /// ⛔ FALSE IS UNSET, NOT A THIRD MEANING. `Some(false)` is refused
+    /// at read. Only `Some(true)` elects. A Personal book that never
+    /// wrote the field stays on transfers — the same distinction
+    /// [`average_cost`] keeps.
+    ///
+    /// [`average_cost`]: RuleSet::average_cost
+    pub fn personal_lot_relief_elected(&self) -> bool {
+        self.personal.as_ref().and_then(|p| p.lot_relief) == Some(true)
     }
 
     /// The views the engine folds: what was declared, or the one every book has.
@@ -1347,6 +1388,20 @@ impl RuleSet {
         }
         if let Some(p) = &set.personal {
             p.check()?;
+            // ⛔ LOT RELIEF WITHOUT CHART ROLES CANNOT POST A GAIN.
+            // The three roles must be distinct; that check already
+            // ran above when the table is present. Silence here is
+            // "we handle lots" in name only — every conservation
+            // check would pass and the taxable income would be
+            // nowhere. Same placement as keep-without-a-window.
+            if p.lot_relief == Some(true) && set.chart_roles.is_none() {
+                bail!(
+                    "this configuration elects [personal] lot_relief without \
+                     [chart_roles]. A household sale cannot post a gain the \
+                     chart has not named. Write investments / cash / \
+                     realized_gain, or omit the election. See Ratio.Lots.Posting"
+                );
+            }
         }
         // ⛔ A CUT IS NAMED WEIGHTS, NOT A PARTNER COUNT. Checked when
         // the configuration is READ: a zero weight or a duplicate
@@ -2516,6 +2571,10 @@ calendar = "us-settlement"
             Some(0),
             "a set baseline of nothing is not the same as unset"
         );
+        assert!(
+            !zero.personal_lot_relief_elected(),
+            "a budget is not a lot election"
+        );
 
         let e = RuleSet::from_toml("rules = []\n[personal]\nbudget = -1\n")
             .expect_err("a negative budget must not parse")
@@ -2562,6 +2621,71 @@ calendar = "us-settlement"
             .expect_err("a duplicate code must not parse")
             .to_string();
         assert!(dup.contains("twice"), "{dup}");
+    }
+
+    #[test]
+    fn a_household_lot_election_nobody_declared_is_absent_rather_than_true() {
+        // ⛔ NOT A SILENT TRUE. Opening lots on a book that never elected
+        // them would restate every household transfer as a tax lot.
+        // None means nobody said; Some(true) elects the engines already
+        // on main; Some(false) is refused at read.
+        assert!(!RuleSet::default().personal_lot_relief_elected());
+        assert!(!RuleSet::from_toml("rules = []\n")
+            .unwrap()
+            .personal_lot_relief_elected());
+
+        let denied = RuleSet::from_toml("rules = []\n[personal]\nlot_relief = false\n")
+            .expect_err("false is not an election")
+            .to_string();
+        assert!(denied.contains("not an election"), "{denied}");
+
+        let missing_roles = RuleSet::from_toml("rules = []\n[personal]\nlot_relief = true\n")
+            .expect_err("lots without chart roles cannot post a gain")
+            .to_string();
+        assert!(missing_roles.contains("chart_roles"), "{missing_roles}");
+
+        let set = RuleSet::from_toml(
+            "rules = []\n[personal]\nlot_relief = true\n\
+             [chart_roles]\ninvestments = 2\ncash = 1\nrealized_gain = 31\n",
+        )
+        .unwrap();
+        assert!(set.personal_lot_relief_elected(), "somebody said");
+        assert_eq!(set.lot_method, None, "lot relief is not a lot_method");
+        assert_eq!(set.average_cost, None, "and it is not a pool");
+        assert_eq!(set.min_tax_short_weight, None, "and it is not min-tax");
+        assert_eq!(set.wash_window_days, None, "and it is not a wash window");
+
+        let toml = RuleSet::from_toml("rules = []\n").unwrap().to_toml().unwrap();
+        assert!(
+            !toml.contains("lot_relief"),
+            "silence must not write an election: {toml}"
+        );
+        let named = set.to_toml().unwrap();
+        assert!(named.contains("lot_relief = true"), "{named}");
+
+        // The existing engines remain electable beside it — they are
+        // not Method variants, and this field does not mint one.
+        let with_wash = RuleSet::from_toml(
+            "rules = []\nwash_window_days = 30\n[personal]\nlot_relief = true\n\
+             [chart_roles]\ninvestments = 2\ncash = 1\nrealized_gain = 31\n",
+        )
+        .unwrap();
+        assert!(with_wash.personal_lot_relief_elected());
+        assert_eq!(with_wash.wash_window_days, Some(30));
+
+        let with_mintax = RuleSet::from_toml(
+            "rules = []\nmin_tax_short_weight = 2\n[personal]\nlot_relief = true\n\
+             [chart_roles]\ninvestments = 2\ncash = 1\nrealized_gain = 31\n",
+        )
+        .unwrap();
+        assert_eq!(with_mintax.min_tax_short_weight, Some(2));
+
+        let with_pool = RuleSet::from_toml(
+            "rules = []\naverage_cost = true\n[personal]\nlot_relief = true\n\
+             [chart_roles]\ninvestments = 2\ncash = 1\nrealized_gain = 31\n",
+        )
+        .unwrap();
+        assert_eq!(with_pool.average_cost, Some(true));
     }
 
     #[test]

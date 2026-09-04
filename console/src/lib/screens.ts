@@ -74,7 +74,9 @@ export const FUND_SCREENS: readonly Screen[] = [
 /**
  * Household figures. Balance sheet, period P&L, the net-worth bridge,
  * the period cash-flow statement, the period close, budget vs actual,
- * and the loan roll-forward — not ABOR.
+ * and the loan roll-forward — not ABOR. `[personal] lot_relief`
+ * elects the lot engines already on the book; it does not add
+ * Positions / NAV / Exceptions to this list.
  *
  * Trial balance stays: it is the conservation view of the same accounts, and
  * a sheet that could not be checked against it would be a picture.
