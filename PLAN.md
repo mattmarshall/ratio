@@ -2076,6 +2076,56 @@ window or a book with no units. It cannot show an LP portal, a
 1/N split of book units, or a seeded partner cut. Those remain on
 Connect or #180.
 
+### Amendment, 2026-09-04 — Project `/budget` posts and ingests change orders / awards
+
+[#170](https://github.com/mattmarshall/ratio/issues/170) asked for an
+approved change order or award to be posted from the existing Project
+`/budget` chrome, with phase keys, unset until posted, and without a
+second budget store. Change orders and awarded commitments were already
+journal facts (`approve_co_*` / `award_commitment_*`); the leftover was
+that the walk-through had to leave `/budget` to `/record` or `/ingest`
+to write them.
+
+**What this amendment records.** Project `/budget` posts a change order
+or award through the same `ApplyEvent` `/record` uses. Kind × phase
+selects a rule CreateBook already seeded — `approve_co` /
+`deduct_co` / `award_commitment` / `release_commitment`, optionally
+`_site` / `_structure` / `_finishes`. A tampered form that sends
+`project_cost` or `equity_purchase` is refused. CSV ingest on the same
+page uses the same `change-orders` / `purchase-orders` templates;
+`listTemplates` is not a fourth upstream call — those two ids are the
+kind-selected catalog. Facts stay unset until posted:
+`postingCount === "0"` is still the distinction. Treating an unposted
+award as 0 would print budget − actual as headroom. No new journal
+kind. No new `Method` / `Order` / `lot_method` variant. PERSONAL /
+INVESTMENT / OPERATING `screensFor` paths are unchanged. `/budget`
+still does not forecast. **change-order and award ingest on `/budget`**
+is the Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not a Connect estimating app.** Estimating tools push later via
+  `journals:post` (the frozen name; `journal:append` is an alias) plus
+  `budget:read`. Grant path leftover #22 / #150. This file does not
+  close #22. It does not close #150. It does not reopen #151.
+- **Not EAC / forecast, not a vendor portal, not collections chrome.**
+  Those doors are #169, #172, #173. `/budget` still does not forecast.
+- **Not a second budget store, not a `screensFor` fork.**
+- **Not a kernel RPC.** The write is `ApplyEvent` on the seeded rules.
+
+Nothing on the *Explicitly not building* list moved. This amendment
+closes #170. It does not close #169, #172, #173, #184, #104, #91,
+#150, or #22.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can open a Project `/budget`, leave approved / awarded unset
+before anything posts, preview then post `approve_co_site` or
+`award_commitment_site`, cite the posted figure on the same page,
+and ingest a `change-orders` / `purchase-orders` CSV under those
+templates. It cannot show a Connect token opening a book, an
+estimating-tool OAuth grant, EAC fields on `/budget`, or a vendor
+portal.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

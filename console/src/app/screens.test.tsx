@@ -1235,6 +1235,13 @@ describe("a first-class book", () => {
         screen.getByText(/unset — no approved change order has posted, not a silent zero/),
       ).toBeDefined();
       expect(screen.getByText(/equals the original — no approved change order has posted/)).toBeDefined();
+      expect(screen.getByText("Post a change order or award")).toBeDefined();
+      expect(
+        screen.getByText(/Facts stay unset on this page until the journal has the entry/),
+      ).toBeDefined();
+      expect(screen.getByText("No change-order or award rule in force")).toBeDefined();
+      expect(screen.getByText(/change-orders/)).toBeDefined();
+      expect(screen.getByText(/purchase-orders/)).toBeDefined();
       expect(
         screen.queryByRole("link", { name: "Exceptions" }),
       ).toBeNull();
@@ -1378,6 +1385,28 @@ describe("a first-class book", () => {
       ).toBeDefined();
     } finally {
       wire.listAccounts = real;
+    }
+  });
+
+  it("asks ListRules so /budget can post the same CO / award kinds /record uses", async () => {
+    const books: unknown[] = [];
+    const real = wire.listRules;
+    wire.listRules = (async (...args: unknown[]) => {
+      books.push(args[1]);
+      return { rules: [], nextPageToken: "" };
+    }) as typeof wire.listRules;
+    try {
+      const Budget = (await import("./books/[book]/views/[view]/budget/page")).default;
+      await renderAsync(
+        Budget({
+          params: params({ book: "bridge", view: "book" }),
+          searchParams: params({}),
+        }),
+      );
+      expect(books).toEqual(["bridge"]);
+      expect(screen.getByText("No change-order or award rule in force")).toBeDefined();
+    } finally {
+      wire.listRules = real;
     }
   });
 
@@ -1594,6 +1623,12 @@ describe("a first-class book", () => {
   it("cites household budget vs actual and does not invent a zero baseline", async () => {
     const Budget = (await import("./books/[book]/views/[view]/budget/page")).default;
     const real = wire.listAccounts;
+    const realRules = wire.listRules;
+    const rulesAsked: unknown[] = [];
+    wire.listRules = (async (...args: unknown[]) => {
+      rulesAsked.push(args[1]);
+      return rulesFixture;
+    }) as typeof wire.listRules;
     wire.listAccounts = (async () => ({
       accounts: [
         {
@@ -1643,8 +1678,13 @@ describe("a first-class book", () => {
         screen.getByText("no [personal] budget on the configuration in force"),
       ).toBeDefined();
       expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+      expect(screen.queryByText("Post a change order or award")).toBeNull();
+      expect(screen.queryByText("change-orders")).toBeNull();
+      expect(screen.queryByText("purchase-orders")).toBeNull();
+      expect(rulesAsked).toEqual([]);
     } finally {
       wire.listAccounts = real;
+      wire.listRules = realRules;
     }
   });
 
@@ -3970,6 +4010,32 @@ describe("the write screens", () => {
     measured: false,
   };
 
+  const CO_SITE = {
+    name: "funds/bridge/rules/approve_co_site",
+    ruleId: "approve_co_site",
+    kind: "TRADE" as const,
+    description: "Approve a site-and-mobilization change order",
+    form: "authorization up, approved change orders up",
+    accounts: [
+      "Change-order authorization — Site and mobilization",
+      "Approved change orders — Site and mobilization",
+    ],
+    measured: false,
+  };
+
+  const AWARD_SITE = {
+    name: "funds/bridge/rules/award_commitment_site",
+    ruleId: "award_commitment_site",
+    kind: "TRADE" as const,
+    description: "Award a site-and-mobilization purchase order",
+    form: "authorization up, awarded commitments up",
+    accounts: [
+      "Commitment authorization — Site and mobilization",
+      "Awarded commitments — Site and mobilization",
+    ],
+    measured: false,
+  };
+
   const XFER_CASH_INV = {
     name: "funds/household/rules/xfer_cash_investments",
     ruleId: "xfer_cash_investments",
@@ -4029,6 +4095,9 @@ describe("the write screens", () => {
     const { IngestForm } = await import("./books/[book]/ingest/IngestForm");
     const { TradeTicket } = await import("./books/[book]/trade/TradeTicket");
     const { TransferForm } = await import("./books/[book]/transfer/TransferForm");
+    const { BudgetPostForm } = await import(
+      "./books/[book]/views/[view]/budget/BudgetPostForm"
+    );
 
     for (const [what, el] of [
       ["record", <RecordForm key="r" fund={FUND} rules={rulesFixture.rules as Rule[]} />],
@@ -4050,6 +4119,10 @@ describe("the write screens", () => {
       [
         "transfer",
         <TransferForm key="x" fund="household" rules={[XFER_CASH_INV]} />,
+      ],
+      [
+        "budget-post",
+        <BudgetPostForm key="b" fund="bridge" rules={[CO_SITE, AWARD_SITE]} />,
       ],
     ] as const) {
       const { unmount } = render(el);
@@ -4420,6 +4493,94 @@ describe("the write screens", () => {
     });
     expect(sent).not.toHaveProperty("instrument");
     expect(sent).not.toHaveProperty("quantity");
+  });
+
+  it("posts a phase-keyed award from /budget without inventing a journal kind", async () => {
+    const { BudgetPostForm } = await import(
+      "./books/[book]/views/[view]/budget/BudgetPostForm"
+    );
+    render(<BudgetPostForm fund="bridge" rules={[CO_SITE, AWARD_SITE]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    fireEvent.change(screen.getByLabelText("Kind"), {
+      target: { value: "award" },
+    });
+    fireEvent.change(screen.getByLabelText("Phase"), {
+      target: { value: "site" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "3000.00" },
+    });
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-03-15" },
+    });
+    fireEvent.change(screen.getByLabelText("Reference"), {
+      target: { value: "PO-site-1" },
+    });
+    expect(screen.getByText("award_commitment_site")).toBeDefined();
+    expect(screen.getByText("3,000.00")).toBeDefined();
+    expect(screen.queryByLabelText("Instrument")).toBeNull();
+    expect(screen.queryByLabelText("Units")).toBeNull();
+    const form = document.querySelector("form")!;
+    const sent = Object.fromEntries(new FormData(form).entries());
+    expect(sent).toMatchObject({
+      fund: "bridge",
+      ruleId: "award_commitment_site",
+      amount: "3000.00",
+      dated: "2026-03-15",
+      eventId: "PO-site-1",
+    });
+    expect(sent).not.toHaveProperty("instrument");
+    expect(sent).not.toHaveProperty("quantity");
+  });
+
+  it("posts a phase-keyed change order from /budget and will not offer a phase that is not in force", async () => {
+    const { BudgetPostForm } = await import(
+      "./books/[book]/views/[view]/budget/BudgetPostForm"
+    );
+    render(<BudgetPostForm fund="bridge" rules={[CO_SITE, AWARD_SITE]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    fireEvent.change(screen.getByLabelText("Kind"), {
+      target: { value: "approve" },
+    });
+    const phase = screen.getByLabelText("Phase") as HTMLSelectElement;
+    expect([...phase.options].map((o) => o.value)).toEqual(["", "site"]);
+    expect(screen.queryByText("Structure")).toBeNull();
+    fireEvent.change(phase, { target: { value: "site" } });
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "5000.00" },
+    });
+    fireEvent.change(screen.getByLabelText("Reference"), {
+      target: { value: "CO-1" },
+    });
+    expect(screen.getByText("approve_co_site")).toBeDefined();
+    const sent = Object.fromEntries(
+      new FormData(document.querySelector("form")!).entries(),
+    );
+    expect(sent.ruleId).toBe("approve_co_site");
+    expect(sent.dated).toBe("");
+  });
+
+  it("keeps Post shut until a preview matches these inputs", async () => {
+    const { BudgetPostForm } = await import(
+      "./books/[book]/views/[view]/budget/BudgetPostForm"
+    );
+    render(<BudgetPostForm fund="bridge" rules={[CO_SITE, AWARD_SITE]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    const post = screen.getByRole("button", { name: "Post" });
+    expect(post.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByLabelText("Kind"), {
+      target: { value: "award" },
+    });
+    fireEvent.change(screen.getByLabelText("Phase"), {
+      target: { value: "site" },
+    });
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "3000.00" },
+    });
+    fireEvent.change(screen.getByLabelText("Reference"), {
+      target: { value: "PO-1" },
+    });
+    expect(post.hasAttribute("disabled")).toBe(true);
   });
 });
 
