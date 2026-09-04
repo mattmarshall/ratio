@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { NavGateCite } from "@/components/NavGate";
 import { Refusal } from "@/components/Refusal";
 import { Stat } from "@/components/Stat";
+import { Unavailable } from "@/components/Unavailable";
 import { bookOf, viewOf } from "@/lib/data";
 import { basisOf, count, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
@@ -39,13 +40,20 @@ export default async function ViewLayout({
   params: Promise<{ book: string; view: string }>;
 }) {
   const { book: fund, view } = await params;
-  const r = await orRefused(or404(viewOf(fund, view)));
-  if (r.refused !== null) {
-    return <Refusal why={r.refused} />;
+  const viewRead = await orRefused(or404(viewOf(fund, view)));
+  if (viewRead.refused !== null) {
+    return <Refusal why={viewRead.refused} />;
   }
-  const v = r.value;
+  if (viewRead.value.unavailable !== null) {
+    return <Unavailable why={viewRead.value.unavailable} />;
+  }
+  const v = viewRead.value.value;
   const basis = basisOf(v.basis, v.settlementOpenDays);
-  const book = await or404(bookOf(fund));
+  const bookRead = await or404(bookOf(fund));
+  if (bookRead.unavailable !== null) {
+    return <Unavailable why={bookRead.unavailable} />;
+  }
+  const book = bookRead.value;
   const personal = book.kind === "PERSONAL";
   const project = book.kind === "PROJECT";
   const operating = book.kind === "OPERATING";

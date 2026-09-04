@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { FundActions } from "@/components/FundActions";
 import { PlaceHead } from "@/components/PlaceHead";
-import { caller } from "@/lib/caller";
+import { Unavailable } from "@/components/Unavailable";
+import { fundRecord, viewsOf } from "@/lib/data";
 import { count } from "@/lib/format";
-import { getFund, listViews } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +25,9 @@ export const dynamic = "force-dynamic";
  * `views/[view]/layout.tsx`. Showing them here would mean showing them on the
  * configuration and change-log screens too, where there is no view selected to
  * qualify them — which is a figure that does not say which question it answers.
+ *
+ * ⛔ BARE `await getFund` / `listViews` WAS THE SAME #441 AS THE BOOK
+ * IDENTITY LAYOUT. `fundRecord` / `viewsOf` wrap `orTransient` + `orAuth`.
  */
 export default async function FundLayout({
   children,
@@ -34,9 +37,16 @@ export default async function FundLayout({
   params: Promise<{ fund: string }>;
 }) {
   const { fund } = await params;
-  const c = await caller();
-  const f = await getFund(c, fund);
-  const { views } = await listViews(c, fund);
+  const fundRead = await fundRecord(fund);
+  const viewsRead = await viewsOf(fund);
+  if (fundRead.unavailable !== null) {
+    return <Unavailable why={fundRead.unavailable} />;
+  }
+  if (viewsRead.unavailable !== null) {
+    return <Unavailable why={viewsRead.unavailable} />;
+  }
+  const f = fundRead.value;
+  const views = viewsRead.value;
 
   // ⛔ THE FUND SAYS WHICH VIEW IS DEFAULT, NOT THE COLLECTION. `ListViews`
   // used to answer both; AIP-132 admits only the list, and one source for a
