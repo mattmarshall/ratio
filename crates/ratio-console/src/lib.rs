@@ -11223,6 +11223,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // `open_file_book` door, and free functions that receive an already
         // authorized path). A handler that joins `self.root` to an id and
         // opens would mention `FileBook::open(&path)` or `self.root`.
+        // `wash_source` is the fourth: it reads the journal only after
+        // `book_path` has already authorized the directory.
         let production = include_str!("lib.rs")
             .split("#[cfg(test)]")
             .next()
@@ -11244,8 +11246,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         );
         assert_eq!(
             opens.len(),
-            3,
-            "open_file_book plus household_terms_of and project_budget_of: {opens:?}"
+            4,
+            "open_file_book plus household_terms_of, project_budget_of, and wash_source: {opens:?}"
         );
         assert!(
             !production
