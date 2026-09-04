@@ -98,6 +98,13 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
   Scaffold; remaining to spend stays revised − incurred − awarded;
   unset EAC is blank, not a silent 0; Connect tokens are not accepted
   on `/v1`; `/budget` still does not forecast.
+- **[connect/program-rollup/](connect/program-rollup/)** — first-party
+  Connect app that rolls per-book Project budget and billing cites
+  across membership-visible PROJECT books
+  ([#179](https://github.com/mattmarshall/ratio/issues/179)). Scaffold;
+  unset billed / collected stay blank, not a silent program 0.00; an
+  `org_id` claim is not membership; Connect tokens are not accepted
+  on `/v1`; no mega-book in the kernel.
 
 ## License
 

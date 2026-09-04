@@ -238,9 +238,15 @@ open:
    this leftover either: it requests `budget:read` and `billing:read`,
    it does not open the grant path, and this file still does not close
    #169.
+   A first-party program roll-up scaffold lives at
+   `connect/program-rollup/`
+   ([#179](https://github.com/mattmarshall/ratio/issues/179)). It is not
+   this leftover either: it requests `books:read`, `budget:read`, and
+   `billing:read`, it does not open the grant path, and this file still
+   does not close #179.
 5. **`webhooks:journal`, `audit:export`, `nav:strike` as a write RPC** —
    reserved scopes; the surfaces are not built.
 
 This file does not close #150. Nothing here closes #5 (console wash
 flag), #9 (lot-relief UI cites / pooled holding-period leftover),
-#22, #166, #168, #169, #172, or #184.
+#22, #166, #168, #169, #172, #184, or #179.

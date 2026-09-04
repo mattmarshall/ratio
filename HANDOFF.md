@@ -33,7 +33,13 @@ The Project EAC / forecast Connect app (`connect/eac-forecast/`,
 #169) computes estimate-at-completion outside the journal; unset
 remaining-to-spend stays revised − incurred − awarded, never a
 silent EAC of 0. That does not close #169 (grant path leftover
-#22 and live EAC product UX remain).
+#22 and live EAC product UX remain). The Project program roll-up
+Connect app (`connect/program-rollup/`, #179) cites per-book
+budget and billing figures across PROJECT books the subject can
+see (`books:read` membership; an `org_id` claim is not membership)
+and sums only the books that cited each figure — never a silent
+program billed or collected of 0.00. That does not close #179
+(grant path leftover #22 and live OAuth remain).
 Equalization, drip, and side-pocket stay Connect (#177) — a
 PLAN decision, not a landing. None of the three changes
 conservation or journal integrity; do not implement them as
@@ -698,8 +704,16 @@ or `sidepocket:*`.
   vs earned stay on #85. #173's leftover was posting that collection
   on the `/billing` chrome itself — that landed; payment-processor
   Connect grants stay on #150 / #22. This file does not close #184
-  (grant path leftover #22 and licensed form remain). The seeded
-  demo funds remain investment books.
+  (grant path leftover #22 and licensed form remain). A Project
+  program roll-up Connect app scaffold (`connect/program-rollup/`,
+  #179) cites those same per-book budget and billing figures
+  across PROJECT books the subject can see and sums only the books
+  that cited each figure — never a silent program billed or
+  collected of 0.00, never a mega-book that merges journals. An
+  `org_id` claim is not membership. It cannot show a Connect token
+  opening a book. This file does not close #179 (grant path leftover
+  #22 and live OAuth remain). The seeded demo funds remain
+  investment books.
 - ⚠ **A project job-cost / AP statement-ingest walk-through (#171 / #27).**
   CreateBook(Project) seeds `project-invoices` as the job-cost / AP /
   progress-bill mapping. Ingest a fixture: identified `invoice_site` /
@@ -1032,6 +1046,7 @@ than one that is entirely unclassified.
 | `connect/aia-pay-app/` | First-party Connect app for Project G702/G703-ish pay-app export ([#184](https://github.com/mattmarshall/ratio/issues/184)). CSV from `/billing` + `/budget` cites (revised contract, billed, retainage, change orders). Missing cites stay unset — no silent billed / retainage / CO zeros. Grant path leftover #22; licensed AIA PDF is refused. Does not close #184. Does not reopen #151 |
 | `connect/vendor-portal/` | First-party Connect app for a Project vendor / GC portal ([#172](https://github.com/mattmarshall/ratio/issues/172)). Cites billed / earned / retainage / collections from `/billing`; remaining-to-bill and cash-against-AR stay unset until the journal can support them. Vendor invoices are allowlisted `journals:post` for `vendor_invoice*` — not `journal:append`. Grant path is not built. No vendor user directory in core. No AIA G702 product UI (#184). No EAC / forecast (#169). Does not close #172 |
 | `connect/eac-forecast/` | First-party Connect app for Project EAC / forecast ([#169](https://github.com/mattmarshall/ratio/issues/169)). CSV / JSON from `/budget` + `/billing` cites. Remaining to spend is revised − incurred − awarded; EAC / ETC stay unset until that cut can support a figure — never a silent 0.00. Read-only: no forecast template, `journal:append` refused. Grant path leftover #22; live EAC product UX and `/budget` EAC fields stay refused. Does not close #169. Does not reopen #151 |
+| `connect/program-rollup/` | First-party Connect app for Project multi-contract / program roll-up ([#179](https://github.com/mattmarshall/ratio/issues/179)). CSV / JSON from per-book `/budget` + `/billing` cites across PROJECT books the subject can see (`books:read` membership; an `org_id` claim is not membership). Program totals sum only set cites — never a silent billed / collected 0.00 for a book that lacks the cite. Read-only: no `journals:post`. No mega-book, no fifth kind, no `screensFor` fork. Grant path leftover #22. Does not close #179. Does not close #169, #172, or #184. Does not reopen #151 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.
