@@ -68,7 +68,7 @@ Registration notes (WorkOS Dashboard → Applications → Connect):
 | Redirect URI | The app's callback. Must match the registered value exactly, including a trailing slash. |
 | Credentials | `client_id` / `client_secret` from a Connect credential. Up to five. Shown once. |
 | Requested scopes | `statements:read` `journals:post` — plus `openid` if the library requires an OIDC discovery scope. Do not request `journal:append`. |
-| Issuer / JWKS | The AuthKit environment that already signs session JWTs. Verification is the resource server's job (`/v1`), and that authorizer is **not built**. |
+| Issuer / JWKS | WorkOS Connect access tokens mint `iss` as the AuthKit custom domain (`https://auth.ratio.marsh.build`). API Gateway JWT verifies them on `ConnectApiUrl` `/v1` (audience = Ratio WorkOS project client). AuthKit session tokens stay on DemoUrl. |
 
 A third-party flag would prompt AuthKit consent and bind the app to an
 Organization. This household predictor is first-party: the subject's book
@@ -96,7 +96,7 @@ speak Plaid, MX, TrueLayer, or a bank's token endpoint.
 From the catalog, restated so a later RPC does not "just" add them:
 
 1. Token is a Connect access token, verified against the environment
-   JWKS — leftover on #22 / #150.
+   JWKS — API Gateway JWT verifies Connect tokens on ConnectApiUrl.
 2. AuthKit `sub` is in the book's membership — leftover on #22.
    Write-route actor binding landed (#151).
 3. Action is in the catalog. Aliases refused.
@@ -124,10 +124,11 @@ PERSONAL chrome is unchanged. `screensFor` is not forked. The
 
 ## Leftovers — this does not close #163
 
-1. **API Gateway JWT authorizer still AuthKit-session only**
-   (leftover on issue 22). In-process `/v1` accepts Connect catalog
-   scopes after membership. A live Connect token can still 401 at
-   the edge. Write-route actor binding landed (#151).
+1. **Live Connect OAuth**
+   (leftover on issue 22). API Gateway JWT verifies Connect tokens
+   on ConnectApiUrl. In-process `/v1` accepts catalog scopes after
+   membership. Dashboard registration, redirect, and a live token
+   stay leftover. Write-route actor binding landed (#151).
 2. **Live bank / custodian OAuth.** Provider SDK, token refresh, and
    predicted-balance pull.
 3. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover

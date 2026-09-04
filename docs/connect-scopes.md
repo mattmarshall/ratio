@@ -18,9 +18,10 @@ walks). A Connect-shaped token never takes `RATIO_DEMO_OPEN` and never
 matches `org:{id}` (#151). Hard non-scopes and aliases stay refused.
 #150 leftovers: the `journals:post` allowlist, reserved RPCs, and the
 read-only reference skeleton. Issue 22 stays open for the shared demo's
-open dial, unused Cognito CloudFormation resources, the API Gateway
-JWT authorizer still proving only the AuthKit session issuer, and live
-provider OAuth. This file does not close #150.
+open dial, unused Cognito CloudFormation resources, and live
+provider OAuth. API Gateway JWT verifies Connect tokens on the
+Connect HTTP API (AuthKit custom-domain issuer). This file does
+not close #150.
 
 ---
 
@@ -81,7 +82,7 @@ the grant for when that door exists; it does not mint the RPC.
 | `breaks:explain` | Person-attributed explanations | `Mark` / accept | The explainer is a person; a Connect app attributes, it does not invent |
 | `closes:read` | Close records, closed-through day | `ListPeriodCloses` / `GetPeriodClose` | Not `ratio close` — that stays a person at a terminal |
 | `config:read` | RuleSet / lot-terms cites, config digests | configuration screens | Not an editor |
-| `audit:export` | Evidence pack | Connect scaffold (`connect/audit-export/`); in-process grant Built; leftover is the AuthKit-only gateway issuer | A pack is a read of cites, not a rewrite |
+| `audit:export` | Evidence pack | Connect scaffold (`connect/audit-export/`); in-process grant Built; API Gateway JWT verifies Connect tokens; leftover is live OAuth | A pack is a read of cites, not a rewrite |
 | `deliveries:write` | Fact-plane deliveries | `Ingest` | High trust; same membership door |
 | `facts:admit` | Admit facts | `Admit` | High trust; provenance stays required |
 | `webhooks:journal` | Subscribe to append / close events | not built | Not a second journal |
@@ -203,11 +204,12 @@ open:
 1. **API authorizer accepts Connect access tokens** with these scopes —
    Built. Write-route actor = WorkOS `sub` and the in-process ACL fence
    landed in #151. A Connect-shaped token is always `scoped`, does not
-   inherit `org:{id}`, and needs the matching frozen name.   leftover #22
-   is now the shared demo's `RATIO_DEMO_OPEN`, unused Cognito
-   CloudFormation resources, the API Gateway JWT authorizer still
-   proving only the AuthKit session issuer, and live provider OAuth
-   — not the in-process grant.
+   inherit `org:{id}`, and needs the matching frozen name. API
+   Gateway JWT verifies Connect tokens on the Connect HTTP API
+   (AuthKit custom-domain `iss`; session tokens stay on DemoUrl).
+   leftover #22 is now the shared demo's `RATIO_DEMO_OPEN`, unused
+   Cognito CloudFormation resources, and live provider OAuth
+   — not the in-process grant and not the gateway issuer.
 2. **Book ACL on every Connect grant.** Built with the authorizer.
    Authorized-empty for a book the subject does not administer. An
    `org_id` claim is not membership.
@@ -273,8 +275,7 @@ open:
    is a ZIP of cites, not a write RPC, and it does not close #185.
 
 This file does not close #150. Nothing here finishes issue 22
-(`RATIO_DEMO_OPEN`, unused Cognito resources, AuthKit-only gateway
-issuer, live provider OAuth).
-Nothing here closes #5 (console wash flag), #9 (lot-relief UI cites /
-pooled holding-period leftover), #163, #166, #168, #169, #172, #184,
-#179, or #185.
+(`RATIO_DEMO_OPEN`, unused Cognito resources, live provider OAuth).
+API Gateway JWT verifies Connect tokens. Nothing here closes #5
+(console wash flag), #9 (lot-relief UI cites / pooled holding-period
+leftover), #163, #166, #168, #169, #172, #184, #179, or #185.

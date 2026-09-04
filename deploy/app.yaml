@@ -68,7 +68,7 @@ Parameters:
     Type: String
     Default: "https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB"
     Description: >
-      OIDC issuer the HTTP API JWT authorizer checks. Must serve
+      OIDC issuer the console HTTP API JWT authorizer checks. Must serve
       /.well-known/openid-configuration — CloudFormation fetches that
       document when it creates AWS::ApiGatewayV2::Authorizer and refuses
       a 404. The bare https://api.workos.com/ host does not have one
@@ -77,10 +77,28 @@ Parameters:
       /user_management/authenticate) mint iss as
       https://api.workos.com/user_management/{client_id} — Production
       client_01M1JJZTFXFDZJ0XJM1NPNSEJB, no trailing slash. The custom
-      AuthKit domain https://auth.ratio.marsh.build stays for the hosted
-      login UI; it is not the token issuer. Audience stays
+      AuthKit domain https://auth.ratio.marsh.build is NOT this value —
+      session tokens do not mint that iss. Audience stays
       WorkOsClientId. Do not point this at another product's AuthKit
-      domain.
+      domain. Connect access tokens use WorkOsConnectIssuer on a
+      second HTTP API (one JWT authorizer is one issuer).
+  WorkOsConnectIssuer:
+    Type: String
+    Default: "https://auth.ratio.marsh.build"
+    Description: >
+      OIDC issuer the Connect HTTP API JWT authorizer checks. WorkOS
+      Connect access tokens (authorization_code / client_credentials)
+      mint iss as the AuthKit custom domain for this project —
+      https://auth.ratio.marsh.build — and that host serves
+      /.well-known/openid-configuration with jwks_uri
+      https://auth.ratio.marsh.build/oauth2/jwks (verified 2026-09-04).
+      Audience stays WorkOsClientId: Connect `aud` is the Ratio
+      WorkOS project client, not the Connect application's client_id
+      (`azp`). Do not point this at the session-token path under
+      /user_management/ — that is WorkOsIssuer, and a Connect token
+      minted here is refused there. Do not point it at the bare
+      https://api.workos.com/ host (no OIDC discovery). Do not
+      substitute another product's AuthKit domain.
   GoogleClientId:
     Type: String
     Default: ""
@@ -463,6 +481,18 @@ Resources:
   # The gateway proves the token is real, unexpired and ours; the server
   # (book_path) decides which funds it may open. The identity source is the
   # bearer the console sends.
+  #
+  # ⛔ ONE JWT AUTHORIZER IS ONE ISSUER. AWS::ApiGatewayV2::Authorizer
+  # JwtConfiguration.Issuer is a single string; CloudFormation will not
+  # OR two issuers. AuthKit session tokens mint iss under
+  # /user_management/{client_id}. WorkOS Connect access tokens mint iss
+  # as the AuthKit custom domain (WorkOsConnectIssuer). Pointing THIS
+  # authorizer at the Connect domain 401s every console session. Pointing
+  # the Connect authorizer at this issuer 401s every Connect token.
+  # The honest split is a second HTTP API (ConnectApi below), same
+  # Lambda, same /v1 path, Connect issuer. A route-key split on this
+  # API would invent a second URL prefix the in-process accept path
+  # does not serve.
   Authorizer:
     Type: AWS::ApiGatewayV2::Authorizer
     Properties:
@@ -488,6 +518,82 @@ Resources:
       Target: !Sub "integrations/${Integration}"
       AuthorizationType: JWT
       AuthorizerId: !Ref Authorizer
+
+  # ── Connect grant path ──────────────────────────────────────────────────
+  #
+  # ⭐ A SECOND HTTP API, SAME LAMBDA, SAME /v1 PATH. WorkOS Connect
+  # access tokens never reach Authorizer above: their iss is the AuthKit
+  # custom domain, not /user_management/{client_id}. API Gateway JWT
+  # authorizers cannot OR issuers. This API is the grant-path unlock
+  # leftover #22 named: Connect tokens are verified here and land on
+  # the same /v1 accept path (#224) — membership still required, never
+  # RATIO_DEMO_OPEN, never org:{id}.
+  #
+  # ⚠ NOT A SECOND PRODUCT URL FOR THE CONSOLE. DemoUrl stays the
+  # AuthKit session host. Connect apps call ConnectApiUrl. Public
+  # screens (/healthz, /mcp, /authconfig.json) stay on Api; this
+  # API only serves /v1.
+  ConnectApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: ratio-demo-connect
+      ProtocolType: HTTP
+      Description: /v1 for WorkOS Connect access tokens.
+      # Same CORS fence as Api: no `authorization` in AllowHeaders.
+      # Connect apps are server-to-server; a browser-direct bearer
+      # is still the path the httpOnly cookie was meant to close.
+      CorsConfiguration:
+        AllowOrigins: ["*"]
+        AllowMethods: [GET, POST, OPTIONS]
+        AllowHeaders: [content-type, mcp-session-id, mcp-protocol-version]
+        MaxAge: 3600
+
+  ConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ConnectApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt Function.Arn
+      PayloadFormatVersion: "2.0"
+      TimeoutInMillis: 30000
+
+  ConnectAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref ConnectApi
+      AuthorizerType: JWT
+      Name: workos-connect-jwt
+      IdentitySource: ["$request.header.Authorization"]
+      JwtConfiguration:
+        Audience: [!Ref WorkOsClientId]
+        Issuer: !Ref WorkOsConnectIssuer
+
+  ConnectProtectedRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ConnectApi
+      RouteKey: "ANY /v1/{proxy+}"
+      Target: !Sub "integrations/${ConnectIntegration}"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref ConnectAuthorizer
+
+  ConnectStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref ConnectApi
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 10
+        ThrottlingBurstLimit: 20
+      StageName: $default
+      AutoDeploy: true
+
+  ConnectApiInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt Function.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ConnectApi}/*"
 
   # ══════════════════════ THE SCALE RUNNER ══════════════════════
   #
@@ -853,3 +959,9 @@ Outputs:
   HostedUiDomain:
     Description: The Cognito Hosted UI domain the console signs in against.
     Value: !Sub "ratio-demo-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com"
+  ConnectApiUrl:
+    Description: >
+      /v1 for WorkOS Connect access tokens. JWT authorizer proves the
+      AuthKit custom-domain issuer (WorkOsConnectIssuer). Same Lambda
+      as DemoUrl; AuthKit session tokens stay on DemoUrl.
+    Value: !Sub "https://${ConnectApi}.execute-api.${AWS::Region}.amazonaws.com/"

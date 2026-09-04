@@ -64,7 +64,7 @@ Registration notes (WorkOS Dashboard → Applications → Connect):
 | Redirect URI | The app's callback. Must match the registered value exactly, including a trailing slash. |
 | Credentials | `client_id` / `client_secret` from a Connect credential. Up to five. Shown once. |
 | Requested scopes | `statements:read` `journals:post` — plus `openid` if the library requires an OIDC discovery scope. Do not request `journal:append`. `journals:post` is only exercised on opt-in. |
-| Issuer / JWKS | The AuthKit environment that already signs session JWTs. Verification is the resource server's job (`/v1`), and that authorizer is **not built**. |
+| Issuer / JWKS | WorkOS Connect access tokens mint `iss` as the AuthKit custom domain (`https://auth.ratio.marsh.build`). API Gateway JWT verifies them on `ConnectApiUrl` `/v1` (audience = Ratio WorkOS project client). AuthKit session tokens stay on DemoUrl. |
 
 A third-party flag would prompt AuthKit consent and bind the app to an
 Organization. This household goals app is first-party: the subject's book
@@ -107,16 +107,15 @@ Sheet, bridge, and cash-flow stay the core cites.
 
 ## Leftovers — this does not close #168
 
-1. **API Gateway JWT authorizer still AuthKit-session only**
-   (#150 / leftover on issue 22). In-process `/v1` accepts Connect
-   catalog scopes after membership. A live Connect token can still
-   401 at the edge. Write-route actor binding landed (#151).
-2. **Live Connect OAuth.** Dashboard registration, redirect, and a
-   token that `/v1` accepts.
-3. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover
+1. **Live Connect OAuth**
+   (#150 / leftover on issue 22). API Gateway JWT verifies Connect
+   tokens on ConnectApiUrl. In-process `/v1` accepts catalog scopes
+   after membership. Dashboard registration, redirect, and a live
+   token stay leftover. Write-route actor binding landed (#151).
+2. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover
    on #150. This app checks its own list; the kernel does not yet key
    one by `client_id`.
-4. **#150's read-only reference skeleton** (`books:read` +
+3. **#150's read-only reference skeleton** (`books:read` +
    `statements:read` only) is a different app. This one requests
    `journals:post` for opt-in scenario posts and does not open the
    door.

@@ -283,9 +283,23 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  the app stack defaults WorkOsIssuer to the session-token issuer")
 
-    if re.search(
-        r'Default:\s+"https://auth\.ratio\.marsh\.build/?"\s*$',
+    # ⚠ WorkOsConnectIssuer defaults to that hostname on purpose —
+    # Connect tokens mint it. This check is the session-token
+    # parameter only. A prefix match on the whole file would fail
+    # the honest Connect default.
+    workos_issuer_param = None
+    for m in re.finditer(
+        r"^  WorkOsIssuer:\n((?:    .*\n)+)",
         app_code,
+        re.M,
+    ):
+        workos_issuer_param = m.group(1)
+        break
+    if workos_issuer_param is None:
+        fail(f"{app_path} has no WorkOsIssuer parameter")
+    elif re.search(
+        r'Default:\s+"https://auth\.ratio\.marsh\.build/?"\s*$',
+        workos_issuer_param,
         re.M,
     ):
         fail(
@@ -319,6 +333,181 @@ def main(app_path, bootstrap_path, workflow_path):
         )
     else:
         print("  ok  WorkOsIssuer is passed from the resolved issuer")
+
+    # ⛔ CONNECT TOKENS ARE A DIFFERENT ISSUER. AWS::ApiGatewayV2::Authorizer
+    # JwtConfiguration.Issuer is a single string. AuthKit session tokens
+    # mint iss under /user_management/{client_id}. WorkOS Connect access
+    # tokens mint iss as the AuthKit custom domain
+    # (https://auth.ratio.marsh.build), which serves OIDC discovery and
+    # /oauth2/jwks (verified 2026-09-04). One authorizer pointed at the
+    # session issuer 401s every Connect token at the edge — the leftover
+    # #224 named. A second HTTP API with a second JWT authorizer is the
+    # honest split: same Lambda, same /v1 path, Connect issuer.
+    #
+    # ⚠ COMMENT-STRIPPED. A sentence describing the Connect authorizer
+    # must not satisfy this — same shape as CAPABILITY_NAMED_IAM.
+    PRODUCTION_CONNECT_ISSUER = "https://auth.ratio.marsh.build"
+    if f'Default: "{PRODUCTION_CONNECT_ISSUER}"' not in app_code:
+        fail(
+            f"{app_path} does not default WorkOsConnectIssuer to the "
+            f"Connect-token issuer {PRODUCTION_CONNECT_ISSUER}"
+        )
+    else:
+        print("  ok  the app stack defaults WorkOsConnectIssuer to the Connect-token issuer")
+
+    if re.search(
+        rf'Default:\s+"{re.escape(PRODUCTION_ISSUER)}"',
+        app_code,
+    ) and app_code.count(f'Default: "{PRODUCTION_ISSUER}"') > 1:
+        fail(
+            f"{app_path} defaults more than one issuer parameter to the "
+            "AuthKit session-token issuer — Connect tokens mint a different iss"
+        )
+
+    # ⛔ AUTH KIT-ONLY IS THE REGRESSION. One JWT authorizer, or a
+    # Connect authorizer that still cites WorkOsIssuer, is the leftover
+    # this PR closed. Two Issuer: !Ref WorkOsIssuer lines means both
+    # APIs prove session tokens and Connect still 401s at the edge.
+    issuer_refs = re.findall(r"Issuer:\s+!Ref\s+(\w+)", app_code)
+    if "WorkOsConnectIssuer" not in issuer_refs:
+        fail(
+            f"{app_path} has no JWT authorizer Issuer: !Ref WorkOsConnectIssuer "
+            "— Connect tokens are refused at the edge (AuthKit-issuer-only)"
+        )
+    else:
+        print("  ok  a JWT authorizer proves WorkOsConnectIssuer")
+    if issuer_refs.count("WorkOsIssuer") < 1:
+        fail(
+            f"{app_path} dropped Issuer: !Ref WorkOsIssuer — AuthKit session "
+            "tokens would 401 at the console API"
+        )
+    else:
+        print("  ok  a JWT authorizer still proves WorkOsIssuer (session tokens)")
+    if issuer_refs.count("WorkOsIssuer") > 1 and "WorkOsConnectIssuer" not in issuer_refs:
+        fail(
+            f"{app_path} points every JWT authorizer at WorkOsIssuer — "
+            "AuthKit-issuer-only; Connect tokens never reach /v1"
+        )
+    if issuer_refs.count("WorkOsConnectIssuer") < 1:
+        fail(
+            f"{app_path} JWT authorizers are AuthKit-issuer-only "
+            f"(Issuer refs: {issuer_refs})"
+        )
+
+    if "workos-connect-jwt" not in app_code:
+        fail(
+            f"{app_path} does not name a workos-connect-jwt authorizer — "
+            "the Connect grant-path split is missing"
+        )
+    else:
+        print("  ok  workos-connect-jwt authorizer is declared")
+
+    if "ratio-demo-connect" not in app_code:
+        fail(
+            f"{app_path} does not declare the Connect HTTP API "
+            "(ratio-demo-connect) — a second route on the session API "
+            "cannot OR issuers, and a path prefix is not /v1"
+        )
+    else:
+        print("  ok  the Connect HTTP API (ratio-demo-connect) is declared")
+
+    if "ConnectApiUrl" not in app_code:
+        fail(
+            f"{app_path} has no ConnectApiUrl output — Connect apps would "
+            "have no host whose JWT authorizer proves their iss"
+        )
+    else:
+        print("  ok  ConnectApiUrl is a stack output")
+
+    if "ConnectProtectedRoute" not in app_code:
+        fail(
+            f"{app_path} has no ConnectProtectedRoute — Connect /v1 would "
+            "not require a JWT"
+        )
+    else:
+        print("  ok  Connect /v1 is a JWT-protected route")
+
+    # Audience on the Connect authorizer must stay WorkOsClientId.
+    # Connect `aud` is the Ratio WorkOS project client, not azp.
+    # A second audience, or a hard-coded Connect app id, would be a
+    # silent wrong accept or a silent 401.
+    connect_auth = None
+    for m in re.finditer(
+        r"^  ConnectAuthorizer:\n((?:    .*\n)+)",
+        app_code,
+        re.M,
+    ):
+        connect_auth = m.group(1)
+        break
+    if connect_auth is None:
+        fail(f"{app_path} has no ConnectAuthorizer resource")
+    else:
+        if "WorkOsClientId" not in connect_auth:
+            fail(
+                f"{app_path} ConnectAuthorizer audience is not WorkOsClientId "
+                "— Connect aud is the Ratio project client, not azp"
+            )
+        else:
+            print("  ok  ConnectAuthorizer audience is WorkOsClientId")
+        if "WorkOsConnectIssuer" not in connect_auth:
+            fail(
+                f"{app_path} ConnectAuthorizer issuer is not WorkOsConnectIssuer "
+                "— AuthKit-issuer-only on the Connect API"
+            )
+        else:
+            print("  ok  ConnectAuthorizer issuer is WorkOsConnectIssuer")
+        if "WorkOsIssuer" in connect_auth:
+            fail(
+                f"{app_path} ConnectAuthorizer still cites WorkOsIssuer — "
+                "Connect tokens mint a different iss and would 401"
+            )
+
+    connect_param = None
+    for m in re.finditer(
+        r"^  WorkOsConnectIssuer:\n((?:    .*\n)+)",
+        app_code,
+        re.M,
+    ):
+        connect_param = m.group(1)
+        break
+    if connect_param is None:
+        fail(f"{app_path} has no WorkOsConnectIssuer parameter")
+    elif re.search(
+        r'Default:\s+"https://api\.workos\.com(/user_management/[^"]*)?"',
+        connect_param,
+    ):
+        fail(
+            f"{app_path} defaults WorkOsConnectIssuer to a session-token "
+            "or bare WorkOS host — Connect tokens mint "
+            f"{PRODUCTION_CONNECT_ISSUER}"
+        )
+    else:
+        print("  ok  WorkOsConnectIssuer is not a session-token or bare host")
+
+    if 'WorkOsConnectIssuer="${CONNECT_ISSUER}"' not in flow:
+        fail(
+            f"{workflow_path} does not pass WorkOsConnectIssuer from the "
+            "resolved Connect issuer — the Connect authorizer would then "
+            "depend on a template default the smoke test cannot see arrive"
+        )
+    else:
+        print("  ok  WorkOsConnectIssuer is passed from the resolved Connect issuer")
+
+    if PRODUCTION_CONNECT_ISSUER not in flow:
+        fail(
+            f"{workflow_path} does not fall back to the Connect-token "
+            f"issuer {PRODUCTION_CONNECT_ISSUER}"
+        )
+    else:
+        print("  ok  the workflow falls back to the Connect-token issuer")
+
+    if "ConnectApiUrl" not in flow:
+        fail(
+            f"{workflow_path} does not smoke the Connect API — a missing "
+            "or AuthKit-only Connect host would stay silent"
+        )
+    else:
+        print("  ok  smoke asserts the Connect API")
 
     # ⛔ THE JOURNAL GRANT MUST LIVE IN THE APP STACK, NOT ONLY IN BOOTSTRAP.
     # Issue #129: Sid TheJournal was added to bootstrap.yaml in #84, and

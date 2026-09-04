@@ -161,8 +161,13 @@ jobs:
           # https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB
           # The bare https://api.workos.com/ host has no OIDC discovery, and
           # CloudFormation refuses it as an AWS::ApiGatewayV2::Authorizer
-          # issuer. auth.ratio.marsh.build is the hosted AuthKit UI, not iss.
+          # issuer. Session tokens do not mint auth.ratio.marsh.build.
           WORKOS_ISSUER: ${{ vars.WORKOS_ISSUER }}
+          # Optional. Unset means the iss WorkOS Connect access tokens mint:
+          # https://auth.ratio.marsh.build (AuthKit custom domain, OIDC
+          # discovery + /oauth2/jwks). A second HTTP API JWT authorizer
+          # proves this issuer; one authorizer cannot OR two issuers.
+          WORKOS_CONNECT_ISSUER: ${{ vars.WORKOS_CONNECT_ISSUER }}
           # The verified SES identity the report email sends from. A repository
           # VARIABLE like the others — an address is not a secret. Unset means
           # no email, which is the correct state until SES verifies.
@@ -198,14 +203,29 @@ jobs:
           # AuthKit session tokens mint iss as
           # https://api.workos.com/user_management/{client_id}
           # (client_01M1JJZTFXFDZJ0XJM1NPNSEJB, no trailing slash).
-          # auth.ratio.marsh.build is the hosted login hostname, not iss.
+          # Connect access tokens mint iss as the AuthKit custom domain
+          # (https://auth.ratio.marsh.build). One JWT authorizer cannot
+          # OR those issuers — ConnectApi is the second host.
           PRODUCTION_ISSUER='https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB'
+          PRODUCTION_CONNECT_ISSUER='https://auth.ratio.marsh.build'
           BARE_WORKOS_ISSUER='https://api.workos.com'
           ISSUER="${WORKOS_ISSUER:-$PRODUCTION_ISSUER}"
           ISSUER="${ISSUER%/}"
           case "$ISSUER" in
             "${BARE_WORKOS_ISSUER}")
               echo "::error::WORKOS_ISSUER is the bare host ${ISSUER}, which has no OIDC discovery. Production AuthKit issuer is ${PRODUCTION_ISSUER}."
+              exit 1
+              ;;
+          esac
+          CONNECT_ISSUER="${WORKOS_CONNECT_ISSUER:-$PRODUCTION_CONNECT_ISSUER}"
+          CONNECT_ISSUER="${CONNECT_ISSUER%/}"
+          case "$CONNECT_ISSUER" in
+            "${BARE_WORKOS_ISSUER}")
+              echo "::error::WORKOS_CONNECT_ISSUER is the bare host ${CONNECT_ISSUER}, which has no OIDC discovery. Production Connect issuer is ${PRODUCTION_CONNECT_ISSUER}."
+              exit 1
+              ;;
+            "${PRODUCTION_ISSUER}"|"${ISSUER}")
+              echo "::error::WORKOS_CONNECT_ISSUER is the AuthKit session issuer ${CONNECT_ISSUER}. Connect tokens mint ${PRODUCTION_CONNECT_ISSUER}; pointing the Connect authorizer at the session iss is AuthKit-issuer-only again."
               exit 1
               ;;
           esac
@@ -274,6 +294,7 @@ jobs:
               ScaleSender="${SCALE_SENDER}" \
               WorkOsClientId="${WORKOS_CLIENT_ID}" \
               WorkOsIssuer="${ISSUER}" \
+              WorkOsConnectIssuer="${CONNECT_ISSUER}" \
             || { dump_stack_failure; exit 1; }
 
       - name: Smoke test the deployed demo
@@ -286,6 +307,7 @@ jobs:
           # AuthKit session-token issuer, asserted below against
           # /authconfig.json so a drift from the authorizer is visible here.
           WORKOS_ISSUER: ${{ vars.WORKOS_ISSUER }}
+          WORKOS_CONNECT_ISSUER: ${{ vars.WORKOS_CONNECT_ISSUER }}
           # The verified SES identity the report email sends from. A repository
           # VARIABLE like the others — an address is not a secret. Unset means
           # no email, which is the correct state until SES verifies.
@@ -321,6 +343,17 @@ jobs:
             https://*) ;;
             *) echo "::error::no DemoUrl output on $STACK (got '$URL')"; exit 1 ;;
           esac
+          CONNECT_URL="$(aws cloudformation describe-stacks --stack-name "$STACK" \
+                  --query 'Stacks[0].Outputs[?OutputKey==`ConnectApiUrl`].OutputValue' --output text)"
+          echo "CONNECT_URL: $CONNECT_URL"
+          case "$CONNECT_URL" in
+            https://*) ;;
+            *) echo "::error::no ConnectApiUrl output on $STACK (got '$CONNECT_URL') — Connect tokens have no host"; exit 1 ;;
+          esac
+          if [ "$CONNECT_URL" = "$URL" ]; then
+            echo "::error::ConnectApiUrl equals DemoUrl — one JWT authorizer cannot prove both issuers"
+            exit 1
+          fi
 
           # ⛔ WAIT FOR THE NEW IMAGE, NOT FOR A 200.
           #
@@ -531,6 +564,16 @@ jobs:
             echo "::error::/v1/funds returned $code, not 401 — auth is not enforced"
             exit 1
           }
+          # ⛔ CONNECT /v1 IS A DIFFERENT HOST, SAME REFUSE WITHOUT A TOKEN.
+          # The leftover this closes is AuthKit-issuer-only: Connect tokens
+          # 401 at DemoUrl because their iss is the AuthKit custom domain.
+          # ConnectApiUrl's JWT authorizer proves that iss. Unauthenticated
+          # is still 401 — the grant is not an open door.
+          connect_code="$(curl -s -o /dev/null -w '%{http_code}' "${CONNECT_URL}v1/funds")"
+          [ "$connect_code" = "401" ] || {
+            echo "::error::ConnectApiUrl /v1/funds returned $connect_code, not 401 — Connect /v1 is not JWT-protected"
+            exit 1
+          }
 
           # MCP answers, and the fence still holds on a public endpoint.
           # ⚠ /mcp is in route_needs_hydrated_book — same 503 as balance.json.
@@ -553,5 +596,6 @@ jobs:
           echo "### Ratio demo deployed" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Screens: $URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Connect /v1: \`${CONNECT_URL}v1\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- MCP: \`${URL}mcp\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image: \`${{ steps.image.outputs.uri }}\`" >> "$GITHUB_STEP_SUMMARY"

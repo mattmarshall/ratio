@@ -742,7 +742,7 @@ def fetch_statements(*, token: str | None = None) -> None:
     """Refuse to pull. The grant path is not built."""
     _ = token
     raise Refuse(
-        "Connect access tokens are not accepted on /v1 — the grant path "
+        "live Connect OAuth is leftover — the grant path "
         "is not built (#150 / #151 / leftover #22). This app does not "
         "pretend the door opens"
     )
@@ -756,13 +756,13 @@ def deliver(
     """Refuse to send. The grant path is not built.
 
     A green overlay is not a door that opens. Connect access tokens
-    are not accepted on /v1. This function exists so a caller cannot
+    until live OAuth lands. This function exists so a caller cannot
     "just" POST the proposal and believe it landed.
     """
     _ = posts
     _ = token
     raise Refuse(
-        "Connect access tokens are not accepted on /v1 — the grant path "
+        "live Connect OAuth is leftover — the grant path "
         "is not built (#150 / #151 / leftover #22). This app does not "
         "pretend the door opens"
     )
