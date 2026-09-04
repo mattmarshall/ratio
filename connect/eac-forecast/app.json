@@ -1,0 +1,36 @@
+{
+  "name": "Ratio EAC / forecast pack",
+  "book_kind": "PROJECT",
+  "issue": 169,
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "budget:read",
+      "billing:read",
+      "statements:read"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read",
+      "projects:budget:read",
+      "projects:billing:read"
+    ]
+  },
+  "forecast_journals": {
+    "status": "refused",
+    "note": "The issue body still says journal:append. That string is an alias and is refused. Canonical write grant would be journals:post — but the catalog has no forecast template, and posting project_cost* as a forecast would mix a what-if into the journal of record. This app is read-only relative to the journal: it emits CSV/JSON. Empty journals:post allowlist would refuse every post. Do not invent a write scope."
+  },
+  "eac_compute": {
+    "status": "outside the journal",
+    "formula": "remaining_to_spend = revised − incurred − awarded; EAC = incurred + remaining_to_spend + awarded (= revised) when that cut is supported; ETC = remaining_to_spend + awarded",
+    "note": "Unset remaining-to-spend stays unset — never a silent forecast of 0. Treating awarded as 0 would print budget − actual as headroom. A posted 0.00 is a real zero. /budget still does not forecast. No CPI / percent-complete EAC (that is a rounded figure)."
+  },
+  "grant_path": {
+    "status": "not built",
+    "note": "Connect access tokens are not accepted on /v1. Accepting Connect scopes is leftover #22 / #150. Write-route actor binding landed (#151). This file does not close #22, #150, or #169. It does not reopen #151. It does not close #163 (Personal cash forecast), #170, #172, #173, or #184."
+  }
+}

@@ -1949,6 +1949,82 @@ and `journal:append` being rejected as a scope. It cannot show a
 Connect token opening a book, a vendor user directory, AIA G702
 product UI, or EAC / forecast.
 
+### Amendment, 2026-09-04 — a Project EAC / forecast Connect app, and `/budget` still does not forecast
+
+[#169](https://github.com/mattmarshall/ratio/issues/169) asked for
+estimate-at-completion and cost-to-complete from Project budget
+figures without stuffing EAC fields into `/budget` or growing a
+forecast RPC in core. Remaining to spend stays revised − incurred −
+awarded. Unset remaining stays unset — never a silent forecast of 0.
+The catalog already said a cash forecast stays a Connect app. What
+landed is that app as a sibling tree, not a kernel method.
+
+**What this amendment records.** [`connect/eac-forecast/`](connect/eac-forecast/)
+is a first-party WorkOS Connect OAuth application for `BookKind` PROJECT.
+It declares `budget:read`, `billing:read`, and `statements:read` — the
+frozen names, not the issue body's stale alias `journal:append` and
+not the catalog aliases `projects:budget:read` /
+`projects:billing:read`. It is read-only relative to the journal:
+`journals:post` is not requested. The catalog has no forecast
+template; posting `project_cost*` as a what-if would mix a forecast
+into the book of record. Budget, billing, and statements cites
+become an EAC CSV / JSON pack with the assumption written on the
+row, companions (billed / earned / remaining-to-bill), a
+work-package sheet, and an unset sheet naming what the journal
+cannot support. Remaining to spend is revised − incurred − awarded
+when those three can support the cut. Treating awarded as 0 would
+print budget − actual as headroom. When remaining can be cited:
+ETC = remaining + awarded, EAC = incurred + ETC (= revised). When
+it cannot: EAC and ETC stay blank — never a silent 0.00. A posted
+`"0.00"` is a real zero. Billed / earned are not substitutes for
+incurred. No percentage. No CPI / SPI EAC. Money is minor units,
+split on the point. No new `Method` / `Order` / `lot_method`
+variant. PROJECT chrome is unchanged — `screensFor` is not forked.
+`/budget` still does not forecast. **a Project EAC / forecast
+Connect app** is the Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not a Connect authorizer.** Connect access tokens are still not
+  accepted on `/v1`. `fetch_cites()` and `deliver()` refuse. Write-route
+  actor binding landed (#151). Accepting Connect scopes is leftover
+  #22 / #150. This file does not close #22. It does not reopen #151.
+- **Not EAC fields on `/budget`.** Remaining to spend is still
+  revised − incurred − awarded. Unset stays unset. A silent forecast
+  of 0 is refused. `post_forecast()` and `cpi_eac()` refuse.
+- **Not a forecast journal write.** `journal:append` is an alias.
+  `journals:post` would need an allowlisted template the catalog
+  does not have. Export is CSV / JSON so the journal stays the
+  system of record.
+- **Not AIA G702 product UI, not a vendor portal.** Those doors are
+  #184 and #172. `connect/aia-pay-app/` and `connect/vendor-portal/`
+  stay the sibling trees.
+- **Not a Personal cash forecast.** That door is #163.
+- **Not #150's read-only reference skeleton.** That leftover is
+  `books:read` + `statements:read` proving the door opens. This app
+  requests `budget:read` and `billing:read` and does not open the
+  door.
+- **Not a kernel RPC, not `ratio watch`, not Console product UI.**
+  `/budget` and `/billing` stay the core cites.
+
+Nothing on the *Explicitly not building* list moved. Client portal,
+CRM, tax e-file, vendor portal, AIA G702 product UI, and waterfall
+stay Connect-apps or stay refused. This file does not close #169 —
+grant path (leftover #22), live OAuth, and live EAC product UX
+remain. It does not close #172, #184, #170, #173, #163, #165, #166,
+or #168. It does not close #150. It does not close #22. It does
+not reopen #151.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a fixture job of original $10,000 / CO $500 / incurred
+$2,000 / awarded $1,500 mapping to remaining $7,000 and EAC $10,500
+with the assumption on the row, an unawarded job leaving remaining
+and EAC unset rather than printing budget − actual as headroom, a
+missing incurred cite leaving EAC blank rather than inventing
+0.00, and `journal:append` being rejected as a scope. It cannot
+show a Connect token opening a book, EAC fields on `/budget`, or
+live EAC product UX beyond the pack.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

@@ -162,14 +162,21 @@ __STYLE__
           <code>/billing</code>; a committed-cost walk-through can record
           or ingest an award on the same <code>/budget</code> page. None
           of those can show AIA G702 product UI, a client portal,
-          e-signature, CRM, or an EAC. A Project
+          e-signature, CRM, or an EAC on <code>/budget</code>. A Project
           <a href="https://github.com/mattmarshall/ratio/tree/main/connect/aia-pay-app">AIA pay-app Connect app</a>
           (<a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>)
           emits G702-ish / G703-ish CSV from those billing and budget
           cites; missing billed, retainage, or change-order cites stay
           unset, not a silent zero. It cannot show a Connect token
           opening a book, a licensed AIA form, or live G702 product UX
-          beyond the pack.
+          beyond the pack. A Project
+          <a href="https://github.com/mattmarshall/ratio/tree/main/connect/eac-forecast">EAC / forecast Connect app</a>
+          (<a href="https://github.com/mattmarshall/ratio/issues/169">#169</a>)
+          computes estimate at completion outside the journal from the
+          same remaining-to-spend cut (revised − incurred − awarded);
+          unset stays unset, never a silent EAC of 0. It cannot show a
+          Connect token opening a book, EAC fields on
+          <code>/budget</code>, or live EAC product UX beyond the pack.
           Billed / earned / retainage stay unset until posted, not a fake zero.
           An Investment book cites partner capital activity (contributions,
           distributions, transfers, ending capital) and partner-scoped
@@ -265,7 +272,12 @@ __STYLE__
           <code>journals:post</code> for <code>vendor_invoice*</code>,
           not <code>journal:append</code>. It cannot show a Connect
           token opening a book, a vendor user directory in core, AIA
-          G702 product UI, or EAC / forecast. Fund books
+          G702 product UI, or EAC fields on <code>/budget</code>. A
+          Project
+          <a href="https://github.com/mattmarshall/ratio/tree/main/connect/eac-forecast">EAC / forecast Connect app</a>
+          (<a href="https://github.com/mattmarshall/ratio/issues/169">#169</a>)
+          is the door for those figures; it cannot show a Connect token
+          or live EAC product UX. Fund books
           keep the operations surface. An Operating book cites a balance
           sheet, a period income statement, and a period cash-flow
           statement that tie to the trial
@@ -558,10 +570,15 @@ __STYLE__
       (<a href="https://github.com/mattmarshall/ratio/issues/172">#172</a>)
       cites Project billed / earned / retainage / collections; the
       grant path is not built, a vendor user directory stays out of
-      core, and AIA G702 / EAC stay on
-      <a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>
-      /
-      <a href="https://github.com/mattmarshall/ratio/issues/169">#169</a>.</p>
+      core, and AIA G702 stays on
+      <a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>.
+      A
+      <a href="https://github.com/mattmarshall/ratio/tree/main/connect/eac-forecast">EAC / forecast Connect app</a>
+      (<a href="https://github.com/mattmarshall/ratio/issues/169">#169</a>)
+      emits EAC / ETC CSV from Project remaining-to-spend cites; unset
+      stays unset, never a silent forecast of 0, the grant path is not
+      built, and live EAC product UX / <code>/budget</code> EAC fields
+      stay leftover on that issue.</p>
       <ul class="r-deliver">
         <li class="o">Custodian and administrator feed catalog</li>
         <li class="o">Market-data vendor coverage</li>

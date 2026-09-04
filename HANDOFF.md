@@ -29,6 +29,11 @@ close #166 (grant path and IRS e-file remain). The Project AIA
 pay-app Connect app (`connect/aia-pay-app/`, #184) refuses to
 invent billed / retainage / change-order zeros; that does not
 close #184 (grant path leftover #22 and a licensed AIA form remain).
+The Project EAC / forecast Connect app (`connect/eac-forecast/`,
+#169) computes estimate-at-completion outside the journal; unset
+remaining-to-spend stays revised − incurred − awarded, never a
+silent EAC of 0. That does not close #169 (grant path leftover
+#22 and live EAC product UX remain).
 This file closes #9. It does not reopen #5 or #151.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
@@ -598,11 +603,16 @@ the conserved one, and the kernel never said it was.
   committed. `/budget` says plainly that it does not forecast — EAC and
   cost to complete are not a journal fact. Over/under-billing
   (costs in excess of billings) is not this page; billed minus earned
-  stays on `/billing`. ⛔ The walk-through cannot show scheduling, Gantt,
+  stays on `/billing`. A Project EAC / forecast Connect app scaffold
+  (`connect/eac-forecast/`, #169) computes those figures outside the
+  journal from the same cites and leaves them unset when remaining
+  cannot be supported. ⛔ The walk-through cannot show scheduling, Gantt,
   resource loading, e-procurement, a live vendor-portal Connect grant,
-  AIA G702 product UI,
+  AIA G702 product UI, EAC fields on `/budget`, a Connect token opening
+  a book, live EAC product UX,
   a client portal, e-signature, or CRM. Remaining to bill stays on #100.
-  The seeded demo funds remain investment books.
+  This file does not close #169 (grant path leftover #22 and live EAC
+  product UX remain). The seeded demo funds remain investment books.
 - ⚠ **A project remaining-to-bill / collections walk-through (#100 / #27).**
   `/billing` cites remaining to bill (revised − billed) and collections vs
   billed (cash against AR: billed − outstanding receivable − retainage
@@ -937,6 +947,7 @@ than one that is entirely unclassified.
 | `connect/goals/` | First-party Connect app for Personal net-worth goals and what-if scenarios ([#168](https://github.com/mattmarshall/ratio/issues/168)). Cites sheet / bridge / cash-flow; opt-in scenario journals on allowlisted Personal templates; closed-through and empty-allowlist refuse. Grant path is not built. Not a cash forecast. Does not close #168 |
 | `connect/aia-pay-app/` | First-party Connect app for Project G702/G703-ish pay-app export ([#184](https://github.com/mattmarshall/ratio/issues/184)). CSV from `/billing` + `/budget` cites (revised contract, billed, retainage, change orders). Missing cites stay unset — no silent billed / retainage / CO zeros. Grant path leftover #22; licensed AIA PDF is refused. Does not close #184. Does not reopen #151 |
 | `connect/vendor-portal/` | First-party Connect app for a Project vendor / GC portal ([#172](https://github.com/mattmarshall/ratio/issues/172)). Cites billed / earned / retainage / collections from `/billing`; remaining-to-bill and cash-against-AR stay unset until the journal can support them. Vendor invoices are allowlisted `journals:post` for `vendor_invoice*` — not `journal:append`. Grant path is not built. No vendor user directory in core. No AIA G702 product UI (#184). No EAC / forecast (#169). Does not close #172 |
+| `connect/eac-forecast/` | First-party Connect app for Project EAC / forecast ([#169](https://github.com/mattmarshall/ratio/issues/169)). CSV / JSON from `/budget` + `/billing` cites. Remaining to spend is revised − incurred − awarded; EAC / ETC stay unset until that cut can support a figure — never a silent 0.00. Read-only: no forecast template, `journal:append` refused. Grant path leftover #22; live EAC product UX and `/budget` EAC fields stay refused. Does not close #169. Does not reopen #151 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.
