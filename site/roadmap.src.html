@@ -256,7 +256,16 @@ __STYLE__
           discrete Personal templates; scenario journals post only on
           opt-in, closed periods are not mutated, and a cash forecast /
           FIRE number stays refused. It cannot show a Connect token
-          opening a book. Fund books
+          opening a book. A Project
+          <a href="https://github.com/mattmarshall/ratio/tree/main/connect/vendor-portal">vendor / GC portal Connect app</a>
+          (<a href="https://github.com/mattmarshall/ratio/issues/172">#172</a>)
+          cites billed / earned / retainage / collections from
+          <code>/billing</code>; an unbilled job stays unset, not the
+          whole contract as remaining. Vendor invoices are allowlisted
+          <code>journals:post</code> for <code>vendor_invoice*</code>,
+          not <code>journal:append</code>. It cannot show a Connect
+          token opening a book, a vendor user directory in core, AIA
+          G702 product UI, or EAC / forecast. Fund books
           keep the operations surface. An Operating book cites a balance
           sheet, a period income statement, and a period cash-flow
           statement that tie to the trial
@@ -319,6 +328,10 @@ __STYLE__
           CSV from Project billing and budget cites; the grant path and
           a licensed AIA form are leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>.
+          A vendor / GC portal Connect app scaffold cites Project
+          billing and retainage; the grant path, live OAuth, and a
+          vendor user directory stay leftover on
+          <a href="https://github.com/mattmarshall/ratio/issues/172">#172</a>.
           What it still does not have is a client portal — and on the fund side it is
           still the exception queue, a difference at its own address, and
           whether a fund can close. Household budget envelopes, a project
@@ -540,7 +553,15 @@ __STYLE__
       (<a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>)
       emits G702-ish / G703-ish CSV from Project billing, budget,
       retainage, and change-order cites; missing cites stay unset, the
-      grant path is not built, and a licensed AIA form is refused.</p>
+      grant path is not built, and a licensed AIA form is refused. A
+      <a href="https://github.com/mattmarshall/ratio/tree/main/connect/vendor-portal">vendor / GC portal Connect app</a>
+      (<a href="https://github.com/mattmarshall/ratio/issues/172">#172</a>)
+      cites Project billed / earned / retainage / collections; the
+      grant path is not built, a vendor user directory stays out of
+      core, and AIA G702 / EAC stay on
+      <a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>
+      /
+      <a href="https://github.com/mattmarshall/ratio/issues/169">#169</a>.</p>
       <ul class="r-deliver">
         <li class="o">Custodian and administrator feed catalog</li>
         <li class="o">Market-data vendor coverage</li>

@@ -86,6 +86,12 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
   budget cites ([#184](https://github.com/mattmarshall/ratio/issues/184)).
   Scaffold; missing cites stay unset; Connect tokens are not accepted
   on `/v1`; a licensed AIA form is refused.
+- **[connect/vendor-portal/](connect/vendor-portal/)** — first-party
+  Connect app for a Project vendor / GC portal
+  ([#172](https://github.com/mattmarshall/ratio/issues/172)). Scaffold;
+  cites billed / earned / retainage / collections; vendor invoices are
+  allowlisted `journals:post` for `vendor_invoice*`; Connect tokens are
+  not accepted on `/v1`; no vendor user directory in core.
 
 ## License
 

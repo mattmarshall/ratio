@@ -1,0 +1,36 @@
+package(default_visibility = ["//visibility:public"])
+
+# The vendor / GC portal Connect app is a sibling tree. Bazel does not
+# build a WorkOS binary here; it holds the cite model to the catalog,
+# to CreateBook(Project), and to the refusals the issue named.
+#
+# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_cites() and deliver()
+# must refuse. Accepting Connect tokens is leftover #22. Unset billed /
+# retainage / remaining stay unset, not silent zeros. No vendor user
+# directory in core. No AIA G702 product UI (#184). No EAC (#169).
+# PROJECT chrome is not forked.
+sh_test(
+    name = "portal_test",
+    size = "small",
+    srcs = ["portal_test.sh"],
+    args = [
+        "$(rootpath portal.py)",
+        "$(rootpath portal_test.py)",
+        "$(rootpath app.json)",
+        "$(rootpath //crates/ratio-console:src/book.rs)",
+        "$(rootpath //crates/ratio-rules:src/lib.rs)",
+        "$(rootpath //:docs/connect-scopes.md)",
+        "$(rootpath //console:src/lib/screens.ts)",
+        "$(rootpath //proto:ratio/console/v1/console.proto)",
+    ],
+    data = [
+        "portal.py",
+        "portal_test.py",
+        "app.json",
+        "//crates/ratio-console:src/book.rs",
+        "//crates/ratio-rules:src/lib.rs",
+        "//:docs/connect-scopes.md",
+        "//console:src/lib/screens.ts",
+        "//proto:ratio/console/v1/console.proto",
+    ],
+)

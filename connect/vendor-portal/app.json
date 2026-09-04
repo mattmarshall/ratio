@@ -1,0 +1,53 @@
+{
+  "name": "Ratio vendor / GC portal",
+  "book_kind": "PROJECT",
+  "issue": 172,
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "billing:read",
+      "budget:read",
+      "statements:read",
+      "journals:post"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read",
+      "projects:budget:read",
+      "projects:billing:read"
+    ]
+  },
+  "journals_post_allowlist": {
+    "client_id": "client_ratio_vendor_portal",
+    "templates": [
+      "vendor_invoice",
+      "vendor_invoice_site",
+      "vendor_invoice_structure",
+      "vendor_invoice_finishes"
+    ]
+  },
+  "vendor_invoices": {
+    "status": "allowlisted journals:post only",
+    "note": "The issue body still says journal:append. That string is an alias and is refused. Canonical: journals:post for already-seeded vendor_invoice* templates. Empty allowlist refuses every post. A vendor user directory is not a kernel RPC — leftover on this issue forever. Live ACL / grant path is leftover #22."
+  },
+  "aia_g702": {
+    "status": "refused",
+    "note": "No AIA G702/G703 product UI. That door is #184. This app cites billed / earned / retainage / collections; it does not pack a pay-app or render a licensed form."
+  },
+  "eac_forecast": {
+    "status": "refused",
+    "note": "No EAC, cost-to-complete, or cash forecast. Those stay on #169. /budget still does not forecast."
+  },
+  "vendor_directory": {
+    "status": "refused",
+    "note": "No vendor user directory inside Ratio core. Membership is the AuthKit sub on the book. An org_id claim is not membership."
+  },
+  "grant_path": {
+    "status": "not built",
+    "note": "Connect access tokens are not accepted on /v1. Accepting Connect scopes is leftover #22 / #150. Write-route actor binding landed (#151). This file does not close #22, #150, or #172. It does not reopen #151."
+  }
+}

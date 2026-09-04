@@ -1884,6 +1884,71 @@ unset on a book that never elected the rule — including the live
 demo. It cannot show an invoice PDF, an LP statement, or a
 payment. Those remain Connect.
 
+### Amendment, 2026-09-04 — a Project vendor-portal Connect app, and the grant path still does not open
+
+[#172](https://github.com/mattmarshall/ratio/issues/172) asked for a
+vendor / GC portal that reads Project billing and retainage without
+stuffing vendor chrome into `ratio watch` or growing a vendor user
+directory in core. `/billing` and `/budget` stay core. The catalog
+already said a vendor portal stays a Connect app. What landed is that
+app as a sibling tree, not a kernel method.
+
+**What this amendment records.** [`connect/vendor-portal/`](connect/vendor-portal/)
+is a first-party WorkOS Connect OAuth application for `BookKind` PROJECT.
+It declares `billing:read`, `budget:read`, `statements:read`, and
+`journals:post` — the frozen names, not the issue body's stale alias
+`journal:append` and not the catalog aliases `projects:billing:read` /
+`projects:budget:read`. Vendor-facing billed / earned / retainage /
+collections cite the kernel cuts already on `/billing`. Unset stays
+unset — an unbilled job is not billed-zero; treating billed as 0
+would print the whole contract as remaining. Remaining to bill is
+revised − billed. Collections vs billed is cash against AR. Vendor
+invoices post only as allowlisted `journals:post` for already-seeded
+`vendor_invoice*` templates. Empty allowlist refuses every post. A
+dated invoice on or before closed-through refuses the batch.
+Instantiated legs must conserve in every currency. Money is minor
+units, split on the point. No percentage. No new `Method` / `Order`
+/ `lot_method` variant. PROJECT chrome is unchanged — `screensFor`
+is not forked. **a Project vendor-portal Connect app** is the Built
+phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not a Connect authorizer.** Connect access tokens are still not
+  accepted on `/v1`. `fetch_cites()` and `deliver()` refuse. Write-route
+  actor binding landed (#151). Accepting Connect scopes is leftover
+  #22 / #150. This file does not close #22. It does not reopen #151.
+- **Not a vendor user directory in Ratio core.** Membership is the
+  AuthKit `sub` on the book. `vendor_directory()` refuses.
+- **Not AIA G702 product UI.** That door is #184. `render_g702()`
+  refuses. The pay-app pack is `connect/aia-pay-app/`. `/billing`
+  and `/budget` stay the core cites.
+- **Not EAC / forecast.** Those stay on #169. `/budget` still does
+  not forecast. `eac()` / `forecast()` refuse.
+- **Not #150's read-only reference skeleton.** That leftover is
+  `books:read` + `statements:read` proving the door opens. This app
+  requests `billing:read`, `budget:read`, and `journals:post` and
+  does not open the door.
+- **Not a kernel RPC, not `ratio watch`, not Console product UI.**
+
+Nothing on the *Explicitly not building* list moved. Client portal,
+CRM, tax e-file, AIA G702 product UI, and waterfall stay
+Connect-apps or stay refused. This file does not close #172 —
+grant path (leftover #22), live OAuth, and a vendor user directory
+remain. It does not close #184, #169, #161, #165, #166, or #168.
+It does not close #150. It does not close #22. It does not reopen
+#151. It does not reopen #182.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a fixture job of original $10,000 / CO $500 / billed
+$1,000 mapping to collections and remaining-to-bill, an unbilled
+job leaving billed and remaining unset rather than inventing the
+whole contract as leftover, a site invoice mapping to
+`vendor_invoice_site`, a closed March refusing a 15 March invoice,
+and `journal:append` being rejected as a scope. It cannot show a
+Connect token opening a book, a vendor user directory, AIA G702
+product UI, or EAC / forecast.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,
