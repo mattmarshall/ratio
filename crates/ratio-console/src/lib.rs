@@ -2673,7 +2673,10 @@ impl Console {
         let Some(terms) = set.and_then(RuleSet::fee_terms) else {
             return Ok(String::new());
         };
-        let listed = self.list_accounts(&format!("funds/{id}/views/{view}/accounts"), "")?;
+        // ListAccounts parent is the view, not an `/accounts` child — that
+        // extra segment fails view_scoped_parent and would make GetBook
+        // panic after a successful accrual.
+        let listed = self.list_accounts(&format!("funds/{id}/views/{view}"), "")?;
         let Some(acct) = listed
             .accounts
             .iter()
