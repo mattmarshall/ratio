@@ -66,45 +66,47 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
   · **[PLAN.md](PLAN.md)** (⚠ written 2026-08-07, since overtaken in places).
 - **[docs/connect-scopes.md](docs/connect-scopes.md)** — WorkOS Connect
   scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)).
-  Contract only; the grant path is not built.
+  Connect tokens accepted with catalog scopes; first-party
+  Connect apps call ConnectApiUrl. WorkOS dashboard registration
+  stays leftover on issue 22.
 - **[connect/bank-feed/](connect/bank-feed/)** — first-party Connect app
   that maps household bank rows onto Personal templates
   ([#165](https://github.com/mattmarshall/ratio/issues/165)). Scaffold;
-  Connect tokens are not accepted on `/v1`, and live bank OAuth is leftover.
+  first-party Connect apps call ConnectApiUrl, and live bank OAuth is leftover.
 - **[connect/tax-pack/](connect/tax-pack/)** — first-party Connect app
   that emits 8949-ish CSV from lot, wash, and lot-terms cites
   ([#166](https://github.com/mattmarshall/ratio/issues/166)). Scaffold;
-  mixed dates stay unclassified; Connect tokens are not accepted on
-  `/v1`; IRS e-file is refused.
+  mixed dates stay unclassified; first-party Connect apps call
+  ConnectApiUrl; IRS e-file is refused.
 - **[connect/goals/](connect/goals/)** — first-party Connect app
   for household net-worth goals and what-if scenarios
   ([#168](https://github.com/mattmarshall/ratio/issues/168)). Scaffold;
   cites sheet / bridge / cash-flow; scenario journals post only on
-  opt-in; Connect tokens are not accepted on `/v1`; not a cash forecast.
+  opt-in; first-party Connect apps call ConnectApiUrl; not a cash forecast.
 - **[connect/aia-pay-app/](connect/aia-pay-app/)** — first-party Connect
   app that emits G702-ish / G703-ish CSV from Project billing and
   budget cites ([#184](https://github.com/mattmarshall/ratio/issues/184)).
-  Scaffold; missing cites stay unset; Connect tokens are not accepted
-  on `/v1`; a licensed AIA form is refused.
+  Scaffold; missing cites stay unset; first-party Connect apps call
+  ConnectApiUrl; a licensed AIA form is refused.
 - **[connect/vendor-portal/](connect/vendor-portal/)** — first-party
   Connect app for a Project vendor / GC portal
   ([#172](https://github.com/mattmarshall/ratio/issues/172)). Scaffold;
   cites billed / earned / retainage / collections; vendor invoices are
-  allowlisted `journals:post` for `vendor_invoice*`; Connect tokens are
-  not accepted on `/v1`; no vendor user directory in core.
+  allowlisted `journals:post` for `vendor_invoice*`; first-party
+  Connect apps call ConnectApiUrl; no vendor user directory in core.
 - **[connect/eac-forecast/](connect/eac-forecast/)** — first-party
   Connect app that emits EAC / ETC CSV from Project budget and billing
   cites ([#169](https://github.com/mattmarshall/ratio/issues/169)).
   Scaffold; remaining to spend stays revised − incurred − awarded;
-  unset EAC is blank, not a silent 0; Connect tokens are not accepted
-  on `/v1`; `/budget` still does not forecast.
+  unset EAC is blank, not a silent 0; first-party Connect apps call
+  ConnectApiUrl; `/budget` still does not forecast.
 - **[connect/program-rollup/](connect/program-rollup/)** — first-party
   Connect app that rolls per-book Project budget and billing cites
   across membership-visible PROJECT books
   ([#179](https://github.com/mattmarshall/ratio/issues/179)). Scaffold;
   unset billed / collected stay blank, not a silent program 0.00; an
-  `org_id` claim is not membership; Connect tokens are not accepted
-  on `/v1`; no mega-book in the kernel.
+  `org_id` claim is not membership; first-party Connect apps call
+  ConnectApiUrl; no mega-book in the kernel.
 
 ## License
 

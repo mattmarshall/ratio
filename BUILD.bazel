@@ -72,7 +72,7 @@ sh_test(
 # The Connect catalog is a contract. This holds PLAN.md, HANDOFF.md and
 # docs/connect-scopes.md to the same frozen strings — same spirit as the
 # two checks above, and the same honest limitation: it cannot say the
-# grant path exists, only that the three documents cannot drift apart.
+# grant helper exists, only that the three documents cannot drift apart.
 #
 # ⚠ CI SKIPS `**/*.md`, so a docs-only edit of the catalog would not run
 # this. The script is the code half; adding or renaming a scope is a

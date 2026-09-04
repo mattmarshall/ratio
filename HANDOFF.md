@@ -25,34 +25,35 @@ date is carried when every lot agrees; mixed or missing dates stay
 unset; no category is invented — not FIFO's oldest date, not two
 Form 8949 boxes). The household tax-pack Connect app
 (`connect/tax-pack/`, #166) cites that same rule; it does not
-close #166 (grant path and IRS e-file remain). The Project AIA
+close #166 (WorkOS dashboard registration leftover #22 and IRS e-file remain). The Project AIA
 pay-app Connect app (`connect/aia-pay-app/`, #184) refuses to
 invent billed / retainage / change-order zeros; that does not
-close #184 (grant path leftover #22 and a licensed AIA form remain).
+close #184 (WorkOS dashboard registration leftover #22 and a licensed AIA form remain).
 The Project EAC / forecast Connect app (`connect/eac-forecast/`,
 #169) computes estimate-at-completion outside the journal; unset
 remaining-to-spend stays revised − incurred − awarded, never a
-silent EAC of 0. That does not close #169 (grant path leftover
+silent EAC of 0. That does not close #169 (WorkOS dashboard registration leftover
 #22 and live EAC product UX remain). The Project program roll-up
 Connect app (`connect/program-rollup/`, #179) cites per-book
 budget and billing figures across PROJECT books the subject can
 see (`books:read` membership; an `org_id` claim is not membership)
 and sums only the books that cited each figure — never a silent
 program billed or collected of 0.00. That does not close #179
-(grant path leftover #22 and live OAuth remain).
+(WorkOS dashboard registration leftover #22 remains).
 Personal cash-forecast Connect predictors
 (`connect/bank-balance-predictor/` and `connect/calendar-bills/`,
 #163) post allowlisted `forecast_*` / `scheduled_*` journal
 material and read statements; they do not invent envelopes or
 payroll, and they do not grow a kernel RPC. That does not close
-#163 (grant path leftover #22 and live bank / calendar OAuth
+#163 (WorkOS dashboard registration leftover #22 and live bank / calendar OAuth
 remain). It does not reopen #164.
 The audit-export Connect app (`connect/audit-export/`, #185)
 packages cited period closes, NAV strikes, break reports /
 explanations, and config / journal digests as a ZIP; a missing
 cite stays unset in the manifest, never a silent empty file or
-empty-digest-as-success. That does not close #185 (grant path
-leftover #22 and live ZIP delivery remain).
+empty-digest-as-success. first-party Connect apps call ConnectApiUrl.
+That does not close #185 (WorkOS dashboard registration leftover
+#22 and a live walk-through ZIP remain).
 Equalization, drip, and side-pocket stay Connect (#177) — a
 PLAN decision, not a landing. None of the three changes
 conservation or journal integrity; do not implement them as
@@ -803,7 +804,7 @@ or `sidepocket:*`.
   AIA G702 product UI, EAC fields on `/budget`, a Connect token opening
   a book, live EAC product UX,
   a client portal, e-signature, or CRM. Remaining to bill stays on #100.
-  This file does not close #169 (grant path leftover #22 and live EAC
+  This file does not close #169 (WorkOS dashboard registration leftover #22 and live EAC
   product UX remain). #170's leftover was posting / ingesting that award
   on the `/budget` chrome itself — that landed; estimating-tool Connect
   grants stay on #150 / #22. The seeded demo funds remain investment books.
@@ -829,15 +830,15 @@ or `sidepocket:*`.
   vs earned stay on #85. #173's leftover was posting that collection
   on the `/billing` chrome itself — that landed; payment-processor
   Connect grants stay on #150 / #22. This file does not close #184
-  (grant path leftover #22 and licensed form remain). A Project
+  (WorkOS dashboard registration leftover #22 and licensed form remain). A Project
   program roll-up Connect app scaffold (`connect/program-rollup/`,
   #179) cites those same per-book budget and billing figures
   across PROJECT books the subject can see and sums only the books
   that cited each figure — never a silent program billed or
   collected of 0.00, never a mega-book that merges journals. An
   `org_id` claim is not membership. It cannot show a Connect token
-  opening a book. This file does not close #179 (grant path leftover
-  #22 and live OAuth remain). The seeded demo funds remain
+  opening a book. This file does not close #179 (WorkOS dashboard registration leftover
+  #22 remains). The seeded demo funds remain
   investment books.
 - ⚠ **A project job-cost / AP statement-ingest walk-through (#171 / #27).**
   CreateBook(Project) seeds `project-invoices` as the job-cost / AP /
@@ -896,9 +897,11 @@ or `sidepocket:*`.
   string. User B sees authorized-empty / "no fund" for user A's book on
   the `scoped` path. Connect tokens accepted with catalog scopes on
   `/v1` (frozen names only; aliases and hard non-scopes refused).
-  RATIO_DEMO_OPEN defaults off on the deployed demo. Leftover on
-  #22: unused Cognito CloudFormation resources and live provider
-  OAuth. API Gateway JWT verifies Connect tokens on a second HTTP
+  RATIO_DEMO_OPEN defaults off on the deployed demo. first-party
+  Connect apps call ConnectApiUrl. Leftover on
+  #22: unused Cognito CloudFormation resources, `DEMO_MEMBERS`
+  naming a live WorkOS `sub`, and WorkOS dashboard registration.
+  API Gateway JWT verifies Connect tokens on a second HTTP
   API (Connect `iss` = `https://auth.ratio.marsh.build`; AuthKit
   session `iss` stays `/user_management/{client_id}`). This file
   leaves #22 open for those leftovers.
@@ -1171,17 +1174,17 @@ than one that is entirely unclassified.
 | `console/` | the console itself. Next.js on Vercel; ⛔ Bazel does not build it |
 | `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9 |
 | `AGENTS.md` | the rules, for a person or a model, and the dispatch contract (one issue → one cloud agent → one PR). Replaces the two stale LLM guides |
-| `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Connect tokens accepted with catalog scopes on `/v1` after membership. Write-route actor = WorkOS `sub`; a Connect-shaped token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}` (#151). API Gateway JWT verifies Connect tokens on the Connect HTTP API (AuthKit custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the deployed demo. Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation. leftover #22: unused Cognito CloudFormation resources, live provider OAuth. Equalization, drip, and side-pocket stay Connect ([#177](https://github.com/mattmarshall/ratio/issues/177)) — existing scopes, no new grants; drip on #161; equalization / side-pocket apps not filed |
-| `connect/bank-feed/` | First-party Connect app for Personal bank feeds ([#165](https://github.com/mattmarshall/ratio/issues/165)). Mapper + allowlist + closed-through / conservation refusals. Grant path is not built; live bank OAuth is leftover. Does not close #165 |
-| `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — `Ratio.Lots.PoolPeriod`, not an invented FIFO oldest date or two Form 8949 boxes. Grant path is not built; IRS e-file is refused. Does not close #166 |
-| `connect/goals/` | First-party Connect app for Personal net-worth goals and what-if scenarios ([#168](https://github.com/mattmarshall/ratio/issues/168)). Cites sheet / bridge / cash-flow; opt-in scenario journals on allowlisted Personal templates; closed-through and empty-allowlist refuse. Grant path is not built. Not a cash forecast. Does not close #168 |
-| `connect/aia-pay-app/` | First-party Connect app for Project G702/G703-ish pay-app export ([#184](https://github.com/mattmarshall/ratio/issues/184)). CSV from `/billing` + `/budget` cites (revised contract, billed, retainage, change orders). Missing cites stay unset — no silent billed / retainage / CO zeros. Grant path leftover #22; licensed AIA PDF is refused. Does not close #184. Does not reopen #151 |
-| `connect/vendor-portal/` | First-party Connect app for a Project vendor / GC portal ([#172](https://github.com/mattmarshall/ratio/issues/172)). Cites billed / earned / retainage / collections from `/billing`; remaining-to-bill and cash-against-AR stay unset until the journal can support them. Vendor invoices are allowlisted `journals:post` for `vendor_invoice*` — not `journal:append`. Grant path is not built. No vendor user directory in core. No AIA G702 product UI (#184). No EAC / forecast (#169). Does not close #172 |
-| `connect/eac-forecast/` | First-party Connect app for Project EAC / forecast ([#169](https://github.com/mattmarshall/ratio/issues/169)). CSV / JSON from `/budget` + `/billing` cites. Remaining to spend is revised − incurred − awarded; EAC / ETC stay unset until that cut can support a figure — never a silent 0.00. Read-only: no forecast template, `journal:append` refused. Grant path leftover #22; live EAC product UX and `/budget` EAC fields stay refused. Does not close #169. Does not reopen #151 |
-| `connect/program-rollup/` | First-party Connect app for Project multi-contract / program roll-up ([#179](https://github.com/mattmarshall/ratio/issues/179)). CSV / JSON from per-book `/budget` + `/billing` cites across PROJECT books the subject can see (`books:read` membership; an `org_id` claim is not membership). Program totals sum only set cites — never a silent billed / collected 0.00 for a book that lacks the cite. Read-only: no `journals:post`. No mega-book, no fifth kind, no `screensFor` fork. Grant path leftover #22. Does not close #179. Does not close #169, #172, or #184. Does not reopen #151 |
-| `connect/bank-balance-predictor/` | First-party Connect app for Personal bank-balance predictors ([#163](https://github.com/mattmarshall/ratio/issues/163)). Maps predicted movements (or a predicted ending balance against cited cash) onto allowlisted `forecast_income` / `forecast_spend`. Unset cited cash is not a silent 0.00 baseline. Closed-through and empty-allowlist refuse. `journal:append` is an alias. Payroll / envelope kinds refuse. Grant path leftover #22; live bank OAuth leftover. Does not close #163. Does not reopen #164. Does not redo #218 |
-| `connect/calendar-bills/` | First-party Connect app for Personal calendar bills sync ([#163](https://github.com/mattmarshall/ratio/issues/163)). Maps dated occurrences onto allowlisted `scheduled_income` / `scheduled_spend`. Recurrence stays in the calendar — an `rrule` is refused rather than expanded. Closed-through and empty-allowlist refuse. `journal:append` is an alias. Payroll / envelope kinds refuse. Grant path leftover #22; live calendar OAuth leftover. Does not close #163. Does not reopen #164. Does not redo #218 |
-| `connect/audit-export/` | First-party Connect app for an audit evidence ZIP ([#185](https://github.com/mattmarshall/ratio/issues/185)). Cites `PeriodClose`, `NavStrike`, `Break` / `BreakExplanation`, and config / journal digests already on the book. Missing cites stay unset in the manifest — never a silent empty file, a NAV 0.00, or an empty-digest-as-success. Read-only: no `journals:post`. No kernel blob store, no period-close replacement, no LP portal, no e-sign, no second journal. Grant path leftover #22. Does not close #185. Does not close #22 or #150. Does not reopen #151 |
+| `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Connect tokens accepted with catalog scopes on `/v1` after membership. Write-route actor = WorkOS `sub`; a Connect-shaped token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}` (#151). API Gateway JWT verifies Connect tokens on the Connect HTTP API (AuthKit custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the deployed demo. first-party Connect apps call ConnectApiUrl. Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation. leftover #22: unused Cognito CloudFormation resources, `DEMO_MEMBERS` naming a live WorkOS `sub`, WorkOS dashboard registration. Equalization, drip, and side-pocket stay Connect ([#177](https://github.com/mattmarshall/ratio/issues/177)) — existing scopes, no new grants; drip on #161; equalization / side-pocket apps not filed |
+| `connect/bank-feed/` | First-party Connect app for Personal bank feeds ([#165](https://github.com/mattmarshall/ratio/issues/165)). Mapper + allowlist + closed-through / conservation refusals. first-party Connect apps call ConnectApiUrl; live bank OAuth is leftover. Does not close #165 |
+| `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — `Ratio.Lots.PoolPeriod`, not an invented FIFO oldest date or two Form 8949 boxes. first-party Connect apps call ConnectApiUrl; IRS e-file is refused. Does not close #166 |
+| `connect/goals/` | First-party Connect app for Personal net-worth goals and what-if scenarios ([#168](https://github.com/mattmarshall/ratio/issues/168)). Cites sheet / bridge / cash-flow; opt-in scenario journals on allowlisted Personal templates; closed-through and empty-allowlist refuse. first-party Connect apps call ConnectApiUrl. Not a cash forecast. Does not close #168 |
+| `connect/aia-pay-app/` | First-party Connect app for Project G702/G703-ish pay-app export ([#184](https://github.com/mattmarshall/ratio/issues/184)). CSV from `/billing` + `/budget` cites (revised contract, billed, retainage, change orders). Missing cites stay unset — no silent billed / retainage / CO zeros. WorkOS dashboard registration leftover #22; licensed AIA PDF is refused. Does not close #184. Does not reopen #151 |
+| `connect/vendor-portal/` | First-party Connect app for a Project vendor / GC portal ([#172](https://github.com/mattmarshall/ratio/issues/172)). Cites billed / earned / retainage / collections from `/billing`; remaining-to-bill and cash-against-AR stay unset until the journal can support them. Vendor invoices are allowlisted `journals:post` for `vendor_invoice*` — not `journal:append`. first-party Connect apps call ConnectApiUrl. No vendor user directory in core. No AIA G702 product UI (#184). No EAC / forecast (#169). Does not close #172 |
+| `connect/eac-forecast/` | First-party Connect app for Project EAC / forecast ([#169](https://github.com/mattmarshall/ratio/issues/169)). CSV / JSON from `/budget` + `/billing` cites. Remaining to spend is revised − incurred − awarded; EAC / ETC stay unset until that cut can support a figure — never a silent 0.00. Read-only: no forecast template, `journal:append` refused. WorkOS dashboard registration leftover #22; live EAC product UX and `/budget` EAC fields stay refused. Does not close #169. Does not reopen #151 |
+| `connect/program-rollup/` | First-party Connect app for Project multi-contract / program roll-up ([#179](https://github.com/mattmarshall/ratio/issues/179)). CSV / JSON from per-book `/budget` + `/billing` cites across PROJECT books the subject can see (`books:read` membership; an `org_id` claim is not membership). Program totals sum only set cites — never a silent billed / collected 0.00 for a book that lacks the cite. Read-only: no `journals:post`. No mega-book, no fifth kind, no `screensFor` fork. WorkOS dashboard registration leftover #22. Does not close #179. Does not close #169, #172, or #184. Does not reopen #151 |
+| `connect/bank-balance-predictor/` | First-party Connect app for Personal bank-balance predictors ([#163](https://github.com/mattmarshall/ratio/issues/163)). Maps predicted movements (or a predicted ending balance against cited cash) onto allowlisted `forecast_income` / `forecast_spend`. Unset cited cash is not a silent 0.00 baseline. Closed-through and empty-allowlist refuse. `journal:append` is an alias. Payroll / envelope kinds refuse. WorkOS dashboard registration leftover #22; live bank OAuth leftover. Does not close #163. Does not reopen #164. Does not redo #218 |
+| `connect/calendar-bills/` | First-party Connect app for Personal calendar bills sync ([#163](https://github.com/mattmarshall/ratio/issues/163)). Maps dated occurrences onto allowlisted `scheduled_income` / `scheduled_spend`. Recurrence stays in the calendar — an `rrule` is refused rather than expanded. Closed-through and empty-allowlist refuse. `journal:append` is an alias. Payroll / envelope kinds refuse. WorkOS dashboard registration leftover #22; live calendar OAuth leftover. Does not close #163. Does not reopen #164. Does not redo #218 |
+| `connect/audit-export/` | First-party Connect app for an audit evidence ZIP ([#185](https://github.com/mattmarshall/ratio/issues/185)). Cites `PeriodClose`, `NavStrike`, `Break` / `BreakExplanation`, and config / journal digests already on the book. Missing cites stay unset in the manifest — never a silent empty file, a NAV 0.00, or an empty-digest-as-success. Read-only: no `journals:post`. No kernel blob store, no period-close replacement, no LP portal, no e-sign, no second journal. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration leftover #22. Does not close #185. Leaves issue 22 open. Does not close #150. Does not reopen #151 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.

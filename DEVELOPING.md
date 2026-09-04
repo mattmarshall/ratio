@@ -44,7 +44,7 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//proto:ratio_aip_lint`, `//proto:mirrors_test` | the wire contract, and its two hand-written mirrors |
 | `//crates/ratio-console:transcode_test` | the route table against the proto |
 | `//demo:rehearse_test`, `//demo:shadow_run_test` | the demo and the shadow run, end to end |
-| `//:connect_scopes_test` | PLAN, HANDOFF and `docs/connect-scopes.md` still name the same Connect grants and leftovers — the in-process authorizer accepts catalog scopes; API Gateway JWT verifies Connect tokens; live OAuth stays leftover |
+| `//:connect_scopes_test` | PLAN, HANDOFF and `docs/connect-scopes.md` still name the same Connect grants and leftovers — the in-process authorizer accepts catalog scopes; API Gateway JWT verifies Connect tokens; first-party Connect apps call ConnectApiUrl; WorkOS dashboard registration stays leftover |
 | `//connect/bank-feed:mapper_test` | Personal bank-feed mapper (#165): canonical scopes, empty-allowlist / closed-through / conservation refusals — not that a token is accepted |
 | `//connect/tax-pack:pack_test` | Personal tax-pack builder (#166): canonical scopes, 8949-ish CSV, mixed-date category refusal — not that a token is accepted and not an IRS e-file |
 | `//connect/goals:goals_test` | Personal net-worth goals / scenarios (#168): canonical scopes, opt-in / empty-allowlist / closed-through refusals — not that a token is accepted and not a cash forecast |
@@ -52,7 +52,8 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//connect/vendor-portal:portal_test` | Project vendor / GC portal (#172): canonical scopes, unset billed / retainage / remaining, empty-allowlist / closed-through refusals — not that a token is accepted and not a vendor directory |
 | `//connect/eac-forecast:pack_test` | Project EAC / forecast packer (#169): canonical scopes, remaining-to-spend / EAC unset refusals — not that a token is accepted and not a silent EAC of 0 |
 | `//connect/program-rollup:rollup_test` | Project program roll-up (#179): canonical scopes, alias / mega-book / unset billed refusals — not that a token is accepted and not a silent program 0.00 |
-| `//connect/audit-export:pack_test` | Audit evidence ZIP (#185): canonical scopes, unset / cited-empty / empty-digest refusals — not that a token is accepted and not a live ZIP against `/v1` |
+| `//connect/grant:grant_test` | Shared Connect grant helper: ConnectApiUrl only, never DemoUrl, never `RATIO_DEMO_OPEN`, never `org:{id}` |
+| `//connect/audit-export:pack_test` | Audit evidence ZIP (#185): canonical scopes, unset / cited-empty / empty-digest refusals — fetch/deliver call ConnectApiUrl; WorkOS dashboard registration stays leftover |
 | `//marketing:language_test` | the licensing language sweep |
 
 `paths-ignore` covers `site/**` and `**/*.md` only. `marketing/`, `paper/` and

@@ -401,8 +401,9 @@ __STYLE__
           (<a href="https://github.com/mattmarshall/ratio/issues/185">#185</a>)
           packages those close / strike / break / digest cites as a ZIP;
           a missing cite stays unset in the manifest, never a silent empty
-          file or empty-digest-as-success. It cannot show a Connect token
-          opening a book or a live ZIP against <code>/v1</code>.
+          file or empty-digest-as-success. first-party Connect apps
+          call ConnectApiUrl. It cannot show a live walk-through
+          without WorkOS dashboard registration.
           A live walk-through does not yet post a
           construction job or an operating company — CreateBook seeds the patterns; the seeded demo
           funds remain investment books.</li>
@@ -421,8 +422,10 @@ __STYLE__
           (Connect <code>iss</code> is the AuthKit custom domain).
           <code>RATIO_DEMO_OPEN</code> defaults off on the deployed
           demo, so two AuthKit subjects isolate via membership.
-          Unused Cognito resources and live provider OAuth remain
-          leftover on issue 22.</li>
+          first-party Connect apps call ConnectApiUrl.
+          Unused Cognito resources, <code>DEMO_MEMBERS</code> naming
+          a live WorkOS <code>sub</code>, and WorkOS dashboard
+          registration remain leftover on issue 22.</li>
         </ul>
       </div>
       <div class="r-spec">
@@ -628,8 +631,8 @@ __STYLE__
         <li class="o">Fee billing (invoice PDF, LP statements, payment collection) — Connect</li>
         <li class="o">Equalization, drip subscriptions, and side-pocket ops — Connect (#177; drip on #161). Not kernel primitives</li>
         <li class="d">Restatement and point-in-time reporting: console <code>/asof</code> browses a pinned prefix + config digest from period closes and NAV strikes; WashRestatement cites the strike (original → moved) and does not rewrite the struck NAV; unset when no pin or no restatement — never a silent rewrite. Not performance attribution</li>
-        <li class="d">Audit export Connect scaffold: <a href="https://github.com/mattmarshall/ratio/tree/main/connect/audit-export">connect/audit-export/</a> packages cited period closes, NAV strikes, break reports / explanations, and config / journal digests; a missing cite stays unset in the manifest, never a silent empty file, a NAV 0.00, or an empty-digest-as-success. No kernel blob store, no period-close replacement. Grant path leftover <a href="https://github.com/mattmarshall/ratio/issues/185">#185</a> / <a href="https://github.com/mattmarshall/ratio/issues/22">#22</a></li>
-        <li class="o">Live audit export and evidence trail against <code>/v1</code> (Connect token + ZIP delivery) — leftover on <a href="https://github.com/mattmarshall/ratio/issues/185">#185</a> / <a href="https://github.com/mattmarshall/ratio/issues/22">#22</a>. A green cite is not a live token</li>
+        <li class="d">Audit export Connect scaffold: <a href="https://github.com/mattmarshall/ratio/tree/main/connect/audit-export">connect/audit-export/</a> packages cited period closes, NAV strikes, break reports / explanations, and config / journal digests; a missing cite stays unset in the manifest, never a silent empty file, a NAV 0.00, or an empty-digest-as-success. No kernel blob store, no period-close replacement. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration leftover <a href="https://github.com/mattmarshall/ratio/issues/185">#185</a> / <a href="https://github.com/mattmarshall/ratio/issues/22">#22</a></li>
+        <li class="o">Live audit-export walk-through (WorkOS dashboard registration + a token that opens a real book) — leftover on <a href="https://github.com/mattmarshall/ratio/issues/185">#185</a> / <a href="https://github.com/mattmarshall/ratio/issues/22">#22</a>. A green cite is not a live token</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
         <li class="d">Operations console: books (Personal, Fund, Project, Operating templates), a household balance sheet, period P&amp;L, net-worth bridge with transfers that are not trades, and a period cash-flow statement (operating / investing / financing; unset, not a fake zero cash; Personal cites scheduled / forecast net cash on the same URL — unset when none exist, not a fake zero; envelopes / payroll / bank predictors stay refused or Connect), household budget vs actual (configuration total, unset until set), Personal brokerage statement ingest on <code>brokerage-statement</code> / <code>brokerage-positions</code> (identified buys and sells post as household transfers onto Investments, unmatched instrument pending, unidentified or foreign-currency holdings refuse the live recon, never a silent 0; lot relief stays unset until <code>[personal] lot_relief = true</code> elects the wash / MinTax / SpecID / average-cost engines already on the book — not a silent lot, not fund ABOR chrome), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), awarded committed cost keyed to those work packages (unset until an award posts, not a fake zero; change-order and award ingest on <code>/budget</code> with phase keys, same journal kinds, no second store; job-cost / AP statement ingest on <code>project-invoices</code> — identified rows on the journal, unmatched vendor pending, retainage and WIP kinds refused), remaining to spend (revised − incurred − awarded, unset until budget, actual, and awarded can support it — no EAC / no forecast), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it; cash application on <code>/billing</code> via <code>collect_receivable</code>, same journal kind, no payment processor), an Operating book that cites a balance sheet, period income statement, period cash-flow statement, and AR/AP aging against the trial balance (AR/AP as working capital, owner equity as financing, investing unset — no PPE account; aging at /aging — missing due date is undated not current, buckets foot to control), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), a per-partner capital account statement (beginning → activity → allocated plugs stay unset without a named [[partner_cut]], never an equal split of book NAV), a period NAV roll-forward (unset, not a fake zero), management-fee receivable (unset without an elected fee rule, never a silent zero), and period close at /close on every kind (closed-through day, prefix and digest; surplus into retained earnings; provisional when open, unset when the journal cannot support a close — never a fake closed period), a point-in-time / restatement browser at /asof (pinned prefix + config digest from a close or a strike; WashRestatement cites the strike and does not rewrite the struck figure; unset when absent), the exception queue, a difference at its own address, a book's state, NAV gate reasons stay citeable (unexplained break / unpriced / unresolved trade — not a bare HTTP 400), kind-aware IA (Personal / Project / Operating do not wear Exceptions / Positions / NAV / trade / mark; a typed fund-ops URL 404s; Investment keeps the warehouse; one <code>screensFor</code> list)</li>
@@ -738,8 +741,9 @@ __STYLE__
       packages cited period closes, NAV strikes, break reports /
       explanations, and config / journal digests; a missing cite
       stays unset in the manifest, never a silent empty file or
-      empty-digest-as-success, and a
-      live ZIP against <code>/v1</code> stays leftover on that
+      empty-digest-as-success. first-party Connect apps call
+      ConnectApiUrl; a live walk-through without WorkOS dashboard
+      registration stays leftover on that
       issue. Equalization, drip, and side-pocket stay Connect
       (<a href="https://github.com/mattmarshall/ratio/issues/177">#177</a>):
       valuation / ops packaging on existing <code>nav:read</code> /

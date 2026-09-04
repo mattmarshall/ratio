@@ -1,0 +1,21 @@
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["grant.py"])
+
+# Shared Connect grant path. First-party apps call ConnectApiUrl
+# with a verified Connect access token. Membership still required.
+# A Connect token never takes RATIO_DEMO_OPEN and never matches
+# org:{id}. WorkOS dashboard registration stays leftover #22.
+sh_test(
+    name = "grant_test",
+    size = "small",
+    srcs = ["grant_test.sh"],
+    args = [
+        "$(rootpath grant.py)",
+        "$(rootpath grant_test.py)",
+    ],
+    data = [
+        "grant.py",
+        "grant_test.py",
+    ],
+)

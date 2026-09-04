@@ -21,9 +21,10 @@ balanced entry. A Personal template is two legs of opposite weight;
 the mapper instantiates those legs and checks them. It does not send
 a posting list the kernel would have to trust.
 
-⚠ THE GRANT PATH IS NOT BUILT. `deliver` refuses. A Connect access
-token is not accepted on `/v1` (#150 / #151 / leftover #22). Producing
-an ApplyEvent-shaped proposal is not posting it.
+⭐ THE GRANT PATH CALLS CONNECTAPIURL. `deliver` presents a verified
+Connect access token and POSTs allowlisted ApplyEvent bodies to the
+Connect HTTP API. Membership is still required. Live bank OAuth
+stays leftover on #165. WorkOS dashboard registration stays leftover #22.
 
 ⚠ LIVE BANK OAUTH IS NOT WIRED. A normalized row is the input. Plaid /
 MX / TrueLayer stay leftover on #165.
@@ -35,6 +36,8 @@ import json
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Iterable, Mapping, Sequence
+
+import grant as _grant
 
 # i64 bounds. Lean's Int is unbounded; ApplyEvent runs on i64.
 I64_MIN = -(2**63)
@@ -393,24 +396,22 @@ def deliver(
     posts: Sequence[ProposedPost],
     *,
     token: str | None = None,
-) -> None:
-    """Refuse to send. The grant path is not built.
-
-    A green mapper is not a door that opens. Connect access tokens are
-    until live OAuth lands. This function exists so a caller cannot
-    "just" POST the proposal and believe it landed.
-    """
-    _ = posts
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (#150 / #151 / leftover #22). This app does not "
-        "pretend the door opens"
+    parent: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> list[Any]:
+    """POST allowlisted ApplyEvent bodies to ConnectApiUrl."""
+    return _grant.deliver_apply_events(
+        posts,
+        as_apply_event=as_apply_event,
+        token=token,
+        parent=parent,
+        transport=transport,
+        error=Refuse,
     )
 
 
 def as_apply_event(post: ProposedPost, *, parent: str) -> dict[str, Any]:
-    """Wire shape for ApplyEvent. Not submitted."""
+    """Wire shape for ApplyEvent. deliver() submits this to ConnectApiUrl."""
     return {
         "parent": parent,
         "rule_id": post.rule_id,

@@ -20,14 +20,14 @@
   },
   "irs_submission": {
     "status": "refused",
-    "note": "No IRS e-file, no CPA portal, no packing inside Ratio core. This app emits 8949-ish CSV from lot, wash, and lot-terms cites. Live submission stays leftover on #166 forever as a product door — it is not a kernel RPC."
+    "note": "No IRS e-file, no CPA portal, no packing inside Ratio core. This app emits 8949-ish CSV from lot, wash, and lot-terms cites. Live submission stays leftover on #166 forever as a product door \u2014 it is not a kernel RPC."
   },
   "grant_path": {
-    "status": "not built",
-    "note": "In-process /v1 accepts Connect catalog scopes after membership. API Gateway JWT verifies Connect tokens on ConnectApiUrl. leftover #22: live provider OAuth, RATIO_DEMO_OPEN, unused Cognito. Write-route actor binding landed (#151). This file leaves #150 and #166 open."
+    "status": "built",
+    "note": "first-party Connect apps call ConnectApiUrl with a verified Connect access token (authorization_code or client_credentials against WorkOS Connect). Membership still required. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. leftover #22: WorkOS dashboard registration, DEMO_MEMBERS naming a live WorkOS sub, unused Cognito CloudFormation resources. Write-route actor binding landed (#151). This file does not reopen #151. This file leaves #150 and #166 open."
   },
   "pooled_holding_period": {
     "status": "cited",
-    "note": "When acquisition dates on a pooled holding disagree, the pack leaves the category unset. It does not invent FIFO's oldest date or two Form 8949 boxes. The kernel rule is Ratio.Lots.PoolPeriod — this file cites it; it does not invent a category of its own."
+    "note": "When acquisition dates on a pooled holding disagree, the pack leaves the category unset. It does not invent FIFO's oldest date or two Form 8949 boxes. The kernel rule is Ratio.Lots.PoolPeriod \u2014 this file cites it; it does not invent a category of its own."
   }
 }

@@ -5,8 +5,7 @@ package(default_visibility = ["//visibility:public"])
 # catalog, to per-book /budget and /billing cites, and to the
 # refusals the issue named.
 #
-# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_cites() must refuse.
-# Accepting Connect tokens is leftover #22. Unset billed / collected
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token. WorkOS dashboard registration stays leftover #22. Unset billed / collected
 # stay unset — never a silent program 0.00. No mega-book in the
 # kernel. PROJECT chrome is not forked. No #169 / #172 / #184 absorb.
 sh_test(
@@ -24,6 +23,7 @@ sh_test(
         "$(rootpath //console:src/wire/types.ts)",
     ],
     data = [
+        "//connect:grant.py",
         "rollup.py",
         "rollup_test.py",
         "app.json",

@@ -26,9 +26,10 @@ is an eight-week plan for a product nobody was buying.
 > `https://auth.ratio.marsh.build`; AuthKit session `iss` stays
 > `/user_management/{client_id}` — one authorizer cannot OR those).
 > `RATIO_DEMO_OPEN` defaults off on the deployed demo — AuthKit
-> sessions isolate via membership. Live leftovers on issue 22 are
-> unused Cognito CloudFormation resources and live provider OAuth
-> (dashboard registration / redirect / bank-calendar OAuth). Durable
+> sessions isolate via membership. first-party Connect apps call
+> ConnectApiUrl. Live leftovers on issue 22 are unused Cognito
+> CloudFormation resources, `DEMO_MEMBERS` naming a live WorkOS
+> `sub`, and WorkOS dashboard registration. Durable
 > writes are #24 (closed). The Cognito-era activation sentence is
 > historical.
 
@@ -309,8 +310,10 @@ Production has the env (#68 closed). Write-route actor binding landed
 (#151): `applyEvent` / `ingest` / `admit` / `mark` / CreateBook / period
 close record actor = WorkOS `sub`. Connect tokens accepted with
 catalog scopes on `/v1`. `RATIO_DEMO_OPEN` defaults off on the
-deployed demo. Live leftovers remain on issue 22 — unused Cognito
-resources in the deploy templates, and live provider OAuth. Do not
+deployed demo. first-party Connect apps call ConnectApiUrl.
+Live leftovers remain on issue 22 — unused Cognito resources in
+the deploy templates, `DEMO_MEMBERS` naming a live WorkOS `sub`,
+and WorkOS dashboard registration. Do not
 read this paragraph as production-complete.
 The retired `https://ratio-ims.vercel.app` host still resolves;
 `deploy.yml` refuses it as `CONSOLE_ORIGIN`.
@@ -780,8 +783,10 @@ has the env (#68 closed). Write-route actor binding landed (#151).
 Connect tokens accepted with catalog scopes on `/v1`. API Gateway
 JWT verifies Connect tokens on the Connect HTTP API (AuthKit
 custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the
-deployed demo. Live leftovers remain on issue 22 — unused Cognito
-resources in the deploy templates, and live provider OAuth. Do not
+deployed demo. first-party Connect apps call ConnectApiUrl.
+Live leftovers remain on issue 22 — unused Cognito resources in
+the deploy templates, `DEMO_MEMBERS` naming a live WorkOS `sub`,
+and WorkOS dashboard registration. Do not
 read this paragraph as production-complete, and do
 not read a walk-through as demo-ready (#27).
 
@@ -3479,5 +3484,68 @@ It can show two AuthKit subjects isolated on DemoUrl: the subject
 named in `RATIO_DEMO_MEMBER` (or the creator of a book) sees that
 rail; a second session sees authorized-empty / refuse, not every
 fund. It can still show a Connect-shaped token refused the open
-dial. It cannot show live bank or calendar OAuth, a Connect
-dashboard registration, or unused Cognito resources removed.
+dial. first-party Connect apps call ConnectApiUrl. It cannot show
+live bank or calendar OAuth, a Connect dashboard registration, or
+unused Cognito resources removed.
+
+### Amendment, 2026-09-04 — first-party Connect apps call ConnectApiUrl
+
+The leftover on issue 22 after #227 was first-party Connect
+scaffolds still refusing `fetch_*` / `deliver` solely because
+"the grant path is not built", and comments that still said
+Connect tokens are not accepted on `/v1`. In-process catalog
+accept (#224) and API Gateway Connect JWT (#226) were already
+on main. The shared DemoUrl dial was already off (#227).
+
+What landed is the live OAuth grant helper, not a second IdP
+and not a kernel blob store:
+
+- `connect/grant.py` presents a verified Connect access token
+  (argument or `RATIO_CONNECT_ACCESS_TOKEN`) or mints one via
+  WorkOS Connect `authorization_code` / `client_credentials`
+  against `WORKOS_CONNECT_ISSUER` (default
+  `https://auth.ratio.marsh.build`). Per-app credentials are
+  `WORKOS_CONNECT_CLIENT_ID` / `WORKOS_CONNECT_CLIENT_SECRET`.
+  `WORKOS_CLIENT_ID` is the audience, not a second issuer.
+- HTTP goes to `RATIO_CONNECT_API_URL` (ConnectApiUrl). DemoUrl
+  (`RATIO_API_ORIGIN`) is refused as a collision. A Connect
+  token never takes `RATIO_DEMO_OPEN` and never matches
+  `org:{id}` (#151). Membership is still required at `/v1`.
+- `connect/audit-export/` `fetch_cites` pulls book / close /
+  strike / break / config cites; `deliver` writes the ZIP after
+  that pull — it does not POST a blob. Sibling scaffolds use
+  the same helper for the identical refuse→grant.
+- Bank OAuth, calendar OAuth, licensed AIA forms, IRS e-file,
+  silent empty ZIPs, and a kernel blob store stay refused.
+
+**first-party Connect apps call ConnectApiUrl** is the Built
+phrase this amendment adds.
+
+**What this is NOT, because leftovers stay named on issue 22:**
+
+- **Not WorkOS dashboard registration.** A human still registers
+  the Connect application, redirect, and a live token. Unit
+  tests inject a transport.
+- **Not rewriting `DEMO_MEMBERS`.** The default remains
+  `demo@ratio.fastverk.dev`. If that address never appears on
+  the token, seeded funds stay authorized-empty until the list
+  names a live WorkOS `sub`.
+- **Not removing unused Cognito CloudFormation resources.**
+  They stay unused so a stack update does not destroy the live
+  pool.
+- **Not live bank / calendar OAuth product UI**, licensed AIA
+  PDF, IRS e-file, or a kernel blob store.
+- **Not the `journals:post` allowlist**, reserved RPCs, or
+  #150's read-only reference skeleton.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not close #150. It does not reopen #151. It does
+not finish #163, #165, #166, #168, #169, #172, #184, #179, or
+#185. leftover #22 stays open.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show `fetch_cites` / `deliver` presenting a Connect
+access token against ConnectApiUrl, and a missing token / DemoUrl
+collision / 401 membership refuse. It cannot show a live
+two-app walk-through without Dashboard registration, unused
+Cognito resources removed, or bank / calendar OAuth.

@@ -37,9 +37,12 @@ to every kind. NAV strikes and breaks stay unset on kinds that
 do not wear fund-ops. `screensFor` is not forked. UNSPECIFIED
 is the proto default, not a fifth kind.
 
-⚠ THE GRANT PATH IS NOT BUILT. `fetch_cites` and `deliver` refuse.
-A Connect access token is not accepted on `/v1` (leftover #22 /
-#150). A green cite is not a live token.
+⭐ THE GRANT PATH CALLS CONNECTAPIURL. `fetch_cites` and `deliver`
+present a verified Connect access token and pull / write against
+the Connect HTTP API. Membership is still required. A Connect
+token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}`.
+WorkOS dashboard registration stays leftover #22. A green cite
+is not a live walk-through.
 
 ⚠ NO BLOB STORE, NO PERIOD-CLOSE REPLACEMENT, NO LP PORTAL, NO
 E-SIGN, NO SECOND JOURNAL. `store_blob`, `close_period`,
@@ -55,6 +58,8 @@ import zipfile
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Mapping, Sequence
+
+import grant as _grant
 
 # i64 bounds. Lean's Int is unbounded; every money figure here is i64.
 I64_MIN = -(2**63)
@@ -885,9 +890,12 @@ def build_pack(
         "book": book.book_id,
         "kind": book.kind,
         "issue": 185,
-        "grant_path": "not built — leftover #22 / #150",
+        "grant_path": (
+            "built — first-party Connect apps call ConnectApiUrl; "
+            "leftover #22 is WorkOS dashboard registration"
+        ),
         "note": (
-            "A green cite is not a live Connect token. Missing cites "
+            "A green cite is not a live walk-through. Missing cites "
             "stay unset here; they are not silent empty files."
         ),
         "sections": {
@@ -910,29 +918,65 @@ def build_pack(
     )
 
 
-def fetch_cites(*, token: str | None = None) -> None:
-    """Refuse to pull. The grant path is not built.
+def fetch_cites(
+    *,
+    token: str | None = None,
+    book_id: str | None = None,
+    view: str = "book",
+    transport: _grant.Transport | None = None,
+) -> dict[str, Any]:
+    """Pull live cites from ConnectApiUrl. Membership still required.
 
-    A green pack builder is not a door that opens. Live Connect
-    OAuth is leftover; this app does not call /v1.
+    A missing token is a missing token, not "the grant path is not
+    built". There is no kernel blob store — this is a read of cites.
     """
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (leftover #22 / #150). This app does not "
-        "pretend the door opens. A green cite is not a live token"
-    )
+    cites: dict[str, Any] = {
+        "book": _grant.pull(
+            token=token,
+            book_id=book_id,
+            transport=transport,
+            error=Refuse,
+        )
+    }
+    named = (book_id or "").strip().strip("/")
+    if named.startswith("books/"):
+        named = named[len("books/") :]
+    if named.startswith("funds/"):
+        named = named[len("funds/") :]
+    if named:
+        for key, suffix in (
+            ("closes", f"funds/{named}/views/{view}/periodCloses"),
+            ("strikes", f"funds/{named}/views/{view}/navStrikes"),
+            ("breaks", f"funds/{named}/views/{view}/breaks"),
+            ("config", f"funds/{named}/configVersions"),
+        ):
+            cites[key] = _grant.pull(
+                token=token,
+                path=f"/v1/{suffix}",
+                transport=transport,
+                error=Refuse,
+            )
+    return cites
 
 
-def deliver(pack: Pack, *, token: str | None = None) -> None:
-    """Refuse to push a live ZIP against /v1. Same leftover as fetch_cites."""
-    _ = pack
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (leftover #22 / #150). This app does not "
-        "deliver a ZIP against a door that is not open"
+def deliver(
+    pack: Pack,
+    *,
+    token: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> bytes:
+    """Write the ZIP after the grant can read ConnectApiUrl.
+
+    Does not POST the ZIP to the kernel — there is no blob store.
+    `store_blob` stays refused.
+    """
+    _grant.pull(
+        token=token,
+        book_id=pack.book.book_id,
+        transport=transport,
+        error=Refuse,
     )
+    return as_zip(pack)
 
 
 def store_blob(*_a: Any, **_k: Any) -> None:
@@ -1240,7 +1284,7 @@ def as_files(pack: Pack) -> dict[str, str]:
 
 
 def as_zip(pack: Pack) -> bytes:
-    """ZIP of as_files(). Not a delivery. deliver() still refuses."""
+    """ZIP of as_files(). deliver() writes this after a ConnectApiUrl pull."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name, body in as_files(pack).items():

@@ -38,7 +38,7 @@
   },
   "breaks": {
     "status": "cited",
-    "note": "Break and BreakExplanation are already on the book. A missing BreakReport is unset — not a silent reconciled-empty file. A cited report with no lines is cited-empty (the period reconciled). breaks:explain reads a person-attributed explanation; this app does not invent one."
+    "note": "Break and BreakExplanation are already on the book. A missing BreakReport is unset \u2014 not a silent reconciled-empty file. A cited report with no lines is cited-empty (the period reconciled). breaks:explain reads a person-attributed explanation; this app does not invent one."
   },
   "blob_store": {
     "status": "refused",
@@ -49,7 +49,7 @@
     "note": "No LP portal, no e-sign, no second journal. Those stay Connect leftovers on #161 / #150. This file does not start them."
   },
   "grant_path": {
-    "status": "not built",
-    "note": "In-process /v1 accepts Connect catalog scopes after membership. API Gateway JWT verifies Connect tokens on ConnectApiUrl. leftover #22: live provider OAuth, RATIO_DEMO_OPEN, unused Cognito. Write-route actor binding landed (#151). This file leaves #150 and #185 open. It does not reopen #151."
+    "status": "built",
+    "note": "first-party Connect apps call ConnectApiUrl with a verified Connect access token (authorization_code or client_credentials against WorkOS Connect). Membership still required. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. leftover #22: WorkOS dashboard registration, DEMO_MEMBERS naming a live WorkOS sub, unused Cognito CloudFormation resources. Write-route actor binding landed (#151). This file does not reopen #151. This file leaves #150 and #185 open. It does not reopen #151."
   }
 }

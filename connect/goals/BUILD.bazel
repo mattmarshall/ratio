@@ -5,8 +5,8 @@ package(default_visibility = ["//visibility:public"])
 # the catalog, to CreateBook(Personal), and to the refusals the
 # issue named.
 #
-# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_statements() and
-# deliver() must refuse. Token validation is #151 / leftover #22.
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token.
+# WorkOS dashboard registration stays leftover #22.
 # Non-opt-in must not post. Closed-through refuses the write.
 # No kernel Goal RPC.
 sh_test(
@@ -23,6 +23,7 @@ sh_test(
         "$(rootpath //proto:ratio/console/v1/console.proto)",
     ],
     data = [
+        "//connect:grant.py",
         "goals.py",
         "goals_test.py",
         "app.json",

@@ -22,11 +22,11 @@
   },
   "mega_book": {
     "status": "refused",
-    "note": "No mega-book in the kernel. Books stay independent. This app cites per-book /budget and /billing figures and rolls those cites up. It does not merge journals, invent a fifth BookKind, or put a program URL on screensFor. An org_id claim is not membership — ListBooks is filtered to PROJECT books the subject can see (books:read)."
+    "note": "No mega-book in the kernel. Books stay independent. This app cites per-book /budget and /billing figures and rolls those cites up. It does not merge journals, invent a fifth BookKind, or put a program URL on screensFor. An org_id claim is not membership \u2014 ListBooks is filtered to PROJECT books the subject can see (books:read)."
   },
   "eac_forecast": {
     "status": "refused",
-    "note": "No EAC, cost-to-complete, or cash forecast. Those stay on #169. /budget still does not forecast. Remaining to spend is revised − incurred − awarded when a book can support the cut; a program remaining is the sum of those per-book remaining cites, never a silent 0.00 for a book that cannot."
+    "note": "No EAC, cost-to-complete, or cash forecast. Those stay on #169. /budget still does not forecast. Remaining to spend is revised \u2212 incurred \u2212 awarded when a book can support the cut; a program remaining is the sum of those per-book remaining cites, never a silent 0.00 for a book that cannot."
   },
   "aia_g702": {
     "status": "refused",
@@ -37,7 +37,7 @@
     "note": "No vendor user directory and no vendor / GC portal. That door is #172."
   },
   "grant_path": {
-    "status": "not built",
-    "note": "In-process /v1 accepts Connect catalog scopes after membership. API Gateway JWT verifies Connect tokens on ConnectApiUrl. leftover #22: live provider OAuth, RATIO_DEMO_OPEN, unused Cognito. Write-route actor binding landed (#151). This file leaves #150 and #179 open. It does not reopen #151. It leaves #169, #172, and #184 open."
+    "status": "built",
+    "note": "first-party Connect apps call ConnectApiUrl with a verified Connect access token (authorization_code or client_credentials against WorkOS Connect). Membership still required. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. leftover #22: WorkOS dashboard registration, DEMO_MEMBERS naming a live WorkOS sub, unused Cognito CloudFormation resources. Write-route actor binding landed (#151). This file does not reopen #151. This file leaves #150 and #179 open. It does not reopen #151. It leaves #169, #172, and #184 open."
   }
 }

@@ -4,8 +4,7 @@ package(default_visibility = ["//visibility:public"])
 # WorkOS binary here; it holds the mapper to the catalog, to
 # CreateBook(Personal), and to the refusals the issue named.
 #
-# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. deliver() must refuse.
-# Token validation is #151 / leftover #22. Live bank OAuth is leftover
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token. WorkOS dashboard registration stays leftover #22. Live bank OAuth is leftover
 # on #165.
 sh_test(
     name = "mapper_test",
@@ -19,6 +18,7 @@ sh_test(
         "$(rootpath //:docs/connect-scopes.md)",
     ],
     data = [
+        "//connect:grant.py",
         "mapper.py",
         "mapper_test.py",
         "app.json",

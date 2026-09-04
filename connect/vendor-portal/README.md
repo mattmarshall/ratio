@@ -35,8 +35,7 @@ not a vendor user directory.
   refuses every post. Closed-through refuses the batch.
 - No new `Method` / `Order` / `lot_method` variant.
 - Money is minor units, split on the point, never a float.
-- `fetch_cites()` and `deliver()` refuse. Connect access tokens are
-  not accepted on `/v1`.
+- `fetch_cites()` and `deliver()` call ConnectApiUrl. first-party Connect apps call ConnectApiUrl with a verified Connect access token. Membership still required.
 - `render_g702()` refuses. AIA G702 product UI is #184.
 - `eac()` / `forecast()` refuse. Those stay on #169.
 - `vendor_directory()` refuses. No vendor user directory in core.
@@ -70,7 +69,7 @@ A third-party flag would prompt AuthKit consent and bind the app to an
 Organization. This job portal is first-party: the subject's book
 membership is still the tenant. An `org_id` claim is not membership.
 #151 landed the write-route ACL fence: a Connect-shaped token is
-`scoped` and does not inherit `org:{id}`. API Gateway JWT verifies Connect tokens on ConnectApiUrl. Live OAuth stays leftover #22.
+`scoped` and does not inherit `org:{id}`. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration stays leftover #22.
 
 M2M (`client_credentials`) is the wrong shape here. There is no user
 on an M2M token, and a vendor invoice that posted without one would
@@ -91,8 +90,7 @@ From the catalog, restated so a later RPC does not "just" add them:
 5. Closed-through, conservation, bounds. A scope does not waive a
    proof.
 
-Until live OAuth lands, `fetch_cites()` and `deliver()` are the
-honesty: they refuse with the leftover named.
+Env names are in [`connect/README.md`](../README.md) / `connect/grant.py`. A missing token is a missing token, not "the grant path is not built".
 
 ## What a walk-through can and cannot show
 
@@ -104,7 +102,7 @@ mapping to `vendor_invoice_site`, a closed March refusing a 15 March
 invoice, an empty allowlist refusing everything, and
 `journal:append` / `projects:billing:read` being rejected as scopes.
 
-It cannot show a Connect token opening a book, a live OAuth grant, a
+It cannot show a live walk-through without WorkOS dashboard registration, a live OAuth grant, a
 vendor user directory in core, AIA G702 product UI (#184), EAC /
 forecast (#169), or a posting that reached `/v1`. BookKind PROJECT
 chrome is unchanged. `screensFor` is not forked. `/billing` and
@@ -112,7 +110,7 @@ chrome is unchanged. `screensFor` is not forked. `/billing` and
 
 ## Leftovers — this does not close #172
 
-1. **Live Connect OAuth**
+1. **WorkOS dashboard registration**
    (leftover on issue 22). API Gateway JWT verifies Connect tokens
    on ConnectApiUrl. In-process `/v1` accepts catalog scopes after
    membership. Dashboard registration, redirect, and a live token
