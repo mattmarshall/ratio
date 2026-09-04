@@ -87,9 +87,13 @@ Positions / NAV on Personal / Project / Operating; a typed URL,
 legacy `/breaks` redirect, or palette "Open by id" row still
 rendered them. `wearsFundOps` 404s those pages and drops the
 fund-ops deep-links. Investment keeps the warehouse. One
-`screensFor` list. Leftover typed `/wip` / `/billing` on Personal
-and typed `/sheet` / `/pnl` on Investment stay on #26. This file
-closes #175. It does not close #26. #159 stays blocked.
+`screensFor` list. GetBook for every fund in `funds.json` must
+be INVESTMENT in `books.json` — the phone pass opens northstar
+strikes through `requireFundOps`, and falling back to the
+household fixture 404s those pages. Leftover typed `/wip` /
+`/billing` on Personal and typed `/sheet` / `/pnl` on Investment
+stay on #26. This file closes #175. It does not close #26.
+#159 stays blocked.
 Point-in-time / restatement reporting stays citeable (#186):
 console `/asof` browses a pinned prefix + config digest from a
 close or a strike, and WashRestatement as a citeable record
