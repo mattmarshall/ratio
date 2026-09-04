@@ -5,6 +5,9 @@
 // `connect-src 'self'` — so nothing here can ask whether a resource exists. What
 // it can do is refuse to guess, and say which of the two it is doing.
 
+import { FUND_OPS_DEEP_LINKS, wearsFundOps } from "./screens";
+import type { BookKind } from "@/wire/types";
+
 /**
  * The collection in a resource name → the segment(s) in its URL.
  *
@@ -105,11 +108,17 @@ export interface Candidate {
  * ⭐ `lots` AND `postings` ARE ABSENT BECAUSE THEIR URLS TAKE TWO IDS. A lot is
  * addressed under its position and a posting under its account, so a bare id
  * cannot reach either. That is a fact about the route tree, not an omission.
+ *
+ * ⛔ KIND SELECTS THE CANDIDATES. A Personal / Project / Operating book
+ * that still offered "as a NAV strike" / "as an exception" / "as a
+ * position" / "as a corporate action" was leftover fund-ops chrome
+ * (#175). Exact AIP names still translate; the page 404s.
  */
 export function candidatesForId(
   book: string,
   view: string,
   id: string,
+  kind: BookKind = "INVESTMENT",
 ): readonly Candidate[] {
   const raw = id.trim();
   // ⚠ One character matches everything and helps nobody; an id with a slash in
@@ -120,7 +129,7 @@ export function candidatesForId(
   const scoped = `/books/${book}/views/${view}`;
   const plain = `/books/${book}`;
 
-  return [
+  const all: readonly Candidate[] = [
     { key: "breaks", label: `Open “${raw}” as an exception`,
       href: `${scoped}/breaks/${e}`, keywords: "break,exception,queue,difference" },
     { key: "positions", label: `Open “${raw}” as a position`,
@@ -148,4 +157,7 @@ export function candidatesForId(
     { key: "templates", label: `Open “${raw}” as a template`,
       href: `${plain}/data/templates/${e}`, keywords: "template,mapping,data" },
   ];
+  if (wearsFundOps(kind)) return all;
+  const drop = new Set<string>(FUND_OPS_DEEP_LINKS);
+  return all.filter((c) => !drop.has(c.key));
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { caller } from "@/lib/caller";
 import { money } from "@/lib/format";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { listNavStrikes } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
@@ -13,6 +14,7 @@ async function Strikes({
   params: Promise<{ book: string; view: string }>;
 }) {
   const { book: fund, view } = await params;
+  await requireFundOps(fund);
   const c = await caller();
   const { navStrikes } = await listNavStrikes(c, fund, view);
 

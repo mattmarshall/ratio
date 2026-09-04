@@ -5,6 +5,7 @@ import { caller } from "@/lib/caller";
 import { isoDate } from "@/lib/dates";
 import { count, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { getPosition } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
@@ -16,6 +17,7 @@ async function PositionDetail({
   params: Promise<{ book: string; view: string; position: string }>;
 }) {
   const { book: fund, view, position } = await params;
+  await requireFundOps(fund);
   const c = await caller();
   const p = await or404(getPosition(c, fund, view, position));
 

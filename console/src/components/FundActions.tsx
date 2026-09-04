@@ -117,7 +117,7 @@ export function FundActions({
     go,
   ]);
 
-  return <DeepLinks fund={fund} view={view} />;
+  return <DeepLinks fund={fund} view={view} kind={kind} />;
 }
 
 /**
@@ -128,7 +128,15 @@ export function FundActions({
  * on every character typed. Keeping the static registrations above out of that
  * path is what stops twelve actions being rebuilt twelve times a word.
  */
-function DeepLinks({ fund, view }: { fund: string; view: string }) {
+function DeepLinks({
+  fund,
+  view,
+  kind,
+}: {
+  fund: string;
+  view: string;
+  kind: BookKind;
+}) {
   const go = usePaletteNavigator();
   const { search } = useKBar((state) => ({ search: state.searchQuery }));
 
@@ -152,7 +160,7 @@ function DeepLinks({ fund, view }: { fund: string; view: string }) {
           perform: go(exact),
         },
       ]
-    : candidatesForId(fund, view, token).map((c) => ({
+    : candidatesForId(fund, view, token, kind).map((c) => ({
         id: `jump:${c.key}`,
         name: c.label,
         // ⛔ THE URL, SHOWN RATHER THAN ASSERTED. Nothing here has checked that
@@ -166,6 +174,6 @@ function DeepLinks({ fund, view }: { fund: string; view: string }) {
         perform: go(c.href),
       }));
 
-  useRegisterActions(actions, [fund, view, token, go]);
+  useRegisterActions(actions, [fund, view, token, kind, go]);
   return null;
 }

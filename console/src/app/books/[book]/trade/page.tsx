@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { caller } from "@/lib/caller";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { listPositions, listRules } from "@/wire/client";
 import type { Position } from "@/wire/types";
 import { TradeTicket } from "./TradeTicket";
@@ -42,6 +43,7 @@ export default async function Trade({
 }) {
   const { book: fund } = await params;
   const { view = "" } = await searchParams;
+  await requireFundOps(fund);
   const c = await caller();
 
   // ⚠ The rules always; the holdings only when a view says which book to read

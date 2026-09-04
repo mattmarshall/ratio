@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { isMoneyBreak } from "@/lib/breaks";
 import { caller } from "@/lib/caller";
 import { money } from "@/lib/format";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { getBreak, NotFound } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
@@ -22,6 +23,7 @@ async function BreakDetail({
   params: Promise<{ book: string; view: string; break: string }>;
 }) {
   const { book: fund, view, break: id } = await params;
+  await requireFundOps(fund);
   const c = await caller();
 
   let brk;

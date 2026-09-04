@@ -4,7 +4,7 @@ import { RecordForm } from "./RecordForm";
 
 export const dynamic = "force-dynamic";
 
-/** Record an event against one of this fund's approved rules. */
+/** Record an event against one of this book's approved rules. */
 export default async function Record({
   params,
 }: {

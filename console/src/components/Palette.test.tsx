@@ -574,4 +574,29 @@ describe("the command palette", () => {
     expect(screen.queryByText(/^NAV$/)).toBeNull();
     nav.unmount();
   });
+
+  it("a personal book is not offered a pasted id as a NAV strike or exception", async () => {
+    // ⭐ #175. screensFor already hid the tabs. The leftover was the
+    // palette still offering fund-ops "Open by id" rows on a household.
+    const { unmount } = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("x9");
+    await waitFor(() =>
+      expect(screen.getAllByText(/^Open “x9” as /).length).toBeGreaterThan(0),
+    );
+    expect(screen.queryByText(/as a NAV strike$/)).toBeNull();
+    expect(screen.queryByText(/as an exception$/)).toBeNull();
+    expect(screen.queryByText(/as a position$/)).toBeNull();
+    expect(screen.queryByText(/as a corporate action$/)).toBeNull();
+    expect(screen.getByText(/as an account$/)).toBeTruthy();
+    unmount();
+  });
 });

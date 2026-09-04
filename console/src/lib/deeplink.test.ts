@@ -235,4 +235,30 @@ describe("a bare id", () => {
       expect(c.keywords).toContain(",");
     }
   });
+
+  it("a personal book is not offered fund-ops deep-links", () => {
+    // ⭐ #175. The tabs were already kind-selected; a pasted id that still
+    // offered "as a NAV strike" on a household was leftover fund-ops chrome.
+    const keys = candidatesForId("household", "book", "x9", "PERSONAL").map(
+      (c) => c.key,
+    );
+    expect(keys).not.toContain("breaks");
+    expect(keys).not.toContain("positions");
+    expect(keys).not.toContain("strikes");
+    expect(keys).not.toContain("actions");
+    expect(keys).toContain("accounts");
+    expect(keys).toContain("entries");
+    expect(keys).toContain("rules");
+    const project = candidatesForId("bridge", "book", "x9", "PROJECT").map(
+      (c) => c.key,
+    );
+    expect(project).not.toContain("strikes");
+    const operating = candidatesForId("studio", "book", "x9", "OPERATING").map(
+      (c) => c.key,
+    );
+    expect(operating).not.toContain("breaks");
+    expect(
+      candidatesForId(FUND, VIEW, "x9", "INVESTMENT").map((c) => c.key),
+    ).toContain("strikes");
+  });
 });

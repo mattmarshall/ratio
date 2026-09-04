@@ -213,18 +213,10 @@ async function PeriodClosePage({
       </div>
 
       <p className="note">
-        <Link
-          href={`/books/${book}/views/${view}/pnl?period=${encodeURIComponent(window)}`}
-        >
-          Period P&L
-        </Link>
-        {" · "}
-        <Link
-          href={`/books/${book}/views/${view}/sheet?period=${encodeURIComponent(window)}`}
-        >
-          Balance sheet
-        </Link>
-        {" · "}
+        {/* ⭐ KIND SELECTS THE OTHER FIGURES. Period P&amp;L / Balance sheet
+            on a Project or Investment close were leftover household chrome.
+            Trial balance is the conservation view every kind already wears.
+            The hub is how you open the rest. */}
         <Link href={`/books/${book}/views/${view}/accounts`}>Trial balance</Link>
       </p>
     </>

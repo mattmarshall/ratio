@@ -12,7 +12,7 @@
 //
 // ⭐ KIND SELECTS THE LIST. A personal book that offered Exceptions / Positions
 // / NAV would be a fake label on fund-ops screens — issue #65 (sheet/P&L)
-// and #83 (budget). A project book that wore that warehouse is #66 (budget/WIP)
+// and #83 (budget); #175 404s a typed URL that still landed there. A project book that wore that warehouse is #66 (budget/WIP)
 // and #85 (billing); remaining-to-bill and collections compose onto
 // `/billing` (#100); a Project book posts a cash application there
 // (#173); awarded commitments and remaining to spend compose
@@ -212,6 +212,26 @@ export function screensFor(kind: BookKind): readonly Screen[] {
   if (kind === "OPERATING") return OPERATING_SCREENS;
   return FUND_SCREENS;
 }
+
+/**
+ * ⭐ FUND-OPS CHROME. Exceptions / Positions / NAV strikes, and the
+ * tickets that write them (trade / mark). Investment wears them.
+ * UNSPECIFIED keeps the operations surface — the proto default, not
+ * a domain. Personal / Project / Operating do not: a typed URL that
+ * still rendered those screens was leftover fund-ops chrome (#175).
+ * `/asof` is on every list and is not fund-ops.
+ */
+export function wearsFundOps(kind: BookKind): boolean {
+  return kind === "INVESTMENT" || kind === "UNSPECIFIED";
+}
+
+/** Palette "Open by id" rows that name fund-ops resources. */
+export const FUND_OPS_DEEP_LINKS = [
+  "breaks",
+  "positions",
+  "strikes",
+  "actions",
+] as const;
 
 /** Where a newly opened book of record lands. */
 export function defaultScreen(kind: BookKind): string {

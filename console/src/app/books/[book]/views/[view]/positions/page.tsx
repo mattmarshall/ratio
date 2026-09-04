@@ -2,6 +2,7 @@ import Link from "next/link";
 import { caller } from "@/lib/caller";
 import { count, money } from "@/lib/format";
 import { isoDate } from "@/lib/dates";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { listPositions } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
@@ -14,6 +15,7 @@ async function Positions({
   params: Promise<{ book: string; view: string }>;
 }) {
   const { book: fund, view } = await params;
+  await requireFundOps(fund);
   const c = await caller();
   const { positions } = await listPositions(c, fund, view);
 

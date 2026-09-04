@@ -656,6 +656,15 @@ NEEDLES: list[tuple[str, str]] = [
         "Unset — no wash restatement",
         "a book that never restated a strike would invent a moved figure",
     ),
+    # ── kind-aware IA (#175) ───────────────────────────────────────────────
+    # screensFor already hid the tabs. The leftover was a typed URL or
+    # palette deep-link that still rendered Exceptions / Positions / NAV
+    # on Personal / Project / Operating. wearsFundOps is the one
+    # predicate the pages and the palette both read.
+    (
+        "wearsFundOps",
+        "the kind gate that keeps fund-ops chrome off Personal/Project is gone",
+    ),
 ]
 
 

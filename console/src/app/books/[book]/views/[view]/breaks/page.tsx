@@ -3,6 +3,7 @@ import { FilterChips, type Filter } from "@/components/FilterChips";
 import { isMoneyBreak } from "@/lib/breaks";
 import { caller } from "@/lib/caller";
 import { money, SEVERITY_CLASS } from "@/lib/format";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { listBreaks } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
@@ -24,6 +25,7 @@ async function Breaks({
 }) {
   const { book: fund, view } = await params;
   const { filter = "" } = await searchParams;
+  await requireFundOps(fund);
   const c = await caller();
   const { breaks } = await listBreaks(c, fund, view, filter || undefined);
 
