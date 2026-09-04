@@ -2,8 +2,9 @@
 //!
 //! Implements `ratio.v1.Console` over real books. Nothing here is fixture data:
 //! a fund is a book on disk, its NAV is a fold over that book's accounts, its
-//! breaks come from the break report `ratio recon --post` stored, and its
-//! change log comes from what `ratio approve` recorded.
+//! breaks come from the break report `ratio recon --post` or
+//! `recon_from_ingest` stored, and its change log comes from what
+//! `ratio approve` recorded.
 //!
 //! # Why the shape differs from the domain
 //!
@@ -2535,6 +2536,141 @@ impl Console {
             previous_net_asset_value: previous,
             validate_only: req.validate_only,
         })
+    }
+
+    /// Compare ingested `custodian-positions` facts to the journal.
+    ///
+    /// ⭐ THE LIVE FEED PATH #155 ASKS FOR. Trades already reached the
+    /// journal through admit. This writes a `BreakReport` from the
+    /// holdings snapshot — the same artifact `ratio recon --post` stores
+    /// — so the NAV gate and the exceptions screen see the difference at
+    /// its own address. It does not post. It does not invent a second store.
+    ///
+    /// One unidentified or foreign-currency holding refuses the whole
+    /// run (no breaks): a partial statement compared against the journal
+    /// manufactures a break for every line it skipped.
+    pub fn recon_from_ingest(&self, fund: &str) -> Result<ratio_recon::BreakReport> {
+        let path = self.book_path(fund)?;
+        let b = self.open_file_book(&path)?;
+        let digest = b.active()?.context("no configuration is in force")?;
+        let chart = b.accounts()?;
+        let investments = chart
+            .iter()
+            .find(|a| a.display_name == "Investments at fair value")
+            .context(
+                "this book has no Investments at fair value account — \
+                 live custodian recon is an Investment-book path",
+            )?;
+
+        let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
+        let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
+        let resolved = ratio_ingest::resolve_all(&facts, &master);
+
+        let mut exceptions = Vec::new();
+        let mut market_value = 0i64;
+        let mut holdings = 0i64;
+        for r in &resolved {
+            if r.fact.kind != "position" {
+                continue;
+            }
+            if !r.is_admissible() {
+                exceptions.push(ratio_recon::Exception {
+                    transaction_id: r.fact.reference.clone(),
+                    refusal: ratio_recon::Refusal::Unidentified,
+                    detail: r.blocker().unwrap_or_else(|| {
+                        format!("{} did not resolve against the master", r.fact.reference)
+                    }),
+                });
+                continue;
+            }
+            match r.fact.values.get("marketValue") {
+                Some(ratio_ingest::Value::Money { minor, currency }) => {
+                    if currency != "USD" {
+                        exceptions.push(ratio_recon::Exception {
+                            transaction_id: r.fact.reference.clone(),
+                            refusal: ratio_recon::Refusal::ForeignCurrency,
+                            detail: format!(
+                                "{} is in {currency}, and this run covers USD only. \
+                                 Modeling it needs an FX rate and a translation policy.",
+                                r.fact.reference
+                            ),
+                        });
+                    } else {
+                        market_value += *minor;
+                        holdings += 1;
+                    }
+                }
+                Some(_) => exceptions.push(ratio_recon::Exception {
+                    transaction_id: r.fact.reference.clone(),
+                    refusal: ratio_recon::Refusal::Unidentified,
+                    detail: format!(
+                        "{} has a marketValue that is not money — the template refused to invent one",
+                        r.fact.reference
+                    ),
+                }),
+                None => exceptions.push(ratio_recon::Exception {
+                    transaction_id: r.fact.reference.clone(),
+                    refusal: ratio_recon::Refusal::Unidentified,
+                    detail: format!("{} carries no marketValue", r.fact.reference),
+                }),
+            }
+        }
+        if holdings == 0 && exceptions.is_empty() {
+            bail!(
+                "no custodian-positions facts on this book — ingest a holdings \
+                 snapshot under the custodian-positions template first"
+            );
+        }
+
+        let inv_dim = investments.dim;
+        let mut journal_investments = 0i64;
+        let mut posting_count = 0usize;
+        let mut entry_count = 0i64;
+        let mut all_sum = 0i64;
+        b.for_each_entry_since(0, &mut |e| {
+            entry_count += 1;
+            for p in &e.postings {
+                all_sum += p.amount;
+                if p.dim == inv_dim {
+                    journal_investments += p.amount;
+                    posting_count += 1;
+                }
+            }
+            Ok(())
+        })?;
+
+        let report = ratio_recon::reconcile_holdings(
+            journal_investments,
+            market_value,
+            inv_dim,
+            &investments.display_name,
+            posting_count,
+            entry_count,
+            holdings,
+            all_sum == 0,
+            &digest,
+            exceptions,
+        );
+
+        if report.was_reconciled() {
+            use prost::Message;
+            let dir = path.join("reports");
+            std::fs::create_dir_all(&dir).context("creating the reports directory")?;
+            let name = format!("{}-live-{}.pb", digest.short(), holdings);
+            std::fs::write(
+                dir.join(&name),
+                report
+                    .to_proto(
+                        path.file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or(fund),
+                        &name.trim_end_matches(".pb"),
+                    )
+                    .encode_to_vec(),
+            )
+            .context("storing the live holdings report")?;
+        }
+        Ok(report)
     }
 
     pub fn list_funds(&self) -> Result<pb::ListFundsResponse> {
@@ -8850,6 +8986,256 @@ PB-0041,US9229087690,VTI,ARCX,PRME,B,1000,250.00,USD,02/24/2026
 PB-0042,,VOO,ARCX,PRME,B,400,450.00,USD,02/25/2026
 PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
 ";
+
+    /// The two USD buys from that file, without VWRL — so pending does not
+    /// confound the recon-gate walk-through.
+    const PRIME_TRADES_USD_CSV: &str = "\
+TradeRef,ISIN,Symbol,Exch,Broker,B/S,Quantity,Price,Ccy,TradeDate
+PB-0041,US9229087690,VTI,ARCX,PRME,B,1000,250.00,USD,02/24/2026
+PB-0042,,VOO,ARCX,PRME,B,400,450.00,USD,02/25/2026
+";
+
+    /// Same rows `console/fixtures/samples/custodian-positions.csv` carries.
+    const CUSTODIAN_POSITIONS_CSV: &str = "\
+LineRef,AsOf,ISIN,Ticker,Exch,Quantity,MarketValue,Ccy
+P-1,2026-02-26,US9229087690,VTI,ARCX,1000,262500.00,USD
+P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
+";
+
+    fn add_prime_entities(root: &std::path::Path, book_id: &str) {
+        use ratio_store::{FileBook, Plane};
+        let mut b = FileBook::open(root.join(book_id)).unwrap();
+        let add = |b: &mut FileBook, id: &str, kind, name: &str, attrs: &[(&str, &str)]| {
+            b.append_record(
+                Plane::Entities,
+                &ratio_ingest::Entity {
+                    id: id.into(),
+                    kind,
+                    display_name: name.into(),
+                    attributes: attrs
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                },
+            )
+            .unwrap();
+        };
+        add(
+            &mut b,
+            "cp-prime",
+            ratio_ingest::EntityKind::Counterparty,
+            "Prime Brokerage",
+            &[("code", "PRME")],
+        );
+        add(
+            &mut b,
+            "inst-vti",
+            ratio_ingest::EntityKind::Instrument,
+            "Vanguard Total Stock Market ETF",
+            &[
+                ("isin", "US9229087690"),
+                ("ticker", "VTI"),
+                ("exchange", "ARCX"),
+            ],
+        );
+        add(
+            &mut b,
+            "inst-voo",
+            ratio_ingest::EntityKind::Instrument,
+            "Vanguard S&P 500 ETF",
+            &[
+                ("isin", "US9229083632"),
+                ("ticker", "VOO"),
+                ("exchange", "ARCX"),
+            ],
+        );
+    }
+
+    #[test]
+    fn a_createbook_investment_book_ingests_a_custodian_statement_and_gates_nav() {
+        // ⭐ #155. CreateBook → entity master → ingest trades + holdings →
+        // admit → live recon → the Investments difference at its own
+        // address → NAV refused. No recon-posted journal. VWRL is omitted
+        // so pending does not confound the gate.
+        let root = fresh("create-invest-custodian-feed");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Feed".into(),
+                    kind: book::BookKind::Investment.proto(),
+                    ..Default::default()
+                }),
+                book_id: "feed".into(),
+            })
+            .unwrap();
+        add_prime_entities(&root, "feed");
+
+        let trades = console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/feed".into(),
+                template_id: "prime_equity_trades".into(),
+                content: PRIME_TRADES_USD_CSV.into(),
+                origin: "prime-trades.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(trades.rejected.is_empty(), "{:?}", trades.rejected);
+        assert_eq!(trades.pending.len(), 0, "{:?}", trades.pending);
+
+        let holdings = console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/feed".into(),
+                template_id: "custodian-positions".into(),
+                content: CUSTODIAN_POSITIONS_CSV.into(),
+                origin: "custodian-positions.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(holdings.rejected.is_empty(), "{:?}", holdings.rejected);
+        assert_eq!(holdings.fact_count, "2");
+
+        let admitted = console
+            .admit_facts(&pb::AdmitFactsRequest {
+                parent: "funds/feed".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
+        assert_eq!(admitted.posted_count, "2");
+        assert_eq!(admitted.recorded_count, "2", "positions record, they do not post");
+
+        {
+            use ratio_store::{FileBook, Journal};
+            let b = FileBook::open(root.join("feed")).unwrap();
+            let mut ids = Vec::new();
+            b.for_each_entry_since(0, &mut |e| {
+                ids.push(e.id.clone());
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(ids, vec!["PB-0041", "PB-0042"]);
+            assert!(
+                !ids.iter().any(|id| id.starts_with('t') || id.starts_with("sub-")),
+                "recon-seeded history leaked onto a CreateBook book: {ids:?}"
+            );
+        }
+
+        let report = console.recon_from_ingest("feed").unwrap();
+        assert!(report.was_reconciled(), "{}", ratio_recon::render(&report));
+        assert_eq!(report.breaks.len(), 1, "{:?}", report.breaks);
+        assert_eq!(report.breaks[0].display_name, "Investments at fair value");
+        // Book cost 430,000.00; custodian MV 439,200.00.
+        assert_eq!(report.breaks[0].ratio_amount, 43_000_000);
+        assert_eq!(report.breaks[0].reported_amount, 43_920_000);
+        assert_eq!(report.breaks[0].difference, -920_000);
+        assert!(
+            root.join("feed/reports").read_dir().unwrap().next().is_some(),
+            "the live run must store the report the NAV gate reads"
+        );
+
+        let view = format!("funds/feed/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let breaks = console.list_breaks(&view, "unexplained").unwrap().breaks;
+        assert_eq!(breaks.len(), 1, "{:?}", breaks);
+        assert!(
+            breaks[0].name.ends_with("/breaks/1"),
+            "the difference has its own address: {}",
+            breaks[0].name
+        );
+        assert_eq!(breaks[0].account, "Investments at fair value");
+
+        let blocking = console.blocking_at("feed").unwrap();
+        assert_eq!(blocking.pending.len(), 0, "{:?}", blocking.pending);
+        assert_eq!(blocking.breaks.len(), 1, "{:?}", blocking.breaks);
+        assert!(!blocking.is_empty());
+
+        let fund = console.get_fund("funds/feed").unwrap();
+        assert_eq!(fund.trial_balance_difference, "0");
+        assert_eq!(fund.entry_count, 2);
+    }
+
+    #[test]
+    fn unidentified_custodian_holdings_refuse_the_live_recon() {
+        // ⛔ A PARTIAL STATEMENT MUST NOT PRODUCE BREAKS. The unknown ISIN
+        // is the same shape VWRL has on the trade file.
+        let root = fresh("create-invest-unidentified-holdings");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Gap".into(),
+                    kind: book::BookKind::Investment.proto(),
+                    ..Default::default()
+                }),
+                book_id: "gap".into(),
+            })
+            .unwrap();
+        add_prime_entities(&root, "gap");
+
+        console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/gap".into(),
+                template_id: "prime_equity_trades".into(),
+                content: PRIME_TRADES_USD_CSV.into(),
+                origin: "prime-trades.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        console
+            .admit_facts(&pb::AdmitFactsRequest {
+                parent: "funds/gap".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/gap".into(),
+                template_id: "custodian-positions".into(),
+                content: "\
+LineRef,AsOf,ISIN,Ticker,Exch,Quantity,MarketValue,Ccy
+P-1,2026-02-26,US9229087690,VTI,ARCX,1000,262500.00,USD
+P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
+",
+                origin: "custodian-positions.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+
+        let report = console.recon_from_ingest("gap").unwrap();
+        assert!(!report.was_reconciled());
+        assert!(report.breaks.is_empty(), "{:?}", report.breaks);
+        assert!(
+            report.exceptions.iter().any(|e| e.transaction_id == "P-9"),
+            "{:?}",
+            report.exceptions
+        );
+        assert!(
+            !root.join("gap/reports").is_dir()
+                || root.join("gap/reports").read_dir().unwrap().next().is_none(),
+            "a refused live run must not store a report the gate would read as clean"
+        );
+    }
+
+    #[test]
+    fn a_personal_book_refuses_live_custodian_recon() {
+        let root = fresh("create-personal-no-custodian-recon");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "House".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "house".into(),
+            })
+            .unwrap();
+        let err = console.recon_from_ingest("house").unwrap_err().to_string();
+        assert!(
+            err.contains("Investments at fair value") || err.contains("Investment-book"),
+            "{err}"
+        );
+    }
 
     #[test]
     fn a_subject_scoped_to_one_book_cannot_read_another() {

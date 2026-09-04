@@ -1397,6 +1397,7 @@ fn breaks_json(book: &Path) -> Result<String> {
                     Ok(kernel::Refusal::ForeignCurrency) => "foreign currency",
                     Ok(kernel::Refusal::DisposalWithoutBasis) => "disposal with no basis",
                     Ok(kernel::Refusal::NoRuleForType) => "no rule for this type",
+                    Ok(kernel::Refusal::UnidentifiedEntity) => "unidentified entity",
                     _ => "unspecified",
                 }),
                 quote(&e.detail)

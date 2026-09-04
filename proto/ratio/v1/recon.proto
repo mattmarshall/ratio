@@ -80,6 +80,11 @@ enum Refusal {
   // A transaction type naming a rule the active configuration does not have.
   // The scope claims coverage the configuration cannot deliver.
   REFUSAL_NO_RULE_FOR_TYPE = 4;
+
+  // A holdings row whose instrument did not resolve against the master.
+  // Comparing a partial statement against the journal manufactures a break
+  // for every unmatched line — Ratio's fault, not the custodian's.
+  REFUSAL_UNIDENTIFIED_ENTITY = 5;
 }
 
 // One thing in the file that the run does not model.
