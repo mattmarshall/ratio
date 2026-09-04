@@ -3,10 +3,12 @@
 # The Connect catalog is a contract. This checks the three documents that
 # name it cannot drift apart in silence.
 #
-# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. A green run means PLAN.md,
+# ⛔ IT DOES NOT SAY LIVE OAUTH EXISTS. A green run means PLAN.md,
 # HANDOFF.md and docs/connect-scopes.md still agree on the frozen strings
-# and the leftovers. Token validation is #151 / leftover #22; #150 stays
-# open. A check that required "Connect tokens accepted" would enforce a lie.
+# and the leftovers. The in-process authorizer accepts catalog scopes;
+# #150 stays open for the allowlist / reserved RPCs / reference skeleton.
+# leftover #22 is the shared demo dial, unused Cognito resources, and
+# live provider OAuth.
 #
 # ⚠ THE SAME LIMITATION AS //:plan_refusals_test. This is a cross-check
 # between DECLARED lists. It does not scan the tree for an authorizer.
@@ -108,9 +110,9 @@ done
 grep -qF -- "portal impersonation" <<<"$WHOLE_PLAN" \
   || { echo "  x PLAN.md dropped portal impersonation from the hard non-scopes" >&2; bad=1; }
 
-# Honesty: leftovers stay leftovers. A catalog that claims the grant path
-# landed would close #150 in prose while the authorizer still does not.
-for phrase in "grant path is not built" "#151" "leftover #22" "does not close #150"; do
+# Honesty: leftovers stay leftovers. The authorizer accepting catalog
+# scopes is Built; #150 stays open for the allowlist and reserved RPCs.
+for phrase in "Connect tokens accepted with catalog scopes" "#151" "leftover #22" "does not close #150"; do
   grep -qF -- "$phrase" "$CATALOG" \
     || { echo "  x catalog is missing leftover honesty: $phrase" >&2; bad=1; }
 done

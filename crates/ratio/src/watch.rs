@@ -416,7 +416,7 @@ fn security_headers(
 /// ⛔ `membership could not be read` IS 403, NOT 200 WITH []. An authorized
 /// empty list and a refusal must not look alike on the wire either.
 fn v1_error_status(msg: &str) -> &'static str {
-    if msg.contains("membership could not be read") {
+    if msg.contains("membership could not be read") || msg.contains("scope `") {
         "403 Forbidden"
     } else if msg.contains("no fund")
         || msg.contains("no route")
@@ -625,7 +625,8 @@ fn handle(mut stream: TcpStream, book: &Path, hydrate: &HydrateGate) -> Result<(
                 let open = std::env::var("RATIO_DEMO_OPEN").map(|v| !v.is_empty()).unwrap_or(false);
                 // ⛔ CONNECT TOKENS NEVER TAKE `open`. `Console::for_request`
                 // is the one production constructor: AuthKit sessions may
-                // see the shared demo; a Connect token is always scoped.
+                // see the shared demo; a Connect token is always scoped,
+                // and `transcode::serve` requires a frozen catalog scope.
                 let c = match subject {
                     Some(s) => ratio_console::Console::for_request(root, s, open),
                     None => ratio_console::Console::new(root),
@@ -3207,6 +3208,10 @@ mod tests {
     fn an_unreadable_membership_is_forbidden_not_an_empty_list() {
         assert_eq!(
             v1_error_status("membership could not be read: Is a directory"),
+            "403 Forbidden"
+        );
+        assert_eq!(
+            v1_error_status("scope `books:read` is required"),
             "403 Forbidden"
         );
         assert_eq!(v1_error_status("no fund \"b\""), "404 Not Found");

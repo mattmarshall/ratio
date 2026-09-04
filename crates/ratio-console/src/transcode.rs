@@ -108,6 +108,12 @@ pub fn serve(
         .strip_prefix("/v1/")
         .ok_or_else(|| anyhow::anyhow!("{path:?} is not a /v1 path"))?;
 
+    // ⛔ CONNECT SCOPES ARE THE GRANT. AuthKit sessions skip this; a
+    // Connect token without the matching frozen name is refused here,
+    // before a handler opens a book. Membership still runs at
+    // `open_book` — a scope is not an implied member.
+    console.authorize_connect(method, path)?;
+
     // Exactly one route writes, and it is named here rather than inferred, so
     // adding a method cannot quietly widen what POST reaches.
     if method == "POST" {

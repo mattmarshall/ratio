@@ -168,7 +168,7 @@ __STYLE__
           kinds only — unset when none exist, not a fake zero.
           Bank-balance predictor and calendar-bills Connect app
           scaffolds post that <code>forecast_*</code> /
-          <code>scheduled_*</code> material; the grant path and live
+          <code>scheduled_*</code> material; live
           bank / calendar OAuth stay leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>.
           Personal books declare
@@ -219,7 +219,8 @@ __STYLE__
           <code>vendor_invoice*</code> / <code>progress_bill</code>,
           not a second budget store. Estimating tools push later via
           Connect (<code>journals:post</code> + <code>budget:read</code>);
-          the grant path is leftover #22 / #150. None
+          Connect tokens accepted with catalog scopes; live estimating
+          OAuth stays leftover on issue 22 / #150. None
           of those can show AIA G702 product UI, a client portal,
           e-signature, CRM, or an EAC on <code>/budget</code>. A Project
           <a href="https://github.com/mattmarshall/ratio/tree/main/connect/aia-pay-app">AIA pay-app Connect app</a>
@@ -414,9 +415,12 @@ __STYLE__
           (period close included). A second subject sees an authorized-empty
           list or a refuse, never the first subject's journal, on the
           scoped path. A Connect token does not inherit an org grant and
-          does not take the open demo. The authorizer that accepts a
-          Connect token on <code>/v1</code>, and two users isolated on the
-          shared open demo, are leftover.</li>
+          does not take the open demo. Connect tokens accepted with
+          catalog scopes on <code>/v1</code> after membership. Two users
+          isolated on the shared open demo, unused Cognito resources,
+          the API Gateway JWT authorizer still proving only the AuthKit
+          session issuer, and live provider OAuth remain leftover on
+          issue 22.</li>
         </ul>
       </div>
       <div class="r-spec">
@@ -432,36 +436,35 @@ __STYLE__
           shown anywhere on this site apart from one: an operations console
           exists and addresses books. A bank-feed Connect app scaffold maps
           household rows to allowlisted Personal templates; live bank OAuth
-          and a Connect token on <code>/v1</code> are leftover on
+          is leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/165">#165</a>.
           A tax-pack Connect app scaffold emits 8949-ish CSV from lot and
-          wash cites; the grant path and IRS e-file are leftover on
+          wash cites; IRS e-file is leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/166">#166</a>.
           A net-worth goals Connect app scaffold cites the sheet against
-          a target and overlays Personal templates; the grant path and
-          live OAuth are leftover on
+          a target and overlays Personal templates; live OAuth is leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/168">#168</a>.
           An AIA pay-app Connect app scaffold emits G702-ish / G703-ish
-          CSV from Project billing and budget cites; the grant path and
-          a licensed AIA form are leftover on
+          CSV from Project billing and budget cites; a licensed AIA form
+          is leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>.
           A vendor / GC portal Connect app scaffold cites Project
-          billing and retainage; the grant path, live OAuth, and a
+          billing and retainage; live OAuth and a
           vendor user directory stay leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/172">#172</a>.
           A program roll-up Connect app scaffold cites per-book
           Project budget and billing across membership-visible
-          PROJECT books; the grant path, live OAuth, and a live
+          PROJECT books; live OAuth and a live
           <code>ListBooks</code> filter stay leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/179">#179</a>.
           Bank-balance predictor and calendar-bills Connect app
           scaffolds post allowlisted Personal <code>forecast_*</code>
-          / <code>scheduled_*</code> templates; the grant path and
-          live bank / calendar OAuth stay leftover on
+          / <code>scheduled_*</code> templates; live bank / calendar
+          OAuth stay leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>.
           An audit-export Connect app scaffold packages cited
-          closes, strikes, breaks, and digests as a ZIP; the grant
-          path and live delivery stay leftover on
+          closes, strikes, breaks, and digests as a ZIP; live ZIP
+          delivery stays leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/185">#185</a>.
           What it still does not have is a client portal — and on the fund side it is
           still the exception queue, a difference at its own address, and
@@ -676,55 +679,56 @@ __STYLE__
       not as more kernel RPCs. A first-party
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/bank-feed">bank-feed Connect app</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/165">#165</a>)
-      maps household rows to allowlisted Personal templates; the grant path
-      is not built, and live bank OAuth is leftover on that issue. A
+      maps household rows to allowlisted Personal templates; Connect
+      tokens accepted with catalog scopes, and live bank OAuth is leftover
+      on that issue. A
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/tax-pack">tax-pack Connect app</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/166">#166</a>)
       emits 8949-ish CSV from lot, wash, and lot-terms cites; mixed dates
-      stay unclassified, the grant path is not built, and IRS e-file is
+      stay unclassified, and IRS e-file is
       refused. A
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/goals">net-worth goals Connect app</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/168">#168</a>)
       cites sheet net worth against a named target and overlays discrete
-      Personal templates; scenario journals post only on opt-in, the
-      grant path is not built, and a cash forecast is refused. A
+      Personal templates; scenario journals post only on opt-in, and a
+      cash forecast is refused. A
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/aia-pay-app">AIA pay-app Connect app</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>)
       emits G702-ish / G703-ish CSV from Project billing, budget,
-      retainage, and change-order cites; missing cites stay unset, the
-      grant path is not built, and a licensed AIA form is refused. A
+      retainage, and change-order cites; missing cites stay unset, and a
+      licensed AIA form is refused. A
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/vendor-portal">vendor / GC portal Connect app</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/172">#172</a>)
-      cites Project billed / earned / retainage / collections; the
-      grant path is not built, a vendor user directory stays out of
+      cites Project billed / earned / retainage / collections; a vendor
+      user directory stays out of
       core, and AIA G702 stays on
       <a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>.
       A
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/eac-forecast">EAC / forecast Connect app</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/169">#169</a>)
       emits EAC / ETC CSV from Project remaining-to-spend cites; unset
-      stays unset, never a silent forecast of 0, the grant path is not
-      built, and live EAC product UX / <code>/budget</code> EAC fields
+      stays unset, never a silent forecast of 0, and live EAC product UX /
+      <code>/budget</code> EAC fields
       stay leftover on that issue. A
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/program-rollup">program roll-up Connect app</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/179">#179</a>)
       cites per-book Project budget and billing across
       membership-visible PROJECT books; unset stays unset, never a
-      silent program billed or collected of 0.00, the grant path is
-      not built, and a mega-book stays refused.
+      silent program billed or collected of 0.00, and a mega-book stays
+      refused.
       A
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/bank-balance-predictor">bank-balance predictor Connect app</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>)
       maps predicted movements onto allowlisted
       <code>forecast_income</code> / <code>forecast_spend</code>;
-      unset cited cash is not a silent 0.00 baseline, the grant
-      path is not built, and live bank OAuth is leftover on that
+      unset cited cash is not a silent 0.00 baseline, and live bank
+      OAuth is leftover on that
       issue. A
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/calendar-bills">calendar-bills Connect app</a>
       (same issue) maps dated occurrences onto allowlisted
       <code>scheduled_income</code> / <code>scheduled_spend</code>;
-      an <code>rrule</code> is refused rather than expanded, the
-      grant path is not built, and live calendar OAuth is leftover.
+      an <code>rrule</code> is refused rather than expanded, and live
+      calendar OAuth is leftover.
       Neither invents envelopes or payroll, and neither grows a
       kernel RPC. An
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/audit-export">audit-export Connect app</a>
@@ -732,7 +736,7 @@ __STYLE__
       packages cited period closes, NAV strikes, break reports /
       explanations, and config / journal digests; a missing cite
       stays unset in the manifest, never a silent empty file or
-      empty-digest-as-success, the grant path is not built, and a
+      empty-digest-as-success, and a
       live ZIP against <code>/v1</code> stays leftover on that
       issue. Equalization, drip, and side-pocket stay Connect
       (<a href="https://github.com/mattmarshall/ratio/issues/177">#177</a>):

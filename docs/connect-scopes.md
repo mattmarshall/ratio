@@ -10,13 +10,17 @@ tenancy. Breadth — portals, bank feeds, CRM, tax packs, vendor apps — is a
 presents a subset of the scopes below. Growing `ratio watch` / `Console` to
 match every app is the failure this catalog exists to prevent.
 
-⚠ **The catalog is frozen. The grant path is not built.** A Connect access
-token is not accepted on `/v1`. The API authorizer still proves an AuthKit
-session JWT (leftover #22). A Connect-shaped token that arrives anyway
-is `scoped`, records actor = WorkOS `sub`, and does not match `org:{id}`
-(#151). Do not read a row below as a door that opens. #150 stays open
-until the authorizer accepts these scopes without bypassing book
-membership. This file does not close #22.
+⚠ **The catalog is frozen. Connect tokens accepted with catalog scopes.**
+A verified Connect-shaped JWT that carries a frozen name can open the
+matching `/v1` door, after membership. An AuthKit session JWT is
+unchanged (login, `/v1/books` without a session, authenticated console
+walks). A Connect-shaped token never takes `RATIO_DEMO_OPEN` and never
+matches `org:{id}` (#151). Hard non-scopes and aliases stay refused.
+#150 leftovers: the `journals:post` allowlist, reserved RPCs, and the
+read-only reference skeleton. Issue 22 stays open for the shared demo's
+open dial, unused Cognito CloudFormation resources, the API Gateway
+JWT authorizer still proving only the AuthKit session issuer, and live
+provider OAuth. This file does not close #150.
 
 ---
 
@@ -197,13 +201,16 @@ The catalog is this file and the PLAN amendment. The rest of #150 is still
 open:
 
 1. **API authorizer accepts Connect access tokens** with these scopes —
-   leftover on #22. Write-route actor = WorkOS `sub` and the in-process
-   ACL fence landed in #151. Cognito leftovers in the deploy template
-   stay on #22.
-2. **Book ACL on every Connect grant.** A Connect-shaped token is always
-   `scoped` and does not inherit `org:{id}`. Authorized-empty for a book
-   the subject does not administer. The authorizer still does not accept
-   the token — leftover on #22.
+   Built. Write-route actor = WorkOS `sub` and the in-process ACL fence
+   landed in #151. A Connect-shaped token is always `scoped`, does not
+   inherit `org:{id}`, and needs the matching frozen name.   leftover #22
+   is now the shared demo's `RATIO_DEMO_OPEN`, unused Cognito
+   CloudFormation resources, the API Gateway JWT authorizer still
+   proving only the AuthKit session issuer, and live provider OAuth
+   — not the in-process grant.
+2. **Book ACL on every Connect grant.** Built with the authorizer.
+   Authorized-empty for a book the subject does not administer. An
+   `org_id` claim is not membership.
 3. **`journals:post` allowlist** keyed by `client_id` — the map above,
    enforced at `ApplyEvent`, empty-refuses.
 4. **Reference Connect app skeleton** — read-only `books:read` +
@@ -265,6 +272,9 @@ open:
    a first-party scaffold at `connect/audit-export/` (#185); that
    is a ZIP of cites, not a write RPC, and it does not close #185.
 
-This file does not close #150. Nothing here closes #5 (console wash
-flag), #9 (lot-relief UI cites / pooled holding-period leftover),
-#22, #163, #166, #168, #169, #172, #184, #179, or #185.
+This file does not close #150. Nothing here finishes issue 22
+(`RATIO_DEMO_OPEN`, unused Cognito resources, AuthKit-only gateway
+issuer, live provider OAuth).
+Nothing here closes #5 (console wash flag), #9 (lot-relief UI cites /
+pooled holding-period leftover), #163, #166, #168, #169, #172, #184,
+#179, or #185.
