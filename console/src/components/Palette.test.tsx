@@ -156,10 +156,15 @@ describe("the command palette", () => {
     renderConsole();
     // ⚠ NOT "your books". This test opens on `/breaks`, and kbar
     // also indexes a break id `your`. "independent" is a keyword on
-    // the book-collection action only.
+    // the book-collection action only — and must not also become a
+    // pasted-id guess (`/breaks/independent`).
     await type("independent");
-    fireEvent.click(await row("Your books"));
+    fireEvent.click(await screen.findByRole("option", { name: /^Your books/ }));
     expect(push).toHaveBeenCalledWith("/books");
+    expect(push).not.toHaveBeenCalledWith(
+      `/books/${FUND}/views/${VIEW}/breaks/independent`,
+    );
+    expect(screen.queryByText(/as an exception$/)).toBeNull();
   });
 
   it("reaches CreateBook from the palette", async () => {
