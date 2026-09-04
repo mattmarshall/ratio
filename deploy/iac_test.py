@@ -684,6 +684,96 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  RATIO_DEMO_MEMBER still seeds membership on the demo")
 
+    # ⛔ COGNITO IS NOT THE IdP. Unused UserPool / Client / Domain /
+    # IdentityProvider resources, their outputs, and the Cognito-era
+    # DEMO_MEMBERS default must not come back. AuthKit / Connect JWT
+    # authorizers stay; this check is the leftover #22 teardown.
+    # `app_code` / `flow` are comment-stripped, so a sentence describing
+    # the unused pool cannot satisfy or fail this.
+    cognito_types = [t for t in types if t.startswith("AWS::Cognito::")]
+    if cognito_types:
+        fail(
+            f"{app_path} still creates Cognito resources ({', '.join(sorted(cognito_types))}) "
+            "— AuthKit is the sole IdP; the unused pool must be deleted, not left in the template"
+        )
+    else:
+        print("  ok  the app stack creates no Cognito resources")
+
+    leftover_hits = []
+    for leftover in (
+        "UserPoolId:",
+        "UserPoolClientId:",
+        "HostedUiDomain:",
+        "GoogleClientId:",
+        "GoogleClientSecret:",
+        "AWS::Cognito::UserPool",
+        "AWS::Cognito::UserPoolClient",
+        "AWS::Cognito::UserPoolDomain",
+        "AWS::Cognito::UserPoolIdentityProvider",
+    ):
+        if leftover in app_code:
+            leftover_hits.append(leftover)
+            fail(
+                f"{app_path} still names {leftover.rstrip(':')} — Cognito-era "
+                "parameter / output / type must not survive the teardown"
+            )
+    if not leftover_hits:
+        print("  ok  Cognito-era parameters, outputs, and types are gone")
+
+    if re.search(r"Default:\s+demo@ratio\.fastverk\.dev", app_code):
+        fail(
+            f"{app_path} still defaults DemoMember to the Cognito-era "
+            "address demo@ratio.fastverk.dev — that never appears on an "
+            "AuthKit token; empty is the honest default"
+        )
+    else:
+        print("  ok  DemoMember default is not the Cognito-era address")
+
+    if "GoogleClientId=" in flow or "GoogleClientSecret=" in flow:
+        fail(
+            f"{workflow_path} still passes GoogleClientId / GoogleClientSecret "
+            "— those parameters existed only for the unused Cognito Google IdP"
+        )
+    else:
+        print("  ok  the workflow does not pass Cognito Google parameters")
+
+    if "demo@ratio.fastverk.dev" in flow:
+        fail(
+            f"{workflow_path} still falls back to the Cognito-era "
+            "demo@ratio.fastverk.dev address for DemoMember"
+        )
+    else:
+        print("  ok  the workflow does not fall back to the Cognito-era address")
+
+    if 'DemoMember="${DEMO_MEMBERS:-}"' not in flow:
+        fail(
+            f"{workflow_path} does not pass DemoMember from DEMO_MEMBERS "
+            "with an empty fallback — a missing variable must not become "
+            "a Cognito-era address"
+        )
+    else:
+        print("  ok  DemoMember is passed from DEMO_MEMBERS with an empty fallback")
+
+    # ⛔ THE STACK UPDATE MUST BE ABLE TO DELETE THE UNUSED POOL.
+    # Create* is gone (the template no longer creates a pool). Delete*
+    # stays on the deploy role so CloudFormation can tear the live
+    # unused resources down. A comment that names DeleteUserPool must
+    # not satisfy this — `deploy_block` is the role, not prose.
+    if "cognito-idp:DeleteUserPool" not in deploy_block:
+        fail(
+            f"{bootstrap_path} dropped cognito-idp:DeleteUserPool — the "
+            "stack update cannot delete the unused live pool"
+        )
+    else:
+        print("  ok  the deploy role can still delete the unused UserPool")
+    if "cognito-idp:CreateUserPool" in deploy_block:
+        fail(
+            f"{bootstrap_path} still grants cognito-idp:CreateUserPool — "
+            "the unused pool is being torn down, not recreated"
+        )
+    else:
+        print("  ok  the deploy role cannot recreate a Cognito UserPool")
+
     # Function timeout stays 60 — list/detail folds need the headroom;
     # 15s killed hydrate mid-seed. Ops already set 60. A comment that
     # names 60 must not satisfy this (`app_code` is comment-stripped).

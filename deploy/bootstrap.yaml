@@ -200,31 +200,21 @@ Resources:
                   - apigateway:DELETE
                   - apigateway:TagResource
                 Resource: !Sub "arn:aws:apigateway:${AWS::Region}::/apis*"
-              - Sid: ManageTheDemoUserPool
+              - Sid: TearDownTheUnusedUserPool
                 Effect: Allow
-                # Cognito's user-pool management actions do not support
-                # resource-level permissions — the pool ARN does not exist at
-                # CreateUserPool time — so these are scoped by action rather than
-                # by resource, the same shape as GetAuthorizationToken above. The
-                # JWT authorizer and its route are ordinary API-Gateway objects,
-                # already covered by the statement above.
+                # ⛔ DELETE ONLY. The app stack no longer creates a Cognito
+                # UserPool / Client / Domain / IdentityProvider — AuthKit is
+                # the sole IdP. These verbs stay so the next stack update can
+                # delete the unused live pool. Cognito management actions do
+                # not support resource-level permissions, so this is scoped
+                # by action. Do not add Create* / Update* back.
                 Action:
-                  - cognito-idp:CreateUserPool
-                  - cognito-idp:UpdateUserPool
                   - cognito-idp:DeleteUserPool
                   - cognito-idp:DescribeUserPool
-                  - cognito-idp:GetUserPoolMfaConfig
-                  - cognito-idp:SetUserPoolMfaConfig
-                  - cognito-idp:CreateUserPoolClient
-                  - cognito-idp:UpdateUserPoolClient
                   - cognito-idp:DeleteUserPoolClient
                   - cognito-idp:DescribeUserPoolClient
-                  - cognito-idp:CreateUserPoolDomain
                   - cognito-idp:DeleteUserPoolDomain
                   - cognito-idp:DescribeUserPoolDomain
-                  # Social sign-in: the Google identity provider on the pool.
-                  - cognito-idp:CreateIdentityProvider
-                  - cognito-idp:UpdateIdentityProvider
                   - cognito-idp:DeleteIdentityProvider
                   - cognito-idp:DescribeIdentityProvider
                   - cognito-idp:ListIdentityProviders

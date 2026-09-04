@@ -132,25 +132,18 @@ jobs:
           echo "Deploying $DIGEST"
 
       - name: Deploy
-        # The Google OAuth credentials come from repository secrets and are read
-        # here as env vars rather than interpolated into the command line, so the
-        # secret never lands in a process argument. Both are empty until the
-        # secrets are set, and app.yaml treats empty as "Google off" — so this
-        # deploys the same with or without them.
         env:
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-          # Who the seeded funds are granted to, comma-separated. A repository
-          # VARIABLE (not a secret — an email is not one) so the Google account
-          # you sign in with can be granted without committing it. Unset falls
-          # back to the app.yaml default, keeping the email/password demo user.
+          # Who the seeded funds are granted to, comma-separated WorkOS `sub`
+          # values (email optional). A repository VARIABLE, not a secret — a
+          # `sub` is not one. Unset / empty writes no membership seed; do not
+          # fall back to a Cognito-era address that never appears on the token.
+          # Operator leftover: set this to a live WorkOS `sub`.
           DEMO_MEMBERS: ${{ vars.DEMO_MEMBERS }}
           # Where the console is served from. A repository VARIABLE, like
           # DEMO_MEMBERS and for the same reason — a hostname is not a secret.
           # Production is https://ratio.marsh.build. Unset, or the retired
           # Vercel hostname that still resolves, fails the step below rather
-          # than shipping a stale CORS/redirect origin. See the ⛔ on
-          # CallbackURLs in deploy/app.yaml.
+          # than shipping a stale CORS/redirect origin.
           CONSOLE_ORIGIN: ${{ vars.CONSOLE_ORIGIN }}
           # Ratio WorkOS Production client id. A VARIABLE — it is a public
           # identifier, not a secret. Unset fails the step below; it must not
@@ -287,10 +280,8 @@ jobs:
               ImageUri='${{ steps.image.outputs.uri }}' \
               ExecutionRoleArn="arn:aws:iam::${ACCOUNT_ID}:role/ratio-demo-execution" \
               BuildSha="${GITHUB_SHA}" \
-              GoogleClientId="${GOOGLE_CLIENT_ID}" \
-              GoogleClientSecret="${GOOGLE_CLIENT_SECRET}" \
               ConsoleOrigin="${CONSOLE_ORIGIN}" \
-              DemoMember="${DEMO_MEMBERS:-demo@ratio.fastverk.dev}" \
+              DemoMember="${DEMO_MEMBERS:-}" \
               ScaleSender="${SCALE_SENDER}" \
               WorkOsClientId="${WORKOS_CLIENT_ID}" \
               WorkOsIssuer="${ISSUER}" \
@@ -535,8 +526,7 @@ jobs:
           # with an error the console cannot explain because it never sees it.
           # The field and RATIO_CONSOLE_URL are built from one ConsoleOrigin
           # parameter, which is the point: this asserts the parameter arrived,
-          # not that two things agree. Cognito CallbackURLs in the template
-          # are leftover unused resources (#22), not the sign-in path.
+          # not that two things agree. AuthKit is the sign-in path.
           #
           # ⚠ Only when CONSOLE_ORIGIN was actually passed to the stack. The
           # Deploy step now refuses unset and the retired Vercel hostname, so

@@ -19,9 +19,9 @@ matches `org:{id}` (#151). Hard non-scopes and aliases stay refused.
 #150 leftovers: the `journals:post` allowlist, reserved RPCs, and the
 read-only reference skeleton. `RATIO_DEMO_OPEN` defaults off on the
 deployed demo. first-party Connect apps call ConnectApiUrl.
-Issue 22 stays open for unused Cognito CloudFormation resources,
-`DEMO_MEMBERS` naming a live WorkOS `sub`, and WorkOS dashboard
-registration. API Gateway JWT verifies Connect tokens
+Issue 22 stays open for `DEMO_MEMBERS` naming a live WorkOS
+`sub` and WorkOS dashboard registration. unused Cognito
+CloudFormation resources removed. API Gateway JWT verifies Connect tokens
 on the Connect HTTP API (AuthKit custom-domain issuer). This
 file does not close #150.
 
@@ -209,9 +209,9 @@ open:
    inherit `org:{id}`, and needs the matching frozen name. API
    Gateway JWT verifies Connect tokens on the Connect HTTP API
    (AuthKit custom-domain `iss`; session tokens stay on DemoUrl).
-   leftover #22 is now unused Cognito CloudFormation resources,
-   `DEMO_MEMBERS` naming a live WorkOS `sub`, and WorkOS dashboard
-   registration — not the in-process grant, not the
+   leftover #22 is now `DEMO_MEMBERS` naming a live WorkOS `sub`
+   and WorkOS dashboard registration — unused Cognito
+   CloudFormation resources removed — not the in-process grant, not the
    gateway issuer, not the deployed open-demo dial
    (`RATIO_DEMO_OPEN` defaults off on DemoUrl), and not the
    first-party Connect grant helper (first-party Connect apps
@@ -281,8 +281,8 @@ open:
    is a ZIP of cites, not a write RPC, and it does not close #185.
 
 This file does not close #150. Nothing here finishes issue 22
-(unused Cognito resources, DEMO_MEMBERS naming a live WorkOS sub,
-WorkOS dashboard registration).
+(DEMO_MEMBERS naming a live WorkOS sub, WorkOS dashboard
+registration). unused Cognito CloudFormation resources removed.
 RATIO_DEMO_OPEN defaults off on the deployed demo.
 first-party Connect apps call ConnectApiUrl.
 API Gateway JWT verifies Connect tokens. Nothing here closes #5

@@ -7,8 +7,9 @@
 # HANDOFF.md and docs/connect-scopes.md still agree on the frozen strings
 # and the leftovers. The in-process authorizer accepts catalog scopes;
 # #150 stays open for the allowlist / reserved RPCs / reference skeleton.
-# leftover #22 is unused Cognito resources, DEMO_MEMBERS naming a
-# live WorkOS sub, and WorkOS dashboard registration.
+# leftover #22 is DEMO_MEMBERS naming a live WorkOS sub and
+# WorkOS dashboard registration. Unused Cognito resources are
+# removed.
 # RATIO_DEMO_OPEN defaults off on the deployed demo. API Gateway JWT
 # verifies Connect tokens. first-party Connect apps call ConnectApiUrl.
 #
@@ -116,7 +117,7 @@ grep -qF -- "portal impersonation" <<<"$WHOLE_PLAN" \
 # scopes is Built; the Connect HTTP API JWT is Built; the deployed
 # open-demo dial is off; #150 stays open for the allowlist and
 # reserved RPCs.
-for phrase in "Connect tokens accepted with catalog scopes" "API Gateway JWT verifies Connect tokens" "RATIO_DEMO_OPEN defaults off on the deployed demo" "first-party Connect apps call ConnectApiUrl" "#151" "leftover #22" "does not close #150"; do
+for phrase in "Connect tokens accepted with catalog scopes" "API Gateway JWT verifies Connect tokens" "RATIO_DEMO_OPEN defaults off on the deployed demo" "first-party Connect apps call ConnectApiUrl" "unused Cognito CloudFormation resources removed" "#151" "leftover #22" "does not close #150"; do
   grep -qF -- "$phrase" "$CATALOG" \
     || { echo "  x catalog is missing leftover honesty: $phrase" >&2; bad=1; }
 done
@@ -144,6 +145,10 @@ grep -qF -- "first-party Connect apps call ConnectApiUrl" <<<"$WHOLE_PLAN" \
   || { echo "  x PLAN.md does not record first-party Connect apps call ConnectApiUrl" >&2; bad=1; }
 grep -qF -- "first-party Connect apps call ConnectApiUrl" <<<"$WHOLE_HANDOFF" \
   || { echo "  x HANDOFF.md does not record first-party Connect apps call ConnectApiUrl" >&2; bad=1; }
+grep -qF -- "unused Cognito CloudFormation resources removed" <<<"$WHOLE_PLAN" \
+  || { echo "  x PLAN.md does not record unused Cognito CloudFormation resources removed" >&2; bad=1; }
+grep -qF -- "unused Cognito CloudFormation resources removed" <<<"$WHOLE_HANDOFF" \
+  || { echo "  x HANDOFF.md does not record unused Cognito CloudFormation resources removed" >&2; bad=1; }
 
 grep -qF -- "does not close #150" <<<"$WHOLE_PLAN" \
   || { echo "  x PLAN.md must say it does not close #150" >&2; bad=1; }
