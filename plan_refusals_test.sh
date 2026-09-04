@@ -267,16 +267,21 @@ BUILT=(
   "an audit-export Connect app"
   # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
   # The Connect authorizer is not on the refusal list — live provider
-  # OAuth, RATIO_DEMO_OPEN, and unused Cognito resources stay leftover
-  # on issue 22. The sentence it matches is in the 2026-09-04
-  # Connect-authorizer amendment.
+  # OAuth and unused Cognito resources stay leftover on issue 22.
+  # The sentence it matches is in the 2026-09-04 Connect-authorizer
+  # amendment.
   "Connect tokens accepted with catalog scopes"
   # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
   # The Connect HTTP API JWT authorizer is not on the refusal list —
-  # live OAuth, RATIO_DEMO_OPEN, and unused Cognito stay leftover on
-  # issue 22. The sentence it matches is in the 2026-09-04
-  # Connect-gateway amendment.
+  # live OAuth and unused Cognito stay leftover on issue 22. The
+  # sentence it matches is in the 2026-09-04 Connect-gateway amendment.
   "API Gateway JWT verifies Connect tokens"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Unsetting the deployed open-demo dial is not on the refusal list —
+  # live provider OAuth and unused Cognito stay leftover on issue 22.
+  # The sentence it matches is in the 2026-09-04 deployed-demo dial
+  # amendment.
+  "RATIO_DEMO_OPEN defaults off on the deployed demo"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

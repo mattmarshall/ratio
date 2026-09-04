@@ -152,9 +152,10 @@ from the session cookie. Three things follow, and each was the point:
 — an id token's `aud` is the client id, which is what it validates — but only the
 id token carries the `email` claim the tenant boundary matches on at
 `Console::book_path`. Sending the access token passes the gateway and then shows
-every signed-in person an empty fund rail. ⚠ And `RATIO_DEMO_OPEN=1` hides that
-completely: an open demo grants any authenticated caller every fund, so the
-mistake would only surface the day tenancy is turned on for a real customer.
+every signed-in person an empty fund rail. ⚠ `RATIO_DEMO_OPEN=1` (local / CI
+only) hides that completely: an open demo grants any authenticated AuthKit
+caller every fund. The deployed demo leaves the dial unset, so a token
+without a matching `sub` or email is an authorized-empty rail.
 
 ## The checks
 

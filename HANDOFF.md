@@ -887,17 +887,19 @@ or `sidepocket:*`.
   is the same `/cashflow` URL Personal already uses — one `screensFor`
   list.
 - ⚠ **Write-route actor is the WorkOS `sub` (#151).** `Console::for_request`
-  is the production constructor: AuthKit sessions may take the open demo;
-  a Connect token is always scoped and does not match `org:{id}`.
+  is the production constructor: AuthKit sessions take the open demo
+  only when `RATIO_DEMO_OPEN` is set (local / CI). The deployed demo
+  leaves it unset, so two AuthKit subjects isolate via membership.
+  A Connect token is always scoped and does not match `org:{id}`.
   `applyEvent` / `ingest` / `admit` / CreateBook / period close record
   `ChangeLogEntry.actor` from the verified subject, never a request-body
   string. User B sees authorized-empty / "no fund" for user A's book on
   the `scoped` path. Connect tokens accepted with catalog scopes on
   `/v1` (frozen names only; aliases and hard non-scopes refused).
-  Leftover on #22: `RATIO_DEMO_OPEN` on the shared demo, unused
-  Cognito CloudFormation resources, and live provider OAuth. API
-  Gateway JWT verifies Connect tokens on a second HTTP API
-  (Connect `iss` = `https://auth.ratio.marsh.build`; AuthKit
+  RATIO_DEMO_OPEN defaults off on the deployed demo. Leftover on
+  #22: unused Cognito CloudFormation resources and live provider
+  OAuth. API Gateway JWT verifies Connect tokens on a second HTTP
+  API (Connect `iss` = `https://auth.ratio.marsh.build`; AuthKit
   session `iss` stays `/user_management/{client_id}`). This file
   leaves #22 open for those leftovers.
 - ⚠ **A period-close walk-through (#114 / #27).** It can show a book period
@@ -1169,7 +1171,7 @@ than one that is entirely unclassified.
 | `console/` | the console itself. Next.js on Vercel; ⛔ Bazel does not build it |
 | `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9 |
 | `AGENTS.md` | the rules, for a person or a model, and the dispatch contract (one issue → one cloud agent → one PR). Replaces the two stale LLM guides |
-| `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Connect tokens accepted with catalog scopes on `/v1` after membership. Write-route actor = WorkOS `sub`; a Connect-shaped token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}` (#151). API Gateway JWT verifies Connect tokens on the Connect HTTP API (AuthKit custom-domain issuer). Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation. leftover #22: shared-demo `RATIO_DEMO_OPEN`, unused Cognito CloudFormation resources, live provider OAuth. Equalization, drip, and side-pocket stay Connect ([#177](https://github.com/mattmarshall/ratio/issues/177)) — existing scopes, no new grants; drip on #161; equalization / side-pocket apps not filed |
+| `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Connect tokens accepted with catalog scopes on `/v1` after membership. Write-route actor = WorkOS `sub`; a Connect-shaped token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}` (#151). API Gateway JWT verifies Connect tokens on the Connect HTTP API (AuthKit custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the deployed demo. Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation. leftover #22: unused Cognito CloudFormation resources, live provider OAuth. Equalization, drip, and side-pocket stay Connect ([#177](https://github.com/mattmarshall/ratio/issues/177)) — existing scopes, no new grants; drip on #161; equalization / side-pocket apps not filed |
 | `connect/bank-feed/` | First-party Connect app for Personal bank feeds ([#165](https://github.com/mattmarshall/ratio/issues/165)). Mapper + allowlist + closed-through / conservation refusals. Grant path is not built; live bank OAuth is leftover. Does not close #165 |
 | `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — `Ratio.Lots.PoolPeriod`, not an invented FIFO oldest date or two Form 8949 boxes. Grant path is not built; IRS e-file is refused. Does not close #166 |
 | `connect/goals/` | First-party Connect app for Personal net-worth goals and what-if scenarios ([#168](https://github.com/mattmarshall/ratio/issues/168)). Cites sheet / bridge / cash-flow; opt-in scenario journals on allowlisted Personal templates; closed-through and empty-allowlist refuse. Grant path is not built. Not a cash forecast. Does not close #168 |

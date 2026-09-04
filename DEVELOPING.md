@@ -130,7 +130,10 @@ cd console && pnpm dev                            # the console on :3000
 ⭐ **A local run needs no WorkOS, no secret and no network.** `ratio watch` sets
 none of the `RATIO_WORKOS_*` variables, so `/authconfig.json` answers with empty
 strings, the console skips its sign-in gate, and the server answers as
-`Subject::Local` — unrestricted, and not a tenant.
+`Subject::Local` — unrestricted, and not a tenant. `RATIO_DEMO_OPEN` is
+unset by default (including on the deployed demo). Set `RATIO_DEMO_OPEN=1`
+only when a local or CI process should grant every authenticated AuthKit
+session every fund; Connect tokens never take that dial.
 
 ```bash
 cd console && pnpm check    # tsc --noEmit, the render suite, next build

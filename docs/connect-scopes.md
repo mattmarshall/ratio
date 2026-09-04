@@ -17,11 +17,11 @@ unchanged (login, `/v1/books` without a session, authenticated console
 walks). A Connect-shaped token never takes `RATIO_DEMO_OPEN` and never
 matches `org:{id}` (#151). Hard non-scopes and aliases stay refused.
 #150 leftovers: the `journals:post` allowlist, reserved RPCs, and the
-read-only reference skeleton. Issue 22 stays open for the shared demo's
-open dial, unused Cognito CloudFormation resources, and live
-provider OAuth. API Gateway JWT verifies Connect tokens on the
-Connect HTTP API (AuthKit custom-domain issuer). This file does
-not close #150.
+read-only reference skeleton. `RATIO_DEMO_OPEN` defaults off on the
+deployed demo. Issue 22 stays open for unused Cognito CloudFormation
+resources and live provider OAuth. API Gateway JWT verifies Connect
+tokens on the Connect HTTP API (AuthKit custom-domain issuer). This
+file does not close #150.
 
 ---
 
@@ -207,9 +207,10 @@ open:
    inherit `org:{id}`, and needs the matching frozen name. API
    Gateway JWT verifies Connect tokens on the Connect HTTP API
    (AuthKit custom-domain `iss`; session tokens stay on DemoUrl).
-   leftover #22 is now the shared demo's `RATIO_DEMO_OPEN`, unused
-   Cognito CloudFormation resources, and live provider OAuth
-   — not the in-process grant and not the gateway issuer.
+   leftover #22 is now unused Cognito CloudFormation resources
+   and live provider OAuth — not the in-process grant, not the
+   gateway issuer, and not the deployed open-demo dial
+   (`RATIO_DEMO_OPEN` defaults off on DemoUrl).
 2. **Book ACL on every Connect grant.** Built with the authorizer.
    Authorized-empty for a book the subject does not administer. An
    `org_id` claim is not membership.
@@ -275,7 +276,8 @@ open:
    is a ZIP of cites, not a write RPC, and it does not close #185.
 
 This file does not close #150. Nothing here finishes issue 22
-(`RATIO_DEMO_OPEN`, unused Cognito resources, live provider OAuth).
+(unused Cognito resources, live provider OAuth).
+RATIO_DEMO_OPEN defaults off on the deployed demo.
 API Gateway JWT verifies Connect tokens. Nothing here closes #5
 (console wash flag), #9 (lot-relief UI cites / pooled holding-period
 leftover), #163, #166, #168, #169, #172, #184, #179, or #185.

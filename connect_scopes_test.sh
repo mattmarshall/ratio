@@ -7,8 +7,9 @@
 # HANDOFF.md and docs/connect-scopes.md still agree on the frozen strings
 # and the leftovers. The in-process authorizer accepts catalog scopes;
 # #150 stays open for the allowlist / reserved RPCs / reference skeleton.
-# leftover #22 is the shared demo dial, unused Cognito resources,
-# and live provider OAuth. API Gateway JWT verifies Connect tokens.
+# leftover #22 is unused Cognito resources and live provider OAuth.
+# RATIO_DEMO_OPEN defaults off on the deployed demo. API Gateway JWT
+# verifies Connect tokens.
 #
 # ⚠ THE SAME LIMITATION AS //:plan_refusals_test. This is a cross-check
 # between DECLARED lists. It does not scan the tree for an authorizer.
@@ -111,9 +112,10 @@ grep -qF -- "portal impersonation" <<<"$WHOLE_PLAN" \
   || { echo "  x PLAN.md dropped portal impersonation from the hard non-scopes" >&2; bad=1; }
 
 # Honesty: leftovers stay leftovers. The authorizer accepting catalog
-# scopes is Built; the Connect HTTP API JWT is Built; #150 stays open
-# for the allowlist and reserved RPCs.
-for phrase in "Connect tokens accepted with catalog scopes" "API Gateway JWT verifies Connect tokens" "#151" "leftover #22" "does not close #150"; do
+# scopes is Built; the Connect HTTP API JWT is Built; the deployed
+# open-demo dial is off; #150 stays open for the allowlist and
+# reserved RPCs.
+for phrase in "Connect tokens accepted with catalog scopes" "API Gateway JWT verifies Connect tokens" "RATIO_DEMO_OPEN defaults off on the deployed demo" "#151" "leftover #22" "does not close #150"; do
   grep -qF -- "$phrase" "$CATALOG" \
     || { echo "  x catalog is missing leftover honesty: $phrase" >&2; bad=1; }
 done
@@ -124,10 +126,19 @@ if grep -qF -- "still proving only the AuthKit session issuer" "$CATALOG"; then
   echo "  x catalog still names AuthKit-only gateway issuer as leftover" >&2
   bad=1
 fi
+# ⛔ THE SHARED OPEN DEMO MUST NOT REAPPEAR AS A CURRENT LEFTOVER.
+if grep -qF -- "shared demo's \`RATIO_DEMO_OPEN\`" "$CATALOG"; then
+  echo "  x catalog still names the shared-demo open dial as leftover" >&2
+  bad=1
+fi
 grep -qF -- "API Gateway JWT verifies Connect tokens" <<<"$WHOLE_PLAN" \
   || { echo "  x PLAN.md does not record API Gateway JWT verifies Connect tokens" >&2; bad=1; }
 grep -qF -- "API Gateway JWT verifies Connect tokens" <<<"$WHOLE_HANDOFF" \
   || { echo "  x HANDOFF.md does not record API Gateway JWT verifies Connect tokens" >&2; bad=1; }
+grep -qF -- "RATIO_DEMO_OPEN defaults off on the deployed demo" <<<"$WHOLE_PLAN" \
+  || { echo "  x PLAN.md does not record RATIO_DEMO_OPEN defaults off on the deployed demo" >&2; bad=1; }
+grep -qF -- "RATIO_DEMO_OPEN defaults off on the deployed demo" <<<"$WHOLE_HANDOFF" \
+  || { echo "  x HANDOFF.md does not record RATIO_DEMO_OPEN defaults off on the deployed demo" >&2; bad=1; }
 
 grep -qF -- "does not close #150" <<<"$WHOLE_PLAN" \
   || { echo "  x PLAN.md must say it does not close #150" >&2; bad=1; }

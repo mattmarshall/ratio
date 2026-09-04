@@ -140,9 +140,9 @@ export interface Caller {
    * `auth.ratio.marsh.build` is not the token issuer. Membership matches
    * on `sub`, email, or `org:{org_id}` at `Console::open_book`.
    *
-   * ⚠ AND THE DEMO WOULD NOT SHOW A TENANCY MISTAKE. `RATIO_DEMO_OPEN=1` grants
-   * any authenticated caller every book, so a token that carries no email is
-   * invisible in production and surfaces the day tenancy is switched on. */
+   * ⚠ `RATIO_DEMO_OPEN=1` (local / CI) grants any authenticated AuthKit
+   * caller every book. The deployed demo leaves it unset, so a token
+   * whose `sub` / email is not on MEMBERSHIP is authorized-empty. */
   idToken: string | null;
 }
 

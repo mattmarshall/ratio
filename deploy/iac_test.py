@@ -639,6 +639,28 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  smoke still asserts unauthenticated /v1/funds is 401")
 
+    # ⛔ THE DEPLOYED DEMO MUST NOT GRANT EVERY AUTHKIT SESSION EVERY FUND.
+    # `RATIO_DEMO_OPEN` (any non-empty value) is the open-rail dial. It is
+    # opt-in for local `ratio watch` / CI. A sentence describing the dial
+    # in a comment must not satisfy or fail this, which is why `app_code`
+    # is comment-stripped. `RATIO_DEMO_MEMBER` staying set is the
+    # membership seed the walk-through uses once the dial is off.
+    if re.search(r"^\s+RATIO_DEMO_OPEN:", app_code, re.M):
+        fail(
+            f"{app_path} still sets RATIO_DEMO_OPEN on the function — "
+            "the deployed demo would grant any AuthKit session every fund"
+        )
+    else:
+        print("  ok  RATIO_DEMO_OPEN is unset on the deployed function")
+    if not re.search(r"^\s+RATIO_DEMO_MEMBER:", app_code, re.M):
+        fail(
+            f"{app_path} dropped RATIO_DEMO_MEMBER — unsetting the open "
+            "dial without a membership seed leaves every AuthKit session "
+            "authorized-empty for the seeded funds"
+        )
+    else:
+        print("  ok  RATIO_DEMO_MEMBER still seeds membership on the demo")
+
     if failures:
         print(f"\n{len(failures)} problem(s): the app stack and the deploy role disagree "
               "about what may be created", file=sys.stderr)

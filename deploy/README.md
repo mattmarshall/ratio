@@ -406,21 +406,20 @@ Membership is data, not an IdP group: `funds/MEMBERSHIP.tsv`, lines of
 `entrypoint.sh` writes it on each start from `RATIO_DEMO_MEMBER` and the funds
 that actually exist.
 
-### The demo is open (`RATIO_DEMO_OPEN`)
+### The open-demo dial (`RATIO_DEMO_OPEN`) is unset on the deployed demo
 
-A public demo's audience is not known ahead of time, so it cannot be an
-allow-list of emails. `RATIO_DEMO_OPEN=1` (set in `app.yaml`) makes the server
-grant **any authenticated caller every fund**, while a write is still signed with
-their verified id — so anyone may sign in (Google auto-provisions on first
-sign-in) and then everyone sees the demo.
+`RATIO_DEMO_OPEN` (any non-empty value) grants **any authenticated AuthKit
+caller every fund**, while a write is still signed with their verified id.
+The deployed function leaves it unset. Two AuthKit sessions isolate via
+`MEMBERSHIP.tsv`: the subject named in `RATIO_DEMO_MEMBER` (or the creator
+of a book) sees that rail; a second subject sees authorized-empty / refuse.
 
 ⚠ This is **not** a dropped boundary. Sign-in is still required (the 401 above is
-unchanged), and the change is in a separate `Console::open` path, so the tenant
-path (`Console::scoped`, matching `MEMBERSHIP.tsv`) and its isolation test are
-untouched. Unset `RATIO_DEMO_OPEN` and the demo scopes each caller to the funds
-`MEMBERSHIP.tsv` grants them, with no other change — that is the model a real
-tenant deployment runs, and the sections below (the invited user, `DEMO_MEMBERS`)
-describe it.
+unchanged), and the shared-rail path is a separate `Console::open` constructor.
+Set `RATIO_DEMO_OPEN=1` only on a local `ratio watch` or a CI job that is
+deliberately showing the shared rail. Connect tokens never take it (#151).
+The sections below (`DEMO_MEMBERS`, invited user) describe the membership
+seed the live demo uses.
 
 ### Creating the invited demo user
 
@@ -459,10 +458,11 @@ WorkOS client id. Membership matches on `sub`, email if present, or
 only to the unused pool. Google and email sign-in for the live console are
 AuthKit's, configured on the attached WorkOS application.
 
-⚠ **`RATIO_DEMO_OPEN=1` HIDES THAT MISTAKE COMPLETELY.** An open demo grants any
-authenticated caller every fund, so sending the wrong token still shows a full
-rail. It would surface the day tenancy is turned on for a real customer, which
-is the worst possible day to find it.
+⚠ **`RATIO_DEMO_OPEN=1` HIDES A MEMBERSHIP MISMATCH COMPLETELY.** An open
+demo grants any authenticated AuthKit caller every fund, so sending a
+token whose `sub` / email is not on `RATIO_DEMO_MEMBER` still shows a
+full rail. The deployed demo leaves the dial unset so that mistake is
+visible. Set the dial only locally or in CI.
 
 ### Signing in with Google
 
@@ -482,13 +482,17 @@ deploy. Four steps:
    `GOOGLE_OAUTH_CLIENT_SECRET`. `deploy.yml` reads them as env vars and passes
    them to CloudFormation; they are never committed.
 3. **Grant the Google account membership.** Google signs a user in as their real
-   email, and the tenant boundary matches on it — so that email must be a demo
-   member or the sign-in lands on an empty rail. Set the repository **variable**
-   (Settings → Secrets and variables → Actions → Variables) `DEMO_MEMBERS` to a
-   comma-separated list, e.g. `demo@ratio.fastverk.dev,you@gmail.com`. `deploy.yml`
-   passes it as the `DemoMember` parameter and `entrypoint.sh` grants each member
-   every seeded fund. A variable, not a secret — an email is not one — so no
-   address is committed. Unset keeps just the email/password demo user.
+   email, and the tenant boundary matches on `sub` or email — so that identity
+   must be a demo member or the sign-in lands on an empty rail. Set the
+   repository **variable** (Settings → Secrets and variables → Actions →
+   Variables) `DEMO_MEMBERS` to a comma-separated list of WorkOS `sub` values
+   and/or emails, e.g. `user_01…,you@gmail.com`. AuthKit access tokens always
+   carry `sub`; email is optional, so an email-only list that never appears on
+   the token grants nobody the seeded rail. `deploy.yml` passes it as the
+   `DemoMember` parameter and `entrypoint.sh` grants each member every seeded
+   fund. A variable, not a secret — an email or `sub` is not one — so no
+   address is committed. Unset keeps the Cognito-era default
+   `demo@ratio.fastverk.dev`.
 4. **Grant the deploy role the identity-provider permissions** (once) and
    redeploy. The deploy role needs `cognito-idp:*IdentityProvider*` to create the
    Google provider — the same shape as the pool grant. Either re-run

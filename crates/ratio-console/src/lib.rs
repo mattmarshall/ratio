@@ -251,9 +251,10 @@ impl Console {
     /// as the actor — so "anyone who signs in sees the demo" costs nothing in
     /// attribution and, crucially, nothing in the tenancy code: `scope_for`,
     /// `open_book`'s membership check and their tests are untouched. The server
-    /// selects this only when `RATIO_DEMO_OPEN` is set; every real deployment
-    /// scopes. Sign-in is still required — this changes what an authenticated
-    /// caller may see, not whether one is needed.
+    /// selects this only when `RATIO_DEMO_OPEN` is set (local / CI). The
+    /// deployed demo leaves it unset and scopes. Sign-in is still required
+    /// — this changes what an authenticated caller may see, not whether
+    /// one is needed.
     pub fn open(root: impl AsRef<Path>, subject: Subject) -> Self {
         let root = root.as_ref().to_path_buf();
         let actor = match subject.actor() {
@@ -6728,6 +6729,55 @@ mod tests {
     }
 
     #[test]
+    fn an_authkit_session_without_the_open_dial_is_scoped_by_membership() {
+        // The deployed demo leaves RATIO_DEMO_OPEN unset. Two AuthKit
+        // subjects then isolate the same way CI already checks on
+        // `scoped`: membership, not every-session-every-fund.
+        let root = fresh("dial-off");
+        book(&root.join("a"));
+        book(&root.join("b"));
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "user_a\ta\n").unwrap();
+
+        let alice = Subject::Member {
+            sub: "user_a".into(),
+            email: "a@x.test".into(),
+            organization: String::new(),
+            groups: vec![],
+            connect: false,
+            scopes: BTreeSet::new(),
+        };
+        let bob = Subject::Member {
+            sub: "user_b".into(),
+            email: "b@x.test".into(),
+            organization: String::new(),
+            groups: vec![],
+            connect: false,
+            scopes: BTreeSet::new(),
+        };
+        let alice_c = Console::for_request(&root, alice, false);
+        let bob_c = Console::for_request(&root, bob, false);
+
+        assert!(
+            transcode::serve(&alice_c, "GET", "/v1/funds/a/views/book/accounts", "", "").is_ok()
+        );
+        let alice_funds = transcode::serve(&alice_c, "GET", "/v1/funds", "", "").unwrap();
+        assert!(
+            alice_funds.contains("funds/a") && !alice_funds.contains("funds/b"),
+            "A sees only the fund MEMBERSHIP grants: {alice_funds}"
+        );
+
+        let bob_a = transcode::serve(&bob_c, "GET", "/v1/funds/a/views/book/accounts", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(bob_a.contains("no fund"), "B must not open A's fund: {bob_a}");
+        let bob_funds = transcode::serve(&bob_c, "GET", "/v1/funds", "", "").unwrap();
+        assert!(
+            !bob_funds.contains("funds/a") && !bob_funds.contains("funds/b"),
+            "B must be authorized-empty, not the shared rail: {bob_funds}"
+        );
+    }
+
+    #[test]
     fn a_write_is_attributed_to_the_verified_subject_and_does_not_pollute_config_versions() {
         let root = fresh("attribution");
         book(&root.join("a"));
@@ -11490,8 +11540,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             .to_string();
         assert!(sneak.contains("no fund"), "Connect must not open A's book: {sneak}");
 
-        // An AuthKit session under DEMO_OPEN still sees the demo — that path
-        // is unchanged and is leftover on #22.
+        // An AuthKit session under DEMO_OPEN still sees the demo — that
+        // path is the local/CI dial, not the deployed default.
         let session = member("user_demo", "d@x.test", "");
         let demo = Console::for_request(&root, session, true);
         let seen = demo.list_books().unwrap();
@@ -11656,8 +11706,9 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             "books:read does not post: {read_cannot_post}"
         );
 
-        // AuthKit session path is unchanged: no scope claim, DEMO_OPEN still
-        // lists every book, /v1/books is not a 401-shaped refuse.
+        // AuthKit session path is unchanged: no scope claim, DEMO_OPEN
+        // (the local/CI dial) still lists every book, /v1/books is not a
+        // 401-shaped refuse. The deployed demo leaves the dial unset.
         let session = member("user_demo", "d@x.test", "");
         let demo = Console::for_request(&root, session, true);
         let session_books = transcode::serve(&demo, "GET", "/v1/books", "", "").unwrap();

@@ -43,19 +43,18 @@ if [ ! -d "$FUNDS" ] && [ -d /opt/demo-funds ]; then
 fi
 
 # The tenant boundary (book_path / fund_ids) reads MEMBERSHIP.tsv from the funds
-# directory: lines of `<subject>\t<fund-id>`. With RATIO_AUTH=required every
-# signed-in visitor is a demo member, so grant each of them every seeded fund —
-# otherwise a visitor signs in successfully and sees an empty rail, which reads
-# as "the demo is broken" rather than "you were granted nothing". Regenerated on
-# each start from RATIO_DEMO_MEMBER and the fund directories that actually exist,
-# so the grant can never name a fund that is not there.
+# directory: lines of `<subject>\t<fund-id>`. Regenerated on each start from
+# RATIO_DEMO_MEMBER and the fund directories that actually exist, so the grant
+# can never name a fund that is not there. A subject not on the list signs in
+# and sees an authorized-empty rail — isolation, not a broken demo. CreateBook
+# still grants the creator's WorkOS `sub`.
 #
-# ⚠ RATIO_DEMO_MEMBER MAY NAME SEVERAL MEMBERS, comma-separated: the
-# email/password demo user AND one or more federated (Google) emails. It has to,
-# because a Google sign-in arrives as the caller's real Google email — not
-# `demo@…` — and `funds_for` matches that email against this file. A single-value
-# RATIO_DEMO_MEMBER is just a list of one. Unset locally — where the caller is
-# Subject::Local and unrestricted — so no file is written and none is read.
+# ⚠ RATIO_DEMO_MEMBER MAY NAME SEVERAL MEMBERS, comma-separated: WorkOS
+# `sub` values and/or emails. AuthKit access tokens always carry `sub`;
+# email is optional, so an email-only list that never appears on the token
+# grants nobody the seeded rail. A single-value RATIO_DEMO_MEMBER is just a
+# list of one. Unset locally — where the caller is Subject::Local and
+# unrestricted — so no file is written and none is read.
 if [ -n "${RATIO_DEMO_MEMBER:-}" ] && [ -d "$FUNDS" ]; then
   : > "$FUNDS/MEMBERSHIP.tsv"
   members="$(printf '%s' "$RATIO_DEMO_MEMBER" | tr ',' ' ')"
