@@ -156,11 +156,14 @@ describe("the command palette", () => {
     renderConsole();
     // ⚠ NOT "your books". This test opens on `/breaks`, and kbar
     // also indexes a break id `your`. "independent" is a keyword on
-    // the book-collection action only. `candidatesForId` must not
-    // also treat that word as a break — that sent this click to
-    // `/breaks/independent` (#218 regression on main).
+    // the book-collection action only. DeepLinks must register no
+    // jump:* row for that token — a competing exception sent this
+    // click to `/breaks/independent`, and clicking a section header
+    // left push at 0 calls.
     await type("independent");
-    fireEvent.click(await row("Your books"));
+    await waitFor(() => expect(screen.queryByText(/as an exception$/)).toBeNull());
+    const label = await row("Your books");
+    fireEvent.click(label.closest("[role='option']") ?? label);
     expect(push).toHaveBeenCalledWith("/books");
     expect(push).not.toHaveBeenCalledWith(
       `/books/${FUND}/views/${VIEW}/breaks/independent`,
