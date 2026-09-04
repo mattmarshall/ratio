@@ -64,6 +64,14 @@ cite stays unset in the manifest, never a silent empty file or
 empty-digest-as-success. first-party Connect apps call ConnectApiUrl.
 That does not close #185 (WorkOS dashboard registration leftover
 #22 and a live walk-through ZIP remain).
+The LP / investor portal Connect app (`connect/lp-portal/`, #161)
+cites partner capital, commitments / undrawn, capital notices, and
+NAV already on the book; a missing cite stays unset — never a
+silent 1/N of book NAV, a callable-zero commitment, a NAV 0.00, or
+an empty-digest-as-success. Read-only: no `journals:post`. No
+kernel portal. That does not close #161 (WorkOS dashboard
+registration leftover #22, a live LP walk-through, and drip
+elections remain).
 Equalization, drip, and side-pocket stay Connect (#177) — a
 PLAN decision, not a landing. None of the three changes
 conservation or journal integrity; do not implement them as
@@ -1237,6 +1245,7 @@ than one that is entirely unclassified.
 | `connect/bank-balance-predictor/` | First-party Connect app for Personal bank-balance predictors ([#163](https://github.com/mattmarshall/ratio/issues/163)). Maps predicted movements (or a predicted ending balance against cited cash) onto allowlisted `forecast_income` / `forecast_spend`. Unset cited cash is not a silent 0.00 baseline. Closed-through and empty-allowlist refuse. `journal:append` is an alias. Payroll / envelope kinds refuse. WorkOS dashboard registration leftover #22; live bank OAuth leftover. Does not close #163. Does not reopen #164. Does not redo #218 |
 | `connect/calendar-bills/` | First-party Connect app for Personal calendar bills sync ([#163](https://github.com/mattmarshall/ratio/issues/163)). Maps dated occurrences onto allowlisted `scheduled_income` / `scheduled_spend`. Recurrence stays in the calendar — an `rrule` is refused rather than expanded. Closed-through and empty-allowlist refuse. `journal:append` is an alias. Payroll / envelope kinds refuse. WorkOS dashboard registration leftover #22; live calendar OAuth leftover. Does not close #163. Does not reopen #164. Does not redo #218 |
 | `connect/audit-export/` | First-party Connect app for an audit evidence ZIP ([#185](https://github.com/mattmarshall/ratio/issues/185)). Cites `PeriodClose`, `NavStrike`, `Break` / `BreakExplanation`, and config / journal digests already on the book. Missing cites stay unset in the manifest — never a silent empty file, a NAV 0.00, or an empty-digest-as-success. Read-only: no `journals:post`. No kernel blob store, no period-close replacement, no LP portal, no e-sign, no second journal. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration leftover #22. Does not close #185. Leaves issue 22 open. Does not close #150. Does not reopen #151 |
+| `connect/lp-portal/` | First-party Connect app for an LP / investor portal ([#161](https://github.com/mattmarshall/ratio/issues/161)). Cites partner capital, commitments / undrawn, `CapitalNotice`, and NAV already on the book (`partners:read`, `statements:read`, `nav:read`; optionally `books:read`). Missing cites stay unset — never a silent 1/N of book NAV, a callable-zero commitment, a NAV 0.00, or an empty-digest-as-success. Read-only: no `journals:post`. No kernel HTML portal, no LP user tables, no document vault. No IRR / TVPI / waterfall. Drip elections stay leftover. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration leftover #22. Does not close #161. Leaves issue 22 open. Does not close #150. Does not close #177. Does not reopen #151 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.

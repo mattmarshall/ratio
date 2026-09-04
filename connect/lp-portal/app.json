@@ -1,0 +1,62 @@
+{
+  "name": "Ratio LP / investor portal",
+  "book_kind": "INVESTMENT",
+  "issue": 161,
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "partners:read",
+      "statements:read",
+      "nav:read",
+      "books:read"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read"
+    ]
+  },
+  "journals_post_allowlist": {
+    "client_id": "client_ratio_lp_portal",
+    "templates": []
+  },
+  "partners": {
+    "status": "cited",
+    "note": "partners:read copies partner master, capital, and commitments already on /capital. Allocated income / expense / unrealized stay unset without a named [[partner_cut]] — never a silent 1/N of book NAV. A figure that will not divide stays unset, not rounded."
+  },
+  "statements": {
+    "status": "cited",
+    "note": "statements:read is how closed-through is read. A missing close is unset, not a fake closed period. This app does not replace ratio close."
+  },
+  "nav": {
+    "status": "cited",
+    "note": "nav:read copies NavStrike and the period roll-forward already on the book. A missing strike is unset, not NAV 0.00. An empty journal digest is unset, not history-intact. Commitment and undrawn cancel in NAV — they are not cash that arrived."
+  },
+  "books": {
+    "status": "optional",
+    "note": "books:read lists books the subject can see. Membership is the AuthKit sub on the book. An org_id claim is not membership. The other three scopes still cite a named book when books:read is absent."
+  },
+  "drip": {
+    "status": "refused",
+    "note": "Drip elections stay leftover on #161 / #177. This app is read-only capital / statement / NAV cites. It does not package distribute_* then subscribe_* and it does not mint an LP election."
+  },
+  "irr_tvpi_waterfall": {
+    "status": "refused",
+    "note": "IRR, TVPI, and a waterfall stay refused. partners:read is not a return and not preferred-return math."
+  },
+  "kernel_portal": {
+    "status": "refused",
+    "note": "No HTML portal routes inside ratio watch or the console binary. No LP user tables. No document vault in core. Membership is the AuthKit sub on the book."
+  },
+  "payments": {
+    "status": "refused",
+    "note": "No drip payment initiation. payments:initiate is a hard non-scope. Bank OAuth stays refused."
+  },
+  "grant_path": {
+    "status": "built",
+    "note": "first-party Connect apps call ConnectApiUrl with a verified Connect access token (authorization_code or client_credentials against WorkOS Connect). Membership still required. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. leftover #22: WorkOS dashboard registration, DEMO_MEMBERS naming a live WorkOS sub, unused Cognito CloudFormation resources. Write-route actor binding landed (#151). This file does not reopen #151. This file leaves #150 and #161 open. It does not reopen #151."
+  }
+}

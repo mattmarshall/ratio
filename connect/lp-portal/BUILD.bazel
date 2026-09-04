@@ -1,0 +1,38 @@
+package(default_visibility = ["//visibility:public"])
+
+# The LP / investor portal Connect app is a sibling tree. Bazel does
+# not build a WorkOS binary here; it holds the cite model to the
+# catalog, to /capital + NavStrike field names, and to the refusals
+# the issue named.
+#
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token.
+# WorkOS dashboard registration stays leftover #22. Unset capital /
+# NAV / commitment stay unset — never a silent 0.00, a 1/N of book
+# NAV, or an empty-digest-as-success. No kernel portal. INVESTMENT
+# chrome is not forked. No IRR / TVPI / waterfall. Drip stays #161.
+sh_test(
+    name = "portal_test",
+    size = "small",
+    srcs = ["portal_test.sh"],
+    args = [
+        "$(rootpath portal.py)",
+        "$(rootpath portal_test.py)",
+        "$(rootpath app.json)",
+        "$(rootpath //crates/ratio-rules:src/lib.rs)",
+        "$(rootpath //:docs/connect-scopes.md)",
+        "$(rootpath //console:src/lib/screens.ts)",
+        "$(rootpath //proto:ratio/console/v1/console.proto)",
+        "$(rootpath //console:src/wire/types.ts)",
+    ],
+    data = [
+        "//connect:grant.py",
+        "portal.py",
+        "portal_test.py",
+        "app.json",
+        "//crates/ratio-rules:src/lib.rs",
+        "//:docs/connect-scopes.md",
+        "//console:src/lib/screens.ts",
+        "//proto:ratio/console/v1/console.proto",
+        "//console:src/wire/types.ts",
+    ],
+)
