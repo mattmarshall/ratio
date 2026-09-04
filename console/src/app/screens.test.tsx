@@ -484,6 +484,10 @@ describe("a first-class book", () => {
       expect(
         screen.getByText(/unset — no commitment has been posted, not a callable zero/),
       ).toBeDefined();
+      expect(screen.getByLabelText("Capital notices")).toBeDefined();
+      expect(
+        screen.getByText(/unset — no call or distribution has been posted, not a waterfall/),
+      ).toBeDefined();
       expect(screen.getByLabelText("Fee receivable")).toBeDefined();
       expect(
         screen.getByText(/unset — no elected fee terms, not a silent zero receivable/),
@@ -517,6 +521,61 @@ describe("a first-class book", () => {
       expect(screen.getAllByText("unset").length).toBeGreaterThan(0);
       expect(screen.queryByText(/not a callable zero/)).toBeNull();
       expect(screen.getByText(/remaining commitment, partner grain/)).toBeDefined();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
+  it("cites a capital-call notice from posted amounts, not a waterfall split", async () => {
+    const harbour = {
+      ...booksFixture.books.find((b) => b.kind === "INVESTMENT")!,
+      partnerCut: [
+        { partner: "LP", weight: "80" },
+        { partner: "GP", weight: "20" },
+      ],
+      notices: [
+        {
+          digest: "aabbccddeeff0011",
+          kind: "call",
+          amount: "4000",
+          partnerCut: [
+            { partner: "LP", weight: "80" },
+            { partner: "GP", weight: "20" },
+          ],
+          amounts: [{ partner: "LP", amount: "4000" }],
+          entryId: "call-1",
+          tradeDate: { year: 2026, month: 3, day: 15 },
+        },
+      ],
+    };
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    // ⚠ Fixture `[]` widens to `never[]`; the same `unknown` step the
+    // partner-cut override already uses.
+    wire.getBook = (async () => harbour) as unknown as typeof wire.getBook;
+    wire.listAccounts = (async () => capitalCommitmentsFixture) as typeof wire.listAccounts;
+    try {
+      const Capital = (await import("./books/[book]/views/[view]/capital/page"))
+        .default;
+      await renderAsync(
+        Capital({
+          params: params({ book: "harbourline-global-value", view: "abor" }),
+          searchParams: params({}),
+        }),
+      );
+      expect(screen.getByLabelText("Capital notices")).toBeDefined();
+      expect(screen.getByText(/Capital call/)).toBeDefined();
+      expect(screen.getByText("aabbccd")).toBeDefined();
+      expect(screen.getByText("LP 80 / GP 20")).toBeDefined();
+      expect(screen.getByText("LP 40.00")).toBeDefined();
+      expect(screen.queryByText("GP 8.00")).toBeNull();
+      expect(screen.queryByText("LP 32.00")).toBeNull();
+      // The row is an <a role="row"> — query the row, not a nested link.
+      expect(
+        screen.getByRole("row", { name: /Capital call/ }).getAttribute("href"),
+      ).toBe("/books/harbourline-global-value/entries/call-1");
+      expect(screen.getByText(/posted amounts, not a waterfall/)).toBeDefined();
     } finally {
       wire.getBook = realBook;
       wire.listAccounts = realAccounts;

@@ -798,7 +798,7 @@ impl JsonView for pb::Book {
              \"budget\":{},\"envelopes\":[{}],\"loans\":[{}],\
              \"partnerCut\":[{}],\"specialAllocations\":[{}],\
              \"feeReceivable\":{},\"allocationFacts\":[{}],\
-             \"currencies\":[{}]}}",
+             \"currencies\":[{}],\"notices\":[{}]}}",
             q(&self.name),
             q(&self.display_name),
             q(book_kind_name(self.kind)),
@@ -817,6 +817,33 @@ impl JsonView for pb::Book {
             q(&self.fee_receivable),
             self.allocation_facts.iter().map(|f| f.to_json()).collect::<Vec<_>>().join(","),
             strings(&self.currencies),
+            self.notices.iter().map(|n| n.to_json()).collect::<Vec<_>>().join(","),
+        )
+    }
+}
+
+impl JsonView for pb::CapitalNotice {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"digest\":{},\"kind\":{},\"amount\":{},\"partnerCut\":[{}],\
+             \"amounts\":[{}],\"entryId\":{},\"tradeDate\":{}}}",
+            q(&self.digest),
+            q(&self.kind),
+            q(&self.amount.to_string()),
+            self.partner_cut.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
+            self.amounts.iter().map(|a| a.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.entry_id),
+            date_json(&self.trade_date),
+        )
+    }
+}
+
+impl JsonView for pb::PartnerAmount {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"partner\":{},\"amount\":{}}}",
+            q(&self.partner),
+            q(&self.amount.to_string())
         )
     }
 }

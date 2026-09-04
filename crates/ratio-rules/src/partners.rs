@@ -481,6 +481,96 @@ mod tests {
         // `Ratio.Partners.allocating_units_without_a_cut_is_unset`.
         assert_eq!(allocate(30, &[]).unwrap(), None);
     }
+
+    fn posted(partner: &str, amount: i64) -> PostedAmount {
+        PostedAmount {
+            partner: partner.into(),
+            amount,
+        }
+    }
+
+    #[test]
+    fn no_cut_is_not_a_notice() {
+        // `Ratio.Partners.no_cut_from_posted_is_unset`.
+        assert_eq!(
+            from_posted(NoticeKind::Call, &[], &[posted("LP", 250_000)]).unwrap(),
+            None
+        );
+        assert_eq!(issue(NoticeKind::Call, 250_000, &[]).unwrap(), None);
+    }
+
+    #[test]
+    fn a_zero_amount_is_not_a_notice() {
+        let cut = [share("LP", 80), share("GP", 20)];
+        assert_eq!(issue(NoticeKind::Call, 0, &cut).unwrap(), None);
+        assert_eq!(
+            from_posted(NoticeKind::Call, &cut, &[posted("LP", 0)]).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn issued_eighty_twenty_of_a_total_is_pro_rata_not_a_waterfall() {
+        // `Ratio.Partners` example: issue 250_000 under 80/20.
+        let cut = [share("LP", 80), share("GP", 20)];
+        let n = issue(NoticeKind::Call, 250_000, &cut)
+            .unwrap()
+            .expect("divides");
+        assert_eq!(n.amount, 250_000);
+        assert_eq!(n.amounts.iter().find(|a| a.partner == "LP").map(|a| a.amount), Some(200_000));
+        assert_eq!(n.amounts.iter().find(|a| a.partner == "GP").map(|a| a.amount), Some(50_000));
+        assert_eq!(n.amounts.iter().map(|a| a.amount).sum::<i64>(), 250_000);
+    }
+
+    #[test]
+    fn a_partner_scoped_call_is_not_eighty_twenty_of_itself() {
+        // ⭐ THE CLAIM #157 IS ABOUT. fromPosted cites the journal.
+        // issue on that same 250_000 invents GP 50_000.
+        let cut = [share("LP", 80), share("GP", 20)];
+        let posted = [posted("LP", 250_000)];
+        let cited = from_posted(NoticeKind::Call, &cut, &posted)
+            .unwrap()
+            .expect("posted");
+        assert_eq!(cited.amount, 250_000);
+        assert_eq!(cited.amounts.len(), 1);
+        assert_eq!(cited.amounts[0].partner, "LP");
+        assert_eq!(cited.amounts[0].amount, 250_000);
+        let invented = issue(NoticeKind::Call, 250_000, &cut)
+            .unwrap()
+            .expect("divides");
+        assert_ne!(
+            cited.amounts, invented.amounts,
+            "using issue on a partner-scoped call invents GP"
+        );
+        assert!(
+            invented.amounts.iter().any(|a| a.partner == "GP" && a.amount == 50_000),
+            "{invented:?}"
+        );
+    }
+
+    #[test]
+    fn a_figure_that_will_not_divide_is_not_an_issued_notice() {
+        let cut = [share("LP", 80), share("GP", 20)];
+        let err = issue(NoticeKind::Distribution, 101, &cut).unwrap_err().to_string();
+        assert!(err.contains("does not divide"), "{err}");
+    }
+
+    #[test]
+    fn rewriting_amounts_changes_the_digest() {
+        let cut = [share("LP", 80), share("GP", 20)];
+        let n = from_posted(NoticeKind::Call, &cut, &[posted("LP", 250_000)])
+            .unwrap()
+            .expect("posted");
+        let a = notice_digest(&n, "call-1", "2026-03-01");
+        let b = notice_digest(&n, "call-1", "2026-03-01");
+        assert_eq!(a, b, "the same document has one digest");
+        let mut rewritten = n.clone();
+        rewritten.amounts = vec![posted("LP", 200_000), posted("GP", 50_000)];
+        let c = notice_digest(&rewritten, "call-1", "2026-03-01");
+        assert_ne!(a, c, "rewriting amounts must not keep the digest");
+        let other = notice_digest(&n, "call-2", "2026-03-01");
+        assert_ne!(a, other, "two calls are two documents");
+    }
 }
 
 /// A partner-unit movement is well-formed when cash and units are
@@ -545,6 +635,141 @@ pub fn period_redeemed(units: &[i64]) -> Option<i64> {
         };
     }
     Some(n)
+}
+
+/// Call or distribution. Not preferred, not catch-up, not carry.
+/// `Ratio.Partners.NoticeKind`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoticeKind {
+    Call,
+    Distribution,
+}
+
+impl NoticeKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Call => "call",
+            Self::Distribution => "distribution",
+        }
+    }
+}
+
+/// One partner amount the journal posted. Not a weight.
+/// `Ratio.Partners.Posted`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PostedAmount {
+    pub partner: String,
+    pub amount: i64,
+}
+
+/// A citeable capital-call / distribution notice.
+///
+/// `Ratio.Partners.Notice`. Digest is the content address of kind,
+/// total, the named cut, and the amounts — plus the entry id the
+/// walk pins, so two identical calls are two documents.
+///
+/// ⛔ NOT A WATERFALL. Amounts are either `allocate` of a named total
+/// (`issue`) or what the journal posted (`from_posted`). There is no
+/// preferred return, catch-up, or carry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Notice {
+    pub kind: NoticeKind,
+    pub amount: i64,
+    pub cut: Vec<PartnerShare>,
+    pub amounts: Vec<PostedAmount>,
+}
+
+/// Issue a notice from a named total under a cut.
+///
+/// `Ratio.Partners.issue`. Pro-rata only. A zero amount is not a
+/// notice. No cut stays unset. A figure that will not divide is
+/// refused rather than rounded.
+pub fn issue(kind: NoticeKind, amount: i64, cut: &[PartnerShare]) -> Result<Option<Notice>> {
+    if amount == 0 {
+        return Ok(None);
+    }
+    let Some(alloc) = allocate(amount, cut)? else {
+        return Ok(None);
+    };
+    Ok(Some(Notice {
+        kind,
+        amount,
+        cut: cut.to_vec(),
+        amounts: alloc
+            .into_iter()
+            .map(|(partner, amount)| PostedAmount { partner, amount })
+            .collect(),
+    }))
+}
+
+/// Cite a notice from journal amounts and a named cut.
+///
+/// `Ratio.Partners.fromPosted`. ⛔ THE AMOUNTS ARE WHAT THE JOURNAL
+/// POSTED. Applying [`issue`] to a partner-scoped call invents the
+/// other partners — 80/20 of an LP call of 250_000 is a GP share
+/// nobody posted. Empty posted, a zero row, or no cut stays unset.
+pub fn from_posted(
+    kind: NoticeKind,
+    cut: &[PartnerShare],
+    posted: &[PostedAmount],
+) -> Result<Option<Notice>> {
+    if cut.is_empty() {
+        return Ok(None);
+    }
+    check_cut(cut)?;
+    if posted.is_empty() {
+        return Ok(None);
+    }
+    let mut total: i64 = 0;
+    for p in posted {
+        if p.partner.trim().is_empty() {
+            bail!("a notice amount without a partner is not a partner amount");
+        }
+        if p.amount == 0 {
+            return Ok(None);
+        }
+        total = checked::add(total, p.amount, "notice posted amount")?;
+    }
+    if total == 0 {
+        return Ok(None);
+    }
+    Ok(Some(Notice {
+        kind,
+        amount: total,
+        cut: cut.to_vec(),
+        amounts: posted.to_vec(),
+    }))
+}
+
+/// Content address of a notice.
+///
+/// ⭐ THE IDENTITY INCLUDES THE AMOUNTS AND THE ENTRY. Dropping either
+/// would let a rewrite keep the digest while the figure moved —
+/// `Ratio.Partners.rewriting_amounts_is_a_different_notice`. The entry
+/// id keeps two identical calls as two documents.
+pub fn notice_digest(n: &Notice, entry_id: &str, trade_date: &str) -> String {
+    let mut cut: Vec<String> = n
+        .cut
+        .iter()
+        .map(|s| format!("{}:{}", s.partner, s.weight))
+        .collect();
+    cut.sort();
+    let mut amounts: Vec<String> = n
+        .amounts
+        .iter()
+        .map(|a| format!("{}:{}", a.partner, a.amount))
+        .collect();
+    amounts.sort();
+    let body = format!(
+        "v1\n{}\n{}\n{}\n{}\n{}\n{}",
+        n.kind.as_str(),
+        entry_id,
+        n.amount,
+        cut.join(","),
+        amounts.join(","),
+        trade_date,
+    );
+    ratio_store::Digest::of(body.as_bytes()).as_str().to_string()
 }
 
 /// Redeem `units` from an outstanding figure.

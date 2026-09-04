@@ -708,6 +708,45 @@ message Book {
   // reporting constant on `currency_code` and leave this list empty.
   // Field 18. allocation_facts are 17.
   repeated string currencies = 18 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Citeable capital-call / distribution notices GetBook walked.
+  //
+  // Digest + the pinned partner cut + the amounts the journal posted.
+  // Empty is unset — no call or distribution has been posted, not a
+  // silent notice and not a waterfall. `Ratio.Partners.fromPosted`.
+  // Applying the cut to a partner-scoped call invents the other
+  // partners; the amounts stay what the entry posted.
+  //
+  // ⚠ INDEX MUST NOT FILL THIS. `list_book_row` stays empty — a walk
+  // of the journal is a fold. GetBook cites. Field 19. currencies
+  // are 18. LP portal / e-sign / CRM stay Connect (#161).
+  repeated CapitalNotice notices = 19 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// A citeable capital-call / distribution notice. Not a waterfall.
+//
+// `Ratio.Partners.Notice`. Digest is the content address. The cut is
+// the agreement the entry pinned. Amounts are what the journal posted
+// — not `issue` of the entry amount, which would invent partners.
+message CapitalNotice {
+  // SHA-256 hex of kind + entry + total + cut + amounts + trade date.
+  string digest = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // `call` / `distribution`. Not preferred, not catch-up, not carry.
+  string kind = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Total of `amounts`, minor units.
+  int64 amount = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  repeated PartnerShare partner_cut = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  repeated PartnerAmount amounts = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // The journal entry this notice cites. `/books/{book}/entries/{id}`.
+  string entry_id = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Unset when the entry is undated.
+  google.type.Date trade_date = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One partner amount on a notice. Not a weight.
+message PartnerAmount {
+  string partner = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 amount = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One named weight in a partner cut. Absent from `Book.partner_cut`

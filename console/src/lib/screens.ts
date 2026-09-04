@@ -18,7 +18,7 @@
 // (#173); awarded commitments and remaining to spend compose
 // onto `/budget` (#104). An investment book cites partner capital first — funded
 // activity, commitment / undrawn, and a per-partner capital account
-// statement on the same `/capital` URL (#70, #82, #102) — then a period
+// statement on the same `/capital` URL (#70, #82, #102, #157) — then a period
 // NAV roll-forward (#96), then the ABOR warehouse. An
 // operating-business book cites the same sheet + period income statement
 // + trial balance as a close surface (#108), a period cash-flow
@@ -135,7 +135,9 @@ export const PROJECT_SCREENS: readonly Screen[] = [
  * a silent equal split of book NAV. CreateBook(Investment) writes
  * `[[partner_cut]]` LP 80 / GP 20. Journal specials fold first; a
  * remainder uses the cut. A book that has never posted a commitment
- * shows unset, not a callable zero. `/nav` is the period roll-forward
+ * shows unset, not a callable zero. A call / distribution notice
+ * (digest + pinned cut + posted amounts) composes onto the same
+ * URL — not a waterfall, not a second chrome list. `/nav` is the period roll-forward
  * (beginning → plugs → ending), not a replacement for `/strikes`
  * (ABOR NAV). Unset stays unset.
  */

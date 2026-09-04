@@ -1,6 +1,6 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
-**State**: bazel tests green, 29 `lean_test`, 49 `tla_check`, 30 `manual`
+**State**: bazel tests green, 32 `lean_test`, 49 `tla_check`, 30 `manual`
 probes all red for the reasons they name.
 
 Issues #4, #5, #7, and #9 are closed. #5's leftover was the console
@@ -647,11 +647,19 @@ or `sidepocket:*`.
   ties, and `/capital` cites the remaining figure. A book that has never
   posted a commitment shows **unset**, not a callable zero — `postingCount
   === "0"` is the distinction; a fully-drawn line is a real zero.
-  `contribute_lp` is still funded capital without a draw. ⛔ The walk-through
+  `contribute_lp` is still funded capital without a draw. A call or
+  distribution also produces a citeable **notice**
+  (`Ratio.Partners.Notice`; digest + the pinned cut + the amounts
+  the journal posted) linked from `/capital`. Applying the cut to a
+  partner-scoped call invents the other partners — that is the
+  waterfall the notice refuses. Empty is unset, not a silent
+  notice. ⛔ The walk-through
   cannot show a future call schedule, IRR / TVPI / DPI, a waterfall or
   carried-interest formula, a client portal, or CRM. The seeded demo fund
   has no commitment postings, so its `/capital` must refuse undrawn the
   same way — a silent 0.00 there would be the defect.
+  This file closes #157. It does not close #161. It does not reopen
+  #82.
 - ⚠ **A period NAV roll-forward walk-through (#96 / #27).** It can show
   beginning and ending NAV for a month or year, cite ΔNAV against the
   same contribution / distribution accounts `/capital` already names, and
@@ -1101,7 +1109,7 @@ than one that is entirely unclassified.
 
 | | |
 |---|---|
-| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,PoolPeriod,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Partners/{Cut,Units}`, `Fees/Accrual`, `Actions/Factor`, `Closure`, `Exec` |
+| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,PoolPeriod,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Partners/{Cut,Units,Notice}`, `Fees/Accrual`, `Actions/Factor`, `Closure`, `Exec` |
 | `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `wash_keep_holding_period`, `min_tax_short_weight`, `average_cost`, `[personal] currencies` (household reporting codes; empty is unset, not a silent USD), `[personal] lot_relief` (household Investments; unset stays unset), `tolerance`, `partner_cut`, `special_allocation`, `fee_terms` (`management_fee_accrual`) — the administration agreement, as configuration |
 | `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
