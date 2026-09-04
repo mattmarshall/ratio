@@ -126,6 +126,77 @@ export function unitsShown(n: bigint | null): string {
   return n === null ? "—" : n.toString();
 }
 
+function periodQty(
+  accounts: readonly Account[],
+  field: "unitsIssued" | "unitsRedeemed",
+): bigint | null {
+  const posted = accounts
+    .filter((a) => isUnitAccount(a.displayName))
+    .map((a) => {
+      const v = a[field];
+      if (v === undefined || v === "") return null;
+      return BigInt(v);
+    })
+    .filter((u): u is bigint => u !== null);
+  if (posted.length === 0) return null;
+  return posted.reduce((n, u) => n + u, 0n);
+}
+
+/**
+ * Period units issued across partner / contribution / distribution
+ * accounts. Null when no subscription posted units this window.
+ * `Ratio.Partners.no_issue_is_unset`.
+ */
+export function bookIssued(accounts: readonly Account[]): bigint | null {
+  return periodQty(accounts, "unitsIssued");
+}
+
+/**
+ * Period units redeemed. Null when no redemption posted this window.
+ * `Ratio.Partners.no_redeem_is_unset`.
+ */
+export function bookRedeemed(accounts: readonly Account[]): bigint | null {
+  return periodQty(accounts, "unitsRedeemed");
+}
+
+export interface PerShare {
+  /** Euclidean quotient, in minor units of NAV. */
+  readonly perUnit: bigint;
+  /** Non-negative remainder. `units * perUnit + residual = nav`. */
+  readonly residual: bigint;
+}
+
+/**
+ * NAV per unit in issue, Euclidean, matching `Ratio.Closure.perShare`.
+ *
+ * Unset when NAV is unset, units are unset, or units are zero — a full
+ * redemption is not a divided-by-zero zero. Residual is accounted for:
+ * the fund keeps what the rounding left. Lean's `/` is `ediv`; JS BigInt
+ * truncates toward zero, so a negative NAV is adjusted to match.
+ */
+export function perShareOf(
+  nav: bigint | null,
+  units: bigint | null,
+): PerShare | null {
+  if (nav === null || units === null || units === 0n) return null;
+  let perUnit = nav / units;
+  let residual = nav % units;
+  if (residual < 0n) {
+    if (units > 0n) {
+      perUnit -= 1n;
+      residual += units;
+    } else {
+      perUnit += 1n;
+      residual -= units;
+    }
+  }
+  return { perUnit, residual };
+}
+
+export function perShareShown(p: PerShare | null): string {
+  return p === null ? "—" : money(p.perUnit.toString());
+}
+
 export interface NavRollForward {
   /** Raw A+L at the start of the window, or null when the prefix cannot support it. */
   readonly beginning: bigint | null;
@@ -163,6 +234,20 @@ export interface NavRollForward {
    * Null when any side of the identity is unset.
    */
   readonly residual: bigint | null;
+  /**
+   * Period units issued. Null when no subscription posted units this
+   * window — not a silent zero issue.
+   */
+  readonly issued: bigint | null;
+  /**
+   * Period units redeemed. Null when no redemption posted this window.
+   */
+  readonly redeemed: bigint | null;
+  /**
+   * Ending NAV / units in issue. Null when either side cannot support
+   * it — unset units, a full redeem, or an unset ending NAV.
+   */
+  readonly perShare: PerShare | null;
 }
 
 /**
@@ -226,6 +311,10 @@ export function navRollForward(accounts: readonly Account[]): NavRollForward {
       ? xferAccts.reduce((n, a) => n + periodNet(a), 0n)
       : null;
 
+  const issued = bookIssued(accounts);
+  const redeemed = bookRedeemed(accounts);
+  const units = bookUnits(accounts);
+
   return {
     beginning,
     ending,
@@ -238,5 +327,8 @@ export function navRollForward(accounts: readonly Account[]): NavRollForward {
     allocations,
     transfers,
     residual,
+    issued,
+    redeemed,
+    perShare: perShareOf(ending, units),
   };
 }

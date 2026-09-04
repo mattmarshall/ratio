@@ -19,9 +19,10 @@ use ratio_store::{Account, AccountTypeRecord, ConfigStore, Digest, FileBook};
 /// The live list is the book's own configuration; these ids are what
 /// [`config_for`] puts there, and what the console catalog filters on.
 ///
-/// Investment is three mappings on purpose: the holdings snapshot (recorded,
-/// never booked), the trade column contract that posts, and the capital-call
-/// contract (`commit_*` / `call_*`). One without the others is a file you
+/// Investment is four mappings on purpose: the holdings snapshot (recorded,
+/// never booked), the trade column contract that posts, the capital-call
+/// contract (`commit_*` / `call_*`), and subscriptions / redemptions
+/// (`subscribe_*` / `redeem_*`). One without the others is a file you
 /// can read and a loop you cannot run.
 pub fn ingest_template_ids(kind: BookKind) -> &'static [&'static str] {
     match kind {
@@ -30,6 +31,7 @@ pub fn ingest_template_ids(kind: BookKind) -> &'static [&'static str] {
             "custodian-positions",
             "prime_equity_trades",
             "capital-calls",
+            "subscriptions",
         ],
         BookKind::Project => &["project-invoices", "change-orders", "purchase-orders"],
         BookKind::Operating => &["customer-invoices", "vendor-bills"],
@@ -1214,6 +1216,47 @@ reads = "csv"
   by = "kind"
   amount = "amount"
   rules = { commit_lp = "commit_lp", commit_gp = "commit_gp", call_lp = "call_lp", call_gp = "call_gp" }
+  dated = "dated"
+
+# Unitization. A row names cash AND a whole-unit quantity. Kind picks
+# subscribe / redeem (book-level or partner). Quantity is MEASURED — it
+# does not enter conservation. A contribution without units stays on
+# capital-calls / contribute_*; a silent 0 here is the defect.
+[[template]]
+id = "subscriptions"
+reads = "csv"
+
+  [template.fact]
+  kind = "capital"
+  reference = "Ref"
+
+  [[template.fact.value]]
+  field = "dated"
+  as = "date"
+  column = "Date"
+  format = "YYYY-MM-DD"
+
+  [[template.fact.value]]
+  field = "amount"
+  as = "money"
+  column = "Amount"
+  currency = "Ccy"
+
+  [[template.fact.value]]
+  field = "quantity"
+  as = "decimal"
+  column = "Quantity"
+
+  [[template.fact.value]]
+  field = "kind"
+  as = "enum"
+  column = "Kind"
+  map = { subscribe = "subscribe", subscribe_lp = "subscribe_lp", subscribe_gp = "subscribe_gp", redeem = "redeem", redeem_lp = "redeem_lp", redeem_gp = "redeem_gp" }
+
+  [template.fact.posts]
+  by = "kind"
+  amount = "amount"
+  rules = { subscribe = "subscribe", subscribe_lp = "subscribe_lp", subscribe_gp = "subscribe_gp", redeem = "redeem", redeem_lp = "redeem_lp", redeem_gp = "redeem_gp" }
   dated = "dated"
 
 # Where a period close rolls surplus. Absent is unset — not Capital contributions.
@@ -2724,6 +2767,72 @@ template capital-calls {
     }
 
     #[test]
+    fn a_subscription_row_posts_units_and_not_a_money_only_contribute() {
+        // ⭐ KIND NAMES THE CLAIM. Quantity is a measure on the same fact
+        // as the cash. A row without Quantity is not this template —
+        // contribute_* stays money-only. `Ratio.Partners.wellFormedMove`.
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Investment)).unwrap();
+        let t = set.template("subscriptions").unwrap();
+        assert!(t.fact.posts.is_some());
+        assert!(t.entities.is_empty(), "a partner is a chart dim, not an entity master");
+        let csv = "\
+Ref,Date,Amount,Ccy,Quantity,Kind
+SUB-1,2026-01-15,1000.00,USD,10,subscribe_lp
+RED-1,2026-03-01,400.00,USD,4,redeem_lp
+SUB-B,2026-01-20,500.00,USD,5,subscribe
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert!(p.rejected.is_empty(), "{:?}", p.rejected);
+        assert_eq!(p.facts.len(), 3);
+        assert_eq!(
+            p.facts[0].values.get("quantity").and_then(ratio_ingest::Value::as_minor),
+            Some(1_000),
+            "10 units as decimal hundredths, not a float"
+        );
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[0]).unwrap();
+        assert_eq!(rule, "subscribe_lp");
+        assert_eq!(minor, 100_000);
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[1]).unwrap();
+        assert_eq!(rule, "redeem_lp");
+        assert_eq!(minor, 40_000);
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[2]).unwrap();
+        assert_eq!(rule, "subscribe");
+        assert_eq!(ratio_ingest::dated_of(t, &p.facts[0]), Some("2026-01-15"));
+        let form = t.render();
+        // ⛔ ALIGNMENT IS THE RENDER, NOT A SLOGAN. `quantity` is 8 letters;
+        // padding to the `reference` column is four spaces, not five.
+        assert_eq!(
+            form,
+            "\
+template subscriptions {
+  reads      csv with header
+  grain      one capital per row
+
+  fact       capital
+    reference   from \"Ref\"
+    dated       from \"Date\" as date \"YYYY-MM-DD\"
+    amount      from \"Amount\" as money in \"Ccy\"
+    quantity    from \"Quantity\" as decimal
+    kind        from \"Kind\" as { redeem: redeem, redeem_gp: redeem_gp, redeem_lp: redeem_lp, subscribe: subscribe, subscribe_gp: subscribe_gp, subscribe_lp: subscribe_lp }
+
+  posts      by \"kind\"
+    amount      amount
+    dated       dated
+    redeem      -> redeem
+    redeem_gp   -> redeem_gp
+    redeem_lp   -> redeem_lp
+    subscribe   -> subscribe
+    subscribe_gp-> subscribe_gp
+    subscribe_lp-> subscribe_lp
+}
+"
+        );
+        let resolved = ratio_ingest::resolve_all(&p.facts, &[]);
+        assert!(resolved.iter().all(|r| r.is_admissible()));
+    }
+
+    #[test]
     fn initialize_investment_seeds_contribute_and_distribute_and_partners() {
         let dir = std::env::temp_dir().join("ratio-book-init-investment-capital");
         let _ = std::fs::remove_dir_all(&dir);
@@ -2797,6 +2906,7 @@ template capital-calls {
         assert!(templates.template("custodian-positions").is_some());
         assert!(templates.template("prime_equity_trades").is_some());
         assert!(templates.template("capital-calls").is_some());
+        assert!(templates.template("subscriptions").is_some());
         let call = set.rule("call_lp").expect("missing call_lp");
         assert_eq!(
             call.legs.len(),

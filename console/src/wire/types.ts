@@ -821,6 +821,16 @@ export interface Account {
    * quantity — unset, not a fake zero. `"0"` after a full redemption.
    */
   units?: string;
+  /**
+   * Period units issued (positive quantity in the window). Empty when no
+   * subscription posted units this window — unset, not a silent zero issue.
+   */
+  unitsIssued?: string;
+  /**
+   * Period units redeemed (absolute negative quantity in the window).
+   * Empty when no redemption posted this window — unset, not a silent zero.
+   */
+  unitsRedeemed?: string;
 }
 
 /** One account's activity in one denomination, before any translation. */

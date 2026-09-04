@@ -168,7 +168,7 @@ implementation copies from the book's live RuleSet, not from this list.
 | Kind | Ingest mappings (for `books:ingest`) | Posting templates a first-party app might be listed for |
 |---|---|---|
 | Personal | `bank-statement`, `loan-payment` | `living_expense`, `household_income`, `card_charge`, transfers, `spend_*`, `receive_income`, named-loan interest/principal |
-| Investment | `custodian-positions`, `prime_equity_trades`, `capital-calls` | `contribute_*`, `distribute_*`, `allocate_*`, `commit_*`, `call_*`, `equity_purchase`, `disposal_proceeds` |
+| Investment | `custodian-positions`, `prime_equity_trades`, `capital-calls`, `subscriptions` | `contribute_*`, `distribute_*`, `allocate_*`, `commit_*`, `call_*`, `subscribe_*`, `redeem_*`, `equity_purchase`, `disposal_proceeds` |
 | Project | change-orders, purchase-orders, … | `project_cost*`, `vendor_invoice*`, `progress_bill`, `collect_receivable`, `approve_co*`, `award_commitment*` |
 | Operating | (kind chart; no fund feed) | `invoice_customer`, `collect_receivable`, `vendor_bill`, `pay_vendor` |
 

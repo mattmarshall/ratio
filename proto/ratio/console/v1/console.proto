@@ -2194,6 +2194,17 @@ message Account {
   // fully-redeemed line (posted, remaining 0) is "0".
   // `Ratio.Partners.no_movement_is_unset`.
   string units = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Period units issued on this account (positive quantity in the fold's
+  // window). Empty when no subscription posted units this window — unset,
+  // not a silent zero issue. Ending units stay on `units`.
+  // `Ratio.Partners.no_issue_is_unset`.
+  string units_issued = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Period units redeemed on this account (absolute negative quantity in
+  // the fold's window). Empty when no redemption posted this window —
+  // unset, not a silent zero redemption. `Ratio.Partners.no_redeem_is_unset`.
+  string units_redeemed = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One account's activity in one denomination, before any translation.

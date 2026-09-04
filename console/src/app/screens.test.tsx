@@ -216,6 +216,7 @@ describe("a first-class book", () => {
     expect(screen.queryByText("custodian-positions")).toBeNull();
     expect(screen.queryByText("prime_equity_trades")).toBeNull();
     expect(screen.queryByText("capital-calls")).toBeNull();
+    expect(screen.queryByText("subscriptions")).toBeNull();
     expect(
       screen.getByRole("link", { name: /bank-statement/ }).getAttribute("href"),
     ).toBe("/books/household/data/templates/bank-statement");
@@ -234,6 +235,7 @@ describe("a first-class book", () => {
     expect(screen.queryByText("custodian-positions")).toBeNull();
     expect(screen.queryByText("prime_equity_trades")).toBeNull();
     expect(screen.queryByText("capital-calls")).toBeNull();
+    expect(screen.queryByText("subscriptions")).toBeNull();
     expect(screen.queryByText("bank-statement")).toBeNull();
     expect(screen.queryByText("loan-payment")).toBeNull();
   });
@@ -265,6 +267,7 @@ describe("a first-class book", () => {
     expect(screen.getByText("trade")).toBeDefined();
     expect(screen.getAllByText("posts").length).toBeGreaterThan(1);
     expect(screen.getByText("capital-calls")).toBeDefined();
+    expect(screen.getByText("subscriptions")).toBeDefined();
     expect(
       screen.getByRole("link", { name: /prime_equity_trades/ }).getAttribute("href"),
     ).toBe("/books/harbourline-global-value/data/templates/prime_equity_trades");
@@ -529,6 +532,8 @@ describe("a first-class book", () => {
           postingCount: "3",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/50",
@@ -542,6 +547,8 @@ describe("a first-class book", () => {
           postingCount: "2",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/51",
@@ -555,6 +562,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/30",
@@ -568,6 +577,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/21",
@@ -581,6 +592,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -657,6 +670,8 @@ describe("a first-class book", () => {
           postingCount: "3",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/50",
@@ -670,6 +685,8 @@ describe("a first-class book", () => {
           postingCount: "2",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/51",
@@ -683,6 +700,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/30",
@@ -696,6 +715,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/21",
@@ -709,6 +730,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -779,6 +802,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/50",
@@ -792,6 +817,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/21",
@@ -805,6 +832,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -827,6 +856,19 @@ describe("a first-class book", () => {
       ).toBeDefined();
       expect(
         screen.getByText(/unset — no subscription has posted units, not a fake zero/),
+      ).toBeDefined();
+      expect(
+        screen.getByText(
+          /unset — no subscription posted units this window, not a silent zero issue/,
+        ),
+      ).toBeDefined();
+      expect(
+        screen.getByText(
+          /unset — no redemption posted this window, not a silent zero redemption/,
+        ),
+      ).toBeDefined();
+      expect(
+        screen.getByText(/unset — no units in issue, not a fake zero per-share/),
       ).toBeDefined();
     } finally {
       wire.getBook = realBook;
@@ -854,6 +896,8 @@ describe("a first-class book", () => {
           postingCount: "3",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/1",
@@ -867,6 +911,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/40",
@@ -880,6 +926,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/50",
@@ -892,7 +940,9 @@ describe("a first-class book", () => {
           abnormal: false,
           postingCount: "2",
           currencyTotals: [],
-          units: "",
+          units: "10",
+          unitsIssued: "10",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/30",
@@ -906,6 +956,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/10",
@@ -919,6 +971,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/21",
@@ -932,6 +986,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/harbourline-global-value/views/abor/accounts/54",
@@ -945,6 +1001,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -973,6 +1031,18 @@ describe("a first-class book", () => {
         screen.getByText(/equity, so they cancel — remaining undrawn is on Capital/),
       ).toBeDefined();
       expect(screen.queryByText(/Beginning and ending stay unset/)).toBeNull();
+      expect(screen.getByText("Issued")).toBeDefined();
+      expect(screen.getByText("Redeemed")).toBeDefined();
+      expect(
+        screen.getByText(/period units issued — not the ending stock, not 1\/N/),
+      ).toBeDefined();
+      expect(
+        screen.getByText(/unset — no redemption posted this window, not a silent zero redemption/),
+      ).toBeDefined();
+      expect(screen.getByText("16.50")).toBeDefined();
+      expect(
+        screen.getByText(/ending NAV divides the units exactly — Ratio.Closure.perShare/),
+      ).toBeDefined();
     } finally {
       wire.getBook = realBook;
       wire.listAccounts = realAccounts;
@@ -1049,6 +1119,8 @@ describe("a first-class book", () => {
           postingCount: "2",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/2",
@@ -1062,6 +1134,8 @@ describe("a first-class book", () => {
           postingCount: "2",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/10",
@@ -1075,6 +1149,8 @@ describe("a first-class book", () => {
           postingCount: "3",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/20",
@@ -1088,6 +1164,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/30",
@@ -1101,6 +1179,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/40",
@@ -1114,6 +1194,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -1184,6 +1266,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/20",
@@ -1197,6 +1281,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/21",
@@ -1210,6 +1296,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/26",
@@ -1223,6 +1311,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/25",
@@ -1236,6 +1326,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -1311,6 +1403,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/11",
@@ -1324,6 +1418,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/64",
@@ -1337,6 +1433,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/65",
@@ -1350,6 +1448,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -1398,6 +1498,8 @@ describe("a first-class book", () => {
           postingCount: "2",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/bridge/views/book/accounts/10",
@@ -1411,6 +1513,8 @@ describe("a first-class book", () => {
           postingCount: "3",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -1504,6 +1608,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/11",
@@ -1517,6 +1623,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -1566,6 +1674,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -1635,6 +1745,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/12",
@@ -1648,6 +1760,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/42",
@@ -1661,6 +1775,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/13",
@@ -1674,6 +1790,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/40",
@@ -1687,6 +1805,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -1740,6 +1860,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/2",
@@ -1753,6 +1875,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/30",
@@ -1766,6 +1890,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -1811,6 +1937,8 @@ describe("a first-class book", () => {
           postingCount: "5",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/2",
@@ -1824,6 +1952,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/41",
@@ -1837,6 +1967,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/30",
@@ -1850,6 +1982,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/10",
@@ -1863,6 +1997,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/12",
@@ -1876,6 +2012,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/40",
@@ -1889,6 +2027,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -1966,6 +2106,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/2",
@@ -1979,6 +2121,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/30",
@@ -1992,6 +2136,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -2033,6 +2179,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/30",
@@ -2046,6 +2194,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -2123,6 +2273,8 @@ describe("a first-class book", () => {
           postingCount: "5",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/2",
@@ -2136,6 +2288,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/41",
@@ -2149,6 +2303,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/30",
@@ -2162,6 +2318,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/10",
@@ -2175,6 +2333,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/12",
@@ -2188,6 +2348,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/40",
@@ -2201,6 +2363,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/20",
@@ -2214,6 +2378,8 @@ describe("a first-class book", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -2269,6 +2435,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/household/views/book/accounts/41",
@@ -2282,6 +2450,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -2432,6 +2602,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -2521,6 +2693,8 @@ describe("a first-class book", () => {
           postingCount: "2",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -2571,6 +2745,8 @@ describe("a first-class book", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -2847,6 +3023,8 @@ describe("an operating-business statement", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/studio/views/book/accounts/2",
@@ -2860,6 +3038,8 @@ describe("an operating-business statement", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/studio/views/book/accounts/30",
@@ -2873,6 +3053,8 @@ describe("an operating-business statement", () => {
           postingCount: "0",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",
@@ -2915,6 +3097,8 @@ describe("an operating-business statement", () => {
           postingCount: "5",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/studio/views/book/accounts/2",
@@ -2928,6 +3112,8 @@ describe("an operating-business statement", () => {
           postingCount: "2",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/studio/views/book/accounts/10",
@@ -2941,6 +3127,8 @@ describe("an operating-business statement", () => {
           postingCount: "2",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/studio/views/book/accounts/20",
@@ -2954,6 +3142,8 @@ describe("an operating-business statement", () => {
           postingCount: "1",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/studio/views/book/accounts/30",
@@ -2967,6 +3157,8 @@ describe("an operating-business statement", () => {
           postingCount: "2",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
         {
           name: "funds/studio/views/book/accounts/40",
@@ -2980,6 +3172,8 @@ describe("an operating-business statement", () => {
           postingCount: "2",
           currencyTotals: [],
           units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
         },
       ],
       nextPageToken: "",

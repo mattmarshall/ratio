@@ -1159,12 +1159,13 @@ impl JsonView for pb::Account {
         format!(
             "{{\"name\":{},\"displayName\":{},\"dimension\":{},\"type\":{},\
              \"debit\":{},\"credit\":{},\"balance\":{},\"abnormal\":{},\
-             \"postingCount\":{},\"currencyTotals\":[{}],\"units\":{}}}",
+             \"postingCount\":{},\"currencyTotals\":[{}],\"units\":{},\
+             \"unitsIssued\":{},\"unitsRedeemed\":{}}}",
             q(&self.name), q(&self.display_name), q(&self.dimension),
             q(account_type_name(self.r#type)), q(&self.debit), q(&self.credit),
             q(&self.balance), self.abnormal, q(&self.posting_count),
             self.currency_totals.iter().map(|c| c.to_json()).collect::<Vec<_>>().join(","),
-            q(&self.units)
+            q(&self.units), q(&self.units_issued), q(&self.units_redeemed)
         )
     }
 }

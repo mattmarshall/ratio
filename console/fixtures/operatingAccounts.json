@@ -22,7 +22,9 @@
           "configDigest": ""
         }
       ],
-      "units": ""
+      "units": "",
+      "unitsIssued": "",
+      "unitsRedeemed": ""
     },
     {
       "name": "funds/studio/views/book/accounts/2",
@@ -46,7 +48,9 @@
           "configDigest": ""
         }
       ],
-      "units": ""
+      "units": "",
+      "unitsIssued": "",
+      "unitsRedeemed": ""
     },
     {
       "name": "funds/studio/views/book/accounts/10",
@@ -70,7 +74,9 @@
           "configDigest": ""
         }
       ],
-      "units": ""
+      "units": "",
+      "unitsIssued": "",
+      "unitsRedeemed": ""
     },
     {
       "name": "funds/studio/views/book/accounts/20",
@@ -94,7 +100,9 @@
           "configDigest": ""
         }
       ],
-      "units": ""
+      "units": "",
+      "unitsIssued": "",
+      "unitsRedeemed": ""
     },
     {
       "name": "funds/studio/views/book/accounts/30",
@@ -118,7 +126,9 @@
           "configDigest": ""
         }
       ],
-      "units": ""
+      "units": "",
+      "unitsIssued": "",
+      "unitsRedeemed": ""
     },
     {
       "name": "funds/studio/views/book/accounts/40",
@@ -142,7 +152,9 @@
           "configDigest": ""
         }
       ],
-      "units": ""
+      "units": "",
+      "unitsIssued": "",
+      "unitsRedeemed": ""
     }
   ],
   "nextPageToken": ""

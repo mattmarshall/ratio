@@ -310,12 +310,17 @@ CreateBook(Investment)
 lands on capital activity (funded partners plus commitment / undrawn —
 unset until a commitment posts, not a callable zero), then the fund ABOR
 warehouse. A capital-call walk-through can record `commit_lp` / `call_lp`
-or ingest `capital-calls`; a capital-account walk-through can cite each
-partner's beginning, contributions, distributions, and ending on the
-same `/capital` page. Allocated income / expense / unrealized stay
-unset without a named `[[partner_cut]]` — not an equal share of book
-NAV. A written cut fills the plugs when the figure divides. Neither
-can show IRR, a
+or ingest `capital-calls`; a subscription walk-through can record
+`subscribe_lp` or ingest `subscriptions` (units in issue, not a
+money-only contribute). The live demo's opening `sub-0001` posts
+500,000 units, dated, so `/nav` can cite issued and per-share.
+Issued / redeemed / per-share stay unset when the window has no
+unit event or no units — not a fake zero. A capital-account
+walk-through can cite each partner's beginning, contributions,
+distributions, and ending on the same `/capital` page. Allocated
+income / expense / unrealized stay unset without a named
+`[[partner_cut]]` — not an equal share of book NAV. A written cut
+fills the plugs when the figure divides. Neither can show IRR, a
 waterfall, a future call schedule, management-fee billing, an LP
 portal, or K-1 packaging. The live demo does not seed those baselines or any
 commitment postings.

@@ -10,8 +10,10 @@ import {
   navRollForward,
   navShown,
   outflowShown,
+  perShareShown,
   unitsShown,
 } from "@/lib/nav";
+import { money } from "@/lib/format";
 import { getBook, listAccounts } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
@@ -219,6 +221,49 @@ async function NavRollForward({
             </span>
             <span role="cell" className="num">
               {unitsShown(units)}
+            </span>
+          </div>
+          <div className="tbrow static" role="row">
+            <span role="cell">
+              Issued
+              <span className="at">
+                {r.issued === null
+                  ? "unset — no subscription posted units this window, not a silent zero issue"
+                  : "period units issued — not the ending stock, not 1/N"}
+              </span>
+            </span>
+            <span role="cell" className="num">
+              {unitsShown(r.issued)}
+            </span>
+          </div>
+          <div className="tbrow static" role="row">
+            <span role="cell">
+              Redeemed
+              <span className="at">
+                {r.redeemed === null
+                  ? "unset — no redemption posted this window, not a silent zero redemption"
+                  : "period units redeemed — the plug, not the net"}
+              </span>
+            </span>
+            <span role="cell" className="num">
+              {unitsShown(r.redeemed)}
+            </span>
+          </div>
+          <div className="tbrow static" role="row">
+            <span role="cell">
+              Per-share NAV
+              <span className="at">
+                {r.perShare === null
+                  ? units === 0n
+                    ? "unset — no units in issue after a full redemption, not a divided-by-zero zero"
+                    : "unset — no units in issue, not a fake zero per-share"
+                  : r.perShare.residual === 0n
+                    ? "ending NAV divides the units exactly — Ratio.Closure.perShare"
+                    : `residual ${money(r.perShare.residual.toString())} stays with the fund — Ratio.Closure.residual_is_accounted`}
+              </span>
+            </span>
+            <span role="cell" className="num">
+              {perShareShown(r.perShare)}
             </span>
           </div>
         </div>

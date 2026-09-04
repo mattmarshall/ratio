@@ -197,6 +197,13 @@ __STYLE__
           <code>/nav</code> cite the same units; explain
           <code>capital_txns</code> counts unit-capital entries when
           the chart is in hand, and stays blank when it is not.
+          Period issued / redeemed and per-share NAV cite when the
+          window posted unit events and units remain in issue; they
+          stay unset otherwise — never a fake zero plug or a
+          divided-by-zero per-share. CreateBook seeds the
+          <code>subscriptions</code> ingest mapping; the live demo's
+          opening <code>sub-0001</code> posts units, not a money-only
+          contribute labelled as a subscription.
           An elected <code>management_fee_accrual</code> posts a
           conserved receivable/expense; the receivable stays unset
           when fee terms are absent, never a silent zero. Invoice

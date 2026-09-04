@@ -178,6 +178,11 @@ BUILT=(
   # this is the product door the catalog already named. The sentence
   # it matches is in the 2026-09-04 EAC / forecast amendment.
   "a Project EAC / forecast Connect app"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Unitized seed / period issued / per-share are not on the refusal
+  # list — this check would have stayed green whatever was built. The
+  # sentence it matches is in the 2026-09-04 leftovers amendment.
+  "unitized seed, period issued/redeemed, per-share"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
