@@ -14,7 +14,8 @@
 // / NAV would be a fake label on fund-ops screens — issue #65 (sheet/P&L)
 // and #83 (budget). A project book that wore that warehouse is #66 (budget/WIP)
 // and #85 (billing); remaining-to-bill and collections compose onto
-// `/billing` (#100); awarded commitments and remaining to spend compose
+// `/billing` (#100); a Project book posts a cash application there
+// (#173); awarded commitments and remaining to spend compose
 // onto `/budget` (#104). An investment book cites partner capital first — funded
 // activity, commitment / undrawn, and a per-partner capital account
 // statement on the same `/capital` URL (#70, #82, #102) — then a period
@@ -101,7 +102,9 @@ export const PERSONAL_SCREENS: readonly Screen[] = [
  * Change orders, remaining-to-bill, collections, and committed cost
  * compose onto those URLs; they are not a third chrome list. A Project
  * book posts or ingests a change order / award on `/budget` (#170) —
- * the same journal kinds, unset until posted. One chrome list
+ * the same journal kinds, unset until posted. A Project book posts a
+ * cash application on `/billing` (#173) — `collect_receivable`, unset
+ * until billed and AR can support the cut. One chrome list
  * (`screensFor`). This page does not forecast.
  *
  * Trial balance stays: it is the conservation view of the same accounts, and

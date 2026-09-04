@@ -39,6 +39,8 @@ describe("book templates", () => {
     expect(byKind.PROJECT).toMatch(/Remaining to spend/);
     expect(byKind.PROJECT).toMatch(/does not forecast/);
     expect(byKind.PROJECT).toMatch(/posts or ingests an approved change order or award/);
+    expect(byKind.PROJECT).toMatch(/posts a cash application/);
+    expect(byKind.PROJECT).toMatch(/collect_receivable/);
     expect(byKind.OPERATING).toMatch(/Accounts receivable/);
     expect(byKind.OPERATING).toMatch(/Accounts payable/);
     expect(byKind.OPERATING).toMatch(/Operating revenue/);

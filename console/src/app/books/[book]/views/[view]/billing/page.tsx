@@ -13,6 +13,7 @@ import {
 } from "@/lib/project";
 import { getBook, listAccounts, projectProgress } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
+import { BillingPostForm } from "./BillingPostForm";
 
 export const dynamic = "force-dynamic";
 
@@ -37,9 +38,14 @@ export const dynamic = "force-dynamic";
  * which is a true zero. An unposted change order is — not a silent zero
  * against that phase. Billed but uncollected is a real zero collected.
  *
+ * ⭐ A PROJECT POSTS A COLLECTION HERE. `collect_receivable` is already
+ * in force. Cash against AR moves collections vs billed after it posts.
+ * Facts stay unset until billed and receivable can support the cut —
+ * not a silent zero collected. Stripe / ACH stay Connect.
+ *
  * ⚠ CUMULATIVE ON PURPOSE. Milestone-gated close is still out of scope —
  * same period gap as #26. Client portal / CRM / Gantt / AIA G702 product
- * UI are refused.
+ * UI are refused. Payment-processor settlement is a Connect app.
  */
 async function Billing({
   params,
@@ -244,8 +250,20 @@ async function Billing({
           })}
         </div>
       </div>
+      {b.kind === "PROJECT" ? (
+        <>
+          <p className="note">
+            A collection stays unset on this page until billed and
+            accounts receivable can support the cut — not a silent zero
+            collected. The same <code>collect_receivable</code>{" "}
+            <code>/record</code> already uses; this is not a payment
+            processor.
+          </p>
+          <BillingPostForm fund={book} />
+        </>
+      ) : null}
       <p className="note">
-        <Link href={`/books/${book}/record`}>Record a bill, collection, retainage hold, cost, or change order</Link>
+        <Link href={`/books/${book}/record`}>Record a bill, retainage hold, cost, or change order</Link>
         {" · "}
         <Link href={`/books/${book}/views/${view}/budget`}>Remaining to spend and original vs revised contract</Link>
         {" · "}

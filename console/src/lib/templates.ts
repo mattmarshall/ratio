@@ -29,7 +29,7 @@ export const BOOK_TEMPLATES: readonly BookTemplate[] = [
   {
     kind: "PROJECT",
     label: "Project",
-    blurb: "Cash, work in progress, project costs by work package, funding, revenue, progress billings, retainage, approved change orders, and awarded commitments. Budget vs actual and billed vs earned are two figures, not one URL. A change order adjusts the revised contract without rewriting the original baseline. `/budget` posts or ingests an approved change order or award with phase keys; facts stay unset until posted. Remaining to spend, remaining to bill, and collections vs billed stay unset until the journal can support them. The budget page does not forecast.",
+    blurb: "Cash, work in progress, project costs by work package, funding, revenue, progress billings, retainage, approved change orders, and awarded commitments. Budget vs actual and billed vs earned are two figures, not one URL. A change order adjusts the revised contract without rewriting the original baseline. `/budget` posts or ingests an approved change order or award with phase keys; facts stay unset until posted. `/billing` posts a cash application (`collect_receivable`); collected stays unset until billed and receivable can support the cut — not a fake zero. Remaining to spend, remaining to bill, and collections vs billed stay unset until the journal can support them. The budget page does not forecast.",
   },
   {
     kind: "OPERATING",

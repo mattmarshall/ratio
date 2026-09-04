@@ -644,23 +644,30 @@ or `sidepocket:*`.
   product UX remain). #170's leftover was posting / ingesting that award
   on the `/budget` chrome itself — that landed; estimating-tool Connect
   grants stay on #150 / #22. The seeded demo funds remain investment books.
-- ⚠ **A project remaining-to-bill / collections walk-through (#100 / #27).**
+- ⚠ **A project remaining-to-bill / collections walk-through (#100 / #173 / #27).**
   `/billing` cites remaining to bill (revised − billed) and collections vs
   billed (cash against AR: billed − outstanding receivable − retainage
   held). They compose from the same ListAccounts / `projectProgress` /
   `[project] budget` cuts change orders and billing already use — not a
-  third chrome URL. An unbilled job, or a book with no `[project] budget`,
-  stays **unset** — not the whole contract as remaining, and not collected
-  0.00. Billed but uncollected is a real zero collected. `collect_receivable`
-  is the cash-against-AR rule CreateBook already seeds. ⛔ The walk-through
-  cannot show AIA G702 / SOV product UI, a client portal, e-signature, CRM,
-  a subcontractor pay-app marketplace, or SPI/CPI dashboards. A Project
-  pay-app Connect app scaffold (`connect/aia-pay-app/`, #184) emits
-  G702-ish / G703-ish CSV from those cites; missing billed / retainage /
-  CO lines stay unset. It cannot show a Connect token opening a book or
-  a licensed AIA form. Change orders stay on #91; retainage / billed vs
-  earned stay on #85. This file does not close #184 (grant path leftover
-  #22 and licensed form remain). The seeded demo funds remain investment books.
+  third chrome URL. From `/billing`, record `collect_receivable`: the
+  trial balance still ties, no lot opens, and the same page cites
+  collected / outstanding receivable with journal provenance. An unbilled
+  job, or a book with no `[project] budget`, stays **unset** — not the
+  whole contract as remaining, and not collected 0.00. Billed but
+  uncollected is a real zero collected. `collect_receivable` is the
+  cash-against-AR rule CreateBook already seeds — not a new journal
+  kind. ⛔ The walk-through cannot show AIA G702 / SOV product UI, a
+  client portal, e-signature, CRM, Stripe / ACH, a subcontractor
+  pay-app marketplace, or SPI/CPI dashboards. A Project pay-app
+  Connect app scaffold (`connect/aia-pay-app/`, #184) emits G702-ish /
+  G703-ish CSV from those cites; missing billed / retainage / CO
+  lines stay unset. It cannot show a Connect token opening a book or
+  a licensed AIA form. Change orders stay on #91; retainage / billed
+  vs earned stay on #85. #173's leftover was posting that collection
+  on the `/billing` chrome itself — that landed; payment-processor
+  Connect grants stay on #150 / #22. This file does not close #184
+  (grant path leftover #22 and licensed form remain). The seeded
+  demo funds remain investment books.
 - ⚠ **An operating-business walk-through (#108).** CreateBook(Operating)
   writes an independent Book — no Fund, no WorkOS organization — with
   cash, AR, AP, operating revenue/expense, owner equity, and retained

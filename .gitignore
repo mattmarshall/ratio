@@ -26,6 +26,7 @@ bazel-*
 site/*.html
 !site/*.src.html
 site/_site/
+/_site/
 site/.venv/
 site/photos/_demo.png
 
