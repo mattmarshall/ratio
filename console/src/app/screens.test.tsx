@@ -551,7 +551,9 @@ describe("a first-class book", () => {
     };
     const realBook = wire.getBook;
     const realAccounts = wire.listAccounts;
-    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    // ⚠ Fixture `[]` widens to `never[]`; the same `unknown` step the
+    // partner-cut override already uses.
+    wire.getBook = (async () => harbour) as unknown as typeof wire.getBook;
     wire.listAccounts = (async () => capitalCommitmentsFixture) as typeof wire.listAccounts;
     try {
       const Capital = (await import("./books/[book]/views/[view]/capital/page"))
