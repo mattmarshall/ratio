@@ -172,6 +172,12 @@ BUILT=(
   # invoice / LP packaging stays Connect. The sentence it matches is
   # in the 2026-09-04 fee-accrual amendment.
   "management-fee accrual posts receivable/expense"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The Project EAC / forecast Connect app is not on the refusal list —
+  # EAC fields on /budget and a silent forecast of 0 stay refused;
+  # this is the product door the catalog already named. The sentence
+  # it matches is in the 2026-09-04 EAC / forecast amendment.
+  "a Project EAC / forecast Connect app"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

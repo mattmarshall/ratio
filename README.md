@@ -92,6 +92,12 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
   cites billed / earned / retainage / collections; vendor invoices are
   allowlisted `journals:post` for `vendor_invoice*`; Connect tokens are
   not accepted on `/v1`; no vendor user directory in core.
+- **[connect/eac-forecast/](connect/eac-forecast/)** — first-party
+  Connect app that emits EAC / ETC CSV from Project budget and billing
+  cites ([#169](https://github.com/mattmarshall/ratio/issues/169)).
+  Scaffold; remaining to spend stays revised − incurred − awarded;
+  unset EAC is blank, not a silent 0; Connect tokens are not accepted
+  on `/v1`; `/budget` still does not forecast.
 
 ## License
 
