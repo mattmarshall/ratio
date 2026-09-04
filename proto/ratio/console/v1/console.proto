@@ -1782,7 +1782,11 @@ message NavStrike {
       [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Realized gain after a later wash moved it. Empty: no restatement.
-  string wash_restatement_moved_to = 15
+  //
+  // Named `moved`, not `moved_to`: AIP-140 rejects prepositions, and
+  // HANDOFF.md records `explained_at_position` going red for the same
+  // reason. The Lean field is still `movedTo`; this is the wire name.
+  string wash_restatement_moved = 15
       [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 

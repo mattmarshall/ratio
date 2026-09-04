@@ -41,7 +41,7 @@ const strike = (id: string, extras: Partial<NavStrike> = {}): NavStrike => ({
   qualification: [],
   washQualified: false,
   washRestatementOriginal: "",
-  washRestatementMovedTo: "",
+  washRestatementMoved: "",
   ...extras,
 });
 
@@ -148,7 +148,7 @@ describe("a WashRestatement cite", () => {
     const s = strike("2026-06-20", {
       washQualified: true,
       washRestatementOriginal: "1000",
-      washRestatementMovedTo: "600",
+      washRestatementMoved: "600",
       netAssetValue: "13443918751",
     });
     const rows = washCites([s]);

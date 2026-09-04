@@ -4752,7 +4752,7 @@ fn to_pb(fund: &str, s: &ratio_nav::Strike, why: &[String], wash: WashCite) -> p
         qualification: why.to_vec(),
         wash_qualified: wash.qualified,
         wash_restatement_original: wash.original,
-        wash_restatement_moved_to: wash.moved_to,
+        wash_restatement_moved: wash.moved_to,
     }
 }
 
@@ -12411,7 +12411,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let s = &listed.nav_strikes[0];
         assert!(!s.wash_qualified, "nobody said");
         assert!(s.wash_restatement_original.is_empty(), "unset, not 0");
-        assert!(s.wash_restatement_moved_to.is_empty());
+        assert!(s.wash_restatement_moved.is_empty());
     }
 
     #[test]
@@ -12467,7 +12467,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let s = &listed.nav_strikes[0];
         assert!(s.wash_qualified);
         assert_eq!(s.wash_restatement_original, "1000", "credit-normal loss");
-        assert_eq!(s.wash_restatement_moved_to, "600");
+        assert_eq!(s.wash_restatement_moved, "600");
         assert_eq!(
             s.net_asset_value,
             struck.net_asset_value.to_string(),

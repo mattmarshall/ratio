@@ -571,7 +571,7 @@ export interface NavStrike {
    */
   washRestatementOriginal: string;
   /** Realized gain after a later wash moved it. Empty: no restatement. */
-  washRestatementMovedTo: string;
+  washRestatementMoved: string;
 }
 
 /** A close of one view through one calendar day. The surplus field is a

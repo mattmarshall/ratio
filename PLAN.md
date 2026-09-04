@@ -2839,7 +2839,7 @@ What landed is the browser, not a new figure:
 
 - Engine: `ListNavStrikes` / `GetNavStrike` carry `wash_qualified`
   and the two restatement strings (`wash_restatement_original` /
-  `wash_restatement_moved_to`). Empty is unset — not a silent 0.
+  `wash_restatement_moved`). Empty is unset — not a silent 0.
   A book that never wrote `wash_window_days` leaves all three
   unset, not a silent 30. A later wash produces a restatement
   that cites the strike (`Ratio.Lots.WashRestatement.restate`).

@@ -133,7 +133,7 @@ export function washCites(strikes: readonly NavStrike[]): WashCiteView[] {
     strikeId: strikeId(s),
     qualified: s.washQualified,
     original: s.washRestatementOriginal || null,
-    movedTo: s.washRestatementMovedTo || null,
+    movedTo: s.washRestatementMoved || null,
   }));
 }
 

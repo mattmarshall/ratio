@@ -1436,7 +1436,7 @@ impl JsonView for pb::NavStrike {
              \"journalDigest\":{},\"netAssetValue\":{},\"trialBalanceDifference\":{},\
              \"configDigest\":{},\"qualification\":[{}],\
              \"washQualified\":{},\"washRestatementOriginal\":{},\
-             \"washRestatementMovedTo\":{}}}",
+             \"washRestatementMoved\":{}}}",
             q(&self.name),
             q(&self.view),
             // proto3 canonical JSON renders a Timestamp as an RFC 3339 string.
@@ -1454,7 +1454,7 @@ impl JsonView for pb::NavStrike {
             strings(&self.qualification),
             if self.wash_qualified { "true" } else { "false" },
             q(&self.wash_restatement_original),
-            q(&self.wash_restatement_moved_to)
+            q(&self.wash_restatement_moved)
         )
     }
 }

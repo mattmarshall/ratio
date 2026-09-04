@@ -5157,7 +5157,7 @@ describe("a point-in-time / restatement browser", () => {
       ...navStrikesFixture.navStrikes[0]!,
       washQualified: true,
       washRestatementOriginal: "1000",
-      washRestatementMovedTo: "600",
+      washRestatementMoved: "600",
     };
     wire.listPeriodCloses = (async () => ({
       periodCloses: [],
