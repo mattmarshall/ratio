@@ -176,6 +176,19 @@ pub struct Console {
     /// genuine absence (a local run with no `RATIO_ACTOR`), recorded honestly as
     /// an empty actor rather than a made-up one.
     actor: Option<String>,
+
+    /// Catalog scopes a Connect token may exercise. `None` is an AuthKit
+    /// session or `Local` — membership is the grant. `Some` is always the
+    /// Connect path, even when the set is empty: silence is not every scope.
+    connect_grants: Option<BTreeSet<String>>,
+}
+
+/// Catalog scopes carried by a Connect subject. AuthKit / Local stay `None`.
+fn connect_grants_of(subject: &Subject) -> Option<BTreeSet<String>> {
+    match subject {
+        Subject::Member { connect: true, scopes, .. } => Some(scopes.clone()),
+        _ => None,
+    }
 }
 
 impl Console {
@@ -190,6 +203,7 @@ impl Console {
             root.as_ref().to_path_buf(),
             Scope::Unrestricted,
             std::env::var("RATIO_ACTOR").ok(),
+            None,
         )
     }
 
@@ -224,7 +238,7 @@ impl Console {
             Some(a) => Some(a.to_string()),
             None => std::env::var("RATIO_ACTOR").ok(),
         };
-        Self::build(root, scope, actor)
+        Self::build(root, scope, actor, connect_grants_of(&subject))
     }
 
     /// The console for an OPEN, shared demo: any authenticated subject sees
@@ -246,7 +260,10 @@ impl Console {
             Some(a) => Some(a.to_string()),
             None => std::env::var("RATIO_ACTOR").ok(),
         };
-        Self::build(root, Scope::Unrestricted, actor)
+        // ⛔ OPEN IS AN AUTHKIT-ONLY DIAL. Connect never reaches this
+        // constructor (`for_request` sends it to `scoped`), so the grant
+        // set stays `None` — membership-unrestricted, not "every scope".
+        Self::build(root, Scope::Unrestricted, actor, None)
     }
 
     /// The console the network server builds for one verified subject.
@@ -255,9 +272,8 @@ impl Console {
     /// any AuthKit session every fund so a shared demo can be shown to an
     /// audience that is not known ahead of time. A Connect token that rode
     /// that path would be a third-party app seeing every book — the ACL
-    /// bypass #151 names. Connect is always [`scoped`](Self::scoped).
-    /// The authorizer that will accept Connect scopes on `/v1` is leftover
-    /// on #22; this constructor is the fence if one arrives.
+    /// bypass #151 names. Connect is always [`scoped`](Self::scoped), and
+    /// its catalog scopes are the grant.
     pub fn for_request(root: impl AsRef<Path>, subject: Subject, demo_open: bool) -> Self {
         match &subject {
             Subject::Local => Self::new(root),
@@ -266,8 +282,14 @@ impl Console {
             Subject::Member { .. } => Self::scoped(root, subject),
         }
     }
+}
 
-    fn build(root: PathBuf, scope: Scope, actor: Option<String>) -> Self {
+    fn build(
+        root: PathBuf,
+        scope: Scope,
+        actor: Option<String>,
+        connect_grants: Option<BTreeSet<String>>,
+    ) -> Self {
         Console {
             root,
             max_entries: std::env::var("RATIO_MAX_API_ENTRIES")
@@ -276,7 +298,14 @@ impl Console {
             projections: Default::default(),
             scope,
             actor,
+            connect_grants,
         }
+    }
+
+    /// Refuse a Connect token that lacks the catalog scope this `/v1` door
+    /// needs. AuthKit sessions and `Local` skip the table.
+    pub fn authorize_connect(&self, method: &str, path: &str) -> Result<()> {
+        auth::authorize_connect(self.connect_grants.as_ref(), method, path)
     }
 
     /// Append one line to the fund's audit log — who did what, when, to what,
@@ -6555,6 +6584,7 @@ mod tests {
                 organization: String::new(),
                 groups: vec![],
                 connect: false,
+                scopes: BTreeSet::new(),
             },
         );
 
@@ -6672,6 +6702,7 @@ mod tests {
                 organization: String::new(),
                 groups: vec![],
                 connect: false,
+                scopes: BTreeSet::new(),
             };
         let console = Console::open(&root, subject);
 
@@ -6710,6 +6741,7 @@ mod tests {
                 organization: String::new(),
                 groups: vec![],
                 connect: false,
+                scopes: BTreeSet::new(),
             },
         );
         let book_a = root.join("a");
@@ -9282,6 +9314,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             organization: "org_01a".into(),
             groups: vec![],
             connect: false,
+            scopes: BTreeSet::new(),
         };
         let created = Console::scoped(&root, subject.clone())
             .create_book(pb::CreateBookRequest {
@@ -11188,6 +11221,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
                 organization: String::new(),
                 groups: vec![],
                 connect: false,
+                scopes: BTreeSet::new(),
             },
         );
         let err = console.get_book("books/theirs").unwrap_err().to_string();
@@ -11202,6 +11236,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             organization: org.into(),
             groups: vec![],
             connect: false,
+            scopes: BTreeSet::new(),
         }
     }
 
@@ -11442,6 +11477,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             organization: "org_01a".into(),
             groups: vec![],
             connect: true,
+            scopes: auth::catalog_grants("books:read"),
         };
         let via_open = Console::for_request(&root, connect, true);
         let books = via_open.list_books().unwrap();
@@ -11465,6 +11501,173 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             "AuthKit + DEMO_OPEN still lists the shared demo: {:?}",
             seen.books
         );
+    }
+
+    #[test]
+    fn every_live_route_names_a_connect_scope() {
+        // ⛔ A ROUTE WITH NO CATALOG DOOR IS A CONNECT BYPASS. AuthKit
+        // sessions skip the table; a Connect token on an unclassified
+        // path would fall through to membership alone.
+        for route in transcode::ROUTES {
+            let path = if route.template.contains('{') {
+                expand_template(route.template, "alpha")
+            } else {
+                route.template.to_string()
+            };
+            assert!(
+                auth::required_connect_scopes(route.method, &path).is_some(),
+                "{} {} has no Connect scope — classify it in required_connect_scopes",
+                route.method,
+                path
+            );
+        }
+    }
+
+    fn connect_subject(sub: &str, scopes: &str) -> Subject {
+        Subject::Member {
+            sub: sub.into(),
+            email: format!("{sub}@x.test"),
+            organization: "org_01a".into(),
+            groups: vec![],
+            connect: true,
+            scopes: auth::catalog_grants(scopes),
+        }
+    }
+
+    #[test]
+    fn a_connect_token_opens_a_member_book_only_with_the_catalog_scope() {
+        // ⭐ THE AUTHORIZER IS THE GRANT. Membership is still required; a
+        // scope is not an implied member, and an org_id is not membership.
+        let root = fresh("connect-authorizer");
+        book(&root.join("alpha"));
+        book(&root.join("beta"));
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "user_c\talpha\norg:org_01a\tbeta\n")
+            .unwrap();
+
+        let reader = Console::for_request(&root, connect_subject("user_c", "books:read"), true);
+        let listed = transcode::serve(&reader, "GET", "/v1/books", "", "").unwrap();
+        assert!(listed.contains("books/alpha"), "books:read lists the member book: {listed}");
+        assert!(
+            !listed.contains("books/beta"),
+            "org:{id} is not membership on a Connect token: {listed}"
+        );
+        transcode::serve(&reader, "GET", "/v1/books/alpha", "", "")
+            .expect("books:read opens a book the subject administers");
+        let stranger_book = transcode::serve(&reader, "GET", "/v1/books/beta", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            stranger_book.contains("no fund"),
+            "a non-member book stays no-fund, not an org inherit: {stranger_book}"
+        );
+
+        let breaks = Console::for_request(
+            &root,
+            connect_subject("user_c", "breaks:read"),
+            true,
+        );
+        transcode::serve(&breaks, "GET", "/v1/funds/alpha/views/book/breaks", "", "")
+            .expect("breaks:read opens the exception queue on a member book");
+        let no_books = transcode::serve(&breaks, "GET", "/v1/books", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            no_books.contains("scope `books:read` is required"),
+            "breaks:read does not list books: {no_books}"
+        );
+
+        let audit = Console::for_request(
+            &root,
+            connect_subject("user_c", "audit:export"),
+            true,
+        );
+        transcode::serve(&audit, "GET", "/v1/funds/alpha/changeLogEntries", "", "")
+            .expect("audit:export opens the change log on a member book");
+
+        let missing = Console::for_request(&root, connect_subject("user_c", ""), true);
+        let refused = transcode::serve(&missing, "GET", "/v1/books", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refused.contains("scope `books:read` is required"),
+            "a Connect token without the scope is refused: {refused}"
+        );
+
+        let alias = Console::for_request(
+            &root,
+            connect_subject("user_c", "journal:read journal:append"),
+            true,
+        );
+        let alias_err = transcode::serve(&alias, "GET", "/v1/funds/alpha/entries", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            alias_err.contains("scope `journals:read` is required"),
+            "journal:read is an alias: {alias_err}"
+        );
+
+        let poison = Console::for_request(
+            &root,
+            connect_subject("user_c", "rules:approve config:promote impersonate"),
+            true,
+        );
+        let hard = transcode::serve(&poison, "GET", "/v1/books", "", "")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            hard.contains("scope `books:read` is required"),
+            "a hard non-scope is not a grant: {hard}"
+        );
+
+        let writer = Console::for_request(
+            &root,
+            connect_subject("user_c", "journals:post"),
+            false,
+        );
+        // The body is empty-enough to reach the grant check; a missing
+        // template still fails later. The grant itself must pass.
+        let post_gate = transcode::serve(
+            &writer,
+            "POST",
+            "/v1/funds/alpha:applyEvent",
+            "",
+            "{}",
+        );
+        match post_gate {
+            Ok(_) => {}
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(
+                    !msg.contains("scope `"),
+                    "journals:post must pass the authorizer: {msg}"
+                );
+            }
+        }
+        let read_cannot_post = transcode::serve(
+            &reader,
+            "POST",
+            "/v1/funds/alpha:applyEvent",
+            "",
+            "{}",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            read_cannot_post.contains("scope `journals:post` is required"),
+            "books:read does not post: {read_cannot_post}"
+        );
+
+        // AuthKit session path is unchanged: no scope claim, DEMO_OPEN still
+        // lists every book, /v1/books is not a 401-shaped refuse.
+        let session = member("user_demo", "d@x.test", "");
+        let demo = Console::for_request(&root, session, true);
+        let session_books = transcode::serve(&demo, "GET", "/v1/books", "", "").unwrap();
+        assert!(
+            session_books.contains("books/alpha") && session_books.contains("books/beta"),
+            "AuthKit + DEMO_OPEN still lists the shared demo: {session_books}"
+        );
+        transcode::serve(&demo, "GET", "/v1/books/alpha", "", "")
+            .expect("an AuthKit session still opens a book without Connect scopes");
     }
 
     #[test]

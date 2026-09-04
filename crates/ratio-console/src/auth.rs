@@ -34,12 +34,11 @@ pub enum Subject {
     /// An authenticated caller, identified by the claims the gateway verified.
     ///
     /// ⚠ A WORKOS CONNECT ACCESS TOKEN IS THIS VARIANT WITH `connect: true`.
-    /// The catalog is `docs/connect-scopes.md` (#150). The authorizer that
-    /// accepts those scopes on `/v1` is leftover on #22. Until it does, a
-    /// Connect-shaped JWT that arrives anyway still goes through membership:
-    /// never `RATIO_DEMO_OPEN`, never an implied `org:{id}` grant. Do not
-    /// treat a session JWT as a Connect grant, and do not mint
-    /// `rules:approve` or `config:promote`.
+    /// The catalog is `docs/connect-scopes.md` (#150). Frozen names in
+    /// `scopes` open the matching `/v1` door after membership. A Connect
+    /// token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}`
+    /// (#151). Do not treat a session JWT as a Connect grant, and do not
+    /// mint `rules:approve` or `config:promote`.
     Member {
         /// The IdP `sub` — an opaque, stable identifier (WorkOS user id).
         sub: String,
@@ -57,6 +56,9 @@ pub enum Subject {
         /// M2M) token rather than an AuthKit session. The actor is still
         /// `sub`. The grant is still membership. The open demo is not.
         connect: bool,
+        /// Frozen catalog scopes this Connect token carries. Empty on an
+        /// AuthKit session. Aliases and hard non-scopes never land here.
+        scopes: BTreeSet<String>,
     },
 }
 
@@ -127,7 +129,12 @@ pub fn from_request_context(header: &str) -> Option<Subject> {
         .unwrap_or_default();
     let organization = claim("org_id");
     let connect = is_connect_claims(claims, &claim);
-    Some(Subject::Member { sub, email, organization, groups, connect })
+    let scopes = if connect {
+        catalog_grants(&claim("scope"))
+    } else {
+        BTreeSet::new()
+    };
+    Some(Subject::Member { sub, email, organization, groups, connect, scopes })
 }
 
 /// Whether verified JWT claims look like a WorkOS Connect token.
@@ -148,6 +155,173 @@ fn is_connect_claims(claims: &serde_json::Value, claim: &dyn Fn(&str) -> String)
     let client_id = claim("client_id");
     let ours = std::env::var("RATIO_WORKOS_CLIENT_ID").unwrap_or_default();
     !ours.is_empty() && !client_id.is_empty() && client_id != ours
+}
+
+/// Frozen grantable scopes from `docs/connect-scopes.md`. A string that is
+/// not in this list is not a grant — including aliases and hard non-scopes.
+pub const FROZEN_SCOPES: &[&str] = &[
+    "books:read",
+    "books:write",
+    "books:ingest",
+    "journals:read",
+    "journals:post",
+    "statements:read",
+    "views:read",
+    "positions:read",
+    "lots:read",
+    "lots:elect",
+    "nav:read",
+    "nav:strike",
+    "partners:read",
+    "partners:write",
+    "capital:read",
+    "commits:read",
+    "calls:post",
+    "fees:read",
+    "fees:accrue",
+    "budget:read",
+    "billing:read",
+    "breaks:read",
+    "breaks:explain",
+    "closes:read",
+    "config:read",
+    "audit:export",
+    "deliveries:write",
+    "facts:admit",
+    "webhooks:journal",
+];
+
+/// Named so they stop being tempting. Absence is the fence.
+pub const HARD_NON_SCOPES: &[&str] = &[
+    "rules:approve",
+    "config:promote",
+    "portal:impersonate",
+    "impersonate",
+    "payments:initiate",
+];
+
+/// Near-misses the catalog refuses. Granting these would be two names for
+/// one door.
+pub const ALIAS_SCOPES: &[&str] = &[
+    "journal:read",
+    "journal:append",
+    "projects:budget:read",
+    "projects:billing:read",
+];
+
+/// Catalog scopes a `scope` claim actually grants.
+///
+/// ⛔ ALIASES AND HARD NON-SCOPES NEVER ENTER THE SET. `journal:read` is
+/// not `journals:read`. `rules:approve` is not a permission check that
+/// could later be relaxed. OIDC discovery scopes (`openid`, `email`)
+/// are ignored — they are not doors.
+pub fn catalog_grants(scope_claim: &str) -> BTreeSet<String> {
+    scope_claim
+        .split_whitespace()
+        .filter(|s| FROZEN_SCOPES.contains(s))
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Whether `held` contains a frozen name. Hard non-scopes and aliases
+/// answer false even if the caller listed them.
+pub fn holds_scope(held: &BTreeSet<String>, scope: &str) -> bool {
+    FROZEN_SCOPES.contains(&scope) && held.contains(scope)
+}
+
+/// The Connect grant a `/v1` route needs. `None` is "this path is not a
+/// catalog door" — `transcode::serve` still 404s it. AuthKit sessions
+/// skip this table; membership is their grant.
+///
+/// Any one of the returned names is enough. Write scopes that name a
+/// template (`journals:post`, `calls:post`, `fees:accrue`, `lots:elect`)
+/// share `ApplyEvent`; they are a tighter grant of the same verb, not
+/// a second RPC.
+pub fn required_connect_scopes(method: &str, path: &str) -> Option<&'static [&'static str]> {
+    let rest = path.strip_prefix("/v1/")?.trim_start_matches('/');
+    if method == "POST" {
+        return if rest == "books" {
+            Some(&["books:write"])
+        } else if rest.ends_with(":applyEvent") {
+            Some(&["journals:post", "calls:post", "fees:accrue", "lots:elect"])
+        } else if rest.ends_with(":ingest") {
+            Some(&["books:ingest", "deliveries:write"])
+        } else if rest.ends_with(":admit") {
+            Some(&["facts:admit"])
+        } else if rest.ends_with(":mark") {
+            Some(&["breaks:explain"])
+        } else {
+            None
+        };
+    }
+    if method != "GET" {
+        return None;
+    }
+    let segs: Vec<&str> = rest.split('/').filter(|s| !s.is_empty()).collect();
+    Some(match segs.as_slice() {
+        ["books"] | ["books", _] | ["funds"] | ["funds", _] => &["books:read"],
+        ["funds", _, "views"] => &["views:read"],
+        ["funds", _, "views", v] if v.ends_with(":reconcile") => &["views:read"],
+        ["funds", _, "views", v] if v.ends_with(":projectProgress") => {
+            &["budget:read", "billing:read"]
+        }
+        ["funds", _, "views", v] if v.ends_with(":operatingAging") => &["statements:read"],
+        ["funds", _, "views", _] => &["views:read"],
+        ["funds", _, "views", _, "breaks"] | ["funds", _, "views", _, "breaks", _] => {
+            &["breaks:read"]
+        }
+        ["funds", _, "changeLogEntries"] | ["funds", _, "changeLogEntries", _] => {
+            &["audit:export"]
+        }
+        ["funds", _, "configVersions"] | ["funds", _, "configVersions", _] => &["config:read"],
+        ["funds", _, "deliveries"] | ["funds", _, "deliveries", _] => &["books:read"],
+        ["funds", _, "pendingFacts"]
+        | ["funds", _, "pendingFacts", _]
+        | ["funds", _, "facts"]
+        | ["funds", _, "facts", _] => &["books:read"],
+        ["funds", _, "views", _, "accounts", ..] => &["statements:read"],
+        ["funds", _, "corporateActions"] | ["funds", _, "corporateActions", _] => {
+            &["lots:read"]
+        }
+        ["funds", _, "views", _, "navStrikes"] | ["funds", _, "views", _, "navStrikes", _] => {
+            &["nav:read"]
+        }
+        ["funds", _, "views", _, "periodCloses"]
+        | ["funds", _, "views", _, "periodCloses", _] => &["closes:read"],
+        ["funds", _, "views", _, "positions", _, "lots"]
+        | ["funds", _, "views", _, "positions", _, "lots", _] => &["lots:read"],
+        ["funds", _, "views", _, "positions"] | ["funds", _, "views", _, "positions", _] => {
+            &["positions:read"]
+        }
+        ["funds", _, "templates"]
+        | ["funds", _, "templates", _]
+        | ["funds", _, "rules"]
+        | ["funds", _, "rules", _] => &["config:read"],
+        ["funds", _, "entries"] | ["funds", _, "entries", _] => &["journals:read"],
+        _ => return None,
+    })
+}
+
+/// Enforce catalog scopes on a Connect token.
+///
+/// `None` grants are an AuthKit session or `Local` — membership is the
+/// door, not an OAuth scope. A Connect token with an empty grant set
+/// is authorized-empty for every route: silence is not "all scopes".
+pub fn authorize_connect(
+    grants: Option<&BTreeSet<String>>,
+    method: &str,
+    path: &str,
+) -> Result<()> {
+    let Some(held) = grants else {
+        return Ok(());
+    };
+    let Some(need) = required_connect_scopes(method, path) else {
+        return Ok(());
+    };
+    if need.iter().any(|scope| holds_scope(held, scope)) {
+        return Ok(());
+    }
+    bail!("scope `{need}` is required", need = need[0])
 }
 
 /// What a subject may open, resolved from `<root>/MEMBERSHIP.tsv`.
@@ -289,16 +463,22 @@ mod tests {
             organization: String::new(),
             groups: vec![],
             connect: false,
+            scopes: BTreeSet::new(),
         }
     }
 
     fn connect_member(sub: &str, email: &str, org: &str) -> Subject {
+        connect_with_scopes(sub, email, org, &[])
+    }
+
+    fn connect_with_scopes(sub: &str, email: &str, org: &str, scopes: &[&str]) -> Subject {
         Subject::Member {
             sub: sub.into(),
             email: email.into(),
             organization: org.into(),
             groups: vec![],
             connect: true,
+            scopes: catalog_grants(&scopes.join(" ")),
         }
     }
 
@@ -307,7 +487,7 @@ mod tests {
         let header = r#"{"authorizer":{"jwt":{"claims":{"sub":"abc-123","email":"a@x.test","org_id":"org_01x","cognito:groups":"[admins ops]"}}}}"#;
         let s = from_request_context(header).expect("claims present");
         match &s {
-            Subject::Member { sub, email, organization, groups, connect } => {
+            Subject::Member { sub, email, organization, groups, connect, scopes } => {
                 assert_eq!(sub.as_str(), "abc-123");
                 assert_eq!(email.as_str(), "a@x.test");
                 assert_eq!(organization.as_str(), "org_01x");
@@ -318,6 +498,7 @@ mod tests {
                     !connect,
                     "an AuthKit-shaped session (no azp/scope) is not a Connect token"
                 );
+                assert!(scopes.is_empty(), "an AuthKit session carries no Connect grants");
             }
             Subject::Local => panic!("verified claims must not resolve to Local"),
         }
@@ -422,6 +603,7 @@ mod tests {
             organization: "org_01a".into(),
             groups: vec![],
             connect: false,
+            scopes: BTreeSet::new(),
         };
         let granted = funds_for(&dir, &in_a);
         assert!(granted.contains("ashcombe") && granted.len() == 1);
@@ -475,5 +657,126 @@ mod tests {
             funds_for(&dir, &stranger).is_empty(),
             "a Connect token with only an org_id sees authorized-empty"
         );
+    }
+
+    #[test]
+    fn a_connect_token_grants_only_frozen_catalog_scopes() {
+        let header = r#"{"authorizer":{"jwt":{"claims":{"sub":"user_c","email":"c@x.test","scope":"books:read audit:export journal:read rules:approve openid"}}}}"#;
+        let s = from_request_context(header).expect("claims present");
+        match &s {
+            Subject::Member { connect, scopes, .. } => {
+                assert!(*connect);
+                assert!(scopes.contains("books:read") && scopes.contains("audit:export"));
+                assert_eq!(scopes.len(), 2, "alias, hard non-scope, and openid must not grant: {scopes:?}");
+            }
+            Subject::Local => panic!("Connect claims must not resolve to Local"),
+        }
+        assert!(holds_scope(
+            match &s {
+                Subject::Member { scopes, .. } => scopes,
+                Subject::Local => panic!("member"),
+            },
+            "books:read"
+        ));
+        assert!(
+            !holds_scope(&catalog_grants("journal:read journal:append"), "journals:read"),
+            "an alias is not the canonical grant"
+        );
+        assert!(
+            !holds_scope(&catalog_grants("rules:approve config:promote impersonate"), "rules:approve"),
+            "a hard non-scope is not a grant"
+        );
+    }
+
+    #[test]
+    fn a_connect_token_is_accepted_with_the_matching_scope_and_refused_without() {
+        let books = catalog_grants("books:read");
+        authorize_connect(Some(&books), "GET", "/v1/books").expect("books:read opens ListBooks");
+        authorize_connect(Some(&books), "GET", "/v1/books/alpha").expect("books:read opens GetBook");
+        authorize_connect(Some(&books), "GET", "/v1/funds/alpha")
+            .expect("books:read opens GetFund");
+        let missing = authorize_connect(Some(&books), "GET", "/v1/funds/alpha/entries")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            missing.contains("scope `journals:read` is required"),
+            "a books:read token must not read the journal: {missing}"
+        );
+
+        let none = BTreeSet::new();
+        let empty = authorize_connect(Some(&none), "GET", "/v1/books")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            empty.contains("scope `books:read` is required"),
+            "silence is not every scope: {empty}"
+        );
+
+        // AuthKit / Local skip the table.
+        authorize_connect(None, "GET", "/v1/funds/alpha/entries")
+            .expect("an AuthKit session is not a Connect grant");
+    }
+
+    #[test]
+    fn hard_non_scopes_and_aliases_do_not_open_a_door() {
+        let poison = catalog_grants(
+            "rules:approve config:promote portal:impersonate impersonate payments:initiate journal:read journal:append",
+        );
+        assert!(poison.is_empty(), "none of those strings are grants: {poison:?}");
+        let err = authorize_connect(Some(&poison), "GET", "/v1/books")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("scope `books:read` is required"), "{err}");
+
+        let alias_journal = catalog_grants("journal:read");
+        let journal = authorize_connect(
+            Some(&alias_journal),
+            "GET",
+            "/v1/funds/alpha/entries",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            journal.contains("scope `journals:read` is required"),
+            "journal:read is an alias: {journal}"
+        );
+    }
+
+    #[test]
+    fn write_routes_need_the_named_write_scope() {
+        let read = catalog_grants("books:read journals:read");
+        let post = authorize_connect(
+            Some(&read),
+            "POST",
+            "/v1/funds/alpha:applyEvent",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            post.contains("scope `journals:post` is required"),
+            "read does not imply write: {post}"
+        );
+        authorize_connect(
+            Some(&catalog_grants("journals:post")),
+            "POST",
+            "/v1/funds/alpha:applyEvent",
+        )
+        .expect("journals:post opens ApplyEvent");
+        authorize_connect(
+            Some(&catalog_grants("calls:post")),
+            "POST",
+            "/v1/funds/alpha:applyEvent",
+        )
+        .expect("calls:post is a tighter grant of the same verb");
+        authorize_connect(
+            Some(&catalog_grants("books:write")),
+            "POST",
+            "/v1/books",
+        )
+        .expect("books:write opens CreateBook");
+        let create = authorize_connect(Some(&read), "POST", "/v1/books")
+            .unwrap_err()
+            .to_string();
+        assert!(create.contains("scope `books:write` is required"), "{create}");
     }
 }

@@ -19,10 +19,12 @@ is an eight-week plan for a product nobody was buying.
 > distinguish an authorized empty set from an unreadable membership file;
 > every live `ROUTES` entry is classified and a caller scoped to book A
 > cannot read book B. It is not a client portal. Authenticated writes
-> record actor = WorkOS `sub` (#151). Live leftovers on #22 are a
-> Connect token on `/v1`, the shared demo's `RATIO_DEMO_OPEN`, unused
-> Cognito resources in the deploy template, and a live two-user
-> walk-through on the open demo host. Durable writes are #24 (closed).
+> record actor = WorkOS `sub` (#151). Connect tokens accepted with
+> catalog scopes on `/v1` (membership still required; never
+> `RATIO_DEMO_OPEN`; never `org:{id}`). Live leftovers on issue 22
+> are the shared demo's `RATIO_DEMO_OPEN`, unused Cognito resources
+> in the deploy template, and a live two-user walk-through on the
+> open demo host. Durable writes are #24 (closed).
 > The Cognito-era activation sentence is historical.
 
 Three constraints set everything below:
@@ -300,9 +302,10 @@ Cognito; the browser never calls AWS, because the console's own server holds
 the token and makes the call. AuthKit is the code path (#63). Vercel
 Production has the env (#68 closed). Write-route actor binding landed
 (#151): `applyEvent` / `ingest` / `admit` / `mark` / CreateBook / period
-close record actor = WorkOS `sub`. Live leftovers remain on #22 — a
-Connect token on `/v1`, the shared demo's `RATIO_DEMO_OPEN`, unused
-Cognito resources in the deploy templates. Do not read this paragraph as
+close record actor = WorkOS `sub`. Connect tokens accepted with
+catalog scopes on `/v1`. Live leftovers remain on issue 22 — the
+shared demo's `RATIO_DEMO_OPEN`, unused Cognito resources in the
+deploy templates, and live provider OAuth. Do not read this paragraph as
 production-complete.
 The retired `https://ratio-ims.vercel.app` host still resolves;
 `deploy.yml` refuses it as `CONSOLE_ORIGIN`.
@@ -769,9 +772,10 @@ to it and both still stand:**
 **Sign-in is WorkOS AuthKit**, on `https://ratio.marsh.build`. Cognito
 is not the code path. AuthKit is in the code (#63). Vercel Production
 has the env (#68 closed). Write-route actor binding landed (#151).
-Live leftovers remain on #22 — a Connect token on `/v1`, the shared
-demo's `RATIO_DEMO_OPEN`, unused Cognito resources in the deploy
-templates. Do not read this paragraph as production-complete, and do
+Connect tokens accepted with catalog scopes on `/v1`. Live leftovers
+remain on issue 22 — the shared demo's `RATIO_DEMO_OPEN`, unused
+Cognito resources in the deploy templates, and live provider OAuth.
+Do not read this paragraph as production-complete, and do
 not read a walk-through as demo-ready (#27).
 
 **What it cost.** A Book proto resource; `book.toml`; `CreateBook` /
@@ -3268,3 +3272,63 @@ engagement with a real fund's data reconciling.
 
 Not a platform. Not parity. One customer who can tell you their books were
 wrong and that Ratio is how they found out.
+
+### Amendment, 2026-09-04 — Connect tokens accepted with catalog scopes
+
+The leftover on issue 22 after #151 was the `/v1` authorizer still
+proving an AuthKit session JWT only. A Connect-shaped token that
+arrived was `scoped` and did not match `org:{id}`, but it had no
+catalog grant: `books:read` was not a door.
+
+What landed is the in-process authorizer, not a new RPC and not a
+second identity product:
+
+- `from_request_context` reads the `scope` claim on a Connect-shaped
+  JWT and keeps only frozen names from
+  [`docs/connect-scopes.md`](docs/connect-scopes.md). Aliases
+  (`journal:read`, `journal:append`) and hard non-scopes
+  (`rules:approve`, `config:promote`, portal impersonation) never
+  enter the grant set.
+- `transcode::serve` requires one of those names before a handler
+  opens a book. AuthKit sessions and `Local` skip the table —
+  membership stays their grant. Every live `ROUTES` entry names a
+  door; a forgotten route would skip the grant.
+- A Connect token still never takes `RATIO_DEMO_OPEN` and still
+  never matches `org:{id}` (#151). Authorized-empty / "no fund" for
+  a book the subject does not administer. An `org_id` claim is not
+  membership.
+- Write scopes that name a template (`journals:post`, `calls:post`,
+  `fees:accrue`, `lots:elect`) share `ApplyEvent`. Read does not
+  imply write.
+
+**Connect tokens accepted with catalog scopes** is the Built phrase
+this amendment adds.
+
+**What this is NOT, because leftovers stay named on issue 22:**
+
+- **Not unsetting `RATIO_DEMO_OPEN`.** The shared execute-api demo
+  still grants any AuthKit session every fund. Isolation holds on
+  the `scoped` path in CI.
+- **Not removing unused Cognito CloudFormation resources.**
+- **Not live provider OAuth** for bank, calendar, or a licensed AIA
+  PDF. First-party Connect scaffolds still refuse `fetch` / `deliver`
+  until those leftovers move. This amendment does not finish
+  issue 22.
+- **Not the `journals:post` allowlist** keyed by `client_id`. Empty
+  still refuses every post at the app; the kernel map stays on #150.
+- **Not reserved RPCs** (`webhooks:journal`, `nav:strike` as a write,
+  a kernel blob store). `audit:export` reads the change log; it does
+  not mint a ZIP.
+
+Nothing on the *Explicitly not building* list moved. This amendment
+does not close #150. It does not reopen #151. It does not finish
+#163, #165, #166, #168, #169, #172, #184, #179, or #185.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a Connect-shaped token with `books:read` listing a book
+the subject administers, `breaks:read` opening the exception queue,
+`audit:export` reading the change log, and a token without the
+scope / with `journal:read` / with `rules:approve` being refused.
+It can show an AuthKit session still walking `/v1/books` without
+Connect scopes. It cannot show two users isolated on the open demo
+host, live bank or calendar OAuth, or a ZIP that reached `/v1`.
