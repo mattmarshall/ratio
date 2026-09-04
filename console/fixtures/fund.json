@@ -12,5 +12,8 @@
   "viewCount": "2",
   "lotMethod": "FIFO",
   "lotMethodDeclared": true,
-  "longTermDays": "365"
+  "longTermDays": "365",
+  "washWindowDays": "30",
+  "washWindowDeclared": true,
+  "washKeepHoldingPeriod": false
 }

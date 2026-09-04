@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
  * ⭐ A SCREEN THE OLD CONSOLE DID NOT HAVE. It opened straight onto the
  * exceptions queue, which answers "what is wrong" without ever answering "where
  * does this fund stand". The lot terms below are the part worth having in one
- * place: the method, whether it was elected or defaulted, and the gain it
- * produced.
+ * place: the method, whether it was elected or defaulted, the wash window
+ * (or silence — not a silent 30), and the gain they produced.
  */
 export default async function FundOverview({
   params,
@@ -54,6 +54,38 @@ export default async function FundOverview({
                 : " this configuration declares no method"}
             </span>
           </dd>
+          <dt>Wash window</dt>
+          <dd>
+            {/* ⛔ NOT A SILENT 30. A book that never elected a window has no
+                window. Printing the days without checking the flag is the
+                lot-method trap again, and a silent 30 would have restated
+                every in-window loss on every existing book. */}
+            {f.washWindowDeclared ? `${f.washWindowDays} days` : "—"}
+            <span className="sub">
+              {f.washWindowDeclared
+                ? " a term of the administration agreement"
+                : " this configuration declares no wash window"}
+            </span>
+          </dd>
+          {f.washWindowDeclared ? (
+            <>
+              <dt>Wash holding period</dt>
+              <dd>
+                {/* ⛔ FALSE IS UNSET, NOT A THIRD ELECTION. Some(false) is
+                    refused at read. Unset leaves the US transfer in force;
+                    Some(true) elects keep. Do not invent a "transfer elected"
+                    meaning. */}
+                {f.washKeepHoldingPeriod
+                  ? "replacement keeps its own date"
+                  : "US transfer stays in force"}
+                <span className="sub">
+                  {f.washKeepHoldingPeriod
+                    ? " elected — the replacement keeps its acquisition date"
+                    : " nobody wrote keep"}
+                </span>
+              </dd>
+            </>
+          ) : null}
           <dt>Realized gain, in {f.defaultView}</dt>
           {/* Credit-normal: `gain` flips the sign in exactly one place, because
               applied per call site it gets applied twice somewhere and nowhere

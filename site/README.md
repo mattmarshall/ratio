@@ -265,8 +265,9 @@ page would read as a reference customer. Keep it unnamed.
   are the engine window and the attach write (#133 / #138) plus
   `WashRestatement` as a citeable record and the non-US
   holding-period variant as an election
-  (`wash_keep_holding_period`; unset, not a silent keep), not a
-  console wash flag. MinTax is a ranking at a price
+  (`wash_keep_holding_period`; unset, not a silent keep). The
+  console cites those flags on the fund lot-terms screen; unset
+  stays unset. MinTax is a ranking at a price
   (`min_tax_short_weight`; unset, not a silent 2), not an Order. SpecID
   is a named selection (`identified_lots`; unnamed or overspecified
   refuse; `lot_method = "specific_id"` stays refused), not an Order,

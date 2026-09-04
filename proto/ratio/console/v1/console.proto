@@ -814,6 +814,36 @@ message Fund {
   // to be 365. `Ratio.Lots.Methods.isLongTerm` takes it as a parameter.
   int64 long_term_days = 20 [(google.api.field_behavior) = OUTPUT_ONLY];
 
+  // Days the wash window reaches, when the configuration declares one.
+  //
+  // ⛔ A JURISDICTION'S NUMBER, NOT A CONSTANT, AND NOT A SILENT 30. A fund
+  // that wants US wash writes `wash_window_days = 30`. A book that never
+  // elected a window has no window. This field is only meaningful when
+  // `wash_window_declared` is true — a client that reports it as an agreed
+  // term without checking that flag asserts a decision nobody made, which
+  // is the lot-method trap again. A silent 30 would have restated every
+  // in-window loss on every existing book.
+  int64 wash_window_days = 27 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether the configuration DECLARES a wash window, or merely has none.
+  //
+  // ⛔ THE FIELD ABOVE CANNOT CARRY THIS AND MUST NOT BE ASKED TO. Proto3
+  // int64 defaults to 0, and 0 is a same-day window someone could write.
+  // Absence is `wash_window_declared = false`, not a zero that looks like
+  // an election.
+  bool wash_window_declared = 28 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether the configuration elects the non-US keep (the replacement
+  // keeps its own acquisition date).
+  //
+  // ⛔ FALSE IS UNSET, NOT AN ELECTION OF TRANSFER. The US
+  // `replacementAcquired` transfer stays in force until somebody writes
+  // the keep. `wash_keep_holding_period = false` is refused at read and
+  // never appears on a valid Fund — do not invent a third wire meaning.
+  // Keep without a window is also refused. `lot_method = "wash"` stays
+  // refused.
+  bool wash_keep_holding_period = 29 [(google.api.field_behavior) = OUTPUT_ONLY];
+
   // ⛔ MOVED TO `View`, NOT DELETED, AND RESERVED SO THE NUMBERS CANNOT COME
   // BACK MEANING SOMETHING ELSE. Every one of these depends on WHICH ENTRIES
   // ARE RECOGNISED, so a fund-level answer is an answer for a view it does not

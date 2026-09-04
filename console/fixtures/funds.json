@@ -14,7 +14,10 @@
       "viewCount": "1",
       "lotMethod": "FIFO",
       "lotMethodDeclared": true,
-      "longTermDays": "365"
+      "longTermDays": "365",
+      "washWindowDays": "30",
+      "washWindowDeclared": true,
+      "washKeepHoldingPeriod": false
     },
     {
       "name": "funds/northstar-multi-strategy",
@@ -30,7 +33,10 @@
       "viewCount": "1",
       "lotMethod": "",
       "lotMethodDeclared": false,
-      "longTermDays": "365"
+      "longTermDays": "365",
+      "washWindowDays": "0",
+      "washWindowDeclared": false,
+      "washKeepHoldingPeriod": false
     }
   ],
   "nextPageToken": ""

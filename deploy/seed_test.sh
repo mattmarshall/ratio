@@ -88,6 +88,15 @@ awk -v a="$a" -v b="$b" 'BEGIN { exit !(b < a) }' \
 # valuation point, and `Ratio.Period.one_answer_per_day` means it cannot be
 # taken back.
 BLOCKED="$OUT/harbourline-global-value"
+# ⛔ THE WALK-THROUGH HAS TO BE ABLE TO POINT AT THE WINDOW. Silence is
+# unset, not a silent 30 — a seed that drops the field cannot show the
+# cite. The active blob is the one after `approve` merged the fee rule;
+# replace_sections keeps top-level keys, and this is what proves it.
+active=$(cat "$BLOCKED/config/ACTIVE")
+grep -q "wash_window_days = 30" "$BLOCKED/config/$active" \
+  || fail "harbourline elects no wash window — the walk-through cannot cite one"
+grep -q "wash_keep_holding_period" "$BLOCKED/config/$active" \
+  && fail "harbourline wrote keep — the demo is a US transfer, unset stays unset"
 if "$RATIO" strike --book "$BLOCKED" >/dev/null 2>&1; then
   fail "a blocked fund struck a NAV"
 fi

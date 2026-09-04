@@ -159,6 +159,29 @@ export interface Fund {
   lotMethodDeclared: boolean;
   /** Days held for a gain to be long-term. A jurisdiction's number, not 365. */
   longTermDays: Int64;
+  /**
+   * Days the wash window reaches, when the configuration declares one.
+   *
+   * ⛔ Meaningful only when `washWindowDeclared` is true. A book that never
+   * elected a window has no window — not a silent 30. Printing this as an
+   * agreed term without checking the flag is the lot-method trap again.
+   */
+  washWindowDays: Int64;
+  /**
+   * ⛔ Whether the configuration DECLARES a wash window, or merely has none.
+   * Proto3 int64 defaults to 0, and 0 is a same-day window someone could
+   * write. Absence is this flag false, not a zero that looks like an election.
+   */
+  washWindowDeclared: boolean;
+  /**
+   * Whether the configuration elects the non-US keep (the replacement keeps
+   * its own acquisition date).
+   *
+   * ⛔ `false` is unset — the US transfer stays in force — not an election of
+   * transfer. `Some(false)` is refused at read and never appears on a valid
+   * Fund. Do not invent a third UI meaning.
+   */
+  washKeepHoldingPeriod: boolean;
 }
 
 /**

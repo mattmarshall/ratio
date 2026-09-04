@@ -119,6 +119,15 @@ weight = -1
 below_notice = 500
 blocks_nav = 100000
 
+# ── wash window, declared rather than left out ────────────────────────────
+#
+# Same distinction `lot_method` keeps: a book that never elects a window
+# has no window — not a silent 30. 30 is the US rule. The walk-through
+# has to be able to point at this the way it points at the lot method.
+# `wash_keep_holding_period` stays unset: the US transfer is in force
+# until somebody writes the keep. `lot_method = "wash"` stays refused.
+wash_window_days = 30
+
 # ── the mapping, in the SAME configuration as the rules above ─────────────
 #
 # That is the claim, made real: one digest fixes how a file becomes an event

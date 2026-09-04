@@ -64,6 +64,35 @@ NEEDLES: list[tuple[str, str]] = [
         "this configuration declares no method",
         "the DEFAULTED-method claim is gone, so a defaulted method would read as elected",
     ),
+    # ── wash election cite (#5 leftover) ───────────────────────────────────
+    # ⚠ THE UNSET SENTENCES, NOT THE TAB LABEL. A page that printed "30 days"
+    # over a book that never elected a window would still contain "Wash window"
+    # and stay green. Silence is unset, not a silent 30; keep is Some(true) or
+    # unset — Some(false) is refused at read and is not a third UI meaning.
+    (
+        "Wash window",
+        "the wash window row is gone — the #5 leftover the engine already had",
+    ),
+    (
+        "this configuration declares no wash window",
+        "an unset wash window would read as a silent 30",
+    ),
+    (
+        "Wash holding period",
+        "the keep-holding-period row is gone",
+    ),
+    (
+        "replacement keeps its own date",
+        "the keep election would not be citeable",
+    ),
+    (
+        "US transfer stays in force",
+        "unset keep would invent a third meaning or go silent",
+    ),
+    (
+        "nobody wrote keep",
+        "unset keep would read as an elected US transfer",
+    ),
     ("Realized gain", "the realized gain row is gone"),
     ("Short-term", "the short-term split is gone"),
     ("Long-term", "the long-term split is gone"),

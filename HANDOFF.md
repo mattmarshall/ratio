@@ -3,7 +3,11 @@
 **State**: bazel tests green, 27 `lean_test`, 46 `tla_check`, 29 `manual`
 probes all red for the reasons they name.
 
-Issues #4 and #7 are closed. Open work is #5, #6, #8, #9. This file is the part
+Issues #4 and #7 are closed. #5's leftover was the console wash-flag
+cite; that cite landed (`wash_window_days` and
+`wash_keep_holding_period` on the fund lot-terms screen; unset stays
+unset, not a silent 30; keep is `Some(true)` or silence, not a third
+meaning). Open work is #6, #8, #9. This file is the part
 that does not fit in an issue: what was learned, what is load-bearing, and what
 will bite. Wash sales have a Lean/TLA model and a Rust window
 (`RuleSet.wash_window_days`). `WashRestatement` is a citeable record
@@ -11,11 +15,11 @@ will bite. Wash sales have a Lean/TLA model and a Rust window
 not rewrite it). The non-US holding-period variant is an election
 (`wash_keep_holding_period`; unset stays unset, not a silent keep;
 the US `replacementAcquired` transfer stays in force until somebody
-writes the keep); #5 stays open for the console wash flag. MinTax, SpecID, and average cost (#9) each have a Lean
+writes the keep). MinTax, SpecID, and average cost (#9) each have a Lean
 surface, a TLA probe that fails if they are treated as a Method, and a
 Rust election that is not a `LotMethod` variant. #9 stays open for the
 console cite and the pooled holding-period leftover. This file does not
-close #5 or #9.
+close #9.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 

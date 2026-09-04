@@ -2436,6 +2436,24 @@ impl Console {
         })
     }
 
+    /// Wash terms the active configuration declares — or silence.
+    ///
+    /// ⛔ NOT A SILENT 30. `wash_window_days: None` is unset, and a screen that
+    /// printed 30 over that would restate every in-window loss on a book that
+    /// never elected the rule. `wash_keep_holding_period == Some(true)` is the
+    /// only keep the wire can carry; `Some(false)` is refused at read and is
+    /// not a third UI meaning.
+    fn wash_cite(set: Option<&RuleSet>) -> (i64, bool, bool) {
+        match set {
+            Some(s) => (
+                s.wash_window_days.unwrap_or(0),
+                s.wash_window_days.is_some(),
+                s.wash_keep_holding_period == Some(true),
+            ),
+            None => (0, false, false),
+        }
+    }
+
     /// The funds-index row. Same cheap inputs as [`list_book_row`]; state and
     /// open breaks stay unset because they are a fold.
     fn list_fund_row(&self, id: &str) -> Result<pb::Fund> {
@@ -2451,6 +2469,8 @@ impl Console {
         } else {
             pb::fund::State::Unspecified
         };
+        let (wash_window_days, wash_window_declared, wash_keep_holding_period) =
+            Self::wash_cite(set.as_ref());
         Ok(pb::Fund {
             name: format!("funds/{id}"),
             display_name: meta.display_name,
@@ -2469,6 +2489,9 @@ impl Console {
                 .unwrap_or_default(),
             lot_method_declared: set.as_ref().is_some_and(|s| s.lot_method.is_some()),
             long_term_days: set.as_ref().map(|s| s.long_term_days).unwrap_or(0),
+            wash_window_days,
+            wash_window_declared,
+            wash_keep_holding_period,
             pending_fact_count: "0".into(),
             trial_balance_difference: String::new(),
             entry_count,
@@ -2607,9 +2630,11 @@ impl Console {
 
         // ⛔ THE TERMS THE ACTIVE CONFIGURATION DECLARES, read rather than
         // assumed. The lot method decides the realized gain
-        // (`the_method_decides_the_taxable_gain`) and the threshold decides
-        // which rate it is taxed at — so both are reported beside the figure
-        // rather than left as something a reader has to go and look up.
+        // (`the_method_decides_the_taxable_gain`), the threshold decides
+        // which rate it is taxed at, and the wash window decides whether a
+        // repurchase disallows the loss — so all three are reported beside
+        // the figure rather than left as something a reader has to go and
+        // look up.
         let set = match b.active()? {
             Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?)).ok(),
             None => None,
@@ -2653,6 +2678,8 @@ impl Console {
         } else {
             pb::fund::State::Struck
         };
+        let (wash_window_days, wash_window_declared, wash_keep_holding_period) =
+            Self::wash_cite(set.as_ref());
 
         Ok(pb::Fund {
             name: format!("funds/{id}"),
@@ -2686,6 +2713,9 @@ impl Console {
                 .unwrap_or_default(),
             lot_method_declared: set.as_ref().is_some_and(|s| s.lot_method.is_some()),
             long_term_days: set.as_ref().map(|s| s.long_term_days).unwrap_or(0),
+            wash_window_days,
+            wash_window_declared,
+            wash_keep_holding_period,
             pending_fact_count: pending.len().to_string(),
             // ⭐ THE ONE TRIAL-BALANCE FIGURE THAT IS NOT VIEW-DEPENDENT, AND ITS
             // STAYING HERE IS THE CHECK THAT THE LINE IS DRAWN RIGHT. A view
@@ -8807,7 +8837,8 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         let c = Console::new(&d);
         let f = c.get_fund("funds/demo").unwrap().to_json();
         for field in ["entryCount", "openBreakCount", "trialBalanceDifference",
-                      "pendingFactCount", "viewCount", "longTermDays"] {
+                      "pendingFactCount", "viewCount", "longTermDays",
+                      "washWindowDays"] {
             assert!(
                 f.contains(&format!("\"{field}\":\"")),
                 "{field} is not a string in {f}"
@@ -8840,6 +8871,44 @@ PB-0043,IE00B3RBWM25,VWRL,XAMS,PRME,B,250,112.40,EUR,02/26/2026
         }
         assert!(v.contains("\"basis\":\"RECORDED\""),
                 "a book declaring no views recognises in journal order: {v}");
+    }
+
+    #[test]
+    fn a_declared_wash_window_is_cited_and_silence_is_not_thirty() {
+        // ⛔ THE LOT-METHOD TRAP, FOR THE WINDOW. A book that never elected a
+        // wash window has no window — not a silent 30. Keep is Some(true) or
+        // unset; Some(false) is refused at read and is not a third meaning.
+        let d = fresh("wash-cite");
+        book(&d);
+        let silent = Console::new(&d).get_fund("funds/demo").unwrap();
+        assert!(!silent.wash_window_declared, "nobody said");
+        assert_eq!(silent.wash_window_days, 0, "and the wire does not invent 30");
+        assert!(!silent.wash_keep_holding_period, "unset is not keep");
+
+        let mut b = FileBook::open(&d).unwrap();
+        let window = b.put(b"rules = []\nwash_window_days = 30\n").unwrap();
+        b.set_active(&window).unwrap();
+        let elected = Console::new(&d).get_fund("funds/demo").unwrap();
+        assert!(elected.wash_window_declared, "somebody said");
+        assert_eq!(elected.wash_window_days, 30);
+        assert!(
+            !elected.wash_keep_holding_period,
+            "US transfer stays — nobody wrote keep"
+        );
+
+        let keep = b
+            .put(b"rules = []\nwash_window_days = 30\nwash_keep_holding_period = true\n")
+            .unwrap();
+        b.set_active(&keep).unwrap();
+        let kept = Console::new(&d).get_fund("funds/demo").unwrap();
+        assert!(kept.wash_window_declared);
+        assert!(kept.wash_keep_holding_period, "keep is the election");
+
+        let listed = Console::new(&d).list_funds().unwrap().funds;
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].wash_window_declared);
+        assert_eq!(listed[0].wash_window_days, 30);
+        assert!(listed[0].wash_keep_holding_period);
     }
 
     #[test]

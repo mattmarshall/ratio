@@ -546,7 +546,9 @@ impl JsonView for pb::Fund {
              \"trialBalanceDifference\":{},\
              \"entryCount\":{},\"openBreakCount\":{},\"pendingFactCount\":{},\
              \"configDigest\":{},\"defaultView\":{},\"viewCount\":{},\
-             \"lotMethod\":{},\"lotMethodDeclared\":{},\"longTermDays\":{}}}",
+             \"lotMethod\":{},\"lotMethodDeclared\":{},\"longTermDays\":{},\
+             \"washWindowDays\":{},\"washWindowDeclared\":{},\
+             \"washKeepHoldingPeriod\":{}}}",
             q(&self.name), q(&self.display_name), q(&self.currency_code),
             q(state_name(self.state)),
             q(&self.trial_balance_difference),
@@ -554,7 +556,9 @@ impl JsonView for pb::Fund {
             q(&self.pending_fact_count), q(&self.config_digest),
             q(&self.default_view), q(&self.view_count.to_string()),
             q(&self.lot_method), self.lot_method_declared,
-            q(&self.long_term_days.to_string())
+            q(&self.long_term_days.to_string()),
+            q(&self.wash_window_days.to_string()), self.wash_window_declared,
+            self.wash_keep_holding_period
         )
     }
 }
