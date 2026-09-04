@@ -1980,7 +1980,7 @@ mod tests {
         // ⭐ THE SEAM: facts are not journal entries. A price lives on
         // Plane::Facts; recording one must not invent a posting.
         let mut b = FileBook::open(tmp()).unwrap();
-        b.record_fact(&fact_json("p1", "aa".repeat(32))).unwrap();
+        b.record_fact(&fact_json("p1", &"aa".repeat(32))).unwrap();
         let got = b.get_fact("p1").unwrap();
         let v: serde_json::Value = serde_json::from_slice(&got).unwrap();
         assert_eq!(v["id"], "p1");
@@ -2013,9 +2013,9 @@ mod tests {
         // ⛔ A CORRECTION IS A NEW FACT. Overwriting p1 would make a
         // figure that cited it unopenable — the bytes it named are gone.
         let mut b = FileBook::open(tmp()).unwrap();
-        b.record_fact(&fact_json("p1", "aa".repeat(32))).unwrap();
+        b.record_fact(&fact_json("p1", &"aa".repeat(32))).unwrap();
         let err = b
-            .record_fact(&fact_json("p1", "bb".repeat(32)))
+            .record_fact(&fact_json("p1", &"bb".repeat(32)))
             .unwrap_err()
             .to_string();
         assert!(err.contains("already recorded"), "{err}");
@@ -2026,14 +2026,14 @@ mod tests {
             "aa".repeat(32),
             "the first fact is still the one a figure opens"
         );
-        b.record_fact(&fact_json("p2", "bb".repeat(32))).unwrap();
+        b.record_fact(&fact_json("p2", &"bb".repeat(32))).unwrap();
         assert_eq!(b.facts().unwrap().len(), 2, "a new id is a new fact");
     }
 
     #[test]
     fn a_parallel_shadow_directory_is_refused() {
         let root = tmp();
-        let mut b = FileBook::open(&root).unwrap();
+        let b = FileBook::open(&root).unwrap();
         b.refuse_parallel_shadow_book().unwrap();
         fs::create_dir_all(root.join("shadow")).unwrap();
         let err = b.refuse_parallel_shadow_book().unwrap_err().to_string();
@@ -2063,7 +2063,7 @@ mod tests {
         let mut b = FileBook::open(tmp()).unwrap();
         b.refuse_parallel_shadow_book()
             .expect("an empty book is the wedge, not a parallel");
-        b.record_fact(&fact_json("p1", "aa".repeat(32))).unwrap();
+        b.record_fact(&fact_json("p1", &"aa".repeat(32))).unwrap();
         let err = b.refuse_parallel_shadow_book().unwrap_err().to_string();
         assert!(err.contains("fact plane"), "{err}");
         assert!(err.contains("invent journal history"), "{err}");
