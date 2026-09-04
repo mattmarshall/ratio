@@ -7,8 +7,8 @@
 # HANDOFF.md and docs/connect-scopes.md still agree on the frozen strings
 # and the leftovers. The in-process authorizer accepts catalog scopes;
 # #150 stays open for the allowlist / reserved RPCs / reference skeleton.
-# leftover #22 is the shared demo dial, unused Cognito resources, and
-# live provider OAuth.
+# leftover #22 is the shared demo dial, unused Cognito resources,
+# the AuthKit-only gateway issuer, and live provider OAuth.
 #
 # ⚠ THE SAME LIMITATION AS //:plan_refusals_test. This is a cross-check
 # between DECLARED lists. It does not scan the tree for an authorizer.

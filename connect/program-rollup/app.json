@@ -38,6 +38,6 @@
   },
   "grant_path": {
     "status": "not built",
-    "note": "Connect access tokens are not accepted on /v1. Accepting Connect scopes is leftover #22 / #150. Write-route actor binding landed (#151). This file does not close #22, #150, or #179. It does not reopen #151. It does not close #169, #172, or #184."
+    "note": "In-process /v1 accepts Connect catalog scopes after membership. Leftover on issue 22: API Gateway JWT authorizer still AuthKit-session only — a live Connect token can still 401 at the edge. Write-route actor binding landed (#151). This file leaves #150 and #179 open. It does not reopen #151. It leaves #169, #172, and #184 open."
   }
 }

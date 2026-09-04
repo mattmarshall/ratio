@@ -103,9 +103,10 @@ or a posting that reached `/v1`. BookKind PERSONAL chrome is unchanged.
 
 ## Leftovers — this does not close #165
 
-1. **API authorizer accepts Connect access tokens** with these scopes
-   (#150 / #151 / leftover #22). `/v1` still proves an AuthKit session
-   JWT.
+1. **API Gateway JWT authorizer still AuthKit-session only**
+   (#150 / leftover on issue 22). In-process `/v1` accepts Connect
+   catalog scopes after membership. A live Connect token can still
+   401 at the edge. Write-route actor binding landed (#151).
 2. **Live bank / custodian OAuth.** Provider SDK, token refresh, and
    statement pull.
 3. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover

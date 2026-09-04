@@ -22,9 +22,10 @@ is an eight-week plan for a product nobody was buying.
 > record actor = WorkOS `sub` (#151). Connect tokens accepted with
 > catalog scopes on `/v1` (membership still required; never
 > `RATIO_DEMO_OPEN`; never `org:{id}`). Live leftovers on issue 22
-> are the shared demo's `RATIO_DEMO_OPEN`, unused Cognito resources
-> in the deploy template, and a live two-user walk-through on the
-> open demo host. Durable writes are #24 (closed).
+> are the shared demo's `RATIO_DEMO_OPEN`, unused Cognito
+> CloudFormation resources, the API Gateway JWT authorizer still
+> proving only the AuthKit session issuer, and a live two-user
+> walk-through on the open demo host. Durable writes are #24 (closed).
 > The Cognito-era activation sentence is historical.
 
 Three constraints set everything below:
@@ -774,7 +775,9 @@ is not the code path. AuthKit is in the code (#63). Vercel Production
 has the env (#68 closed). Write-route actor binding landed (#151).
 Connect tokens accepted with catalog scopes on `/v1`. Live leftovers
 remain on issue 22 — the shared demo's `RATIO_DEMO_OPEN`, unused
-Cognito resources in the deploy templates, and live provider OAuth.
+Cognito resources in the deploy templates, the API Gateway JWT
+authorizer still proving only the AuthKit session issuer, and live
+provider OAuth.
 Do not read this paragraph as production-complete, and do
 not read a walk-through as demo-ready (#27).
 

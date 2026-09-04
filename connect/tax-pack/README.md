@@ -101,9 +101,10 @@ those engines and does not elect them.
 
 ## Leftovers — this does not close #166
 
-1. **API authorizer accepts Connect access tokens** with these scopes
-   (#150 / #151 / leftover #22). `/v1` still proves an AuthKit session
-   JWT.
+1. **API Gateway JWT authorizer still AuthKit-session only**
+   (#150 / leftover on issue 22). In-process `/v1` accepts Connect
+   catalog scopes after membership. A live Connect token can still
+   401 at the edge. Write-route actor binding landed (#151).
 2. **Live CPA / IRS submission.** Never in core. A filed return, a
    MeF transmission, and a CPA portal stay leftover on this issue.
 3. **Pooled holding-period category.** Mixed acquisition dates stay

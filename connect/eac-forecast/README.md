@@ -112,9 +112,11 @@ forked. `/budget` and `/billing` stay the core cites.
 
 ## Leftovers — this does not close #169
 
-1. **API authorizer accepts Connect access tokens** with these scopes
-   (#150 / leftover #22). `/v1` still proves an AuthKit session JWT.
-   Write-route actor binding landed (#151); this app does not reopen it.
+1. **API Gateway JWT authorizer still AuthKit-session only**
+   (leftover on issue 22). In-process `/v1` accepts Connect catalog
+   scopes after membership. A live Connect token can still 401 at
+   the edge. Write-route actor binding landed (#151); this app
+   does not reopen it.
 2. **Live Connect OAuth.** Dashboard registration, redirect, and a
    token that `/v1` accepts.
 3. **Live EAC product UX.** Never in core. A `/budget` EAC column, a
