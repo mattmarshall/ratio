@@ -192,8 +192,14 @@ open:
    ([#165](https://github.com/mattmarshall/ratio/issues/165)). It is not
    this leftover: it requests `journals:post`, it does not open the grant
    path, and this file still does not close #150 or #165.
+   A first-party tax-pack scaffold lives at `connect/tax-pack/`
+   ([#166](https://github.com/mattmarshall/ratio/issues/166)). It is not
+   this leftover either: it requests `lots:read` and `config:read`, it
+   does not open the grant path, and this file still does not close
+   #166.
 5. **`webhooks:journal`, `audit:export`, `nav:strike` as a write RPC** —
    reserved scopes; the surfaces are not built.
 
 This file does not close #150. Nothing here closes #5 (console wash
-flag), #9 (lot-relief UI cites), or #22.
+flag), #9 (lot-relief UI cites / pooled holding-period leftover),
+#22, or #166.

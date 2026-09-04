@@ -71,6 +71,11 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
   that maps household bank rows onto Personal templates
   ([#165](https://github.com/mattmarshall/ratio/issues/165)). Scaffold;
   Connect tokens are not accepted on `/v1`, and live bank OAuth is leftover.
+- **[connect/tax-pack/](connect/tax-pack/)** — first-party Connect app
+  that emits 8949-ish CSV from lot, wash, and lot-terms cites
+  ([#166](https://github.com/mattmarshall/ratio/issues/166)). Scaffold;
+  mixed dates stay unclassified; Connect tokens are not accepted on
+  `/v1`; IRS e-file is refused.
 
 ## License
 

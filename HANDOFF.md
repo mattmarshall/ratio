@@ -20,7 +20,11 @@ surface, a TLA probe that fails if they are treated as a Method, and a
 Rust election that is not a `LotMethod` variant. The console cites those
 elections (lot-terms for `min_tax_short_weight` and `average_cost`;
 journal entry for `identified_lots`; unset stays unset). #9 stays open
-for the pooled holding-period leftover. This file does not close #9.
+for the pooled holding-period leftover. The household tax-pack
+Connect app (`connect/tax-pack/`, #166) refuses to invent a
+short-vs-long box when those dates disagree; that does not close
+#9 and it does not close #166 (grant path and IRS e-file remain).
+This file does not close #9.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 
@@ -874,6 +878,7 @@ than one that is entirely unclassified.
 | `AGENTS.md` | the rules, for a person or a model, and the dispatch contract (one issue → one cloud agent → one PR). Replaces the two stale LLM guides |
 | `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Contract only — token validation is #151 / leftover #22. Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation |
 | `connect/bank-feed/` | First-party Connect app for Personal bank feeds ([#165](https://github.com/mattmarshall/ratio/issues/165)). Mapper + allowlist + closed-through / conservation refusals. Grant path is not built; live bank OAuth is leftover. Does not close #165 |
+| `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — no invented FIFO oldest or two boxes. Grant path is not built; IRS e-file is refused. Does not close #166 or #9 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.

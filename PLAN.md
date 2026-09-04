@@ -1491,6 +1491,61 @@ show a fixture expense mapping to `living_expense`, a closed March
 refusing a 15 March row, and `journal:append` being rejected as a scope.
 It cannot show a Connect token opening a book or a live bank login.
 
+### Amendment, 2026-09-04 — a Personal tax-pack Connect app, and e-file still does not happen here
+
+[#166](https://github.com/mattmarshall/ratio/issues/166) asked for household
+tax-pack export from lot and wash cites without stuffing packing into
+`ratio watch` or growing a CPA portal in core. The catalog already said
+tax e-file stays a Connect app. What landed is that app as a sibling
+tree, not a kernel method.
+
+**What this amendment records.** [`connect/tax-pack/`](connect/tax-pack/)
+is a first-party WorkOS Connect OAuth application for `BookKind` PERSONAL.
+It declares `lots:read`, `statements:read`, and `config:read` — the frozen
+names. It is read-only relative to the journal: `journals:post` is not
+requested. Lot, wash, and lot-terms cites become an 8949-ish CSV plus
+companion sheets (`unclassified.csv`, `wash_cites.csv`, `lot_terms.csv`).
+Wash is a `WashRestatement` cite (code `W` + adjustment); the strike is
+not rewritten. Unset elections stay unset. No new `Method` / `Order` /
+`lot_method` variant. PERSONAL chrome is unchanged — `screensFor` is not
+forked. **a Personal tax-pack Connect app** is the Built phrase this
+amendment adds.
+
+**Holding-period category.** When acquisition dates agree, the threshold
+day is long-term (`the_threshold_day_is_long_term`). When they disagree
+— the average-cost pool leftover on
+[#9](https://github.com/mattmarshall/ratio/issues/9) — the category stays
+unset. The pack does not invent FIFO's oldest date or two Form 8949
+boxes. Those rows land on the unclassified companion with the ambiguity
+named. PR #154 may still be open; this amendment does not close #9.
+
+**What this is NOT:**
+
+- **Not token validation.** Connect access tokens are still not accepted
+  on `/v1`. `fetch_cites()` refuses. The authorizer is #151 / leftover
+  #22. This file does not close #150.
+- **Not IRS e-file, not a CPA portal, not MeF.** `submit()` refuses.
+  Live submission stays leftover on #166.
+- **Not a pooled holding-period category rule in the kernel.** Mixed
+  dates stay unset here; the engine leftover stays on #9.
+- **Not #150's read-only reference skeleton.** That leftover is
+  `books:read` + `statements:read` proving the door opens. This app
+  requests `lots:read` and `config:read` and does not open the door.
+- **Not a kernel RPC, not `ratio watch`, not Console product UI.**
+
+Nothing on the *Explicitly not building* list moved. Client portal, CRM,
+tax e-file, vendor portal, and waterfall stay Connect-apps or stay
+refused. This file does not close #166 — grant path, live CPA/IRS
+submission, and the #9 leftover remain. It does not close #165. It does
+not start #168. It does not close #9.
+
+**What a walk-through can and cannot show** (demo readiness, #27). It can
+show a fixture disposal mapping to an 8949 SHORT or LONG row, a mixed-date
+pool landing unclassified rather than inventing FIFO's oldest date, and
+`lot_method = "wash"` being rejected. It cannot show a Connect token
+opening a book, an IRS e-file, or a pooled holding-period category when
+dates disagree.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

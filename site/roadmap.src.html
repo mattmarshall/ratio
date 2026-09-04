@@ -216,7 +216,13 @@ __STYLE__
           entry when a sale carries <code>identified_lots</code>
           (unnamed refuses, not FIFO).
           It cannot show a pooled holding-period category (mixed
-          dates stay unset). Fund books
+          dates stay unset). A household
+          <a href="https://github.com/mattmarshall/ratio/tree/main/connect/tax-pack">tax-pack Connect app</a>
+          (<a href="https://github.com/mattmarshall/ratio/issues/166">#166</a>)
+          emits 8949-ish CSV from those lot and wash cites; mixed dates
+          stay unclassified rather than inventing FIFO's oldest date or
+          two boxes. It cannot show a Connect token opening a book, IRS
+          e-file, or a CPA portal. Fund books
           keep the operations surface. An Operating book cites a balance
           sheet, a period income statement, and a period cash-flow
           statement that tie to the trial
@@ -259,6 +265,9 @@ __STYLE__
           household rows to allowlisted Personal templates; live bank OAuth
           and a Connect token on <code>/v1</code> are leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/165">#165</a>.
+          A tax-pack Connect app scaffold emits 8949-ish CSV from lot and
+          wash cites; the grant path and IRS e-file are leftover on
+          <a href="https://github.com/mattmarshall/ratio/issues/166">#166</a>.
           What it still does not have is a client portal — and on the fund side it is
           still the exception queue, a difference at its own address, and
           whether a fund can close. Household budget envelopes, a project
@@ -464,7 +473,12 @@ __STYLE__
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/bank-feed">bank-feed Connect app</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/165">#165</a>)
       maps household rows to allowlisted Personal templates; the grant path
-      is not built, and live bank OAuth is leftover on that issue.</p>
+      is not built, and live bank OAuth is leftover on that issue. A
+      <a href="https://github.com/mattmarshall/ratio/tree/main/connect/tax-pack">tax-pack Connect app</a>
+      (<a href="https://github.com/mattmarshall/ratio/issues/166">#166</a>)
+      emits 8949-ish CSV from lot, wash, and lot-terms cites; mixed dates
+      stay unclassified, the grant path is not built, and IRS e-file is
+      refused.</p>
       <ul class="r-deliver">
         <li class="o">Custodian and administrator feed catalog</li>
         <li class="o">Market-data vendor coverage</li>

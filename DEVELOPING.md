@@ -46,6 +46,7 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//demo:rehearse_test`, `//demo:shadow_run_test` | the demo and the shadow run, end to end |
 | `//:connect_scopes_test` | PLAN, HANDOFF and `docs/connect-scopes.md` still name the same Connect grants and leftovers — not that a token is accepted |
 | `//connect/bank-feed:mapper_test` | Personal bank-feed mapper (#165): canonical scopes, empty-allowlist / closed-through / conservation refusals — not that a token is accepted |
+| `//connect/tax-pack:pack_test` | Personal tax-pack builder (#166): canonical scopes, 8949-ish CSV, mixed-date category refusal — not that a token is accepted and not an IRS e-file |
 | `//marketing:language_test` | the licensing language sweep |
 
 `paths-ignore` covers `site/**` and `**/*.md` only. `marketing/`, `paper/` and

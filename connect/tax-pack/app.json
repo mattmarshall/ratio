@@ -1,0 +1,33 @@
+{
+  "name": "Ratio tax pack",
+  "book_kind": "PERSONAL",
+  "issue": 166,
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "lots:read",
+      "statements:read",
+      "config:read"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read"
+    ]
+  },
+  "irs_submission": {
+    "status": "refused",
+    "note": "No IRS e-file, no CPA portal, no packing inside Ratio core. This app emits 8949-ish CSV from lot, wash, and lot-terms cites. Live submission stays leftover on #166 forever as a product door — it is not a kernel RPC."
+  },
+  "grant_path": {
+    "status": "not built",
+    "note": "Connect access tokens are not accepted on /v1. Token validation is #151 / leftover #22. This file does not close #150 or #166."
+  },
+  "pooled_holding_period": {
+    "status": "refuses invented category",
+    "note": "When acquisition dates on a pooled holding disagree, the pack leaves the category unset. It does not invent FIFO's oldest date or two Form 8949 boxes. #9 leftover; PR #154 may still be open. This file does not close #9."
+  }
+}

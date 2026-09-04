@@ -111,6 +111,12 @@ BUILT=(
   # built. The sentence it matches is in the 2026-09-04 console-cite
   # amendment.
   "the console cites the MinTax, SpecID, and average-cost elections"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The Personal tax-pack Connect app is not on the refusal list —
+  # tax e-file stays refused; this is the product door the catalog
+  # already named. The sentence it matches is in the 2026-09-04
+  # tax-pack amendment.
+  "a Personal tax-pack Connect app"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
