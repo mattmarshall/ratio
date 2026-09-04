@@ -895,8 +895,9 @@ or `sidepocket:*`.
   the `scoped` path. Connect tokens accepted with catalog scopes on
   `/v1` (frozen names only; aliases and hard non-scopes refused).
   Leftover on #22: `RATIO_DEMO_OPEN` on the shared demo, unused
-  Cognito CloudFormation resources, live provider OAuth. This file
-  leaves #22 open for those leftovers.
+  Cognito CloudFormation resources, the API Gateway JWT authorizer
+  still proving only the AuthKit session issuer, and live provider
+  OAuth. This file leaves #22 open for those leftovers.
 - ⚠ **A period-close walk-through (#114 / #27).** It can show a book period
   closed against a named view, journal prefix and configuration digest,
   with actor and time; a back-dated posting into that period refused;

@@ -3310,10 +3310,14 @@ this amendment adds.
   still grants any AuthKit session every fund. Isolation holds on
   the `scoped` path in CI.
 - **Not removing unused Cognito CloudFormation resources.**
-- **Not live provider OAuth** for bank, calendar, or a licensed AIA
-  PDF. First-party Connect scaffolds still refuse `fetch` / `deliver`
-  until those leftovers move. This amendment does not finish
-  issue 22.
+- **Not a second API Gateway issuer.** The HTTP API JWT authorizer
+  still proves the AuthKit session `iss` / `aud`. A Connect token
+  minted at the AuthKit domain is refused at the edge. In-process,
+  verified Connect claims with catalog scopes are accepted. Live
+  provider OAuth (bank, calendar) and a licensed AIA PDF stay
+  leftover. First-party Connect scaffolds still refuse `fetch` /
+  `deliver` until those leftovers move. This amendment does not
+  finish issue 22.
 - **Not the `journals:post` allowlist** keyed by `client_id`. Empty
   still refuses every post at the app; the kernel map stays on #150.
 - **Not reserved RPCs** (`webhooks:journal`, `nav:strike` as a write,
