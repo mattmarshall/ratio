@@ -346,7 +346,7 @@ class ManifestHonesty(unittest.TestCase):
         text = CATALOG.read_text()
         self.assertIn("`journals:post`", text)
         self.assertIn("`journal:append`", text)
-        self.assertIn("grant path is not built", text)
+        self.assertIn("leftover #22", text)
 
 
 if __name__ == "__main__":

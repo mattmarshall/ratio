@@ -394,7 +394,7 @@ class ManifestHonesty(unittest.TestCase):
         text = CATALOG.read_text()
         for scope in p.CANONICAL_SCOPES:
             self.assertIn(f"`{scope}`", text)
-        self.assertIn("grant path is not built", text)
+        self.assertIn("leftover #22", text)
         self.assertIn("tax e-file", text)
 
     def test_lot_term_field_names_are_the_ones_ruleset_already_stores(self):

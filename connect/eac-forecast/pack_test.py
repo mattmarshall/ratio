@@ -465,7 +465,7 @@ class ManifestHonesty(unittest.TestCase):
         for scope in p.CANONICAL_SCOPES:
             self.assertIn(f"`{scope}`", text)
         self.assertIn("`journal:append`", text)
-        self.assertIn("grant path is not built", text)
+        self.assertIn("leftover #22", text)
         self.assertIn("Not EAC, not a forecast", text)
 
     def test_project_term_field_names_are_the_ones_ruleset_already_stores(self):

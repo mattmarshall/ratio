@@ -444,7 +444,7 @@ class ManifestHonesty(unittest.TestCase):
             self.assertIn(f"`{scope}`", text)
         self.assertIn("`journal:append`", text)
         self.assertIn("`projects:billing:read`", text)
-        self.assertIn("grant path is not built", text)
+        self.assertIn("leftover #22", text)
         self.assertIn("vendor portal", text)
 
     def test_screens_for_project_was_not_forked_with_a_vendor_portal_url(self):

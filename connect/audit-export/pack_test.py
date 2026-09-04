@@ -545,7 +545,7 @@ class ManifestHonesty(unittest.TestCase):
         for scope in p.CANONICAL_SCOPES:
             self.assertIn(f"`{scope}`", text)
         self.assertIn("`journal:read`", text)
-        self.assertIn("grant path is not built", text)
+        self.assertIn("leftover #22", text)
         self.assertIn("audit:export", text)
 
     def test_config_pin_field_names_are_the_ones_ruleset_already_stores(self):

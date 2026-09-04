@@ -563,7 +563,7 @@ class ManifestHonesty(unittest.TestCase):
         self.assertIn("`journal:append`", text)
         self.assertIn("`projects:budget:read`", text)
         self.assertIn("`projects:billing:read`", text)
-        self.assertIn("grant path is not built", text)
+        self.assertIn("leftover #22", text)
         self.assertIn("An `org_id` claim is not membership", text)
 
     def test_project_term_field_names_are_the_ones_ruleset_already_stores(self):

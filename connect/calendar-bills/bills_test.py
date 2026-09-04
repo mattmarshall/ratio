@@ -399,7 +399,7 @@ class ManifestHonesty(unittest.TestCase):
         self.assertIn("`journals:post`", text)
         self.assertIn("`journal:append`", text)
         self.assertIn("`statements:read`", text)
-        self.assertIn("grant path is not built", text)
+        self.assertIn("leftover #22", text)
 
     def test_screens_for_personal_was_not_forked_with_a_bills_url(self):
         if SCREENS is None or not SCREENS.is_file():
