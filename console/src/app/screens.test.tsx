@@ -56,7 +56,13 @@ import type { Rule } from "@/wire/types";
 
 vi.mock("@/lib/caller", () => ({
   caller: async () => ({ idToken: null }),
-  principal: async () => ({ sub: "u-1", email: "e.marsh@example.com" }),
+  principal: async () => ({
+    sub: "u-1",
+    email: "e.marsh@example.com",
+    profilePictureUrl: null,
+    firstName: null,
+    lastName: null,
+  }),
 }));
 
 vi.mock("next/headers", () => ({
@@ -320,7 +326,13 @@ describe("a first-class book", () => {
     expect(screen.getByRole("link", { name: "Configuration" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Transfer between accounts" })).toBeDefined();
     expect(screen.getByText(/Net worth/)).toBeDefined();
-    expect(screen.getByText("unset — [personal] budget on the configuration")).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "set one on Configuration" }).getAttribute("href"),
+    ).toBe("/books/household/config");
+    expect(document.querySelectorAll(".placegroup").length).toBe(2);
+    expect(document.querySelector(".places-hub")).not.toBeNull();
+    expect(document.querySelector(".hubfacts")).not.toBeNull();
+    expect(screen.getAllByRole("heading", { name: "Household" })).toHaveLength(1);
     // ⛔ THE LABEL IS NOT THE PRODUCT. A personal hub that still offered
     // Exceptions / Positions / NAV would be fund-ops screens with a household
     // name on them — issue #65.
@@ -5200,6 +5212,9 @@ describe("sign-in", () => {
     await renderAsync(Who());
     expect(screen.getByText("e.marsh@example.com")).toBeDefined();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeDefined();
+    // No photo on this mock — initials, never a invented URL.
+    expect(document.querySelector("img.avatar")).toBeNull();
+    expect(document.querySelector("span.avatar")?.textContent).toBe("EM");
   });
 });
 

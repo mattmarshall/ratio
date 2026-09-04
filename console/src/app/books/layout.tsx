@@ -6,6 +6,7 @@ import { Palette } from "@/components/Palette";
 import { Who } from "@/components/Who";
 import { Unavailable } from "@/components/Unavailable";
 import { books as booksForRequest, funds as fundsForRequest } from "@/lib/data";
+import { listedCrumb } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export default async function BooksLayout({
   }
   const books = booksRead.value;
   const funds = fundsRead.value;
+  const crumb = listedCrumb("Books", books.length);
 
   return (
     <Palette funds={funds}>
@@ -41,7 +43,13 @@ export default async function BooksLayout({
             <Brand />
           </Link>
           <span className="crumb">
-            Books <span aria-hidden="true">/</span> <b>{books.length}</b>
+            {crumb.n === null ? (
+              crumb.noun
+            ) : (
+              <>
+                {crumb.noun} <span aria-hidden="true">/</span> <b>{crumb.n}</b>
+              </>
+            )}
           </span>
           <span className="spacer" />
           <Link href="/funds" className="crumb">

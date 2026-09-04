@@ -1,3 +1,4 @@
+import { Avatar, initialsOf } from "@/components/Avatar";
 import { principal } from "@/lib/caller";
 
 /** The signed-in person, and the way out.
@@ -8,9 +9,10 @@ import { principal } from "@/lib/caller";
 export async function Who() {
   const me = await principal();
   const label = me ? me.email || me.sub : "Operator";
+  const picture = me?.profilePictureUrl ?? null;
   return (
     <span className="who">
-      <span className="avatar">{label.slice(0, 2).toUpperCase()}</span>
+      <Avatar src={picture} initials={me ? initialsOf(me) : "OP"} />
       {/* Wrapped so a phone can drop the words while keeping the avatar — and
           so a long email shrinks to an ellipsis instead of widening the header. */}
       <span className="wholabel">{label}</span>

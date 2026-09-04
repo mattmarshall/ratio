@@ -182,6 +182,23 @@ describe("PlaceHead", () => {
     expect(screen.queryByRole("heading", { name: "Period close" })).toBeNull();
   });
 
+  it("does not title the book hub — the page already does", () => {
+    segments.current = [];
+    const { container } = render(
+      <PlaceHead
+        fund="household"
+        displayName="Household"
+        views={views}
+        defaultView="book"
+        identity="crumb"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(container.querySelector(".qhead")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Household" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Household" })).toBeNull();
+  });
+
   it("titles billing on a project figure page", () => {
     segments.current = ["views", "book", "billing"];
     render(

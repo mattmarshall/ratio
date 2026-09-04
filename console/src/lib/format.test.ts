@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { elapsed, nanos, reads } from "./format";
+import { elapsed, listedCrumb, nanos, reads } from "./format";
 
 // The three formatters that carry the plan screen's one load-bearing
 // distinction: a figure nothing produced is NOT a figure of zero.
@@ -44,6 +44,13 @@ describe("a count of reads", () => {
     expect(reads("")).toBe("—");
     expect(reads("0")).toBe("0");
     expect(reads("252843")).toBe("252,843");
+  });
+});
+
+describe("the collection crumb", () => {
+  it("names how many the list returned, and does not print / 0 over none", () => {
+    expect(listedCrumb("Books", 5)).toEqual({ noun: "Books", n: "5" });
+    expect(listedCrumb("Books", 0)).toEqual({ noun: "Books", n: null });
   });
 });
 

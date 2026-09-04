@@ -46,6 +46,12 @@ export function PlaceHead({
         ? displayName
         : null;
 
+  // Hub (`identity="crumb"`, no place): the page already titles the book.
+  // Rendering this qhead too was Household-the-crumb on Household-the-h1.
+  if (!title && identity === "crumb" && !underView) {
+    return null;
+  }
+
   return (
     <div className="qhead">
       <Link href={`/books/${fund}`} className="bookcrumb">

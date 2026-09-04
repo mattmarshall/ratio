@@ -48,7 +48,7 @@ export default async function BookPage({
           {b.organization ? <span>org {b.organization}</span> : null}
         </div>
       </div>
-      <dl className="kv">
+      <dl className="kv hubfacts">
         <dt>Entries</dt>
         <dd className="num">{count(b.entryCount)}</dd>
         <dt>Trial balance</dt>
@@ -69,7 +69,14 @@ export default async function BookPage({
           <>
             <dt>Budget</dt>
             <dd className="num">
-              {b.budget ? money(b.budget) : "unset — [project] budget on the configuration"}
+              {b.budget ? (
+                money(b.budget)
+              ) : (
+                <>
+                  unset —{" "}
+                  <Link href={`/books/${book}/config`}>set one on Configuration</Link>
+                </>
+              )}
             </dd>
           </>
         ) : null}
@@ -77,35 +84,44 @@ export default async function BookPage({
           <>
             <dt>Budget</dt>
             <dd className="num">
-              {b.budget
-                ? money(b.budget)
-                : "unset — [personal] budget on the configuration"}
+              {b.budget ? (
+                money(b.budget)
+              ) : (
+                <>
+                  unset —{" "}
+                  <Link href={`/books/${book}/config`}>set one on Configuration</Link>
+                </>
+              )}
             </dd>
           </>
         ) : null}
       </dl>
       <nav className="places places-hub" aria-label="Places">
-        {SCREEN_GROUPS.map((g) => (
-          <div key={g.id} className="placegroup">
-            <span className="placehead">{g.label}</span>
-            {places.filter((s) => s.group === g.id).map((s) => {
-              const href =
-                s.scoped && !b.defaultView
-                  ? undefined
-                  : screenHref(book, b.defaultView, s, "books");
-              return href ? (
-                <Link key={s.segment} href={href}>
-                  {s.label}
-                </Link>
-              ) : (
-                <span key={s.segment} className="placeoff">
-                  {s.label}
-                  <small>needs a book of record</small>
-                </span>
-              );
-            })}
-          </div>
-        ))}
+        {SCREEN_GROUPS.map((g) => {
+          const items = places.filter((s) => s.group === g.id);
+          if (!items.length) return null;
+          return (
+            <div key={g.id} className="placegroup">
+              <span className="placehead">{g.label}</span>
+              {items.map((s) => {
+                const href =
+                  s.scoped && !b.defaultView
+                    ? undefined
+                    : screenHref(book, b.defaultView, s, "books");
+                return href ? (
+                  <Link key={s.segment} href={href}>
+                    {s.label}
+                  </Link>
+                ) : (
+                  <span key={s.segment} className="placeoff">
+                    {s.label}
+                    <small>needs a book of record</small>
+                  </span>
+                );
+              })}
+            </div>
+          );
+        })}
       </nav>
       {personal && b.defaultView ? (
         <p className="note">
