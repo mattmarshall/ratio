@@ -1,0 +1,55 @@
+{
+  "name": "Ratio audit evidence pack",
+  "book_kind": null,
+  "issue": 185,
+  "kind_note": "Kind-aware cites, not a chrome fork. Closes, journal prefix, and config digests apply to every kind. NAV strikes and breaks stay unset on Personal / Project / Operating (fund-ops chrome). UNSPECIFIED is the proto default, not a fifth kind.",
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "audit:export",
+      "closes:read",
+      "breaks:read",
+      "breaks:explain",
+      "nav:read",
+      "journals:read",
+      "config:read",
+      "books:read"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read"
+    ]
+  },
+  "journals_post_allowlist": {
+    "client_id": "client_ratio_audit_export",
+    "templates": []
+  },
+  "period_close": {
+    "status": "cited",
+    "note": "ListPeriodCloses / GetPeriodClose already expose closed-through, journal prefix, journal digest, and config digest. This app copies those cites. It does not replace ratio close. An empty digest is unset, not history-intact."
+  },
+  "nav_strikes": {
+    "status": "cited",
+    "note": "NavStrike already pins journal_position, journal_digest, config_digest, and net_asset_value. WashRestatement cites the strike and does not rewrite it. A missing strike is unset, not NAV 0.00. Empty digest is unset, not reproduced."
+  },
+  "breaks": {
+    "status": "cited",
+    "note": "Break and BreakExplanation are already on the book. A missing BreakReport is unset — not a silent reconciled-empty file. A cited report with no lines is cited-empty (the period reconciled). breaks:explain reads a person-attributed explanation; this app does not invent one."
+  },
+  "blob_store": {
+    "status": "refused",
+    "note": "No kernel blob store. The pack is a ZIP of cites, assembled here. It does not mutate the journal and it does not replace period close."
+  },
+  "lp_portal": {
+    "status": "refused",
+    "note": "No LP portal, no e-sign, no second journal. Those stay Connect leftovers on #161 / #150. This file does not start them."
+  },
+  "grant_path": {
+    "status": "not built",
+    "note": "Connect access tokens are not accepted on /v1. Accepting Connect scopes is leftover #22 / #150. Write-route actor binding landed (#151). This file does not close #22, #150, or #185. It does not reopen #151."
+  }
+}

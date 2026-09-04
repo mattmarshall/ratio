@@ -3069,6 +3069,76 @@ being rejected as a scope, and payroll / envelope kinds being refused.
 It cannot show a Connect token opening a book, a live bank or calendar
 login, envelope coaching, payroll, or a posting that reached `/v1`.
 
+### Amendment, 2026-09-04 — an audit-export Connect app, and the grant path still does not open
+
+[#185](https://github.com/mattmarshall/ratio/issues/185) asked for an
+audit evidence ZIP of period closes, NAV strikes, break reports /
+explanations, and digests without a kernel blob store and without
+replacing period close. The catalog already reserved `audit:export`
+as a read of cites. What landed is that app as a sibling tree, not
+a kernel method and not a `screensFor` fork.
+
+**What this amendment records.** [`connect/audit-export/`](connect/audit-export/)
+is a first-party WorkOS Connect OAuth application. It declares
+`audit:export`, `closes:read`, `breaks:read`, `breaks:explain`,
+`nav:read`, `journals:read`, `config:read`, and `books:read` — the
+frozen names, not the catalog aliases `journal:read` /
+`journal:append`. It is read-only relative to the journal:
+`journals:post` is not requested. The empty allowlist refuses every
+post. Pack contents are kernel cites already on the book
+(`PeriodClose`, `NavStrike`, `Break` / `BreakExplanation`, the
+`journals:read` prefix, the `config:read` RuleSet pin). Unset stays
+unset. A missing cite is named in the pack manifest, not a silent
+empty file that looks complete. An empty journal digest is unset,
+not history-intact. A missing NAV strike is unset, not NAV 0.00.
+A missing `BreakReport` is unset, not a silent reconciled-empty
+file. A cited report with no lines is cited-empty — the kernel's
+"the period reconciled", and the manifest says so. A posted
+`"0.00"` is a real zero. `books:read` membership; an `org_id`
+claim is not membership. Kind-aware cites, not a chrome fork:
+closes and digests apply to every kind; NAV strikes and breaks stay
+unset on kinds that do not wear fund-ops. No new `Method` /
+`Order` / `lot_method` variant. No blob store, no period-close
+replacement, no LP portal, no e-sign, no second journal.
+**an audit-export Connect app** is the Built phrase this amendment
+adds.
+
+**What this is NOT:**
+
+- **Not a Connect authorizer.** Connect access tokens are still not
+  accepted on `/v1`. `fetch_cites()` and `deliver()` refuse. Write-route
+  actor binding landed (#151). Accepting Connect scopes is leftover
+  #22 / #150. This file does not close #22. It does not reopen #151.
+- **Not a live ZIP against `/v1`.** Unit tests assert the refuse and
+  the pack shape from fixtures. A green cite is not a live token.
+- **Not a kernel blob store, not `ratio close`.** `store_blob()` and
+  `close_period()` refuse. Period close stays a person at a terminal.
+- **Not #161 (LP portal), not e-sign, not a second journal.**
+  `lp_portal()`, `esign()`, and `second_journal()` refuse.
+- **Not #150's read-only reference skeleton.** That leftover is
+  `books:read` + `statements:read` proving the door opens. This app
+  requests `audit:export` and the read scopes above and does not
+  open the door.
+- **Not a kernel RPC, not `ratio watch`, not Console product UI.**
+  `/close`, `/asof`, Exceptions, and NAV strikes stay the core cites.
+
+Nothing on the *Explicitly not building* list moved. Client portal,
+CRM, tax e-file, vendor portal, AIA G702 product UI, and waterfall
+stay Connect-apps or stay refused. This file does not close #185 —
+grant path (leftover #22) and live ZIP delivery remain. It does not
+close #161, #165, #166, #168, #169, #172, #184, or #179. It does
+not close #150. It does not close #22. It does not reopen #151.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a fixture `PeriodClose` mapping to `closes.csv`, a
+`NavStrike` mapping to `strikes.csv` without rewriting a
+`WashRestatement`, a missing cite leaving that sheet out of the ZIP
+and naming the gap on `unset.csv`, an empty digest staying unset
+rather than history-intact, and `journal:read` being rejected as a
+scope. It cannot show a Connect token opening a book, a live ZIP
+against `/v1`, a kernel blob store, a period-close replacement, an
+LP portal, or e-sign.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

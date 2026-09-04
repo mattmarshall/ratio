@@ -47,6 +47,12 @@ material and read statements; they do not invent envelopes or
 payroll, and they do not grow a kernel RPC. That does not close
 #163 (grant path leftover #22 and live bank / calendar OAuth
 remain). It does not reopen #164.
+The audit-export Connect app (`connect/audit-export/`, #185)
+packages cited period closes, NAV strikes, break reports /
+explanations, and config / journal digests as a ZIP; a missing
+cite stays unset in the manifest, never a silent empty file or
+empty-digest-as-success. That does not close #185 (grant path
+leftover #22 and live ZIP delivery remain).
 Equalization, drip, and side-pocket stay Connect (#177) — a
 PLAN decision, not a landing. None of the three changes
 conservation or journal integrity; do not implement them as
@@ -1168,6 +1174,7 @@ than one that is entirely unclassified.
 | `connect/program-rollup/` | First-party Connect app for Project multi-contract / program roll-up ([#179](https://github.com/mattmarshall/ratio/issues/179)). CSV / JSON from per-book `/budget` + `/billing` cites across PROJECT books the subject can see (`books:read` membership; an `org_id` claim is not membership). Program totals sum only set cites — never a silent billed / collected 0.00 for a book that lacks the cite. Read-only: no `journals:post`. No mega-book, no fifth kind, no `screensFor` fork. Grant path leftover #22. Does not close #179. Does not close #169, #172, or #184. Does not reopen #151 |
 | `connect/bank-balance-predictor/` | First-party Connect app for Personal bank-balance predictors ([#163](https://github.com/mattmarshall/ratio/issues/163)). Maps predicted movements (or a predicted ending balance against cited cash) onto allowlisted `forecast_income` / `forecast_spend`. Unset cited cash is not a silent 0.00 baseline. Closed-through and empty-allowlist refuse. `journal:append` is an alias. Payroll / envelope kinds refuse. Grant path leftover #22; live bank OAuth leftover. Does not close #163. Does not reopen #164. Does not redo #218 |
 | `connect/calendar-bills/` | First-party Connect app for Personal calendar bills sync ([#163](https://github.com/mattmarshall/ratio/issues/163)). Maps dated occurrences onto allowlisted `scheduled_income` / `scheduled_spend`. Recurrence stays in the calendar — an `rrule` is refused rather than expanded. Closed-through and empty-allowlist refuse. `journal:append` is an alias. Payroll / envelope kinds refuse. Grant path leftover #22; live calendar OAuth leftover. Does not close #163. Does not reopen #164. Does not redo #218 |
+| `connect/audit-export/` | First-party Connect app for an audit evidence ZIP ([#185](https://github.com/mattmarshall/ratio/issues/185)). Cites `PeriodClose`, `NavStrike`, `Break` / `BreakExplanation`, and config / journal digests already on the book. Missing cites stay unset in the manifest — never a silent empty file, a NAV 0.00, or an empty-digest-as-success. Read-only: no `journals:post`. No kernel blob store, no period-close replacement, no LP portal, no e-sign, no second journal. Grant path leftover #22. Does not close #185. Does not close #22 or #150. Does not reopen #151 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.

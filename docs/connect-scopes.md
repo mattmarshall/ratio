@@ -77,7 +77,7 @@ the grant for when that door exists; it does not mint the RPC.
 | `breaks:explain` | Person-attributed explanations | `Mark` / accept | The explainer is a person; a Connect app attributes, it does not invent |
 | `closes:read` | Close records, closed-through day | `ListPeriodCloses` / `GetPeriodClose` | Not `ratio close` — that stays a person at a terminal |
 | `config:read` | RuleSet / lot-terms cites, config digests | configuration screens | Not an editor |
-| `audit:export` | Evidence pack | not built | A pack is a read of cites, not a rewrite |
+| `audit:export` | Evidence pack | Connect scaffold (`connect/audit-export/`); grant path leftover #22 | A pack is a read of cites, not a rewrite |
 | `deliveries:write` | Fact-plane deliveries | `Ingest` | High trust; same membership door |
 | `facts:admit` | Admit facts | `Admit` | High trust; provenance stays required |
 | `webhooks:journal` | Subscribe to append / close events | not built | Not a second journal |
@@ -251,9 +251,20 @@ open:
    not this leftover either: they request `journals:post` for
    allowlisted `forecast_*` / `scheduled_*` templates, they do not
    open the grant path, and this file still does not close #163.
-5. **`webhooks:journal`, `audit:export`, `nav:strike` as a write RPC** —
-   reserved scopes; the surfaces are not built.
+   A first-party audit-export scaffold lives at
+   `connect/audit-export/`
+   ([#185](https://github.com/mattmarshall/ratio/issues/185)). It is
+   not this leftover either: it requests `audit:export` plus
+   `closes:read`, `breaks:read`, `breaks:explain`, `nav:read`,
+   `journals:read`, `config:read`, and `books:read`, it is a read
+   of cites (not a write RPC and not a kernel blob store), it does
+   not open the grant path, and this file still does not close
+   #185.
+5. **`webhooks:journal`, `nav:strike` as a write RPC** —
+   reserved scopes; the surfaces are not built. `audit:export` has
+   a first-party scaffold at `connect/audit-export/` (#185); that
+   is a ZIP of cites, not a write RPC, and it does not close #185.
 
 This file does not close #150. Nothing here closes #5 (console wash
 flag), #9 (lot-relief UI cites / pooled holding-period leftover),
-#22, #163, #166, #168, #169, #172, #184, or #179.
+#22, #163, #166, #168, #169, #172, #184, #179, or #185.
