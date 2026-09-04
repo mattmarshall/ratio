@@ -80,8 +80,15 @@ GetView (`nav_gate`, the same `blocking_at` fold the badge already
 reads) and on the fund overview / view chrome — never a bare HTTP
 400. Unpriced stays empty on that field unless a valuation date
 was named; the mark ticket cites unpriced when a date is. No new
-gate semantics. This file closes #188. It does not close #26,
-#186, or #157. #159 stays blocked.
+gate semantics. This file closes #188. It does not close #26.
+#159 stays blocked.
+Point-in-time / restatement reporting stays citeable (#186):
+console `/asof` browses a pinned prefix + config digest from a
+close or a strike, and WashRestatement as a citeable record
+(cites the strike, does not rewrite `net_asset_value`). `now`
+leaves digest and config unset — the head is not a pin. Empty
+is unset, not a silent 0.00. This file closes #186. It does
+not close #26.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 
@@ -307,8 +314,11 @@ or `sidepocket:*`.
   break, unpriced, unresolved trade — via `withRefusal` / `NavGateCite`, not a
   bare HTTP 400. Unpriced stays empty on that field unless a valuation date
   was named. `the_nav_gate_on_the_fund_is_the_same_fold_as_blocking_at`
-  holds the wire to the fold. This closes #188. It does not close #26,
-  #186, or #157.
+  holds the wire to the fold. This closes #188. It does not close #26.
+  `/asof` (#186) cites a pinned prefix + digest on a close or a
+  strike, and WashRestatement when a later wash moved the realized
+  gain — the struck figure is not rewritten. Unset stays unset.
+  This closes #186. It does not close #26.
 - ⛔ **AN EXPLANATION IS KEYED BY THE BREAK'S ID WITHIN ITS BOOK, NOT BY THE
   RESOURCE NAME.** The fund half of `funds/{fund}/breaks/{id}` says how the book
   is being SERVED — the same directory is `demo` on loopback and

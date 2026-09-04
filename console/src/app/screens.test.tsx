@@ -313,6 +313,7 @@ describe("a first-class book", () => {
     expect(screen.getByRole("link", { name: "Net-worth bridge" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Cash flow" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Period close" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "As-of" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Budget vs actual" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Loan schedule" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
@@ -352,6 +353,9 @@ describe("a first-class book", () => {
       expect(
         screen.getByRole("link", { name: "Period close" }).getAttribute("href"),
       ).toBe("/books/bridge/views/book/close");
+      expect(
+        screen.getByRole("link", { name: "As-of" }).getAttribute("href"),
+      ).toBe("/books/bridge/views/book/asof");
       expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
       expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
       expect(screen.queryByRole("link", { name: "Positions" })).toBeNull();
@@ -384,6 +388,9 @@ describe("a first-class book", () => {
       expect(
         screen.getByRole("link", { name: "Period close" }).getAttribute("href"),
       ).toBe("/books/studio/views/book/close");
+      expect(
+        screen.getByRole("link", { name: "As-of" }).getAttribute("href"),
+      ).toBe("/books/studio/views/book/asof");
       expect(
         screen.getByRole("link", { name: "AR/AP aging" }).getAttribute("href"),
       ).toBe("/books/studio/views/book/aging");
@@ -421,6 +428,9 @@ describe("a first-class book", () => {
       expect(
         screen.getByRole("link", { name: "Period close" }).getAttribute("href"),
       ).toBe("/books/harbourline-global-value/views/abor/close");
+      expect(
+        screen.getByRole("link", { name: "As-of" }).getAttribute("href"),
+      ).toBe("/books/harbourline-global-value/views/abor/asof");
       expect(screen.getByRole("link", { name: /^NAV$/ })).toBeDefined();
       expect(screen.getByRole("link", { name: "Exceptions" })).toBeDefined();
       expect(screen.getByRole("link", { name: "Positions" })).toBeDefined();
@@ -1779,6 +1789,9 @@ describe("a first-class book", () => {
     expect(screen.getByRole("link", { name: "Period close" }).getAttribute("href")).toBe(
       "/books/household/views/book/close",
     );
+    expect(screen.getByRole("link", { name: "As-of" }).getAttribute("href")).toBe(
+      "/books/household/views/book/asof",
+    );
     const trial = screen.getByRole("link", { name: "Trial balance" });
     expect(trial.getAttribute("href")).toBe(
       "/books/household/views/book/accounts",
@@ -3107,6 +3120,9 @@ describe("a first-class book", () => {
     );
     expect(screen.getByRole("link", { name: "Period close" }).getAttribute("href")).toBe(
       "/books/household/views/hearth/close",
+    );
+    expect(screen.getByRole("link", { name: "As-of" }).getAttribute("href")).toBe(
+      "/books/household/views/hearth/asof",
     );
     expect(screen.queryByRole("link", { name: "Exceptions" })).toBeNull();
     expect(screen.queryByRole("link", { name: "NAV" })).toBeNull();
@@ -5016,6 +5032,161 @@ describe("a refusal", () => {
       );
     } finally {
       wire.getView = real;
+    }
+  });
+});
+
+describe("a point-in-time / restatement browser", () => {
+  const close = {
+    name: "funds/harbourline-global-value/views/abor/periodCloses/2026-03-31",
+    view: "abor",
+    closedDate: { year: 2026, month: 3, day: 31 },
+    journalPosition: "3",
+    journalDigest: "abcd1234deadbeef",
+    configDigest: "9f2c1ab7de40551c",
+    closingEntry: "c1",
+    actor: "e.marsh",
+    createTime: "2026-03-31T18:00:00Z",
+    equityDestination: "25",
+    surplus: "100",
+  };
+
+  it("leaves digest and config unset on the maintained fold", async () => {
+    const Asof = (await import("./books/[book]/views/[view]/asof/page")).default;
+    const realCloses = wire.listPeriodCloses;
+    const realStrikes = wire.listNavStrikes;
+    wire.listPeriodCloses = (async () => ({
+      periodCloses: [],
+      nextPageToken: "",
+    })) as typeof wire.listPeriodCloses;
+    wire.listNavStrikes = (async () => ({
+      navStrikes: [],
+      nextPageToken: "",
+    })) as typeof wire.listNavStrikes;
+    try {
+      await renderAsync(
+        Asof({
+          params: params({ book: FUND, view: VIEW }),
+          searchParams: params({ period: "2026-03", pin: "now" }),
+        }),
+      );
+      expect(screen.getByLabelText("Point in time")).toBeDefined();
+      expect(screen.getByText("unset — no pinned digest")).toBeDefined();
+      expect(screen.getAllByText("unset — no pinned config").length).toBeGreaterThan(0);
+      expect(screen.getByText("Unset — no wash restatement")).toBeDefined();
+      expect(
+        screen.getAllByText(/does not rewrite the struck figure/).length,
+      ).toBeGreaterThan(0);
+      expect(screen.queryByText("0.00")).toBeNull();
+    } finally {
+      wire.listPeriodCloses = realCloses;
+      wire.listNavStrikes = realStrikes;
+    }
+  });
+
+  it("does not invent a prefix when the journal is empty", async () => {
+    const Asof = (await import("./books/[book]/views/[view]/asof/page")).default;
+    const realView = wire.getView;
+    const realCloses = wire.listPeriodCloses;
+    const realStrikes = wire.listNavStrikes;
+    wire.getView = (async () => ({
+      ...viewFixture,
+      journalPosition: "0",
+    })) as typeof wire.getView;
+    wire.listPeriodCloses = (async () => ({
+      periodCloses: [],
+      nextPageToken: "",
+    })) as typeof wire.listPeriodCloses;
+    wire.listNavStrikes = (async () => ({
+      navStrikes: [],
+      nextPageToken: "",
+    })) as typeof wire.listNavStrikes;
+    try {
+      await renderAsync(
+        Asof({
+          params: params({ book: FUND, view: "empty-asof" }),
+          searchParams: params({ period: "2026-03", pin: "now" }),
+        }),
+      );
+      expect(screen.getAllByText("unset — no pinned prefix").length).toBeGreaterThan(0);
+      expect(screen.getByText("unset — no pinned digest")).toBeDefined();
+      expect(screen.getAllByText("unset — no pinned config").length).toBeGreaterThan(0);
+      expect(screen.queryByText("0.00")).toBeNull();
+    } finally {
+      wire.getView = realView;
+      wire.listPeriodCloses = realCloses;
+      wire.listNavStrikes = realStrikes;
+    }
+  });
+
+  it("cites a close's pinned prefix and digest", async () => {
+    const Asof = (await import("./books/[book]/views/[view]/asof/page")).default;
+    const realCloses = wire.listPeriodCloses;
+    const realStrikes = wire.listNavStrikes;
+    wire.listPeriodCloses = (async () => ({
+      periodCloses: [close],
+      nextPageToken: "",
+    })) as typeof wire.listPeriodCloses;
+    wire.listNavStrikes = (async () => ({
+      navStrikes: [],
+      nextPageToken: "",
+    })) as typeof wire.listNavStrikes;
+    try {
+      await renderAsync(
+        Asof({
+          params: params({ book: FUND, view: VIEW }),
+          searchParams: params({ period: "2026-03", pin: "close:2026-03-31" }),
+        }),
+      );
+      expect(screen.getByText("3 entries this figure folded")).toBeDefined();
+      expect(screen.getByText("abcd1234dead")).toBeDefined();
+      expect(screen.getByText("9f2c1ab")).toBeDefined();
+      expect(screen.queryByText("unset — no pinned digest")).toBeNull();
+      expect(screen.getByText("Unset — no wash restatement")).toBeDefined();
+    } finally {
+      wire.listPeriodCloses = realCloses;
+      wire.listNavStrikes = realStrikes;
+    }
+  });
+
+  it("cites a WashRestatement without rewriting the struck NAV", async () => {
+    const Asof = (await import("./books/[book]/views/[view]/asof/page")).default;
+    const realCloses = wire.listPeriodCloses;
+    const realStrikes = wire.listNavStrikes;
+    const struck = {
+      ...navStrikesFixture.navStrikes[0]!,
+      washQualified: true,
+      washRestatementOriginal: "1000",
+      washRestatementMoved: "600",
+    };
+    wire.listPeriodCloses = (async () => ({
+      periodCloses: [],
+      nextPageToken: "",
+    })) as typeof wire.listPeriodCloses;
+    wire.listNavStrikes = (async () => ({
+      navStrikes: [struck],
+      nextPageToken: "",
+    })) as typeof wire.listNavStrikes;
+    try {
+      await renderAsync(
+        Asof({
+          params: params({ book: FUND, view: VIEW }),
+          searchParams: params({ period: "2026-02", pin: "strike:2026-02-26" }),
+        }),
+      );
+      expect(screen.getByText("WashRestatement cites this strike")).toBeDefined();
+      expect(screen.getByText(/the struck figure is not rewritten/)).toBeDefined();
+      expect(screen.getByText("-10.00 → -6.00")).toBeDefined();
+      expect(screen.getByText("4b81d0c7aa19")).toBeDefined();
+      expect(screen.getByText("6 entries this figure folded")).toBeDefined();
+      expect(screen.queryByText("Unset — no wash restatement")).toBeNull();
+      // ⛔ THE STRUCK NAV IS NOT ON THIS PAGE AS A REWRITTEN FIGURE.
+      // 13,443,918,751.00 would be the strike; this page cites the
+      // restatement, not a second NAV.
+      expect(screen.queryByText("13,443,918,751.00")).toBeNull();
+    } finally {
+      wire.listPeriodCloses = realCloses;
+      wire.listNavStrikes = realStrikes;
     }
   });
 });

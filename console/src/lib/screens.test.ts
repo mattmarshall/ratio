@@ -18,6 +18,7 @@ describe("screensFor", () => {
     expect(labels).toContain("Net-worth bridge");
     expect(labels).toContain("Cash flow");
     expect(labels).toContain("Period close");
+    expect(labels).toContain("As-of");
     expect(labels).toContain("Budget vs actual");
     expect(labels).toContain("Loan schedule");
     expect(labels).toContain("Trial balance");
@@ -36,11 +37,12 @@ describe("screensFor", () => {
 
   it("a project book offers budget, WIP, and billing, not Exceptions or NAV", () => {
     const segments = screensFor("PROJECT").map((s) => s.segment);
-    expect(segments.slice(0, 5)).toEqual([
+    expect(segments.slice(0, 6)).toEqual([
       "budget",
       "wip",
       "billing",
       "close",
+      "asof",
       "accounts",
     ]);
     const labels = screensFor("PROJECT").map((s) => s.label);
@@ -66,6 +68,7 @@ describe("screensFor", () => {
     expect(labels[0]).toBe("Capital activity");
     expect(labels[1]).toBe("NAV roll-forward");
     expect(labels[2]).toBe("Period close");
+    expect(labels[3]).toBe("As-of");
     expect(labels).toContain("Exceptions");
     expect(labels).toContain("NAV");
     expect(labels).toContain("Positions");
@@ -87,6 +90,7 @@ describe("screensFor", () => {
     expect(labels).toContain("Exceptions");
     expect(labels).toContain("NAV");
     expect(labels).toContain("Period close");
+    expect(labels).toContain("As-of");
     expect(labels).not.toContain("Cash flow");
     expect(labels).not.toContain("Income statement");
     expect(defaultScreen("UNSPECIFIED")).toBe("breaks");
@@ -95,11 +99,12 @@ describe("screensFor", () => {
 
   it("an operating book opens a sheet, income statement, and cash-flow, not Fund or Project chrome", () => {
     const segments = screensFor("OPERATING").map((s) => s.segment);
-    expect(segments.slice(0, 6)).toEqual([
+    expect(segments.slice(0, 7)).toEqual([
       "sheet",
       "pnl",
       "cashflow",
       "close",
+      "asof",
       "aging",
       "accounts",
     ]);
@@ -108,6 +113,7 @@ describe("screensFor", () => {
     expect(labels).toContain("Income statement");
     expect(labels).toContain("Cash flow");
     expect(labels).toContain("Period close");
+    expect(labels).toContain("As-of");
     expect(labels).toContain("AR/AP aging");
     expect(labels).toContain("Trial balance");
     expect(labels).not.toContain("Exceptions");
@@ -133,20 +139,27 @@ describe("screensFor", () => {
   it("figure screens are view-scoped", () => {
     for (const s of [
       ...PERSONAL_SCREENS.filter((x) =>
-        ["sheet", "pnl", "bridge", "cashflow", "close", "budget", "loans"].includes(
-          x.segment,
-        ),
+        [
+          "sheet",
+          "pnl",
+          "bridge",
+          "cashflow",
+          "close",
+          "asof",
+          "budget",
+          "loans",
+        ].includes(x.segment),
       ),
       ...PROJECT_SCREENS.filter((x) =>
-        ["budget", "wip", "billing", "close"].includes(x.segment),
+        ["budget", "wip", "billing", "close", "asof"].includes(x.segment),
       ),
       ...INVESTMENT_SCREENS.filter((x) =>
-        ["capital", "nav", "close"].includes(x.segment),
+        ["capital", "nav", "close", "asof"].includes(x.segment),
       ),
       ...OPERATING_SCREENS.filter((x) =>
-        ["sheet", "pnl", "cashflow", "close", "aging"].includes(x.segment),
+        ["sheet", "pnl", "cashflow", "close", "asof", "aging"].includes(x.segment),
       ),
-      ...FUND_SCREENS.filter((x) => ["close"].includes(x.segment)),
+      ...FUND_SCREENS.filter((x) => ["close", "asof"].includes(x.segment)),
     ]) {
       expect(s.scoped).toBe(true);
       expect(s.group).toBe("book");

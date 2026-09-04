@@ -115,6 +115,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ #157 landed a citeable capital-call / distribution notice;
     # PLAN named it in the same-commit amendment.
     "a capital-call / distribution notice is a citeable document",
+    # ⚠ #186 landed the console point-in-time / restatement browser;
+    # PLAN named it in the same-commit amendment.
+    "point-in-time / restatement reporting stays citeable",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -138,6 +141,7 @@ ROADMAP_ENGINE_BUILT = [
     "Personal books declare currencies",
     "NAV gate reasons stay citeable",
     "a capital-call / distribution notice is a citeable document",
+    "point-in-time / restatement reporting stays citeable",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",
