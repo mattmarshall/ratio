@@ -58,6 +58,23 @@ impl PgProjection {
         &self.schema
     }
 
+    /// Apply [`crate::SCHEMA_SQL`] when `schema` is missing.
+    ///
+    /// ⚠ NOT A SECOND APPLY. [`Self::apply_schema`] still fails if the
+    /// tables already exist — leftover rows from a previous shape must not
+    /// look like this book's snapshot. First-use on an empty search_path is
+    /// the one case a console process may do for itself.
+    pub fn ensure_schema(&self) -> Result<()> {
+        let out = self.exec_raw(&format!(
+            "SELECT 1 FROM information_schema.schemata WHERE schema_name = {}",
+            lit(&self.schema)
+        ))?;
+        if first_line(&out).is_none() {
+            self.apply_schema()?;
+        }
+        Ok(())
+    }
+
     /// Apply [`crate::SCHEMA_SQL`] into `schema`.
     ///
     /// ⛔ NOT IF-NOT-EXISTS ON THE TABLES. A second apply on the same schema

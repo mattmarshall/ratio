@@ -306,6 +306,11 @@ BUILT=(
   # and the 20M-lot claim stay leftover. The sentence it matches is
   # in the 2026-09-04 live-engine amendment.
   "the projection schema applies to a live engine"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Console/API reads through the store is not on the refusal list —
+  # planner pushdown and the 20M-lot claim stay leftover on #8 / #159.
+  # The sentence it matches is in the 2026-09-04 store-reads amendment.
+  "console/API reads through the store"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

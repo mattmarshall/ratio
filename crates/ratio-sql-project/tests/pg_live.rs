@@ -10,7 +10,7 @@ use std::path::Path;
 
 use ratio_project::{relief, Projection};
 use ratio_rules::UNDECLARED_VIEW as B;
-use ratio_sql_project::{JournalPin, PgProjection, Watermark};
+use ratio_sql_project::{JournalPin, PgProjection, ProjectionReads, StoreConfig, Watermark};
 use ratio_store::{
     Account, AccountTypeRecord as A, ConfigStore, FileBook, Journal, JournalEntry,
     PostingRecord,
@@ -259,6 +259,77 @@ fn elected_hifo_is_not_silently_replaced_by_sql_fifo() {
 
     let memory = relief::relieve_by(relief::Method::Hifo, &lots.value, 10).unwrap();
     assert_eq!(got.value, memory);
+}
+
+#[test]
+fn console_shaped_reads_pin_the_journal_and_refuse_an_empty_store() {
+    // ⭐ THE API READ PATH AGAINST A LIVE ENGINE. ProjectionReads is what
+    // the console holds. An empty store refuses; catch_up then serves a
+    // figure that carries the journal pin. Unset acquired stays unset.
+    let reads = ProjectionReads::in_process();
+    let empty = JournalPin::of(&[]).unwrap();
+    let err = reads
+        .lots_of("api", B, 1, "vti", &empty)
+        .unwrap_err();
+    assert!(format!("{err:#}").contains("has not been replayed"));
+
+    let (d, _) = seed("api", b"rules = []\n", &[("vti", 10_000, 10)]);
+    let pg = live("api");
+    let reads = ProjectionReads::from_pg(pg);
+    assert!(reads.watermark("api").unwrap().is_none());
+
+    let pin = reads.catch_up("api", &d).unwrap();
+    assert_eq!(pin, pin_of(&d));
+    let lots = reads.lots_of("api", B, 1, "vti", &pin).unwrap();
+    assert_eq!(lots.prefix, pin.prefix);
+    assert_eq!(lots.value.len(), 1);
+    assert!(lots.value[0].acquired.is_none(), "unset acquired stays unset");
+
+    let pos = reads.positions("api", B, &pin).unwrap();
+    assert_eq!(pos.prefix, pin.prefix);
+    let rest = pos.value.iter().filter(|r| r.instrument.is_none()).count();
+    assert_eq!(rest, 1);
+
+    let agg = reads.aggregates("api", B, &pin).unwrap();
+    assert_eq!(agg.prefix, pin.prefix);
+    assert!(!agg.value.is_empty());
+}
+
+#[test]
+fn projection_reads_connect_applies_a_missing_schema() {
+    // ⭐ THE CONSOLE CONSTRUCTOR. `with_stage_e_from_env` calls
+    // ProjectionReads::connect. A missing schema is first-use apply;
+    // a second connect on the same schema must not try apply_schema
+    // again (that would fail on existing tables).
+    let url = pg_url();
+    let schema = "ratio_pg_connect";
+    let probe = PgProjection::connect(&url, schema).unwrap();
+    probe.drop_schema().unwrap();
+
+    let cfg = StoreConfig {
+        url: url.clone(),
+        schema: schema.into(),
+    };
+    let reads = ProjectionReads::connect(&cfg).unwrap();
+    let (d, _) = seed("connect", b"rules = []\n", &[("vti", 10_000, 10)]);
+    let pin = reads.catch_up("connect", &d).unwrap();
+    let lots = reads.lots_of("connect", B, 1, "vti", &pin).unwrap();
+    assert_eq!(lots.prefix, pin.prefix);
+    assert_eq!(lots.value.len(), 1);
+
+    let again = ProjectionReads::connect(&cfg).unwrap();
+    let lots = again.lots_of("connect", B, 1, "vti", &pin).unwrap();
+    assert_eq!(lots.value.len(), 1, "reconnect must see the first replay");
+}
+
+#[test]
+fn store_config_empty_url_is_unset_on_the_live_target_too() {
+    // Same parse the console uses. A live job that forgot to export
+    // RATIO_PG_URL must not invent a default server.
+    assert!(StoreConfig::from_url(None, None).is_none());
+    assert!(StoreConfig::from_url(Some(""), None).is_none());
+    let cfg = StoreConfig::from_url(Some(&pg_url()), None).unwrap();
+    assert_eq!(cfg.schema, StoreConfig::DEFAULT_SCHEMA);
 }
 
 #[test]

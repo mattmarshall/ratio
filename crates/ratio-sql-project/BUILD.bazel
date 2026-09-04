@@ -10,7 +10,9 @@ exports_files(["Cargo.toml", "schema.sql"])
 # those tables name, and `PgProjection` applies the same file to a live
 # engine. The journal stays the system of record.
 #
-# ⚠ Planner pushdown and the 20M-lot interactive claim stay #8 / #159.
+# ⚠ Planner pushdown and the 20M-lot interactive claim stay leftover
+# on #8 / #159. Console / API reads go through `ProjectionReads` when
+# `RATIO_PG_URL` is set. The journal stays the system of record.
 # This package must not grow a silent SQL FIFO: relief goes through
 # `ratio_project::relief`, which is the walk `Ratio.Lots` proves.
 

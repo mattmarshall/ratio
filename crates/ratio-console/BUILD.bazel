@@ -25,6 +25,7 @@ rust_library(
         "//crates/ratio-nav",
         "//crates/ratio-project",
         "//crates/ratio-recon",
+        "//crates/ratio-sql-project",
         "//crates/ratio-rules",
         "//crates/ratio-store",
         "//proto:ratio_rust_proto",  # generated crate `ratio_proto` (ratio.v1)

@@ -634,7 +634,17 @@ fn handle(mut stream: TcpStream, book: &Path, hydrate: &HydrateGate) -> Result<(
                     Some(s) => ratio_console::Console::for_request(root, s, open),
                     None => ratio_console::Console::new(root),
                 };
-                match ratio_console::transcode::serve(&c, m, p, &req.query, &req.body) {
+                // ⚠ RATIO_PG_URL SET SERVES LOTS / POSITIONS / CURRENT
+                // AGGREGATES FROM THE STAGE E STORE. Unset keeps the
+                // in-memory fold. A URL that cannot be reached fails the
+                // request — it does not silently fall back, which would
+                // look like a store-backed figure. Journal stays SoR.
+                match c
+                    .with_stage_e_from_env()
+                    .and_then(|c| {
+                        ratio_console::transcode::serve(&c, m, p, &req.query, &req.body)
+                    })
+                {
                 Ok(j) => ("200 OK", "application/json", j),
                 // A bad resource name is the caller's mistake and a missing
                 // fund is a 404; both are told apart by what the console said

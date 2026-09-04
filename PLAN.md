@@ -3824,3 +3824,57 @@ table. Those remain #8 / #159.
 The demo API hydrates ScaleBucket `journals/` so CreateBook
 survives a cold start; this amendment does not reopen the
 #230 `/tmp`-only wipe.
+
+### Amendment, 2026-09-04 — console/API reads through the store
+
+[#8](https://github.com/mattmarshall/ratio/issues/8) leftover after
+the live-engine apply: the running read model was still the
+in-memory `Projection`. This slice wires lots, positions, and
+Current aggregates through the Stage E store when configured.
+The journal stays the system of record. This slice does that.
+It leaves the umbrella open.
+
+**What this amendment records.**
+
+- **Config.** `RATIO_PG_URL` (optional `RATIO_PG_SCHEMA`, default
+  `ratio_proj`) is the dial. Empty or missing is the in-memory
+  fold — not localhost, not an empty fund. The network server
+  opts in via `Console::with_stage_e_from_env`. A URL that cannot
+  be reached refuses the request; it does not silently fall back.
+- **Pin.** `ProjectionReads::catch_up` pins `journal.jsonl`
+  (`ratio_nav::prefix_digest`) and rebuilds a lagging snapshot
+  from the journal. A missing watermark refuses rather than
+  answering with `lots: []` or a silent empty trial balance.
+  Unset `acquired` / instrument / currency stay unset.
+  `//tla:projection_check` / `//tla:unpinned_projection_check`.
+- **Handlers.** `list_lots`, `list_positions`, and Current
+  `list_accounts` read the store when configured. Period folds
+  still walk the journal — the store is not a time-travel table.
+  Chart labels and mark cites still read the journal.
+
+**console/API reads through the store** is the Built phrase this
+amendment adds.
+
+**What this is NOT:**
+
+- **Not planner pushdown.** `Pg.Rel.Semantics` / tomato-bazel
+  `rules_postgres` stay leftover on #8.
+- **Not the measured 20M-lot claim.** That stays #159.
+- **Not moving authority off `journal.jsonl`.** Replay and
+  content-addressed digests remain the product.
+- **Not claiming Postgres as the interactive-scale engine.** The
+  public roadmap still names that word on the spec side.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment leaves #8 and #159 open. It does not reopen #153.
+leftover #22 stays on WorkOS.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can set `RATIO_PG_URL`, list lots / positions / Current
+accounts from the snapshot, see a stale store rebuild from the
+journal, and see a never-replayed store refuse. It cannot show
+a planner rewrite or twenty million lots as a routine table.
+Those remain #8 / #159.
+The demo API hydrates ScaleBucket `journals/` so CreateBook
+survives a cold start; this amendment does not reopen the
+#230 `/tmp`-only wipe.
