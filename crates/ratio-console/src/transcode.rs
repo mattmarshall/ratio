@@ -615,10 +615,10 @@ impl JsonView for pb::RecognitionDifference {
         format!(
             "{{\"entryId\":{},\"memo\":{},\"tradeDate\":{},\
              \"recognisedHere\":{},\"recognisedThere\":{},\
-             \"netAssetValueEffect\":{}}}",
+             \"netAssetValueEffect\":{},\"why\":{}}}",
             q(&self.entry_id), q(&self.memo), date_json(&self.trade_date),
             date_json(&self.recognised_here), date_json(&self.recognised_there),
-            q(&self.net_asset_value_effect)
+            q(&self.net_asset_value_effect), q(&self.why)
         )
     }
 }

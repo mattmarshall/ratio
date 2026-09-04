@@ -2386,6 +2386,58 @@ billed and phase cost from those posts, and show retainage and WIP
 still unset. It cannot show a Connect token opening a book, a
 vendor portal, AIA G702 product UI, or a silent retainage split.
 
+### Amendment, 2026-09-04 — multi-view FX / translation refuses stay citeable
+
+The 2026-08-13 multi-view amendment already said `ratio reconcile A B`
+refuses when per-entry effects cannot sum to the NAV difference
+(integer translation does not distribute over a sum), when a view has
+entries only it cannot place, or when a view was declared after the
+fold read past its history — and shows, rather than omits, what
+neither view can place. The leftover was a silent zero: unplaceable
+rows left the BFF as `net_asset_value_effect: "0"`, and nothing proved
+the residue / missing-rate refuses against a published 0.00
+difference that looks like agreement.
+
+What landed is the cite, not a new Method:
+
+- Engine: `Projection::reconcile` still refuses a translation
+  residue, a missing rate, an entry only one view can place, and a
+  view declared after the fold. Tests now fail if those become a
+  silent zero.
+- API / CLI: `ReconcileViews` and `ratio reconcile` propagate those
+  sentences. Unplaceable rows carry `why` and an **empty** effect —
+  unset, not `"0"`.
+- Console: `/books/{id}/views/{view}/reconcile` cites the refuse
+  sentence (`withRefusal`) and renders unplaceable as the why, never
+  `money("")` padded to `0.00`.
+
+No new `Method` / `Order` / `lot_method` variant. FX rate vendor
+apps stay Connect — they supply facts; they do not own translation.
+No `screensFor` fork. **multi-view FX / translation refuses stay citeable**
+is the Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not an FX rate vendor Connect app.** That door is not opened
+  here.
+- **Not #159 (Postgres).** Stage E stays blocked.
+- **Not #158 (control / fact seam).** Next after this; this file
+  does not expand into it.
+- **Not a `screensFor` fork** for Personal or Project.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #160. It does not close #159 or #158. It does
+not close #171. It does not reopen #155, #180, or #181.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can open `/reconcile?against=` on a dual-basis book, see the
+in-flight list add to the NAV difference, and see an unplaceable
+row cite why rather than 0.00. A book whose in-flight EUR legs
+will not translate into the NAV difference refuses the screen with
+the residue sentence. It cannot show a rate-vendor Connect app, a
+Postgres projection, or the control/fact seam. Those remain
+Connect or #159 / #158.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

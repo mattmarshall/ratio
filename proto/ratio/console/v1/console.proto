@@ -1137,7 +1137,17 @@ message RecognitionDifference {
   // one only the other view recognises subtracts it. So the two lists sum to
   // `difference` by construction and a client can render the arithmetic rather
   // than assert it — which is the whole reason this is a list and not a number.
+  //
+  // ⛔ EMPTY IS UNSET, NOT ZERO. An unplaceable entry contributes to neither
+  // NAV. Printing `"0"` looks like the views agree about it. The cite is
+  // `why`; this field stays empty on that row.
   string net_asset_value_effect = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Why this row cannot contribute a figure. Empty on an in-flight entry
+  // that has an effect. Set when neither view can place the entry — no
+  // trade date, a pinned configuration that does not declare one of the
+  // views, or a view declared after the fold read past its history.
+  string why = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // How serious an exception is, which is what the queue is ordered by.

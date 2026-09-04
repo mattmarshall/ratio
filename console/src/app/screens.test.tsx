@@ -3752,6 +3752,43 @@ describe("views", () => {
     // would make the difference look fully explained when it is not.
     expect(screen.getByText("Neither view can place these")).toBeDefined();
     expect(screen.getByText("Opening balance, migrated book")).toBeDefined();
+    // ⛔ THE WHY, NOT $0.00. `money("")` pads to `0.00`, which looks like
+    // the views agree about an entry neither of them can place.
+    expect(screen.getByText(/declares no view/)).toBeDefined();
+    expect(
+      screen.getByText(/unset — contributes to neither NAV, not a silent zero/),
+    ).toBeDefined();
+    expect(screen.queryByText("0.00")).toBeNull();
+  });
+
+  it("cites a translation-residue refuse instead of a silent zero difference", async () => {
+    // ⭐ THE DEFECT THIS ISSUE EXISTS TO PREVENT. Integer translation does
+    // not distribute over a sum, so per-entry effects can fail to add to
+    // the NAV difference. Publishing 0.00 would look like agreement.
+    const real = wire.reconcileViews;
+    const SENTENCE =
+      "the NAVs differ by 3 and the in-flight entries sum to 2 — a translation residue of 1 minor units, because integer translation does not distribute over a sum";
+    wire.reconcileViews = (async () => {
+      const { Refused } = await import("@/wire/client");
+      throw new Refused(400, SENTENCE);
+    }) as typeof wire.reconcileViews;
+    try {
+      const Reconcile = (
+        await import("./books/[book]/views/[view]/reconcile/page")
+      ).default;
+      await renderAsync(
+        Reconcile({
+          params: params({ book: FUND, view: "fx-abor" }),
+          searchParams: params({ against: "ibor" }),
+        }),
+      );
+      expect(screen.getByRole("status").textContent).toContain(
+        "translation residue",
+      );
+      expect(screen.queryByText("0.00")).toBeNull();
+    } finally {
+      wire.reconcileViews = real;
+    }
   });
 });
 

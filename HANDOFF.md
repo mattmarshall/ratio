@@ -42,6 +42,13 @@ kernel primitives, `screensFor` forks, or `Method` / `Order` /
 and side-pocket first-party apps are not filed. This file
 closes the #177 decision. It does not close #161 or #150.
 This file closes #9. It does not reopen #5 or #151.
+Multi-view FX / translation refuses stay citeable (#160): a
+translation residue, an entry only one view can place, a missing
+rate, or a view declared after the fold refuses on `ratio
+reconcile`, ReconcileViews, and the reconcile screen — never a
+silent 0.00 that looks like agreement. An entry neither view can
+place cites `why` with an unset effect. FX rate vendors stay
+Connect. This file closes #160. It does not close #159 or #158.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 
@@ -328,21 +335,20 @@ or `sidepocket:*`.
   rule, one level out. ⛔ An entry whose pinned configuration does not declare a
   view must be REFUSED by it and reported, never folded as `recorded`: that is
   the no-fallback-to-FIFO argument with a date instead of a lot method.
-- ⚠ **THE MAINTAINED PROJECTION DOES NOT FOLD PER VIEW YET, AND THE BFF REFUSES
-  RATHER THAN PRETENDING.** `ratio strike` cuts — it derives the day from the
-  valuation point — so the RECORDED NAV is already per view and correct. The
-  projection behind the console's screens folds the whole journal with no cut,
-  so it can only answer for a `recorded` view; `Console::view_the_projection_
-  can_answer` refuses anything else, and `ReconcileViews` refuses outright.
-  ⛔ THE REFUSAL IS THE POINT. Serving a trade-date or settlement view off a
-  cut-less fold would return the recorded view's figures under another name —
-  two labels, one number, and nothing saying so. That is the defect the whole
-  feature exists to prevent, not a rough edge in it.
-  ⚠ AND `console/fixtures/reconcile.json` DESCRIBES A SHAPE NOTHING SERVES.
-  The render test is green against it; the endpoint 400s. The fixture documents
-  the intended response and the screen shows the server's refusal prose, which
-  is honest — but a fixture that outlives the gap it was written for is how a
-  captured fixture stops being a capture.
+- ⭐ **THE PER-VIEW FOLD LANDED, AND THE REMAINING REFUSES ARE THE CITE.**
+  The ten view-scoped screens and `ReconcileViews` answer per view. What
+  still refuses — and must stay a sentence, never a silent 0.00 — is a
+  translation residue (integer translation does not distribute over a
+  sum), an entry only one view can place, a missing FX rate, or a view
+  declared after the fold read past its history. `ratio reconcile` and
+  the reconcile screen cite those sentences via `withRefusal`. An entry
+  neither view can place is the third list: `why` is set, the effect is
+  empty, and printing `"0"` looks like agreement.
+  ⚠ `console/fixtures/reconcile.json` IS A HAPPY-PATH CAPTURE. The
+  residue / missing-rate / cannot-place-in-one refuses are asserted in
+  `ratio-project` and `ratio-console` tests and rendered as a `Refused`
+  sentence, not as a fixture that pretends they returned a difference of
+  zero.
 - ⛔ **A DIFFERENTIAL TEST BETWEEN TWO VIEWS THAT DOES NOT CUT IS VACUOUS.**
   Folded to the end of history every view agrees, because everything eventually
   settles — `Ratio.Views.a_fold_with_no_cut_hides_the_settlement_gap` is the
@@ -351,12 +357,12 @@ or `sidepocket:*`.
   it or not moves a NAV by ZERO. **Subscriptions are the shape that works**,
   exactly as they were for the multi-currency version that was vacuous twice.
 - ⚠ **WHAT `//deploy:seed_test` ACTUALLY PROVES, WHICH IS LESS THAN IT LOOKS.**
-  It checks the two views' recorded NAVs DIFFER and that the book ties. It does
-  NOT check that the entries in flight account for the difference, because
-  `ratio reconcile` does not exist and waits on the same per-view fold the BFF
-  does. The stronger claim — `Ratio.Views.two_views_differ_by_exactly_what_is_
-  in_flight` — is proved in Lean and asserted nowhere in the demo. ⛔ The gap is
-  written into the script rather than left to be inferred from its absence.
+  It checks the two views' recorded NAVs DIFFER and that the book ties. The
+  stronger claim — `Ratio.Views.two_views_differ_by_exactly_what_is_in_flight`
+  — is proved in Lean, and `ratio reconcile` / `ReconcileViews` now walk the
+  list (and refuse when the list cannot sum to the NAV difference). The demo
+  seed still does not assert that walk. ⛔ The gap is written into the script
+  rather than left to be inferred from its absence.
 - ⚠ **THE GENERATOR'S SETTLEMENT TAIL IS ANCHORED TO THE DAY IT RUNS, AND ONLY
   IT.** `FIRST_TRADE_DAY` is a constant so that every measurement taken against
   a generated book is reproducible, and that stays true: `--settle-tail` writes
@@ -404,9 +410,10 @@ or `sidepocket:*`.
   encoding was copied from `transcode.rs` — but the FUND'S SHAPE is chosen to
   agree with `view.json` rather than read off a book. `capture_fixtures.sh` says
   so at the top and now captures it; run it and commit whatever comes back.
-  ⚠ This is the same shape as `console/fixtures/reconcile.json` two entries
-  above: a fixture that outlives the gap it was written for is how a captured
-  fixture stops being a capture.
+  ⚠ A fixture that outlives the gap it was written for is how a captured
+  fixture stops being a capture. `reconcile.json` is no longer that shape —
+  the endpoint serves it — but `explain.json`'s fund shape is still chosen
+  to agree with `view.json` rather than read off a book.
 
 ---
 

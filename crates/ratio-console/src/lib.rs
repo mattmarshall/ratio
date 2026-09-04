@@ -2941,24 +2941,6 @@ impl Console {
         })
     }
 
-    /// Check a view exists on this fund, and that the projection can answer for
-    /// it.
-    ///
-    /// ⛔ A REFUSAL RATHER THAN THE SAME NUMBERS UNDER A SECOND LABEL. The
-    /// projection folds the WHOLE journal — it has no cut — so it can answer for
-    /// a `recorded` view, which recognises entries in the journal's own order
-    /// and consults no date. It cannot yet answer for a trade-date or
-    /// settlement view, because those differ from `recorded` only AT A CUT, and
-    /// serving one without a cut would return figures identical to the other's
-    /// under a different name. That is exactly the defect this whole feature
-    /// exists to prevent: a figure that does not say which question it answers,
-    /// or worse, says the wrong one.
-    ///
-    /// ⚠ `ratio strike` DOES cut — it derives the day from the valuation point —
-    /// so the RECORDED NAV is already per view. It is the maintained projection
-    /// behind these screens that is not, and the gap is named here rather than
-    /// hidden behind an equal number.
- 
     /// The default view's id: which book of record a fund-level answer is about.
     ///
     /// ⛔ A FUND-LEVEL FIGURE STILL BELONGS TO A VIEW. `ApplyEvent`,
@@ -2980,10 +2962,9 @@ impl Console {
 
     /// The default view's NAV in minor units, as a fund-level answer quotes it.
     ///
-    /// ⚠ REFUSES FOR THE SAME REASON `GetView` DOES. If a fund's default view
-    /// recognises by date, the maintained projection cannot answer for it — and
-    /// a preview quoting the recorded figure under that view's name is exactly
-    /// the substitution this feature exists to prevent.
+    /// ⚠ REFUSES FOR THE SAME REASON `GetView` DOES. A missing FX rate or a
+    /// view this book does not keep is a sentence, not a silent 0.00 NAV
+    /// wearing the default view's name.
     fn default_view_nav(&self, fund: &str) -> Result<String> {
         let view = self.default_view_of(fund)?;
         let path = self.book_path(fund)?;
@@ -3151,11 +3132,9 @@ impl Console {
         let mut out = view_pb(&id, &set, &def);
 
         // ⛔ THE FIGURES CAME OFF `Fund`, AND THEY LAND HERE RATHER THAN
-        // NOWHERE. Every one depends on which entries are recognised, so this is
-        // where they belong — but the maintained projection still folds the
-        // whole journal with no cut, so it can only answer for a view that
-        // recognises in journal order. Anything else refuses, loudly, rather
-        // than returning the recorded view's numbers under another name.
+        // NOWHERE. Every one depends on which entries are recognised. The
+        // per-view fold answers; a missing FX rate or a view this book does
+        // not keep refuses rather than returning a silent 0.00 NAV.
 
         let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
         let proj = self.projection(&id)?;
@@ -3423,6 +3402,7 @@ impl Console {
             recognised_here: date(e.recognised_here),
             recognised_there: date(e.recognised_there),
             net_asset_value_effect: e.effect.to_string(),
+            why: String::new(),
         };
         Ok(pb::ReconcileViewsResponse {
             name: name.to_string(),
@@ -3432,11 +3412,12 @@ impl Console {
             difference: rec.value.difference.to_string(),
             recognised_here: rec.value.entries.iter().filter(|e| e.in_here).map(row).collect(),
             recognised_there: rec.value.entries.iter().filter(|e| !e.in_here).map(row).collect(),
-            // ⛔ SHOWN, NOT OMITTED. These contribute to neither figure, and a
-            // difference that looks fully explained while entries sit outside
-            // both books of record is the shape of every defect in HANDOFF.md's
-            // table. Entries only ONE view cannot place refuse the whole read,
-            // inside `Projection::reconcile`.
+            // ⛔ SHOWN, NOT OMITTED — AND NOT ZEROED. These contribute to
+            // neither figure. A difference that looks fully explained while
+            // entries sit outside both books of record is the shape of every
+            // defect in HANDOFF.md's table. Entries only ONE view cannot
+            // place refuse the whole read, inside `Projection::reconcile`.
+            // A silent `"0"` effect here would look like agreement.
             unplaceable: rec
                 .value
                 .unplaceable
@@ -3447,7 +3428,8 @@ impl Console {
                     trade_date: date(u.trade_day),
                     recognised_here: None,
                     recognised_there: None,
-                    net_asset_value_effect: "0".to_string(),
+                    net_asset_value_effect: String::new(),
+                    why: u.why.clone(),
                 })
                 .collect(),
             journal_position: rec.prefix as i64,
@@ -12799,6 +12781,151 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         assert_eq!(
             owner.balance, "0",
             "a close must not look like a contribution: {owner:?}"
+        );
+    }
+
+    const DUAL_VIEWS: &str = r#"rules = []
+[[calendar]]
+id = "wk"
+weekend = [0, 6]
+[[view]]
+id = "abor"
+display_name = "ABOR"
+basis = "trade"
+[[view]]
+id = "ibor"
+display_name = "IBOR"
+basis = "settlement"
+settles_in = 2
+calendar = "wk"
+"#;
+
+    fn dual_fx_book(name: &str) -> PathBuf {
+        use ratio_store::{Account, AccountTypeRecord as A, JournalEntry, PostingRecord};
+        let d = fresh(name);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+            Account { dim: 3, display_name: "Capital".into(), account_type: A::Equity },
+        ])
+        .unwrap();
+        let cfg = b.put(DUAL_VIEWS.as_bytes()).unwrap();
+        b.set_active(&cfg).unwrap();
+        for (id, day) in [("s1", "2026-03-03"), ("s2", "2026-03-04")] {
+            b.append(&JournalEntry {
+                id: id.into(),
+                memo: "subscription".into(),
+                config: cfg.clone(),
+                postings: vec![
+                    PostingRecord::of_currency(2, 1, "EUR"),
+                    PostingRecord::of_currency(3, -1, "EUR"),
+                ],
+                trade_date: Some(day.into()),
+                announcement: None,
+                due_date: None,
+                application: None,
+                identified_lots: None,
+                special_allocations: None,
+            })
+            .unwrap();
+        }
+        d
+    }
+
+    #[test]
+    fn reconcile_views_refuses_a_translation_residue_rather_than_a_zero_difference() {
+        // ⭐ THE API CITE. The engine refuse is not enough: a BFF that
+        // swallowed it and returned difference "0" would be the silent-zero
+        // on the screen, with every citation resolving.
+        let d = dual_fx_book("bff-fx-residue");
+        let cfg = FileBook::open(&d).unwrap().active().unwrap().unwrap();
+        let mut b = FileBook::open(&d).unwrap();
+        b.append_record(Plane::Facts, &rate_fact("r1", "EUR", 150, cfg.as_str()))
+            .unwrap();
+        drop(b);
+
+        let e = Console::new(&d)
+            .reconcile_views("funds/demo/views/abor", "ibor")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("translation residue"), "{e}");
+        assert!(!e.contains("\"difference\":\"0\""), "must not publish a silent zero: {e}");
+    }
+
+    #[test]
+    fn reconcile_views_refuses_a_missing_rate_rather_than_agreeing_at_zero() {
+        let d = dual_fx_book("bff-fx-no-rate");
+        let e = Console::new(&d)
+            .reconcile_views("funds/demo/views/abor", "ibor")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("EUR"), "{e}");
+        assert!(
+            e.contains("mixing denominations") || e.contains("no rate"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn unplaceable_entries_cite_the_why_and_carry_no_silent_zero_effect() {
+        // ⛔ `"0"` ON THIS ROW IS THE DEFECT. The entry contributes to
+        // neither NAV; printing zero looks like the views agree about it.
+        use ratio_store::{Account, AccountTypeRecord as A, JournalEntry, PostingRecord};
+        let d = fresh("bff-unplaceable-why");
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+            Account { dim: 3, display_name: "Capital".into(), account_type: A::Equity },
+        ])
+        .unwrap();
+        let plain = b.put(b"rules = []\n").unwrap();
+        b.set_active(&plain).unwrap();
+        b.append(&JournalEntry {
+            id: "old".into(),
+            memo: "Opening balance, migrated book".into(),
+            config: plain,
+            postings: vec![PostingRecord::new(2, 100), PostingRecord::new(3, -100)],
+            trade_date: Some("2026-03-02".into()),
+            announcement: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+        })
+        .unwrap();
+        let dual = b.put(DUAL_VIEWS.as_bytes()).unwrap();
+        b.set_active(&dual).unwrap();
+        b.append(&JournalEntry {
+            id: "new".into(),
+            memo: "subscription".into(),
+            config: dual,
+            postings: vec![PostingRecord::new(2, 5_000), PostingRecord::new(3, -5_000)],
+            trade_date: Some("2026-03-03".into()),
+            announcement: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+        })
+        .unwrap();
+        drop(b);
+
+        let rec = Console::new(&d)
+            .reconcile_views("funds/demo/views/abor", "ibor")
+            .unwrap();
+        assert_eq!(rec.unplaceable.len(), 1, "{rec:?}");
+        assert_eq!(rec.unplaceable[0].entry_id, "old");
+        assert!(
+            rec.unplaceable[0].net_asset_value_effect.is_empty(),
+            "unset, not a silent zero: {:?}",
+            rec.unplaceable[0].net_asset_value_effect
+        );
+        assert!(
+            rec.unplaceable[0].why.contains("declares no view"),
+            "the why is the cite: {:?}",
+            rec.unplaceable[0].why
         );
     }
 }

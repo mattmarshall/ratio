@@ -99,7 +99,13 @@ function Rows({
 }) {
   // Rendered so the render suite can assert the list adds to the difference —
   // a screen that shows a difference it cannot itemize is one to distrust.
-  const total = rows.reduce((n, r) => n + BigInt(r.netAssetValueEffect), 0n);
+  //
+  // ⛔ EMPTY EFFECT IS UNSET, NOT ZERO. `money("")` pads to `0.00`, which is
+  // the silent-zero this screen exists to refuse. Unplaceable rows cite
+  // `why` and stay out of the sum.
+  const cited = rows.filter((r) => r.netAssetValueEffect !== "");
+  const total = cited.reduce((n, r) => n + BigInt(r.netAssetValueEffect), 0n);
+  const unset = cited.length !== rows.length;
   return (
     <>
       <div className="loghead">
@@ -110,21 +116,26 @@ function Rows({
         <div className="empty">Nothing in flight.</div>
       ) : null}
       {rows.map((r) => (
-        <div className="logrow" key={r.entryId}>
+        <div className="logrow" key={r.entryId || r.why}>
           <span className="t num">
             {r.tradeDate ? isoDate(r.tradeDate) : "no trade date"}
           </span>
           <span className="w">
-            <b>{r.memo || r.entryId}</b>
+            <b>{r.memo || r.entryId || "undeclared view"}</b>
             <div className="cfg">
-              here {isoDate(r.recognisedHere)} · there{" "}
-              {isoDate(r.recognisedThere)}
+              {r.why
+                ? r.why
+                : `here ${isoDate(r.recognisedHere)} · there ${isoDate(r.recognisedThere)}`}
             </div>
           </span>
-          <span className="amt num">{money(r.netAssetValueEffect)}</span>
+          <span className="amt num">
+            {r.netAssetValueEffect === ""
+              ? "unset — contributes to neither NAV, not a silent zero"
+              : money(r.netAssetValueEffect)}
+          </span>
         </div>
       ))}
-      {rows.length ? (
+      {rows.length && !unset ? (
         <div className="logrow recfoot">
           <span className="t" />
           <span className="w">Contributing</span>
