@@ -296,11 +296,11 @@ packages, and remaining to spend (revised − incurred − awarded) — and
 `/billing` as billed vs earned, retainage, cost by phase, remaining to
 bill (revised − billed), and collections vs billed (cash against AR).
 A change-order walk-through can record `approve_co_site` / `deduct_co_site`
-or ingest `change-orders`; a remaining-to-bill / collections walk-through
-can cite those leftovers on `/billing` after `progress_bill` /
-`collect_receivable`; a committed-cost walk-through can record
-`award_commitment_site` / `release_commitment_site` or ingest
-`purchase-orders`. `/budget` does not forecast — EAC and cost to complete
+or ingest `change-orders` from the same `/budget` page; a remaining-to-bill /
+collections walk-through can cite those leftovers on `/billing` after
+`progress_bill` / `collect_receivable`; a committed-cost walk-through can
+record `award_commitment_site` / `release_commitment_site` or ingest
+`purchase-orders` from that same `/budget` page. `/budget` does not forecast — EAC and cost to complete
 are refused rather than implied by remaining to spend. None of those
 walk-throughs can show AIA G702 product UI, a client portal, e-signature,
 or CRM. Unset original / unposted COs / unawarded remaining / unbilled

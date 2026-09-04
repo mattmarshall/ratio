@@ -99,8 +99,10 @@ export const PERSONAL_SCREENS: readonly Screen[] = [
  * Billing is billed vs earned, retainage, cost by phase, remaining to
  * bill (revised − billed), and collections vs billed (cash against AR).
  * Change orders, remaining-to-bill, collections, and committed cost
- * compose onto those URLs; they are not a third chrome list. One chrome
- * list (`screensFor`). This page does not forecast.
+ * compose onto those URLs; they are not a third chrome list. A Project
+ * book posts or ingests a change order / award on `/budget` (#170) —
+ * the same journal kinds, unset until posted. One chrome list
+ * (`screensFor`). This page does not forecast.
  *
  * Trial balance stays: it is the conservation view of the same accounts, and
  * a figure that could not be checked against it would be a picture.

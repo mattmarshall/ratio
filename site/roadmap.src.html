@@ -157,10 +157,16 @@ __STYLE__
           never a fake zero collected. <code>/budget</code> does not
           forecast: estimate at completion and cost to complete are not a
           journal fact. A change-order walk-through can record or ingest
-          an approval against a work package; a remaining-to-bill /
-          collections walk-through can cite those leftovers on
-          <code>/billing</code>; a committed-cost walk-through can record
-          or ingest an award on the same <code>/budget</code> page. None
+          an approval against a work package from the same
+          <code>/budget</code> chrome (phase keys; unset until posted);
+          a remaining-to-bill / collections walk-through can cite those
+          leftovers on <code>/billing</code>; a committed-cost
+          walk-through can record or ingest an award on that same
+          <code>/budget</code> page — the journal kinds
+          <code>approve_co_*</code> / <code>award_commitment_*</code>,
+          not a second budget store. Estimating tools push later via
+          Connect (<code>journals:post</code> + <code>budget:read</code>);
+          the grant path is leftover #22 / #150. None
           of those can show AIA G702 product UI, a client portal,
           e-signature, CRM, or an EAC on <code>/budget</code>. A Project
           <a href="https://github.com/mattmarshall/ratio/tree/main/connect/aia-pay-app">AIA pay-app Connect app</a>
@@ -507,7 +513,7 @@ __STYLE__
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
         <li class="o">Rule authoring with grounded checks</li>
-        <li class="d">Operations console: books (Personal, Fund, Project, Operating templates), a household balance sheet, period P&amp;L, net-worth bridge with transfers that are not trades, and a period cash-flow statement (operating / investing / financing; unset, not a fake zero cash), household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), awarded committed cost keyed to those work packages (unset until an award posts, not a fake zero), remaining to spend (revised − incurred − awarded, unset until budget, actual, and awarded can support it — no EAC / no forecast), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it), an Operating book that cites a balance sheet, period income statement, period cash-flow statement, and AR/AP aging against the trial balance (AR/AP as working capital, owner equity as financing, investing unset — no PPE account; aging at /aging — missing due date is undated not current, buckets foot to control), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), a per-partner capital account statement (beginning → activity → allocated plugs stay unset without a named [[partner_cut]], never an equal split of book NAV), a period NAV roll-forward (unset, not a fake zero), management-fee receivable (unset without an elected fee rule, never a silent zero), and period close at /close on every kind (closed-through day, prefix and digest; surplus into retained earnings; provisional when open, unset when the journal cannot support a close — never a fake closed period), the exception queue, a difference at its own address, a book's state</li>
+        <li class="d">Operations console: books (Personal, Fund, Project, Operating templates), a household balance sheet, period P&amp;L, net-worth bridge with transfers that are not trades, and a period cash-flow statement (operating / investing / financing; unset, not a fake zero cash), household budget vs actual (configuration total, unset until set), a Project book that cites budget vs actual, WIP capitalization, billed vs earned, retainage, cost by work package, original vs revised contract (approved change orders keyed by phase — unset until posted), awarded committed cost keyed to those work packages (unset until an award posts, not a fake zero; change-order and award ingest on <code>/budget</code> with phase keys, same journal kinds, no second store), remaining to spend (revised − incurred − awarded, unset until budget, actual, and awarded can support it — no EAC / no forecast), remaining to bill (revised − billed, unset until both sides can support it), and collections vs billed (cash against AR, unset until billed and receivable can support it), an Operating book that cites a balance sheet, period income statement, period cash-flow statement, and AR/AP aging against the trial balance (AR/AP as working capital, owner equity as financing, investing unset — no PPE account; aging at /aging — missing due date is undated not current, buckets foot to control), investment capital activity (partners, contributions, distributions, commitments / undrawn — not a return), a per-partner capital account statement (beginning → activity → allocated plugs stay unset without a named [[partner_cut]], never an equal split of book NAV), a period NAV roll-forward (unset, not a fake zero), management-fee receivable (unset without an elected fee rule, never a silent zero), and period close at /close on every kind (closed-through day, prefix and digest; surplus into retained earnings; provisional when open, unset when the journal cannot support a close — never a fake closed period), the exception queue, a difference at its own address, a book's state</li>
         <li class="o">The rest of the operations interface</li>
       </ul>
       <p class="r-parity"><strong>Parity reached:</strong> <em>billing and revenue

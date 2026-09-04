@@ -354,6 +354,22 @@ NEEDLES: list[tuple[str, str]] = [
         "the original contract would look mutated in place",
     ),
     (
+        "unset — no purchase order has been awarded, not a fake zero committed",
+        "an unposted award would read as a fake zero committed",
+    ),
+    (
+        "unset until a purchase order is awarded — not budget minus actual as fake headroom",
+        "remaining to spend would treat an unposted award as zero headroom",
+    ),
+    (
+        "Post a change order or award",
+        "a Project /budget page would cite awards but could not post them",
+    ),
+    (
+        "A change order or award stays unset on this page until it posts",
+        "the /budget write would stop saying unset-until-posted",
+    ),
+    (
         "revised minus billed — the citeable leftover, not a spreadsheet rebuild",
         "remaining-to-bill is gone from the project billing screen",
     ),

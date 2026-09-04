@@ -581,10 +581,11 @@ the conserved one, and the kernel never said it was.
   seeds `Approved change orders` / `Change-order authorization` keyed by
   work package (site / structure / finishes, plus unpartitioned) as equity,
   the `approve_co_*` / `deduct_co_*` rules, and the `change-orders` ingest
-  mapping. `[project] budget` stays the original contract. Record or ingest
-  `approve_co_site`: the trial balance still ties, no lot opens, `/budget`
-  cites original / approved / revised, and `/billing` uses the revised
-  total as the billing basis with the same phase grain as cost-by-phase.
+  mapping. `[project] budget` stays the original contract. From `/budget`,
+  record or ingest `approve_co_site`: the trial balance still ties, no lot
+  opens, the same page cites original / approved / revised, and `/billing`
+  uses the revised total as the billing basis with the same phase grain as
+  cost-by-phase.
   A book that has never posted a CO shows **unset**, not a silent zero —
   `postingCount === "0"` is the distinction. A window chip (`change-YYYY-MM`)
   is which COs were approved in-period; committed spend stays as-of, because
@@ -596,9 +597,9 @@ the conserved one, and the kernel never said it was.
   CreateBook(Project) seeds `Awarded commitments` / `Commitment authorization`
   keyed by work package (site / structure / finishes, plus unpartitioned)
   as equity, the `award_commitment_*` / `release_commitment_*` rules, and
-  the `purchase-orders` ingest mapping. Record or ingest
+  the `purchase-orders` ingest mapping. From `/budget`, record or ingest
   `award_commitment_site`: the trial balance still ties, no lot opens,
-  actual cost is unchanged, and `/budget` cites awarded committed cost
+  actual cost is unchanged, and the same page cites awarded committed cost
   on the same grain as cost-by-package. Remaining to spend is revised −
   incurred − awarded. A book that has never posted an award shows
   **unset**, not a fake zero committed — `postingCount === "0"` is the
@@ -616,7 +617,9 @@ the conserved one, and the kernel never said it was.
   a book, live EAC product UX,
   a client portal, e-signature, or CRM. Remaining to bill stays on #100.
   This file does not close #169 (grant path leftover #22 and live EAC
-  product UX remain). The seeded demo funds remain investment books.
+  product UX remain). #170's leftover was posting / ingesting that award
+  on the `/budget` chrome itself — that landed; estimating-tool Connect
+  grants stay on #150 / #22. The seeded demo funds remain investment books.
 - ⚠ **A project remaining-to-bill / collections walk-through (#100 / #27).**
   `/billing` cites remaining to bill (revised − billed) and collections vs
   billed (cash against AR: billed − outstanding receivable − retainage

@@ -256,11 +256,15 @@ export const ROUTES: readonly Route[] = [
   // compose onto this page and `/billing`; remaining-to-bill and
   // collections live on `/billing`; remaining to spend and committed cost
   // live here. They are not a second chrome list. A second path would be
-  // a second answer.
+  // a second answer. A Project book posts or ingests a change order /
+  // award on this page (`listRules` + the same `change-orders` /
+  // `purchase-orders` templates). `ApplyEvent` is the `/record` write;
+  // `listTemplates` is not a fourth render call — the two ids are the
+  // kind-selected catalog.
   {
     path: "/books/[book]/views/[view]/budget",
     file: "books/[book]/views/[view]/budget/page.tsx",
-    reads: ["getBook", "listAccounts"],
+    reads: ["getBook", "listAccounts", "listRules"],
   },
   {
     path: "/books/[book]/views/[view]/wip",

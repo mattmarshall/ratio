@@ -183,6 +183,11 @@ BUILT=(
   # list — this check would have stayed green whatever was built. The
   # sentence it matches is in the 2026-09-04 leftovers amendment.
   "unitized seed, period issued/redeemed, per-share"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Change-order / award ingest on /budget is not on the refusal list —
+  # a second budget store and EAC fields on /budget stay refused. The
+  # sentence it matches is in the 2026-09-04 #170 amendment.
+  "change-order and award ingest on /budget"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

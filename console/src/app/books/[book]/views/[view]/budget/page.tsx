@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FilterChips, type Filter } from "@/components/FilterChips";
+import { IngestForm } from "@/app/books/[book]/ingest/IngestForm";
 import { caller } from "@/lib/caller";
+import { BUDGET_INGEST_TEMPLATES } from "@/lib/budgetPost";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
 import { debitShown as householdDebit, householdRollup } from "@/lib/household";
 import {
@@ -13,8 +15,9 @@ import {
   phaseAwarded,
   projectRollup,
 } from "@/lib/project";
-import { getBook, listAccounts } from "@/wire/client";
+import { getBook, listAccounts, listRules } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
+import { BudgetPostForm } from "./BudgetPostForm";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +42,11 @@ export const dynamic = "force-dynamic";
  * complete are not journal facts yet. Remaining to spend is a leftover,
  * not an EAC. Over/under-billing stays on `/billing` as billed minus
  * earned — this page does not invent costs-in-excess-of-billings.
+ *
+ * ⭐ A PROJECT POSTS A CHANGE ORDER OR AWARD HERE. Kind × phase selects
+ * `approve_co_*` / `award_commitment_*` already in force. CSV ingest
+ * uses the same `change-orders` / `purchase-orders` templates. Facts
+ * stay unset until posted — not a silent zero on either line.
  *
  * ⛔ CUMULATIVE-ONLY IS THE ABOR-SHAPED VIEW FOR A HOUSEHOLD. The personal
  * path always sends `filter=budget-YYYY[-MM]`; bare `budget` is refused
@@ -190,6 +198,7 @@ async function projectBudget({
   const { period = "" } = await searchParams;
   const c = await caller();
   const { accounts } = await listAccounts(c, book, view);
+  const { rules } = await listRules(c, book);
   const windowed = period
     ? (await listAccounts(c, book, view, "change", period)).accounts
     : [];
@@ -449,11 +458,21 @@ async function projectBudget({
         </div>
       </div>
       <p className="note">
+        A change order or award stays unset on this page until it posts —
+        not a silent zero on the approved or awarded line. The same
+        journal kinds <code>/record</code> already uses; this is not a
+        second budget store.
+      </p>
+      <BudgetPostForm fund={book} rules={rules} />
+      <IngestForm fund={book} templates={[...BUDGET_INGEST_TEMPLATES]} />
+      <p className="note">
         <Link href={`/books/${book}/views/${view}/wip`}>WIP capitalization</Link>
         {" · "}
         <Link href={`/books/${book}/views/${view}/billing`}>Remaining to bill and collections</Link>
         {" · "}
-        <Link href={`/books/${book}/record`}>Record a cost, purchase order, change order, or capitalize WIP</Link>
+        <Link href={`/books/${book}/record`}>Record a cost or capitalize WIP</Link>
+        {" · "}
+        <Link href={`/books/${book}/ingest`}>Ingest another delivery</Link>
         {" · "}
         <Link href={`/books/${book}/views/${view}/accounts`}>Trial balance</Link>
       </p>
