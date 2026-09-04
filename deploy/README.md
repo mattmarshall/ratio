@@ -340,16 +340,18 @@ portal, or K-1 packaging. The live demo does not seed those baselines or any
 commitment postings.
 
 `entrypoint.sh` copies the seeded chart and config to `/tmp` at start, because a
-Lambda filesystem is read-only elsewhere. **The demo API journal is that `/tmp`
-copy.** `RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX` are unset on the
-`ratio-demo` Function: S3 journal hydrate on the shared Lambda caused production
-503 `"the journal is still hydrating"` on `/books` (orTransient). Ops cleared
-both env vars on live `ratio-demo` (account `320473299741`, us-east-1); Timeout
-was already 60; `/v1/books` then returned 401, not 503. The template must not
-put them back — `//deploy:iac_test` fails if it does. Scale still uses
-ScaleBucket (`RATIO_SCALE_BUCKET`, cluster, task). When those journal vars *are*
-set (local / a future durable-write path), append is one object per entry with
-a conditional PUT — `tla/S3Journal.tla`, issue #24.
+Lambda filesystem is read-only elsewhere. **The demo API journal is S3
+`journals/` on ScaleBucket.** `RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX`
+must stay set on the `ratio-demo` Function: unset is `/tmp` only, and a cold
+start then wipes CreateBook (Household on ratio.marsh.build after #230). Hydrate
+503 `"the journal is still hydrating"` is transient — accept-during-hydrate /
+orTransient (#136/#137) still apply; `/healthz` and `/version` never wait;
+unauthenticated `/v1` 401s without waiting for the book. The ~40 GB scale fold
+stays on Fargate ScaleTask, not this Lambda. Ops already restored the live
+Lambda env; this template is what keeps the next CloudFormation deploy from
+clearing it. `//deploy:iac_test` fails if either journal var is absent. Scale
+still uses ScaleBucket (`RATIO_SCALE_BUCKET`, cluster, task). Append is one
+object per entry with a conditional PUT — `tla/S3Journal.tla`, issue #24.
 
 ⭐ **The write grant lives on the bucket, because that is what CI can apply.**
 `install_journal_store` / hydrate / append are a conditional `s3:PutObject`

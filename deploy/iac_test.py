@@ -509,37 +509,38 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  smoke asserts the Connect API")
 
-    # ⛔ THE DEPLOYED DEMO API MUST NOT HYDRATE FROM S3 ON COLD START.
-    # Ops cleared RATIO_JOURNAL_BUCKET + RATIO_JOURNAL_PREFIX from live
-    # Lambda ratio-demo (account 320473299741, us-east-1) after production
-    # /books showed "the journal is still hydrating" (orTransient on API
-    # 503). Timeout was already 60. /v1/books then returned 401, not 503.
-    # The next CloudFormation deploy would restore those two env vars
-    # from this template and the hang. Unset is /tmp journals — the
-    # local `ratio watch` shape. Scale still uses ScaleBucket; this
-    # check is the Function Environment only. A sentence describing
-    # the vars in a comment must not satisfy or fail this — `app_code`
-    # is comment-stripped. Same pattern as RATIO_DEMO_OPEN.
-    if re.search(r"^\s+RATIO_JOURNAL_BUCKET:", app_code, re.M):
+    # ⭐ THE DEPLOYED DEMO API MUST HYDRATE THE SMALL journals/ PREFIX.
+    # Unset FileBook writes /tmp only — CreateBook then dies on cold
+    # start (Household wiped on ratio.marsh.build after #230). Ops
+    # restored live Lambda env; the next CloudFormation deploy must
+    # keep RATIO_JOURNAL_BUCKET + RATIO_JOURNAL_PREFIX so persistence
+    # survives. Hydrate 503 is transient (accept-during-hydrate /
+    # orTransient). The 40GB scale fold stays on Fargate ScaleTask.
+    # A sentence describing the vars in a comment must not satisfy
+    # this — `app_code` is comment-stripped. Same pattern as
+    # RATIO_DEMO_OPEN (that one stays unset).
+    if not re.search(
+        r"^\s+RATIO_JOURNAL_BUCKET:\s+!Ref\s+ScaleBucket\s*$", app_code, re.M
+    ):
         fail(
-            f"{app_path} still sets RATIO_JOURNAL_BUCKET on the function — "
-            "a deploy would restore S3 journal hydrate and 503 /v1/books"
+            f"{app_path} dropped RATIO_JOURNAL_BUCKET: !Ref ScaleBucket — "
+            "a deploy would wipe CreateBook on the next cold start"
         )
     else:
-        print("  ok  RATIO_JOURNAL_BUCKET is unset on the deployed function")
-    if re.search(r"^\s+RATIO_JOURNAL_PREFIX:", app_code, re.M):
+        print("  ok  RATIO_JOURNAL_BUCKET names ScaleBucket on the function")
+    if not re.search(r"^\s+RATIO_JOURNAL_PREFIX:\s+journals/\s*$", app_code, re.M):
         fail(
-            f"{app_path} still sets RATIO_JOURNAL_PREFIX on the function — "
-            "a deploy would restore S3 journal hydrate and 503 /v1/books"
+            f"{app_path} dropped RATIO_JOURNAL_PREFIX: journals/ — "
+            "CreateBook durability is that prefix, not the 40GB scale fold"
         )
     else:
-        print("  ok  RATIO_JOURNAL_PREFIX is unset on the deployed function")
+        print("  ok  RATIO_JOURNAL_PREFIX is journals/ on the function")
 
     # Scale still needs ScaleBucket (RATIO_SCALE_BUCKET, cluster, task).
-    # Unsetting the journal pair must not drop the scale path.
+    # Restoring the journal pair must not drop the scale path.
     if not re.search(r"^\s+RATIO_SCALE_BUCKET:\s+!Ref\s+ScaleBucket\s*$", app_code, re.M):
         fail(
-            f"{app_path} dropped RATIO_SCALE_BUCKET — stopping API journal "
+            f"{app_path} dropped RATIO_SCALE_BUCKET — restoring API journal "
             "hydrate must not break the scale runner's bucket"
         )
     else:
@@ -551,9 +552,9 @@ def main(app_path, bootstrap_path, workflow_path):
     # before hydrate, /healthz lived and /balance.json died on
     # s3:PutObject AccessDenied for journals/book/journal/0000…1.
     # A grant only in the hand-applied stack is a grant the next deploy
-    # cannot apply. The API function no longer names the bucket; the
-    # policy stays so a later scale / durable-write path can. Prefix
-    # is the scale-bucket journals/ prefix, not a Function env var.
+    # cannot apply. The Function Environment names ScaleBucket
+    # journals/; this policy is the write grant that hydrate and
+    # append both use. Prefix is the same journals/ prefix.
     #
     # ⚠ COMMENT-STRIPPED. A sentence describing the grant must not satisfy
     # this — same shape as the CAPABILITY_NAMED_IAM check above.

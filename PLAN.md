@@ -27,9 +27,11 @@ is an eight-week plan for a product nobody was buying.
 > `/user_management/{client_id}` — one authorizer cannot OR those).
 > `RATIO_DEMO_OPEN` defaults off on the deployed demo — AuthKit
 > sessions isolate via membership. first-party Connect apps call
-> ConnectApiUrl. The demo API Lambda leaves
-> `RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX` unset (local
-> `/tmp` journals; S3 hydrate 503ed production `/books`). Scale
+> ConnectApiUrl. The demo API Lambda hydrates
+> ScaleBucket `journals/` (`RATIO_JOURNAL_BUCKET` /
+> `RATIO_JOURNAL_PREFIX`) so CreateBook survives a
+> cold start. Hydrate 503 is transient only. The
+> 40GB scale fold stays on Fargate ScaleTask. Scale
 > keeps ScaleBucket. Unused Cognito CloudFormation resources are
 > removed — AuthKit is the sole IdP. Live leftovers on issue 22
 > are `DEMO_MEMBERS` naming a live WorkOS `sub` and WorkOS
@@ -314,10 +316,12 @@ Production has the env (#68 closed). Write-route actor binding landed
 close record actor = WorkOS `sub`. Connect tokens accepted with
 catalog scopes on `/v1`. `RATIO_DEMO_OPEN` defaults off on the
 deployed demo. first-party Connect apps call ConnectApiUrl.
-The demo API Lambda leaves `RATIO_JOURNAL_BUCKET` /
-`RATIO_JOURNAL_PREFIX` unset so cold starts write `/tmp`
-journals — S3 hydrate on that function 503ed production
-`/books` with “the journal is still hydrating”. Scale still
+The demo API Lambda hydrates ScaleBucket `journals/`
+(`RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX`) so
+CreateBook and other writes survive a cold start. Hydrate
+503 (“the journal is still hydrating”) is transient only
+— accept-during-hydrate / orTransient still apply. The
+40GB scale fold stays on Fargate ScaleTask. Scale still
 uses ScaleBucket. Unused Cognito CloudFormation resources are
 removed. Live leftovers remain on issue 22 — `DEMO_MEMBERS`
 naming a live WorkOS `sub`, and WorkOS dashboard registration.
@@ -3560,6 +3564,11 @@ Cognito resources removed, or bank / calendar OAuth.
 
 ### Amendment, 2026-09-04 — demo API Lambda does not hydrate the journal from S3
 
+⚠ **Superseded the same day.** The unset stopped lasting
+`/books` 503s and wiped CreateBook on cold start
+(Household). A later amendment restores ScaleBucket
+`journals/` in the template.
+
 Ops cleared `RATIO_JOURNAL_BUCKET` and `RATIO_JOURNAL_PREFIX`
 from live Lambda `ratio-demo` (account `320473299741`,
 us-east-1) after production `/books` showed “the journal is
@@ -3655,8 +3664,9 @@ lot while a seq scan would take the cheap one, and see a stale
 watermark refuse. It cannot show twenty million lots as a
 routine Postgres table, a planner rewrite, or a console screen
 that reads the store. Those remain #8 / #159.
-The demo API journal-env unset (#230) stays; this amendment
-does not reopen it.
+The demo API hydrates ScaleBucket `journals/` so CreateBook
+survives a cold start; this amendment does not reopen the
+#230 `/tmp`-only wipe.
 
 ### Amendment, 2026-09-04 — unused Cognito CloudFormation resources removed
 
@@ -3676,8 +3686,8 @@ What landed is the teardown, not a second IdP:
   resources, nor the Google Client parameters that existed only
   for the unused Hosted UI. The next stack update deletes the
   unused live pool. WorkOS JWT authorizers, DemoUrl,
-  ConnectApiUrl, ScaleBucket, and the #230 journal-env unset
-  stay.
+  ConnectApiUrl, and ScaleBucket stay. Journal env is
+  restored in a later amendment.
 - `DemoMember` defaults to empty. `deploy.yml` passes
   `DEMO_MEMBERS` with an empty fallback — not
   `demo@ratio.fastverk.dev`. Activation is a WorkOS `sub`
@@ -3715,3 +3725,46 @@ AuthKit / Connect JWT authorizers still in place. It cannot
 show a live two-app walk-through without Dashboard
 registration, or seeded funds granted to a live WorkOS `sub`
 until an operator sets `DEMO_MEMBERS`.
+
+### Amendment, 2026-09-04 — demo API Lambda hydrates ScaleBucket journals/ for CreateBook durability
+
+This supersedes the same-day “does not hydrate” amendment
+(#230). That unset stopped lasting `/books` 503s and wiped
+user-created books on cold start. Matthew created PERSONAL
+book “Household” (slug `household`) on ratio.marsh.build;
+after refresh `/books` showed empty (Books · 0). Live
+Lambda had Bucket/Prefix null; Household never appeared
+under `s3://ratio-demo-scale-320473299741/journals/`.
+
+Ops already restored live Lambda env
+(`RATIO_JOURNAL_BUCKET=ratio-demo-scale-320473299741`,
+`RATIO_JOURNAL_PREFIX=journals/`). `GET /v1/books` then
+returned 401 immediately, not 503. `journals/` is ~1971
+small objects (~0.5 MB), not the 40GB scale fold.
+
+What landed is the durable restore in the template, so the
+next CloudFormation deploy keeps persistence:
+
+- `deploy/app.yaml` sets `RATIO_JOURNAL_BUCKET: !Ref
+  ScaleBucket` and `RATIO_JOURNAL_PREFIX: journals/` on the
+  `ratio-demo` Function (Connect is the same Lambda).
+- `Timeout: 60` stays. Scale Fargate / `RATIO_SCALE_*`
+  stay. The 40GB scale fold stays on ScaleTask, not this
+  Lambda.
+- accept-during-hydrate / orTransient (#136/#137) still
+  apply: a book route during hydrate 503s with Retry-After;
+  `/healthz` and `/version` never wait; unauthenticated
+  `/v1` 401s without waiting for the book.
+- `//deploy:iac_test` fails if either journal var is
+  absent, and fails if `RATIO_SCALE_BUCKET` is dropped.
+
+This amendment does not close #22 (`DEMO_MEMBERS` naming a
+live WorkOS `sub`, WorkOS dashboard registration). It does
+not reopen Cognito teardown. It does not close #150. It
+does not reopen #24.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show CreateBook surviving a cold start because the
+journal is on ScaleBucket `journals/`. It cannot show a
+lasting `/books` hang from hydrating the 40GB scale fold
+on this Lambda — that fold stays on Fargate.
