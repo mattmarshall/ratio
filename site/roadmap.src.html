@@ -227,7 +227,14 @@ __STYLE__
           capital-account walk-through can cite each partner's beginning,
           activity, and ending against those same facts. Neither can show
           IRR, a waterfall, a future call schedule, management-fee billing,
-          an LP portal, or K-1 packaging. A live walk-through of
+          an LP portal, K-1 packaging, equalization, a drip election, or
+          a side-pocket class.
+          Equalization, drip, and side-pocket stay Connect
+          (<a href="https://github.com/mattmarshall/ratio/issues/177">#177</a>)
+          — not kernel primitives, not a <code>screensFor</code> fork.
+          Drip elections stay on
+          <a href="https://github.com/mattmarshall/ratio/issues/161">#161</a>.
+          A live walk-through of
           investment lot relief can elect a wash window, attach a
           deferred loss to an open replacement, and show a later sale
           taking the adjusted basis; silence stays unset, not a silent
@@ -512,6 +519,7 @@ __STYLE__
         <li class="o">NAV calculation</li>
         <li class="d">Fee accrual: elected management-fee rule posts conserved receivable/expense; unset when fee terms absent — never a silent zero receivable. Invoice / LP statements stay Connect</li>
         <li class="o">Fee billing (invoice PDF, LP statements, payment collection) — Connect</li>
+        <li class="o">Equalization, drip subscriptions, and side-pocket ops — Connect (#177; drip on #161). Not kernel primitives</li>
         <li class="o">Restatement and point-in-time reporting</li>
         <li class="o">Audit export and evidence trail</li>
         <li class="o">Workload planning and parallel execution</li>
@@ -594,7 +602,14 @@ __STYLE__
       emits EAC / ETC CSV from Project remaining-to-spend cites; unset
       stays unset, never a silent forecast of 0, the grant path is not
       built, and live EAC product UX / <code>/budget</code> EAC fields
-      stay leftover on that issue.</p>
+      stay leftover on that issue.
+      Equalization, drip, and side-pocket stay Connect
+      (<a href="https://github.com/mattmarshall/ratio/issues/177">#177</a>):
+      valuation / ops packaging on existing <code>nav:read</code> /
+      <code>partners:read</code> / <code>journals:post</code> scopes,
+      not new kernel methods. Drip elections stay on
+      <a href="https://github.com/mattmarshall/ratio/issues/161">#161</a>.
+      Equalization and side-pocket first-party apps are not filed.</p>
       <ul class="r-deliver">
         <li class="o">Custodian and administrator feed catalog</li>
         <li class="o">Market-data vendor coverage</li>

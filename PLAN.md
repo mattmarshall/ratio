@@ -2175,6 +2175,67 @@ omitted, the figure will not divide, or a leftover has no cut.
 It cannot show an LP portal, a K-1, a waterfall, or IRR. Those
 remain Connect.
 
+### Amendment, 2026-09-04 — equalization, drip, and side-pocket stay Connect
+
+[#177](https://github.com/mattmarshall/ratio/issues/177) asked whether
+equalization, drip subscriptions, and side pockets belong in core
+because buyers name them and the kernel already has partners,
+commitments, capital accounts, unit movements, and NAV roll-forward.
+That premise is the coverage-creep shape this file already named:
+each is valuation or ops packaging on top of proofs that already
+hold. The default bias holds — **Connect or refuse; keep the kernel
+slim.** Core only if conservation or journal integrity would change.
+None of the three do.
+
+**The decision.** **equalization, drip, and side-pocket stay Connect**
+is the phrase this amendment records — a decision, not a landing.
+
+| Feature | Decision | Why not core |
+|---|---|---|
+| Equalization | **Connect** | A late-subscriber credit, equalization share, or series price is a valuation of NAV and the named cut. The books half is already `subscribe_*` at a price, maybe a share-class partition. No new conserved dimension. |
+| Drip subscriptions | **Connect** | A drip is `distribute_*` then `subscribe_*` of the same amount, plus an LP election. Two existing conserved postings packaged as a workflow. Already named Connect (#161 / #150). |
+| Side pockets | **Connect** | A pocket is *where* an illiquid asset sits — share class / instrument / a named partner cut, already partitioning (`Ratio.Chart.Dimensions`). A transfer into a restricted class conserves. A silent 1/N of pocket NAV is the defect #180 already refused. |
+
+**Refuse in the kernel, for all three.** No `equalize` / `drip` /
+`side_pocket` rule primitive. No `Method` / `Order` / `lot_method`
+variant. No `screensFor` fork. No chrome on `/nav` or `/capital` that
+invents an equalization factor, a reinvestment election, or a
+SidePocket type. Minting `equalization:*` or `sidepocket:*` as a
+Connect scope is the same chrome with a different sticker — use the
+frozen catalog in [`docs/connect-scopes.md`](docs/connect-scopes.md).
+
+**What Connect reads and writes.** Existing scopes, no new grants:
+
+- Equalization: `nav:read`, `partners:read`, `capital:read`,
+  `journals:post` (allowlisted `subscribe_*`).
+- Drip: `partners:read`, `nav:read`, `journals:post` (allowlisted
+  `distribute_*` then `subscribe_*`). The LP election lives on #161.
+- Side pocket: `positions:read`, `partners:read`, `nav:read`,
+  `config:read`, `journals:post`. Participation is a named cut, not a
+  new primitive. No cut → allocated plugs stay unset.
+
+**What this is NOT, because this card is the decision:**
+
+- **Not an implementation.** No Lean, no Rust, no Connect app tree.
+  Do not implement until a later Connect card names the app.
+- **Not new scopes.** The catalog already covers these doors.
+- **Not a refuse of the product door.** Buyers ask; Connect is the
+  answer. Waterfall is the same shape.
+- **Not #161.** Drip was already Connect there. This file does not
+  close #161.
+- **Not #155**, and not a seeded equalization or side-pocket demo.
+
+Nothing on the *Explicitly not building* list moved. This amendment
+closes #177 — the decision is the whole card. It does not close
+#161. It does not close #150. It does not close #22. It does not
+close #155. Equalization and side-pocket first-party Connect apps
+are not filed; drip stays on #161.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show this table and the refuse-in-kernel list. It cannot
+show an equalization credit, a drip election, or a side-pocket
+class in `ratio watch`. Those remain Connect, unbuilt.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

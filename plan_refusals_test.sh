@@ -188,6 +188,12 @@ BUILT=(
   # a second budget store and EAC fields on /budget stay refused. The
   # sentence it matches is in the 2026-09-04 #170 amendment.
   "change-order and award ingest on /budget"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED THE DECISION, WHICH IS
+  # THE PROTOCOL. Equalization / drip / side-pocket were not built —
+  # they stay Connect. The sentence it matches is in the 2026-09-04
+  # #177 amendment. Adding the line is the cost of noticing if the
+  # phrase later lands on the refusal list as if the door were shut.
+  "equalization, drip, and side-pocket stay Connect"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
