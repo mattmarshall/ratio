@@ -11548,7 +11548,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         assert!(listed.contains("books/alpha"), "books:read lists the member book: {listed}");
         assert!(
             !listed.contains("books/beta"),
-            "org:{id} is not membership on a Connect token: {listed}"
+            "org:{{id}} is not membership on a Connect token: {listed}"
         );
         transcode::serve(&reader, "GET", "/v1/books/alpha", "", "")
             .expect("books:read opens a book the subject administers");
