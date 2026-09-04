@@ -10,7 +10,8 @@
         "Cash and equivalents",
         "Dividend income",
         "Withholding tax receivable"
-      ]
+      ],
+      "measured": false
     }
   ],
   "nextPageToken": ""

@@ -2,7 +2,7 @@
   "accounts": [
     {
       "name": "funds/partners/views/book/accounts/50",
-      "displayName": "Partner capital — LP",
+      "displayName": "Partner capital \u2014 LP",
       "dimension": "50",
       "type": "EQUITY",
       "debit": "2500",
@@ -10,11 +10,12 @@
       "balance": "-7500",
       "abnormal": false,
       "postingCount": "2",
-      "currencyTotals": []
+      "currencyTotals": [],
+      "units": ""
     },
     {
       "name": "funds/partners/views/book/accounts/51",
-      "displayName": "Partner capital — GP",
+      "displayName": "Partner capital \u2014 GP",
       "dimension": "51",
       "type": "EQUITY",
       "debit": "0",
@@ -22,7 +23,8 @@
       "balance": "-4000",
       "abnormal": false,
       "postingCount": "1",
-      "currencyTotals": []
+      "currencyTotals": [],
+      "units": ""
     },
     {
       "name": "funds/partners/views/book/accounts/20",
@@ -34,7 +36,8 @@
       "balance": "0",
       "abnormal": false,
       "postingCount": "0",
-      "currencyTotals": []
+      "currencyTotals": [],
+      "units": ""
     },
     {
       "name": "funds/partners/views/book/accounts/22",
@@ -46,11 +49,12 @@
       "balance": "0",
       "abnormal": false,
       "postingCount": "0",
-      "currencyTotals": []
+      "currencyTotals": [],
+      "units": ""
     },
     {
       "name": "funds/partners/views/book/accounts/52",
-      "displayName": "Commitments — LP",
+      "displayName": "Commitments \u2014 LP",
       "dimension": "52",
       "type": "EQUITY",
       "debit": "0",
@@ -58,11 +62,12 @@
       "balance": "0",
       "abnormal": false,
       "postingCount": "0",
-      "currencyTotals": []
+      "currencyTotals": [],
+      "units": ""
     },
     {
       "name": "funds/partners/views/book/accounts/54",
-      "displayName": "Undrawn commitments — LP",
+      "displayName": "Undrawn commitments \u2014 LP",
       "dimension": "54",
       "type": "EQUITY",
       "debit": "0",
@@ -70,7 +75,8 @@
       "balance": "0",
       "abnormal": false,
       "postingCount": "0",
-      "currencyTotals": []
+      "currencyTotals": [],
+      "units": ""
     }
   ],
   "nextPageToken": ""
