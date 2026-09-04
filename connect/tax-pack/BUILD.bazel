@@ -1,0 +1,30 @@
+package(default_visibility = ["//visibility:public"])
+
+# The tax-pack Connect app is a sibling tree. Bazel does not build a
+# WorkOS binary here; it holds the pack builder to the catalog, to
+# RuleSet field names, and to the refusals the issue named.
+#
+# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_cites() must refuse.
+# Token validation is #151 / leftover #22. IRS e-file is refused.
+# Mixed acquired dates must not invent a holding-period category (#9).
+sh_test(
+    name = "pack_test",
+    size = "small",
+    srcs = ["pack_test.sh"],
+    args = [
+        "$(rootpath pack.py)",
+        "$(rootpath pack_test.py)",
+        "$(rootpath app.json)",
+        "$(rootpath //crates/ratio-rules:src/lib.rs)",
+        "$(rootpath //:docs/connect-scopes.md)",
+        "$(rootpath //console:src/lib/screens.ts)",
+    ],
+    data = [
+        "pack.py",
+        "pack_test.py",
+        "app.json",
+        "//crates/ratio-rules:src/lib.rs",
+        "//:docs/connect-scopes.md",
+        "//console:src/lib/screens.ts",
+    ],
+)
