@@ -2495,12 +2495,12 @@ template project-invoices {
     absent   pend
 
   fact       invoice
-    reference    from \"InvoiceRef\"
-    vendor       vendor
-    dated        from \"Date\" as date \"YYYY-MM-DD\"
-    amount       from \"Amount\" as money in \"Ccy\"
-    memo         from \"Memo\" as text optional
-    kind         from \"Kind\" as { cost: cost, cost_finishes: cost_finishes, cost_site: cost_site, cost_structure: cost_structure, earn_progress: earn_progress, invoice: invoice, invoice_finishes: invoice_finishes, invoice_site: invoice_site, invoice_structure: invoice_structure, pay_vendor: pay_vendor, progress_bill: progress_bill }
+    reference   from \"InvoiceRef\"
+    vendor      vendor
+    dated       from \"Date\" as date \"YYYY-MM-DD\"
+    amount      from \"Amount\" as money in \"Ccy\"
+    memo        from \"Memo\" as text optional
+    kind        from \"Kind\" as { cost: cost, cost_finishes: cost_finishes, cost_site: cost_site, cost_structure: cost_structure, earn_progress: earn_progress, invoice: invoice, invoice_finishes: invoice_finishes, invoice_site: invoice_site, invoice_structure: invoice_structure, pay_vendor: pay_vendor, progress_bill: progress_bill }
 
   posts      by \"kind\"
     amount      amount
