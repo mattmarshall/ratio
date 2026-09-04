@@ -694,7 +694,10 @@ describe("a first-class book", () => {
       ],
       nextPageToken: "",
     };
-    wire.getBook = (async () => harbour) as typeof wire.getBook;
+    // Fixture JSON types empty `partnerCut` as `never[]`. A named cut is
+    // a wider return than the mock's inferred Book — same `unknown`
+    // bridge the budget/envelope mocks already use.
+    wire.getBook = (async () => harbour) as unknown as typeof wire.getBook;
     wire.listAccounts = (async (...args: unknown[]) => {
       if (args[3] === "nav") return period;
       return capitalAccountsFixture;
