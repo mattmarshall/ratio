@@ -44,7 +44,7 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//proto:ratio_aip_lint`, `//proto:mirrors_test` | the wire contract, and its two hand-written mirrors |
 | `//crates/ratio-console:transcode_test` | the route table against the proto |
 | `//demo:rehearse_test`, `//demo:shadow_run_test` | the demo and the shadow run, end to end |
-| `//:connect_scopes_test` | PLAN, HANDOFF and `docs/connect-scopes.md` still name the same Connect grants and leftovers — the in-process authorizer accepts catalog scopes; live OAuth stays leftover |
+| `//:connect_scopes_test` | PLAN, HANDOFF and `docs/connect-scopes.md` still name the same Connect grants and leftovers — the in-process authorizer accepts catalog scopes; API Gateway JWT verifies Connect tokens; live OAuth stays leftover |
 | `//connect/bank-feed:mapper_test` | Personal bank-feed mapper (#165): canonical scopes, empty-allowlist / closed-through / conservation refusals — not that a token is accepted |
 | `//connect/tax-pack:pack_test` | Personal tax-pack builder (#166): canonical scopes, 8949-ish CSV, mixed-date category refusal — not that a token is accepted and not an IRS e-file |
 | `//connect/goals:goals_test` | Personal net-worth goals / scenarios (#168): canonical scopes, opt-in / empty-allowlist / closed-through refusals — not that a token is accepted and not a cash forecast |

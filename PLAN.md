@@ -21,11 +21,13 @@ is an eight-week plan for a product nobody was buying.
 > cannot read book B. It is not a client portal. Authenticated writes
 > record actor = WorkOS `sub` (#151). Connect tokens accepted with
 > catalog scopes on `/v1` (membership still required; never
-> `RATIO_DEMO_OPEN`; never `org:{id}`). Live leftovers on issue 22
-> are the shared demo's `RATIO_DEMO_OPEN`, unused Cognito
-> CloudFormation resources, the API Gateway JWT authorizer still
-> proving only the AuthKit session issuer, and a live two-user
-> walk-through on the open demo host. Durable writes are #24 (closed).
+> `RATIO_DEMO_OPEN`; never `org:{id}`). API Gateway JWT verifies
+> Connect tokens on a second HTTP API (Connect `iss` =
+> `https://auth.ratio.marsh.build`; AuthKit session `iss` stays
+> `/user_management/{client_id}` — one authorizer cannot OR those).
+> Live leftovers on issue 22 are the shared demo's `RATIO_DEMO_OPEN`,
+> unused Cognito CloudFormation resources, and a live two-user
+> walk-through / live provider OAuth. Durable writes are #24 (closed).
 > The Cognito-era activation sentence is historical.
 
 Three constraints set everything below:
@@ -773,11 +775,11 @@ to it and both still stand:**
 **Sign-in is WorkOS AuthKit**, on `https://ratio.marsh.build`. Cognito
 is not the code path. AuthKit is in the code (#63). Vercel Production
 has the env (#68 closed). Write-route actor binding landed (#151).
-Connect tokens accepted with catalog scopes on `/v1`. Live leftovers
-remain on issue 22 — the shared demo's `RATIO_DEMO_OPEN`, unused
-Cognito resources in the deploy templates, the API Gateway JWT
-authorizer still proving only the AuthKit session issuer, and live
-provider OAuth.
+Connect tokens accepted with catalog scopes on `/v1`. API Gateway
+JWT verifies Connect tokens on the Connect HTTP API (AuthKit
+custom-domain issuer). Live leftovers remain on issue 22 — the
+shared demo's `RATIO_DEMO_OPEN`, unused Cognito resources in the
+deploy templates, and live provider OAuth / a two-user walk-through.
 Do not read this paragraph as production-complete, and do
 not read a walk-through as demo-ready (#27).
 
@@ -1413,8 +1415,9 @@ must be a person is not a scope somebody could later relax.
 
 **What this is NOT, because the adjacent refusals are one word away:**
 
-- **Not token validation.** The API authorizer that accepts a Connect
-  access token is #151 / leftover #22. This file does not close #150.
+- **Not live provider OAuth.** API Gateway JWT verifies Connect
+  tokens on ConnectApiUrl. Live OAuth is leftover #22. This file
+  does not close #150.
 - **Not a reference Connect app.** A read-only books + statements skeleton
   is leftover on #150.
 - **Not the client portal, bank OAuth, CRM connectors, tax e-file, a
@@ -1492,9 +1495,9 @@ chrome is unchanged — `screensFor` is not forked.
 
 **What this is NOT:**
 
-- **Not token validation.** Connect access tokens are still not accepted
-  on `/v1`. `deliver()` refuses. The authorizer is #151 / leftover #22.
-  This file does not close #150.
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect tokens
+  on ConnectApiUrl. `deliver()` still refuses. Live OAuth is leftover
+  #22 / #150. This file does not close #150.
 - **Not live bank OAuth.** No Plaid / MX / TrueLayer token. The mapper
   accepts a normalized row. Provider wiring stays leftover on #165.
 - **Not #150's read-only reference skeleton.** That leftover is
@@ -1545,9 +1548,9 @@ amendment.)*
 
 **What this is NOT:**
 
-- **Not token validation.** Connect access tokens are still not accepted
-  on `/v1`. `fetch_cites()` refuses. The authorizer is #151 / leftover
-  #22. This file does not close #150.
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect tokens
+  on ConnectApiUrl. `fetch_cites()` still refuses. Live OAuth is leftover
+  #22 / #150. This file does not close #150.
 - **Not IRS e-file, not a CPA portal, not MeF.** `submit()` refuses.
   Live submission stays leftover on #166.
 - **Not a pooled holding-period category rule in the kernel.** Mixed
@@ -1600,9 +1603,9 @@ is the Built phrase this amendment adds.
 
 **What this is NOT:**
 
-- **Not token validation.** Connect access tokens are still not accepted
-  on `/v1`. `fetch_statements()` and `deliver()` refuse. The authorizer
-  is #151 / leftover #22. This file does not close #150.
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect tokens
+  on ConnectApiUrl. `fetch_statements()` and `deliver()` still refuse.
+  Live OAuth is leftover #22 / #150. This file does not close #150.
 - **Not a cash forecast, not a FIRE number, not envelope coaching.**
   Those stay refused or cannot-show. A scenario is discrete hypothetical
   posts, not a compounding path.
@@ -1768,9 +1771,10 @@ new identity product:
 
 **What this is NOT, because leftovers stay named on #22:**
 
-- **Not a Connect authorizer.** `/v1` still proves an AuthKit session
-  JWT. Accepting Connect scopes is leftover on #22 / #150. This file
-  does not close #22.
+- **Not unsetting the open demo, and not live OAuth.** `/v1` now
+  proves AuthKit session JWTs on DemoUrl and Connect tokens on
+  ConnectApiUrl. Live leftovers stay on #22. This file does not
+  close #22.
 - **Not unsetting `RATIO_DEMO_OPEN`.** The shared execute-api demo
   still grants any AuthKit session every fund. Isolation holds on the
   `scoped` path in CI. A live two-user walk-through on that host will
@@ -1817,10 +1821,11 @@ AIA pay-app Connect app** is the Built phrase this amendment adds.
 
 **What this is NOT:**
 
-- **Not a Connect authorizer.** Connect access tokens are still not
-  accepted on `/v1`. `fetch_cites()` and `deliver()` refuse. Write-route
-  actor binding landed (#151). Accepting Connect scopes is leftover
-  #22 / #150. This file does not close #22. It does not reopen #151.
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect
+  tokens on ConnectApiUrl. `fetch_cites()` and `deliver()` still
+  refuse. Write-route actor binding landed (#151). Live OAuth is
+  leftover #22 / #150. This file does not close #22. It does not
+  reopen #151.
 - **Not a licensed AIA PDF, not a vendor portal, not G702 product UX.**
   `render_form()` refuses. Live form / portal leftovers stay on #184
   and #172.
@@ -1928,10 +1933,11 @@ phrase this amendment adds.
 
 **What this is NOT:**
 
-- **Not a Connect authorizer.** Connect access tokens are still not
-  accepted on `/v1`. `fetch_cites()` and `deliver()` refuse. Write-route
-  actor binding landed (#151). Accepting Connect scopes is leftover
-  #22 / #150. This file does not close #22. It does not reopen #151.
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect
+  tokens on ConnectApiUrl. `fetch_cites()` and `deliver()` still
+  refuse. Write-route actor binding landed (#151). Live OAuth is
+  leftover #22 / #150. This file does not close #22. It does not
+  reopen #151.
 - **Not a vendor user directory in Ratio core.** Membership is the
   AuthKit `sub` on the book. `vendor_directory()` refuses.
 - **Not AIA G702 product UI.** That door is #184. `render_g702()`
@@ -1999,10 +2005,11 @@ Connect app** is the Built phrase this amendment adds.
 
 **What this is NOT:**
 
-- **Not a Connect authorizer.** Connect access tokens are still not
-  accepted on `/v1`. `fetch_cites()` and `deliver()` refuse. Write-route
-  actor binding landed (#151). Accepting Connect scopes is leftover
-  #22 / #150. This file does not close #22. It does not reopen #151.
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect
+  tokens on ConnectApiUrl. `fetch_cites()` and `deliver()` still
+  refuse. Write-route actor binding landed (#151). Live OAuth is
+  leftover #22 / #150. This file does not close #22. It does not
+  reopen #151.
 - **Not EAC fields on `/budget`.** Remaining to spend is still
   revised − incurred − awarded. Unset stays unset. A silent forecast
   of 0 is refused. `post_forecast()` and `cpi_eac()` refuse.
@@ -2542,10 +2549,11 @@ phrase this amendment adds.
 
 **What this is NOT:**
 
-- **Not a Connect authorizer.** Connect access tokens are still not
-  accepted on `/v1`. `fetch_cites()` and `deliver()` refuse. Write-route
-  actor binding landed (#151). Accepting Connect scopes is leftover
-  #22 / #150. This file does not close #22. It does not reopen #151.
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect
+  tokens on ConnectApiUrl. `fetch_cites()` and `deliver()` still
+  refuse. Write-route actor binding landed (#151). Live OAuth is
+  leftover #22 / #150. This file does not close #22. It does not
+  reopen #151.
 - **Not a mega-book.** `mega_book()` and `merge_journals()` refuse.
   Books stay independent. A concatenated journal would break the
   prefix a figure must pin.
@@ -3045,9 +3053,9 @@ calendar-bills Connect app** are the Built phrases this amendment adds.
 
 **What this is NOT:**
 
-- **Not token validation.** Connect access tokens are still not accepted
-  on `/v1`. `fetch_statements()` and `deliver()` refuse. Accepting
-  Connect scopes is leftover #22 / #150. Write-route actor binding
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect tokens
+  on ConnectApiUrl. `fetch_statements()` and `deliver()` still refuse.
+  Live OAuth is leftover #22 / #150. Write-route actor binding
   landed (#151). This file does not close #150.
 - **Not live bank or calendar OAuth.** No Plaid / MX / TrueLayer token,
   no Google Calendar / Outlook grant. The mappers accept a normalized
@@ -3112,10 +3120,11 @@ adds.
 
 **What this is NOT:**
 
-- **Not a Connect authorizer.** Connect access tokens are still not
-  accepted on `/v1`. `fetch_cites()` and `deliver()` refuse. Write-route
-  actor binding landed (#151). Accepting Connect scopes is leftover
-  #22 / #150. This file does not close #22. It does not reopen #151.
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect
+  tokens on ConnectApiUrl. `fetch_cites()` and `deliver()` still
+  refuse. Write-route actor binding landed (#151). Live OAuth is
+  leftover #22 / #150. This file does not close #22. It does not
+  reopen #151.
 - **Not a live ZIP against `/v1`.** Unit tests assert the refuse and
   the pack shape from fixtures. A green cite is not a live token.
 - **Not a kernel blob store, not `ratio close`.** `store_blob()` and
@@ -3313,14 +3322,13 @@ this amendment adds.
   still grants any AuthKit session every fund. Isolation holds on
   the `scoped` path in CI.
 - **Not removing unused Cognito CloudFormation resources.**
-- **Not a second API Gateway issuer.** The HTTP API JWT authorizer
-  still proves the AuthKit session `iss` / `aud`. A Connect token
-  minted at the AuthKit domain is refused at the edge. In-process,
-  verified Connect claims with catalog scopes are accepted. Live
-  provider OAuth (bank, calendar) and a licensed AIA PDF stay
-  leftover. First-party Connect scaffolds still refuse `fetch` /
-  `deliver` until those leftovers move. This amendment does not
-  finish issue 22.
+- **Not live provider OAuth.** In-process, verified Connect claims
+  with catalog scopes are accepted. Dashboard registration,
+  redirect, and a two-user walk-through stay leftover. First-party
+  Connect scaffolds still refuse `fetch` / `deliver` until those
+  leftovers move. The API Gateway JWT leftover named here is
+  recorded by the next amendment. This amendment does not finish
+  issue 22.
 - **Not the `journals:post` allowlist** keyed by `client_id`. Empty
   still refuses every post at the app; the kernel map stays on #150.
 - **Not reserved RPCs** (`webhooks:journal`, `nav:strike` as a write,
@@ -3339,3 +3347,70 @@ scope / with `journal:read` / with `rules:approve` being refused.
 It can show an AuthKit session still walking `/v1/books` without
 Connect scopes. It cannot show two users isolated on the open demo
 host, live bank or calendar OAuth, or a ZIP that reached `/v1`.
+
+### Amendment, 2026-09-04 — API Gateway JWT verifies Connect tokens
+
+The leftover on issue 22 after #224 was the HTTP API JWT authorizer
+still proving only the AuthKit session `iss`
+(`https://api.workos.com/user_management/{client_id}`). A
+Connect-shaped token that arrived in-process was accepted with
+catalog scopes, but WorkOS Connect access tokens mint a different
+`iss` — the AuthKit custom domain
+(`https://auth.ratio.marsh.build`) — and API Gateway refused them
+at the edge. Connect apps (#163 / #185 / #184 / #169 / #179 / …)
+never reached `/v1`.
+
+**The exact refuse of one authorizer.**
+`AWS::ApiGatewayV2::Authorizer` `JwtConfiguration.Issuer` is a
+single string. CloudFormation will not OR two issuers. Pointing
+the console authorizer at the Connect domain 401s every AuthKit
+session. Pointing a Connect authorizer at the session path 401s
+every Connect token. A route-key split on the console API would
+invent a second URL prefix the in-process accept path does not
+serve.
+
+What landed is a second HTTP API, not a new identity product and
+not a Lambda authorizer:
+
+- `ConnectApi` (`ratio-demo-connect`) proxies the same Lambda.
+  `ANY /v1/{proxy+}` requires JWT. Public screens stay on DemoUrl.
+- `ConnectAuthorizer` (`workos-connect-jwt`) proves
+  `WorkOsConnectIssuer` (default `https://auth.ratio.marsh.build`,
+  OIDC discovery and `jwks_uri` `/oauth2/jwks` verified 2026-09-04)
+  and audience `WorkOsClientId` — Connect `aud` is the Ratio
+  WorkOS project client, not `azp`.
+- AuthKit sessions stay on DemoUrl / `WorkOsIssuer`. Connect apps
+  call `ConnectApiUrl`. Same `/v1` path. Same in-process fence:
+  membership required, never `RATIO_DEMO_OPEN`, never `org:{id}`.
+- `//deploy:iac_test` fails if the gateway is AuthKit-issuer-only
+  again (no `WorkOsConnectIssuer`, Connect authorizer citing
+  `WorkOsIssuer`, or missing Connect API / `/v1` route).
+
+**API Gateway JWT verifies Connect tokens** is the Built phrase
+this amendment adds.
+
+**What this is NOT, because leftovers stay named on issue 22:**
+
+- **Not unsetting `RATIO_DEMO_OPEN`.** The shared DemoUrl still
+  grants any AuthKit session every fund.
+- **Not removing unused Cognito CloudFormation resources.** They
+  stay unused so a stack update does not destroy the live pool.
+- **Not live provider OAuth.** Dashboard registration, redirect,
+  bank / calendar OAuth, and a two-user walk-through stay leftover.
+  First-party Connect scaffolds still refuse `fetch` / `deliver`.
+  This file does not close #22.
+- **Not the `journals:post` allowlist**, reserved RPCs, or a
+  kernel blob store. Those stay on #150 / the app issues.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not close #150. It does not reopen #151. It does
+not finish #163, #165, #166, #168, #169, #172, #184, #179, or
+#185.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show an unauthenticated request to ConnectApiUrl `/v1`
+returning 401, and a Connect-shaped token whose `iss` is the
+AuthKit custom domain reaching the same `/v1` accept path that
+#224 opened. It can show an AuthKit session still walking DemoUrl
+`/v1`. It cannot show two users isolated on the open demo host,
+live bank or calendar OAuth, or a ZIP that reached `/v1`.

@@ -58,7 +58,7 @@ Registration notes (WorkOS Dashboard → Applications → Connect):
 | Redirect URI | The app's callback. Must match the registered value exactly, including a trailing slash. |
 | Credentials | `client_id` / `client_secret` from a Connect credential. Up to five. Shown once. |
 | Requested scopes | `lots:read` `statements:read` `config:read` — plus `openid` if the library requires an OIDC discovery scope. Do not request `journals:post`. |
-| Issuer / JWKS | The AuthKit environment that already signs session JWTs. Verification is the resource server's job (`/v1`), and that authorizer is **not built**. |
+| Issuer / JWKS | WorkOS Connect access tokens mint `iss` as the AuthKit custom domain (`https://auth.ratio.marsh.build`). API Gateway JWT verifies them on `ConnectApiUrl` `/v1` (audience = Ratio WorkOS project client). AuthKit session tokens stay on DemoUrl. |
 
 A third-party flag would prompt AuthKit consent and bind the app to an
 Organization. This household pack is first-party: the subject's book
@@ -101,10 +101,11 @@ those engines and does not elect them.
 
 ## Leftovers — this does not close #166
 
-1. **API Gateway JWT authorizer still AuthKit-session only**
-   (#150 / leftover on issue 22). In-process `/v1` accepts Connect
-   catalog scopes after membership. A live Connect token can still
-   401 at the edge. Write-route actor binding landed (#151).
+1. **Live Connect OAuth**
+   (#150 / leftover on issue 22). API Gateway JWT verifies Connect
+   tokens on ConnectApiUrl. In-process `/v1` accepts catalog scopes
+   after membership. Dashboard registration, redirect, and a live
+   token stay leftover. Write-route actor binding landed (#151).
 2. **Live CPA / IRS submission.** Never in core. A filed return, a
    MeF transmission, and a CPA portal stay leftover on this issue.
 3. **Pooled holding-period category.** Mixed acquisition dates stay

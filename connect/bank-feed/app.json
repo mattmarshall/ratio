@@ -41,6 +41,6 @@
   },
   "grant_path": {
     "status": "not built",
-    "note": "In-process /v1 accepts Connect catalog scopes after membership. leftover #22: API Gateway JWT authorizer still AuthKit-session only — a live Connect token can still 401 at the edge. Write-route actor binding landed (#151). This file leaves #150 and #165 open."
+    "note": "In-process /v1 accepts Connect catalog scopes after membership. API Gateway JWT verifies Connect tokens on ConnectApiUrl. leftover #22: live provider OAuth, RATIO_DEMO_OPEN, unused Cognito. Write-route actor binding landed (#151). This file leaves #150 and #165 open."
   }
 }

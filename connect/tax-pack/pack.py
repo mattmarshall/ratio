@@ -605,12 +605,12 @@ def build_pack(
 def fetch_cites(*, token: str | None = None) -> None:
     """Refuse to pull. The grant path is not built.
 
-    A green pack builder is not a door that opens. Connect access
-    tokens are not accepted on /v1.
+    A green pack builder is not a door that opens. Live Connect
+    OAuth is leftover; this app does not call /v1.
     """
     _ = token
     raise Refuse(
-        "Connect access tokens are not accepted on /v1 — the grant path "
+        "live Connect OAuth is leftover — the grant path "
         "is not built (#150 / #151 / leftover #22). This app does not "
         "pretend the door opens"
     )

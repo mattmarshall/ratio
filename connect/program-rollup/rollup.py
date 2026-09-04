@@ -658,12 +658,12 @@ def cite_from_fixture(raw: Mapping[str, Any]) -> Rollup:
 def fetch_cites(*, token: str | None = None) -> None:
     """Refuse to pull. The grant path is not built.
 
-    A green roll-up builder is not a door that opens. Connect access
-    tokens are not accepted on /v1.
+    A green roll-up builder is not a door that opens. Live Connect
+    OAuth is leftover; this app does not call /v1.
     """
     _ = token
     raise Refuse(
-        "Connect access tokens are not accepted on /v1 — the grant path "
+        "live Connect OAuth is leftover — the grant path "
         "is not built (leftover #22 / #150). This app does not "
         "pretend the door opens"
     )
@@ -674,7 +674,7 @@ def deliver(rollup: Rollup, *, token: str | None = None) -> None:
     _ = rollup
     _ = token
     raise Refuse(
-        "Connect access tokens are not accepted on /v1 — the grant path "
+        "live Connect OAuth is leftover — the grant path "
         "is not built (leftover #22 / #150). This app does not "
         "deliver a roll-up against a door that is not open"
     )

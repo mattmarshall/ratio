@@ -64,14 +64,13 @@ Registration notes (WorkOS Dashboard → Applications → Connect):
 | Redirect URI | The app's callback. Must match the registered value exactly, including a trailing slash. |
 | Credentials | `client_id` / `client_secret` from a Connect credential. Up to five. Shown once. |
 | Requested scopes | `billing:read` `budget:read` `statements:read` `journals:post` — plus `openid` if the library requires an OIDC discovery scope. Do not request `journal:append`. `journals:post` is only exercised for allowlisted `vendor_invoice*`. |
-| Issuer / JWKS | The AuthKit environment that already signs session JWTs. Verification is the resource server's job (`/v1`), and that authorizer is **not built**. |
+| Issuer / JWKS | WorkOS Connect access tokens mint `iss` as the AuthKit custom domain (`https://auth.ratio.marsh.build`). API Gateway JWT verifies them on `ConnectApiUrl` `/v1` (audience = Ratio WorkOS project client). AuthKit session tokens stay on DemoUrl. |
 
 A third-party flag would prompt AuthKit consent and bind the app to an
 Organization. This job portal is first-party: the subject's book
 membership is still the tenant. An `org_id` claim is not membership.
 #151 landed the write-route ACL fence: a Connect-shaped token is
-`scoped` and does not inherit `org:{id}`. Accepting the token is
-still leftover #22.
+`scoped` and does not inherit `org:{id}`. API Gateway JWT verifies Connect tokens on ConnectApiUrl. Live OAuth stays leftover #22.
 
 M2M (`client_credentials`) is the wrong shape here. There is no user
 on an M2M token, and a vendor invoice that posted without one would
@@ -82,17 +81,17 @@ attribute a payable to a client secret.
 From the catalog, restated so a later RPC does not "just" add them:
 
 1. Token is a Connect access token, verified against the environment
-   JWKS — leftover on #22.
+   JWKS — API Gateway JWT verifies Connect tokens on ConnectApiUrl.
 2. AuthKit `sub` is in the book's membership. Write-route actor =
-   `sub` landed (#151). The authorizer still does not accept a
-   Connect token — leftover on #22.
+   `sub` landed (#151). Live Connect OAuth (Dashboard registration,
+   redirect) stays leftover on #22.
 3. Action is in the catalog. Aliases refused.
 4. `journals:post` passes the per-`client_id` allowlist. Empty refuses.
    The named templates are already in the book's approved RuleSet.
 5. Closed-through, conservation, bounds. A scope does not waive a
    proof.
 
-Until (1) and (2) land, `fetch_cites()` and `deliver()` are the
+Until live OAuth lands, `fetch_cites()` and `deliver()` are the
 honesty: they refuse with the leftover named.
 
 ## What a walk-through can and cannot show
@@ -113,19 +112,18 @@ chrome is unchanged. `screensFor` is not forked. `/billing` and
 
 ## Leftovers — this does not close #172
 
-1. **API Gateway JWT authorizer still AuthKit-session only**
-   (leftover on issue 22). In-process `/v1` accepts Connect catalog
-   scopes after membership. A live Connect token can still 401 at
-   the edge. Write-route actor binding landed (#151); this app
+1. **Live Connect OAuth**
+   (leftover on issue 22). API Gateway JWT verifies Connect tokens
+   on ConnectApiUrl. In-process `/v1` accepts catalog scopes after
+   membership. Dashboard registration, redirect, and a live token
+   stay leftover. Write-route actor binding landed (#151); this app
    does not reopen it.
-2. **Live Connect OAuth.** Dashboard registration, redirect, and a
-   token that `/v1` accepts.
-3. **Vendor user directory in Ratio core.** Never. Membership is the
+2. **Vendor user directory in Ratio core.** Never. Membership is the
    subject's AuthKit `sub`. This app refuses to invent one.
-4. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover
+3. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover
    on #150. This app checks its own list; the kernel does not yet key
    one by `client_id`.
-5. **#150's read-only reference skeleton** (`books:read` +
+4. **#150's read-only reference skeleton** (`books:read` +
    `statements:read` only) is a different app. This one requests
    `billing:read`, `budget:read`, and `journals:post` and does not
    open the door.

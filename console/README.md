@@ -236,15 +236,17 @@ Two required on a laptop; four more on a Vercel deploy (AuthKit).
 | `WORKOS_COOKIE_PASSWORD` | ≥32 characters; `openssl rand -base64 32` |
 | `NEXT_PUBLIC_WORKOS_REDIRECT_URI` | Must match a Redirect URI on the attached WorkOS application |
 
-⭐ **WorkOS AuthKit is the sign-in path.** Cognito is not consulted. The API
-Gateway JWT authorizer uses issuer
+⭐ **WorkOS AuthKit is the sign-in path.** Cognito is not consulted. The
+console API Gateway JWT authorizer uses issuer
 `https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB`
 (the `iss` AuthKit session tokens mint; the bare `https://api.workos.com/`
-host has no OIDC discovery and must not be used).
-`https://auth.ratio.marsh.build` is the hosted AuthKit UI, not the
-authorizer issuer. Audience = `WORKOS_CLIENT_ID`. Membership is still
-`MEMBERSHIP.tsv`: `sub`, email, or `org:{workos_org_id}`. Creating a book
-grants only the creator's `sub`.
+host has no OIDC discovery and must not be used). WorkOS Connect
+access tokens mint `iss` as `https://auth.ratio.marsh.build` and are
+verified on a second HTTP API (`ConnectApiUrl`), same `/v1` path,
+same audience (`WORKOS_CLIENT_ID`). One JWT authorizer cannot OR
+those issuers. Membership is still `MEMBERSHIP.tsv`: `sub`, email, or
+`org:{workos_org_id}` (Connect tokens never match `org:{id}`).
+Creating a book grants only the creator's `sub`.
 
 The callback path is the one [AuthKit for Next.js](https://workos.com/docs/authkit/nextjs)
 and the [authkit-nextjs README](https://github.com/workos/authkit-nextjs)

@@ -271,6 +271,12 @@ BUILT=(
   # on issue 22. The sentence it matches is in the 2026-09-04
   # Connect-authorizer amendment.
   "Connect tokens accepted with catalog scopes"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The Connect HTTP API JWT authorizer is not on the refusal list —
+  # live OAuth, RATIO_DEMO_OPEN, and unused Cognito stay leftover on
+  # issue 22. The sentence it matches is in the 2026-09-04
+  # Connect-gateway amendment.
+  "API Gateway JWT verifies Connect tokens"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
