@@ -2649,18 +2649,16 @@ impl Console {
         } else {
             spec.display_name.trim().to_string()
         };
-        book::initialize(&path, id, &display, kind)?;
+        let digest = book::initialize(&path, id, &display, kind)?;
         if let Some(actor) = &self.actor {
             book::grant(&self.root, actor, id)?;
         }
         // The grant is on disk; `scope` was computed at construction, so
         // do not call `open_book` here. The next request sees the grant.
         // Record who created it — the same CHANGELOG every other write uses.
-        let digest = FileBook::open(&path)?
-            .active()?
-            .map(|d| d.as_str().to_string())
-            .unwrap_or_default();
-        self.record_change(&path, "created", id, &digest)?;
+        // Digest comes from initialize: a second FileBook::open here would
+        // be the storage-layer bypass the source-text test refuses.
+        self.record_change(&path, "created", id, digest.as_str())?;
         let meta = book::BookMeta::load(&path, id);
         Ok(pb::Book {
             name: format!("books/{id}"),
