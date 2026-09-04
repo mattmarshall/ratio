@@ -61,6 +61,14 @@ RUN chmod +x /usr/local/bin/ratio /usr/local/bin/entrypoint.sh
 # that is stuck. `deploy/seed_test.sh` makes the same pair of assertions against
 # the script; these two files have to move together.
 #
+# ⛔ THE EIGHTH FUND IS THE AVERAGE-COST POOL, AND THE COUNT ALONE CANNOT
+# SAY SO. A slot that is not kestrel, or a kestrel that wrote no
+# `average_cost = true`, is the same silence #9 already refused as a
+# Method. `deploy/seed_test.sh` asserts the election against the script;
+# this asserts the IMAGE carries the cite. `lot_method = "average_cost"`
+# stays refused — this is `average_cost = true`, not a Method, and
+# min-tax must stay unset on the same blob.
+#
 # ⚠ NOTHING ON A PULL REQUEST RUNS THIS FILE. `deploy.yml` fires on push to
 # main, so a stale assertion here is invisible until it is merged and the deploy
 # goes red. Edit it in the commit that changes the seeder, not afterwards.
@@ -78,7 +86,7 @@ RUN set -eu; \
     echo "demo book ok: $(find /opt/demo-book -type f | wc -l) file(s)"; \
     echo "== /opt/demo-funds =="; \
     ls -1 /opt/demo-funds | sed 's|^|  |'; \
-    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 7 || { echo "FAIL: expected 7 funds"; exit 1; }; \
+    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 8 || { echo "FAIL: expected 8 funds"; exit 1; }; \
     for f in /opt/demo-funds/*/; do \
       test -s "$f/accounts.json" || { echo "FAIL: $f has no chart"; exit 1; }; \
     done; \
@@ -89,7 +97,14 @@ RUN set -eu; \
     test "$(wc -l < /opt/demo-funds/marlowe-dual-basis/NAVS)" -ge 2 || { echo "FAIL: the dual-basis fund struck fewer than two views"; exit 1; }; \
     ashcombe=$(wc -l < /opt/demo-funds/ashcombe-global-equity/journal.jsonl); \
     test "$ashcombe" -gt 1000 || { echo "FAIL: the generated fund has $ashcombe entries — the demo shows no scale"; exit 1; }; \
-    echo "demo funds ok: 7, and $ashcombe entries on the generated one"
+    test -d /opt/demo-funds/kestrel-pooled-basis || { echo "FAIL: kestrel is missing"; exit 1; }; \
+    test -s /opt/demo-funds/kestrel-pooled-basis/config/ACTIVE || { echo "FAIL: kestrel has no ACTIVE config"; exit 1; }; \
+    kestrel_active=$(cat /opt/demo-funds/kestrel-pooled-basis/config/ACTIVE); \
+    grep -q "average_cost = true" "/opt/demo-funds/kestrel-pooled-basis/config/$kestrel_active" \
+      || { echo "FAIL: kestrel elects no average-cost pool — the walk-through cannot cite one"; exit 1; }; \
+    grep -q "min_tax_short_weight" "/opt/demo-funds/kestrel-pooled-basis/config/$kestrel_active" \
+      && { echo "FAIL: kestrel wrote min-tax — two elections for one sale"; exit 1; }; \
+    echo "demo funds ok: 8, kestrel elects the pool, and $ashcombe entries on the generated one"
 
 # The adapter polls this until the server answers, so a cold start does not
 # race the first request.
