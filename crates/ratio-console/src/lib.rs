@@ -6683,10 +6683,26 @@ mod tests {
         eur.currency = "EUR".into();
         c.apply_event(&eur).unwrap();
 
-        assert_eq!(
-            c.get_fund("funds/household").unwrap().trial_balance_difference,
-            "0",
-            "a same-currency household expense conserves"
+        // ⛔ NOT GetFund. A USD-base household holding EUR without a rate
+        // fact must refuse a translated NAV — that is the #160 door.
+        // Conservation is the journal's, per currency.
+        let posted = FileBook::open(&path).unwrap();
+        let tb = posted.trial_balance().unwrap();
+        assert_eq!(tb.debits, tb.credits, "a same-currency household expense conserves");
+        let entry = posted
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.id == "eur-spend")
+            .expect("the EUR expense was written");
+        assert!(
+            entry.conserves_every_currency(),
+            "each currency is its own law: {entry:?}"
+        );
+        assert!(
+            entry.postings.iter().all(|p| p.currency.as_deref() == Some("EUR")),
+            "ApplyEvent stamps the named code, not a silent USD: {:?}",
+            entry.postings
         );
 
         let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
