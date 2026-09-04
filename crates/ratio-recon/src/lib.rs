@@ -132,16 +132,21 @@ pub fn equity_long_only_single_ccy(base_currency: &str) -> Scope {
     }
 }
 
-/// Live ingest recon: the journal against ingested `custodian-positions`.
+/// Live ingest recon: the journal against ingested holdings.
 ///
 /// Not a transaction replay. The trades already reached the journal through
 /// admit; this scope compares the Investments carrying value to the
 /// statement's summed market value. A holdings snapshot is not a statement
 /// about cash — cash is out of this compare on purpose, or every purchase
-/// would report a cash break the custodian never spoke to.
-pub fn custodian_positions_live(base_currency: &str) -> Scope {
+/// would report a cash break the statement never spoke to.
+///
+/// ⭐ ONE ENGINE, TWO LABELS. Investment books ingest `custodian-positions`;
+/// Personal books ingest `brokerage-positions`. The refuses (unidentified,
+/// foreign currency, no silent 0) are the same path. A second recon crate
+/// would be the fork #167 refuses.
+pub fn holdings_live(base_currency: &str, label: &str) -> Scope {
     Scope {
-        label: "custodian-positions-live".into(),
+        label: label.into(),
         base_currency: base_currency.to_string(),
         types: BTreeMap::new(),
         exclusions: vec![
@@ -149,8 +154,19 @@ pub fn custodian_positions_live(base_currency: &str) -> Scope {
             "foreign currency holdings — a second currency needs an FX policy".into(),
             "quantity-level instrument addresses — this run compares the Investments account".into(),
             "reconciliation at a fund's volume — that is the Phase two leftover".into(),
+            "optional lot relief on household Investments — that is #187".into(),
         ],
     }
+}
+
+/// Live ingest recon: the journal against ingested `custodian-positions`.
+pub fn custodian_positions_live(base_currency: &str) -> Scope {
+    holdings_live(base_currency, "custodian-positions-live")
+}
+
+/// Live ingest recon: the journal against ingested `brokerage-positions`.
+pub fn brokerage_positions_live(base_currency: &str) -> Scope {
+    holdings_live(base_currency, "brokerage-positions-live")
 }
 
 /// Why a row was refused. Mirrors `ratio.v1.Refusal`.
@@ -661,7 +677,36 @@ pub fn reconcile_holdings(
     config: &Digest,
     exceptions: Vec<Exception>,
 ) -> BreakReport {
-    let scope = custodian_positions_live("USD");
+    reconcile_holdings_as(
+        journal_investments,
+        custodian_market_value,
+        investments_dim,
+        investments_name,
+        journal_posting_count,
+        journal_entry_count,
+        holdings_compared,
+        book_ties,
+        config,
+        exceptions,
+        custodian_positions_live("USD"),
+    )
+}
+
+/// Same compare as [`reconcile_holdings`], with the live-path scope the
+/// book kind already named. Personal and Investment share the refuses.
+pub fn reconcile_holdings_as(
+    journal_investments: i64,
+    custodian_market_value: i64,
+    investments_dim: i64,
+    investments_name: &str,
+    journal_posting_count: usize,
+    journal_entry_count: i64,
+    holdings_compared: i64,
+    book_ties: bool,
+    config: &Digest,
+    exceptions: Vec<Exception>,
+    scope: Scope,
+) -> BreakReport {
     if !exceptions.is_empty() {
         return BreakReport {
             config_digest: config.as_str().to_string(),
@@ -847,6 +892,10 @@ fn minor(v: i64) -> String {
 }
 
 /// Render a report for a person to read.
+fn is_live_holdings(label: &str) -> bool {
+    label == "custodian-positions-live" || label == "brokerage-positions-live"
+}
+
 pub fn render(r: &BreakReport) -> String {
     let mut out = String::new();
 
@@ -898,7 +947,7 @@ pub fn render(r: &BreakReport) -> String {
         out.push('\n');
     }
 
-    if r.scope.label == "custodian-positions-live" {
+    if is_live_holdings(&r.scope.label) {
         out.push_str(&format!(
             "{} holding(s) compared against the journal's Investments figure\n",
             r.transactions_replayed
@@ -919,12 +968,21 @@ pub fn render(r: &BreakReport) -> String {
     for x in &r.scope.exclusions {
         out.push_str(&format!("  excludes {x}\n"));
     }
-    if r.scope.label == "custodian-positions-live" {
+    if is_live_holdings(&r.scope.label) {
         out.push_str(
             "\nEvery Ratio figure above was produced by that configuration, and\n\
-             re-running it reproduces them exactly. The journal was not rewritten.\n\
-             `ratio strike` refuses while an unexplained difference remains.\n",
+             re-running it reproduces them exactly. The journal was not rewritten.\n",
         );
+        if r.scope.label == "custodian-positions-live" {
+            out.push_str("`ratio strike` refuses while an unexplained difference remains.\n");
+        } else {
+            // Personal books have no NAV gate. Naming strike here would
+            // pretend a fund close applies to a household transfer account.
+            out.push_str(
+                "Household Investments is a transfer account — this run does not \
+open lots and does not strike a NAV.\n",
+            );
+        }
     } else {
         out.push_str(
             "\nEvery Ratio figure above was produced by that configuration, and\n\
@@ -1760,6 +1818,31 @@ weight = -1
         let text = render(&r);
         assert!(text.starts_with("NOT RECONCILED"), "{text}");
         assert!(text.contains("P-9"), "{text}");
+    }
+
+    #[test]
+    fn personal_holdings_compare_names_investments_and_does_not_mention_strike() {
+        let r = reconcile_holdings_as(
+            43_000_000,
+            43_920_000,
+            2,
+            "Investments",
+            2,
+            2,
+            2,
+            true,
+            &digest(),
+            vec![],
+            brokerage_positions_live("USD"),
+        );
+        assert!(r.was_reconciled(), "{}", render(&r));
+        assert_eq!(r.scope.label, "brokerage-positions-live");
+        assert_eq!(r.breaks[0].display_name, "Investments");
+        let text = render(&r);
+        assert!(text.contains("BREAKS"), "{text}");
+        assert!(text.contains("posts nothing"), "{text}");
+        assert!(!text.contains("ratio strike"), "{text}");
+        assert!(text.contains("transfer account"), "{text}");
     }
 
     #[test]

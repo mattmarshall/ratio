@@ -289,7 +289,12 @@ That seeded book is a **fund**. Kind-selected chrome is a different
 walk-through: CreateBook(Personal) lands on the sheet, with a period P&L and
 household budget vs actual (`[personal] budget` on the configuration that
 book pins, then `/books/{id}/views/{view}/budget` for a month or a year —
-unset shows as unset, not a fake zero). CreateBook(Project) lands on the
+unset shows as unset, not a fake zero). A brokerage-statement
+walk-through can ingest `brokerage-statement` / `brokerage-positions`
+(custodian / broker CSV → household transfers onto Investments; live
+recon reuses the fund refuse paths; unidentified or foreign-currency
+holdings refuse, never a silent 0). It cannot show broker OAuth, lot
+relief on Investments, or a household NAV. CreateBook(Project) lands on the
 same `/budget` URL as a cumulative project roll-up — original contract,
 approved change orders, revised, awarded committed cost keyed to work
 packages, and remaining to spend (revised − incurred − awarded) — and
