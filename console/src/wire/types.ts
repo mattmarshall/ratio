@@ -1025,7 +1025,7 @@ export interface ApplyEventRequest {
    * ⛔ NOT A SILENT USD. A Personal book that declared currencies
    * refuses an empty code and a code that is not on the list.
    */
-  currency?: string;
+  currencyCode?: string;
   validateOnly: boolean;
 }
 

@@ -2646,8 +2646,9 @@ message ApplyEventRequest {
   // A code that is not in that list refuses. An undeclared household
   // that names a code also refuses: write the list first. Investment
   // events ignore this field; their legs stay the compile output.
-  // Field 12. application is 11.
-  string currency = 12 [(google.api.field_behavior) = OPTIONAL];
+  // Field 12. application is 11. Named `currency_code` (AIP-143);
+  // `currency` is the word the lint refuses.
+  string currency_code = 12 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message ApplyEventResponse {

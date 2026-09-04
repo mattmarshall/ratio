@@ -1388,7 +1388,7 @@ impl Console {
 
         let mut postings = ratio_rules::compile(rule, &event)?;
         let meta = book::BookMeta::load(&path, &fund);
-        stamp_event_currency(meta.kind, &set, &req.currency, &mut postings)?;
+        stamp_event_currency(meta.kind, &set, &req.currency_code, &mut postings)?;
 
         if rule.id == ratio_rules::FEE_RULE_ID {
             // ⛔ THE POSTING IS THE PROVED PAIR. A zero amount is not an
@@ -6679,7 +6679,7 @@ mod tests {
 
         let named = {
             let mut req = household_req("eur-undeclared", "living_expense", "10.00", 2026, 3, 1);
-            req.currency = "EUR".into();
+            req.currency_code = "EUR".into();
             c.apply_event(&req).unwrap_err().to_string()
         };
         assert!(
@@ -6713,7 +6713,7 @@ mod tests {
 
         let foreign = {
             let mut req = household_req("gbp", "living_expense", "10.00", 2026, 3, 3);
-            req.currency = "GBP".into();
+            req.currency_code = "GBP".into();
             c.apply_event(&req).unwrap_err().to_string()
         };
         assert!(
@@ -6722,7 +6722,7 @@ mod tests {
         );
 
         let mut eur = household_req("eur-spend", "living_expense", "40.00", 2026, 3, 10);
-        eur.currency = "EUR".into();
+        eur.currency_code = "EUR".into();
         let posted_evt = c.apply_event(&eur).unwrap();
         assert!(
             posted_evt.net_asset_value.is_empty(),
@@ -6733,7 +6733,7 @@ mod tests {
         // A second conserved post must still write. Refusing the journal
         // because NAV is unset is the silent USD wearing a different costume.
         let mut usd = household_req("usd-spend", "living_expense", "5.00", 2026, 3, 11);
-        usd.currency = "USD".into();
+        usd.currency_code = "USD".into();
         c.apply_event(&usd).unwrap();
 
         // ⛔ NOT GetFund. A USD-base household holding EUR without a rate

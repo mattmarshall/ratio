@@ -339,7 +339,7 @@ fn apply_event_request(parent: &str, body: &str) -> Result<pb::ApplyEventRequest
         trade_date: v.get("tradeDate").filter(|d| !d.is_null()).and_then(date_from_json),
         due_date: v.get("dueDate").filter(|d| !d.is_null()).and_then(date_from_json),
         application: text("application")?,
-        currency: text("currency")?,
+        currency_code: text("currencyCode")?,
         validate_only: matches!(v.get("validateOnly"), Some(serde_json::Value::Bool(true))),
     })
 }
