@@ -24,6 +24,7 @@
 
 pub mod auth;
 pub mod book;
+pub mod store;
 pub mod transcode;
 
 pub use auth::{Scope, Subject};
@@ -181,6 +182,14 @@ pub struct Console {
     /// session or `Local` — membership is the grant. `Some` is always the
     /// Connect path, even when the set is empty: silence is not every scope.
     connect_grants: Option<BTreeSet<String>>,
+
+    /// Stage E store for lots / positions / Current aggregates.
+    ///
+    /// ⛔ UNSET IS THE IN-MEMORY FOLD. `RATIO_PG_URL` empty or missing keeps
+    /// [`store::StoreMode::Memory`]. Postgres is never the system of record
+    /// — replay rebuilds from `journal.jsonl`. A missing watermark refuses
+    /// rather than answering with an empty lot list that looks like a fund.
+    store: store::StoreMode,
 }
 
 /// Catalog scopes carried by a Connect subject. AuthKit / Local stay `None`.
@@ -299,6 +308,7 @@ impl Console {
             scope,
             actor,
             connect_grants,
+            store: store::StoreMode::Memory,
         }
     }
 
@@ -739,23 +749,41 @@ impl Console {
                 // balance excludes what it has not recognised, and until this
                 // read moved, every view's accounts screen showed the recorded
                 // figures under its own name.
-                let proj = self.projection(fund)?;
-                let balances = proj.balances(view)?;
-                balances
-                    .value
-                    .iter()
-                    .map(|((dim, ccy), row)| {
-                        (
-                            *dim,
-                            ccy.as_deref().map(str::to_string),
-                            row.debit,
-                            row.credit,
-                            row.debit,
-                            row.credit,
-                            row.postings,
-                        )
-                    })
-                    .collect()
+                //
+                // When the Stage E store is configured, Current aggregates
+                // come from that snapshot at the journal pin. Period folds
+                // still walk the journal — the store is not a time-travel
+                // table. A missing watermark refuses; it does not invent a
+                // silent empty trial balance.
+                if let Some((pin, store)) = self.stage_e_pin(fund)? {
+                    let agg = store.aggregates(fund, view, &pin)?;
+                    if agg.prefix != pin.prefix {
+                        bail!(
+                            "aggregates for {fund}/{view} pinned {} but the journal pin is {}",
+                            agg.prefix,
+                            pin.prefix
+                        );
+                    }
+                    ratio_sql_project::current_balances(&agg.value)
+                } else {
+                    let proj = self.projection(fund)?;
+                    let balances = proj.balances(view)?;
+                    balances
+                        .value
+                        .iter()
+                        .map(|((dim, ccy), row)| {
+                            (
+                                *dim,
+                                ccy.as_deref().map(str::to_string),
+                                row.debit,
+                                row.credit,
+                                row.debit,
+                                row.credit,
+                                row.postings,
+                            )
+                        })
+                        .collect()
+                }
             }
             AccountFold::AsOf(w) | AccountFold::Activity(w) => {
                 // ⚠ A SECOND WALK, NOT A SECOND FOLD. The maintained projection
@@ -1839,16 +1867,32 @@ impl Console {
     /// its lots are every purchase it still holds.
     pub fn list_lots(&self, parent: &str) -> Result<pb::ListLotsResponse> {
         let (fund, view, id) = view_scoped_id(parent, "positions")?;
-        // ⛔ TENANCY BEFORE THE POSITION-KEY PARSE. `projection` opens the book
-        // through `book_path`, so a caller who may not see this fund is refused
+        // ⛔ TENANCY BEFORE THE POSITION-KEY PARSE. `book_path` / `projection`
+        // opens the book, so a caller who may not see this fund is refused
         // before their position id is parsed — the denial does not depend on
         // whether the id was well-formed.
-        let proj = self.projection(&fund)?;
+        let _tenancy = self.book_path(&fund)?;
         let (dim, instrument) = position_key(&id)?;
-        Ok(pb::ListLotsResponse {
-            lots: proj
+        let lots = if let Some((pin, store)) = self.stage_e_pin(&fund)? {
+            // ⭐ STORE PATH. The pin is the journal digest. An empty list
+            // here is a holding with no open lots at that prefix — a store
+            // that was never replayed refused inside `catch_up`.
+            let held = store.lots_of(&fund, &view, dim, &instrument, &pin)?;
+            if held.prefix != pin.prefix {
+                bail!(
+                    "lots for {fund}/{instrument} pinned {} but the journal pin is {}",
+                    held.prefix,
+                    pin.prefix
+                );
+            }
+            held.value
+        } else {
+            self.projection(&fund)?
                 .lots_of(&view, dim, &instrument)?
                 .value
+        };
+        Ok(pb::ListLotsResponse {
+            lots: lots
                 .into_iter()
                 .map(|l| pb::Lot {
                     name: format!("funds/{fund}/views/{view}/positions/{id}/lots/{}", l.seq),
@@ -1858,6 +1902,8 @@ impl Console {
                     // The lot stores a day; the wire wants a calendar date.
                     // Rendered on the way out rather than retained as text on
                     // every one of a million lots.
+                    // ⛔ ABSENT WHEN THE ENTRY CARRIED NO TRADE DATE. The
+                    // epoch and today are wrong in opposite directions.
                     acquired: l
                         .acquired
                         .map(|d| ratio_common::iso_date_from_days(d as i64))
@@ -1893,16 +1939,60 @@ impl Console {
         // `b.positions()`, whose whole-journal answer is one view's wearing no
         // label. A trade in flight under a settlement view is cash there and a
         // holding here, and this list has to say which book of record it read.
-        let proj = self.projection(fund)?;
-        let as_of = proj.positions(view)?;
-        let held: Vec<((i64, String), (i64, i64))> = as_of
-            .value
-            .held
-            .iter()
-            .map(|((d, i), v)| ((*d, i.to_string()), *v))
-            .collect();
-        let rest: Vec<(i64, i64)> =
-            as_of.value.rest.iter().map(|(d, v)| (*d, *v)).collect();
+        //
+        // When the Stage E store is configured, held / rest come from that
+        // snapshot at the journal pin. Chart labels and mark cites still
+        // read the journal — Postgres is not the system of record.
+        let (held, rest, lot_counts): (
+            Vec<((i64, String), (i64, i64))>,
+            Vec<(i64, i64)>,
+            BTreeMap<(i64, String), i64>,
+        ) = if let Some((pin, store)) = self.stage_e_pin(fund)? {
+            let as_of = store.positions(fund, view, &pin)?;
+            if as_of.prefix != pin.prefix {
+                bail!(
+                    "positions for {fund}/{view} pinned {} but the journal pin is {}",
+                    as_of.prefix,
+                    pin.prefix
+                );
+            }
+            let (held, rest) = ratio_sql_project::split_positions(&as_of.value);
+            let mut lot_counts = BTreeMap::new();
+            for ((dim, inst), _) in &held {
+                // ⛔ PROPAGATE. A swallowed lots_of here would report
+                // open_lot_count 0 on a pin that refused — an empty that
+                // looks like a sold-out position.
+                lot_counts.insert(
+                    (*dim, inst.clone()),
+                    store
+                        .lots_of(fund, view, *dim, inst, &pin)?
+                        .value
+                        .len() as i64,
+                );
+            }
+            (held, rest, lot_counts)
+        } else {
+            let proj = self.projection(fund)?;
+            let as_of = proj.positions(view)?;
+            let held: Vec<((i64, String), (i64, i64))> = as_of
+                .value
+                .held
+                .iter()
+                .map(|((d, i), v)| ((*d, i.to_string()), *v))
+                .collect();
+            let rest: Vec<(i64, i64)> =
+                as_of.value.rest.iter().map(|(d, v)| (*d, *v)).collect();
+            let mut lot_counts = BTreeMap::new();
+            for ((dim, inst), _) in &held {
+                lot_counts.insert(
+                    (*dim, inst.clone()),
+                    proj.lots_of(view, *dim, inst)
+                        .map(|l| l.value.len() as i64)
+                        .unwrap_or(0),
+                );
+            }
+            (held, rest, lot_counts)
+        };
         let chart: BTreeMap<i64, String> = b
             .accounts()?
             .into_iter()
@@ -1958,9 +2048,9 @@ impl Console {
                         .and_then(|os| ratio_ingest::value::mark_price(day, os))
                 });
                 pb::Position {
-                    open_lot_count: proj
-                        .lots_of(view, dim, &instrument)
-                        .map(|l| l.value.len() as i64)
+                    open_lot_count: lot_counts
+                        .get(&(dim, instrument.clone()))
+                        .copied()
                         .unwrap_or(0),
                     name: format!("funds/{fund}/views/{view}/positions/{dim}-{instrument}"),
                     account: format!("funds/{fund}/views/{view}/accounts/{dim}"),
@@ -6918,6 +7008,120 @@ mod tests {
         let p = c.projection("demo").unwrap();
         assert_eq!(p.prefix(), 1, "rebuilt from the new book, not spliced onto the old");
         assert_eq!(p.nav(B, &|dim| dim == 1, &ratio_project::Rates::none()).unwrap().value.0, 11, "and the totals are the new book's");
+    }
+
+    /// A book whose buys carry an instrument, so list_lots has something to
+    /// pin. `book()` posts amounts without one — those land on the rest map.
+    fn book_with_lots(at: &Path) {
+        use ratio_store::{Account, AccountTypeRecord as A, JournalEntry, PostingRecord};
+        let mut b = FileBook::open(at).unwrap();
+        b.put_accounts(&[
+            Account {
+                dim: 1,
+                display_name: "Investments".into(),
+                account_type: A::Asset,
+            },
+            Account {
+                dim: 2,
+                display_name: "Cash".into(),
+                account_type: A::Asset,
+            },
+        ])
+        .unwrap();
+        let c = b.put(b"rules = []\n").unwrap();
+        b.set_active(&c).unwrap();
+        for (n, (inst, cost, qty)) in [("vti", 25_000_i64, 100_i64), ("voo", 10_000, 40)].iter().enumerate()
+        {
+            b.append(&JournalEntry {
+                id: format!("t{n}"),
+                memo: "buy".into(),
+                config: c.clone(),
+                postings: vec![
+                    PostingRecord::of(1, *cost, inst, Some(*qty)),
+                    PostingRecord::new(2, -*cost),
+                ],
+                trade_date: None,
+                announcement: None,
+                due_date: None,
+                application: None,
+                identified_lots: None,
+                special_allocations: None,
+                kind: None,
+            })
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn stage_e_store_reads_match_the_in_memory_fold_and_keep_acquired_unset() {
+        // ⭐ THE SLICE THIS PR IS. Two consoles on one journal: Memory vs
+        // the denotational store. Lots / positions / Current accounts must
+        // agree, and an entry with no trade_date must not grow a default day.
+        let d = fresh("stage-e-reads");
+        book_with_lots(&d);
+        let memory = Console::new(&d);
+        let store = Console::new(&d)
+            .with_stage_e_store(ratio_sql_project::ProjectionReads::in_process());
+
+        let parent = format!("{}/positions/1-vti", demo_view());
+        let mem_lots = memory.list_lots(&parent).unwrap();
+        let store_lots = store.list_lots(&parent).unwrap();
+        assert_eq!(mem_lots.lots, store_lots.lots);
+        assert_eq!(store_lots.lots.len(), 1);
+        assert!(
+            store_lots.lots[0].acquired.is_none(),
+            "unset acquired stays unset — not a silent epoch or today"
+        );
+        assert_eq!(store_lots.lots[0].units, "100");
+        assert_eq!(store_lots.lots[0].cost, "25000");
+
+        let mem_pos = memory.list_positions(&demo_view()).unwrap();
+        let store_pos = store.list_positions(&demo_view()).unwrap();
+        assert_eq!(mem_pos.positions, store_pos.positions);
+        assert!(
+            store_pos.positions.iter().any(|p| p.instrument.is_empty()),
+            "the unattributed remainder stays in the list, instrument unset"
+        );
+        let vti = store_pos
+            .positions
+            .iter()
+            .find(|p| p.instrument == "vti")
+            .expect("vti is held");
+        assert_eq!(vti.open_lot_count, 1);
+
+        let mem_acct = memory.list_accounts(&demo_view(), "").unwrap();
+        let store_acct = store.list_accounts(&demo_view(), "").unwrap();
+        assert_eq!(mem_acct.accounts, store_acct.accounts);
+        assert!(
+            !store_acct.accounts.is_empty(),
+            "a pinned Current fold is not a silent empty trial balance"
+        );
+    }
+
+    #[test]
+    fn stage_e_store_refuses_an_unpinned_read_rather_than_empty_lots() {
+        // Direct store door, no catch-up: the handler's catch_up would
+        // replay. This is the empty that must not leak onto the wire.
+        let reads = ratio_sql_project::ProjectionReads::in_process();
+        let pin = ratio_sql_project::JournalPin::of(&[]).unwrap();
+        let err = reads.lots_of("never", B, 1, "vti", &pin).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("has not been replayed"), "{msg}");
+        assert!(!msg.contains("lots: []"));
+    }
+
+    #[test]
+    fn console_new_stays_on_the_in_memory_fold() {
+        // ⛔ BUILD DOES NOT READ RATIO_PG_URL. The network server opts in
+        // via with_stage_e_from_env so a test process cannot surprise-connect.
+        let d = fresh("stage-e-unset");
+        book_with_lots(&d);
+        let c = Console::new(&d);
+        assert!(c.stage_e().is_none());
+        let lots = c
+            .list_lots(&format!("{}/positions/1-vti", demo_view()))
+            .unwrap();
+        assert_eq!(lots.lots.len(), 1);
     }
 
     #[test]

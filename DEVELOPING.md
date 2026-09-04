@@ -117,8 +117,14 @@ A local cluster works the same way: create a role and database, point
 `RATIO_PG_URL` at them, keep `psql` on `PATH`. `RATIO_PG_URL` unset is a
 refuse, not a skip.
 
-Planner pushdown vs `Pg.Rel.Semantics`, console/API reads through the
-store, and the measured 20M-lot claim stay leftover.
+`RATIO_PG_URL` (optional `RATIO_PG_SCHEMA`) is also the dial for
+console / API reads of lots, positions, and Current aggregates.
+Empty or missing keeps the in-memory fold. The journal stays the
+system of record. A missing watermark refuses rather than
+answering with empty lots.
+
+Planner pushdown vs `Pg.Rel.Semantics` and the measured 20M-lot
+claim stay leftover.
 
 ## Layout
 

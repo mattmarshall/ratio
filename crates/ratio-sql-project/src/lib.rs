@@ -43,11 +43,11 @@
 //!
 //! # What this is not
 //!
-//! Planner pushdown proved against `Pg.Rel.Semantics`, console/API reads
-//! through the store, or the measured 20M-lot claim. Those stay #8 / #159.
-//! `Ratio.Exec` still holds: a database does not change the IO floor. The
-//! live apply is [`PgProjection`]; the running read model is still the
-//! in-memory `Projection`.
+//! Planner pushdown proved against `Pg.Rel.Semantics`, or the measured
+//! 20M-lot claim. Those stay leftover on #8 / #159. `Ratio.Exec` still
+//! holds: a database does not change the IO floor. The live apply is
+//! [`PgProjection`]. Console / API reads of lots, positions, and Current
+//! aggregates go through [`ProjectionReads`] when `RATIO_PG_URL` is set.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -57,7 +57,9 @@ use ratio_project::{relief, AsOf, Projection, Totals};
 use ratio_store::{FileBook, Journal, JournalEntry};
 
 mod pg;
+mod reads;
 pub use pg::PgProjection;
+pub use reads::{current_balances, split_positions, ProjectionReads, StoreConfig};
 
 /// The Postgres contract this store implements. [`PgProjection::apply_schema`]
 /// applies it to a live engine; the denotational tables below are the same

@@ -66,8 +66,9 @@ LICENSE_EXCEPTIONS = ["not permissively licensed"]
 # #153 landed the lots/positions projection schema; the projection
 # schema applies to a live engine is a later Built phrase. Requiring
 # the page to call "Postgres" built would still enforce a lie: planner
-# pushdown, console/API through the store, and the 20M-lot claim stay
-# #8 / #159. That word belongs on the spec side.
+# pushdown and the 20M-lot claim stay #8 / #159. Console/API reads
+# through the store is a later Built phrase. That word belongs on
+# the spec side.
 PLAN_MARKS_ENGINE_DONE = [
     "tax lots and cost basis",
     "multi-currency and FX",
@@ -130,6 +131,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ Applying the schema to a live engine is Built; the word
     # "Postgres" as the interactive-scale engine stays spec-only.
     "the projection schema applies to a live engine",
+    # ⚠ Console/API reads through the store is Built; planner
+    # pushdown and the 20M-lot claim stay leftover.
+    "console/API reads through the store",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -157,6 +161,7 @@ ROADMAP_ENGINE_BUILT = [
     "kind-aware IA",
     "lots/positions projection",
     "the projection schema applies to a live engine",
+    "console/API reads through the store",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",

@@ -29,9 +29,10 @@
 -- and only CPU divides; no plan beats the IO floor. These tables make a
 -- prefix addressable. They do not invent a cheaper fold.
 --
--- Leftover on #8 / #159: planner pushdown proved against Pg.Rel.Semantics,
--- wiring console/API reads through the store, and the measured 20M-lot claim.
--- Applying this file to a live engine is `PgProjection` (psql).
+-- Leftover on #8 / #159: planner pushdown proved against Pg.Rel.Semantics
+-- and the measured 20M-lot claim. Applying this file to a live engine is
+-- `PgProjection` (psql). Console / API reads go through `ProjectionReads`
+-- when RATIO_PG_URL is set — the journal stays the system of record.
 --
 -- ⛔ PRIMARY KEY CANNOT HOLD A NULL. Postgres makes every PK column NOT NULL,
 -- so `instrument` / `currency` as a PK would refuse the rest map and an
