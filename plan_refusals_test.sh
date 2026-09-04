@@ -311,6 +311,11 @@ BUILT=(
   # planner pushdown and the 20M-lot claim stay leftover on #8 / #159.
   # The sentence it matches is in the 2026-09-04 store-reads amendment.
   "console/API reads through the store"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Planner pushdown vs Pg.Rel.Semantics is not on the refusal list —
+  # the 20M-lot claim stays leftover on #159. The sentence it matches
+  # is in the 2026-09-04 pushdown amendment.
+  "planner pushdown vs Pg.Rel.Semantics"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

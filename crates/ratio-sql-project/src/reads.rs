@@ -22,8 +22,8 @@
 //!
 //! # What this is not
 //!
-//! Planner pushdown vs `Pg.Rel.Semantics`, or the measured 20M-lot claim.
-//! Those stay leftover on #8 / #159.
+//! The measured 20M-lot claim. That stays leftover on #159. Planner
+//! pushdown vs `Pg.Rel.Semantics` is [`crate::plan`].
 
 use std::path::Path;
 use std::sync::Mutex;

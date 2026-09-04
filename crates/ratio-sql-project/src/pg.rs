@@ -8,7 +8,8 @@
 //! ⚠ TALKS TO THE SERVER THROUGH `psql`. A rust-postgres crate would be a
 //! crate_universe member this package is not — the crate stays off the Cargo
 //! workspace members list (same as #229). The client is the one CI and a local
-//! install already ship. Planner pushdown vs `Pg.Rel.Semantics` stays leftover.
+//! install already ship. Read SQL is emitted from [`crate::plan`] — the
+//! `Pg.Rel.Semantics` rewrite surface — not assembled as a free string.
 
 use std::path::Path;
 use std::process::Command;
@@ -97,10 +98,7 @@ impl PgProjection {
     }
 
     pub fn watermark(&self, book_id: &str) -> Result<Option<Watermark>> {
-        let out = self.exec(&format!(
-            "SELECT journal_prefix, journal_digest FROM projection_watermark WHERE book_id = {}",
-            lit(book_id)
-        ))?;
+        let out = self.exec(&crate::plan::watermark_select_sql(book_id)?)?;
         let Some(line) = first_line(&out) else {
             return Ok(None);
         };
@@ -158,14 +156,9 @@ impl PgProjection {
         let mark = self.require_caught_up(book_id, pin)?;
         // ⚠ PSQL -A DROPS A TRAILING NULL, so `acquired` last would look like
         // a 3-column row and invent a default. Empty string is unset.
-        let out = self.exec(&format!(
-            "SELECT seq, units, cost, COALESCE(acquired::text, '') FROM lots \
-             WHERE book_id = {} AND view_id = {} AND dim = {dim} AND instrument = {} \
-             ORDER BY seq",
-            lit(book_id),
-            lit(view),
-            lit(instrument)
-        ))?;
+        let out = self.exec(&crate::plan::lots_select_sql(
+            book_id, view, dim, instrument,
+        )?)?;
         let mut lots = Vec::new();
         for line in lines(&out) {
             let cols = split_tabs(&line);
@@ -198,12 +191,7 @@ impl PgProjection {
         pin: &JournalPin,
     ) -> Result<AsOf<Vec<PositionRow>>> {
         let mark = self.require_caught_up(book_id, pin)?;
-        let out = self.exec(&format!(
-            "SELECT dim, instrument, cost, quantity FROM positions \
-             WHERE book_id = {} AND view_id = {}",
-            lit(book_id),
-            lit(view)
-        ))?;
+        let out = self.exec(&crate::plan::positions_select_sql(book_id, view)?)?;
         let mut rows = Vec::new();
         for line in lines(&out) {
             let cols = split_tabs(&line);
@@ -233,12 +221,7 @@ impl PgProjection {
         pin: &JournalPin,
     ) -> Result<AsOf<Vec<AggregateRow>>> {
         let mark = self.require_caught_up(book_id, pin)?;
-        let out = self.exec(&format!(
-            "SELECT dim, currency, debit, credit, postings FROM aggregates \
-             WHERE book_id = {} AND view_id = {}",
-            lit(book_id),
-            lit(view)
-        ))?;
+        let out = self.exec(&crate::plan::aggregates_select_sql(book_id, view)?)?;
         let mut rows = Vec::new();
         for line in lines(&out) {
             let cols = split_tabs(&line);
