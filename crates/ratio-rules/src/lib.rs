@@ -29,8 +29,10 @@ pub use render::render;
 /// Partner allocation cut — named weights, not a partner count.
 mod partners;
 pub use partners::{
-    allocate, apply_facts, check_cut, check_specials, cut_for, period_issued, period_redeemed,
-    redeem, units_in_issue, well_formed_move, AllocationFact, AllocationKind, PartnerShare,
+    allocate, apply_facts, check_cut, check_specials, cut_for, from_posted as notice_from_posted,
+    issue as issue_notice, notice_digest, period_issued, period_redeemed, redeem, units_in_issue,
+    well_formed_move,
+    AllocationFact, AllocationKind, Notice, NoticeKind, PartnerShare, PostedAmount,
     SpecialAllocation,
 };
 

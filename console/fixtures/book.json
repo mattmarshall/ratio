@@ -16,5 +16,6 @@
   "specialAllocations": [],
   "feeReceivable": "",
   "allocationFacts": [],
-  "currencies": []
+  "currencies": [],
+  "notices": []
 }

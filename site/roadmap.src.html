@@ -269,8 +269,15 @@ __STYLE__
           either cut has no journal prefix, never a fake zero NAV.
           Commitment and undrawn cancel in that figure. It is not IRR, a
           waterfall, or a replacement for NAV strikes. A capital-call
-          walk-through can record or ingest a call against a commitment; a
-          capital-account walk-through can cite each partner's beginning,
+          walk-through can record or ingest a call against a commitment;
+          <a href="https://github.com/mattmarshall/ratio/issues/157">#157</a>
+          a capital-call / distribution notice is a citeable document
+          (digest + the pinned partner cut + the amounts the journal
+          posted) linked from <code>/capital</code> — not a waterfall,
+          not preferred-return math. Applying the cut to a
+          partner-scoped call invents the other partners; posted
+          amounts stay what the entry named. A capital-account
+          walk-through can cite each partner's beginning,
           activity, and ending against those same facts. Neither can show
           IRR, a waterfall, a future call schedule, management-fee billing,
           an LP portal, K-1 packaging, equalization, a drip election, or

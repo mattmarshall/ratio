@@ -100,6 +100,32 @@ export interface Book {
    * currencies. Writing the list is the election; inventing USD is not.
    */
   currencies: string[];
+  /**
+   * Citeable capital-call / distribution notices GetBook walked.
+   *
+   * Digest + the pinned partner cut + the amounts the journal posted.
+   * Empty is unset — no call or distribution has been posted, not a
+   * silent notice and not a waterfall. `Ratio.Partners.fromPosted`.
+   */
+  notices: CapitalNotice[];
+}
+
+/** A citeable capital-call / distribution notice. Not a waterfall. */
+export interface CapitalNotice {
+  digest: string;
+  /** `call` / `distribution`. */
+  kind: string;
+  amount: Int64;
+  partnerCut: PartnerShare[];
+  amounts: PartnerAmount[];
+  entryId: string;
+  tradeDate: CalendarDate | null;
+}
+
+/** One partner amount on a notice. Not a weight. */
+export interface PartnerAmount {
+  partner: string;
+  amount: Int64;
 }
 
 /** One named weight in a partner cut. */

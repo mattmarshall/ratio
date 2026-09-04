@@ -1,6 +1,6 @@
 import { money } from "./format";
 import { beginningOf, unitsOf } from "./nav";
-import type { Account } from "@/wire/types";
+import type { Account, CapitalNotice } from "@/wire/types";
 
 /**
  * Partner capital and the named activity accounts `chart_for(Investment)`
@@ -465,4 +465,48 @@ export function partnerIdentityHolds(s: PartnerCapitalAccount): boolean | null {
     return null;
   }
   return s.beginning + s.contributions - s.distributions === s.ending;
+}
+
+/**
+ * Notices that belong to this capital window.
+ *
+ * Inception includes undated rows. A dated suffix drops them — the
+ * same rule `/capital` already applies to undated journal entries.
+ * Empty after the filter is silence (`null`), not a fake notice.
+ */
+export function noticesInWindow(
+  notices: readonly CapitalNotice[] | null | undefined,
+  window: string,
+): CapitalNotice[] | null {
+  if (!notices || notices.length === 0) return null;
+  if (!window) return [...notices];
+  const kept = notices.filter((n) => {
+    const d = n.tradeDate;
+    if (!d) return false;
+    const y = String(d.year).padStart(4, "0");
+    const m = String(d.month).padStart(2, "0");
+    return `${y}-${m}-${String(d.day).padStart(2, "0")}`.startsWith(window);
+  });
+  return kept.length === 0 ? null : kept;
+}
+
+/** `LP 80 / GP 20`. Empty cut is unset. */
+export function cutShown(
+  cut: readonly { partner: string; weight: string }[] | undefined,
+): string {
+  if (!cut || cut.length === 0) return "—";
+  return cut.map((s) => `${s.partner} ${s.weight}`).join(" / ");
+}
+
+/** `LP 40.00`. Empty amounts is unset — not a silent 1/N. */
+export function amountsShown(
+  amounts: readonly { partner: string; amount: string }[] | undefined,
+): string {
+  if (!amounts || amounts.length === 0) return "—";
+  return amounts.map((a) => `${a.partner} ${money(a.amount)}`).join(" · ");
+}
+
+/** First seven of the digest, for a cite a person can read aloud. */
+export function noticeDigestShown(digest: string): string {
+  return digest.length >= 7 ? digest.slice(0, 7) : digest || "—";
 }

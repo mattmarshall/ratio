@@ -610,6 +610,24 @@ lean_test(
     entry = "Ratio/Partners/Units.lean",
 )
 
+# ⛔ A capital-call / distribution notice as a citeable document.
+#
+# The journal already has partner capital activity. This file is the
+# document a walk-through cites: kind, total, the named cut, the
+# amounts. `issue` is pro-rata of a named total (`allocate`) — not a
+# waterfall, not preferred return. `fromPosted` cites what the journal
+# posted; applying `issue` to a partner-scoped call invents the other
+# partners. No cut / zero amount / empty posted stays unset.
+lean_test(
+    name = "partners_notice_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Partners/Cut.lean",
+        "Ratio/Partners/Notice.lean",
+    ],
+    entry = "Ratio/Partners/Notice.lean",
+)
+
 # ⛔ Management-fee accrual as a conserved receivable/expense posting.
 #
 # Stage 1 already has the rule (rate, day-count, balanced template).

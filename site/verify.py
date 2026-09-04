@@ -112,6 +112,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ #188 landed NAV gate reasons as citeable copy; PLAN named it
     # in the same-commit amendment. Same class of defect as #67.
     "NAV gate reasons stay citeable",
+    # ⚠ #157 landed a citeable capital-call / distribution notice;
+    # PLAN named it in the same-commit amendment.
+    "a capital-call / distribution notice is a citeable document",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -134,6 +137,7 @@ ROADMAP_ENGINE_BUILT = [
     "parallel mutable shadow book",
     "Personal books declare currencies",
     "NAV gate reasons stay citeable",
+    "a capital-call / distribution notice is a citeable document",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",

@@ -13,6 +13,10 @@ import {
   remainingUndrawn,
   undrawnFigure,
   undrawnOf,
+  amountsShown,
+  cutShown,
+  noticeDigestShown,
+  noticesInWindow,
   type AllocationFact,
   type AllocationKind,
   type PartnerCapitalAccount,
@@ -58,6 +62,12 @@ export const dynamic = "force-dynamic";
  * equal split of book NAV. A written cut fills the plugs when the
  * figure divides. One chrome list (`screensFor`); `/strikes` stays
  * ABOR NAV.
+ *
+ * ⭐ A CALL / DISTRIBUTION NOTICE IS A CITEABLE DOCUMENT on this URL.
+ * Digest + the pinned cut + the amounts the journal posted. Applying
+ * the cut to a partner-scoped call invents the other partners — that
+ * is the waterfall this page refuses. Empty is unset, not a silent
+ * notice. LP portal / e-sign stay Connect.
  */
 async function Capital({
   params,
@@ -111,6 +121,7 @@ async function Capital({
   const undrawn = undrawnOf(accounts);
   const total = bookCapital(accounts);
   const remaining = dated ? null : undrawnFigure(accounts);
+  const notices = noticesInWindow(b.notices, window);
   const undrawnGap =
     undrawn.length === 0
       ? "this chart has no commitment accounts — undrawn is unset, not a callable zero"
@@ -237,6 +248,59 @@ async function Capital({
         </div>
       </div>
 
+      <div className="tb" role="table" aria-label="Capital notices">
+        <div className="tbrow tbhead" role="row">
+          <span role="columnheader">Notice</span>
+          <span role="columnheader">Cut</span>
+          <span role="columnheader">Amounts</span>
+        </div>
+        <div className="posgroup">
+          <div className="posacct">Call / distribution notices</div>
+          {notices === null ? (
+            <div className="tbrow static" role="row">
+              <span role="cell">
+                {dated
+                  ? "no call or distribution in this window — unset, not a silent notice"
+                  : "unset — no call or distribution has been posted, not a waterfall"}
+                <span className="at">
+                  digest + partner cut + posted amounts — not preferred return
+                </span>
+              </span>
+              <span role="cell" className="num">
+                —
+              </span>
+              <span role="cell" className="num">
+                —
+              </span>
+            </div>
+          ) : (
+            notices.map((n) => (
+              <Link
+                key={n.digest || n.entryId}
+                className="tbrow"
+                role="row"
+                href={`/books/${book}/entries/${n.entryId}`}
+              >
+                <span role="cell">
+                  {n.kind === "distribution" ? "Distribution" : "Capital call"}{" "}
+                  <code title={n.digest}>{noticeDigestShown(n.digest)}</code>
+                  <span className="at">
+                    {n.kind} · {capitalShown(BigInt(n.amount || "0"))} · entry {n.entryId} —
+                    posted amounts, not a waterfall
+                  </span>
+                </span>
+                <span role="cell" className="num">
+                  {cutShown(n.partnerCut)}
+                </span>
+                <span role="cell" className="num">
+                  {amountsShown(n.amounts)}
+                </span>
+              </Link>
+            ))
+          )}
+        </div>
+      </div>
+
       <div className="tb" role="table" aria-label="Fee receivable">
         <div className="tbrow static" role="row">
           <span role="cell">
@@ -268,6 +332,9 @@ async function Capital({
         Fee receivable stays unset without an elected
         <code>management_fee_accrual</code> — never a silent zero.
         Invoice and LP statements stay Connect.
+        A capital-call / distribution notice is a citeable document
+        (digest + the pinned cut + posted amounts) — not a waterfall,
+        not preferred return. Empty is unset.
         {" · "}
         <Link href={`/books/${book}/record`}>Record an event</Link>
         {" · "}

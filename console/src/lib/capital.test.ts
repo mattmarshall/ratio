@@ -24,6 +24,10 @@ import {
   remainingCommitment,
   remainingUndrawn,
   undrawnFigure,
+  amountsShown,
+  cutShown,
+  noticeDigestShown,
+  noticesInWindow,
 } from "./capital";
 
 function acct(
@@ -450,5 +454,40 @@ describe("a per-partner capital account statement", () => {
     const [done] = partnerCapitalAccounts(redeemed, "inception");
     expect(done!.units).toBe(0n);
     expect(done!.units === null).toBe(false);
+  });
+});
+
+describe("a citeable capital-call notice", () => {
+  const call = {
+    digest: "abcdef0123456789",
+    kind: "call",
+    amount: "4000",
+    partnerCut: [
+      { partner: "LP", weight: "80" },
+      { partner: "GP", weight: "20" },
+    ],
+    amounts: [{ partner: "LP", amount: "4000" }],
+    entryId: "call-1",
+    tradeDate: { year: 2026, month: 3, day: 15 },
+  };
+
+  it("cites posted amounts, not eighty-twenty of a partner-scoped call", () => {
+    expect(cutShown(call.partnerCut)).toBe("LP 80 / GP 20");
+    expect(amountsShown(call.amounts)).toBe("LP 40.00");
+    expect(amountsShown(call.amounts)).not.toMatch(/GP/);
+    expect(amountsShown([{ partner: "LP", amount: "3200" }])).toBe("LP 32.00");
+    expect(noticeDigestShown(call.digest)).toBe("abcdef0");
+    expect(cutShown([])).toBe("—");
+    expect(amountsShown([])).toBe("—");
+  });
+
+  it("a dated window drops undated and out-of-window notices", () => {
+    const undated = { ...call, tradeDate: null };
+    expect(noticesInWindow([call], "")).toHaveLength(1);
+    expect(noticesInWindow([call], "2026-03")).toHaveLength(1);
+    expect(noticesInWindow([call], "2026-04")).toBeNull();
+    expect(noticesInWindow([undated], "2026-03")).toBeNull();
+    expect(noticesInWindow([], "")).toBeNull();
+    expect(noticesInWindow(null, "")).toBeNull();
   });
 });

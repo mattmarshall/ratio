@@ -461,6 +461,15 @@ NEEDLES: list[tuple[str, str]] = [
         "beginning stays unset until a dated prefix can support the cut — not a measured zero",
         "a capital account without a prior prefix would render a fake zero beginning",
     ),
+    # ── capital-call / distribution notice (#157) ───────────────────────────
+    # ⚠ THE UNSET SENTENCE, NOT THE TABLE LABEL. A page that invented
+    # 80/20 of an LP call (a GP share nobody posted) would still say
+    # "Capital notices" and stay green. The refuse copy is what goes
+    # red if someone "helps" by applying the cut.
+    (
+        "unset — no call or distribution has been posted, not a waterfall",
+        "a book with no call would invent a notice or a waterfall split",
+    ),
     # ── the fact plane ──────────────────────────────────────────────────────
     (
         "a correction is a new row",

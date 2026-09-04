@@ -65,7 +65,7 @@ the grant for when that door exists; it does not mint the RPC.
 | `nav:read` | NAV strikes, roll-forward | strike / roll-forward reads | — |
 | `nav:strike` | Request a strike | `ratio strike` is CLI-only | The write RPC does not exist; the scope does not invent it |
 | `partners:read` | Partner master, capital, commitments | `/capital` | Not a waterfall, not IRR / TVPI |
-| `partners:write` | Partner master (write carefully) | sidecar / partner rows | Not capital-call notices as a product; not an LP portal |
+| `partners:write` | Partner master (write carefully) | sidecar / partner rows | Not capital-call notices as a product (the citeable notice object is core / `/capital`; e-sign / CRM / LP portal stay Connect); not an LP portal |
 | `capital:read` | Capital activity, undrawn | `/capital` | — |
 | `commits:read` | Commitments / undrawn | `/capital` | — |
 | `calls:post` | Capital calls through allowlisted `call_*` templates | `ApplyEvent` + `call_lp` / `call_gp` | Not a future call schedule |

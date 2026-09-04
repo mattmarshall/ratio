@@ -2778,6 +2778,54 @@ point at wash / min-tax / average-cost on GetFund and at
 NAV chrome on that household, a broker OAuth grant, IRS e-file, a
 household NAV, a cash forecast, or envelope coaching.
 
+### Amendment, 2026-09-04 — a capital-call / distribution notice is a citeable document
+
+[#157](https://github.com/mattmarshall/ratio/issues/157) asked for a
+capital-call / distribution notice a walk-through can cite. The
+journal already had partner capital activity (`call_*` /
+`distribute_*`). `/capital` cited remaining undrawn. What was
+missing was the **document**: digest + partner cut + amounts, not
+a waterfall.
+
+What landed is the notice, not a waterfall engine:
+
+- Lean: `Ratio.Partners.Notice`. `issue` is pro-rata of a named
+  total (`allocate`) — no preferred return, no catch-up, no carry.
+  `fromPosted` cites the amounts the journal posted. Applying
+  `issue` to a partner-scoped LP call invents the other partners
+  (`fromPosted` of 250_000 on LP is not 80/20 of 250_000). No cut,
+  a zero amount, or an empty posted list stays unset. Rewriting
+  amounts is a different document.
+- Rust: `notice_from_posted` / `issue_notice` / `notice_digest`.
+  GetBook walks `call_*` / `distribute_*` (cash + partner capital,
+  call draws undrawn; unit movements stay off the list). The cut
+  is the configuration the entry pinned — not `active()`. Index
+  stays empty.
+- Console: `/capital` lists notices (digest, cut, posted amounts)
+  and links each to the journal entry. Empty is unset. A dated
+  window drops undated and out-of-window rows. No `screensFor`
+  fork.
+
+**What this is NOT:**
+
+- Not an **LP portal, e-sign, or CRM sync**. Those stay Connect
+  (#161 / #150). `partners:write` is still not notices-as-a-product.
+- Not a **waterfall, preferred return, or carry** in the kernel.
+- Not #186 (restatement browser), #26 (broader console), or #188
+  (already closed). #159 stays blocked on Postgres.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #157. It does not close #161, #186, or #26.
+It does not reopen #82, #180, or #181.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can CreateBook(Investment), record `commit_lp` then `call_lp`,
+and cite the notice on `/capital`: digest, LP 80 / GP 20, LP's
+posted amount — not 80/20 of that LP call. A distribution posts
+its own notice. A book that has never called shows unset. It
+cannot show an LP portal, e-sign, CRM, a future call schedule,
+IRR, or a waterfall. Those remain Connect.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

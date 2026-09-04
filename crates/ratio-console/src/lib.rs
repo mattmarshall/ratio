@@ -2802,6 +2802,7 @@ impl Console {
             fee_receivable: String::new(),
             allocation_facts: Vec::new(),
             currencies: personal_currencies_of(meta.kind, set.as_ref()),
+            notices: Vec::new(),
         })
     }
 
@@ -2897,6 +2898,7 @@ impl Console {
         let (partner_cut, special_allocations) = partner_terms_of(set.as_ref());
         let fee_receivable = self.fee_receivable_of(&id, &fund.default_view, set.as_ref())?;
         let allocation_facts = self.allocation_facts_of(&id)?;
+        let notices = self.notices_of(&id)?;
         Ok(pb::Book {
             name: format!("books/{id}"),
             display_name: meta.display_name,
@@ -2916,6 +2918,7 @@ impl Console {
             fee_receivable,
             allocation_facts,
             currencies: personal_currencies_of(meta.kind, set.as_ref()),
+            notices,
         })
     }
 
@@ -2968,6 +2971,72 @@ impl Console {
             }
             Ok(())
         })?;
+        Ok(out)
+    }
+
+    /// Citeable capital-call / distribution notices GetBook walked.
+    ///
+    /// ⛔ EMPTY IS UNSET. No call or distribution is not a silent
+    /// notice. Amounts are what the journal posted; the pinned cut is
+    /// cited, not applied. `issue` of a partner-scoped call invents
+    /// the other partners. Unreadable pinned config stays unset —
+    /// no fallback to `active()`. `Ratio.Partners.fromPosted`.
+    ///
+    /// ⚠ INDEX MUST NOT CALL THIS. `list_book_row` stays empty.
+    fn notices_of(&self, id: &str) -> Result<Vec<pb::CapitalNotice>> {
+        let path = self.book_path(id)?;
+        let b = self.open_file_book(&path)?;
+        let chart = b.accounts()?;
+        let mut pending = Vec::new();
+        b.for_each_entry_since(0, &mut |e| {
+            if let Some((kind, posted)) = classify_notice(e, &chart) {
+                pending.push((
+                    kind,
+                    posted,
+                    e.config.as_str().to_string(),
+                    e.id.clone(),
+                    e.trade_date.clone(),
+                ));
+            }
+            Ok(())
+        })?;
+        let mut cuts: BTreeMap<String, Option<Vec<ratio_rules::PartnerShare>>> = BTreeMap::new();
+        let mut out = Vec::new();
+        for (kind, posted, config_hex, entry_id, trade_date) in pending {
+            let cut = cuts
+                .entry(config_hex.clone())
+                .or_insert_with(|| pinned_partner_cut(&b, &config_hex));
+            let Some(cut) = cut.as_ref() else {
+                continue;
+            };
+            let Ok(Some(n)) = ratio_rules::notice_from_posted(kind, cut, &posted) else {
+                continue;
+            };
+            let day = trade_date.as_deref().unwrap_or("");
+            out.push(pb::CapitalNotice {
+                digest: ratio_rules::notice_digest(&n, &entry_id, day),
+                kind: n.kind.as_str().into(),
+                amount: n.amount,
+                partner_cut: n
+                    .cut
+                    .iter()
+                    .map(|p| pb::PartnerShare {
+                        partner: p.partner.clone(),
+                        weight: p.weight,
+                    })
+                    .collect(),
+                amounts: n
+                    .amounts
+                    .iter()
+                    .map(|a| pb::PartnerAmount {
+                        partner: a.partner.clone(),
+                        amount: a.amount,
+                    })
+                    .collect(),
+                entry_id,
+                trade_date: trade_date.as_deref().and_then(iso_date),
+            });
+        }
         Ok(out)
     }
 
@@ -3025,6 +3094,7 @@ impl Console {
             fee_receivable: String::new(),
             allocation_facts: Vec::new(),
             currencies: Vec::new(),
+            notices: Vec::new(),
         })
     }
 
@@ -5789,6 +5859,90 @@ fn view_pb(fund: &str, set: &ratio_rules::RuleSet, v: &ratio_rules::View) -> pb:
 /// ⛔ EMPTY IS UNSET. A missing configuration, or one that named no
 /// `[[partner_cut]]`, is not a silent 1/N.
 /// `Ratio.Partners.no_cut_is_unset`.
+/// The partner grain on `Partner capital — LP`, or the whole name.
+fn partner_grain(display: &str) -> String {
+    display
+        .split_once(" — ")
+        .map(|(_, g)| g.to_string())
+        .unwrap_or_else(|| display.to_string())
+}
+
+/// Classify a journal entry as a call or distribution notice.
+///
+/// A call credits partner capital, debits cash, and draws undrawn /
+/// commitments. A distribution debits partner capital, credits cash,
+/// and does not draw. Unit movements (quantity) stay off this list —
+/// they are subscriptions / redemptions. A contribution is not a
+/// call; a commitment is not a notice.
+fn classify_notice(
+    e: &ratio_store::JournalEntry,
+    chart: &[ratio_store::Account],
+) -> Option<(ratio_rules::NoticeKind, Vec<ratio_rules::PostedAmount>)> {
+    if e.postings.iter().any(|p| p.quantity.is_some()) {
+        return None;
+    }
+    let name = |dim: i64| -> &str {
+        chart
+            .iter()
+            .find(|a| a.dim == dim)
+            .map(|a| a.display_name.as_str())
+            .unwrap_or("")
+    };
+    let mut partner_credits = Vec::new();
+    let mut partner_debits = Vec::new();
+    let mut cash_debit = false;
+    let mut cash_credit = false;
+    let mut drew = false;
+    for p in &e.postings {
+        let n = name(p.dim);
+        if n.starts_with("Partner capital") {
+            let grain = partner_grain(n);
+            if p.amount < 0 {
+                partner_credits.push(ratio_rules::PostedAmount {
+                    partner: grain,
+                    amount: -p.amount,
+                });
+            } else if p.amount > 0 {
+                partner_debits.push(ratio_rules::PostedAmount {
+                    partner: grain,
+                    amount: p.amount,
+                });
+            }
+        } else if n.starts_with("Undrawn commitments") || n.starts_with("Commitments") {
+            if p.amount != 0 {
+                drew = true;
+            }
+        } else if n == "Cash and equivalents" && p.amount > 0 {
+            cash_debit = true;
+        } else if n == "Cash and equivalents" && p.amount < 0 {
+            cash_credit = true;
+        }
+    }
+    if drew && cash_debit && !partner_credits.is_empty() {
+        return Some((ratio_rules::NoticeKind::Call, partner_credits));
+    }
+    if !drew && cash_credit && !partner_debits.is_empty() {
+        return Some((ratio_rules::NoticeKind::Distribution, partner_debits));
+    }
+    None
+}
+
+/// Partner cut the entry pinned. Unreadable or empty is unset —
+/// not a fallback to `active()`.
+fn pinned_partner_cut(
+    b: &FileBook,
+    digest_hex: &str,
+) -> Option<Vec<ratio_rules::PartnerShare>> {
+    let digest = ratio_store::Digest::parse(digest_hex).ok()?;
+    let bytes = b.get(&digest).ok()?;
+    let set = RuleSet::from_toml(&String::from_utf8_lossy(&bytes)).ok()?;
+    if set.partner_cut.is_empty() {
+        None
+    } else {
+        Some(set.partner_cut)
+    }
+}
+
 fn partner_terms_of(set: Option<&RuleSet>) -> (Vec<pb::PartnerShare>, Vec<pb::SpecialAllocation>) {
     let Some(s) = set else {
         return (Vec::new(), Vec::new());
@@ -7458,6 +7612,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(created.partner_cut[1].weight, 20);
         assert!(created.special_allocations.is_empty());
         assert!(created.allocation_facts.is_empty());
+        assert!(created.notices.is_empty(), "CreateBook posts no call: {:?}", created.notices);
         // ⛔ NOT 1/N. Two partners is not 50/50.
         assert_ne!(created.partner_cut[0].weight, created.partner_cut[1].weight);
 
@@ -7467,6 +7622,11 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(cited.partner_cut[1].weight, 20);
         assert_ne!(cited.partner_cut[0].weight, cited.partner_cut[1].weight);
         assert!(cited.allocation_facts.is_empty(), "empty journal: {:?}", cited.allocation_facts);
+        assert!(
+            cited.notices.is_empty(),
+            "empty journal is unset, not a silent notice: {:?}",
+            cited.notices
+        );
 
         c.create_book(pb::CreateBookRequest {
             book: Some(pb::Book {
@@ -7868,6 +8028,83 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             capital.iter().all(|a| a.display_name != "Unrealized gain"),
             "valuation equity is not a commitment: {capital:?}"
         );
+    }
+
+    #[test]
+    fn get_book_cites_a_call_notice_from_the_journal_not_a_waterfall() {
+        // ⭐ THE CLAIM #157 IS ABOUT. A call_lp of 40.00 is a notice
+        // of 40.00 on LP. 80/20 of 40.00 would invent GP 8.00.
+        // contribute_lp is not a notice. distribute_lp is.
+        let root = fresh("capital-notice");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Partners".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "noticebook".into(),
+        })
+        .unwrap();
+
+        let before = c.get_book("books/noticebook").unwrap();
+        assert!(
+            before.notices.is_empty(),
+            "unset — no call has been posted: {:?}",
+            before.notices
+        );
+
+        c.apply_event(&capital_req("noticebook", "k-lp", "commit_lp", "100.00", 2026, 3, 1))
+            .unwrap();
+        let committed = c.get_book("books/noticebook").unwrap();
+        assert!(
+            committed.notices.is_empty(),
+            "a commitment is not a notice: {:?}",
+            committed.notices
+        );
+
+        c.apply_event(&capital_req("noticebook", "call-1", "call_lp", "40.00", 2026, 3, 15))
+            .unwrap();
+        c.apply_event(&capital_req("noticebook", "c-extra", "contribute_lp", "10.00", 2026, 3, 20))
+            .unwrap();
+
+        let after = c.get_book("books/noticebook").unwrap();
+        assert_eq!(after.notices.len(), 1, "contribute is not a notice: {:?}", after.notices);
+        let n = &after.notices[0];
+        assert_eq!(n.kind, "call", "{n:?}");
+        assert_eq!(n.amount, 4000, "{n:?}");
+        assert_eq!(n.entry_id, "call-1", "{n:?}");
+        assert_eq!(n.partner_cut.len(), 2, "{n:?}");
+        assert_eq!(n.partner_cut[0].partner, "LP");
+        assert_eq!(n.partner_cut[0].weight, 80);
+        assert_eq!(n.partner_cut[1].partner, "GP");
+        assert_eq!(n.partner_cut[1].weight, 20);
+        assert_eq!(n.amounts.len(), 1, "one partner was called: {n:?}");
+        assert_eq!(n.amounts[0].partner, "LP");
+        assert_eq!(n.amounts[0].amount, 4000);
+        assert!(!n.digest.is_empty(), "{n:?}");
+        // ⛔ NOT 80/20 OF THE LP CALL. That invents GP 8.00.
+        assert!(
+            n.amounts.iter().all(|a| a.partner != "GP"),
+            "issue of 40.00 under 80/20 invents GP: {n:?}"
+        );
+        assert_ne!(n.amounts[0].amount, 3200, "80/20 of 40.00 is not the posted call");
+
+        c.apply_event(&capital_req("noticebook", "d-lp", "distribute_lp", "5.00", 2026, 3, 25))
+            .unwrap();
+        let both = c.get_book("books/noticebook").unwrap();
+        assert_eq!(both.notices.len(), 2, "{both:?}");
+        let dist = both
+            .notices
+            .iter()
+            .find(|n| n.kind == "distribution")
+            .expect("distribution notice");
+        assert_eq!(dist.amount, 500, "{dist:?}");
+        assert_eq!(dist.amounts.len(), 1, "{dist:?}");
+        assert_eq!(dist.amounts[0].partner, "LP");
+        assert_eq!(dist.amounts[0].amount, 500);
+        assert_ne!(dist.digest, after.notices[0].digest, "two documents");
+        assert_eq!(c.get_fund("funds/noticebook").unwrap().trial_balance_difference, "0");
     }
 
     #[test]
