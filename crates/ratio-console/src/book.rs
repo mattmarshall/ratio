@@ -2800,8 +2800,34 @@ SUB-B,2026-01-20,500.00,USD,5,subscribe
         assert_eq!(rule, "subscribe");
         assert_eq!(ratio_ingest::dated_of(t, &p.facts[0]), Some("2026-01-15"));
         let form = t.render();
-        assert!(form.contains("subscribe_lp-> subscribe_lp"), "{form}");
-        assert!(form.contains("quantity     from \"Quantity\" as decimal"), "{form}");
+        // ⛔ ALIGNMENT IS THE RENDER, NOT A SLOGAN. `quantity` is 8 letters;
+        // padding to the `reference` column is four spaces, not five.
+        assert_eq!(
+            form,
+            "\
+template subscriptions {
+  reads      csv with header
+  grain      one capital per row
+
+  fact       capital
+    reference   from \"Ref\"
+    dated       from \"Date\" as date \"YYYY-MM-DD\"
+    amount      from \"Amount\" as money in \"Ccy\"
+    quantity    from \"Quantity\" as decimal
+    kind        from \"Kind\" as { redeem: redeem, redeem_gp: redeem_gp, redeem_lp: redeem_lp, subscribe: subscribe, subscribe_gp: subscribe_gp, subscribe_lp: subscribe_lp }
+
+  posts      by \"kind\"
+    amount      amount
+    dated       dated
+    redeem      -> redeem
+    redeem_gp   -> redeem_gp
+    redeem_lp   -> redeem_lp
+    subscribe   -> subscribe
+    subscribe_gp-> subscribe_gp
+    subscribe_lp-> subscribe_lp
+}
+"
+        );
         let resolved = ratio_ingest::resolve_all(&p.facts, &[]);
         assert!(resolved.iter().all(|r| r.is_admissible()));
     }
