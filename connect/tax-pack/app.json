@@ -27,7 +27,7 @@
     "note": "Connect access tokens are not accepted on /v1. Token validation is #151 / leftover #22. This file does not close #150 or #166."
   },
   "pooled_holding_period": {
-    "status": "refuses invented category",
-    "note": "When acquisition dates on a pooled holding disagree, the pack leaves the category unset. It does not invent FIFO's oldest date or two Form 8949 boxes. #9 leftover; PR #154 may still be open. This file does not close #9."
+    "status": "cited",
+    "note": "When acquisition dates on a pooled holding disagree, the pack leaves the category unset. It does not invent FIFO's oldest date or two Form 8949 boxes. The kernel rule is Ratio.Lots.PoolPeriod — this file cites it; it does not invent a category of its own."
   }
 }

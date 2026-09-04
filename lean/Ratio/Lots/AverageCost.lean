@@ -9,6 +9,8 @@ names three shapes that are not: specific identification, average cost, and
 tax-minimising relief. MinTax is `Ratio.Lots.MinTax`. SpecID is
 `Ratio.Lots.SpecId`. This file is the third as an engine: the holding is
 pooled at a weighted basis, and "which lot" is not a question it answers.
+The date that pool carries is `Ratio.Lots.PoolPeriod` — a shared
+acquisition date when every lot agrees, unset when mixed or missing.
 
 ⛔ AVERAGE COST IS NOT A LOT WALK AND CANNOT BE MADE INTO ONE. Every `Order`
 picks a lot and walks. Average cost cannot: every unit has the same basis, so

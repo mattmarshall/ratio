@@ -1366,6 +1366,8 @@ window, and can point at named lots on a SpecID sale's journal
 entry. Silence stays unset — not a silent 2, not a silent true,
 not a silent FIFO. It cannot show a pooled holding-period
 category (mixed dates stay unset). That remains on #9.
+*(the pooled holding-period category is a date — a later
+amendment.)*
 
 ### Amendment, 2026-09-04 — Phase-four marketplace begins as WorkOS Connect scopes
 
@@ -1518,6 +1520,8 @@ day is long-term (`the_threshold_day_is_long_term`). When they disagree
 unset. The pack does not invent FIFO's oldest date or two Form 8949
 boxes. Those rows land on the unclassified companion with the ambiguity
 named. PR #154 may still be open; this amendment does not close #9.
+*(the kernel category is `Ratio.Lots.PoolPeriod` — a later
+amendment.)*
 
 **What this is NOT:**
 
@@ -1528,6 +1532,7 @@ named. PR #154 may still be open; this amendment does not close #9.
   Live submission stays leftover on #166.
 - **Not a pooled holding-period category rule in the kernel.** Mixed
   dates stay unset here; the engine leftover stays on #9.
+  *(superseded by a later amendment.)*
 - **Not #150's read-only reference skeleton.** That leftover is
   `books:read` + `statements:read` proving the door opens. This app
   requests `lots:read` and `config:read` and does not open the door.
@@ -1545,6 +1550,7 @@ pool landing unclassified rather than inventing FIFO's oldest date, and
 `lot_method = "wash"` being rejected. It cannot show a Connect token
 opening a book, an IRS e-file, or a pooled holding-period category when
 dates disagree.
+*(the kernel category is a date — a later amendment.)*
 
 ### Amendment, 2026-09-04 — a Personal net-worth goals Connect app, and the grant path still does not open
 
@@ -1599,6 +1605,67 @@ worth, a card charge that does not move cash, a closed March refusing an
 opted-in 15 March post, and `journal:append` being rejected as a scope.
 It cannot show a Connect token opening a book, a cash forecast, or a
 FIRE number.
+
+### Amendment, 2026-09-04 — the pooled holding-period category is a date, not a Method
+
+Average cost pools the basis. It did not say what DATE the
+remainder and the slice carry. US single-category invents FIFO's
+oldest date on a mixed pool and classifies the sale long-term.
+Double-category invents two pools. Both invent a short-vs-long
+answer the lots do not support. Conservation holds, the trial
+balance ties, the digest reproduces. The figure that goes wrong
+is the RATE — which no reconciliation reaches.
+
+The tax-pack Connect app already refused to invent a box when
+dates disagree. That is the export citing the leftover, not the
+kernel rule.
+
+What landed is the date rule, as its own shape:
+
+- Lean: `Ratio.Lots.PoolPeriod`. `poolAcquired` carries a shared
+  date when every lot agrees; mixed or missing dates stay unset.
+  Day 0 / day 400 / dispose 400 / threshold 365: FIFO is long,
+  the other lot is short, the pool is neither. No `Order` /
+  `Method` / `lot_method` variant. Unset is not a silent long
+  and not a silent short. Not two Form 8949 boxes.
+  `treating_mixed_dates_as_an_order_invents_a_category`.
+- TLA: `//tla:pool_period_engine_check`. The probe
+  `//tla:sort_and_walk_pool_period_check` treats the rule as
+  FIFO and `ThePoolDateStaysUnset` goes red.
+- Rust: `pool_acquired` on the lot surface, cited from the
+  proofs. A shared date classifies. Mixed or missing dates
+  leave the gain in `unclassified`. No RuleSet field — this is
+  how pooling works, not an election between invented
+  categories. `lot_method = "average_cost"` stays refused.
+- The tax-pack cites the same rule. Mixed dates still land on
+  `unclassified.csv`. It does not invent FIFO's oldest date or
+  two boxes.
+
+**What this is NOT:**
+
+- Not a **tax-lot planner UI**. That was never a leftover of
+  #9; it is a different product, the same shape as lot method
+  and wash.
+- Not **#166 closed**. Grant path and IRS e-file stay leftover
+  on the tax-pack.
+- Not **#168 closed**. Grant path and live OAuth stay leftover
+  on the goals app.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #9. The named leftovers on that issue — MinTax,
+SpecID, average cost, their console cites, and the pooled
+holding-period category rule — have all landed. It does not
+close #5 (already closed for wash). It does not close #166.
+It does not close #168.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+A fund admin walk-through can pool a holding whose lots share
+an acquisition date and see the sale classified from that date,
+and can pool lots with mixed or missing dates and see the gain
+stay unclassified — not a silent long, not a silent short, not
+two Form 8949 boxes. The tax-pack walk-through cites the same
+unset. It cannot show a tax-lot planner UI. That is not a
+leftover of #9.
 
 ## The control plane: geetch and crova
 

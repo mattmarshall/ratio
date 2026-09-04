@@ -152,7 +152,9 @@ class HoldingPeriod(unittest.TestCase):
             p.holding_period_category((oldest, newer), disposed, 365)
         msg = str(ctx.exception)
         self.assertIn("disagree", msg)
-        self.assertIn("#9", msg)
+        self.assertIn("unset", msg)
+        self.assertIn("PoolPeriod", msg)
+        self.assertNotIn("invented as FIFO", msg)
         # The invention this refuses: min(dates) would have been LONG.
         invented = p.holding_period_category((oldest,), disposed, 365)
         self.assertEqual(invented, "LONG")
@@ -380,7 +382,11 @@ class ManifestHonesty(unittest.TestCase):
         self.assertIn("refused", app()["irs_submission"]["status"])
         self.assertIn("#166", doc)
         self.assertIn("#150", doc)
-        self.assertIn("#9", doc)
+        category = app()["pooled_holding_period"]
+        self.assertEqual(category["status"], "cited")
+        self.assertIn("Ratio.Lots.PoolPeriod", category["note"])
+        self.assertNotIn("does not close #9", category["note"])
+        self.assertNotIn("PR #154", category["note"])
 
     def test_the_catalog_still_names_the_scopes_this_app_requests(self):
         if CATALOG is None or not CATALOG.is_file():
