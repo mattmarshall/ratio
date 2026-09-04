@@ -2277,8 +2277,8 @@ Built phrase this amendment adds.
   `ApplyEvent` on the seeded rule.
 
 Nothing on the *Explicitly not building* list moved. This amendment
-closes #173. It does not close #169, #172, #184, #100, #85, #150,
-or #22.
+closes #173. It does not close #169, #172, #184, #104, #100, #85,
+#180, #150, or #22.
 
 **What a walk-through can and cannot show** (demo readiness, #27).
 It can open a Project `/billing`, leave collected unset before AR
