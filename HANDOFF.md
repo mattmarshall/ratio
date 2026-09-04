@@ -25,8 +25,11 @@ date is carried when every lot agrees; mixed or missing dates stay
 unset; no category is invented — not FIFO's oldest date, not two
 Form 8949 boxes). The household tax-pack Connect app
 (`connect/tax-pack/`, #166) cites that same rule; it does not
-close #166 (grant path and IRS e-file remain). This file closes
-#9. It does not reopen #5.
+close #166 (grant path and IRS e-file remain). The Project AIA
+pay-app Connect app (`connect/aia-pay-app/`, #184) refuses to
+invent billed / retainage / change-order zeros; that does not
+close #184 (grant path leftover #22 and a licensed AIA form remain).
+This file closes #9. It does not reopen #5 or #151.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 
@@ -604,8 +607,8 @@ the conserved one, and the kernel never said it was.
   G702-ish / G703-ish CSV from those cites; missing billed / retainage /
   CO lines stay unset. It cannot show a Connect token opening a book or
   a licensed AIA form. Change orders stay on #91; retainage / billed vs
-  earned stay on #85. This file does not close #184 (grant path and
-  licensed form remain). The seeded demo funds remain investment books.
+  earned stay on #85. This file does not close #184 (grant path leftover
+  #22 and licensed form remain). The seeded demo funds remain investment books.
 - ⚠ **An operating-business walk-through (#108).** CreateBook(Operating)
   writes an independent Book — no Fund, no WorkOS organization — with
   cash, AR, AP, operating revenue/expense, owner equity, and retained
@@ -921,7 +924,7 @@ than one that is entirely unclassified.
 | `connect/bank-feed/` | First-party Connect app for Personal bank feeds ([#165](https://github.com/mattmarshall/ratio/issues/165)). Mapper + allowlist + closed-through / conservation refusals. Grant path is not built; live bank OAuth is leftover. Does not close #165 |
 | `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — `Ratio.Lots.PoolPeriod`, not an invented FIFO oldest date or two Form 8949 boxes. Grant path is not built; IRS e-file is refused. Does not close #166 |
 | `connect/goals/` | First-party Connect app for Personal net-worth goals and what-if scenarios ([#168](https://github.com/mattmarshall/ratio/issues/168)). Cites sheet / bridge / cash-flow; opt-in scenario journals on allowlisted Personal templates; closed-through and empty-allowlist refuse. Grant path is not built. Not a cash forecast. Does not close #168 |
-| `connect/aia-pay-app/` | First-party Connect app for Project G702/G703-ish pay-app export ([#184](https://github.com/mattmarshall/ratio/issues/184)). CSV from `/billing` + `/budget` cites (revised contract, billed, retainage, change orders). Missing cites stay unset — no silent billed / retainage / CO zeros. Grant path is not built; licensed AIA PDF is refused. Does not close #184 |
+| `connect/aia-pay-app/` | First-party Connect app for Project G702/G703-ish pay-app export ([#184](https://github.com/mattmarshall/ratio/issues/184)). CSV from `/billing` + `/budget` cites (revised contract, billed, retainage, change orders). Missing cites stay unset — no silent billed / retainage / CO zeros. Grant path leftover #22; licensed AIA PDF is refused. Does not close #184. Does not reopen #151 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.
