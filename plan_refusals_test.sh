@@ -259,6 +259,12 @@ BUILT=(
   # they match are in the 2026-09-04 #163 Connect amendment.
   "a Personal bank-balance predictor Connect app"
   "a Personal calendar-bills Connect app"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The audit-export Connect app is not on the refusal list — a
+  # kernel blob store, period-close replacement, and a live Connect
+  # token on /v1 stay leftover. The sentence it matches is in the
+  # 2026-09-04 #185 amendment.
+  "an audit-export Connect app"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
