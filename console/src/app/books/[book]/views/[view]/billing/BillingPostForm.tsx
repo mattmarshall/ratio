@@ -8,10 +8,9 @@ import {
   Ticket,
   type Step,
 } from "@/components/Ticket";
-import { billingRulesInForce, COLLECT_RECEIVABLE } from "@/lib/billingPost";
+import { COLLECT_RECEIVABLE } from "@/lib/billingPost";
 import { money } from "@/lib/format";
 import { hundredths, TRADE_DATE } from "@/lib/trade";
-import type { Rule } from "@/wire/types";
 import { submit, type Result } from "./actions";
 
 /**
@@ -22,20 +21,22 @@ import { submit, type Result } from "./actions";
  * `collect_receivable` CreateBook already seeded — not a new journal
  * kind, not a payment processor.
  *
+ * ⚠ `listRules` IS NOT A FOURTH UPSTREAM CALL. This page already reads
+ * projectProgress / getBook / listAccounts. The id is the kind-selected
+ * seed, the way `/budget` hardcodes its two ingest templates rather than
+ * calling `listTemplates`. A book that never received the rule refuses
+ * at ApplyEvent rather than inventing a parallel store.
+ *
  * ⛔ UNSET UNTIL BILLED AND AR CAN SUPPORT THE CUT. This form does not
  * plug a zero. Collected stays `—` while billed is empty or AR has
  * never posted. Billed but uncollected is a real zero after the bill,
  * not after this form appears.
  */
-export function BillingPostForm({ fund, rules }: { fund: string; rules: Rule[] }) {
+export function BillingPostForm({ fund }: { fund: string }) {
   const [result, action, pending] = useActionState<Result, FormData>(
     submit,
     null,
   );
-
-  const offered = billingRulesInForce(rules);
-  const rule = offered.find((r) => r.ruleId === COLLECT_RECEIVABLE) ?? null;
-  const ruleId = rule?.ruleId ?? "";
 
   const [amount, setAmount] = useState("");
   const [dated, setDated] = useState("");
@@ -45,12 +46,11 @@ export function BillingPostForm({ fund, rules }: { fund: string; rules: Rule[] }
   const dateOk = !dated || TRADE_DATE.test(dated);
 
   const complete =
-    Boolean(rule) &&
-    parsed?.ok === true &&
-    Boolean(eventId.trim()) &&
-    dateOk;
+    parsed?.ok === true && Boolean(eventId.trim()) && dateOk;
 
-  const now = [ruleId, amount.trim(), dated.trim(), eventId.trim()].join(" ");
+  const now = [COLLECT_RECEIVABLE, amount.trim(), dated.trim(), eventId.trim()].join(
+    " ",
+  );
   const previewed =
     result?.ok === true && result.response.validateOnly && result.signature === now;
 
@@ -79,16 +79,12 @@ export function BillingPostForm({ fund, rules }: { fund: string; rules: Rule[] }
       hint="COL-1"
     />
   );
-  const ruleForm = rule ? (
+  const ruleForm = (
     <p className="ruleform">
-      <b>{rule.ruleId}</b>
-      {rule.description || rule.form}
-      {rule.accounts.length ? (
-        <> Legs, in order: {rule.accounts.join(" · ")}.</>
-      ) : null}
+      <b>{COLLECT_RECEIVABLE}</b>
+      Collect a billed receivable into cash. Legs, in order: Cash ·
+      Accounts receivable.
     </p>
-  ) : (
-    <p className="ruleform">No collection rule in force</p>
   );
 
   const echo = parsed ? (
@@ -165,7 +161,7 @@ export function BillingPostForm({ fund, rules }: { fund: string; rules: Rule[] }
       summary={
         complete && parsed?.ok ? (
           <>
-            Post <code>{ruleId}</code> for{" "}
+            Post <code>{COLLECT_RECEIVABLE}</code> for{" "}
             <b className="num">{money(parsed.minor.toString())}</b> as{" "}
             <code>{eventId.trim()}</code>
             {dated.trim() ? <> dated {dated.trim()}</> : <>, undated</>}.
@@ -189,7 +185,7 @@ export function BillingPostForm({ fund, rules }: { fund: string; rules: Rule[] }
       actions={
         <form action={action}>
           <input type="hidden" name="fund" value={fund} />
-          <input type="hidden" name="ruleId" value={rule?.ruleId ?? ""} />
+          <input type="hidden" name="ruleId" value={COLLECT_RECEIVABLE} />
           <input type="hidden" name="amount" value={amount} />
           <input type="hidden" name="dated" value={dated} />
           <input type="hidden" name="eventId" value={eventId} />
@@ -198,7 +194,7 @@ export function BillingPostForm({ fund, rules }: { fund: string; rules: Rule[] }
             commit="Post"
             previewed={previewed}
             pending={pending}
-            ready={complete && offered.length > 0}
+            ready={complete}
           />
         </form>
       }

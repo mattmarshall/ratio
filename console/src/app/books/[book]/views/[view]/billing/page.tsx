@@ -11,7 +11,7 @@ import {
   projectRollup,
   remainingToBill,
 } from "@/lib/project";
-import { getBook, listAccounts, listRules, projectProgress } from "@/wire/client";
+import { getBook, listAccounts, projectProgress } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 import { BillingPostForm } from "./BillingPostForm";
 
@@ -57,8 +57,6 @@ async function Billing({
   const b = await getBook(c, book);
   const p = await projectProgress(c, book, view);
   const { accounts } = await listAccounts(c, book, view);
-  const rules =
-    b.kind === "PROJECT" ? (await listRules(c, book)).rules : [];
   const contract = projectRollup(accounts, b.budget);
   const remaining = remainingToBill(contract.revised, p.billed);
   const ar = accountsReceivable(accounts);
@@ -261,7 +259,7 @@ async function Billing({
             <code>/record</code> already uses; this is not a payment
             processor.
           </p>
-          <BillingPostForm fund={book} rules={rules} />
+          <BillingPostForm fund={book} />
         </>
       ) : null}
       <p className="note">

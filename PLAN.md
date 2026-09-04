@@ -2251,7 +2251,9 @@ the cash application.
 through the same `ApplyEvent` `/record` uses. The rule is
 `collect_receivable` CreateBook already seeded — cash up, receivable
 down. A tampered form that sends `progress_bill`, `project_cost`, or
-`equity_purchase` is refused. No new journal kind. No new ingest
+`equity_purchase` is refused. `listRules` is not a fourth upstream
+call — the id is the kind-selected seed, the way `/budget` hardcodes
+its two ingest templates. No new journal kind. No new ingest
 template — `project-invoices` is vendor cost / AP, not customer cash.
 Facts stay unset until billed and AR can support the cut: an unbilled
 job is not collected 0.00, and a billed figure with no AR posting

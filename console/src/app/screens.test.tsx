@@ -1496,26 +1496,6 @@ describe("a first-class book", () => {
     }
   });
 
-  it("asks ListRules so /billing can post the same collect_receivable /record uses", async () => {
-    const books: unknown[] = [];
-    const real = wire.listRules;
-    wire.listRules = (async (...args: unknown[]) => {
-      books.push(args[1]);
-      return { rules: [], nextPageToken: "" };
-    }) as typeof wire.listRules;
-    try {
-      const Billing = (await import("./books/[book]/views/[view]/billing/page"))
-        .default;
-      await renderAsync(
-        Billing({ params: params({ book: "bridge", view: "book" }) }),
-      );
-      expect(books).toEqual(["bridge"]);
-      expect(screen.getByText("No collection rule in force")).toBeDefined();
-    } finally {
-      wire.listRules = real;
-    }
-  });
-
   it("asks ListRules so /budget can post the same CO / award kinds /record uses", async () => {
     const books: unknown[] = [];
     const real = wire.listRules;
@@ -2676,6 +2656,26 @@ describe("a first-class book", () => {
     ).rejects.toThrow();
   });
 
+  it("does not call ListRules on /billing — collect_receivable is the seeded id, not a fourth read", async () => {
+    const rulesAsked: unknown[] = [];
+    const real = wire.listRules;
+    wire.listRules = (async (...args: unknown[]) => {
+      rulesAsked.push(args[1]);
+      return { rules: [], nextPageToken: "" };
+    }) as typeof wire.listRules;
+    try {
+      const Billing = (await import("./books/[book]/views/[view]/billing/page"))
+        .default;
+      await renderAsync(
+        Billing({ params: params({ book: "bridge", view: "book" }) }),
+      );
+      expect(screen.getByText("Post a collection")).toBeDefined();
+      expect(rulesAsked).toEqual([]);
+    } finally {
+      wire.listRules = real;
+    }
+  });
+
   it("cites billed vs earned, retainage, and cost by phase without a fake zero", async () => {
     const Billing = (await import("./books/[book]/views/[view]/billing/page"))
       .default;
@@ -2717,7 +2717,7 @@ describe("a first-class book", () => {
     expect(
       screen.getByText(/A collection stays unset on this page until billed and/),
     ).toBeDefined();
-    expect(screen.getByText("No collection rule in force")).toBeDefined();
+    expect(screen.getAllByText("collect_receivable").length).toBeGreaterThan(0);
     const remaining = screen.getByText("Remaining to bill").closest("[role=row]");
     expect(remaining?.textContent).toContain("—");
     expect(remaining?.textContent).not.toMatch(/0\.00/);
@@ -2838,6 +2838,7 @@ describe("a first-class book", () => {
       const collected = screen.getByText("Collected").closest("[role=row]");
       expect(collected?.textContent).toContain("—");
       expect(collected?.textContent).not.toMatch(/0\.00/);
+      expect(screen.getByText("Post a collection")).toBeDefined();
     } finally {
       wire.projectProgress = realProgress;
       wire.getBook = realBook;
@@ -4156,16 +4157,6 @@ describe("the write screens", () => {
     measured: false,
   };
 
-  const COLLECT_AR = {
-    name: "funds/bridge/rules/collect_receivable",
-    ruleId: "collect_receivable",
-    kind: "TRADE" as const,
-    description: "Collect a billed receivable into cash",
-    form: "debit cash, credit accounts receivable",
-    accounts: ["Cash", "Accounts receivable"],
-    measured: false,
-  };
-
   const AWARD_SITE = {
     name: "funds/bridge/rules/award_commitment_site",
     ruleId: "award_commitment_site",
@@ -4272,7 +4263,7 @@ describe("the write screens", () => {
       ],
       [
         "billing-post",
-        <BillingPostForm key="c" fund="bridge" rules={[COLLECT_AR]} />,
+        <BillingPostForm key="c" fund="bridge" />,
       ],
     ] as const) {
       const { unmount } = render(el);
@@ -4737,7 +4728,7 @@ describe("the write screens", () => {
     const { BillingPostForm } = await import(
       "./books/[book]/views/[view]/billing/BillingPostForm"
     );
-    render(<BillingPostForm fund="bridge" rules={[COLLECT_AR]} />);
+    render(<BillingPostForm fund="bridge" />);
     fireEvent.click(screen.getByRole("button", { name: "Form" }));
     fireEvent.change(screen.getByLabelText("Amount"), {
       target: { value: "400.00" },
@@ -4769,7 +4760,7 @@ describe("the write screens", () => {
     const { BillingPostForm } = await import(
       "./books/[book]/views/[view]/billing/BillingPostForm"
     );
-    render(<BillingPostForm fund="bridge" rules={[COLLECT_AR]} />);
+    render(<BillingPostForm fund="bridge" />);
     fireEvent.click(screen.getByRole("button", { name: "Form" }));
     const post = screen.getByRole("button", { name: "Post" });
     expect(post.hasAttribute("disabled")).toBe(true);
@@ -4782,21 +4773,6 @@ describe("the write screens", () => {
     expect(post.hasAttribute("disabled")).toBe(true);
   });
 
-  it("will not offer a collection when collect_receivable is not in force", async () => {
-    const { BillingPostForm } = await import(
-      "./books/[book]/views/[view]/billing/BillingPostForm"
-    );
-    render(<BillingPostForm fund="bridge" rules={[CO_SITE, AWARD_SITE]} />);
-    expect(screen.getByText("No collection rule in force")).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Form" }));
-    const sent = Object.fromEntries(
-      new FormData(document.querySelector("form")!).entries(),
-    );
-    expect(sent.ruleId).toBe("");
-    expect(
-      screen.getByRole("button", { name: "Post" }).hasAttribute("disabled"),
-    ).toBe(true);
-  });
 });
 
 describe("sign-in", () => {

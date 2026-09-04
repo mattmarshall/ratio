@@ -117,12 +117,15 @@ export const ROUTES: readonly Route[] = [
   },
   // Remaining to bill and collections vs billed compose here from
   // ListAccounts + projectProgress + [project] budget — not a second URL.
-  // A Project book posts a cash application on this page (`listRules` +
-  // `collect_receivable`). `ApplyEvent` is the `/record` write.
+  // A Project book posts a cash application on this page
+  // (`collect_receivable`). `ApplyEvent` is the `/record` write;
+  // `listRules` is not a fourth render call — the id is the
+  // kind-selected seed, the way `/budget` hardcodes its two ingest
+  // templates.
   {
     path: "/books/[book]/views/[view]/billing",
     file: "books/[book]/views/[view]/billing/page.tsx",
-    reads: ["projectProgress", "getBook", "listAccounts", "listRules"],
+    reads: ["projectProgress", "getBook", "listAccounts"],
   },
   {
     path: "/funds/[fund]",
