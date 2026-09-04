@@ -54,7 +54,15 @@ rate, or a view declared after the fold refuses on `ratio
 reconcile`, ReconcileViews, and the reconcile screen — never a
 silent 0.00 that looks like agreement. An entry neither view can
 place cites `why` with an unset effect. FX rate vendors stay
-Connect. This file closes #160. It does not close #159 or #158.
+Connect. This file closes #160. It does not close #159.
+The ConfigStore / fact-plane seam (#158): control plane is
+`ConfigStore` (directory, SHA-256, atomic pointer); fact plane is
+`FactStore` (append-only `facts.jsonl`, provenance required, same
+id refused). A parallel mutable shadow book is refused on
+`--post` — no `shadow/` sibling journal, no recon history beside
+ingested facts. `compare_configs` answers "what moved?" in
+memory. geetch / crova stay later. This file closes #158. It
+does not close #159. It does not reopen #155 or #160.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 

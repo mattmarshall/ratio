@@ -372,7 +372,7 @@ fn ingest(book: PathBuf, file: &str, template_id: &str) -> Result<()> {
 
     b.append_record(Plane::Deliveries, &delivery)?;
     for f in &fresh {
-        b.append_record(Plane::Facts, f)?;
+        b.record_typed_fact(f)?;
     }
 
     println!("read     {file}");
@@ -2297,7 +2297,14 @@ fn recon(
         // Only entries from a run that was not refused ever reach the book —
         // `reconcile_with_entries` hands back none for a refused file, so a
         // partial period cannot be written even by asking.
-        if !entries.is_empty() {
+        //
+        // ⛔ AND THEY ARE NOT A SECOND LEDGER. `post_reconstructed_entries`
+        // refuses a parallel mutable shadow book (a `shadow/` sibling, a
+        // book sitting at shadow/ under a live book, or a book that
+        // already has a fact plane). The report is the artifact; compare
+        // two configurations with `compare_configs`, not a second store.
+        let posted = ratio_recon::post_reconstructed_entries(&mut b, &entries)?;
+        if posted > 0 {
             // Keep the report with the book it describes. `ratio watch` reads
             // the newest one; a report that only ever existed on somebody's
             // terminal is not evidence anybody else can look at.
@@ -2311,11 +2318,7 @@ fn recon(
             )
             .context("storing the report")?;
 
-            for entry in &entries {
-                b.append(entry)
-                    .with_context(|| format!("posting {}", entry.id))?;
-            }
-            println!("\nposted {} entrie(s) into {}", entries.len(), book.display());
+            println!("\nposted {posted} entrie(s) into {}", book.display());
             println!("  report   reports/{name}");
             println!("  ratio explain <account> --book {}", book.display());
         }

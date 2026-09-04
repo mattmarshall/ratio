@@ -257,9 +257,9 @@ refusal be scripted as "breaks found" and quietly investigated as data.
 
 - A zero-difference run on a *real* customer's period. Everything above is
   verified against a synthetic quarter.
-- The `--post` path writes the shadow book, but there is no way to compare two
-  runs under different configurations — which is what "we changed the fee rule,
-  what moved?" actually needs.
+- Comparing two configurations is `compare_configs` (same events, two
+  digests, in memory). A parallel mutable shadow book is refused — do
+  not keep a second journal to answer "what moved?"
 
 ---
 
@@ -2423,7 +2423,7 @@ is the Built phrase this amendment adds.
   here.
 - **Not #159 (Postgres).** Stage E stays blocked.
 - **Not #158 (control / fact seam).** Next after this; this file
-  does not expand into it.
+  does not expand into it. The seam landed in the amendment below.
 - **Not a `screensFor` fork** for Personal or Project.
 
 Nothing on the *Explicitly not building* list moved. This
@@ -2435,9 +2435,68 @@ It can open `/reconcile?against=` on a dual-basis book, see the
 in-flight list add to the NAV difference, and see an unplaceable
 row cite why rather than 0.00. A book whose in-flight EUR legs
 will not translate into the NAV difference refuses the screen with
-the residue sentence. It cannot show a rate-vendor Connect app, a
-Postgres projection, or the control/fact seam. Those remain
-Connect or #159 / #158.
+the residue sentence. It cannot show a rate-vendor Connect app or a
+Postgres projection. Those remain Connect or #159. The
+control/fact seam is the next amendment.
+
+### Amendment, 2026-09-04 — the ConfigStore / fact-plane seam
+
+[#158](https://github.com/mattmarshall/ratio/issues/158) asked for the
+phase-one control / fact plane still open from historical #74: a
+typed ConfigStore seam so authored rules compile and get checked
+without smuggling a second ledger, and a fact plane whose prices and
+FX an operator can open from a figure. PLAN already sketched
+`put` / `get` / `set_active` / `active` / `history` with v1 as a
+directory, SHA-256, and a pointer file. geetch / crova stay later.
+
+**What this amendment records.** The seam is real, not only prose:
+
+- **Control plane.** `ConfigStore` is the five methods this file
+  already named. v1 is `DirectoryConfigStore` — a directory, SHA-256,
+  an atomic `ACTIVE` pointer, `HISTORY` newest-first. `put` does not
+  promote. An unstored digest cannot become active. FileBook
+  delegates here so the journal and the control plane do not share
+  one type.
+- **Fact plane.** `FactStore` is append-only `facts.jsonl`
+  (`Plane::Facts`). A fact without provenance is refused — a figure
+  cannot open it. The same id is refused, not overwritten; a
+  correction is a new fact. Ingest writes through `record_typed_fact`.
+  Vendors push via scoped ingest (Connect); they do not own the
+  journal.
+- **Refuse a parallel mutable shadow book.** `--post` may write
+  reconstructed entries onto a book that *is* the Stage 3 wedge (no
+  facts, no `shadow/` sibling). It refuses a `shadow/` directory
+  beside the book, a book sitting at `shadow/` under a live book, or
+  posting recon history beside ingested facts. `compare_configs`
+  answers "what moved?" in memory. **the ConfigStore / fact-plane
+  seam** is the Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not geetch or crova.** Open defects, ops burden, and the
+  trigger (a second customer, or compliance-reviewed change control
+  a pointer file cannot satisfy) stay as this file already wrote
+  them. Do not adopt either in this tree until that trigger.
+- **Not #159 (Postgres).** Stage E stays blocked. The journal is
+  still the store.
+- **Not #161 (LP portal).** Connect. External research / price
+  vendors stay Connect too — they push facts via scoped ingest.
+- **Not a `screensFor` fork**, and not a `Method` / `Order` /
+  `lot_method` variant.
+- **Not a second store.** The refuse is the point.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #158. It does not close #159 or #161. It does
+not reopen #155, #160, #74, or #150. geetch / crova wiring stays
+named here as later.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can `ratio approve` (pointer moves, history records), ingest a
+price or FX fact and open it from a figure, run `ratio recon` on an
+empty wedge book with `--post`, and see `--post` refuse once facts
+exist or a `shadow/` directory is present. It cannot show reviewed
+change control, a forge, crova dedup, a Postgres projection, or an
+LP portal.
 
 ### Amendment, 2026-09-04 — a Project program-rollup Connect app, and no mega-book in the kernel
 
@@ -2623,8 +2682,12 @@ ConfigStore
 ```
 
 - **v1** — a directory, SHA-256, and a pointer file. An afternoon.
+  **Landed** (#158): [`ConfigStore`](crates/ratio-store/src/lib.rs) and
+  [`DirectoryConfigStore`]. The fact-plane half is [`FactStore`]
+  (`facts.jsonl`, append-only, provenance required). A parallel
+  mutable shadow book is refused on the recon `--post` path.
 - **later** — crova behind `put`/`get`, geetch behind `history` and the review
-  flow that gates `set_active`.
+  flow that gates `set_active`. Not this PR.
 
 Every posting already records the digest it ran under, so nothing downstream
 changes when the implementation does. This is the same move as `.brando` being

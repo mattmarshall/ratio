@@ -362,7 +362,8 @@ __STYLE__
           construction job or an operating company — CreateBook seeds the patterns; the seeded demo
           funds remain investment books.</li>
           <li>A versioned ConfigStore — directory, hash, atomic pointer — and a
-          fact plane whose prices and FX an operator can open from a figure.</li>
+          fact plane whose prices and FX an operator can open from a figure.
+          A parallel mutable shadow book is refused.</li>
           <li>Sign-in is WorkOS AuthKit. A book is the tenant: membership is
           the creator's WorkOS <code>sub</code>, not an implied org.
           Authenticated writes record that <code>sub</code> as the actor
@@ -523,7 +524,10 @@ __STYLE__
       <p>The journal, the lots, the currencies, and the actions a first book
       needs are in the engine. The control plane is a versioned ConfigStore
       (directory, hash, atomic pointer) and the fact plane admits prices and
-      FX with provenance an operator can open from a figure. A CreateBook
+      FX with provenance an operator can open from a figure. A parallel
+      mutable shadow book is refused: <code>--post</code> will not invent
+      journal history beside ingested facts, and a <code>shadow/</code>
+      sibling is not a second ledger. A CreateBook
       Investment book now carries the trade column contract, so delivery,
       resolve, admit, and live custodian statement ingest run without
       inventing journal history: ingested holdings compare to the journal

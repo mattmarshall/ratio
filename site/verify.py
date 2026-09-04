@@ -103,6 +103,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ #160 landed multi-view FX / translation refuses as cites;
     # PLAN named it in the same-commit amendment.
     "multi-view FX / translation refuses stay citeable",
+    # ⚠ #158 landed the ConfigStore / fact-plane seam; PLAN named it
+    # in the same-commit amendment.
+    "the ConfigStore / fact-plane seam",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -122,6 +125,7 @@ ROADMAP_ENGINE_BUILT = [
     "live custodian statement ingest",
     "job-cost / AP statement ingest",
     "multi-view FX / translation refuses stay citeable",
+    "parallel mutable shadow book",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",
