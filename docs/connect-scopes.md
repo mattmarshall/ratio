@@ -207,9 +207,14 @@ open:
    this leftover either: it requests `journals:post` for opt-in
    scenario journals, it does not open the grant path, and this file
    still does not close #168.
+   A first-party AIA pay-app scaffold lives at `connect/aia-pay-app/`
+   ([#184](https://github.com/mattmarshall/ratio/issues/184)). It is not
+   this leftover either: it requests `billing:read` and `budget:read`,
+   it does not open the grant path, and this file still does not close
+   #184.
 5. **`webhooks:journal`, `audit:export`, `nav:strike` as a write RPC** —
    reserved scopes; the surfaces are not built.
 
 This file does not close #150. Nothing here closes #5 (console wash
 flag), #9 (lot-relief UI cites / pooled holding-period leftover),
-#22, #166, or #168.
+#22, #166, #168, or #184.

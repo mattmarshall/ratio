@@ -162,7 +162,14 @@ __STYLE__
           <code>/billing</code>; a committed-cost walk-through can record
           or ingest an award on the same <code>/budget</code> page. None
           of those can show AIA G702 product UI, a client portal,
-          e-signature, CRM, or an EAC.
+          e-signature, CRM, or an EAC. A Project
+          <a href="https://github.com/mattmarshall/ratio/tree/main/connect/aia-pay-app">AIA pay-app Connect app</a>
+          (<a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>)
+          emits G702-ish / G703-ish CSV from those billing and budget
+          cites; missing billed, retainage, or change-order cites stay
+          unset, not a silent zero. It cannot show a Connect token
+          opening a book, a licensed AIA form, or live G702 product UX
+          beyond the pack.
           Billed / earned / retainage stay unset until posted, not a fake zero.
           An Investment book cites partner capital activity (contributions,
           distributions, transfers, ending capital) and partner-scoped
@@ -304,6 +311,10 @@ __STYLE__
           a target and overlays Personal templates; the grant path and
           live OAuth are leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/168">#168</a>.
+          An AIA pay-app Connect app scaffold emits G702-ish / G703-ish
+          CSV from Project billing and budget cites; the grant path and
+          a licensed AIA form are leftover on
+          <a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>.
           What it still does not have is a client portal — and on the fund side it is
           still the exception queue, a difference at its own address, and
           whether a fund can close. Household budget envelopes, a project
@@ -519,7 +530,12 @@ __STYLE__
       (<a href="https://github.com/mattmarshall/ratio/issues/168">#168</a>)
       cites sheet net worth against a named target and overlays discrete
       Personal templates; scenario journals post only on opt-in, the
-      grant path is not built, and a cash forecast is refused.</p>
+      grant path is not built, and a cash forecast is refused. A
+      <a href="https://github.com/mattmarshall/ratio/tree/main/connect/aia-pay-app">AIA pay-app Connect app</a>
+      (<a href="https://github.com/mattmarshall/ratio/issues/184">#184</a>)
+      emits G702-ish / G703-ish CSV from Project billing, budget,
+      retainage, and change-order cites; missing cites stay unset, the
+      grant path is not built, and a licensed AIA form is refused.</p>
       <ul class="r-deliver">
         <li class="o">Custodian and administrator feed catalog</li>
         <li class="o">Market-data vendor coverage</li>

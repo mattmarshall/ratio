@@ -1,0 +1,33 @@
+package(default_visibility = ["//visibility:public"])
+
+# The AIA pay-app Connect app is a sibling tree. Bazel does not build a
+# WorkOS binary here; it holds the pack builder to the catalog, to
+# Project /billing and /budget cites, and to the refusals the issue named.
+#
+# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_cites() must refuse.
+# Accepting Connect tokens is leftover #22. A licensed AIA PDF is refused.
+# Missing billed / retainage / CO cites stay unset, not silent zeros.
+# No kernel G702 RPC. PROJECT chrome is not forked.
+sh_test(
+    name = "pack_test",
+    size = "small",
+    srcs = ["pack_test.sh"],
+    args = [
+        "$(rootpath pack.py)",
+        "$(rootpath pack_test.py)",
+        "$(rootpath app.json)",
+        "$(rootpath //crates/ratio-rules:src/lib.rs)",
+        "$(rootpath //:docs/connect-scopes.md)",
+        "$(rootpath //console:src/lib/screens.ts)",
+        "$(rootpath //proto:ratio/console/v1/console.proto)",
+    ],
+    data = [
+        "pack.py",
+        "pack_test.py",
+        "app.json",
+        "//crates/ratio-rules:src/lib.rs",
+        "//:docs/connect-scopes.md",
+        "//console:src/lib/screens.ts",
+        "//proto:ratio/console/v1/console.proto",
+    ],
+)

@@ -5,8 +5,9 @@ package(default_visibility = ["//visibility:public"])
 exports_files([
     "Cargo.toml",
     # The tax-pack Connect builder (#166) holds its lot-terms cites
-    # to RuleSet's live field names. Exporting the source is a
-    # cross-check, not a kernel RPC.
+    # to RuleSet's live field names. The AIA pay-app packer (#184)
+    # holds `[project] budget` / phase rows the same way. Exporting
+    # the source is a cross-check, not a kernel RPC.
     "src/lib.rs",
 ])
 

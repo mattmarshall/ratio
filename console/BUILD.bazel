@@ -28,7 +28,8 @@ exports_files([
     "src/wire/types.ts",
     "scripts/book_kinds_in_plan_test.py",
     # The tax-pack Connect builder (#166) and the net-worth goals
-    # Connect app (#168) hold PERSONAL chrome to screensFor —
-    # packing and goals are sibling apps, not a new console URL.
+    # Connect app (#168) hold PERSONAL chrome to screensFor;
+    # the AIA pay-app packer (#184) holds PROJECT chrome the same
+    # way — packing is a sibling app, not a new console URL.
     "src/lib/screens.ts",
 ])
