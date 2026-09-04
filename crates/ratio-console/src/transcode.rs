@@ -778,7 +778,7 @@ impl JsonView for pb::Book {
              \"entryCount\":{},\"configDigest\":{},\"trialBalanceDifference\":{},\
              \"budget\":{},\"envelopes\":[{}],\"loans\":[{}],\
              \"partnerCut\":[{}],\"specialAllocations\":[{}],\
-             \"feeReceivable\":{}}",
+             \"feeReceivable\":{}}}",
             q(&self.name),
             q(&self.display_name),
             q(book_kind_name(self.kind)),
