@@ -2482,6 +2482,9 @@ CASH-1,2026-03-21,100.00,USD,OWNER,collection,collect_receivable
         assert_eq!(rule, "earn_progress");
         let (rule, _) = ratio_ingest::posting_for(t, &p.facts[3]).unwrap();
         assert_eq!(rule, "pay_vendor");
+        // ⛔ PADDING IS `{field:<12}`, NOT A SLOGAN. A hand-spaced form that
+        // is not `render()` is a third syntax, and the console prints this
+        // string as Template.form.
         let form = t.render();
         assert_eq!(
             form,
