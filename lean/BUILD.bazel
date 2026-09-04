@@ -641,6 +641,24 @@ lean_test(
     entry = "Ratio/Fees/Accrual.lean",
 )
 
+# ⛔ Stage E planner pushdown against `Pg.Rel.Semantics`.
+#
+# The denotation is tomato-bazel/rules_postgres#9 (bags, three-valued
+# logic, `≡`), carried in-tree so a rewrite is a theorem rather than a
+# SQL string. This file instantiates the sound preserved-side pushdown
+# and the outer-join counterexample on the lots / watermark catalog.
+# A seq-index take is not HIFO. An empty pin is not an empty holding.
+# Relief stays `relieve_by`. The journal stays the system of record.
+lean_test(
+    name = "sql_pushdown_proof_test",
+    size = "small",
+    srcs = [
+        "Pg/Rel/Semantics.lean",
+        "Ratio/Sql/Pushdown.lean",
+    ],
+    entry = "Ratio/Sql/Pushdown.lean",
+)
+
 # ⛔ A jurisdiction that does NOT transfer the holding period.
 #
 # `Ratio.Lots.Wash.replacementAcquired` is the US rule. Assuming it

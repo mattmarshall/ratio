@@ -3878,3 +3878,69 @@ Those remain #8 / #159.
 The demo API hydrates ScaleBucket `journals/` so CreateBook
 survives a cold start; this amendment does not reopen the
 #230 `/tmp`-only wipe.
+
+### Amendment, 2026-09-04 — planner pushdown vs Pg.Rel.Semantics
+
+[#8](https://github.com/mattmarshall/ratio/issues/8) leftover after
+the live-engine apply and console/API store reads: a planner rewrite
+that is a theorem, not a SQL string. tomato-bazel
+`rules_postgres#9` already had the denotation. This slice
+instantiates it on the Stage E catalog. The journal stays the
+system of record. This slice does that. It leaves the umbrella
+open.
+
+**What this amendment records.**
+
+- **Denotation.** `lean/Pg/Rel/Semantics.lean` is `Pg.Rel.Semantics`
+  (bags, three-valued logic, `≡`) carried in-tree so a rewrite
+  elaborates here. The sound rewrite is
+  `pushdown_into_the_preserved_side_is_sound`. The refused one is
+  `pushdown_below_an_outer_join_is_unsound`. A predicate and its
+  negation do not reassemble a table that holds a null.
+- **Stage E instances.** `lean/Ratio/Sql/Pushdown.lean` names the
+  catalog. A pin that reads only the width-3 watermark prefix
+  pushes into the watermark scan of watermark ⋉ lots. An
+  `acquired` filter on that outer join cannot move into the lots
+  scan — Stage E's witness is a watermark row with no partner and
+  a null `acquired` (unset, not a default day).
+  `seq_scan_is_not_hifo`: cheap-then-dear, `ORDER BY seq` is not
+  HIFO. `an_empty_pin_is_not_an_empty_holding`: two scans, not an
+  INNER JOIN that returns `[]` and looks like a sold-out fund.
+  `//tla:sql_projection_check`, `//tla:stale_method_relief_check`,
+  `//tla:unpinned_projection_check`.
+- **Store door.** `crates/ratio-sql-project/src/plan.rs` denotes
+  the same plans, applies the sound rewrite, refuses the unsound
+  one, and emits filter-over-scan SQL. `PgProjection` lots /
+  positions / aggregates / watermark reads go through that emit.
+  Relief is still `relieve_by`. Physical seq order is not FIFO.
+
+**planner pushdown vs Pg.Rel.Semantics** is the Built phrase this
+amendment adds.
+
+**What this is NOT:**
+
+- **Not the measured 20M-lot claim.** That stays #159. A proved
+  rewrite is not a measured fold.
+- **Not moving authority off `journal.jsonl`.** Replay and
+  content-addressed digests remain the product.
+- **Not claiming Postgres as the interactive-scale engine.** The
+  public roadmap still names that word on the spec side.
+- **Not CRM, a reporting warehouse in core, a client portal, or
+  a `screensFor` fork.** Connect apps can warehouse.
+  Equalization, drip, and side-pocket stay Connect (#177).
+- **Not a silent SQL FIFO.** `ORDER BY seq` is display order on
+  a seq-keyed table. HIFO still takes the dear lot.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment leaves #8 and #159 open. It does not reopen #153,
+#234, or #235. leftover #22 stays on WorkOS.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a pin filter push into the watermark scan, see an
+`acquired` push below the outer join refused, see HIFO take the
+dear lot while a seq scan would take the cheap one, and see a
+join-shaped SQL emit refuse. It cannot show twenty million lots
+as a routine table. That remains #159.
+The demo API hydrates ScaleBucket `journals/` so CreateBook
+survives a cold start; this amendment does not reopen the
+#230 `/tmp`-only wipe.

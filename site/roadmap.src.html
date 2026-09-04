@@ -146,7 +146,13 @@ __STYLE__
           console/API reads through the store — lots, positions,
           and Current aggregates, when <code>RATIO_PG_URL</code>
           is set. A missing watermark refuses. Unset pins stay
-          unset. The journal stays the system of record.</li>
+          unset. The journal stays the system of record.
+          planner pushdown vs Pg.Rel.Semantics — Stage E
+          lots / positions / aggregates filters push into the
+          scan they name; a filter on the NULL-extended side of
+          a watermark ⋉ lots join stays refused. Relief is
+          still <code>relieve_by</code>, not
+          <code>ORDER BY seq</code>.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>live custodian statement ingest — a CreateBook Investment book
@@ -455,13 +461,12 @@ __STYLE__
           <li>Reviewed change control (geetch/crova). Today's pointer file is
           the seam; a forge is still ahead.</li>
           <li>Postgres for a live relational engine at interactive
-          scale. The schema applies and console/API reads can
-          use the snapshot; planner pushdown vs
-          <code>Pg.Rel.Semantics</code> and twenty million
-          lots as a routine table stay
-          <a href="https://github.com/mattmarshall/ratio/issues/8">#8</a>
-          /
-          <a href="https://github.com/mattmarshall/ratio/issues/159">#159</a>.</li>
+          scale. The schema applies, console/API reads can
+          use the snapshot, and the Stage E rewrite surface is
+          proved; twenty million lots as a routine table stays
+          <a href="https://github.com/mattmarshall/ratio/issues/159">#159</a>
+          under umbrella
+          <a href="https://github.com/mattmarshall/ratio/issues/8">#8</a>.</li>
           <li>Every one of the sixteen capability areas below, at varying
           depths of specification.</li>
           <li>The workload planner, the authoring assistant, and every interface

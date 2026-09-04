@@ -123,8 +123,9 @@ Empty or missing keeps the in-memory fold. The journal stays the
 system of record. A missing watermark refuses rather than
 answering with empty lots.
 
-Planner pushdown vs `Pg.Rel.Semantics` and the measured 20M-lot
-claim stay leftover.
+Planner pushdown vs `Pg.Rel.Semantics` is
+`//lean:sql_pushdown_proof_test` and `src/plan.rs`. The measured
+20M-lot claim stays leftover on #159.
 
 ## Layout
 

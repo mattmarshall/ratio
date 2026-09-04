@@ -43,9 +43,11 @@
 //!
 //! # What this is not
 //!
-//! Planner pushdown proved against `Pg.Rel.Semantics`, or the measured
-//! 20M-lot claim. Those stay leftover on #8 / #159. `Ratio.Exec` still
-//! holds: a database does not change the IO floor. The live apply is
+//! The measured 20M-lot claim. That stays leftover on #159. Planner
+//! pushdown vs `Pg.Rel.Semantics` is [`plan`]: Stage E filters push into
+//! the scan they name; a filter on the NULL-extended side of a
+//! watermark ⋉ lots join is refused. `Ratio.Exec` still holds: a
+//! database does not change the IO floor. The live apply is
 //! [`PgProjection`]. Console / API reads of lots, positions, and Current
 //! aggregates go through [`ProjectionReads`] when `RATIO_PG_URL` is set.
 
@@ -57,8 +59,13 @@ use ratio_project::{relief, AsOf, Projection, Totals};
 use ratio_store::{FileBook, Journal, JournalEntry};
 
 mod pg;
+mod plan;
 mod reads;
 pub use pg::PgProjection;
+pub use plan::{
+    aggregates_plan, denote, eval_pred, lots_plan, pin_plan, positions_plan, push_below_outer_join,
+    push_into_preserved, sql_of, Plan, Pred, Three, Val, AGGREGATES, LOTS, POSITIONS, WATERMARK,
+};
 pub use reads::{current_balances, split_positions, ProjectionReads, StoreConfig};
 
 /// The Postgres contract this store implements. [`PgProjection::apply_schema`]
@@ -612,6 +619,21 @@ mod tests {
             kind: None,
         })
         .unwrap();
+    }
+
+    #[test]
+    fn lots_select_sql_is_the_planner_and_not_a_join() {
+        // ⭐ THE LIVE READ IS THE REWRITTEN PLAN. A hand-built string that
+        // INNER JOINed the watermark would return [] on a missing pin and
+        // look like a sold-out fund. `an_empty_pin_is_not_an_empty_holding`.
+        let sql = crate::plan::lots_select_sql("hifo", B, 1, "vti").unwrap();
+        assert!(sql.contains("FROM lots"), "{sql}");
+        assert!(sql.contains("book_id = 'hifo'"), "{sql}");
+        assert!(!sql.to_ascii_lowercase().contains("join"), "{sql}");
+        assert!(
+            sql.contains("ORDER BY seq"),
+            "display order is named so a reader can see it is not hidden: {sql}"
+        );
     }
 
     #[test]

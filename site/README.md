@@ -261,9 +261,10 @@ page would read as a reference customer. Keep it unnamed.
   actions, journal persistence, wash sales, MinTax ranking, SpecID named
   selection, or average-cost pooling as unbuilt, or if it claims Postgres is
   the interactive-scale engine. Applying the projection schema to a live
-  engine is Built; console/API reads through the store is Built.
-  Planner pushdown and the 20M-lot claim stay on the spec side
-  (#8 / #159). #153 landed
+  engine is Built; console/API reads through the store is Built;
+  planner pushdown vs Pg.Rel.Semantics is Built.
+  The 20M-lot claim stays on the spec side (#159) under umbrella
+  #8. #153 landed
   the lots/positions projection schema and digest replay; PLAN's
   "four of these were built" table still records the running engine as
   spec-only. The demo API hydrates ScaleBucket `journals/` so

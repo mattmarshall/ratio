@@ -1,6 +1,6 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
-**State**: bazel tests green, 32 `lean_test`, 49 `tla_check`, 30 `manual`
+**State**: bazel tests green, 33 `lean_test`, 49 `tla_check`, 30 `manual`
 probes all red for the reasons they name.
 
 Issues #4, #5, #7, and #9 are closed. #5's leftover was the console
@@ -9,9 +9,10 @@ SpecID / average-cost engines, their console cites, and the pooled
 holding-period category rule; those landed. #153 landed the
 lots/positions projection schema and digest replay; the
 projection schema applies to a live engine; console/API
-reads through the store when `RATIO_PG_URL` is set. #8 and
-#159 stay open (planner pushdown, measured 20M lots).
-Open work is #6, #8. This
+reads through the store when `RATIO_PG_URL` is set; planner
+pushdown is proved against `Pg.Rel.Semantics`. #8 and
+#159 stay open (umbrella leftovers; measured 20M lots).
+#6 is closed. Open work is #8 / #159. This
 file is the part that does not fit in an issue: what was learned, what
 is load-bearing, and what will bite. Wash sales have a Lean/TLA model
 and a Rust window (`RuleSet.wash_window_days`). `WashRestatement` is a
@@ -133,8 +134,12 @@ row — `UNIQUE NULLS NOT DISTINCT` is the uniqueness the
 denotational store already had. Console / API reads of lots,
 positions, and Current aggregates go through `ProjectionReads`
 when `RATIO_PG_URL` is set — a missing watermark refuses, unset
-pins stay unset, the journal stays SoR. Planner pushdown and
-the measured 20M-lot claim stay on #8 / #159. leftover #22
+pins stay unset, the journal stays SoR. Planner pushdown vs
+`Pg.Rel.Semantics` is the Stage E rewrite surface
+(`lean/Ratio/Sql/Pushdown.lean`, `src/plan.rs`): filters push
+into the scan they name; a NULL-extended-side pushdown is a
+refuse; relief is still `relieve_by`. The measured 20M-lot
+claim stays on #159. leftover #22
 stays on WorkOS.
 The demo API hydrates ScaleBucket `journals/` so CreateBook
 survives a cold start; this file does not reopen the #230
@@ -1192,18 +1197,18 @@ than one that is entirely unclassified.
 
 | | |
 |---|---|
-| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,PoolPeriod,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Partners/{Cut,Units,Notice}`, `Fees/Accrual`, `Actions/Factor`, `Closure`, `Exec` |
+| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,PoolPeriod,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Partners/{Cut,Units,Notice}`, `Fees/Accrual`, `Actions/Factor`, `Closure`, `Exec`, `Sql/Pushdown` (Stage E vs `Pg.Rel.Semantics`) |
 | `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `wash_keep_holding_period`, `min_tax_short_weight`, `average_cost`, `[personal] currencies` (household reporting codes; empty is unset, not a silent USD), `[personal] lot_relief` (household Investments; unset stays unset), `tolerance`, `partner_cut`, `special_allocation`, `fee_terms` (`management_fee_accrual`) — the administration agreement, as configuration |
 | `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `PoolPeriodEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine — one pass, N view folds, each with a monotonic cut on the journal's own clock and a band bounded by the settlement lag. ⚠ every memory figure in this file is a ONE-VIEW figure; each view carries its own lot book |
-| `crates/ratio-sql-project` | Stage E table snapshot of that fold. One watermark (`prefix` + `ratio_nav::prefix_digest`); lots / positions / aggregates replaced together. A stale pin refuses. Relief is `relieve_by`, not `ORDER BY seq`. Journal stays SoR. `PgProjection` applies `schema.sql` to a live engine via `psql`. `ProjectionReads` is the console/API door when `RATIO_PG_URL` is set. Planner pushdown / 20M-lot claim stay #8 / #159 |
+| `crates/ratio-sql-project` | Stage E table snapshot of that fold. One watermark (`prefix` + `ratio_nav::prefix_digest`); lots / positions / aggregates replaced together. A stale pin refuses. Relief is `relieve_by`, not `ORDER BY seq`. Journal stays SoR. `PgProjection` applies `schema.sql` to a live engine via `psql`. `ProjectionReads` is the console/API door when `RATIO_PG_URL` is set. Planner pushdown vs `Pg.Rel.Semantics` is `src/plan.rs` (filter-into-scan; outer-join pushdown refused). The 20M-lot claim stays #159 |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
 | `crates/ratio-console` | the console's BFF — 40 RPCs, transcoded onto `/v1`. Lots / positions / Current aggregates read `ProjectionReads` when `RATIO_PG_URL` is set; unset is the in-memory fold. Personal `forecast-YYYY[-MM]` folds posted `scheduled` / `forecast` journal kinds only; unset when none. Connect predictors post that material; they do not close #163 |
 | `crates/ratio-nav/src/explain.rs` | what a strike DOES, as a plan. ⛔ a description of two code paths, not a planner over them — nothing chooses |
 | `console/` | the console itself. Next.js on Vercel; ⛔ Bazel does not build it |
-| `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9 |
+| `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9. Stage E instantiates the sound preserved-side rewrite and the outer-join counterexample in-tree (`lean/Pg/Rel/Semantics.lean`, `lean/Ratio/Sql/Pushdown.lean`) so a rewrite elaborates here rather than citing a fetch |
 | `AGENTS.md` | the rules, for a person or a model, and the dispatch contract (one issue → one cloud agent → one PR). Replaces the two stale LLM guides |
 | `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Connect tokens accepted with catalog scopes on `/v1` after membership. Write-route actor = WorkOS `sub`; a Connect-shaped token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}` (#151). API Gateway JWT verifies Connect tokens on the Connect HTTP API (AuthKit custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the deployed demo. first-party Connect apps call ConnectApiUrl. The demo API Lambda hydrates ScaleBucket `journals/` (`RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX`) so CreateBook survives a cold start. Hydrate 503 is transient only. The 40GB scale fold stays on Fargate ScaleTask. Scale keeps ScaleBucket. Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation. leftover #22: unused Cognito CloudFormation resources removed; `DEMO_MEMBERS` naming a live WorkOS `sub` and WorkOS dashboard registration remain. Equalization, drip, and side-pocket stay Connect ([#177](https://github.com/mattmarshall/ratio/issues/177)) — existing scopes, no new grants; drip on #161; equalization / side-pocket apps not filed |
 | `connect/bank-feed/` | First-party Connect app for Personal bank feeds ([#165](https://github.com/mattmarshall/ratio/issues/165)). Mapper + allowlist + closed-through / conservation refusals. first-party Connect apps call ConnectApiUrl; live bank OAuth is leftover. Does not close #165 |
