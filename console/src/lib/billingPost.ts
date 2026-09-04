@@ -16,6 +16,10 @@ import type { Rule } from "@/wire/types";
 /** The one cash-against-AR rule CreateBook(Project) writes. */
 export const COLLECT_RECEIVABLE = "collect_receivable";
 
+// ⚠ NOT LISTED VIA `listRules`. `/billing` already makes three upstream
+// reads; a fourth is refused by `route_manifest_test`. The id is the
+// kind-selected seed.
+
 /**
  * The allowlist `/billing` will post. A tampered form that sends
  * `progress_bill`, `project_cost`, or `equity_purchase` is refused
