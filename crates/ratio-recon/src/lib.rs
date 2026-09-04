@@ -54,7 +54,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{bail, Context, Result};
 use ratio_rules::{compile, Event, RuleSet};
 use ratio_proto::ratio::v1 as pb;
-use ratio_store::{Account, Digest, JournalEntry};
+use ratio_store::{Account, Digest, FileBook, Journal, JournalEntry};
 
 /// What a run covers. Declared up front so the gate has something to check a
 /// file against, and so a clean report is never read as a broader claim.
@@ -785,8 +785,12 @@ pub fn reconcile(
 /// The same run, also handing back the entries it replayed.
 ///
 /// `reconcile` drops them because a comparison does not need them; a caller
-/// that wants to keep the shadow book uses this instead of replaying twice.
+/// that wants the reconstructed entries uses this instead of replaying twice.
 /// Returns no entries when the file was refused — there is nothing to post.
+///
+/// ⛔ THOSE ENTRIES ARE NOT A SECOND BOOK. Posting them is
+/// [`post_reconstructed_entries`], which refuses a parallel mutable
+/// shadow book. Comparing two configurations is [`compare_configs`].
 pub fn reconcile_with_entries(
     txns: &[Txn],
     reported: &BTreeMap<i64, i64>,
@@ -824,6 +828,32 @@ pub fn reconcile_with_entries(
         book_ties: ratio.values().sum::<i64>() == 0,
     };
     Ok((report, entries))
+}
+
+/// Post reconstructed entries from a shadow run onto `book`.
+///
+/// ⛔ NOT A PARALLEL LEDGER. [`FileBook::refuse_parallel_shadow_book`]
+/// is the door: a `shadow/` sibling, a book sitting at `shadow/` under
+/// a live book, or a book that already has a fact plane — any of those
+/// is a second journal wearing the recon path. A clean wedge book (no
+/// facts, no `shadow/`) may receive the entries; that book *is* the
+/// run, not a parallel of one. Compare two configurations with
+/// [`compare_configs`], not with a second store.
+///
+/// Returns 0 when `entries` is empty — a refused file writes nothing.
+pub fn post_reconstructed_entries(
+    book: &mut FileBook,
+    entries: &[JournalEntry],
+) -> Result<usize> {
+    book.refuse_parallel_shadow_book()?;
+    if entries.is_empty() {
+        return Ok(0);
+    }
+    for entry in entries {
+        book.append(entry)
+            .with_context(|| format!("posting {}", entry.id))?;
+    }
+    Ok(entries.len())
 }
 
 // ---------------------------------------------------------------------------
@@ -987,8 +1017,9 @@ open lots and does not strike a NAV.\n",
         out.push_str(
             "\nEvery Ratio figure above was produced by that configuration, and\n\
              re-running it reproduces them exactly. Add `--post` to write the\n\
-             entries into the book, then `ratio explain <account>` reads back the\n\
-             postings behind any one figure.\n",
+             entries into a wedge book (refused once a fact plane or a\n\
+             parallel `shadow/` journal exists), then `ratio explain <account>`\n\
+             reads back the postings behind any one figure.\n",
         );
     }
     out
@@ -1194,6 +1225,7 @@ fn rule_changes(a: &RuleSet, b: &RuleSet) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use ratio_store::AccountTypeRecord as A;
 
     fn chart() -> Vec<Account> {
@@ -1861,5 +1893,83 @@ weight = -1
         );
         assert!(r.is_clean(), "{}", render(&r));
         assert!(render(&r).contains("posts nothing"));
+    }
+
+    fn recon_book() -> (FileBook, Digest, PathBuf) {
+        use ratio_store::ConfigStore;
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "ratio-recon-shadow-{}-{:?}",
+            n,
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut b = FileBook::open(&dir).unwrap();
+        let d = b.put(RULES.as_bytes()).unwrap();
+        b.set_active(&d).unwrap();
+        (b, d, dir)
+    }
+
+    fn reconstructed(id: &str, cfg: &Digest) -> JournalEntry {
+        JournalEntry {
+            id: id.into(),
+            memo: String::new(),
+            config: cfg.clone(),
+            postings: vec![
+                ratio_store::PostingRecord::new(1, 100),
+                ratio_store::PostingRecord::new(2, -100),
+            ],
+            trade_date: None,
+            announcement: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+        }
+    }
+
+    #[test]
+    fn a_wedge_book_may_receive_reconstructed_entries() {
+        let (mut b, d, _) = recon_book();
+        let n = post_reconstructed_entries(&mut b, &[reconstructed("t1", &d)]).unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(b.entries().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_refused_file_writes_nothing() {
+        let (mut b, _, _) = recon_book();
+        assert_eq!(post_reconstructed_entries(&mut b, &[]).unwrap(), 0);
+        assert!(b.entries().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_parallel_shadow_directory_is_refused_and_writes_nothing() {
+        let (mut b, d, dir) = recon_book();
+        std::fs::create_dir_all(dir.join("shadow")).unwrap();
+        let err = post_reconstructed_entries(&mut b, &[reconstructed("t1", &d)])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("parallel mutable shadow book"), "{err}");
+        assert!(b.entries().unwrap().is_empty(), "a refused post writes nothing");
+    }
+
+    #[test]
+    fn posting_recon_history_beside_ingested_facts_is_refused() {
+        use ratio_store::FactStore;
+        let (mut b, d, _) = recon_book();
+        b.record_fact(
+            br#"{"id":"p1","kind":"price","provenance":{"delivery":"aa","template":"cfg"}}"#,
+        )
+        .unwrap();
+        let err = post_reconstructed_entries(&mut b, &[reconstructed("t1", &d)])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("fact plane"), "{err}");
+        assert!(b.entries().unwrap().is_empty(), "the journal stayed empty");
+        assert_eq!(b.facts().unwrap().len(), 1, "the fact plane was not rewritten");
     }
 }

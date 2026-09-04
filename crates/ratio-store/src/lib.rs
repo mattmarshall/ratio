@@ -10,19 +10,30 @@
 //! needs no relational engine at MVP scale: the trial balance is a fold of the
 //! log, which is the definition rather than an optimisation of it.
 //!
-//! Two seams are stated as traits so the implementation can change without the
-//! callers noticing:
+//! Three seams are stated as traits so the implementation can change without
+//! the callers noticing:
 //!
-//! * [`ConfigStore`] — exactly the five methods PLAN.md specifies. Backed here
-//!   by a directory and a pointer file; later by crova for the blobs and geetch
-//!   for review and history. Every entry records the digest it was posted
-//!   under, so nothing downstream changes when the implementation does.
-//! * [`Journal`] — the append-only record. Backed here by one JSON line per
-//!   entry, or by one object per entry on an [`ObjectStore`] when the process
-//!   is wired to a durable backend (`tla/S3Journal.tla`, issue #24). The
-//!   trigger to put a real engine underneath is indexed lookup (postings for
-//!   one account over a period, without a full scan), which the MVP does not
-//!   need and the wedge might.
+//! * [`ConfigStore`] — the **control plane**. Exactly the five methods
+//!   PLAN.md specifies. Backed here by a directory and a pointer file;
+//!   later by crova for the blobs and geetch for review and history.
+//!   Every entry records the digest it was posted under, so nothing
+//!   downstream changes when the implementation does.
+//! * [`FactStore`] — the **fact plane**. Prices and FX with provenance a
+//!   figure can open. Append-only: a correction is a new fact, never an
+//!   edit. Vendors push via scoped ingest (Connect); they do not own
+//!   the journal. geetch/crova are not this plane.
+//! * [`Journal`] — the **one ledger**. Backed here by one JSON line per
+//!   entry, or by one object per entry on an [`ObjectStore`] when the
+//!   process is wired to a durable backend (`tla/S3Journal.tla`, issue
+//!   #24). The trigger to put a real engine underneath is indexed lookup
+//!   (postings for one account over a period, without a full scan),
+//!   which the MVP does not need and the wedge might.
+//!
+//! ⛔ **A parallel mutable shadow book is refused.** A shadow run writes
+//! a break report (and may post reconstructed entries onto a book that
+//! *is* the wedge). It does not open a second journal beside the fact
+//! plane, and it does not sit at `shadow/` under a live book.
+//! [`FileBook::refuse_parallel_shadow_book`] is the door.
 //!
 //! **An unbalanced entry cannot be appended.** [`Journal::append`] runs the
 //! kernel's conservation check first and refuses. This is the product's actual
@@ -611,6 +622,10 @@ impl From<AccountTypeRecord> for AccountType {
 /// `set_active`. Callers depend on these five methods, so that swap is a new
 /// `impl`, not a rewrite. geetch/crova stay out until PLAN's trigger: a second
 /// customer, or compliance-reviewed change control a pointer file cannot satisfy.
+///
+/// The other half of the seam is [`FactStore`]. Configurations are
+/// content-addressed and promoted; facts are append-only and cited.
+/// They do not share a type, and neither is a second journal.
 pub trait ConfigStore {
     /// Store `bytes` and return their content address.
     fn put(&mut self, bytes: &[u8]) -> Result<Digest>;
@@ -744,6 +759,52 @@ impl ConfigStore for DirectoryConfigStore {
     }
 }
 
+/// The append-only fact plane — PLAN.md's seam, beside [`ConfigStore`].
+///
+/// ⭐ THIS TRAIT IS THE FACT PLANE. v1 is FileBook's `facts.jsonl`
+/// (`Plane::Facts`). Prices and FX live here, with provenance a figure
+/// can open. A correction is a new fact, never an edit. Vendors push
+/// via scoped ingest (Connect); they do not own the journal.
+///
+/// geetch/crova are not this plane. Those sit behind [`ConfigStore`]
+/// later. This plane does not become a second ledger.
+pub trait FactStore {
+    /// Append a fact. Refuses a missing id, missing provenance, or an
+    /// id already recorded (a correction is a new fact with a new id).
+    fn record_fact(&mut self, bytes: &[u8]) -> Result<()>;
+    /// The bytes of one fact, by id.
+    fn get_fact(&self, id: &str) -> Result<Vec<u8>>;
+    /// Every fact, oldest first.
+    fn facts(&self) -> Result<Vec<Vec<u8>>>;
+}
+
+/// Whether a JSON `provenance` object can be opened from a figure.
+///
+/// ⛔ EMPTY IS UNOPENABLE. A price or FX rate with no delivery and no
+/// template is a number wearing no cite. The console opens a fact from
+/// a figure by those two names; both blank is the CLI-only provenance
+/// the roadmap refused.
+fn provenance_is_empty(v: &serde_json::Value) -> bool {
+    match v {
+        serde_json::Value::Null => true,
+        serde_json::Value::String(s) => s.trim().is_empty(),
+        serde_json::Value::Object(m) => {
+            let delivery = m
+                .get("delivery")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .trim();
+            let template = m
+                .get("template")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .trim();
+            delivery.is_empty() && template.is_empty()
+        }
+        _ => true,
+    }
+}
+
 /// The append-only record of what happened.
 pub trait Journal {
     /// Append an entry. **Refuses an unbalanced one.**
@@ -796,12 +857,16 @@ pub trait Journal {
 ///   config/HISTORY     every promotion, one digest per line, oldest first
 ///   deliveries.jsonl   every file received, by content digest
 ///   entities.jsonl     the master: instruments, counterparties
-///   facts.jsonl        what the templates read out of those files
+///   facts.jsonl        the fact plane — prices and FX with provenance
+///                      ([`FactStore`]; a correction is a new fact)
 /// ```
 ///
 /// The last three are append-only for the same reason the journal is: a
 /// correction is a NEW record, never an edit, so what was believed at the time
-/// a figure was struck is still there to be read afterwards.
+/// a figure was struck is still there to be read afterwards. A `shadow/`
+/// directory beside this layout is a parallel book and
+/// [`refuse_parallel_shadow_book`][`FileBook::refuse_parallel_shadow_book`]
+/// refuses it.
 pub struct FileBook {
     root: PathBuf,
     /// When set, the journal and the append-only planes are one object per
@@ -1065,6 +1130,55 @@ impl FileBook {
         Ok(closes.into_iter().max_by(|a, b| a.closed_date.cmp(&b.closed_date)))
     }
 
+    /// ⛔ A SHADOW RUN IS NOT A SECOND BOOK.
+    ///
+    /// `--post` may write reconstructed entries onto a book that has no
+    /// fact plane yet — that book *is* the Stage 3 wedge. Once facts
+    /// have been ingested, or a `shadow/` directory sits beside this
+    /// book, posting recon history would smuggle a second ledger.
+    /// `compare_configs` answers "what moved?" in memory; it does not
+    /// need a parallel journal.
+    pub fn refuse_parallel_shadow_book(&self) -> Result<()> {
+        let shadow = self.root.join("shadow");
+        if shadow.is_dir() {
+            bail!(
+                "parallel mutable shadow book refused — {} exists; \
+                 a shadow run writes a break report, not a second ledger",
+                shadow.display()
+            );
+        }
+        if self.root.file_name().is_some_and(|n| n == "shadow") {
+            if let Some(parent) = self.root.parent() {
+                if parent.join("journal.jsonl").is_file()
+                    || parent.join("config").is_dir()
+                    || parent.join("accounts.json").is_file()
+                    || parent.join("facts.jsonl").is_file()
+                {
+                    bail!(
+                        "parallel mutable shadow book refused — this book sits \
+                         at shadow/ under {}; a shadow run writes a break \
+                         report, not a second ledger",
+                        parent.display()
+                    );
+                }
+            }
+        }
+        let n = self.records::<serde_json::Value>(Plane::Facts)?.len();
+        if n > 0 {
+            bail!(
+                "parallel mutable shadow book refused — this book already \
+                 has a fact plane ({n} fact(s)); --post will not invent \
+                 journal history beside ingested facts"
+            );
+        }
+        Ok(())
+    }
+
+    /// Record a typed fact on the fact plane. See [`FactStore::record_fact`].
+    pub fn record_typed_fact<T: serde::Serialize>(&mut self, fact: &T) -> Result<()> {
+        self.record_fact(&serde_json::to_vec(fact).context("serializing fact")?)
+    }
+
     /// Refuse a dated entry that lands on or before any view's closed-through
     /// day.
     ///
@@ -1216,6 +1330,55 @@ impl ConfigStore for FileBook {
     }
     fn history(&self) -> Result<Vec<Digest>> {
         self.configs()?.history()
+    }
+}
+
+impl FactStore for FileBook {
+    fn record_fact(&mut self, bytes: &[u8]) -> Result<()> {
+        let v: serde_json::Value =
+            serde_json::from_slice(bytes).context("a fact must be JSON")?;
+        let id = v
+            .get("id")
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| anyhow!("a fact without an id cannot be addressed"))?
+            .to_string();
+        let provenance = v.get("provenance").ok_or_else(|| {
+            anyhow!("fact {id} has no provenance — a figure cannot open it")
+        })?;
+        if provenance_is_empty(provenance) {
+            bail!("fact {id} has empty provenance — a figure cannot open it");
+        }
+        for existing in self.facts()? {
+            let ev: serde_json::Value = serde_json::from_slice(&existing)
+                .context("reading a stored fact")?;
+            if ev.get("id").and_then(|x| x.as_str()) == Some(id.as_str()) {
+                bail!(
+                    "fact {id} is already recorded — a correction is a new fact, \
+                     not an edit"
+                );
+            }
+        }
+        self.append_record(Plane::Facts, &v)
+    }
+
+    fn get_fact(&self, id: &str) -> Result<Vec<u8>> {
+        for bytes in self.facts()? {
+            let v: serde_json::Value = serde_json::from_slice(&bytes)
+                .context("reading a stored fact")?;
+            if v.get("id").and_then(|x| x.as_str()) == Some(id) {
+                return Ok(bytes);
+            }
+        }
+        bail!("no fact {id}")
+    }
+
+    fn facts(&self) -> Result<Vec<Vec<u8>>> {
+        let values: Vec<serde_json::Value> = self.records(Plane::Facts)?;
+        values
+            .into_iter()
+            .map(|v| serde_json::to_vec(&v).context("serializing a stored fact"))
+            .collect()
     }
 }
 
@@ -1803,6 +1966,107 @@ mod tests {
         assert_eq!(s.active().unwrap(), Some(d2.clone()));
         assert_eq!(s.history().unwrap()[0], d2);
         assert!(!dir.join("ACTIVE.tmp").exists(), "the temp does not linger");
+    }
+
+    fn fact_json(id: &str, delivery: &str) -> Vec<u8> {
+        format!(
+            r#"{{"id":"{id}","kind":"price","provenance":{{"delivery":"{delivery}","template":"cfg","row":2}}}}"#
+        )
+        .into_bytes()
+    }
+
+    #[test]
+    fn a_fact_round_trips_on_the_fact_plane_and_does_not_touch_the_journal() {
+        // ⭐ THE SEAM: facts are not journal entries. A price lives on
+        // Plane::Facts; recording one must not invent a posting.
+        let mut b = FileBook::open(tmp()).unwrap();
+        b.record_fact(&fact_json("p1", "aa".repeat(32))).unwrap();
+        let got = b.get_fact("p1").unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&got).unwrap();
+        assert_eq!(v["id"], "p1");
+        assert_eq!(v["provenance"]["delivery"], "aa".repeat(32));
+        assert_eq!(b.facts().unwrap().len(), 1);
+        assert!(
+            b.entries().unwrap().is_empty(),
+            "the fact plane is not a second journal"
+        );
+    }
+
+    #[test]
+    fn a_fact_without_provenance_is_refused() {
+        let mut b = FileBook::open(tmp()).unwrap();
+        let err = b
+            .record_fact(br#"{"id":"p1","kind":"price"}"#)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("provenance"), "{err}");
+        let err = b
+            .record_fact(br#"{"id":"p1","kind":"price","provenance":{"delivery":"","template":""}}"#)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("empty provenance"), "{err}");
+        assert!(b.facts().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_fact_with_the_same_id_is_refused_not_edited() {
+        // ⛔ A CORRECTION IS A NEW FACT. Overwriting p1 would make a
+        // figure that cited it unopenable — the bytes it named are gone.
+        let mut b = FileBook::open(tmp()).unwrap();
+        b.record_fact(&fact_json("p1", "aa".repeat(32))).unwrap();
+        let err = b
+            .record_fact(&fact_json("p1", "bb".repeat(32)))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("already recorded"), "{err}");
+        let v: serde_json::Value =
+            serde_json::from_slice(&b.get_fact("p1").unwrap()).unwrap();
+        assert_eq!(
+            v["provenance"]["delivery"],
+            "aa".repeat(32),
+            "the first fact is still the one a figure opens"
+        );
+        b.record_fact(&fact_json("p2", "bb".repeat(32))).unwrap();
+        assert_eq!(b.facts().unwrap().len(), 2, "a new id is a new fact");
+    }
+
+    #[test]
+    fn a_parallel_shadow_directory_is_refused() {
+        let root = tmp();
+        let mut b = FileBook::open(&root).unwrap();
+        b.refuse_parallel_shadow_book().unwrap();
+        fs::create_dir_all(root.join("shadow")).unwrap();
+        let err = b.refuse_parallel_shadow_book().unwrap_err().to_string();
+        assert!(err.contains("parallel mutable shadow book"), "{err}");
+        assert!(err.contains("second ledger"), "{err}");
+    }
+
+    #[test]
+    fn a_book_sitting_at_shadow_under_a_live_book_is_refused() {
+        let parent = tmp();
+        let mut live = FileBook::open(&parent).unwrap();
+        let d = live.put(b"rules = []\n").unwrap();
+        live.set_active(&d).unwrap();
+        live.append(&entry("open", &d, &[(1, 1), (2, -1)])).unwrap();
+
+        let shadow = parent.join("shadow");
+        let b = FileBook::open(&shadow).unwrap();
+        let err = b.refuse_parallel_shadow_book().unwrap_err().to_string();
+        assert!(err.contains("parallel mutable shadow book"), "{err}");
+        assert!(err.contains("shadow/"), "{err}");
+    }
+
+    #[test]
+    fn posting_recon_history_beside_a_fact_plane_is_refused() {
+        // Once ingest has written facts, `--post` inventing journal
+        // history would be a second ledger on the same book.
+        let mut b = FileBook::open(tmp()).unwrap();
+        b.refuse_parallel_shadow_book()
+            .expect("an empty book is the wedge, not a parallel");
+        b.record_fact(&fact_json("p1", "aa".repeat(32))).unwrap();
+        let err = b.refuse_parallel_shadow_book().unwrap_err().to_string();
+        assert!(err.contains("fact plane"), "{err}");
+        assert!(err.contains("invent journal history"), "{err}");
     }
 
     #[test]

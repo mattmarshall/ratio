@@ -1961,7 +1961,7 @@ impl Console {
             }
             b.append_record(Plane::Deliveries, &delivery)?;
             for f in &fresh {
-                b.append_record(Plane::Facts, f)?;
+                b.record_typed_fact(f)?;
             }
             self.record_change(&path, "ingested", &delivery.digest, digest.as_str())?;
         }

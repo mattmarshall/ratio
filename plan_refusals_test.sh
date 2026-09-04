@@ -226,6 +226,11 @@ BUILT=(
   # recon engine stay refused. The sentence it matches is in the
   # 2026-09-04 #167 amendment.
   "Personal brokerage statement ingest"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The ConfigStore / fact-plane seam is not on the refusal list —
+  # geetch / crova and a parallel shadow book stay refused. The
+  # sentence it matches is in the 2026-09-04 #158 amendment.
+  "the ConfigStore / fact-plane seam"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
