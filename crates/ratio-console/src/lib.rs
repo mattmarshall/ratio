@@ -643,7 +643,7 @@ impl Console {
         // needs the second. Every other surface shows the split, and the one
         // screen a customer actually looks at was the one that could not.
         let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
-        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &facts);
+        let (base, rates) = rates_of(fund, &path, &b)?;
         let rate_facts = ratio_ingest::value::current_rates(&facts);
         // (dim, ccy, activity debit, activity credit, ending debit, ending credit, postings)
         // Current / AsOf / Activity set activity = ending. Loan keeps them
@@ -811,7 +811,7 @@ impl Console {
             // leg translate at par without a rate fact; inventing a resource
             // name for them would offer a 404 in the voice used for EUR.
             let (rate_fact, delivery_digest, config_digest) = match ccy_ref {
-                Some(c) if c != FUND_CURRENCY => rate_facts
+                Some(c) if c != base.as_str() => rate_facts
                     .get(c)
                     .map(|f| {
                         (
@@ -833,7 +833,7 @@ impl Console {
                 // printing a rate nobody recorded would invent the evidence the
                 // column exists to supply.
                 rate: match ccy_ref {
-                    Some(c) if c != FUND_CURRENCY => factor.to_string(),
+                    Some(c) if c != base.as_str() => factor.to_string(),
                     _ => String::new(),
                 },
                 rate_fact,
@@ -1386,7 +1386,9 @@ impl Console {
             }
         }
 
-        let postings = ratio_rules::compile(rule, &event)?;
+        let mut postings = ratio_rules::compile(rule, &event)?;
+        let meta = book::BookMeta::load(&path, &fund);
+        stamp_event_currency(meta.kind, &set, &req.currency_code, &mut postings)?;
 
         if rule.id == ratio_rules::FEE_RULE_ID {
             // ⛔ THE POSTING IS THE PROVED PAIR. A zero amount is not an
@@ -1427,7 +1429,12 @@ impl Console {
         // journal is free text on somebody else's screen.
         let memo = format!("{id} via {}", rule.id);
 
-        let previous = self.default_view_nav(&fund)?;
+        // ⛔ UNSET WHEN TRANSLATION REFUSES, NOT A FAILED WRITE. The journal
+        // already accepts a conserved EUR expense; failing ApplyEvent because
+        // GetFund cannot yet quote a NAV would make a missing Connect rate
+        // fact look like a refused posting. GetFund / ListAccounts still
+        // hit the #160 door.
+        let previous = self.cited_nav(&fund)?;
 
         let entry = ratio_store::JournalEntry {
             id: id.to_string(),
@@ -1461,26 +1468,42 @@ impl Console {
             // TRANSLATED one. The preview and the commit disagreed on the same
             // event, and a preview that does not predict the commit is worse
             // than no preview.
-            let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
-            let mut delta = 0i128;
-            for p in postings.iter().filter(|p| {
-                matches!(
-                    chart.iter().find(|a| a.dim == p.dim).map(|a| a.account_type),
-                    Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
-                )
-            }) {
-                let factor = rates.factor_of_optional(p.currency.as_deref()).with_context(|| {
-                    format!(
-                        "this event is in {} and the fund has no rate for it — a preview that \
-                         guesses a rate is a preview of a different event",
-                        p.currency.as_deref().unwrap_or("no currency")
-                    )
-                })?;
-                delta += p.amount as i128 * factor as i128 / ratio_project::RATE_SCALE as i128;
+            //
+            // ⚠ A MISSING RATE LEAVES THE PREVIEW UNSET rather than guessing
+            // par. That is the same #160 door; it is not a refused event.
+            match rates_of(&fund, &path, &b) {
+                Ok((_, rates)) => {
+                    let mut delta = 0i128;
+                    let mut translatable = true;
+                    for p in postings.iter().filter(|p| {
+                        matches!(
+                            chart.iter().find(|a| a.dim == p.dim).map(|a| a.account_type),
+                            Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
+                        )
+                    }) {
+                        let Some(factor) = rates.factor_of_optional(p.currency.as_deref()) else {
+                            translatable = false;
+                            break;
+                        };
+                        delta += p.amount as i128 * factor as i128 / ratio_project::RATE_SCALE as i128;
+                    }
+                    if translatable && !previous.is_empty() {
+                        (previous.parse::<i128>().unwrap_or(0) + delta).to_string()
+                    } else {
+                        String::new()
+                    }
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("no rate") || msg.contains("mixing denominations") {
+                        String::new()
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
-            (previous.parse::<i128>().unwrap_or(0) + delta).to_string()
         } else {
-            self.default_view_nav(&fund)?
+            self.cited_nav(&fund)?
         };
 
         Ok(pb::ApplyEventResponse {
@@ -2715,7 +2738,7 @@ impl Console {
             name: format!("books/{id}"),
             display_name: meta.display_name,
             kind: meta.kind.proto(),
-            currency_code: FUND_CURRENCY.into(),
+            currency_code: reporting_currency_of(meta.kind, set.as_ref()),
             fund: meta.fund.map(|f| format!("funds/{f}")).unwrap_or_default(),
             organization: meta.organization.unwrap_or_default(),
             default_view: effective.default_view(),
@@ -2730,6 +2753,7 @@ impl Console {
             // Index must not fold. Empty is unset — GetBook cites the figure.
             fee_receivable: String::new(),
             allocation_facts: Vec::new(),
+            currencies: personal_currencies_of(meta.kind, set.as_ref()),
         })
     }
 
@@ -2780,7 +2804,7 @@ impl Console {
         Ok(pb::Fund {
             name: format!("funds/{id}"),
             display_name: meta.display_name,
-            currency_code: FUND_CURRENCY.into(),
+            currency_code: reporting_currency_of(meta.kind, set.as_ref()),
             state: state as i32,
             open_break_count: 0,
             default_view: effective.default_view(),
@@ -2826,7 +2850,7 @@ impl Console {
             name: format!("books/{id}"),
             display_name: meta.display_name,
             kind: meta.kind.proto(),
-            currency_code: fund.currency_code,
+            currency_code: reporting_currency_of(meta.kind, set.as_ref()),
             fund: meta.fund.map(|f| format!("funds/{f}")).unwrap_or_default(),
             organization: meta.organization.unwrap_or_default(),
             default_view: fund.default_view,
@@ -2840,6 +2864,7 @@ impl Console {
             special_allocations,
             fee_receivable,
             allocation_facts,
+            currencies: personal_currencies_of(meta.kind, set.as_ref()),
         })
     }
 
@@ -2948,6 +2973,7 @@ impl Console {
             special_allocations,
             fee_receivable: String::new(),
             allocation_facts: Vec::new(),
+            currencies: Vec::new(),
         })
     }
 
@@ -2979,9 +3005,30 @@ impl Console {
         let view = self.default_view_of(fund)?;
         let path = self.book_path(fund)?;
         let b = self.open_file_book(&path)?;
-        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
+        let (_, rates) = rates_of(fund, &path, &b)?;
         let proj = self.projection(fund)?;
         Ok(nav_from(&b, &proj, &view, &rates)?.0.to_string())
+    }
+
+    /// NAV as ApplyEvent cites it on the response.
+    ///
+    /// ⛔ EMPTY WHEN THE #160 DOOR REFUSES, NEVER A GUESSED PAR. GetFund and
+    /// ListAccounts still return the sentence. A conserved post must not
+    /// fail because a Connect rate fact has not arrived — after `append`
+    /// the entry is already on the journal, and an Err here would tell the
+    /// caller the write failed.
+    fn cited_nav(&self, fund: &str) -> Result<String> {
+        match self.default_view_nav(fund) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("no rate") || msg.contains("mixing denominations") {
+                    Ok(String::new())
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 
     pub fn get_fund(&self, name: &str) -> Result<pb::Fund> {
@@ -3049,10 +3096,11 @@ impl Console {
             average_cost,
         ) = Self::lot_elections(set.as_ref());
 
+        let meta = book::BookMeta::load(&path, &id);
         Ok(pb::Fund {
             name: format!("funds/{id}"),
             display_name: display_name(&id),
-            currency_code: FUND_CURRENCY.into(),
+            currency_code: reporting_currency_of(meta.kind, set.as_ref()),
             // ⛔ THE DEFAULT VIEW'S, AND `default_view` SITS BESIDE THEM SO A
             // CLIENT CANNOT RENDER EITHER WITHOUT THE LABEL. Both depend on
             // which entries are recognised; answering for one view without
@@ -3146,7 +3194,7 @@ impl Console {
         // per-view fold answers; a missing FX rate or a view this book does
         // not keep refuses rather than returning a silent 0.00 NAV.
 
-        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
+        let (_, rates) = rates_of(&id, &path, &b)?;
         let proj = self.projection(&id)?;
         // ⭐ THE SAME `nav_from` EVERY FUND-LEVEL PREVIEW CALLS, so a NAV quoted
         // by `ApplyEvent` and a NAV shown on this screen cannot drift apart.
@@ -3388,7 +3436,7 @@ impl Console {
             bail!("reconciling is a question about two views — name the other with ?against=");
         }
         let b = self.open_file_book(&path)?;
-        let rates = ratio_project::Rates::of_facts(FUND_CURRENCY, &b.records(Plane::Facts)?);
+        let (_, rates) = rates_of(&id, &path, &b)?;
         let proj = self.projection(&id)?;
         let by_dim: BTreeMap<i64, AccountTypeRecord> =
             b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
@@ -5088,8 +5136,121 @@ fn loan_schedules(
 ///
 /// ⚠ HARDCODED, AND THAT IS A REAL LIMITATION rather than a placeholder to
 /// forget. A fund's reporting currency is a property of the fund, and when a
-/// second one arrives this becomes a field on the book.
+/// second one arrives this becomes a field on the book. Personal books do
+/// not inherit it: `[personal] currencies` is the election, and silence
+/// is empty, not this constant.
 pub use ratio_store::BASE_CURRENCY as FUND_CURRENCY;
+
+/// The currency a book reports in, or silence.
+///
+/// ⛔ PERSONAL UNSET IS NOT USD. `FUND_CURRENCY` is the fund reporting
+/// constant. A household that never declared a currency must not wear
+/// that label — it hid undeclared holdings behind a dollar sign.
+/// Writing `currencies = ["USD"]` is an election; inventing USD is not.
+fn reporting_currency_of(kind: book::BookKind, set: Option<&RuleSet>) -> String {
+    match kind {
+        book::BookKind::Personal => set
+            .and_then(|s| s.personal.as_ref())
+            .and_then(ratio_rules::PersonalTerms::reporting_currency)
+            .unwrap_or("")
+            .to_string(),
+        _ => FUND_CURRENCY.to_string(),
+    }
+}
+
+/// Codes `[personal] currencies` declared. Empty on every other kind.
+fn personal_currencies_of(kind: book::BookKind, set: Option<&RuleSet>) -> Vec<String> {
+    match kind {
+        book::BookKind::Personal => set
+            .and_then(|s| s.personal.as_ref())
+            .map(|p| p.currencies.clone())
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+/// The base `Rates` translates into.
+///
+/// ⚠ UNDECLARED PERSONAL STILL USES THE FUND CONSTANT AS THE TECHNICAL
+/// BASE, because untyped legs translate at par regardless of the label.
+/// The *label* stays empty (`reporting_currency_of`). A declared first
+/// code replaces the constant so an EUR household is not translated
+/// through a silent dollar.
+fn rates_base_of(kind: book::BookKind, set: Option<&RuleSet>) -> String {
+    let cited = reporting_currency_of(kind, set);
+    if cited.is_empty() {
+        FUND_CURRENCY.to_string()
+    } else {
+        cited
+    }
+}
+
+/// Stamp ApplyEvent legs with the named currency, or refuse.
+///
+/// ⛔ REUSES THE JOURNAL'S PER-CURRENCY DOOR, NOT A PERSONAL FX ENGINE.
+/// Cross-currency netting is not a posting; an undeclared code is not
+/// a silent USD. Investment events ignore the field.
+fn stamp_event_currency(
+    kind: book::BookKind,
+    set: &RuleSet,
+    named: &str,
+    postings: &mut [ratio_store::PostingRecord],
+) -> Result<()> {
+    if kind != book::BookKind::Personal {
+        return Ok(());
+    }
+    let declared = set
+        .personal
+        .as_ref()
+        .map(|p| p.currencies.as_slice())
+        .unwrap_or(&[]);
+    let code = named.trim();
+    if declared.is_empty() {
+        if !code.is_empty() {
+            bail!(
+                "this household has not declared currencies — {code} is not a \
+                 posting on an undeclared book. Write [personal] currencies, or \
+                 omit the currency. A silent USD is the defect"
+            );
+        }
+        return Ok(());
+    }
+    if code.is_empty() {
+        bail!(
+            "this household declared {} — an event that names no currency is a \
+             silent USD. Name one of the declared codes",
+            declared.join(", ")
+        );
+    }
+    if !declared.iter().any(|c| c == code) {
+        bail!(
+            "{code} is not a declared currency on this household ({}). \
+             Cross-currency netting is not a posting",
+            declared.join(", ")
+        );
+    }
+    for p in postings {
+        p.currency = Some(code.to_string());
+    }
+    Ok(())
+}
+
+/// Rates folded from this book's facts, translated into its reporting base.
+///
+/// ⭐ THE SAME DOOR `Projection::reconcile` AND `list_accounts` ALREADY USE.
+/// A missing FX rate refuses rather than assuming par. Personal books that
+/// declared a base use that code; undeclared households and funds keep
+/// `FUND_CURRENCY` as the technical base. Rate facts stay Connect.
+fn rates_of(id: &str, path: &Path, b: &FileBook) -> Result<(String, ratio_project::Rates)> {
+    let meta = book::BookMeta::load(path, id);
+    let set = match b.active()? {
+        Some(d) => RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?)).ok(),
+        None => None,
+    };
+    let base = rates_base_of(meta.kind, set.as_ref());
+    let rates = ratio_project::Rates::of_facts(&base, &b.records(Plane::Facts)?);
+    Ok((base, rates))
+}
 
 /// How `ListAccounts` folds the journal.
 ///
@@ -6471,6 +6632,164 @@ mod tests {
         // The baseline is still the configuration total; actuals are the journal.
         assert_eq!(c.get_book("books/household").unwrap().budget, "500000");
         assert_eq!(c.get_fund("funds/household").unwrap().trial_balance_difference, "0");
+    }
+
+    #[test]
+    fn a_personal_book_declares_currencies_and_refuses_silent_usd_and_unbalanced_fx() {
+        // ⭐ #178. CreateBook writes no denomination. ListBooks / GetBook
+        // that filled FUND_CURRENCY hid undeclared holdings behind USD.
+        // The journal door already refuses [USD +100, EUR −100]; this
+        // cites it on a Personal book and reuses the fund missing-rate
+        // refuse rather than inventing a household FX engine.
+        let root = fresh("personal-fx");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Household".into(),
+                kind: book::BookKind::Personal.proto(),
+                ..Default::default()
+            }),
+            book_id: "household".into(),
+        })
+        .unwrap();
+
+        let created = c.get_book("books/household").unwrap();
+        assert!(
+            created.currency_code.is_empty(),
+            "CreateBook must not invent USD: {:?}",
+            created.currency_code
+        );
+        assert!(
+            created.currencies.is_empty(),
+            "CreateBook must not invent a currency list: {:?}",
+            created.currencies
+        );
+        let listed = c
+            .list_books()
+            .unwrap()
+            .books
+            .into_iter()
+            .find(|b| b.name == "books/household")
+            .expect("the household is listed");
+        assert!(
+            listed.currency_code.is_empty(),
+            "ListBooks must not label an undeclared household USD: {:?}",
+            listed.currency_code
+        );
+
+        let named = {
+            let mut req = household_req("eur-undeclared", "living_expense", "10.00", 2026, 3, 1);
+            req.currency_code = "EUR".into();
+            c.apply_event(&req).unwrap_err().to_string()
+        };
+        assert!(
+            named.contains("has not declared currencies"),
+            "an undeclared household that names EUR must refuse, not stamp a silent USD: {named}"
+        );
+
+        let path = root.join("household");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        text.push_str("\n[personal]\ncurrencies = [\"USD\", \"EUR\"]\n");
+        let next = b.put(text.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+
+        let cited = c.get_book("books/household").unwrap();
+        assert_eq!(cited.currency_code, "USD");
+        assert_eq!(
+            cited.currencies,
+            vec!["USD".to_string(), "EUR".to_string()]
+        );
+
+        let silent = c
+            .apply_event(&household_req("no-ccy", "living_expense", "10.00", 2026, 3, 2))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            silent.contains("silent USD") || silent.contains("names no currency"),
+            "a declared household that omits currency is a silent USD: {silent}"
+        );
+
+        let foreign = {
+            let mut req = household_req("gbp", "living_expense", "10.00", 2026, 3, 3);
+            req.currency_code = "GBP".into();
+            c.apply_event(&req).unwrap_err().to_string()
+        };
+        assert!(
+            foreign.contains("not a declared currency"),
+            "GBP is not on the list: {foreign}"
+        );
+
+        let mut eur = household_req("eur-spend", "living_expense", "40.00", 2026, 3, 10);
+        eur.currency_code = "EUR".into();
+        let posted_evt = c.apply_event(&eur).unwrap();
+        assert!(
+            posted_evt.net_asset_value.is_empty(),
+            "a translated NAV without a rate fact is unset, not a silent USD: {:?}",
+            posted_evt.net_asset_value
+        );
+
+        // A second conserved post must still write. Refusing the journal
+        // because NAV is unset is the silent USD wearing a different costume.
+        let mut usd = household_req("usd-spend", "living_expense", "5.00", 2026, 3, 11);
+        usd.currency_code = "USD".into();
+        c.apply_event(&usd).unwrap();
+
+        // ⛔ NOT GetFund. A USD-base household holding EUR without a rate
+        // fact must refuse a translated NAV — that is the #160 door.
+        // Conservation is the journal's, per currency.
+        let posted = FileBook::open(&path).unwrap();
+        let tb = posted.trial_balance().unwrap();
+        assert_eq!(tb.debits, tb.credits, "a same-currency household expense conserves");
+        let entry = posted
+            .entries()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.id == "eur-spend")
+            .expect("the EUR expense was written");
+        assert!(
+            entry.conserves_every_currency(),
+            "each currency is its own law: {entry:?}"
+        );
+        assert!(
+            entry.postings.iter().all(|p| p.currency.as_deref() == Some("EUR")),
+            "ApplyEvent stamps the named code, not a silent USD: {:?}",
+            entry.postings
+        );
+
+        let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let missing = c.list_accounts(&view, "sheet").unwrap_err().to_string();
+        assert!(
+            missing.contains("no rate") || missing.contains("rate for it"),
+            "EUR on a USD-base household without a rate fact reuses the fund refuse: {missing}"
+        );
+
+        let digest = FileBook::open(&path).unwrap().active().unwrap().unwrap();
+        let err = FileBook::open(&path)
+            .unwrap()
+            .append(&JournalEntry {
+                id: "fx-net".into(),
+                memo: "unbalanced fx".into(),
+                config: digest,
+                postings: vec![
+                    PostingRecord::of_currency(1, 10_000, "USD"),
+                    PostingRecord::of_currency(10, -10_000, "EUR"),
+                ],
+                trade_date: Some("2026-03-15".into()),
+                announcement: None,
+                due_date: None,
+                application: None,
+                identified_lots: None,
+                special_allocations: None,
+            })
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("currencies do not net independently")
+                || err.contains("each currency is its own conservation law"),
+            "unbalanced FX must hit the journal door: {err}"
+        );
     }
 
     #[test]

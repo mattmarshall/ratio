@@ -106,6 +106,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ #158 landed the ConfigStore / fact-plane seam; PLAN named it
     # in the same-commit amendment.
     "the ConfigStore / fact-plane seam",
+    # ⚠ #178 landed Personal currency declaration; PLAN named it in
+    # the same-commit amendment.
+    "Personal books declare currencies",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -126,6 +129,7 @@ ROADMAP_ENGINE_BUILT = [
     "job-cost / AP statement ingest",
     "multi-view FX / translation refuses stay citeable",
     "parallel mutable shadow book",
+    "Personal books declare currencies",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",

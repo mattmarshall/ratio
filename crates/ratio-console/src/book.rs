@@ -407,6 +407,9 @@ pub fn config_for(kind: BookKind) -> &'static str {
 /// household transfers onto Investments — not `equity_purchase`.
 /// Holdings are reference data (`brokerage-positions`); live recon
 /// reuses the fund refuse paths. Lot relief stays unset (#187).
+/// ⛔ `[personal] currencies` IS NOT SEEDED. CreateBook writes no
+/// denomination. A silent USD on an undeclared household is the
+/// defect #178 named. Writing the list is the election.
 const PERSONAL_CONFIG: &str = r#"
 [[rule]]
 id = "living_expense"

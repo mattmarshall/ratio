@@ -518,6 +518,16 @@ pub struct PersonalTerms {
     /// Liability dimension (decimal string) → interest-expense dimension.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub loan: BTreeMap<String, i64>,
+    /// ISO 4217 codes this household keeps. First is the reporting base
+    /// `Rates` translates into.
+    ///
+    /// ⛔ EMPTY MEANS NOBODY SAID, AND THAT IS NOT A SILENT USD. A
+    /// household that never declared a currency must not wear the fund
+    /// reporting constant — that hid undeclared holdings behind a dollar
+    /// sign. Writing `["USD"]` is an election; inventing USD is not.
+    /// `Ratio.Chart.Dimensions`: each code is its own conservation law.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub currencies: Vec<String>,
 }
 
 impl PersonalTerms {
@@ -575,7 +585,31 @@ impl PersonalTerms {
                 );
             }
         }
+        let mut seen = std::collections::BTreeSet::new();
+        for code in &self.currencies {
+            if code.len() != 3 || !code.bytes().all(|b| b.is_ascii_uppercase()) {
+                bail!(
+                    "household currency {code:?} is not an ISO 4217 alpha code — \
+                     three ASCII capitals (EUR, GBP), not a silent USD and not \
+                     a lowercase alias"
+                );
+            }
+            if !seen.insert(code) {
+                bail!(
+                    "this configuration declares {code} twice. A figure cited \
+                     against that currency could not pick one"
+                );
+            }
+        }
         Ok(())
+    }
+
+    /// The reporting base, or silence.
+    ///
+    /// ⛔ FIRST DECLARED CODE, NOT `USD`. Unset is `None`. A caller that
+    /// unwraps this into the fund constant puts the silent dollar back.
+    pub fn reporting_currency(&self) -> Option<&str> {
+        self.currencies.first().map(String::as_str)
     }
 }
 
@@ -2497,6 +2531,37 @@ calendar = "us-settlement"
             .expect_err("an envelope key that is not a dimension must not parse")
             .to_string();
         assert!(bad_key.contains("chart dimension"), "{bad_key}");
+    }
+
+    #[test]
+    fn a_household_declares_currencies_and_silence_is_not_usd() {
+        let declared = RuleSet::from_toml(
+            "rules = []\n[personal]\ncurrencies = [\"EUR\", \"GBP\"]\n",
+        )
+        .unwrap();
+        let p = declared.personal.as_ref().expect("personal table present");
+        assert_eq!(p.currencies, vec!["EUR".to_string(), "GBP".to_string()]);
+        assert_eq!(p.reporting_currency(), Some("EUR"));
+
+        let budget_only = RuleSet::from_toml("rules = []\n[personal]\nbudget = 1\n").unwrap();
+        assert!(
+            budget_only
+                .personal
+                .as_ref()
+                .is_some_and(|p| p.currencies.is_empty() && p.reporting_currency().is_none()),
+            "a budget without currencies is not a silent USD: {:?}",
+            budget_only.personal
+        );
+
+        let lower = RuleSet::from_toml("rules = []\n[personal]\ncurrencies = [\"eur\"]\n")
+            .expect_err("a lowercase code must not parse")
+            .to_string();
+        assert!(lower.contains("ISO 4217"), "{lower}");
+
+        let dup = RuleSet::from_toml("rules = []\n[personal]\ncurrencies = [\"EUR\", \"EUR\"]\n")
+            .expect_err("a duplicate code must not parse")
+            .to_string();
+        assert!(dup.contains("twice"), "{dup}");
     }
 
     #[test]

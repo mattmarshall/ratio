@@ -92,6 +92,14 @@ export interface Book {
    * a remainder uses `partnerCut`. `Ratio.Partners.applyFacts`.
    */
   allocationFacts: AllocationFact[];
+  /**
+   * ISO 4217 codes `[personal] currencies` declared. First is the
+   * reporting base `currencyCode` cites.
+   *
+   * ⛔ EMPTY IS UNSET, NOT A SILENT USD. CreateBook writes no
+   * currencies. Writing the list is the election; inventing USD is not.
+   */
+  currencies: string[];
 }
 
 /** One named weight in a partner cut. */
@@ -1011,6 +1019,13 @@ export interface ApplyEventRequest {
    * Empty leaves that side's aging unset — no FIFO, no equal split.
    */
   application?: string;
+  /**
+   * ISO 4217 the compiled legs should carry. Empty is untyped.
+   *
+   * ⛔ NOT A SILENT USD. A Personal book that declared currencies
+   * refuses an empty code and a code that is not on the list.
+   */
+  currencyCode?: string;
   validateOnly: boolean;
 }
 

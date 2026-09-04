@@ -2622,6 +2622,57 @@ unidentified or foreign-currency holding refuse the whole run
 opening on Investments, a household NAV, a cash forecast, or
 envelope coaching.
 
+### Amendment, 2026-09-04 — Personal books declare currencies
+
+[#178](https://github.com/mattmarshall/ratio/issues/178) asked for
+multi-currency on PERSONAL books without a silent USD and without a
+second FX engine. #7 already made postings carry currency and
+conservation hold per code. #160 already made a translation residue,
+a missing rate, an entry only one view can place, and a view declared
+after the fold refuse rather than print 0.00. The leftover was the
+label: ListBooks / GetBook filled the fund reporting constant on
+every household, so an undeclared book wore USD.
+
+What landed is the declaration, not a Personal FX method:
+
+- Configuration: `[personal] currencies = ["EUR", "GBP"]`. First
+  code is the reporting base `Rates` translates into. Empty is unset
+  — not a silent USD. CreateBook writes no list.
+- API: `Book.currency_code` and `Book.currencies` cite that
+  election. ApplyEvent carries an optional `currency`; a declared
+  household that omits it, names a code that is not on the list, or
+  an undeclared household that names a code, refuses. Compiled legs
+  are stamped. The journal door still refuses `[USD +100, EUR −100]`.
+- Translation: the same `Rates` / missing-rate refuse #160 already
+  cites. No new `Method` / `Order` / `lot_method` variant. No
+  `screensFor` fork. FX rate providers stay Connect fact apps.
+  **Personal books declare currencies** is the Built phrase this
+  amendment adds.
+
+**What this is NOT:**
+
+- **Not an FX rate-vendor Connect app.** That door is not opened
+  here. Live rate facts stay leftover on #178.
+- **Not a console `/trade` currency picker.** Chrome is unchanged.
+- **Not #163 (cash forecast), #164 (envelope budget), or #187
+  (household lots).** Those doors stay where they are.
+- **Not a `screensFor` fork**, and not a Personal-only FX engine.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not close #178 — live FX rate Connect apps and a
+currency picker remain. It does not close #160 (already closed).
+It does not start #163, #164, or #187. It does not close #165,
+#166, or #168.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can CreateBook a Personal book, leave currency unset, write
+`[personal] currencies`, post a named EUR expense that conserves,
+and see `[USD +100, EUR −100]` refused at the journal door. A
+USD-base household holding EUR without a rate fact refuses the
+sheet with the same missing-rate sentence the fund path uses. It
+cannot show a rate-vendor Connect app, a `/trade` currency
+picker, a cash forecast, or envelope coaching.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

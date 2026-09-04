@@ -63,6 +63,14 @@ id refused). A parallel mutable shadow book is refused on
 ingested facts. `compare_configs` answers "what moved?" in
 memory. geetch / crova stay later. This file closes #158. It
 does not close #159. It does not reopen #155 or #160.
+Personal books declare currencies (#178): `[personal] currencies`
+is the election, first code is the reporting base, empty is unset
+— not a silent USD on ListBooks / GetBook. ApplyEvent stamps a
+named declared code; the journal door still refuses unbalanced
+FX; a missing rate reuses the #160 `Rates` refuse. FX rate
+providers stay Connect. This file does not close #178 (live rate
+Connect apps and a `/trade` picker remain). It does not start
+#163, #164, or #187.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 
@@ -236,7 +244,11 @@ or `sidepocket:*`.
 - **`FUND_CURRENCY` is one constant** because it is two answers to one question
   otherwise: what `Fund.currency_code` labels the figures, and the base `Rates`
   translates into. A NAV translated into euros and labelled USD is wrong by the
-  rate and looks entirely ordinary.
+  rate and looks entirely ordinary. ⛔ **A Personal book does not inherit
+  it.** `[personal] currencies` is the election; first code is the
+  reporting base; empty is unset, not a silent USD on ListBooks /
+  GetBook. A missing rate still refuses through the same `Rates` door.
+  FX rate providers stay Connect.
 - **`AsOf<T>`** (`ratio-project`). Every read carries the journal prefix it was
   folded from, and there is no other way to get a number out — so a caller
   cannot pin the head while reading a lagging projection. `//tla:projection_
