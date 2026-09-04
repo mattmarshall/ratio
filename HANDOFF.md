@@ -10,12 +10,13 @@ holding-period category rule; those landed. #153 landed the
 lots/positions projection schema and digest replay; the
 projection schema applies to a live engine; console/API
 reads through the store when `RATIO_PG_URL` is set; planner
-pushdown is proved against `Pg.Rel.Semantics`. #8 stays open (umbrella leftovers; the public
-roadmap still does not call Postgres the interactive-scale
-engine). #159 is closed: the HANDOFF 10,000 × 2,000
+pushdown is proved against `Pg.Rel.Semantics`. #8 is closed:
+the public roadmap calls Postgres the interactive-scale
+engine (projection path). #159 is closed: the HANDOFF 10,000 × 2,000
 projection fold was measured in-repo (17.4 s, digest
 `bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3`).
-#6 is closed. Open work is #8. This
+#6 is closed. Open work is the ScaleTask 40GB journal fold
+and leftover #22 (WorkOS operator). This
 file is the part that does not fit in an issue: what was learned, what
 is load-bearing, and what will bite. Wash sales have a Lean/TLA model
 and a Rust window (`RuleSet.wash_window_days`). `WashRestatement` is a
@@ -144,8 +145,8 @@ fold is `fold_scale` / `//crates/ratio-sql-project:fold_scale_test`
 (10,000 × 2,000 = 20,000,000 lots, 17.4 s, digest
 `bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3`).
 The 140M-entry / 40GB journal fold stays on Fargate ScaleTask.
-leftover #22 stays on WorkOS. This file closes #159. It does
-not close #8.
+leftover #22 stays on WorkOS. This file closes #159. It
+closes #8.
 The demo API hydrates ScaleBucket `journals/` so CreateBook
 survives a cold start; this file does not reopen the #230
 `/tmp`-only wipe. Hydrate 503 is transient only.
@@ -1137,7 +1138,7 @@ cost 2,000,000 against a seq-scan cost of 1,000. Cite
 `crates/ratio-sql-project/fold_scale.recorded.json` and
 `//crates/ratio-sql-project:fold_scale_test`. The 40GB journal fold stays
 on Fargate ScaleTask. The demo Lambda does not host these rows. Journal
-stays SoR. This closes #159. It does not close #8.
+stays SoR. This closes #159. This file closes #8.
 
 ⛔ **AND THE REAL LIMIT WAS NEVER TIME, IT WAS MEMORY.** Every fold in this
 codebase materialized what it folded: 1.85 GB resident to fold 1.77M entries into

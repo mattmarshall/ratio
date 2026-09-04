@@ -259,19 +259,22 @@ page would read as a reference customer. Keep it unnamed.
 - **The roadmap's built / not-yet-built columns are checked against PLAN.md.**
   `verify.py` fails if the page still lists tax lots, FX translation, corporate
   actions, journal persistence, wash sales, MinTax ranking, SpecID named
-  selection, or average-cost pooling as unbuilt, or if it claims Postgres is
-  the interactive-scale engine. Applying the projection schema to a live
+  selection, average-cost pooling, or Postgres as the interactive-scale
+  engine as unbuilt. Applying the projection schema to a live
   engine is Built; console/API reads through the store is Built;
   planner pushdown vs Pg.Rel.Semantics is Built;
   the measured 20M-lot fold is Built (HANDOFF 10,000 × 2,000,
-  17.4 s, digest cited on the scale screen). The 40GB journal
-  fold and calling Postgres the interactive-scale engine stay
-  on the spec side under umbrella #8. #153 landed
+  17.4 s, digest cited on the scale screen);
+  Postgres as the interactive-scale engine is Built (projection
+  path; journal stays SoR). The 40GB journal fold stays on
+  Fargate ScaleTask / ScaleBucket; leftover #22 stays WorkOS
+  operator. The demo Lambda does not host 20M lots as a browser
+  table. #153 landed
   the lots/positions projection schema and digest replay; PLAN's
-  "four of these were built" table still records the running engine as
-  spec-only. The demo API hydrates ScaleBucket `journals/` so
-  CreateBook survives a cold start — do not revive the #230
-  `/tmp`-only wipe.
+  "four of these were built" table still records the 08-10
+  running engine as spec-only (historical). The demo API hydrates
+  ScaleBucket `journals/` so CreateBook survives a cold start —
+  do not revive the #230 `/tmp`-only wipe.
   Wash sales
   are the engine window and the attach write (#133 / #138) plus
   `WashRestatement` as a citeable record and the non-US

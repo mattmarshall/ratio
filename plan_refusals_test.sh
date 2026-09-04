@@ -322,6 +322,13 @@ BUILT=(
   # stay leftover on #8. The sentence it matches is in the
   # 2026-09-04 measured-fold amendment.
   "the measured 20M-lot fold"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Calling Postgres the interactive-scale engine is not on the
+  # refusal list — the 40GB journal fold stays on Fargate
+  # ScaleTask and leftover #22 stays WorkOS operator. The
+  # sentence it matches is in the 2026-09-04 #8 carve-close
+  # amendment.
+  "Postgres as the interactive-scale engine"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
