@@ -1067,7 +1067,7 @@ impl Console {
                             partner: f.partner.clone(),
                             kind: f.kind.clone(),
                             amount: f.amount,
-                            trade_date: entry.trade_date.clone().unwrap_or_default(),
+                            trade_date: entry.trade_date.as_deref().and_then(iso_date),
                         })
                         .collect()
                 })
@@ -2740,7 +2740,7 @@ impl Console {
                         partner: f.partner.clone(),
                         kind: f.kind.clone(),
                         amount: f.amount,
-                        trade_date: e.trade_date.clone().unwrap_or_default(),
+                        trade_date: e.trade_date.as_deref().and_then(iso_date),
                     });
                 }
             }
@@ -7022,7 +7022,11 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(after.allocation_facts[0].partner, "GP");
         assert_eq!(after.allocation_facts[0].kind, "income");
         assert_eq!(after.allocation_facts[0].amount, 4_000);
-        assert_eq!(after.allocation_facts[0].trade_date, "2026-03-15");
+        let day = after.allocation_facts[0]
+            .trade_date
+            .as_ref()
+            .expect("the named special is dated");
+        assert_eq!((day.year, day.month, day.day), (2026, 3, 15));
 
         let named = c.get_entry("funds/facts/entries/special-income").unwrap();
         assert!(named.special_allocations_declared, "somebody named a special");

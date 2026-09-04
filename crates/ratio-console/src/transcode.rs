@@ -828,7 +828,7 @@ impl JsonView for pb::AllocationFact {
             q(&self.partner),
             q(&self.kind),
             q(&self.amount.to_string()),
-            q(&self.trade_date)
+            date_json(&self.trade_date)
         )
     }
 }

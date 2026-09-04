@@ -529,9 +529,22 @@ function wireSpecials(
   return out.length === 0 ? null : out;
 }
 
+function ymd(d: { year: number; month: number; day: number } | null | undefined): string {
+  if (!d) return "";
+  const y = String(d.year).padStart(4, "0");
+  const m = String(d.month).padStart(2, "0");
+  const day = String(d.day).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function wireFacts(
   rows:
-    | { partner: string; kind: string; amount: string; tradeDate?: string }[]
+    | {
+        partner: string;
+        kind: string;
+        amount: string;
+        tradeDate?: { year: number; month: number; day: number } | null;
+      }[]
     | undefined,
 ): AllocationFact[] | null {
   if (!rows || rows.length === 0) return null;
@@ -544,7 +557,7 @@ function wireFacts(
       partner: r.partner,
       kind: r.kind as AllocationKind,
       amount: BigInt(r.amount),
-      tradeDate: r.tradeDate ?? "",
+      tradeDate: ymd(r.tradeDate),
     });
   }
   return out.length === 0 ? null : out;

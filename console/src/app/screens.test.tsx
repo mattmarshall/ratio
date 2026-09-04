@@ -780,7 +780,7 @@ describe("a first-class book", () => {
           partner: "GP",
           kind: "income",
           amount: "1000",
-          tradeDate: "2026-03-15",
+          tradeDate: { year: 2026, month: 3, day: 15 },
         },
       ],
     };

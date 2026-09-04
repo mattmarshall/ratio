@@ -115,8 +115,8 @@ export interface AllocationFact {
   /** `income` / `expense` / `unrealized`. */
   kind: string;
   amount: Int64;
-  /** `YYYY-MM-DD`. Empty when the entry is undated. */
-  tradeDate: string;
+  /** A day in the book's calendar. `null` when the entry is undated. */
+  tradeDate: CalendarDate | null;
 }
 
 /** One declared household envelope. Absent when that category is unset. */

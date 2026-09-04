@@ -723,9 +723,11 @@ message AllocationFact {
   // `income` / `expense` / `unrealized`.
   string kind = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
   int64 amount = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
-  // `YYYY-MM-DD`. Empty when the entry is undated — inception
+  // ⚠ A DATE, NOT A STRING AND NOT A TIMESTAMP. `core::0142::time-field-type`
+  // accepts only Timestamp / Date / DateTime / TimeOfDay for a field whose
+  // last token is `date`. Unset when the entry is undated — inception
   // includes those; a dated `/capital` window drops them.
-  string trade_date = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.type.Date trade_date = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One declared household envelope. Absent from `Book.envelopes` when that
