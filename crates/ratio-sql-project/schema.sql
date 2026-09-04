@@ -23,7 +23,7 @@
 -- Relief reads load the rows and call `ratio_project::relief::relieve_by`
 -- under the method the entry's own configuration named. MinTax, SpecID,
 -- average cost, and wash are elections with their own shape — not a
--- Method / Order / lot_method variant, and not a SQL ORDER BY.
+-- Method / Order / relief-method variant, and not a SQL ORDER BY.
 --
 -- ⚠ A DATABASE DOES NOT CHANGE `Ratio.Exec`. IO adds up across partitions
 -- and only CPU divides; no plan beats the IO floor. These tables make a

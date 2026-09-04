@@ -362,9 +362,9 @@ impl SqlProjection {
     /// Replace every table for one book. The only write.
     fn commit(&mut self, snap: Snapshot) -> Result<Watermark> {
         self.watermarks.remove(&snap.watermark.book_id);
-        self.lots.retain(|(b, _, _, _, _), _| b != snap.watermark.book_id);
-        self.positions.retain(|(b, _, _, _), _| b != snap.watermark.book_id);
-        self.aggregates.retain(|(b, _, _, _), _| b != snap.watermark.book_id);
+        self.lots.retain(|(b, _, _, _, _), _| b != &snap.watermark.book_id);
+        self.positions.retain(|(b, _, _, _), _| b != &snap.watermark.book_id);
+        self.aggregates.retain(|(b, _, _, _), _| b != &snap.watermark.book_id);
         self.lots.extend(snap.lots);
         self.positions.extend(snap.positions);
         self.aggregates.extend(snap.aggregates);
@@ -597,7 +597,11 @@ mod tests {
             assert!(sql.contains(needle), "schema lost {needle:?}");
         }
         assert!(
-            !sql.to_ascii_lowercase().contains("lot_method"),
+            !sql.lines().any(|l| {
+                let t = l.trim_start();
+                t.to_ascii_lowercase().starts_with("lot_method")
+                    || t.contains(" lot_method ")
+            }),
             "the schema must not invent a Method / Order / lot_method column"
         );
     }

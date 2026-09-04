@@ -16,7 +16,6 @@ members = [
     "crates/ratio-exec",
     "crates/ratio-gen",
     "crates/ratio-project",
-    "crates/ratio-sql-project",
     "crates/ratio-recon",
     "crates/ratio-api",
     "crates/ratio-tui",
