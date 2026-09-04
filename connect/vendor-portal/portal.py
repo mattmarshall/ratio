@@ -32,9 +32,10 @@ conserves. Substituting one for the other is a misstatement.
 ⭐ NO PERCENTAGE AND NO EAC. A % complete or a cost-to-complete is
 a rounded or forecasted figure. `/budget` still does not forecast.
 
-⚠ THE GRANT PATH IS NOT BUILT. `fetch_cites` and `deliver` refuse.
-A Connect access token is not accepted on `/v1` (leftover #22 /
-#150). Write-route actor binding landed (#151).
+⭐ THE GRANT PATH CALLS CONNECTAPIURL. `fetch_cites` and `deliver`
+present a verified Connect access token against the Connect HTTP
+API. Membership is still required. AIA G702 and a vendor directory
+stay refused. WorkOS dashboard registration stays leftover #22.
 
 ⚠ AIA G702 PRODUCT UI IS REFUSED. That door is #184. This app does
 not pack a pay-app and does not render a licensed form.
@@ -51,6 +52,8 @@ import json
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Iterable, Mapping, Sequence
+
+import grant as _grant
 
 # i64 bounds. Lean's Int is unbounded; every money figure here is i64.
 I64_MIN = -(2**63)
@@ -686,13 +689,18 @@ def propose_vendor_invoices(
     return proposed
 
 
-def fetch_cites(*, token: str | None = None) -> None:
-    """Refuse to pull. The grant path is not built."""
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (#150 / leftover #22). This app does not pretend "
-        "the door opens"
+def fetch_cites(
+    *,
+    token: str | None = None,
+    book_id: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> Any:
+    """Pull billing / budget cites from ConnectApiUrl."""
+    return _grant.pull(
+        token=token,
+        book_id=book_id,
+        transport=transport,
+        error=Refuse,
     )
 
 
@@ -700,14 +708,19 @@ def deliver(
     posts: Sequence[ProposedPost] | Statement,
     *,
     token: str | None = None,
-) -> None:
-    """Refuse to send. The grant path is not built."""
-    _ = posts
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (#150 / leftover #22). This app does not pretend "
-        "the door opens"
+    parent: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> Any:
+    """POST allowlisted vendor invoices, or confirm membership for a statement."""
+    if isinstance(posts, Statement) or not hasattr(posts, "__iter__"):
+        return _grant.pull(token=token, transport=transport, error=Refuse)
+    return _grant.deliver_apply_events(
+        posts,
+        as_apply_event=as_apply_event,
+        token=token,
+        parent=parent,
+        transport=transport,
+        error=Refuse,
     )
 
 

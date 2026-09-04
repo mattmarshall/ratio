@@ -35,8 +35,7 @@ and not a silent EAC of 0.
 - Billed / earned are companions, not substitutes for incurred.
 - No percentage. A CPI / percent-complete EAC is refused.
 - Money is minor units, split on the point, never a float.
-- `fetch_cites()` and `deliver()` refuse. Connect access tokens are
-  not accepted on `/v1`.
+- `fetch_cites()` and `deliver()` call ConnectApiUrl. first-party Connect apps call ConnectApiUrl with a verified Connect access token. Membership still required.
 - `post_forecast()` refuses. No invented write scope.
 - `cpi_eac()` refuses.
 
@@ -68,7 +67,7 @@ A third-party flag would prompt AuthKit consent and bind the app to an
 Organization. This job pack is first-party: the subject's book
 membership is still the tenant. An `org_id` claim is not membership.
 #151 landed the write-route ACL fence: a Connect-shaped token is
-`scoped` and does not inherit `org:{id}`. API Gateway JWT verifies Connect tokens on ConnectApiUrl. Live OAuth stays leftover #22.
+`scoped` and does not inherit `org:{id}`. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration stays leftover #22.
 
 M2M (`client_credentials`) is the wrong shape here. There is no user
 on an M2M token, and an EAC that exported without one would
@@ -89,8 +88,7 @@ From the catalog, restated so a later RPC does not "just" add them:
 5. Closed-through, bounds, no invented Method. A scope does not
    waive a proof.
 
-Until live OAuth lands, `fetch_cites()` and `deliver()` are the
-honesty: they refuse with the leftover named.
+Env names are in [`connect/README.md`](../README.md) / `connect/grant.py`. A missing token is a missing token, not "the grant path is not built".
 
 ## What a walk-through can and cannot show
 
@@ -103,7 +101,7 @@ blank rather than inventing 0.00, billed / earned staying off the
 EAC inputs, and `journal:append` / `projects:budget:read` being
 rejected as scopes.
 
-It cannot show a Connect token opening a book, a live OAuth grant,
+It cannot show a live walk-through without WorkOS dashboard registration, a live OAuth grant,
 EAC fields on `/budget`, a CPI / percent-complete dashboard, a
 forecast line that reached `/v1`, or a Personal cash forecast
 (#163). BookKind PROJECT chrome is unchanged. `screensFor` is not
@@ -111,7 +109,7 @@ forked. `/budget` and `/billing` stay the core cites.
 
 ## Leftovers — this does not close #169
 
-1. **Live Connect OAuth**
+1. **WorkOS dashboard registration**
    (leftover on issue 22). API Gateway JWT verifies Connect tokens
    on ConnectApiUrl. In-process `/v1` accepts catalog scopes after
    membership. Dashboard registration, redirect, and a live token
@@ -122,7 +120,7 @@ forked. `/budget` and `/billing` stay the core cites.
    this issue.
 3. **#150's read-only reference skeleton** (`books:read` +
    `statements:read` only) is a different app. This one requests
-   `budget:read` and `billing:read` and does not open the door.
+   `budget:read` and `billing:read` and leftover is WorkOS dashboard registration, not a missing `/v1` accept path.
 
 Does not close #165, #166, or #168 (grant-path leftovers stay on those
 issues). Does not close #172 (vendor user directory). Does not close

@@ -44,8 +44,7 @@ confuse or fork Personal into that tree.
 - Payroll and envelope kinds refuse. A calendar "paycheck" is payroll
   invention, not a bill. #164 stays refused. No new `Method` /
   `Order` / `lot_method` variant.
-- `fetch_statements()` and `deliver()` refuse. Connect access tokens
-  are not accepted on `/v1`.
+- `fetch_statements()` and `deliver()` call ConnectApiUrl. first-party Connect apps call ConnectApiUrl with a verified Connect access token. Membership still required.
 
 `bazel test //connect/calendar-bills:bills_test` is the gate.
 
@@ -107,7 +106,7 @@ From the catalog, restated so a later RPC does not "just" add them:
    client listed it.
 6. Closed-through, conservation, bounds. A scope does not waive a proof.
 
-Until (1) and (2) land, `fetch_statements()` and `deliver()` are the
+Until Dashboard registration lands, a live walk-through stays leftover. `fetch_statements()` and `deliver()` call ConnectApiUrl; they are the
 honesty: they refuse with the leftover named.
 
 ## What a walk-through can and cannot show
@@ -117,14 +116,14 @@ refusing a 15 March row, an `rrule` being rejected rather than
 expanded, an empty allowlist refusing everything, `journal:append`
 being rejected as a scope, and payroll / envelope kinds being refused.
 
-It cannot show a Connect token opening a book, a live calendar login,
+It cannot show a live walk-through without WorkOS dashboard registration, a live calendar login,
 a posting that reached `/v1`, envelope coaching, or payroll. BookKind
 PERSONAL chrome is unchanged. `screensFor` is not forked. The
 `/cashflow` forecast cite stays the core fold from #218.
 
 ## Leftovers — this does not close #163
 
-1. **Live Connect OAuth**
+1. **WorkOS dashboard registration**
    (leftover on issue 22). API Gateway JWT verifies Connect tokens
    on ConnectApiUrl. In-process `/v1` accepts catalog scopes after
    membership. Dashboard registration, redirect, and a live token
@@ -136,7 +135,7 @@ PERSONAL chrome is unchanged. `screensFor` is not forked. The
    one by `client_id`.
 4. **#150's read-only reference skeleton** (`books:read` +
    `statements:read` only) is a different app. This one requests
-   `journals:post` for scheduled material and does not open the door.
+   `journals:post` for scheduled material and leftover is WorkOS dashboard registration, not a missing `/v1` accept path.
 
 Does not close #165. Does not start or reopen #164 (envelope
 invention stays refused). Does not close #150. Does not redo the

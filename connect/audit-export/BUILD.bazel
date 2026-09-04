@@ -5,8 +5,7 @@ package(default_visibility = ["//visibility:public"])
 # PeriodClose / NavStrike / Break / BreakExplanation field names, and
 # to the refusals the issue named.
 #
-# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_cites() / deliver()
-# must refuse. Accepting Connect tokens is leftover #22. A missing
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token. WorkOS dashboard registration stays leftover #22. A missing
 # cite stays unset in the manifest — never a silent empty file, a
 # billed-zero, a NAV-zero, or an empty-digest-as-success. No kernel
 # blob store. No period-close replacement. screensFor is not forked.
@@ -26,6 +25,7 @@ sh_test(
         "$(rootpath //proto:ratio/v1/recon.proto)",
     ],
     data = [
+        "//connect:grant.py",
         "pack.py",
         "pack_test.py",
         "app.json",

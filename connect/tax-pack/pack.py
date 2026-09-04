@@ -28,8 +28,11 @@ restatement cites the strike. The pack copies the code and the
 adjustment; it does not re-run the wash engine and it does not
 invent `lot_method = "wash"`.
 
-⚠ THE GRANT PATH IS NOT BUILT. `fetch_cites` refuses. A Connect
-access token is not accepted on `/v1` (#150 / #151 / leftover #22).
+⭐ THE GRANT PATH CALLS CONNECTAPIURL. `fetch_cites` presents a
+verified Connect access token and pulls against the Connect HTTP
+API. Membership is still required. A Connect token never takes
+`RATIO_DEMO_OPEN` and never matches `org:{id}`. IRS e-file stays
+refused. WorkOS dashboard registration stays leftover #22.
 
 ⚠ IRS E-FILE IS REFUSED. `submit` refuses. No CPA portal, no
 MeF transmission, no packing inside core.
@@ -43,6 +46,8 @@ import json
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Iterable, Mapping, Sequence
+
+import grant as _grant
 
 # i64 bounds. Lean's Int is unbounded; every money figure here is i64.
 I64_MIN = -(2**63)
@@ -602,17 +607,18 @@ def build_pack(
     )
 
 
-def fetch_cites(*, token: str | None = None) -> None:
-    """Refuse to pull. The grant path is not built.
-
-    A green pack builder is not a door that opens. Live Connect
-    OAuth is leftover; this app does not call /v1.
-    """
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (#150 / #151 / leftover #22). This app does not "
-        "pretend the door opens"
+def fetch_cites(
+    *,
+    token: str | None = None,
+    book_id: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> Any:
+    """Pull lot / statement cites from ConnectApiUrl."""
+    return _grant.pull(
+        token=token,
+        book_id=book_id,
+        transport=transport,
+        error=Refuse,
     )
 
 

@@ -5,8 +5,8 @@ package(default_visibility = ["//visibility:public"])
 # catalog, to CreateBook(Personal) forecast_* templates, and to the
 # refusals #163 named.
 #
-# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_statements() and
-# deliver() must refuse. Token validation is leftover #22 / #150.
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token.
+# WorkOS dashboard registration stays leftover #22.
 # Live bank OAuth is leftover on #163. Payroll / envelope kinds
 # refuse. screensFor is not forked. No kernel forecast RPC.
 sh_test(
@@ -23,6 +23,7 @@ sh_test(
         "$(rootpath //proto:ratio/console/v1/console.proto)",
     ],
     data = [
+        "//connect:grant.py",
         "predictor.py",
         "predictor_test.py",
         "app.json",

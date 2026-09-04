@@ -22,15 +22,15 @@
   },
   "forecast_journals": {
     "status": "refused",
-    "note": "The issue body still says journal:append. That string is an alias and is refused. Canonical write grant would be journals:post — but the catalog has no forecast template, and posting project_cost* as a forecast would mix a what-if into the journal of record. This app is read-only relative to the journal: it emits CSV/JSON. Empty journals:post allowlist would refuse every post. Do not invent a write scope."
+    "note": "The issue body still says journal:append. That string is an alias and is refused. Canonical write grant would be journals:post \u2014 but the catalog has no forecast template, and posting project_cost* as a forecast would mix a what-if into the journal of record. This app is read-only relative to the journal: it emits CSV/JSON. Empty journals:post allowlist would refuse every post. Do not invent a write scope."
   },
   "eac_compute": {
     "status": "outside the journal",
-    "formula": "remaining_to_spend = revised − incurred − awarded; EAC = incurred + remaining_to_spend + awarded (= revised) when that cut is supported; ETC = remaining_to_spend + awarded",
-    "note": "Unset remaining-to-spend stays unset — never a silent forecast of 0. Treating awarded as 0 would print budget − actual as headroom. A posted 0.00 is a real zero. /budget still does not forecast. No CPI / percent-complete EAC (that is a rounded figure)."
+    "formula": "remaining_to_spend = revised \u2212 incurred \u2212 awarded; EAC = incurred + remaining_to_spend + awarded (= revised) when that cut is supported; ETC = remaining_to_spend + awarded",
+    "note": "Unset remaining-to-spend stays unset \u2014 never a silent forecast of 0. Treating awarded as 0 would print budget \u2212 actual as headroom. A posted 0.00 is a real zero. /budget still does not forecast. No CPI / percent-complete EAC (that is a rounded figure)."
   },
   "grant_path": {
-    "status": "not built",
-    "note": "In-process /v1 accepts Connect catalog scopes after membership. API Gateway JWT verifies Connect tokens on ConnectApiUrl. leftover #22: live provider OAuth, RATIO_DEMO_OPEN, unused Cognito. Write-route actor binding landed (#151). This file leaves #150 and #169 open. It does not reopen #151. It leaves #163 (Personal cash forecast), #170, #172, #173, and #184 open."
+    "status": "built",
+    "note": "first-party Connect apps call ConnectApiUrl with a verified Connect access token (authorization_code or client_credentials against WorkOS Connect). Membership still required. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. leftover #22: WorkOS dashboard registration, DEMO_MEMBERS naming a live WorkOS sub, unused Cognito CloudFormation resources. Write-route actor binding landed (#151). This file does not reopen #151. This file leaves #150 and #169 open. It does not reopen #151. It leaves #163 (Personal cash forecast), #170, #172, #173, and #184 open."
   }
 }

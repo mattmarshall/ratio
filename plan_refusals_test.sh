@@ -282,6 +282,13 @@ BUILT=(
   # The sentence it matches is in the 2026-09-04 deployed-demo dial
   # amendment.
   "RATIO_DEMO_OPEN defaults off on the deployed demo"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Opening fetch/deliver against ConnectApiUrl is not on the
+  # refusal list — WorkOS dashboard registration, DEMO_MEMBERS
+  # naming a live WorkOS sub, and unused Cognito stay leftover
+  # on issue 22. The sentence it matches is in the 2026-09-04
+  # Connect grant-path amendment.
+  "first-party Connect apps call ConnectApiUrl"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

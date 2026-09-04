@@ -32,7 +32,7 @@ This is a scaffold. A green pack builder is not a filed return.
   `wash_keep_holding_period` is not a silent keep, `average_cost` is
   not a silent true.
 - Money is minor units, split on the point, never a float.
-- `fetch_cites()` refuses. Connect access tokens are not accepted
+- `fetch_cites()` calls ConnectApiUrl. Connect access tokens are not accepted
   on `/v1`.
 - `submit()` refuses. No IRS e-file, no CPA portal, no MeF.
 
@@ -82,7 +82,7 @@ From the catalog, restated so a later RPC does not "just" add them:
 5. Closed-through, bounds, no invented Method. A scope does not
    waive a proof.
 
-Until (1) and (2) land, `fetch_cites()` is the honesty: it refuses
+Until Dashboard registration lands, a live walk-through stays leftover. `fetch_cites()` calls ConnectApiUrl
 with the leftover named.
 
 ## What a walk-through can and cannot show
@@ -92,7 +92,7 @@ a mixed-date pool landing on `unclassified.csv` rather than inventing
 FIFO's oldest date, a wash cite as code `W`, and `lot_method = "wash"`
 being rejected.
 
-It cannot show a Connect token opening a book, an IRS e-file, or a
+It cannot show a live walk-through without WorkOS dashboard registration, an IRS e-file, or a
 CPA portal. Mixed dates stay unclassified — that is
 `Ratio.Lots.PoolPeriod`, not an invented box. BookKind PERSONAL
 chrome is unchanged. `screensFor` is not forked. Household lots stay
@@ -101,7 +101,7 @@ those engines and does not elect them.
 
 ## Leftovers — this does not close #166
 
-1. **Live Connect OAuth**
+1. **WorkOS dashboard registration**
    (#150 / leftover on issue 22). API Gateway JWT verifies Connect
    tokens on ConnectApiUrl. In-process `/v1` accepts catalog scopes
    after membership. Dashboard registration, redirect, and a live
@@ -114,7 +114,7 @@ those engines and does not elect them.
    IRS e-file (#166), not the category itself.
 4. **#150's read-only reference skeleton** (`books:read` +
    `statements:read` only) is a different app. This one requests
-   `lots:read` and `config:read` and does not open the door.
+   `lots:read` and `config:read` and leftover is WorkOS dashboard registration, not a missing `/v1` accept path.
 
 Does not close #165 (grant-path + live bank OAuth leftovers stay
 on #165). Does not start #168 (net-worth goals). Does not close

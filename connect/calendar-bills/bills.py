@@ -37,9 +37,10 @@ is a real zero.
 no `scheduled_envelope`, no envelope chrome. #164 stays refused.
 A calendar "paycheck" is payroll invention, not a bill.
 
-⚠ THE GRANT PATH IS NOT BUILT. `fetch_statements` and `deliver`
-refuse. A Connect access token is not accepted on `/v1`
-(#150 / leftover #22). Write-route actor binding landed (#151).
+⭐ THE GRANT PATH CALLS CONNECTAPIURL. `fetch_statements` and
+`deliver` present a verified Connect access token against the
+Connect HTTP API. Membership is still required. Live calendar
+OAuth stays leftover on #163. WorkOS dashboard registration stays leftover #22.
 
 ⚠ LIVE CALENDAR OAUTH IS NOT WIRED. A normalized dated occurrence
 is the input. Google Calendar / Outlook stay leftover on #163.
@@ -51,6 +52,8 @@ import json
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Iterable, Mapping, Sequence
+
+import grant as _grant
 
 # i64 bounds. Lean's Int is unbounded; ApplyEvent runs on i64.
 I64_MIN = -(2**63)
@@ -486,13 +489,18 @@ def payroll(*_args: Any, **_kwargs: Any) -> None:
     )
 
 
-def fetch_statements(*, token: str | None = None) -> None:
-    """Refuse to pull. The grant path is not built."""
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (#150 / leftover #22). Write-route actor binding "
-        "landed (#151). This app does not pretend the door opens"
+def fetch_statements(
+    *,
+    token: str | None = None,
+    book_id: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> Any:
+    """Pull statement cites from ConnectApiUrl."""
+    return _grant.pull(
+        token=token,
+        book_id=book_id,
+        transport=transport,
+        error=Refuse,
     )
 
 
@@ -500,14 +508,17 @@ def deliver(
     posts: Sequence[ProposedPost],
     *,
     token: str | None = None,
-) -> None:
-    """Refuse to send. The grant path is not built."""
-    _ = posts
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (#150 / leftover #22). Write-route actor binding "
-        "landed (#151). This app does not pretend the door opens"
+    parent: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> list[Any]:
+    """POST allowlisted scheduled_* ApplyEvent bodies to ConnectApiUrl."""
+    return _grant.deliver_apply_events(
+        posts,
+        as_apply_event=as_apply_event,
+        token=token,
+        parent=parent,
+        transport=transport,
+        error=Refuse,
     )
 
 

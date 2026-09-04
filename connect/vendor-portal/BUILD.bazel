@@ -4,8 +4,8 @@ package(default_visibility = ["//visibility:public"])
 # build a WorkOS binary here; it holds the cite model to the catalog,
 # to CreateBook(Project), and to the refusals the issue named.
 #
-# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_cites() and deliver()
-# must refuse. Accepting Connect tokens is leftover #22. Unset billed /
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token.
+# WorkOS dashboard registration stays leftover #22. Unset billed /
 # retainage / remaining stay unset, not silent zeros. No vendor user
 # directory in core. No AIA G702 product UI (#184). No EAC (#169).
 # PROJECT chrome is not forked.
@@ -24,6 +24,7 @@ sh_test(
         "$(rootpath //proto:ratio/console/v1/console.proto)",
     ],
     data = [
+        "//connect:grant.py",
         "portal.py",
         "portal_test.py",
         "app.json",

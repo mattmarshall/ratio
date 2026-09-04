@@ -5,8 +5,7 @@ package(default_visibility = ["//visibility:public"])
 # to Project /budget remaining-to-spend, and to the refusals the issue
 # named.
 #
-# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_cites() must refuse.
-# Accepting Connect tokens is leftover #22. Unset remaining-to-spend
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token. WorkOS dashboard registration stays leftover #22. Unset remaining-to-spend
 # stays unset — never a silent EAC of 0. No kernel forecast RPC.
 # PROJECT chrome is not forked. /budget still does not forecast.
 sh_test(
@@ -23,6 +22,7 @@ sh_test(
         "$(rootpath //proto:ratio/console/v1/console.proto)",
     ],
     data = [
+        "//connect:grant.py",
         "pack.py",
         "pack_test.py",
         "app.json",

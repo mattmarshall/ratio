@@ -28,7 +28,7 @@ This is a scaffold. A green mapper is not a live feed.
 - Conservation: each instantiated template is two legs of opposite
   weight in one currency. `[USD +100, EUR −100]` is not balanced.
   Money is minor units, split on the point, never a float.
-- `deliver()` refuses. Connect access tokens are not accepted on `/v1`.
+- `deliver()` refuses. first-party Connect apps call ConnectApiUrl with a verified Connect access token. Membership still required.
 
 `bazel test //connect/bank-feed:mapper_test` is the gate.
 
@@ -88,7 +88,7 @@ From the catalog, restated so a later RPC does not "just" add them:
    on a Personal book is refused even if a client listed it.
 6. Closed-through, conservation, bounds. A scope does not waive a proof.
 
-Until (1) and (2) land, `deliver()` is the honesty: it refuses with
+Until Dashboard registration lands, a live walk-through stays leftover. `deliver()` calls ConnectApiUrl; a missing token refuses with
 the leftover named.
 
 ## What a walk-through can and cannot show
@@ -103,7 +103,7 @@ or a posting that reached `/v1`. BookKind PERSONAL chrome is unchanged.
 
 ## Leftovers — this does not close #165
 
-1. **Live Connect OAuth**
+1. **WorkOS dashboard registration**
    (#150 / leftover on issue 22). API Gateway JWT verifies Connect
    tokens on ConnectApiUrl. In-process `/v1` accepts catalog scopes
    after membership. Dashboard registration, redirect, and a live

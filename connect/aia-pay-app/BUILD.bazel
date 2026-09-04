@@ -4,8 +4,7 @@ package(default_visibility = ["//visibility:public"])
 # WorkOS binary here; it holds the pack builder to the catalog, to
 # Project /billing and /budget cites, and to the refusals the issue named.
 #
-# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_cites() must refuse.
-# Accepting Connect tokens is leftover #22. A licensed AIA PDF is refused.
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token. WorkOS dashboard registration stays leftover #22. A licensed AIA PDF is refused.
 # Missing billed / retainage / CO cites stay unset, not silent zeros.
 # No kernel G702 RPC. PROJECT chrome is not forked.
 sh_test(
@@ -22,6 +21,7 @@ sh_test(
         "$(rootpath //proto:ratio/console/v1/console.proto)",
     ],
     data = [
+        "//connect:grant.py",
         "pack.py",
         "pack_test.py",
         "app.json",

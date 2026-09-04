@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 import pathlib
 import sys
+import os
 import unittest
+from unittest import mock
 from datetime import date
 
 import bills as b
@@ -320,20 +322,42 @@ class Refusals(unittest.TestCase):
             b.payroll()
         self.assertIn("payroll", str(ctx.exception).lower())
 
-    def test_fetch_statements_refuses_because_the_grant_path_is_not_built(self):
-        with self.assertRaises(b.Refuse) as ctx:
-            b.fetch_statements(token="connect-access-token")
-        msg = str(ctx.exception)
-        self.assertIn("grant path is not built", msg)
-        self.assertIn("#151", msg)
+    def test_fetch_statements_without_a_token_is_refused(self):
+        env = {
+            "RATIO_CONNECT_ACCESS_TOKEN": "",
+            "WORKOS_CONNECT_CLIENT_ID": "",
+            "WORKOS_CONNECT_CLIENT_SECRET": "",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            with self.assertRaises(b.Refuse) as ctx:
+                b.fetch_statements()
+        self.assertIn("no Connect access token", str(ctx.exception))
+        self.assertNotIn("grant path is not built", str(ctx.exception))
 
-    def test_deliver_refuses_because_the_grant_path_is_not_built(self):
+    def test_fetch_statements_pulls_connect_api_url_when_a_token_is_presented(self):
+        transport = b._grant.FakeTransport(body='{"books":[]}')
+        env = {"RATIO_CONNECT_API_URL": "https://connect.example"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            self.assertEqual(
+                b.fetch_statements(token="connect-access-token", transport=transport),
+                {"books": []},
+            )
+
+    def test_deliver_posts_apply_event_to_connect_api_url_when_a_token_is_presented(self):
         out = b.map_batch([row()], book=personal(), client=declared_client())
-        with self.assertRaises(b.Refuse) as ctx:
-            b.deliver(out, token="connect-access-token")
-        msg = str(ctx.exception)
-        self.assertIn("grant path is not built", msg)
-        self.assertIn("#151", msg)
+        transport = b._grant.FakeTransport(body='{"name":"entries/1"}')
+        env = {"RATIO_CONNECT_API_URL": "https://connect.example"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            b.deliver(
+                out,
+                token="connect-access-token",
+                parent="funds/alpha",
+                transport=transport,
+            )
+        self.assertEqual(
+            transport.calls[0][1],
+            "https://connect.example/v1/funds/alpha:applyEvent",
+        )
 
 
 class ManifestHonesty(unittest.TestCase):
@@ -366,7 +390,9 @@ class ManifestHonesty(unittest.TestCase):
 
     def test_grant_path_and_calendar_oauth_stay_named_as_leftovers(self):
         doc = json.dumps(app())
-        self.assertIn("not built", app()["grant_path"]["status"])
+        self.assertEqual("built", app()["grant_path"]["status"])
+        self.assertIn("ConnectApiUrl", app()["grant_path"]["note"])
+        self.assertIn("WorkOS dashboard registration", app()["grant_path"]["note"])
         self.assertIn("not wired", app()["calendar_oauth"]["status"])
         self.assertIn("#163", doc)
         self.assertIn("#150", doc)

@@ -4,8 +4,8 @@ package(default_visibility = ["//visibility:public"])
 # WorkOS binary here; it holds the pack builder to the catalog, to
 # RuleSet field names, and to the refusals the issue named.
 #
-# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_cites() must refuse.
-# Token validation is #151 / leftover #22. IRS e-file is refused.
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token.
+# WorkOS dashboard registration stays leftover #22. IRS e-file is refused.
 # Mixed acquired dates stay unset — Ratio.Lots.PoolPeriod, not a
 # silent FIFO-oldest category and not two Form 8949 boxes.
 sh_test(
@@ -21,6 +21,7 @@ sh_test(
         "$(rootpath //console:src/lib/screens.ts)",
     ],
     data = [
+        "//connect:grant.py",
         "pack.py",
         "pack_test.py",
         "app.json",

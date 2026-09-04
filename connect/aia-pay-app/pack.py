@@ -30,8 +30,10 @@ misstatement of a pay-app.
 ⭐ NO PERCENTAGE. G703 column H would be a rounded figure. The pack
 does not emit one.
 
-⚠ THE GRANT PATH IS NOT BUILT. `fetch_cites` refuses. A Connect
-access token is not accepted on `/v1` (leftover #22 / #150).
+⭐ THE GRANT PATH CALLS CONNECTAPIURL. `fetch_cites` and `deliver`
+present a verified Connect access token against the Connect HTTP
+API. Membership is still required. A licensed AIA form stays
+refused. WorkOS dashboard registration stays leftover #22.
 
 ⚠ A LICENSED AIA FORM IS REFUSED. `render_form` refuses. No vendor
 portal, no G702 product route in Console, no packing inside core.
@@ -45,6 +47,8 @@ import json
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Mapping, Sequence
+
+import grant as _grant
 
 # i64 bounds. Lean's Int is unbounded; every money figure here is i64.
 I64_MIN = -(2**63)
@@ -673,17 +677,18 @@ def cite_from_fixture(raw: Mapping[str, Any]) -> Pack:
     )
 
 
-def fetch_cites(*, token: str | None = None) -> None:
-    """Refuse to pull. The grant path is not built.
-
-    A green pack builder is not a door that opens. Live Connect
-    OAuth is leftover; this app does not call /v1.
-    """
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (leftover #22 / #150). This app does not "
-        "pretend the door opens"
+def fetch_cites(
+    *,
+    token: str | None = None,
+    book_id: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> Any:
+    """Pull billing / budget cites from ConnectApiUrl."""
+    return _grant.pull(
+        token=token,
+        book_id=book_id,
+        transport=transport,
+        error=Refuse,
     )
 
 
@@ -699,15 +704,18 @@ def render_form(pack: Pack, *, token: str | None = None) -> None:
     )
 
 
-def deliver(pack: Pack, *, token: str | None = None) -> None:
-    """Refuse to push. Same leftover as fetch_cites."""
-    _ = pack
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (leftover #22 / #150). This app does not "
-        "deliver a pack against a door that is not open"
-    )
+def deliver(
+    pack: Pack,
+    *,
+    token: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> Pack:
+    """Confirm ConnectApiUrl membership, then return the local pack.
+
+    Does not render a licensed AIA form — `render_form` stays refused.
+    """
+    _grant.pull(token=token, transport=transport, error=Refuse)
+    return pack
 
 
 _G702_COLUMNS = ("Line", "Amount", "Note")

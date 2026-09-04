@@ -42,8 +42,10 @@ is how a cent disappears. A third decimal place is refused.
 ⭐ NO EAC, NO G702, NO VENDOR DIRECTORY. Those doors are #169,
 #184, and #172.
 
-⚠ THE GRANT PATH IS NOT BUILT. `fetch_cites` refuses. A Connect
-access token is not accepted on `/v1` (leftover #22 / #150).
+⭐ THE GRANT PATH CALLS CONNECTAPIURL. `fetch_cites` and `deliver`
+present a verified Connect access token against the Connect HTTP
+API. Membership is still required. A mega-book stays refused.
+WorkOS dashboard registration stays leftover #22.
 """
 
 from __future__ import annotations
@@ -53,6 +55,8 @@ import io
 import json
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
+
+import grant as _grant
 
 # i64 bounds. Lean's Int is unbounded; every money figure here is i64.
 I64_MIN = -(2**63)
@@ -655,29 +659,30 @@ def cite_from_fixture(raw: Mapping[str, Any]) -> Rollup:
     )
 
 
-def fetch_cites(*, token: str | None = None) -> None:
-    """Refuse to pull. The grant path is not built.
-
-    A green roll-up builder is not a door that opens. Live Connect
-    OAuth is leftover; this app does not call /v1.
-    """
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (leftover #22 / #150). This app does not "
-        "pretend the door opens"
+def fetch_cites(
+    *,
+    token: str | None = None,
+    book_id: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> Any:
+    """List membership-visible books from ConnectApiUrl."""
+    return _grant.pull(
+        token=token,
+        book_id=book_id,
+        transport=transport,
+        error=Refuse,
     )
 
 
-def deliver(rollup: Rollup, *, token: str | None = None) -> None:
-    """Refuse to push. Same leftover as fetch_cites."""
-    _ = rollup
-    _ = token
-    raise Refuse(
-        "live Connect OAuth is leftover — the grant path "
-        "is not built (leftover #22 / #150). This app does not "
-        "deliver a roll-up against a door that is not open"
-    )
+def deliver(
+    rollup: Rollup,
+    *,
+    token: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> Rollup:
+    """Confirm ConnectApiUrl membership, then return the local roll-up."""
+    _grant.pull(token=token, transport=transport, error=Refuse)
+    return rollup
 
 
 def eac(*_args: Any, **_kwargs: Any) -> None:

@@ -10,8 +10,9 @@ Evidence packing lives **here**. It does not live in `ratio watch`, the
 operations console, a new kernel blob store, or a replacement for
 `ratio close`.
 
-This is a scaffold. A green cite is not a live Connect token and
-not a live ZIP against `/v1`.
+This is a scaffold. `fetch_cites()` / `deliver()` call ConnectApiUrl
+when a verified Connect access token is presented. A green cite is
+not a live WorkOS dashboard registration.
 
 ## What landed
 
@@ -40,8 +41,11 @@ not a live ZIP against `/v1`.
 - `books:read` membership. An `org_id` claim is not membership.
 - No new `Method` / `Order` / `lot_method` variant.
 - Money is minor units, split on the point, never a float.
-- `fetch_cites()` and `deliver()` refuse. Connect access tokens
-  are not accepted on `/v1`.
+- `fetch_cites()` and `deliver()` call ConnectApiUrl with a verified
+  Connect access token (`connect/grant.py`). Membership still
+  required. A missing token is a missing token, not "the grant
+  path is not built". `deliver` writes the ZIP locally after a
+  `/v1` pull — it does not POST a blob to the kernel.
 - `store_blob()`, `close_period()`, `lp_portal()`, `esign()`,
   and `second_journal()` refuse.
 
@@ -74,13 +78,13 @@ A third-party flag would prompt AuthKit consent and bind the app to an
 Organization. This evidence pack is first-party: the subject's book
 membership is still the tenant. An `org_id` claim is not membership.
 #151 landed the write-route ACL fence: a Connect-shaped token is
-`scoped` and does not inherit `org:{id}`. API Gateway JWT verifies Connect tokens on ConnectApiUrl. Live OAuth stays leftover #22.
+`scoped` and does not inherit `org:{id}`. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration stays leftover #22.
 
 M2M (`client_credentials`) is the wrong shape here. There is no user
 on an M2M token, and an evidence ZIP that exported without one would
 attribute an audit pack to a client secret.
 
-## Grant contract this app honors (and cannot yet exercise)
+## Grant contract this app honors
 
 From the catalog, restated so a later RPC does not "just" add them:
 
@@ -95,8 +99,13 @@ From the catalog, restated so a later RPC does not "just" add them:
 5. Closed-through, bounds, no invented Method. A scope does not
    waive a proof. `audit:export` does not replace `ratio close`.
 
-Until live OAuth lands, `fetch_cites()` and `deliver()` are the
-honesty: they refuse with the leftover named.
+Env: `RATIO_CONNECT_API_URL` (ConnectApiUrl, never DemoUrl),
+`WORKOS_CONNECT_ISSUER` (default `https://auth.ratio.marsh.build`),
+`WORKOS_CLIENT_ID` (audience), `WORKOS_CONNECT_CLIENT_ID` /
+`WORKOS_CONNECT_CLIENT_SECRET` (Connect application credentials),
+`WORKOS_CONNECT_REDIRECT_URI` (`authorization_code`),
+`RATIO_CONNECT_ACCESS_TOKEN` (already-minted token). See
+[`connect/README.md`](../README.md).
 
 ## What a walk-through can and cannot show
 
@@ -111,29 +120,31 @@ history-intact, a cited-empty `BreakReport` named as reconciled
 rather than missing, `journal:read` being rejected as a scope,
 and a non-member book with a matching `org_id` being refused.
 
-It cannot show a Connect token opening a book, a live OAuth grant,
-a ZIP that reached `/v1`, a kernel blob store, a period-close
-replacement, an LP portal, e-sign, or a second journal. Chrome is
-unchanged. `screensFor` is not forked. `/close`, `/asof`,
+It can show `fetch_cites()` / `deliver()` presenting a Connect
+access token against ConnectApiUrl. It cannot show a live walk-through
+without WorkOS dashboard registration, a kernel blob store, a
+period-close replacement, an LP portal, e-sign, or a second journal.
+Chrome is unchanged. `screensFor` is not forked. `/close`, `/asof`,
 Exceptions, and NAV strikes stay the core cites.
 
 ## Leftovers — this does not close #185
 
-1. **Live Connect OAuth**
-   (leftover on issue 22). API Gateway JWT verifies Connect tokens
-   on ConnectApiUrl. In-process `/v1` accepts catalog scopes after
-   membership. Dashboard registration, redirect, and a live token
+1. **WorkOS dashboard registration** (leftover on issue 22).
+   first-party Connect apps call ConnectApiUrl. In-process `/v1`
+   accepts catalog scopes after membership. API Gateway JWT verifies
+   Connect tokens. A human still has to register the Connect
+   application and present a live token. `DEMO_MEMBERS` naming a
+   live WorkOS `sub` and unused Cognito CloudFormation resources
    stay leftover. Write-route actor binding landed (#151); this app
    does not reopen it.
-2. **Live `fetch_cites()` / `deliver()` of a ZIP against `/v1`.**
-   Unit tests assert the refuse and the pack shape from fixtures.
-   A green cite is not a live token.
+2. **A live walk-through ZIP** still needs that Dashboard
+   registration. Unit tests inject a transport. A green cite is
+   not a live token.
 3. **#150's read-only reference skeleton** (`books:read` +
    `statements:read` only) is a different app. This one requests
-   `audit:export` and the read scopes above and does not open the
-   door.
+   `audit:export` and the read scopes above.
 
-Leaves issue 22 open for grant-path leftovers. Leaves #150
+Leaves issue 22 open. Leaves #150
 open. Does not reopen #151. Does not start #161 (LP portal).
 Does not grow `ratio watch` or Console chrome for an audit ZIP.
 Does not add a blob store to the kernel.

@@ -18,9 +18,11 @@ walks). A Connect-shaped token never takes `RATIO_DEMO_OPEN` and never
 matches `org:{id}` (#151). Hard non-scopes and aliases stay refused.
 #150 leftovers: the `journals:post` allowlist, reserved RPCs, and the
 read-only reference skeleton. `RATIO_DEMO_OPEN` defaults off on the
-deployed demo. Issue 22 stays open for unused Cognito CloudFormation
-resources and live provider OAuth. API Gateway JWT verifies Connect
-tokens on the Connect HTTP API (AuthKit custom-domain issuer). This
+deployed demo. first-party Connect apps call ConnectApiUrl.
+Issue 22 stays open for unused Cognito CloudFormation resources,
+`DEMO_MEMBERS` naming a live WorkOS `sub`, and WorkOS dashboard
+registration. API Gateway JWT verifies Connect tokens
+on the Connect HTTP API (AuthKit custom-domain issuer). This
 file does not close #150.
 
 ---
@@ -82,7 +84,7 @@ the grant for when that door exists; it does not mint the RPC.
 | `breaks:explain` | Person-attributed explanations | `Mark` / accept | The explainer is a person; a Connect app attributes, it does not invent |
 | `closes:read` | Close records, closed-through day | `ListPeriodCloses` / `GetPeriodClose` | Not `ratio close` — that stays a person at a terminal |
 | `config:read` | RuleSet / lot-terms cites, config digests | configuration screens | Not an editor |
-| `audit:export` | Evidence pack | Connect scaffold (`connect/audit-export/`); in-process grant Built; API Gateway JWT verifies Connect tokens; leftover is live OAuth | A pack is a read of cites, not a rewrite |
+| `audit:export` | Evidence pack | Connect scaffold (`connect/audit-export/`); first-party Connect apps call ConnectApiUrl; leftover is WorkOS dashboard registration | A pack is a read of cites, not a rewrite |
 | `deliveries:write` | Fact-plane deliveries | `Ingest` | High trust; same membership door |
 | `facts:admit` | Admit facts | `Admit` | High trust; provenance stays required |
 | `webhooks:journal` | Subscribe to append / close events | not built | Not a second journal |
@@ -207,10 +209,13 @@ open:
    inherit `org:{id}`, and needs the matching frozen name. API
    Gateway JWT verifies Connect tokens on the Connect HTTP API
    (AuthKit custom-domain `iss`; session tokens stay on DemoUrl).
-   leftover #22 is now unused Cognito CloudFormation resources
-   and live provider OAuth — not the in-process grant, not the
-   gateway issuer, and not the deployed open-demo dial
-   (`RATIO_DEMO_OPEN` defaults off on DemoUrl).
+   leftover #22 is now unused Cognito CloudFormation resources,
+   `DEMO_MEMBERS` naming a live WorkOS `sub`, and WorkOS dashboard
+   registration — not the in-process grant, not the
+   gateway issuer, not the deployed open-demo dial
+   (`RATIO_DEMO_OPEN` defaults off on DemoUrl), and not the
+   first-party Connect grant helper (first-party Connect apps
+   call ConnectApiUrl).
 2. **Book ACL on every Connect grant.** Built with the authorizer.
    Authorized-empty for a book the subject does not administer. An
    `org_id` claim is not membership.
@@ -220,55 +225,55 @@ open:
    `statements:read`, proving the door opens without a new RPC.
    A first-party bank-feed scaffold lives at `connect/bank-feed/`
    ([#165](https://github.com/mattmarshall/ratio/issues/165)). It is not
-   this leftover: it requests `journals:post`, it does not open the grant
-   path, and this file still does not close #150 or #165.
+   this leftover: it requests `journals:post`, first-party Connect
+   apps call ConnectApiUrl, and this file still does not close #150 or #165.
    A first-party tax-pack scaffold lives at `connect/tax-pack/`
    ([#166](https://github.com/mattmarshall/ratio/issues/166)). It is not
-   this leftover either: it requests `lots:read` and `config:read`, it
-   does not open the grant path, and this file still does not close
+   this leftover either: it requests `lots:read` and `config:read`,
+   first-party Connect apps call ConnectApiUrl, and this file still does not close
    #166.
    A first-party net-worth goals scaffold lives at `connect/goals/`
    ([#168](https://github.com/mattmarshall/ratio/issues/168)). It is not
    this leftover either: it requests `journals:post` for opt-in
-   scenario journals, it does not open the grant path, and this file
+   scenario journals, first-party Connect apps call ConnectApiUrl, and this file
    still does not close #168.
    A first-party AIA pay-app scaffold lives at `connect/aia-pay-app/`
    ([#184](https://github.com/mattmarshall/ratio/issues/184)). It is not
    this leftover either: it requests `billing:read` and `budget:read`,
-   it does not open the grant path, and this file still does not close
+   first-party Connect apps call ConnectApiUrl, and this file still does not close
    #184.
    A first-party vendor / GC portal scaffold lives at
    `connect/vendor-portal/`
    ([#172](https://github.com/mattmarshall/ratio/issues/172)). It is not
    this leftover either: it requests `billing:read`, `budget:read`, and
-   `journals:post` for allowlisted `vendor_invoice*` templates, it does
-   not open the grant path, and this file still does not close #172.
+   `journals:post` for allowlisted `vendor_invoice*` templates;
+   first-party Connect apps call ConnectApiUrl, and this file still does not close #172.
    A first-party EAC / forecast scaffold lives at
    `connect/eac-forecast/`
    ([#169](https://github.com/mattmarshall/ratio/issues/169)). It is not
    this leftover either: it requests `budget:read` and `billing:read`,
-   it does not open the grant path, and this file still does not close
+   first-party Connect apps call ConnectApiUrl, and this file still does not close
    #169.
    A first-party program roll-up scaffold lives at
    `connect/program-rollup/`
    ([#179](https://github.com/mattmarshall/ratio/issues/179)). It is not
    this leftover either: it requests `books:read`, `budget:read`, and
-   `billing:read`, it does not open the grant path, and this file still
+   `billing:read`, first-party Connect apps call ConnectApiUrl, and this file still
    does not close #179.
    First-party Personal cash-forecast predictor scaffolds live at
    `connect/bank-balance-predictor/` and `connect/calendar-bills/`
    ([#163](https://github.com/mattmarshall/ratio/issues/163)). They are
    not this leftover either: they request `journals:post` for
-   allowlisted `forecast_*` / `scheduled_*` templates, they do not
-   open the grant path, and this file still does not close #163.
+   allowlisted `forecast_*` / `scheduled_*` templates;
+   first-party Connect apps call ConnectApiUrl, and this file still does not close #163.
    A first-party audit-export scaffold lives at
    `connect/audit-export/`
    ([#185](https://github.com/mattmarshall/ratio/issues/185)). It is
    not this leftover either: it requests `audit:export` plus
    `closes:read`, `breaks:read`, `breaks:explain`, `nav:read`,
    `journals:read`, `config:read`, and `books:read`, it is a read
-   of cites (not a write RPC and not a kernel blob store), it does
-   not open the grant path, and this file still does not close
+   of cites (not a write RPC and not a kernel blob store);
+   first-party Connect apps call ConnectApiUrl, and this file still does not close
    #185.
 5. **`webhooks:journal`, `nav:strike` as a write RPC** —
    reserved scopes; the surfaces are not built. `audit:export` has
@@ -276,8 +281,10 @@ open:
    is a ZIP of cites, not a write RPC, and it does not close #185.
 
 This file does not close #150. Nothing here finishes issue 22
-(unused Cognito resources, live provider OAuth).
+(unused Cognito resources, DEMO_MEMBERS naming a live WorkOS sub,
+WorkOS dashboard registration).
 RATIO_DEMO_OPEN defaults off on the deployed demo.
+first-party Connect apps call ConnectApiUrl.
 API Gateway JWT verifies Connect tokens. Nothing here closes #5
 (console wash flag), #9 (lot-relief UI cites / pooled holding-period
 leftover), #163, #166, #168, #169, #172, #184, #179, or #185.

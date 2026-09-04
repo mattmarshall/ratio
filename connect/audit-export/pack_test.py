@@ -5,8 +5,8 @@ Test names are sentences. Break the thing a test protects and this
 file goes red — a green suite that only checks the books balance is
 how a missing digest ships as history-intact.
 
-Does not talk to /v1. Does not claim a Connect token is accepted.
-Does not deliver a live ZIP.
+Talks to ConnectApiUrl only through the shared grant helper.
+A green pack is not a live WorkOS dashboard registration.
 """
 
 from __future__ import annotations
@@ -15,7 +15,9 @@ import io
 import json
 import pathlib
 import sys
+import os
 import unittest
+from unittest import mock
 import zipfile
 from datetime import date
 
@@ -477,18 +479,37 @@ class Refusals(unittest.TestCase):
             pack_of(config=config(lot_method="wash"))
         self.assertIn("wash", str(ctx.exception))
 
-    def test_fetch_cites_refuses_because_the_grant_path_is_not_built(self):
-        with self.assertRaises(p.Refuse) as ctx:
-            p.fetch_cites(token="connect-access-token")
-        msg = str(ctx.exception)
-        self.assertIn("grant path is not built", msg)
-        self.assertIn("#22", msg)
-        self.assertIn("not a live token", msg)
+    def test_fetch_cites_without_a_token_is_refused(self):
+        env = {
+            "RATIO_CONNECT_ACCESS_TOKEN": "",
+            "WORKOS_CONNECT_CLIENT_ID": "",
+            "WORKOS_CONNECT_CLIENT_SECRET": "",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            with self.assertRaises(p.Refuse) as ctx:
+                p.fetch_cites()
+        self.assertIn("no Connect access token", str(ctx.exception))
+        self.assertNotIn("grant path is not built", str(ctx.exception))
 
-    def test_deliver_refuses_because_the_grant_path_is_not_built(self):
-        with self.assertRaises(p.Refuse) as ctx:
-            p.deliver(pack_of(), token="connect-access-token")
-        self.assertIn("grant path is not built", str(ctx.exception))
+    def test_fetch_cites_pulls_connect_api_url_when_a_token_is_presented(self):
+        transport = p._grant.FakeTransport(body='{"books":[]}')
+        env = {
+            "RATIO_CONNECT_API_URL": "https://connect.example",
+            "RATIO_API_ORIGIN": "https://demo.example",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            out = p.fetch_cites(token="connect-access-token", transport=transport)
+        self.assertEqual(out["book"], {"books": []})
+        self.assertEqual(transport.calls[0][1], "https://connect.example/v1/books")
+        self.assertEqual(transport.calls[0][2]["authorization"], "Bearer connect-access-token")
+
+    def test_deliver_writes_a_zip_after_the_grant_can_read_connect_api_url(self):
+        transport = p._grant.FakeTransport(body='{"name":"books/a"}')
+        env = {"RATIO_CONNECT_API_URL": "https://connect.example"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            zipped = p.deliver(pack_of(), token="connect-access-token", transport=transport)
+        self.assertTrue(zipped.startswith(b"PK"))
+        self.assertEqual(transport.calls[0][2]["authorization"], "Bearer connect-access-token")
 
     def test_store_blob_is_refused_because_there_is_no_kernel_blob_store(self):
         with self.assertRaises(p.Refuse) as ctx:
@@ -529,7 +550,9 @@ class ManifestHonesty(unittest.TestCase):
 
     def test_grant_path_and_blob_store_stay_named_as_leftovers(self):
         doc = json.dumps(app())
-        self.assertIn("not built", app()["grant_path"]["status"])
+        self.assertEqual("built", app()["grant_path"]["status"])
+        self.assertIn("ConnectApiUrl", app()["grant_path"]["note"])
+        self.assertIn("WorkOS dashboard registration", app()["grant_path"]["note"])
         self.assertIn("refused", app()["blob_store"]["status"])
         self.assertIn("refused", app()["lp_portal"]["status"])
         self.assertIn("#185", doc)

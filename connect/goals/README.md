@@ -39,8 +39,7 @@ not a cash forecast.
   Money is minor units, split on the point, never a float.
 - Required monthly savings and a FIRE number refuse. This is not a
   cash forecast.
-- `fetch_statements()` and `deliver()` refuse. Connect access tokens
-  are not accepted on `/v1`.
+- `fetch_statements()` and `deliver()` call ConnectApiUrl. first-party Connect apps call ConnectApiUrl with a verified Connect access token. Membership still required.
 
 `bazel test //connect/goals:goals_test` is the gate.
 
@@ -89,7 +88,7 @@ From the catalog, restated so a later RPC does not "just" add them:
    on a Personal book is refused even if a client listed it.
 6. Closed-through, conservation, bounds. A scope does not waive a proof.
 
-Until (1) and (2) land, `fetch_statements()` and `deliver()` are the
+Until Dashboard registration lands, a live walk-through stays leftover. `fetch_statements()` and `deliver()` call ConnectApiUrl; they are the
 honesty: they refuse with the leftover named.
 
 ## What a walk-through can and cannot show
@@ -100,14 +99,14 @@ projected net worth, a card charge that does not move cash, a closed
 March refusing an opted-in 15 March post, an empty allowlist refusing
 everything, and `journal:append` being rejected as a scope.
 
-It cannot show a Connect token opening a book, a live OAuth grant, a
+It cannot show a live walk-through without WorkOS dashboard registration, a live OAuth grant, a
 cash forecast, a FIRE number, or a posting that reached `/v1`.
 BookKind PERSONAL chrome is unchanged. `screensFor` is not forked.
 Sheet, bridge, and cash-flow stay the core cites.
 
 ## Leftovers — this does not close #168
 
-1. **Live Connect OAuth**
+1. **WorkOS dashboard registration**
    (#150 / leftover on issue 22). API Gateway JWT verifies Connect
    tokens on ConnectApiUrl. In-process `/v1` accepts catalog scopes
    after membership. Dashboard registration, redirect, and a live
@@ -117,8 +116,7 @@ Sheet, bridge, and cash-flow stay the core cites.
    one by `client_id`.
 3. **#150's read-only reference skeleton** (`books:read` +
    `statements:read` only) is a different app. This one requests
-   `journals:post` for opt-in scenario posts and does not open the
-   door.
+   `journals:post` for opt-in scenario posts and leftover is WorkOS dashboard registration, not a missing `/v1` accept path.
 
 Does not close #165 (grant-path + live bank OAuth leftovers stay
 on #165). Does not close #166 (grant path, IRS e-file, #9 leftover).
