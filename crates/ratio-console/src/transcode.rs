@@ -777,7 +777,8 @@ impl JsonView for pb::Book {
              \"fund\":{},\"organization\":{},\"defaultView\":{},\
              \"entryCount\":{},\"configDigest\":{},\"trialBalanceDifference\":{},\
              \"budget\":{},\"envelopes\":[{}],\"loans\":[{}],\
-             \"partnerCut\":[{}],\"specialAllocations\":[{}]}}",
+             \"partnerCut\":[{}],\"specialAllocations\":[{}],\
+             \"feeReceivable\":{}}",
             q(&self.name),
             q(&self.display_name),
             q(book_kind_name(self.kind)),
@@ -792,7 +793,8 @@ impl JsonView for pb::Book {
             self.envelopes.iter().map(|e| e.to_json()).collect::<Vec<_>>().join(","),
             self.loans.iter().map(|l| l.to_json()).collect::<Vec<_>>().join(","),
             self.partner_cut.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
-            self.special_allocations.iter().map(|s| s.to_json()).collect::<Vec<_>>().join(",")
+            self.special_allocations.iter().map(|s| s.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.fee_receivable)
         )
     }
 }

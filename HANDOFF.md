@@ -558,6 +558,16 @@ the conserved one, and the kernel never said it was.
   plugs, an ingest template, an LP portal, drip, or payment
   initiation. This file does not close #181: those seed and NAV
   leftovers stay on the issue. It does not close #180.
+- ⚠ **A management-fee accrual walk-through (#182 / #27).** Write
+  `management_fee_accrual` (75 bp, act/365, expense 10 / payable 40)
+  and accrue a dividing basis: expense debit and payable credit
+  conserve, the trial balance still ties, no lot opens, GetBook
+  and `/capital` cite the receivable. CreateBook writes no fee
+  rule — the figure stays **unset**, not a silent 0. A zero-day
+  no-op and same-sign legs refuse. ⛔ The walk-through cannot show
+  an invoice PDF, an LP statement, or payment collection — those
+  stay Connect (`fees:read` / `fees:accrue`). This file closes
+  #182. It does not close #181. It does not close #180.
 - ⚠ **A project change-order walk-through (#91 / #27).** CreateBook(Project)
   seeds `Approved change orders` / `Change-order authorization` keyed by
   work package (site / structure / finishes, plus unpartitioned) as equity,
@@ -908,8 +918,8 @@ than one that is entirely unclassified.
 
 | | |
 |---|---|
-| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,PoolPeriod,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Partners/Cut`, `Actions/Factor`, `Closure`, `Exec` |
-| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `wash_keep_holding_period`, `min_tax_short_weight`, `average_cost`, `tolerance`, `partner_cut`, `special_allocation` — the administration agreement, as configuration |
+| `lean/Ratio/` | the proofs. `Bounded`, `Chart/Dimensions`, `Lots/{Relief,Methods,MinTax,SpecId,AverageCost,PoolPeriod,Edges,Posting,Wash,WashRestatement,WashHolding}`, `Partners/{Cut,Units}`, `Fees/Accrual`, `Actions/Factor`, `Closure`, `Exec` |
+| `crates/ratio-rules` | `RuleSet`: `lot_method`, `chart_roles`, `long_term_days`, `wash_window_days`, `wash_keep_holding_period`, `min_tax_short_weight`, `average_cost`, `tolerance`, `partner_cut`, `special_allocation`, `fee_terms` (`management_fee_accrual`) — the administration agreement, as configuration |
 | `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `PoolPeriodEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |

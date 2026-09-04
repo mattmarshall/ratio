@@ -1340,7 +1340,38 @@ impl Console {
             instrument,
             quantity,
         };
+        if rule.id == ratio_rules::FEE_RULE_ID {
+            // ⛔ FEE TERMS ARE AN ELECTION. A named rule that is not
+            // well-formed (zero rate, collided chart, missing credit)
+            // must not post a silent zero receivable.
+            // `Ratio.Fees.no_terms_is_unset`.
+            if set.fee_terms().is_none() {
+                bail!(
+                    "fee terms are absent — accruing a silent zero receivable \
+                     is the defect. Write management_fee_accrual with a \
+                     positive rate, a day-count, and opposite-sign expense / \
+                     receivable legs. Ratio.Fees.no_terms_is_unset"
+                );
+            }
+        }
+
         let postings = ratio_rules::compile(rule, &event)?;
+
+        if rule.id == ratio_rules::FEE_RULE_ID {
+            // ⛔ THE POSTING IS THE PROVED PAIR. A zero amount is not an
+            // accrual — appending it would increment a count and print
+            // a silent 0. Same-sign legs would hide the fee.
+            // `Ratio.Fees.a_posting_conserves`.
+            let expense: i64 = postings.iter().filter(|p| p.amount > 0).map(|p| p.amount).sum();
+            let receivable: i64 = postings.iter().filter(|p| p.amount < 0).map(|p| p.amount).sum();
+            if expense == 0 || receivable != -expense {
+                bail!(
+                    "a fee accrual must post a conserved receivable/expense; \
+                     a zero-day no-op is not an accrual. \
+                     Ratio.Fees.a_zero_amount_is_not_an_accrual"
+                );
+            }
+        }
 
         // ⚠ THE ACCOUNT NAMES BELOW ARE VIEW-SCOPED RESOURCES NOW, and this is
         // a fund-level RPC — so they name the default view, the one `previous`
@@ -2520,6 +2551,8 @@ impl Console {
             loans: Vec::new(),
             partner_cut,
             special_allocations,
+            // Index must not fold. Empty is unset — GetBook cites the figure.
+            fee_receivable: String::new(),
         })
     }
 
@@ -2610,6 +2643,7 @@ impl Console {
         let loans = self.loan_schedules_of(&id)?;
         let (_, set) = local_config(&path);
         let (partner_cut, special_allocations) = partner_terms_of(set.as_ref());
+        let fee_receivable = self.fee_receivable_of(&id, &fund.default_view, set.as_ref())?;
         Ok(pb::Book {
             name: format!("books/{id}"),
             display_name: meta.display_name,
@@ -2626,7 +2660,33 @@ impl Console {
             loans,
             partner_cut,
             special_allocations,
+            fee_receivable,
         })
+    }
+
+    /// Accrued management-fee receivable from the elected rule, or silence.
+    ///
+    /// ⛔ EMPTY IS UNSET. No `management_fee_accrual`, or a rule that has
+    /// never posted, is not a silent 0. Paid in full after a post is `"0"`.
+    /// `Ratio.Fees.no_terms_leaves_receivable_unset`.
+    fn fee_receivable_of(&self, id: &str, view: &str, set: Option<&RuleSet>) -> Result<String> {
+        let Some(terms) = set.and_then(RuleSet::fee_terms) else {
+            return Ok(String::new());
+        };
+        let listed = self.list_accounts(&format!("funds/{id}/views/{view}/accounts"), "")?;
+        let Some(acct) = listed
+            .accounts
+            .iter()
+            .find(|a| a.dimension == terms.receivable.to_string())
+        else {
+            return Ok(String::new());
+        };
+        if acct.posting_count == "0" || acct.posting_count.is_empty() {
+            return Ok(String::new());
+        }
+        let debit: i64 = acct.debit.parse().context("fee receivable debit")?;
+        let credit: i64 = acct.credit.parse().context("fee receivable credit")?;
+        Ok((credit - debit).to_string())
     }
 
     pub fn create_book(&self, req: pb::CreateBookRequest) -> Result<pb::Book> {
@@ -2676,6 +2736,7 @@ impl Console {
             loans: Vec::new(),
             partner_cut: Vec::new(),
             special_allocations: Vec::new(),
+            fee_receivable: String::new(),
         })
     }
 
@@ -6706,6 +6767,180 @@ mod tests {
         assert_eq!(after.special_allocations[0].weight, 1);
         // ⛔ NOT 1/N. Two partners is not 50/50.
         assert_ne!(after.partner_cut[0].weight, after.partner_cut[1].weight);
+    }
+
+    fn elect_management_fee(root: &std::path::Path, book: &str) {
+        let path = root.join(book);
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().expect("CreateBook writes a config");
+        let current = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let with_fee = format!(
+            "{current}\n\n[[rule]]\nid = \"management_fee_accrual\"\nkind = \"accrual\"\n\
+             description = \"Management fee, 75bp a year on prior-day net assets\"\n\
+             rate_bp = 75\nday_count = \"act/365\"\n\
+             [[rule.posting]]\naccount = 10\nweight = 1\n\
+             [[rule.posting]]\naccount = 40\nweight = -1\n"
+        );
+        let next = b.put(with_fee.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+    }
+
+    fn fee_req(book: &str, id: &str, amount: &str, days: &str) -> pb::ApplyEventRequest {
+        let mut req = capital_req(book, id, "management_fee_accrual", amount, 2026, 3, 31);
+        req.days = days.into();
+        req
+    }
+
+    #[test]
+    fn a_management_fee_accrual_posts_conserved_receivable_and_expense() {
+        // `Ratio.Fees.a_posting_conserves`. CreateBook writes no fee
+        // rule — silence is unset, not a silent 75 bp.
+        let root = fresh("fee-accrual");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Fees".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "fees".into(),
+        })
+        .unwrap();
+        let before = c.get_book("books/fees").unwrap();
+        assert!(
+            before.fee_receivable.is_empty(),
+            "CreateBook must not invent a receivable: {:?}",
+            before.fee_receivable
+        );
+
+        elect_management_fee(&root, "fees");
+        let elected = c.get_book("books/fees").unwrap();
+        assert!(
+            elected.fee_receivable.is_empty(),
+            "terms without a post stay unset, not a silent 0: {:?}",
+            elected.fee_receivable
+        );
+
+        // 3_650_000.00 × 75 bp × 1 / 365 = 75.00 exactly.
+        c.apply_event(&fee_req("fees", "fee-1", "3650000.00", "1"))
+            .unwrap();
+
+        let after = c.get_book("books/fees").unwrap();
+        assert_eq!(after.fee_receivable, "7500", "{after:?}");
+
+        let view = capital_view("fees");
+        let accounts = c.list_accounts(&view, "").unwrap().accounts;
+        let expense = accounts
+            .iter()
+            .find(|a| a.display_name == "Management fee expense")
+            .expect("expense");
+        let payable = accounts
+            .iter()
+            .find(|a| a.display_name == "Management fee payable")
+            .expect("payable");
+        assert_eq!(expense.debit, "7500");
+        assert_eq!(expense.credit, "0");
+        assert_eq!(payable.credit, "7500");
+        assert_eq!(payable.debit, "0");
+        let exp: i64 = expense.debit.parse().unwrap();
+        let recv: i64 = payable.credit.parse().unwrap();
+        assert_eq!(exp, recv);
+        assert_eq!(exp + (-recv), 0, "Ratio.Fees.a_posting_conserves");
+        assert_ne!(expense.posting_count, "0");
+        assert_ne!(payable.posting_count, "0");
+    }
+
+    #[test]
+    fn absent_fee_terms_leave_the_receivable_unset() {
+        // `Ratio.Fees.no_terms_leaves_receivable_unset`.
+        let root = fresh("fee-unset");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Fees".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "fees".into(),
+        })
+        .unwrap();
+        let err = c
+            .apply_event(&fee_req("fees", "fee-1", "3650000.00", "1"))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("no rule") || err.contains("fee terms"),
+            "accruing without an election must refuse, not post 0: {err}"
+        );
+        assert!(c.get_book("books/fees").unwrap().fee_receivable.is_empty());
+    }
+
+    #[test]
+    fn a_zero_day_fee_accrual_is_refused() {
+        // `Ratio.Fees.a_zero_amount_is_not_an_accrual`.
+        let root = fresh("fee-zero-day");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Fees".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "fees".into(),
+        })
+        .unwrap();
+        elect_management_fee(&root, "fees");
+        let err = c
+            .apply_event(&fee_req("fees", "fee-0", "3650000.00", "0"))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("zero-day") || err.contains("not an accrual"),
+            "{err}"
+        );
+        assert!(
+            c.get_book("books/fees").unwrap().fee_receivable.is_empty(),
+            "a refused no-op must not print a silent 0"
+        );
+    }
+
+    #[test]
+    fn same_sign_fee_legs_cannot_accrue() {
+        // `Ratio.Fees` wellFormedAccrual ⟨100, 100⟩ = false.
+        let root = fresh("fee-same-sign");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Fees".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "fees".into(),
+        })
+        .unwrap();
+        let path = root.join("fees");
+        let mut b = FileBook::open(&path).unwrap();
+        let digest = b.active().unwrap().expect("CreateBook writes a config");
+        let current = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let broken = format!(
+            "{current}\n\n[[rule]]\nid = \"management_fee_accrual\"\nkind = \"accrual\"\n\
+             rate_bp = 75\nday_count = \"act/365\"\n\
+             [[rule.posting]]\naccount = 10\nweight = 1\n\
+             [[rule.posting]]\naccount = 40\nweight = 1\n"
+        );
+        let next = b.put(broken.as_bytes()).unwrap();
+        b.set_active(&next).unwrap();
+        drop(b);
+
+        let err = c
+            .apply_event(&fee_req("fees", "fee-bad", "3650000.00", "1"))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("fee terms") || err.contains("does not balance") || err.contains("silent"),
+            "same-sign must refuse, not hide the fee: {err}"
+        );
+        assert!(c.get_book("books/fees").unwrap().fee_receivable.is_empty());
     }
 
     #[test]

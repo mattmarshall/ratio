@@ -502,6 +502,10 @@ NEEDLES: list[tuple[str, str]] = [
         "unset — no units issued on this partner, not a fake zero",
         "partner units would render as a silent zero before a subscription",
     ),
+    (
+        "unset — no elected fee terms, not a silent zero receivable",
+        "fee receivable would render as a silent zero without an elected fee rule",
+    ),
     # ── operating AR/AP aging (#117) ────────────────────────────────────────
     # ⚠ THE HONESTY SENTENCE, NOT THE TAB LABEL. `screens.ts` already says
     # "AR/AP aging"; a page that rendered current-bucket zeros on undated
