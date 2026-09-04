@@ -2673,6 +2673,55 @@ sheet with the same missing-rate sentence the fund path uses. It
 cannot show a rate-vendor Connect app, a `/trade` currency
 picker, a cash forecast, or envelope coaching.
 
+### Amendment, 2026-09-04 — NAV gate reasons stay citeable
+
+[#188](https://github.com/mattmarshall/ratio/issues/188) asked the
+console to cite why a fund refuses its own NAV — unexplained break,
+unpriced, unresolved trade — instead of a bare HTTP 400. The gate
+already existed (`Console::blocking_at`; #156). Chrome printed
+BLOCKED and left the reasons on the CLI.
+
+What landed is the cite, not a new gate:
+
+- Engine: `blocking_at` is still the one fold. GetFund / GetView
+  carry it as `nav_gate` (unexplained breaks, unresolved trades,
+  unpriced). ListFunds / ListViews leave it unset — those indexes
+  do not fold. Unpriced stays empty unless a valuation date was
+  named, the same limit a bare `ratio strike` already has. Tests
+  fail if the field drifts from the fold, or if unpriced appears
+  without as-of.
+- Console: fund overview and view chrome cite the three reasons
+  (`NavGateCite` / `withRefusal`) before the NAV tile. A thrown
+  `Refused` is the sentence, not a status number. `fields_test`
+  needles and the render suite hold the phrases.
+
+No new `Method` / `Order` / `lot_method` variant. No `screensFor`
+fork. No new gate semantics — what blocks did not change. **NAV
+gate reasons stay citeable** is the Built phrase this amendment
+adds.
+
+**What this is NOT:**
+
+- **Not #26 (console buildout).** Broader screens stay on #26.
+- **Not #186 (point-in-time / restatement browser).**
+- **Not #157 (capital-call notice).**
+- **Not #159 (Postgres).** Stage E stays blocked.
+- **Not a `screensFor` fork** for Personal or Project. Those
+  books do not strike a NAV.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #188. It does not close #26, #186, or #157. It
+does not close #159. It does not reopen #156, #160, #180, or
+#181.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can open a blocked Investment book and read unexplained break /
+unpriced / unresolved trade as refuse copy on the fund overview
+and on every view screen, rather than a bare HTTP 400. It cannot
+show a point-in-time restatement browser, a capital-call notice,
+or the rest of the #26 console buildout. Those remain #186 /
+#157 / #26.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

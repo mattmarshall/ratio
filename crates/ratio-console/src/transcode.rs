@@ -551,7 +551,7 @@ impl JsonView for pb::Fund {
              \"washWindowDays\":{},\"washWindowDeclared\":{},\
              \"washKeepHoldingPeriod\":{},\
              \"minTaxShortWeight\":{},\"minTaxDeclared\":{},\
-             \"averageCost\":{}}}",
+             \"averageCost\":{},\"navGate\":{}}}",
             q(&self.name), q(&self.display_name), q(&self.currency_code),
             q(state_name(self.state)),
             q(&self.trial_balance_difference),
@@ -563,9 +563,25 @@ impl JsonView for pb::Fund {
             q(&self.wash_window_days.to_string()), self.wash_window_declared,
             self.wash_keep_holding_period,
             q(&self.min_tax_short_weight.to_string()), self.min_tax_declared,
-            self.average_cost
+            self.average_cost, nav_gate_json(&self.nav_gate)
         )
     }
+}
+
+impl JsonView for pb::NavGate {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"unexplainedBreaks\":[{}],\"unresolvedTrades\":[{}],\
+             \"unpriced\":[{}]}}",
+            strings(&self.unexplained_breaks),
+            strings(&self.unresolved_trades),
+            strings(&self.unpriced)
+        )
+    }
+}
+
+fn nav_gate_json(g: &Option<pb::NavGate>) -> String {
+    g.as_ref().map(|g| g.to_json()).unwrap_or_else(|| "null".into())
 }
 
 /// ⛔ THE FIGURES THAT DEPEND ON WHICH ENTRIES ARE RECOGNISED LIVE HERE, NOT ON
@@ -583,7 +599,8 @@ impl JsonView for pb::View {
              \"openDifference\":{},\"openBreakCount\":{},\"state\":{},\
              \"realizedGain\":{},\"basisRelieved\":{},\"shortTermGain\":{},\
              \"longTermGain\":{},\"unclassifiedGain\":{},\"openLotCount\":{},\
-             \"positionCount\":{},\"navStrike\":{},\"journalPosition\":{}}}",
+             \"positionCount\":{},\"navStrike\":{},\"journalPosition\":{},\
+             \"navGate\":{}}}",
             q(&self.name), q(&self.display_name), q(basis_name(self.basis)),
             q(&self.settlement_open_days.to_string()), q(&self.calendar),
             q(&self.holiday_count.to_string()), self.declared,
@@ -596,7 +613,8 @@ impl JsonView for pb::View {
             q(&self.short_term_gain), q(&self.long_term_gain),
             q(&self.unclassified_gain), q(&self.open_lot_count.to_string()),
             q(&self.position_count.to_string()), duration_json(&self.nav_strike),
-            q(&self.journal_position.to_string())
+            q(&self.journal_position.to_string()),
+            nav_gate_json(&self.nav_gate)
         )
     }
 }

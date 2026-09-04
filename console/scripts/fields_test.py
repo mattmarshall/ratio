@@ -131,6 +131,27 @@ NEEDLES: list[tuple[str, str]] = [
         "named on this sale — not a lot method",
         "a SpecID sale would not say the names are not a Method",
     ),
+    # ── NAV gate reasons (#188) ──────────────────────────────────────────
+    # ⚠ THE THREE FIRST-CLASS PHRASES, NOT THE BLOCKED BADGE. A console
+    # that printed "Blocked" and swallowed the refuse as HTTP 400 would
+    # still contain STATE_LABEL["BLOCKED"] and stay green. The cite is
+    # what goes red if chrome stops naming why the strike is refused.
+    (
+        "not ready to strike a NAV",
+        "the NAV gate banner is gone — a blocked fund would look ready",
+    ),
+    (
+        "unexplained break",
+        "an unexplained break would reach the operator as a bare HTTP 400",
+    ),
+    (
+        "unresolved trade",
+        "an unresolved trade would reach the operator as a bare HTTP 400",
+    ),
+    (
+        "unpriced — not held at zero",
+        "an unpriced position would not be citeable on the gate",
+    ),
     ("Realized gain", "the realized gain row is gone"),
     ("Short-term", "the short-term split is gone"),
     ("Long-term", "the long-term split is gone"),

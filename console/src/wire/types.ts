@@ -264,6 +264,27 @@ export interface Fund {
    * valid Fund. `lot_method = "average_cost"` stays refused.
    */
   averageCost: boolean;
+  /**
+   * Why this fund cannot strike a NAV. Same fold as `state === "BLOCKED"`.
+   *
+   * ⛔ `null` on ListFunds — the index does not fold. GetFund always
+   * sends an object (empty lists when nothing blocks) so chrome can tell
+   * "checked, clear" from "the list did not look". Unpriced stays empty
+   * unless a valuation date was named.
+   */
+  navGate: NavGate | null;
+}
+
+/**
+ * Citeable copy of what blocks a NAV strike.
+ *
+ * ⭐ THREE FIRST-CLASS REASONS. Chrome cites these sentences — unexplained
+ * break, unresolved trade, unpriced — and does not invent a fourth kind.
+ */
+export interface NavGate {
+  unexplainedBreaks: string[];
+  unresolvedTrades: string[];
+  unpriced: string[];
 }
 
 /**
@@ -341,6 +362,12 @@ export interface View {
    * by side differ by a recognition convention and never by staleness.
    */
   journalPosition: Int64;
+  /**
+   * Why this fund cannot strike a NAV. Copied from GetFund — one
+   * `blocking_at` fold. `null` on ListViews; GetView always sends an
+   * object, same as `Fund.navGate`.
+   */
+  navGate: NavGate | null;
 }
 
 /**

@@ -22,5 +22,16 @@
   "openLotCount": "252843",
   "positionCount": "12",
   "navStrike": "0.000403s",
-  "journalPosition": "6"
+  "journalPosition": "6",
+  "navGate": {
+    "unexplainedBreaks": [
+      "Cash and equivalents — the custodian statement and the journal disagree"
+    ],
+    "unresolvedTrades": [
+      "XS2434590128 — the instrument master has nothing under this identifier"
+    ],
+    "unpriced": [
+      "VWRL — 250 units"
+    ]
+  }
 }

@@ -71,6 +71,14 @@ FX; a missing rate reuses the #160 `Rates` refuse. FX rate
 providers stay Connect. This file does not close #178 (live rate
 Connect apps and a `/trade` picker remain). It does not start
 #163, #164, or #187.
+NAV gate refuse reasons stay citeable (#188): unexplained break,
+unpriced, and unresolved trade are first-class copy on GetFund /
+GetView (`nav_gate`, the same `blocking_at` fold the badge already
+reads) and on the fund overview / view chrome — never a bare HTTP
+400. Unpriced stays empty on that field unless a valuation date
+was named; the mark ticket cites unpriced when a date is. No new
+gate semantics. This file closes #188. It does not close #26,
+#186, or #157. #159 stays blocked.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 
@@ -292,6 +300,12 @@ or `sidepocket:*`.
   independently maintained, and one field apart within a month — which is
   exactly what the seam WAS: a screen saying BLOCKED and a command that never
   asked. `the_gate_and_the_fund_state_are_one_derivation` holds them together.
+  Chrome cites the same fold as `Fund.nav_gate` / `View.nav_gate` — unexplained
+  break, unpriced, unresolved trade — via `withRefusal` / `NavGateCite`, not a
+  bare HTTP 400. Unpriced stays empty on that field unless a valuation date
+  was named. `the_nav_gate_on_the_fund_is_the_same_fold_as_blocking_at`
+  holds the wire to the fold. This closes #188. It does not close #26,
+  #186, or #157.
 - ⛔ **AN EXPLANATION IS KEYED BY THE BREAK'S ID WITHIN ITS BOOK, NOT BY THE
   RESOURCE NAME.** The fund half of `funds/{fund}/breaks/{id}` says how the book
   is being SERVED — the same directory is `demo` on loopback and

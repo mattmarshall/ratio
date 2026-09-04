@@ -64,6 +64,38 @@ impl Blocking {
     }
 }
 
+/// Citeable copy of one `blocking_at` fold, plus an optional unpriced list.
+///
+/// ⛔ NOT A SECOND GATE. The badge reads `blocking_at`; this writes the
+/// same breaks and pending facts as sentences. Unpriced is empty unless
+/// the caller named a day — "unpriced" is not well-formed without as-of,
+/// the same limit a bare `ratio strike` already has.
+fn nav_gate_of(blocking: &Blocking, unpriced: &[(String, i64)]) -> pb::NavGate {
+    pb::NavGate {
+        unexplained_breaks: blocking
+            .breaks
+            .iter()
+            .map(|k| format!("{} — {}", k.account, k.cause))
+            .collect(),
+        unresolved_trades: blocking
+            .pending
+            .iter()
+            .map(|f| {
+                let detail = if f.detail.is_empty() {
+                    f.kind.as_str()
+                } else {
+                    f.detail.as_str()
+                };
+                format!("{} — {detail}", f.reference)
+            })
+            .collect(),
+        unpriced: unpriced
+            .iter()
+            .map(|(name, units)| format!("{name} — {units} units"))
+            .collect(),
+    }
+}
+
 /// One record in `explanations.jsonl`: why somebody decided a difference was
 /// acceptable.
 ///
@@ -2829,6 +2861,9 @@ impl Console {
             trial_balance_difference: String::new(),
             entry_count,
             config_digest,
+            // ⚠ THE INDEX DOES NOT FOLD. `nav_gate` is GetFund / GetView —
+            // putting it here would be the fold ListFunds exists to avoid.
+            nav_gate: None,
         })
     }
 
@@ -3144,6 +3179,10 @@ impl Console {
             trial_balance_difference: (tb.debits - tb.credits).to_string(),
             entry_count: entries_len as i64,
             config_digest: b.active()?.map(|d| d.as_str().to_string()).unwrap_or_default(),
+            // ⭐ THE SAME FOLD THE BADGE JUST READ. Empty lists when nothing
+            // blocks, not absent — ListFunds is the one that leaves this
+            // unset. Unpriced stays empty: no valuation date was named.
+            nav_gate: Some(nav_gate_of(&blocking, &[])),
         })
     }
 
@@ -3227,7 +3266,12 @@ impl Console {
             .sum::<i64>()
             .to_string();
         out.open_break_count = open.len() as i64;
-        out.state = self.get_fund(&format!("funds/{id}"))?.state;
+        // ⛔ ONE FUND FOLD, BOTH THE BADGE AND THE GATE COPY. Two calls
+        // would be two answers to what blocks, which is the disagreement
+        // `blocking_at` exists to make impossible.
+        let fund = self.get_fund(&format!("funds/{id}"))?;
+        out.state = fund.state;
+        out.nav_gate = fund.nav_gate;
         out.realized_gain = realized.map(|r| r.gain.to_string()).unwrap_or_default();
         out.basis_relieved = realized.map(|r| r.basis.to_string()).unwrap_or_default();
         out.short_term_gain = realized.map(|r| r.short_term.to_string()).unwrap_or_default();
@@ -12033,6 +12077,65 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let c2 = Console::new(&e);
         assert!(c2.blocking_at("demo").unwrap().is_empty());
         assert!(!blocked_now(&c2));
+    }
+
+    #[test]
+    fn the_nav_gate_on_the_fund_is_the_same_fold_as_blocking_at() {
+        // ⭐ CHROME READS THIS FIELD, AND IT MUST BE blocking_at IN SENTENCES.
+        // A badge that said BLOCKED while nav_gate was empty (or a second
+        // fold that drifted a field apart) is the bare-HTTP-400 defect:
+        // the operator sees a status and not the unexplained break.
+        let d = book_with_a_break("navgatecite", 200_000);
+        let c = Console::new(&d);
+        let blocking = c.blocking_at("demo").unwrap();
+        let f = c.get_fund("funds/demo").unwrap();
+        let gate = f.nav_gate.as_ref().expect("GetFund always folds the gate");
+        assert_eq!(gate.unexplained_breaks.len(), blocking.breaks.len());
+        assert!(
+            gate.unexplained_breaks[0].contains(&blocking.breaks[0].account),
+            "the cite names the break: {:?}",
+            gate.unexplained_breaks
+        );
+        assert!(
+            gate.unpriced.is_empty(),
+            "unpriced is not well-formed without as-of: {:?}",
+            gate.unpriced
+        );
+
+        Console::new(&d)
+            .as_actor("e.marsh")
+            .accept_explanation(&demo_break("1"), "known and accepted")
+            .unwrap();
+        let after = c.get_fund("funds/demo").unwrap();
+        let cleared = after.nav_gate.as_ref().expect("still folded, now empty");
+        assert!(cleared.unexplained_breaks.is_empty(), "{cleared:?}");
+        assert!(cleared.unresolved_trades.is_empty(), "{cleared:?}");
+    }
+
+    #[test]
+    fn nav_gate_cites_the_three_reasons_from_the_same_lists() {
+        // The chrome vocabulary: unexplained break / unresolved trade /
+        // unpriced. Inventing a fourth kind, or dropping one of these
+        // three, is the silent/400 defect this field exists to prevent.
+        let blocking = Blocking {
+            breaks: vec![pb::Break {
+                account: "Investments".into(),
+                cause: "the custodian statement and the journal disagree".into(),
+                ..Default::default()
+            }],
+            pending: vec![pb::PendingFact {
+                reference: "XS2434590128".into(),
+                detail: "the instrument master has nothing under this identifier".into(),
+                ..Default::default()
+            }],
+        };
+        let gate = nav_gate_of(&blocking, &[("VWRL".into(), 100)]);
+        assert!(gate.unexplained_breaks[0].contains("Investments"), "{gate:?}");
+        assert!(
+            gate.unresolved_trades[0].contains("XS2434590128"),
+            "{gate:?}"
+        );
+        assert!(gate.unpriced[0].contains("VWRL"), "{gate:?}");
     }
 
     #[test]

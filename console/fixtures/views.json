@@ -24,7 +24,8 @@
       "openLotCount": "252843",
       "positionCount": "12",
       "navStrike": "0.000403s",
-      "journalPosition": "6"
+      "journalPosition": "6",
+      "navGate": null
     },
     {
       "name": "funds/harbourline-global-value/views/ibor",
@@ -50,7 +51,8 @@
       "openLotCount": "252843",
       "positionCount": "12",
       "navStrike": "0.000403s",
-      "journalPosition": "6"
+      "journalPosition": "6",
+      "navGate": null
     }
   ],
   "nextPageToken": ""
