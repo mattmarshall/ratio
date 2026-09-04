@@ -1429,7 +1429,12 @@ impl Console {
         // journal is free text on somebody else's screen.
         let memo = format!("{id} via {}", rule.id);
 
-        let previous = self.default_view_nav(&fund)?;
+        // ⛔ UNSET WHEN TRANSLATION REFUSES, NOT A FAILED WRITE. The journal
+        // already accepts a conserved EUR expense; failing ApplyEvent because
+        // GetFund cannot yet quote a NAV would make a missing Connect rate
+        // fact look like a refused posting. GetFund / ListAccounts still
+        // hit the #160 door.
+        let previous = self.cited_nav(&fund)?;
 
         let entry = ratio_store::JournalEntry {
             id: id.to_string(),
@@ -1463,26 +1468,42 @@ impl Console {
             // TRANSLATED one. The preview and the commit disagreed on the same
             // event, and a preview that does not predict the commit is worse
             // than no preview.
-            let (_, rates) = rates_of(&fund, &path, &b)?;
-            let mut delta = 0i128;
-            for p in postings.iter().filter(|p| {
-                matches!(
-                    chart.iter().find(|a| a.dim == p.dim).map(|a| a.account_type),
-                    Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
-                )
-            }) {
-                let factor = rates.factor_of_optional(p.currency.as_deref()).with_context(|| {
-                    format!(
-                        "this event is in {} and the fund has no rate for it — a preview that \
-                         guesses a rate is a preview of a different event",
-                        p.currency.as_deref().unwrap_or("no currency")
-                    )
-                })?;
-                delta += p.amount as i128 * factor as i128 / ratio_project::RATE_SCALE as i128;
+            //
+            // ⚠ A MISSING RATE LEAVES THE PREVIEW UNSET rather than guessing
+            // par. That is the same #160 door; it is not a refused event.
+            match rates_of(&fund, &path, &b) {
+                Ok((_, rates)) => {
+                    let mut delta = 0i128;
+                    let mut translatable = true;
+                    for p in postings.iter().filter(|p| {
+                        matches!(
+                            chart.iter().find(|a| a.dim == p.dim).map(|a| a.account_type),
+                            Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
+                        )
+                    }) {
+                        let Some(factor) = rates.factor_of_optional(p.currency.as_deref()) else {
+                            translatable = false;
+                            break;
+                        };
+                        delta += p.amount as i128 * factor as i128 / ratio_project::RATE_SCALE as i128;
+                    }
+                    if translatable && !previous.is_empty() {
+                        (previous.parse::<i128>().unwrap_or(0) + delta).to_string()
+                    } else {
+                        String::new()
+                    }
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("no rate") || msg.contains("mixing denominations") {
+                        String::new()
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
-            (previous.parse::<i128>().unwrap_or(0) + delta).to_string()
         } else {
-            self.default_view_nav(&fund)?
+            self.cited_nav(&fund)?
         };
 
         Ok(pb::ApplyEventResponse {
@@ -2987,6 +3008,27 @@ impl Console {
         let (_, rates) = rates_of(fund, &path, &b)?;
         let proj = self.projection(fund)?;
         Ok(nav_from(&b, &proj, &view, &rates)?.0.to_string())
+    }
+
+    /// NAV as ApplyEvent cites it on the response.
+    ///
+    /// ⛔ EMPTY WHEN THE #160 DOOR REFUSES, NEVER A GUESSED PAR. GetFund and
+    /// ListAccounts still return the sentence. A conserved post must not
+    /// fail because a Connect rate fact has not arrived — after `append`
+    /// the entry is already on the journal, and an Err here would tell the
+    /// caller the write failed.
+    fn cited_nav(&self, fund: &str) -> Result<String> {
+        match self.default_view_nav(fund) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("no rate") || msg.contains("mixing denominations") {
+                    Ok(String::new())
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 
     pub fn get_fund(&self, name: &str) -> Result<pb::Fund> {
@@ -6681,7 +6723,18 @@ mod tests {
 
         let mut eur = household_req("eur-spend", "living_expense", "40.00", 2026, 3, 10);
         eur.currency = "EUR".into();
-        c.apply_event(&eur).unwrap();
+        let posted_evt = c.apply_event(&eur).unwrap();
+        assert!(
+            posted_evt.net_asset_value.is_empty(),
+            "a translated NAV without a rate fact is unset, not a silent USD: {:?}",
+            posted_evt.net_asset_value
+        );
+
+        // A second conserved post must still write. Refusing the journal
+        // because NAV is unset is the silent USD wearing a different costume.
+        let mut usd = household_req("usd-spend", "living_expense", "5.00", 2026, 3, 11);
+        usd.currency = "USD".into();
+        c.apply_event(&usd).unwrap();
 
         // ⛔ NOT GetFund. A USD-base household holding EUR without a rate
         // fact must refuse a translated NAV — that is the #160 door.
