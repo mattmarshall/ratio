@@ -182,7 +182,7 @@ implementation copies from the book's live RuleSet, not from this list.
 
 | Kind | Ingest mappings (for `books:ingest`) | Posting templates a first-party app might be listed for |
 |---|---|---|
-| Personal | `bank-statement`, `loan-payment`, `brokerage-statement`, `brokerage-positions` | `living_expense`, `household_income`, `card_charge`, transfers, `spend_*`, `receive_income`, named-loan interest/principal |
+| Personal | `bank-statement`, `loan-payment`, `brokerage-statement`, `brokerage-positions` | `living_expense`, `household_income`, `card_charge`, transfers, `spend_*`, `receive_income`, named-loan interest/principal, `forecast_*`, `scheduled_*` |
 | Investment | `custodian-positions`, `prime_equity_trades`, `capital-calls`, `subscriptions` | `contribute_*`, `distribute_*`, `allocate_*`, `commit_*`, `call_*`, `subscribe_*`, `redeem_*`, `equity_purchase`, `disposal_proceeds` |
 | Project | `project-invoices`, `change-orders`, `purchase-orders` | `project_cost*`, `vendor_invoice*`, `progress_bill`, `pay_vendor`, `earn_progress`, `collect_receivable`, `approve_co*`, `award_commitment*` |
 | Operating | (kind chart; no fund feed) | `invoice_customer`, `collect_receivable`, `vendor_bill`, `pay_vendor` |
@@ -245,9 +245,15 @@ open:
    this leftover either: it requests `books:read`, `budget:read`, and
    `billing:read`, it does not open the grant path, and this file still
    does not close #179.
+   First-party Personal cash-forecast predictor scaffolds live at
+   `connect/bank-balance-predictor/` and `connect/calendar-bills/`
+   ([#163](https://github.com/mattmarshall/ratio/issues/163)). They are
+   not this leftover either: they request `journals:post` for
+   allowlisted `forecast_*` / `scheduled_*` templates, they do not
+   open the grant path, and this file still does not close #163.
 5. **`webhooks:journal`, `audit:export`, `nav:strike` as a write RPC** —
    reserved scopes; the surfaces are not built.
 
 This file does not close #150. Nothing here closes #5 (console wash
 flag), #9 (lot-relief UI cites / pooled holding-period leftover),
-#22, #166, #168, #169, #172, #184, or #179.
+#22, #163, #166, #168, #169, #172, #184, or #179.

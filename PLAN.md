@@ -2950,6 +2950,70 @@ book, or a book of actuals only, leaves the forecast unset — not
 show envelope coaching, payroll, a bank-balance predictor, calendar
 bills sync, or a client portal.
 
+### Amendment, 2026-09-04 — Personal cash-forecast Connect predictors, and the grant path still does not open
+
+[#163](https://github.com/mattmarshall/ratio/issues/163) asked for bank
+balance predictors and calendar bills sync as Connect apps after the
+core cite landed (`/cashflow`, `filter=forecast-YYYY[-MM]`; unset when
+none). The issue body still says `journal:append`. That string is an
+alias. The catalog already said a cash forecast stays a Connect app
+and that `journals:post` is the write grant. What landed is those two
+apps as sibling trees, not a kernel method and not a `screensFor` fork.
+
+**What this amendment records.**
+[`connect/bank-balance-predictor/`](connect/bank-balance-predictor/)
+and [`connect/calendar-bills/`](connect/calendar-bills/) are first-party
+WorkOS Connect OAuth applications for `BookKind` PERSONAL. Both declare
+`statements:read` and `journals:post` — the frozen names, not the issue
+body's stale alias. The predictor instantiates CreateBook(Personal)
+`forecast_income` / `forecast_spend`. The bills app instantiates
+`scheduled_income` / `scheduled_spend`. ApplyEvent already marks
+`JournalEntry.kind` from the rule-id prefix; a future-dated
+`spend_cash` stays an actual and is refused here. `journals:post` is
+allowlisted per `client_id`; an empty allowlist refuses every post. A
+dated row on or before closed-through refuses the batch. Instantiated
+legs must conserve in every currency; `[USD +100, EUR −100]` is not a
+posting. Money is minor units, split on the point. Payroll and
+envelope kinds refuse — #164 stays refused, and this file does not
+rebuild envelope chrome. No new `Method` / `Order` / `lot_method`
+variant. PERSONAL chrome is unchanged — `screensFor` is not forked.
+Project EAC stays [`connect/eac-forecast/`](connect/eac-forecast/).
+**a Personal bank-balance predictor Connect app** and **a Personal
+calendar-bills Connect app** are the Built phrases this amendment adds.
+
+**What this is NOT:**
+
+- **Not token validation.** Connect access tokens are still not accepted
+  on `/v1`. `fetch_statements()` and `deliver()` refuse. Accepting
+  Connect scopes is leftover #22 / #150. Write-route actor binding
+  landed (#151). This file does not close #150.
+- **Not live bank or calendar OAuth.** No Plaid / MX / TrueLayer token,
+  no Google Calendar / Outlook grant. The mappers accept a normalized
+  predicted movement or a dated occurrence. Provider wiring stays
+  leftover on #163.
+- **Not the #218 core cite.** `/cashflow` already folds posted
+  `forecast_*` / `scheduled_*`. This file does not redo that slice.
+- **Not envelopes or payroll.** Those stay refused. Envelope coaching
+  is #164. This file does not reopen #164.
+- **Not a kernel RPC, not `ratio watch`, not Console product UI.**
+  The forecast fold and the closed-through gate stay where they are.
+- **Not #165's live bank-feed OAuth leftover.** That door stays on
+  #165. This file does not close #165.
+
+Nothing on the *Explicitly not building* list moved. Client portal, CRM,
+tax e-file, vendor portal, and waterfall stay Connect-apps or stay
+refused. This file does not close #163 — grant path and live provider
+OAuth remain. It does not close #164, #165, #168, or #150. It does
+not reopen #98 or #218.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a fixture predicted deposit mapping to `forecast_income`,
+a fixture rent mapping to `scheduled_spend`, a closed March refusing a
+15 March row, an empty allowlist refusing everything, `journal:append`
+being rejected as a scope, and payroll / envelope kinds being refused.
+It cannot show a Connect token opening a book, a live bank or calendar
+login, envelope coaching, payroll, or a posting that reached `/v1`.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

@@ -1,0 +1,39 @@
+{
+  "name": "Ratio calendar bills sync",
+  "book_kind": "PERSONAL",
+  "issue": 163,
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "statements:read",
+      "journals:post"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read"
+    ]
+  },
+  "journals_post_allowlist": {
+    "client_id": "client_ratio_calendar_bills",
+    "templates": [
+      "scheduled_income",
+      "scheduled_spend"
+    ]
+  },
+  "scheduled_journals": {
+    "status": "scheduled_* only",
+    "note": "This app instantiates CreateBook(Personal) scheduled_income / scheduled_spend. ApplyEvent marks JournalEntry.kind from the rule-id prefix. A future-dated spend_cash is still an actual and is refused here. forecast_* is the bank-balance-predictor sibling. Payroll and envelope kinds are not invented. Recurrence rules stay in the calendar; each occurrence is a dated row."
+  },
+  "calendar_oauth": {
+    "status": "not wired",
+    "note": "Live calendar OAuth (Google Calendar, Outlook, or similar) is leftover on #163. This scaffold accepts a normalized dated occurrence, not a provider SDK and not an rrule expander in the journal."
+  },
+  "grant_path": {
+    "status": "not built",
+    "note": "Connect access tokens are not accepted on /v1. Token validation is leftover #22 / #150. Write-route actor binding landed (#151). This file does not close #150 or #163. It does not reopen #164."
+  }
+}

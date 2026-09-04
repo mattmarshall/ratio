@@ -1,0 +1,35 @@
+package(default_visibility = ["//visibility:public"])
+
+# The calendar-bills Connect app is a sibling tree. Bazel does not
+# build a WorkOS binary here; it holds the mapper to the catalog, to
+# CreateBook(Personal) scheduled_* templates, and to the refusals
+# #163 named.
+#
+# ⛔ IT DOES NOT SAY THE GRANT PATH EXISTS. fetch_statements() and
+# deliver() must refuse. Token validation is leftover #22 / #150.
+# Live calendar OAuth is leftover on #163. Payroll / envelope kinds
+# refuse. Recurrence is not expanded into the journal. screensFor
+# is not forked. No kernel forecast RPC.
+sh_test(
+    name = "bills_test",
+    size = "small",
+    srcs = ["bills_test.sh"],
+    args = [
+        "$(rootpath bills.py)",
+        "$(rootpath bills_test.py)",
+        "$(rootpath app.json)",
+        "$(rootpath //crates/ratio-console:src/book.rs)",
+        "$(rootpath //:docs/connect-scopes.md)",
+        "$(rootpath //console:src/lib/screens.ts)",
+        "$(rootpath //proto:ratio/console/v1/console.proto)",
+    ],
+    data = [
+        "bills.py",
+        "bills_test.py",
+        "app.json",
+        "//crates/ratio-console:src/book.rs",
+        "//:docs/connect-scopes.md",
+        "//console:src/lib/screens.ts",
+        "//proto:ratio/console/v1/console.proto",
+    ],
+)

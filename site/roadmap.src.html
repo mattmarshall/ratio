@@ -162,6 +162,11 @@ __STYLE__
           shopping, envelope coaching, or a bank-balance predictor).
           A cash forecast cites posted scheduled / forecast journal
           kinds only — unset when none exist, not a fake zero.
+          Bank-balance predictor and calendar-bills Connect app
+          scaffolds post that <code>forecast_*</code> /
+          <code>scheduled_*</code> material; the grant path and live
+          bank / calendar OAuth stay leftover on
+          <a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>.
           Personal books declare
           currencies — unset stays unset, not a silent USD; unbalanced
           FX is refused; rate providers stay Connect.
@@ -438,6 +443,11 @@ __STYLE__
           PROJECT books; the grant path, live OAuth, and a live
           <code>ListBooks</code> filter stay leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/179">#179</a>.
+          Bank-balance predictor and calendar-bills Connect app
+          scaffolds post allowlisted Personal <code>forecast_*</code>
+          / <code>scheduled_*</code> templates; the grant path and
+          live bank / calendar OAuth stay leftover on
+          <a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>.
           What it still does not have is a client portal — and on the fund side it is
           still the exception queue, a difference at its own address, and
           whether a fund can close. Household budget envelopes, a project
@@ -686,7 +696,21 @@ __STYLE__
       membership-visible PROJECT books; unset stays unset, never a
       silent program billed or collected of 0.00, the grant path is
       not built, and a mega-book stays refused.
-      Equalization, drip, and side-pocket stay Connect
+      A
+      <a href="https://github.com/mattmarshall/ratio/tree/main/connect/bank-balance-predictor">bank-balance predictor Connect app</a>
+      (<a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>)
+      maps predicted movements onto allowlisted
+      <code>forecast_income</code> / <code>forecast_spend</code>;
+      unset cited cash is not a silent 0.00 baseline, the grant
+      path is not built, and live bank OAuth is leftover on that
+      issue. A
+      <a href="https://github.com/mattmarshall/ratio/tree/main/connect/calendar-bills">calendar-bills Connect app</a>
+      (same issue) maps dated occurrences onto allowlisted
+      <code>scheduled_income</code> / <code>scheduled_spend</code>;
+      an <code>rrule</code> is refused rather than expanded, the
+      grant path is not built, and live calendar OAuth is leftover.
+      Neither invents envelopes or payroll, and neither grows a
+      kernel RPC. Equalization, drip, and side-pocket stay Connect
       (<a href="https://github.com/mattmarshall/ratio/issues/177">#177</a>):
       valuation / ops packaging on existing <code>nav:read</code> /
       <code>partners:read</code> / <code>journals:post</code> scopes,
