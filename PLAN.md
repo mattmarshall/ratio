@@ -1773,6 +1773,67 @@ close, and a second subject receiving `[]` / refuse for that book
 when the console is `scoped`. It cannot show a Connect token opening
 a book, and it cannot show two users isolated on the open demo host.
 
+### Amendment, 2026-09-04 — a Project AIA pay-app Connect app, and G702 product UI still does not live here
+
+[#184](https://github.com/mattmarshall/ratio/issues/184) asked for an
+AIA G702/G703 pay-app pack from Project billing figures without stuffing
+G702 product UI into `ratio watch` or growing a vendor portal in core.
+`/billing` and `/budget` stay core. The catalog already said AIA G702
+product UI stays a Connect app. What landed is that app as a sibling
+tree, not a kernel method.
+
+**What this amendment records.** [`connect/aia-pay-app/`](connect/aia-pay-app/)
+is a first-party WorkOS Connect OAuth application for `BookKind` PROJECT.
+It declares `billing:read`, `budget:read`, and `statements:read` — the
+frozen names, not the catalog aliases `projects:billing:read` /
+`projects:budget:read`. It is read-only relative to the journal:
+`journals:post` is not requested. Billing, budget, retainage, and
+change-order cites become a G702-ish application CSV plus a G703-ish
+schedule of values, companions (earned, collected, vendor retainage),
+and an unset sheet naming what the journal cannot support. Revised
+contract is original plus approved when `[project] budget` is set. An
+unposted change order leaves the change line unset; remaining to bill
+stays unset until billed posts — never the whole contract as a fake
+remainder. An omitted prior application is not previous-certificates
+0.00. Billed is Progress billings; earned and phase cost are not
+substitutes. No percentage. Unset stays unset. Money is minor units,
+split on the point. No new `Method` / `Order` / `lot_method` variant.
+PROJECT chrome is unchanged — `screensFor` is not forked. **a Project
+AIA pay-app Connect app** is the Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not a Connect authorizer.** Connect access tokens are still not
+  accepted on `/v1`. `fetch_cites()` and `deliver()` refuse. Write-route
+  actor binding landed (#151). Accepting Connect scopes is leftover
+  #22 / #150. This file does not close #22. It does not reopen #151.
+- **Not a licensed AIA PDF, not a vendor portal, not G702 product UX.**
+  `render_form()` refuses. Live form / portal leftovers stay on #184
+  and #172.
+- **Not EAC / forecast.** Those stay on #169. `/budget` still does not
+  forecast.
+- **Not #150's read-only reference skeleton.** That leftover is
+  `books:read` + `statements:read` proving the door opens. This app
+  requests `billing:read` and `budget:read` and does not open the door.
+- **Not a kernel RPC, not `ratio watch`, not Console product UI.**
+  `/billing` and `/budget` stay the core cites.
+
+Nothing on the *Explicitly not building* list moved. Client portal, CRM,
+tax e-file, vendor portal, and waterfall stay Connect-apps or stay
+refused. This file does not close #184 — grant path (leftover #22),
+live OAuth, and a licensed AIA form remain. It does not close #165,
+#166, or #168. It does not close #150. It does not close #22. It
+does not close #181. It does not reopen #151. It does not start
+#169 or #172.
+
+**What a walk-through can and cannot show** (demo readiness, #27). It can
+show a fixture job of original $10,000 / CO $500 / billed $1,000 mapping
+to G702-ish rows, a missing billed cite leaving billed and remaining
+unset rather than inventing the whole contract as leftover, an omitted
+prior leaving previous certificates unset, and `projects:billing:read`
+being rejected as a scope. It cannot show a Connect token opening a
+book, a licensed AIA PDF, or live G702 product UX beyond the pack.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

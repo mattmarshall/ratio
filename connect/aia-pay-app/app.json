@@ -1,0 +1,31 @@
+{
+  "name": "Ratio AIA pay-app pack",
+  "book_kind": "PROJECT",
+  "issue": 184,
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "billing:read",
+      "budget:read",
+      "statements:read"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read",
+      "projects:budget:read",
+      "projects:billing:read"
+    ]
+  },
+  "licensed_aia_form": {
+    "status": "refused",
+    "note": "No licensed AIA G702/G703 PDF, no vendor portal, no packing inside Ratio core. This app emits G702-ish / G703-ish CSV from billing, budget, retainage, and change-order cites. A copyrighted AIA form stays leftover on #184 forever as a product door — it is not a kernel RPC."
+  },
+  "grant_path": {
+    "status": "not built",
+    "note": "Connect access tokens are not accepted on /v1. Accepting Connect scopes is leftover #22 / #150. Write-route actor binding landed (#151). This file does not close #22, #150, or #184. It does not reopen #151."
+  }
+}

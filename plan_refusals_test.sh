@@ -128,6 +128,12 @@ BUILT=(
   # this check would have stayed green whatever was built. The
   # sentence it matches is in the 2026-09-04 PoolPeriod amendment.
   "the pooled holding-period category is a date"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The Project AIA pay-app Connect app is not on the refusal list —
+  # AIA G702 product UI stays refused; this is the product door the
+  # catalog already named. The sentence it matches is in the 2026-09-04
+  # pay-app amendment.
+  "a Project AIA pay-app Connect app"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

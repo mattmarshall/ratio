@@ -48,6 +48,7 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//connect/bank-feed:mapper_test` | Personal bank-feed mapper (#165): canonical scopes, empty-allowlist / closed-through / conservation refusals — not that a token is accepted |
 | `//connect/tax-pack:pack_test` | Personal tax-pack builder (#166): canonical scopes, 8949-ish CSV, mixed-date category refusal — not that a token is accepted and not an IRS e-file |
 | `//connect/goals:goals_test` | Personal net-worth goals / scenarios (#168): canonical scopes, opt-in / empty-allowlist / closed-through refusals — not that a token is accepted and not a cash forecast |
+| `//connect/aia-pay-app:pack_test` | Project AIA pay-app packer (#184): canonical scopes, G702-ish / G703-ish CSV, unset billed / retainage / CO refusal — not that a token is accepted and not a licensed AIA form |
 | `//marketing:language_test` | the licensing language sweep |
 
 `paths-ignore` covers `site/**` and `**/*.md` only. `marketing/`, `paper/` and

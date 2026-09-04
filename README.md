@@ -81,6 +81,11 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
   ([#168](https://github.com/mattmarshall/ratio/issues/168)). Scaffold;
   cites sheet / bridge / cash-flow; scenario journals post only on
   opt-in; Connect tokens are not accepted on `/v1`; not a cash forecast.
+- **[connect/aia-pay-app/](connect/aia-pay-app/)** — first-party Connect
+  app that emits G702-ish / G703-ish CSV from Project billing and
+  budget cites ([#184](https://github.com/mattmarshall/ratio/issues/184)).
+  Scaffold; missing cites stay unset; Connect tokens are not accepted
+  on `/v1`; a licensed AIA form is refused.
 
 ## License
 
