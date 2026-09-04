@@ -40,6 +40,7 @@ function acct(
     abnormal: false,
     postingCount,
     currencyTotals: [],
+    units: "",
   };
 }
 
@@ -157,6 +158,7 @@ const periodAcct = (
   abnormal: false,
   postingCount,
   currencyTotals: [],
+  units: "",
 });
 
 describe("a per-partner capital account statement", () => {

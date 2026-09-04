@@ -32,6 +32,7 @@ const acct = (
   abnormal: false,
   postingCount,
   currencyTotals: [],
+  units: "",
 });
 
 describe("a period NAV roll-forward", () => {

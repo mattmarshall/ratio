@@ -43,6 +43,7 @@ function acct(
     abnormal: false,
     postingCount,
     currencyTotals: [],
+    units: "",
   };
 }
 

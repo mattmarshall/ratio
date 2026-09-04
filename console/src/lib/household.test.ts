@@ -22,6 +22,7 @@ function acct(
     abnormal: false,
     postingCount: "1",
     currencyTotals: [],
+    units: "",
   };
 }
 

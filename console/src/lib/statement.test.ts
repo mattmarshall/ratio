@@ -20,6 +20,7 @@ function acct(type: Account["type"], balance: string): Account {
     abnormal: false,
     postingCount: "1",
     currencyTotals: [],
+    units: "",
   };
 }
 
