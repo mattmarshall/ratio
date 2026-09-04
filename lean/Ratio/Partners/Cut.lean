@@ -180,8 +180,11 @@ theorem slices_sum (figure total : Int) :
         have ih := slices_sum figure total ss rest hrest
         have hs := slice_exact figure s.weight total a hslice
         simp [allocatedSum, weights]
-        rw [Int.add_mul, hs, ih]
-        omega
+        -- (a + rest) * total = a*total + rest*total
+        --                   = figure*weight + figure*weights
+        --                   = figure * (weight + weights)
+        -- omega treats those products as independent atoms.
+        rw [Int.add_mul, hs, ih, Int.mul_add]
 
 theorem positive_weights_nonneg :
     ∀ ss, positive ss = true → 0 ≤ weights ss
