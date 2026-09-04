@@ -469,8 +469,11 @@ or `sidepocket:*`.
 - ⭐ **CreateBook seeds ingest templates per kind** — `bank-statement`
   (Personal: bank/card CSV → cash and expense claims) **and** `loan-payment`
   (Personal: principal + interest columns → two balanced rules merged into
-  one conserved entry), `project-invoices` (Project: vendor invoice/cost CSV
-  → costs and payables), `change-orders` (Project: Kind `approve_co_site` /
+  one conserved entry),   `project-invoices` (Project: job-cost / AP / progress-bill CSV
+  → `project_cost*` / `vendor_invoice*` / `progress_bill` / `pay_vendor` /
+  `earn_progress`; an unidentified vendor pends; `hold_retainage` and
+  `capitalize_wip` in Kind are refused — ingest does not invent retainage
+  or WIP), `change-orders` (Project: Kind `approve_co_site` /
   `deduct_co_site` / … → the work-package equity pair; no entity master —
   the phase is a chart dim), `purchase-orders` (Project: Kind
   `award_commitment_site` / `release_commitment_site` / … → the awarded-
@@ -488,7 +491,10 @@ or `sidepocket:*`.
   `console/src/lib/templates.ts` `templatesForKind` is the fixture-side filter;
   `//crates/ratio-console:ratio-console_test` holds the seed and the closed
   loop: CreateBook → entity master → ingest → admit, journal only the
-  admitted trades, VWRL left pending the same way `LEAVE_ONE_PENDING` does.
+  admitted trades, VWRL left pending the same way `LEAVE_ONE_PENDING` does;
+  a Project book runs the same loop on `project-invoices` (identified AP /
+  progress-bill / cost post, UNKNOWN SUB pending, retainage and WIP kinds
+  refused).
   ⭐ **The live custodian loop (#155) is that path plus recon.** Ingest
   `prime_equity_trades` and `custodian-positions`, admit, then
   `ratio recon --from-ingest` (or `Console::recon_from_ingest`). The
@@ -687,6 +693,20 @@ or `sidepocket:*`.
   Connect grants stay on #150 / #22. This file does not close #184
   (grant path leftover #22 and licensed form remain). The seeded
   demo funds remain investment books.
+- ⚠ **A project job-cost / AP statement-ingest walk-through (#171 / #27).**
+  CreateBook(Project) seeds `project-invoices` as the job-cost / AP /
+  progress-bill mapping. Ingest a fixture: identified `invoice_site` /
+  `progress_bill` / `cost` rows admit onto `journal.jsonl`, an unmatched
+  vendor pends (the same queue as a recon break), the trial balance
+  still ties, `/billing` cites billed from the progress-bill, and
+  phase cost lands on the named work package. `hold_retainage` and
+  `capitalize_wip` in Kind are refused — retainage and WIP stay
+  **unset**, not a silent split of the invoice. `collect_receivable`
+  stays on `/billing` (#173). ⛔ The walk-through cannot show a vendor
+  portal, GC SaaS sync, AIA G702 product UI, EAC / forecast, or a
+  client portal. Those stay Connect (#172 / #184 / #169). This file
+  closes #171. It does not close #172, #184, #169, #155, or #150.
+  The seeded demo funds remain investment books.
 - ⚠ **An operating-business walk-through (#108).** CreateBook(Operating)
   writes an independent Book — no Fund, no WorkOS organization — with
   cash, AR, AP, operating revenue/expense, owner equity, and retained

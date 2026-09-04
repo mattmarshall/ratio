@@ -199,6 +199,17 @@ BUILT=(
   # payment processors and a fake collected 0.00 stay refused. The
   # sentence it matches is in the 2026-09-04 #173 amendment.
   "cash application on /billing"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Live custodian statement ingest is not on the refusal list —
+  # broker OAuth and fund-volume recon stay refused. The sentence
+  # it matches is in the 2026-09-04 #155 amendment (already on main).
+  "live custodian statement ingest"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Job-cost / AP statement ingest is not on the refusal list —
+  # retainage invention, a vendor portal, and a second recon engine
+  # stay refused. The sentence it matches is in the 2026-09-04 #171
+  # amendment.
+  "job-cost / AP statement ingest"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
