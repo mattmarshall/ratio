@@ -58,6 +58,7 @@ describe("ingest templates", () => {
     expect(INGEST_TEMPLATE_KIND["custodian-positions"]).toBe("INVESTMENT");
     expect(INGEST_TEMPLATE_KIND["prime_equity_trades"]).toBe("INVESTMENT");
     expect(INGEST_TEMPLATE_KIND["capital-calls"]).toBe("INVESTMENT");
+    expect(INGEST_TEMPLATE_KIND.subscriptions).toBe("INVESTMENT");
     expect(INGEST_TEMPLATE_KIND["project-invoices"]).toBe("PROJECT");
     expect(INGEST_TEMPLATE_KIND["change-orders"]).toBe("PROJECT");
     expect(INGEST_TEMPLATE_KIND["purchase-orders"]).toBe("PROJECT");
@@ -82,13 +83,16 @@ describe("ingest templates", () => {
       "custodian-positions",
       "prime_equity_trades",
       "capital-calls",
+      "subscriptions",
     ]);
     expect(personal).not.toContain("custodian-positions");
     expect(personal).not.toContain("prime_equity_trades");
     expect(personal).not.toContain("capital-calls");
+    expect(personal).not.toContain("subscriptions");
     expect(project).not.toContain("custodian-positions");
     expect(project).not.toContain("prime_equity_trades");
     expect(project).not.toContain("capital-calls");
+    expect(project).not.toContain("subscriptions");
     expect(operating).not.toContain("custodian-positions");
     expect(operating).not.toContain("project-invoices");
     expect(operating).not.toContain("bank-statement");
@@ -114,6 +118,7 @@ describe("ingest templates", () => {
       "custodian-positions",
       "prime_equity_trades",
       "capital-calls",
+      "subscriptions",
       "vendor_eod_prices",
     ]);
     expect(
@@ -160,6 +165,12 @@ describe("ingest templates", () => {
     expect(need("capital-calls").form).toMatch(/one capital per row/);
     expect(need("capital-calls").form).toMatch(/commit_lp   -> commit_lp/);
     expect(need("capital-calls").form).toMatch(/call_lp     -> call_lp/);
+    expect(need("subscriptions").factKind).toBe("capital");
+    expect(need("subscriptions").posts).toBe(true);
+    expect(need("subscriptions").form).toMatch(/template subscriptions \{/);
+    expect(need("subscriptions").form).toMatch(/one capital per row/);
+    expect(need("subscriptions").form).toMatch(/subscribe   -> subscribe/);
+    expect(need("subscriptions").form).toMatch(/redeem      -> redeem/);
     expect(need("change-orders").factKind).toBe("change");
     expect(need("change-orders").posts).toBe(true);
     expect(need("change-orders").form).toMatch(/template change-orders \{/);
@@ -205,6 +216,9 @@ describe("ingest templates", () => {
     expect(sampleHeader("capital-calls.csv")).toBe(
       "CallRef,Date,Amount,Ccy,Kind",
     );
+    expect(sampleHeader("subscriptions.csv")).toBe(
+      "Ref,Date,Amount,Ccy,Quantity,Kind",
+    );
     expect(sampleHeader("change-orders.csv")).toBe(
       "ChangeRef,Date,Amount,Ccy,Memo,Kind",
     );
@@ -227,6 +241,9 @@ describe("ingest templates", () => {
     expect(forms["prime_equity_trades"]).toMatch(/from "TradeDate"/);
     expect(forms["capital-calls"]).toMatch(/from "Kind"/);
     expect(forms["capital-calls"]).toMatch(/from "CallRef"/);
+    expect(forms["subscriptions"]).toMatch(/from "Kind"/);
+    expect(forms["subscriptions"]).toMatch(/from "Ref"/);
+    expect(forms["subscriptions"]).toMatch(/from "Quantity"/);
     expect(forms["change-orders"]).toMatch(/from "Kind"/);
     expect(forms["change-orders"]).toMatch(/from "ChangeRef"/);
     expect(forms["purchase-orders"]).toMatch(/from "Kind"/);

@@ -61,6 +61,7 @@ export const INGEST_TEMPLATE_KIND: Readonly<Record<string, Exclude<BookKind, "UN
   "custodian-positions": "INVESTMENT",
   "prime_equity_trades": "INVESTMENT",
   "capital-calls": "INVESTMENT",
+  subscriptions: "INVESTMENT",
   "project-invoices": "PROJECT",
   "change-orders": "PROJECT",
   "purchase-orders": "PROJECT",

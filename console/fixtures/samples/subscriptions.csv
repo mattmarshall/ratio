@@ -1,0 +1,3 @@
+Ref,Date,Amount,Ccy,Quantity,Kind
+sub-0001,2026-01-01,500000000.00,USD,500000.00,subscribe
+red-0001,2026-03-15,10000000.00,USD,10000.00,redeem

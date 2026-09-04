@@ -129,6 +129,17 @@ example : periodIssued [⟨0, 100, 10⟩, ⟨0, -40, -4⟩] = some 10 := by
 example : periodRedeemed [⟨0, 100, 10⟩, ⟨0, -40, -4⟩] = some 4 := by
   decide
 
+/-- A movement's signed units are issued minus redeemed. -/
+theorem signed_units_are_issued_minus_redeemed (u : Int) :
+    (if 0 < u then u else 0) - (if u < 0 then -u else 0) = u := by
+  by_cases hPos : 0 < u
+  · have : ¬ u < 0 := by omega
+    simp [hPos, this]
+  · by_cases hNeg : u < 0
+    · simp [hPos, hNeg]
+    · have : u = 0 := by omega
+      simp [this]
+
 /-- Issued minus redeemed is the signed net the ending units already sum. -/
 theorem issued_minus_redeemed_is_the_net :
     (ms : List Movement) → issuedOf ms - redeemedOf ms = issuedSum ms
@@ -136,15 +147,8 @@ theorem issued_minus_redeemed_is_the_net :
   | m :: ms => by
     have ih := issued_minus_redeemed_is_the_net ms
     simp [issuedOf, redeemedOf, issuedSum]
-    split_ifs with hPos hNeg
-    · have : ¬ m.units < 0 := by omega
-      simp [this] at *
-      omega
-    · simp [hNeg] at *
-      omega
-    · have : m.units = 0 := by omega
-      simp [this] at *
-      omega
+    have h := signed_units_are_issued_minus_redeemed m.units
+    omega
 
 /-- Money legs: cash in, capital up (or the reverse). Units do not
 appear — they are measured. -/
