@@ -231,6 +231,11 @@ BUILT=(
   # geetch / crova and a parallel shadow book stay refused. The
   # sentence it matches is in the 2026-09-04 #158 amendment.
   "the ConfigStore / fact-plane seam"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Personal currency declaration is not on the refusal list —
+  # a silent USD and a Personal-only FX engine stay refused. The
+  # sentence it matches is in the 2026-09-04 #178 amendment.
+  "Personal books declare currencies"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

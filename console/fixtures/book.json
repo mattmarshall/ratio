@@ -2,7 +2,7 @@
   "name": "books/household",
   "displayName": "Household",
   "kind": "PERSONAL",
-  "currencyCode": "USD",
+  "currencyCode": "",
   "fund": "",
   "organization": "",
   "defaultView": "book",
@@ -15,5 +15,6 @@
   "partnerCut": [],
   "specialAllocations": [],
   "feeReceivable": "",
-  "allocationFacts": []
+  "allocationFacts": [],
+  "currencies": []
 }

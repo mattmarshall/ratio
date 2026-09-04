@@ -126,7 +126,8 @@ The issue's refuse list, said here so a later RPC does not "just" add them:
 client portal · bank OAuth · CRM · tax e-file · vendor portal · waterfall
 engine · GC/sub marketplace · e-signature · AIA G702 product UI · payroll ·
 inventory / COGS · credit score · cash forecast · equalization
-calculation · drip subscription packaging · side-pocket ops.
+calculation · drip subscription packaging · side-pocket ops ·
+FX rate providers (fact apps; #178).
 
 Each of those may *read* through a scope above. None of them becomes a
 kernel method.

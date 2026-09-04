@@ -339,6 +339,7 @@ fn apply_event_request(parent: &str, body: &str) -> Result<pb::ApplyEventRequest
         trade_date: v.get("tradeDate").filter(|d| !d.is_null()).and_then(date_from_json),
         due_date: v.get("dueDate").filter(|d| !d.is_null()).and_then(date_from_json),
         application: text("application")?,
+        currency: text("currency")?,
         validate_only: matches!(v.get("validateOnly"), Some(serde_json::Value::Bool(true))),
     })
 }
@@ -778,7 +779,8 @@ impl JsonView for pb::Book {
              \"entryCount\":{},\"configDigest\":{},\"trialBalanceDifference\":{},\
              \"budget\":{},\"envelopes\":[{}],\"loans\":[{}],\
              \"partnerCut\":[{}],\"specialAllocations\":[{}],\
-             \"feeReceivable\":{},\"allocationFacts\":[{}]}}",
+             \"feeReceivable\":{},\"allocationFacts\":[{}],\
+             \"currencies\":[{}]}}",
             q(&self.name),
             q(&self.display_name),
             q(book_kind_name(self.kind)),
@@ -796,6 +798,7 @@ impl JsonView for pb::Book {
             self.special_allocations.iter().map(|s| s.to_json()).collect::<Vec<_>>().join(","),
             q(&self.fee_receivable),
             self.allocation_facts.iter().map(|f| f.to_json()).collect::<Vec<_>>().join(","),
+            strings(&self.currencies),
         )
     }
 }

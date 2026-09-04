@@ -607,6 +607,10 @@ message Book {
   Kind kind = 3 [(google.api.field_behavior) = REQUIRED];
 
   // ISO 4217. The base the figures are labelled in.
+  //
+  // ⛔ PERSONAL UNSET IS EMPTY, NOT USD. `[personal] currencies` first
+  // code is the election. CreateBook writes no list. Investment books
+  // still wear the fund reporting constant.
   string currency_code = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 
   // Optional fund this book is filed under, as `funds/{fund}`. Empty when
@@ -693,6 +697,17 @@ message Book {
   // walk of the journal is a fold. GetBook cites. Field 17.
   repeated AllocationFact allocation_facts = 17
       [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // ISO 4217 codes `[personal] currencies` declared. First is the
+  // reporting base `Book.currency_code` cites.
+  //
+  // ⛔ EMPTY IS UNSET, NOT A SILENT USD. CreateBook writes no
+  // currencies, so a new Personal book has no denomination and no
+  // dollar label. Writing `currencies = ["EUR", "GBP"]` is the
+  // election; inventing USD is not. Investment books keep the fund
+  // reporting constant on `currency_code` and leave this list empty.
+  // Field 18. allocation_facts are 17.
+  repeated string currencies = 18 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One named weight in a partner cut. Absent from `Book.partner_cut`
@@ -2622,6 +2637,17 @@ message ApplyEventRequest {
   // applies to. Empty on the invoice/bill itself, and empty when the
   // reduction does not name an item — which leaves that side's aging unset.
   string application = 11 [(google.api.field_behavior) = OPTIONAL];
+
+  // ISO 4217 the compiled legs should carry. Empty is untyped.
+  //
+  // ⛔ NOT A SILENT USD. On a Personal book that declared
+  // `[personal] currencies`, empty refuses — naming no code would
+  // stamp the fund constant and hide an undeclared denomination.
+  // A code that is not in that list refuses. An undeclared household
+  // that names a code also refuses: write the list first. Investment
+  // events ignore this field; their legs stay the compile output.
+  // Field 12. application is 11.
+  string currency = 12 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message ApplyEventResponse {
