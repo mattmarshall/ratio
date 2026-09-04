@@ -332,8 +332,23 @@ def check_roadmap_against_plan(out: pathlib.Path) -> None:
             err(src, f"phase-one checklist still marks \"{phrase}\" open: "
                      + "; ".join(hits))
 
-    if not any(e.startswith(f"::error file={src}::") or
-               e.startswith("::error file=PLAN.md::") for e in errors):
+    # Phase-four marketplace is a Connect catalog, not kernel RPC sprawl.
+    # A public page that drops the pointer is the same lag as the built
+    # column forgetting tax lots — two documents disagree, nothing says so.
+    # This needle lives in verify.py (not only the HTML) so a markdown-only
+    # follow-up cannot skip the site workflow while the pointer drifts.
+    phase_four_needles = (
+        "WorkOS Connect",
+        "#150",
+        "connect-scopes.md",
+    )
+    if not all(n in doc for n in phase_four_needles):
+        missing = [n for n in phase_four_needles if n not in doc]
+        err(src, "phase four does not point at the Connect catalog "
+                 f"({', '.join(missing)}); PLAN.md amendment 2026-09-04 "
+                 "and issue #150")
+    elif not any(e.startswith(f"::error file={src}::") or
+                 e.startswith("::error file=PLAN.md::") for e in errors):
         print("  ok  roadmap status columns agree with PLAN.md on engine work")
 
 

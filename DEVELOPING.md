@@ -44,6 +44,7 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//proto:ratio_aip_lint`, `//proto:mirrors_test` | the wire contract, and its two hand-written mirrors |
 | `//crates/ratio-console:transcode_test` | the route table against the proto |
 | `//demo:rehearse_test`, `//demo:shadow_run_test` | the demo and the shadow run, end to end |
+| `//:connect_scopes_test` | PLAN, HANDOFF and `docs/connect-scopes.md` still name the same Connect grants and leftovers — not that a token is accepted |
 | `//marketing:language_test` | the licensing language sweep |
 
 `paths-ignore` covers `site/**` and `**/*.md` only. `marketing/`, `paper/` and
