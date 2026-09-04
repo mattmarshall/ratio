@@ -1,3 +1,4 @@
 InvoiceRef,Date,Amount,Ccy,Vendor,Memo,Kind
-INV-1,2026-03-01,1200.00,USD,ACME STEEL,steel delivery,invoice
+INV-1,2026-03-01,1200.00,USD,ACME STEEL,steel delivery,invoice_site
+BILL-1,2026-03-15,5000.00,USD,OWNER,March pay app,progress_bill
 INV-2,2026-03-02,450.00,USD,CITY POWER,,cost

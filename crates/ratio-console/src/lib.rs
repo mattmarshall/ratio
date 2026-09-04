@@ -9239,6 +9239,183 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
     }
 
     #[test]
+    fn a_createbook_project_book_admits_a_job_cost_feed_and_leaves_one_pending() {
+        // ⭐ #171. Delivery → resolve → admit on a blank Project book, the
+        // same seam the fund trade loop uses. UNKNOWN SUB is unmatched the
+        // same way VWRL is — a fact an operator opens from Data → Pending.
+        // Retainage and WIP stay unset: the file has no holdback kind, and
+        // inventing one from an invoice amount would be the defect.
+        let root = fresh("create-project-job-cost");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Bridge".into(),
+                    kind: book::BookKind::Project.proto(),
+                    ..Default::default()
+                }),
+                book_id: "bridge".into(),
+            })
+            .unwrap();
+
+        {
+            use ratio_store::{FileBook, Plane};
+            let mut b = FileBook::open(root.join("bridge")).unwrap();
+            let add = |b: &mut FileBook, id: &str, name: &str| {
+                b.append_record(
+                    Plane::Entities,
+                    &ratio_ingest::Entity {
+                        id: id.into(),
+                        kind: ratio_ingest::EntityKind::Counterparty,
+                        display_name: name.into(),
+                        attributes: [("name".into(), name.into())]
+                            .into_iter()
+                            .collect(),
+                    },
+                )
+                .unwrap();
+            };
+            add(&mut b, "cp-acme", "ACME STEEL");
+            add(&mut b, "cp-owner", "OWNER");
+            add(&mut b, "cp-power", "CITY POWER");
+            // UNKNOWN SUB is deliberately absent — that is the pending fact.
+            use ratio_store::Journal;
+            let mut n = 0usize;
+            b.for_each_entry_since(0, &mut |_| {
+                n += 1;
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(n, 0, "CreateBook must not invent journal history");
+        }
+
+        let ingested = console
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/bridge".into(),
+                template_id: "project-invoices".into(),
+                content: PROJECT_JOB_COST_CSV.into(),
+                origin: "job-cost.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert_eq!(
+            ingested.rejected.len(),
+            2,
+            "retainage and WIP kinds refuse rather than invent: {:?}",
+            ingested.rejected
+        );
+        for r in &ingested.rejected {
+            assert!(
+                r.reason.contains("hold_retainage") || r.reason.contains("capitalize_wip"),
+                "a refused row must name the kind it will not invent: {}",
+                r.reason
+            );
+        }
+        assert_eq!(ingested.fact_count, "4", "{ingested:?}");
+        assert_eq!(ingested.pending.len(), 1, "{:?}", ingested.pending);
+        assert_eq!(ingested.pending[0].reference, "INV-2");
+
+        let admitted = console
+            .admit_facts(&pb::AdmitFactsRequest {
+                parent: "funds/bridge".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
+        assert_eq!(
+            admitted.posted_count, "3",
+            "identified AP / progress-bill / cost post; UNKNOWN SUB does not"
+        );
+        assert_eq!(admitted.pending_count, "1");
+
+        let pending = console
+            .list_pending_facts("funds/bridge")
+            .unwrap()
+            .pending_facts;
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].reference, "INV-2");
+        assert_eq!(pending[0].template_id, "project-invoices");
+        assert_eq!(pending[0].kind, "invoice");
+        let opened = console.get_pending_fact(&pending[0].name).unwrap();
+        assert_eq!(opened.reference, "INV-2");
+        assert!(
+            opened.detail.contains("UNKNOWN SUB") || opened.detail.contains("vendor"),
+            "the reason names what it looked for: {}",
+            opened.detail
+        );
+
+        {
+            use ratio_store::{FileBook, Journal};
+            let b = FileBook::open(root.join("bridge")).unwrap();
+            let mut ids = Vec::new();
+            b.for_each_entry_since(0, &mut |e| {
+                ids.push(e.id.clone());
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(ids, vec!["INV-1", "BILL-1", "COST-1"]);
+            assert!(
+                !ids.iter().any(|id| id == "RET-1" || id == "WIP-1" || id == "INV-2"),
+                "refused retainage/WIP or a pending vendor leaked onto the journal: {ids:?}"
+            );
+        }
+        let fund = console.get_fund("funds/bridge").unwrap();
+        assert_eq!(
+            fund.trial_balance_difference, "0",
+            "admitted job-cost rows must still conserve: {fund:?}"
+        );
+        assert_eq!(fund.entry_count, 3);
+
+        let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let fig = console.project_progress(&view).unwrap();
+        assert_eq!(fig.billed, "500000", "progress_bill is the billed cite: {fig:?}");
+        assert!(
+            fig.earned.is_empty(),
+            "an AP / progress-bill file must not invent earned: {:?}",
+            fig.earned
+        );
+        assert!(
+            fig.retainage_receivable.is_empty() && fig.retainage_payable.is_empty(),
+            "ingest must not invent retainage: recv={:?} pay={:?}",
+            fig.retainage_receivable,
+            fig.retainage_payable
+        );
+        let site = fig
+            .phases
+            .iter()
+            .find(|p| p.display_name == "Site and mobilization")
+            .expect("site phase");
+        assert_eq!(site.cost, "120000", "invoice_site landed on the site package: {site:?}");
+        let accounts = console.list_accounts(&view, "").unwrap().accounts;
+        let wip = accounts
+            .iter()
+            .find(|a| a.display_name == "Work in progress")
+            .expect("WIP account");
+        assert_eq!(
+            wip.posting_count, "0",
+            "ingest must not invent a WIP transfer: {wip:?}"
+        );
+        let proj = console.projection("bridge").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a job-cost feed must not claim lot relief"
+        );
+    }
+
+    /// Job-cost / AP / progress-bill fixture: identified vendors post,
+    /// UNKNOWN SUB pends, retainage and WIP kinds refuse.
+    const PROJECT_JOB_COST_CSV: &str = "\
+InvoiceRef,Date,Amount,Ccy,Vendor,Memo,Kind
+INV-1,2026-03-01,1200.00,USD,ACME STEEL,steel delivery,invoice_site
+BILL-1,2026-03-15,5000.00,USD,OWNER,March pay app,progress_bill
+COST-1,2026-03-02,450.00,USD,CITY POWER,temp power,cost
+INV-2,2026-03-18,300.00,USD,UNKNOWN SUB,misc,invoice
+RET-1,2026-03-15,500.00,USD,OWNER,10 percent hold,hold_retainage
+WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
+";
+
+    #[test]
     fn a_subject_scoped_to_one_book_cannot_read_another() {
         let root = fresh("book-tenancy");
         book(&root.join("ours"));

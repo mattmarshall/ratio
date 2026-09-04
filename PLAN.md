@@ -717,8 +717,9 @@ kind the console offers cannot go unrecorded here again:
 - `PROJECT` — a job, not an entity: original vs revised contract, awarded
   committed cost, remaining to spend, remaining to bill, collections vs
   billed. Unset until the journal can support them. Project `/billing`
-  posts a cash application (`collect_receivable`). The budget page does
-  not forecast.
+  posts a cash application (`collect_receivable`). Ingest:
+  `project-invoices` (job-cost / AP / progress-bill), `change-orders`,
+  `purchase-orders`. The budget page does not forecast.
 - `OPERATING` — an ordinary operating business: cash, AR, AP, operating
   revenue / expense, owner equity. Sheet, period income statement, and
   period cash-flow (the same-day amendment below) that tie to the trial
@@ -2338,6 +2339,52 @@ Investments difference at its own address, and see `ratio strike`
 refuse while that break is unexplained. It cannot show a broker
 OAuth grant, a multi-custodian adapter, an LP portal, or a fund-
 volume feed. Those remain Connect or the Phase two leftover.
+
+### Amendment, 2026-09-04 — Project job-cost / AP statement ingest
+
+[#171](https://github.com/mattmarshall/ratio/issues/171) asked for a
+BookKind-aware statement ingest into the journal + breaks for Project
+books — subcontractor AP / progress-bill feeds — at #72 parity with
+the fund trade loop, without inventing retainage. `project-invoices`
+already mapped unpartitioned `cost` / `invoice`. The leftover was the
+closed loop and the progress-bill / phase kinds.
+
+**What this amendment records.** CreateBook(Project) still seeds one
+`project-invoices` mapping — not a second recon engine. Kind now
+picks `project_cost*` / `vendor_invoice*` (phase suffix names the
+work package), `progress_bill`, `pay_vendor`, and `earn_progress`.
+An unidentified vendor pends, the same shape as a missing instrument
+on the fund path. `hold_retainage` / `capitalize_wip` /
+`collect_receivable` in Kind are refused, not posted: retainage and
+WIP stay unset until a hold or capitalization is recorded, and
+customer cash stays on `/billing` (#173). Unbalanced entries still
+meet the journal door. No new journal kind. No new
+`Method` / `Order` / `lot_method` variant. PERSONAL / INVESTMENT /
+OPERATING `screensFor` paths are unchanged. Vendor portals and GC
+SaaS sync stay Connect. **job-cost / AP statement ingest** is the
+Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not a vendor portal or GC SaaS sync.** Those doors are #172 /
+  Connect. Grant path leftover #22 / #150. This file does not close
+  #22. It does not close #150. It does not reopen #151.
+- **Not retainage invention, not EAC / forecast, not AIA G702.**
+  Retainage / WIP figures stay the Built `/record` path. EAC is
+  #169. G702 product UI is #184.
+- **Not a project-only recon engine**, and not a `screensFor` fork.
+  The write is `ingest` / `admit` on the seeded template.
+
+Nothing on the *Explicitly not building* list moved. This amendment
+closes #171. It does not close #169, #172, #184, #155, #150, or #22.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can CreateBook a Project book, ingest a job-cost / AP /
+progress-bill CSV under `project-invoices`, admit the identified
+rows onto `journal.jsonl`, leave an unmatched vendor pending, cite
+billed and phase cost from those posts, and show retainage and WIP
+still unset. It cannot show a Connect token opening a book, a
+vendor portal, AIA G702 product UI, or a silent retainage split.
 
 ## The control plane: geetch and crova
 

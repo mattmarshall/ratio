@@ -39,6 +39,8 @@ describe("book templates", () => {
     expect(byKind.PROJECT).toMatch(/Remaining to spend/);
     expect(byKind.PROJECT).toMatch(/does not forecast/);
     expect(byKind.PROJECT).toMatch(/posts or ingests an approved change order or award/);
+    expect(byKind.PROJECT).toMatch(/job-cost \/ AP \/ progress-bill statement/);
+    expect(byKind.PROJECT).toMatch(/does not invent a holdback/);
     expect(byKind.PROJECT).toMatch(/posts a cash application/);
     expect(byKind.PROJECT).toMatch(/collect_receivable/);
     expect(byKind.OPERATING).toMatch(/Accounts receivable/);
@@ -153,6 +155,13 @@ describe("ingest templates", () => {
     expect(need("project-invoices").factKind).toBe("invoice");
     expect(need("project-invoices").posts).toBe(true);
     expect(need("project-invoices").form).toMatch(/template project-invoices \{/);
+    expect(need("project-invoices").form).toMatch(/one invoice per row/);
+    expect(need("project-invoices").form).toMatch(/invoice_site-> vendor_invoice_site/);
+    expect(need("project-invoices").form).toMatch(/progress_bill-> progress_bill/);
+    expect(need("project-invoices").form).toMatch(/pay_vendor  -> pay_vendor/);
+    expect(need("project-invoices").form).not.toMatch(/hold_retainage/);
+    expect(need("project-invoices").form).not.toMatch(/capitalize_wip/);
+    expect(need("project-invoices").form).not.toMatch(/collect_receivable/);
     expect(need("custodian-positions").factKind).toBe("position");
     expect(need("custodian-positions").posts).toBe(false);
     expect(need("custodian-positions").form).toMatch(/posts      nothing/);

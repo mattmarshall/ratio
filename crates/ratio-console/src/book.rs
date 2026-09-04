@@ -1279,7 +1279,7 @@ weight = 20
 equity_destination = 25
 "#;
 
-/// Project posting rules plus the vendor-invoice ingest template.
+/// Project posting rules plus the job-cost / AP / progress-bill ingest template.
 ///
 /// ⭐ THE ACCOUNT NUMBERS ARE `chart_for(Project)`'S. `initialize` runs
 /// `check` against that chart before the digest is activated, so a drift
@@ -1312,16 +1312,26 @@ equity_destination = 25
 /// Book-level `[project] budget` is the original contract `/budget` cites.
 /// An approved change order posts; it does not rewrite that key.
 ///
-/// The `project-invoices` template still maps `cost`/`invoice` onto the
-/// unpartitioned `project_cost` / `vendor_invoice` rules. Per-phase mapping
-/// is a later operator choice, not a CreateBook invention. `change-orders`
+/// The `project-invoices` template is the job-cost / AP / progress-bill
+/// statement: Kind picks `project_cost*` / `vendor_invoice*` / `progress_bill`
+/// / `pay_vendor` / `earn_progress`. Per-phase mapping is the Kind suffix
+/// (`invoice_site`), the same grain change-orders already use — not a
+/// second WBS and not a CreateBook invention of a phase the chart lacks.
+/// Retainage and WIP kinds are absent on purpose: a holdback is a transfer
+/// already on `/record`, and ingesting an invoice must not invent one.
+/// `hold_retainage` / `capitalize_wip` in Kind are refused, not posted.
+/// `collect_receivable` stays on `/billing` (#173) — this file is vendor
+/// cost / AP / owner progress-bill, not customer cash. `change-orders`
 /// maps `approve_co_*` / `deduct_co_*` onto the work-package pair.
 /// `purchase-orders` maps `award_commitment_*` / `release_commitment_*`
-/// onto the awarded-commitment pair — same grain, not a second WBS.
+/// onto the awarded-commitment pair.
 const PROJECT_CONFIG: &str = r#"# Project posting rules. Amount given; no instrument, so no lot.
 # Work packages are accounts 11–13, not instruments.
 # Progress-bill and earn-progress are independent: billed and earned can diverge.
 # Retainage is a transfer, not a baked-in split — omit it and the figure stays unset.
+# project-invoices maps cost / invoice / progress_bill / pay_vendor / earn_progress.
+# hold_retainage and capitalize_wip are not kinds on that file — ingesting an
+# invoice must not invent a holdback or a WIP transfer.
 # Change orders are a conserved equity pair keyed by work package. They do not
 # rewrite [project] budget — that key is the original baseline.
 # Awarded commitments are a second conserved equity pair on the same grain:
@@ -1777,12 +1787,12 @@ reads = "csv"
   field = "kind"
   as = "enum"
   column = "Kind"
-  map = { cost = "cost", invoice = "invoice" }
+  map = { cost = "cost", cost_site = "cost_site", cost_structure = "cost_structure", cost_finishes = "cost_finishes", invoice = "invoice", invoice_site = "invoice_site", invoice_structure = "invoice_structure", invoice_finishes = "invoice_finishes", progress_bill = "progress_bill", pay_vendor = "pay_vendor", earn_progress = "earn_progress" }
 
   [template.fact.posts]
   by = "kind"
   amount = "amount"
-  rules = { cost = "project_cost", invoice = "vendor_invoice" }
+  rules = { cost = "project_cost", cost_site = "project_cost_site", cost_structure = "project_cost_structure", cost_finishes = "project_cost_finishes", invoice = "vendor_invoice", invoice_site = "vendor_invoice_site", invoice_structure = "vendor_invoice_structure", invoice_finishes = "vendor_invoice_finishes", progress_bill = "progress_bill", pay_vendor = "pay_vendor", earn_progress = "earn_progress" }
   dated = "dated"
 
 [[template]]
@@ -2430,6 +2440,90 @@ INV-2,2026-03-02,450.00,USD,CITY POWER,,cost
         assert_eq!(rule, "project_cost");
         // Optional memo: the cost row left it blank and still mapped.
         assert!(p.facts[1].values.get("memo").is_none());
+    }
+
+    #[test]
+    fn a_job_cost_row_picks_phase_or_progress_bill_and_refuses_retainage() {
+        // ⭐ #171. Kind names the work package or the progress-bill rule.
+        // A retainage or WIP kind is not on the map: ingesting an invoice
+        // must not invent a holdback, and capitalize_wip stays on /record.
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Project)).unwrap();
+        let t = set.template("project-invoices").unwrap();
+        assert!(t.fact.posts.is_some());
+        let csv = "\
+InvoiceRef,Date,Amount,Ccy,Vendor,Memo,Kind
+INV-1,2026-03-01,1200.00,USD,ACME STEEL,steel delivery,invoice_site
+BILL-1,2026-03-15,5000.00,USD,OWNER,March pay app,progress_bill
+EARN-1,2026-03-15,4000.00,USD,OWNER,earned to date,earn_progress
+PAY-1,2026-03-20,800.00,USD,ACME STEEL,partial,pay_vendor
+RET-1,2026-03-15,500.00,USD,OWNER,10 percent hold,hold_retainage
+WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
+CASH-1,2026-03-21,100.00,USD,OWNER,collection,collect_receivable
+";
+        let rows = ratio_ingest::extract_csv(csv).unwrap();
+        let p = ratio_ingest::project(t, &sample_delivery(), &rows, "cfg");
+        assert_eq!(p.facts.len(), 4, "mapped kinds land; refused kinds do not: {:?}", p.rejected);
+        assert_eq!(p.rejected.len(), 3, "{:?}", p.rejected);
+        for r in &p.rejected {
+            assert!(
+                r.reason.contains("hold_retainage")
+                    || r.reason.contains("capitalize_wip")
+                    || r.reason.contains("collect_receivable"),
+                "a refused row must name the kind it will not invent: {}",
+                r.reason
+            );
+        }
+        let (rule, minor) = ratio_ingest::posting_for(t, &p.facts[0]).unwrap();
+        assert_eq!(rule, "vendor_invoice_site");
+        assert_eq!(minor, 120_000);
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[1]).unwrap();
+        assert_eq!(rule, "progress_bill");
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[2]).unwrap();
+        assert_eq!(rule, "earn_progress");
+        let (rule, _) = ratio_ingest::posting_for(t, &p.facts[3]).unwrap();
+        assert_eq!(rule, "pay_vendor");
+        let form = t.render();
+        assert_eq!(
+            form,
+            "\
+template project-invoices {
+  reads      csv with header
+  grain      one invoice per row
+
+  entity     vendor  (counterparty)
+    by     name   from \"Vendor\"
+    absent   pend
+
+  fact       invoice
+    reference    from \"InvoiceRef\"
+    vendor       vendor
+    dated        from \"Date\" as date \"YYYY-MM-DD\"
+    amount       from \"Amount\" as money in \"Ccy\"
+    memo         from \"Memo\" as text optional
+    kind         from \"Kind\" as { cost: cost, cost_finishes: cost_finishes, cost_site: cost_site, cost_structure: cost_structure, earn_progress: earn_progress, invoice: invoice, invoice_finishes: invoice_finishes, invoice_site: invoice_site, invoice_structure: invoice_structure, pay_vendor: pay_vendor, progress_bill: progress_bill }
+
+  posts      by \"kind\"
+    amount      amount
+    dated       dated
+    cost        -> project_cost
+    cost_finishes-> project_cost_finishes
+    cost_site   -> project_cost_site
+    cost_structure-> project_cost_structure
+    earn_progress-> earn_progress
+    invoice     -> vendor_invoice
+    invoice_finishes-> vendor_invoice_finishes
+    invoice_site-> vendor_invoice_site
+    invoice_structure-> vendor_invoice_structure
+    pay_vendor  -> pay_vendor
+    progress_bill-> progress_bill
+}
+"
+        );
+        // An unidentified vendor pends — the same shape as a missing
+        // instrument on the fund path. Adding it later clears without
+        // re-ingesting.
+        let resolved = ratio_ingest::resolve_all(&p.facts, &[]);
+        assert!(resolved.iter().all(|r| !r.is_admissible()));
     }
 
     #[test]
