@@ -80,8 +80,11 @@ def wellFormed (cut : List Share) : Bool :=
 `total` is the sum of the cut's weights, not a partner count.
 Dividing by `length` is the silent 1/N this exists to refuse. -/
 def slice (figure weight total : Int) : Option Int :=
-  if 0 < total && (figure * weight) % total = 0 then
-    some ((figure * weight) / total)
+  if 0 < total then
+    if (figure * weight) % total = 0 then
+      some ((figure * weight) / total)
+    else
+      none
   else
     none
 
@@ -145,11 +148,14 @@ theorem slice_exact (figure weight total a : Int)
     a * total = figure * weight := by
   unfold slice at h
   split at h
-  · next hp =>
-    simp at h
-    subst h
-    have hd : total ∣ figure * weight := Int.dvd_of_emod_eq_zero hp.2
-    exact Int.ediv_mul_cancel hd
+  · next hpos =>
+    split at h
+    · next hdiv =>
+      simp at h
+      subst h
+      have hd : total ∣ figure * weight := Int.dvd_of_emod_eq_zero hdiv
+      exact Int.ediv_mul_cancel hd
+    · simp at h
   · simp at h
 
 theorem slices_sum (figure total : Int) :
@@ -174,6 +180,7 @@ theorem slices_sum (figure total : Int) :
         have ih := slices_sum figure total ss rest hrest
         have hs := slice_exact figure s.weight total a hslice
         simp [allocatedSum, weights]
+        rw [Int.add_mul, hs, ih]
         omega
 
 theorem positive_weights_nonneg :
@@ -205,14 +212,11 @@ theorem allocated_shares_sum_to_the_figure
     (h : allocate figure (some shares) = some alloc) :
     allocatedSum alloc = figure := by
   simp [allocate] at h
-  split at h
-  · next hw =>
-    have hsum := slices_sum figure (weights shares) shares alloc h
-    have hpos := wellFormed_weights_pos shares hw
-    have : allocatedSum alloc * weights shares = figure * weights shares := hsum
-    have : weights shares ≠ 0 := by omega
-    exact Int.eq_of_mul_eq_mul_right this hsum
-  · simp at h
+  obtain ⟨hw, hslices⟩ := h
+  have hsum := slices_sum figure (weights shares) shares alloc hslices
+  have hpos := wellFormed_weights_pos shares hw
+  have : weights shares ≠ 0 := by omega
+  exact Int.eq_of_mul_eq_mul_right this hsum
 
 /-- **What a partner takes is exactly pro rata.** Cross-multiplied
 because the whole point is that the division was exact. -/
@@ -355,13 +359,11 @@ theorem no_facts_fall_through_to_the_cut (figure : Int) (cut : Option (List Shar
 theorem no_facts_and_no_cut_is_unset (figure : Int) :
     applyFacts figure none none = none := rfl
 
-theorem facts_that_cover_the_figure_are_the_allocation (fs : List Fact) :
-    applyFacts (factSum fs) (some fs) none = some (factsAsAlloc fs) := by
-  cases fs with
-  | nil =>
-    simp [applyFacts]
-  | cons f fs =>
-    simp [applyFacts]
+theorem facts_that_cover_the_figure_are_the_allocation
+    (f : Fact) (fs : List Fact) :
+    applyFacts (factSum (f :: fs)) (some (f :: fs)) none
+      = some (factsAsAlloc (f :: fs)) := by
+  simp [applyFacts]
 
 theorem an_overshoot_refuses (cut : Option (List Share)) :
     applyFacts 10 (some [⟨0, 12⟩]) cut = none := by
