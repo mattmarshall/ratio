@@ -405,8 +405,17 @@ export interface RecognitionDifference {
    * sign follows from which list it is in, so the two lists sum to `difference`
    * by construction and the screen renders the arithmetic instead of asserting
    * it.
+   *
+   * Empty when the row cannot contribute a figure (unplaceable). `"0"` is a
+   * real zero effect — a purchase that moves cash into investments. Printing
+   * empty as `0.00` is the silent-zero defect.
    */
   netAssetValueEffect: Int64;
+  /**
+   * Why this row cannot contribute a figure. Empty on an in-flight entry.
+   * Set when neither view can place it — the cite, not a silent 0.00.
+   */
+  why: string;
 }
 
 export interface BreakPosting {

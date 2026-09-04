@@ -4446,6 +4446,35 @@ calendar = "wk"
         .unwrap();
     }
 
+    /// A subscription in a named currency — the shape that makes translation
+    /// residue visible. Untyped legs translate at par and the residue vanishes.
+    fn subscribe_dated_currency(
+        d: &std::path::Path,
+        id: &str,
+        amount: i64,
+        day: &str,
+        currency: &str,
+    ) {
+        let mut b = FileBook::open(d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        b.append(&JournalEntry {
+            id: id.into(),
+            memo: "subscription".into(),
+            config: c,
+            postings: vec![
+                PostingRecord::of_currency(2, amount, currency),
+                PostingRecord::of_currency(3, -amount, currency),
+            ],
+            trade_date: Some(day.into()),
+            announcement: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+        })
+        .unwrap();
+    }
+
     const ASSETS: fn(i64) -> bool = |d| d == 1 || d == 2;
 
     #[test]
@@ -4646,5 +4675,88 @@ calendar = "wk"
         assert_eq!(p.positions(B).unwrap().through, None);
         assert_eq!(p.in_flight(B).unwrap(), 0);
         assert!(p.unplaceable(B).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_translation_residue_refuses_rather_than_publishing_a_silent_zero() {
+        // ⭐ INTEGER TRANSLATION DOES NOT DISTRIBUTE OVER A SUM.
+        // Two 1-EUR subscriptions at 1.50: each entry translates to 1,
+        // the pair translates to 3. Publishing the difference as 0 — or
+        // adjusting a row so the list adds up — would look like agreement.
+        let d = dual_book("fx-residue");
+        subscribe_dated_currency(&d, "s1", 1, "2026-03-03", "EUR"); // Tue; settles Thu
+        subscribe_dated_currency(&d, "s2", 1, "2026-03-04", "EUR"); // Wed; settles Fri
+        let p = Projection::of_book(&d).unwrap();
+        let rates = Rates::of("USD", [("EUR".to_string(), 150)]);
+
+        let nav_a = p.nav("abor", &ASSETS, &rates).unwrap().value.0;
+        let nav_i = p.nav("ibor", &ASSETS, &rates).unwrap().value.0;
+        assert_eq!(nav_a, 3, "2 EUR at 1.50 rounds once: 3");
+        assert_eq!(nav_i, 0, "neither subscription has settled");
+
+        let e = p.reconcile("abor", "ibor", &ASSETS, &rates).unwrap_err().to_string();
+        assert!(e.contains("translation residue"), "{e}");
+        assert!(e.contains("differ by 3"), "{e}");
+        assert!(e.contains("sum to 2"), "{e}");
+        assert!(!e.contains("difference of 0"), "a silent zero would look like agreement: {e}");
+    }
+
+    #[test]
+    fn a_missing_rate_refuses_reconcile_rather_than_agreeing_at_zero() {
+        // ⛔ SKIPPING THE FOREIGN LEG WOULD MAKE BOTH NAVS 0 AND THE
+        // DIFFERENCE 0 — silent agreement on a book that holds euros.
+        let d = dual_book("fx-no-rate");
+        subscribe_dated_currency(&d, "s1", 1, "2026-03-03", "EUR");
+        subscribe_dated_currency(&d, "s2", 1, "2026-03-04", "EUR");
+        let p = Projection::of_book(&d).unwrap();
+
+        let e = p.reconcile("abor", "ibor", &ASSETS, &Rates::of("USD", [])).unwrap_err().to_string();
+        assert!(e.contains("EUR"), "{e}");
+        assert!(
+            e.contains("mixing denominations") || e.contains("no rate"),
+            "the refusal must name the missing rate, not invent 0: {e}"
+        );
+    }
+
+    #[test]
+    fn a_view_declared_after_the_fold_refuses_reconcile_rather_than_a_zero_gap() {
+        // ⭐ THE THIRD PLAN REFUSE. A maintained fold has already read past
+        // the history the new view would need. Serving a 0.00 difference
+        // would look like the new book of record agrees with the old one
+        // on a fragment.
+        let d = dual_book("declared-after");
+        subscribe_dated(&d, "s1", 5_000, "2026-03-03");
+        let mut p = Projection::of_book(&d).unwrap();
+        let mut b = FileBook::open(&d).unwrap();
+        let extra = b
+            .put(
+                br#"rules = []
+[[calendar]]
+id = "wk"
+weekend = [0, 6]
+[[view]]
+id = "abor"
+display_name = "ABOR"
+basis = "trade"
+[[view]]
+id = "ibor"
+display_name = "IBOR"
+basis = "settlement"
+settles_in = 2
+calendar = "wk"
+[[view]]
+id = "emir"
+display_name = "EMIR"
+basis = "trade"
+"#,
+            )
+            .unwrap();
+        b.set_active(&extra).unwrap();
+        drop(b);
+        p.follow(&d).unwrap();
+
+        let e = p.reconcile("emir", "abor", &ASSETS, &Rates::none()).unwrap_err().to_string();
+        assert!(e.contains("declared after"), "{e}");
+        assert!(e.contains("cannot place") || e.contains("already read past"), "{e}");
     }
 }

@@ -181,6 +181,10 @@ NEEDLES: list[tuple[str, str]] = [
         "Neither view can place these",
         "the reconciliation would look fully explained when it is not",
     ),
+    (
+        "unset — contributes to neither NAV, not a silent zero",
+        "an unplaceable row would print 0.00 and look like agreement",
+    ),
     ("recognisedHere", "the in-flight entries are never read from the response"),
     ("unplaceable", "the entries neither view can place are never read"),
     ("Contributing", "the in-flight lists would not show that they add to the difference"),

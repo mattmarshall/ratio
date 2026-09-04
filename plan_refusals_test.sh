@@ -210,6 +210,11 @@ BUILT=(
   # stay refused. The sentence it matches is in the 2026-09-04 #171
   # amendment.
   "job-cost / AP statement ingest"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # Multi-view FX / translation refuses are not on the refusal list —
+  # FX rate vendors and a silent 0.00 difference stay refused. The
+  # sentence it matches is in the 2026-09-04 #160 amendment.
+  "multi-view FX / translation refuses stay citeable"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

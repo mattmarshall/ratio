@@ -97,6 +97,12 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ #155 landed live custodian statement ingest; PLAN named it in
     # the same-commit amendment.
     "live custodian statement ingest",
+    # ⚠ #171 landed job-cost / AP statement ingest; PLAN named it in
+    # the same-commit amendment.
+    "job-cost / AP statement ingest",
+    # ⚠ #160 landed multi-view FX / translation refuses as cites;
+    # PLAN named it in the same-commit amendment.
+    "multi-view FX / translation refuses stay citeable",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -114,6 +120,8 @@ ROADMAP_ENGINE_BUILT = [
     "the non-US holding-period variant is an election",
     "the pooled holding-period category is a date",
     "live custodian statement ingest",
+    "job-cost / AP statement ingest",
+    "multi-view FX / translation refuses stay citeable",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",

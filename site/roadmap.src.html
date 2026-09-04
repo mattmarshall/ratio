@@ -87,7 +87,11 @@ __STYLE__
           <li>The append-only journal — persistence without a database. The log
           is the store; a trial balance is a fold of it.</li>
           <li>Multi-currency, with conservation per currency and FX translation
-          on every read.</li>
+          on every read. multi-view FX / translation refuses stay citeable
+          — a translation residue, a missing rate, an entry only one
+          view can place, or a view declared after the fold refuses
+          rather than printing 0.00; an entry neither view can place
+          cites why, not a silent zero. Rate vendors stay Connect.</li>
           <li>Tax lots and the cost-basis methods a book elects — including
           wash sales when a fund writes a wash window
           (<code>wash_window_days</code>; silence stays unset, not a
