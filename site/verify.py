@@ -378,6 +378,9 @@ def check_roadmap_against_plan(out: pathlib.Path) -> None:
         # #169 landed a Project EAC / forecast scaffold. Same pointer rule.
         "#169",
         "eac-forecast",
+        # #179 landed a Project program roll-up scaffold. Same pointer rule.
+        "#179",
+        "program-rollup",
         # #177 decided equalization / drip / side-pocket stay Connect.
         # A public page that drops the pointer while PLAN records the
         # decision is the same lag as the built column forgetting tax lots.
@@ -388,7 +391,7 @@ def check_roadmap_against_plan(out: pathlib.Path) -> None:
         missing = [n for n in phase_four_needles if n not in doc]
         err(src, "phase four does not point at the Connect catalog "
                  f"({', '.join(missing)}); PLAN.md amendments 2026-09-04 "
-                 "and issues #150 / #165 / #166 / #168 / #169 / #172 / #184 / #177")
+                 "and issues #150 / #165 / #166 / #168 / #169 / #172 / #184 / #179 / #177")
     elif not any(e.startswith(f"::error file={src}::") or
                  e.startswith("::error file=PLAN.md::") for e in errors):
         print("  ok  roadmap status columns agree with PLAN.md on engine work")

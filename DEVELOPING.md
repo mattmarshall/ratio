@@ -51,6 +51,7 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//connect/aia-pay-app:pack_test` | Project AIA pay-app packer (#184): canonical scopes, G702-ish / G703-ish CSV, unset billed / retainage / CO refusal — not that a token is accepted and not a licensed AIA form |
 | `//connect/vendor-portal:portal_test` | Project vendor / GC portal (#172): canonical scopes, unset billed / retainage / remaining, empty-allowlist / closed-through refusals — not that a token is accepted and not a vendor directory |
 | `//connect/eac-forecast:pack_test` | Project EAC / forecast packer (#169): canonical scopes, remaining-to-spend / EAC unset refusals — not that a token is accepted and not a silent EAC of 0 |
+| `//connect/program-rollup:rollup_test` | Project program roll-up (#179): canonical scopes, alias / mega-book / unset billed refusals — not that a token is accepted and not a silent program 0.00 |
 | `//marketing:language_test` | the licensing language sweep |
 
 `paths-ignore` covers `site/**` and `**/*.md` only. `marketing/`, `paper/` and

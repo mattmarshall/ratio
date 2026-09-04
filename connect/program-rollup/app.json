@@ -1,0 +1,43 @@
+{
+  "name": "Ratio program roll-up",
+  "book_kind": "PROJECT",
+  "issue": 179,
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "books:read",
+      "budget:read",
+      "billing:read"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read",
+      "projects:budget:read",
+      "projects:billing:read"
+    ]
+  },
+  "mega_book": {
+    "status": "refused",
+    "note": "No mega-book in the kernel. Books stay independent. This app cites per-book /budget and /billing figures and rolls those cites up. It does not merge journals, invent a fifth BookKind, or put a program URL on screensFor. An org_id claim is not membership — ListBooks is filtered to PROJECT books the subject can see (books:read)."
+  },
+  "eac_forecast": {
+    "status": "refused",
+    "note": "No EAC, cost-to-complete, or cash forecast. Those stay on #169. /budget still does not forecast. Remaining to spend is revised − incurred − awarded when a book can support the cut; a program remaining is the sum of those per-book remaining cites, never a silent 0.00 for a book that cannot."
+  },
+  "aia_g702": {
+    "status": "refused",
+    "note": "No AIA G702/G703 product UI. That door is #184. This app cites billed / remaining-to-bill / collections; it does not pack a pay-app or render a licensed form."
+  },
+  "vendor_portal": {
+    "status": "refused",
+    "note": "No vendor user directory and no vendor / GC portal. That door is #172."
+  },
+  "grant_path": {
+    "status": "not built",
+    "note": "Connect access tokens are not accepted on /v1. Accepting Connect scopes is leftover #22 / #150. Write-route actor binding landed (#151). This file does not close #22, #150, or #179. It does not reopen #151. It does not close #169, #172, or #184."
+  }
+}
