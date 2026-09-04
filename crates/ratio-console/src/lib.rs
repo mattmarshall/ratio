@@ -9195,7 +9195,8 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
 LineRef,AsOf,ISIN,Ticker,Exch,Quantity,MarketValue,Ccy
 P-1,2026-02-26,US9229087690,VTI,ARCX,1000,262500.00,USD
 P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
-",
+"
+                .into(),
                 origin: "custodian-positions.csv".into(),
                 validate_only: false,
             })
