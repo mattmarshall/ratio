@@ -1,6 +1,7 @@
 import { caller } from "@/lib/caller";
 import { money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { getNavStrike, replayNavStrike } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
@@ -25,6 +26,7 @@ async function Replay({
   params: Promise<{ book: string; view: string; strike: string }>;
 }) {
   const { book: fund, view, strike } = await params;
+  await requireFundOps(fund);
   const c = await caller();
   const s = await or404(getNavStrike(c, fund, view, strike));
   const r = await replayNavStrike(c, fund, view, strike);

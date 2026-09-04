@@ -2,6 +2,7 @@ import { caller } from "@/lib/caller";
 import { count, money } from "@/lib/format";
 import { isoDate } from "@/lib/dates";
 import { or404 } from "@/lib/or404";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { getLot } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
@@ -14,6 +15,7 @@ async function LotDetail({
   params: Promise<{ book: string; view: string; position: string; lot: string }>;
 }) {
   const { book: fund, view, position, lot } = await params;
+  await requireFundOps(fund);
   const c = await caller();
   const l = await or404(getLot(c, fund, view, position, lot));
 

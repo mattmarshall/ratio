@@ -4,6 +4,7 @@ import { caller } from "@/lib/caller";
 import { count, money, nanos, reads } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { visible } from "@/lib/planLayout";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { explainNavStrike, getNavStrike } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
@@ -34,6 +35,7 @@ async function Plan({
   searchParams: Promise<{ analyze?: string; rejected?: string }>;
 }) {
   const { book: fund, view, strike } = await params;
+  await requireFundOps(fund);
   const qs = await searchParams;
   // ⛔ ONLY THE LITERAL `true` TURNS EITHER ON, and for `analyze` that matters:
   // the parameter decides whether this request folds a journal, so anything

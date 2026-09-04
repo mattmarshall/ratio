@@ -2,6 +2,7 @@ import { caller } from "@/lib/caller";
 import { isoDate } from "@/lib/dates";
 import { money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { reconcileViews } from "@/wire/client";
 import type { RecognitionDifference } from "@/wire/types";
 import { withRefusal } from "@/components/Refusal";
@@ -32,6 +33,7 @@ async function Reconcile({
 }) {
   const { book: fund, view } = await params;
   const { against } = await searchParams;
+  await requireFundOps(fund);
   const c = await caller();
 
   if (!against) {

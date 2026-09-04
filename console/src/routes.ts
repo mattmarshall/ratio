@@ -92,7 +92,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/breaks",
     file: "books/[book]/breaks/page.tsx",
-    reads: ["getFund"],
+    reads: ["getBook"],
   },
   {
     path: "/books/[book]/accounts",
@@ -102,18 +102,18 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/positions",
     file: "books/[book]/positions/page.tsx",
-    reads: ["getFund"],
+    reads: ["getBook"],
   },
   {
     path: "/books/[book]/strikes",
     file: "books/[book]/strikes/page.tsx",
-    reads: ["getFund"],
+    reads: ["getBook"],
   },
   // What two books of record over one journal disagree about, entry by entry.
   {
     path: "/books/[book]/views/[view]/reconcile",
     file: "books/[book]/views/[view]/reconcile/page.tsx",
-    reads: ["reconcileViews"],
+    reads: ["getBook", "reconcileViews"],
   },
   // Remaining to bill and collections vs billed compose here from
   // ListAccounts + projectProgress + [project] budget — not a second URL.
@@ -137,12 +137,12 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/views/[view]/breaks",
     file: "books/[book]/views/[view]/breaks/page.tsx",
-    reads: ["listBreaks"],
+    reads: ["getBook", "listBreaks"],
   },
   {
     path: "/books/[book]/views/[view]/breaks/[break]",
     file: "books/[book]/views/[view]/breaks/[break]/page.tsx",
-    reads: ["getBreak"],
+    reads: ["getBook", "getBreak"],
   },
 
   // ── The chart ────────────────────────────────────────────────────────────
@@ -289,36 +289,36 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/views/[view]/positions",
     file: "books/[book]/views/[view]/positions/page.tsx",
-    reads: ["listPositions"],
+    reads: ["getBook", "listPositions"],
   },
   {
     path: "/books/[book]/views/[view]/positions/[position]",
     file: "books/[book]/views/[view]/positions/[position]/page.tsx",
-    reads: ["getPosition", "listLots"],
+    reads: ["getBook", "getPosition", "listLots"],
   },
   {
     path: "/books/[book]/views/[view]/positions/[position]/lots/[lot]",
     file: "books/[book]/views/[view]/positions/[position]/lots/[lot]/page.tsx",
-    reads: ["getLot"],
+    reads: ["getBook", "getLot"],
   },
 
   // ── NAV ──────────────────────────────────────────────────────────────────
   {
     path: "/books/[book]/views/[view]/strikes",
     file: "books/[book]/views/[view]/strikes/page.tsx",
-    reads: ["listNavStrikes"],
+    reads: ["getBook", "listNavStrikes"],
   },
   {
     path: "/books/[book]/views/[view]/strikes/[strike]",
     file: "books/[book]/views/[view]/strikes/[strike]/page.tsx",
-    reads: ["getNavStrike"],
+    reads: ["getBook", "getNavStrike"],
   },
   // A URL for a proof. The replay folds the prefix the strike pinned and says
   // whether the history is intact — that is a citation, not a page state.
   {
     path: "/books/[book]/views/[view]/strikes/[strike]/replay",
     file: "books/[book]/views/[view]/strikes/[strike]/replay/page.tsx",
-    reads: ["getNavStrike", "replayNavStrike"],
+    reads: ["getBook", "getNavStrike", "replayNavStrike"],
   },
   // A URL for a derivation. What the strike DID, step by step, beside what the
   // same question costs off the maintained totals — and what the plans not
@@ -331,7 +331,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/views/[view]/strikes/[strike]/plan",
     file: "books/[book]/views/[view]/strikes/[strike]/plan/page.tsx",
-    reads: ["getNavStrike", "explainNavStrike"],
+    reads: ["getBook", "getNavStrike", "explainNavStrike"],
   },
 
   // ── Configuration ────────────────────────────────────────────────────────
@@ -415,12 +415,12 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/actions",
     file: "books/[book]/actions/page.tsx",
-    reads: ["listCorporateActions"],
+    reads: ["getBook", "listCorporateActions"],
   },
   {
     path: "/books/[book]/actions/[action]",
     file: "books/[book]/actions/[action]/page.tsx",
-    reads: ["getCorporateAction"],
+    reads: ["getBook", "getCorporateAction"],
   },
 
   // ── The change log ───────────────────────────────────────────────────────
@@ -460,7 +460,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/trade",
     file: "books/[book]/trade/page.tsx",
-    reads: ["listRules", "listPositions", "applyEvent"],
+    reads: ["getBook", "listRules", "listPositions"],
   },
   {
     path: "/books/[book]/ingest",
@@ -470,6 +470,6 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/mark",
     file: "books/[book]/mark/page.tsx",
-    reads: ["getFund", "listPositions", "markPositions"],
+    reads: ["getBook", "listPositions", "markPositions"],
   },
 ];

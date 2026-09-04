@@ -156,10 +156,18 @@ describe("the command palette", () => {
     renderConsole();
     // ⚠ NOT "your books". This test opens on `/breaks`, and kbar
     // also indexes a break id `your`. "independent" is a keyword on
-    // the book-collection action only.
+    // the book-collection action only. DeepLinks must register no
+    // jump:* row for that token — a competing exception sent this
+    // click to `/breaks/independent`, and clicking a section header
+    // left push at 0 calls.
     await type("independent");
-    fireEvent.click(await row("Your books"));
+    await waitFor(() => expect(screen.queryByText(/as an exception$/)).toBeNull());
+    const label = await row("Your books");
+    fireEvent.click(label.closest("[role='option']") ?? label);
     expect(push).toHaveBeenCalledWith("/books");
+    expect(push).not.toHaveBeenCalledWith(
+      `/books/${FUND}/views/${VIEW}/breaks/independent`,
+    );
   });
 
   it("reaches CreateBook from the palette", async () => {
@@ -573,5 +581,30 @@ describe("the command palette", () => {
     await type("NAV");
     expect(screen.queryByText(/^NAV$/)).toBeNull();
     nav.unmount();
+  });
+
+  it("a personal book is not offered a pasted id as a NAV strike or exception", async () => {
+    // ⭐ #175. screensFor already hid the tabs. The leftover was the
+    // palette still offering fund-ops "Open by id" rows on a household.
+    const { unmount } = render(
+      <Palette funds={funds}>
+        <FundActions
+          fund="household"
+          views={views}
+          defaultView="book"
+          kind="PERSONAL"
+        />
+      </Palette>,
+    );
+    await type("x9");
+    await waitFor(() =>
+      expect(screen.getAllByText(/^Open “x9” as /).length).toBeGreaterThan(0),
+    );
+    expect(screen.queryByText(/as a NAV strike$/)).toBeNull();
+    expect(screen.queryByText(/as an exception$/)).toBeNull();
+    expect(screen.queryByText(/as a position$/)).toBeNull();
+    expect(screen.queryByText(/as a corporate action$/)).toBeNull();
+    expect(screen.getByText(/as an account$/)).toBeTruthy();
+    unmount();
   });
 });

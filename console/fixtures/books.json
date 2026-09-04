@@ -83,6 +83,27 @@
       "allocationFacts": [],
       "currencies": [],
       "notices": []
+    },
+    {
+      "name": "books/northstar-multi-strategy",
+      "displayName": "Northstar Multi-Strategy",
+      "kind": "INVESTMENT",
+      "currencyCode": "USD",
+      "fund": "funds/northstar-multi-strategy",
+      "organization": "",
+      "defaultView": "abor",
+      "entryCount": "6",
+      "configDigest": "9f2c1ab7de40551c",
+      "trialBalanceDifference": "0",
+      "budget": "",
+      "envelopes": [],
+      "loans": [],
+      "partnerCut": [],
+      "specialAllocations": [],
+      "feeReceivable": "",
+      "allocationFacts": [],
+      "currencies": [],
+      "notices": []
     }
   ],
   "nextPageToken": ""

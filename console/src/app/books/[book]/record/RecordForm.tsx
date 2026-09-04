@@ -18,7 +18,7 @@ import { submit, type Result } from "./actions";
 const ACCRUAL = "ACCRUAL";
 
 /**
- * Record an event against one of this fund's approved rules.
+ * Record an event against one of this book's approved rules.
  *
  * ⛔ PREVIEW THEN COMMIT, AND THE PREVIEW IS THE DEFAULT. `validateOnly` runs
  * the identical code path on the server and records nothing, so what this shows

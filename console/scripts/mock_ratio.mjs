@@ -130,6 +130,9 @@ function body(name, path) {
   }
   // ⭐ KIND SELECTS CHROME. GetBook used to serve `book.json` (a personal
   // household) for every id. Look the id up in the captured list.
+  // ⛔ NORTHSTAR MUST BE IN THAT LIST. The phone pass opens strike
+  // pages on the struck fund; requireFundOps reads GetBook; a miss
+  // falls through to the household singleton and 404s those pages.
   if (name === "book") {
     const id = path.split("/").pop();
     const books = JSON.parse(fixture("books")).books;
@@ -158,6 +161,8 @@ export function serve(port = 4373) {
       // ⭐ KIND IS PER BOOK. A singleton `book.json` is Household (Personal);
       // serving it for every id made a Project URL wear fund-ops chrome in
       // the phone pass. Look the id up in the list the hub already uses.
+      // ⛔ NORTHSTAR MUST BE IN THAT LIST. requireFundOps reads GetBook
+      // before a strike page renders; a miss is Personal and 404s.
       if (/^\/v1\/books\/[^/:]+$/.test(path)) {
         const id = path.slice("/v1/books/".length);
         const list = JSON.parse(fixture("books"));

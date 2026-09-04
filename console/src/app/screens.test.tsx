@@ -1280,6 +1280,76 @@ describe("a first-class book", () => {
     ).rejects.toThrow();
   });
 
+  it("404s leftover fund-ops chrome on Personal, Project, and Operating", async () => {
+    // ⭐ #175. screensFor already hid the tabs. A typed URL that still
+    // rendered Exceptions / Positions / NAV / trade / mark / corporate
+    // actions / dual-view recon was leftover fund-ops chrome.
+    const Breaks = (await import("./books/[book]/views/[view]/breaks/page"))
+      .default;
+    await expect(
+      Breaks({
+        params: params({ book: "household", view: "book" }),
+        searchParams: params({}),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      Breaks({
+        params: params({ book: "bridge", view: "book" }),
+        searchParams: params({}),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      Breaks({
+        params: params({ book: "studio", view: "book" }),
+        searchParams: params({}),
+      }),
+    ).rejects.toThrow();
+
+    const Positions = (await import("./books/[book]/views/[view]/positions/page"))
+      .default;
+    await expect(
+      Positions({ params: params({ book: "household", view: "book" }) }),
+    ).rejects.toThrow();
+
+    const Strikes = (await import("./books/[book]/views/[view]/strikes/page"))
+      .default;
+    await expect(
+      Strikes({ params: params({ book: "household", view: "book" }) }),
+    ).rejects.toThrow();
+
+    const Trade = (await import("./books/[book]/trade/page")).default;
+    await expect(
+      Trade({
+        params: params({ book: "household" }),
+        searchParams: params({}),
+      }),
+    ).rejects.toThrow();
+
+    const Mark = (await import("./books/[book]/mark/page")).default;
+    await expect(
+      Mark({ params: params({ book: "household" }) }),
+    ).rejects.toThrow();
+
+    const Actions = (await import("./books/[book]/actions/page")).default;
+    await expect(
+      Actions({ params: params({ book: "household" }) }),
+    ).rejects.toThrow();
+
+    const Reconcile = (await import("./books/[book]/views/[view]/reconcile/page"))
+      .default;
+    await expect(
+      Reconcile({
+        params: params({ book: "household", view: "book" }),
+        searchParams: params({ against: "ibor" }),
+      }),
+    ).rejects.toThrow();
+
+    const LegacyBreaks = (await import("./books/[book]/breaks/page")).default;
+    await expect(
+      LegacyBreaks({ params: params({ book: "household" }) }),
+    ).rejects.toThrow();
+  });
+
   it("a personal book is not sent to project WIP or fund Exceptions", async () => {
     const Book = (await import("./books/[book]/page")).default;
     await renderAsync(Book({ params: params({ book: "household" }) }));
@@ -2449,6 +2519,9 @@ describe("a first-class book", () => {
         screen.getByText(/Beginning and ending stay unset — not a measured zero close/),
       ).toBeDefined();
       expect(screen.getByLabelText("Period close")).toBeDefined();
+      expect(screen.getByRole("link", { name: "Trial balance" })).toBeDefined();
+      expect(screen.queryByRole("link", { name: "Period P&L" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Balance sheet" })).toBeNull();
       expect(screen.getByText(/provisional — not a closing entry/)).toBeDefined();
       expect(screen.getByText(/unset — no named closing adjustment this window/)).toBeDefined();
       expect(screen.getAllByText("—").length).toBeGreaterThan(2);

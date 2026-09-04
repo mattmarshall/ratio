@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultScreen,
+  FUND_OPS_DEEP_LINKS,
   FUND_SCREENS,
   INVESTMENT_SCREENS,
   OPERATING_SCREENS,
@@ -8,6 +9,7 @@ import {
   PROJECT_SCREENS,
   screensFor,
   ticketsFor,
+  wearsFundOps,
 } from "./screens";
 
 describe("screensFor", () => {
@@ -134,6 +136,42 @@ describe("screensFor", () => {
     expect(ticketsFor("OPERATING").some((t) => t.segment === "transfer")).toBe(
       false,
     );
+  });
+
+  it("Personal, Project, and Operating do not wear fund-ops chrome", () => {
+    // ⭐ #175. screensFor already hid the tabs; a typed URL or palette
+    // deep-link that still offered Exceptions / Positions / NAV was the
+    // leftover. wearsFundOps is the one predicate the pages and the
+    // palette both read.
+    expect(wearsFundOps("INVESTMENT")).toBe(true);
+    expect(wearsFundOps("UNSPECIFIED")).toBe(true);
+    expect(wearsFundOps("PERSONAL")).toBe(false);
+    expect(wearsFundOps("PROJECT")).toBe(false);
+    expect(wearsFundOps("OPERATING")).toBe(false);
+    expect([...FUND_OPS_DEEP_LINKS]).toEqual([
+      "breaks",
+      "positions",
+      "strikes",
+      "actions",
+    ]);
+    for (const kind of ["PERSONAL", "PROJECT", "OPERATING"] as const) {
+      const segments = screensFor(kind).map((s) => s.segment);
+      expect(segments).not.toContain("breaks");
+      expect(segments).not.toContain("positions");
+      expect(segments).not.toContain("strikes");
+      expect(ticketsFor(kind).some((t) => t.segment === "trade")).toBe(false);
+      expect(ticketsFor(kind).some((t) => t.segment === "mark")).toBe(false);
+    }
+    const investment = screensFor("INVESTMENT").map((s) => s.segment);
+    expect(investment).toContain("breaks");
+    expect(investment).toContain("positions");
+    expect(investment).toContain("strikes");
+    expect(ticketsFor("INVESTMENT").map((t) => t.segment)).toEqual([
+      "trade",
+      "record",
+      "ingest",
+      "mark",
+    ]);
   });
 
   it("figure screens are view-scoped", () => {

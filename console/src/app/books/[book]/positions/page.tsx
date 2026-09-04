@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { caller } from "@/lib/caller";
-import { getFund } from "@/wire/client";
+import { requireFundOps } from "@/lib/requireFundOps";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +12,9 @@ export const dynamic = "force-dynamic";
  * product more effectively than the screen argues for it.
  *
  * ⚠ IT CANNOT BE A `next.config.ts` REDIRECT: the destination depends on the
- * fund's default view, which is a value only the API knows.
+ * book's default view, which is a value only the API knows.
+ *
+ * Personal / Project / Operating 404 — leftover fund-ops chrome (#175).
  */
 export default async function Legacypositions({
   params,
@@ -21,7 +22,6 @@ export default async function Legacypositions({
   params: Promise<{ book: string }>;
 }) {
   const { book: fund } = await params;
-  const c = await caller();
-  const f = await getFund(c, fund);
-  redirect(`/books/${fund}/views/${f.defaultView}/positions`);
+  const b = await requireFundOps(fund);
+  redirect(`/books/${fund}/views/${b.defaultView}/positions`);
 }

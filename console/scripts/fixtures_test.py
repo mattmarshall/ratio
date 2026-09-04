@@ -147,6 +147,28 @@ def main() -> None:
         check(filename, json.loads(p.read_text()), message, messages, problems)
         seen += 1
 
+    # ⭐ GETBOOK KIND GATES FUND-OPS. A fund in funds.json with no
+    # matching INVESTMENT row in books.json is served as the household
+    # singleton — Personal — and requireFundOps 404s the strike pages
+    # the phone pass opens on northstar (#175). Shape-only would miss
+    # that; this is the one values check this file makes.
+    funds = json.loads((root / "funds.json").read_text()).get("funds", [])
+    books = json.loads((root / "books.json").read_text()).get("books", [])
+    books_by_id = {b.get("name", "").split("/")[-1]: b for b in books}
+    for fund in funds:
+        fid = str(fund.get("name", "")).split("/")[-1]
+        book = books_by_id.get(fid)
+        if book is None:
+            problems.append(
+                f"funds.json:{fid}: no books.json row — "
+                "GetBook falls back to the household fixture"
+            )
+        elif book.get("kind") != "INVESTMENT":
+            problems.append(
+                f"books.json:{fid}: kind {book.get('kind')!r} — "
+                "a fund book must be INVESTMENT"
+            )
+
     # A fixture nothing declares is a fixture nothing checks.
     for p in sorted(root.glob("*.json")):
         if p.name not in FIXTURES:

@@ -228,11 +228,48 @@ describe("a bare id", () => {
     expect(candidatesForId(FUND, VIEW, `funds/${FUND}`)).toHaveLength(0);
   });
 
+  it("stays quiet on a workspace-door keyword, even on an Investment book", () => {
+    // ⭐ "independent" REACHES /books. Offering it as a break is how
+    // "Your books" landed on `/breaks/independent` after #218.
+    expect(candidatesForId(FUND, VIEW, "independent")).toEqual([]);
+    expect(candidatesForId(FUND, VIEW, "books")).toEqual([]);
+    expect(candidatesForId(FUND, VIEW, "independent", "INVESTMENT")).toEqual([]);
+    expect(candidatesForId("household", "book", "independent", "PERSONAL")).toEqual(
+      [],
+    );
+  });
+
   it("separates its keywords with commas", () => {
     // ⚠ kbar's Fuse config reads this field as `keywords.split(",")`. Spaces
     // would make each one a single long token that matches nothing.
     for (const c of candidatesForId(FUND, VIEW, "x9")) {
       expect(c.keywords).toContain(",");
     }
+  });
+
+  it("a personal book is not offered fund-ops deep-links", () => {
+    // ⭐ #175. The tabs were already kind-selected; a pasted id that still
+    // offered "as a NAV strike" on a household was leftover fund-ops chrome.
+    const keys = candidatesForId("household", "book", "x9", "PERSONAL").map(
+      (c) => c.key,
+    );
+    expect(keys).not.toContain("breaks");
+    expect(keys).not.toContain("positions");
+    expect(keys).not.toContain("strikes");
+    expect(keys).not.toContain("actions");
+    expect(keys).toContain("accounts");
+    expect(keys).toContain("entries");
+    expect(keys).toContain("rules");
+    const project = candidatesForId("bridge", "book", "x9", "PROJECT").map(
+      (c) => c.key,
+    );
+    expect(project).not.toContain("strikes");
+    const operating = candidatesForId("studio", "book", "x9", "OPERATING").map(
+      (c) => c.key,
+    );
+    expect(operating).not.toContain("breaks");
+    expect(
+      candidatesForId(FUND, VIEW, "x9", "INVESTMENT").map((c) => c.key),
+    ).toContain("strikes");
   });
 });

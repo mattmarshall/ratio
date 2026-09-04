@@ -2949,6 +2949,61 @@ book, or a book of actuals only, leaves the forecast unset — not
 0.00. A net-zero pair of scheduled posts is a real zero. It cannot
 show envelope coaching, payroll, a bank-balance predictor, calendar
 bills sync, or a client portal.
+### Amendment, 2026-09-04 — kind-aware IA
+
+[#175](https://github.com/mattmarshall/ratio/issues/175) asked for an
+audit of `screensFor` + nav after #65 closed personal IA. The lists
+were already kind-selected: Personal / Project / Operating did not
+offer Exceptions / Positions / NAV as tabs. A typed URL, a legacy
+`/breaks` redirect, or a palette "Open by id" row still rendered
+fund-ops chrome on those books — a fake label on fund screens,
+the same defect #65 named.
+
+What landed is the gate, not a second chrome list:
+
+- `wearsFundOps` is the one predicate. Investment and the
+  unspecified operations surface (proto default, not a domain)
+  wear Exceptions / Positions / NAV strikes, trade / mark, corporate
+  actions, and dual-view recon. Personal / Project / Operating 404.
+- Palette deep-links drop "as an exception" / "as a position" /
+  "as a NAV strike" / "as a corporate action" on those kinds.
+  Exact AIP names still translate; the page 404s.
+- The period-close footer no longer offers Period P&L / Balance
+  sheet on every kind — that was leftover household chrome on
+  Project and Investment. Trial balance stays: it is the
+  conservation view every kind already wears.
+- One `screensFor` list. Kind selects chrome. Investment keeps
+  the warehouse. **kind-aware IA** is the Built phrase this
+  amendment adds.
+
+**Leftover fund-only terms found on Personal / Project (not
+absorbed):** typed `/wip` and `/billing` still render on a
+Personal book (project figures, not fund-ops — #66 / #85 / #26).
+Typed `/sheet` and `/pnl` still render on Investment (household
+figures). The books-header "Funds" link is workspace nav, not
+book chrome. Those stay on #26.
+
+**What this is NOT:**
+
+- **Not #26 (console buildout).** Broader screens stay on #26.
+- **Not a `screensFor` fork.** Kind still selects one list.
+- **Not a new Method / Order / lot_method variant.**
+- **Not Connect #161 / #162.** Drip / LP portal stay Connect.
+- **Not #159 (Postgres).** Stage E stays blocked.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #175. It does not close #26. It does not
+close #161, #162, or #159. It does not reopen #65, #66, #85,
+#186, or #157.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can open a Personal, Project, or Operating book and not see
+Exceptions / Positions / NAV / trade / mark in the hub, the
+palette, or a typed fund-ops URL (those 404). It can open an
+Investment book and still reach capital, NAV roll-forward,
+Exceptions, Positions, and NAV strikes. It cannot show the rest
+of the #26 console buildout, a Connect LP portal, or Postgres.
+Those remain #26 / Connect / #159.
 
 ## The control plane: geetch and crova
 

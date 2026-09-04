@@ -1,6 +1,7 @@
 import { caller } from "@/lib/caller";
 import { isoDate } from "@/lib/dates";
 import { or404 } from "@/lib/or404";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { getCorporateAction } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ export default async function ActionDetail({
   params: Promise<{ book: string; action: string }>;
 }) {
   const { book: fund, action } = await params;
+  await requireFundOps(fund);
   const c = await caller();
   const a = await or404(getCorporateAction(c, fund, action));
 

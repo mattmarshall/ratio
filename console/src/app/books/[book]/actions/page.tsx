@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { caller } from "@/lib/caller";
 import { isoDate } from "@/lib/dates";
+import { requireFundOps } from "@/lib/requireFundOps";
 import { listCorporateActions } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export default async function Actions({
   params: Promise<{ book: string }>;
 }) {
   const { book: fund } = await params;
+  await requireFundOps(fund);
   const c = await caller();
   const { corporateActions } = await listCorporateActions(c, fund);
 

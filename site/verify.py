@@ -118,6 +118,9 @@ PLAN_MARKS_ENGINE_DONE = [
     # ⚠ #186 landed the console point-in-time / restatement browser;
     # PLAN named it in the same-commit amendment.
     "point-in-time / restatement reporting stays citeable",
+    # ⚠ #175 landed the kind-aware IA audit; PLAN named it in the
+    # same-commit amendment. Same class of defect as #67.
+    "kind-aware IA",
 ]
 ROADMAP_ENGINE_BUILT = [
     "append-only journal",
@@ -142,6 +145,7 @@ ROADMAP_ENGINE_BUILT = [
     "NAV gate reasons stay citeable",
     "a capital-call / distribution notice is a citeable document",
     "point-in-time / restatement reporting stays citeable",
+    "kind-aware IA",
 ]
 ROADMAP_ENGINE_NOT_BUILT = [
     "Postgres",
