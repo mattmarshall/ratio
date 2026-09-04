@@ -299,6 +299,8 @@ describe("a per-partner capital account statement", () => {
       expect(row.beginning === 0n).toBe(false);
       expect(row.ending === 0n).toBe(false);
       expect(row.allocatedIncome === 0n).toBe(false);
+      expect(row.units).toBeNull();
+      expect(row.units === 0n).toBe(false);
     }
 
     // Book-level activity without a partner account is not a fake partner.
@@ -345,5 +347,32 @@ describe("a per-partner capital account statement", () => {
     expect(gp!.ending === 0n).toBe(false);
     expect(partnerIdentityHolds(lp!)).toBeNull();
     expect(partnerIdentityHolds(gp!)).toBeNull();
+    expect(lp!.units).toBeNull();
+    expect(gp!.units).toBeNull();
+  });
+
+  it("cites partner units when posted and leaves a contribution unset", () => {
+    const contributed = [
+      acct("Partner capital — LP", "0", "10000"),
+      acct("Partner capital — GP", "0", "0", "0"),
+    ];
+    const [lp0] = partnerCapitalAccounts(contributed, "inception");
+    expect(lp0!.units).toBeNull();
+    expect(lp0!.units === 0n).toBe(false);
+
+    const subscribed = [
+      { ...acct("Partner capital — LP", "0", "10000"), units: "10" },
+      { ...acct("Partner capital — GP", "0", "4000"), units: "4" },
+    ];
+    const [lp, gp] = partnerCapitalAccounts(subscribed, "inception");
+    expect(lp!.units).toBe(10n);
+    expect(gp!.units).toBe(4n);
+
+    const redeemed = [
+      { ...acct("Partner capital — LP", "10000", "10000"), units: "0" },
+    ];
+    const [done] = partnerCapitalAccounts(redeemed, "inception");
+    expect(done!.units).toBe(0n);
+    expect(done!.units === null).toBe(false);
   });
 });

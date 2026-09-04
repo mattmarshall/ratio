@@ -808,6 +808,11 @@ export interface Account {
    * single-currency fund.
    */
   currencyTotals: CurrencyTotal[];
+  /**
+   * Whole units issued on this account. Empty when no posting carried a
+   * quantity — unset, not a fake zero. `"0"` after a full redemption.
+   */
+  units?: string;
 }
 
 /** One account's activity in one denomination, before any translation. */
@@ -873,6 +878,11 @@ export interface Rule {
   form: string;
   /** The accounts it posts to, in leg order. */
   accounts: string[];
+  /**
+   * A leg carries partner / fund units (measured quantity, no instrument).
+   * A subscription or redemption names the units; a contribution does not.
+   */
+  measured?: boolean;
 }
 
 export interface ListRulesResponse {

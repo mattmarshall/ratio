@@ -4,11 +4,13 @@ import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
 import {
+  bookUnits,
   expenseShown,
   incomeShown,
   navRollForward,
   navShown,
   outflowShown,
+  unitsShown,
 } from "@/lib/nav";
 import { getBook, listAccounts } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
@@ -53,6 +55,7 @@ async function NavRollForward({
 
   const { accounts } = await listAccounts(c, book, view, "nav", window);
   const r = navRollForward(accounts);
+  const units = bookUnits(accounts);
   const bothUnset = r.beginning === null && r.ending === null;
 
   const filters: readonly Filter[] = [
@@ -201,6 +204,21 @@ async function NavRollForward({
             </span>
             <span role="cell" className="num">
               {navShown(r.delta)}
+            </span>
+          </div>
+          <div className="tbrow static" role="row">
+            <span role="cell">
+              Units in issue
+              <span className="at">
+                {units === null
+                  ? "unset — no subscription has posted units, not a fake zero"
+                  : units === 0n
+                    ? "fully redeemed — a real zero, not unset"
+                    : "ending units on partner capital / contributions / distributions"}
+              </span>
+            </span>
+            <span role="cell" className="num">
+              {unitsShown(units)}
             </span>
           </div>
         </div>

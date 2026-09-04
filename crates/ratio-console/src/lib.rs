@@ -822,6 +822,13 @@ impl Console {
             });
         }
 
+        // ⭐ UNITS ARE A MEASURE, FOLDED THE SAME WINDOW AS THE MONEY.
+        // Empty when no posting on that dim carried a quantity — unset,
+        // not a fake zero. `"0"` after a full redemption.
+        // `Ratio.Partners.no_movement_is_unset`.
+        let proj = self.projection(fund)?;
+        let units = units_folded(&b, &proj, view, &fold)?;
+
         Ok(b.accounts()?
             .into_iter()
             .map(|a| {
@@ -848,6 +855,10 @@ impl Console {
                         Some(v) if v.len() > 1 => v,
                         _ => Vec::new(),
                     },
+                    units: units
+                        .get(&a.dim)
+                        .map(|n| n.to_string())
+                        .unwrap_or_default(),
                 }
             })
             .collect())
@@ -1087,6 +1098,7 @@ impl Console {
                             .unwrap_or_else(|| format!("dimension {}", l.account))
                     })
                     .collect(),
+                measured: r.legs.iter().any(|l| l.measured),
             })
             .collect())
     }
@@ -1172,16 +1184,10 @@ impl Console {
             Some(hundredths / 100)
         };
 
-        // ⛔ ONE WITHOUT THE OTHER IS THE DEFECT WEARING A DISGUISE. A posting
-        // that names an instrument and no quantity is skipped by the walk just
-        // as surely as one that names neither, so accepting half of this would
-        // report a trade as attributed while it opened nothing.
-        if instrument.is_some() != quantity.is_some() {
-            bail!(
-                "an instrument and a quantity go together: with one of them the posting \
-                 carries no lot, which is the same as sending neither"
-            );
-        }
+        // Pairing of instrument and quantity is checked after the rule is
+        // loaded: a measured (partner-unit) rule carries quantity WITHOUT
+        // an instrument, and a lot walk skips that posting. A trade still
+        // needs both. See the door below, once `rule` is in hand.
 
         // ⚠ VALIDATED HERE, NOT WHERE IT IS READ. A date that will not parse is
         // recorded as a BREAK by the projection rather than an absence — it has
@@ -1244,6 +1250,39 @@ impl Console {
             .rule(&req.rule_id)
             .with_context(|| format!("no rule {:?} in the configuration in force", req.rule_id))?;
 
+        let measured = rule.legs.iter().any(|l| l.measured);
+        if measured {
+            // ⭐ A UNIT MOVEMENT IS NOT A TRADE. Quantity without an
+            // instrument opens no lot. `Ratio.Partners.Units`.
+            if instrument.is_some() {
+                bail!(
+                    "a subscription or redemption carries units, not an instrument — \
+                     /trade is the screen that opens a lot. Ratio.Partners.Units"
+                );
+            }
+            let Some(q) = quantity else {
+                bail!(
+                    "a subscription or redemption names the units; omit them and you \
+                     have a contribution. Use contribute_lp for funded capital without \
+                     unitization. Ratio.Partners.a_zero_unit_movement_is_refused"
+                );
+            };
+            if q == 0 {
+                bail!(
+                    "zero units is not a unit movement — that is a contribution. \
+                     Ratio.Partners.a_zero_unit_movement_is_refused"
+                );
+            }
+        } else if instrument.is_some() != quantity.is_some() {
+            // ⛔ ONE WITHOUT THE OTHER IS THE DEFECT WEARING A DISGUISE. A
+            // posting that names an instrument and no quantity is skipped
+            // by the walk just as surely as one that names neither.
+            bail!(
+                "an instrument and a quantity go together: with one of them the posting \
+                 carries no lot, which is the same as sending neither"
+            );
+        }
+
         // ⛔ STREAMED, and it does not stop early — but it holds one bool
         // rather than the journal.
         // ⛔ STREAMED. One bool and one counter rather than the journal — and
@@ -1284,17 +1323,30 @@ impl Console {
         };
         let postings = ratio_rules::compile(rule, &event)?;
 
+        // ⚠ THE ACCOUNT NAMES BELOW ARE VIEW-SCOPED RESOURCES NOW, and this is
+        // a fund-level RPC — so they name the default view, the one `previous`
+        // is also about. The chart itself does not depend on a view; only its
+        // totals do. A name that omitted the segment would not resolve.
+        let default_view = self.default_view_of(&fund)?;
+
+        if measured {
+            // ⛔ OVER-REDEMPTION REFUSES. Treating unset as 0 would make the
+            // first redemption look like it retired units nobody issued.
+            // `Ratio.Partners.cannot_redeem_when_unset`.
+            let proj = self.projection(&fund)?;
+            for p in postings.iter().filter(|p| p.quantity.is_some_and(|q| q < 0)) {
+                let outstanding = units_on_dim(&b, &proj, &default_view, p.dim)?;
+                let retiring = -p.quantity.unwrap();
+                ratio_rules::redeem(outstanding, retiring)?;
+            }
+        }
+
         // The memo is COMPOSED from what the rule and the event say, never
         // taken from the caller. On a public endpoint, free text on the
         // journal is free text on somebody else's screen.
         let memo = format!("{id} via {}", rule.id);
 
         let previous = self.default_view_nav(&fund)?;
-        // ⚠ THE ACCOUNT NAMES BELOW ARE VIEW-SCOPED RESOURCES NOW, and this is
-        // a fund-level RPC — so they name the default view, the one `previous`
-        // is also about. The chart itself does not depend on a view; only its
-        // totals do. A name that omitted the segment would not resolve.
-        let default_view = self.default_view_of(&fund)?;
 
         let entry = ratio_store::JournalEntry {
             id: id.to_string(),
@@ -3757,9 +3809,21 @@ impl Console {
         let cal = ratio_nav::closure::rate_for(&path);
 
         let b = self.open_file_book(&path)?;
-        let accounts = b.accounts()?.len() as i64;
+        let chart = b.accounts()?;
+        let accounts = chart.len() as i64;
         let proj = self.projection(&fund)?;
-        let (shape, refusal) = match ratio_nav::shape_of(&proj, &view, accounts, cal) {
+        // ⭐ THE CHART IS HERE, SO THE COUNT IS REAL. Projection does not
+        // know capital roles; passing zero and rendering blank are
+        // different claims, and a contribution without units does not
+        // count. `Ratio.Partners.Units`.
+        let capital_txns = count_unit_capital_entries(&b, &chart, &proj, &view)?;
+        let (shape, refusal) = match ratio_nav::shape_of(
+            &proj,
+            &view,
+            accounts,
+            cal,
+            Some(capital_txns),
+        ) {
             Ok(s) => (Some(s), String::new()),
             // ⛔ `{e:#}` — the WHOLE chain. The refusal's prose is the answer
             // this endpoint gives, and truncating it to the outermost line
@@ -4371,6 +4435,122 @@ pub use ratio_common::parse_minor as parse_amount;
 /// console, so it becomes a hyphen the same way pending facts already do.
 fn fact_name(fund: &str, id: &str) -> String {
     format!("funds/{fund}/facts/{}", id.replace(':', "-"))
+}
+
+/// Signed units posted to each dimension, or absent when no posting on
+/// that dim carried a quantity. Current includes undated; dated folds
+/// skip them the same way the money fold does. Activity is the window
+/// net; Current / AsOf / Loan are the ending stock.
+/// `Ratio.Partners.no_movement_is_unset`.
+fn units_folded(
+    b: &FileBook,
+    proj: &ratio_project::Projection,
+    view: &str,
+    fold: &AccountFold,
+) -> Result<BTreeMap<i64, i64>> {
+    let activity = matches!(fold, AccountFold::Activity(_));
+    let closing: BTreeSet<String> = if activity {
+        b.closes()?
+            .into_iter()
+            .filter_map(|c| c.closing_entry)
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
+    let mut units: BTreeMap<i64, i64> = BTreeMap::new();
+    b.for_each_entry_since(0, &mut |entry| {
+        if activity && closing.contains(&entry.id) {
+            return Ok(());
+        }
+        if !proj.recognised(view, entry)? {
+            return Ok(());
+        }
+        match fold {
+            AccountFold::Current => {}
+            AccountFold::AsOf(w) | AccountFold::Loan(w) => {
+                let Some(day) = entry.trade_date.as_deref() else {
+                    return Ok(());
+                };
+                if day > w.end.as_str() {
+                    return Ok(());
+                }
+            }
+            AccountFold::Activity(w) => {
+                let Some(day) = entry.trade_date.as_deref() else {
+                    return Ok(());
+                };
+                if day < w.start.as_str() || day > w.end.as_str() {
+                    return Ok(());
+                }
+            }
+        }
+        for p in &entry.postings {
+            if let Some(q) = p.quantity {
+                let slot = units.entry(p.dim).or_insert(0);
+                *slot = ratio_common::checked::add(*slot, q, "units")?;
+            }
+        }
+        Ok(())
+    })?;
+    Ok(units)
+}
+
+/// Signed units posted to one dimension, or unset when no posting on
+/// that dim carried a quantity. `Ratio.Partners.no_movement_is_unset`.
+fn units_on_dim(
+    b: &FileBook,
+    proj: &ratio_project::Projection,
+    view: &str,
+    dim: i64,
+) -> Result<Option<i64>> {
+    let mut posted = false;
+    let mut units: i64 = 0;
+    b.for_each_entry_since(0, &mut |entry| {
+        if !proj.recognised(view, entry)? {
+            return Ok(());
+        }
+        for p in entry.postings.iter().filter(|p| p.dim == dim) {
+            if let Some(q) = p.quantity {
+                posted = true;
+                units = ratio_common::checked::add(units, q, "units in issue")?;
+            }
+        }
+        Ok(())
+    })?;
+    Ok(if posted { Some(units) } else { None })
+}
+
+/// Journal entries that posted a quantity onto a capital account.
+///
+/// ⭐ THIS IS THE COUNT `capital_txns` WAS PASSED AS ZERO FOR. Projection
+/// does not know the chart; here we do. A contribution without units
+/// does not count — that is funded capital, not unitization.
+fn count_unit_capital_entries(
+    b: &FileBook,
+    chart: &[ratio_store::Account],
+    proj: &ratio_project::Projection,
+    view: &str,
+) -> Result<i64> {
+    let capital: BTreeSet<i64> = chart
+        .iter()
+        .filter(|a| book::is_capital_account(&a.display_name))
+        .map(|a| a.dim)
+        .collect();
+    let mut n: i64 = 0;
+    b.for_each_entry_since(0, &mut |entry| {
+        if !proj.recognised(view, entry)? {
+            return Ok(());
+        }
+        if entry
+            .postings
+            .iter()
+            .any(|p| p.quantity.is_some() && capital.contains(&p.dim))
+        {
+            n = ratio_common::checked::add(n, 1, "capital_txns")?;
+        }
+        Ok(())
+    })?;
+    Ok(n)
 }
 
 fn kind_filter(filter: &str) -> Option<&str> {
@@ -6028,6 +6208,21 @@ mod tests {
         format!("funds/{book}/views/{}", ratio_rules::UNDECLARED_VIEW)
     }
 
+    fn capital_req_units(
+        book: &str,
+        id: &str,
+        rule: &str,
+        amount: &str,
+        quantity: &str,
+        year: i32,
+        month: i32,
+        day: i32,
+    ) -> pb::ApplyEventRequest {
+        let mut req = capital_req(book, id, rule, amount, year, month, day);
+        req.quantity = quantity.into();
+        req
+    }
+
     #[test]
     fn contributing_and_distributing_conserves_and_opens_no_lot() {
         // ⭐ CAPITAL IS EQUITY, NOT A SALE. contribute_lp / distribute_lp carry
@@ -6067,6 +6262,10 @@ mod tests {
         assert_eq!(lp.credit, "10000", "100.00 contributed: {lp:?}");
         assert_eq!(lp.debit, "2500", "25.00 distributed: {lp:?}");
         assert_eq!(lp.balance, "-7500", "ending capital is credit-normal: {lp:?}");
+        assert_eq!(
+            lp.units, "",
+            "a contribution must not invent units: {lp:?}"
+        );
         assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
 
         let proj = c.projection("partners").unwrap();
@@ -6082,6 +6281,280 @@ mod tests {
                 .held
                 .is_empty(),
             "capital that opened a position invented a holding"
+        );
+    }
+
+    #[test]
+    fn a_subscription_issues_units_and_a_contribution_does_not() {
+        // ⭐ UNITIZATION IS MEASURED, NOT A LOT. subscribe_lp posts cash
+        // and partner capital, carries a quantity on the capital leg, and
+        // opens no instrument. contribute_lp is the same money without
+        // units — a silent 0 there is the defect.
+        // `Ratio.Partners.no_movement_is_unset`.
+        let root = fresh("unit-subscribe");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Unitized".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "unitized".into(),
+        })
+        .unwrap();
+
+        let view = capital_view("unitized");
+        let before = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp0 = before
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(lp0.units, "", "unset until a unit event posts: {lp0:?}");
+
+        c.apply_event(&capital_req(
+            "unitized",
+            "c-only",
+            "contribute_lp",
+            "50.00",
+            2026,
+            3,
+            1,
+        ))
+        .unwrap();
+        let after_c = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp_c = after_c
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(lp_c.credit, "5000", "{lp_c:?}");
+        assert_eq!(
+            lp_c.units, "",
+            "funded capital without units stays unset: {lp_c:?}"
+        );
+
+        c.apply_event(&capital_req_units(
+            "unitized",
+            "s-lp",
+            "subscribe_lp",
+            "100.00",
+            "10",
+            2026,
+            3,
+            2,
+        ))
+        .unwrap();
+        c.apply_event(&capital_req_units(
+            "unitized",
+            "s-gp",
+            "subscribe_gp",
+            "40.00",
+            "4",
+            2026,
+            3,
+            3,
+        ))
+        .unwrap();
+
+        let capital = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp = capital
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        let gp = capital
+            .iter()
+            .find(|a| a.display_name == "Partner capital — GP")
+            .unwrap();
+        assert_eq!(lp.credit, "15000", "50 contribute + 100 subscribe: {lp:?}");
+        assert_eq!(lp.units, "10", "LP subscription issued 10: {lp:?}");
+        assert_eq!(gp.units, "4", "GP subscription issued 4: {gp:?}");
+        assert_eq!(
+            c.get_fund("funds/unitized").unwrap().trial_balance_difference,
+            "0"
+        );
+
+        let proj = c.projection("unitized").unwrap();
+        assert_eq!(
+            proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
+            0,
+            "a subscription must not claim lot relief"
+        );
+        assert!(
+            proj.positions(ratio_rules::UNDECLARED_VIEW)
+                .unwrap()
+                .value
+                .held
+                .is_empty(),
+            "units without an instrument opened a holding"
+        );
+
+        let b = FileBook::open(&root.join("unitized")).unwrap();
+        let chart = b.accounts().unwrap();
+        let n = super::count_unit_capital_entries(
+            &b,
+            &chart,
+            &proj,
+            ratio_rules::UNDECLARED_VIEW,
+        )
+        .unwrap();
+        assert_eq!(n, 2, "two unit events; the contribution does not count");
+
+        // Period NAV cites the subscription money the same way a
+        // contribution is cited; units ride on the account, unset on
+        // a contribute-only window.
+        let mar = c.list_accounts(&view, "nav-2026-03").unwrap().accounts;
+        let lp_mar = mar
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(lp_mar.credit, "15000", "{lp_mar:?}");
+        assert_eq!(lp_mar.units, "10", "{lp_mar:?}");
+    }
+
+    #[test]
+    fn a_redemption_retires_units_and_over_redemption_refuses() {
+        // ⛔ UNSET IS NOT ZERO. Redeeming before any issue, redeeming
+        // more than issued, and a zero quantity all refuse.
+        // After a full redeem, `"0"` is a real zero.
+        // `Ratio.Partners.cannot_redeem_when_unset`.
+        let root = fresh("unit-redeem");
+        let c = Console::new(&root);
+        c.create_book(pb::CreateBookRequest {
+            book: Some(pb::Book {
+                display_name: "Redeem".into(),
+                kind: book::BookKind::Investment.proto(),
+                ..Default::default()
+            }),
+            book_id: "redeem".into(),
+        })
+        .unwrap();
+
+        let unset = c
+            .apply_event(&capital_req_units(
+                "redeem",
+                "too-soon",
+                "redeem_lp",
+                "10.00",
+                "1",
+                2026,
+                3,
+                1,
+            ))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            unset.contains("unset") || unset.contains("outstanding") || unset.contains("redeem"),
+            "redeeming when unset must refuse: {unset}"
+        );
+
+        c.apply_event(&capital_req_units(
+            "redeem",
+            "s-lp",
+            "subscribe_lp",
+            "100.00",
+            "10",
+            2026,
+            3,
+            2,
+        ))
+        .unwrap();
+
+        let zero = c
+            .apply_event(&capital_req_units(
+                "redeem",
+                "z",
+                "redeem_lp",
+                "10.00",
+                "0",
+                2026,
+                3,
+                3,
+            ))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            zero.contains("zero") || zero.contains("contribution"),
+            "zero units is not a redemption: {zero}"
+        );
+
+        let over = c
+            .apply_event(&capital_req_units(
+                "redeem",
+                "over",
+                "redeem_lp",
+                "110.00",
+                "11",
+                2026,
+                3,
+                4,
+            ))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            over.contains("redeem") || over.contains("outstanding") || over.contains("11"),
+            "over-redemption must refuse: {over}"
+        );
+
+        c.apply_event(&capital_req_units(
+            "redeem",
+            "r-part",
+            "redeem_lp",
+            "40.00",
+            "4",
+            2026,
+            3,
+            5,
+        ))
+        .unwrap();
+        let view = capital_view("redeem");
+        let mid = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp = mid
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(lp.units, "6", "10 issued − 4 redeemed: {lp:?}");
+        assert_eq!(lp.debit, "4000", "{lp:?}");
+        assert_eq!(
+            c.get_fund("funds/redeem").unwrap().trial_balance_difference,
+            "0"
+        );
+
+        c.apply_event(&capital_req_units(
+            "redeem",
+            "r-rest",
+            "redeem_lp",
+            "60.00",
+            "6",
+            2026,
+            3,
+            6,
+        ))
+        .unwrap();
+        let done = c.list_accounts(&view, "capital").unwrap().accounts;
+        let lp = done
+            .iter()
+            .find(|a| a.display_name == "Partner capital — LP")
+            .unwrap();
+        assert_eq!(
+            lp.units, "0",
+            "full redeem is a real zero, not unset: {lp:?}"
+        );
+        assert_ne!(lp.units, "", "unset would hide a completed redemption");
+
+        let missing = c
+            .apply_event(&capital_req(
+                "redeem",
+                "no-q",
+                "subscribe_lp",
+                "10.00",
+                2026,
+                3,
+                7,
+            ))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            missing.contains("units") || missing.contains("contribution"),
+            "subscribe without quantity must refuse: {missing}"
         );
     }
 

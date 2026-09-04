@@ -830,6 +830,97 @@ weight = 1
 account = 2
 weight = -1
 
+# Unitization. A subscription issues units; a redemption retires them.
+# Quantity is MEASURED — it does not enter conservation, and it opens
+# no lot (`measured`, not `per_instrument`). A contribution without
+# units is still contribute_lp; a silent 0 on that path is the defect.
+# Book-level subscribe/redeem do NOT split units 1/N across partners.
+# `Ratio.Partners.allocating_units_without_a_cut_is_unset`.
+
+[[rule]]
+id = "subscribe"
+kind = "trade"
+description = "Book-level subscription: cash in, capital contributions up, units issued"
+
+[[rule.posting]]
+account = 2
+weight = 1
+
+[[rule.posting]]
+account = 20
+weight = -1
+measured = true
+
+[[rule]]
+id = "redeem"
+kind = "trade"
+description = "Book-level redemption: distributions up, cash out, units retired"
+
+[[rule.posting]]
+account = 22
+weight = 1
+measured = true
+
+[[rule.posting]]
+account = 2
+weight = -1
+
+[[rule]]
+id = "subscribe_lp"
+kind = "trade"
+description = "LP subscription: cash in, partner capital up, units issued"
+
+[[rule.posting]]
+account = 2
+weight = 1
+
+[[rule.posting]]
+account = 50
+weight = -1
+measured = true
+
+[[rule]]
+id = "subscribe_gp"
+kind = "trade"
+description = "GP subscription: cash in, partner capital up, units issued"
+
+[[rule.posting]]
+account = 2
+weight = 1
+
+[[rule.posting]]
+account = 51
+weight = -1
+measured = true
+
+[[rule]]
+id = "redeem_lp"
+kind = "trade"
+description = "LP redemption: partner capital down, cash out, units retired"
+
+[[rule.posting]]
+account = 50
+weight = 1
+measured = true
+
+[[rule.posting]]
+account = 2
+weight = -1
+
+[[rule]]
+id = "redeem_gp"
+kind = "trade"
+description = "GP redemption: partner capital down, cash out, units retired"
+
+[[rule.posting]]
+account = 51
+weight = 1
+measured = true
+
+[[rule.posting]]
+account = 2
+weight = -1
+
 [[rule]]
 id = "transfer_lp_gp"
 kind = "trade"
@@ -2656,11 +2747,42 @@ template capital-calls {
             "commit_gp",
             "call_lp",
             "call_gp",
+            "subscribe",
+            "redeem",
+            "subscribe_lp",
+            "subscribe_gp",
+            "redeem_lp",
+            "redeem_gp",
         ] {
             let r = set.rule(id).unwrap_or_else(|| panic!("missing {id} in {text}"));
             assert!(
                 r.legs.iter().all(|l| !l.per_instrument),
                 "{id} is capital activity and must not open lots"
+            );
+        }
+        for id in [
+            "subscribe",
+            "redeem",
+            "subscribe_lp",
+            "subscribe_gp",
+            "redeem_lp",
+            "redeem_gp",
+        ] {
+            let r = set.rule(id).expect(id);
+            assert!(
+                r.legs.iter().any(|l| l.measured),
+                "{id} must carry units on the capital leg"
+            );
+            assert!(
+                r.legs.iter().all(|l| !(l.measured && l.per_instrument)),
+                "{id} must not open a lot"
+            );
+        }
+        for id in ["contribute", "contribute_lp", "distribute_lp"] {
+            let r = set.rule(id).expect(id);
+            assert!(
+                r.legs.iter().all(|l| !l.measured),
+                "{id} is funded capital without unitization"
             );
         }
         // ⭐ THE TRADE CONTRACT #90 SEEDS. Capital activity is not a lot;

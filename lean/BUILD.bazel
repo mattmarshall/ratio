@@ -594,6 +594,22 @@ lean_test(
     entry = "Ratio/Lots/PoolPeriod.lean",
 )
 
+# ⛔ Subscriptions and redemptions as unit/capital movements.
+#
+# Money already cites contribution / distribution. Units in issue stay
+# unset until a unit event posts — a silent 0 on a PE-style contribution
+# is the defect. After a full redemption, some 0 is a real zero.
+# Allocating units across partners uses the named cut, not 1/N.
+lean_test(
+    name = "partners_units_proof_test",
+    size = "small",
+    srcs = [
+        "Ratio/Partners/Cut.lean",
+        "Ratio/Partners/Units.lean",
+    ],
+    entry = "Ratio/Partners/Units.lean",
+)
+
 # ⛔ A jurisdiction that does NOT transfer the holding period.
 #
 # `Ratio.Lots.Wash.replacementAcquired` is the US rule. Assuming it

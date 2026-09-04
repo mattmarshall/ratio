@@ -29,8 +29,8 @@ pub use render::render;
 /// Partner allocation cut — named weights, not a partner count.
 mod partners;
 pub use partners::{
-    allocate, apply_facts, check_cut, check_specials, cut_for, AllocationFact, AllocationKind,
-    PartnerShare, SpecialAllocation,
+    allocate, apply_facts, check_cut, check_specials, cut_for, redeem, units_in_issue,
+    well_formed_move, AllocationFact, AllocationKind, PartnerShare, SpecialAllocation,
 };
 
 /// The grading decision, authored in Lean.
@@ -124,6 +124,21 @@ pub struct Leg {
     /// `Ratio.Ingest.partition_preserves_conservation`.
     #[serde(default)]
     pub per_instrument: bool,
+
+    /// Whether this leg carries partner / fund units (a measured quantity).
+    ///
+    /// ⛔ NOT `per_instrument`. A lot leg names a security; a unit movement
+    /// names how many fund units were issued or retired. Quantity without
+    /// an instrument opens no tax lot — the walk skips any posting that
+    /// lacks both. A subscription that invented an instrument would open
+    /// a lot on partner capital.
+    ///
+    /// The operator types a positive count. Credit (weight < 0) issues
+    /// +units; debit (weight > 0) retires −units. That is the opposite
+    /// of the lot convention, because fund units sit on credit-normal
+    /// equity. `Ratio.Partners.Units`.
+    #[serde(default)]
+    pub measured: bool,
 }
 
 /// A posting rule.
@@ -1474,6 +1489,17 @@ pub fn check(set: &RuleSet, chart: &[Account]) -> Vec<Finding> {
                             ),
                         ));
                     }
+                    if leg.per_instrument && leg.measured {
+                        out.push(Finding::error(
+                            &rule.id,
+                            format!(
+                                "marks {} as both a lot leg and a partner-unit leg. \
+                                 A subscription carries units, not an instrument. \
+                                 Ratio.Partners.Units",
+                                account.display_name
+                            ),
+                        ));
+                    }
                 }
             }
         }
@@ -1580,8 +1606,16 @@ pub fn compile(rule: &Rule, event: &Event) -> Result<Vec<PostingRecord>> {
             // number of the other sign. The legs would still net to zero, so the
             // door lets it through and the trial balance ties on it.
             let value = ratio_common::checked::mul(leg.weight, amount, "a posting leg")?;
-            Ok(match (leg.per_instrument, event.instrument.as_deref()) {
-                (true, Some(i)) => PostingRecord::of(
+            if leg.per_instrument && leg.measured {
+                anyhow::bail!(
+                    "rule {:?}: a lot leg is not a partner-unit leg — \
+                     `per_instrument` and `measured` cannot share a posting. \
+                     Ratio.Partners.Units",
+                    rule.id
+                );
+            }
+            Ok(match (leg.per_instrument, event.instrument.as_deref(), leg.measured) {
+                (true, Some(i), false) => PostingRecord::of(
                     leg.account,
                     value,
                     i,
@@ -1591,6 +1625,21 @@ pub fn compile(rule: &Rule, event: &Event) -> Result<Vec<PostingRecord>> {
                     // shares on a sale.
                     event.quantity.map(|q| if leg.weight < 0 { -q } else { q }),
                 ),
+                (false, _, true) => {
+                    // ⭐ FUND UNITS SIT ON CREDIT-NORMAL EQUITY. The operator
+                    // types a positive count. Credit (weight < 0) issues +q;
+                    // debit (weight > 0) retires −q. Lots use the opposite
+                    // convention because they debit an asset. Quantity
+                    // without an instrument opens no lot.
+                    // `Ratio.Partners.a_movement_conserves`.
+                    PostingRecord {
+                        dim: leg.account,
+                        amount: value,
+                        currency: None,
+                        instrument: None,
+                        quantity: event.quantity.map(|q| if leg.weight < 0 { q } else { -q }),
+                    }
+                }
                 _ => PostingRecord::new(leg.account, value),
             })
         })
@@ -1926,6 +1975,86 @@ weight = -1
         .unwrap();
         assert_eq!(out[0].amount, 1_690_421_107);
         assert_eq!(out[1].amount, -1_690_421_107);
+        assert!(out.iter().all(|p| p.quantity.is_none()), "a money-only rule opens no units");
+    }
+
+    #[test]
+    fn compiling_a_subscription_carries_units_without_an_instrument() {
+        // ⭐ QUANTITY WITHOUT AN INSTRUMENT. A lot walk skips it, so no lot
+        // opens. Credit capital (weight < 0) issues +units.
+        // `Ratio.Partners.a_movement_conserves`.
+        let set = RuleSet::from_toml(
+            r#"
+[[rule]]
+id = "subscribe_lp"
+kind = "trade"
+[[rule.posting]]
+account = 2
+weight = 1
+[[rule.posting]]
+account = 50
+weight = -1
+measured = true
+"#,
+        )
+        .unwrap();
+        let out = compile(
+            set.rule("subscribe_lp").unwrap(),
+            &Event {
+                rule: "subscribe_lp".into(),
+                id: "s1".into(),
+                amount: 10_000,
+                days: None,
+                memo: String::new(),
+                instrument: None,
+                quantity: Some(10),
+            },
+        )
+        .unwrap();
+        assert_eq!(out.len(), 2);
+        let cash = out.iter().find(|p| p.dim == 2).unwrap();
+        let cap = out.iter().find(|p| p.dim == 50).unwrap();
+        assert_eq!(cash.amount, 10_000);
+        assert_eq!(cash.quantity, None, "cash is not units");
+        assert_eq!(cap.amount, -10_000);
+        assert_eq!(cap.quantity, Some(10), "credit capital issues units");
+        assert!(cap.instrument.is_none(), "a unit movement opens no lot");
+    }
+
+    #[test]
+    fn compiling_a_redemption_retires_units() {
+        let set = RuleSet::from_toml(
+            r#"
+[[rule]]
+id = "redeem_lp"
+kind = "trade"
+[[rule.posting]]
+account = 50
+weight = 1
+measured = true
+[[rule.posting]]
+account = 2
+weight = -1
+"#,
+        )
+        .unwrap();
+        let out = compile(
+            set.rule("redeem_lp").unwrap(),
+            &Event {
+                rule: "redeem_lp".into(),
+                id: "r1".into(),
+                amount: 4_000,
+                days: None,
+                memo: String::new(),
+                instrument: None,
+                quantity: Some(4),
+            },
+        )
+        .unwrap();
+        let cap = out.iter().find(|p| p.dim == 50).unwrap();
+        assert_eq!(cap.amount, 4_000);
+        assert_eq!(cap.quantity, Some(-4), "debit capital retires units");
+        assert!(cap.instrument.is_none());
     }
 
     #[test]

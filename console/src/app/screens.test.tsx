@@ -454,6 +454,11 @@ describe("a first-class book", () => {
           /unset — no partner-cut of Unrealized gain — not a silent equal allocation/,
         ).length,
       ).toBeGreaterThan(0);
+      expect(
+        screen.getAllByText(
+          /unset — no units issued on this partner, not a fake zero/,
+        ).length,
+      ).toBeGreaterThan(0);
       expect(screen.queryByText(/^Unrealized gain$/)).toBeNull();
       expect(
         screen.getByRole("link", { name: "Record an event" }).getAttribute("href"),
@@ -802,6 +807,9 @@ describe("a first-class book", () => {
       expect(screen.queryByText("0.00")).toBeNull();
       expect(
         screen.getByText(/unset — Unrealized gain did not move this window/),
+      ).toBeDefined();
+      expect(
+        screen.getByText(/unset — no subscription has posted units, not a fake zero/),
       ).toBeDefined();
     } finally {
       wire.getBook = realBook;

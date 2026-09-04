@@ -1,5 +1,5 @@
 import { money } from "./format";
-import { beginningOf } from "./nav";
+import { beginningOf, unitsOf } from "./nav";
 import type { Account } from "@/wire/types";
 
 /**
@@ -196,6 +196,8 @@ export interface PartnerCapitalAccount {
   readonly allocatedExpense: bigint | null;
   readonly unrealized: bigint | null;
   readonly ending: bigint | null;
+  /** Ending units on this partner. Null until a unit event posts. */
+  readonly units: bigint | null;
 }
 
 /** The partner grain on `Partner capital — LP`, or the whole name. */
@@ -339,6 +341,7 @@ export function partnerCapitalAccounts(
       allocatedExpense: allocatedPlug(expensePlug, expenseCut, grain),
       unrealized: allocatedPlug(unrealPlug, unrealCut, grain),
       ending,
+      units: unitsOf(a),
     };
   });
 }

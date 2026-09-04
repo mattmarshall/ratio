@@ -89,6 +89,43 @@ function isTransfer(name: string): boolean {
   return name === "Capital transfers";
 }
 
+/**
+ * Whole units on one account. Empty / missing is unset — not a fake
+ * zero. `"0"` after a full redemption is a real zero.
+ * `Ratio.Partners.no_movement_is_unset`.
+ */
+export function unitsOf(a: Account): bigint | null {
+  const u = a.units;
+  if (u === undefined || u === "") return null;
+  return BigInt(u);
+}
+
+function isUnitAccount(name: string): boolean {
+  return (
+    name === "Capital contributions" ||
+    name === "Distributions" ||
+    name.startsWith("Partner capital")
+  );
+}
+
+/**
+ * Units in issue on the book: partner capital plus book-level
+ * contribution / distribution legs. Null when no unit event has
+ * posted — a PE-style contribution is not a silent 0.
+ */
+export function bookUnits(accounts: readonly Account[]): bigint | null {
+  const posted = accounts
+    .filter((a) => isUnitAccount(a.displayName))
+    .map(unitsOf)
+    .filter((u): u is bigint => u !== null);
+  if (posted.length === 0) return null;
+  return posted.reduce((n, u) => n + u, 0n);
+}
+
+export function unitsShown(n: bigint | null): string {
+  return n === null ? "—" : n.toString();
+}
+
 export interface NavRollForward {
   /** Raw A+L at the start of the window, or null when the prefix cannot support it. */
   readonly beginning: bigint | null;

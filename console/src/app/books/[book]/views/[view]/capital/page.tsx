@@ -17,6 +17,7 @@ import {
   type PartnerCut,
   type SpecialAllocation,
 } from "@/lib/capital";
+import { unitsShown } from "@/lib/nav";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
 import { money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
@@ -411,6 +412,21 @@ function Statement({
         </span>
         <span role="cell" className="num">
           {capitalShown(s.unrealized)}
+        </span>
+      </div>
+      <div className="tbrow static" role="row">
+        <span role="cell">
+          Units
+          <span className="at">
+            {s.units === null
+              ? "unset — no units issued on this partner, not a fake zero"
+              : s.units === 0n
+                ? "fully redeemed — a real zero, not unset"
+                : "ending units in issue on this partner — measured, not conserved"}
+          </span>
+        </span>
+        <span role="cell" className="num">
+          {unitsShown(s.units)}
         </span>
       </div>
       <div className="tbfoot static" role="row">
