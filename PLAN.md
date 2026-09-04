@@ -25,10 +25,12 @@ is an eight-week plan for a product nobody was buying.
 > Connect tokens on a second HTTP API (Connect `iss` =
 > `https://auth.ratio.marsh.build`; AuthKit session `iss` stays
 > `/user_management/{client_id}` — one authorizer cannot OR those).
-> Live leftovers on issue 22 are the shared demo's `RATIO_DEMO_OPEN`,
-> unused Cognito CloudFormation resources, and a live two-user
-> walk-through / live provider OAuth. Durable writes are #24 (closed).
-> The Cognito-era activation sentence is historical.
+> `RATIO_DEMO_OPEN` defaults off on the deployed demo — AuthKit
+> sessions isolate via membership. Live leftovers on issue 22 are
+> unused Cognito CloudFormation resources and live provider OAuth
+> (dashboard registration / redirect / bank-calendar OAuth). Durable
+> writes are #24 (closed). The Cognito-era activation sentence is
+> historical.
 
 Three constraints set everything below:
 
@@ -306,10 +308,10 @@ the token and makes the call. AuthKit is the code path (#63). Vercel
 Production has the env (#68 closed). Write-route actor binding landed
 (#151): `applyEvent` / `ingest` / `admit` / `mark` / CreateBook / period
 close record actor = WorkOS `sub`. Connect tokens accepted with
-catalog scopes on `/v1`. Live leftovers remain on issue 22 — the
-shared demo's `RATIO_DEMO_OPEN`, unused Cognito resources in the
-deploy templates, and live provider OAuth. Do not read this paragraph as
-production-complete.
+catalog scopes on `/v1`. `RATIO_DEMO_OPEN` defaults off on the
+deployed demo. Live leftovers remain on issue 22 — unused Cognito
+resources in the deploy templates, and live provider OAuth. Do not
+read this paragraph as production-complete.
 The retired `https://ratio-ims.vercel.app` host still resolves;
 `deploy.yml` refuses it as `CONSOLE_ORIGIN`.
 
@@ -777,10 +779,10 @@ is not the code path. AuthKit is in the code (#63). Vercel Production
 has the env (#68 closed). Write-route actor binding landed (#151).
 Connect tokens accepted with catalog scopes on `/v1`. API Gateway
 JWT verifies Connect tokens on the Connect HTTP API (AuthKit
-custom-domain issuer). Live leftovers remain on issue 22 — the
-shared demo's `RATIO_DEMO_OPEN`, unused Cognito resources in the
-deploy templates, and live provider OAuth / a two-user walk-through.
-Do not read this paragraph as production-complete, and do
+custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the
+deployed demo. Live leftovers remain on issue 22 — unused Cognito
+resources in the deploy templates, and live provider OAuth. Do not
+read this paragraph as production-complete, and do
 not read a walk-through as demo-ready (#27).
 
 **What it cost.** A Book proto resource; `book.toml`; `CreateBook` /
@@ -1771,14 +1773,12 @@ new identity product:
 
 **What this is NOT, because leftovers stay named on #22:**
 
-- **Not unsetting the open demo, and not live OAuth.** `/v1` now
-  proves AuthKit session JWTs on DemoUrl and Connect tokens on
-  ConnectApiUrl. Live leftovers stay on #22. This file does not
-  close #22.
-- **Not unsetting `RATIO_DEMO_OPEN`.** The shared execute-api demo
-  still grants any AuthKit session every fund. Isolation holds on the
-  `scoped` path in CI. A live two-user walk-through on that host will
-  not show isolation until the dial is off.
+- **Not live provider OAuth.** `/v1` now proves AuthKit session JWTs
+  on DemoUrl and Connect tokens on ConnectApiUrl. Dashboard
+  registration, redirect, and bank / calendar OAuth stay leftover.
+  This file does not close #22.
+- The `RATIO_DEMO_OPEN` leftover named here is recorded by the
+  later deployed-demo dial amendment.
 - **Not removing Cognito CloudFormation resources.** They stay unused
   so a stack update does not destroy the live pool.
 
@@ -1788,8 +1788,9 @@ closes the #151 write-route leftover. It does not close #22.
 **What a walk-through can and cannot show** (demo readiness, #27). It
 can show a signed-in operator's `sub` on a posted event and a period
 close, and a second subject receiving `[]` / refuse for that book
-when the console is `scoped`. It cannot show a Connect token opening
-a book, and it cannot show two users isolated on the open demo host.
+when the console is `scoped`. The open-dial leftover named here is
+recorded by the later amendment. It cannot show live bank or
+calendar OAuth.
 
 ### Amendment, 2026-09-04 — a Project AIA pay-app Connect app, and G702 product UI still does not live here
 
@@ -3318,13 +3319,12 @@ this amendment adds.
 
 **What this is NOT, because leftovers stay named on issue 22:**
 
-- **Not unsetting `RATIO_DEMO_OPEN`.** The shared execute-api demo
-  still grants any AuthKit session every fund. Isolation holds on
-  the `scoped` path in CI.
+- The `RATIO_DEMO_OPEN` leftover named here is recorded by the
+  later deployed-demo dial amendment.
 - **Not removing unused Cognito CloudFormation resources.**
 - **Not live provider OAuth.** In-process, verified Connect claims
   with catalog scopes are accepted. Dashboard registration,
-  redirect, and a two-user walk-through stay leftover. First-party
+  redirect, and bank / calendar OAuth stay leftover. First-party
   Connect scaffolds still refuse `fetch` / `deliver` until those
   leftovers move. The API Gateway JWT leftover named here is
   recorded by the next amendment. This amendment does not finish
@@ -3345,8 +3345,9 @@ the subject administers, `breaks:read` opening the exception queue,
 `audit:export` reading the change log, and a token without the
 scope / with `journal:read` / with `rules:approve` being refused.
 It can show an AuthKit session still walking `/v1/books` without
-Connect scopes. It cannot show two users isolated on the open demo
-host, live bank or calendar OAuth, or a ZIP that reached `/v1`.
+Connect scopes. The open-dial leftover named here is recorded by
+the later amendment. It cannot show live bank or calendar OAuth,
+or a ZIP that reached `/v1`.
 
 ### Amendment, 2026-09-04 — API Gateway JWT verifies Connect tokens
 
@@ -3391,14 +3392,14 @@ this amendment adds.
 
 **What this is NOT, because leftovers stay named on issue 22:**
 
-- **Not unsetting `RATIO_DEMO_OPEN`.** The shared DemoUrl still
-  grants any AuthKit session every fund.
+- The `RATIO_DEMO_OPEN` leftover named here is recorded by the
+  next amendment.
 - **Not removing unused Cognito CloudFormation resources.** They
   stay unused so a stack update does not destroy the live pool.
 - **Not live provider OAuth.** Dashboard registration, redirect,
-  bank / calendar OAuth, and a two-user walk-through stay leftover.
-  First-party Connect scaffolds still refuse `fetch` / `deliver`.
-  This file does not close #22.
+  and bank / calendar OAuth stay leftover. First-party Connect
+  scaffolds still refuse `fetch` / `deliver`. This file does not
+  close #22.
 - **Not the `journals:post` allowlist**, reserved RPCs, or a
   kernel blob store. Those stay on #150 / the app issues.
 
@@ -3412,5 +3413,71 @@ It can show an unauthenticated request to ConnectApiUrl `/v1`
 returning 401, and a Connect-shaped token whose `iss` is the
 AuthKit custom domain reaching the same `/v1` accept path that
 #224 opened. It can show an AuthKit session still walking DemoUrl
-`/v1`. It cannot show two users isolated on the open demo host,
-live bank or calendar OAuth, or a ZIP that reached `/v1`.
+`/v1`. The open-dial leftover named here is recorded by the
+next amendment. It cannot show live bank or calendar OAuth, or
+a ZIP that reached `/v1`.
+
+### Amendment, 2026-09-04 — RATIO_DEMO_OPEN defaults off on the deployed demo
+
+The leftover on issue 22 after #226 was the shared DemoUrl still
+setting `RATIO_DEMO_OPEN`, so any AuthKit session received every
+fund. Isolation already held on the `scoped` path in CI. A live
+two-user walk-through on execute-api could not show isolation
+until that dial was off.
+
+What landed is the production-safe default, not a new identity
+product:
+
+- `deploy/app.yaml` no longer sets `RATIO_DEMO_OPEN`. Unset (or
+  empty) is off — `ratio watch` already treated a missing value
+  that way. AuthKit sessions on DemoUrl go through
+  `Console::for_request(..., false)` and isolate via
+  `MEMBERSHIP.tsv`.
+- `RATIO_DEMO_MEMBER` still seeds that file from the `DemoMember`
+  / `DEMO_MEMBERS` list (WorkOS `sub` and/or email). CreateBook
+  still grants the creator's `sub`. A second AuthKit subject not
+  on the list sees authorized-empty / "no fund", never the first
+  subject's journal.
+- The dial remains: `RATIO_DEMO_OPEN=1` on a local `ratio watch`
+  or a CI job restores the shared rail for AuthKit sessions only.
+  A Connect-shaped token still never takes it and still never
+  matches `org:{id}` (#151). AuthKit stays on DemoUrl; Connect
+  tokens stay on ConnectApiUrl.
+- `//deploy:iac_test` fails if the function Environment sets
+  `RATIO_DEMO_OPEN` again, and fails if `RATIO_DEMO_MEMBER` is
+  dropped so the seed vanishes with the dial.
+
+**RATIO_DEMO_OPEN defaults off on the deployed demo** is the
+Built phrase this amendment adds.
+
+**What this is NOT, because leftovers stay named on issue 22:**
+
+- **Not live provider OAuth.** Dashboard registration, redirect,
+  bank / calendar OAuth, and a Connect-app two-user walk-through
+  stay leftover. First-party Connect scaffolds still refuse
+  `fetch` / `deliver`. This file does not close #22.
+- **Not removing unused Cognito CloudFormation resources.** They
+  stay unused so a stack update does not destroy the live pool.
+- **Not rewriting `DEMO_MEMBERS`.** The default remains
+  `demo@ratio.fastverk.dev`. AuthKit access tokens always carry
+  `sub`; email is optional. If that Cognito-era address never
+  appears on the token, seeded funds stay authorized-empty until
+  `DEMO_MEMBERS` names a live WorkOS `sub` (or an email the token
+  carries). Isolation still holds — nobody gets every fund. Two
+  operators can each CreateBook and not see the other's book
+  without any variable change.
+- **Not the `journals:post` allowlist**, reserved RPCs, or a
+  kernel blob store. Those stay on #150 / the app issues.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not close #150. It does not reopen #151. It does
+not finish #163, #165, #166, #168, #169, #172, #184, #179, or
+#185.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show two AuthKit subjects isolated on DemoUrl: the subject
+named in `RATIO_DEMO_MEMBER` (or the creator of a book) sees that
+rail; a second session sees authorized-empty / refuse, not every
+fund. It can still show a Connect-shaped token refused the open
+dial. It cannot show live bank or calendar OAuth, a Connect
+dashboard registration, or unused Cognito resources removed.
