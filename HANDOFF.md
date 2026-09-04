@@ -603,11 +603,15 @@ or `sidepocket:*`.
   plus classified movement equals ending cash; a move the chart cannot name
   is a residual line an operator can open, not silent absorption. An empty
   journal, or a cut with no dated prefix, stays **unset** — not a measured
-  $0.00 cash. Spending down to zero is a real zero. It cannot show a
-  purchase account the chart does not have (asset purchases stay unset), a
-  cash forecast, envelope coaching, bank OAuth, a credit score, or a client
-  portal. Envelope budgeting is #83; loan schedules are #87; the net-worth
-  bridge is #94.
+  $0.00 cash. Spending down to zero is a real zero. A Personal cash
+  forecast (#163) cites scheduled net cash from posted `scheduled_*` /
+  `forecast_*` journal kinds on the same `/cashflow` URL
+  (`filter=forecast-YYYY[-MM]`); unset when none exist — not a
+  measured $0.00. Actuals folds skip those kinds. It cannot show
+  envelope coaching, payroll, a bank-balance predictor, calendar
+  bills sync, bank OAuth, a credit score, or a client portal.
+  Envelope budgeting is #164; loan schedules are #87; the net-worth
+  bridge is #94. This file does not close #163.
 - ⭐ **A live custodian-feed walk-through (#155 / #27) can show, and cannot show.**
   CreateBook(Investment) or `ratio init --kind investment`, add the
   master, ingest `prime_equity_trades` and `custodian-positions`, admit,
@@ -1126,7 +1130,7 @@ than one that is entirely unclassified.
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `PoolPeriodEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
 | `crates/ratio-project` | the read model, the lot book, the relief engine — one pass, N view folds, each with a monotonic cut on the journal's own clock and a band bounded by the settlement lag. ⚠ every memory figure in this file is a ONE-VIEW figure; each view carries its own lot book |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
-| `crates/ratio-console` | the console's BFF — 40 RPCs, transcoded onto `/v1` |
+| `crates/ratio-console` | the console's BFF — 40 RPCs, transcoded onto `/v1`. Personal `forecast-YYYY[-MM]` folds posted `scheduled` / `forecast` journal kinds only; unset when none. Does not close #163 |
 | `crates/ratio-nav/src/explain.rs` | what a strike DOES, as a plan. ⛔ a description of two code paths, not a planner over them — nothing chooses |
 | `console/` | the console itself. Next.js on Vercel; ⛔ Bazel does not build it |
 | `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9 |

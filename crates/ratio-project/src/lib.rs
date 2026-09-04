@@ -874,6 +874,12 @@ impl Projection {
         if let Some(id) = entry.id.strip_prefix("action-") {
             self.actions.rewritten.insert(id.to_string());
         }
+        // ⛔ FORECAST MATERIAL IS NOT AN ACTUAL. A scheduled rent must
+        // not open a lot or move the trial balance. The cash-forecast
+        // fold re-reads the journal for those kinds; this fold does not.
+        if entry.is_forecast_material() {
+            return;
+        }
         // ⛔ PARSED ONCE PER ENTRY, NOT ONCE PER VIEW. Two views over seven
         // million entries must not mean fourteen million date parses — `follow`
         // pays `parse` once and runs N per-view bodies, which is
@@ -2426,6 +2432,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
             })
             .unwrap();
         }
@@ -2482,6 +2489,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
         })
         .unwrap();
     }
@@ -2509,6 +2517,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
         })
         .unwrap();
     }
@@ -2791,6 +2800,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
             })
             .unwrap();
         }
@@ -2858,6 +2868,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
         })
         .unwrap();
 
@@ -2967,6 +2978,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
         })
         .unwrap();
     }
@@ -3060,6 +3072,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         }
     }
 
@@ -3146,6 +3159,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
         });
         let p = Projection::rebuild(&js, FIFO);
 
@@ -3234,6 +3248,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
             })
             .unwrap();
         }
@@ -3311,6 +3326,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
             })
             .unwrap();
         }
@@ -3361,6 +3377,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
             })
             .unwrap();
         }
@@ -3492,6 +3509,7 @@ mod tests {
             application: None,
             identified_lots: identified,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
     }
@@ -3599,6 +3617,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
         })
         .unwrap();
         drop(b);
@@ -3986,6 +4005,7 @@ mod tests {
             application: None,
             identified_lots: Some(vec![]),
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         drop(b);
@@ -4077,6 +4097,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         drop(b);
@@ -4158,6 +4179,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
             })
             .unwrap();
         }
@@ -4277,6 +4299,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
         })
         .unwrap();
         drop(b);
@@ -4331,6 +4354,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
             })
             .collect();
         b.append_all(&entries).unwrap();
@@ -4442,6 +4466,7 @@ calendar = "wk"
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
         })
         .unwrap();
     }
@@ -4471,6 +4496,7 @@ calendar = "wk"
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
     }

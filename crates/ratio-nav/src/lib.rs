@@ -779,6 +779,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
             })
             .unwrap();
         }
@@ -833,6 +834,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
 
@@ -1021,6 +1023,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
             })
             .unwrap();
         }

@@ -503,6 +503,12 @@ impl Console {
     /// and ending retained earnings without a second ledger. Bare `close`
     /// is refused. Kind does not select this fold — every book that can
     /// close uses it.
+    /// `forecast-2026-03` folds only posted `scheduled` / `forecast`
+    /// journal kinds in that window (Activity-shaped: period nets, not
+    /// a fake beginning). Bare `forecast` is refused. Personal only —
+    /// Fund / Project / Investment / Operating do not wear this figure.
+    /// Actuals folds skip those kinds so a scheduled rent does not
+    /// become this month's cash-flow.
     pub fn list_accounts(
         &self,
         parent: &str,
@@ -599,10 +605,24 @@ impl Console {
             // a roll-forward without a window is not a period close.
             bail!("a period close roll-forward needs a month (YYYY-MM) or a year (YYYY)");
         }
+        if kind == "forecast" {
+            let path = self.book_path(&fund)?;
+            let meta = book::BookMeta::load(&path, &fund);
+            if meta.kind != book::BookKind::Personal {
+                bail!(
+                    "cash forecast is a household figure — this book is {}",
+                    meta.kind.as_str()
+                );
+            }
+            if period.is_empty() {
+                bail!("a cash forecast needs a month (YYYY-MM) or a year (YYYY)");
+            }
+        }
         let fold = match (kind, period) {
             ("pnl", p) => AccountFold::Activity(parse_period(p)?),
             ("capital", p) if !p.is_empty() => AccountFold::Activity(parse_period(p)?),
             ("budget", p) => AccountFold::Activity(parse_period(p)?),
+            ("forecast", p) => AccountFold::Forecast(parse_period(p)?),
             ("loan", p) | ("bridge", p) | ("cashflow", p) | ("change", p) | ("nav", p)
             | ("close", p) => AccountFold::Loan(parse_period(p)?),
             (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
@@ -742,6 +762,11 @@ impl Console {
                     if !proj.recognised(view, entry)? {
                         return Ok(());
                     }
+                    // ⛔ FORECAST MATERIAL IS NOT AN ACTUAL. A scheduled
+                    // rent must not land on this month's P&L / sheet cut.
+                    if entry.is_forecast_material() {
+                        return Ok(());
+                    }
                     let Some(day) = entry.trade_date.as_deref() else {
                         return Ok(());
                     };
@@ -775,6 +800,9 @@ impl Console {
                 let mut ending: BTreeMap<(i64, Option<String>), (i128, i128)> = BTreeMap::new();
                 b.for_each_entry_since(0, &mut |entry| {
                     if !proj.recognised(view, entry)? {
+                        return Ok(());
+                    }
+                    if entry.is_forecast_material() {
                         return Ok(());
                     }
                     let Some(day) = entry.trade_date.as_deref() else {
@@ -814,6 +842,43 @@ impl Console {
                         let (ed, ec) = ending.get(&key).copied().unwrap_or((0, 0));
                         (key.0, key.1, ad, ac, ed, ec, n)
                     })
+                    .collect()
+            }
+            AccountFold::Forecast(w) => {
+                // ⭐ PERIOD NETS OF FORECAST MATERIAL ONLY. Activity-shaped
+                // so beginning is always 0 — a forecast has no dated prefix
+                // of actuals, and inventing one would be a fake zero.
+                // Unset is the console's job when nothing moved.
+                let proj = self.projection(fund)?;
+                let mut rows: BTreeMap<(i64, Option<String>), (i128, i128, i64)> =
+                    BTreeMap::new();
+                b.for_each_entry_since(0, &mut |entry| {
+                    if !entry.is_forecast_material() {
+                        return Ok(());
+                    }
+                    if !proj.recognised(view, entry)? {
+                        return Ok(());
+                    }
+                    let Some(day) = entry.trade_date.as_deref() else {
+                        return Ok(());
+                    };
+                    if day < w.start.as_str() || day > w.end.as_str() {
+                        return Ok(());
+                    }
+                    for p in &entry.postings {
+                        let amount = p.amount as i128;
+                        let slot = rows.entry((p.dim, p.currency.clone())).or_default();
+                        slot.2 += 1;
+                        if amount >= 0 {
+                            slot.0 += amount;
+                        } else {
+                            slot.1 += -amount;
+                        }
+                    }
+                    Ok(())
+                })?;
+                rows.into_iter()
+                    .map(|((dim, ccy), (d, c, n))| (dim, ccy, d, c, d, c, n))
                     .collect()
             }
         };
@@ -1461,6 +1526,11 @@ impl Console {
         // taken from the caller. On a public endpoint, free text on the
         // journal is free text on somebody else's screen.
         let memo = format!("{id} via {}", rule.id);
+        // ⛔ KIND FROM THE RULE ID, NOT A DATE. A future-dated spend_cash
+        // is still an actual. Only forecast_* / scheduled_* mark material
+        // the cash forecast will fold. ApplyEvent has no proto field for
+        // this — Connect posts those templates via journals:post.
+        let kind = journal_kind_of(&rule.id);
 
         // ⛔ UNSET WHEN TRANSLATION REFUSES, NOT A FAILED WRITE. The journal
         // already accepts a conserved EUR expense; failing ApplyEvent because
@@ -1480,6 +1550,7 @@ impl Console {
             application,
             identified_lots: None,
             special_allocations: None,
+            kind,
         };
 
         // The kernel refuses an unbalanced entry at the door, so `append` is
@@ -2196,6 +2267,7 @@ impl Console {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })?;
         Ok((moved, dim_touched))
     }
@@ -2341,6 +2413,7 @@ impl Console {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
                         })?;
                     }
                     posted += 1;
@@ -2584,6 +2657,7 @@ impl Console {
                         .map(str::to_string),
                     identified_lots: None,
                     special_allocations: None,
+                    kind: None,
                 })?;
             }
             n += 1;
@@ -4034,6 +4108,7 @@ impl Console {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
             };
             b.append(&entry)?;
             (Some(id), Some(dest_amt), digest.as_str().to_string())
@@ -5153,6 +5228,9 @@ fn units_folded(
         if !proj.recognised(view, entry)? {
             return Ok(());
         }
+        if entry.is_forecast_material() != matches!(fold, AccountFold::Forecast(_)) {
+            return Ok(());
+        }
         let in_window = match fold {
             // ⛔ NO PERIOD WINDOW. Ending units still fold; issued /
             // redeemed stay unset rather than pretending all history
@@ -5169,7 +5247,7 @@ fn units_folded(
                     && day >= w.start.as_str()
                     && day <= w.end.as_str()
             }
-            AccountFold::Activity(w) => {
+            AccountFold::Activity(w) | AccountFold::Forecast(w) => {
                 let Some(day) = entry.trade_date.as_deref() else {
                     return Ok(());
                 };
@@ -5615,6 +5693,12 @@ enum AccountFold {
     AsOf(PeriodWindow),
     Activity(PeriodWindow),
     Loan(PeriodWindow),
+    /// Period nets of posted `scheduled` / `forecast` kinds only.
+    ///
+    /// ⛔ NOT A SECOND LEDGER. Same journal, same conservation door.
+    /// Actuals folds skip these kinds so a scheduled rent is not
+    /// this month's cash-flow. Activity-shaped: no fake beginning.
+    Forecast(PeriodWindow),
 }
 
 #[derive(Clone, Debug)]
@@ -5626,7 +5710,8 @@ struct PeriodWindow {
 /// AIP-132 List requests carry `filter` (AIP-160), not a custom period field.
 /// `pnl-2026-03` / `sheet-2026` / `capital-2026-03` / `budget-2026-03` /
 /// `loan-2026-03` / `bridge-2026-03` / `cashflow-2026-03` / `change-2026-03` /
-/// `nav-2026-03` / `close-2026-03` — hyphen because `param_of` does not decode.
+/// `nav-2026-03` / `close-2026-03` / `forecast-2026-03` — hyphen because
+/// `param_of` does not decode.
 fn list_accounts_window(filter: &str) -> (&str, &str) {
     if let Some(rest) = filter.strip_prefix("pnl-") {
         ("pnl", rest)
@@ -5648,9 +5733,27 @@ fn list_accounts_window(filter: &str) -> (&str, &str) {
         ("nav", rest)
     } else if let Some(rest) = filter.strip_prefix("close-") {
         ("close", rest)
+    } else if let Some(rest) = filter.strip_prefix("forecast-") {
+        ("forecast", rest)
     } else {
         (filter, "")
     }
+}
+
+/// Mark an ApplyEvent from its rule id. `forecast_*` / `scheduled_*`
+/// only — a future-dated `spend_cash` stays an actual.
+fn journal_kind_of(rule_id: &str) -> Option<String> {
+    if let Some(rest) = rule_id.strip_prefix("forecast_") {
+        if !rest.is_empty() {
+            return Some("forecast".into());
+        }
+    }
+    if let Some(rest) = rule_id.strip_prefix("scheduled_") {
+        if !rest.is_empty() {
+            return Some("scheduled".into());
+        }
+    }
+    None
 }
 
 /// A month (`YYYY-MM`) or a year (`YYYY`) as an inclusive calendar window.
@@ -6348,6 +6451,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
             })
             .unwrap();
         };
@@ -6678,6 +6782,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
             })
             .unwrap();
         }
@@ -6724,6 +6829,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
             })
             .unwrap();
         }
@@ -6760,6 +6866,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
             })
             .unwrap();
             b.append(&JournalEntry {
@@ -6776,6 +6883,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
             })
             .unwrap();
         }
@@ -7219,6 +7327,7 @@ mod tests {
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
             })
             .unwrap_err()
             .to_string();
@@ -7912,6 +8021,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
                 kind: "income".into(),
                 amount: 4_000,
             }]),
+            kind: None,
         })
         .unwrap();
         drop(b);
@@ -8582,6 +8692,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         // $18,000 auto in February.
@@ -8599,6 +8710,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         // March mortgage: $800 principal + $200 interest against cash.
@@ -8617,6 +8729,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         // March auto: $350 principal + $45 interest.
@@ -8635,6 +8748,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         // A card charge the same month — not a declared loan.
@@ -8652,6 +8766,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         drop(b);
@@ -8757,6 +8872,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         drop(b);
@@ -8897,6 +9013,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         drop(b);
@@ -8968,6 +9085,190 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             "adding principal to operating is the defect"
         );
         assert_eq!(income.credit, "3000", "March income, not the undated 99");
+    }
+
+    #[test]
+    fn a_household_cash_forecast_is_unset_without_scheduled_or_forecast_kinds() {
+        // ⭐ THE CLAIM #163 IS ABOUT. A citeable forecast folds only
+        // posted scheduled_* / forecast_* journal kinds. An empty book,
+        // or a book of actuals only, is unset — not a measured zero.
+        // Payroll and envelope kinds are not invented. Actuals cash-flow
+        // excludes forecast material so a scheduled rent is not March
+        // operating cash.
+        let root = fresh("household-cash-forecast");
+        let console = Console::new(&root);
+        console
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Household".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "household".into(),
+            })
+            .unwrap();
+
+        let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let bare = console
+            .list_accounts(&view, "forecast")
+            .unwrap_err()
+            .to_string();
+        assert!(bare.contains("month"), "{bare}");
+
+        let empty = console.list_accounts(&view, "forecast-2026-03").unwrap();
+        assert!(
+            empty
+                .accounts
+                .iter()
+                .all(|a| a.balance == "0" && a.debit == "0" && a.credit == "0"),
+            "an empty journal is zeros on the chart, not a forecast: {:?}",
+            empty.accounts
+        );
+
+        book(&root.join("fundbook"));
+        let fund_view = format!(
+            "funds/fundbook/views/{}",
+            ratio_rules::UNDECLARED_VIEW
+        );
+        let inv = console
+            .list_accounts(&fund_view, "forecast-2026-03")
+            .unwrap_err()
+            .to_string();
+        assert!(inv.contains("household"), "{inv}");
+
+        console
+            .apply_event(&household_req("inc", "receive_income", "30.00", 2026, 3, 5))
+            .unwrap();
+        let actuals_only = console.list_accounts(&view, "forecast-2026-03").unwrap();
+        assert!(
+            actuals_only
+                .accounts
+                .iter()
+                .all(|a| a.balance == "0" && a.debit == "0" && a.credit == "0"),
+            "actuals are not a forecast: {:?}",
+            actuals_only.accounts
+        );
+
+        let payroll = console
+            .apply_event(&household_req(
+                "pay",
+                "forecast_payroll",
+                "10.00",
+                2026,
+                3,
+                6,
+            ))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            payroll.contains("forecast_payroll"),
+            "inventing payroll is refused: {payroll}"
+        );
+        let envelope = console
+            .apply_event(&household_req(
+                "env",
+                "forecast_envelope",
+                "10.00",
+                2026,
+                3,
+                6,
+            ))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            envelope.contains("forecast_envelope"),
+            "inventing envelopes is refused: {envelope}"
+        );
+
+        console
+            .apply_event(&household_req(
+                "sched",
+                "scheduled_income",
+                "40.00",
+                2026,
+                3,
+                20,
+            ))
+            .unwrap();
+        console
+            .apply_event(&household_req(
+                "fcst",
+                "forecast_spend",
+                "10.00",
+                2026,
+                3,
+                22,
+            ))
+            .unwrap();
+        console
+            .apply_event(&household_req("out", "scheduled_income", "5.00", 2026, 4, 1))
+            .unwrap();
+
+        let forecast = console.list_accounts(&view, "forecast-2026-03").unwrap();
+        let by: BTreeMap<_, _> = forecast
+            .accounts
+            .iter()
+            .map(|a| (a.display_name.as_str(), a))
+            .collect();
+        let cash = by.get("Cash and bank").expect("cash");
+        let income = by.get("Income").expect("income");
+        let living = by.get("Living expenses").expect("living");
+        assert_eq!(cash.debit, "4000", "scheduled income, not April's 5.00");
+        assert_eq!(cash.credit, "1000", "forecast spend");
+        assert_eq!(income.credit, "4000");
+        assert_eq!(living.debit, "1000");
+        let cash_net: i64 = cash.debit.parse::<i64>().unwrap()
+            - cash.credit.parse::<i64>().unwrap();
+        assert_eq!(cash_net, 3000, "40.00 − 10.00, not the actual 30.00");
+
+        let listed = console.list_accounts(&view, "cashflow-2026-03").unwrap();
+        let actual: BTreeMap<_, _> = listed
+            .accounts
+            .iter()
+            .map(|a| (a.display_name.as_str(), a))
+            .collect();
+        let actual_cash = actual.get("Cash and bank").expect("cash");
+        let actual_income = actual.get("Income").expect("income");
+        assert_eq!(
+            actual_income.credit, "3000",
+            "March actual income, not the scheduled 40"
+        );
+        assert_eq!(
+            actual_cash.debit, "3000",
+            "forecast material must not move actuals cash-flow"
+        );
+
+        // Income 10 + spend 10 is a real zero, not unset.
+        console
+            .apply_event(&household_req(
+                "even-in",
+                "scheduled_income",
+                "10.00",
+                2026,
+                5,
+                1,
+            ))
+            .unwrap();
+        console
+            .apply_event(&household_req(
+                "even-out",
+                "forecast_spend",
+                "10.00",
+                2026,
+                5,
+                2,
+            ))
+            .unwrap();
+        let even = console.list_accounts(&view, "forecast-2026-05").unwrap();
+        let even_cash = even
+            .accounts
+            .iter()
+            .find(|a| a.display_name == "Cash and bank")
+            .unwrap();
+        assert_eq!(even_cash.debit, "1000");
+        assert_eq!(even_cash.credit, "1000");
+        assert_eq!(even_cash.balance, "0", "a net-zero forecast is a real zero");
+        assert_ne!(even_cash.posting_count, "0");
     }
 
     #[test]
@@ -10469,6 +10770,7 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
                 application: None,
                 identified_lots: Some(vec![0]),
                 special_allocations: None,
+                kind: None,
             })
             .unwrap();
         }
@@ -12369,6 +12671,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
     }
@@ -12409,6 +12712,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
     }
@@ -12794,6 +13098,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         drop(b);
@@ -13128,6 +13433,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
             })
             .unwrap();
             b.append(&JournalEntry {
@@ -13144,6 +13450,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
             })
             .unwrap();
         }
@@ -13183,6 +13490,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap_err();
 
@@ -13731,6 +14039,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         drop(b);
@@ -13852,6 +14161,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
                 application: None,
                 identified_lots: Some(vec![3]),
                 special_allocations: None,
+                kind: None,
             })
             .unwrap();
         }
@@ -14153,6 +14463,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         drop(b);
@@ -14557,6 +14868,7 @@ calendar = "wk"
                 application: None,
                 identified_lots: None,
                 special_allocations: None,
+                kind: None,
             })
             .unwrap();
         }
@@ -14623,6 +14935,7 @@ calendar = "wk"
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         let dual = b.put(DUAL_VIEWS.as_bytes()).unwrap();
@@ -14638,6 +14951,7 @@ calendar = "wk"
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         drop(b);

@@ -425,6 +425,18 @@ pub struct JournalEntry {
     /// existed still reads.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub special_allocations: Option<Vec<SpecialAllocationFact>>,
+
+    /// Posted scheduled / forecast material. Ordinary actuals are `None`.
+    ///
+    /// ⛔ NOT A DATE HEURISTIC. A future-dated `spend_cash` is still an
+    /// actual. Only `forecast` and `scheduled` are forecast material.
+    /// Anything else refuses at the door — inventing `payroll` or
+    /// `envelope` as a kind would be the coverage-creep #163 refused.
+    ///
+    /// `#[serde(default)]` so every journal written before this field
+    /// existed still reads. Absence is an actual, not a silent forecast.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 /// An exact amount named on an entry. Not a configuration weight.
@@ -533,6 +545,32 @@ impl JournalEntry {
             }
         }
         Ok(())
+    }
+
+    /// Posted `forecast` / `scheduled` material. Ordinary actuals are unset.
+    ///
+    /// ⛔ A FUTURE TRADE DATE IS NOT THIS. Dating `spend_cash` next month
+    /// still books an actual. Only an explicit kind is forecast material.
+    pub fn is_forecast_material(&self) -> bool {
+        matches!(self.kind.as_deref(), Some("forecast") | Some("scheduled"))
+    }
+
+    /// Refuse an invented journal kind.
+    ///
+    /// ⛔ PAYROLL AND ENVELOPE ARE NOT KINDS. `None` is an actual.
+    /// `forecast` and `scheduled` are the only forecast material.
+    /// Anything else refuses rather than becoming a silent actual
+    /// or a silent forecast.
+    pub fn refuse_journal_kind(&self) -> Result<()> {
+        match self.kind.as_deref() {
+            None | Some("forecast") | Some("scheduled") => Ok(()),
+            Some(other) => bail!(
+                "entry {:?} journal kind {:?} is not forecast or scheduled — \
+                 payroll and envelope kinds are not invented",
+                self.id,
+                other
+            ),
+        }
     }
 }
 
@@ -1405,6 +1443,7 @@ impl Journal for FileBook {
         }
         self.refuse_closed_period(entry)?;
         entry.refuse_special_allocations()?;
+        entry.refuse_journal_kind()?;
         let line = serde_json::to_string(entry).context("serializing entry")?;
         if let Some(log) = self.journal_log() {
             log.append(line.as_bytes())?;
@@ -1466,6 +1505,7 @@ impl Journal for FileBook {
             }
             self.refuse_closed_period(entry)?;
             entry.refuse_special_allocations()?;
+            entry.refuse_journal_kind()?;
         }
         if let Some(log) = self.journal_log() {
             // Each entry is its own claim. Sharing a file handle is the jsonl
@@ -1662,6 +1702,7 @@ mod position_tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
         b.append(&JournalEntry {
@@ -1679,6 +1720,7 @@ mod position_tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         })
         .unwrap();
 
@@ -1738,6 +1780,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         }
     }
 
@@ -1808,6 +1851,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         };
         assert!(!e.conserves_every_currency());
         let err = b.append(&e).unwrap_err();
@@ -1837,6 +1881,7 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
             })
             .is_ok());
     }
@@ -1869,9 +1914,42 @@ mod tests {
             application: None,
             identified_lots: None,
             special_allocations: None,
+            kind: None,
         };
         assert!(!e.conserves_every_currency());
         assert!(b.append(&e).is_err());
+    }
+
+    #[test]
+    fn an_invented_journal_kind_is_refused_and_silence_is_an_actual() {
+        // ⭐ #163. Only forecast / scheduled are forecast material.
+        // payroll / envelope refuse. A journal written before the field
+        // existed deserializes as None — an actual, not a silent forecast.
+        let (mut b, cfg) = book();
+        let silent = entry("old", &cfg, &[(1, 100), (2, -100)]);
+        let line = serde_json::to_string(&silent).unwrap();
+        assert!(
+            !line.contains("\"kind\""),
+            "None skips the field so old journals stay readable: {line}"
+        );
+        let parsed: JournalEntry = serde_json::from_str(&line).unwrap();
+        assert!(parsed.kind.is_none(), "absence is an actual: {:?}", parsed.kind);
+        assert!(!parsed.is_forecast_material());
+
+        let mut payroll = entry("pay", &cfg, &[(1, 100), (2, -100)]);
+        payroll.kind = Some("payroll".into());
+        let err = b.append(&payroll).unwrap_err().to_string();
+        assert!(err.contains("payroll"), "{err}");
+        assert!(err.contains("not invented"), "{err}");
+
+        let mut envelope = entry("env", &cfg, &[(1, 100), (2, -100)]);
+        envelope.kind = Some("envelope".into());
+        assert!(b.append(&envelope).is_err());
+
+        let mut scheduled = entry("sched", &cfg, &[(1, 100), (2, -100)]);
+        scheduled.kind = Some("scheduled".into());
+        b.append(&scheduled).unwrap();
+        assert!(scheduled.is_forecast_material());
     }
 
     #[test]

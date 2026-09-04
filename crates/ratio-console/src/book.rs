@@ -618,6 +618,50 @@ weight = 1
 account = 30
 weight = -1
 
+[[rule]]
+id = "forecast_spend"
+kind = "trade"
+description = "Forecast living expenses paid from cash — not an actual"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "forecast_income"
+kind = "trade"
+description = "Forecast income received to cash — not an actual"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 30
+weight = -1
+
+[[rule]]
+id = "scheduled_spend"
+kind = "trade"
+description = "Scheduled living expenses paid from cash — not an actual"
+[[rule.posting]]
+account = 10
+weight = 1
+[[rule.posting]]
+account = 1
+weight = -1
+
+[[rule]]
+id = "scheduled_income"
+kind = "trade"
+description = "Scheduled income received to cash — not an actual"
+[[rule.posting]]
+account = 1
+weight = 1
+[[rule.posting]]
+account = 30
+weight = -1
+
 
 [[rule]]
 id = "mortgage_interest"
@@ -3364,6 +3408,30 @@ template subscriptions {
         assert!(
             set.personal.is_none(),
             "a new household has no baseline until someone sets [personal] budget"
+        );
+        assert!(set.rule("forecast_spend").is_some());
+        assert!(set.rule("forecast_income").is_some());
+        assert!(set.rule("scheduled_spend").is_some());
+        assert!(set.rule("scheduled_income").is_some());
+        assert!(
+            set.rule("forecast_payroll").is_none()
+                && set.rule("scheduled_payroll").is_none()
+                && set.rule("forecast_envelope").is_none(),
+            "payroll and envelope kinds are not invented"
+        );
+        assert!(
+            set.rules.iter().all(|r| {
+                !r.id.contains("payroll") && !r.id.contains("envelope")
+            }),
+            "a household config must not grow payroll or envelope rules: {:?}",
+            set.rules.iter().map(|r| r.id.as_str()).collect::<Vec<_>>()
+        );
+        assert!(
+            chart_for(BookKind::Personal)
+                .iter()
+                .all(|a| !a.display_name.to_ascii_lowercase().contains("payroll")
+                    && !a.display_name.to_ascii_lowercase().contains("envelope")),
+            "chart_for(Personal) does not invent payroll or envelope accounts"
         );
     }
 

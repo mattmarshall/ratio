@@ -2888,6 +2888,68 @@ attribution, a rewritten struck figure, an LP portal, or the
 rest of the #26 console buildout. Those remain refused /
 Connect / #26.
 
+### Amendment, 2026-09-04 — a Personal cash forecast, unset when none exist
+
+[#163](https://github.com/mattmarshall/ratio/issues/163) asked for a
+forward-looking household cash figure that is not a fake zero. Period
+cash-flow at `/cashflow` already cited actuals (`filter=cashflow-YYYY[-MM]`).
+A walk-through could not show a forecast. Inventing one from envelopes,
+payroll, or a bank-balance predictor would have been a silent current
+bucket on a book that had posted none of those things.
+
+What landed is a citeable forecast at the same `/cashflow` URL, folded
+from the same journal (`filter=forecast-YYYY[-MM]`). No new RPC, no
+second store, no proto resource, no `screensFor` fork. Personal only.
+Operating keeps period cash-flow and does not wear the forecast cite.
+
+**The material the fold will name.** Posted `scheduled_*` / `forecast_*`
+journal kinds only (`scheduled_income`, `scheduled_spend`,
+`forecast_income`, `forecast_spend`). ApplyEvent sets
+`JournalEntry.kind` from the rule-id prefix. A future-dated
+`spend_cash` is still an actual. Actuals folds (sheet, P&L, bridge,
+period cash-flow, the maintained projection) skip forecast material so
+a scheduled rent is not this month's operating cash.
+
+**Unset stays unset.** No scheduled or forecast entry in the window is
+not a measured $0.00. A posted income and spend that net to zero is a
+real zero. Payroll and envelope kinds refuse at the door — they are
+not invented.
+
+**What this amendment records.** CreateBook(Personal) writes the four
+templates. `forecast-YYYY[-MM]` is Activity-shaped over those kinds.
+The console cites scheduled net cash on `/cashflow`. Bank-balance
+predictors and calendar bills sync stay Connect (`journals:post` +
+`statements:read`; `journal:append` is a refused alias). No new
+`Method` / `Order` / `lot_method` variant. **a Personal cash forecast**
+is the Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not envelopes or payroll.** Those stay refused. Envelope coaching
+  is #164. No `forecast_payroll` / `forecast_envelope` rule, no
+  payroll account on `chart_for(Personal)`.
+- **Not a bank-balance predictor, not calendar bills sync.** Those
+  stay Connect. This file does not close #165.
+- **Not a `screensFor` fork, not `ratio watch` product UI.** The cite
+  composes onto `/cashflow`. Fund / Project / Operating / Investment
+  do not wear it.
+- **Not #178 leftovers (FX Connect /trade).** This file does not
+  absorb them.
+
+Nothing on the *Explicitly not building* list moved. This file does
+not close #163 — bank-balance predictors and calendar bills sync
+remain. It does not close #164, #165, #168, or #150. It does not
+reopen #98.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show beginning / operating / investing / financing / ending
+actuals as before, and a scheduled net cash forecast when
+`scheduled_*` or `forecast_*` entries exist in the window. An empty
+book, or a book of actuals only, leaves the forecast unset — not
+0.00. A net-zero pair of scheduled posts is a real zero. It cannot
+show envelope coaching, payroll, a bank-balance predictor, calendar
+bills sync, or a client portal.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,
