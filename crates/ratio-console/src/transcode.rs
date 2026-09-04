@@ -778,7 +778,7 @@ impl JsonView for pb::Book {
              \"entryCount\":{},\"configDigest\":{},\"trialBalanceDifference\":{},\
              \"budget\":{},\"envelopes\":[{}],\"loans\":[{}],\
              \"partnerCut\":[{}],\"specialAllocations\":[{}],\
-             \"feeReceivable\":{}}}",
+             \"feeReceivable\":{},\"allocationFacts\":[{}]}}",
             q(&self.name),
             q(&self.display_name),
             q(book_kind_name(self.kind)),
@@ -794,7 +794,8 @@ impl JsonView for pb::Book {
             self.loans.iter().map(|l| l.to_json()).collect::<Vec<_>>().join(","),
             self.partner_cut.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
             self.special_allocations.iter().map(|s| s.to_json()).collect::<Vec<_>>().join(","),
-            q(&self.fee_receivable)
+            q(&self.fee_receivable),
+            self.allocation_facts.iter().map(|f| f.to_json()).collect::<Vec<_>>().join(","),
         )
     }
 }
@@ -816,6 +817,18 @@ impl JsonView for pb::SpecialAllocation {
             q(&self.partner),
             q(&self.kind),
             q(&self.weight.to_string())
+        )
+    }
+}
+
+impl JsonView for pb::AllocationFact {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"partner\":{},\"kind\":{},\"amount\":{},\"tradeDate\":{}}}",
+            q(&self.partner),
+            q(&self.kind),
+            q(&self.amount.to_string()),
+            date_json(&self.trade_date)
         )
     }
 }
@@ -926,10 +939,13 @@ impl JsonView for pb::Entry {
         format!(
             "{{\"name\":{},\"entryId\":{},\"memo\":{},\"configDigest\":{},\
              \"postings\":[{}],\"identifiedLots\":[{}],\
-             \"identifiedLotsDeclared\":{}}}",
+             \"identifiedLotsDeclared\":{},\"specialAllocations\":[{}],\
+             \"specialAllocationsDeclared\":{}}}",
             q(&self.name), q(&self.entry_id), q(&self.memo), q(&self.config_digest),
             self.postings.iter().map(|p| p.to_json()).collect::<Vec<_>>().join(","),
-            int64s(&self.identified_lots), self.identified_lots_declared
+            int64s(&self.identified_lots), self.identified_lots_declared,
+            self.special_allocations.iter().map(|f| f.to_json()).collect::<Vec<_>>().join(","),
+            self.special_allocations_declared
         )
     }
 }

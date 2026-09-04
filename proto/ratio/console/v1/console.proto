@@ -683,6 +683,16 @@ message Book {
   //
   // Invoice PDF / LP statements stay Connect. Field 16. specials are 15.
   string fee_receivable = 16 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Journal specials GetBook walked. Empty is silence — no entry
+  // named a special — not an unnamed `Some([])`. Those refuse at
+  // the store door. `/capital` folds these into allocated plugs
+  // (`Ratio.Partners.applyFacts`); a remainder uses `partner_cut`.
+  //
+  // ⚠ INDEX MUST NOT FILL THIS. `list_book_row` stays empty — a
+  // walk of the journal is a fold. GetBook cites. Field 17.
+  repeated AllocationFact allocation_facts = 17
+      [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One named weight in a partner cut. Absent from `Book.partner_cut`
@@ -701,6 +711,23 @@ message SpecialAllocation {
   // `income` / `expense` / `unrealized`.
   string kind = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
   int64 weight = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// An exact amount named on a journal entry. Not a weight.
+//
+// `None` on the entry is silence. `Some([])` is elected and unnamed
+// and refuses — the SpecID shape. GetBook cites the named rows;
+// `/capital` folds them. `Ratio.Partners.applyFacts`.
+message AllocationFact {
+  string partner = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // `income` / `expense` / `unrealized`.
+  string kind = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 amount = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // ⚠ A DATE, NOT A STRING AND NOT A TIMESTAMP. `core::0142::time-field-type`
+  // accepts only Timestamp / Date / DateTime / TimeOfDay for a field whose
+  // last token is `date`. Unset when the entry is undated — inception
+  // includes those; a dated `/capital` window drops them.
+  google.type.Date trade_date = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One declared household envelope. Absent from `Book.envelopes` when that
@@ -2444,6 +2471,24 @@ message Entry {
   // this flag; an empty `identified_lots` plus `declared = false` is
   // silence, not an unnamed election.
   bool identified_lots_declared = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Exact partner specials this entry names. `Ratio.Partners.Fact`.
+  //
+  // ⛔ NOT A WEIGHT. Each row is an amount somebody attested.
+  // Meaningful only when `special_allocations_declared` is true —
+  // proto3 repeated defaults to empty, and an empty list that is
+  // elected is unnamed and refuses rather than inventing 1/N.
+  // Absence is the flag false, not a silent split.
+  repeated AllocationFact special_allocations = 8
+      [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether this entry ELECTS per-entry specials, or merely has none.
+  //
+  // ⛔ `None` ON THE JOURNAL IS SILENCE. `Some([])` is elected and
+  // unnamed — refuse, not 1/N. The wire distinguishes those with
+  // this flag. Field 9. identified_lots_declared is 7.
+  bool special_allocations_declared = 9
+      [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 message EntryPosting {

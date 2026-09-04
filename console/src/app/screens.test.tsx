@@ -768,6 +768,114 @@ describe("a first-class book", () => {
     }
   });
 
+  it("folds a journal special into allocated plugs and still refuses 1/N", async () => {
+    const harbour = {
+      ...booksFixture.books.find((b) => b.kind === "INVESTMENT")!,
+      partnerCut: [
+        { partner: "LP", weight: "80" },
+        { partner: "GP", weight: "20" },
+      ],
+      allocationFacts: [
+        {
+          partner: "GP",
+          kind: "income",
+          amount: "1000",
+          tradeDate: { year: 2026, month: 3, day: 15 },
+        },
+      ],
+    };
+    const realBook = wire.getBook;
+    const realAccounts = wire.listAccounts;
+    const period = {
+      accounts: [
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/2",
+          displayName: "Cash and equivalents",
+          dimension: "2",
+          type: "ASSET",
+          debit: "6000",
+          credit: "1000",
+          balance: "15000",
+          abnormal: false,
+          postingCount: "3",
+          currencyTotals: [],
+          units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/50",
+          displayName: "Partner capital — LP",
+          dimension: "50",
+          type: "EQUITY",
+          debit: "1000",
+          credit: "4000",
+          balance: "-13000",
+          abnormal: false,
+          postingCount: "2",
+          currencyTotals: [],
+          units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/51",
+          displayName: "Partner capital — GP",
+          dimension: "51",
+          type: "EQUITY",
+          debit: "0",
+          credit: "2000",
+          balance: "-2000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+          units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
+        },
+        {
+          name: "funds/harbourline-global-value/views/abor/accounts/30",
+          displayName: "Dividend income",
+          dimension: "30",
+          type: "REVENUE",
+          debit: "0",
+          credit: "3000",
+          balance: "-3000",
+          abnormal: false,
+          postingCount: "1",
+          currencyTotals: [],
+          units: "",
+          unitsIssued: "",
+          unitsRedeemed: "",
+        },
+      ],
+      nextPageToken: "",
+    };
+    wire.getBook = (async () => harbour) as unknown as typeof wire.getBook;
+    wire.listAccounts = (async (...args: unknown[]) => {
+      if (args[3] === "nav") return period;
+      return capitalAccountsFixture;
+    }) as unknown as typeof wire.listAccounts;
+    try {
+      const Capital = (await import("./books/[book]/views/[view]/capital/page"))
+        .default;
+      await renderAsync(
+        Capital({
+          params: params({ book: "harbourline-global-value", view: "abor" }),
+          searchParams: params({ filter: "capital-2026-03" }),
+        }),
+      );
+      // 1000 named + 80/20 of leftover 2000 is 16.00 / 14.00, not 24/6 or 15/15.
+      expect(screen.getByText("16.00")).toBeDefined();
+      expect(screen.getByText("14.00")).toBeDefined();
+      expect(screen.queryByText("24.00")).toBeNull();
+      expect(screen.queryByText("15.00")).toBeNull();
+    } finally {
+      wire.getBook = realBook;
+      wire.listAccounts = realAccounts;
+    }
+  });
+
   it("refuses capital activity on a personal book", async () => {
     const Capital = (await import("./books/[book]/views/[view]/capital/page"))
       .default;

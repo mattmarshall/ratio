@@ -183,7 +183,9 @@ export interface SpecialAllocation {
  * accounts, and `allocate_*_lp` closes an exact amount into partner
  * capital (already in In / Out). A silent 0.00 share or a 50/50 split
  * of book NAV is the defect. A written `[[partner_cut]]` fills the
- * plugs; a figure that will not divide leaves them unset.
+ * plugs; a figure that will not divide leaves them unset. Journal
+ * specials fold first (`Ratio.Partners.applyFacts`); a remainder
+ * uses the cut. Unnamed `[]` refuses rather than inventing 1/N.
  */
 export interface PartnerCapitalAccount {
   readonly displayName: string;
@@ -275,6 +277,87 @@ export function allocatedPlug(
   return shares.get(partner) ?? null;
 }
 
+/** An exact amount named on a journal entry. Not a weight. */
+export interface AllocationFact {
+  readonly partner: string;
+  readonly kind: AllocationKind;
+  readonly amount: bigint;
+  /** `YYYY-MM-DD`. Empty when the entry is undated. */
+  readonly tradeDate: string;
+}
+
+/**
+ * Facts that belong to this capital window.
+ *
+ * Inception includes undated rows. A dated suffix drops them — the
+ * same rule `/capital` already applies to undated journal entries.
+ * Empty after the filter is silence (`null`), not an unnamed `[]`.
+ */
+export function factsInWindow(
+  facts: readonly AllocationFact[] | null | undefined,
+  window: string,
+): AllocationFact[] | null {
+  if (!facts || facts.length === 0) return null;
+  if (!window) return [...facts];
+  const kept = facts.filter((f) => f.tradeDate && f.tradeDate.startsWith(window));
+  return kept.length === 0 ? null : kept;
+}
+
+/**
+ * Apply journal specials of one kind, then the remainder cut.
+ *
+ * `null` / `undefined` facts fall through to the cut.
+ * `[]` is elected and unnamed and refuses — the SpecID shape.
+ * Facts that cover the figure are the allocation. A remainder
+ * needs a cut that divides. An overshoot refuses.
+ * `Ratio.Partners.applyFacts`.
+ */
+export function applyFacts(
+  figure: bigint | null,
+  facts: readonly AllocationFact[] | null | undefined,
+  kind: AllocationKind,
+  remainder: PartnerCut | null | undefined,
+): Map<string, bigint> | null {
+  if (figure === null) return null;
+  if (facts === undefined || facts === null) {
+    return applyCut(figure, remainder);
+  }
+  if (facts.length === 0) return null;
+  let taken = 0n;
+  const out = new Map<string, bigint>();
+  let anyOfKind = false;
+  for (const f of facts) {
+    if (f.kind !== kind) continue;
+    if (!f.partner) return null;
+    anyOfKind = true;
+    taken += f.amount;
+    out.set(f.partner, (out.get(f.partner) ?? 0n) + f.amount);
+  }
+  if (taken === figure) return out;
+  if (taken > figure) return null;
+  if (!anyOfKind) return applyCut(figure, remainder);
+  const left = figure - taken;
+  const rest = applyCut(left, remainder);
+  if (!rest) return null;
+  for (const [partner, amount] of rest) {
+    out.set(partner, (out.get(partner) ?? 0n) + amount);
+  }
+  return out;
+}
+
+/** Partner share after journal specials, then the remainder cut. */
+export function allocatedFromFacts(
+  bookFigure: bigint | null,
+  facts: readonly AllocationFact[] | null | undefined,
+  kind: AllocationKind,
+  remainder: PartnerCut | null | undefined,
+  partner: string,
+): bigint | null {
+  const shares = applyFacts(bookFigure, facts, kind, remainder);
+  if (!shares) return null;
+  return shares.get(partner) ?? null;
+}
+
 /**
  * Per-partner capital accounts from a chart fold.
  *
@@ -291,6 +374,7 @@ export function partnerCapitalAccounts(
   cut: CapitalCut,
   partnerCut?: PartnerCut | null,
   specials?: readonly SpecialAllocation[] | null,
+  facts?: readonly AllocationFact[] | null,
 ): PartnerCapitalAccount[] {
   const partners = partnersOf(accounts as Account[]);
   const bookHasPrefix = cut === "period" && prefixSet(accounts);
@@ -337,9 +421,9 @@ export function partnerCapitalAccounts(
       beginning,
       contributions,
       distributions,
-      allocatedIncome: allocatedPlug(incomePlug, incomeCut, grain),
-      allocatedExpense: allocatedPlug(expensePlug, expenseCut, grain),
-      unrealized: allocatedPlug(unrealPlug, unrealCut, grain),
+      allocatedIncome: allocatedFromFacts(incomePlug, facts, "income", incomeCut, grain),
+      allocatedExpense: allocatedFromFacts(expensePlug, facts, "expense", expenseCut, grain),
+      unrealized: allocatedFromFacts(unrealPlug, facts, "unrealized", unrealCut, grain),
       ending,
       units: unitsOf(a),
     };

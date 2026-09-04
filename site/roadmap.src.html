@@ -194,8 +194,10 @@ __STYLE__
           → allocated income/expense and unrealized → ending capital.
           Allocated plugs stay unset when the configuration names no
           partner cut — never a fake zero share, never a silent equal
-          split of book NAV.           A written <code>[[partner_cut]]</code>
-          fills the plugs when the figure divides.
+          split of book NAV. CreateBook(Investment) and the live demo
+          write <code>[[partner_cut]]</code> LP 80 / GP 20. Journal
+          specials fold first; a remainder uses the cut. A written
+          cut fills the plugs when the figure divides.
           A subscription or redemption posts as a conserved journal
           fact with a measured unit quantity — not a lot. Units in
           issue stay unset until that event posts, never a fake zero;
@@ -361,8 +363,9 @@ __STYLE__
           still the exception queue, a difference at its own address, and
           whether a fund can close. Household budget envelopes, a project
           budget, and per-partner capital account statements (beginning →
-          activity → allocated plugs unset until a named
-          <code>[[partner_cut]]</code> exists → ending — not an equal
+          activity → allocated plugs from a named
+          <code>[[partner_cut]]</code> (CreateBook writes LP 80 / GP 20;
+          journal specials fold first) → ending — not an equal
           split of book NAV) are now on the console.</li>
         </ul>
       </div>

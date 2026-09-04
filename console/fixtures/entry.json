@@ -11,5 +11,7 @@
     }
   ],
   "identifiedLots": [],
-  "identifiedLotsDeclared": false
+  "identifiedLotsDeclared": false,
+  "specialAllocations": [],
+  "specialAllocationsDeclared": false
 }
