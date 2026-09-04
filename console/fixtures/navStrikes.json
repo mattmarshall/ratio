@@ -12,7 +12,10 @@
         "a corporate action announced after this prefix is not applied"
       ],
       "configDigest": "9f2c1ab7de40551c",
-      "view": "abor"
+      "view": "abor",
+      "washQualified": false,
+      "washRestatementOriginal": "",
+      "washRestatementMovedTo": ""
     }
   ],
   "nextPageToken": ""

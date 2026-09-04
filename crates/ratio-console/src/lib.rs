@@ -3812,6 +3812,7 @@ impl Console {
                 // `stale_strikes`: a strike pins a journal position and an
                 // applied action is a journal entry, so nothing is stored.
                 let stale = self.stale_strikes(&id).unwrap_or_default();
+                let wash = wash_source(&path, &id, |fund| self.projection(fund));
                 ratio_nav::list_in(&path, &view)?
                     .into_iter()
                     .map(|s| {
@@ -3820,7 +3821,7 @@ impl Console {
                             .filter(|(strike, _, _)| *strike == s.id)
                             .map(|(_, _, why)| why.clone())
                             .collect();
-                        to_pb(&id, &s, &why)
+                        to_pb(&id, &s, &why, wash_cite_for_strike(&s, &wash))
                     })
                     .collect()
             },
@@ -3843,7 +3844,8 @@ impl Console {
             .filter(|(strike, _, _)| *strike == s.id)
             .map(|(_, _, why)| why)
             .collect();
-        Ok(to_pb(&fund, &s, &why))
+        let wash = wash_source(&path, &fund, |fund| self.projection(fund));
+        Ok(to_pb(&fund, &s, &why, wash_cite_for_strike(&s, &wash)))
     }
 
     /// Close one view through one calendar day.
@@ -4725,7 +4727,7 @@ impl Console {
     }
 }
 
-fn to_pb(fund: &str, s: &ratio_nav::Strike, why: &[String]) -> pb::NavStrike {
+fn to_pb(fund: &str, s: &ratio_nav::Strike, why: &[String], wash: WashCite) -> pb::NavStrike {
     pb::NavStrike {
         // ⛔ THE VIEW IS IN THE NAME, NOT ONLY IN THE FIELD. `id_for` derives the
         // id from the valuation time alone, so two views striking one moment
@@ -4748,6 +4750,206 @@ fn to_pb(fund: &str, s: &ratio_nav::Strike, why: &[String]) -> pb::NavStrike {
         trial_balance_difference: s.trial_balance_difference.to_string(),
         config_digest: s.config_digest.clone(),
         qualification: why.to_vec(),
+        wash_qualified: wash.qualified,
+        wash_restatement_original: wash.original,
+        wash_restatement_moved_to: wash.moved_to,
+    }
+}
+
+/// What a strike reads to qualify or restate a realized gain.
+///
+/// ⭐ `Ratio.Lots.WashRestatement`. Absence of a window is unset — not a
+/// silent 30. A restatement cites the strike; `net_asset_value` is not
+/// this record and is never rewritten.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct WashCite {
+    qualified: bool,
+    original: String,
+    moved_to: String,
+}
+
+struct WashSource {
+    window: Option<i64>,
+    roles: Option<ratio_rules::ChartRoles>,
+    entries: Vec<ratio_store::JournalEntry>,
+    proj: Option<ratio_project::Projection>,
+}
+
+fn wash_source(
+    path: &Path,
+    fund: &str,
+    projection: impl FnOnce(&str) -> Result<ratio_project::Projection>,
+) -> WashSource {
+    let (_, rules) = local_config(path);
+    let window = rules.as_ref().and_then(|r| r.wash_window_days);
+    let roles = rules.as_ref().and_then(|r| r.chart_roles);
+    if window.is_none() {
+        return WashSource {
+            window: None,
+            roles,
+            entries: Vec::new(),
+            proj: None,
+        };
+    }
+    let entries = FileBook::open(path)
+        .ok()
+        .and_then(|b| b.entries().ok())
+        .unwrap_or_default();
+    let proj = projection(fund).ok();
+    WashSource {
+        window,
+        roles,
+        entries,
+        proj,
+    }
+}
+
+fn valuation_day(unix: i64) -> Option<ratio_project::relief::Day> {
+    let iso = ratio_nav::rfc3339(unix);
+    let date = iso.get(..10)?;
+    ratio_common::days_from_iso_date(date)
+        .ok()
+        .map(|d| d as ratio_project::relief::Day)
+}
+
+struct SaleLeg {
+    instrument: String,
+    units: i64,
+    /// Credit-normal posted gain (`relieved − proceeds`).
+    posted: i64,
+    sold_on: ratio_project::relief::Day,
+}
+
+fn sale_of(
+    e: &ratio_store::JournalEntry,
+    roles: &ratio_rules::ChartRoles,
+) -> Option<SaleLeg> {
+    let sold_on = ratio_common::days_from_iso_date(e.trade_date.as_ref()?)
+        .ok()? as ratio_project::relief::Day;
+    let inv = e.postings.iter().find(|p| {
+        p.dim == roles.investments && p.quantity.unwrap_or(0) < 0
+    })?;
+    let instrument = inv.instrument.clone()?;
+    let units = -inv.quantity?;
+    let posted = e
+        .postings
+        .iter()
+        .find(|p| p.dim == roles.realized_gain)?
+        .amount;
+    Some(SaleLeg {
+        instrument,
+        units,
+        posted,
+        sold_on,
+    })
+}
+
+fn purchase_of(
+    e: &ratio_store::JournalEntry,
+    roles: &ratio_rules::ChartRoles,
+    instrument: &str,
+) -> Option<(ratio_project::relief::Day, i64)> {
+    let bought_on = ratio_common::days_from_iso_date(e.trade_date.as_ref()?)
+        .ok()? as ratio_project::relief::Day;
+    let inv = e.postings.iter().find(|p| {
+        p.dim == roles.investments
+            && p.quantity.unwrap_or(0) > 0
+            && p.instrument.as_deref() == Some(instrument)
+    })?;
+    Some((bought_on, inv.quantity?))
+}
+
+/// Qualify / restate one strike from the journal and the head fold.
+///
+/// ⛔ THE STRUCK NAV IS NOT AN INPUT. `restate` returns a new record;
+/// `rewrite_in_place` is the defect this must not call.
+fn wash_cite_for_strike(s: &ratio_nav::Strike, src: &WashSource) -> WashCite {
+    let Some(window) = src.window else {
+        return WashCite::default();
+    };
+    let Some(day) = valuation_day(s.valuation_time) else {
+        return WashCite::default();
+    };
+    let mut qualified = false;
+    if let Some(p) = &src.proj {
+        if let Ok(open) = p.open_wash_windows(&s.view, day) {
+            qualified = !open.value.is_empty();
+        }
+    }
+    let Some(roles) = src.roles.as_ref() else {
+        return WashCite {
+            qualified,
+            original: String::new(),
+            moved_to: String::new(),
+        };
+    };
+    let prefix = s.journal_position;
+    let mut restated: Option<ratio_project::relief::Restatement> = None;
+    for (i, e) in src.entries.iter().enumerate() {
+        if i >= prefix {
+            break;
+        }
+        let Some(sale) = sale_of(e, roles) else {
+            continue;
+        };
+        // Lean's figure is signed (`Relief::gain`: negative when money
+        // was lost). The journal posts credit-normal (`relieved −
+        // proceeds`: a loss is positive). Flip at this boundary.
+        let Some(signed) = sale.posted.checked_neg() else {
+            continue;
+        };
+        let Ok(struck) = ratio_project::relief::strike_gain(
+            ratio_project::relief::StrikeId {
+                prefix: prefix as u64,
+            },
+            window,
+            sale.sold_on,
+            day,
+            signed,
+        ) else {
+            continue;
+        };
+        if struck.qualified {
+            qualified = true;
+        }
+        if restated.is_some() {
+            continue;
+        }
+        for buy in src.entries.iter().skip(prefix) {
+            let Some((bought_on, bought)) = purchase_of(buy, roles, &sale.instrument) else {
+                continue;
+            };
+            let Ok(deferred) =
+                ratio_project::relief::disallowed(signed, sale.units, bought)
+            else {
+                continue;
+            };
+            let Ok(new_signed) = ratio_common::checked::add(
+                signed,
+                deferred,
+                "the restated realized gain",
+            ) else {
+                continue;
+            };
+            if let Some(r) =
+                ratio_project::relief::restate(&struck, window, bought_on, new_signed)
+            {
+                restated = Some(r);
+                break;
+            }
+        }
+    }
+    match restated {
+        Some(r) => WashCite {
+            qualified: true,
+            original: r.original.checked_neg().unwrap_or(r.original).to_string(),
+            moved_to: r.moved_to.checked_neg().unwrap_or(r.moved_to).to_string(),
+        },
+        None => WashCite {
+            qualified,
+            original: String::new(),
+            moved_to: String::new(),
+        },
     }
 }
 
@@ -12079,6 +12281,201 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         assert!(listed[0].wash_window_declared);
         assert_eq!(listed[0].wash_window_days, 30);
         assert!(listed[0].wash_keep_holding_period);
+    }
+
+    /// A fund book that elects a wash window and posts sales through
+    /// `relief::sale_postings` — the same three legs the lot engine uses.
+    fn wash_strike_book(name: &str) -> std::path::PathBuf {
+        use ratio_store::{Account, AccountTypeRecord as A};
+        let d = fresh(name);
+        let mut b = FileBook::open(&d).unwrap();
+        b.put_accounts(&[
+            Account {
+                dim: 1,
+                display_name: "Investments at fair value".into(),
+                account_type: A::Asset,
+            },
+            Account {
+                dim: 2,
+                display_name: "Cash and equivalents".into(),
+                account_type: A::Asset,
+            },
+            Account {
+                dim: 20,
+                display_name: "Capital contributions".into(),
+                account_type: A::Equity,
+            },
+            Account {
+                dim: 30,
+                display_name: "Realized gain".into(),
+                account_type: A::Income,
+            },
+        ])
+        .unwrap();
+        let c = b
+            .put(
+                b"lot_method = \"fifo\"\nrules = []\nlong_term_days = 365\n\
+                  wash_window_days = 30\n\
+                  [chart_roles]\ninvestments = 1\ncash = 2\nrealized_gain = 30\n",
+            )
+            .unwrap();
+        b.set_active(&c).unwrap();
+        d
+    }
+
+    fn wash_buy(d: &std::path::Path, id: &str, units: i64, cost: i64, day: &str) {
+        use ratio_store::{JournalEntry, PostingRecord};
+        let mut b = FileBook::open(d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        b.append(&JournalEntry {
+            id: id.into(),
+            memo: "buy".into(),
+            config: c,
+            postings: vec![
+                PostingRecord {
+                    dim: 1,
+                    amount: cost,
+                    currency: None,
+                    instrument: Some("vti".into()),
+                    quantity: Some(units),
+                },
+                PostingRecord::new(2, -cost),
+            ],
+            trade_date: Some(day.into()),
+            announcement: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+        })
+        .unwrap();
+    }
+
+    fn wash_sell(d: &std::path::Path, id: &str, units: i64, proceeds: i64, day: &str) {
+        use ratio_store::JournalEntry;
+        let mut b = FileBook::open(d).unwrap();
+        let c = b.active().unwrap().unwrap();
+        let roles = ratio_rules::ChartRoles {
+            investments: 1,
+            cash: 2,
+            realized_gain: 30,
+            currency_conversion: None,
+        };
+        let p = ratio_project::Projection::of_book(d).unwrap();
+        let held = p
+            .lots_of(ratio_rules::UNDECLARED_VIEW, 1, "vti")
+            .unwrap()
+            .value;
+        let r = ratio_project::relief::relieve_by(
+            ratio_project::relief::Method::Fifo,
+            &held,
+            units,
+        )
+        .unwrap();
+        let postings = ratio_project::relief::sale_postings(
+            roles, None, "vti", units, r.cost, proceeds,
+        )
+        .unwrap();
+        b.append(&JournalEntry {
+            id: id.into(),
+            memo: "sell".into(),
+            config: c,
+            postings,
+            trade_date: Some(day.into()),
+            announcement: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn a_strike_without_a_wash_window_leaves_restatement_unset() {
+        // ⛔ UNSET STAYS UNSET. A book that never elected a window has no
+        // wash cite — not a silent qualification and not a silent rewrite.
+        let d = fresh("wash-asof-silent");
+        book(&d);
+        ratio_nav::strike_and_record(
+            &d,
+            ratio_rules::UNDECLARED_VIEW,
+            1_781_913_600,
+            "e.marsh",
+        )
+        .unwrap();
+        let listed = Console::new(&d)
+            .list_nav_strikes("funds/demo/views/book")
+            .unwrap();
+        assert_eq!(listed.nav_strikes.len(), 1);
+        let s = &listed.nav_strikes[0];
+        assert!(!s.wash_qualified, "nobody said");
+        assert!(s.wash_restatement_original.is_empty(), "unset, not 0");
+        assert!(s.wash_restatement_moved_to.is_empty());
+    }
+
+    #[test]
+    fn a_strike_taken_while_a_wash_window_is_open_is_qualified() {
+        // ⭐ `Ratio.Lots.WashRestatement.an_open_window_is_qualified`.
+        let d = wash_strike_book("wash-asof-qual");
+        wash_buy(&d, "orig", 100, 2000, "2026-01-01");
+        wash_sell(&d, "s", 100, 1000, "2026-06-15");
+        let struck = ratio_nav::strike_and_record(
+            &d,
+            ratio_rules::UNDECLARED_VIEW,
+            1_781_913_600, // 2026-06-20
+            "e.marsh",
+        )
+        .unwrap();
+        let listed = Console::new(&d)
+            .list_nav_strikes(&format!(
+                "funds/demo/views/{}",
+                ratio_rules::UNDECLARED_VIEW
+            ))
+            .unwrap();
+        let s = &listed.nav_strikes[0];
+        assert!(s.wash_qualified, "the window was still open");
+        assert!(
+            s.wash_restatement_original.is_empty(),
+            "nothing has moved yet"
+        );
+        assert_eq!(s.net_asset_value, struck.net_asset_value.to_string());
+    }
+
+    #[test]
+    fn a_later_wash_produces_a_restatement_that_cites_the_strike() {
+        // ⭐ `Ratio.Lots.WashRestatement.restate`. The repurchase moves
+        // the realized gain; the struck NAV is the number somebody was
+        // paid on and is not rewritten.
+        let d = wash_strike_book("wash-asof-restate");
+        wash_buy(&d, "orig", 100, 2000, "2026-01-01");
+        wash_sell(&d, "s", 100, 1000, "2026-06-15");
+        let struck = ratio_nav::strike_and_record(
+            &d,
+            ratio_rules::UNDECLARED_VIEW,
+            1_781_913_600,
+            "e.marsh",
+        )
+        .unwrap();
+        wash_buy(&d, "repl", 40, 500, "2026-06-20");
+        let listed = Console::new(&d)
+            .list_nav_strikes(&format!(
+                "funds/demo/views/{}",
+                ratio_rules::UNDECLARED_VIEW
+            ))
+            .unwrap();
+        let s = &listed.nav_strikes[0];
+        assert!(s.wash_qualified);
+        assert_eq!(s.wash_restatement_original, "1000", "credit-normal loss");
+        assert_eq!(s.wash_restatement_moved_to, "600");
+        assert_eq!(
+            s.net_asset_value,
+            struck.net_asset_value.to_string(),
+            "the struck figure is not rewritten"
+        );
+        let again = ratio_nav::list(&d).unwrap();
+        assert_eq!(again[0].net_asset_value, struck.net_asset_value);
+        assert_eq!(again[0].journal_digest, struck.journal_digest);
     }
 
     #[test]

@@ -196,6 +196,14 @@ export const ROUTES: readonly Route[] = [
     file: "books/[book]/views/[view]/close/page.tsx",
     reads: ["listAccounts", "listPeriodCloses", "getPeriodClose"],
   },
+  // Point-in-time / restatement browser. Close already sits at the
+  // three-RPC ceiling, so this is its own URL — same chrome list
+  // (`screensFor`), not a second answer to `/close`.
+  {
+    path: "/books/[book]/views/[view]/asof",
+    file: "books/[book]/views/[view]/asof/page.tsx",
+    reads: ["getView", "listPeriodCloses", "listNavStrikes"],
+  },
   {
     path: "/books/[book]/views/[view]/nav",
     file: "books/[book]/views/[view]/nav/page.tsx",

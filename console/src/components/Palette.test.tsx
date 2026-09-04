@@ -205,6 +205,7 @@ describe("the command palette", () => {
     ["Capital activity", `/books/${FUND}/views/${VIEW}/capital`],
     ["NAV roll-forward", `/books/${FUND}/views/${VIEW}/nav`],
     ["Period close", `/books/${FUND}/views/${VIEW}/close`],
+    ["As-of", `/books/${FUND}/views/${VIEW}/asof`],
     ["Exceptions", `/books/${FUND}/views/${VIEW}/breaks`],
     ["Trial balance", `/books/${FUND}/views/${VIEW}/accounts`],
     ["Positions", `/books/${FUND}/views/${VIEW}/positions`],
@@ -294,6 +295,7 @@ describe("the command palette", () => {
       ["WIP", `/books/bridge/views/${VIEW}/wip`],
       ["Billing", `/books/bridge/views/${VIEW}/billing`],
       ["Period close", `/books/bridge/views/${VIEW}/close`],
+      ["As-of", `/books/bridge/views/${VIEW}/asof`],
     ] as const) {
       const { unmount } = renderProject();
       await type(label);
@@ -328,6 +330,7 @@ describe("the command palette", () => {
       ["Income statement", `/books/studio/views/${VIEW}/pnl`],
       ["Cash flow", `/books/studio/views/${VIEW}/cashflow`],
       ["Period close", `/books/studio/views/${VIEW}/close`],
+      ["As-of", `/books/studio/views/${VIEW}/asof`],
       ["AR/AP aging", `/books/studio/views/${VIEW}/aging`],
       ["Trial balance", `/books/studio/views/${VIEW}/accounts`],
     ] as const) {
@@ -497,6 +500,7 @@ describe("the command palette", () => {
       ["Net-worth bridge", "/books/household/views/abor/bridge"],
       ["Cash flow", "/books/household/views/abor/cashflow"],
       ["Period close", "/books/household/views/abor/close"],
+      ["As-of", "/books/household/views/abor/asof"],
       ["Budget vs actual", "/books/household/views/abor/budget"],
       ["Loan schedule", "/books/household/views/abor/loans"],
       ["Trial balance", "/books/household/views/abor/accounts"],

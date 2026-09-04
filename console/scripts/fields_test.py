@@ -627,6 +627,35 @@ NEEDLES: list[tuple[str, str]] = [
         "unset — no named closing adjustment this window",
         "a missing adjustment would render as a silent zero",
     ),
+    # ── point-in-time / restatement browser (#186) ────────────────────────
+    # ⚠ THE UNSET SENTENCES AND THE CITE, NOT THE TAB LABEL. `screens.ts`
+    # already says "As-of"; a page that invented a digest on the
+    # maintained fold, or rewrote a struck NAV, would still contain the
+    # label and stay green. The honesty copy lives on the asof page.
+    (
+        "unset — no pinned prefix",
+        "an empty journal would invent a pinned prefix",
+    ),
+    (
+        "unset — no pinned digest",
+        "the maintained fold would print a digest it does not pin",
+    ),
+    (
+        "unset — no pinned config",
+        "a window with no close or strike would invent a config digest",
+    ),
+    (
+        "WashRestatement cites this strike",
+        "a restatement would no longer name the strike it cites",
+    ),
+    (
+        "the struck figure is not rewritten",
+        "a restatement would look like a rewritten NAV",
+    ),
+    (
+        "Unset — no wash restatement",
+        "a book that never restated a strike would invent a moved figure",
+    ),
 ]
 
 

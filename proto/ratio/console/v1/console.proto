@@ -1763,6 +1763,27 @@ message NavStrike {
 
   // The configuration in force at the last entry folded.
   string config_digest = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Whether a wash window was still open when this NAV was struck.
+  //
+  // ⭐ `Ratio.Lots.WashRestatement`. proto3 false means not qualified —
+  // that is the strike-time fact, not an election. Do not print
+  // "unqualified" as a third meaning; the restatement fields below
+  // are the cite when a later wash moved the realized gain.
+  bool wash_qualified = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Original struck realized gain, minor units. Empty: no restatement.
+  //
+  // ⛔ NOT A SECOND NAV. `net_asset_value` is the number somebody was
+  // paid on and is never rewritten. A restatement is a new record that
+  // cites this strike. `Ratio.Lots.WashRestatement.restate`.
+  // Credit-normal, same as `View.realized_gain`.
+  string wash_restatement_original = 14
+      [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Realized gain after a later wash moved it. Empty: no restatement.
+  string wash_restatement_moved_to = 15
+      [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // A period close: the citeable boundary per book of record.

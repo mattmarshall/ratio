@@ -167,6 +167,21 @@ describe("PlaceHead", () => {
     expect(screen.queryByRole("heading", { name: "Exceptions" })).toBeNull();
   });
 
+  it("titles the point-in-time browser, not Period close", () => {
+    segments.current = ["views", "abor", "asof"];
+    render(
+      <PlaceHead
+        fund="partners"
+        displayName="Partners"
+        views={views}
+        defaultView="abor"
+        meta={<span>USD</span>}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "As-of" })).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "Period close" })).toBeNull();
+  });
+
   it("titles billing on a project figure page", () => {
     segments.current = ["views", "book", "billing"];
     render(

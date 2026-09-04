@@ -66,6 +66,7 @@ export const FUND_SCREENS: readonly Screen[] = [
   { segment: "breaks", label: "Exceptions", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   { segment: "close", label: "Period close", scoped: true, group: "book" },
+  { segment: "asof", label: "As-of", scoped: true, group: "book" },
   { segment: "positions", label: "Positions", scoped: true, group: "book" },
   { segment: "strikes", label: "NAV", scoped: true, group: "book" },
   ...AGREEMENT,
@@ -87,6 +88,7 @@ export const PERSONAL_SCREENS: readonly Screen[] = [
   { segment: "bridge", label: "Net-worth bridge", scoped: true, group: "book" },
   { segment: "cashflow", label: "Cash flow", scoped: true, group: "book" },
   { segment: "close", label: "Period close", scoped: true, group: "book" },
+  { segment: "asof", label: "As-of", scoped: true, group: "book" },
   { segment: "budget", label: "Budget vs actual", scoped: true, group: "book" },
   { segment: "loans", label: "Loan schedule", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
@@ -117,6 +119,7 @@ export const PROJECT_SCREENS: readonly Screen[] = [
   { segment: "wip", label: "WIP", scoped: true, group: "book" },
   { segment: "billing", label: "Billing", scoped: true, group: "book" },
   { segment: "close", label: "Period close", scoped: true, group: "book" },
+  { segment: "asof", label: "As-of", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   ...AGREEMENT,
 ];
@@ -145,6 +148,7 @@ export const INVESTMENT_SCREENS: readonly Screen[] = [
   { segment: "capital", label: "Capital activity", scoped: true, group: "book" },
   { segment: "nav", label: "NAV roll-forward", scoped: true, group: "book" },
   { segment: "close", label: "Period close", scoped: true, group: "book" },
+  { segment: "asof", label: "As-of", scoped: true, group: "book" },
   { segment: "breaks", label: "Exceptions", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   { segment: "positions", label: "Positions", scoped: true, group: "book" },
@@ -173,14 +177,17 @@ export const INVESTMENT_SCREENS: readonly Screen[] = [
  * Sheet and P&L reuse the existing `/sheet` and `/pnl` pages: grouping
  * is by account type, and `chart_for(Operating)` is the chart. Period
  * close is the same `/close` as every other kind — surplus into
- * retained earnings, not Owner equity. Trial balance stays: it is the
- * conservation view, without fund positions or strikes.
+ * retained earnings, not Owner equity. `/asof` is the same
+ * point-in-time browser on every list (pinned prefix + digest;
+ * WashRestatement cites, does not rewrite). Trial balance stays: it is
+ * the conservation view, without fund positions or strikes.
  */
 export const OPERATING_SCREENS: readonly Screen[] = [
   { segment: "sheet", label: "Balance sheet", scoped: true, group: "book" },
   { segment: "pnl", label: "Income statement", scoped: true, group: "book" },
   { segment: "cashflow", label: "Cash flow", scoped: true, group: "book" },
   { segment: "close", label: "Period close", scoped: true, group: "book" },
+  { segment: "asof", label: "As-of", scoped: true, group: "book" },
   { segment: "aging", label: "AR/AP aging", scoped: true, group: "book" },
   { segment: "accounts", label: "Trial balance", scoped: true, group: "book" },
   ...AGREEMENT,

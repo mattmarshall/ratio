@@ -2826,6 +2826,68 @@ its own notice. A book that has never called shows unset. It
 cannot show an LP portal, e-sign, CRM, a future call schedule,
 IRR, or a waterfall. Those remain Connect.
 
+### Amendment, 2026-09-04 — point-in-time / restatement reporting stays citeable
+
+[#186](https://github.com/mattmarshall/ratio/issues/186) asked the
+console to browse point-in-time / restatement reporting the core
+already has: a pinned journal prefix + config digest on a close
+or a strike, and WashRestatement as a citeable record. The engine
+could cite those. Chrome had no period / prefix picker that
+surfaced them honestly.
+
+What landed is the browser, not a new figure:
+
+- Engine: `ListNavStrikes` / `GetNavStrike` carry `wash_qualified`
+  and the two restatement strings (`wash_restatement_original` /
+  `wash_restatement_moved_to`). Empty is unset — not a silent 0.
+  A book that never wrote `wash_window_days` leaves all three
+  unset, not a silent 30. A later wash produces a restatement
+  that cites the strike (`Ratio.Lots.WashRestatement.restate`).
+  `net_asset_value` is the number somebody was paid on and is
+  never rewritten.
+- Console: `/asof` is one screen on every `screensFor` list —
+  not a kind fork, not composed onto `/close` (that page is
+  already at the three-RPC ceiling). Period chips and a prefix
+  picker (`now` / a close / a strike). A close or a strike cites
+  journal position, journal digest, and config digest. `now`
+  cites the maintained fold's position and leaves digest and
+  config unset — the head is not a historical pin. An empty
+  journal, a missing close, or a missing strike stays unset.
+  WashRestatement cites original → moved when present; otherwise
+  "Unset — no wash restatement". `fields_test` needles and the
+  render suite hold the phrases.
+
+No new `Method` / `Order` / `lot_method` variant. No
+`screensFor` fork. **point-in-time / restatement reporting stays
+citeable** is the Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not performance attribution.** That stays refused.
+- **Not rewriting a struck figure.** #146 / `rewrite_in_place`
+  stay refused. A restatement is a new record that cites the
+  strike.
+- **Not #26 (console buildout).** Broader screens stay on #26.
+- **Not #161 (Connect LP portal) or #159 (Postgres).** #159
+  stays blocked.
+- **Not a `screensFor` fork.** Kind still selects one list.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #186. It does not close #26. It does not
+close #161 or #159. It does not reopen #146, #157, or #188.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can open `/asof`, pick a period, pin a close or a strike, and
+read the journal prefix + digest + config digest that record
+already named. A strike taken while a wash window was open
+shows qualified; a later repurchase that moved the realized
+gain shows WashRestatement citing that strike — the struck NAV
+is unchanged. A book with no close, no strike, or no
+restatement shows unset, not 0.00. It cannot show performance
+attribution, a rewritten struck figure, an LP portal, or the
+rest of the #26 console buildout. Those remain refused /
+Connect / #26.
+
 ## The control plane: geetch and crova
 
 **The architecture is right; the timing is not.** Worth writing down properly,

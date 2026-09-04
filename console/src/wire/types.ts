@@ -557,6 +557,21 @@ export interface NavStrike {
    * caller renders the figure without.
    */
     qualification: string[];
+  /**
+   * Whether a wash window was still open when this NAV was struck.
+   *
+   * ⛔ `false` is not qualified — the strike-time fact, not an election.
+   * Do not invent a third UI meaning. A restatement is the two strings
+   * below, and `netAssetValue` is never rewritten.
+   */
+  washQualified: boolean;
+  /**
+   * Original struck realized gain (credit-normal). Empty: no restatement.
+   * `Ratio.Lots.WashRestatement` — a new record that cites this strike.
+   */
+  washRestatementOriginal: string;
+  /** Realized gain after a later wash moved it. Empty: no restatement. */
+  washRestatementMovedTo: string;
 }
 
 /** A close of one view through one calendar day. The surplus field is a
