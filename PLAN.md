@@ -2278,7 +2278,7 @@ Built phrase this amendment adds.
 
 Nothing on the *Explicitly not building* list moved. This amendment
 closes #173. It does not close #169, #172, #184, #104, #100, #85,
-#180, #150, or #22.
+#180, #177, #155, #161, #150, or #22.
 
 **What a walk-through can and cannot show** (demo readiness, #27).
 It can open a Project `/billing`, leave collected unset before AR
