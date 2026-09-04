@@ -77,6 +77,8 @@ sh_test(
 # ⚠ CI SKIPS `**/*.md`, so a docs-only edit of the catalog would not run
 # this. The script is the code half; adding or renaming a scope is a
 # change to this file as well, which is the moment somebody notices.
+# A later commit that only touches markdown will not re-run this target
+# on synchronize — keep the frozen list and the script in the same edit.
 sh_test(
     name = "connect_scopes_test",
     size = "small",

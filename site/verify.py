@@ -335,6 +335,8 @@ def check_roadmap_against_plan(out: pathlib.Path) -> None:
     # Phase-four marketplace is a Connect catalog, not kernel RPC sprawl.
     # A public page that drops the pointer is the same lag as the built
     # column forgetting tax lots — two documents disagree, nothing says so.
+    # This needle lives in verify.py (not only the HTML) so a markdown-only
+    # follow-up cannot skip the site workflow while the pointer drifts.
     phase_four_needles = (
         "WorkOS Connect",
         "#150",
