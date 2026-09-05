@@ -4225,3 +4225,84 @@ and `journal:append` being rejected as a scope. It cannot show a
 Connect token opening a book, a live OAuth grant, a kernel webhook
 subscription, a Slack / email / PagerDuty delivery, a chatbot, or
 an HTML alert UI inside `ratio watch`.
+
+### Amendment, 2026-09-05 — an operating bank-rec Connect app, and payroll / tax stay leftovers
+
+[#174](https://github.com/mattmarshall/ratio/issues/174) asked for
+Operating bank reconciliation, payroll, and tax filing as
+Connect-first apps so the kernel stays a thin TB + statements +
+aging book. Aging / cash-flow / close are already Built in core.
+What landed is the bank-rec app as a sibling tree, not a kernel
+method and not a `screensFor` fork. Payroll and tax filing stay
+named leftovers — refused here, not a fake paycheck UI.
+
+**What this amendment records.** [`connect/bank-rec/`](connect/bank-rec/)
+is a first-party WorkOS Connect OAuth application. It declares
+`statements:read`, `journals:post`, and optionally `books:read` —
+the frozen names, not the catalog alias `journal:append` the issue
+body still uses. The recon report is read-only by default: it cites
+TB / statement cash, open AR/AP (`AgingSchedule.control`), and the
+journal digest already on the Operating book. Unset stays unset. A
+missing book-cash cite is not a cleared $0.00. A missing bank
+statement is not a silent reconciled-empty. An empty journal digest
+is unset, not history-intact and not success. Open AR/AP are
+context, never silent reconciling items. A posted `"0.00"` is a
+real zero. Opt-in recon adjustments instantiate already-seeded
+cash-moving Operating templates (`collect_receivable`,
+`pay_vendor`, `receive_revenue`, `pay_expense`,
+`contribute_equity`, `draw_equity`). Empty `journals:post`
+allowlist refuses every post. Closed-through refuses the batch.
+`invoice_customer` / `vendor_bill` do not move cash and are not
+listed. `books:read` membership; an `org_id` claim is not
+membership. No new `Method` / `Order` / `lot_method` variant. No
+payroll engine, no tax tables, no inventory/COGS, no kernel
+BankRec RPC. **an operating bank-rec Connect app** is the Built
+phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect
+  tokens on ConnectApiUrl. `fetch_cites()` and `deliver()` still
+  refuse without a presented token. Write-route actor binding landed
+  (#151). Live OAuth is leftover #22 / #150. This file does not
+  close #22. It does not reopen #151.
+- **Not live bank OAuth.** The report accepts a normalized ending
+  balance. Provider wiring stays leftover on #174 / #165. This file
+  does not absorb #165.
+- **Not payroll.** `payroll()` refuses. No payroll account on
+  `chart_for(Operating)`. No tax tables. The leftover stays on
+  #174 as a Connect-shaped app, not a kernel engine.
+- **Not tax filing.** `tax_filing()` refuses. Household tax-pack is
+  #166. IRS e-file stays refused. The leftover stays on #174.
+- **Not inventory / COGS.** `inventory()` refuses. A silent COGS
+  plug would invent a cost the chart never named.
+- **Not a kernel recon.** `kernel_recon()` refuses. `/sheet`,
+  `/cashflow`, `/aging`, `/accounts`, and `/close` stay the core
+  cites. `screensFor` is not forked.
+- **Not #150's read-only reference skeleton.** That leftover is
+  `books:read` + `statements:read` proving the door opens. This app
+  requests `journals:post` for opt-in adjustments and does not
+  open the door.
+- **Not #22, #152, #163, or #165.** Custom domain / TLS, Personal
+  cash-forecast predictors, and the Personal bank-feed leftover
+  stay on those issues.
+
+Nothing on the *Explicitly not building* list moved. Client portal,
+CRM, tax e-file, vendor portal, AIA G702 product UI, and waterfall
+stay Connect-apps or stay refused. This file does not close #174 —
+grant path (leftover #22), live bank OAuth, payroll, and tax
+filing remain. It does not close #185, #165, #166, #168, #169,
+#172, #184, #179, #161, or #162. It does not close #150. It does
+not close #22. It does not absorb #152 or #163. It does not reopen
+#151.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a fixture book cash of $1,000 against a bank ending of
+$800 as open $200, a named outstanding deposit of $200 tying the
+report, a missing book-cash or bank-ending cite leaving status
+unset rather than a cleared $0.00, an empty digest staying unset
+rather than success, open AR/AP listed as context and not filling
+a missing outstanding row, and `journal:append` being rejected as
+a scope. It cannot show a Connect token opening a book, a live
+OAuth grant, live bank OAuth, a payroll run, a tax filing,
+inventory/COGS, or a posting that reached `/v1`.
