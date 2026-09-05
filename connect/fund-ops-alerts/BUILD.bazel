@@ -1,0 +1,40 @@
+package(default_visibility = ["//visibility:public"])
+
+# The fund-ops-alerts Connect app is a sibling tree. Bazel does not
+# build a WorkOS binary here; it holds the cite model to the catalog,
+# to Break / NavGate field names, and to the refusals the issue named.
+#
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token.
+# WorkOS dashboard registration stays leftover #22. A missing cite
+# stays unset — never a silent reconciled-empty break list, an
+# all-clear gate, a NAV 0.00, or an empty-digest-as-success. No
+# kernel notifier. No chatbot. screensFor is not forked. Slack /
+# email / PagerDuty stay leftover.
+sh_test(
+    name = "alerts_test",
+    size = "small",
+    srcs = ["alerts_test.sh"],
+    args = [
+        "$(rootpath alerts.py)",
+        "$(rootpath alerts_test.py)",
+        "$(rootpath app.json)",
+        "$(rootpath //crates/ratio-rules:src/lib.rs)",
+        "$(rootpath //:docs/connect-scopes.md)",
+        "$(rootpath //console:src/lib/screens.ts)",
+        "$(rootpath //proto:ratio/console/v1/console.proto)",
+        "$(rootpath //console:src/wire/types.ts)",
+        "$(rootpath //proto:ratio/v1/recon.proto)",
+    ],
+    data = [
+        "//connect:grant.py",
+        "alerts.py",
+        "alerts_test.py",
+        "app.json",
+        "//crates/ratio-rules:src/lib.rs",
+        "//:docs/connect-scopes.md",
+        "//console:src/lib/screens.ts",
+        "//proto:ratio/console/v1/console.proto",
+        "//console:src/wire/types.ts",
+        "//proto:ratio/v1/recon.proto",
+    ],
+)

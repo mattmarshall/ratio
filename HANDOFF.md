@@ -72,6 +72,17 @@ an empty-digest-as-success. Read-only: no `journals:post`. No
 kernel portal. That does not close #161 (WorkOS dashboard
 registration leftover #22, a live LP walk-through, and drip
 elections remain).
+The fund-ops-alerts Connect app (`connect/fund-ops-alerts/`, #162)
+cites unexplained breaks, unpriced marks, and NAV gate blocking
+reasons already on the book (`nav_gate` / the same `blocking_at`
+fold the console badge reads); a missing cite stays unset — never
+a silent empty break list that looks reconciled, an all-clear
+gate, a NAV 0.00, or an empty-digest-as-success. Read-only: no
+`journals:post`. No kernel notifier, no chatbot, no HTML alert UI
+inside `ratio watch`. Slack / email / PagerDuty stay leftover.
+That does not close #162 (WorkOS dashboard registration leftover
+#22, a live alerts walk-through, and live product destinations
+remain).
 Equalization, drip, and side-pocket stay Connect (#177) — a
 PLAN decision, not a landing. None of the three changes
 conservation or journal integrity; do not implement them as
@@ -1246,6 +1257,7 @@ than one that is entirely unclassified.
 | `connect/calendar-bills/` | First-party Connect app for Personal calendar bills sync ([#163](https://github.com/mattmarshall/ratio/issues/163)). Maps dated occurrences onto allowlisted `scheduled_income` / `scheduled_spend`. Recurrence stays in the calendar — an `rrule` is refused rather than expanded. Closed-through and empty-allowlist refuse. `journal:append` is an alias. Payroll / envelope kinds refuse. WorkOS dashboard registration leftover #22; live calendar OAuth leftover. Does not close #163. Does not reopen #164. Does not redo #218 |
 | `connect/audit-export/` | First-party Connect app for an audit evidence ZIP ([#185](https://github.com/mattmarshall/ratio/issues/185)). Cites `PeriodClose`, `NavStrike`, `Break` / `BreakExplanation`, and config / journal digests already on the book. Missing cites stay unset in the manifest — never a silent empty file, a NAV 0.00, or an empty-digest-as-success. Read-only: no `journals:post`. No kernel blob store, no period-close replacement, no LP portal, no e-sign, no second journal. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration leftover #22. Does not close #185. Leaves issue 22 open. Does not close #150. Does not reopen #151 |
 | `connect/lp-portal/` | First-party Connect app for an LP / investor portal ([#161](https://github.com/mattmarshall/ratio/issues/161)). Cites partner capital, commitments / undrawn, `CapitalNotice`, and NAV already on the book (`partners:read`, `statements:read`, `nav:read`; optionally `books:read`). Missing cites stay unset — never a silent 1/N of book NAV, a callable-zero commitment, a NAV 0.00, or an empty-digest-as-success. Read-only: no `journals:post`. No kernel HTML portal, no LP user tables, no document vault. No IRR / TVPI / waterfall. Drip elections stay leftover. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration leftover #22. Does not close #161. Leaves issue 22 open. Does not close #150. Does not close #177. Does not reopen #151 |
+| `connect/fund-ops-alerts/` | First-party Connect app for fund ops alerts ([#162](https://github.com/mattmarshall/ratio/issues/162)). Cites unexplained breaks, unpriced marks, and `nav_gate` already on the book (`webhooks:journal`, `breaks:read`, `nav:read`, `views:read`, `books:read`). Missing cites stay unset — never a silent reconciled-empty break list, an all-clear gate, a NAV 0.00, or an empty-digest-as-success. Read-only: no `journals:post`. No kernel notifier, no chatbot, no HTML alert UI. Slack / email / PagerDuty stay leftover (`dry_run` writes a local cite pack). first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration leftover #22. Does not close #162. Leaves issue 22 open. Does not close #150. Does not reopen #151. Does not reopen #188 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.

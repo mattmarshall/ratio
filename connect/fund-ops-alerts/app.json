@@ -1,0 +1,56 @@
+{
+  "name": "Ratio fund ops alerts",
+  "book_kind": "INVESTMENT",
+  "issue": 162,
+  "kind_note": "Kind-aware cites, not a chrome fork. Breaks, unpriced, and NAV gate are fund-ops chrome. They stay unset on Personal / Project / Operating. UNSPECIFIED is the proto default, not a fifth kind. screensFor is not forked.",
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "webhooks:journal",
+      "breaks:read",
+      "nav:read",
+      "views:read",
+      "books:read"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read"
+    ]
+  },
+  "journals_post_allowlist": {
+    "client_id": "client_ratio_fund_ops_alerts",
+    "templates": []
+  },
+  "subscribe": {
+    "status": "reserved",
+    "note": "webhooks:journal is a reserved catalog grant. The kernel webhook surface is not built. This app polls breaks:read + nav:read + views:read. subscribe() refuses a kernel notifier; it does not invent one."
+  },
+  "breaks": {
+    "status": "cited",
+    "note": "breaks:read copies Break already on the book. Unexplained HIGH breaks are the alert lines. A missing BreakReport is unset — not a silent reconciled-empty list. A cited report with no lines is cited-empty (the period reconciled). This app does not invent a BreakExplanation and does not request breaks:explain."
+  },
+  "nav_gate": {
+    "status": "cited",
+    "note": "nav:read / views:read copy GetFund / GetView nav_gate — the same blocking_at fold the console badge reads (#188). Three first-class reasons: unexplained break, unresolved trade, unpriced. Unpriced stays empty unless a valuation date was named. A missing nav_gate is unset, not an all-clear gate. A cited gate with no reasons is cited-empty (nothing blocks), and the pack says so."
+  },
+  "unpriced": {
+    "status": "cited",
+    "note": "Unpriced is the third nav_gate list. Empty without as-of — the same limit a bare ratio strike already has. This app does not invent a mark and does not rewrite a strike."
+  },
+  "destinations": {
+    "status": "refused",
+    "note": "Slack, email, and PagerDuty product destinations stay leftover. dry_run / deliver write a local cite pack after a ConnectApiUrl pull. They do not pretend a third-party delivery succeeded without a configured destination."
+  },
+  "kernel_notifier": {
+    "status": "refused",
+    "note": "No chatbot, no notification service, no HTML alert UI inside ratio watch or the console binary. Ops notification is Connect breadth."
+  },
+  "grant_path": {
+    "status": "built",
+    "note": "first-party Connect apps call ConnectApiUrl with a verified Connect access token (authorization_code or client_credentials against WorkOS Connect). Membership still required. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. leftover #22: WorkOS dashboard registration, DEMO_MEMBERS naming a live WorkOS sub, unused Cognito CloudFormation resources. Write-route actor binding landed (#151). This file does not reopen #151. This file leaves #150 and #162 open. It does not reopen #151."
+  }
+}

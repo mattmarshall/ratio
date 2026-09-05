@@ -61,6 +61,7 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//connect/program-rollup:rollup_test` | Project program roll-up (#179): canonical scopes, alias / mega-book / unset billed refusals — not that a token is accepted and not a silent program 0.00 |
 | `//connect/grant:grant_test` | Shared Connect grant helper: ConnectApiUrl only, never DemoUrl, never `RATIO_DEMO_OPEN`, never `org:{id}` |
 | `//connect/audit-export:pack_test` | Audit evidence ZIP (#185): canonical scopes, unset / cited-empty / empty-digest refusals — fetch/deliver call ConnectApiUrl; WorkOS dashboard registration stays leftover |
+| `//connect/fund-ops-alerts:alerts_test` | Fund ops alerts (#162): canonical scopes, unset / cited-empty / unpriced-without-as-of refusals — fetch/deliver call ConnectApiUrl; Slack / email / PagerDuty and WorkOS dashboard registration stay leftover |
 | `//marketing:language_test` | the licensing language sweep |
 
 `paths-ignore` covers `site/**` and `**/*.md` only. `marketing/`, `paper/` and

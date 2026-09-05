@@ -335,6 +335,12 @@ BUILT=(
   # token on /v1 stay leftover. The sentence it matches is in the
   # 2026-09-04 #161 amendment.
   "an LP / investor portal Connect app"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The fund-ops-alerts Connect app is not on the refusal list — a
+  # kernel notifier, chatbot, HTML alert UI, and a live Connect
+  # token on /v1 stay leftover. The sentence it matches is in the
+  # 2026-09-05 #162 amendment.
+  "a fund-ops-alerts Connect app"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

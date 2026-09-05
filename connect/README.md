@@ -11,7 +11,7 @@ against the AuthKit custom domain.
 
 | Flow | When | Endpoint |
 |---|---|---|
-| `authorization_code` | User-actor first-party apps (audit-export, lp-portal, tax-pack, bank-feed, …) | `{WORKOS_CONNECT_ISSUER}/oauth2/authorize` then `POST …/oauth2/token` |
+| `authorization_code` | User-actor first-party apps (audit-export, lp-portal, fund-ops-alerts, tax-pack, bank-feed, …) | `{WORKOS_CONNECT_ISSUER}/oauth2/authorize` then `POST …/oauth2/token` |
 | `client_credentials` | M2M. Still needs a membership row — `org:{id}` is never implied | `POST {WORKOS_CONNECT_ISSUER}/oauth2/token` |
 
 Default issuer is `https://auth.ratio.marsh.build` (`WORKOS_CONNECT_ISSUER`).

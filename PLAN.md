@@ -4140,3 +4140,88 @@ and `journal:append` being rejected as a scope. It cannot show a
 Connect token opening a book, a live OAuth grant, an HTML LP portal
 inside `ratio watch`, IRR, TVPI, a waterfall, a K-1, or a drip
 election.
+
+### Amendment, 2026-09-05 — a fund-ops-alerts Connect app, and the grant path still does not open
+
+[#162](https://github.com/mattmarshall/ratio/issues/162) asked for a
+fund ops alerts app that reads unexplained breaks, unpriced marks,
+and NAV gate refuse reasons without growing a chatbot or a
+notification service inside Ratio. Core already has those cites
+(#188). The catalog already said ops notification stays Connect.
+What landed is that app as a sibling tree, not a kernel method and
+not a `screensFor` fork.
+
+**What this amendment records.** [`connect/fund-ops-alerts/`](connect/fund-ops-alerts/)
+is a first-party WorkOS Connect OAuth application. It declares
+`webhooks:journal`, `breaks:read`, `nav:read`, `views:read`, and
+`books:read` — the frozen names, not the catalog aliases
+`journal:read` / `journal:append`. It is read-only relative to the
+journal: `journals:post` is not requested. The empty allowlist
+refuses every post. `breaks:explain` is not requested — this app
+does not invent a break explanation. Subscribe via
+`webhooks:journal` is a reserved catalog grant; the kernel webhook
+surface is not built. `subscribe()` refuses. The working path is
+poll `breaks:read` + `nav:read` + `views:read`. Alert contents are
+kernel cites already on the book (unexplained HIGH breaks,
+`nav_gate` on GetFund / GetView — the same `blocking_at` fold the
+console badge reads — and an optional `NavStrike` pin). Unset stays
+unset. A missing `BreakReport` is unset — never a silent empty list
+that looks reconciled. A cited report with no lines is cited-empty
+(the period reconciled). A missing `nav_gate` is unset, not an
+all-clear gate. Unpriced stays empty unless a valuation date was
+named. A missing NAV strike is unset, not NAV 0.00. An empty
+journal digest is unset, not history-intact. `books:read`
+membership; an `org_id` claim is not membership. Kind-aware cites,
+not a chrome fork. No new `Method` / `Order` / `lot_method`
+variant. No chatbot, no kernel notification service, no HTML alert
+UI inside `ratio watch`. Slack / email / PagerDuty product
+destinations stay leftover; `dry_run` / `deliver` write a local
+cite pack after a ConnectApiUrl pull and do not pretend a
+third-party delivery succeeded without a configured destination.
+**a fund-ops-alerts Connect app** is the Built phrase this
+amendment adds.
+
+**What this is NOT:**
+
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect
+  tokens on ConnectApiUrl. `fetch_cites()` and `deliver()` still
+  refuse without a presented token. Write-route actor binding landed
+  (#151). Live OAuth is leftover #22 / #150. This file does not
+  close #22. It does not reopen #151.
+- **Not a live alerts walk-through against `/v1`.** Unit tests assert
+  the refuse and the cite shape from fixtures. A green cite is not
+  a live token. Only leftover #22 blocks that claim.
+- **Not a kernel notifier.** `kernel_notify()`, `chatbot()`, and
+  `html_alerts()` refuse. Ops notification stays Connect. The
+  exception queue and `nav_gate` stay the core cites. `screensFor`
+  is not forked.
+- **Not live Slack / email / PagerDuty.** `slack()`, `email()`, and
+  `pagerduty()` refuse. Product destinations stay leftover on #162.
+- **Not a kernel `webhooks:journal` surface.** Reserved scope; the
+  surface is not built. This app polls. #150 leftover 5 stays.
+- **Not #150's read-only reference skeleton.** That leftover is
+  `books:read` + `statements:read` proving the door opens. This app
+  requests `webhooks:journal`, `breaks:read`, `nav:read`, and
+  `views:read` as well and does not open the door.
+- **Not #188.** NAV gate reasons stay citeable. This app reads that
+  fold; it does not reopen the cite.
+
+Nothing on the *Explicitly not building* list moved. Client portal,
+CRM, tax e-file, vendor portal, AIA G702 product UI, and waterfall
+stay Connect-apps or stay refused. This file does not close #162 —
+grant path (leftover #22), a live alerts walk-through with a
+Connect token, and live Slack / email / PagerDuty product
+destinations remain. It does not close #185, #161, #165, #166,
+#168, #169, #172, #184, or #179. It does not close #150. It does
+not close #22. It does not reopen #151. It does not reopen #188.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a fixture unexplained HIGH break as an alert line, a
+missing `BreakReport` leaving that sheet blank rather than looking
+reconciled, a missing `nav_gate` leaving the pack unset rather than
+all-clear, unpriced staying empty until a valuation date is named,
+a missing NAV strike leaving that sheet blank rather than NAV 0.00,
+and `journal:append` being rejected as a scope. It cannot show a
+Connect token opening a book, a live OAuth grant, a kernel webhook
+subscription, a Slack / email / PagerDuty delivery, a chatbot, or
+an HTML alert UI inside `ratio watch`.
