@@ -1,0 +1,39 @@
+package(default_visibility = ["//visibility:public"])
+
+# The Operating bank-reconciliation Connect app is a sibling tree.
+# Bazel does not build a WorkOS binary here; it holds the cite /
+# opt-in post model to the catalog, to CreateBook(Operating), and
+# to the refusals the issue named.
+#
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token.
+# WorkOS dashboard registration stays leftover #22. Unset cash / AR /
+# AP / digest stay unset — never a silent reconciled-empty, a fake
+# $0.00 that looks cleared, or empty-digest-as-success. Payroll /
+# tax filing stay leftovers. OPERATING chrome is not forked. No
+# kernel BankRec RPC. No inventory/COGS.
+sh_test(
+    name = "rec_test",
+    size = "small",
+    srcs = ["rec_test.sh"],
+    args = [
+        "$(rootpath rec.py)",
+        "$(rootpath rec_test.py)",
+        "$(rootpath app.json)",
+        "$(rootpath //crates/ratio-console:src/book.rs)",
+        "$(rootpath //:docs/connect-scopes.md)",
+        "$(rootpath //console:src/lib/screens.ts)",
+        "$(rootpath //proto:ratio/console/v1/console.proto)",
+        "$(rootpath //console:src/wire/types.ts)",
+    ],
+    data = [
+        "//connect:grant.py",
+        "rec.py",
+        "rec_test.py",
+        "app.json",
+        "//crates/ratio-console:src/book.rs",
+        "//:docs/connect-scopes.md",
+        "//console:src/lib/screens.ts",
+        "//proto:ratio/console/v1/console.proto",
+        "//console:src/wire/types.ts",
+    ],
+)

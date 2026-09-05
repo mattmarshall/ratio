@@ -1,0 +1,60 @@
+{
+  "name": "Ratio operating bank reconciliation",
+  "book_kind": "OPERATING",
+  "issue": 174,
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "statements:read",
+      "journals:post",
+      "books:read"
+    ],
+    "refused_aliases": [
+      "journal:append",
+      "journal:read"
+    ]
+  },
+  "journals_post_allowlist": {
+    "client_id": "client_ratio_bank_rec",
+    "templates": [
+      "collect_receivable",
+      "pay_vendor",
+      "receive_revenue",
+      "pay_expense",
+      "contribute_equity",
+      "draw_equity"
+    ]
+  },
+  "recon_report": {
+    "status": "read-only by default",
+    "note": "The recon report cites TB / statement cash, open AR/AP aging controls, and the journal digest already on the Operating book. A missing cite stays unset — never a silent reconciled-empty, a fake $0.00 that looks cleared, or empty-digest-as-success. Open AR/AP are context, never silent reconciling items. statements:read is the cite grant. books:read is optional membership listing."
+  },
+  "recon_adjustments": {
+    "status": "opt-in only",
+    "note": "The issue body still says journal:append. That string is an alias and is refused. Canonical: journals:post for already-seeded cash-moving Operating templates. Scenario journals post only when the operator opts in. Empty journals:post allowlist refuses every post. Closed-through refuses the batch. invoice_customer and vendor_bill do not move cash and are not recon adjustments."
+  },
+  "payroll": {
+    "status": "refused",
+    "note": "Payroll stays Connect-shaped leftover on #174. No payroll engine, no payroll account on chart_for(Operating), no tax tables, no fake paycheck UI. The kernel stays a thin TB + statements + aging book."
+  },
+  "tax_filing": {
+    "status": "refused",
+    "note": "Operating tax filing stays Connect-shaped leftover on #174. Household tax-pack is #166. IRS e-file stays refused. This app does not invent a tax return."
+  },
+  "inventory_cogs": {
+    "status": "refused",
+    "note": "Inventory / COGS stay refused on Operating. A silent COGS plug would invent a cost the chart never named. Separate book kind later, if a PLAN amendment says so."
+  },
+  "bank_oauth": {
+    "status": "not wired",
+    "note": "Live bank or custodian OAuth (Plaid, MX, TrueLayer, or similar) is leftover on #174 / #165. This scaffold accepts a normalized bank-statement ending balance, not a provider SDK."
+  },
+  "grant_path": {
+    "status": "built",
+    "note": "first-party Connect apps call ConnectApiUrl with a verified Connect access token (authorization_code or client_credentials against WorkOS Connect). Membership still required. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. leftover #22: WorkOS dashboard registration, DEMO_MEMBERS naming a live WorkOS sub, unused Cognito CloudFormation resources. Write-route actor binding landed (#151). This file does not reopen #151. This file leaves #150 and #174 open. It does not absorb #22, #152, #163, or #165."
+  }
+}

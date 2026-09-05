@@ -83,6 +83,17 @@ inside `ratio watch`. Slack / email / PagerDuty stay leftover.
 That does not close #162 (WorkOS dashboard registration leftover
 #22, a live alerts walk-through, and live product destinations
 remain).
+The Operating bank-rec Connect app (`connect/bank-rec/`, #174)
+cites TB / statement cash and open AR/AP already on the Operating
+book; a missing cite stays unset — never a silent reconciled-empty,
+a fake $0.00 that looks cleared, or empty-digest-as-success. The
+report is read-only by default; opt-in recon adjustments are
+allowlisted `journals:post` (never `journal:append`) and refuse
+closed-through dates. Payroll and tax filing stay Connect-shaped
+leftovers on #174 — refused here, not a fake paycheck UI. No
+inventory/COGS in Operating. That does not close #174 (WorkOS
+dashboard registration leftover #22 and live bank OAuth remain).
+It does not absorb #22, #152, #163, or #165.
 Equalization, drip, and side-pocket stay Connect (#177) — a
 PLAN decision, not a landing. None of the three changes
 conservation or journal integrity; do not implement them as
@@ -920,9 +931,13 @@ or `sidepocket:*`.
   collections/payments name the item they apply to; missing due dates
   stay **unset**, not current, and an unapplied reduction unsets that
   side — no FIFO, no equal split. Project `/billing` is one job's
-  billed/earned/collections, not entity-wide aging. Payroll, tax filing,
+  billed/earned/collections, not entity-wide aging.   Payroll, tax filing,
   inventory/COGS, CRM, payment initiation, and bank-feed OAuth stay
-  refused. `KIND_UNSPECIFIED` is not this kind and still falls through
+  refused in core. Bank rec is the Connect scaffold at
+  `connect/bank-rec/` (#174): it cites TB / statement / aging
+  already on the book; a missing cite stays unset. Payroll and tax
+  filing stay leftovers on that issue. Live bank OAuth stays
+  leftover. That does not close #174. `KIND_UNSPECIFIED` is not this kind and still falls through
   to fund operations. The seeded demo funds remain investment books.
 - ⚠ **An operating cash-flow walk-through (#118 / #27).** It can show
   beginning and ending cash for a month or year, and classify the
@@ -936,9 +951,11 @@ or `sidepocket:*`.
   operator can open, not silent absorption. An empty journal, or a cut
   with no dated prefix, stays **unset** — not a measured $0.00 cash.
   Spending down to zero is a real zero. Aging stays on #117; a period
-  close on #114. It cannot show a bank reconciliation, a cash
+  close on #114. It cannot show a bank reconciliation in core, a cash
   forecast, payroll, tax filing, inventory/COGS, payment initiation,
-  bank OAuth, or a client portal. Sheet / P&L stay on #108. The screen
+  bank OAuth, or a client portal. The bank-rec Connect scaffold is
+  `connect/bank-rec/` (#174); payroll / tax filing stay leftovers
+  there. That does not close #174. Sheet / P&L stay on #108. The screen
   is the same `/cashflow` URL Personal already uses — one `screensFor`
   list.
 - ⚠ **Write-route actor is the WorkOS `sub` (#151).** `Console::for_request`
@@ -1258,6 +1275,7 @@ than one that is entirely unclassified.
 | `connect/audit-export/` | First-party Connect app for an audit evidence ZIP ([#185](https://github.com/mattmarshall/ratio/issues/185)). Cites `PeriodClose`, `NavStrike`, `Break` / `BreakExplanation`, and config / journal digests already on the book. Missing cites stay unset in the manifest — never a silent empty file, a NAV 0.00, or an empty-digest-as-success. Read-only: no `journals:post`. No kernel blob store, no period-close replacement, no LP portal, no e-sign, no second journal. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration leftover #22. Does not close #185. Leaves issue 22 open. Does not close #150. Does not reopen #151 |
 | `connect/lp-portal/` | First-party Connect app for an LP / investor portal ([#161](https://github.com/mattmarshall/ratio/issues/161)). Cites partner capital, commitments / undrawn, `CapitalNotice`, and NAV already on the book (`partners:read`, `statements:read`, `nav:read`; optionally `books:read`). Missing cites stay unset — never a silent 1/N of book NAV, a callable-zero commitment, a NAV 0.00, or an empty-digest-as-success. Read-only: no `journals:post`. No kernel HTML portal, no LP user tables, no document vault. No IRR / TVPI / waterfall. Drip elections stay leftover. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration leftover #22. Does not close #161. Leaves issue 22 open. Does not close #150. Does not close #177. Does not reopen #151 |
 | `connect/fund-ops-alerts/` | First-party Connect app for fund ops alerts ([#162](https://github.com/mattmarshall/ratio/issues/162)). Cites unexplained breaks, unpriced marks, and `nav_gate` already on the book (`webhooks:journal`, `breaks:read`, `nav:read`, `views:read`, `books:read`). Missing cites stay unset — never a silent reconciled-empty break list, an all-clear gate, a NAV 0.00, or an empty-digest-as-success. Read-only: no `journals:post`. No kernel notifier, no chatbot, no HTML alert UI. Slack / email / PagerDuty stay leftover (`dry_run` writes a local cite pack). first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration leftover #22. Does not close #162. Leaves issue 22 open. Does not close #150. Does not reopen #151. Does not reopen #188 |
+| `connect/bank-rec/` | First-party Connect app for Operating bank reconciliation ([#174](https://github.com/mattmarshall/ratio/issues/174)). Cites TB / statement cash and open AR/AP already on the book (`statements:read`; optionally `books:read`). Missing cites stay unset — never a silent reconciled-empty, a fake $0.00 that looks cleared, or an empty-digest-as-success. Report is read-only by default. Opt-in recon adjustments are allowlisted `journals:post` for cash-moving Operating templates — not `journal:append`. Empty allowlist refuses every post. Closed-through refuses the batch. Payroll / tax filing stay leftovers. No inventory/COGS. No kernel BankRec RPC. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration leftover #22. Does not close #174. Does not absorb #22, #152, #163, or #165. Leaves issue 22 open. Does not close #150. Does not reopen #151 |
 
 ⚠ Every `tla_check` tagged `manual` is a probe that must FAIL. Run them after
 changing a spec; a probe that goes green means the invariant stopped checking.

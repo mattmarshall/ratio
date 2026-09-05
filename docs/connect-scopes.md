@@ -291,6 +291,18 @@ open:
    is a read of cites (not a write RPC and not a kernel notifier);
    first-party Connect apps call ConnectApiUrl, and this file still
    does not close #162.
+   A first-party Operating bank-rec scaffold lives at
+   `connect/bank-rec/`
+   ([#174](https://github.com/mattmarshall/ratio/issues/174)). It is
+   not this leftover either: it requests `statements:read` and
+   `journals:post` (the issue body still says `journal:append`; that
+   alias is refused), the recon report is a read of TB / statement /
+   aging cites (missing cites stay unset — never a silent
+   reconciled-empty, a fake $0.00 that looks cleared, or
+   empty-digest-as-success), opt-in adjustments are allowlisted
+   cash-moving Operating templates, payroll / tax filing stay
+   leftovers, first-party Connect apps call ConnectApiUrl, and this
+   file still does not close #174.
 5. **`webhooks:journal`, `nav:strike` as a write RPC** —
    reserved scopes; the surfaces are not built. `audit:export` has
    a first-party scaffold at `connect/audit-export/` (#185); that
@@ -307,4 +319,4 @@ RATIO_DEMO_OPEN defaults off on the deployed demo.
 first-party Connect apps call ConnectApiUrl.
 API Gateway JWT verifies Connect tokens. Nothing here closes #5
 (console wash flag), #9 (lot-relief UI cites / pooled holding-period
-leftover), #163, #166, #168, #169, #172, #184, #179, #185, #161, or #162.
+leftover), #163, #166, #168, #169, #172, #184, #179, #185, #161, #162, or #174.
