@@ -16,7 +16,9 @@ engine (projection path). #159 is closed: the HANDOFF 10,000 × 2,000
 projection fold was measured in-repo (17.4 s, digest
 `bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3`).
 #6 is closed. Open work is the ScaleTask 40GB journal fold
-and leftover #22 (WorkOS operator). This
+and leftover #22 (WorkOS operator). ⭐ Core stays a thin book
+of record. Breadth is WorkOS Connect. Live registration leftover
+is #22. refuse phrases map to Connect issues or never. This
 file is the part that does not fit in an issue: what was learned, what
 is load-bearing, and what will bite. Wash sales have a Lean/TLA model
 and a Rust window (`RuleSet.wash_window_days`). `WashRestatement` is a

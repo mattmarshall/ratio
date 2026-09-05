@@ -447,12 +447,16 @@ def check_roadmap_against_plan(out: pathlib.Path) -> None:
         # #174 landed an Operating bank-rec scaffold. Same pointer rule.
         "#174",
         "bank-rec",
+        # Live registration leftover is shared. A public page that
+        # drops #22 while PLAN maps every scaffold leftover there
+        # is the same lag as the built column forgetting tax lots.
+        "#22",
     )
     if not all(n in doc for n in phase_four_needles):
         missing = [n for n in phase_four_needles if n not in doc]
         err(src, "phase four does not point at the Connect catalog "
                  f"({', '.join(missing)}); PLAN.md amendments 2026-09-04 "
-                 "and issues #150 / #165 / #166 / #168 / #169 / #172 / #184 / #179 / #177 / #185 / #161 / #162 / #174")
+                 "and issues #150 / #165 / #166 / #168 / #169 / #172 / #184 / #179 / #177 / #185 / #161 / #162 / #174 / #22")
     elif not any(e.startswith(f"::error file={src}::") or
                  e.startswith("::error file=PLAN.md::") for e in errors):
         print("  ok  roadmap status columns agree with PLAN.md on engine work")
