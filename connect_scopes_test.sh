@@ -165,6 +165,18 @@ for phrase in "equalization, drip, and side-pocket stay Connect" "#177"; do
     || { echo "  x HANDOFF.md dropped $phrase" >&2; bad=1; }
 done
 
+# #176: refuse phrases map to Connect issues or never. A catalog,
+# plan, or handoff that drops the map is the same lag as a scope
+# rename nobody noticed.
+for phrase in "refuse phrases map to Connect issues or never"; do
+  grep -qiF -- "$phrase" <<<"$CAT" \
+    || { echo "  x catalog dropped $phrase" >&2; bad=1; }
+  grep -qiF -- "$phrase" <<<"$WHOLE_PLAN" \
+    || { echo "  x PLAN.md dropped $phrase" >&2; bad=1; }
+  grep -qiF -- "$phrase" <<<"$WHOLE_HANDOFF" \
+    || { echo "  x HANDOFF.md dropped $phrase" >&2; bad=1; }
+done
+
 # ⛔ lots:elect is SpecID names, not a Method / Order. The same sentence
 # this repository uses for MinTax / SpecID / average cost.
 grep -qF -- 'lot_method = "specific_id"' "$CATALOG" \

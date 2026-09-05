@@ -347,6 +347,10 @@ BUILT=(
   # on /v1 stay leftover. The sentence it matches is in the
   # 2026-09-05 #174 amendment.
   "an operating bank-rec Connect app"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED THE MAP, WHICH IS THE
+  # PROTOCOL. The map is not a landing — scaffolds stay scaffolds.
+  # The sentence it matches is in the 2026-09-05 #176 amendment.
+  "refuse phrases map to Connect issues or never"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client
@@ -376,8 +380,32 @@ done
 [ "$bad" -eq 0 ] || fail "the plan and the repository disagree about what the product is — \
 edit PLAN.md in the same commit as the feature, or do not land the feature"
 
+# The 2026-09-05 map must still name every original-list phrase. A refuse
+# that drops off the table is the abandonment look #176 exists to stop.
+# ⛔ THE MAP IS NOT THE LIST. awk stops LIST at the first ###, so these
+# phrases stay refused; they must also appear in the amendment that
+# maps them.
+MAP=$(awk '/^### Amendment, 2026-09-05 — refuse phrases map to Connect issues or never/{f=1;next} /^### /{f=0} f' "$PLAN" | flat)
+[ -n "${MAP// /}" ] || fail "no 2026-09-05 refuse-map amendment in $PLAN — did the heading change?"
+STILL_REFUSED=(
+  "control-plane UI and epoch machinery beyond a version hash"
+  "the workload planner"
+  "anything GPU"
+  "performance reporting and attribution"
+  "the client portal"
+  "CRM connectors"
+  "a rule language parser"
+  "Kubernetes"
+)
+for phrase in "${STILL_REFUSED[@]}"; do
+  grep -qF -- "$phrase" <<<"$LIST" \
+    || fail "\"$phrase\" dropped off the Explicitly not building list — the map cannot cover a phrase the list no longer names"
+  grep -qF -- "$phrase" <<<"$MAP" \
+    || fail "\"$phrase\" is still refused and the 2026-09-05 map does not name it"
+done
+
 if [ -n "$TYPES" ] && [ -n "$KINDS_PY" ]; then
   python3 "$KINDS_PY" "$TYPES" "$PLAN"
 fi
 
-echo "  ok  ${#BUILT[@]} built features, none still on the plan's refusal list"
+echo "  ok  ${#BUILT[@]} built features, none still on the plan's refusal list; ${#STILL_REFUSED[@]} refuses still mapped"

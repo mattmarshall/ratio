@@ -376,7 +376,9 @@ appears among the active rules.
 ## Explicitly not building
 
 Named so they stop being tempting. Every one of these is on the website as a
-destination, and none of them earns a dollar in the next six months:
+destination, and none of them earns a dollar in the next six months. A
+2026-09-05 amendment maps each phrase to a Connect issue or to never /
+destination-only so the refuse cannot look like abandonment:
 
 control-plane UI and epoch machinery beyond a version hash · the workload
 planner · anything GPU · performance reporting and attribution · the client
@@ -4306,3 +4308,88 @@ a missing outstanding row, and `journal:append` being rejected as
 a scope. It cannot show a Connect token opening a book, a live
 OAuth grant, live bank OAuth, a payroll run, a tax filing,
 inventory/COGS, or a posting that reached `/v1`.
+
+### Amendment, 2026-09-05 — refuse phrases map to Connect issues or never
+
+[#176](https://github.com/mattmarshall/ratio/issues/176) asked for the
+*Explicitly not building* list — and the product-shaped cannot-show
+lines that accumulated after it — to point at Connect issues so a
+refuse cannot look like product abandonment. The catalog
+([#150](https://github.com/mattmarshall/ratio/issues/150)) and the
+first-party scaffolds already named the doors. The list itself did
+not. **refuse phrases map to Connect issues or never** is the phrase
+this amendment records — a map, not a landing.
+
+The original list did not move. A kernel client portal is still
+refused. A Connect LP portal is the door
+([#161](https://github.com/mattmarshall/ratio/issues/161)), and that
+scaffold is not live OAuth. Do not add a BUILT line that claims
+live OAuth, a licensed AIA form, or IRS e-file.
+
+| Refuse / cannot-show phrase | Maps to | Note |
+|---|---|---|
+| control-plane UI and epoch machinery beyond a version hash | **never** (fence) | Configuration screens read versions. Editing one is control-plane UI. `config:promote` is absence, not a scope. |
+| the workload planner | **destination-only** | Site destination. Not a Connect app. Not a kernel RPC. |
+| anything GPU | **never** | Not a product door. |
+| performance reporting and attribution | **never** | [#186](https://github.com/mattmarshall/ratio/issues/186) cites restatement; it does not grow attribution. |
+| the client portal | Connect [#161](https://github.com/mattmarshall/ratio/issues/161) | Kernel HTML portal stays refused. Scaffold leftover #22. |
+| CRM connectors | **destination-only** | Phase-four marketplace. First-party app not filed. Do not file a duplicate. |
+| a rule language parser | **never** (fence) | Approval is `ratio approve` at a terminal. `rules:approve` is absence. |
+| Kubernetes | **never** | Deploy is Lambda / Fargate. Not a product door. |
+| bank OAuth | Connect [#165](https://github.com/mattmarshall/ratio/issues/165) / [#163](https://github.com/mattmarshall/ratio/issues/163) / [#174](https://github.com/mattmarshall/ratio/issues/174) | Scaffolds landed. Live provider OAuth leftover #22. |
+| tax e-file | Connect [#166](https://github.com/mattmarshall/ratio/issues/166) | 8949-ish CSV scaffold. IRS e-file / CPA portal / tax-lot planner stay leftovers on that issue. |
+| vendor portal | Connect [#172](https://github.com/mattmarshall/ratio/issues/172) | Scaffold. Vendor user directory stays out of core. Leftover #22. |
+| waterfall engine | **destination-only** | Never in kernel. First-party app not filed. [#157](https://github.com/mattmarshall/ratio/issues/157) is a citeable notice, not preferred-return math. |
+| GC/sub marketplace | **destination-only** | First-party app not filed. |
+| e-signature | **destination-only** | Named on [#157](https://github.com/mattmarshall/ratio/issues/157) / [#184](https://github.com/mattmarshall/ratio/issues/184). First-party app not filed. |
+| AIA G702 product UI | Connect [#184](https://github.com/mattmarshall/ratio/issues/184) | G702-ish / G703-ish CSV scaffold. Licensed AIA form leftover on that issue / #22. |
+| payroll | Connect leftover [#174](https://github.com/mattmarshall/ratio/issues/174) | Bank-rec scaffold landed. Payroll / tax filing stay named leftovers — not a fake paycheck UI. |
+| inventory / COGS | **never** | No inventory account on `chart_for(Operating)`. A silent COGS plug invents a cost. |
+| credit score | **never** | Not a product door. Refinance shopping is the same row. |
+| bank balance predictors | Connect [#163](https://github.com/mattmarshall/ratio/issues/163) | `connect/bank-balance-predictor/` and `connect/calendar-bills/`. Live bank / calendar OAuth leftover #22. |
+| cash forecast / FIRE number | Connect [#163](https://github.com/mattmarshall/ratio/issues/163) / [#168](https://github.com/mattmarshall/ratio/issues/168) | Posted `forecast_*` / `scheduled_*` cites are Built. A FIRE number stays refused. |
+| envelope coaching | **never** in kernel ([#164](https://github.com/mattmarshall/ratio/issues/164) closed) | Budget vs actual is the core cite. Plaid-like categorizer stays Connect, unfiled. |
+| equalization calculation | Connect [#177](https://github.com/mattmarshall/ratio/issues/177) | Decision, not a landing. First-party app not filed. |
+| drip subscription packaging | Connect [#161](https://github.com/mattmarshall/ratio/issues/161) / [#177](https://github.com/mattmarshall/ratio/issues/177) | Drip elections stay on #161. |
+| side-pocket ops | Connect [#177](https://github.com/mattmarshall/ratio/issues/177) | Decision. First-party app not filed. |
+| FX rate providers | Connect leftover [#178](https://github.com/mattmarshall/ratio/issues/178) | Fact apps. First-party rate app not filed. |
+| EAC / forecast | Connect [#169](https://github.com/mattmarshall/ratio/issues/169) | Scaffold. EAC fields on `/budget` and a silent forecast of 0 stay refused. Leftover #22. |
+| program roll-up / mega-book | Connect [#179](https://github.com/mattmarshall/ratio/issues/179) | Scaffold. A mega-book that merges journals stays refused. Leftover #22. |
+| LP / investor portal | Connect [#161](https://github.com/mattmarshall/ratio/issues/161) | Scaffold. Kernel portal / IRR / TVPI / K-1 stay refused or destination-only. Leftover #22. |
+| fund-ops alerts | Connect [#162](https://github.com/mattmarshall/ratio/issues/162) | Scaffold. Slack / email / PagerDuty leftover on that issue. No kernel notifier. Leftover #22. |
+| audit export | Connect [#185](https://github.com/mattmarshall/ratio/issues/185) | Scaffold. Kernel blob store stays refused. Leftover #22. |
+| net-worth goals | Connect [#168](https://github.com/mattmarshall/ratio/issues/168) | Scaffold. A cash forecast / FIRE number stays refused. Leftover #22. |
+| payment initiation | **never** (fence) | Do not mint `payments:initiate`. Separate compliance app if it is ever built. |
+| portal impersonation | **never** (fence) | Membership is the subject's, not the client's. |
+| chatbot / HTML alert UI | **never** in kernel | [#162](https://github.com/mattmarshall/ratio/issues/162) is the Connect door. |
+
+Live WorkOS dashboard registration and `DEMO_MEMBERS` naming a live
+WorkOS `sub` stay leftover
+[#22](https://github.com/mattmarshall/ratio/issues/22) on every
+scaffold row. [#152](https://github.com/mattmarshall/ratio/issues/152)
+(api.ratio.marsh.build DNS/TLS) is not this map.
+
+**What this is NOT:**
+
+- **Not Built product UI.** Scaffolds stay scaffolds. A walk-through
+  still cannot show a Connect token opening a book.
+- **Not new Connect apps.** No tree under `connect/`.
+- **Not #22 or #152.** Operator gates stay those issues.
+- **Not closing scaffold leftovers.** #161, #162, #163, #166, #168,
+  #169, #172, #174, #179, #184, #185 stay open / blocked on leftover
+  #22.
+- **Not filing destination-only rows.** CRM, waterfall, e-signature,
+  K-1, GC/sub marketplace, and FX rate providers have no first-party
+  issue. The site already names them as destinations. Do not file
+  duplicates from this card.
+
+Nothing on the *Explicitly not building* list moved. This file does
+not close #176 — destination-only rows without a first-party app
+stay named so a later agent does not file duplicates. Scaffold
+leftovers stay on their issues. It does not close #150. It does not
+close #22. It does not absorb #152. It does not reopen #151.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show this table and the issue numbers it names. It cannot
+show live bank or calendar OAuth, a Connect dashboard registration,
+or a kernel portal.

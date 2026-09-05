@@ -128,16 +128,23 @@ issue because it is the fence this repository is for.
 
 ## Stay Connect-apps, not core
 
-The issue's refuse list, said here so a later RPC does not "just" add them:
+The issue's refuse list, said here so a later RPC does not "just" add them.
+⭐ **refuse phrases map to Connect issues or never** — the PLAN 2026-09-05
+amendment is the map; this list stays the catalog copy.
 
-client portal · bank OAuth · CRM · tax e-file · vendor portal · waterfall
-engine · GC/sub marketplace · e-signature · AIA G702 product UI · payroll ·
-inventory / COGS · credit score · bank balance predictors · equalization
-calculation · drip subscription packaging · side-pocket ops ·
+client portal (#161) · bank OAuth (#165 / #163 / #174) · CRM
+(destination-only; first-party app not filed) · tax e-file (#166) ·
+vendor portal (#172) · waterfall engine (destination-only) · GC/sub
+marketplace (destination-only) · e-signature (destination-only; named
+on #157 / #184) · AIA G702 product UI (#184) · payroll (#174 leftover) ·
+inventory / COGS (never) · credit score (never) · bank balance
+predictors (#163) · equalization
+calculation (#177) · drip subscription packaging (#161 / #177) ·
+side-pocket ops (#177) ·
 FX rate providers (fact apps; #178).
 
 Each of those may *read* through a scope above. None of them becomes a
-kernel method.
+kernel method. Live registration leftover is #22.
 
 ⭐ **equalization, drip, and side-pocket stay Connect**
 ([#177](https://github.com/mattmarshall/ratio/issues/177)). Not core:

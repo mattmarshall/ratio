@@ -4,6 +4,10 @@ Scaffolds under this tree are WorkOS Connect applications, not kernel
 RPCs. They share [`grant.py`](grant.py): a verified Connect access
 token pulls cites and delivers against **ConnectApiUrl**, never DemoUrl.
 
+⭐ Core stays a thin book of record. Breadth is WorkOS Connect. Live
+registration leftover is #22. PLAN maps refuse phrases to Connect
+issues or never — scaffolds here are not live OAuth.
+
 ## Live OAuth shape
 
 Not a second IdP. Token mint is [WorkOS Connect](https://workos.com/docs/authkit/connect)
