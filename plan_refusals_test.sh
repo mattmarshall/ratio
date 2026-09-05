@@ -329,6 +329,12 @@ BUILT=(
   # sentence it matches is in the 2026-09-04 #8 carve-close
   # amendment.
   "Postgres as the interactive-scale engine"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The LP / investor portal Connect app is not on the refusal list —
+  # a kernel HTML portal, IRR / TVPI / waterfall, and a live Connect
+  # token on /v1 stay leftover. The sentence it matches is in the
+  # 2026-09-04 #161 amendment.
+  "an LP / investor portal Connect app"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

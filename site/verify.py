@@ -438,12 +438,15 @@ def check_roadmap_against_plan(out: pathlib.Path) -> None:
         # #185 landed an audit-export scaffold. Same pointer rule.
         "#185",
         "audit-export",
+        # #161 landed an LP / investor portal scaffold. Same pointer rule.
+        "#161",
+        "lp-portal",
     )
     if not all(n in doc for n in phase_four_needles):
         missing = [n for n in phase_four_needles if n not in doc]
         err(src, "phase four does not point at the Connect catalog "
                  f"({', '.join(missing)}); PLAN.md amendments 2026-09-04 "
-                 "and issues #150 / #165 / #166 / #168 / #169 / #172 / #184 / #179 / #177 / #185")
+                 "and issues #150 / #165 / #166 / #168 / #169 / #172 / #184 / #179 / #177 / #185 / #161")
     elif not any(e.startswith(f"::error file={src}::") or
                  e.startswith("::error file=PLAN.md::") for e in errors):
         print("  ok  roadmap status columns agree with PLAN.md on engine work")

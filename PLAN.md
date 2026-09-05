@@ -4070,3 +4070,73 @@ path.
 The demo API hydrates ScaleBucket `journals/` so CreateBook
 survives a cold start; this amendment does not reopen the
 #230 `/tmp`-only wipe.
+
+### Amendment, 2026-09-04 — an LP / investor portal Connect app, and the grant path still does not open
+
+[#161](https://github.com/mattmarshall/ratio/issues/161) asked for an
+LP / investor portal that reads partners and capital without growing
+a kernel portal. The catalog already said a client portal stays a
+Connect app. What landed is that app as a sibling tree, not a kernel
+method and not a `screensFor` fork.
+
+**What this amendment records.** [`connect/lp-portal/`](connect/lp-portal/)
+is a first-party WorkOS Connect OAuth application. It declares
+`partners:read`, `statements:read`, `nav:read`, and optionally
+`books:read` — the frozen names, not the catalog aliases
+`journal:read` / `journal:append`. It is read-only relative to the
+journal: `journals:post` is not requested. The empty allowlist
+refuses every post. Portal contents are kernel cites already on the
+book (`/capital` partner rows, commitments / undrawn, `CapitalNotice`,
+`NavStrike` and the period roll-forward, closed-through). Unset stays
+unset. A missing `[[partner_cut]]` leaves allocated plugs unset — never
+a silent 1/N of book NAV. A book that never posted a commitment leaves
+undrawn unset — not a callable zero. A missing NAV strike is unset,
+not NAV 0.00. An empty journal digest is unset, not history-intact.
+Activity-shaped beginning is unset, not a fake zero stock. A posted
+`"0.00"` is a real zero. `books:read` membership; an `org_id` claim
+is not membership. No new `Method` / `Order` / `lot_method` variant.
+No HTML portal routes inside `ratio watch`, no LP user tables, no
+document vault in core. No IRR, TVPI, or waterfall. No drip election
+and no payment initiation. **an LP / investor portal Connect app** is
+the Built phrase this amendment adds.
+
+**What this is NOT:**
+
+- **Not live Connect OAuth.** API Gateway JWT verifies Connect
+  tokens on ConnectApiUrl. `fetch_cites()` and `deliver()` still
+  refuse without a presented token. Write-route actor binding landed
+  (#151). Live OAuth is leftover #22 / #150. This file does not
+  close #22. It does not reopen #151.
+- **Not a live LP walk-through against `/v1`.** Unit tests assert
+  the refuse and the cite shape from fixtures. A green cite is not
+  a live token. Only leftover #22 blocks that claim.
+- **Not a kernel portal.** `kernel_portal()` and `html_portal()`
+  refuse. Client portal stays Connect. `/capital` and `/nav` stay
+  the core cites. `screensFor` is not forked.
+- **Not drip.** `drip()` refuses. Drip elections stay leftover on
+  #161 / #177. This file does not start them.
+- **Not IRR, TVPI, a waterfall, a K-1 pack, or payment initiation.**
+  Those stay refused or Connect.
+- **Not #150's read-only reference skeleton.** That leftover is
+  `books:read` + `statements:read` proving the door opens. This app
+  requests `partners:read` and `nav:read` as well and does not
+  open the door.
+
+Nothing on the *Explicitly not building* list moved. Client portal,
+CRM, tax e-file, vendor portal, AIA G702 product UI, and waterfall
+stay Connect-apps or stay refused. This file does not close #161 —
+grant path (leftover #22), a live LP walk-through with a Connect
+token, and drip elections remain. It does not close #185, #165,
+#166, #168, #169, #172, #184, or #179. It does not close #150. It
+does not close #22. It does not close #177. It does not reopen #151.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a fixture LP of beginning $100 / contributions $40 /
+distributions $10 as ending $130, allocated income staying blank
+until a named cut divides a book figure, a book that never committed
+leaving undrawn blank rather than inventing a callable zero, a
+missing NAV strike leaving that sheet blank rather than NAV 0.00,
+and `journal:append` being rejected as a scope. It cannot show a
+Connect token opening a book, a live OAuth grant, an HTML LP portal
+inside `ratio watch`, IRR, TVPI, a waterfall, a K-1, or a drip
+election.
