@@ -283,10 +283,22 @@ open:
    is a read of cites (not a write RPC and not a kernel portal);
    first-party Connect apps call ConnectApiUrl, and this file still
    does not close #161.
+   A first-party fund-ops-alerts scaffold lives at
+   `connect/fund-ops-alerts/`
+   ([#162](https://github.com/mattmarshall/ratio/issues/162)). It is
+   not this leftover either: it requests `webhooks:journal`,
+   `breaks:read`, `nav:read`, `views:read`, and `books:read`, it
+   is a read of cites (not a write RPC and not a kernel notifier);
+   first-party Connect apps call ConnectApiUrl, and this file still
+   does not close #162.
 5. **`webhooks:journal`, `nav:strike` as a write RPC** —
    reserved scopes; the surfaces are not built. `audit:export` has
    a first-party scaffold at `connect/audit-export/` (#185); that
    is a ZIP of cites, not a write RPC, and it does not close #185.
+   A first-party fund-ops-alerts scaffold lives at
+   `connect/fund-ops-alerts/` (#162); it requests
+   `webhooks:journal` and polls `breaks:read` + `nav:read`, it is
+   not a kernel webhook surface, and it does not close #162.
 
 This file does not close #150. Nothing here finishes issue 22
 (DEMO_MEMBERS naming a live WorkOS sub, WorkOS dashboard
@@ -295,4 +307,4 @@ RATIO_DEMO_OPEN defaults off on the deployed demo.
 first-party Connect apps call ConnectApiUrl.
 API Gateway JWT verifies Connect tokens. Nothing here closes #5
 (console wash flag), #9 (lot-relief UI cites / pooled holding-period
-leftover), #163, #166, #168, #169, #172, #184, #179, #185, or #161.
+leftover), #163, #166, #168, #169, #172, #184, #179, #185, #161, or #162.
