@@ -120,10 +120,77 @@ def cite(**kwargs) -> p.Statement:
         notices=kwargs.get("notices", (notice(),)),
         currency=kwargs.get("currency", "USD"),
         partner_cut=kwargs.get("partner_cut"),
+        special_allocations=kwargs.get("special_allocations"),
+        allocation_facts=kwargs.get("allocation_facts"),
         book_income=kwargs.get("book_income"),
         book_expense=kwargs.get("book_expense"),
         book_unrealized=kwargs.get("book_unrealized"),
+        fee_receivable=kwargs.get("fee_receivable"),
+        trial_balance_difference=kwargs.get("trial_balance_difference"),
+        config_digest=kwargs.get("config_digest"),
+        wire=kwargs.get("wire", False),
     )
+
+
+def getbook(**overrides) -> dict:
+    """Live GetBook shape — camelCase, Int64 money as minor-unit digits."""
+    base = {
+        "name": "books/harbourline-global-value",
+        "displayName": "Harbourline Global Value",
+        "kind": "INVESTMENT",
+        "currencyCode": "USD",
+        "organization": "",
+        "configDigest": "abba" * 8,
+        "trialBalanceDifference": "0",
+        "partnerCut": [
+            {"partner": "LP", "weight": "80"},
+            {"partner": "GP", "weight": "20"},
+        ],
+        "specialAllocations": [],
+        "feeReceivable": "",
+        "allocationFacts": [],
+        "notices": [
+            {
+                "kind": "call",
+                "amount": "4000",
+                "digest": "beef" * 8,
+                "partnerCut": [
+                    {"partner": "LP", "weight": "80"},
+                    {"partner": "GP", "weight": "20"},
+                ],
+                "amounts": [
+                    {"partner": "LP", "amount": "3200"},
+                    {"partner": "GP", "amount": "800"},
+                ],
+                "entryId": "call-1",
+                "tradeDate": {"year": 2026, "month": 3, "day": 31},
+            }
+        ],
+    }
+    base.update(overrides)
+    return base
+
+
+def strike(**overrides) -> dict:
+    """Live NavStrike shape — netAssetValue is minor-unit digits."""
+    base = {
+        "netAssetValue": "14000",
+        "journalDigest": "cafe" * 8,
+        "journalPosition": "12",
+        "configDigest": "abba" * 8,
+        "valuationTime": "2026-03-31T21:00:00Z",
+        "trialBalanceDifference": "0",
+        "qualification": [],
+        "beginning": "10000",
+        "contributions": "5000",
+        "distributions": "1000",
+        "income": "500",
+        "expense": "200",
+        "unrealized": "300",
+        "ending": "14600",
+    }
+    base.update(overrides)
+    return base
 
 
 class ParseMinor(unittest.TestCase):
@@ -191,6 +258,39 @@ class PartnerCut(unittest.TestCase):
         self.assertIn("1/N", str(ctx.exception))
         self.assertIn("#180", str(ctx.exception))
 
+    def test_journal_specials_then_the_remainder_cut(self):
+        facts = (p.FactCite("LP", "income", 10_000),)
+        cut = (p.PartnerShare("LP", 80), p.PartnerShare("GP", 20))
+        self.assertEqual(
+            p.apply_facts(30_000, facts, "income", cut),
+            {"LP": 26_000, "GP": 4_000},
+        )
+
+    def test_facts_that_cover_the_figure_are_the_allocation(self):
+        facts = (p.FactCite("LP", "income", 24_000), p.FactCite("GP", "income", 6_000))
+        self.assertEqual(
+            p.apply_facts(30_000, facts, "income", None),
+            {"LP": 24_000, "GP": 6_000},
+        )
+
+    def test_an_empty_facts_list_stays_unset_not_one_over_n(self):
+        cut = (p.PartnerShare("LP", 80), p.PartnerShare("GP", 20))
+        self.assertIsNone(p.apply_facts(30_000, (), "income", cut))
+
+    def test_an_overshooting_fact_stays_unset_not_rounded(self):
+        facts = (p.FactCite("LP", "income", 40_000),)
+        cut = (p.PartnerShare("LP", 80), p.PartnerShare("GP", 20))
+        self.assertIsNone(p.apply_facts(30_000, facts, "income", cut))
+
+    def test_a_standing_special_replaces_the_default_cut_for_that_kind(self):
+        default = (p.PartnerShare("LP", 80), p.PartnerShare("GP", 20))
+        specials = (p.SpecialCite("LP", "income", 1),)
+        self.assertEqual(
+            p.cut_for_kind("income", default, specials),
+            (p.PartnerShare("LP", 1),),
+        )
+        self.assertEqual(p.cut_for_kind("expense", default, specials), default)
+
 
 class CapitalCites(unittest.TestCase):
     def test_a_posted_book_cites_partner_capital_commitment_and_nav(self):
@@ -226,6 +326,15 @@ class CapitalCites(unittest.TestCase):
         self.assertEqual(out.partners[0].allocated_income, 2_400)
         self.assertEqual(out.partners[1].allocated_income, 600)
         self.assertFalse(any("LP allocated income" in u for u in out.unset), out.unset)
+
+    def test_journal_specials_fill_allocated_income_before_the_cut(self):
+        out = cite(
+            partner_cut=(p.PartnerShare("LP", 80), p.PartnerShare("GP", 20)),
+            allocation_facts=({"partner": "LP", "kind": "income", "amount": "10.00"},),
+            book_income="30.00",
+        )
+        self.assertEqual(out.partners[0].allocated_income, 26_00)
+        self.assertEqual(out.partners[1].allocated_income, 4_00)
 
     def test_a_missing_nav_strike_stays_unset_not_nav_zero(self):
         out = cite(nav={})
@@ -278,6 +387,114 @@ class CapitalCites(unittest.TestCase):
         out = cite(nav=nav(net_asset_value="0.00"))
         self.assertEqual(out.nav.net_asset_value, 0)
         self.assertFalse(any(u.startswith("NAV strike") for u in out.unset), out.unset)
+
+    def test_missing_fee_receivable_stays_unset_not_a_silent_zero(self):
+        out = cite()
+        self.assertIsNone(out.fee_receivable)
+        self.assertTrue(any("silent zero receivable" in u for u in out.unset), out.unset)
+        self.assertNotEqual(out.fee_receivable, 0)
+
+    def test_a_paid_in_full_fee_is_a_real_zero(self):
+        out = cite(fee_receivable="0.00")
+        self.assertEqual(out.fee_receivable, 0)
+        self.assertFalse(any("fee receivable" in u for u in out.unset), out.unset)
+
+    def test_notice_cites_the_pinned_cut_and_trade_date(self):
+        out = cite(
+            notices=(
+                notice(
+                    partner_cut=[
+                        {"partner": "LP", "weight": "80"},
+                        {"partner": "GP", "weight": "20"},
+                    ],
+                    trade_date="2026-03-31",
+                ),
+            )
+        )
+        self.assertEqual(out.notices[0].partner_cut[0], p.PartnerShare("LP", 80))
+        self.assertEqual(out.notices[0].trade_date, date(2026, 3, 31))
+
+
+class GetBookCites(unittest.TestCase):
+    def test_getbook_cites_the_named_cut_fee_tb_and_notice_without_inventing_nav(self):
+        out = p.statement_from_getbook(
+            getbook(),
+            client=declared_client(),
+        )
+        self.assertEqual(out.book_id, "harbourline-global-value")
+        self.assertEqual(out.partner_cut, (p.PartnerShare("LP", 80), p.PartnerShare("GP", 20)))
+        self.assertIsNone(out.fee_receivable)
+        self.assertEqual(out.trial_balance_difference, 0)
+        self.assertEqual(out.notices[0].amount, 4_000)
+        self.assertEqual(out.notices[0].amounts, (("LP", 3_200), ("GP", 800)))
+        self.assertEqual(out.notices[0].trade_date, date(2026, 3, 31))
+        self.assertEqual(out.notices[0].partner_cut[0], p.PartnerShare("LP", 80))
+        self.assertIsNone(out.nav.net_asset_value)
+        self.assertIsNone(out.remaining_commitment)
+        self.assertTrue(any(u.startswith("NAV strike") for u in out.unset), out.unset)
+        self.assertTrue(any("callable zero" in u for u in out.unset), out.unset)
+        self.assertTrue(any("silent zero receivable" in u for u in out.unset), out.unset)
+        self.assertNotEqual(out.nav.net_asset_value, 0)
+        self.assertNotEqual(out.remaining_undrawn, 0)
+
+    def test_a_wire_fee_of_7500_is_seventy_five_dollars_not_seventy_five_hundred(self):
+        out = p.statement_from_getbook(
+            getbook(feeReceivable="7500"),
+            client=declared_client(),
+        )
+        self.assertEqual(out.fee_receivable, 7_500)
+        self.assertEqual(p.format_minor(out.fee_receivable), "75.00")
+
+    def test_getbook_plus_capital_and_strike_cites_the_roll_forward(self):
+        out = p.statement_from_getbook(
+            getbook(),
+            client=declared_client(),
+            partners=(lp(), gp()),
+            nav=strike(),
+            remaining_commitment="6000",
+            remaining_undrawn="6000",
+            book_income="3000",
+        )
+        self.assertEqual(out.partners[0].ending, 13_000)
+        self.assertEqual(out.partners[0].allocated_income, 2_400)
+        self.assertEqual(out.partners[1].allocated_income, 600)
+        self.assertEqual(out.remaining_commitment, 6_000)
+        self.assertEqual(out.nav.net_asset_value, 14_000)
+        self.assertEqual(out.nav.valuation_time, "2026-03-31T21:00:00Z")
+        self.assertEqual(out.nav.trial_balance_difference, 0)
+        self.assertFalse(any(u.startswith("NAV strike") for u in out.unset), out.unset)
+
+    def test_listbooks_refuses_to_invent_which_book(self):
+        with self.assertRaises(p.Refuse) as ctx:
+            p.statement_from_getbook(
+                {"books": [getbook()]},
+                client=declared_client(),
+            )
+        self.assertIn("ListBooks", str(ctx.exception))
+
+    def test_a_personal_getbook_is_refused(self):
+        with self.assertRaises(p.Refuse) as ctx:
+            p.statement_from_getbook(
+                getbook(kind="PERSONAL", name="books/household"),
+                client=declared_client(),
+            )
+        self.assertIn("INVESTMENT", str(ctx.exception))
+
+    def test_cite_from_fetch_composes_getbook_when_a_token_is_presented(self):
+        transport = p._grant.FakeTransport(body=json.dumps(getbook()))
+        env = {"RATIO_CONNECT_API_URL": "https://connect.example"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            out = p.cite_from_fetch(
+                token="connect-access-token",
+                book_id="harbourline-global-value",
+                transport=transport,
+                client=declared_client(),
+            )
+        self.assertEqual(out.partner_cut[0], p.PartnerShare("LP", 80))
+        self.assertEqual(
+            transport.calls[0][1],
+            "https://connect.example/v1/books/harbourline-global-value",
+        )
 
 
 class ScopeAndKind(unittest.TestCase):
@@ -414,16 +631,22 @@ class Refusals(unittest.TestCase):
         with self.assertRaises(p.Refuse) as ctx:
             p.html_portal()
         self.assertIn("Connect", str(ctx.exception))
+        with self.assertRaises(p.Refuse) as ctx:
+            p.html_portal(cite())
+        self.assertIn("as_html", str(ctx.exception))
+        self.assertNotIn("<html", str(ctx.exception))
 
     def test_lp_directory_is_refused(self):
         with self.assertRaises(p.Refuse) as ctx:
             p.lp_directory()
         self.assertIn("#161", str(ctx.exception))
+        self.assertIn("user directory", str(ctx.exception).lower())
 
     def test_document_vault_is_refused(self):
         with self.assertRaises(p.Refuse) as ctx:
             p.document_vault()
         self.assertIn("document vault", str(ctx.exception))
+        self.assertIn("blob store", str(ctx.exception))
 
     def test_payment_initiation_is_refused(self):
         with self.assertRaises(p.Refuse) as ctx:
@@ -443,7 +666,30 @@ class RenderHonesty(unittest.TestCase):
         payload = p.as_json(cite(nav={}, remaining_commitment=None, remaining_undrawn=None))
         self.assertIsNone(payload["nav"]["net_asset_value"])
         self.assertIsNone(payload["remaining_undrawn"])
+        self.assertIsNone(payload["fee_receivable"])
         self.assertNotEqual(payload["nav"]["net_asset_value"], "0.00")
+
+    def test_connect_html_leaves_missing_nav_as_emdash_not_zero(self):
+        out = cite(nav={}, remaining_commitment=None, remaining_undrawn=None)
+        page = p.as_html(out)
+        nav_cell = page.split("Net asset value", 1)[1].split("</tr>", 1)[0]
+        self.assertIn("<!DOCTYPE html>", page)
+        self.assertIn("NAV strike", page)
+        self.assertIn("not a kernel portal", page)
+        self.assertNotIn("0.00", nav_cell)
+        self.assertIn("—", nav_cell)
+        self.assertIn("callable-zero", page)
+        files = p.as_files(out)
+        self.assertEqual(files["statement.html"], page)
+        self.assertIn("cut.csv", files)
+        self.assertIn("book.csv", files)
+
+    def test_as_html_is_not_html_portal(self):
+        page = p.as_html(cite())
+        self.assertIn("Partner capital", page)
+        self.assertIn("130.00", page)
+        with self.assertRaises(p.Refuse):
+            p.html_portal(cite())
 
 
 class ManifestHonesty(unittest.TestCase):
@@ -467,10 +713,14 @@ class ManifestHonesty(unittest.TestCase):
         self.assertIn("WorkOS dashboard registration", app()["grant_path"]["note"])
         self.assertIn("refused", app()["drip"]["status"])
         self.assertIn("refused", app()["kernel_portal"]["status"])
+        self.assertIn("cited", app()["html_surface"]["status"])
+        self.assertIn("as_html", app()["html_surface"]["note"])
         self.assertIn("refused", app()["irr_tvpi_waterfall"]["status"])
+        self.assertIn("refused", app()["payments"]["status"])
         self.assertIn("#161", doc)
         self.assertIn("#150", doc)
         self.assertIn("#22", doc)
+        self.assertIn("#177", doc)
         self.assertIn("does not reopen #151", doc)
         self.assertEqual(app()["issue"], 161)
 
@@ -524,6 +774,8 @@ class ManifestHonesty(unittest.TestCase):
             self.assertIn(field, src)
         for field in p.STRIKE_PROTO_FIELDS:
             self.assertIn(field, src)
+        for field in p.BOOK_PROTO_FIELDS:
+            self.assertIn(field, src)
         for needle in (
             "rpc LpPortal",
             "rpc InvestorPortal",
@@ -546,6 +798,11 @@ class ManifestHonesty(unittest.TestCase):
         self.assertIn("export interface NavStrike", src)
         self.assertIn("partnerCut", src)
         self.assertIn("netAssetValue", src)
+        self.assertIn("feeReceivable", src)
+        self.assertIn("allocationFacts", src)
+        self.assertIn("specialAllocations", src)
+        self.assertIn("trialBalanceDifference", src)
+        self.assertIn("tradeDate", src)
 
 
 if __name__ == "__main__":

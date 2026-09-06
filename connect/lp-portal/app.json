@@ -25,7 +25,7 @@
   },
   "partners": {
     "status": "cited",
-    "note": "partners:read copies partner master, capital, and commitments already on /capital. Allocated income / expense / unrealized stay unset without a named [[partner_cut]] — never a silent 1/N of book NAV. A figure that will not divide stays unset, not rounded."
+    "note": "partners:read copies partner master, capital, and commitments already on /capital, plus GetBook partner_cut, special_allocations, allocation_facts, and fee_receivable. Allocated income / expense / unrealized stay unset without a named [[partner_cut]] — never a silent 1/N of book NAV. Journal specials fold first; a remainder uses the cut. A figure that will not divide stays unset, not rounded. Missing fee terms stay unset, not a silent zero receivable."
   },
   "statements": {
     "status": "cited",
@@ -33,7 +33,11 @@
   },
   "nav": {
     "status": "cited",
-    "note": "nav:read copies NavStrike and the period roll-forward already on the book. A missing strike is unset, not NAV 0.00. An empty journal digest is unset, not history-intact. Commitment and undrawn cancel in NAV — they are not cash that arrived."
+    "note": "nav:read copies NavStrike (valuation time, trial-balance difference, qualification, digest) and the period roll-forward already on the book. A missing strike is unset, not NAV 0.00. An empty journal digest is unset, not history-intact. Commitment and undrawn cancel in NAV — they are not cash that arrived."
+  },
+  "html_surface": {
+    "status": "cited",
+    "note": "as_html is a read-only cite-backed page in this tree. html_portal / kernel_portal / lp_directory / document_vault stay refused — they do not grow a kernel portal inside ratio watch. A green HTML file is not a hosted live walk-through."
   },
   "books": {
     "status": "optional",
@@ -49,7 +53,7 @@
   },
   "kernel_portal": {
     "status": "refused",
-    "note": "No HTML portal routes inside ratio watch or the console binary. No LP user tables. No document vault in core. Membership is the AuthKit sub on the book."
+    "note": "No HTML portal routes inside ratio watch or the console binary. as_html is the Connect-side cite page. No LP user tables. No document vault in core. Membership is the AuthKit sub on the book."
   },
   "payments": {
     "status": "refused",
@@ -57,6 +61,6 @@
   },
   "grant_path": {
     "status": "built",
-    "note": "first-party Connect apps call ConnectApiUrl with a verified Connect access token (authorization_code or client_credentials against WorkOS Connect). Membership still required. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. leftover #22: WorkOS dashboard registration, DEMO_MEMBERS naming a live WorkOS sub, unused Cognito CloudFormation resources. Write-route actor binding landed (#151). This file does not reopen #151. This file leaves #150 and #161 open. It does not reopen #151."
+    "note": "first-party Connect apps call ConnectApiUrl with a verified Connect access token (authorization_code or client_credentials against WorkOS Connect). Membership still required. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. This app's Connect grant is proven (Allow → token iss=https://auth.ratio.marsh.build; GetBook on a named INVESTMENT book). leftover #22 is WorkOS dashboard registration of *other* Connect apps and a console signed-in walk-through — do not invent Dashboard clicks here. Write-route actor binding landed (#151). This file does not reopen #151. This file leaves #150 and #161 open (drip leftover #177; hosted live LP walk-through). It does not reopen #151."
   }
 }
