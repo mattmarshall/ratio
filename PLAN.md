@@ -4445,8 +4445,10 @@ Nothing on the *Explicitly not building* list moved. This
 amendment closes #152. Leftover: re-apply `deploy/bootstrap.yaml`
 once so the deploy role can `GetTemplate`, manage `/domainnames*`,
 and `acm:DescribeCertificate` on the issued cert — then the first
-`main` deploy imports. It does not close #22. It does not reopen
-#151. It does not absorb #163.
+`main` deploy imports. `f74362b` never ran that import: the
+`python3 -c` bodies in `adopt_ops_domain` were column-0 and
+`deploy.yml` did not parse (#244). It does not close #22. It does
+not reopen #151. It does not absorb #163.
 
 **What a walk-through can and cannot show** (demo readiness, #27).
 It can show `https://api.ratio.marsh.build/version` on the Demo
