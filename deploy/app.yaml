@@ -105,6 +105,16 @@ Parameters:
       whole without it, and the report link is on the page the moment a run
       completes. Set it only AFTER the identity verifies in SES, or every send
       fails quietly in the task log.
+  CertificateArn:
+    Type: String
+    Default: "arn:aws:acm:us-east-1:320473299741:certificate/4452c092-e591-46e2-8d40-2e29269a033b"
+    Description: >
+      Issued ACM certificate for the Demo HTTP API custom domain
+      `api.ratio.marsh.build` (account 320473299741, us-east-1). Ops
+      already issued this cert; the stack references it. Do not create
+      a second AWS::CertificateManager::Certificate here — a new cert
+      would fight the existing DNS validation and mint a different
+      ARN. Override only if the live issued ARN actually rotates.
 
   ReservedConcurrency:
     Type: Number
@@ -225,7 +235,12 @@ Resources:
           # The report email: who it is from, and where its permalink points.
           # ⚠ Both unset is a WORKING state — no email, nothing else changes.
           RATIO_SCALE_SENDER: !Ref ScaleSender
-          RATIO_PUBLIC_ORIGIN: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"
+          # ⭐ PUBLIC ORIGIN IS THE CUSTOM HOST, NO TRAILING SLASH.
+          # DemoUrl (output) keeps the trailing slash of the old
+          # execute-api style. Permalinks and scale-report links
+          # concatenate paths onto this value. ConnectApiUrl is a
+          # different host and must not appear here.
+          RATIO_PUBLIC_ORIGIN: !Sub "https://${DemoDomain}"
       Tags:
         - Key: project
           Value: ratio
@@ -314,6 +329,45 @@ Resources:
       # links printed in the demo are the links people use.
       StageName: $default
       AutoDeploy: true
+
+  # ── Demo custom domain (#152) ─────────────────────────────────────────
+  #
+  # ⭐ OPS ALREADY ATTACHED THIS HOST. `api.ratio.marsh.build` is a live
+  # API Gateway domain (`d-dh396r9poe.execute-api.us-east-1.amazonaws.com`)
+  # mapped to Demo API `1h4q8av2gb` stage `$default`, empty key.
+  # Cloudflare already CNAMEs `api.ratio` at that target. This stack
+  # must ADOPT those resources, not create a second DomainName —
+  # CreateDomainName on a hostname that exists fails, and deleting /
+  # recreating would mint a new `d-xxxxx` and break DNS. deploy.yml
+  # imports them on the first update (same logical ids as here);
+  # later updates are no-ops when properties match.
+  #
+  # ⛔ DEMO HTTP API ONLY. ConnectApi (`ratio-demo-connect`) stays on
+  # its execute-api URL. One custom host cannot prove both JWT
+  # issuers. Do not add an ApiMapping for ConnectApi. Do not invent
+  # CloudFront — HTTP API DomainName is the TLS terminator.
+  DemoDomain:
+    Type: AWS::ApiGatewayV2::DomainName
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      DomainName: api.ratio.marsh.build
+      DomainNameConfigurations:
+        - CertificateArn: !Ref CertificateArn
+          EndpointType: REGIONAL
+          SecurityPolicy: TLS_1_2
+
+  DemoApiMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    DependsOn:
+      - Stage
+      - DemoDomain
+    Properties:
+      DomainName: !Ref DemoDomain
+      ApiId: !Ref Api
+      Stage: $default
 
   ApiInvoke:
     Type: AWS::Lambda::Permission
@@ -779,7 +833,7 @@ Resources:
             - Name: RATIO_SCALE_SENDER
               Value: !Ref ScaleSender
             - Name: RATIO_PUBLIC_ORIGIN
-              Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"
+              Value: !Sub "https://${DemoDomain}"
             - Name: RATIO_BUILD
               Value: !Ref BuildSha
           LogConfiguration:
@@ -792,9 +846,11 @@ Resources:
 Outputs:
   DemoUrl:
     Description: >
-      The API and the three public screens. `/` and `/app` redirect to the
-      console; the break report is at /breaks and the rules at /rules.
-    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/"
+      The API and the three public screens on the custom host. `/` and
+      `/app` redirect to the console; the break report is at /breaks
+      and the rules at /rules. Trailing slash matches the old
+      execute-api DemoUrl style so smoke can concatenate paths.
+    Value: !Sub "https://${DemoDomain}/"
   ConsoleUrl:
     Description: >
       The operations console, deployed separately to Vercel. Empty until

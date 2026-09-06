@@ -351,6 +351,11 @@ BUILT=(
   # PROTOCOL. The map is not a landing — scaffolds stay scaffolds.
   # The sentence it matches is in the 2026-09-05 #176 amendment.
   "refuse phrases map to Connect issues or never"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The Demo custom domain is not on the refusal list — Connect on
+  # that host and CloudFront stay refused. The sentence it matches
+  # is in the 2026-09-06 #152 amendment.
+  "DemoUrl is api.ratio.marsh.build"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

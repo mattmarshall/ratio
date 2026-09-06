@@ -2,7 +2,8 @@
 
 The three screens, the console's API and the MCP endpoint, running on AWS as a
 Lambda behind an HTTP API. Live at the `DemoUrl` output of the `ratio-demo-app`
-stack.
+stack — `https://api.ratio.marsh.build/` (Demo HTTP API only). Connect apps
+call `ConnectApiUrl`, which stays on execute-api.
 
 ```
   /               302 → the console (RATIO_CONSOLE_URL); 404 with a sentence if unset
@@ -62,7 +63,7 @@ None of them is a WorkOS client id written in this repository.
 
 | | |
 |---|---|
-| `RATIO_API_ORIGIN` | this stack's `DemoUrl`, **scheme and host, no path and no trailing slash** |
+| `RATIO_API_ORIGIN` | this stack's `DemoUrl` (`https://api.ratio.marsh.build`), **scheme and host, no path and no trailing slash** |
 | `WORKOS_CLIENT_ID` | Ratio Production: `client_01M1JJZTFXFDZJ0XJM1NPNSEJB` |
 | `WORKOS_API_KEY` | the same application's API key |
 | `WORKOS_COOKIE_PASSWORD` | ≥32 characters; `openssl rand -base64 32` |
@@ -229,7 +230,7 @@ organization. Region `us-east-1`.
 | stack | what | deployed by |
 |---|---|---|
 | `ratio-demo-bootstrap` | ECR repository, GitHub OIDC provider, deploy role, execution role, budget | a human, once |
-| `ratio-demo-app` | the function, the HTTP APIs, the log group, the WorkOS JWT authorizers | CI, on every push |
+| `ratio-demo-app` | the function, the HTTP APIs, the Demo custom domain, the log group, the WorkOS JWT authorizers | CI, on every push |
 
 ⛔ **Anything about the ACCOUNT rather than the demo lives in
 [`mattmarshall/cloud-org`](https://github.com/mattmarshall/cloud-org)**, not
@@ -538,6 +539,22 @@ this account. AWS creates it on first cluster creation only when the creating
 principal may `iam:CreateServiceLinkedRole`, which the deploy role deliberately
 may not. Bootstrap now declares it (`AWS::IAM::ServiceLinkedRole`), and
 `//deploy:iac_test` refuses an app stack that runs ECS tasks without it.
+
+⛔ **And once more, for the Demo custom domain (#152).** The deploy role
+gained `apigateway:*` on `/domainnames*` (DomainName and ApiMapping are not
+under `/apis`), `cloudformation:GetTemplate` / `ListChangeSets` (the first
+app deploy imports the ops-attached hostname), and `acm:DescribeCertificate`
+on the already-issued cert
+`arn:aws:acm:us-east-1:320473299741:certificate/4452c092-e591-46e2-8d40-2e29269a033b`.
+**Bootstrap first, then push.** A naive `CreateDomainName` on
+`api.ratio.marsh.build` fails because the hostname already exists; deleting
+it would mint a new `d-xxxxx` and break the Cloudflare CNAME. CI imports
+`DemoDomain` / `DemoApiMapping` (same logical ids the template uses) and
+then updates. `//deploy:iac_test` fails if the domain resources, the
+`/domainnames` grant, or the import step drift. Do not remap
+`ConnectApiUrl`. Do not invent CloudFront. Do not change DNS from the app
+stack — Cloudflare already points `api.ratio` at
+`d-dh396r9poe.execute-api.us-east-1.amazonaws.com`.
 
 ## How CI gets in
 

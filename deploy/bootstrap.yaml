@@ -160,10 +160,16 @@ Resources:
                   - cloudformation:DescribeStackEvents
                   - cloudformation:DescribeStackResources
                   - cloudformation:GetTemplateSummary
+                  # ⭐ GetTemplate is the live stack body the first #152
+                  # deploy imports into — without it CI cannot adopt the
+                  # ops-attached DomainName and a regular UPDATE would
+                  # try CreateDomainName on a hostname that already exists.
+                  - cloudformation:GetTemplate
                   - cloudformation:CreateChangeSet
                   - cloudformation:DescribeChangeSet
                   - cloudformation:ExecuteChangeSet
                   - cloudformation:DeleteChangeSet
+                  - cloudformation:ListChangeSets
                   - cloudformation:ListStackResources
                 Resource: !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/ratio-demo-app/*"
               - Sid: ManageTheDemoFunction
@@ -200,6 +206,31 @@ Resources:
                   - apigateway:DELETE
                   - apigateway:TagResource
                 Resource: !Sub "arn:aws:apigateway:${AWS::Region}::/apis*"
+              # ⭐ THE CUSTOM DOMAIN IS NOT UNDER /apis. DomainName and
+              # ApiMapping live at /domainnames*. The first deploy imports
+              # the ops-attached api.ratio.marsh.build mapping; later
+              # updates are no-ops. Without this Sid the stack rolls back
+              # at DemoDomain after the image is already pushed.
+              - Sid: TheDemoApiCustomDomain
+                Effect: Allow
+                Action:
+                  - apigateway:POST
+                  - apigateway:GET
+                  - apigateway:PATCH
+                  - apigateway:PUT
+                  - apigateway:DELETE
+                  - apigateway:TagResource
+                Resource: !Sub "arn:aws:apigateway:${AWS::Region}::/domainnames*"
+              # CloudFormation reads the issued cert when it adopts or
+              # updates DemoDomain. Describe only — this stack must not
+              # request or delete a certificate (DNS validation is live).
+              - Sid: ReadTheIssuedDemoCertificate
+                Effect: Allow
+                Action:
+                  - acm:DescribeCertificate
+                  - acm:GetCertificate
+                  - acm:ListTagsForCertificate
+                Resource: arn:aws:acm:us-east-1:320473299741:certificate/4452c092-e591-46e2-8d40-2e29269a033b
               - Sid: TearDownTheUnusedUserPool
                 Effect: Allow
                 # ⛔ DELETE ONLY. The app stack no longer creates a Cognito

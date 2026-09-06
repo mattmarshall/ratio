@@ -26,6 +26,7 @@ py_test(
     data = [
         "app.yaml",
         "bootstrap.yaml",
+        "adopt_demo_domain.py",
         "//:.github/workflows/deploy.yml",
     ],
     main = "iac_test.py",

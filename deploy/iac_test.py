@@ -786,6 +786,265 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  Function Timeout is 60")
 
+    # ⭐ #152 — Demo HTTP API custom domain, not Connect, not CloudFront.
+    # Ops already attached api.ratio.marsh.build to Demo API 1h4q8av2gb.
+    # The template must declare DomainName + ApiMapping so the next
+    # deploy adopts that mapping instead of wiping it or minting a
+    # second hostname. A sentence in a comment must not satisfy this
+    # (`app_code` / `flow` are comment-stripped).
+    LIVE_DEMO_DOMAIN = "api.ratio.marsh.build"
+    LIVE_CERT = (
+        "arn:aws:acm:us-east-1:320473299741:certificate/"
+        "4452c092-e591-46e2-8d40-2e29269a033b"
+    )
+    domain_types = [t for t in types if t == "AWS::ApiGatewayV2::DomainName"]
+    mapping_types = [t for t in types if t == "AWS::ApiGatewayV2::ApiMapping"]
+    if len(domain_types) != 1:
+        fail(
+            f"{app_path} must declare exactly one AWS::ApiGatewayV2::DomainName "
+            f"(Demo API only); found {len(domain_types)}"
+        )
+    else:
+        print("  ok  one API Gateway DomainName (Demo API)")
+    if len(mapping_types) != 1:
+        fail(
+            f"{app_path} must declare exactly one AWS::ApiGatewayV2::ApiMapping "
+            f"(Demo API only); found {len(mapping_types)}"
+        )
+    else:
+        print("  ok  one API Gateway ApiMapping (Demo API)")
+
+    if any(t.startswith("AWS::CloudFront::") for t in types):
+        fail(
+            f"{app_path} invented CloudFront — #152 is HTTP API DomainName, "
+            "not an edge for its own sake"
+        )
+    else:
+        print("  ok  no CloudFront")
+
+    if any(t.startswith("AWS::CertificateManager::") for t in types):
+        fail(
+            f"{app_path} creates an ACM certificate — that would fight the "
+            "already-issued DNS-validated cert; reference CertificateArn"
+        )
+    else:
+        print("  ok  no ACM certificate resource")
+
+    if LIVE_DEMO_DOMAIN not in app_code:
+        fail(f"{app_path} does not name the live Demo host {LIVE_DEMO_DOMAIN}")
+    else:
+        print("  ok  DomainName is the live Demo host")
+
+    if f'Default: "{LIVE_CERT}"' not in app_code:
+        fail(
+            f"{app_path} does not default CertificateArn to the issued cert "
+            f"{LIVE_CERT} — a missing value must not mint a second cert"
+        )
+    else:
+        print("  ok  CertificateArn defaults to the issued ACM cert")
+
+    mapping_block = None
+    for m in re.finditer(
+        r"^  DemoApiMapping:\n((?:    .*\n)+)",
+        app_code,
+        re.M,
+    ):
+        mapping_block = m.group(1)
+        break
+    if mapping_block is None:
+        fail(f"{app_path} has no DemoApiMapping resource")
+    else:
+        if not re.search(r"ApiId:\s+!Ref\s+Api\s*$", mapping_block, re.M):
+            fail(
+                f"{app_path} DemoApiMapping does not bind ApiId: !Ref Api — "
+                "the custom domain must stay on the Demo HTTP API"
+            )
+        else:
+            print("  ok  DemoApiMapping binds the Demo HTTP API")
+        if "ConnectApi" in mapping_block:
+            fail(
+                f"{app_path} DemoApiMapping cites ConnectApi — Connect issuer "
+                "must stay on its own execute-api host"
+            )
+
+    if 'Value: !Sub "https://${DemoDomain}/"' not in app_code:
+        fail(
+            f"{app_path} DemoUrl is not https://${{DemoDomain}}/ — smoke "
+            "concatenates paths onto the trailing slash"
+        )
+    else:
+        print("  ok  DemoUrl is the custom host with a trailing slash")
+
+    if (
+        'Value: !Sub "https://${ConnectApi}.execute-api.${AWS::Region}.amazonaws.com/"'
+        not in app_code
+    ):
+        fail(
+            f"{app_path} remapped ConnectApiUrl — Connect tokens stay on "
+            "the execute-api host whose JWT authorizer proves their iss"
+        )
+    else:
+        print("  ok  ConnectApiUrl is still the Connect execute-api host")
+
+    if not re.search(
+        r'^\s+RATIO_PUBLIC_ORIGIN:\s+!Sub\s+"https://\$\{DemoDomain\}"\s*$',
+        app_code,
+        re.M,
+    ):
+        fail(
+            f"{app_path} Function RATIO_PUBLIC_ORIGIN is not "
+            "https://${DemoDomain} (no trailing slash)"
+        )
+    else:
+        print("  ok  Function RATIO_PUBLIC_ORIGIN is the custom host, no slash")
+
+    if not re.search(
+        r"Name:\s+RATIO_PUBLIC_ORIGIN\n\s+Value:\s+!Sub\s+\"https://\$\{DemoDomain\}\"\s*$",
+        app_code,
+        re.M,
+    ):
+        fail(
+            f"{app_path} ScaleTask RATIO_PUBLIC_ORIGIN is not "
+            "https://${DemoDomain} (no trailing slash)"
+        )
+    else:
+        print("  ok  ScaleTask RATIO_PUBLIC_ORIGIN is the custom host, no slash")
+
+    if re.search(r"RATIO_PUBLIC_ORIGIN:.*execute-api", app_code):
+        fail(
+            f"{app_path} still points RATIO_PUBLIC_ORIGIN at execute-api — "
+            "permalinks would disagree with DemoUrl"
+        )
+
+    domain_block = None
+    for m in re.finditer(
+        r"^  DemoDomain:\n((?:    .*\n)+)",
+        app_code,
+        re.M,
+    ):
+        domain_block = m.group(0)
+        break
+    if domain_block is None:
+        fail(f"{app_path} has no DemoDomain resource")
+    elif "DeletionPolicy: Retain" not in domain_block:
+        fail(
+            f"{app_path} DemoDomain has no DeletionPolicy: Retain — a stack "
+            "delete would wipe the live hostname"
+        )
+    else:
+        print("  ok  DemoDomain is Retain, so a stack delete keeps the hostname")
+
+    if "/domainnames" not in deploy_block:
+        fail(
+            f"{bootstrap_path} has no /domainnames grant — DemoDomain import "
+            "fails with AccessDenied after the image is already pushed"
+        )
+    else:
+        print("  ok  the deploy role can manage /domainnames*")
+
+    if "cloudformation:GetTemplate" not in deploy_block:
+        fail(
+            f"{bootstrap_path} dropped cloudformation:GetTemplate — the first "
+            "deploy cannot adopt the ops-attached DomainName"
+        )
+    else:
+        print("  ok  the deploy role can GetTemplate for the import")
+
+    if "acm:DescribeCertificate" not in deploy_block:
+        fail(
+            f"{bootstrap_path} cannot acm:DescribeCertificate on the issued "
+            "Demo cert — CloudFormation will refuse DemoDomain"
+        )
+    else:
+        print("  ok  the deploy role can read the issued ACM cert")
+
+    if LIVE_DEMO_DOMAIN not in flow:
+        fail(
+            f"{workflow_path} does not name {LIVE_DEMO_DOMAIN} — smoke would "
+            "keep curling execute-api after DemoUrl flips"
+        )
+    else:
+        print("  ok  smoke names the custom Demo host")
+
+    if "--change-set-type IMPORT" not in flow:
+        fail(
+            f"{workflow_path} does not import the ops-attached DomainName — "
+            "the next stack update would CreateDomainName and fail"
+        )
+    else:
+        print("  ok  deploy imports the ops-attached DomainName")
+
+    if "resources-to-import" not in flow:
+        fail(
+            f"{workflow_path} has no resources-to-import for DemoDomain / "
+            "DemoApiMapping"
+        )
+    else:
+        print("  ok  import names DemoDomain / DemoApiMapping")
+
+    if "ConnectApi" in flow and "custom domain is mapped to ConnectApi" not in flow:
+        # The refuse string must stay — a deploy that maps Connect is the
+        # leftover this check exists to keep named.
+        pass
+    if "custom domain is mapped to ConnectApi" not in flow:
+        fail(
+            f"{workflow_path} no longer refuses a custom-domain mapping on "
+            "ConnectApi — that would collide issuers"
+        )
+    else:
+        print("  ok  import refuses a ConnectApi mapping on the custom domain")
+
+    # ⛔ THE ADOPT SCRIPT MUST USE THE SAME LOGICAL IDS AS THE APP STACK.
+    # Importing as DemoApiCustomDomain and deploying as DemoDomain is a
+    # CREATE of a duplicate hostname.
+    adopt_path = pathlib.Path(app_path).with_name("adopt_demo_domain.py")
+    if not adopt_path.is_file():
+        fail(
+            f"{adopt_path} is missing from runfiles — add it to "
+            "//deploy:iac_test data so the logical-id check can see it"
+        )
+    else:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("adopt_demo_domain", adopt_path)
+        adopt = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(adopt)
+        if adopt.LOGICAL_DOMAIN != "DemoDomain" or adopt.LOGICAL_MAPPING != "DemoApiMapping":
+            fail(
+                "adopt_demo_domain.py logical ids drifted from DemoDomain / "
+                "DemoApiMapping — the follow-up deploy would CREATE a duplicate"
+            )
+        else:
+            print("  ok  adopt script uses DemoDomain / DemoApiMapping")
+
+        def drop_block(text, name):
+            return text.replace(adopt.extract_top_level(text, name), "", 1)
+
+        fake_live = drop_block(drop_block(drop_block(app, "DemoDomain"), "DemoApiMapping"), "CertificateArn")
+        fake_live = fake_live.replace(
+            '!Sub "https://${DemoDomain}"',
+            '!Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"',
+        )
+        fake_live = fake_live.replace(
+            '!Sub "https://${DemoDomain}/"',
+            '!Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/"',
+        )
+        merged = adopt.inject_yaml(fake_live, app)
+        if merged.count("AWS::ApiGatewayV2::DomainName") != 1:
+            fail("adopt inject_yaml did not leave exactly one DomainName")
+        elif (
+            'Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/"'
+            not in merged
+        ):
+            fail(
+                "adopt inject_yaml flipped DemoUrl — an import change set "
+                "cannot modify outputs"
+            )
+        elif "ConnectApi" in adopt.extract_top_level(merged, "DemoApiMapping"):
+            fail("adopt inject_yaml mapped the custom domain to ConnectApi")
+        else:
+            print("  ok  adopt injects DomainName without flipping DemoUrl or mapping Connect")
+
     if failures:
         print(f"\n{len(failures)} problem(s): the app stack and the deploy role disagree "
               "about what may be created", file=sys.stderr)
