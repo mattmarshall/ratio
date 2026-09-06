@@ -4447,8 +4447,48 @@ once so the deploy role can `GetTemplate`, manage `/domainnames*`,
 and `acm:DescribeCertificate` on the issued cert — then the first
 `main` deploy imports. `f74362b` never ran that import: the
 `python3 -c` bodies in `adopt_ops_domain` were column-0 and
-`deploy.yml` did not parse (#244). It does not close #22. It does
+`deploy.yml` did not parse (#244). `e300d22` parsed and the
+deploy job ran, then skipped IMPORT because
+`describe-stack-resources --logical-resource-id DemoDomain`
+exits 0 with an empty list when the stack does not own the
+resource; `cloudformation deploy` then CREATE_FAILED
+AlreadyExists (#246). The skip now gates on the live
+`get-template` body. It does not close #22. It does
 not reopen #151. It does not absorb #163.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show `https://api.ratio.marsh.build/version` on the Demo
+API and Connect still on its execute-api host. It cannot show a
+Connect token accepted on the custom Demo host.
+
+### Amendment, 2026-09-06 — DemoDomain import gates on get-template
+
+[#246](https://github.com/mattmarshall/ratio/issues/246) is the
+CREATE_FAILED leftover after #243 / #245. Tip `e300d22` logged
+`DemoDomain already in ratio-demo-app — import is a no-op`, then
+`aws cloudformation deploy` of `deploy/app.yaml` created
+`DemoDomain` and lost to `AlreadyExists` (ApiGatewayV2). The
+physical hostname is the ops-attached DomainName
+(`d-dh396r9poe.execute-api.us-east-1.amazonaws.com`);
+CreateDomainName would remint it and break the Cloudflare CNAME.
+
+What landed:
+
+- `adopt_ops_domain` reads the live `get-template` body.
+  Skip IMPORT only when that body already contains
+  `DemoDomain` and `DemoApiMapping`. If the physical
+  DomainName exists outside the stack, run the IMPORT
+  change set (`deploy/adopt_demo_domain.py`).
+- `//deploy:iac_test` fails if the workflow gates on
+  `describe-stack-resources` `DemoDomain` again, or if
+  `owns` treats a half-imported template as owned.
+
+**DemoUrl is api.ratio.marsh.build** is unchanged. This
+amendment closes #246. Leftover: the next `main` deploy must
+still *run* the import and flip `DemoUrl` /
+`RATIO_PUBLIC_ORIGIN` / the tip image. It does not close #22.
+It does not remint `d-xxxxx`. It does not map Connect onto
+the custom host.
 
 **What a walk-through can and cannot show** (demo readiness, #27).
 It can show `https://api.ratio.marsh.build/version` on the Demo

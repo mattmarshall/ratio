@@ -550,10 +550,16 @@ on the already-issued cert
 `api.ratio.marsh.build` fails because the hostname already exists; deleting
 it would mint a new `d-xxxxx` and break the Cloudflare CNAME. CI imports
 `DemoDomain` / `DemoApiMapping` (same logical ids the template uses) and
-then updates. `//deploy:iac_test` fails if the domain resources, the
-`/domainnames` grant, or the import step drift. Do not remap
-`ConnectApiUrl`. Do not invent CloudFront. Do not change DNS from the app
-stack — Cloudflare already points `api.ratio` at
+then updates. The import is skipped only when the live
+`get-template` body already contains both logical ids — not when
+`describe-stack-resources --logical-resource-id DemoDomain` exits 0
+(that API returns an empty list for an absent id, which is how
+#246 CREATE_FAILED AlreadyExists). If the physical hostname exists
+outside the stack, IMPORT; never CreateDomainName. `//deploy:iac_test`
+fails if the domain resources, the `/domainnames` grant, or the
+import step drift. Do not remap `ConnectApiUrl`. Do not invent
+CloudFront. Do not change DNS from the app stack — Cloudflare
+already points `api.ratio` at
 `d-dh396r9poe.execute-api.us-east-1.amazonaws.com`.
 
 ## How CI gets in

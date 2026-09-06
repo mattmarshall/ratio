@@ -289,13 +289,13 @@ jobs:
           DEMO_CUSTOM_DOMAIN='api.ratio.marsh.build'
           LIVE_CERT_ARN='arn:aws:acm:us-east-1:320473299741:certificate/4452c092-e591-46e2-8d40-2e29269a033b'
           adopt_ops_domain() {
-            if aws cloudformation describe-stack-resources \
-                 --stack-name "$STACK" \
-                 --logical-resource-id DemoDomain >/dev/null 2>&1; then
-              echo "DemoDomain already in ${STACK} — import is a no-op"
-              return 0
-            fi
-            echo "Importing ops-attached ${DEMO_CUSTOM_DOMAIN} as DemoDomain"
+            # ⛔ DO NOT GATE ON describe-stack-resources --logical-resource-id
+            # DemoDomain. The plural API returns empty StackResources and
+            # exit 0 when the logical id is absent, so the import is skipped
+            # and `cloudformation deploy` then CREATE_FAILED AlreadyExists
+            # (run 34003052614, #246). Ownership is the live get-template
+            # body containing DemoDomain / DemoApiMapping. If the physical
+            # hostname exists outside that template, IMPORT — never CREATE.
             if ! aws cloudformation get-template --stack-name "$STACK" --output json \
                  > /tmp/ratio-get-template.json; then
               echo "::error::cloudformation:GetTemplate failed. Re-apply deploy/bootstrap.yaml (GetTemplate + /domainnames*). Do not CreateDomainName — ${DEMO_CUSTOM_DOMAIN} already exists."
@@ -304,6 +304,26 @@ jobs:
             python3 deploy/adopt_demo_domain.py extract-live \
               --src /tmp/ratio-get-template.json \
               --out /tmp/ratio-live-app.yaml
+            OWNED="$(python3 deploy/adopt_demo_domain.py owns \
+              --live /tmp/ratio-live-app.yaml)"
+            case "$OWNED" in
+              owned)
+                echo "live template already contains DemoDomain / DemoApiMapping — import is a no-op"
+                return 0
+                ;;
+              absent)
+                ;;
+              *)
+                echo "::error::adopt owns returned '$OWNED' (want owned or absent). Do not CreateDomainName — ${DEMO_CUSTOM_DOMAIN} already exists."
+                return 1
+                ;;
+            esac
+            if ! aws apigatewayv2 get-domain-name \
+                 --domain-name "$DEMO_CUSTOM_DOMAIN" >/dev/null; then
+              echo "::error::ops-attached ${DEMO_CUSTOM_DOMAIN} is missing or unreadable. Re-apply bootstrap Sid TheDemoApiCustomDomain (/domainnames*). Do not CreateDomainName — reminting d-xxxxx would break the Cloudflare CNAME."
+              return 1
+            fi
+            echo "Importing ops-attached ${DEMO_CUSTOM_DOMAIN} as DemoDomain (physical DomainName exists outside the stack)"
             python3 deploy/adopt_demo_domain.py inject \
               --live /tmp/ratio-live-app.yaml \
               --app deploy/app.yaml \
