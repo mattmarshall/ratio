@@ -1021,6 +1021,45 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  import names DemoDomain / DemoApiMapping")
 
+    # ⛔ #246 — describe-stack-resources --logical-resource-id DemoDomain
+    # exits 0 with an empty list when the stack does not own the resource.
+    # The skip must read the live get-template body. A comment that names
+    # the wrong gate must not satisfy this (`flow` is comment-stripped).
+    if re.search(r"logical-resource-id\s+DemoDomain", flow):
+        fail(
+            f"{workflow_path} still gates import on describe-stack-resources "
+            "DemoDomain — the plural API is a no-op success when the logical "
+            "id is absent, then deploy CREATE_FAILED AlreadyExists (#246)"
+        )
+    else:
+        print("  ok  import is not gated on describe-stack-resources DemoDomain")
+
+    if "adopt_demo_domain.py owns" not in flow:
+        fail(
+            f"{workflow_path} does not ask adopt_demo_domain.py owns — "
+            "the skip must read the live get-template body for DemoDomain / "
+            "DemoApiMapping (#246)"
+        )
+    else:
+        print("  ok  import skip reads live get-template via adopt owns")
+
+    if "live template already contains DemoDomain" not in flow:
+        fail(
+            f"{workflow_path} lost the get-template skip message — a "
+            "describe-stack-resources no-op must not look like ownership"
+        )
+    else:
+        print("  ok  skip message names the live template, not the stack resource API")
+
+    if "get-domain-name" not in flow:
+        fail(
+            f"{workflow_path} does not confirm the physical DomainName "
+            "exists before IMPORT — a missing hostname must not fall "
+            "through to CreateDomainName (#246)"
+        )
+    else:
+        print("  ok  import confirms the physical DomainName exists first")
+
     check_run_blocks_indented(workflow_path, pathlib.Path(workflow_path).read_text())
     if not any(f.startswith(f"{workflow_path}:") and "not indented" in f for f in failures):
         print("  ok  every run: | line in deploy.yml stays indented")
@@ -1171,6 +1210,78 @@ def main(app_path, bootstrap_path, workflow_path):
             fail("import-resources JSON drifted from DemoDomain / DemoApiMapping")
         else:
             print("  ok  import-resources names DemoDomain / empty-key DemoApiMapping")
+
+        if adopt.live_owns_imported_domain(app) is not True:
+            fail("app.yaml should already own DemoDomain / DemoApiMapping")
+        elif adopt.live_owns_imported_domain(fake_live) is not False:
+            fail("stripped live template must not look owned")
+        elif adopt.live_owns_imported_domain('{"Resources": {}}\n') is not False:
+            fail("empty JSON Resources must not look owned")
+        elif adopt.live_owns_imported_domain(
+            json.dumps(
+                {
+                    "Resources": {
+                        "DemoDomain": {"Type": "AWS::ApiGatewayV2::DomainName"},
+                        "DemoApiMapping": {"Type": "AWS::ApiGatewayV2::ApiMapping"},
+                    }
+                }
+            )
+        ) is not True:
+            fail("JSON live template with both logical ids should be owned")
+        else:
+            print("  ok  owns is true only when get-template has DemoDomain and DemoApiMapping")
+
+        try:
+            adopt.live_owns_imported_domain(
+                json.dumps(
+                    {
+                        "Resources": {
+                            "DemoDomain": {"Type": "AWS::ApiGatewayV2::DomainName"},
+                        }
+                    }
+                )
+            )
+            fail("owns accepted DemoDomain without DemoApiMapping")
+        except SystemExit as exc:
+            if "only one of DemoDomain / DemoApiMapping" not in str(exc):
+                fail(f"owns partial-ownership refuse drifted: {exc}")
+            else:
+                print("  ok  owns refuses a half-imported live template")
+
+        import io
+        import tempfile
+        from contextlib import redirect_stdout
+
+        with tempfile.TemporaryDirectory() as td:
+            absent_path = pathlib.Path(td) / "absent.yaml"
+            owned_path = pathlib.Path(td) / "owned.yaml"
+            absent_path.write_text(fake_live)
+            owned_path.write_text(app)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = adopt.main(["owns", "--live", str(absent_path)])
+            if rc != 0 or buf.getvalue().strip() != "absent":
+                fail(
+                    f"owns CLI on a template without DemoDomain: rc={rc} "
+                    f"out={buf.getvalue()!r}"
+                )
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = adopt.main(["owns", "--live", str(owned_path)])
+            if rc != 0 or buf.getvalue().strip() != "owned":
+                fail(
+                    f"owns CLI on app.yaml: rc={rc} out={buf.getvalue()!r}"
+                )
+            else:
+                print("  ok  owns CLI prints absent / owned and exits 0")
+
+        if adopt.inject_yaml(app, app) != app:
+            fail(
+                "inject_yaml rewrote a live template that already owns "
+                "DemoDomain / DemoApiMapping — that would fight a later update"
+            )
+        else:
+            print("  ok  inject_yaml is a no-op when the live template already owns both")
 
     if failures:
         print(f"\n{len(failures)} problem(s): the app stack and the deploy role disagree "

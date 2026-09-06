@@ -14,6 +14,11 @@ then `cloudformation deploy` of app.yaml flips DemoUrl and RATIO_PUBLIC_ORIGIN.
 
 Logical ids must stay DemoDomain / DemoApiMapping — the same names app.yaml
 uses — or the follow-up deploy would CREATE a second DomainName.
+
+⛔ Skip IMPORT only when the live get-template body already declares both
+logical ids (`owns`). `describe-stack-resources --logical-resource-id
+DemoDomain` exits 0 with an empty list when the stack does not own the
+resource; that skip is how #246 CREATE_FAILED AlreadyExists.
 """
 
 from __future__ import annotations
@@ -33,8 +38,8 @@ LOGICAL_DOMAIN = "DemoDomain"
 LOGICAL_MAPPING = "DemoApiMapping"
 
 
-def extract_top_level(text: str, name: str) -> str:
-    """Return the `  Name:` block at Parameters/Resources indent."""
+def find_top_level(text: str, name: str) -> str | None:
+    """Return the `  Name:` block at Parameters/Resources indent, or None."""
     lines = text.splitlines(keepends=True)
     start = None
     for i, line in enumerate(lines):
@@ -42,7 +47,7 @@ def extract_top_level(text: str, name: str) -> str:
             start = i
             break
     if start is None:
-        raise SystemExit(f"app template has no {name!r} block")
+        return None
     end = start + 1
     while end < len(lines):
         if re.match(r"  [A-Za-z0-9]+:", lines[end]):
@@ -51,8 +56,54 @@ def extract_top_level(text: str, name: str) -> str:
     return "".join(lines[start:end])
 
 
+def extract_top_level(text: str, name: str) -> str:
+    """Return the `  Name:` block at Parameters/Resources indent."""
+    block = find_top_level(text, name)
+    if block is None:
+        raise SystemExit(f"app template has no {name!r} block")
+    return block
+
+
+def live_declares(live: str, name: str, type_name: str) -> bool:
+    """True iff the live template Resources already declare `name` as `type_name`."""
+    if live.lstrip().startswith("{"):
+        doc = json.loads(live)
+        res = (doc.get("Resources") or {}).get(name)
+        if not isinstance(res, dict):
+            return False
+        return res.get("Type") == type_name
+    block = find_top_level(live, name)
+    if block is None:
+        return False
+    return type_name in block
+
+
+def live_owns_imported_domain(live: str) -> bool:
+    """True only when the live template already declares both import targets.
+
+    ⛔ `describe-stack-resources --logical-resource-id DemoDomain` is the
+    wrong gate. The plural API returns empty `StackResources` and exit 0
+    when the logical id is absent (#246). The subsequent
+    `cloudformation deploy` then CREATE_FAILED AlreadyExists because the
+    physical hostname is ops-attached outside the stack. Ownership is the
+    live `get-template` body containing DemoDomain and DemoApiMapping.
+    A half-imported template is an error — import cannot create the
+    missing half, and CREATE would remint `d-xxxxx`.
+    """
+    has_domain = live_declares(live, LOGICAL_DOMAIN, "AWS::ApiGatewayV2::DomainName")
+    has_mapping = live_declares(live, LOGICAL_MAPPING, "AWS::ApiGatewayV2::ApiMapping")
+    if has_domain and has_mapping:
+        return True
+    if has_domain or has_mapping:
+        raise SystemExit(
+            "live template has only one of DemoDomain / DemoApiMapping — "
+            "import cannot create the missing half; do not CreateDomainName"
+        )
+    return False
+
+
 def inject_yaml(live: str, app: str) -> str:
-    if f"  {LOGICAL_DOMAIN}:" in live and "AWS::ApiGatewayV2::DomainName" in live:
+    if live_owns_imported_domain(live):
         return live
     cert = extract_top_level(app, "CertificateArn")
     domain = extract_top_level(app, LOGICAL_DOMAIN)
@@ -77,11 +128,12 @@ def inject_yaml(live: str, app: str) -> str:
 
 
 def inject_json(live: str, app: str) -> str:
+    if live_owns_imported_domain(live):
+        doc = json.loads(live)
+        return json.dumps(doc, indent=2) + "\n"
     doc = json.loads(live)
     params = doc.setdefault("Parameters", {})
     resources = doc.setdefault("Resources", {})
-    if LOGICAL_DOMAIN in resources:
-        return json.dumps(doc, indent=2) + "\n"
     if "CertificateArn" not in params:
         params["CertificateArn"] = {
             "Type": "String",
@@ -164,6 +216,23 @@ def import_resources(
     ]
 
 
+def _cmd_owns(argv: list[str]) -> int:
+    """Print `owned` or `absent`. Partial ownership is a hard error.
+
+    deploy.yml cases on the printed word. Exit 0 for both owned and
+    absent so `set -e` does not treat "need import" as a script failure.
+    """
+    p = argparse.ArgumentParser(description="does the live template already own DemoDomain?")
+    p.add_argument("--live", required=True, help="currently deployed template")
+    args = p.parse_args(argv)
+    live = open(args.live, encoding="utf-8").read()
+    if live_owns_imported_domain(live):
+        print("owned")
+    else:
+        print("absent")
+    return 0
+
+
 def _cmd_extract_live(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description="unwrap get-template JSON to the live body")
     p.add_argument("--src", required=True, help="get-template --output json file")
@@ -221,6 +290,8 @@ def main(argv: list[str] | None = None) -> int:
         cmd, rest = argv[0], argv[1:]
     else:
         cmd, rest = "inject", argv
+    if cmd == "owns":
+        return _cmd_owns(rest)
     if cmd == "extract-live":
         return _cmd_extract_live(rest)
     if cmd == "import-resources":
