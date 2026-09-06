@@ -4570,3 +4570,40 @@ operator WorkOS leftover unchanged. It does not remint
 It can show `https://api.ratio.marsh.build/version` on the Demo
 API and Connect still on its execute-api host. It cannot show a
 Connect token accepted on the custom Demo host.
+
+### Amendment, 2026-09-06 — the LP portal cites the rest of GetBook, and the Connect-side HTML is not a kernel portal
+
+[#161](https://github.com/mattmarshall/ratio/issues/161) leftovers
+asked for richer capital / NAV statement cites than the first
+GetBook fields the scaffold copied, and for the Connect-side
+surface to keep `html_portal` / `lp_directory` / `document_vault`
+/ `payments_initiate` / `kernel_portal` as explicit refuses so a
+kernel portal never grows inside `ratio watch`.
+
+**What this amendment records.** [`connect/lp-portal/`](connect/lp-portal/)
+now cites GetBook `partner_cut`, `special_allocations`,
+`allocation_facts`, `fee_receivable`, `trial_balance_difference`,
+and `CapitalNotice` partner cut / trade date alongside partner
+capital, commitments / undrawn, and NavStrike / period
+roll-forward already on the book. Journal specials fold first; a
+remainder uses the named cut. Unset stays unset — never a silent
+1/N of book NAV, a callable-zero commitment, a NAV 0.00, a silent
+zero fee receivable, or an empty-digest-as-success.
+`statement_from_getbook` / `cite_from_fetch` compose a live
+GetBook payload. `as_html` is a read-only cite-backed page in
+this tree. `html_portal()` still refuses a route inside
+`ratio watch`. `drip()` / `drip_election()` stay leftover on
+#161 / #177. This app's Connect grant is proven; leftover #22
+is other Connect apps.
+
+This file does not close #161 — a hosted live LP walk-through and
+drip elections remain. It does not close #22, #150, or #177. It
+does not reopen #151. It does not grow `screensFor` or a kernel
+portal RPC.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show GetBook `partnerCut` LP 80 / GP 20 and a tied trial
+balance without inventing NAV, a missing strike leaving the
+Connect-side HTML blank rather than NAV 0.00, and
+`html_portal()` / `drip()` refusing. It cannot show a hosted LP
+product, a drip election, or an HTML portal inside `ratio watch`.

@@ -6,10 +6,11 @@ package(default_visibility = ["//visibility:public"])
 # the issue named.
 #
 # ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token.
-# WorkOS dashboard registration stays leftover #22. Unset capital /
-# NAV / commitment stay unset — never a silent 0.00, a 1/N of book
-# NAV, or an empty-digest-as-success. No kernel portal. INVESTMENT
-# chrome is not forked. No IRR / TVPI / waterfall. Drip stays #161.
+# This app's Connect grant is proven. leftover #22 is other apps.
+# Unset capital / NAV / commitment / fee stay unset — never a silent
+# 0.00, a 1/N of book NAV, or an empty-digest-as-success. as_html is
+# a cite page in this tree. No kernel portal. INVESTMENT chrome is
+# not forked. No IRR / TVPI / waterfall. Drip stays #161 / #177.
 sh_test(
     name = "portal_test",
     size = "small",

@@ -8,8 +8,8 @@ Partner capital, statement, and NAV reads live **here**. They do not
 live in `ratio watch`, the operations console, or a new kernel RPC.
 `/capital` and `/nav` stay core.
 
-This is a scaffold. A green cite is not a live Connect token and
-not an HTML LP portal.
+This is a first-party Connect app. A green cite is not a hosted
+live walk-through and not an HTML portal inside `ratio watch`.
 
 ## What landed
 
@@ -23,24 +23,36 @@ not an HTML LP portal.
   contributions, distributions, allocated plugs, ending, units).
   Unset stays unset — an unposted partner is not ending-zero.
   Allocated income / expense / unrealized stay unset without a named
-  `[[partner_cut]]`. A silent 1/N of book NAV is refused. A figure
-  that will not divide stays unset, not rounded.
+  `[[partner_cut]]`. Journal specials fold first; a remainder uses
+  the cut. A silent 1/N of book NAV is refused. A figure that will
+  not divide stays unset, not rounded.
+- GetBook cites the rest of the partner / statement surface already
+  on the book: `partner_cut`, `special_allocations`,
+  `allocation_facts`, `fee_receivable`, `trial_balance_difference`,
+  `config_digest`. Missing fee terms stay unset, not a silent zero
+  receivable. `statement_from_getbook` / `cite_from_fetch` compose
+  those fields from ConnectApiUrl JSON (camelCase, Int64 money as
+  minor-unit digits).
 - Commitments / undrawn stay unset when no commitment posted — not
   a callable zero. A fully-drawn line is a real zero.
-- NAV cites `NavStrike` and the period roll-forward. A missing
+- NAV cites `NavStrike` (valuation time, trial-balance difference,
+  qualification, digest) and the period roll-forward. A missing
   strike is unset, not NAV 0.00. An empty journal digest is unset,
   not history-intact. Commitment and undrawn cancel in NAV.
 - Capital notices already on GetBook (digest + pinned cut + posted
-  amounts). Empty is unset, not a silent waterfall.
+  amounts + trade date). Empty is unset, not a silent waterfall.
 - `statements:read` is how closed-through is read. An open period
   is unset, not a fake closed period.
 - `books:read` is optional membership listing. An `org_id` claim is
   not membership.
-- Money is minor units, split on the point, never a float.
-- `fetch_cites()` and `deliver()` call ConnectApiUrl. first-party Connect apps call ConnectApiUrl with a verified Connect access token. Membership still required.
+- Money is minor units, split on the point, never a float. GetBook
+  wire digits are already minor units (`"7500"` is $75.00).
+- `fetch_cites()` and `deliver()` call ConnectApiUrl. first-party Connect apps call ConnectApiUrl with a verified Connect access token. Membership still required. This app's Connect grant is proven.
+- `as_html()` is a read-only cite-backed page in this tree. Blanks
+  stay em-dash. It is not a kernel route.
 - `irr()` / `tvpi()` / `waterfall()` refuse.
 - `drip()` / `drip_election()` refuse. Drip elections stay leftover
-  on #161 / #177.
+  on #161 / #177. Equalization and side-pocket stay Connect/#177.
 - `kernel_portal()` / `html_portal()` / `lp_directory()` /
   `document_vault()` / `payments_initiate()` refuse.
 
@@ -72,21 +84,21 @@ A third-party flag would prompt AuthKit consent and bind the app to an
 Organization. This LP portal is first-party: the subject's book
 membership is still the tenant. An `org_id` claim is not membership.
 #151 landed the write-route ACL fence: a Connect-shaped token is
-`scoped` and does not inherit `org:{id}`. first-party Connect apps call ConnectApiUrl. WorkOS dashboard registration stays leftover #22.
+`scoped` and does not inherit `org:{id}`. first-party Connect apps call ConnectApiUrl. This app's Connect grant is proven. leftover #22 is other Connect apps.
 
 M2M (`client_credentials`) is the wrong shape here. There is no user
 on an M2M token, and an LP statement that exported without one would
 attribute a capital cite to a client secret.
 
-## Grant contract this app honors (and cannot yet exercise)
+## Grant contract this app honors
 
 From the catalog, restated so a later RPC does not "just" add them:
 
 1. Token is a Connect access token, verified against the environment
    JWKS — API Gateway JWT verifies Connect tokens on ConnectApiUrl.
 2. AuthKit `sub` is in the book's membership. Write-route actor =
-   `sub` landed (#151). Live Connect OAuth (Dashboard registration,
-   redirect) stays leftover on #22.
+   `sub` landed (#151). This app's Connect grant is proven. leftover
+   #22 is other Connect apps and a console signed-in walk-through.
 3. Action is in the catalog. Aliases refused.
 4. Read-only. No `journals:post` allowlist, because this app does
    not post.
@@ -100,43 +112,39 @@ Env names are in [`connect/README.md`](../README.md) / `connect/grant.py`. A mis
 It can show a fixture LP of beginning $100 / contributions $40 /
 distributions $10 as ending $130, allocated income staying blank
 until `[[partner_cut]]` LP 80 / GP 20 divides a $30 book figure
-into $24 / $6, a book that never committed leaving undrawn blank
-rather than inventing a callable zero, a missing NAV strike
-leaving that sheet blank rather than NAV 0.00, an empty digest
-staying unset rather than history-intact, `journal:append` being
-rejected as a scope, and IRR / TVPI / waterfall / drip / a kernel
-HTML portal being refused.
+into $24 / $6, journal specials folding before that remainder,
+GetBook `partnerCut` LP 80 / GP 20 and a tied trial balance of 0
+without inventing NAV, a book that never committed leaving undrawn
+blank rather than inventing a callable zero, a missing NAV strike
+leaving that sheet and the Connect-side HTML blank rather than
+NAV 0.00, an empty digest staying unset rather than history-intact,
+`journal:append` being rejected as a scope, and IRR / TVPI /
+waterfall / drip / a kernel HTML portal / LP directory / document
+vault / payment initiation being refused.
 
-It cannot show a live walk-through without WorkOS dashboard registration, a live OAuth grant, a
-Connect token that opens a real book, an HTML LP portal inside
-`ratio watch`, LP user tables, a document vault, IRR, TVPI, a
-waterfall, a K-1 pack, a drip election, or a posting that reached
-`/v1`. BookKind INVESTMENT chrome is unchanged. `screensFor` is
-not forked. `/capital` and `/nav` stay the core cites.
+It cannot show a hosted live LP walk-through, an HTML LP portal
+inside `ratio watch`, LP user tables, a document vault, IRR, TVPI,
+a waterfall, a K-1 pack, a drip election, or a posting. This app's
+Connect grant is proven; registering *other* Connect apps stays
+leftover on #22. BookKind INVESTMENT chrome is unchanged.
+`screensFor` is not forked. `/capital` and `/nav` stay the core
+cites.
 
 ## Leftovers — this does not close #161
 
-The scaffold is complete enough that only leftover #22 blocks the
-claim of a live LP walk-through with a Connect token. Product UX
-beyond the cite CSV / JSON, drip elections (#177), and operator
-WorkOS dashboard registration remain named on this issue.
-
-1. **WorkOS dashboard registration**
-   (leftover on issue 22). API Gateway JWT verifies Connect tokens
-   on ConnectApiUrl. In-process `/v1` accepts catalog scopes after
-   membership. Dashboard registration, redirect, and a live token
-   stay leftover. Write-route actor binding landed (#151); this app
-   does not reopen it.
-2. **Live LP walk-through** with a Connect token that opens a real
-   book. A green cite is not a live token.
-3. **Drip elections.** Already Connect on #161 / #177. This app
-   does not start them.
+1. **Hosted live LP walk-through** — a person clicking through a
+   deployed portal with a Connect token. `as_html` is a cite file,
+   not that product. A green cite is not a hosted walk-through.
+2. **Drip elections.** Already Connect on #161 / #177. This app
+   does not start them. Equalization and side-pocket stay
+   Connect/#177 — not kernel primitives.
+3. **#22** stays open for registering *other* Connect apps and a
+   console signed-in walk-through. Do not invent WorkOS Dashboard
+   clicks here. This app's grant path is proven.
 4. **#150's read-only reference skeleton** (`books:read` +
    `statements:read` only) is a different app. This one requests
-   `partners:read` and `nav:read` as well and leftover is WorkOS
-   dashboard registration, not a missing `/v1` accept path.
+   `partners:read` and `nav:read` as well.
 
-Leaves issue 22 open for grant-path leftovers. Does not close
-#161. Does not close #150. Does not close #177. Does not reopen
-#151. Does not grow `ratio watch` or Console chrome for an LP
-product UI.
+Leaves issue 22 open. Does not close #161. Does not close #150.
+Does not close #177. Does not reopen #151. Does not grow
+`ratio watch` or Console chrome for an LP product UI.
