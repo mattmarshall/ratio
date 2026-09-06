@@ -360,12 +360,16 @@ jobs:
             CS=import-demo-domain
             aws cloudformation delete-change-set \
               --stack-name "$STACK" --change-set-name "$CS" 2>/dev/null || true
+            # ⛔ CreateChangeSet accepts --template-body / --template-url,
+            # not --template-file (that flag is `cloudformation deploy`).
+            # Run 34004094619 died with Unknown options before the
+            # IMPORT change set existed (#248).
             aws cloudformation create-change-set \
               --stack-name "$STACK" \
               --change-set-name "$CS" \
               --change-set-type IMPORT \
               --resources-to-import file:///tmp/ratio-import-resources.json \
-              --template-file /tmp/ratio-import-app.yaml \
+              --template-body file:///tmp/ratio-import-app.yaml \
               --capabilities CAPABILITY_NAMED_IAM \
               --parameters "${PARAMS[@]}"
             aws cloudformation wait change-set-create-complete \

@@ -1060,6 +1060,40 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  import confirms the physical DomainName exists first")
 
+    # ⛔ #248 — create-change-set accepts --template-body / --template-url,
+    # not --template-file (that flag belongs to `cloudformation deploy`).
+    # Run 34004094619: Unknown options → ChangeSetNotFound. Scope the
+    # check to the create-change-set invocation so deploy --template-file
+    # stays legal. `flow` is comment-stripped.
+    cs_match = re.search(
+        r"aws cloudformation create-change-set\b(.*?)\n\s*aws cloudformation ",
+        flow,
+        re.S,
+    )
+    if cs_match is None:
+        fail(
+            f"{workflow_path} has no create-change-set invocation — the "
+            "ops-attached DomainName cannot be imported (#248)"
+        )
+    else:
+        create_cs = cs_match.group(0)
+        if re.search(r"--template-file\b", create_cs):
+            fail(
+                f"{workflow_path} create-change-set still uses --template-file "
+                "— CreateChangeSet accepts --template-body / --template-url "
+                "(run 34004094619, #248)"
+            )
+        elif not re.search(r"--template-body\b", create_cs) and not re.search(
+            r"--template-url\b", create_cs
+        ):
+            fail(
+                f"{workflow_path} create-change-set has neither --template-body "
+                "nor --template-url — IMPORT would create an empty change set "
+                "(#248)"
+            )
+        else:
+            print("  ok  create-change-set passes the template as --template-body")
+
     check_run_blocks_indented(workflow_path, pathlib.Path(workflow_path).read_text())
     if not any(f.startswith(f"{workflow_path}:") and "not indented" in f for f in failures):
         print("  ok  every run: | line in deploy.yml stays indented")
