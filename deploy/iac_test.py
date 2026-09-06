@@ -22,9 +22,48 @@ What it buys is that the two files cannot drift apart in silence, which is the
 failure that actually happens: somebody adds a resource and forgets the grant.
 """
 
+import json
 import re
 import sys
 import pathlib
+
+
+def check_run_blocks_indented(path: str, text: str) -> None:
+    """A column-0 line inside `run: |` exits the literal block.
+
+    GitHub then reports a workflow-file issue and schedules no jobs —
+    that is how tip deploy died after #243 (`import json, sys` at
+    column 0). This check would have gone red on that file.
+    """
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.lstrip(" \t")
+        indent = len(line) - len(stripped)
+        if re.match(r"run:\s*\|", stripped):
+            i += 1
+            while i < len(lines):
+                nxt = lines[i]
+                if nxt.strip() == "":
+                    i += 1
+                    continue
+                nxt_stripped = nxt.lstrip(" \t")
+                nxt_indent = len(nxt) - len(nxt_stripped)
+                if nxt_indent <= indent:
+                    # Sibling key (`env:`) or the next list item (`- name:`)
+                    # ends the block cleanly. A payload that is not YAML
+                    # (`import json, sys` at column 0) is the #243 break.
+                    if re.match(r"[A-Za-z0-9_.-]+:", nxt_stripped) or nxt_stripped.startswith("- "):
+                        break
+                    fail(
+                        f"{path}:{i + 1}: line inside run: | is not indented "
+                        f"— YAML parse dies here: {nxt_stripped!r}"
+                    )
+                    break
+                i += 1
+            continue
+        i += 1
 
 # CloudFormation resource type -> the IAM service prefix that creates it.
 SERVICE = {
@@ -982,17 +1021,30 @@ def main(app_path, bootstrap_path, workflow_path):
     else:
         print("  ok  import names DemoDomain / DemoApiMapping")
 
-    if "ConnectApi" in flow and "custom domain is mapped to ConnectApi" not in flow:
-        # The refuse string must stay — a deploy that maps Connect is the
-        # leftover this check exists to keep named.
+    check_run_blocks_indented(workflow_path, pathlib.Path(workflow_path).read_text())
+    if not any(f.startswith(f"{workflow_path}:") and "not indented" in f for f in failures):
+        print("  ok  every run: | line in deploy.yml stays indented")
+
+    try:
+        import yaml
+
+        yaml.safe_load(pathlib.Path(workflow_path).read_text())
+        print("  ok  deploy.yml parses as YAML")
+    except ImportError:
+        # Hermetic Bazel Python may not have PyYAML. The indent walker
+        # above is the check that would have gone red on #243.
         pass
-    if "custom domain is mapped to ConnectApi" not in flow:
+    except Exception as exc:
+        fail(f"{workflow_path} does not parse as YAML: {exc}")
+
+    if re.search(r"python3 -c\s+'\s*$", flow, re.M):
         fail(
-            f"{workflow_path} no longer refuses a custom-domain mapping on "
-            "ConnectApi — that would collide issuers"
+            f"{workflow_path} still embeds a multiline python3 -c body — "
+            "put it in adopt_demo_domain.py so a column-0 line cannot "
+            "exit the run: | block (#244)"
         )
     else:
-        print("  ok  import refuses a ConnectApi mapping on the custom domain")
+        print("  ok  deploy.yml has no multiline python3 -c body")
 
     # ⛔ THE ADOPT SCRIPT MUST USE THE SAME LOGICAL IDS AS THE APP STACK.
     # Importing as DemoApiCustomDomain and deploying as DemoDomain is a
@@ -1044,6 +1096,81 @@ def main(app_path, bootstrap_path, workflow_path):
             fail("adopt inject_yaml mapped the custom domain to ConnectApi")
         else:
             print("  ok  adopt injects DomainName without flipping DemoUrl or mapping Connect")
+
+        adopt_src = adopt_path.read_text()
+        if "custom domain is mapped to ConnectApi" not in adopt_src:
+            fail(
+                "adopt_demo_domain.py no longer refuses a custom-domain "
+                "mapping on ConnectApi — that would collide issuers"
+            )
+        else:
+            print("  ok  import refuses a ConnectApi mapping on the custom domain")
+
+        if adopt.live_template_from_get_template({"TemplateBody": "Foo:\n"}) != "Foo:\n":
+            fail("extract-live changed a TemplateBody that already ends in newline")
+        elif adopt.live_template_from_get_template({"TemplateBody": "Foo:"}) != "Foo:\n":
+            fail("extract-live dropped the trailing-newline append")
+        elif adopt.live_template_from_get_template(
+            {"TemplateBody": {"Resources": {"X": 1}}}
+        ) != json.dumps({"Resources": {"X": 1}}, indent=2):
+            fail("extract-live JSON TemplateBody is not dumps(indent=2)")
+        else:
+            print("  ok  extract-live unwraps get-template JSON")
+
+        try:
+            adopt.import_resources(
+                {"Items": [{"ApiId": "connect", "ApiMappingId": "m1"}]},
+                api_id="demo",
+                connect_id="connect",
+                domain="api.ratio.marsh.build",
+            )
+            fail("import-resources accepted a ConnectApi mapping")
+        except SystemExit as exc:
+            if "custom domain is mapped to ConnectApi" not in str(exc):
+                fail(f"import-resources Connect refuse drifted: {exc}")
+            else:
+                print("  ok  import-resources refuses a ConnectApi mapping")
+
+        try:
+            adopt.import_resources(
+                {
+                    "Items": [
+                        {
+                            "ApiId": "demo",
+                            "ApiMappingKey": "v1",
+                            "ApiMappingId": "m1",
+                        }
+                    ]
+                },
+                api_id="demo",
+                connect_id="connect",
+                domain="api.ratio.marsh.build",
+            )
+            fail("import-resources accepted a keyed mapping as the empty-key Demo mapping")
+        except SystemExit:
+            print("  ok  import-resources requires an empty-key Demo mapping")
+
+        got = adopt.import_resources(
+            {
+                "Items": [
+                    {"ApiId": "demo", "ApiMappingId": "map-1"},
+                    {"ApiId": "other", "ApiMappingId": "map-2"},
+                ]
+            },
+            api_id="demo",
+            connect_id="connect",
+            domain="api.ratio.marsh.build",
+        )
+        if (
+            len(got) != 2
+            or got[0]["LogicalResourceId"] != "DemoDomain"
+            or got[1]["LogicalResourceId"] != "DemoApiMapping"
+            or got[1]["ResourceIdentifier"]["ApiMappingId"] != "map-1"
+            or got[0]["ResourceIdentifier"]["DomainName"] != "api.ratio.marsh.build"
+        ):
+            fail("import-resources JSON drifted from DemoDomain / DemoApiMapping")
+        else:
+            print("  ok  import-resources names DemoDomain / empty-key DemoApiMapping")
 
     if failures:
         print(f"\n{len(failures)} problem(s): the app stack and the deploy role disagree "

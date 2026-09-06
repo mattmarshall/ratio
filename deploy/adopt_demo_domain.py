@@ -117,7 +117,79 @@ def inject_json(live: str, app: str) -> str:
     return json.dumps(doc, indent=2) + "\n"
 
 
-def main(argv: list[str] | None = None) -> int:
+def live_template_from_get_template(doc: dict) -> str:
+    """Unwrap `cloudformation get-template --output json` to the live body.
+
+    ⛔ THIS USED TO BE `python3 -c` IN deploy.yml. A Python line at column 0
+    inside `run: |` exits the YAML literal block; GitHub then schedules no
+    jobs. That is how tip deploy died after #243 (#244). Keep the body here.
+    """
+    body = doc["TemplateBody"]
+    if isinstance(body, str):
+        return body if body.endswith("\n") else body + "\n"
+    return json.dumps(body, indent=2)
+
+
+def import_resources(
+    mappings: dict, api_id: str, connect_id: str, domain: str
+) -> list[dict]:
+    """Build the IMPORT `ResourcesToImport` list for DemoDomain / DemoApiMapping.
+
+    Same refuse as the inline snippet #243 shipped: a mapping on ConnectApi
+    would put both issuers on one hostname. The empty-key mapping must already
+    point at the Demo HTTP API — this does not CreateDomainName or remint
+    `d-xxxxx`.
+    """
+    items = mappings.get("Items") or []
+    connect = [i for i in items if i.get("ApiId") == connect_id]
+    if connect:
+        sys.exit("custom domain is mapped to ConnectApi — issuers would collide")
+    demo = [i for i in items if i.get("ApiId") == api_id and not i.get("ApiMappingKey")]
+    if not demo:
+        sys.exit("no empty-key ApiMapping from %s to Demo API %s" % (domain, api_id))
+    return [
+        {
+            "ResourceType": "AWS::ApiGatewayV2::DomainName",
+            "LogicalResourceId": LOGICAL_DOMAIN,
+            "ResourceIdentifier": {"DomainName": domain},
+        },
+        {
+            "ResourceType": "AWS::ApiGatewayV2::ApiMapping",
+            "LogicalResourceId": LOGICAL_MAPPING,
+            "ResourceIdentifier": {
+                "DomainName": domain,
+                "ApiMappingId": demo[0]["ApiMappingId"],
+            },
+        },
+    ]
+
+
+def _cmd_extract_live(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(description="unwrap get-template JSON to the live body")
+    p.add_argument("--src", required=True, help="get-template --output json file")
+    p.add_argument("--out", required=True, help="live template to write")
+    args = p.parse_args(argv)
+    doc = json.load(open(args.src, encoding="utf-8"))
+    open(args.out, "w", encoding="utf-8").write(live_template_from_get_template(doc))
+    return 0
+
+
+def _cmd_import_resources(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(description="write resources-to-import JSON")
+    p.add_argument("--mappings", required=True, help="get-api-mappings --output json")
+    p.add_argument("--api-id", required=True, help="Demo HTTP API id")
+    p.add_argument("--connect-id", required=True, help="Connect HTTP API id")
+    p.add_argument("--domain", required=True, help="ops-attached custom hostname")
+    p.add_argument("--out", required=True, help="resources-to-import JSON to write")
+    args = p.parse_args(argv)
+    data = json.load(open(args.mappings, encoding="utf-8"))
+    resources = import_resources(data, args.api_id, args.connect_id, args.domain)
+    json.dump(resources, open(args.out, "w", encoding="utf-8"), indent=2)
+    print("import DemoDomain + DemoApiMapping %s -> %s" % (args.domain, args.api_id))
+    return 0
+
+
+def _cmd_inject(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--live", required=True, help="currently deployed template")
     p.add_argument("--app", required=True, help="new deploy/app.yaml")
@@ -140,6 +212,22 @@ def main(argv: list[str] | None = None) -> int:
     merged = inject_json(live, app) if live.lstrip().startswith("{") else inject_yaml(live, app)
     open(args.out, "w", encoding="utf-8").write(merged)
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # No subcommand keeps `--live --app --out` working (the only call #243 shipped).
+    if argv and not argv[0].startswith("-"):
+        cmd, rest = argv[0], argv[1:]
+    else:
+        cmd, rest = "inject", argv
+    if cmd == "extract-live":
+        return _cmd_extract_live(rest)
+    if cmd == "import-resources":
+        return _cmd_import_resources(rest)
+    if cmd == "inject":
+        return _cmd_inject(rest)
+    raise SystemExit(f"unknown command {cmd!r}")
 
 
 if __name__ == "__main__":

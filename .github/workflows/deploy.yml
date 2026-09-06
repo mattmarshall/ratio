@@ -282,6 +282,10 @@ jobs:
           # RATIO_PUBLIC_ORIGIN. Logical ids stay DemoDomain /
           # DemoApiMapping so the follow-up update is a no-op, not a
           # duplicate. ConnectApi is not imported and must not be mapped.
+          #
+          # ⛔ NO INLINE `python3 -c` BODIES. A line at column 0 inside
+          # `run: |` exits the YAML literal block; GitHub then schedules
+          # no jobs. That is how tip deploy died after #243 (#244).
           DEMO_CUSTOM_DOMAIN='api.ratio.marsh.build'
           LIVE_CERT_ARN='arn:aws:acm:us-east-1:320473299741:certificate/4452c092-e591-46e2-8d40-2e29269a033b'
           adopt_ops_domain() {
@@ -297,17 +301,10 @@ jobs:
               echo "::error::cloudformation:GetTemplate failed. Re-apply deploy/bootstrap.yaml (GetTemplate + /domainnames*). Do not CreateDomainName — ${DEMO_CUSTOM_DOMAIN} already exists."
               return 1
             fi
-            python3 -c '
-import json, sys
-doc = json.load(open("/tmp/ratio-get-template.json"))
-body = doc["TemplateBody"]
-open("/tmp/ratio-live-app.yaml","w").write(
-    body if isinstance(body, str) else json.dumps(body, indent=2)
-)
-if isinstance(body, str) and not body.endswith("\n"):
-    open("/tmp/ratio-live-app.yaml","a").write("\n")
-'
-            python3 deploy/adopt_demo_domain.py \
+            python3 deploy/adopt_demo_domain.py extract-live \
+              --src /tmp/ratio-get-template.json \
+              --out /tmp/ratio-live-app.yaml
+            python3 deploy/adopt_demo_domain.py inject \
               --live /tmp/ratio-live-app.yaml \
               --app deploy/app.yaml \
               --out /tmp/ratio-import-app.yaml
@@ -325,34 +322,12 @@ if isinstance(body, str) and not body.endswith("\n"):
               echo "::error::cannot list API mappings for ${DEMO_CUSTOM_DOMAIN}. Re-apply bootstrap Sid TheDemoApiCustomDomain (/domainnames*)."
               return 1
             fi
-            python3 -c '
-import json, sys
-data = json.load(open("/tmp/ratio-api-mappings.json"))
-api_id, connect_id, domain = sys.argv[1], sys.argv[2], sys.argv[3]
-items = data.get("Items") or []
-connect = [i for i in items if i.get("ApiId") == connect_id]
-if connect:
-    sys.exit("custom domain is mapped to ConnectApi — issuers would collide")
-demo = [i for i in items if i.get("ApiId") == api_id and not i.get("ApiMappingKey")]
-if not demo:
-    sys.exit("no empty-key ApiMapping from %s to Demo API %s" % (domain, api_id))
-json.dump([
-    {
-        "ResourceType": "AWS::ApiGatewayV2::DomainName",
-        "LogicalResourceId": "DemoDomain",
-        "ResourceIdentifier": {"DomainName": domain},
-    },
-    {
-        "ResourceType": "AWS::ApiGatewayV2::ApiMapping",
-        "LogicalResourceId": "DemoApiMapping",
-        "ResourceIdentifier": {
-            "DomainName": domain,
-            "ApiMappingId": demo[0]["ApiMappingId"],
-        },
-    },
-], open("/tmp/ratio-import-resources.json", "w"), indent=2)
-print("import DemoDomain + DemoApiMapping %s -> %s" % (domain, api_id))
-' "$API_ID" "$CONNECT_API_ID" "$DEMO_CUSTOM_DOMAIN"
+            python3 deploy/adopt_demo_domain.py import-resources \
+              --mappings /tmp/ratio-api-mappings.json \
+              --api-id "$API_ID" \
+              --connect-id "$CONNECT_API_ID" \
+              --domain "$DEMO_CUSTOM_DOMAIN" \
+              --out /tmp/ratio-import-resources.json
             PARAMS=()
             while IFS= read -r key; do
               [ -n "$key" ] || continue
