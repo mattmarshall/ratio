@@ -327,7 +327,8 @@ jobs:
             python3 deploy/adopt_demo_domain.py inject \
               --live /tmp/ratio-live-app.yaml \
               --app deploy/app.yaml \
-              --out /tmp/ratio-import-app.yaml
+              --out /tmp/ratio-import-app.yaml \
+              || return 1
             API_ID="$(aws cloudformation describe-stack-resources \
               --stack-name "$STACK" \
               --logical-resource-id Api \
@@ -347,15 +348,25 @@ jobs:
               --api-id "$API_ID" \
               --connect-id "$CONNECT_API_ID" \
               --domain "$DEMO_CUSTOM_DOMAIN" \
-              --out /tmp/ratio-import-resources.json
+              --out /tmp/ratio-import-resources.json \
+              || return 1
+            # ⛔ ONLY PASS PARAMETERS THE IMPORT TEMPLATE DECLARES.
+            # Appending CertificateArn when inject had put it under
+            # Conditions is how CreateChangeSet died: "Parameters:
+            # [CertificateArn] do not exist in the template" (#250).
+            DECLARED="$(python3 deploy/adopt_demo_domain.py parameter-keys \
+              --template /tmp/ratio-import-app.yaml)" || return 1
             PARAMS=()
             while IFS= read -r key; do
               [ -n "$key" ] || continue
+              echo "$DECLARED" | grep -qx "$key" || continue
               PARAMS+=("ParameterKey=${key},UsePreviousValue=true")
             done < <(aws cloudformation describe-stacks --stack-name "$STACK" \
               --query 'Stacks[0].Parameters[].ParameterKey' --output text | tr '\t' '\n')
-            if ! printf '%s\n' "${PARAMS[@]}" | grep -q '^ParameterKey=CertificateArn,'; then
-              PARAMS+=("ParameterKey=CertificateArn,ParameterValue=${LIVE_CERT_ARN}")
+            if echo "$DECLARED" | grep -qx CertificateArn; then
+              if ! printf '%s\n' "${PARAMS[@]}" | grep -q '^ParameterKey=CertificateArn,'; then
+                PARAMS+=("ParameterKey=CertificateArn,ParameterValue=${LIVE_CERT_ARN}")
+              fi
             fi
             CS=import-demo-domain
             aws cloudformation delete-change-set \
@@ -364,19 +375,33 @@ jobs:
             # not --template-file (that flag is `cloudformation deploy`).
             # Run 34004094619 died with Unknown options before the
             # IMPORT change set existed (#248).
-            aws cloudformation create-change-set \
+            #
+            # ⛔ A FAILED CreateChangeSet MUST NOT REACH THE WAITER.
+            # adopt_ops_domain is invoked as `func || dump` which
+            # disables `set -e` inside the function (bash). Run
+            # 34006554883: ValidationError, then ChangeSetNotFound
+            # waiter/execute, then hang until timeout-minutes: 45
+            # (#250). Check the CLI here; do not wait for a change
+            # set that was never created.
+            if ! aws cloudformation create-change-set \
               --stack-name "$STACK" \
               --change-set-name "$CS" \
               --change-set-type IMPORT \
               --resources-to-import file:///tmp/ratio-import-resources.json \
               --template-body file:///tmp/ratio-import-app.yaml \
               --capabilities CAPABILITY_NAMED_IAM \
-              --parameters "${PARAMS[@]}"
+              --parameters "${PARAMS[@]}"; then
+              echo "::error::CreateChangeSet ${CS} failed — not waiting for a change set that was never created"
+              return 1
+            fi
             aws cloudformation wait change-set-create-complete \
-              --stack-name "$STACK" --change-set-name "$CS"
+              --stack-name "$STACK" --change-set-name "$CS" \
+              || return 1
             aws cloudformation execute-change-set \
-              --stack-name "$STACK" --change-set-name "$CS"
-            aws cloudformation wait stack-import-complete --stack-name "$STACK"
+              --stack-name "$STACK" --change-set-name "$CS" \
+              || return 1
+            aws cloudformation wait stack-import-complete --stack-name "$STACK" \
+              || return 1
           }
           adopt_ops_domain || { dump_stack_failure; exit 1; }
 

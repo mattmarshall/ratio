@@ -555,7 +555,13 @@ then updates. The import is skipped only when the live
 `describe-stack-resources --logical-resource-id DemoDomain` exits 0
 (that API returns an empty list for an absent id, which is how
 #246 CREATE_FAILED AlreadyExists). If the physical hostname exists
-outside the stack, IMPORT; never CreateDomainName. `//deploy:iac_test`
+outside the stack, IMPORT; never CreateDomainName. The import
+template must declare `CertificateArn` under `Parameters` — splicing
+it at `Resources:` lands the key under `Conditions:` and
+CreateChangeSet rejects `ParameterKey=CertificateArn` (#250). A
+failed CreateChangeSet must exit the Deploy step immediately; the
+waiter `ChangeSetNotFound`-polls until `timeout-minutes: 45` when
+`adopt_ops_domain || dump` disables `set -e`. `//deploy:iac_test`
 fails if the domain resources, the `/domainnames` grant, or the
 import step drift. Do not remap `ConnectApiUrl`. Do not invent
 CloudFront. Do not change DNS from the app stack — Cloudflare
