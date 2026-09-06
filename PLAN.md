@@ -4494,3 +4494,37 @@ the custom host.
 It can show `https://api.ratio.marsh.build/version` on the Demo
 API and Connect still on its execute-api host. It cannot show a
 Connect token accepted on the custom Demo host.
+
+### Amendment, 2026-09-06 — DemoDomain IMPORT uses --template-body
+
+[#248](https://github.com/mattmarshall/ratio/issues/248) is the
+CLI leftover after #247. Tip `22cdd5d` reached the IMPORT path
+(get-template ownership gate worked) then
+`aws cloudformation create-change-set` rejected `--template-file`
+(`Unknown options`, run 34004094619). The waiter then
+`ChangeSetNotFound` for `import-demo-domain`. Live
+`https://api.ratio.marsh.build/version` stayed `d1bc047`.
+
+What landed:
+
+- `adopt_ops_domain` passes the injected live template as
+  `--template-body file:///tmp/ratio-import-app.yaml`.
+  CreateChangeSet accepts `--template-body` / `--template-url`,
+  not `--template-file` (that flag is `cloudformation deploy`).
+- The #247 get-template ownership gate is unchanged. The skip
+  still reads the live body, not
+  `describe-stack-resources` `DemoDomain`.
+- `//deploy:iac_test` fails if `create-change-set` in
+  `deploy.yml` still uses `--template-file`.
+
+**DemoUrl is api.ratio.marsh.build** is unchanged. This
+amendment closes #248. Leftover: the next `main` deploy must
+still *run* the import, own `DemoDomain` / `DemoApiMapping`,
+and advance `/version` past `d1bc047`. It does not close #22.
+It does not remint `d-xxxxx`. It does not map Connect onto
+the custom host.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show `https://api.ratio.marsh.build/version` on the Demo
+API and Connect still on its execute-api host. It cannot show a
+Connect token accepted on the custom Demo host.
