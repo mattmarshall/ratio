@@ -33,7 +33,9 @@ is an eight-week plan for a product nobody was buying.
 > cold start. Hydrate 503 is transient only. The
 > 40GB scale fold stays on Fargate ScaleTask. Scale
 > keeps ScaleBucket. Unused Cognito CloudFormation resources are
-> removed — AuthKit is the sole IdP. Live leftovers on issue 22
+> removed — AuthKit is the sole IdP. DemoUrl is
+> api.ratio.marsh.build (Demo HTTP API DomainName only;
+> ConnectApiUrl stays execute-api). Live leftovers on issue 22
 > are `DEMO_MEMBERS` naming a live WorkOS `sub` and WorkOS
 > dashboard registration. Durable writes are #24 (closed). The
 > Cognito-era activation sentence is historical.
@@ -4393,3 +4395,60 @@ close #22. It does not absorb #152. It does not reopen #151.
 It can show this table and the issue numbers it names. It cannot
 show live bank or calendar OAuth, a Connect dashboard registration,
 or a kernel portal.
+
+### Amendment, 2026-09-06 — DemoUrl is api.ratio.marsh.build
+
+[#152](https://github.com/mattmarshall/ratio/issues/152) asked for a
+Ratio-named Demo API hostname instead of raw execute-api. Ops already
+issued the ACM cert, attached API Gateway DomainName
+`api.ratio.marsh.build` to Demo HTTP API `1h4q8av2gb` (`$default`,
+empty key), and pointed Cloudflare `api.ratio` at
+`d-dh396r9poe.execute-api.us-east-1.amazonaws.com`. Vercel
+`RATIO_API_ORIGIN` is already `https://api.ratio.marsh.build`.
+What this amendment records is the CloudFormation so the next
+stack update does not fight that mapping.
+
+What landed:
+
+- `deploy/app.yaml` declares `AWS::ApiGatewayV2::DomainName` and
+  `AWS::ApiGatewayV2::ApiMapping` for the Demo HTTP API only,
+  referencing the issued cert via `CertificateArn` (default
+  `arn:aws:acm:us-east-1:320473299741:certificate/4452c092-e591-46e2-8d40-2e29269a033b`).
+  No new ACM cert. No CloudFront. ConnectApi is not mapped.
+- `DemoUrl` is `https://api.ratio.marsh.build/` (trailing slash
+  kept). Lambda and Fargate `RATIO_PUBLIC_ORIGIN` is
+  `https://api.ratio.marsh.build` (no slash). `ConnectApiUrl`
+  stays execute-api.
+- The first deploy imports the ops-attached DomainName /
+  ApiMapping under logical ids `DemoDomain` / `DemoApiMapping`
+  so CloudFormation does not `CreateDomainName` on a hostname
+  that exists. Later updates are no-ops when properties match.
+- `//deploy:iac_test` fails if DomainName / ApiMapping drift, if
+  Connect is mapped, if CloudFront appears, or if smoke still
+  names execute-api as DemoUrl.
+
+**DemoUrl is api.ratio.marsh.build** is the Built phrase this
+amendment adds.
+
+**What this is NOT:**
+
+- **Not Connect on the custom host.** Connect tokens stay on
+  ConnectApiUrl. One custom domain cannot prove both issuers.
+- **Not a DNS change.** Cloudflare already CNAMEs `api.ratio`.
+  This file does not retarget `d-dh396r9poe`.
+- **Not leftover #22.** `DEMO_MEMBERS` naming a live WorkOS
+  `sub` and WorkOS dashboard registration stay WorkOS operator
+  work.
+- **Not CloudFront.** HTTP API DomainName is the TLS terminator.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment closes #152. Leftover: re-apply `deploy/bootstrap.yaml`
+once so the deploy role can `GetTemplate`, manage `/domainnames*`,
+and `acm:DescribeCertificate` on the issued cert — then the first
+`main` deploy imports. It does not close #22. It does not reopen
+#151. It does not absorb #163.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show `https://api.ratio.marsh.build/version` on the Demo
+API and Connect still on its execute-api host. It cannot show a
+Connect token accepted on the custom Demo host.

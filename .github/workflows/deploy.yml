@@ -271,6 +271,116 @@ jobs:
             fi
           }
 
+          # ⭐ ADOPT THE OPS-ATTACHED CUSTOM DOMAIN BEFORE THE UPDATE THAT
+          # FLIPS DemoUrl. A naive CREATE of AWS::ApiGatewayV2::DomainName
+          # fails (the hostname already exists) or, if someone deleted it,
+          # would mint a new d-xxxxx and break the Cloudflare CNAME that
+          # already points at d-dh396r9poe.execute-api.us-east-1.amazonaws.com.
+          # Import change sets cannot modify Function / outputs, so this
+          # step injects DemoDomain + DemoApiMapping into the *live*
+          # template only. The deploy below then flips DemoUrl and
+          # RATIO_PUBLIC_ORIGIN. Logical ids stay DemoDomain /
+          # DemoApiMapping so the follow-up update is a no-op, not a
+          # duplicate. ConnectApi is not imported and must not be mapped.
+          DEMO_CUSTOM_DOMAIN='api.ratio.marsh.build'
+          LIVE_CERT_ARN='arn:aws:acm:us-east-1:320473299741:certificate/4452c092-e591-46e2-8d40-2e29269a033b'
+          adopt_ops_domain() {
+            if aws cloudformation describe-stack-resources \
+                 --stack-name "$STACK" \
+                 --logical-resource-id DemoDomain >/dev/null 2>&1; then
+              echo "DemoDomain already in ${STACK} — import is a no-op"
+              return 0
+            fi
+            echo "Importing ops-attached ${DEMO_CUSTOM_DOMAIN} as DemoDomain"
+            if ! aws cloudformation get-template --stack-name "$STACK" --output json \
+                 > /tmp/ratio-get-template.json; then
+              echo "::error::cloudformation:GetTemplate failed. Re-apply deploy/bootstrap.yaml (GetTemplate + /domainnames*). Do not CreateDomainName — ${DEMO_CUSTOM_DOMAIN} already exists."
+              return 1
+            fi
+            python3 -c '
+import json, sys
+doc = json.load(open("/tmp/ratio-get-template.json"))
+body = doc["TemplateBody"]
+open("/tmp/ratio-live-app.yaml","w").write(
+    body if isinstance(body, str) else json.dumps(body, indent=2)
+)
+if isinstance(body, str) and not body.endswith("\n"):
+    open("/tmp/ratio-live-app.yaml","a").write("\n")
+'
+            python3 deploy/adopt_demo_domain.py \
+              --live /tmp/ratio-live-app.yaml \
+              --app deploy/app.yaml \
+              --out /tmp/ratio-import-app.yaml
+            API_ID="$(aws cloudformation describe-stack-resources \
+              --stack-name "$STACK" \
+              --logical-resource-id Api \
+              --query 'StackResources[0].PhysicalResourceId' --output text)"
+            CONNECT_API_ID="$(aws cloudformation describe-stack-resources \
+              --stack-name "$STACK" \
+              --logical-resource-id ConnectApi \
+              --query 'StackResources[0].PhysicalResourceId' --output text)"
+            if ! aws apigatewayv2 get-api-mappings \
+                 --domain-name "$DEMO_CUSTOM_DOMAIN" \
+                 --output json > /tmp/ratio-api-mappings.json; then
+              echo "::error::cannot list API mappings for ${DEMO_CUSTOM_DOMAIN}. Re-apply bootstrap Sid TheDemoApiCustomDomain (/domainnames*)."
+              return 1
+            fi
+            python3 -c '
+import json, sys
+data = json.load(open("/tmp/ratio-api-mappings.json"))
+api_id, connect_id, domain = sys.argv[1], sys.argv[2], sys.argv[3]
+items = data.get("Items") or []
+connect = [i for i in items if i.get("ApiId") == connect_id]
+if connect:
+    sys.exit("custom domain is mapped to ConnectApi — issuers would collide")
+demo = [i for i in items if i.get("ApiId") == api_id and not i.get("ApiMappingKey")]
+if not demo:
+    sys.exit("no empty-key ApiMapping from %s to Demo API %s" % (domain, api_id))
+json.dump([
+    {
+        "ResourceType": "AWS::ApiGatewayV2::DomainName",
+        "LogicalResourceId": "DemoDomain",
+        "ResourceIdentifier": {"DomainName": domain},
+    },
+    {
+        "ResourceType": "AWS::ApiGatewayV2::ApiMapping",
+        "LogicalResourceId": "DemoApiMapping",
+        "ResourceIdentifier": {
+            "DomainName": domain,
+            "ApiMappingId": demo[0]["ApiMappingId"],
+        },
+    },
+], open("/tmp/ratio-import-resources.json", "w"), indent=2)
+print("import DemoDomain + DemoApiMapping %s -> %s" % (domain, api_id))
+' "$API_ID" "$CONNECT_API_ID" "$DEMO_CUSTOM_DOMAIN"
+            PARAMS=()
+            while IFS= read -r key; do
+              [ -n "$key" ] || continue
+              PARAMS+=("ParameterKey=${key},UsePreviousValue=true")
+            done < <(aws cloudformation describe-stacks --stack-name "$STACK" \
+              --query 'Stacks[0].Parameters[].ParameterKey' --output text | tr '\t' '\n')
+            if ! printf '%s\n' "${PARAMS[@]}" | grep -q '^ParameterKey=CertificateArn,'; then
+              PARAMS+=("ParameterKey=CertificateArn,ParameterValue=${LIVE_CERT_ARN}")
+            fi
+            CS=import-demo-domain
+            aws cloudformation delete-change-set \
+              --stack-name "$STACK" --change-set-name "$CS" 2>/dev/null || true
+            aws cloudformation create-change-set \
+              --stack-name "$STACK" \
+              --change-set-name "$CS" \
+              --change-set-type IMPORT \
+              --resources-to-import file:///tmp/ratio-import-resources.json \
+              --template-file /tmp/ratio-import-app.yaml \
+              --capabilities CAPABILITY_NAMED_IAM \
+              --parameters "${PARAMS[@]}"
+            aws cloudformation wait change-set-create-complete \
+              --stack-name "$STACK" --change-set-name "$CS"
+            aws cloudformation execute-change-set \
+              --stack-name "$STACK" --change-set-name "$CS"
+            aws cloudformation wait stack-import-complete --stack-name "$STACK"
+          }
+          adopt_ops_domain || { dump_stack_failure; exit 1; }
+
           aws cloudformation deploy \
             --template-file deploy/app.yaml \
             --stack-name "$STACK" \
@@ -286,6 +396,7 @@ jobs:
               WorkOsClientId="${WORKOS_CLIENT_ID}" \
               WorkOsIssuer="${ISSUER}" \
               WorkOsConnectIssuer="${CONNECT_ISSUER}" \
+              CertificateArn="${LIVE_CERT_ARN}" \
             || { dump_stack_failure; exit 1; }
 
       - name: Smoke test the deployed demo
@@ -330,9 +441,10 @@ jobs:
           # An empty URL makes every curl below return 000, which reads as "the
           # demo is down" when it actually means this query named an output
           # that no longer exists. It did, once — the output was renamed.
+          CUSTOM_DEMO='https://api.ratio.marsh.build/'
           case "$URL" in
-            https://*) ;;
-            *) echo "::error::no DemoUrl output on $STACK (got '$URL')"; exit 1 ;;
+            "${CUSTOM_DEMO}") ;;
+            *) echo "::error::DemoUrl is not the custom host ${CUSTOM_DEMO} (got '$URL') — execute-api is not the product URL"; exit 1 ;;
           esac
           CONNECT_URL="$(aws cloudformation describe-stacks --stack-name "$STACK" \
                   --query 'Stacks[0].Outputs[?OutputKey==`ConnectApiUrl`].OutputValue' --output text)"
@@ -340,6 +452,12 @@ jobs:
           case "$CONNECT_URL" in
             https://*) ;;
             *) echo "::error::no ConnectApiUrl output on $STACK (got '$CONNECT_URL') — Connect tokens have no host"; exit 1 ;;
+          esac
+          case "$CONNECT_URL" in
+            *api.ratio.marsh.build*)
+              echo "::error::ConnectApiUrl remapped onto the Demo custom domain — one JWT authorizer cannot prove both issuers"
+              exit 1
+              ;;
           esac
           if [ "$CONNECT_URL" = "$URL" ]; then
             echo "::error::ConnectApiUrl equals DemoUrl — one JWT authorizer cannot prove both issuers"
