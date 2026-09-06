@@ -102,6 +102,74 @@ def live_owns_imported_domain(live: str) -> bool:
     return False
 
 
+# Top-level sections that may follow Parameters in a CloudFormation
+# template. Used to append a parameter at the *end of Parameters*, not
+# at Resources.
+#
+# ⛔ SPLICING AT `Resources:` PUTS THE PARAMETER UNDER Conditions.
+# app.yaml (and the live stack at d1bc047) has Conditions: between
+# Parameters and Resources. Run 34006554883 then died with
+# `Parameters: [CertificateArn] do not exist in the template` because
+# inject_yaml had landed CertificateArn as a Condition (#250).
+# `"  CertificateArn:" in live` is also the wrong existence check —
+# DemoDomain's `CertificateArn: !Ref` property contains that
+# substring at a deeper indent.
+_AFTER_PARAMETERS = (
+    "Metadata",
+    "Rules",
+    "Mappings",
+    "Conditions",
+    "Transform",
+    "Resources",
+    "Outputs",
+)
+
+
+def parameter_names(template: str) -> list[str]:
+    """Return Parameters: keys. Conditions / Resources do not count.
+
+    ⭐ THIS IS THE CHECK CREATECHANGESET ACTUALLY RUNS. A CertificateArn
+    that landed under Conditions is not a Parameter, and passing
+    `--parameters ParameterKey=CertificateArn` is then a ValidationError.
+    """
+    if template.lstrip().startswith("{"):
+        doc = json.loads(template)
+        params = doc.get("Parameters") or {}
+        return list(params) if isinstance(params, dict) else []
+    names: list[str] = []
+    in_params = False
+    for line in template.splitlines():
+        if line.startswith("Parameters:"):
+            in_params = True
+            continue
+        if not in_params:
+            continue
+        if line and line[0] not in " \t" and not line.lstrip().startswith("#"):
+            break
+        m = re.match(r"  ([A-Za-z0-9]+):", line)
+        if m:
+            names.append(m.group(1))
+    return names
+
+
+def insert_parameter_yaml(live: str, param_block: str) -> str:
+    """Append `param_block` to Parameters, before Conditions / Resources."""
+    if "\nParameters:\n" not in live and not live.startswith("Parameters:\n"):
+        raise SystemExit("live template has no Parameters: section")
+    cut = None
+    for name in _AFTER_PARAMETERS:
+        idx = live.find(f"\n{name}:\n")
+        if idx != -1 and (cut is None or idx < cut):
+            cut = idx
+    if cut is None:
+        raise SystemExit(
+            "live template has no section after Parameters — "
+            "cannot place CertificateArn under Parameters"
+        )
+    block = param_block if param_block.endswith("\n") else param_block + "\n"
+    return live[:cut] + "\n" + block + live[cut:]
+
+
 def inject_yaml(live: str, app: str) -> str:
     if live_owns_imported_domain(live):
         return live
@@ -112,10 +180,10 @@ def inject_yaml(live: str, app: str) -> str:
         raise SystemExit(
             "DemoApiMapping cites ConnectApi — the custom domain is Demo HTTP API only"
         )
-    if "  CertificateArn:" not in live:
-        if "\nResources:\n" not in live:
-            raise SystemExit("live template has no Resources: section")
-        live = live.replace("\nResources:\n", "\n" + cert + "Resources:\n", 1)
+    # find_top_level is indent-2 only — a DomainNameConfigurations
+    # CertificateArn property does not count as the Parameter.
+    if find_top_level(live, "CertificateArn") is None:
+        live = insert_parameter_yaml(live, cert)
     if f"  {LOGICAL_DOMAIN}:" not in live:
         if "\nOutputs:\n" not in live:
             raise SystemExit("live template has no Outputs: section")
@@ -123,6 +191,11 @@ def inject_yaml(live: str, app: str) -> str:
             "\nOutputs:\n",
             "\n" + domain + mapping + "Outputs:\n",
             1,
+        )
+    if "CertificateArn" not in parameter_names(live):
+        raise SystemExit(
+            "import template Parameters has no CertificateArn — "
+            "CreateChangeSet would reject ParameterKey=CertificateArn (#250)"
         )
     return live
 
@@ -140,6 +213,11 @@ def inject_json(live: str, app: str) -> str:
             "Default": LIVE_CERT,
             "Description": extract_top_level(app, "CertificateArn"),
         }
+    if "CertificateArn" not in parameter_names(json.dumps(doc)):
+        raise SystemExit(
+            "import template Parameters has no CertificateArn — "
+            "CreateChangeSet would reject ParameterKey=CertificateArn (#250)"
+        )
     resources[LOGICAL_DOMAIN] = {
         "Type": "AWS::ApiGatewayV2::DomainName",
         "DeletionPolicy": "Retain",
@@ -258,6 +336,18 @@ def _cmd_import_resources(argv: list[str]) -> int:
     return 0
 
 
+def _cmd_parameter_keys(argv: list[str]) -> int:
+    """Print Parameters: keys, one per line. Used by deploy.yml so
+    CreateChangeSet never receives a key the import template omitted.
+    """
+    p = argparse.ArgumentParser(description="list Parameters keys in a template")
+    p.add_argument("--template", required=True, help="import-only template")
+    args = p.parse_args(argv)
+    for name in parameter_names(open(args.template, encoding="utf-8").read()):
+        print(name)
+    return 0
+
+
 def _cmd_inject(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--live", required=True, help="currently deployed template")
@@ -298,6 +388,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_import_resources(rest)
     if cmd == "inject":
         return _cmd_inject(rest)
+    if cmd == "parameter-keys":
+        return _cmd_parameter_keys(rest)
     raise SystemExit(f"unknown command {cmd!r}")
 
 

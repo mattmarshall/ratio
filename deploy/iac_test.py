@@ -1094,6 +1094,28 @@ def main(app_path, bootstrap_path, workflow_path):
         else:
             print("  ok  create-change-set passes the template as --template-body")
 
+    # ⛔ #250 — CreateChangeSet ValidationError must fail the Deploy
+    # step immediately. The waiter ChangeSetNotFound-polls until
+    # timeout-minutes: 45 when the function is invoked as `func || dump`
+    # (bash disables set -e in that context). `flow` is comment-stripped
+    # so a sentence describing the hang cannot satisfy this.
+    if "not waiting for a change set that was never created" not in flow:
+        fail(
+            f"{workflow_path} CreateChangeSet failure still falls through "
+            "to wait change-set-create-complete (#250)"
+        )
+    else:
+        print("  ok  CreateChangeSet failure does not wait for a missing change set")
+
+    if "adopt_demo_domain.py parameter-keys" not in flow:
+        fail(
+            f"{workflow_path} does not filter IMPORT parameters through "
+            "parameter-keys — CreateChangeSet would again pass CertificateArn "
+            "when the import template omitted it (#250)"
+        )
+    else:
+        print("  ok  IMPORT parameters are filtered to keys the import template declares")
+
     check_run_blocks_indented(workflow_path, pathlib.Path(workflow_path).read_text())
     if not any(f.startswith(f"{workflow_path}:") and "not indented" in f for f in failures):
         print("  ok  every run: | line in deploy.yml stays indented")
@@ -1134,6 +1156,9 @@ def main(app_path, bootstrap_path, workflow_path):
         spec = importlib.util.spec_from_file_location("adopt_demo_domain", adopt_path)
         adopt = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(adopt)
+        import io
+        import tempfile
+        from contextlib import redirect_stdout
         if adopt.LOGICAL_DOMAIN != "DemoDomain" or adopt.LOGICAL_MAPPING != "DemoApiMapping":
             fail(
                 "adopt_demo_domain.py logical ids drifted from DemoDomain / "
@@ -1169,6 +1194,76 @@ def main(app_path, bootstrap_path, workflow_path):
             fail("adopt inject_yaml mapped the custom domain to ConnectApi")
         else:
             print("  ok  adopt injects DomainName without flipping DemoUrl or mapping Connect")
+
+        # ⛔ #250 — splicing CertificateArn at Resources: puts it under
+        # Conditions. CreateChangeSet then rejects ParameterKey=CertificateArn.
+        # The check above stayed green on that placement: it never asked
+        # whether CertificateArn was a Parameter.
+        cond = merged.find("\nConditions:\n")
+        cert_param = merged.find("\n  CertificateArn:\n")
+        if "CertificateArn" not in adopt.parameter_names(fake_live):
+            print("  ok  stripped live template has no CertificateArn Parameter (the #250 fixture)")
+        else:
+            fail("stripped live template still declares CertificateArn — the #250 fixture drifted")
+        if "CertificateArn" not in adopt.parameter_names(merged):
+            fail(
+                "inject_yaml did not declare CertificateArn under Parameters — "
+                "CreateChangeSet rejects ParameterKey=CertificateArn (#250)"
+            )
+        elif cond < 0:
+            fail("stripped live template lost Conditions — the #250 fixture drifted")
+        elif cert_param < 0:
+            fail("inject_yaml wrote no indent-2 CertificateArn block")
+        elif cert_param > cond:
+            fail(
+                "inject_yaml placed CertificateArn after Conditions — "
+                "it is not a Parameter; CreateChangeSet dies (#250)"
+            )
+        else:
+            print("  ok  inject_yaml declares CertificateArn under Parameters, not Conditions")
+
+        live_json = json.dumps(
+            {
+                "Parameters": {"ImageUri": {"Type": "String"}},
+                "Conditions": {"X": {"Fn::Equals": ["1", "0"]}},
+                "Resources": {"Api": {"Type": "AWS::ApiGatewayV2::Api"}},
+                "Outputs": {"DemoUrl": {"Value": "https://example/"}},
+            }
+        )
+        merged_json = json.loads(adopt.inject_json(live_json, app))
+        if "CertificateArn" not in (merged_json.get("Parameters") or {}):
+            fail("inject_json dropped CertificateArn from Parameters")
+        elif "CertificateArn" not in adopt.parameter_names(json.dumps(merged_json)):
+            fail("parameter_names missed JSON CertificateArn")
+        else:
+            print("  ok  inject_json declares CertificateArn under Parameters")
+
+        cond_only = (
+            "Parameters:\n  ImageUri:\n    Type: String\n"
+            "Conditions:\n  CertificateArn:\n    Type: String\n"
+            "Resources:\n  X:\n    Type: AWS::Logs::LogGroup\n"
+        )
+        if "CertificateArn" in adopt.parameter_names(cond_only):
+            fail("parameter_names treated a Conditions key as a Parameter (#250)")
+        elif adopt.parameter_names(cond_only) != ["ImageUri"]:
+            fail(f"parameter_names drifted: {adopt.parameter_names(cond_only)}")
+        else:
+            print("  ok  parameter_names ignores CertificateArn under Conditions")
+
+        with tempfile.TemporaryDirectory() as td:
+            merged_path = pathlib.Path(td) / "merged.yaml"
+            merged_path.write_text(merged)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = adopt.main(["parameter-keys", "--template", str(merged_path)])
+            keys = buf.getvalue().split()
+            if rc != 0 or "CertificateArn" not in keys or "ImageUri" not in keys:
+                fail(
+                    f"parameter-keys CLI missed import Parameters: rc={rc} "
+                    f"out={buf.getvalue()!r}"
+                )
+            else:
+                print("  ok  parameter-keys CLI lists CertificateArn on the import template")
 
         adopt_src = adopt_path.read_text()
         if "custom domain is mapped to ConnectApi" not in adopt_src:
@@ -1281,10 +1376,6 @@ def main(app_path, bootstrap_path, workflow_path):
                 fail(f"owns partial-ownership refuse drifted: {exc}")
             else:
                 print("  ok  owns refuses a half-imported live template")
-
-        import io
-        import tempfile
-        from contextlib import redirect_stdout
 
         with tempfile.TemporaryDirectory() as td:
             absent_path = pathlib.Path(td) / "absent.yaml"

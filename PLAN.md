@@ -4528,3 +4528,45 @@ the custom host.
 It can show `https://api.ratio.marsh.build/version` on the Demo
 API and Connect still on its execute-api host. It cannot show a
 Connect token accepted on the custom Demo host.
+
+### Amendment, 2026-09-06 — DemoDomain IMPORT declares CertificateArn
+
+[#250](https://github.com/mattmarshall/ratio/issues/250) is the
+CreateChangeSet leftover after #249. Tip `63f92f2` reached
+`--template-body` then CloudFormation rejected the IMPORT:
+`Parameters: [CertificateArn] do not exist in the template`
+(run 34006554883). The waiter then `ChangeSetNotFound` for
+`import-demo-domain`, `execute-change-set` repeated that, and
+the Deploy step hung until `timeout-minutes: 45`. Live
+`https://api.ratio.marsh.build/version` stayed `d1bc047`.
+
+What landed:
+
+- `inject_yaml` appends `CertificateArn` to `Parameters`, before
+  `Conditions:` / `Resources:`. The previous splice at
+  `Resources:` put the key under `Conditions` (the live template
+  has `Conditions:` between those sections). `"  CertificateArn:"
+  in live` is not an existence check — a DomainName property
+  contains that substring.
+- IMPORT `--parameters` is filtered to keys
+  `parameter-keys` reads from the import template. CertificateArn
+  is passed only when it is actually a Parameter.
+- A failed `CreateChangeSet` exits the Deploy step immediately
+  (`not waiting for a change set that was never created`).
+  `func || dump` disables `set -e` inside `adopt_ops_domain`;
+  the waiter must not run after ValidationError.
+- `//deploy:iac_test` fails if inject places CertificateArn
+  after `Conditions`, or if the workflow still waits on a
+  missing change set.
+
+**DemoUrl is api.ratio.marsh.build** is unchanged. This
+amendment closes #250. Leftover: the next `main` deploy must
+still *run* the import, own `DemoDomain` / `DemoApiMapping`,
+and advance `/version` past `d1bc047`. Leaves #22 open;
+operator WorkOS leftover unchanged. It does not remint
+`d-xxxxx`. It does not map Connect onto the custom host.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show `https://api.ratio.marsh.build/version` on the Demo
+API and Connect still on its execute-api host. It cannot show a
+Connect token accepted on the custom Demo host.
