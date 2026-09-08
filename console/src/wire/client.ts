@@ -86,7 +86,9 @@ import type {
  * ⛔ 401 IS A REAL ANSWER, NOT A TRANSPORT FAILURE. `RATIO_AUTH=required` makes
  * the API fail closed: a `/v1` request the gateway attached no verified identity
  * to is refused even if the authorizer were removed. `orAuth` catches this and
- * redirects to sign-in rather than rendering an error row.
+ * redirects to sign-in rather than rendering an error row. A 401 after
+ * AuthKit already has a session is `orTransient`'s status, not a second
+ * trip through the IdP.
  */
 export class AuthError extends Error {
   constructor() {

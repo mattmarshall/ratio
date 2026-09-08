@@ -7,12 +7,15 @@ import { AuthError, NotFound, Refused } from "@/wire/client";
  * the server component and Next redacted it to digest `2106392403`.
  *
  * ⛔ THIS IS THE #441 PATH FOR A TRANSPORT FAILURE. A rejected
- * `Refused(503)` must not escape. A 401 must still become `/signin`.
- * A 400 must still throw — that is `orRefused`'s job, not a second
- * AuthError path.
+ * `Refused(503)` must not escape. A 401 without a session must still
+ * become `/signin`. A 401 with a session must not — that is the bounce,
+ * and it is a status. A 400 must still throw — that is `orRefused`'s
+ * job, not a second AuthError path.
  */
 
 const headersMock = vi.fn(async () => new Headers());
+const withAuthMock = vi.fn(async () => ({ user: null, accessToken: null }));
+const workosMock = vi.fn(() => false);
 
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, set: () => {} }),
@@ -22,11 +25,11 @@ vi.mock("next/headers", () => ({
 // ⚠ Same AuthKit stub as `orAuth.test.ts`: `orTransient` calls
 // `orAuth`, which imports `signInHref` from `caller`.
 vi.mock("@workos-inc/authkit-nextjs", () => ({
-  withAuth: async () => ({ user: null, accessToken: null }),
+  withAuth: () => withAuthMock(),
 }));
 
 vi.mock("./workos", () => ({
-  workosConfigured: () => false,
+  workosConfigured: () => workosMock(),
 }));
 
 /** Next's `redirect()` throws; the destination lives on `digest`. */
@@ -41,6 +44,10 @@ describe("orTransient", () => {
   beforeEach(() => {
     headersMock.mockReset();
     headersMock.mockResolvedValue(new Headers());
+    withAuthMock.mockReset();
+    withAuthMock.mockResolvedValue({ user: null, accessToken: null });
+    workosMock.mockReset();
+    workosMock.mockReturnValue(false);
   });
 
   it("does not let a 503 Refused escape as an uncaught throw", async () => {
@@ -90,5 +97,19 @@ describe("orTransient", () => {
       unavailable: null,
       value: 7,
     });
+  });
+
+  it("surfaces a refused session as a status, not a trip back to /signin", async () => {
+    workosMock.mockReturnValue(true);
+    withAuthMock.mockResolvedValue({
+      user: { id: "u-1" },
+      accessToken: "access-token",
+    });
+    headersMock.mockResolvedValue(new Headers({ "x-pathname": "/books" }));
+    const { orTransient } = await import("./orTransient");
+    const { SESSION_REFUSED } = await import("./sessionRefused");
+    await expect(orTransient(Promise.reject(new AuthError()))).resolves.toEqual(
+      { unavailable: SESSION_REFUSED },
+    );
   });
 });

@@ -1,4 +1,6 @@
 import { Brand } from "@/components/Brand";
+import { continueIfSignedIn } from "@/lib/continueIfSignedIn";
+import { safeReturnTo } from "@/lib/returnTo";
 
 export const dynamic = "force-dynamic";
 
@@ -6,16 +8,19 @@ export const dynamic = "force-dynamic";
  *
  * The button is a plain link to `/sign-in`, the Sign-in URL AuthKit's
  * Next.js README names (`app/sign-in/route.ts`) and the Ratio WorkOS
- * application already has registered. Nothing about the flow runs here. */
+ * application already has registered. Nothing about the flow runs here
+ * unless AuthKit already has a session — then this page is the bounce
+ * and `continueIfSignedIn` sends them onward. */
 export default async function SignIn({
   searchParams,
 }: {
   searchParams: Promise<{ returnTo?: string; error?: string }>;
 }) {
   const { returnTo, error } = await searchParams;
-  const href = returnTo
-    ? `/sign-in?returnTo=${encodeURIComponent(returnTo)}`
-    : "/sign-in";
+  await continueIfSignedIn(returnTo);
+  const dest = safeReturnTo(returnTo);
+  const href =
+    dest === "/" ? "/sign-in" : `/sign-in?returnTo=${encodeURIComponent(dest)}`;
 
   return (
     <div className="app signin">

@@ -26,17 +26,18 @@ import type { Book, Fund, View } from "@/wire/types";
  * ⚠ Memoized PER REQUEST, not across them. Nothing here is a cache in the sense
  * that would let a stale NAV survive a reload.
  *
- * ⚠ A 401 AFTER `caller()` IS STILL A MISSING SESSION. `caller()` only
+ * ⚠ A 401 AFTER `caller()` IS NOT A MISSING SESSION. `caller()` only
  * redirects when AuthKit has no session. A session the gateway will not
- * accept still reaches the list call; `orTransient` runs `orAuth` so that
- * `AuthError` still becomes `/signin?returnTo=…`.
+ * accept still reaches the list call; `orTransient` surfaces that as a
+ * status rather than `/signin?returnTo=…` — sending a signed-in operator
+ * around AuthKit is the login bounce.
  *
  * ⛔ A 503 IS NOT A MISSING SESSION. Digest `2106392403` was `Refused: 503`
  * on GET /books while the API deploy was rolling. `orAuth` rethrew it;
  * Next redacted the page to `#441`. `orTransient` turns status ≥ 500
  * into a value the layout can render. It does not redirect — that would
- * be a second AuthError path, and it would send a signed-in operator
- * to `/signin`.
+ * send a signed-in operator to `/signin`. A 401 with a session takes
+ * the same door: a status, not a second trip through AuthKit.
  */
 export const funds = cache(async (): Promise<OrTransient<Fund[]>> => {
   const c = await caller();
@@ -94,7 +95,8 @@ export const viewsOf = cache(async (id: string): Promise<OrTransient<View[]>> =>
  * `cache` is the same door `viewOf` uses.
  *
  * `orTransient` (not bare `orAuth`): a rolling API's 503 is a value the
- * layout can render, the same as ListBooks. 401 still becomes `/signin`.
+ * layout can render, the same as ListBooks. A missing session still
+ * becomes `/signin`; a refused session stays on the page.
  */
 export const bookOf = bookRecord;
 

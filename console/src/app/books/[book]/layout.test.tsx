@@ -12,7 +12,8 @@ import viewsFixture from "../../../../fixtures/views.json";
  * ListViews with no `orAuth` / `orTransient`. After digest `2094318646`
  * (prefetch skipping AuthKit) is fixed, a 401 or 503 here still leaves
  * the server component and Next redacts it. The wrap is the same as
- * `books/layout.tsx`: 5xx → `<Unavailable>`, 401 → `/signin`.
+ * `books/layout.tsx`: 5xx → `<Unavailable>`, missing session → `/signin`,
+ * a refused session stays on the page.
  */
 
 const headersMock = vi.fn(async () => new Headers());

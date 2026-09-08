@@ -52,14 +52,6 @@ vi.mock("@/wire/client", async () => {
   };
 });
 
-/** Next's `redirect()` throws; the destination lives on `digest`. */
-function signInRedirect(e: unknown): string | null {
-  if (!(e instanceof Error)) return null;
-  const digest = "digest" in e && typeof e.digest === "string" ? e.digest : "";
-  const m = `${e.message}\n${digest}`.match(/\/signin(?:\?returnTo=[^;\s]+)?/);
-  return m?.[0] ?? null;
-}
-
 async function renderAsync(el: Promise<ReactNode>) {
   render((await el) as ReactElement);
 }
@@ -99,14 +91,12 @@ describe("authenticated /books", () => {
 
   // ⛔ THE PRODUCTION FAILURE, NAMED. AuthKit had a session, so `caller()`
   // sent the bearer; the gateway refused it (audience / `WORKOS_CLIENT_ID`);
-  // `listBooks` threw `AuthError`; layout and page both awaited the same
-  // helper; Next redacted the throw to `Minified React error #441`. A test
-  // that only checks a missing session would stay green for this case.
-  it("redirects to sign-in when the API refuses the bearer, instead of throwing AuthError", async () => {
+  // `listBooks` threw `AuthError`. Sending that operator to `/signin` is the
+  // login bounce: they sign in again, AuthKit reuses the session, `/books`
+  // 401s again. A missing session still redirects. A held session is a
+  // status — the same door as a 503 — so Next never redacts it to `#441`.
+  it("renders a session-refused status when the API refuses a bearer the operator already holds", async () => {
     vi.resetModules();
-    // ⚠ Construct AFTER resetModules. `orAuth` compares `instanceof AuthError`
-    // against the class it imported; a class from the previous module graph
-    // would miss and the throw would look like the production #441 again.
     const { AuthError } = await import("@/wire/client");
     listBooks.mockRejectedValue(new AuthError());
     listFunds.mockRejectedValue(new AuthError());
@@ -119,24 +109,15 @@ describe("authenticated /books", () => {
     );
 
     const { default: Books } = await import("./page");
-    const pageErr = await Books().then(
-      () => {
-        throw new Error("page rendered an AuthError as a row");
-      },
-      (e: unknown) => e,
+    await renderAsync(Books());
+    expect(screen.getByRole("status").textContent).toContain(
+      "the API did not accept it",
     );
-    expect(pageErr).not.toBeInstanceOf(AuthError);
-    expect(signInRedirect(pageErr)).toBe("/signin?returnTo=%2Fbooks");
+    expect(screen.queryByText("Your books")).toBeNull();
 
     const { default: BooksLayout } = await import("./layout");
-    const layoutErr = await BooksLayout({ children: null }).then(
-      () => {
-        throw new Error("layout rendered an AuthError as chrome");
-      },
-      (e: unknown) => e,
-    );
-    expect(layoutErr).not.toBeInstanceOf(AuthError);
-    expect(signInRedirect(layoutErr)).toBe("/signin?returnTo=%2Fbooks");
+    await renderAsync(BooksLayout({ children: null }));
+    expect(screen.getAllByRole("status").length).toBeGreaterThan(0);
   });
 
   // ⛔ THE OTHER PRODUCTION FAILURE, NAMED. AuthKit had a session; the

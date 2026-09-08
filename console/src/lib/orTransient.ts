@@ -14,11 +14,13 @@ import { orAuth } from "./orAuth";
  * operator to `/signin` while they are already signed in, and would
  * turn every write-path `Refused` that reused this helper into a
  * navigation. This sibling converts status ≥ 500 into a value the
- * page can render, and leaves 401 to `orAuth`.
+ * page can render, and leaves a *missing* session to `orAuth`.
  *
- * ⚠ 4xx `Refused` AND `NotFound` STILL THROW. A 400 is a sentence
- * about a figure (`orRefused`); a 404 is a missing resource (`or404`).
- * A transport failure is neither.
+ * ⚠ 4xx `Refused` AND `NotFound` STILL THROW — except a 401 that
+ * `orAuth` already rewrote as `SESSION_REFUSED`. That is a signed-in
+ * operator whose bearer the gateway will not accept, and folding it
+ * into `/signin` is the bounce. A 400 is still a sentence about a
+ * figure (`orRefused`); a 404 is a missing resource (`or404`).
  */
 export type OrTransient<T> =
   | { unavailable: null; value: T }
@@ -28,7 +30,7 @@ export async function orTransient<T>(p: Promise<T>): Promise<OrTransient<T>> {
   try {
     return { unavailable: null, value: await orAuth(p) };
   } catch (e) {
-    if (e instanceof Refused && e.status >= 500) {
+    if (e instanceof Refused && (e.status >= 500 || e.status === 401)) {
       return { unavailable: e.message };
     }
     throw e;
