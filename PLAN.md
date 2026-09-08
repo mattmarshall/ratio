@@ -802,7 +802,10 @@ custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the
 deployed demo. first-party Connect apps call ConnectApiUrl.
 Unused Cognito CloudFormation resources are removed. Live
 leftovers remain on issue 22 — `DEMO_MEMBERS` naming a live
-WorkOS `sub`, and WorkOS dashboard registration. Do not
+WorkOS `sub`, and WorkOS dashboard registration. A signed-in
+operator whose bearer the gateway refuses is no longer sent
+back to `/signin` (that was the login bounce; it is a status
+on `/books`). Do not
 read this paragraph as production-complete, and do
 not read a walk-through as demo-ready (#27).
 

@@ -2,16 +2,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthError, NotFound, Refused } from "@/wire/client";
 
 /**
- * `orAuth` is the catch `wire/client.ts` documents: a 401 is a missing
- * session, not a figure to render and not a crash for `error.tsx`.
+ * `orAuth` is the catch `wire/client.ts` documents: a 401 without a
+ * session is a missing session. A 401 *with* a session is not — that is
+ * the login bounce, and it must not become `/signin`.
  *
  * ⛔ THIS IS THE #441 PATH. `/books` called `listBooks` after `caller()` had
  * already accepted an AuthKit session; the gateway refused the bearer;
  * `AuthError` left the server component; Next redacted it to digest
- * `2667936230`. The helper must redirect, not rethrow.
+ * `2667936230`. A missing session still redirects. A held session must
+ * not: it becomes `Refused`, which `orTransient` renders as a status.
  */
 
 const headersMock = vi.fn(async () => new Headers());
+const withAuthMock = vi.fn(
+  async (): Promise<{
+    user: { id: string; email?: string } | null;
+    accessToken: string | null;
+  }> => ({ user: null, accessToken: null }),
+);
+const workosMock = vi.fn(() => false);
 
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, set: () => {} }),
@@ -23,11 +32,11 @@ vi.mock("next/headers", () => ({
 // authenticated `/books` suite already mocks the same module for that
 // reason. `signInHref` itself only reads `x-pathname`.
 vi.mock("@workos-inc/authkit-nextjs", () => ({
-  withAuth: async () => ({ user: null, accessToken: null }),
+  withAuth: () => withAuthMock(),
 }));
 
 vi.mock("./workos", () => ({
-  workosConfigured: () => false,
+  workosConfigured: () => workosMock(),
 }));
 
 /** Next's `redirect()` throws; the destination lives on `digest`. */
@@ -42,6 +51,10 @@ describe("orAuth", () => {
   beforeEach(() => {
     headersMock.mockReset();
     headersMock.mockResolvedValue(new Headers());
+    withAuthMock.mockReset();
+    withAuthMock.mockResolvedValue({ user: null, accessToken: null });
+    workosMock.mockReset();
+    workosMock.mockReturnValue(false);
   });
 
   it("redirects AuthError to /signin?returnTo= the path the proxy set", async () => {
@@ -83,6 +96,19 @@ describe("orAuth", () => {
     expect(dest).not.toMatch(/^https?:/);
   });
 
+  it("does not carry the prompt as returnTo, which is the bounce", async () => {
+    headersMock.mockResolvedValue(
+      new Headers({ "x-pathname": "/signin?returnTo=%2Fbooks" }),
+    );
+    const { orAuth } = await import("./orAuth");
+    expect(signInRedirect(await orAuth(Promise.reject(new AuthError())).then(
+      () => {
+        throw new Error("orAuth resolved an AuthError");
+      },
+      (e: unknown) => e,
+    ))).toBe("/signin");
+  });
+
   it("lets NotFound and Refused through, because they have their own handlers", async () => {
     const { orAuth } = await import("./orAuth");
     await expect(
@@ -101,5 +127,25 @@ describe("orAuth", () => {
   it("returns the value when the read succeeded", async () => {
     const { orAuth } = await import("./orAuth");
     await expect(orAuth(Promise.resolve(7))).resolves.toBe(7);
+  });
+
+  it("does not send a signed-in operator to /signin when the gateway refuses the bearer", async () => {
+    workosMock.mockReturnValue(true);
+    withAuthMock.mockResolvedValue({
+      user: { id: "u-1" },
+      accessToken: "access-token",
+    });
+    headersMock.mockResolvedValue(new Headers({ "x-pathname": "/books" }));
+    const { orAuth } = await import("./orAuth");
+    const { SESSION_REFUSED } = await import("./sessionRefused");
+    const err = await orAuth(Promise.reject(new AuthError())).then(
+      () => {
+        throw new Error("orAuth resolved an AuthError");
+      },
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(Refused);
+    expect(err).toMatchObject({ status: 401, message: SESSION_REFUSED });
+    expect(signInRedirect(err)).toBeNull();
   });
 });

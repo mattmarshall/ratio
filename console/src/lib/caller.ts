@@ -4,6 +4,7 @@ import { withAuth } from "@workos-inc/authkit-nextjs";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Caller } from "@/wire/client";
+import { safeReturnTo } from "./returnTo";
 import { workosConfigured } from "./workos";
 
 /**
@@ -50,7 +51,12 @@ export async function caller(): Promise<Caller> {
  */
 export async function signInHref(): Promise<string> {
   const here = (await headers()).get("x-pathname");
-  return here ? `/signin?returnTo=${encodeURIComponent(here)}` : "/signin";
+  const returnTo = safeReturnTo(here);
+  // ⚠ `/signin` ITSELF IS NOT A RETURN TARGET. `x-pathname` is the
+  // current URL, and the prompt is a URL. Carrying it as `returnTo`
+  // is how a completed AuthKit callback lands back on this page.
+  if (returnTo === "/") return "/signin";
+  return `/signin?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
 /** Who to show in the header chip. */

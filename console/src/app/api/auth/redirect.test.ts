@@ -65,6 +65,15 @@ describe("safeReturnTo", () => {
     expect(safeReturnTo("/\\evil.example/steal")).toBe("/");
   });
 
+  it("refuses the sign-in prompt as a return target, which is the bounce", () => {
+    expect(safeReturnTo("/signin")).toBe("/");
+    expect(safeReturnTo("/signin?returnTo=%2Fbooks")).toBe("/");
+    expect(safeReturnTo("/sign-in")).toBe("/");
+    expect(safeReturnTo("/login")).toBe("/");
+    expect(safeReturnTo("/callback")).toBe("/");
+    expect(safeReturnTo("/api/auth/callback")).toBe("/");
+  });
+
   it("refuses anything that is not rooted", () => {
     expect(safeReturnTo("https://evil.example")).toBe("/");
     expect(safeReturnTo("javascript:alert(1)")).toBe("/");

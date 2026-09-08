@@ -65,6 +65,14 @@ vi.mock("@/lib/caller", () => ({
   }),
 }));
 
+vi.mock("@/lib/continueIfSignedIn", () => ({
+  continueIfSignedIn: async () => {},
+}));
+
+vi.mock("@workos-inc/authkit-nextjs", () => ({
+  withAuth: async () => ({ user: null, accessToken: null }),
+}));
+
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, set: () => {} }),
   headers: async () => new Headers(),
@@ -5205,6 +5213,13 @@ describe("sign-in", () => {
     await renderAsync(SignIn({ searchParams: params({ returnTo: deep }) }));
     const href = document.querySelector(".signin-btn")?.getAttribute("href");
     expect(href).toBe(`/sign-in?returnTo=${encodeURIComponent(deep)}`);
+  });
+
+  it("does not put the prompt on the Sign in button as returnTo", async () => {
+    const SignIn = (await import("./signin/page")).default;
+    await renderAsync(SignIn({ searchParams: params({ returnTo: "/signin" }) }));
+    const href = document.querySelector(".signin-btn")?.getAttribute("href");
+    expect(href).toBe("/sign-in");
   });
 
   it("names the signed-in principal and offers the way out", async () => {
