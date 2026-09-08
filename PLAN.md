@@ -807,10 +807,14 @@ Unused Cognito CloudFormation resources are removed. Live
 leftovers remain on issue 22 — `DEMO_MEMBERS` naming a live
 WorkOS `sub`, and WorkOS dashboard registration. A signed-in
 operator whose bearer the gateway refuses is no longer sent
-back to `/signin` (that was the login bounce; it is a status
-on `/books`). The remaining 401-with-session leftover after
-#253 was the console authorizer still proving the pre-AuthAPI
-host; that issuer pin is the Auth API custom domain now. Do not
+back to `/signin` (that 401-with-session loop is a status
+on `/books`). A completed AuthKit callback also no longer
+drops `wos-session` on `NextResponse.redirect` — the sealed
+cookie rides `redirect()` from `next/navigation`, the same
+door as the PKCE verifier on `/sign-in`. The leftover after
+#253 that was still a 401 *with* a session was the console
+authorizer proving the pre-AuthAPI host; that issuer pin is
+the Auth API custom domain now. Do not
 read this paragraph as production-complete, and do
 not read a walk-through as demo-ready (#27).
 
@@ -4656,8 +4660,8 @@ phrase this amendment adds.
   this 401. Setting the repository variable is operator work.
 - **Not WorkOS dashboard registration** of Connect apps.
 - **Not the cookie bounce on `/callback`.** That leftover is a
-  separate console routing defect (#254 if still open). This file
-  does not close it.
+  separate console routing defect; the next amendment records it.
+  This issuer pin does not close it.
 - **Not live bank / calendar OAuth**, licensed AIA PDF, IRS e-file,
   or a kernel blob store.
 
@@ -4671,3 +4675,41 @@ is accepted at DemoUrl `/v1` (no "This session is signed in, but the
 API did not accept it"). It cannot show seeded funds granted to a
 live WorkOS `sub` until an operator sets `DEMO_MEMBERS`, or a
 Connect-app walk-through without Dashboard registration.
+
+### Amendment, 2026-09-08 — AuthKit callback holds wos-session on redirect()
+
+#253 stopped treating a gateway 401 *with* a session as a missing
+session. That path never ran: `handleAuth` sealed `wos-session`
+with `cookies().set()` and then returned a new
+`NextResponse.redirect`. WorkOS finished, `caller()` saw no
+session, and the operator landed on `/signin` again — the same
+defect the PKCE verifier had on `/sign-in`.
+
+What landed:
+
+- `/callback` wraps `handleAuth` so a successful seal throws
+  `redirect()` from `next/navigation`. The sealed session is on
+  that 307.
+- The proxy skips `authkit()` on `/callback`, `/sign-in`,
+  `/login`, `/api/auth/login`, and `/api/auth/callback` so it
+  cannot mint a competing PKCE verifier during the exchange.
+
+**AuthKit callback holds wos-session on redirect()** is the Built
+phrase this amendment adds.
+
+**What this is NOT, because leftovers stay named on issue 22:**
+
+- **Not naming a live WorkOS `sub` in `DEMO_MEMBERS`.**
+- **Not WorkOS dashboard registration** of Connect apps.
+- **Not the console JWT issuer pin.** The previous amendment
+  records that. This cookie hold does not deploy the demo stack.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not close #22. It does not reopen #151. It does
+not finish #150.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a completed AuthKit callback that leaves the operator
+on `/books` with a session cookie. It cannot show a gateway-accepted
+bearer until the demo stack has the Auth API issuer pin, or seeded
+funds until an operator sets `DEMO_MEMBERS`.

@@ -77,4 +77,18 @@ describe("mergeAuthkitProxyHeaders", () => {
     expect(cookies.some((c) => c.startsWith("wos-session="))).toBe(true);
     expect(cookies.some((c) => c.includes("wos-auth-verifier"))).toBe(false);
   });
+
+  it("does not run authkit on /callback, where a competing PKCE verifier is the bounce", async () => {
+    const { skipAuthkitInProxy } = await import("./authkitProxy");
+    expect(skipAuthkitInProxy("/callback")).toBe(true);
+    expect(skipAuthkitInProxy("/sign-in")).toBe(true);
+    expect(skipAuthkitInProxy("/login")).toBe(true);
+    expect(skipAuthkitInProxy("/api/auth/login")).toBe(true);
+    expect(skipAuthkitInProxy("/api/auth/callback")).toBe(true);
+    // Logout still reads the session cookie via withAuth.
+    expect(skipAuthkitInProxy("/api/auth/logout")).toBe(false);
+    // The prompt still calls withAuth via continueIfSignedIn.
+    expect(skipAuthkitInProxy("/signin")).toBe(false);
+    expect(skipAuthkitInProxy("/books")).toBe(false);
+  });
 });

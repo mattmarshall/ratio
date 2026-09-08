@@ -19,11 +19,13 @@ projection fold was measured in-repo (17.4 s, digest
 and leftover #22 (WorkOS operator). ⭐ Core stays a thin book
 of record. Breadth is WorkOS Connect. Live registration leftover
 is #22. The console login bounce (AuthKit success → `/signin`)
-is a routing defect, not that leftover: a held session the
+was two routing defects, not that leftover: a held session the
 gateway refuses stays on `/books` as a status; `returnTo` cannot
-be the prompt; the PKCE verifier rides `redirect()` from
-`next/navigation`. The 401-with-session leftover after #253 was
-the console JWT authorizer still proving
+be the prompt; the PKCE verifier *and* the sealed `wos-session`
+ride `redirect()` from `next/navigation` — `handleAuth`'s own
+`NextResponse.redirect` after `cookies().set()` was the remaining
+bounce once #253 landed. The 401-with-session leftover after #253
+was the console JWT authorizer still proving
 `api.workos.com/user_management/{client_id}` after the Auth API
 custom domain moved session `iss` to
 `authapi.ratio.marsh.build/user_management/{client_id}`. This

@@ -35,6 +35,29 @@ export function mergeAuthkitProxyHeaders(
   };
 }
 
+/**
+ * Routes that set AuthKit cookies themselves and must not run `authkit()`.
+ *
+ * ⛔ `/callback` IS A DOCUMENT REQUEST WITH NO SESSION YET. `authkit()` mints
+ * a new PKCE verifier on every unauthenticated HTML navigation. The
+ * verifier the operator actually holds is the one `/sign-in` sealed.
+ * Running `authkit()` here is how a completed WorkOS login looks up the
+ * wrong cookie — AuthKit's own middlewareAuth path auto-adds the redirect
+ * URI to unauthenticatedPaths for that loop. `/sign-in` (and its login
+ * aliases) call `getSignInUrl`; they do not call `withAuth()`. Logout
+ * still needs the session. The `/signin` *page* still needs the
+ * middleware marker so `continueIfSignedIn` can run.
+ */
+export function skipAuthkitInProxy(pathname: string): boolean {
+  return (
+    pathname === "/callback" ||
+    pathname === "/sign-in" ||
+    pathname === "/login" ||
+    pathname === "/api/auth/login" ||
+    pathname === "/api/auth/callback"
+  );
+}
+
 function dropPkceSetCookie(headers: Headers): Headers {
   const cookies =
     typeof headers.getSetCookie === "function" ? headers.getSetCookie() : [];

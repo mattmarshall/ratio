@@ -3,7 +3,10 @@ import {
   authkit,
 } from "@workos-inc/authkit-nextjs";
 import { NextResponse, type NextRequest } from "next/server";
-import { mergeAuthkitProxyHeaders } from "@/lib/authkitProxy";
+import {
+  mergeAuthkitProxyHeaders,
+  skipAuthkitInProxy,
+} from "@/lib/authkitProxy";
 import { workosConfigured } from "@/lib/workos";
 
 // The Content-Security-Policy, with a per-request nonce.
@@ -58,7 +61,7 @@ export default async function proxy(req: NextRequest) {
   let requestHeaders = new Headers(req.headers);
   let responseHeaders = new Headers();
 
-  if (workosConfigured()) {
+  if (workosConfigured() && !skipAuthkitInProxy(req.nextUrl.pathname)) {
     const { headers: authkitHeaders } = await authkit(req);
     ({ requestHeaders, responseHeaders } = mergeAuthkitProxyHeaders(
       req,

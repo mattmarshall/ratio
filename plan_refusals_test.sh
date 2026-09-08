@@ -356,6 +356,11 @@ BUILT=(
   # that host and CloudFront stay refused. The sentence it matches
   # is in the 2026-09-06 #152 amendment.
   "DemoUrl is api.ratio.marsh.build"
+  # ⚠ ADDED WITH THE AMENDMENT THAT RECORDED IT, WHICH IS THE PROTOCOL.
+  # The callback cookie hold is not on the refusal list — this check
+  # would have stayed green whatever was built. The sentence it
+  # matches is in the 2026-09-08 callback-cookie amendment.
+  "AuthKit callback holds wos-session on redirect()"
 )
 
 # ⛔ FLATTENED, BECAUSE MARKDOWN WRAPS. The list is prose, so "the client

@@ -556,7 +556,12 @@ __STYLE__
           <code>sub</code> and WorkOS dashboard registration remain
           leftover on issue 22. A signed-in operator whose bearer
           the gateway refuses is a status on the page, not a second
-          trip through AuthKit.</li>
+          trip through AuthKit. A completed AuthKit callback holds
+          <code>wos-session</code> on <code>redirect()</code> from
+          <code>next/navigation</code> — <code>handleAuth</code>'s
+          <code>NextResponse.redirect</code> after
+          <code>cookies().set()</code> was the remaining bounce
+          onto <code>/signin</code>.</li>
         </ul>
       </div>
       <div class="r-spec">
