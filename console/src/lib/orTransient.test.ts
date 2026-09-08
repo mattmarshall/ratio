@@ -14,7 +14,12 @@ import { AuthError, NotFound, Refused } from "@/wire/client";
  */
 
 const headersMock = vi.fn(async () => new Headers());
-const withAuthMock = vi.fn(async () => ({ user: null, accessToken: null }));
+const withAuthMock = vi.fn(
+  async (): Promise<{
+    user: { id: string; email?: string } | null;
+    accessToken: string | null;
+  }> => ({ user: null, accessToken: null }),
+);
 const workosMock = vi.fn(() => false);
 
 vi.mock("next/headers", () => ({

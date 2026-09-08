@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const withAuthMock = vi.fn(async () => ({ user: null, accessToken: null }));
+const withAuthMock = vi.fn(
+  async (): Promise<{
+    user: { id: string; email?: string } | null;
+    accessToken: string | null;
+  }> => ({ user: null, accessToken: null }),
+);
 const workosMock = vi.fn(() => false);
 
 vi.mock("@workos-inc/authkit-nextjs", () => ({
@@ -14,7 +19,12 @@ vi.mock("./workos", () => ({
 function redirectDest(e: unknown): string | null {
   if (!(e instanceof Error)) return null;
   const digest = "digest" in e && typeof e.digest === "string" ? e.digest : "";
-  const m = `${e.message}\n${digest}`.match(/\/[^\s;]+/);
+  const blob = `${e.message}\n${digest}`;
+  // Next's digest is `NEXT_REDIRECT;replace;/;307;` — a lone `/` is a
+  // valid destination and `[^;]+` after the slash would miss it.
+  const fromDigest = digest.split(";").find((p) => p.startsWith("/"));
+  if (fromDigest !== undefined) return fromDigest;
+  const m = blob.match(/\/[^\s;]*/);
   return m?.[0] ?? null;
 }
 

@@ -69,6 +69,10 @@ vi.mock("@/lib/continueIfSignedIn", () => ({
   continueIfSignedIn: async () => {},
 }));
 
+vi.mock("@workos-inc/authkit-nextjs", () => ({
+  withAuth: async () => ({ user: null, accessToken: null }),
+}));
+
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined, set: () => {} }),
   headers: async () => new Headers(),
