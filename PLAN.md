@@ -804,8 +804,11 @@ Unused Cognito CloudFormation resources are removed. Live
 leftovers remain on issue 22 — `DEMO_MEMBERS` naming a live
 WorkOS `sub`, and WorkOS dashboard registration. A signed-in
 operator whose bearer the gateway refuses is no longer sent
-back to `/signin` (that was the login bounce; it is a status
-on `/books`). Do not
+back to `/signin` (that 401-with-session loop is a status
+on `/books`). A completed AuthKit callback also no longer
+drops `wos-session` on `NextResponse.redirect` — the sealed
+cookie rides `redirect()` from `next/navigation`, the same
+door as the PKCE verifier on `/sign-in`. Do not
 read this paragraph as production-complete, and do
 not read a walk-through as demo-ready (#27).
 

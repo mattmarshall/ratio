@@ -89,4 +89,9 @@ describe("AuthKit proxy matcher", () => {
     expect(src).toContain("mergeAuthkitProxyHeaders");
     expect(src).toContain("applyResponseHeaders");
   });
+
+  it("does not run authkit on /callback so a competing PKCE verifier cannot steal the exchange", () => {
+    const src = readFileSync(join(process.cwd(), "src/proxy.ts"), "utf8");
+    expect(src).toContain("skipAuthkitInProxy");
+  });
 });

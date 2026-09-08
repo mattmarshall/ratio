@@ -30,4 +30,14 @@ describe("AuthKit callback", () => {
     expect(src).toMatch(/handleAuth\(\{/);
     expect(src).toMatch(/\/signin\?error=1/);
   });
+
+  it("sends a completed exchange through next/navigation redirect so the session cookie is on that response", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/callback/route.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/continueWithSealedSession/);
+    expect(src).toMatch(/from "next\/navigation"/);
+    expect(src).toMatch(/unstable_rethrow/);
+  });
 });
