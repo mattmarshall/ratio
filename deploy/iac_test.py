@@ -77,6 +77,58 @@ SERVICE = {
     "AWS::Cognito::": "cognito-idp",
 }
 
+def the_console_jwt_issuer_is_the_auth_api_host_session_tokens_mint(
+    app_path: str,
+    workflow_path: str,
+    app_code: str,
+    flow: str,
+    production_issuer: str,
+    stale_session_issuer: str,
+) -> None:
+    """API Gateway JWT iss must equal the Auth API custom-domain issuer.
+
+    After authapi.ratio.marsh.build was verified (2026-09-06), OIDC
+    discovery at api.workos.com/user_management/{client_id} publishes
+    issuer https://authapi.ratio.marsh.build/user_management/{client_id}.
+    Session access tokens mint that iss. Pointing the console
+    authorizer at api.workos.com/user_management/{client_id} 401s
+    every AuthKit bearer — the leftover status on /books after #253.
+    """
+    if f'Default: "{stale_session_issuer}"' in app_code:
+        fail(
+            f"{app_path} still defaults WorkOsIssuer to the pre-AuthAPI host "
+            f"{stale_session_issuer} — session tokens mint {production_issuer}"
+        )
+    else:
+        print("  ok  WorkOsIssuer is not the pre-AuthAPI api.workos.com host")
+    if f"PRODUCTION_ISSUER='{stale_session_issuer}'" in flow:
+        fail(
+            f"{workflow_path} still falls back to the pre-AuthAPI host "
+            f"{stale_session_issuer} — that 401s every AuthKit session"
+        )
+    else:
+        print("  ok  the workflow fallback is not the pre-AuthAPI host")
+    if f"WORKOS_ISSUER:-{stale_session_issuer}" in flow:
+        fail(
+            f"{workflow_path} smoke still expects the pre-AuthAPI host from "
+            "WORKOS_ISSUER — a stale GitHub var would green a 401 authorizer"
+        )
+    else:
+        print("  ok  smoke does not expect the pre-AuthAPI host from WORKOS_ISSUER")
+    if "STALE_SESSION_ISSUER=" not in flow:
+        fail(
+            f"{workflow_path} does not name the pre-AuthAPI host as stale — "
+            "a GitHub var still holding it would 401 every session"
+        )
+    else:
+        print("  ok  the workflow treats the pre-AuthAPI host as stale")
+    if production_issuer not in app_code:
+        fail(
+            f"{app_path} does not name the Auth API session issuer "
+            f"{production_issuer}"
+        )
+
+
 failures = []
 
 
@@ -286,10 +338,14 @@ def main(app_path, bootstrap_path, workflow_path):
     # must not satisfy or fail this, which is why both documents are
     # comment-stripped. `flow` is already stripped above.
     #
-    # ⚠ THE PATH UNDER /user_management/{client_id} IS THE REAL ISSUER.
-    # AuthKit session tokens mint that iss. A prefix match on
-    # https://api.workos.com would fail the correct default, so these
-    # patterns end at an optional trailing slash and then the quote.
+    # ⚠ THE PATH UNDER /user_management/{client_id} IS THE REAL SESSION
+    # ISSUER, ON THE AUTH API HOST. Session tokens mint
+    # https://authapi.ratio.marsh.build/user_management/{client_id}.
+    # A prefix match on https://api.workos.com would fail the correct
+    # default, so these patterns end at an optional trailing slash and
+    # then the quote. The pre-AuthAPI
+    # api.workos.com/user_management/{client_id} host is a different
+    # refuse (stale, 401s every session) checked by name below.
     # ⚠ `com/"?` IS THE WRONG OPTIONAL. That requires the slash and then
     # an optional quote — it misses Default: "https://api.workos.com"
     # and only catches the trailing-slash form. `com/?"` is the other
@@ -312,7 +368,18 @@ def main(app_path, bootstrap_path, workflow_path):
         print("  ok  Authorizer issuer is not the bare api.workos.com host")
 
     PRODUCTION_ISSUER = (
+        "https://authapi.ratio.marsh.build/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB"
+    )
+    STALE_SESSION_ISSUER = (
         "https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB"
+    )
+    the_console_jwt_issuer_is_the_auth_api_host_session_tokens_mint(
+        app_path,
+        workflow_path,
+        app_code,
+        flow,
+        PRODUCTION_ISSUER,
+        STALE_SESSION_ISSUER,
     )
     if f'Default: "{PRODUCTION_ISSUER}"' not in app_code:
         fail(
@@ -342,8 +409,9 @@ def main(app_path, bootstrap_path, workflow_path):
         re.M,
     ):
         fail(
-            f"{app_path} defaults WorkOsIssuer to the AuthKit custom domain — "
-            "session tokens mint iss under api.workos.com/user_management/"
+            f"{app_path} defaults WorkOsIssuer to the hosted AuthKit / Connect "
+            "domain — session tokens mint iss under "
+            "authapi.ratio.marsh.build/user_management/"
         )
     else:
         print("  ok  WorkOsIssuer default is not the hosted AuthKit hostname")
@@ -512,7 +580,7 @@ def main(app_path, bootstrap_path, workflow_path):
     if connect_param is None:
         fail(f"{app_path} has no WorkOsConnectIssuer parameter")
     elif re.search(
-        r'Default:\s+"https://api\.workos\.com(/user_management/[^"]*)?"',
+        r'Default:\s+"https://(api\.workos\.com|authapi\.ratio\.marsh\.build)(/user_management/[^"]*)?"',
         connect_param,
     ):
         fail(

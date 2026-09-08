@@ -151,10 +151,13 @@ jobs:
           # another product.
           WORKOS_CLIENT_ID: ${{ vars.WORKOS_CLIENT_ID }}
           # Optional. Unset means the iss AuthKit session tokens mint:
-          # https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB
+          # https://authapi.ratio.marsh.build/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB
           # The bare https://api.workos.com/ host has no OIDC discovery, and
           # CloudFormation refuses it as an AWS::ApiGatewayV2::Authorizer
-          # issuer. Session tokens do not mint auth.ratio.marsh.build.
+          # issuer. The pre-AuthAPI host
+          # https://api.workos.com/user_management/{client_id} is stale —
+          # discovery publishes the Auth API custom domain. Session tokens
+          # do not mint auth.ratio.marsh.build (that is Connect).
           WORKOS_ISSUER: ${{ vars.WORKOS_ISSUER }}
           # Optional. Unset means the iss WorkOS Connect access tokens mint:
           # https://auth.ratio.marsh.build (AuthKit custom domain, OIDC
@@ -193,13 +196,18 @@ jobs:
           # CloudFormation rejects Issuer: https://api.workos.com/ with
           # "must have a valid discovery endpoint ended with
           # /.well-known/openid-configuration" (run 33784570568, #122).
-          # AuthKit session tokens mint iss as
-          # https://api.workos.com/user_management/{client_id}
-          # (client_01M1JJZTFXFDZJ0XJM1NPNSEJB, no trailing slash).
-          # Connect access tokens mint iss as the AuthKit custom domain
+          # AuthKit session tokens mint iss as the Auth API custom domain
+          # https://authapi.ratio.marsh.build/user_management/{client_id}
+          # (client_01M1JJZTFXFDZJ0XJM1NPNSEJB, no trailing slash; OIDC
+          # discovery verified 2026-09-08). The pre-domain host
+          # https://api.workos.com/user_management/{client_id} still
+          # serves a discovery document whose issuer field is the Auth
+          # API host — API Gateway then 401s every session bearer.
+          # Connect access tokens mint iss as the hosted AuthKit domain
           # (https://auth.ratio.marsh.build). One JWT authorizer cannot
           # OR those issuers — ConnectApi is the second host.
-          PRODUCTION_ISSUER='https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB'
+          PRODUCTION_ISSUER='https://authapi.ratio.marsh.build/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB'
+          STALE_SESSION_ISSUER='https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB'
           PRODUCTION_CONNECT_ISSUER='https://auth.ratio.marsh.build'
           BARE_WORKOS_ISSUER='https://api.workos.com'
           ISSUER="${WORKOS_ISSUER:-$PRODUCTION_ISSUER}"
@@ -209,7 +217,23 @@ jobs:
               echo "::error::WORKOS_ISSUER is the bare host ${ISSUER}, which has no OIDC discovery. Production AuthKit issuer is ${PRODUCTION_ISSUER}."
               exit 1
               ;;
+            "${PRODUCTION_CONNECT_ISSUER}")
+              echo "::error::WORKOS_ISSUER is the hosted AuthKit / Connect host ${ISSUER}. Session tokens mint ${PRODUCTION_ISSUER}."
+              exit 1
+              ;;
+            "${STALE_SESSION_ISSUER}"|https://api.workos.com/user_management/*)
+              echo "::warning::WORKOS_ISSUER ${ISSUER} is the pre-AuthAPI host. Session tokens mint ${PRODUCTION_ISSUER} after the Auth API custom domain. Using ${PRODUCTION_ISSUER}."
+              ISSUER="$PRODUCTION_ISSUER"
+              ;;
           esac
+          DISCOVERED="$(python3 -c 'import json,os,urllib.request; cid=os.environ["WORKOS_CLIENT_ID"]; url="https://api.workos.com/user_management/"+cid+"/.well-known/openid-configuration"; print(json.load(urllib.request.urlopen(url, timeout=20))["issuer"].rstrip("/"))')" || {
+            echo "::error::could not fetch AuthKit session OIDC discovery for ${WORKOS_CLIENT_ID}"
+            exit 1
+          }
+          if [ "$DISCOVERED" != "$ISSUER" ]; then
+            echo "::error::OIDC discovery publishes issuer ${DISCOVERED}; authorizer would use ${ISSUER}. Session tokens mint the discovery issuer — that mismatch 401s every /v1 call."
+            exit 1
+          fi
           CONNECT_ISSUER="${WORKOS_CONNECT_ISSUER:-$PRODUCTION_CONNECT_ISSUER}"
           CONNECT_ISSUER="${CONNECT_ISSUER%/}"
           case "$CONNECT_ISSUER" in
@@ -655,11 +679,20 @@ jobs:
           want "the auth config" '"redirectPath":"/callback"' "${URL}authconfig.json"
           # ⛔ THE AUTHORIZER AND THIS DOCUMENT MUST NAME THE SAME ISSUER.
           # https://api.workos.com/ has no OIDC discovery; CloudFormation
-          # refuses it. AuthKit session tokens mint iss under
-          # /user_management/{client_id}, and that is the issuer the stack
-          # now passes. Same default as the Deploy step.
-          ISSUER="${WORKOS_ISSUER:-https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB}"
+          # refuses it. AuthKit session tokens mint iss as the Auth API
+          # custom domain
+          # (https://authapi.ratio.marsh.build/user_management/{client_id}).
+          # A GitHub var still holding the pre-AuthAPI host is stale —
+          # same override the Deploy step applies. Same default as Deploy.
+          PRODUCTION_ISSUER='https://authapi.ratio.marsh.build/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB'
+          STALE_SESSION_ISSUER='https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB'
+          ISSUER="${WORKOS_ISSUER:-$PRODUCTION_ISSUER}"
           ISSUER="${ISSUER%/}"
+          case "$ISSUER" in
+            "${STALE_SESSION_ISSUER}"|https://api.workos.com/user_management/*)
+              ISSUER="$PRODUCTION_ISSUER"
+              ;;
+          esac
           want "the auth config issuer" "\"issuer\":\"${ISSUER}\"" \
             "${URL}authconfig.json"
 
