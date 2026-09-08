@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { withRefusal } from "@/components/Refusal";
 import { caller } from "@/lib/caller";
 import { or404 } from "@/lib/or404";
 import { getConfigVersion } from "@/wire/client";
@@ -6,7 +7,7 @@ import { getConfigVersion } from "@/wire/client";
 export const dynamic = "force-dynamic";
 
 /** One configuration: what it contains, and who approved it. */
-export default async function ConfigVersionDetail({
+async function ConfigVersionDetail({
   params,
 }: {
   params: Promise<{ book: string; version: string }>;
@@ -66,3 +67,5 @@ export default async function ConfigVersionDetail({
     </aside>
   );
 }
+
+export default withRefusal(ConfigVersionDetail);

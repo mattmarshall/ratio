@@ -40,6 +40,12 @@ vi.mock("next/headers", () => ({
 
 const listBooks = vi.fn(async () => booksFixture);
 const listFunds = vi.fn(async () => ({ funds: [] }));
+const getBook = vi.fn(async () => {
+  throw new Error("getBook is not stubbed in this test");
+});
+const getView = vi.fn(async () => {
+  throw new Error("getView is not stubbed in this test");
+});
 
 vi.mock("@/wire/client", async () => {
   const actual = await vi.importActual<typeof import("@/wire/client")>(
@@ -49,6 +55,8 @@ vi.mock("@/wire/client", async () => {
     ...actual,
     listBooks,
     listFunds,
+    getBook,
+    getView,
   };
 });
 
@@ -64,6 +72,8 @@ describe("authenticated /books", () => {
     listBooks.mockResolvedValue(booksFixture);
     listFunds.mockReset();
     listFunds.mockResolvedValue({ funds: [] });
+    getBook.mockReset();
+    getView.mockReset();
   });
 
   it("throws when AuthKit middleware headers never reached the page", async () => {
@@ -120,7 +130,29 @@ describe("authenticated /books", () => {
     expect(screen.getAllByRole("status").length).toBeGreaterThan(0);
   });
 
-  // ⛔ THE OTHER PRODUCTION FAILURE, NAMED. AuthKit had a session; the
+  it("renders a session-refused status on the book hub when GetBook refuses a bearer the operator already holds", async () => {
+    vi.resetModules();
+    const { AuthError } = await import("@/wire/client");
+    getBook.mockRejectedValue(new AuthError());
+    getView.mockRejectedValue(new AuthError());
+    headersMock.mockResolvedValue(
+      new Headers({
+        "x-workos-middleware": "true",
+        "x-workos-session": "sealed",
+        "x-pathname": "/books/harbourline-global-value",
+      }),
+    );
+
+    const { default: BookPage } = await import("./[book]/page");
+    await renderAsync(
+      BookPage({
+        params: Promise.resolve({ book: "harbourline-global-value" }),
+      }),
+    );
+    expect(screen.getByRole("status").textContent).toContain(
+      "the API did not accept it",
+    );
+  });
   // API was rolling and GET /books answered 503; `listBooks` threw
   // `Refused`; `orAuth` rethrew it; Next redacted the page to digest
   // `2106392403`. A 503 is not a missing session — the operator stays

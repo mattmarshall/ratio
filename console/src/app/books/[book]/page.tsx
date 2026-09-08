@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { caller } from "@/lib/caller";
+import { Unavailable } from "@/components/Unavailable";
+import { bookRecord, viewOf } from "@/lib/data";
 import { count, money } from "@/lib/format";
 import { or404 } from "@/lib/or404";
 import { SCREEN_GROUPS, screenHref, screensFor } from "@/lib/screens";
 import { KIND_SHORT } from "@/lib/templates";
-import { getBook, getView } from "@/wire/client";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +21,13 @@ export const dynamic = "force-dynamic";
  * a balance sheet, period income statement, period cash-flow, and
  * AR/AP aging, not Fund NAV and not Project `/billing` (#108, #118,
  * #117). The hub is how you open the citable figures after CreateBook.
+ *
+ * ⛔ BARE `or404(getBook)` WAS THE #253 HOLE THE LAYOUT ALREADY CLOSED.
+ * The identity layout wraps GetBook in `orTransient` and returns
+ * `<Unavailable>` without `{children}`. The page still runs. A held
+ * session the gateway refuses became `Refused(401)` from `orAuth` and
+ * left this server component — Next redacts that to `#441`. Same wrap
+ * as the view page: `bookRecord` / `viewOf`, then 404 for a missing book.
  */
 export default async function BookPage({
   params,
@@ -28,11 +35,18 @@ export default async function BookPage({
   params: Promise<{ book: string }>;
 }) {
   const { book } = await params;
-  const c = await caller();
-  const b = await or404(getBook(c, book));
-  const view = b.defaultView
-    ? await or404(getView(c, book, b.defaultView))
+  const bookRead = await or404(bookRecord(book));
+  if (bookRead.unavailable !== null) {
+    return <Unavailable why={bookRead.unavailable} />;
+  }
+  const b = bookRead.value;
+  const viewRead = b.defaultView
+    ? await or404(viewOf(book, b.defaultView))
     : null;
+  if (viewRead && viewRead.unavailable !== null) {
+    return <Unavailable why={viewRead.unavailable} />;
+  }
+  const view = viewRead?.value ?? null;
   const personal = b.kind === "PERSONAL";
   const project = b.kind === "PROJECT";
   const operating = b.kind === "OPERATING";

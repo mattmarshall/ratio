@@ -1,3 +1,4 @@
+import { withRefusal } from "@/components/Refusal";
 import { caller } from "@/lib/caller";
 import { or404 } from "@/lib/or404";
 import { getChangeLogEntry } from "@/wire/client";
@@ -5,7 +6,7 @@ import { getChangeLogEntry } from "@/wire/client";
 export const dynamic = "force-dynamic";
 
 /** One entry in the change log. */
-export default async function ChangeDetail({
+async function ChangeDetail({
   params,
 }: {
   params: Promise<{ book: string; entry: string }>;
@@ -54,3 +55,5 @@ export default async function ChangeDetail({
     </aside>
   );
 }
+
+export default withRefusal(ChangeDetail);

@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ReactElement, ReactNode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { Avatar, initialsOf } from "./Avatar";
+import { Avatar } from "./Avatar";
+import { initialsOf } from "@/lib/initials";
 
 /**
  * Header chip — photo when WorkOS has one, initials when it does not.
@@ -75,6 +78,18 @@ describe("Avatar", () => {
 });
 
 describe("Who", () => {
+  it("does not call initialsOf from the client Avatar module, which production redacts to digest 3404496738", () => {
+    const who = readFileSync(join(process.cwd(), "src/components/Who.tsx"), "utf8");
+    const avatar = readFileSync(
+      join(process.cwd(), "src/components/Avatar.tsx"),
+      "utf8",
+    );
+    expect(avatar.startsWith('"use client"')).toBe(true);
+    expect(avatar).not.toMatch(/\bexport function initialsOf\b/);
+    expect(who).toMatch(/from ["']@\/lib\/initials["']/);
+    expect(who).not.toMatch(/initialsOf[^;]*from ["']@\/components\/Avatar["']/);
+  });
+
   it("shows the WorkOS photo when principal carries one", async () => {
     me.current = {
       sub: "u-1",

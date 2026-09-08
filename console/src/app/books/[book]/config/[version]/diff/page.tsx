@@ -1,3 +1,4 @@
+import { withRefusal } from "@/components/Refusal";
 import { caller } from "@/lib/caller";
 import { or404 } from "@/lib/or404";
 import { diffConfigVersions, getConfigVersion } from "@/wire/client";
@@ -18,7 +19,7 @@ const CHANGE_LABEL: Record<string, string> = {
  * version before this one, which is the question people mean; with it, any two
  * versions can be compared. Both are the same URL shape, so either is a link.
  */
-export default async function Diff({
+export async function Diff({
   params,
   searchParams,
 }: {
@@ -66,3 +67,5 @@ export default async function Diff({
     </aside>
   );
 }
+
+export default withRefusal(Diff);

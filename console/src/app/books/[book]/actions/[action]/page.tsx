@@ -1,3 +1,4 @@
+import { withRefusal } from "@/components/Refusal";
 import { caller } from "@/lib/caller";
 import { isoDate } from "@/lib/dates";
 import { or404 } from "@/lib/or404";
@@ -7,7 +8,7 @@ import { getCorporateAction } from "@/wire/client";
 export const dynamic = "force-dynamic";
 
 /** One corporate action, and which strikes it qualifies. */
-export default async function ActionDetail({
+async function ActionDetail({
   params,
 }: {
   params: Promise<{ book: string; action: string }>;
@@ -72,3 +73,5 @@ export default async function ActionDetail({
     </aside>
   );
 }
+
+export default withRefusal(ActionDetail);

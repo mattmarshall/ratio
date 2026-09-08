@@ -1,3 +1,4 @@
+import { withRefusal } from "@/components/Refusal";
 import { caller } from "@/lib/caller";
 import { or404 } from "@/lib/or404";
 import { getPendingFact } from "@/wire/client";
@@ -5,7 +6,7 @@ import { getPendingFact } from "@/wire/client";
 export const dynamic = "force-dynamic";
 
 /** One fact that cannot post, and what is stopping it. */
-export default async function PendingFactDetail({
+async function PendingFactDetail({
   params,
 }: {
   params: Promise<{ book: string; fact: string }>;
@@ -49,3 +50,5 @@ export default async function PendingFactDetail({
     </aside>
   );
 }
+
+export default withRefusal(PendingFactDetail);

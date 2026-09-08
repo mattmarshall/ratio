@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Unavailable } from "@/components/Unavailable";
 import { Refused } from "@/wire/client";
 
 /**
@@ -27,9 +28,13 @@ export function Refusal({ why }: { why: string }) {
  * demonstrate this feature. `error.tsx` states the rule this enforces: every
  * EXPECTED refusal is a value, and the error boundary is for the unexpected.
  *
- * ⚠ ONLY `Refused` IS CAUGHT. `notFound()`'s control-flow throw, `AuthError`
- * and genuine crashes pass through — they have their own handlers, and
- * flattening a real defect into a polite sentence would hide it.
+ * ⚠ `notFound()`'s control-flow throw, `AuthError` (a missing session
+ * — `orAuth` turns that into a redirect), and genuine crashes pass
+ * through. A 401 *with* a session is `Refused(401)` after `#253`; a
+ * 5xx is the other `#441` door. Both are a status, not a figure and
+ * not `/signin`. Flattening a real defect into a polite sentence
+ * would hide it; flattening a held-session 401 into an overlay is
+ * how `/books/[book]` came back as `#441`.
  */
 export function withRefusal<P>(
   page: (props: P) => Promise<ReactNode>,
@@ -38,7 +43,12 @@ export function withRefusal<P>(
     try {
       return await page(props);
     } catch (e) {
-      if (e instanceof Refused) return <Refusal why={e.message} />;
+      if (e instanceof Refused) {
+        if (e.status === 401 || e.status >= 500) {
+          return <Unavailable why={e.message} />;
+        }
+        return <Refusal why={e.message} />;
+      }
       throw e;
     }
   };

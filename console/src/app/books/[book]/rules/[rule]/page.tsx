@@ -1,3 +1,4 @@
+import { withRefusal } from "@/components/Refusal";
 import { caller } from "@/lib/caller";
 import { or404 } from "@/lib/or404";
 import { getRule } from "@/wire/client";
@@ -5,7 +6,7 @@ import { getRule } from "@/wire/client";
 export const dynamic = "force-dynamic";
 
 /** One rule, as it will post. */
-export default async function RuleDetail({
+async function RuleDetail({
   params,
 }: {
   params: Promise<{ book: string; rule: string }>;
@@ -44,3 +45,5 @@ export default async function RuleDetail({
     </aside>
   );
 }
+
+export default withRefusal(RuleDetail);

@@ -1,3 +1,4 @@
+import { withRefusal } from "@/components/Refusal";
 import { caller } from "@/lib/caller";
 import { count } from "@/lib/format";
 import { or404 } from "@/lib/or404";
@@ -6,7 +7,7 @@ import { getDelivery } from "@/wire/client";
 export const dynamic = "force-dynamic";
 
 /** One file that arrived, and what came out of it. */
-export default async function DeliveryDetail({
+async function DeliveryDetail({
   params,
 }: {
   params: Promise<{ book: string; delivery: string }>;
@@ -45,3 +46,5 @@ export default async function DeliveryDetail({
     </aside>
   );
 }
+
+export default withRefusal(DeliveryDetail);
