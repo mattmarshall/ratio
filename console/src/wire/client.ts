@@ -136,10 +136,13 @@ export interface Caller {
    *
    * ⛔ THE ACCESS TOKEN, NOT A COGNITO ID TOKEN. AuthKit's `withAuth()` hands
    * this back; the gateway's JWT authorizer checks issuer
-   * `https://api.workos.com/user_management/{client_id}` (the `iss` session
-   * tokens mint; `https://api.workos.com/` has no OIDC discovery) and
-   * audience = the WorkOS client id. The hosted AuthKit UI on
-   * `auth.ratio.marsh.build` is not the token issuer. Membership matches
+   * `https://authapi.ratio.marsh.build/user_management/{client_id}` (the
+   * `iss` session tokens mint after the Auth API custom domain; OIDC
+   * discovery at `api.workos.com/user_management/{client_id}` publishes
+   * that issuer, it does not mint it). The hosted AuthKit UI on
+   * `auth.ratio.marsh.build` is the Connect issuer, not the session
+   * issuer. Audience = the WorkOS client id (`aud` from the JWT
+   * template, or `client_id` if `aud` is absent). Membership matches
    * on `sub`, email, or `org:{org_id}` at `Console::open_book`.
    *
    * ⚠ `RATIO_DEMO_OPEN=1` (local / CI) grants any authenticated AuthKit
