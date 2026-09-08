@@ -28,7 +28,10 @@ bounce once #253 landed. The 401-with-session leftover after #253
 was the console JWT authorizer still proving
 `api.workos.com/user_management/{client_id}` after the Auth API
 custom domain moved session `iss` to
-`authapi.ratio.marsh.build/user_management/{client_id}`. This
+`authapi.ratio.marsh.build/user_management/{client_id}`. Digest
+`3404496738` after that issuer pin was not a leftover 401 throw:
+`Who` called `initialsOf` from the client `Avatar` module once the
+API accepted the session and the header chip mounted. This
 file does not close #22. refuse phrases map to Connect issues or never. This
 file is the part that does not fit in an issue: what was learned, what
 is load-bearing, and what will bite. Wash sales have a Lean/TLA model

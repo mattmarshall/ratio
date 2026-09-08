@@ -1,3 +1,4 @@
+import { withRefusal } from "@/components/Refusal";
 import { caller } from "@/lib/caller";
 import { or404 } from "@/lib/or404";
 import { getTemplate } from "@/wire/client";
@@ -5,7 +6,7 @@ import { getTemplate } from "@/wire/client";
 export const dynamic = "force-dynamic";
 
 /** One mapping template, as it will read a row. */
-export default async function TemplateDetail({
+async function TemplateDetail({
   params,
 }: {
   params: Promise<{ book: string; template: string }>;
@@ -36,3 +37,5 @@ export default async function TemplateDetail({
     </aside>
   );
 }
+
+export default withRefusal(TemplateDetail);

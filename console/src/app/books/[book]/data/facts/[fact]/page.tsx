@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { withRefusal } from "@/components/Refusal";
 import { caller } from "@/lib/caller";
 import { or404 } from "@/lib/or404";
 import { getFact } from "@/wire/client";
@@ -6,7 +7,7 @@ import { getFact } from "@/wire/client";
 export const dynamic = "force-dynamic";
 
 /** One recorded fact, and the provenance a figure cites. */
-export default async function FactDetail({
+async function FactDetail({
   params,
 }: {
   params: Promise<{ book: string; fact: string }>;
@@ -68,3 +69,5 @@ export default async function FactDetail({
     </aside>
   );
 }
+
+export default withRefusal(FactDetail);
