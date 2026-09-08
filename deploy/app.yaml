@@ -63,7 +63,7 @@ Parameters:
       client id.
   WorkOsIssuer:
     Type: String
-    Default: "https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB"
+    Default: "https://authapi.ratio.marsh.build/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB"
     Description: >
       OIDC issuer the console HTTP API JWT authorizer checks. Must serve
       /.well-known/openid-configuration — CloudFormation fetches that
@@ -71,14 +71,20 @@ Parameters:
       a 404. The bare https://api.workos.com/ host does not have one
       (verified 2026-09-03), which is why every deploy since the WorkOS
       cut rolled back at Authorizer. AuthKit session access tokens (from
-      /user_management/authenticate) mint iss as
-      https://api.workos.com/user_management/{client_id} — Production
-      client_01M1JJZTFXFDZJ0XJM1NPNSEJB, no trailing slash. The custom
-      AuthKit domain https://auth.ratio.marsh.build is NOT this value —
-      session tokens do not mint that iss. Audience stays
-      WorkOsClientId. Do not point this at another product's AuthKit
-      domain. Connect access tokens use WorkOsConnectIssuer on a
-      second HTTP API (one JWT authorizer is one issuer).
+      /user_management/authenticate) mint iss as the Auth API custom
+      domain https://authapi.ratio.marsh.build/user_management/{client_id}
+      — Production client_01M1JJZTFXFDZJ0XJM1NPNSEJB, no trailing slash
+      (OIDC discovery verified 2026-09-08; Auth API domain verified
+      2026-09-06). The pre-domain host
+      https://api.workos.com/user_management/{client_id} still serves
+      discovery, but that document's issuer field is the Auth API host —
+      pointing the authorizer at api.workos.com 401s every session
+      bearer. The hosted AuthKit / Connect domain
+      https://auth.ratio.marsh.build is NOT this value — session tokens
+      do not mint that iss. Audience stays WorkOsClientId. Do not point
+      this at another product's AuthKit domain. Connect access tokens
+      use WorkOsConnectIssuer on a second HTTP API (one JWT authorizer
+      is one issuer).
   WorkOsConnectIssuer:
     Type: String
     Default: "https://auth.ratio.marsh.build"
@@ -391,11 +397,15 @@ Resources:
   #
   # ⛔ ONE JWT AUTHORIZER IS ONE ISSUER. AWS::ApiGatewayV2::Authorizer
   # JwtConfiguration.Issuer is a single string; CloudFormation will not
-  # OR two issuers. AuthKit session tokens mint iss under
-  # /user_management/{client_id}. WorkOS Connect access tokens mint iss
-  # as the AuthKit custom domain (WorkOsConnectIssuer). Pointing THIS
+  # OR two issuers. AuthKit session tokens mint iss as the Auth API
+  # custom domain (WorkOsIssuer —
+  # authapi.ratio.marsh.build/user_management/{client_id}). WorkOS
+  # Connect access tokens mint iss as the hosted AuthKit domain
+  # (WorkOsConnectIssuer — auth.ratio.marsh.build). Pointing THIS
   # authorizer at the Connect domain 401s every console session. Pointing
   # the Connect authorizer at this issuer 401s every Connect token.
+  # Pointing THIS authorizer at api.workos.com/user_management/{id}
+  # also 401s every session once the Auth API custom domain is live.
   # The honest split is a second HTTP API (ConnectApi below), same
   # Lambda, same /v1 path, Connect issuer. A route-key split on this
   # API would invent a second URL prefix the in-process accept path

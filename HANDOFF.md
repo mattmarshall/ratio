@@ -24,7 +24,12 @@ gateway refuses stays on `/books` as a status; `returnTo` cannot
 be the prompt; the PKCE verifier *and* the sealed `wos-session`
 ride `redirect()` from `next/navigation` — `handleAuth`'s own
 `NextResponse.redirect` after `cookies().set()` was the remaining
-bounce once #253 landed. This file does not close #22. refuse phrases map to Connect issues or never. This
+bounce once #253 landed. The 401-with-session leftover after #253
+was the console JWT authorizer still proving
+`api.workos.com/user_management/{client_id}` after the Auth API
+custom domain moved session `iss` to
+`authapi.ratio.marsh.build/user_management/{client_id}`. This
+file does not close #22. refuse phrases map to Connect issues or never. This
 file is the part that does not fit in an issue: what was learned, what
 is load-bearing, and what will bite. Wash sales have a Lean/TLA model
 and a Rust window (`RuleSet.wash_window_days`). `WashRestatement` is a
@@ -990,8 +995,9 @@ or `sidepocket:*`.
   `DEMO_MEMBERS` naming a live WorkOS `sub` and WorkOS dashboard
   registration remain. API Gateway JWT verifies Connect tokens
   on a second HTTP API (Connect `iss` =
-  `https://auth.ratio.marsh.build`; AuthKit session `iss` stays
-  `/user_management/{client_id}`). This file leaves #22 open
+  `https://auth.ratio.marsh.build`; AuthKit session `iss` is
+  `https://authapi.ratio.marsh.build/user_management/{client_id}`).
+  This file leaves #22 open
   for those leftovers.
 - ⚠ **A period-close walk-through (#114 / #27).** It can show a book period
   closed against a named view, journal prefix and configuration digest,

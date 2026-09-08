@@ -239,9 +239,11 @@ Two required on a laptop; four more on a Vercel deploy (AuthKit).
 
 ⭐ **WorkOS AuthKit is the sign-in path.** Cognito is not consulted. The
 console API Gateway JWT authorizer uses issuer
-`https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB`
-(the `iss` AuthKit session tokens mint; the bare `https://api.workos.com/`
-host has no OIDC discovery and must not be used). WorkOS Connect
+`https://authapi.ratio.marsh.build/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB`
+(the `iss` AuthKit session tokens mint after the Auth API custom
+domain; the bare `https://api.workos.com/` host has no OIDC discovery
+and must not be used; `https://api.workos.com/user_management/{client_id}`
+is the pre-domain host and 401s every session bearer). WorkOS Connect
 access tokens mint `iss` as `https://auth.ratio.marsh.build` and are
 verified on a second HTTP API (`ConnectApiUrl`), same `/v1` path,
 same audience (`WORKOS_CLIENT_ID`). One JWT authorizer cannot OR

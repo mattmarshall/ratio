@@ -150,20 +150,24 @@ It is not a secret. The Production id to put in the variable is
 **API Gateway** has two JWT issuers, because one authorizer cannot OR
 them. Session tokens use `WorkOsIssuer`. Default and workflow fallback
 are
-`https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB`
-— the `iss` AuthKit session access tokens mint (WorkOS JWT template
-preview for Production `client_01M1JJZTFXFDZJ0XJM1NPNSEJB`). Connect
+`https://authapi.ratio.marsh.build/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB`
+— the `iss` AuthKit session access tokens mint after the Auth API
+custom domain (OIDC discovery verified 2026-09-08). The pre-domain
+host `https://api.workos.com/user_management/{client_id}` is stale: it
+still serves discovery, but the document's issuer is the Auth API
+host, and API Gateway 401s every session bearer. Connect
 access tokens use `WorkOsConnectIssuer` on a second HTTP API
 (`ConnectApiUrl`). Default and workflow fallback are
-`https://auth.ratio.marsh.build` — the AuthKit custom domain, which
+`https://auth.ratio.marsh.build` — the hosted AuthKit domain, which
 serves OIDC discovery and `/oauth2/jwks`. The bare
 `https://api.workos.com/` host has no `/.well-known/openid-configuration`,
 and CloudFormation refuses it. Keep the custom-domain DNS; do not
-point the session authorizer at it, and do not point the Connect
-authorizer at the session path. Optional repository variables
+point the session authorizer at the Connect host, and do not point the
+Connect authorizer at the session path. Optional repository variables
 `WORKOS_ISSUER` and `WORKOS_CONNECT_ISSUER` override the defaults; the
-workflow rejects the bare WorkOS API host and rejects using the
-session issuer as the Connect issuer.
+workflow rejects the bare WorkOS API host, rejects using the
+Connect host as the session issuer, and treats the pre-AuthAPI
+`api.workos.com/user_management/…` host as stale.
 
 `WORKOS_API_KEY` is a secret (`sk_…`). Do not commit it. `/login` and
 `/api/auth/login` are the same initiate-login handler as `/sign-in`.
@@ -389,8 +393,9 @@ The split of responsibility is the load-bearing decision:
 - **Authentication** — "the token is real, unexpired, ours" — is the API
   Gateway JWT authorizer. DemoUrl proves `WorkOsIssuer` (production
   default
-  `https://api.workos.com/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB`,
-  the `iss` AuthKit session tokens mint). ConnectApiUrl proves
+  `https://authapi.ratio.marsh.build/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB`,
+  the `iss` AuthKit session tokens mint after the Auth API custom
+  domain). ConnectApiUrl proves
   `WorkOsConnectIssuer` (production default
   `https://auth.ratio.marsh.build`, the `iss` WorkOS Connect access
   tokens mint). Audience on both is `WorkOsClientId` (the same value as
@@ -398,7 +403,9 @@ The split of responsibility is the load-bearing decision:
   repository). One JWT authorizer is one issuer — that is why there
   are two HTTP APIs, same Lambda, same `/v1` path. The bare
   `https://api.workos.com/` host is not an OIDC issuer —
-  CloudFormation refuses it — and must not be passed. The server
+  CloudFormation refuses it — and must not be passed. The
+  pre-AuthAPI `api.workos.com/user_management/{client_id}` host is
+  stale and 401s every session bearer. The server
   does no crypto.
   The authorizer puts the verified claims on the request context, which
   the Lambda Web Adapter forwards as `x-amzn-request-context` — a header the

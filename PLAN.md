@@ -23,8 +23,9 @@ is an eight-week plan for a product nobody was buying.
 > catalog scopes on `/v1` (membership still required; never
 > `RATIO_DEMO_OPEN`; never `org:{id}`). API Gateway JWT verifies
 > Connect tokens on a second HTTP API (Connect `iss` =
-> `https://auth.ratio.marsh.build`; AuthKit session `iss` stays
-> `/user_management/{client_id}` — one authorizer cannot OR those).
+> `https://auth.ratio.marsh.build`; AuthKit session `iss` is
+> `https://authapi.ratio.marsh.build/user_management/{client_id}` —
+> one authorizer cannot OR those).
 > `RATIO_DEMO_OPEN` defaults off on the deployed demo — AuthKit
 > sessions isolate via membership. first-party Connect apps call
 > ConnectApiUrl. The demo API Lambda hydrates
@@ -798,7 +799,9 @@ is not the code path. AuthKit is in the code (#63). Vercel Production
 has the env (#68 closed). Write-route actor binding landed (#151).
 Connect tokens accepted with catalog scopes on `/v1`. API Gateway
 JWT verifies Connect tokens on the Connect HTTP API (AuthKit
-custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the
+custom-domain issuer). The console JWT authorizer proves the Auth
+API session issuer (`authapi.ratio.marsh.build/user_management/{client_id}`).
+`RATIO_DEMO_OPEN` defaults off on the
 deployed demo. first-party Connect apps call ConnectApiUrl.
 Unused Cognito CloudFormation resources are removed. Live
 leftovers remain on issue 22 — `DEMO_MEMBERS` naming a live
@@ -808,7 +811,10 @@ back to `/signin` (that 401-with-session loop is a status
 on `/books`). A completed AuthKit callback also no longer
 drops `wos-session` on `NextResponse.redirect` — the sealed
 cookie rides `redirect()` from `next/navigation`, the same
-door as the PKCE verifier on `/sign-in`. Do not
+door as the PKCE verifier on `/sign-in`. The leftover after
+#253 that was still a 401 *with* a session was the console
+authorizer proving the pre-AuthAPI host; that issuer pin is
+the Auth API custom domain now. Do not
 read this paragraph as production-complete, and do
 not read a walk-through as demo-ready (#27).
 
@@ -4613,3 +4619,97 @@ balance without inventing NAV, a missing strike leaving the
 Connect-side HTML blank rather than NAV 0.00, and
 `html_portal()` / `drip()` refusing. It cannot show a hosted LP
 product, a drip election, or an HTML portal inside `ratio watch`.
+
+### Amendment, 2026-09-08 — console JWT issuer is the Auth API custom domain
+
+The leftover on `/books` after #253 was not another login bounce.
+AuthKit had a session; `caller()` sent `withAuth().accessToken`;
+API Gateway 401d the bearer. WorkOS Auth API custom domain
+`authapi.ratio.marsh.build` was verified 2026-09-06. Session
+access tokens mint `iss` as
+`https://authapi.ratio.marsh.build/user_management/{client_id}`.
+OIDC discovery at the pre-domain host
+`https://api.workos.com/user_management/{client_id}` publishes that
+issuer (verified 2026-09-08). The console authorizer still proved
+the pre-domain host. JWT `aud` is already the WorkOS client id
+(dashboard template). Audience was not the refuse.
+
+What landed is the issuer pin, not a second IdP and not a Lambda
+authorizer:
+
+- `WorkOsIssuer` default and `deploy.yml` fallback are
+  `https://authapi.ratio.marsh.build/user_management/client_01M1JJZTFXFDZJ0XJM1NPNSEJB`.
+- A GitHub `WORKOS_ISSUER` still holding
+  `https://api.workos.com/user_management/{client_id}` is treated as
+  stale, not honored. The hosted AuthKit / Connect host
+  `https://auth.ratio.marsh.build` is refused as the session issuer.
+- Deploy fetches session OIDC discovery and fails if the resolved
+  issuer is not what that document publishes.
+- `//deploy:iac_test` fails if the console authorizer defaults to
+  the pre-AuthAPI host, if smoke still expects that host from
+  `WORKOS_ISSUER`, or if the workflow does not name it stale.
+
+**console JWT issuer is the Auth API custom domain** is the Built
+phrase this amendment adds.
+
+**What this is NOT, because leftovers stay named on issue 22:**
+
+- **Not naming a live WorkOS `sub` in `DEMO_MEMBERS`.** After the
+  gateway accepts the bearer, a subject not on the membership seed
+  still sees authorized-empty / "no fund" — that is 200 `[]`, not
+  this 401. Setting the repository variable is operator work.
+- **Not WorkOS dashboard registration** of Connect apps.
+- **Not the cookie bounce on `/callback`.** That leftover is a
+  separate console routing defect; the next amendment records it.
+  This issuer pin does not close it.
+- **Not live bank / calendar OAuth**, licensed AIA PDF, IRS e-file,
+  or a kernel blob store.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not close #22. It does not reopen #151. It does
+not finish #150.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a signed-in AuthKit operator whose session access token
+is accepted at DemoUrl `/v1` (no "This session is signed in, but the
+API did not accept it"). It cannot show seeded funds granted to a
+live WorkOS `sub` until an operator sets `DEMO_MEMBERS`, or a
+Connect-app walk-through without Dashboard registration.
+
+### Amendment, 2026-09-08 — AuthKit callback holds wos-session on redirect()
+
+#253 stopped treating a gateway 401 *with* a session as a missing
+session. That path never ran: `handleAuth` sealed `wos-session`
+with `cookies().set()` and then returned a new
+`NextResponse.redirect`. WorkOS finished, `caller()` saw no
+session, and the operator landed on `/signin` again — the same
+defect the PKCE verifier had on `/sign-in`.
+
+What landed:
+
+- `/callback` wraps `handleAuth` so a successful seal throws
+  `redirect()` from `next/navigation`. The sealed session is on
+  that 307.
+- The proxy skips `authkit()` on `/callback`, `/sign-in`,
+  `/login`, `/api/auth/login`, and `/api/auth/callback` so it
+  cannot mint a competing PKCE verifier during the exchange.
+
+**AuthKit callback holds wos-session on redirect()** is the Built
+phrase this amendment adds.
+
+**What this is NOT, because leftovers stay named on issue 22:**
+
+- **Not naming a live WorkOS `sub` in `DEMO_MEMBERS`.**
+- **Not WorkOS dashboard registration** of Connect apps.
+- **Not the console JWT issuer pin.** The previous amendment
+  records that. This cookie hold does not deploy the demo stack.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not close #22. It does not reopen #151. It does
+not finish #150.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a completed AuthKit callback that leaves the operator
+on `/books` with a session cookie. It cannot show a gateway-accepted
+bearer until the demo stack has the Auth API issuer pin, or seeded
+funds until an operator sets `DEMO_MEMBERS`.
