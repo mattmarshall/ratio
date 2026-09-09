@@ -369,8 +369,8 @@ impl S3 {
     }
 }
 
-impl Store for S3 {
-    fn put_if_absent(&self, key: &str, body: &str) -> Result<bool> {
+impl S3 {
+    fn put_bytes_if_absent(&self, key: &str, body: &[u8]) -> Result<bool> {
         let k = self.key(key);
         self.runtime.block_on(async {
             let r = self
@@ -381,7 +381,7 @@ impl Store for S3 {
                 // ⛔ THIS HEADER IS THE ENTIRE DOS CONTROL. Without it the call
                 // is an ordinary overwrite and every concurrent caller "wins".
                 .if_none_match("*")
-                .body(body.as_bytes().to_vec().into())
+                .body(body.to_vec().into())
                 .send()
                 .await;
             match r {
@@ -397,7 +397,7 @@ impl Store for S3 {
         })
     }
 
-    fn get(&self, key: &str) -> Result<Option<String>> {
+    fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let k = self.key(key);
         self.runtime.block_on(async {
             match self.client.get_object().bucket(&self.bucket).key(&k).send().await {
@@ -408,7 +408,7 @@ impl Store for S3 {
                         .await
                         .map_err(|e| aws(&format!("reading {k}"), e))?
                         .into_bytes();
-                    Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+                    Ok(Some(bytes.to_vec()))
                 }
                 Err(e) if e.as_service_error().map(|s| s.is_no_such_key()).unwrap_or(false) => {
                     Ok(None)
@@ -421,6 +421,17 @@ impl Store for S3 {
                 Err(e) => Err(aws(&format!("reading {k}"), e)),
             }
         })
+    }
+
+}
+
+impl Store for S3 {
+    fn put_if_absent(&self, key: &str, body: &str) -> Result<bool> {
+        self.put_bytes_if_absent(key, body.as_bytes())
+    }
+
+    fn get(&self, key: &str) -> Result<Option<String>> {
+        self.get_bytes(key)?.map(|bytes| String::from_utf8(bytes).context("S3 text object is not UTF-8")).transpose()
     }
 
     fn put(&self, key: &str, body: &str) -> Result<()> {
@@ -494,11 +505,10 @@ impl ratio_store::ObjectStore for S3 {
     /// is refused (`If-None-Match:*`) and retries; a blind PUT would overwrite
     /// an acked entry and the shortened journal would still tie.
     fn put_if_absent(&self, key: &str, body: &[u8]) -> Result<bool> {
-        let s = std::str::from_utf8(body).context("a journal object is utf-8")?;
-        Store::put_if_absent(self, key, s)
+        self.put_bytes_if_absent(key, body)
     }
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
-        Ok(Store::get(self, key)?.map(String::into_bytes))
+        self.get_bytes(key)
     }
     fn list(&self, prefix: &str) -> Result<Vec<String>> {
         Store::list(self, prefix)
@@ -1280,6 +1290,77 @@ impl<S: Store> Runs<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn s3_preserves_binary_objects_and_the_conditional_publication_header() {
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::net::TcpListener;
+        use ratio_store::ObjectStore;
+        let payload = vec![0, 255, 128, 10, 13, 42];
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        listener.set_nonblocking(true).unwrap();
+        let expected = payload.clone();
+        let server = std::thread::spawn(move || {
+            for (method, status, response) in [
+                ("PUT", "200 OK", Vec::new()),
+                ("PUT", "412 Precondition Failed", Vec::new()),
+                ("GET", "200 OK", expected.clone()),
+                ("GET", "404 Not Found", Vec::new()),
+                ("GET", "403 Forbidden", Vec::new()),
+                ("GET", "200 OK", expected.clone()),
+            ] {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+                let mut socket = loop {
+                    match listener.accept() {
+                        Ok((socket, _)) => break socket,
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(std::time::Instant::now() < deadline, "S3 request did not arrive");
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                        }
+                        Err(e) => panic!("{e}"),
+                    }
+                };
+                socket.set_read_timeout(Some(std::time::Duration::from_secs(15))).unwrap();
+                let mut reader = BufReader::new(socket.try_clone().unwrap());
+                let mut line = String::new(); reader.read_line(&mut line).unwrap();
+                assert!(line.starts_with(&format!("{method} /bucket/books/binary")), "{line}");
+                let mut headers = std::collections::BTreeMap::new();
+                loop {
+                    line.clear(); reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" { break; }
+                    let (key, value) = line.trim_end().split_once(':').unwrap();
+                    headers.insert(key.to_ascii_lowercase(), value.trim().to_string());
+                }
+                if headers.get("expect").map(String::as_str) == Some("100-continue") {
+                    socket.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").unwrap();
+                }
+                let mut body = vec![0; headers.get("content-length").map(|v|v.parse().unwrap()).unwrap_or(0)];
+                reader.read_exact(&mut body).unwrap();
+                if method == "PUT" {
+                    assert_eq!(headers.get("if-none-match").map(String::as_str), Some("*"));
+                    if status.starts_with("200") { assert_eq!(body, expected, "binary object bytes changed in transit"); }
+                    else { assert_eq!(body, b"loser"); }
+                }
+                write!(socket, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", response.len()).unwrap();
+                socket.write_all(&response).unwrap();
+            }
+        });
+        let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().unwrap();
+        let config = aws_sdk_s3::config::Builder::new()
+            .behavior_version(aws_config::BehaviorVersion::latest())
+            .region(aws_sdk_s3::config::Region::new("us-east-1"))
+            .credentials_provider(aws_sdk_s3::config::Credentials::new("test", "test", None, None, "test"))
+            .endpoint_url(endpoint).force_path_style(true).build();
+        let store = S3 { bucket: "bucket".into(), prefix: "books/".into(), client: aws_sdk_s3::Client::from_conf(config), runtime };
+        assert!(ObjectStore::put_if_absent(&store, "binary", &payload).unwrap());
+        assert!(!ObjectStore::put_if_absent(&store, "binary", b"loser").unwrap());
+        assert_eq!(ObjectStore::get(&store, "binary").unwrap(), Some(payload));
+        assert_eq!(ObjectStore::get(&store, "binary").unwrap(), None);
+        assert!(ObjectStore::get(&store, "binary").is_err());
+        assert!(Store::get(&store, "binary").is_err(), "text reads must refuse invalid UTF-8");
+        server.join().unwrap();
+    }
 
     fn runs(name: &str) -> Runs<Files> {
         let d = match std::env::var_os("TEST_TMPDIR") {

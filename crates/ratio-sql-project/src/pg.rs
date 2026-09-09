@@ -18,7 +18,7 @@ use anyhow::{bail, Result};
 use ratio_project::{relief, AsOf};
 
 use crate::{
-    fold_book_snapshot, refuse_replay_onto, AggregateRow, JournalPin, PositionRow, Snapshot,
+    fold_file_book_snapshot, refuse_replay_onto, AggregateRow, JournalPin, PositionRow, Snapshot,
     Watermark, SCHEMA_SQL,
 };
 
@@ -113,7 +113,11 @@ impl PgProjection {
     /// Fold `path`'s journal through the proved projection and replace every
     /// table for `book_id` in one transaction.
     pub fn replay_book(&self, book_id: &str, path: &Path) -> Result<Watermark> {
-        let snap = fold_book_snapshot(book_id, path)?;
+        self.replay_file_book(book_id, &ratio_store::FileBook::open(path)?)
+    }
+
+    pub fn replay_file_book(&self, book_id: &str, book: &ratio_store::FileBook) -> Result<Watermark> {
+        let snap = fold_file_book_snapshot(book_id, book)?;
         let pin = JournalPin {
             prefix: snap.watermark.prefix,
             digest: snap.watermark.digest.clone(),

@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package ratio.storage.v1;
+
+import "ratio/console/v1/console.proto";
+
+option java_multiple_files = true;
+option java_package = "com.fastverk.ratio.storage.v1";
+option java_outer_classname = "BootstrapProto";
+
+// Immutable initial book generation. Exact chart/config bytes are retained;
+// recovery never regenerates them from a newer binary's templates.
+message BookBootstrap {
+  // Only version 1 is supported. Zero is not a default version.
+  int32 format_version = 1;
+  string book_id = 2;
+  ratio.console.v1.Book.Kind kind = 3;
+  string display_name = 4;
+  bytes chart = 5;
+  string chart_digest = 6;
+  bytes config = 7;
+  string config_digest = 8;
+  string active = 9;
+  repeated string history = 10;
+  // An explicit authorization record, not an inference from book identity.
+  CreatorGrant creator_grant = 11;
+  // Creation attribution does not grant access by itself.
+  string creator_subject = 12;
+}
+
+// The initial grant. Later grant/revocation history needs its own protocol.
+message CreatorGrant {
+  string book_id = 1;
+  string subject = 2;
+}
+
+// The conditional claim at a book ID. This is the only discovery boundary.
+message BookPublication {
+  int32 format_version = 1;
+  string book_id = 2;
+  string bootstrap_digest = 3;
+}

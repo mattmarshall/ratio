@@ -134,7 +134,12 @@ impl ProjectionReads {
     /// [`Self::require_caught_up`] is true. An empty lot list from here is
     /// a holding that is empty at that prefix, not an unpinned invention.
     pub fn catch_up(&self, book_id: &str, path: &Path) -> Result<JournalPin> {
-        let pin = JournalPin::of_book(path)?;
+        self.catch_up_book(book_id, &FileBook::open(path)?)
+    }
+
+    /// Use the authorized book's backend for both the pin and the replay.
+    pub fn catch_up_book(&self, book_id: &str, book: &FileBook) -> Result<JournalPin> {
+        let pin = JournalPin::of(&book.entries()?)?;
         let mut inner = self.lock()?;
         match &mut *inner {
             ReadsInner::Sql(store) => {
@@ -142,7 +147,7 @@ impl ProjectionReads {
                     .watermark(book_id)
                     .is_some_and(|w| w.prefix == pin.prefix && w.digest == pin.digest);
                 if !caught {
-                    store.replay_book(book_id, path)?;
+                    store.replay_file_book(book_id, book)?;
                 }
                 store.require_caught_up(book_id, &pin)?;
             }
@@ -152,7 +157,7 @@ impl ProjectionReads {
                     .as_ref()
                     .is_some_and(|w| w.prefix == pin.prefix && w.digest == pin.digest);
                 if !caught {
-                    store.replay_book(book_id, path)?;
+                    store.replay_file_book(book_id, book)?;
                 }
                 store.require_caught_up(book_id, &pin)?;
             }

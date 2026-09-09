@@ -63,8 +63,8 @@ impl Console {
         let Some(store) = self.stage_e() else {
             return Ok(None);
         };
-        let path = self.book_path(fund)?;
-        let pin = store.catch_up(fund, &path)?;
+        let (_, book) = self.open_book(fund)?;
+        let pin = store.catch_up_book(fund, &book)?;
         Ok(Some((pin, store)))
     }
 }

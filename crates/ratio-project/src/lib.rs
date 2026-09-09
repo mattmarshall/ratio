@@ -1204,12 +1204,21 @@ impl Projection {
         path: &std::path::Path,
         on: &mut dyn FnMut(usize),
     ) -> Result<usize> {
+        let book = FileBook::open(path)?;
+        self.follow_book_with_progress(&book, on)
+    }
+
+    /// Follow the caller's explicit book/store, without reopening a global backend.
+    pub fn follow_book(&mut self, book: &FileBook) -> Result<usize> {
+        self.follow_book_with_progress(book, &mut |_| {})
+    }
+
+    fn follow_book_with_progress(&mut self, book: &FileBook, on: &mut dyn FnMut(usize)) -> Result<usize> {
         /// Matches `ratio_gen`'s `FLUSH_EVERY`: the generator writes in chunks of
         /// this, so a reader reporting on the same boundary reports on whole
         /// chunks rather than on an offset that means nothing to either side.
         const PROGRESS_EVERY: usize = 65_536;
 
-        let book = FileBook::open(path)?;
 
         // ⛔ TWO DIFFERENT QUESTIONS, TWO DIFFERENT SOURCES. Which views EXIST
         // comes from the ACTIVE configuration, read here, once per follow. How

@@ -46,6 +46,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 mod objects;
+pub mod bootstrap;
 pub use objects::{
     install_object_store, installed_object_store, DirStore, MemoryStore, ObjectStore, SeqLog,
 };
@@ -912,6 +913,7 @@ pub struct FileBook {
     /// where the seeded chart and config live; it is no longer the system
     /// of record for a write. `tla/S3Journal.tla`.
     objects: Option<(Arc<dyn ObjectStore>, String)>,
+    bootstrap: Option<bootstrap::BookBootstrap>,
 }
 
 /// An append-only plane beside the journal.
@@ -1000,7 +1002,7 @@ impl FileBook {
     /// The books index needs a count, not a trial balance.
     pub fn list_entry_count(root: &Path, store: Option<Arc<dyn ObjectStore>>) -> Result<u64> {
         let journal = root.join("journal.jsonl");
-        if journal.is_file() {
+        if journal.is_file() && !root.join(bootstrap::MARKER).exists() {
             let text = fs::read_to_string(&journal)
                 .with_context(|| format!("counting {}", journal.display()))?;
             return Ok(text.lines().filter(|l| !l.trim().is_empty()).count() as u64);
@@ -1019,11 +1021,22 @@ impl FileBook {
         store: Option<Arc<dyn ObjectStore>>,
     ) -> Result<Self> {
         let root = root.as_ref().to_path_buf();
+        let bootstrap = match &store {
+            Some(objects) if bootstrap::valid_book_id(&book_key(&root)) =>
+                bootstrap::BootstrapStore::new(objects.clone()).get(&book_key(&root))?,
+            _ => None,
+        };
+        if let Some((publication, state)) = &bootstrap {
+            bootstrap::materialize(&root, publication, state)?;
+        } else if root.join(bootstrap::MARKER).exists() {
+            bail!("durable book publication is unavailable; refusing local fallback");
+        }
         fs::create_dir_all(root.join("config"))
             .with_context(|| format!("creating book at {}", root.display()))?;
         let objects = store.map(|s| (s, book_key(&root)));
-        let book = FileBook { root, objects };
-        book.hydrate_objects()?;
+        let book = FileBook { root, objects, bootstrap: bootstrap.map(|(_, state)| state) };
+        // A published book never hydrates a baked seed into its journal.
+        if book.bootstrap.is_none() { book.hydrate_objects()?; }
         Ok(book)
     }
 
@@ -1139,6 +1152,10 @@ impl FileBook {
     /// it names dimensions rather than recording events.
     pub fn put_accounts(&mut self, accounts: &[Account]) -> Result<()> {
         let json = serde_json::to_string_pretty(accounts)?;
+        if let Some(state) = &self.bootstrap {
+            if json.as_bytes() != state.chart { bail!("durable chart changes require a publication protocol"); }
+            return Ok(());
+        }
         fs::write(self.accounts_path(), json).context("writing accounts")?;
         Ok(())
     }
@@ -1355,12 +1372,20 @@ impl FileBook {
 
 impl ConfigStore for FileBook {
     fn put(&mut self, bytes: &[u8]) -> Result<Digest> {
+        if let Some(state) = &self.bootstrap {
+            if bytes != state.config { bail!("durable configuration changes are not implemented"); }
+            return Digest::parse(&state.config_digest);
+        }
         self.configs()?.put(bytes)
     }
     fn get(&self, digest: &Digest) -> Result<Vec<u8>> {
         self.configs()?.get(digest)
     }
     fn set_active(&mut self, digest: &Digest) -> Result<()> {
+        if let Some(state) = &self.bootstrap {
+            if digest.as_str() != state.active { bail!("durable configuration promotion is not implemented"); }
+            return Ok(());
+        }
         self.configs()?.set_active(digest)
     }
     fn active(&self) -> Result<Option<Digest>> {

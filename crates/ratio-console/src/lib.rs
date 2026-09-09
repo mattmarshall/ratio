@@ -170,6 +170,8 @@ pub struct Console {
     /// operator is a member of nothing) rather than a refusal. `Unreadable` is
     /// the refusal: the membership file existed and could not be read.
     scope: Scope,
+    subject: Subject,
+    objects: Option<std::sync::Arc<dyn ratio_store::ObjectStore>>,
 
     /// Who a write on this console is attributed to. A `Member`'s stable id, or
     /// `RATIO_ACTOR` for the `Local` CLI/loopback console — resolved from the
@@ -213,6 +215,7 @@ impl Console {
             Scope::Unrestricted,
             std::env::var("RATIO_ACTOR").ok(),
             None,
+            Subject::Local,
         )
     }
 
@@ -247,7 +250,7 @@ impl Console {
             Some(a) => Some(a.to_string()),
             None => std::env::var("RATIO_ACTOR").ok(),
         };
-        Self::build(root, scope, actor, connect_grants_of(&subject))
+        Self::build(root, scope, actor, connect_grants_of(&subject), subject)
     }
 
     /// The console for an OPEN, shared demo: any authenticated subject sees
@@ -273,7 +276,7 @@ impl Console {
         // ⛔ OPEN IS AN AUTHKIT-ONLY DIAL. Connect never reaches this
         // constructor (`for_request` sends it to `scoped`), so the grant
         // set stays `None` — membership-unrestricted, not "every scope".
-        Self::build(root, Scope::Unrestricted, actor, None)
+        Self::build(root, Scope::Unrestricted, actor, None, subject)
     }
 
     /// The console the network server builds for one verified subject.
@@ -298,6 +301,7 @@ impl Console {
         scope: Scope,
         actor: Option<String>,
         connect_grants: Option<BTreeSet<String>>,
+        subject: Subject,
     ) -> Self {
         Console {
             root,
@@ -306,9 +310,36 @@ impl Console {
                 .and_then(|v| v.parse().ok()),
             projections: Default::default(),
             scope,
+            subject,
+            objects: installed_object_store(),
             actor,
             connect_grants,
             store: store::StoreMode::Memory,
+        }
+    }
+
+    /// Inject the backend before serving requests. The process-installed store
+    /// remains the default; tests and independent local readers can be explicit.
+    pub fn with_object_store(mut self, objects: std::sync::Arc<dyn ratio_store::ObjectStore>) -> Self {
+        self.objects = Some(objects);
+        self.projections = Default::default();
+        self
+    }
+
+    fn bootstrap(&self, id: &str) -> Result<Option<(ratio_store::bootstrap::BookPublication, ratio_store::bootstrap::BookBootstrap)>> {
+        let Some(objects) = &self.objects else { return Ok(None); };
+        let state = ratio_store::bootstrap::BootstrapStore::new(objects.clone()).get(id)?;
+        if let Some((_, bootstrap)) = &state { book::validate_bootstrap(bootstrap)?; }
+        Ok(state)
+    }
+
+    fn bootstrap_allows(&self, bootstrap: &ratio_store::bootstrap::BookBootstrap) -> bool {
+        match &self.subject {
+            Subject::Local => true,
+            Subject::Member { sub, connect: false, .. } => bootstrap.creator_grant.as_ref()
+                .map(|grant| !sub.is_empty() && grant.subject == *sub).unwrap_or(false),
+            // A creator grant is not a delegation to a Connect client.
+            Subject::Member { .. } => false,
         }
     }
 
@@ -364,7 +395,7 @@ impl Console {
     /// clone is of the folded TOTALS, not of the journal — a chart, not a
     /// history.
     pub fn projection(&self, fund: &str) -> Result<ratio_project::Projection> {
-        let path = self.book_path(fund)?;
+        let (_, book) = self.open_book(fund)?;
         let mut cache = self
             .projections
             .lock()
@@ -374,8 +405,9 @@ impl Console {
         // refuses — an append-only log does not shrink, so a shorter file at
         // this path is a different book. Start again rather than splice two
         // histories together.
-        if p.follow(&path).is_err() {
-            *p = ratio_project::Projection::of_book(&path)?;
+        if p.follow_book(&book).is_err() {
+            *p = ratio_project::Projection::new();
+            p.follow_book(&book)?;
         }
         Ok(p.clone())
     }
@@ -392,25 +424,43 @@ impl Console {
     /// Sorted by id rather than by anything derived, so the list does not
     /// reorder under an operator between two glances at the same screen.
     fn listed_ids(&self) -> Result<Vec<String>> {
-        let mut ids: Vec<String> = if self.root.join("accounts.json").is_file() {
-            vec!["demo".to_string()]
+        let mut candidates = BTreeSet::new();
+        if self.root.join("accounts.json").is_file() {
+            candidates.insert("demo".to_string());
         } else {
-            let mut v: Vec<String> = std::fs::read_dir(&self.root)
-                .with_context(|| format!("reading {}", self.root.display()))?
-                .filter_map(|e| e.ok())
-                .filter(|e| e.path().join("accounts.json").is_file())
-                .filter_map(|e| e.file_name().into_string().ok())
-                .collect();
-            v.sort();
-            v
-        };
-        // ⛔ WHAT THE CALLER MAY SEE, not what is on disk. An operator restricted
-        // to some books gets exactly those; an operator restricted to NONE gets
-        // an empty list — a valid answer, not a refusal, and the two must not
-        // look alike. `Unreadable` refuses here rather than emptying the list.
-        // `open_book` re-guards each id a list then reads, so this filter is the
-        // visible half of a boundary the storage layer enforces regardless of it.
-        self.scope.retain(&mut ids)?;
+            match std::fs::read_dir(&self.root) {
+                Ok(entries) => {
+                    for entry in entries {
+                        let entry = entry?;
+                        // Complete files in staging are not a discoverable book,
+                        // including debris left by a crash before the rename.
+                        if entry.file_name().to_string_lossy().starts_with(".bootstrap-") { continue; }
+                        if entry.path().join("accounts.json").is_file() || entry.path().join(ratio_store::bootstrap::MARKER).exists() {
+                            if let Ok(id) = entry.file_name().into_string() { candidates.insert(id); }
+                        }
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+                Err(e) => return Err(e).context("reading books root"),
+            }
+        }
+        if let Some(objects) = &self.objects {
+            candidates.extend(ratio_store::bootstrap::BootstrapStore::new(objects.clone()).ids()?);
+        }
+        let mut ids = Vec::new();
+        for id in candidates {
+            if let Some((publication, bootstrap)) = self.bootstrap(&id)? {
+                if self.bootstrap_allows(&bootstrap) {
+                    ratio_store::bootstrap::materialize(&self.root.join(&id), &publication, &bootstrap)?;
+                    ids.push(id);
+                }
+            } else {
+                if self.root.join(&id).join(ratio_store::bootstrap::MARKER).exists() {
+                    bail!("durable book publication is unavailable; refusing local fallback");
+                }
+                if self.scope.allows(&id)? { ids.push(id); }
+            }
+        }
         Ok(ids)
     }
 
@@ -423,11 +473,7 @@ impl Console {
     fn fund_ids(&self) -> Result<Vec<String>> {
         let mut ids = Vec::new();
         for id in self.listed_ids()? {
-            let path = if self.root.join("accounts.json").is_file() {
-                self.root.clone()
-            } else {
-                self.root.join(&id)
-            };
+            let path = self.book_path(&id)?;
             if book::BookMeta::load(&path, &id).fund.is_some() {
                 ids.push(id);
             }
@@ -441,6 +487,15 @@ impl Console {
         // joined to a path.
         if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
             bail!("{id:?} is not a fund id");
+        }
+        if let Some((publication, bootstrap)) = self.bootstrap(id)? {
+            if !self.bootstrap_allows(&bootstrap) { bail!("no fund {id:?}"); }
+            let path = self.root.join(id);
+            ratio_store::bootstrap::materialize(&path, &publication, &bootstrap)?;
+            return Ok(path);
+        }
+        if self.root.join(id).join(ratio_store::bootstrap::MARKER).exists() {
+            bail!("durable book publication is unavailable; refusing local fallback");
         }
         // ⛔ TENANCY IS ENFORCED HERE AND AT `open_book`. A path is not enough:
         // handlers open through `open_book` / `open_file_book` so a forgotten
@@ -494,10 +549,9 @@ impl Console {
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
         };
-        if !id.is_empty() && !self.scope.allows(id)? {
-            bail!("no fund {id:?}");
-        }
-        FileBook::open(path)
+        let authorized = self.book_path(id)?;
+        if authorized != path { bail!("book path is outside the serving root"); }
+        FileBook::open_with(path, self.objects.clone())
     }
 
     // ── Console methods ───────────────────────────────────────────────────
@@ -2983,7 +3037,7 @@ impl Console {
             fund: meta.fund.map(|f| format!("funds/{f}")).unwrap_or_default(),
             organization: meta.organization.unwrap_or_default(),
             default_view: effective.default_view(),
-            entry_count: FileBook::list_entry_count(&path, installed_object_store())? as i64,
+            entry_count: FileBook::list_entry_count(&path, self.objects.clone())? as i64,
             config_digest,
             trial_balance_difference: String::new(),
             budget: String::new(),
@@ -3027,7 +3081,7 @@ impl Console {
         let meta = book::BookMeta::load(&path, id);
         let (config_digest, set) = local_config(&path);
         let effective = set.clone().unwrap_or_default();
-        let entry_count = FileBook::list_entry_count(&path, installed_object_store())? as i64;
+        let entry_count = FileBook::list_entry_count(&path, self.objects.clone())? as i64;
         // Awaiting prices is the one state the index can name without a
         // fold: no lines, nothing to strike. Anything else is GetFund.
         let state = if entry_count == 0 {
@@ -3253,10 +3307,20 @@ impl Console {
         } else {
             spec.display_name.trim().to_string()
         };
-        let digest = book::initialize(&path, id, &display, kind)?;
-        if let Some(actor) = &self.actor {
-            book::grant(&self.root, actor, id)?;
-        }
+        let digest = if let Some(objects) = &self.objects {
+            let subject = match &self.subject {
+                Subject::Member { sub, connect: false, .. } if !sub.is_empty() => sub,
+                _ => bail!("durable book creation requires an authenticated creator subject"),
+            };
+            let bootstrap = book::bootstrap(id, &display, kind, subject)?;
+            let publication = ratio_store::bootstrap::BootstrapStore::new(objects.clone()).publish(&bootstrap)?;
+            ratio_store::bootstrap::materialize(&path, &publication, &bootstrap)?;
+            ratio_store::Digest::parse(&bootstrap.config_digest)?
+        } else {
+            let digest = book::initialize(&path, id, &display, kind)?;
+            if let Some(actor) = &self.actor { book::grant(&self.root, actor, id)?; }
+            digest
+        };
         // The grant is on disk; `scope` was computed at construction, so
         // do not call `open_book` here. The next request sees the grant.
         // Record who created it — the same CHANGELOG every other write uses.
@@ -6421,7 +6485,7 @@ fn budget_terms_of(path: &Path, kind: book::BookKind) -> (String, Vec<pb::Househ
 
 /// Authorized household spend from the configuration in force.
 fn household_terms_of(path: &Path) -> (String, Vec<pb::HouseholdEnvelope>) {
-    let Ok(b) = FileBook::open(path) else {
+    let Ok(b) = ratio_store::DirectoryConfigStore::open(path.join("config")) else {
         return (String::new(), Vec::new());
     };
     let Ok(Some(digest)) = b.active() else {
@@ -6455,7 +6519,7 @@ fn household_terms_of(path: &Path) -> (String, Vec<pb::HouseholdEnvelope>) {
 /// Empty when unset — a project whose configuration omits `[project] budget`,
 /// and a directory we cannot read. `0` is a set baseline of nothing.
 fn project_budget_of(path: &Path) -> String {
-    let Ok(b) = FileBook::open(path) else {
+    let Ok(b) = ratio_store::DirectoryConfigStore::open(path.join("config")) else {
         return String::new();
     };
     let Ok(Some(digest)) = b.active() else {
@@ -12020,13 +12084,13 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             }
         }
         assert!(
-            opens.iter().all(|(_, l)| l.contains("FileBook::open(path)")),
+            opens.iter().all(|(_, l)| l.contains("FileBook::open_with(path, self.objects.clone())")),
             "production FileBook::open must take an authorized Path, not a joined id: {opens:?}"
         );
         assert_eq!(
             opens.len(),
-            3,
-            "open_file_book plus household_terms_of and project_budget_of: {opens:?}"
+            1,
+            "only the open_file_book authorization door: {opens:?}"
         );
         assert!(
             !production
@@ -15430,3 +15494,6 @@ calendar = "wk"
         );
     }
 }
+
+#[cfg(test)]
+mod bootstrap_tests;
