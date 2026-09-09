@@ -31,7 +31,16 @@ custom domain moved session `iss` to
 `authapi.ratio.marsh.build/user_management/{client_id}`. Digest
 `3404496738` after that issuer pin was not a leftover 401 throw:
 `Who` called `initialsOf` from the client `Avatar` module once the
-API accepted the session and the header chip mounted. This
+API accepted the session and the header chip mounted. The next
+leftover after that issuer pin was honest, not a 401 in disguise:
+the first `/v1/books` a signed-in operator made hit a cold Lambda,
+which 503s `the journal is still hydrating` after 200ms so
+`/healthz` is never starved. `/version` and `/balance.json` on
+that same function were already 200 (14 entries, books tie) —
+the journal was not stuck, and empty membership is 200 `[]`.
+Deploy smoke already retried that body; the console painted the
+first 503 as a dead-end. The console now retries a hydrating 503
+the way smoke does. This
 file does not close #22. refuse phrases map to Connect issues or never. This
 file is the part that does not fit in an issue: what was learned, what
 is load-bearing, and what will bite. Wash sales have a Lean/TLA model
@@ -198,7 +207,8 @@ leftover #22 stays on WorkOS. This file closes #159. It
 closes #8.
 The demo API hydrates ScaleBucket `journals/` so CreateBook
 survives a cold start; this file does not reopen the #230
-`/tmp`-only wipe. Hydrate 503 is transient only.
+`/tmp`-only wipe. Hydrate 503 is transient only. The console
+retries that 503 the way deploy smoke does.
 
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 
@@ -991,7 +1001,8 @@ or `sidepocket:*`.
   Connect apps call ConnectApiUrl. The demo API Lambda hydrates
   ScaleBucket `journals/` (`RATIO_JOURNAL_BUCKET` /
   `RATIO_JOURNAL_PREFIX`) so CreateBook survives a cold start.
-  Hydrate 503 is transient only. The 40GB scale fold stays on
+  Hydrate 503 is transient only. The console retries that 503
+  the way deploy smoke does. The 40GB scale fold stays on
   Fargate ScaleTask. Scale keeps ScaleBucket.
   Leftover on
   #22: unused Cognito CloudFormation resources removed;
@@ -1282,7 +1293,7 @@ than one that is entirely unclassified.
 | `console/` | the console itself. Next.js on Vercel; ⛔ Bazel does not build it |
 | `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9. Stage E instantiates the sound preserved-side rewrite and the outer-join counterexample in-tree (`lean/Pg/Rel/Semantics.lean`, `lean/Ratio/Sql/Pushdown.lean`) so a rewrite elaborates here rather than citing a fetch |
 | `AGENTS.md` | the rules, for a person or a model, and the dispatch contract (one issue → one cloud agent → one PR). Replaces the two stale LLM guides |
-| `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Connect tokens accepted with catalog scopes on `/v1` after membership. Write-route actor = WorkOS `sub`; a Connect-shaped token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}` (#151). API Gateway JWT verifies Connect tokens on the Connect HTTP API (AuthKit custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the deployed demo. first-party Connect apps call ConnectApiUrl. The demo API Lambda hydrates ScaleBucket `journals/` (`RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX`) so CreateBook survives a cold start. Hydrate 503 is transient only. The 40GB scale fold stays on Fargate ScaleTask. Scale keeps ScaleBucket. Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation. leftover #22: unused Cognito CloudFormation resources removed; `DEMO_MEMBERS` naming a live WorkOS `sub` and WorkOS dashboard registration remain. Equalization, drip, and side-pocket stay Connect ([#177](https://github.com/mattmarshall/ratio/issues/177)) — existing scopes, no new grants; drip on #161; equalization / side-pocket apps not filed |
+| `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Connect tokens accepted with catalog scopes on `/v1` after membership. Write-route actor = WorkOS `sub`; a Connect-shaped token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}` (#151). API Gateway JWT verifies Connect tokens on the Connect HTTP API (AuthKit custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the deployed demo. first-party Connect apps call ConnectApiUrl. The demo API Lambda hydrates ScaleBucket `journals/` (`RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX`) so CreateBook survives a cold start. Hydrate 503 is transient only. The console retries that 503 the way deploy smoke does. The 40GB scale fold stays on Fargate ScaleTask. Scale keeps ScaleBucket. Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation. leftover #22: unused Cognito CloudFormation resources removed; `DEMO_MEMBERS` naming a live WorkOS `sub` and WorkOS dashboard registration remain. Equalization, drip, and side-pocket stay Connect ([#177](https://github.com/mattmarshall/ratio/issues/177)) — existing scopes, no new grants; drip on #161; equalization / side-pocket apps not filed |
 | `connect/bank-feed/` | First-party Connect app for Personal bank feeds ([#165](https://github.com/mattmarshall/ratio/issues/165)). Mapper + allowlist + closed-through / conservation refusals. first-party Connect apps call ConnectApiUrl; live bank OAuth is leftover. Does not close #165 |
 | `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — `Ratio.Lots.PoolPeriod`, not an invented FIFO oldest date or two Form 8949 boxes. first-party Connect apps call ConnectApiUrl; IRS e-file is refused. Does not close #166 |
 | `connect/goals/` | First-party Connect app for Personal net-worth goals and what-if scenarios ([#168](https://github.com/mattmarshall/ratio/issues/168)). Cites sheet / bridge / cash-flow; opt-in scenario journals on allowlisted Personal templates; closed-through and empty-allowlist refuse. first-party Connect apps call ConnectApiUrl. Not a cash forecast. Does not close #168 |

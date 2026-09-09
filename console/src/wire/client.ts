@@ -24,6 +24,7 @@ import "server-only";
 // the same contract from the other side. Hand-written and unchecked would be a
 // 404 found by a customer; hand-written and checked is a failing build.
 
+import { fetchUntilReady } from "./hydrate.js";
 import type {
   Account,
   AdmitFactsRequest,
@@ -160,7 +161,11 @@ async function send<T>(
   if (body !== undefined) headers["content-type"] = "application/json";
   if (caller.idToken) headers.authorization = `Bearer ${caller.idToken}`;
 
-  const r = await fetch(`${origin()}/v1${path}`, {
+  // ⛔ A HYDRATING 503 IS TRANSIENT, NOT A DEAD-END. After #255 the
+  // gateway accepted the session and the first `/v1/books` hit a cold
+  // Lambda; orTransient painted the 200ms-wait 503 as Unavailable while
+  // deploy smoke already retried that body. Empty membership is 200 `[]`.
+  const r = await fetchUntilReady(`${origin()}/v1${path}`, {
     method: body === undefined ? "GET" : "POST",
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),

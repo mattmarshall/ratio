@@ -32,7 +32,8 @@ is an eight-week plan for a product nobody was buying.
 > ScaleBucket `journals/` (`RATIO_JOURNAL_BUCKET` /
 > `RATIO_JOURNAL_PREFIX`) so CreateBook survives a
 > cold start. Hydrate 503 is transient only. The
-> 40GB scale fold stays on Fargate ScaleTask. Scale
+> console retries that 503 the way deploy smoke does.
+> The 40GB scale fold stays on Fargate ScaleTask. Scale
 > keeps ScaleBucket. Unused Cognito CloudFormation resources are
 > removed — AuthKit is the sole IdP. DemoUrl is
 > api.ratio.marsh.build (Demo HTTP API DomainName only;
@@ -324,6 +325,9 @@ The demo API Lambda hydrates ScaleBucket `journals/`
 CreateBook and other writes survive a cold start. Hydrate
 503 (“the journal is still hydrating”) is transient only
 — accept-during-hydrate / orTransient still apply. The
+console retries that 503 the way deploy smoke does, rather
+than painting the first cold-start answer as a lasting
+unavailable. The
 40GB scale fold stays on Fargate ScaleTask. Scale still
 uses ScaleBucket. Unused Cognito CloudFormation resources are
 removed. Live leftovers remain on issue 22 — `DEMO_MEMBERS`
@@ -4713,3 +4717,46 @@ It can show a completed AuthKit callback that leaves the operator
 on `/books` with a session cookie. It cannot show a gateway-accepted
 bearer until the demo stack has the Auth API issuer pin, or seeded
 funds until an operator sets `DEMO_MEMBERS`.
+
+### Amendment, 2026-09-09 — the console retries a hydrating 503
+
+After #253–#256 the operator stayed on `/books` with a session
+the gateway accepted. The first ListBooks then hit a cold
+Lambda: book routes wait 200ms and 503
+`the journal is still hydrating` with Retry-After: 2 so
+`/healthz` is never starved. `/version` and `/balance.json`
+were already 200 — the journal was not stuck, and empty
+membership is 200 `[]`, not this copy. Deploy smoke already
+retried that body up to 32s. The console painted the first
+503 as “The API is temporarily unavailable” / “Try again”,
+which is a lie when the journal is still opening.
+
+What landed:
+
+- `send()` retries a 503 whose body is the hydrate sentence,
+  honoring Retry-After, the same door deploy smoke uses.
+- A 503 that is not that sentence, a 401, and a 500 are
+  still answers — not a journal that will become ready.
+- Exhausted retries still surface as Unavailable (“The
+  journal is still opening.”), not `#441` and not `/signin`.
+
+**the console retries a hydrating 503** is the Built
+phrase this amendment adds.
+
+**What this is NOT, because leftovers stay named on issue 22:**
+
+- **Not naming a live WorkOS `sub` in `DEMO_MEMBERS`.**
+  Authorized-empty is 200 `[]`. This 503 was never that.
+- **Not WorkOS dashboard registration** of Connect apps.
+- **Not a stuck FileBook::open.** Live `/balance.json` tied.
+  A hydrate that never settles still exhausts to Unavailable.
+
+Nothing on the *Explicitly not building* list moved. This
+amendment does not close #22. It does not reopen #151. It
+does not finish #150. It does not redo #253–#256.
+
+**What a walk-through can and cannot show** (demo readiness, #27).
+It can show a signed-in operator whose first `/books` after a
+cold start waits for hydrate rather than a lasting unavailable.
+It cannot show seeded funds granted to a live WorkOS `sub`
+until an operator sets `DEMO_MEMBERS`.

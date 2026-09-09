@@ -3166,6 +3166,21 @@ mod tests {
             "503 must say why, got {books}"
         );
 
+        // ⭐ AUTHENTICATED `/v1/books` IS THE SAME DOOR. After the
+        // gateway accepted the session, the console's first ListBooks
+        // hit this 503. Skipping the wait for `/v1` would hang LWA
+        // the way #126 did; skipping the body would make the console
+        // paint a numeric 503 as a lasting unavailable.
+        let listed = probe(addr, "/v1/books");
+        assert!(
+            listed.contains("503 Service Unavailable"),
+            "ListBooks during hydrate must be 503, got {listed}"
+        );
+        assert!(
+            listed.contains("the journal is still hydrating"),
+            "ListBooks during hydrate must say why, got {listed}"
+        );
+
         drop(release_tx);
     }
 
