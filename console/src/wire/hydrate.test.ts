@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   fetchUntilReady,
+  gatewayWaitMs,
   hydrateWaitMs,
   HYDRATE_RETRY_LIMIT,
   HYDRATING,
@@ -62,6 +63,33 @@ describe("hydrate 503", () => {
     expect(wait).not.toHaveBeenCalled();
   });
 
+  it("an API Gateway concurrency refusal backs off and retries", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(json(503, { message: "Service Unavailable" }))
+      .mockResolvedValueOnce(json(200, { books: [] }));
+    const wait = vi.fn(async () => {});
+
+    const r = await fetchUntilReady("https://api.example/v1/books", {}, {
+      fetch,
+      wait,
+      random: () => 0.5,
+    });
+
+    expect(r.status).toBe(200);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(wait).toHaveBeenCalledWith(125);
+  });
+
+  it("does not turn an application 503 into a retry storm", async () => {
+    const fetch = vi.fn().mockResolvedValue(json(503, { message: "database unavailable" }));
+    const wait = vi.fn(async () => {});
+    const r = await fetchUntilReady("https://api.example/v1/books", {}, { fetch, wait });
+    expect(r.status).toBe(503);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(wait).not.toHaveBeenCalled();
+  });
+
   it("a 401 is not labeled as hydrating", () => {
     expect(isHydratingRefuse(401, HYDRATING)).toBe(false);
     expect(isHydratingRefuse(401, "Unauthorized")).toBe(false);
@@ -72,6 +100,11 @@ describe("hydrate 503", () => {
     expect(hydrateWaitMs("2")).toBe(2000);
     expect(hydrateWaitMs(null)).toBe(2000);
     expect(hydrateWaitMs("90")).toBe(5000);
+  });
+
+  it("caps the jittered gateway backoff", () => {
+    expect(gatewayWaitMs(0, () => 0.5)).toBe(125);
+    expect(gatewayWaitMs(20, () => 1)).toBe(2000);
   });
 
   it("exhausts the retry budget on a journal that never becomes ready", async () => {

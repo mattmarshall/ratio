@@ -5,7 +5,7 @@ import "server-only";
  *
  * ⛔ THIS IS NOT A MISSING SESSION AND NOT A FIGURE. After the JWT
  * authorizer accepted the bearer (#255), the first `/v1/books` a signed-in
- * operator made hit a cold Lambda. Book routes wait 200ms then answer
+ * operator made hit a cold Lambda. Book routes wait briefly then answer
  * 503 `{"error":"the journal is still hydrating"}` with Retry-After: 2
  * so `/healthz` is never starved. Deploy smoke already retries that body
  * up to 32s. The console painted the first 503 as a dead-end ("The API
@@ -40,16 +40,18 @@ export function hydrateWaitMs(retryAfter: string | null): number {
 export type FetchUntilReady = {
   fetch: typeof fetch;
   wait: (ms: number) => Promise<void>;
+  random?: () => number;
 };
 
 const defaultWait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
- * Replay a fetch while the journal is still hydrating.
+ * Replay a fetch while the journal is still hydrating or API Gateway says
+ * that no Lambda concurrency was available.
  *
- * ⭐ A 503 THAT IS NOT THIS SENTENCE IS NOT RETRIED. A rolling 500, a
- * gateway timeout with a numeric body, and a 401 are answers. Cloning
- * the hydrating response keeps `send()` able to read the last body.
+ * ⭐ ONLY THE TWO OBSERVED TRANSIENT ANSWERS ARE RETRIED. A rolling 500,
+ * an application 503, and a 401 are answers. Cloning the response keeps
+ * `send()` able to read the last body.
  */
 export async function fetchUntilReady(
   url: string,
@@ -59,22 +61,33 @@ export async function fetchUntilReady(
   let last: Response | undefined;
   for (let attempt = 0; attempt < HYDRATE_RETRY_LIMIT; attempt++) {
     last = await deps.fetch(url, init);
-    if (!isHydratingRefuse(last.status, await peekError(last))) {
+    const body = await peekError(last);
+    const hydrating = isHydratingRefuse(last.status, body.error);
+    const saturated = last.status === 503 && body.message === "Service Unavailable";
+    if (!hydrating && !saturated) {
       return last;
     }
     if (attempt === HYDRATE_RETRY_LIMIT - 1) {
       return last;
     }
-    await deps.wait(hydrateWaitMs(last.headers.get("retry-after")));
+    const wait = hydrating
+      ? hydrateWaitMs(last.headers.get("retry-after"))
+      : gatewayWaitMs(attempt, deps.random ?? Math.random);
+    await deps.wait(wait);
   }
   return last!;
 }
 
-async function peekError(r: Response): Promise<string | undefined> {
+/** Jitter prevents every saturated render from retrying on the same boundary. */
+export function gatewayWaitMs(attempt: number, random: () => number = Math.random): number {
+  const ceiling = Math.min(250 * 2 ** attempt, 2000);
+  return Math.max(1, Math.ceil(ceiling * random()));
+}
+
+async function peekError(r: Response): Promise<{ error?: string; message?: string }> {
   try {
-    const e = (await r.clone().json()) as { error?: string };
-    return e.error;
+    return (await r.clone().json()) as { error?: string; message?: string };
   } catch {
-    return undefined;
+    return {};
   }
 }

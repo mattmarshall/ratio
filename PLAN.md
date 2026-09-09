@@ -4735,7 +4735,7 @@ funds until an operator sets `DEMO_MEMBERS`.
 
 After #253–#256 the operator stayed on `/books` with a session
 the gateway accepted. The first ListBooks then hit a cold
-Lambda: book routes wait 200ms and 503
+Lambda: book routes wait up to 2s and 503
 `the journal is still hydrating` with Retry-After: 2 so
 `/healthz` is never starved. `/version` and `/balance.json`
 were already 200 — the journal was not stuck, and empty
