@@ -546,9 +546,11 @@ __STYLE__
           <code>journals/</code>
           (<code>RATIO_JOURNAL_BUCKET</code> /
           <code>RATIO_JOURNAL_PREFIX</code>) so CreateBook
-          survives a cold start. Hydrate 503 is transient
-          only. The console retries a hydrating 503 the way
-          deploy smoke does. The 40GB scale fold stays on Fargate
+          uses the durable journal. Complete metadata recovery
+          remains on #291. Pending hydration returns a retryable
+          503; a failed storage startup refuses book traffic
+          until restart (#293). Health and configuration endpoints
+          remain available. The 40GB scale fold stays on Fargate
           ScaleTask. Scale keeps ScaleBucket.
           Unused Cognito CloudFormation resources are removed.
           Console JWT issuer is the Auth API custom domain

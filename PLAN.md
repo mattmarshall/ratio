@@ -30,9 +30,11 @@ is an eight-week plan for a product nobody was buying.
 > sessions isolate via membership. first-party Connect apps call
 > ConnectApiUrl. The demo API Lambda hydrates
 > ScaleBucket `journals/` (`RATIO_JOURNAL_BUCKET` /
-> `RATIO_JOURNAL_PREFIX`) so CreateBook survives a
-> cold start. Hydrate 503 is transient only. The
-> console retries that 503 the way deploy smoke does.
+> `RATIO_JOURNAL_PREFIX`) for durable journal storage.
+> Complete created-book metadata recovery remains #291.
+> Pending hydration returns a retryable 503;
+> failed storage startup refuses book traffic until restart
+> ([startup contract](docs/durable-startup.md), #293).
 > The 40GB scale fold stays on Fargate ScaleTask. Scale
 > keeps ScaleBucket. Unused Cognito CloudFormation resources are
 > removed — AuthKit is the sole IdP. DemoUrl is
@@ -322,12 +324,14 @@ catalog scopes on `/v1`. `RATIO_DEMO_OPEN` defaults off on the
 deployed demo. first-party Connect apps call ConnectApiUrl.
 The demo API Lambda hydrates ScaleBucket `journals/`
 (`RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX`) so
-CreateBook and other writes survive a cold start. Hydrate
-503 (“the journal is still hydrating”) is transient only
-— accept-during-hydrate / orTransient still apply. The
-console retries that 503 the way deploy smoke does, rather
-than painting the first cold-start answer as a lasting
-unavailable. The
+CreateBook and other writes use the durable journal. Complete
+metadata recovery remains on #291. Pending hydration returns
+503 (“the journal is still hydrating”) with Retry-After.
+A failed store installation or book hydration refuses all book
+traffic until storage is corrected and the process restarts;
+health, version, and auth configuration remain available.
+The console retries only the pending-hydration response.
+See [durable startup](docs/durable-startup.md) (#293). The
 40GB scale fold stays on Fargate ScaleTask. Scale still
 uses ScaleBucket. Unused Cognito CloudFormation resources are
 removed. Live leftovers remain on issue 22 — `DEMO_MEMBERS`
