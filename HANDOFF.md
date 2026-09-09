@@ -53,7 +53,7 @@ custom domain moved session `iss` to
 API accepted the session and the header chip mounted. The next
 leftover after that issuer pin was honest, not a 401 in disguise:
 the first `/v1/books` a signed-in operator made hit a cold Lambda,
-which 503s `the journal is still hydrating` after 200ms so
+which waits up to 2s, then 503s `the journal is still hydrating` so
 `/healthz` is never starved. `/version` and `/balance.json` on
 that same function were already 200 (14 entries, books tie) —
 the journal was not stuck, and empty membership is 200 `[]`.

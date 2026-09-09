@@ -87,13 +87,13 @@ fn open_journal(book: &Path, install: impl FnOnce() -> Result<()>) -> Result<()>
 
 /// How long a book route waits for startup hydrate before 503.
 ///
-/// A laptop `FileBook::open` is milliseconds; a deployed hydrate after #84
-/// is one conditional PUT per seed line and can run for the life of a
-/// cold start. Waiting briefly still serves the first local request.
-/// Waiting for S3 would hold the connection until LWA times out — and
-/// API Gateway then 503s *every* route, including the ones that did
-/// not need the book.
-const BOOK_READY_WAIT: Duration = Duration::from_millis(200);
+/// The deployed seed normally attaches in about 1.5 seconds. Refusing after
+/// 200ms made the console retry through API Gateway, where each retry could
+/// create another cold Lambda and repeat the same refusal. Two seconds lets
+/// the request already assigned to the warming process finish, while staying
+/// well inside API Gateway's 30-second integration timeout. Diagnostic routes
+/// bypass this wait entirely.
+const BOOK_READY_WAIT: Duration = Duration::from_secs(2);
 
 /// How far startup hydrate has got.
 ///
@@ -3090,7 +3090,9 @@ mod tests {
         // this test rather than sit until CI times the suite out.
         let mut s = TcpStream::connect_timeout(&addr, Duration::from_secs(1))
             .expect("connect to the probe listener");
-        s.set_read_timeout(Some(Duration::from_secs(2)))
+        // Book routes deliberately have a two-second readiness budget. Leave
+        // margin around that boundary so the refusal itself can be observed.
+        s.set_read_timeout(Some(Duration::from_secs(3)))
             .expect("read timeout");
         s.set_write_timeout(Some(Duration::from_secs(2)))
             .expect("write timeout");

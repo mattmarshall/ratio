@@ -163,7 +163,7 @@ async function send<T>(
 
   // ⛔ A HYDRATING 503 IS TRANSIENT, NOT A DEAD-END. After #255 the
   // gateway accepted the session and the first `/v1/books` hit a cold
-  // Lambda; orTransient painted the 200ms-wait 503 as Unavailable while
+  // Lambda; orTransient painted the bounded-wait 503 as Unavailable while
   // deploy smoke already retried that body. Empty membership is 200 `[]`.
   const r = await fetchUntilReady(`${origin()}/v1${path}`, {
     method: body === undefined ? "GET" : "POST",
