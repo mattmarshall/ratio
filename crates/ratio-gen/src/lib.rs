@@ -916,7 +916,29 @@ mod tests {
     use super::*;
 
     fn tmp(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("ratio-gen-{name}"))
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+        // generate() removes its destination first. Two parallel tests both
+        // used "dated", so either could delete the other's ACTIVE mid-write.
+        // The process id also separates concurrent Bazel/worktree test runs.
+        let sequence = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("ratio-gen-{name}-{}-{sequence}", std::process::id()))
+    }
+
+    #[test]
+    fn parallel_tests_with_the_same_label_get_distinct_directories() {
+        let barrier = std::sync::Barrier::new(32);
+        let paths = std::thread::scope(|scope| {
+            let workers: Vec<_> = (0..32).map(|_| {
+                scope.spawn(|| {
+                    barrier.wait();
+                    [tmp("same-label"), tmp("same-label")]
+                })
+            }).collect();
+            workers.into_iter().flat_map(|worker| worker.join().unwrap())
+                .collect::<std::collections::BTreeSet<_>>()
+        });
+        assert_eq!(paths.len(), 64, "a generator may remove only its own test directory");
     }
 
     #[test]
