@@ -138,7 +138,7 @@ Begin(w) ==
                     acknowledgedHead, recovery, inFlight, tick>>
 
 StageConfig(w) ==
-    /\ phase[w] = "authorized"
+    /\ phase[w] = "authorized" /\ Live(w)
     /\ requests[w].payload.kind = "promote"
     /\ requests[w].payload.value \notin blobs
     /\ blobs' = blobs \cup {requests[w].payload.value}
@@ -315,16 +315,84 @@ Next ==
 
 Spec == Init /\ [][Next]_vars
 
+PayloadTypeOK(p) ==
+    /\ p.kind \in {"promote", "grant", "revoke"}
+    /\ p.value \in Configs \cup Subjects
+
+RequestTypeOK(r) ==
+    /\ r.book \in Books
+    /\ r.operationId \in Writers \cup {"same-operation"}
+    /\ r.actor \in Subjects
+    /\ r.expectedRevision \in 0..MaxRevision
+    /\ (r.expectedDigest = BootstrapDigest(r.book) \/
+          \E b \in Books : \E i \in 1..Len(streams[b]) :
+              r.expectedDigest = TransitionDigest(streams[b][i]))
+    /\ PayloadTypeOK(r.payload)
+
+TransitionTypeOK(t) ==
+    /\ t.revision \in 1..MaxRevision
+    /\ RequestTypeOK(t.request)
+
+StreamTypeOK(s) ==
+    /\ DOMAIN s = 1..Len(s)
+    /\ Len(s) \in 0..MaxRevision
+    /\ \A i \in 1..Len(s) : TransitionTypeOK(s[i])
+
+AuthorizationTypeOK(a) ==
+    /\ a.book \in Books
+    /\ a.subject \in Subjects
+    /\ StreamTypeOK(a.source)
+    /\ StreamTypeOK(a.snapshot)
+    /\ a.observed \in 0..MaxRevision
+    /\ a.floor \in 0..MaxRevision
+    /\ a.allowed \in BOOLEAN
+    /\ a.configDigest \in Configs
+    /\ a.deadline \in 0..(MaxTick + RequestWindow)
+
+BookStateTypeOK(s) ==
+    /\ s.revision \in 0..MaxRevision
+    /\ s.active \in Configs
+    /\ s.history \in Seq(Configs)
+    /\ s.members \subseteq Subjects
+
 TypeOK ==
     /\ observer \in {"recovery", "request"}
     /\ workload \in Workloads
     /\ DOMAIN streams = Books
-    /\ \A b \in Books : Len(streams[b]) \in 0..MaxRevision
+    /\ \A b \in Books : StreamTypeOK(streams[b])
     /\ blobs \subseteq Configs
+    /\ DOMAIN requests = Writers
+    /\ \A w \in Writers : (requests[w] = None \/ RequestTypeOK(requests[w]))
     /\ phase \in [Writers -> {"new", "authorized", "prepared", "committed", "acknowledged",
                               "refused", "conflict", "crashed", "expired"}]
     /\ target \in [Writers -> 0..MaxRevision]
+    /\ DOMAIN reply = Writers
+    /\ \A w \in Writers : (reply[w] = None \/ TransitionTypeOK(reply[w]))
+    /\ DOMAIN authorization = Writers
+    /\ \A w \in Writers :
+          (authorization[w] = None \/ AuthorizationTypeOK(authorization[w]))
+    /\ \A a \in acknowledged :
+          /\ RequestTypeOK(a.input)
+          /\ TransitionTypeOK(a.receipt)
     /\ acknowledgedHead \in [Books -> 0..MaxRevision]
+    /\ (recovery = None \/
+          /\ recovery.book \in Books
+          /\ StreamTypeOK(recovery.source)
+          /\ BookStateTypeOK(recovery.value)
+          /\ recovery.verified \subseteq Configs
+          /\ recovery.action \in {"recover", "seed"})
+    /\ (inFlight = None \/
+          /\ inFlight.auth.book \in Books
+          /\ inFlight.auth.subject \in Subjects
+          /\ StreamTypeOK(inFlight.auth.source)
+          /\ StreamTypeOK(inFlight.auth.snapshot)
+          /\ inFlight.auth.observed \in 0..MaxRevision
+          /\ inFlight.auth.floor \in 0..MaxRevision
+          /\ inFlight.auth.allowed \in BOOLEAN
+          /\ inFlight.auth.configDigest \in Configs
+          /\ inFlight.auth.deadline \in 0..(MaxTick + RequestWindow)
+          /\ inFlight.status \in {"authorized", "refused", "finished", "expired"}
+          /\ inFlight.finishedAt \in 0..MaxTick)
     /\ tick \in 0..MaxTick
 
 AcknowledgedTransitionsSurvive ==
