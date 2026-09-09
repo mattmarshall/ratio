@@ -208,6 +208,23 @@ for (const [path, landmark] of SCREENS) {
   checked++;
 }
 
+// Wrong-kind routes must show the refusal even when streaming returned a 200 shell.
+const REFUSED = [
+  ["/books/household/views/book/wip", '[aria-label="WIP capitalization"]'],
+  ["/books/household/views/book/billing", '[aria-label="Progress billing"]'],
+  [`/books/${F}/views/abor/sheet`, '[aria-label="Balance sheet"]'],
+  [`/books/${F}/views/abor/pnl`, '[aria-label="Period profit and loss"]'],
+  ["/books/bridge/transfer", 'form'],
+  ["/books/household/views/book/capital", '[aria-label="Capital activity"]'],
+];
+for (const [path, figure] of REFUSED) {
+  await page.goto(origin + path, { waitUntil: "networkidle" });
+  if (!(await page.getByText("No such thing here.", { exact: true }).isVisible())) {
+    fail(`${path}: the wrong-kind URL did not render the refusal`);
+  }
+  if (await page.locator(figure).count()) fail(`${path}: a refused figure or form rendered`);
+}
+
 // Seeded demo permalinks still resolve: the fund job URL lands on the book.
 {
   const legacy = `/funds/${F}/views/abor/breaks`;
@@ -226,5 +243,5 @@ api.close();
 if (process.exitCode) {
   console.error(`\n${SCREENS.length - checked ? "some screens failed to answer; " : ""}the console does not fit a phone`);
 } else {
-  console.log(`  ok  ${checked} screen(s) at 375px: no sideways scroll, every landmark visible`);
+  console.log(`  ok  ${checked} screen(s) and ${REFUSED.length} wrong-kind refusals at 375px: no sideways scroll, every landmark visible`);
 }

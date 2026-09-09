@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { offersTicket } from "@/lib/screens";
 import { caller } from "@/lib/caller";
-import { AuthError, markPositions, Refused } from "@/wire/client";
+import { AuthError, getBook, markPositions, Refused } from "@/wire/client";
 import type { MarkPositionsResponse } from "@/wire/types";
 
 export type MarkResult =
@@ -33,6 +34,11 @@ export async function mark(
 
   try {
     const c = await caller();
+    // Server Actions can be invoked without visiting their guarded page.
+    const b = await getBook(c, fund);
+    if (!offersTicket(b.kind, "mark")) {
+      return { ok: false, error: "This book does not support this mark action." };
+    }
     const response = await markPositions(c, fund, {
       valuationDate: {
         year: Number(m[1]),

@@ -360,3 +360,12 @@ export function screenHref(
     ? `/${root}/${id}/views/${view}/${s.segment}`
     : `/${root}/${id}/${s.segment}`;
 }
+
+/** Direct URLs and Server Actions use the same book-kind policy as navigation. */
+export function offersScreen(kind: BookKind, segment: string): boolean {
+  return screensFor(kind).some((screen) => screen.segment === segment);
+}
+
+export function offersTicket(kind: BookKind, segment: string): boolean {
+  return ticketsFor(kind).some((ticket) => ticket.segment === segment);
+}

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { offersTicket } from "@/lib/screens";
 import { caller } from "@/lib/caller";
 import {
   calendarDate,
@@ -10,7 +11,7 @@ import {
   TRADE_DATE,
   wholeUnits,
 } from "@/lib/trade";
-import { applyEvent, AuthError, Refused } from "@/wire/client";
+import { applyEvent, AuthError, getBook, Refused } from "@/wire/client";
 import type { ApplyEventResponse } from "@/wire/types";
 
 /** The ticket as it was sent, echoed back beside what the server made of it. */
@@ -97,6 +98,11 @@ export async function place(
 
   try {
     const who = await caller();
+    // Server Actions can be invoked without visiting their guarded page.
+    const b = await getBook(who, fund);
+    if (!offersTicket(b.kind, "trade")) {
+      return { ok: false, error: "This book does not support this trade action." };
+    }
     const response = await applyEvent(who, fund, {
       ruleId,
       // The reference is the event id, and that is what makes recording the

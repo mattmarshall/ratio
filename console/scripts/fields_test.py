@@ -433,7 +433,7 @@ NEEDLES: list[tuple[str, str]] = [
     # `.test.tsx` only.
     # ── investment capital activity (#70) ───────────────────────────────────
     (
-        "Capital activity is an Investment figure",
+        'requireScreen(b.kind, "capital")',
         "a personal or project book would inherit the fund capital screen",
     ),
     (

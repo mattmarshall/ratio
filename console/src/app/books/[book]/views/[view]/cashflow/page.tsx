@@ -1,5 +1,5 @@
+import { requireScreen } from "@/lib/screenAccess";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
@@ -59,7 +59,7 @@ async function CashFlow({
   const b = await getBook(c, book);
   const personal = b.kind === "PERSONAL";
   const operating = b.kind === "OPERATING";
-  if (!personal && !operating) notFound();
+  requireScreen(b.kind, "cashflow");
 
   const { accounts } = await listAccounts(c, book, view, "cashflow", window);
   const forecast = personal

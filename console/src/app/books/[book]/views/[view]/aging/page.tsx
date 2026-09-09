@@ -1,5 +1,5 @@
+import { requireScreen } from "@/lib/screenAccess";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
@@ -47,11 +47,9 @@ async function Aging({
   const year = utcYear();
   const last = previousMonth(month);
   const c = await caller();
-  const [b, aged] = await Promise.all([
-    getBook(c, book),
-    operatingAging(c, book, view, period || undefined),
-  ]);
-  if (b.kind !== "OPERATING") notFound();
+  const b = await getBook(c, book);
+  requireScreen(b.kind, "aging");
+  const aged = await operatingAging(c, book, view, period || undefined);
 
   const filters: readonly Filter[] = [
     { key: "", label: "Now" },

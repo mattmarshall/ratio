@@ -1,3 +1,4 @@
+import { requireScreen } from "@/lib/screenAccess";
 import Link from "next/link";
 import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
@@ -34,8 +35,9 @@ async function PnL({
   const { period = month } = await searchParams;
   const window = period || month;
   const c = await caller();
-  const [b, { accounts }, listed] = await Promise.all([
-    getBook(c, book),
+  const b = await getBook(c, book);
+  requireScreen(b.kind, "pnl");
+  const [{ accounts }, listed] = await Promise.all([
     listAccounts(c, book, view, "pnl", window),
     listPeriodCloses(c, book, view),
   ]);
