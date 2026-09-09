@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { offersTicket } from "@/lib/screens";
 import { caller } from "@/lib/caller";
 import { calendarDate, hundredths, TRADE_DATE } from "@/lib/trade";
-import { applyEvent, AuthError, Refused } from "@/wire/client";
+import { applyEvent, AuthError, getBook, Refused } from "@/wire/client";
 import type { ApplyEventResponse } from "@/wire/types";
 
 export type Result =
@@ -49,6 +50,11 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
 
   try {
     const c = await caller();
+    // Server Actions can be invoked without visiting their guarded page.
+    const b = await getBook(c, fund);
+    if (!offersTicket(b.kind, "transfer")) {
+      return { ok: false, error: "This book does not support this transfer action." };
+    }
     const response = await applyEvent(c, fund, {
       ruleId,
       eventId,

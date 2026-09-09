@@ -1,3 +1,4 @@
+import { requireScreen } from "@/lib/screenAccess";
 import Link from "next/link";
 import { caller } from "@/lib/caller";
 import {
@@ -7,7 +8,7 @@ import {
   projectRollup,
   wipFoots,
 } from "@/lib/project";
-import { listAccounts } from "@/wire/client";
+import { getBook, listAccounts } from "@/wire/client";
 import { withRefusal } from "@/components/Refusal";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,8 @@ async function Wip({
 }) {
   const { book, view } = await params;
   const c = await caller();
+  const b = await getBook(c, book);
+  requireScreen(b.kind, "wip");
   const { accounts } = await listAccounts(c, book, view);
   const r = projectRollup(accounts, "");
   const costs = ofType(accounts, "EXPENSE");

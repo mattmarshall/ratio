@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { isBudgetJournalRule } from "@/lib/budgetPost";
 import { caller } from "@/lib/caller";
 import { calendarDate, hundredths, TRADE_DATE } from "@/lib/trade";
-import { applyEvent, AuthError, Refused } from "@/wire/client";
+import { applyEvent, AuthError, getBook, Refused } from "@/wire/client";
 import type { ApplyEventResponse } from "@/wire/types";
 
 /** What the `/budget` post form gets back. ⛔ Never a thrown error — see `submit`. */
@@ -59,6 +59,11 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
 
   try {
     const c = await caller();
+    // Server Actions can be invoked without visiting their guarded page.
+    const b = await getBook(c, fund);
+    if (b.kind !== "PROJECT") {
+      return { ok: false, error: "This book does not support this budget action." };
+    }
     const response = await applyEvent(c, fund, {
       ruleId,
       eventId,

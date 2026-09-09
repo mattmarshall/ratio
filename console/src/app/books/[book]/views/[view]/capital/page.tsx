@@ -1,3 +1,4 @@
+import { requireScreen } from "@/lib/screenAccess";
 import Link from "next/link";
 import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
@@ -80,21 +81,7 @@ async function Capital({
   const { filter: raw = "capital" } = await searchParams;
   const c = await caller();
   const b = await or404(getBook(c, book));
-  if (b.kind !== "INVESTMENT") {
-    const kind =
-      b.kind === "PERSONAL"
-        ? "Personal"
-        : b.kind === "PROJECT"
-          ? "Project"
-          : b.kind === "OPERATING"
-            ? "Operating"
-            : "not an investment book";
-    return (
-      <div className="empty err" role="status">
-        Capital activity is an Investment figure — this book is {kind}.
-      </div>
-    );
-  }
+  requireScreen(b.kind, "capital");
 
   const month = utcMonth();
   const year = utcYear();

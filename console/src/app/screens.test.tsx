@@ -982,14 +982,12 @@ describe("a first-class book", () => {
   it("refuses capital activity on a personal book", async () => {
     const Capital = (await import("./books/[book]/views/[view]/capital/page"))
       .default;
-    await renderAsync(
+    await expect(
       Capital({
         params: params({ book: "household", view: "book" }),
         searchParams: params({}),
       }),
-    );
-    expect(screen.getByText(/Capital activity is an Investment figure/)).toBeDefined();
-    expect(screen.getByText(/Personal/)).toBeDefined();
+    ).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
     expect(screen.queryByLabelText("Capital activity")).toBeNull();
   });
 

@@ -1,5 +1,6 @@
+import { requireTicket } from "@/lib/screenAccess";
 import { caller } from "@/lib/caller";
-import { listRules } from "@/wire/client";
+import { getBook, listRules } from "@/wire/client";
 import { TransferForm } from "./TransferForm";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ export default async function Transfer({
 }) {
   const { book } = await params;
   const c = await caller();
+  const b = await getBook(c, book);
+  requireTicket(b.kind, "transfer");
   const { rules } = await listRules(c, book);
   const xfer = rules.filter((r) => r.ruleId.startsWith("xfer_"));
 

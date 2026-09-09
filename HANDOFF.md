@@ -171,9 +171,16 @@ fund-ops deep-links. Investment keeps the warehouse. One
 `screensFor` list. GetBook for every fund in `funds.json` must
 be INVESTMENT in `books.json` — the phone pass opens northstar
 strikes through `requireFundOps`, and falling back to the
-household fixture 404s those pages. Leftover typed `/wip` /
-`/billing` on Personal and typed `/sheet` / `/pnl` on Investment
-stay on #26. This file closes #175. It does not close #26.
+household fixture 404s those pages. The remaining kind-specific pages now
+use `requireScreen` / `requireTicket`, derived from `screensFor` /
+`ticketsFor`: WIP, billing, sheet, P&L, capital, and transfer reject a
+wrong-kind URL before reading figures or rules. Budget, billing, transfer,
+trade, and mark Server Actions check the current book kind again before
+preview or commit. Capital uses the same 404 as the other wrong-kind pages.
+The production browser suite exercises the refused URLs; the render/action
+matrix covers every kind, and removing the WIP guard fails its regression.
+Related: #175. Remaining work: #26 — period realized-gain selection and
+position/realized-gain denomination drilldowns still need delivery.
 Point-in-time / restatement reporting stays citeable (#186):
 console `/asof` browses a pinned prefix + config digest from a
 close or a strike, and WashRestatement as a citeable record

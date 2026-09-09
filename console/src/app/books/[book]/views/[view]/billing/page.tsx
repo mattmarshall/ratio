@@ -1,3 +1,4 @@
+import { requireScreen } from "@/lib/screenAccess";
 import Link from "next/link";
 import { caller } from "@/lib/caller";
 import {
@@ -55,6 +56,7 @@ async function Billing({
   const { book, view } = await params;
   const c = await caller();
   const b = await getBook(c, book);
+  requireScreen(b.kind, "billing");
   const p = await projectProgress(c, book, view);
   const { accounts } = await listAccounts(c, book, view);
   const contract = projectRollup(accounts, b.budget);

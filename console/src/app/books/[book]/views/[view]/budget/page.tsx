@@ -1,3 +1,4 @@
+import { requireScreen } from "@/lib/screenAccess";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FilterChips, type Filter } from "@/components/FilterChips";
@@ -63,6 +64,7 @@ async function Budget({
   const { book, view } = await params;
   const c = await caller();
   const b = await getBook(c, book);
+  requireScreen(b.kind, "budget");
   if (b.kind === "PERSONAL") {
     return householdBudget({ book, view, b, searchParams });
   }

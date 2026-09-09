@@ -245,12 +245,12 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/views/[view]/sheet",
     file: "books/[book]/views/[view]/sheet/page.tsx",
-    reads: ["listAccounts"],
+    reads: ["getBook", "listAccounts", "listPeriodCloses"],
   },
   {
     path: "/books/[book]/views/[view]/pnl",
     file: "books/[book]/views/[view]/pnl/page.tsx",
-    reads: ["listAccounts"],
+    reads: ["getBook", "listAccounts", "listPeriodCloses"],
   },
   {
     // ⭐ OPERATING ONLY. Due-date buckets on AR/AP control accounts.
@@ -282,7 +282,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/views/[view]/wip",
     file: "books/[book]/views/[view]/wip/page.tsx",
-    reads: ["listAccounts"],
+    reads: ["getBook", "listAccounts"],
   },
 
   // ── Positions ────────────────────────────────────────────────────────────
@@ -451,7 +451,7 @@ export const ROUTES: readonly Route[] = [
   {
     path: "/books/[book]/transfer",
     file: "books/[book]/transfer/page.tsx",
-    reads: ["listRules", "applyEvent"],
+    reads: ["getBook", "listRules", "applyEvent"],
   },
   // ⚠ AT THE CEILING, AND `?view=` IS WHY IT FITS. The holdings panel needs to
   // know which book its units and carrying values were read in; taking that from

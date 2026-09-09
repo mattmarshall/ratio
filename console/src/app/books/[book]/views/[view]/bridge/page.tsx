@@ -1,5 +1,5 @@
+import { requireScreen } from "@/lib/screenAccess";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
 import { periodLabel, previousMonth, utcMonth, utcYear } from "@/lib/dates";
@@ -50,7 +50,7 @@ async function Bridge({
   const window = period || month;
   const c = await caller();
   const b = await getBook(c, book);
-  if (b.kind !== "PERSONAL") notFound();
+  requireScreen(b.kind, "bridge");
 
   const { accounts } = await listAccounts(c, book, view, "bridge", window);
   const r = netWorthBridge(accounts, b.loans ?? []);

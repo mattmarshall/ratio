@@ -1,3 +1,4 @@
+import { requireScreen } from "@/lib/screenAccess";
 import Link from "next/link";
 import { FilterChips, type Filter } from "@/components/FilterChips";
 import { caller } from "@/lib/caller";
@@ -36,8 +37,9 @@ async function Sheet({
   const year = utcYear();
   const last = previousMonth(month);
   const c = await caller();
-  const [b, { accounts }, listed] = await Promise.all([
-    getBook(c, book),
+  const b = await getBook(c, book);
+  requireScreen(b.kind, "sheet");
+  const [{ accounts }, listed] = await Promise.all([
     listAccounts(
       c,
       book,

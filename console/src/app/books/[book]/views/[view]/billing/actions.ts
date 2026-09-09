@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { isBillingJournalRule } from "@/lib/billingPost";
+import { offersScreen } from "@/lib/screens";
 import { caller } from "@/lib/caller";
 import { calendarDate, hundredths, TRADE_DATE } from "@/lib/trade";
-import { applyEvent, AuthError, Refused } from "@/wire/client";
+import { applyEvent, AuthError, getBook, Refused } from "@/wire/client";
 import type { ApplyEventResponse } from "@/wire/types";
 
 /** What the `/billing` post form gets back. ⛔ Never a thrown error — see `submit`. */
@@ -60,6 +61,11 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
 
   try {
     const c = await caller();
+    // Server Actions can be invoked without visiting their guarded page.
+    const b = await getBook(c, fund);
+    if (!offersScreen(b.kind, "billing")) {
+      return { ok: false, error: "This book does not support this billing action." };
+    }
     const response = await applyEvent(c, fund, {
       ruleId,
       eventId,
