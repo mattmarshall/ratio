@@ -60,6 +60,15 @@ pub fn serve(book: &std::path::Path, input: impl BufRead, mut output: impl Write
 
 /// Handle one line. `None` for a notification, which must not be answered.
 pub fn handle_line(book: &std::path::Path, line: &str) -> Option<String> {
+    handle_line_with(book, line, false)
+}
+
+/// Handle one network request after the serving process completed hydration.
+pub fn handle_line_attached(book: &std::path::Path, line: &str) -> Option<String> {
+    handle_line_with(book, line, true)
+}
+
+fn handle_line_with(book: &std::path::Path, line: &str, attached: bool) -> Option<String> {
     let req: Value = match serde_json::from_str(line) {
         Ok(v) => v,
         // No id is recoverable from unparseable input, so this is the one case
@@ -79,7 +88,7 @@ pub fn handle_line(book: &std::path::Path, line: &str) -> Option<String> {
     let result = match method {
         "initialize" => Ok(initialize(&req)),
         "tools/list" => Ok(tools_list()),
-        "tools/call" => call_tool(book, &req),
+        "tools/call" => call_tool(book, &req, attached),
         "ping" => Ok(json!({})),
         other => {
             return Some(error_response(
@@ -287,7 +296,7 @@ fn tools_list() -> Value {
     ]})
 }
 
-fn call_tool(book: &std::path::Path, req: &Value) -> Result<Value> {
+fn call_tool(book: &std::path::Path, req: &Value, attached: bool) -> Result<Value> {
     let name = req
         .pointer("/params/name")
         .and_then(Value::as_str)
@@ -296,7 +305,7 @@ fn call_tool(book: &std::path::Path, req: &Value) -> Result<Value> {
         .pointer("/params/arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
-    let text = dispatch(book, name, &args)?;
+    let text = dispatch_with(book, name, &args, attached)?;
     Ok(json!({"content": [{"type": "text", "text": text}], "isError": false}))
 }
 
@@ -312,16 +321,25 @@ pub fn tools() -> Value {
 
 /// Run one tool by name. `Err` is a message meant for the model to read.
 pub fn dispatch(book: &std::path::Path, name: &str, args: &Value) -> Result<String> {
+    dispatch_with(book, name, args, false)
+}
+
+fn dispatch_with(
+    book: &std::path::Path,
+    name: &str,
+    args: &Value,
+    attached: bool,
+) -> Result<String> {
     let args = args.clone();
     let text = match name {
-        "list_accounts" => tool_list_accounts(book)?,
-        "propose_rule" => tool_propose_rule(book, &args)?,
-        "propose_template" => tool_propose_template(book, &args)?,
-        "list_entities" => tool_list_entities(book)?,
-        "check_rule" => tool_check_rule(book, &args)?,
-        "post_events" => tool_post_events(book, &args)?,
-        "trial_balance" => tool_trial_balance(book)?,
-        "explain_figure" => tool_explain_figure(book, &args)?,
+        "list_accounts" => tool_list_accounts(book, attached)?,
+        "propose_rule" => tool_propose_rule(book, &args, attached)?,
+        "propose_template" => tool_propose_template(book, &args, attached)?,
+        "list_entities" => tool_list_entities(book, attached)?,
+        "check_rule" => tool_check_rule(book, &args, attached)?,
+        "post_events" => tool_post_events(book, &args, attached)?,
+        "trial_balance" => tool_trial_balance(book, attached)?,
+        "explain_figure" => tool_explain_figure(book, &args, attached)?,
         // The fence, stated where a model will actually read it.
         "approve_rule" | "promote_config" | "set_active" => anyhow::bail!(
             "There is no such tool. Approving a rule is not something this server can do — \
@@ -333,10 +351,18 @@ pub fn dispatch(book: &std::path::Path, name: &str, args: &Value) -> Result<Stri
     Ok(text)
 }
 
+fn open_book(book: &std::path::Path, attached: bool) -> Result<FileBook> {
+    if attached {
+        FileBook::open_attached(book)
+    } else {
+        FileBook::open(book)
+    }
+}
+
 /// The master, so a model can see what a ladder can match on.
-fn tool_list_entities(book: &std::path::Path) -> Result<String> {
+fn tool_list_entities(book: &std::path::Path, attached: bool) -> Result<String> {
     use ratio_store::Plane;
-    let b = FileBook::open(book)?;
+    let b = open_book(book, attached)?;
     let master = ratio_ingest::current(&b.records::<ratio_ingest::Entity>(Plane::Entities)?);
     if master.is_empty() {
         return Ok("The master is empty. Every identity ladder will pend until \
@@ -366,7 +392,7 @@ fn tool_list_entities(book: &std::path::Path) -> Result<String> {
 /// ⛔ The dry run is the point. A person approving a mapping specification has
 /// to simulate it in their head; a person approving one they have SEEN RUN is
 /// reading an outcome. Same fence, better-informed approval.
-fn tool_propose_template(book: &std::path::Path, args: &Value) -> Result<String> {
+fn tool_propose_template(book: &std::path::Path, args: &Value, attached: bool) -> Result<String> {
     use ratio_store::Plane;
     let toml = args
         .get("toml")
@@ -405,7 +431,7 @@ fn tool_propose_template(book: &std::path::Path, args: &Value) -> Result<String>
     };
     let projection = ratio_ingest::project(template, &delivery, &rows, "draft");
 
-    let b = FileBook::open(book)?;
+    let b = open_book(book, attached)?;
     let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
     let resolved = ratio_ingest::resolve_all(&projection.facts, &master);
 
@@ -453,8 +479,8 @@ fn tool_propose_template(book: &std::path::Path, args: &Value) -> Result<String>
     Ok(out)
 }
 
-fn tool_list_accounts(book: &std::path::Path) -> Result<String> {
-    let b = FileBook::open(book)?;
+fn tool_list_accounts(book: &std::path::Path, attached: bool) -> Result<String> {
+    let b = open_book(book, attached)?;
     let accounts = b.accounts()?;
     if accounts.is_empty() {
         return Ok("The chart of accounts is empty. Run `ratio init` first.".into());
@@ -494,13 +520,13 @@ fn findings_text(set: &RuleSet, chart: &[ratio_store::Account]) -> (usize, Strin
     (errors, out)
 }
 
-fn tool_check_rule(book: &std::path::Path, args: &Value) -> Result<String> {
+fn tool_check_rule(book: &std::path::Path, args: &Value, attached: bool) -> Result<String> {
     let toml = args
         .get("toml")
         .and_then(Value::as_str)
         .context("check_rule needs `toml`")?;
     let set = RuleSet::from_toml(toml)?;
-    let b = FileBook::open(book)?;
+    let b = open_book(book, attached)?;
     let (errors, text) = findings_text(&set, &b.accounts()?);
     Ok(format!(
         "{text}\n{errors} error(s). {}",
@@ -512,13 +538,13 @@ fn tool_check_rule(book: &std::path::Path, args: &Value) -> Result<String> {
     ))
 }
 
-fn tool_propose_rule(book: &std::path::Path, args: &Value) -> Result<String> {
+fn tool_propose_rule(book: &std::path::Path, args: &Value, attached: bool) -> Result<String> {
     let toml = args
         .get("toml")
         .and_then(Value::as_str)
         .context("propose_rule needs `toml`")?;
     let set = RuleSet::from_toml(toml)?;
-    let b = FileBook::open(book)?;
+    let b = open_book(book, attached)?;
     let chart = b.accounts()?;
     let (errors, text) = findings_text(&set, &chart);
 
@@ -549,13 +575,13 @@ fn tool_propose_rule(book: &std::path::Path, args: &Value) -> Result<String> {
     ))
 }
 
-fn tool_post_events(book: &std::path::Path, args: &Value) -> Result<String> {
+fn tool_post_events(book: &std::path::Path, args: &Value, attached: bool) -> Result<String> {
     let events: Vec<Event> = serde_json::from_value(
         args.get("events").cloned().context("post_events needs `events`")?,
     )
     .context("`events` is not a list of events")?;
 
-    let mut b = FileBook::open(book)?;
+    let mut b = open_book(book, attached)?;
     let digest = b
         .active()?
         .context("no configuration is active — a person must approve one first")?;
@@ -598,8 +624,8 @@ fn tool_post_events(book: &std::path::Path, args: &Value) -> Result<String> {
     ))
 }
 
-fn tool_trial_balance(book: &std::path::Path) -> Result<String> {
-    let b = FileBook::open(book)?;
+fn tool_trial_balance(book: &std::path::Path, attached: bool) -> Result<String> {
+    let b = open_book(book, attached)?;
     let names: std::collections::BTreeMap<i64, String> = b
         .accounts()?
         .into_iter()
@@ -674,12 +700,12 @@ fn tool_trial_balance(book: &std::path::Path) -> Result<String> {
     Ok(out)
 }
 
-fn tool_explain_figure(book: &std::path::Path, args: &Value) -> Result<String> {
+fn tool_explain_figure(book: &std::path::Path, args: &Value, attached: bool) -> Result<String> {
     let dim = args
         .get("account")
         .and_then(Value::as_i64)
         .context("explain_figure needs `account`")?;
-    let b = FileBook::open(book)?;
+    let b = open_book(book, attached)?;
     let name = b
         .accounts()?
         .into_iter()
@@ -730,7 +756,7 @@ mod tests {
         seed_fee_rule(&book);
         post_one_accrual(&book);
 
-        let out = tool_trial_balance(&book).unwrap();
+        let out = tool_trial_balance(&book, false).unwrap();
         let active = FileBook::open(&book).unwrap().active().unwrap().unwrap();
         assert!(
             out.contains(active.as_str()),
@@ -749,7 +775,7 @@ mod tests {
         bump_rate(&book);
         post_one_accrual(&book);
 
-        let out = tool_trial_balance(&book).unwrap();
+        let out = tool_trial_balance(&book, false).unwrap();
         assert!(out.contains("spans a change"), "{out}");
         assert!(out.contains("2 configurations"), "{out}");
     }

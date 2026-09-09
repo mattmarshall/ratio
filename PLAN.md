@@ -4866,3 +4866,25 @@ complete backup/checkpoint coverage, original delivery retention, named
 operators, customer RPO/RTO, and an external restore drill with evidence.
 No recovery time or recovery point has been promised, and no production
 storage or BookKind semantics changed.
+
+### Amendment, 2026-09-09 — startup hydration is paid once per serving process
+
+Related: #306 and #291. A live warm `/balance.json` took about 1.55 seconds,
+and operators repeatedly saw the bounded hydrate refusal during Lambda cold
+starts. The request path reopened `FileBook` through the same door that
+publishes a baked legacy seed, so every read repeated remote seed-plane scans
+after the startup gate had already established readiness.
+
+The serving process now uses two explicit doors. Startup performs the legacy
+seed hydrate and marks Ready only after it succeeds. Requests admitted by that
+gate attach to the installed store without repeating seed publication. A
+durably published book still fetches, verifies, and materializes its bootstrap
+on every open; the optimization cannot conceal a changed control publication.
+Direct library and CLI callers retain the hydrating open by default.
+
+**startup hydration is paid once per serving process** is the Built phrase.
+An operation-count test fails if an attached open resumes scanning seed
+prefixes. Deploy smoke records a second warm balance-read duration so the
+regression is visible without asserting a brittle Internet latency ceiling.
+This does not replace #304's mutable control transitions or #300's evidence
+persistence.
