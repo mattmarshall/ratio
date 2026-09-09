@@ -34,6 +34,11 @@
 // chromium`, and a developer with a Chromium somewhere else points
 // CHROMIUM_PATH at it instead.
 //
+// ⛔ A VISIBLE PAGE CAN STILL BE BROKEN. AuthKit used to send a failing
+// Server Action from every local page while all 59 landmarks passed. Page
+// exceptions, console errors (including streamed render failures), and failed
+// background responses are part of this gate, not just the navigation status.
+//
 // Usage: node scripts/phone_test.mjs   (from console/, after `pnpm build`)
 
 import { spawn } from "node:child_process";
@@ -128,120 +133,191 @@ if (!existsSync(join(CONSOLE, ".next"))) {
   process.exit(1);
 }
 
-const api = await serve(API_PORT);
+let api;
+let app;
+let browser;
 
-const app = spawn("pnpm", ["exec", "next", "start", "-p", String(APP_PORT)], {
-  cwd: CONSOLE,
-  env: { ...process.env, RATIO_API_ORIGIN: `http://127.0.0.1:${API_PORT}` },
-  stdio: ["ignore", "pipe", "inherit"],
-});
-app.stdout.resume();
+try {
+  api = await serve(API_PORT);
 
-// Readiness is the server answering, not a line on stdout — Next has reworded
-// its banner between majors.
-const origin = `http://127.0.0.1:${APP_PORT}`;
-for (let tries = 0; ; tries++) {
-  try {
-    await fetch(`${origin}/funds`);
-    break;
-  } catch {
-    if (tries > 60) {
-      console.error("::error::next start never answered");
-      process.exit(1);
-    }
-    await new Promise((r) => setTimeout(r, 500));
-  }
-}
+  app = spawn(process.execPath, [join(CONSOLE, "node_modules/next/dist/bin/next"), "start", "-p", String(APP_PORT)], {
+    cwd: CONSOLE,
+    env: { ...process.env, RATIO_API_ORIGIN: `http://127.0.0.1:${API_PORT}` },
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  app.stdout.resume();
 
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || undefined,
-});
-const page = await browser.newContext({
-  // An iPhone 13 mini. isMobile matters: it is what makes Chromium apply the
-  // viewport meta the way a phone does.
-  viewport: { width: 375, height: 812 },
-  deviceScaleFactor: 3,
-  isMobile: true,
-  hasTouch: true,
-}).then((ctx) => ctx.newPage());
-
-let checked = 0;
-for (const [path, landmark] of SCREENS) {
-  const r = await page.goto(origin + path, { waitUntil: "networkidle" });
-  if (!r.ok()) {
-    fail(`${path}: HTTP ${r.status()}`);
-    continue;
-  }
-  const { overflow, sideScrollers, visible } = await page.evaluate((sel) => {
-    // The boxes that scroll sideways BY DESIGN — each one a deliberate "the
-    // row scrolls, the page does not" in globals.css.
-    const ALLOW = ".tb,.planscroll,.steps,.screens,textarea";
-    const sideScrollers = [];
-    for (const el of document.querySelectorAll("*")) {
-      const ox = getComputedStyle(el).overflowX;
-      if (
-        (ox === "auto" || ox === "scroll") &&
-        el.scrollWidth > el.clientWidth + 1 &&
-        !el.matches(ALLOW)
-      ) {
-        sideScrollers.push(
-          `${el.tagName.toLowerCase()}.${[...el.classList].join(".")} by ${
-            el.scrollWidth - el.clientWidth
-          }px`,
-        );
+  // Readiness is the server answering, not a line on stdout — Next has reworded
+  // its banner between majors.
+  const origin = `http://127.0.0.1:${APP_PORT}`;
+  for (let tries = 0; ; tries++) {
+    try {
+      if (app.exitCode !== null || app.signalCode !== null) {
+        throw new Error("next start exited before becoming ready");
       }
+      await fetch(`${origin}/funds`, { signal: AbortSignal.timeout(1000) });
+      break;
+    } catch {
+      if (tries > 60 || app.exitCode !== null || app.signalCode !== null) {
+        throw new Error("next start never answered");
+      }
+      await new Promise((r) => setTimeout(r, 500));
     }
-    const el = document.querySelector(sel);
-    return {
-      overflow:
-        document.documentElement.scrollWidth -
-        document.documentElement.clientWidth,
-      sideScrollers,
-      visible: !!el && el.getClientRects().length > 0,
-    };
-  }, landmark);
-  if (overflow > 0) fail(`${path}: the page scrolls sideways by ${overflow}px at 375px`);
-  for (const s of sideScrollers) {
-    fail(`${path}: ${s} scrolls sideways and is not one of the boxes designed to`);
   }
-  if (!visible) fail(`${path}: ${landmark} did not render, or is display:none`);
-  checked++;
-}
 
-// Wrong-kind routes must show the refusal even when streaming returned a 200 shell.
-const REFUSED = [
-  ["/books/household/views/book/wip", '[aria-label="WIP capitalization"]'],
-  ["/books/household/views/book/billing", '[aria-label="Progress billing"]'],
-  [`/books/${F}/views/abor/sheet`, '[aria-label="Balance sheet"]'],
-  [`/books/${F}/views/abor/pnl`, '[aria-label="Period profit and loss"]'],
-  ["/books/bridge/transfer", 'form'],
-  ["/books/household/views/book/capital", '[aria-label="Capital activity"]'],
-];
-for (const [path, figure] of REFUSED) {
-  await page.goto(origin + path, { waitUntil: "networkidle" });
-  if (!(await page.getByText("No such thing here.", { exact: true }).isVisible())) {
-    fail(`${path}: the wrong-kind URL did not render the refusal`);
+  browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM_PATH || undefined,
+  });
+  const page = await browser.newContext({
+    // An iPhone 13 mini. isMobile matters: it is what makes Chromium apply the
+    // viewport meta the way a phone does.
+    viewport: { width: 375, height: 812 },
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true,
+  }).then((ctx) => ctx.newPage());
+
+  // A wrong-kind document may deliberately answer 404. This exception is scoped
+  // to that navigation; a failed fetch/Server Action at the same URL still fails.
+  let expectedMissingDocument = null;
+  const diagnostics = [];
+  page.on("pageerror", (error) => diagnostics.push(`page exception: ${error.message}`));
+  page.on("response", (response) => {
+    if (response.status() < 400) return;
+    const request = response.request();
+    const expected = response.status() === 404 &&
+      request.isNavigationRequest() && request.resourceType() === "document" &&
+      response.url() === expectedMissingDocument;
+    if (!expected) {
+      diagnostics.push(`HTTP ${response.status()} ${request.method()} ${response.url()}`);
+    }
+  });
+  page.on("requestfailed", (request) => {
+    // Navigating can cancel an unused prefetch. HTTP error responses have their
+    // own event above; this ignores only the browser's explicit cancellation.
+    const headers = request.headers();
+    if (request.failure()?.errorText === "net::ERR_ABORTED" &&
+        (headers["next-router-prefetch"] === "1" || headers.purpose === "prefetch")) return;
+    diagnostics.push(`request failed: ${request.method()} ${request.url()} ${request.failure()?.errorText}`);
+  });
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    // Chromium also logs the deliberately refused document. The response event
+    // still rejects background errors, including a 404 at this same address.
+    const expected = message.location().url === expectedMissingDocument &&
+      /^Failed to load resource: the server responded with a status of 404 \(Not Found\)$/.test(message.text());
+    if (!expected) diagnostics.push(`browser console: ${message.text()}`);
+  });
+  function assertHealthy(path) {
+    if (diagnostics.length) {
+      throw new Error(`${path}: unexpected browser errors\n${[...new Set(diagnostics)].join("\n")}`);
+    }
   }
-  if (await page.locator(figure).count()) fail(`${path}: a refused figure or form rendered`);
-}
 
-// Seeded demo permalinks still resolve: the fund job URL lands on the book.
-{
-  const legacy = `/funds/${F}/views/abor/breaks`;
-  const r = await page.goto(origin + legacy, { waitUntil: "networkidle" });
-  if (!r || !r.ok()) fail(`${legacy}: HTTP ${r?.status()}`);
-  const landed = new URL(page.url()).pathname;
-  if (landed !== `/books/${F}/views/abor/breaks`) {
-    fail(`${legacy}: redirected to ${landed}, not the book URL`);
+  let checked = 0;
+  for (const [path, landmark] of SCREENS) {
+    const r = await page.goto(origin + path, { waitUntil: "networkidle" });
+    assertHealthy(path);
+    if (!r?.ok()) {
+      fail(`${path}: HTTP ${r?.status()}`);
+      continue;
+    }
+    const { overflow, sideScrollers, visible } = await page.evaluate((sel) => {
+      // The boxes that scroll sideways BY DESIGN — each one a deliberate "the
+      // row scrolls, the page does not" in globals.css.
+      const ALLOW = ".tb,.planscroll,.steps,.screens,textarea";
+      const sideScrollers = [];
+      for (const el of document.querySelectorAll("*")) {
+        const ox = getComputedStyle(el).overflowX;
+        if (
+          (ox === "auto" || ox === "scroll") &&
+          el.scrollWidth > el.clientWidth + 1 &&
+          !el.matches(ALLOW)
+        ) {
+          sideScrollers.push(
+            `${el.tagName.toLowerCase()}.${[...el.classList].join(".")} by ${
+              el.scrollWidth - el.clientWidth
+            }px`,
+          );
+        }
+      }
+      const el = document.querySelector(sel);
+      return {
+        overflow:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+        sideScrollers,
+        visible: !!el && el.getClientRects().length > 0,
+      };
+    }, landmark);
+    if (overflow > 0) fail(`${path}: the page scrolls sideways by ${overflow}px at 375px`);
+    for (const s of sideScrollers) {
+      fail(`${path}: ${s} scrolls sideways and is not one of the boxes designed to`);
+    }
+    if (!visible) fail(`${path}: ${landmark} did not render, or is display:none`);
+    // Exercise the provider's focus behavior too. A layout can look healthy
+    // until a user returns to the tab and the SDK checks a nonexistent session.
+    if (checked === 0) {
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await page.waitForLoadState("networkidle");
+      assertHealthy(path);
+    }
+    checked++;
   }
-}
 
-await browser.close();
-app.kill();
-api.close();
+  // Wrong-kind routes must show the refusal even when streaming returned a 200 shell.
+  const REFUSED = [
+    ["/books/household/views/book/wip", '[aria-label="WIP capitalization"]'],
+    ["/books/household/views/book/billing", '[aria-label="Progress billing"]'],
+    [`/books/${F}/views/abor/sheet`, '[aria-label="Balance sheet"]'],
+    [`/books/${F}/views/abor/pnl`, '[aria-label="Period profit and loss"]'],
+    ["/books/bridge/transfer", 'form'],
+    ["/books/household/views/book/capital", '[aria-label="Capital activity"]'],
+  ];
+  for (const [path, figure] of REFUSED) {
+    expectedMissingDocument = origin + path;
+    await page.goto(origin + path, { waitUntil: "networkidle" });
+    if (!(await page.getByText("No such thing here.", { exact: true }).isVisible())) {
+      fail(`${path}: the wrong-kind URL did not render the refusal`);
+    }
+    if (await page.locator(figure).count()) fail(`${path}: a refused figure or form rendered`);
+    assertHealthy(path);
+    expectedMissingDocument = null;
+  }
 
-if (process.exitCode) {
-  console.error(`\n${SCREENS.length - checked ? "some screens failed to answer; " : ""}the console does not fit a phone`);
-} else {
-  console.log(`  ok  ${checked} screen(s) and ${REFUSED.length} wrong-kind refusals at 375px: no sideways scroll, every landmark visible`);
+  // Seeded demo permalinks still resolve: the fund job URL lands on the book.
+  {
+    const legacy = `/funds/${F}/views/abor/breaks`;
+    const r = await page.goto(origin + legacy, { waitUntil: "networkidle" });
+    if (!r || !r.ok()) fail(`${legacy}: HTTP ${r?.status()}`);
+    assertHealthy(legacy);
+    const landed = new URL(page.url()).pathname;
+    if (landed !== `/books/${F}/views/abor/breaks`) {
+      fail(`${legacy}: redirected to ${landed}, not the book URL`);
+    }
+  }
+
+  if (process.exitCode) {
+    console.error(`\n${SCREENS.length - checked ? "some screens failed to answer; " : ""}the console failed its browser checks`);
+  } else {
+    console.log(`  ok  ${checked} screen(s) and ${REFUSED.length} wrong-kind refusals at 375px: no sideways scroll, every landmark visible, no unexpected browser errors`);
+  }
+
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+} finally {
+  // Cleanup must also run after launch/readiness/navigation failures. Starting
+  // Next directly avoids leaving a pnpm child server behind when a test fails.
+  if (browser) await browser.close().catch((error) => fail(`browser cleanup: ${error.message}`));
+  if (app && app.exitCode === null && app.signalCode === null) {
+    await new Promise((resolve) => {
+      const timer = setTimeout(() => app.kill("SIGKILL"), 5000);
+      app.once("exit", () => { clearTimeout(timer); resolve(); });
+      app.kill("SIGTERM");
+    });
+  }
+  if (api) {
+    api.closeAllConnections();
+    await new Promise((resolve) => api.close(resolve));
+  }
 }
