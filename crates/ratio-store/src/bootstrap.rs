@@ -234,7 +234,8 @@ pub fn materialize(
                 .with_context(|| format!("bootstrap cache file {name} is missing"))?;
             ensure!(
                 &got == expected,
-                "bootstrap cache differs at {name}; refusing to reset local state"
+                "bootstrap cache differs at {}; refusing to reset local state",
+                name
             );
         }
         Ok(())
