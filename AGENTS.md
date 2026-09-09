@@ -3,11 +3,13 @@
 Replaces `CLINE.md` and `custom-instructions-for-ratio.md`, both of which
 described a different program: a Rust/Python personal-finance TUI over
 PostgreSQL, with `sqlx`, `tui-rs`, and a `specs/` directory to implement
-against. None of that is true, and an agent bootstrapped on it will confidently
-build the wrong thing — and reach for a database, a Cargo build and a Python
-extension system that are not there.
+against. That architecture is obsolete. The journal remains the system of
+record; optional Postgres projections and Python Connect apps now exist,
+with different roles. Do not revive the old Cargo/TUI program.
 
-Read [HANDOFF.md](HANDOFF.md) first. It is the accurate document.
+Read [HANDOFF.md](HANDOFF.md) first, then its linked
+[current-state summary](docs/current-state.md). The summary records what is
+current; dated amendments preserve why it changed.
 
 This file is rules for working on the repository with an LLM: the kernel
 rules a coding agent must not break, and how **Grok Bot track agents** plus
@@ -81,9 +83,11 @@ issue that edits PLAN.
   the product — the risk PLAN.md already named.
 - **State leftovers explicitly.** What a walk-through still cannot show
   stays named on the issue it belongs to.
-- **Say "does not close #N"** when leftovers remain. Closing an issue
-  whose leftover is the next agent's work is how a green merge hides a
-  gap.
+- **Use `Related: #N` and `Remaining work: #N — <gap>` for partial work.**
+  A negation before a closing keyword does not prevent GitHub auto-closure.
+  Reserve closing keywords for a standalone completion line only after the
+  entire issue meets acceptance. Follow the [merge check](docs/issue-completion.md)
+  for the PR body, commit messages, and final merge message.
 - ⛔ **Never invent a `Method` / `Order` / `lot_method` variant** for
   MinTax, SpecID, average cost, or wash. Each is an election with its
   own shape (`min_tax_short_weight`, `identified_lots`, `average_cost`,
@@ -116,21 +120,20 @@ offers — **one list, not a binary fork of the kernel.**
 kind. Do not mint a chrome list per issue, and do not file a household
 or a job under a Fund so the old URLs keep working.
 
-### Wave hint
+### Current queue
 
-Sequencing for the track agents, not a license to assign a wave to one
-agent, and not a license to launch every row at once. The two-to-three
-cap still holds: pick from the wave, one issue each.
+The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
+[roadmap index #258](https://github.com/mattmarshall/ratio/issues/258) own the
+queue. Filter by the owning milestone and `status:ready`; phase and wave
+labels express sequencing, not permission to start blocked work. Do not
+copy a dated candidate list into an agent prompt.
 
-| Wave | Candidates (one issue → one agent → one PR) | Wait |
-|---|---|---|
-| **A** | #150 (Connect scopes) · #180 (partner allocation cut) · #151 (AuthKit write-route actor) · #183 (multi-kind demo seed) | — |
-| **B** | #181 (subscriptions / redemptions) | after #180 |
-| **Connect tracks** | portals, bank OAuth, G702, tax packs, EAC, and the rest of `layer:connect` | after #150 |
-
-#181 is `status:blocked` on #180 for a reason: unit movements that
-ignore the allocation cut invent the equal-split NAV PLAN already
-refused. Skip any candidate that is not `status:ready`.
+The September 4 A/B waves are historical: partner cuts, unit movements,
+write actors, and the multi-kind seed have landed. The Connect catalog's
+remaining tasks are separate issues. Read-only app hosting depends on that
+app's registration; write-capable apps additionally depend on the API
+allowlist. The LP portal's grant is already proven. Check the current issue
+before treating issue 22 or issue 150 as a blanket blocker.
 
 ---
 
@@ -142,7 +145,10 @@ TLA+ for staleness and concurrency, Rust for the running system. Some of the
 Rust is **emitted from the Lean**, so the theorem and the code are the same
 decision rather than two descriptions of one.
 
-There is no database. There is no Python. There is no TUI beyond a stub.
+The journal and content-addressed configuration are files. Postgres is an
+optional read projection selected by `RATIO_PG_URL`; it is not the book of
+record. First-party Connect apps in `connect/` use Python. The authenticated
+operations console in `console/` is Next.js. The old TUI is only a stub.
 
 ## Rules that are not negotiable
 

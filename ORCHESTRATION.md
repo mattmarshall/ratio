@@ -3,6 +3,11 @@
 Where production agents sit relative to the proofs: what verification owns,
 what agents may propose, and the doors between them.
 
+**Current implementation:** [docs/current-state.md](docs/current-state.md).
+The dated analysis below is design history; it does not create work outside
+the [roadmap](https://github.com/users/mattmarshall/projects/1). In particular,
+Connect scope reservations do not add human-only verbs to the API.
+
 **Written 2026-08-13.** Prompted by an external roadmap describing fifteen AI
 agents across a daily NAV production pipeline — trade capture through
 reconciliation, pricing, and close. This document determines how those ideas
@@ -125,10 +130,14 @@ configuration — and never trust in the author.
 
 ---
 
-## The doors, as they exist today
+## The doors described in the August 13 analysis
 
-Every surface an agent legitimately touches already exists, which is what
-makes the mapping in the next section short. Nothing below is aspiration.
+The table records the analysis at that date. RPC counts and line numbers
+are historical; the current route inventory is
+`crates/ratio-console/src/transcode.rs`, and
+[Current state](docs/current-state.md) records subsequent implementation.
+The model tool table remains `ratio_mcp::tools()`; adding an HTTP grant does
+not add a model tool.
 
 | | |
 |---|---|
@@ -487,14 +496,12 @@ Acceptance is a person's verb at an existing kind of door. The change log
 then shows two lines: the model authored the draft, the person performed the
 verb.
 
-⛔ **Nothing in this section is built by this document.** The additions it
-implies — an explanation message and field on `Break` in the console proto,
-one person-authenticated RPC to attach an accepted explanation, storage for
-the new proposal kind — are deliberate future changes with their own review.
-The hardcoded `explained: false` comes out *last*, when there is finally
-something true to report. And there is no MCP tool for acceptance, ever;
-this section exists so that when the verb is built, it is built to this
-shape and not to a more convenient one.
+⛔ **Current boundary:** `BreakExplanation` and person-attributed acceptance
+through `ratio accept` are built. Model-authored `propose_explanation` remains
+[work in #265](https://github.com/mattmarshall/ratio/issues/265). The earlier
+suggestion of an acceptance RPC is superseded: acceptance stays at the CLI,
+and no MCP tool or Connect scope opens it. A scope reserved for another
+route is not approval to change that fence.
 
 ---
 
@@ -503,13 +510,13 @@ shape and not to a more convenient one.
 | tier | what | status and gate |
 |---|---|---|
 | **built** | the authoring loop: say it, draft it, check it, answer back, approve. `propose_rule`, `propose_template`, `check_rule`, `explain_figure`, the fence, the chat agent on the same dispatch table. | PLAN.md Stage 2 ✅; `demo/rehearse.sh` asserts the fence. |
-| **nearest, and wedge-serving** | break-explanation proposals over recon output — the explanation disposition first. The site already claims the assistant "proposes reconciliations" and that verb is not built; the wedge's deliverable *is* an explained break list. | the only agent work that moves the plan's one open gap; site roadmap phase two. |
+| **proposal work, optional for the pilot** | model-authored break-explanation proposals over recon output; human acceptance is already built. | #265, sequenced in the GitHub project. A real customer period can be accepted with CLI evidence without waiting for this assistant feature. |
 | **later** | corporate-action interpretation; entity-setup proposals; the pricing challenger; tolerance into configuration, then proposed tolerance changes; connectors on `Delivery.origin`; `explain_figure` reaching NAV movements. | site phases two through four, each gated on a fund that needs it. |
 | **refused** | the list below, permanently. | — |
 
-None of this outranks the wedge. At one engineer, part-time, the only tier
-that may consume hours before a real customer's period reconciles is the
-second — and only because the site already claims it.
+None of this outranks the wedge. The GitHub project owns present sequencing.
+A statement on the site cannot authorize work that PLAN refuses or make an
+optional assistant feature a prerequisite to a real customer period.
 
 ---
 
