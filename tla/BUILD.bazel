@@ -2,6 +2,71 @@ load("@rules_tla//tla:defs.bzl", "tla_check", "tla_library")
 
 package(default_visibility = ["//visibility:public"])
 
+# Complete durable book bootstrap, published once. Staging cannot expose a
+# partial book or grant its losing creator membership. Related: #297 / #291.
+tla_library(
+    name = "book_publication",
+    srcs = ["BookPublication.tla"],
+)
+
+tla_check(
+    name = "book_publication_check",
+    size = "medium",
+    config = "MCBookPublication.cfg",
+    module = "MCBookPublication.tla",
+    deps = [":book_publication"],
+)
+
+# A later creator overwrites the acknowledged initial generation. AcknowledgedPublicationSurvives must fail.
+tla_check(
+    name = "book_publication_overwrite_check",
+    size = "medium",
+    config = "BookPublicationOverwrite.cfg",
+    module = "BookPublicationOverwrite.tla",
+    tags = ["manual"],
+    deps = [":book_publication"],
+)
+
+# A publication key exposes a bootstrap before every referenced object exists. PublishedBookComplete must fail.
+tla_check(
+    name = "book_publication_incomplete_check",
+    size = "medium",
+    config = "BookPublicationIncomplete.cfg",
+    module = "BookPublicationIncomplete.tla",
+    tags = ["manual"],
+    deps = [":book_publication"],
+)
+
+# ACTIVE borrows another creator's opening configuration. PublishedGenerationAgrees must fail.
+tla_check(
+    name = "book_publication_mixed_check",
+    size = "medium",
+    config = "BookPublicationMixed.cfg",
+    module = "BookPublicationMixed.tla",
+    tags = ["manual"],
+    deps = [":book_publication"],
+)
+
+# A missing or corrupt object is accepted as a default instead of refusing. ReaderHasVerifiedSnapshot must fail.
+tla_check(
+    name = "book_publication_defaults_check",
+    size = "medium",
+    config = "BookPublicationDefaults.cfg",
+    module = "BookPublicationDefaults.tla",
+    tags = ["manual"],
+    deps = [":book_publication"],
+)
+
+# Staged grant objects give a losing creator membership. ReaderGrantMatchesSnapshot must fail.
+tla_check(
+    name = "book_publication_staged_grant_check",
+    size = "medium",
+    config = "BookPublicationStagedGrant.cfg",
+    module = "BookPublicationStagedGrant.tla",
+    tags = ["manual"],
+    deps = [":book_publication"],
+)
+
 # ⛔ The properties Lean does not reach.
 #
 # `Ratio.Ingest` proves what resolution and parsing COMPUTE. It cannot say
