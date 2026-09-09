@@ -879,3 +879,78 @@ tla_check(
     tags = ["manual"],
     deps = [":pool_period_engine"],
 )
+
+# #303: immutable configuration and membership transitions after bootstrap.
+tla_library(
+    name = "durable_control",
+    srcs = ["DurableControl.tla"],
+)
+
+# Immutable control transitions preserve their predecessor, identity, and authorization.
+tla_check(
+    name = "durable_control_check",
+    size = "medium",
+    config = "MCDurableControl.cfg",
+    module = "MCDurableControl.tla",
+    deps = [":durable_control"],
+)
+
+# An unconditional slot PUT erases a previously acknowledged transition.
+tla_check(
+    name = "durable_control_overwrite_check",
+    size = "medium",
+    config = "DurableControlOverwrite.cfg",
+    module = "DurableControlOverwrite.tla",
+    tags = ["manual"],
+    deps = [":durable_control"],
+)
+
+# A stale operation is silently appended at a later head.
+tla_check(
+    name = "durable_control_predecessor_check",
+    size = "medium",
+    config = "DurableControlPredecessor.cfg",
+    module = "DurableControlPredecessor.tla",
+    tags = ["manual"],
+    deps = [":durable_control"],
+)
+
+# Acknowledgment before publication returns a transition that is not durable.
+tla_check(
+    name = "durable_control_early_ack_check",
+    size = "medium",
+    config = "DurableControlEarlyAck.cfg",
+    module = "DurableControlEarlyAck.tla",
+    tags = ["manual"],
+    deps = [":durable_control"],
+)
+
+# Operation ID alone is mistaken for an exact retry.
+tla_check(
+    name = "durable_control_retry_reuse_check",
+    size = "medium",
+    config = "DurableControlRetryReuse.cfg",
+    module = "DurableControlRetryReuse.tla",
+    tags = ["manual"],
+    deps = [":durable_control"],
+)
+
+# A fresh request reuses the bootstrap grant after a committed revocation.
+tla_check(
+    name = "durable_control_stale_auth_check",
+    size = "medium",
+    config = "DurableControlStaleAuth.cfg",
+    module = "DurableControlStaleAuth.tla",
+    tags = ["manual"],
+    deps = [":durable_control"],
+)
+
+# A baked seed resurrects a revoked creator.
+tla_check(
+    name = "durable_control_seed_reset_check",
+    size = "medium",
+    config = "DurableControlSeedReset.cfg",
+    module = "DurableControlSeedReset.tla",
+    tags = ["manual"],
+    deps = [":durable_control"],
+)
