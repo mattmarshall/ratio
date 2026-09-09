@@ -4823,3 +4823,22 @@ No live client has been granted templates by this change. WorkOS app
 registration and a live signed-in posting walkthrough remain on issue 22;
 reserved RPCs and the reference application remain on issue 150. Production
 read-only app grants continue without a template policy.
+
+### Amendment, 2026-09-09 — local console authentication and browser evidence
+
+Related: #285. The root layout uses the same `workosConfigured()` gate as the
+proxy and caller: local fixture mode has no active AuthKit client provider,
+while configured deployments keep it. No authorization check or production
+credential requirement changes. Console children currently use server-side
+principal reads rather than AuthKit client hooks.
+
+The production-build phone suite now fails on page exceptions, console errors
+(including streamed render failures), and unexpected background HTTP/Server
+Action failures. The six wrong-kind navigation checks allow only their named
+document 404; background 404/500 responses still fail. Cleanup runs after
+readiness, browser-launch, and navigation failures as well as success.
+
+The stronger gate failed on the previous implementation's `/books` Server
+Action (`withAuth` outside AuthKit middleware; HTTP 500). Layout regressions
+cover both local and configured mode. This is fixture/browser evidence, not a
+live login or customer acceptance: remaining work stays in #22 and #27.

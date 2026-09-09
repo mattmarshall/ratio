@@ -9,6 +9,16 @@ not the dispatch queue. Track current acceptance in the
 Do not copy historical closure prose into PRs or commit messages; use the
 [issue-completion convention](docs/issue-completion.md).
 
+Local console mode omits AuthKit middleware, so the root layout also omits
+`AuthKitProvider`. Mounting that provider without WorkOS configuration ran a
+session Server Action from every page and returned background 500s while the
+old phone test still passed its landmarks. Configured deployments retain the
+provider. The browser gate now rejects page exceptions, console errors from
+streamed failures, and unexpected HTTP/request failures; only each intentional
+wrong-kind document 404 is allowed. Readiness/navigation/launch failures clean
+up the browser and both local servers. Related: #285; remaining live operator
+and customer evidence stays in #22 and #27.
+
 **State**: bazel tests green, 33 `lean_test`, 49 `tla_check`, 30 `manual`
 probes all red for the reasons they name.
 
