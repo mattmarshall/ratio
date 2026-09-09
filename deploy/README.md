@@ -344,6 +344,13 @@ waterfall, a future call schedule, management-fee billing, an LP
 portal, or K-1 packaging. The live demo does not seed those baselines or any
 commitment postings.
 
+The [recovery inventory and local drill](../docs/recovery.md) distinguish the
+durable journal and published bootstrap from later operational evidence. A new
+book's chart, identity, kind, opening configuration, and creator grant are
+content-addressed under `_bootstrap/`. Later promotions and membership changes,
+NAV records, reports, and audit files remain follow-on work in #299/#300.
+Whole-book recovery objectives and an external restore drill remain on #264.
+
 `entrypoint.sh` copies the seeded chart and config to `/tmp` at start, because a
 Lambda filesystem is read-only elsewhere. **The demo API journal is S3
 `journals/` on ScaleBucket.** `RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX`

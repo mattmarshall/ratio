@@ -39,7 +39,7 @@ is an eight-week plan for a product nobody was buying.
 > ConnectApiUrl. The demo API Lambda hydrates
 > ScaleBucket `journals/` (`RATIO_JOURNAL_BUCKET` /
 > `RATIO_JOURNAL_PREFIX`) for durable journal storage.
-> Complete created-book metadata recovery remains #291.
+> Published bootstrap recovery is in place; later control and evidence remain #299/#300.
 > Pending hydration returns a retryable 503;
 > failed storage startup refuses book traffic until restart
 > ([startup contract](docs/durable-startup.md), #293).
@@ -333,7 +333,8 @@ deployed demo. first-party Connect apps call ConnectApiUrl.
 The demo API Lambda hydrates ScaleBucket `journals/`
 (`RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX`) so
 CreateBook and other writes use the durable journal. Complete
-metadata recovery remains on #291. Pending hydration returns
+published bootstrap recovery is in place; later control and evidence remain
+on #299/#300. Pending hydration returns
 503 (“the journal is still hydrating”) with Retry-After.
 A failed store installation or book hydration refuses all book
 traffic until storage is corrected and the process restarts;
@@ -4773,7 +4774,6 @@ cold start waits for hydrate rather than a lasting unavailable.
 It cannot show seeded funds granted to a live WorkOS `sub`
 until an operator sets `DEMO_MEMBERS`.
 
-
 ### Amendment, 2026-09-09 — issue completion and roadmap authority
 
 Related: #269. The current summary is [docs/current-state.md](docs/current-state.md),
@@ -4842,3 +4842,27 @@ The stronger gate failed on the previous implementation's `/books` Server
 Action (`withAuth` outside AuthKit middleware; HTTP 500). Layout regressions
 cover both local and configured mode. This is fixture/browser evidence, not a
 live login or customer acceptance: remaining work stays in #22 and #27.
+
+### Amendment, 2026-09-09 — recovery inventory and a disposable local drill
+
+Related: #264. The [recovery runbook](docs/recovery.md) inventories every
+authoritative book plane and separates it from rebuildable projections.
+`//crates/ratio-console:recovery_test` restores synthetic local books, their
+configuration history, recorded NAV, and membership, then rejects a changed
+journal digest even when the NAV is unchanged. It also rejects configuration
+bytes that no longer match their content address.
+
+The storage review records the boundary after #302: a published book's immutable
+bootstrap now preserves its chart, identity, kind, opening configuration, and
+creator grant under `_bootstrap/`. The journal and six append-only side planes
+remain durable per book. Later configuration promotions and membership changes,
+NAV records, reports/proposals, and CHANGELOG remain local. The object-only
+probe deliberately creates a legacy local book before attaching storage and
+shows that this compatibility path still cannot recover its control plane.
+
+Built: an inventory, an operator procedure to validate in isolation, and a
+local recovery drill. The full #264 work remains open: durable metadata,
+complete backup/checkpoint coverage, original delivery retention, named
+operators, customer RPO/RTO, and an external restore drill with evidence.
+No recovery time or recovery point has been promised, and no production
+storage or BookKind semantics changed.
