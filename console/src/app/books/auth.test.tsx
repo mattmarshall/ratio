@@ -181,4 +181,35 @@ describe("authenticated /books", () => {
     await renderAsync(BooksLayout({ children: null }));
     expect(screen.getAllByRole("status").length).toBeGreaterThan(0);
   });
+
+  // After #255 the gateway accepted the bearer. A cold Lambda then
+  // 503'd `the journal is still hydrating`. That is not a refused
+  // session (the bounce) and not a lasting "API unavailable". `send()`
+  // retries it; this is the exhausted leftover so Next never redacts it.
+  it("shows a hydrating 503 as a journal still opening, not a refused session", async () => {
+    vi.resetModules();
+    const { Refused } = await import("@/wire/client");
+    listBooks.mockRejectedValue(
+      new Refused(503, "the journal is still hydrating"),
+    );
+    listFunds.mockRejectedValue(
+      new Refused(503, "the journal is still hydrating"),
+    );
+    headersMock.mockResolvedValue(
+      new Headers({
+        "x-workos-middleware": "true",
+        "x-workos-session": "sealed",
+        "x-pathname": "/books",
+      }),
+    );
+
+    const { default: Books } = await import("./page");
+    await renderAsync(Books());
+    const status = screen.getByRole("status").textContent ?? "";
+    expect(status).toContain("still opening");
+    expect(status).toContain("still hydrating");
+    expect(status).not.toContain("the API did not accept it");
+    expect(status).not.toContain("temporarily unavailable");
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+  });
 });

@@ -351,7 +351,9 @@ must stay set on the `ratio-demo` Function: unset is `/tmp` only, and a cold
 start then wipes CreateBook (Household on ratio.marsh.build after #230). Hydrate
 503 `"the journal is still hydrating"` is transient — accept-during-hydrate /
 orTransient (#136/#137) still apply; `/healthz` and `/version` never wait;
-unauthenticated `/v1` 401s without waiting for the book. The ~40 GB scale fold
+unauthenticated `/v1` 401s without waiting for the book. The console retries
+that hydrate 503 the way deploy smoke does, rather than painting the first
+cold-start answer as a lasting unavailable. The ~40 GB scale fold
 stays on Fargate ScaleTask, not this Lambda. The measured 20M-lot
 *projection* fold (HANDOFF 10,000 × 2,000, not this journal) is
 `//crates/ratio-sql-project:fold_scale_test` and does not need these

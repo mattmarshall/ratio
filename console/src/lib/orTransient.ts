@@ -16,6 +16,11 @@ import { orAuth } from "./orAuth";
  * navigation. This sibling converts status ≥ 500 into a value the
  * page can render, and leaves a *missing* session to `orAuth`.
  *
+ * ⚠ A HYDRATING 503 IS RETRIED IN `send()`, NOT HERE. Folding the wait
+ * into this catch would retry every 5xx. `fetchUntilReady` retries only
+ * `the journal is still hydrating`; this helper still paints the
+ * exhausted leftover so Next cannot redact it to `#441`.
+ *
  * ⚠ 4xx `Refused` AND `NotFound` STILL THROW — except a 401 that
  * `orAuth` already rewrote as `SESSION_REFUSED`. That is a signed-in
  * operator whose bearer the gateway will not accept, and folding it
