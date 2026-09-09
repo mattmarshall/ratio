@@ -42,6 +42,23 @@ rust_test(
     edition = "2021",
 )
 
+rust_test(
+    name = "recovery_test",
+    size = "small",
+    srcs = ["tests/recovery.rs"],
+    crate_root = "tests/recovery.rs",
+    edition = "2021",
+    deps = [
+        ":ratio-console",
+        "//crates/ratio-nav",
+        "//crates/ratio-rules",
+        "//crates/ratio-store",
+        "//proto:ratio_rust_proto",
+        "@crates//:anyhow",
+        "@crates//:serde_json",
+    ],
+)
+
 # ⛔ The transcoder's routes are hand-written; this is what makes that safe.
 # It reads the descriptor set the protos compile to and asserts the route table
 # is exactly the set of google.api.http rules on the Console service — drift in
