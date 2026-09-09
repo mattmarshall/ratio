@@ -139,6 +139,7 @@ jobs:
           # fall back to a Cognito-era address that never appears on the token.
           # Operator leftover: set this to a live WorkOS `sub`.
           DEMO_MEMBERS: ${{ vars.DEMO_MEMBERS }}
+          CONNECT_TEMPLATE_GRANTS_BASE64: ${{ vars.CONNECT_TEMPLATE_GRANTS_BASE64 }}
           # Where the console is served from. A repository VARIABLE, like
           # DEMO_MEMBERS and for the same reason — a hostname is not a secret.
           # Production is https://ratio.marsh.build. Unset, or the retired
@@ -440,6 +441,7 @@ jobs:
               BuildSha="${GITHUB_SHA}" \
               ConsoleOrigin="${CONSOLE_ORIGIN}" \
               DemoMember="${DEMO_MEMBERS:-}" \
+              ConnectTemplateGrantsBase64="${CONNECT_TEMPLATE_GRANTS_BASE64:-}" \
               ScaleSender="${SCALE_SENDER}" \
               WorkOsClientId="${WORKOS_CLIENT_ID}" \
               WorkOsIssuer="${ISSUER}" \

@@ -4801,3 +4801,25 @@ boundary; the reservation alone is not a scope decision to change it.
 Remaining work: #150 — API allowlist, minimal reference app, and any separately
 approved scope decisions. The historical amendments above retain their
 original context; this amendment is the current interpretation.
+
+### Amendment, 2026-09-09 — Connect posts require an exact client template grant
+
+Related: #260 and #150. `ApplyEvent` now enforces the verified OAuth
+client, explicit BookKind, and exact template grant in operator-owned
+`CONNECT_GRANTS.pb`, before any event is compiled or appended. Missing or
+empty policy refuses every Connect post; malformed/unreadable policy and
+ambiguous client identity refuse. Both HTTP and direct service calls meet
+the same guard, and revocation applies to the next attempt. A grant still
+requires a rule in the book's active RuleSet and does not widen membership,
+closed-period, bounds, conservation, or actor attribution checks.
+
+**Connect posts require an exact client template grant** is the Built
+phrase. `calls:post` and `fees:accrue` only reach their own templates;
+`lots:elect` stays reserved because ApplyEvent cannot carry identified lot
+names. No new figure semantics, rule approval, or config promotion door.
+
+Demo evidence is the boundary suite and default-empty deployment wiring.
+No live client has been granted templates by this change. WorkOS app
+registration and a live signed-in posting walkthrough remain on issue 22;
+reserved RPCs and the reference application remain on issue 150. Production
+read-only app grants continue without a template policy.

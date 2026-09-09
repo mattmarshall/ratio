@@ -421,7 +421,9 @@ fn security_headers(
 /// ⛔ `membership could not be read` IS 403, NOT 200 WITH []. An authorized
 /// empty list and a refusal must not look alike on the wire either.
 fn v1_error_status(msg: &str) -> &'static str {
-    if msg.contains("membership could not be read") || msg.contains("scope `") {
+    if msg.contains("membership could not be read") || msg.contains("scope `")
+        || msg.contains("Connect post refused:")
+    {
         "403 Forbidden"
     } else if msg.contains("no fund")
         || msg.contains("no route")
@@ -3435,6 +3437,15 @@ mod tests {
             "400 Bad Request",
             "a refusal must not look like a malformed list request"
         );
+    }
+
+    #[test]
+    fn a_connect_template_refusal_is_forbidden_on_the_wire() {
+        for reason in ["verified client identity is required", "client is not granted template",
+            "posting scope is required", "template grants could not be read",
+            "template grants could not be decoded"] {
+            assert_eq!(v1_error_status(&format!("Connect post refused: {reason}")), "403 Forbidden");
+        }
     }
 
     #[test]

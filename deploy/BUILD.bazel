@@ -43,3 +43,12 @@ sh_test(
         "//crates/ratio",
     ],
 )
+
+# Exercise the real startup decoder; no signed-in caller can supply this policy.
+py_test(
+    name = "connect_grants_test",
+    size = "small",
+    srcs = ["connect_grants_test.py"],
+    args = ["$(location entrypoint.sh)", "$(location app.yaml)", "$(location //:.github/workflows/deploy.yml)"],
+    data = ["entrypoint.sh", "app.yaml", "//:.github/workflows/deploy.yml"],
+)

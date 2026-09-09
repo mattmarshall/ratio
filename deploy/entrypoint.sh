@@ -67,4 +67,12 @@ if [ -n "${RATIO_DEMO_MEMBER:-}" ] && [ -d "$FUNDS" ]; then
   done
 fi
 
+# Empty replaces a stale warm-container grant file with an empty policy.
+# Decode to a temporary sibling: a failed decode never installs a partial grant.
+# The protobuf is validated again by ApplyEvent; malformed policy refuses posts.
+if [ -d "$FUNDS" ]; then
+  printf '%s' "${RATIO_CONNECT_TEMPLATE_GRANTS_BASE64:-}" | base64 -d > "$FUNDS/CONNECT_GRANTS.pb.next"
+  mv "$FUNDS/CONNECT_GRANTS.pb.next" "$FUNDS/CONNECT_GRANTS.pb"
+fi
+
 exec /usr/local/bin/ratio watch --book "$BOOK" --port "${AWS_LWA_PORT:-8080}"

@@ -600,3 +600,51 @@ and reaches no AWS API.
   on 1.0 it sees a different event shape and every request 500s.
 - **`.dockerignore` is a blacklist on purpose.** The whitelist form (`*` then
   `!name`) shipped an empty demo book twice while everything looked green.
+
+
+### Connect template grants
+
+Connect `ApplyEvent` requires both the caller's frozen posting scope and
+an exact client + BookKind + template grant in the operator-owned
+`$RATIO_FUNDS/CONNECT_GRANTS.pb`. The subject still needs book membership.
+No request or Connect app can write that file. Missing, empty, malformed,
+or unreadable policy refuses posts; read-only Connect apps are unchanged.
+`calls:post` only permits `call_*`; `fees:accrue` only permits
+`management_fee_accrual`. `lots:elect` cannot post through ApplyEvent.
+
+The schema is `proto/ratio/console/v1/connect.proto`. An illustrative
+protobuf text-format input (synthetic client; **not a production grant**) is:
+
+```text
+ grants {
+   client_id: "client_example"
+   book_kind: KIND_PERSONAL
+   template_ids: "receive_income"
+ }
+```
+
+Use the configured Bazel protobuf toolchain to encode the reviewed policy
+(the encoder includes the complete descriptor closure):
+
+```sh
+bazel run //proto:encode_connect_grants < connect-grants.textproto > CONNECT_GRANTS.pb
+```
+
+For a local service, install the binary at the funds root by an atomic
+rename; the next post reads the new policy. For the deployed Lambda, set
+the reviewed binary's base64 encoding in the `CONNECT_TEMPLATE_GRANTS_BASE64`
+repository variable. Deploy passes it to CloudFormation's
+`ConnectTemplateGrantsBase64` parameter and the startup script decodes it
+into the funds root. Empty replaces any previous file with an empty policy;
+invalid base64 stops startup. An invalid protobuf refuses at ApplyEvent.
+No real client grant is seeded by the repository. Follow the deployment's
+normal review process for grant additions or revocations; running a test
+or merging the enforcement does not register a WorkOS application.
+
+Evidence: `//crates/ratio-console:ratio-console_test` exercises direct and
+HTTP post attempts, wrong client/kind/template, missing grants, missing
+identity, scope narrowing, membership, active rules, revocation, closed
+periods, bounds, conservation, and verified actor attribution.
+`//deploy:connect_grants_test` exercises startup installation and refusal.
+Live app registration and a signed-in posting walkthrough remain operator
+work on issue 22; the demo currently grants no client templates by default.

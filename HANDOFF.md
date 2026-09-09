@@ -227,6 +227,18 @@ Failed storage startup refuses book traffic until restart; see
 [the startup contract](docs/durable-startup.md) (#293). Complete
 metadata recovery remains on #291.
 
+## Connect write grants (2026-09-09)
+
+`Console::apply_event` requires a verified client + BookKind + exact
+active template grant from operator-owned `CONNECT_GRANTS.pb`. Missing,
+empty, ambiguous, malformed, or unreadable grants refuse, including direct
+service calls and previews. The next attempt observes revocation. Narrow
+call/fee scopes stay narrow; `lots:elect` grants no post until a request
+can express identified lots. Membership and the existing kernel checks
+remain in force. Deployment defaults to no client template grants.
+Related: #260. Live grant provisioning and the walkthrough remain on
+issue 22; the reference app and reserved RPCs remain on issue 150.
+
 ## ⛔ Both closed issues had a false premise, and finding it was most of the work
 
 **#4 said "the plumbing exists — this is rendering, not design".** It did not.
