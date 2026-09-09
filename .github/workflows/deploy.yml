@@ -638,7 +638,7 @@ jobs:
           # is the serving-process path and its duration makes a repeated seed
           # scan visible in deploy evidence without turning network variance
           # into a brittle threshold.
-          curl -sS -o /dev/null -w 'warm balance.json %{time_total}s\n' "${URL}balance.json"
+          curl -fsS -o /dev/null -w 'warm balance.json %{time_total}s\n' "${URL}balance.json"
           want "the proposal"  '"pending":[{'         "${URL}rules.json"
           # 2000.00 is deploy/seed-demo-book.sh's number.
           want "the break"     '"difference":"2000.00"' "${URL}breaks.json"
