@@ -649,7 +649,8 @@ fn handle(mut stream: TcpStream, book: &Path, hydrate: &HydrateGate) -> Result<(
                 let c = match subject {
                     Some(s) => ratio_console::Console::for_request(root, s, open),
                     None => ratio_console::Console::new(root),
-                };
+                }
+                .after_startup_hydration();
                 // ⚠ RATIO_PG_URL SET SERVES LOTS / POSITIONS / CURRENT
                 // AGGREGATES FROM THE STAGE E STORE. Unset keeps the
                 // in-memory fold. A URL that cannot be reached fails the
@@ -833,7 +834,7 @@ fn terminal_json(book: &Path, body: &str) -> Result<String> {
 
 /// The trial balance as the CLI prints it, for the terminal.
 fn balance_text(book: &Path) -> Result<String> {
-    let b = FileBook::open(book)?;
+    let b = FileBook::open_attached(book)?;
     // ⛔ COUNTED, NOT COLLECTED — the whole journal was held resident to print
     // one number in a header.
     let mut entry_count = 0usize;
@@ -921,7 +922,7 @@ fn chat_json(book: &Path, body: &str) -> Result<String> {
 /// kernel exists to prevent — a figure that has been exact all the way through
 /// should not meet a float in the last six inches of its journey.
 fn balance_json(book: &Path) -> Result<String> {
-    let b = FileBook::open(book)?;
+    let b = FileBook::open_attached(book)?;
     // ⛔ COUNTED, NOT COLLECTED — see the note on the screen above.
     let mut entry_count = 0usize;
     b.for_each_entry_since(0, &mut |_| {
@@ -1333,7 +1334,7 @@ fn postings_json(book: &Path, query: &str) -> Result<String> {
         .parse()
         .context("account must be a number")?;
 
-    let b = FileBook::open(book)?;
+    let b = FileBook::open_attached(book)?;
     let mut rows = Vec::new();
     let mut net = 0i64;
     // ⛔ STREAMED. Reading back the postings behind ONE account never needed the
@@ -1455,7 +1456,7 @@ fn breaks_json(book: &Path) -> Result<String> {
 
 /// The active rules, their checks, and anything still waiting on a person.
 fn rules_json(book: &Path) -> Result<String> {
-    let b = FileBook::open(book)?;
+    let b = FileBook::open_attached(book)?;
     let chart = b.accounts()?;
     let digest = b.active()?;
     let set = match &digest {

@@ -172,6 +172,10 @@ pub struct Console {
     scope: Scope,
     subject: Subject,
     objects: Option<std::sync::Arc<dyn ratio_store::ObjectStore>>,
+    /// The network server sets this only after its startup hydrate gate is
+    /// Ready. Request-time opens then attach to the store without repeating
+    /// legacy seed publication. Other callers keep the safe hydrating open.
+    startup_hydrated: bool,
 
     /// Who a write on this console is attributed to. A `Member`'s stable id, or
     /// `RATIO_ACTOR` for the `Local` CLI/loopback console — resolved from the
@@ -318,6 +322,7 @@ impl Console {
             scope,
             subject,
             objects: installed_object_store(),
+            startup_hydrated: false,
             actor,
             connect_grants,
             store: store::StoreMode::Memory,
@@ -329,6 +334,12 @@ impl Console {
     pub fn with_object_store(mut self, objects: std::sync::Arc<dyn ratio_store::ObjectStore>) -> Self {
         self.objects = Some(objects);
         self.projections = Default::default();
+        self
+    }
+
+    /// Use the serving-process fast path after its startup gate reached Ready.
+    pub fn after_startup_hydration(mut self) -> Self {
+        self.startup_hydrated = true;
         self
     }
 
@@ -557,7 +568,11 @@ impl Console {
         };
         let authorized = self.book_path(id)?;
         if authorized != path { bail!("book path is outside the serving root"); }
-        FileBook::open_with(path, self.objects.clone())
+        if self.startup_hydrated {
+            FileBook::open_attached_with(path, self.objects.clone())
+        } else {
+            FileBook::open_with(path, self.objects.clone())
+        }
     }
 
     // ── Console methods ───────────────────────────────────────────────────
@@ -12374,9 +12389,9 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
     #[test]
     fn production_handlers_open_books_only_through_the_storage_layer() {
         // ⛔ A FORGOTTEN FileBook::open IS THE BYPASS. Before the test module,
-        // the only remaining `FileBook::open` calls take a Path (the
-        // `open_file_book` door, and free functions that receive an already
-        // authorized path). A handler that joins `self.root` to an id and
+        // the only remaining `FileBook::open` calls take a Path in the
+        // `open_file_book` door. Its two branches select the normal hydrate
+        // or the post-startup attached open. A handler that joins `self.root` to an id and
         // opens would mention `FileBook::open(&path)` or `self.root`.
         // Wash cites go through `open_file_book`, not a fourth raw open.
         let production = include_str!("lib.rs")
@@ -12395,13 +12410,16 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             }
         }
         assert!(
-            opens.iter().all(|(_, l)| l.contains("FileBook::open_with(path, self.objects.clone())")),
+            opens.iter().all(|(_, l)|
+                l.contains("FileBook::open_with(path, self.objects.clone())")
+                    || l.contains("FileBook::open_attached_with(path, self.objects.clone())")
+            ),
             "production FileBook::open must take an authorized Path, not a joined id: {opens:?}"
         );
         assert_eq!(
             opens.len(),
-            1,
-            "only the open_file_book authorization door: {opens:?}"
+            2,
+            "only the two open_file_book branches: {opens:?}"
         );
         assert!(
             !production

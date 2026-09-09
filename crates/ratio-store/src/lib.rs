@@ -990,6 +990,18 @@ impl FileBook {
         Self::open_with(root, installed_object_store())
     }
 
+    /// Attach to the installed store after this serving process completed its
+    /// startup hydrate.
+    ///
+    /// Durable bootstrap publication is still fetched and verified on every
+    /// open. Only legacy baked JSONL seeding is skipped: the startup gate has
+    /// already made that one-time publication a precondition of serving the
+    /// request. Calling this before that gate reaches Ready would expose an
+    /// incomplete seed, so it is intentionally a separate, explicit door.
+    pub fn open_attached(root: impl AsRef<Path>) -> Result<Self> {
+        Self::open_attached_with(root, installed_object_store())
+    }
+
     /// How many journal entries the index may report.
     ///
     /// Prefers the local `journal.jsonl` line count — the demo entrypoint
@@ -1020,6 +1032,22 @@ impl FileBook {
         root: impl AsRef<Path>,
         store: Option<Arc<dyn ObjectStore>>,
     ) -> Result<Self> {
+        Self::open_with_seed(root, store, true)
+    }
+
+    /// Attach to an explicit store after its legacy seed has been hydrated.
+    pub fn open_attached_with(
+        root: impl AsRef<Path>,
+        store: Option<Arc<dyn ObjectStore>>,
+    ) -> Result<Self> {
+        Self::open_with_seed(root, store, false)
+    }
+
+    fn open_with_seed(
+        root: impl AsRef<Path>,
+        store: Option<Arc<dyn ObjectStore>>,
+        hydrate_legacy_seed: bool,
+    ) -> Result<Self> {
         let root = root.as_ref().to_path_buf();
         let bootstrap = match &store {
             Some(objects) if bootstrap::valid_book_id(&book_key(&root)) =>
@@ -1036,7 +1064,7 @@ impl FileBook {
         let objects = store.map(|s| (s, book_key(&root)));
         let book = FileBook { root, objects, bootstrap: bootstrap.map(|(_, state)| state) };
         // A published book never hydrates a baked seed into its journal.
-        if book.bootstrap.is_none() { book.hydrate_objects()?; }
+        if book.bootstrap.is_none() && hydrate_legacy_seed { book.hydrate_objects()?; }
         Ok(book)
     }
 
@@ -2348,6 +2376,7 @@ mod tests {
     struct CountingStore {
         inner: MemoryStore,
         puts: std::sync::Mutex<Vec<String>>,
+        lists: std::sync::Mutex<Vec<String>>,
     }
 
     impl CountingStore {
@@ -2355,6 +2384,7 @@ mod tests {
             Self {
                 inner: MemoryStore::new(),
                 puts: std::sync::Mutex::new(Vec::new()),
+                lists: std::sync::Mutex::new(Vec::new()),
             }
         }
         fn puts(&self) -> Vec<String> {
@@ -2362,6 +2392,10 @@ mod tests {
         }
         fn clear(&self) {
             self.puts.lock().expect("puts").clear();
+            self.lists.lock().expect("lists").clear();
+        }
+        fn lists(&self) -> Vec<String> {
+            self.lists.lock().expect("lists").clone()
         }
     }
 
@@ -2374,8 +2408,31 @@ mod tests {
             self.inner.get(key)
         }
         fn list(&self, prefix: &str) -> Result<Vec<String>> {
+            self.lists.lock().expect("lists").push(prefix.to_string());
             self.inner.list(prefix)
         }
+    }
+
+    #[test]
+    fn an_attached_open_does_not_repeat_the_legacy_seed_scan() {
+        let root = tmp();
+        {
+            let mut b = FileBook::open(&root).unwrap();
+            let d = b.put(b"cfg").unwrap();
+            b.set_active(&d).unwrap();
+            b.append(&entry("seed", &d, &[(1, 3), (2, -3)])).unwrap();
+        }
+        let store = Arc::new(CountingStore::new());
+        FileBook::open_with(&root, Some(store.clone())).unwrap();
+        assert!(!store.lists().is_empty(), "startup must inspect the seed");
+
+        store.clear();
+        FileBook::open_attached_with(&root, Some(store.clone())).unwrap();
+        assert!(
+            store.lists().is_empty(),
+            "a request after startup must not rescan seed planes: {:?}",
+            store.lists()
+        );
     }
 
     #[test]

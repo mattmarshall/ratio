@@ -634,6 +634,11 @@ jobs:
           # says that instead.
           deny "an empty book" '"entries":0'          "${URL}balance.json"
           want "a book that ties" '"difference":"0.00"' "${URL}balance.json"
+          # The first read may include cold-start hydration. This second read
+          # is the serving-process path and its duration makes a repeated seed
+          # scan visible in deploy evidence without turning network variance
+          # into a brittle threshold.
+          curl -sS -o /dev/null -w 'warm balance.json %{time_total}s\n' "${URL}balance.json"
           want "the proposal"  '"pending":[{'         "${URL}rules.json"
           # 2000.00 is deploy/seed-demo-book.sh's number.
           want "the break"     '"difference":"2000.00"' "${URL}breaks.json"

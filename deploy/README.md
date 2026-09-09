@@ -360,7 +360,13 @@ start then wipes CreateBook (Household on ratio.marsh.build after #230). Hydrate
 orTransient (#136/#137) still apply; `/healthz` and `/version` never wait;
 unauthenticated `/v1` 401s without waiting for the book. The console retries
 that hydrate 503 the way deploy smoke does, rather than painting the first
-cold-start answer as a lasting unavailable. The ~40 GB scale fold
+cold-start answer as a lasting unavailable.
+After the startup gate reaches Ready, request handlers attach to that same
+store without repeating the legacy seed-plane scan. Published books still
+fetch and verify their bootstrap pointer on open, so a later durable control
+transition cannot be hidden by the fast path. Deploy smoke prints a second,
+warm `/balance.json` duration to make request-time seed scans visible again.
+The ~40 GB scale fold
 stays on Fargate ScaleTask, not this Lambda. The measured 20M-lot
 *projection* fold (HANDOFF 10,000 × 2,000, not this journal) is
 `//crates/ratio-sql-project:fold_scale_test` and does not need these
