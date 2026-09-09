@@ -1,5 +1,14 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
+**Start with [Current state](docs/current-state.md) for the supported
+architecture and live gaps.** This handoff preserves engineering evidence and
+dated outcomes; older issue dispositions and counts below are historical,
+not the dispatch queue. Track current acceptance in the
+[GitHub project](https://github.com/users/mattmarshall/projects/1) and
+[roadmap index #258](https://github.com/mattmarshall/ratio/issues/258).
+Do not copy historical closure prose into PRs or commit messages; use the
+[issue-completion convention](docs/issue-completion.md).
+
 **State**: bazel tests green, 33 `lean_test`, 49 `tla_check`, 30 `manual`
 probes all red for the reasons they name.
 

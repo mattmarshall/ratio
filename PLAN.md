@@ -1,5 +1,13 @@
 # Ratio — path to revenue
 
+**Current delivery queue:** [GitHub roadmap project](https://github.com/users/mattmarshall/projects/1)
+and [index #258](https://github.com/mattmarshall/ratio/issues/258).
+[Current state](docs/current-state.md) is the concise implementation summary.
+This document preserves the original plan and dated amendments: later
+amendments supersede earlier status claims, while scope refusals remain in
+force until an explicit decision changes them. Historical closure prose is
+not a PR template; use [neutral references](docs/issue-completion.md).
+
 **Written 2026-08-07.** Supersedes `specs/iterations/iteration-1-mvp.md`, which
 is an eight-week plan for a product nobody was buying.
 
@@ -4760,3 +4768,32 @@ It can show a signed-in operator whose first `/books` after a
 cold start waits for hydrate rather than a lasting unavailable.
 It cannot show seeded funds granted to a live WorkOS `sub`
 until an operator sets `DEMO_MEMBERS`.
+
+
+### Amendment, 2026-09-09 — issue completion and roadmap authority
+
+Related: #269. The current summary is [docs/current-state.md](docs/current-state.md),
+with delivery gates and acceptance in the [project](https://github.com/users/mattmarshall/projects/1)
+and [index #258](https://github.com/mattmarshall/ratio/issues/258). Dated
+amendments remain evidence, not a second queue. Partial work uses neutral
+references; the PR wording check rejects accidental closing directives in
+PR titles, descriptions, and commit messages. Review acceptance evidence
+and the final merge message before completing an issue.
+
+**Scope decision: preserve the existing refusals.** Phase-three investment
+performance/attribution and composites are proposals awaiting the explicit
+scope decision in [#274](https://github.com/mattmarshall/ratio/issues/274),
+not committed product features. The site now says so. No financial semantics
+or new feature approval follows from this documentation correction.
+
+**Reserved scopes do not authorize a future write door.** `nav:strike` does
+not authorize an RPC for the CLI-only strike; `partners:write` does not
+supply a partner mutation RPC. `breaks:explain` currently names the mark
+route and must not be read as permission to accept a break explanation.
+Rule approval, configuration promotion, explanation acceptance, and the
+NAV strike remain person verbs at the CLI. The catalog documents that
+boundary; the reservation alone is not a scope decision to change it.
+
+Remaining work: #150 — API allowlist, minimal reference app, and any separately
+approved scope decisions. The historical amendments above retain their
+original context; this amendment is the current interpretation.

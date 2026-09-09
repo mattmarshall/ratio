@@ -10,16 +10,17 @@ proves what must be true of them: value is conserved on every dimension, a trial
 balance ties because the kernel says so rather than because a check passed, a
 figure cites the journal prefix it was folded from, and a sale gives up the lots
 the terms dictate. The same kernel serves personal finance, investment
-accounting and project finance — different charts and dimensions, not forked
-products. The proofs are Lean 4, the concurrency and staleness arguments are
-TLA+, the running system is Rust — and parts of the Rust are **emitted from the
+accounting, project finance, and operating businesses — different charts and
+dimensions, not forked products. The proofs are Lean 4, the concurrency and
+staleness arguments are TLA+, the running system is Rust — and parts of the Rust are **emitted from the
 Lean**, so the theorem and the code make the same decision.
 
 ### ▶ [Try the live demo](https://ratio.marsh.build/)
 
-Sign in with Google or email and watch a real fund's books tie out — seven
-seeded funds, one blocked by a break nobody has explained, one struck because
-somebody did, and one keeping two books of record over a single journal. Every
+Sign in with Google or email to inspect synthetic demonstration books —
+seeded Investment funds, one blocked by a break nobody has explained, one
+struck because somebody did, and one keeping two books of record over a single
+journal. Every
 break, NAV strike and configuration version has a URL, so a figure can be sent
 to somebody rather than described.
 
@@ -41,8 +42,10 @@ bazel test //...                                 # the proofs, specs, crates, an
 bazel run //crates/ratio -- watch --book <dir>   # the API and the screens — open /balance
 ```
 
-No database, no daemon, no container: the journal is a file and the
-configuration is content-addressed beside it.
+The default local path needs no database: the journal is a file and the
+configuration is content-addressed beside it. `RATIO_PG_URL` opts into the
+Postgres read projection; the journal remains the book of record. Python
+Connect apps live in `connect/` and use the same authenticated API contract.
 
 The **operations console** — the authenticated one, with a URL for every book,
 break, strike and configuration — is a separate Next.js application in
@@ -56,6 +59,12 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
 
 ## Documentation
 
+- **[Current state](docs/current-state.md)** — the current architecture,
+  demonstrated behavior, and remaining gaps.
+- **[GitHub roadmap project](https://github.com/users/mattmarshall/projects/1)**
+  and **[roadmap index #258](https://github.com/mattmarshall/ratio/issues/258)**
+  — delivery order, readiness, acceptance, and progress.
+
 - **[HANDOFF.md](HANDOFF.md)** — what is load-bearing and what will bite. The most
   accurate document here; read it before changing the lot engine, the projection,
   or anything emitted from Lean.
@@ -63,7 +72,8 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
 - **[deploy/README.md](deploy/README.md)** — the hosted demo: the stacks, the
   WorkOS AuthKit setup, and how sign-in and tenancy work.
 - **[Whitepaper](paper/)** · **[Marketing site](https://mattmarshall.github.io/ratio/)**
-  · **[PLAN.md](PLAN.md)** (⚠ written 2026-08-07, since overtaken in places).
+  · **[PLAN.md](PLAN.md)** — scope decisions and dated amendments; use the
+  current-state summary and GitHub queue for present status.
 - **[docs/connect-scopes.md](docs/connect-scopes.md)** — WorkOS Connect
   scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)).
   Connect tokens accepted with catalog scopes; first-party

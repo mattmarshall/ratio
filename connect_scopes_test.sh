@@ -117,7 +117,7 @@ grep -qF -- "portal impersonation" <<<"$WHOLE_PLAN" \
 # scopes is Built; the Connect HTTP API JWT is Built; the deployed
 # open-demo dial is off; #150 stays open for the allowlist and
 # reserved RPCs.
-for phrase in "Connect tokens accepted with catalog scopes" "API Gateway JWT verifies Connect tokens" "RATIO_DEMO_OPEN defaults off on the deployed demo" "first-party Connect apps call ConnectApiUrl" "unused Cognito CloudFormation resources removed" "#151" "leftover #22" "does not close #150"; do
+for phrase in "Connect tokens accepted with catalog scopes" "API Gateway JWT verifies Connect tokens" "RATIO_DEMO_OPEN defaults off on the deployed demo" "first-party Connect apps call ConnectApiUrl" "unused Cognito CloudFormation resources removed" "#151" "leftover #22" "Remaining work: #150"; do
   grep -qF -- "$phrase" "$CATALOG" \
     || { echo "  x catalog is missing leftover honesty: $phrase" >&2; bad=1; }
 done
@@ -150,8 +150,8 @@ grep -qF -- "unused Cognito CloudFormation resources removed" <<<"$WHOLE_PLAN" \
 grep -qF -- "unused Cognito CloudFormation resources removed" <<<"$WHOLE_HANDOFF" \
   || { echo "  x HANDOFF.md does not record unused Cognito CloudFormation resources removed" >&2; bad=1; }
 
-grep -qF -- "does not close #150" <<<"$WHOLE_PLAN" \
-  || { echo "  x PLAN.md must say it does not close #150" >&2; bad=1; }
+grep -qF -- "Remaining work: #150" <<<"$WHOLE_PLAN" \
+  || { echo "  x PLAN.md must name remaining work on issue 150" >&2; bad=1; }
 
 # #177: equalization / drip / side-pocket stay Connect, not kernel
 # primitives. A catalog or plan that drops the decision is the same

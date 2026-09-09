@@ -96,3 +96,16 @@ sh_test(
         "HANDOFF.md",
     ],
 )
+
+# PR descriptions can change without a code push. The separate workflow runs
+# this guard on `edited`; Bazel also protects the parser on implementation PRs.
+sh_test(
+    name = "issue_closures_test",
+    size = "small",
+    srcs = ["issue_closures_test.sh"],
+    args = ["$(location .github/scripts/check_issue_closures_test.py)"],
+    data = [
+        ".github/scripts/check_issue_closures.py",
+        ".github/scripts/check_issue_closures_test.py",
+    ],
+)

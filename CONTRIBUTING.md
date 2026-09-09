@@ -13,7 +13,9 @@ tla/probes.sh           # if you touched a spec
 cd console && pnpm check   # only if you touched console/
 ```
 
-Then a pull request. CI runs `bazel build //...` and `bazel test //...`, and —
+Then a pull request. Follow the [issue-completion merge check](docs/issue-completion.md):
+use neutral references for partial work, require the wording check, and review
+the final merge message and manually linked issues. CI runs `bazel build //...` and `bazel test //...`, and —
 for a change under `console/` — `.github/workflows/console.yml`.
 
 ⚠ **`bazel test //...` is no longer the whole gate, and it used to be.** The
@@ -86,6 +88,7 @@ while working on one, say so in the issue rather than building against it.
 
 ## Documentation
 
+Update [Current state](docs/current-state.md) when supported behavior changes.
 Update `HANDOFF.md` when something becomes load-bearing or when you hit a trap
 that cost you time. It is the document a new reader is pointed at, and it is
 worth more than the rest combined.

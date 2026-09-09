@@ -2,6 +2,10 @@
 
 **Frozen 2026-09-04.** Issue [#150](https://github.com/mattmarshall/ratio/issues/150).
 PLAN amendment of the same date. This file is the contract.
+[Current state](current-state.md) distinguishes shipped authentication from
+per-app activation; the [GitHub project](https://github.com/users/mattmarshall/projects/1)
+tracks the remaining implementation. The LP portal grant is proven; issue 22
+remains relevant to other apps and their operator setup.
 
 ⭐ **A scope is a grant, not an RPC.** Ratio's core stays a thin book of
 record: the journal, lots and relief, statements, kind-aware chrome, AuthKit
@@ -16,14 +20,13 @@ matching `/v1` door, after membership. An AuthKit session JWT is
 unchanged (login, `/v1/books` without a session, authenticated console
 walks). A Connect-shaped token never takes `RATIO_DEMO_OPEN` and never
 matches `org:{id}` (#151). Hard non-scopes and aliases stay refused.
-#150 leftovers: the `journals:post` allowlist, reserved RPCs, and the
+#150 leftovers: the `journals:post` allowlist, reserved scope decisions, and the
 read-only reference skeleton. `RATIO_DEMO_OPEN` defaults off on the
 deployed demo. first-party Connect apps call ConnectApiUrl.
 Issue 22 stays open for `DEMO_MEMBERS` naming a live WorkOS
 `sub` and WorkOS dashboard registration. unused Cognito
 CloudFormation resources removed. API Gateway JWT verifies Connect tokens
-on the Connect HTTP API (AuthKit custom-domain issuer). This
-file does not close #150.
+on the Connect HTTP API (AuthKit custom-domain issuer). Remaining work: #150.
 
 ---
 
@@ -55,7 +58,10 @@ not widen the catalog.
 
 `resource:action`. One pair is one grant. Read does not imply write. Write
 does not imply read. A missing kernel door stays missing — the scope reserves
-the grant for when that door exists; it does not mint the RPC.
+a name without promising that a door will be built; it does not mint or
+authorize the RPC. A proposal that changes a human-only verb needs its own
+explicit PLAN decision. `rules:approve` and `config:promote` remain hard
+non-scopes, not reservations.
 
 | Scope | Grants | Kernel today | Stay out of the kernel |
 |---|---|---|---|
@@ -70,9 +76,9 @@ the grant for when that door exists; it does not mint the RPC.
 | `lots:read` | Open lots, realized gains, wash flags when cited | lot book | Not a Method, not an Order |
 | `lots:elect` | SpecID names on a sale (`identified_lots`) where the RuleSet allows | entry field | ⛔ Not `lot_method = "specific_id"`. Not MinTax. Not average cost. Those are elections, not this scope |
 | `nav:read` | NAV strikes, roll-forward | strike / roll-forward reads | — |
-| `nav:strike` | Request a strike | `ratio strike` is CLI-only | The write RPC does not exist; the scope does not invent it |
+| `nav:strike` | Reserved name; no grantable strike operation | `ratio strike` is CLI-only | No write RPC is approved; reservation does not change the human-only fence |
 | `partners:read` | Partner master, capital, commitments | `/capital` | Not a waterfall, not IRR / TVPI |
-| `partners:write` | Partner master (write carefully) | sidecar / partner rows | Not capital-call notices as a product (the citeable notice object is core / `/capital`; e-sign / CRM / LP portal stay Connect); not an LP portal |
+| `partners:write` | Reserved name; no partner mutation RPC | sidecar / partner rows, configured by an operator | Not capital-call notices as a product (the citeable notice object is core / `/capital`; e-sign / CRM / LP portal stay Connect); not an LP portal |
 | `capital:read` | Capital activity, undrawn | `/capital` | — |
 | `commits:read` | Commitments / undrawn | `/capital` | — |
 | `calls:post` | Capital calls through allowlisted `call_*` templates | `ApplyEvent` + `call_lp` / `call_gp` | Not a future call schedule |
@@ -81,7 +87,7 @@ the grant for when that door exists; it does not mint the RPC.
 | `budget:read` | Household or project budget vs actual | `/budget` | Not EAC, not a forecast |
 | `billing:read` | Project billed / earned / retainage / collections | `/billing` | Not AIA G702 product UI |
 | `breaks:read` | Exception queue | break report | — |
-| `breaks:explain` | Person-attributed explanations | `Mark` / accept | The explainer is a person; a Connect app attributes, it does not invent |
+| `breaks:explain` | Current authorizer mapping: mark positions | `MarkPositions` (`:mark`); not `ratio accept` | The scope name does not authorize break-explanation acceptance; that stays at the CLI |
 | `closes:read` | Close records, closed-through day | `ListPeriodCloses` / `GetPeriodClose` | Not `ratio close` — that stays a person at a terminal |
 | `config:read` | RuleSet / lot-terms cites, config digests | configuration screens | Not an editor |
 | `audit:export` | Evidence pack | Connect scaffold (`connect/audit-export/`); first-party Connect apps call ConnectApiUrl; leftover is WorkOS dashboard registration | A pack is a read of cites, not a rewrite |
@@ -157,7 +163,7 @@ already refused. Do not mint `equalization:*` or `sidepocket:*`. Existing
 scopes: `nav:read`, `partners:read`, `capital:read`, `positions:read`,
 `config:read`, `journals:post`. Drip elections stay on #161. Equalization
 and side-pocket first-party apps are not filed. The PLAN amendment
-closes the decision card; this file does not close #161 or #150.
+closes the decision card; remaining work is tracked in #161 and #150.
 
 ---
 
@@ -205,7 +211,7 @@ A tax-lot Method or Order is not a template id and is not listable here.
 
 ---
 
-## Leftovers (do not close #150)
+## Remaining work: #150
 
 The catalog is this file and the PLAN amendment. The rest of #150 is still
 open:
@@ -233,46 +239,41 @@ open:
    A first-party bank-feed scaffold lives at `connect/bank-feed/`
    ([#165](https://github.com/mattmarshall/ratio/issues/165)). It is not
    this leftover: it requests `journals:post`, first-party Connect
-   apps call ConnectApiUrl, and this file still does not close #150 or #165.
+   apps call ConnectApiUrl, with remaining work tracked in #150 and #165.
    A first-party tax-pack scaffold lives at `connect/tax-pack/`
    ([#166](https://github.com/mattmarshall/ratio/issues/166)). It is not
    this leftover either: it requests `lots:read` and `config:read`,
-   first-party Connect apps call ConnectApiUrl, and this file still does not close
-   #166.
+   first-party Connect apps call ConnectApiUrl, with remaining work tracked in #166.
    A first-party net-worth goals scaffold lives at `connect/goals/`
    ([#168](https://github.com/mattmarshall/ratio/issues/168)). It is not
    this leftover either: it requests `journals:post` for opt-in
-   scenario journals, first-party Connect apps call ConnectApiUrl, and this file
-   still does not close #168.
+   scenario journals, first-party Connect apps call ConnectApiUrl, with remaining work tracked in #168.
    A first-party AIA pay-app scaffold lives at `connect/aia-pay-app/`
    ([#184](https://github.com/mattmarshall/ratio/issues/184)). It is not
    this leftover either: it requests `billing:read` and `budget:read`,
-   first-party Connect apps call ConnectApiUrl, and this file still does not close
-   #184.
+   first-party Connect apps call ConnectApiUrl, with remaining work tracked in #184.
    A first-party vendor / GC portal scaffold lives at
    `connect/vendor-portal/`
    ([#172](https://github.com/mattmarshall/ratio/issues/172)). It is not
    this leftover either: it requests `billing:read`, `budget:read`, and
    `journals:post` for allowlisted `vendor_invoice*` templates;
-   first-party Connect apps call ConnectApiUrl, and this file still does not close #172.
+   first-party Connect apps call ConnectApiUrl, with remaining work tracked in #172.
    A first-party EAC / forecast scaffold lives at
    `connect/eac-forecast/`
    ([#169](https://github.com/mattmarshall/ratio/issues/169)). It is not
    this leftover either: it requests `budget:read` and `billing:read`,
-   first-party Connect apps call ConnectApiUrl, and this file still does not close
-   #169.
+   first-party Connect apps call ConnectApiUrl, with remaining work tracked in #169.
    A first-party program roll-up scaffold lives at
    `connect/program-rollup/`
    ([#179](https://github.com/mattmarshall/ratio/issues/179)). It is not
    this leftover either: it requests `books:read`, `budget:read`, and
-   `billing:read`, first-party Connect apps call ConnectApiUrl, and this file still
-   does not close #179.
+   `billing:read`, first-party Connect apps call ConnectApiUrl, with remaining work tracked in #179.
    First-party Personal cash-forecast predictor scaffolds live at
    `connect/bank-balance-predictor/` and `connect/calendar-bills/`
    ([#163](https://github.com/mattmarshall/ratio/issues/163)). They are
    not this leftover either: they request `journals:post` for
    allowlisted `forecast_*` / `scheduled_*` templates;
-   first-party Connect apps call ConnectApiUrl, and this file still does not close #163.
+   first-party Connect apps call ConnectApiUrl, with remaining work tracked in #163.
    A first-party audit-export scaffold lives at
    `connect/audit-export/`
    ([#185](https://github.com/mattmarshall/ratio/issues/185)). It is
@@ -280,24 +281,21 @@ open:
    `closes:read`, `breaks:read`, `breaks:explain`, `nav:read`,
    `journals:read`, `config:read`, and `books:read`, it is a read
    of cites (not a write RPC and not a kernel blob store);
-   first-party Connect apps call ConnectApiUrl, and this file still does not close
-   #185.
+   first-party Connect apps call ConnectApiUrl, with remaining work tracked in #185.
    A first-party LP / investor portal scaffold lives at
    `connect/lp-portal/`
    ([#161](https://github.com/mattmarshall/ratio/issues/161)). It is
    not this leftover either: it requests `partners:read`,
    `statements:read`, `nav:read`, and optionally `books:read`, it
    is a read of cites (not a write RPC and not a kernel portal);
-   first-party Connect apps call ConnectApiUrl, and this file still
-   does not close #161.
+   first-party Connect apps call ConnectApiUrl, with remaining work tracked in #161.
    A first-party fund-ops-alerts scaffold lives at
    `connect/fund-ops-alerts/`
    ([#162](https://github.com/mattmarshall/ratio/issues/162)). It is
    not this leftover either: it requests `webhooks:journal`,
    `breaks:read`, `nav:read`, `views:read`, and `books:read`, it
    is a read of cites (not a write RPC and not a kernel notifier);
-   first-party Connect apps call ConnectApiUrl, and this file still
-   does not close #162.
+   first-party Connect apps call ConnectApiUrl, with remaining work tracked in #162.
    A first-party Operating bank-rec scaffold lives at
    `connect/bank-rec/`
    ([#174](https://github.com/mattmarshall/ratio/issues/174)). It is
@@ -308,22 +306,24 @@ open:
    reconciled-empty, a fake $0.00 that looks cleared, or
    empty-digest-as-success), opt-in adjustments are allowlisted
    cash-moving Operating templates, payroll / tax filing stay
-   leftovers, first-party Connect apps call ConnectApiUrl, and this
-   file still does not close #174.
-5. **`webhooks:journal`, `nav:strike` as a write RPC** —
-   reserved scopes; the surfaces are not built. `audit:export` has
+   leftovers, first-party Connect apps call ConnectApiUrl, with remaining work tracked in #174.
+5. **Reserved scope decisions.** `webhooks:journal` has no subscription
+   surface; its decision is tracked in #271. `nav:strike` does not authorize
+   a future strike RPC; the strike remains a person at the CLI.
+   `partners:write` has no mutation route. Scope names alone do not change
+   these boundaries. `audit:export` has
    a first-party scaffold at `connect/audit-export/` (#185); that
-   is a ZIP of cites, not a write RPC, and it does not close #185.
+   is a ZIP of cites, not a write RPC, with remaining work tracked in #185.
    A first-party fund-ops-alerts scaffold lives at
    `connect/fund-ops-alerts/` (#162); it requests
    `webhooks:journal` and polls `breaks:read` + `nav:read`, it is
-   not a kernel webhook surface, and it does not close #162.
+   not a kernel webhook surface, with remaining work tracked in #162.
 
-This file does not close #150. Nothing here finishes issue 22
+Remaining work: #150. Nothing here finishes issue 22
 (DEMO_MEMBERS naming a live WorkOS sub, WorkOS dashboard
 registration). unused Cognito CloudFormation resources removed.
 RATIO_DEMO_OPEN defaults off on the deployed demo.
 first-party Connect apps call ConnectApiUrl.
-API Gateway JWT verifies Connect tokens. Nothing here closes #5
-(console wash flag), #9 (lot-relief UI cites / pooled holding-period
-leftover), #163, #166, #168, #169, #172, #184, #179, #185, #161, #162, or #174.
+API Gateway JWT verifies Connect tokens. Historical issues 5 and 9 are
+complete; do not re-create their delivered lot-engine work from old
+catalog amendments. Current app acceptance is tracked in the project.

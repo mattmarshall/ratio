@@ -1,0 +1,26 @@
+name: issue closures
+
+# An edited description can close an issue without changing a source file.
+# No path filter: this check also covers documentation-only pull requests.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-closures-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  wording:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check the guard
+        run: python3 .github/scripts/check_issue_closures_test.py
+      - name: Check PR title, description, and commit messages
+        run: python3 .github/scripts/check_issue_closures.py --event "$GITHUB_EVENT_PATH"

@@ -24,7 +24,7 @@ CARGO_BAZEL_REPIN=1 bazel build //...
 ### Prerequisites
 
 Bazelisk (or Bazel at the version in `.bazelversion`), a JDK for TLC, and
-Python 3 for the lint and mirror tests. The Lean toolchain, the Rust toolchain
+Python 3 for the Connect apps, lint, and mirror tests. The Lean toolchain, the Rust toolchain
 and every crate are fetched hermetically — there is nothing else to install, and
 nothing to run as a service for `bazel test //...`.
 
