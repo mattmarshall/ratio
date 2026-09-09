@@ -180,7 +180,11 @@ impl SqlProjection {
     /// ⛔ REPLACE, NEVER APPEND ONTO EXISTING ROWS. Re-folding onto state
     /// already held double-counts; `//tla:rebuild_double_counts_check`.
     pub fn replay_book(&mut self, book_id: &str, path: &Path) -> Result<Watermark> {
-        let snapshot = fold_book_snapshot(book_id, path)?;
+        self.replay_file_book(book_id, &FileBook::open(path)?)
+    }
+
+    pub fn replay_file_book(&mut self, book_id: &str, book: &FileBook) -> Result<Watermark> {
+        let snapshot = fold_file_book_snapshot(book_id, book)?;
         let pin = JournalPin {
             prefix: snapshot.watermark.prefix,
             digest: snapshot.watermark.digest.clone(),
@@ -375,10 +379,14 @@ impl SqlProjection {
 /// Fold the journal at `path` into one snapshot. Shared by the in-process
 /// store and the live engine so they cannot disagree on what "replay" is.
 fn fold_book_snapshot(book_id: &str, path: &Path) -> Result<Snapshot> {
-    let book = FileBook::open(path)?;
+    fold_file_book_snapshot(book_id, &FileBook::open(path)?)
+}
+
+fn fold_file_book_snapshot(book_id: &str, book: &FileBook) -> Result<Snapshot> {
     let entries = book.entries()?;
     let pin = JournalPin::of(&entries)?;
-    let projection = Projection::of_book(path)?;
+    let mut projection = Projection::new();
+    projection.follow_book(book)?;
     if projection.prefix() != pin.prefix {
         bail!(
             "fold prefix {} is not the journal height {} — the snapshot would pin a \

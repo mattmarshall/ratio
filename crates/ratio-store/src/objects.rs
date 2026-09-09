@@ -16,6 +16,10 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_OBJECT: AtomicU64 = AtomicU64::new(0);
+const STAGING: &str = ".object-staging";
 
 use anyhow::{bail, Context, Result};
 
@@ -130,7 +134,7 @@ impl ObjectStore for MemoryStore {
     }
 }
 
-/// One object per file, `create_new` as the claim. For `RATIO_JOURNAL_LOCAL`
+/// One complete object per file, atomic no-replace hard link as the claim. For `RATIO_JOURNAL_LOCAL`
 /// and for tests that want a real filesystem race rather than a mutex.
 pub struct DirStore {
     root: PathBuf,
@@ -155,15 +159,26 @@ impl ObjectStore for DirStore {
             fs::create_dir_all(dir)
                 .with_context(|| format!("creating {}", dir.display()))?;
         }
-        match OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(mut f) => {
-                f.write_all(body)
-                    .with_context(|| format!("writing {}", path.display()))?;
-                Ok(true)
+        // Readers must never observe the empty file created by create_new.
+        // A hard link publishes all bytes atomically and refuses an existing key.
+        let staging = self.root.join(STAGING);
+        fs::create_dir_all(&staging)?;
+        let temp = staging.join(format!("{}-{}", std::process::id(), NEXT_OBJECT.fetch_add(1, Ordering::Relaxed)));
+        let result = (|| -> Result<bool> {
+            let mut f = OpenOptions::new().write(true).create_new(true).open(&temp)?;
+            f.write_all(body)?;
+            f.sync_all()?;
+            match fs::hard_link(&temp, &path) {
+                Ok(()) => {
+                    fs::File::open(path.parent().context("object parent")?)?.sync_all()?;
+                    Ok(true)
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+                Err(e) => Err(e).with_context(|| format!("claiming {}", path.display())),
             }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
-            Err(e) => Err(e).with_context(|| format!("claiming {}", path.display())),
-        }
+        })();
+        let _ = fs::remove_file(temp);
+        result
     }
 
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
@@ -191,6 +206,7 @@ fn walk_keys(dir: &Path, root: &Path, prefix: &str, out: &mut Vec<String>) -> Re
     for entry in rd {
         let entry = entry.with_context(|| format!("listing {}", dir.display()))?;
         let path = entry.path();
+        if path == root.join(STAGING) { continue; }
         if path.is_dir() {
             walk_keys(&path, root, prefix, out)?;
             continue;
@@ -317,6 +333,36 @@ impl SeqLog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn directory_readers_observe_only_complete_binary_objects() {
+        let root = std::env::temp_dir().join(format!("ratio-object-complete-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let store = Arc::new(DirStore::at(&root));
+        let bytes = vec![255; 16 * 1024 * 1024];
+        let start = Arc::new(std::sync::Barrier::new(2));
+        std::thread::scope(|scope| {
+            let writer = store.clone();
+            let start_writer = start.clone();
+            let bytes = &bytes;
+            scope.spawn(move || {
+                start_writer.wait();
+                assert!(writer.put_if_absent("complete", bytes).unwrap());
+            });
+            start.wait();
+            loop {
+                if let Some(got) = store.get("complete").unwrap() {
+                    assert_eq!(got, *bytes, "the claim exposed an incomplete body");
+                    break;
+                }
+                std::thread::yield_now();
+            }
+        });
+        assert_eq!(store.list("").unwrap(), vec!["complete"]);
+        assert!(!store.put_if_absent("complete", b"replacement").unwrap());
+        assert_eq!(store.get("complete").unwrap().unwrap(), bytes);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn a_second_claim_to_a_sequence_slot_is_refused() {

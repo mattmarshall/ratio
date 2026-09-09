@@ -135,6 +135,9 @@ impl BookMeta {
     }
 
     pub fn write(&self, path: &Path) -> Result<()> {
+        if path.join(ratio_store::bootstrap::MARKER).exists() {
+            bail!("durable book identity changes require a publication protocol");
+        }
         let mut body = format!(
             "kind = {:?}\ndisplay_name = {:?}\n",
             self.kind.as_str(),
@@ -160,7 +163,12 @@ fn kv(text: &str, key: &str) -> Option<String> {
         if k.trim() != key {
             continue;
         }
-        let raw = v.trim().trim_matches('"').trim_matches('\'').to_string();
+        let value = v.trim();
+        // Bootstrap sidecars encode strings with JSON's TOML-compatible escapes.
+        // Decode them so a quoted or multiline display name survives recovery.
+        let raw = if value.starts_with('"') {
+            serde_json::from_str::<String>(value).unwrap_or_else(|_| value.trim_matches('"').to_string())
+        } else { value.trim_matches('\'').to_string() };
         if raw.is_empty() {
             return None;
         }
@@ -2358,6 +2366,40 @@ equity_destination = 25
 ///
 /// ⛔ NO FUND AND NO ORG ARE WRITTEN. A caller that wants either files the
 /// book afterwards. Create is the independent book.
+pub fn bootstrap(id: &str, display: &str, kind: BookKind, subject: &str) -> Result<ratio_store::bootstrap::BookBootstrap> {
+    use ratio_store::bootstrap::{BookBootstrap, CreatorGrant};
+    let chart = serde_json::to_vec_pretty(&chart_for(kind))?;
+    let config = config_for(kind).as_bytes().to_vec();
+    let digest = Digest::of(&config).as_str().to_string();
+    let bootstrap = BookBootstrap {
+        format_version: 1,
+        book_id: id.into(),
+        kind: kind.proto(),
+        display_name: display.into(),
+        chart_digest: Digest::of(&chart).as_str().into(),
+        chart,
+        config,
+        config_digest: digest.clone(),
+        active: digest.clone(),
+        history: vec![digest],
+        creator_grant: Some(CreatorGrant { book_id: id.into(), subject: subject.into() }),
+        creator_subject: subject.into(),
+    };
+    validate_bootstrap(&bootstrap)?;
+    Ok(bootstrap)
+}
+
+/// Validate the persisted chart and rules themselves; never regenerate today's template.
+pub fn validate_bootstrap(bootstrap: &ratio_store::bootstrap::BookBootstrap) -> Result<()> {
+    ratio_store::bootstrap::validate(bootstrap)?;
+    let chart = serde_json::from_slice::<Vec<ratio_store::Account>>(&bootstrap.chart)?;
+    let set = RuleSet::from_toml(std::str::from_utf8(&bootstrap.config)?)
+        .context("published configuration is not valid rules TOML")?;
+    let errors: Vec<_> = check(&set, &chart).into_iter().filter(|f| !f.is_question).collect();
+    if !errors.is_empty() { bail!("published configuration does not check against its chart: {:?}", errors); }
+    Ok(())
+}
+
 pub fn initialize(path: &Path, id: &str, display: &str, kind: BookKind) -> Result<Digest> {
     if path.join("accounts.json").is_file() || path.join("book.toml").is_file() {
         bail!("book {id:?} already exists");

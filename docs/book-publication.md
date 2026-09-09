@@ -4,10 +4,10 @@ Related: [#297](https://github.com/mattmarshall/ratio/issues/297),
 parent [#291](https://github.com/mattmarshall/ratio/issues/291), and recovery
 [#264](https://github.com/mattmarshall/ratio/issues/264).
 
-This is a model and an implementation contract. The Rust storage implementation
-has not changed. A newly created book is not yet recoverable merely because
-this model passes. The next implementation child must preserve this boundary
-and demonstrate it through the actual storage adapters and a fresh process.
+This document records the model and the initial Rust implementation (#298).
+The model defines the publication boundary; the implementation and fresh-process
+checks below demonstrate it for created books. Broader durability and recovery
+work remains under #291 and #264.
 
 ## One publication makes the complete bootstrap discoverable
 
@@ -151,3 +151,92 @@ immutable bootstrap must never reset newer ACTIVE/HISTORY or resurrect a
 revoked creator grant. Operational evidence (NAVs, reports, proposals, audit
 events), original delivery custody, full recovery checkpoints, and customer
 RPO/RTO remain on #291/#264 and their implementation children.
+
+## Implemented boundary and recovery procedure (#298)
+
+`ratio.storage.v1.BookBootstrap` stores the exact chart JSON and rules TOML
+bytes, their SHA-256 addresses, identity and creation attribution, initial
+ACTIVE/HISTORY, and a separate creator grant. Version 1 supports independent
+books only: there is no implicit fund or organization. The reserved
+`_bootstrap/blobs/<sha256>` key holds the immutable protobuf. A conditional PUT
+at `_bootstrap/publications/<book-id>` holds `BookPublication`, the sole
+catalog entry. A failed create can leave an unreachable blob; it cannot leave
+a catalog entry pointing at a partially written bootstrap. Retries after a
+committed publication return a conflict, including when the first response
+was lost. Request idempotency keys are not implemented.
+
+`ObjectStore` carries bytes without a UTF-8 conversion. S3 uses
+`If-None-Match: *`, and returns false for an occupied key. Other SDK errors
+propagate. DirStore writes and syncs a private temporary file before an atomic
+no-replace hard link exposes the complete object. Its private staging files
+are excluded from discovery. This is a local filesystem adapter test, not a
+claim about a production bucket's retention or disaster recovery objectives.
+
+The console unions legacy local directories with verified published IDs.
+For a published book, AuthKit access requires the exact stable subject in its
+explicit creator grant, even in an open demo. An email, organization, legacy
+MEMBERSHIP.tsv row, or Connect token does not inherit that grant. Local CLI
+inspection remains unrestricted. Durable CreateBook requires an authenticated
+AuthKit creator; local and Connect creation refuse until there is an explicit
+corresponding grant protocol. No global membership file is rewritten by
+creation, so simultaneous creates of different books cannot lose each other's
+grants.
+
+To exercise a cold start safely:
+
+1. Use an isolated local object-store directory and a disposable serving root.
+   Do not point the drill at a production backend.
+2. Create a book through a scoped console. Post an entry and retain the
+   published identity, exact chart/config bytes, initial HISTORY, and journal
+   entry/prefix as expectations outside the serving root.
+3. Stop the serving process and remove its entire disposable serving root,
+   including MEMBERSHIP.tsv, book.toml, accounts.json, and config/.
+4. Start a new process with the same explicit object backend and an absent
+   serving root. List books as the creator, open the recovered book, and compare
+   identity, chart, ACTIVE/HISTORY/config, journal entry count, and entries.
+   Verify that a different subject cannot list or open it.
+5. Keep the object backend intact. Missing/corrupt content or unsupported
+   versions must refuse; copying in a seed or accepting empty rules is not
+   recovery. An existing local cache that differs also refuses. Investigate
+   it before removing anything; never reset a potentially newer local state
+   to the initial bootstrap.
+
+The automated equivalent uses fresh child processes so the process-global
+store's first-install-wins behavior cannot hide use of the wrong backend:
+
+```sh
+bazel test //crates/ratio-console:ratio-console_test --test_filter=bootstrap_tests --test_output=errors
+bazel test //crates/ratio-store:ratio-store_test //crates/ratio-project:ratio-project_test //crates/ratio:ratio_test //proto:ratio_aip_lint //proto:mirrors_test --test_output=errors
+```
+
+Published books materialize a verified cache using an atomic directory rename,
+then read journal/append-only planes from the configured object store. Discovery
+excludes the reserved local staging namespace, including crash debris. Both
+in-memory projection and Stage E pin/replay use the authorized book's explicit
+backend, so a second process or store cannot silently supply a different prefix. They
+never hydrate local seed JSONL into that journal. A baked legacy book is not
+auto-published, and create refuses an existing local book or existing remote
+book-prefix data. Legacy book operation keeps its prior storage behavior.
+Legacy-to-published migration must fence writers first; the legacy prefix
+check is not a migration lock against an old binary concurrently hydrating a
+seed with the same ID. No production migration is part of this change.
+
+Subsequent configuration, chart, and identity mutation on published books explicitly
+refuses: acknowledging a local-only promotion would make the next container
+recover an obsolete opening generation. Additional grants and revocations,
+including Connect delegation, need a separate durable control-plane protocol;
+MEMBERSHIP.tsv is still the legacy-book authority and is not that protocol.
+Later NAV/report/audit evidence, complete backups, cross-region recovery,
+retention, deletion protection, and garbage collection remain under #291 and
+#264. This implementation does not establish an RPO or RTO, assign an incident
+owner, or claim a production disaster-recovery drill.
+
+
+The implementation sabotage checks demonstrate two distinct boundaries:
+ignoring a failed conditional publication makes the racing-creator test fail
+because both creators report success; omitting HISTORY validation makes the
+required-plane test fail because an absent promotion history becomes a visible
+book. Both checks were restored before the final passing suite. The S3 adapter
+check uses a local HTTP endpoint and real SDK requests to verify binary bytes,
+`If-None-Match`, occupied-key refusal, missing-key behavior, and other-error
+propagation. It does not contact S3 or a production account.
