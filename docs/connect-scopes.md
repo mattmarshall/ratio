@@ -20,8 +20,8 @@ matching `/v1` door, after membership. An AuthKit session JWT is
 unchanged (login, `/v1/books` without a session, authenticated console
 walks). A Connect-shaped token never takes `RATIO_DEMO_OPEN` and never
 matches `org:{id}` (#151). Hard non-scopes and aliases stay refused.
-#150 leftovers: the `journals:post` allowlist, reserved scope decisions, and the
-read-only reference skeleton. `RATIO_DEMO_OPEN` defaults off on the
+#150 leftovers: reserved RPCs and the read-only reference skeleton.
+The API template allowlist is enforced inside `ApplyEvent` (#260). `RATIO_DEMO_OPEN` defaults off on the
 deployed demo. first-party Connect apps call ConnectApiUrl.
 Issue 22 stays open for `DEMO_MEMBERS` naming a live WorkOS
 `sub` and WorkOS dashboard registration. unused Cognito
@@ -44,8 +44,9 @@ A scope is grantable only when **all** of the following hold:
 3. The requested action is in this catalog. A string that is not here is
    refused, including a plausible near-miss (`journal:read`, `billing:write`).
 4. Write scopes that name a template (`journals:post`, `calls:post`,
-   `fees:accrue`) pass the per-`client_id` allowlist. An empty allowlist
-   refuses every post.
+   `fees:accrue`) pass the operator-owned per-client, per-BookKind
+   allowlist inside `ApplyEvent`, including direct calls and previews.
+   An absent or empty allowlist refuses every post.
 
 M2M tokens carry `org_id` and no user. They still need a membership row —
 `org:{id}` is an operator grant already, never implied by the creator sitting
@@ -74,7 +75,7 @@ non-scopes, not reservations.
 | `views:read` | As-of cuts; which views a book declares | `ListViews` / `GetView` | — |
 | `positions:read` | Holdings | positions fold | — |
 | `lots:read` | Open lots, realized gains, wash flags when cited | lot book | Not a Method, not an Order |
-| `lots:elect` | SpecID names on a sale (`identified_lots`) where the RuleSet allows | entry field | ⛔ Not `lot_method = "specific_id"`. Not MinTax. Not average cost. Those are elections, not this scope |
+| `lots:elect` | SpecID names on a sale (`identified_lots`) where the RuleSet allows | Reserved: `ApplyEventRequest` cannot carry this election and this scope grants no post | ⛔ Not `lot_method = "specific_id"`. Not MinTax. Not average cost. Those are elections, not this scope |
 | `nav:read` | NAV strikes, roll-forward | strike / roll-forward reads | — |
 | `nav:strike` | Reserved name; no grantable strike operation | `ratio strike` is CLI-only | No write RPC is approved; reservation does not change the human-only fence |
 | `partners:read` | Partner master, capital, commitments | `/capital` | Not a waterfall, not IRR / TVPI |
@@ -169,20 +170,36 @@ closes the decision card; remaining work is tracked in #161 and #150.
 
 ## `journals:post` allowlist
 
-Documented. Not implemented.
+**Implemented at `Console::apply_event` (#260).** App helpers are an
+additional filter; bypassing them does not bypass the API grant.
 
 `journals:post` is not `Journal::append` with a Connect sticker on it. A
 client that can post any dated entry can write a sale, a close, a wash, or
 a partner allocation. The grant is **this `client_id` may instantiate these
 already-approved template ids, on books the subject administers**.
 
-Shape when it lands (leftover, not a schema in this PR):
+The operator-owned `<funds-root>/CONNECT_GRANTS.pb` is a serialized
+[`ConnectTemplateGrants`](../proto/ratio/console/v1/connect.proto) message:
 
 ```
-client_id → { template_id, … }
+verified client_id × BookKind → { exact template_id, … }
 ```
 
-Rules that hold whether or not the map has been wired:
+The client comes only from gateway-verified `client_id`, or `azp` when
+`client_id` is absent. If both exist and disagree, posting is refused.
+A body field or application helper cannot supply the identity or policy.
+The file is read on each attempt, so a removed grant revokes the next
+post on an existing Console. Malformed or unreadable files refuse with
+HTTP 403; a missing or empty file grants nothing. An unspecified or
+unknown kind never matches. Multiple rows are additive exact matches;
+`*` has no special meaning.
+
+Local CLI and AuthKit session posts retain their existing membership and
+actor behavior. Even direct calls to `Console::open` keep Connect scoped.
+No RPC edits the grant file or approves/promotes a RuleSet. Provisioning
+is operator work; see [deployment instructions](../deploy/README.md#connect-template-grants).
+
+Enforced rules:
 
 - **Empty allowlist refuses every post.** Silence is not "all templates".
   A first-party app that has not been listed cannot post.
@@ -194,8 +211,10 @@ Rules that hold whether or not the map has been wired:
   conservation, identified lots, wash window, bounds. A scope does not
   waive a proof.
 - **`calls:post` and `fees:accrue` are the same shape** over a narrower
-  set (`call_*`, fee-accrual templates). They do not bypass this allowlist;
-  they are a tighter grant of the same verb.
+  set (`call_*` and exactly `management_fee_accrual`, respectively).
+  They cannot invoke an unrelated allowlisted template. `lots:elect`
+  remains reserved because `ApplyEventRequest` has no `identified_lots`
+  field; it is never an alternative posting scope.
 
 Illustrative ids — what CreateBook seeds, **not** a grant table. An
 implementation copies from the book's live RuleSet, not from this list.
@@ -232,8 +251,9 @@ open:
 2. **Book ACL on every Connect grant.** Built with the authorizer.
    Authorized-empty for a book the subject does not administer. An
    `org_id` claim is not membership.
-3. **`journals:post` allowlist** keyed by `client_id` — the map above,
-   enforced at `ApplyEvent`, empty-refuses.
+3. **`journals:post` allowlist** — Built in #260: verified client and
+   BookKind, exact template, active RuleSet, empty-refuses. Production
+   grant rows still require an operator to choose a client and templates.
 4. **Reference Connect app skeleton** — read-only `books:read` +
    `statements:read`, proving the door opens without a new RPC.
    A first-party bank-feed scaffold lives at `connect/bank-feed/`

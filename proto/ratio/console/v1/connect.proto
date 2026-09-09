@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package ratio.console.v1;
+
+import "ratio/console/v1/console.proto";
+
+option java_multiple_files = true;
+option java_package = "com.fastverk.ratio.console.v1";
+option java_outer_classname = "ConnectProto";
+
+// Operator-owned CONNECT_GRANTS.pb. No RPC or token claim can write this file.
+// Grants are additive exact matches; absent or empty grants permit no posts.
+message ConnectTemplateGrants {
+  // Each row grants one client templates for one declared BookKind.
+  repeated ConnectTemplateGrant grants = 1;
+}
+
+// A template permission, independent of the subject's book membership.
+message ConnectTemplateGrant {
+  // Verified OAuth client_id (or azp when client_id is absent).
+  string client_id = 1;
+  // Explicit kind; KIND_UNSPECIFIED never grants access.
+  Book.Kind book_kind = 2;
+  // Exact rule ids in the book's active approved RuleSet. No wildcards.
+  repeated string template_ids = 3;
+}

@@ -18,7 +18,11 @@ use std::collections::BTreeSet;
 use std::io;
 use std::path::Path;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
+use prost::Message;
+use ratio_proto::ratio::console::v1::ConnectTemplateGrants;
+
+use crate::book::BookKind;
 
 /// The identity a request carries, resolved from the gateway's verified claims.
 ///
@@ -56,6 +60,8 @@ pub enum Subject {
         /// M2M) token rather than an AuthKit session. The actor is still
         /// `sub`. The grant is still membership. The open demo is not.
         connect: bool,
+        /// Verified OAuth client identity; empty or ambiguous never grants a post.
+        client_id: String,
         /// Frozen catalog scopes this Connect token carries. Empty on an
         /// AuthKit session. Aliases and hard non-scopes never land here.
         scopes: BTreeSet<String>,
@@ -134,7 +140,21 @@ pub fn from_request_context(header: &str) -> Option<Subject> {
     } else {
         BTreeSet::new()
     };
-    Some(Subject::Member { sub, email, organization, groups, connect, scopes })
+    let client_id = if connect {
+        let client = claim("client_id");
+        let azp = claim("azp");
+        // Two different verified client names are ambiguous, not two grants.
+        if client.is_empty() {
+            azp
+        } else if azp.is_empty() || azp == client {
+            client
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+    Some(Subject::Member { sub, email, organization, groups, connect, client_id, scopes })
 }
 
 /// Whether verified JWT claims look like a WorkOS Connect token.
@@ -234,7 +254,7 @@ pub fn holds_scope(held: &BTreeSet<String>, scope: &str) -> bool {
 /// skip this table; membership is their grant.
 ///
 /// Any one of the returned names is enough. Write scopes that name a
-/// template (`journals:post`, `calls:post`, `fees:accrue`, `lots:elect`)
+/// template (`journals:post`, `calls:post`, `fees:accrue`)
 /// share `ApplyEvent`; they are a tighter grant of the same verb, not
 /// a second RPC.
 pub fn required_connect_scopes(method: &str, path: &str) -> Option<&'static [&'static str]> {
@@ -243,7 +263,7 @@ pub fn required_connect_scopes(method: &str, path: &str) -> Option<&'static [&'s
         return if rest == "books" {
             Some(&["books:write"])
         } else if rest.ends_with(":applyEvent") {
-            Some(&["journals:post", "calls:post", "fees:accrue", "lots:elect"])
+            Some(&["journals:post", "calls:post", "fees:accrue"])
         } else if rest.ends_with(":ingest") {
             Some(&["books:ingest", "deliveries:write"])
         } else if rest.ends_with(":admit") {
@@ -322,6 +342,48 @@ pub fn authorize_connect(
         return Ok(());
     }
     bail!("scope `{need}` is required", need = need[0])
+}
+
+/// A verified Connect caller, kept in process rather than serialized again.
+#[derive(Clone, Debug)]
+pub(crate) struct ConnectAuthorization {
+    pub client_id: String,
+    pub scopes: BTreeSet<String>,
+}
+
+impl ConnectAuthorization {
+    /// Every ApplyEvent path, including direct calls and previews, meets here.
+    /// The subject's membership and the active RuleSet are checked by the caller.
+    pub fn authorize_template(&self, root: &Path, kind: BookKind, template: &str) -> Result<()> {
+        let scope_matches = holds_scope(&self.scopes, "journals:post")
+            || (holds_scope(&self.scopes, "calls:post") && template.starts_with("call_"))
+            || (holds_scope(&self.scopes, "fees:accrue") && template == ratio_rules::FEE_RULE_ID);
+        // lots:elect cannot express identified_lots in ApplyEventRequest today.
+        // Treating it as a posting scope would grant unrelated cash movements.
+        if !scope_matches {
+            bail!("Connect post refused: posting scope is required for template {template:?}");
+        }
+        if self.client_id.is_empty() {
+            bail!("Connect post refused: verified client identity is required");
+        }
+        // Read on each attempt: removing a grant revokes the next post even on
+        // an existing Console. Unreadable policy must not look like an empty map.
+        let path = root.join("CONNECT_GRANTS.pb");
+        let policy = match std::fs::read(path) {
+            Ok(bytes) => ConnectTemplateGrants::decode(bytes.as_slice())
+                .context("Connect post refused: template grants could not be decoded")?,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => ConnectTemplateGrants::default(),
+            Err(e) => bail!("Connect post refused: template grants could not be read: {e}"),
+        };
+        if policy.grants.iter().any(|grant| {
+            grant.client_id == self.client_id
+                && grant.book_kind == kind.proto()
+                && grant.template_ids.iter().any(|id| id == template)
+        }) {
+            return Ok(());
+        }
+        bail!("Connect post refused: client is not granted template {template:?} for {} books", kind.as_str())
+    }
 }
 
 /// What a subject may open, resolved from `<root>/MEMBERSHIP.tsv`.
@@ -463,6 +525,7 @@ mod tests {
             organization: String::new(),
             groups: vec![],
             connect: false,
+            client_id: String::new(),
             scopes: BTreeSet::new(),
         }
     }
@@ -478,6 +541,7 @@ mod tests {
             organization: org.into(),
             groups: vec![],
             connect: true,
+            client_id: "client_test".into(),
             scopes: catalog_grants(&scopes.join(" ")),
         }
     }
@@ -487,7 +551,7 @@ mod tests {
         let header = r#"{"authorizer":{"jwt":{"claims":{"sub":"abc-123","email":"a@x.test","org_id":"org_01x","cognito:groups":"[admins ops]"}}}}"#;
         let s = from_request_context(header).expect("claims present");
         match &s {
-            Subject::Member { sub, email, organization, groups, connect, scopes } => {
+            Subject::Member { sub, email, organization, groups, connect, scopes, .. } => {
                 assert_eq!(sub.as_str(), "abc-123");
                 assert_eq!(email.as_str(), "a@x.test");
                 assert_eq!(organization.as_str(), "org_01x");
@@ -603,6 +667,7 @@ mod tests {
             organization: "org_01a".into(),
             groups: vec![],
             connect: false,
+            client_id: String::new(),
             scopes: BTreeSet::new(),
         };
         let granted = funds_for(&dir, &in_a);
@@ -610,6 +675,23 @@ mod tests {
 
         let in_none = member("user_1", "a@x.test");
         assert!(funds_for(&dir, &in_none).is_empty());
+    }
+
+    #[test]
+    fn verified_client_claims_are_carried_without_guessing_an_ambiguous_identity() {
+        for (claims, expected) in [
+            (r#""client_id":"client_a""#, "client_a"),
+            (r#""azp":"client_a""#, "client_a"),
+            (r#""client_id":"client_a","azp":"client_a""#, "client_a"),
+            (r#""client_id":"client_a","azp":"client_b""#, ""),
+            (r#""client_id":123"#, ""),
+        ] {
+            let header = format!(r#"{{"authorizer":{{"jwt":{{"claims":{{"sub":"u","scope":"journals:post",{claims}}}}}}}}}"#);
+            match from_request_context(&header).unwrap() {
+                Subject::Member { client_id, .. } => assert_eq!(client_id, expected),
+                Subject::Local => panic!("verified claims are never local"),
+            }
+        }
     }
 
     #[test]

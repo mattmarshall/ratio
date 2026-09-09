@@ -183,7 +183,7 @@ pub struct Console {
     /// Catalog scopes a Connect token may exercise. `None` is an AuthKit
     /// session or `Local` — membership is the grant. `Some` is always the
     /// Connect path, even when the set is empty: silence is not every scope.
-    connect_grants: Option<BTreeSet<String>>,
+    connect_grants: Option<auth::ConnectAuthorization>,
 
     /// Stage E store for lots / positions / Current aggregates.
     ///
@@ -195,9 +195,12 @@ pub struct Console {
 }
 
 /// Catalog scopes carried by a Connect subject. AuthKit / Local stay `None`.
-fn connect_grants_of(subject: &Subject) -> Option<BTreeSet<String>> {
+fn connect_grants_of(subject: &Subject) -> Option<auth::ConnectAuthorization> {
     match subject {
-        Subject::Member { connect: true, scopes, .. } => Some(scopes.clone()),
+        Subject::Member { connect: true, client_id, scopes, .. } => Some(auth::ConnectAuthorization {
+            client_id: client_id.clone(),
+            scopes: scopes.clone(),
+        }),
         _ => None,
     }
 }
@@ -268,6 +271,9 @@ impl Console {
     /// — this changes what an authenticated caller may see, not whether
     /// one is needed.
     pub fn open(root: impl AsRef<Path>, subject: Subject) -> Self {
+        if subject.is_connect() {
+            return Self::scoped(root, subject);
+        }
         let root = root.as_ref().to_path_buf();
         let actor = match subject.actor() {
             Some(a) => Some(a.to_string()),
@@ -300,7 +306,7 @@ impl Console {
         root: PathBuf,
         scope: Scope,
         actor: Option<String>,
-        connect_grants: Option<BTreeSet<String>>,
+        connect_grants: Option<auth::ConnectAuthorization>,
         subject: Subject,
     ) -> Self {
         Console {
@@ -346,7 +352,7 @@ impl Console {
     /// Refuse a Connect token that lacks the catalog scope this `/v1` door
     /// needs. AuthKit sessions and `Local` skip the table.
     pub fn authorize_connect(&self, method: &str, path: &str) -> Result<()> {
-        auth::authorize_connect(self.connect_grants.as_ref(), method, path)
+        auth::authorize_connect(self.connect_grants.as_ref().map(|g| &g.scopes), method, path)
     }
 
     /// Append one line to the fund's audit log — who did what, when, to what,
@@ -1366,6 +1372,10 @@ impl Console {
     pub fn apply_event(&self, req: &pb::ApplyEventRequest) -> Result<pb::ApplyEventResponse> {
         let fund = resource_id(&req.parent, "funds")?;
         let path = self.book_path(&fund)?;
+        let meta = book::BookMeta::load(&path, &fund);
+        if let Some(grants) = &self.connect_grants {
+            grants.authorize_template(&self.root, meta.kind, &req.rule_id)?;
+        }
 
         // The event id reaches a filename-shaped identifier and, on the public
         // demo, a screen other visitors read. Nothing but an id gets through.
@@ -1595,7 +1605,6 @@ impl Console {
         }
 
         let mut postings = ratio_rules::compile(rule, &event)?;
-        let meta = book::BookMeta::load(&path, &fund);
         stamp_event_currency(meta.kind, &set, &req.currency_code, &mut postings)?;
         book::refuse_unelected_household_lots(meta.kind, &set, &postings)?;
 
@@ -6738,6 +6747,7 @@ mod tests {
                 organization: String::new(),
                 groups: vec![],
                 connect: false,
+                client_id: String::new(),
                 scopes: BTreeSet::new(),
             },
         );
@@ -6856,6 +6866,7 @@ mod tests {
                 organization: String::new(),
                 groups: vec![],
                 connect: false,
+                client_id: String::new(),
                 scopes: BTreeSet::new(),
             };
         let console = Console::open(&root, subject);
@@ -6898,6 +6909,7 @@ mod tests {
             organization: String::new(),
             groups: vec![],
             connect: false,
+            client_id: String::new(),
             scopes: BTreeSet::new(),
         };
         let bob = Subject::Member {
@@ -6906,6 +6918,7 @@ mod tests {
             organization: String::new(),
             groups: vec![],
             connect: false,
+            client_id: String::new(),
             scopes: BTreeSet::new(),
         };
         let alice_c = Console::for_request(&root, alice, false);
@@ -6944,6 +6957,7 @@ mod tests {
                 organization: String::new(),
                 groups: vec![],
                 connect: false,
+                client_id: String::new(),
                 scopes: BTreeSet::new(),
             },
         );
@@ -9631,6 +9645,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             organization: "org_01a".into(),
             groups: vec![],
             connect: false,
+            client_id: String::new(),
             scopes: BTreeSet::new(),
         };
         let created = Console::scoped(&root, subject.clone())
@@ -11538,6 +11553,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
                 organization: String::new(),
                 groups: vec![],
                 connect: false,
+                client_id: String::new(),
                 scopes: BTreeSet::new(),
             },
         );
@@ -11553,6 +11569,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             organization: org.into(),
             groups: vec![],
             connect: false,
+            client_id: String::new(),
             scopes: BTreeSet::new(),
         }
     }
@@ -11794,6 +11811,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             organization: "org_01a".into(),
             groups: vec![],
             connect: true,
+            client_id: "client_test".into(),
             scopes: auth::catalog_grants("books:read"),
         };
         let via_open = Console::for_request(&root, connect, true);
@@ -11817,6 +11835,305 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             seen.books.iter().any(|b| b.name == "books/alpha"),
             "AuthKit + DEMO_OPEN still lists the shared demo: {:?}",
             seen.books
+        );
+    }
+
+    fn connect_policy(root: &Path, client: &str, kind: book::BookKind, ids: &[&str]) {
+        let policy = pb::ConnectTemplateGrants {
+            grants: vec![pb::ConnectTemplateGrant {
+                client_id: client.into(),
+                book_kind: kind.proto(),
+                template_ids: ids.iter().map(|s| s.to_string()).collect(),
+            }],
+        };
+        std::fs::write(root.join("CONNECT_GRANTS.pb"), policy.encode_to_vec()).unwrap();
+    }
+
+    fn connect_household(root: &Path) {
+        Console::new(root)
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Grant test".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "household".into(),
+            })
+            .unwrap();
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "user_c\thousehold\n").unwrap();
+    }
+
+    #[test]
+    fn connect_posts_require_the_same_exact_grant_on_http_and_direct_calls() {
+        let root = fresh("connect-template-boundary");
+        connect_household(&root);
+        let verified = auth::from_request_context(
+            r#"{"authorizer":{"jwt":{"claims":{"sub":"user_c","azp":"client_test","scope":"journals:post"}}}}"#,
+        ).unwrap();
+        let caller = Console::for_request(&root, verified, true);
+        let request = household_req("expense", "spend_cash", "12.00", 2026, 3, 8);
+        let http = r#"{"eventId":"expense","ruleId":"spend_cash","amount":"12.00","tradeDate":{"year":2026,"month":3,"day":8},"clientId":"client_other","client_id":"client_other","azp":"client_other"}"#;
+        // No app helper chooses a template; forged client names in the body
+        // cannot replace the client in the gateway-verified request context.
+        for (client, kind, ids) in [
+            ("missing", book::BookKind::Personal, vec![]),
+            ("client_other", book::BookKind::Personal, vec!["spend_cash"]),
+            ("client_test", book::BookKind::Operating, vec!["spend_cash"]),
+            (
+                "client_test",
+                book::BookKind::Personal,
+                vec!["receive_income"],
+            ),
+            ("client_test", book::BookKind::Personal, vec!["spend_*"]),
+            ("client_test", book::BookKind::Personal, vec![]),
+        ] {
+            if client != "missing" {
+                connect_policy(&root, client, kind, &ids);
+            }
+            for preview in [false, true] {
+                let mut req = request.clone();
+                req.validate_only = preview;
+                let e = caller.apply_event(&req).unwrap_err().to_string();
+                assert!(
+                    e.contains("client is not granted template"),
+                    "{client}/{kind:?}: {e}"
+                );
+            }
+            let e = transcode::serve(&caller, "POST", "/v1/funds/household:applyEvent", "", http)
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains("client is not granted template"), "{e}");
+            assert!(Console::new(&root)
+                .list_entries("funds/household")
+                .unwrap()
+                .entries
+                .is_empty());
+        }
+        connect_policy(
+            &root,
+            "client_test",
+            book::BookKind::Personal,
+            &["spend_cash"],
+        );
+        let mut preview = request.clone();
+        preview.validate_only = true;
+        caller
+            .apply_event(&preview)
+            .expect("the exact grant previews");
+        transcode::serve(&caller, "POST", "/v1/funds/household:applyEvent", "", http)
+            .expect("the exact grant posts");
+        let entries = Console::new(&root)
+            .list_entries("funds/household")
+            .unwrap()
+            .entries;
+        assert_eq!(entries.len(), 1);
+        let log = caller
+            .change_log_for(&root.join("household"), "household")
+            .unwrap();
+        assert_eq!(
+            log.iter().find(|e| e.action == "posted").unwrap().actor,
+            "user_c"
+        );
+        // An already-constructed Console must observe revocation.
+        std::fs::write(root.join("CONNECT_GRANTS.pb"), []).unwrap();
+        let e = caller
+            .apply_event(&household_req("next", "spend_cash", "1.00", 2026, 3, 9))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("client is not granted template"), "{e}");
+    }
+
+    #[test]
+    fn connect_grants_do_not_replace_membership_scope_or_the_active_ruleset() {
+        let root = fresh("connect-template-other-doors");
+        connect_household(&root);
+        connect_policy(
+            &root,
+            "client_test",
+            book::BookKind::Personal,
+            &["spend_cash", "call_lp"],
+        );
+        let request = household_req("expense", "spend_cash", "1.00", 2026, 3, 8);
+        for scope in ["", "books:read", "lots:elect", "calls:post", "fees:accrue"] {
+            let caller = Console::for_request(&root, connect_subject("user_c", scope), true);
+            let e = caller.apply_event(&request).unwrap_err().to_string();
+            assert!(e.contains("posting scope is required"), "{scope}: {e}");
+        }
+        let stranger =
+            Console::for_request(&root, connect_subject("other_user", "journals:post"), true);
+        let e = stranger.apply_event(&request).unwrap_err().to_string();
+        assert!(e.contains("no fund"), "{e}");
+        // The public open constructor cannot erase a Connect grant either.
+        let stranger = Console::open(&root, connect_subject("other_user", "journals:post"));
+        assert!(stranger
+            .apply_event(&request)
+            .unwrap_err()
+            .to_string()
+            .contains("no fund"));
+        let caller = Console::for_request(&root, connect_subject("user_c", "calls:post"), false);
+        let e = caller
+            .apply_event(&household_req("call", "call_lp", "1.00", 2026, 3, 8))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("no rule") && e.contains("call_lp"),
+            "allowlisting never approves a rule: {e}"
+        );
+        assert!(Console::new(&root)
+            .list_entries("funds/household")
+            .unwrap()
+            .entries
+            .is_empty());
+    }
+
+    #[test]
+    fn connect_client_identity_and_readable_policy_are_required_even_with_a_scope() {
+        let root = fresh("connect-template-policy");
+        connect_household(&root);
+        connect_policy(
+            &root,
+            "client_test",
+            book::BookKind::Personal,
+            &["spend_cash"],
+        );
+        let request = household_req("expense", "spend_cash", "1.00", 2026, 3, 8);
+        for claims in [
+            r#"{"sub":"user_c","scope":"journals:post"}"#,
+            r#"{"sub":"user_c","scope":"journals:post","client_id":"client_test","azp":"other"}"#,
+        ] {
+            let header = format!(r#"{{"authorizer":{{"jwt":{{"claims":{claims}}}}}}}"#);
+            let who = auth::from_request_context(&header).unwrap();
+            let e = Console::for_request(&root, who, true)
+                .apply_event(&request)
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains("verified client identity is required"), "{e}");
+        }
+        let caller = Console::for_request(&root, connect_subject("user_c", "journals:post"), true);
+        std::fs::write(root.join("CONNECT_GRANTS.pb"), [0xff]).unwrap();
+        let e = caller.apply_event(&request).unwrap_err().to_string();
+        assert!(e.contains("could not be decoded"), "{e}");
+        std::fs::remove_file(root.join("CONNECT_GRANTS.pb")).unwrap();
+        std::fs::create_dir(root.join("CONNECT_GRANTS.pb")).unwrap();
+        let e = caller.apply_event(&request).unwrap_err().to_string();
+        assert!(e.contains("could not be read"), "{e}");
+        assert!(Console::new(&root)
+            .list_entries("funds/household")
+            .unwrap()
+            .entries
+            .is_empty());
+    }
+
+    #[test]
+    fn connect_narrow_scopes_post_only_their_allowlisted_templates() {
+        let root = fresh("connect-narrow-posts");
+        Console::new(&root)
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Grant test".into(),
+                    kind: book::BookKind::Investment.proto(),
+                    ..Default::default()
+                }),
+                book_id: "fund".into(),
+            })
+            .unwrap();
+        elect_management_fee(&root, "fund");
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "user_c\tfund\n").unwrap();
+        connect_policy(
+            &root,
+            "client_test",
+            book::BookKind::Investment,
+            &["call_lp", "contribute_lp", "management_fee_accrual"],
+        );
+        let calls = Console::for_request(&root, connect_subject("user_c", "calls:post"), false);
+        calls
+            .apply_event(&capital_req("fund", "call", "call_lp", "12.00", 2026, 3, 8))
+            .unwrap();
+        let fees = Console::for_request(&root, connect_subject("user_c", "fees:accrue"), false);
+        fees.apply_event(&fee_req("fund", "fee", "3650000.00", "1"))
+            .unwrap();
+        for caller in [calls, fees] {
+            let e = caller
+                .apply_event(&capital_req(
+                    "fund",
+                    "contribute",
+                    "contribute_lp",
+                    "12.00",
+                    2026,
+                    3,
+                    8,
+                ))
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains("posting scope is required"), "{e}");
+        }
+        assert_eq!(
+            Console::new(&root)
+                .list_entries("funds/fund")
+                .unwrap()
+                .entries
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn a_connect_grant_cannot_bypass_closed_periods_bounds_or_conservation() {
+        let root = fresh("connect-kernel-doors");
+        connect_household(&root);
+        connect_policy(
+            &root,
+            "client_test",
+            book::BookKind::Personal,
+            &["spend_cash", "unbalanced"],
+        );
+        let caller = Console::for_request(&root, connect_subject("user_c", "journals:post"), false);
+        caller
+            .apply_event(&household_req("valid", "spend_cash", "1.00", 2026, 3, 8))
+            .unwrap();
+        Console::new(&root)
+            .close_period("household", ratio_rules::UNDECLARED_VIEW, "2026-03-31")
+            .unwrap();
+        let after_close = Console::new(&root).list_entries("funds/household").unwrap().entries.len();
+        let e = caller
+            .apply_event(&household_req("closed", "spend_cash", "1.00", 2026, 3, 8))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("closed"), "{e}");
+        let e = caller
+            .apply_event(&household_req(
+                "overflow",
+                "spend_cash",
+                "9223372036854775808.00",
+                2026,
+                4,
+                8,
+            ))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            !e.contains("Connect post refused"),
+            "the grant is valid: {e}"
+        );
+        assert!(e.contains("too large"), "{e}");
+        let mut b = FileBook::open(root.join("household")).unwrap();
+        let digest = b.active().unwrap().unwrap();
+        let current = String::from_utf8(b.get(&digest).unwrap()).unwrap();
+        let bad = format!("{current}\n[[rule]]\nid = \"unbalanced\"\nkind = \"trade\"\n[[rule.posting]]\naccount = 1\nweight = 1\n");
+        let digest = b.put(bad.as_bytes()).unwrap();
+        b.set_active(&digest).unwrap();
+        let e = caller
+            .apply_event(&household_req("bad", "unbalanced", "1.00", 2026, 4, 8))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("conserv") || e.contains("balance"), "{e}");
+        assert_eq!(
+            Console::new(&root)
+                .list_entries("funds/household")
+                .unwrap()
+                .entries
+                .len(),
+            after_close
         );
     }
 
@@ -11847,6 +12164,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             organization: "org_01a".into(),
             groups: vec![],
             connect: true,
+            client_id: "client_test".into(),
             scopes: auth::catalog_grants(scopes),
         }
     }
@@ -11941,25 +12259,18 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             connect_subject("user_c", "journals:post"),
             false,
         );
-        // The body is empty-enough to reach the grant check; a missing
-        // template still fails later. The grant itself must pass.
-        let post_gate = transcode::serve(
+        // A scope passes route authorization, but never supplies a template grant.
+        let msg = transcode::serve(
             &writer,
             "POST",
             "/v1/funds/alpha:applyEvent",
             "",
             "{}",
+        ).unwrap_err().to_string();
+        assert!(
+            msg.contains("Connect post refused:"),
+            "journals:post alone must not post without an exact grant: {msg}"
         );
-        match post_gate {
-            Ok(_) => {}
-            Err(e) => {
-                let msg = e.to_string();
-                assert!(
-                    !msg.contains("scope `"),
-                    "journals:post must pass the authorizer: {msg}"
-                );
-            }
-        }
         let read_cannot_post = transcode::serve(
             &reader,
             "POST",

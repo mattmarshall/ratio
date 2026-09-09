@@ -31,6 +31,14 @@ Parameters:
       WorkOS `sub` or someone CreateBooks (which grants the creator's `sub`).
       Set the list via the DEMO_MEMBERS repository variable. Do not invent a
       `sub` in this template. See deploy/README.md.
+  ConnectTemplateGrantsBase64:
+    Type: String
+    Default: ""
+    Description: >
+      Base64-encoded ratio.console.v1.ConnectTemplateGrants protobuf.
+      Exact OAuth client, BookKind and active template grants for ApplyEvent.
+      Empty permits no Connect posts. Set via CONNECT_TEMPLATE_GRANTS_BASE64;
+      membership and OAuth scopes remain separate requirements.
   ConsoleOrigin:
     Type: String
     Default: ""
@@ -202,6 +210,7 @@ Resources:
           # Sign-in is still required (RATIO_AUTH above).
           # entrypoint.sh seeds MEMBERSHIP.tsv from this list.
           RATIO_DEMO_MEMBER: !Ref DemoMember
+          RATIO_CONNECT_TEMPLATE_GRANTS_BASE64: !Ref ConnectTemplateGrantsBase64
           # ⛔ WHERE / AND /app REDIRECT. The console used to be compiled into
           # this binary and served from here; it is a separate application now,
           # and this URL is the only thing that keeps the demo link in README.md
