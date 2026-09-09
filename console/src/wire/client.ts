@@ -24,7 +24,7 @@ import "server-only";
 // the same contract from the other side. Hand-written and unchecked would be a
 // 404 found by a customer; hand-written and checked is a failing build.
 
-import { fetchUntilReady } from "./hydrate.js";
+import { fetchUntilReady } from "./hydrate";
 import type {
   Account,
   AdmitFactsRequest,
