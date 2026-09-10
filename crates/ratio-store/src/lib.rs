@@ -2073,6 +2073,12 @@ mod tests {
         p
     }
 
+    fn seed_tmp() -> PathBuf {
+        let p = tmp().join("baked-seed");
+        fs::create_dir_all(&p).unwrap();
+        p
+    }
+
     fn book() -> (FileBook, Digest) {
         let mut b = FileBook::open(tmp()).unwrap();
         let d = b.put(b"rules = []\n").unwrap();
@@ -2677,7 +2683,7 @@ mod tests {
 
     #[test]
     fn seed_publication_claims_missing_sequences_then_makes_repeats_cheap() {
-        let root = tmp();
+        let root = seed_tmp();
         fs::write(root.join("journal.jsonl"), "one\ntwo\n").unwrap();
         fs::write(root.join("facts.jsonl"), "fact-one\n").unwrap();
         let store = Arc::new(CountingStore::new());
@@ -2718,7 +2724,7 @@ mod tests {
 
     #[test]
     fn a_seed_marker_refuses_a_different_baked_book() {
-        let root = tmp();
+        let root = seed_tmp();
         fs::write(root.join("journal.jsonl"), "the-original-seed\n").unwrap();
         let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
         publish_seed(&root, store.clone()).unwrap();
@@ -2731,7 +2737,7 @@ mod tests {
 
     #[test]
     fn first_marker_migration_detects_an_existing_wrong_sequence() {
-        let root = tmp();
+        let root = seed_tmp();
         fs::write(root.join("journal.jsonl"), "wanted\n").unwrap();
         let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
         let log = SeqLog::new(
@@ -2748,7 +2754,7 @@ mod tests {
 
     #[test]
     fn serving_attachment_verifies_without_seed_puts() {
-        let root = tmp();
+        let root = seed_tmp();
         fs::write(root.join("journal.jsonl"), "one\n").unwrap();
         let store = Arc::new(CountingStore::new());
         publish_seed(&root, store.clone()).unwrap();
