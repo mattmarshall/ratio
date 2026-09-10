@@ -26,9 +26,10 @@ Connect access token and POSTs allowlisted ApplyEvent bodies to the
 Connect HTTP API. Membership is still required. Live bank OAuth
 stays leftover on #165. WorkOS dashboard registration stays leftover #22.
 
-⚠ LIVE PLAID LINK IS NOT ACTIVATED. `plaid.py` supplies bounded Transactions
-Sync and Item removal. Production credentials, public-token exchange, Item-token
-custody, webhooks, and institution evidence stay leftover on #165.
+⚠ LIVE PLAID LINK IS NOT ACTIVATED. `plaid_link.py` supplies Link creation and
+exchange; `plaid.py` supplies bounded Transactions Sync and Item removal.
+Production credentials, Dashboard redirect registration, Item-token custody,
+webhooks, and institution evidence stay leftover on #165.
 """
 
 from __future__ import annotations

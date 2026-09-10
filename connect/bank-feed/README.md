@@ -7,8 +7,8 @@ Issue [#165](https://github.com/mattmarshall/ratio/issues/165). First-party
 Bank OAuth and transaction → journal mapping live **here**. They do not
 live in `ratio watch`, the operations console, or a new kernel RPC.
 
-The mapper and a bounded Plaid Transactions Sync adapter are built. A green
-fixture run is not a live institution authorization.
+The mapper, Plaid Link boundary, and bounded Transactions Sync adapter are
+built. A green fixture run is not a live institution authorization.
 
 ## What landed
 
@@ -44,10 +44,17 @@ fixture run is not a live institution authorization.
   exact retry is idempotent without exposing the provider id in the journal.
 - `/item/remove` disconnects the runtime client. It does not rewrite prior
   journal facts. Credentials and Item tokens remain runtime-only and redacted.
+- `/link/token/create` asks only for `transactions`, explicit countries and a
+  language. The WorkOS subject plus Ratio book is hashed into Plaid's stable
+  non-PII `client_user_id`; neither identifier is sent in clear text.
+- Link completion requires an unpredictable, expiring, one-time state. The
+  public token is exchanged once, then its server-only `LinkedItem` moves the
+  access token directly into `PlaidClient` without returning it to the browser.
 
-`bazel test //connect/bank-feed:mapper_test //connect/bank-feed:plaid_test` is
-the focused gate. Retained provider fixtures exercise numeric JSON money and
-multi-page pending behavior.
+`bazel test //connect/bank-feed:mapper_test //connect/bank-feed:plaid_test
+//connect/bank-feed:plaid_link_test` is the focused gate. Retained provider
+fixtures exercise numeric JSON money, multi-page pending behavior, Link token
+creation, and public-token exchange.
 
 ## WorkOS Connect — application shape
 
@@ -85,13 +92,14 @@ attribute a card charge to a client secret.
 | | Who | What it grants |
 |---|---|---|
 | **WorkOS Connect** | The bank-feed app, talking to Ratio | Catalog scopes on books the subject administers |
-| **Bank / custodian** | The household, talking to Plaid | Transactions Sync adapter built; live Link activation pending. |
+| **Bank / custodian** | The household, talking to Plaid | Link and Transactions Sync protocol boundaries built; live activation pending. |
 
-The Plaid adapter speaks `/transactions/sync` and `/item/remove`, then hands
-explicitly classified rows to the mapper (`dated`, `amount` as decimal text,
-`currency`, `kind`, optional `from`/`to` for transfers). Plaid Link token
-creation, public-token exchange, production credentials, and a live institution
-authorization remain operator work on #165.
+The Plaid boundary speaks `/link/token/create`, `/item/public_token/exchange`,
+`/transactions/sync`, and `/item/remove`, then hands explicitly classified rows
+to the mapper (`dated`, `amount` as decimal text, `currency`, `kind`, optional
+`from`/`to` for transfers). Production credentials, Dashboard redirect
+registration, durable encrypted Item-token custody/rotation, webhooks, and a
+live institution authorization remain operator work on #165.
 
 ## Grant contract this app honors (and cannot yet exercise)
 
@@ -126,9 +134,10 @@ or a posting that reached `/v1`. BookKind PERSONAL chrome is unchanged.
    tokens on ConnectApiUrl. In-process `/v1` accepts catalog scopes
    after membership. Dashboard registration, redirect, and a live
    token stay leftover. Write-route actor binding landed (#151).
-2. **Live bank authorization.** Plaid Link, public-token exchange, production
-   credentials, Item-token custody/rotation, webhook operation, and institution
-   evidence. The bounded Transactions Sync pull and disconnect operation are built.
+2. **Live bank authorization.** Production credentials, Dashboard redirect
+   registration, durable encrypted Item-token custody/rotation, webhook
+   operation, and institution evidence. Link creation/exchange, bounded
+   Transactions Sync, and disconnect are built.
 3. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover
    on #150. This app checks its own list; the kernel does not yet key
    one by `client_id`.

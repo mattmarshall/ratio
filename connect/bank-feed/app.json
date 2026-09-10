@@ -40,10 +40,12 @@
   },
   "bank_oauth": {
     "provider": "Plaid",
-    "status": "transactions sync adapter built; live Link activation pending",
+    "status": "Link and transactions sync boundaries built; live activation pending",
+    "link_create_endpoint": "/link/token/create",
+    "token_exchange_endpoint": "/item/public_token/exchange",
     "sync_endpoint": "/transactions/sync",
     "disconnect_endpoint": "/item/remove",
-    "note": "The bounded adapter requires a user rule choice for each settled transaction, exposes pending rows without posting, and refuses modified/removed rows. Live Plaid Link, credentials, and institution authorization remain on #165."
+    "note": "The Link boundary creates a minimal transactions token, binds completion to one-time state, and moves the exchanged Item token directly into the bounded sync client. The sync adapter requires a user rule choice for each settled transaction, exposes pending rows without posting, and refuses modified/removed rows. Live Plaid credentials, redirect registration, durable encrypted token custody, webhooks, and institution authorization remain on #165."
   },
   "grant_path": {
     "status": "built",

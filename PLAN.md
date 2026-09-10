@@ -1552,9 +1552,9 @@ chrome is unchanged — `screensFor` is not forked.
   WorkOS application registration and live grant evidence remain #22 / #150.
   This file does not close #150.
 - **Not live bank authorization.** The Plaid Transactions Sync and disconnect
-  adapter is built by #317. Plaid Link, production credentials, public-token
-  exchange, Item-token custody, webhooks, and an authorized institution remain
-  on #165.
+  adapter is built by #317; Link creation/exchange is built by #318. Production
+  credentials, Dashboard redirect registration, Item-token custody, webhooks,
+  and an authorized institution remain on #165.
 - **Not #150's read-only reference skeleton.** That leftover is
   `books:read` + `statements:read` proving the door opens. This app
   requests `journals:post` and does not open the door.
@@ -1595,10 +1595,32 @@ representation and errors. Retained fixtures prove pagination, Decimal money,
 retry identity, pending treatment, category refusal, mutation/removal refusal,
 malformed responses, transport failure, and disconnect behavior.
 
-**Still not live bank OAuth.** Plaid Link, production credentials, public-token
-exchange, Item-token custody/rotation, webhooks, and an authorized institution
-remain on #165. The WorkOS application registration and live Ratio grant remain
-on #22. This amendment does not close #165 or #163.
+**Still not live bank OAuth.** Link creation and public-token exchange are built
+by #318. Production credentials, Dashboard redirect registration, Item-token
+custody/rotation, webhooks, and an authorized institution remain on #165. The
+WorkOS application registration and live Ratio grant remain on #22. This
+amendment does not close #165 or #163.
+
+### Amendment, 2026-09-10 — Plaid Link exchanges once, and its grant is not a Ratio grant
+
+[#318](https://github.com/mattmarshall/ratio/issues/318) builds the protocol
+boundary that precedes #317's sync. `/link/token/create` requests only the
+`transactions` product with explicit countries and language. A hash of the
+WorkOS subject plus Ratio book supplies Plaid's stable, non-PII client-user id;
+the source identifiers are never sent to Plaid in clear text.
+
+The browser receives a short-lived Link token and unpredictable state. Link
+completion claims that state once before exchanging the public token. Mismatch,
+expiry, replay, cancellation, provider error, malformed response, and a named
+wrong Item refuse. The exchanged Item credential stays in a redacted,
+runtime-only object and moves directly into the Transactions Sync client.
+
+**The grants remain separate.** Plaid Link authorizes a bank Item; it grants no
+access to a Ratio book. WorkOS Connect membership authorizes the subject for the
+book; it grants no bank access. Production Plaid credentials, Dashboard redirect
+registration, durable encrypted Item-token custody/rotation, webhooks, an
+authorized institution, and a redacted end-to-end import remain #165. This does
+not close #165 or #163.
 
 ### Amendment, 2026-09-04 — a Personal tax-pack Connect app, and e-file still does not happen here
 
