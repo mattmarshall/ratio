@@ -130,7 +130,7 @@ impl ControlStore {
                     membership_revision::Action::try_from(change.action)
                         .ok()
                         .is_some_and(
-                            |action| action != membership_revision::Action::ActionUnspecified
+                            |action| action != membership_revision::Action::Unspecified
                         ),
                     "membership action is unsupported"
                 );
@@ -257,7 +257,7 @@ impl ControlStore {
                         membership_revision::Action::Revoke => {
                             state.members.remove(&principal);
                         }
-                        membership_revision::Action::ActionUnspecified => {
+                        membership_revision::Action::Unspecified => {
                             bail!("membership action is unsupported")
                         }
                     }
