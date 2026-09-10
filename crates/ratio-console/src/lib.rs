@@ -7335,7 +7335,8 @@ mod tests {
                 "bank-statement",
                 "loan-payment",
                 "brokerage-statement",
-                "brokerage-positions"
+                "brokerage-positions",
+                "ecb-reference-rates"
             ]
         );
         assert!(templates[0].posts, "a statement row can post");
@@ -7687,6 +7688,52 @@ mod tests {
             missing.contains("no rate") || missing.contains("rate for it"),
             "EUR on a USD-base household without a rate fact reuses the fund refuse: {missing}"
         );
+
+        let ingested = c
+            .ingest_delivery(&pb::IngestDeliveryRequest {
+                parent: "funds/household".into(),
+                template_id: "ecb-reference-rates".into(),
+                content: "\
+Reference,AsOf,Currency,Rate,Base,SourceRate,SourceBase
+ECB-EXR-2026-03-10-EUR-USD,2026-03-10,EUR,1.17,USD,1,1.1652
+"
+                .into(),
+                origin: "ecb-exr-2026-03-10.csv".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(ingested.rejected.is_empty(), "{:?}", ingested.rejected);
+        assert_eq!(ingested.fact_count, "1");
+        let delivery_digest = ingested.delivery_digest;
+
+        let admitted = c
+            .admit_facts(&pb::AdmitFactsRequest {
+                parent: "funds/household".into(),
+                validate_only: false,
+            })
+            .unwrap();
+        assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
+        assert_eq!(admitted.recorded_count, "1");
+        assert_eq!(admitted.posted_count, "0", "a rate never writes the journal");
+
+        let cash = c
+            .get_account(&format!("{view}/accounts/1"))
+            .expect("the cited rate makes the translated Personal balance readable");
+        assert_eq!(cash.credit, "5180", "EUR 40.00 at 1.17 plus USD 5.00");
+        let eur_total = cash
+            .currency_totals
+            .iter()
+            .find(|total| total.currency_code == "EUR")
+            .expect("the raw EUR balance remains visible below the translation");
+        assert_eq!(eur_total.credit, "4000");
+        assert_eq!(eur_total.rate, "117");
+        let rate_fact = c
+            .get_fact(&eur_total.rate_fact)
+            .expect("the translated figure opens the admitted ECB fact");
+        assert_eq!(rate_fact.reference, "ECB-EXR-2026-03-10-EUR-USD");
+        assert_eq!(rate_fact.assertion, "EUR at 1.17");
+        assert_eq!(eur_total.delivery_digest, delivery_digest);
+        assert_eq!(eur_total.config_digest.len(), 64);
 
         let digest = FileBook::open(&path).unwrap().active().unwrap().unwrap();
         let err = FileBook::open(&path)
@@ -10309,6 +10356,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
                     ("loan-payment", true),
                     ("brokerage-statement", true),
                     ("brokerage-positions", false),
+                    ("ecb-reference-rates", false),
                 ] as &[(&str, bool)],
             ),
             (
