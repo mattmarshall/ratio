@@ -1667,10 +1667,10 @@ fn membership_change(
     principal: &str,
 ) -> Result<ratio_store::control::control_operation::Change> {
     let principal = if let Some(subject) = principal.strip_prefix("authkit:") {
-        ensure!(!subject.trim().is_empty(), "authkit membership subject is empty");
+        ensure_canonical_control_id(subject, "authkit membership subject")?;
         ratio_store::control::membership_revision::Principal::AuthkitSubject(subject.into())
     } else if let Some(organization) = principal.strip_prefix("organization:") {
-        ensure!(!organization.trim().is_empty(), "organization membership ID is empty");
+        ensure_canonical_control_id(organization, "organization membership ID")?;
         ratio_store::control::membership_revision::Principal::OrganizationId(organization.into())
     } else {
         bail!("membership principal must be authkit:SUB or organization:ID");
@@ -1688,6 +1688,16 @@ fn membership_change(
     ))
 }
 
+fn ensure_canonical_control_id(value: &str, name: &str) -> Result<()> {
+    ensure!(!value.is_empty(), "{name} is empty");
+    ensure!(value == value.trim(), "{name} is not canonical");
+    ensure!(
+        !value.chars().any(char::is_control),
+        "{name} contains a control character"
+    );
+    Ok(())
+}
+
 fn membership_control_published_with(
     objects: std::sync::Arc<dyn ratio_store::ObjectStore>,
     action: &str,
@@ -1695,13 +1705,15 @@ fn membership_control_published_with(
     book_id: &str,
     operation_id: &str,
     actor: &str,
+    provenance: &str,
 ) -> Result<ratio_store::control::ControlReceipt> {
     ensure!(
         ratio_store::bootstrap::valid_book_id(book_id),
         "invalid published book ID"
     );
-    ensure!(!operation_id.trim().is_empty(), "control operation ID is empty");
-    ensure!(!actor.trim().is_empty(), "control actor subject is empty");
+    ensure_canonical_control_id(operation_id, "control operation ID")?;
+    ensure_canonical_control_id(actor, "control actor subject")?;
+    ensure_canonical_control_id(provenance, "control actor provenance")?;
     let change = membership_change(action, principal)?;
     let store = ratio_store::control::ControlStore::new(objects);
     // ⭐ This read is the reviewed predecessor. `commit` reads again and its
@@ -1716,7 +1728,7 @@ fn membership_control_published_with(
         expected_predecessor_digest: state.predecessor_digest,
         operation_id: operation_id.into(),
         actor_subject: actor.into(),
-        actor_provenance: "github-actions-oidc".into(),
+        actor_provenance: provenance.into(),
         change: Some(change),
     };
     store.commit(&operation)
@@ -1731,6 +1743,11 @@ fn membership_control_published(
     install_control_backend()?;
     let objects = ratio_store::installed_object_store()
         .context("published membership requires RATIO_JOURNAL_BUCKET or RATIO_JOURNAL_LOCAL")?;
+    let provenance = if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true") {
+        "github-actions-oidc"
+    } else {
+        "trusted-cli"
+    };
     let receipt = membership_control_published_with(
         objects,
         action,
@@ -1738,6 +1755,7 @@ fn membership_control_published(
         book_id,
         operation_id,
         &actor_name(),
+        provenance,
     )?;
     println!(
         "membership {action} committed for book {book_id} at control revision {}",
@@ -3468,15 +3486,19 @@ weight = -1
     fn published_membership_refuses_malformed_operator_inputs_before_storage() {
         let objects: std::sync::Arc<dyn ratio_store::ObjectStore> =
             std::sync::Arc::new(ratio_store::MemoryStore::new());
-        for (action, principal, book, operation, expected) in [
-            ("allow", "authkit:user_1", "household", "op-1", "action"),
-            ("grant", "user_1", "household", "op-1", "principal"),
-            ("grant", "authkit:", "household", "op-1", "subject"),
-            ("grant", "authkit:user_1", "../household", "op-1", "book ID"),
-            ("grant", "authkit:user_1", "household", "", "operation ID"),
+        for (action, principal, book, operation, actor, provenance, expected) in [
+            ("allow", "authkit:user_1", "household", "op-1", "user_1", "trusted-cli", "action"),
+            ("grant", "user_1", "household", "op-1", "user_1", "trusted-cli", "principal"),
+            ("grant", "authkit:", "household", "op-1", "user_1", "trusted-cli", "subject"),
+            ("grant", "authkit: user_1", "household", "op-1", "user_1", "trusted-cli", "canonical"),
+            ("grant", "authkit:user_1", "../household", "op-1", "user_1", "trusted-cli", "book ID"),
+            ("grant", "authkit:user_1", "household", "", "user_1", "trusted-cli", "operation ID"),
+            ("grant", "authkit:user_1", "household", "op-1\n", "user_1", "trusted-cli", "canonical"),
+            ("grant", "authkit:user_1", "household", "op-1", " user_1", "trusted-cli", "actor subject"),
+            ("grant", "authkit:user_1", "household", "op-1", "user_1", "trusted-cli\n", "provenance"),
         ] {
             let error = membership_control_published_with(
-                objects.clone(), action, principal, book, operation, "user_1",
+                objects.clone(), action, principal, book, operation, actor, provenance,
             )
             .unwrap_err()
             .to_string();
@@ -3495,6 +3517,7 @@ weight = -1
             "household",
             "op-1",
             "user_1",
+            "trusted-cli",
         )
         .unwrap_err()
         .to_string();
@@ -3547,6 +3570,7 @@ weight = -1
             "household",
             "walkthrough-1",
             "user_1",
+            "github-actions-oidc",
         )
         .unwrap();
         assert_eq!(receipt.committed_revision, 1);
