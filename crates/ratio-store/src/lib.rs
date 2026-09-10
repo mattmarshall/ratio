@@ -795,7 +795,7 @@ pub fn verify_seed_publication(
     root: impl AsRef<Path>,
     store: Arc<dyn ObjectStore>,
 ) -> Result<SeedPublication> {
-    let expected = expected_seed_publication(root)?;
+    let expected = expected_seed_publication(root.as_ref())?;
     let actual = read_seed_publication(store.as_ref(), &expected.book_id)?.with_context(|| {
         format!(
             "baked seed {} is not published; run the deployment seed-publication step before serving traffic",
