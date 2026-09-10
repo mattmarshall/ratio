@@ -192,8 +192,8 @@ application creation and a live authorization remain operator evidence.
 Personal book to a separate Plaid or Google grant. AES-256-GCM custody is
 durable and membership-isolated; provider credentials, cursors, and idempotency
 indexes stay encrypted and never enter status output. Plaid pending-to-posted
-links retire the pending row, Google refresh and 410 full-resync retain the
-prior event index, and provider revoke succeeds before custody is deleted.
+links retire the pending row, Google PKCE/refresh and 410 full-resync retain
+the prior event index, and provider revoke succeeds before custody is deleted.
 Exact production client, redirect, scope, and secret names are in
 `docs/personal-provider-activation.md`. Live WorkOS/provider evidence remains
 on #22/#163/#165.

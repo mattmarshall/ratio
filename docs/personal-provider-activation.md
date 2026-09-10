@@ -101,7 +101,8 @@ Use these environment names:
 | `GOOGLE_OAUTH_CLIENT_ID` | Desktop OAuth client id |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Desktop OAuth client secret value |
 
-The only Google API scope is
+The Google desktop flow uses PKCE S256; the verifier remains in the local
+attempt and is sent only to the token endpoint. The only Google API scope is
 `https://www.googleapis.com/auth/calendar.events.readonly`. The authorization
 request uses offline access and explicit consent so initial activation must
 return a refresh token. The runner binds state to the same WorkOS

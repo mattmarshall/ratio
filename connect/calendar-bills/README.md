@@ -106,7 +106,7 @@ attribute a bill to a client secret.
 | | Who | What it grants |
 |---|---|---|
 | **WorkOS Connect** | The bills app, talking to Ratio | Catalog scopes on books the subject administers |
-| **Calendar** | The household, talking to Google Calendar | Bounded Events sync built; live OAuth activation pending. |
+| **Calendar** | The household, talking to Google Calendar | Local PKCE, encrypted custody, refresh/revoke, and bounded Events sync built; production evidence pending. |
 
 The Google adapter reads Events pages and hands explicitly tagged dated
 instances to the mapper (`dated`, `amount` as decimal text, `currency`, `kind`).

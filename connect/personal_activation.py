@@ -110,6 +110,13 @@ class GoogleAttempt:
     authorization_url: str
 
 
+@dataclass(frozen=True)
+class _GooglePending:
+    membership_binding: str
+    expires_at: float
+    verifier: str
+
+
 class GoogleGrant:
     """Server-only Google credentials; callers can only deposit or revoke."""
 
@@ -375,7 +382,7 @@ class GoogleOAuth:
         self._client_secret = client_secret.strip()
         self._transport = transport or _provider_transport
         self._clock = clock
-        self._pending: dict[str, tuple[str, float]] = {}
+        self._pending: dict[str, _GooglePending] = {}
 
     @classmethod
     def from_environment(
@@ -389,7 +396,17 @@ class GoogleOAuth:
 
     def begin(self, membership: Membership) -> GoogleAttempt:
         state = secrets.token_urlsafe(32)
-        self._pending[state] = (membership.binding, self._clock() + 900)
+        verifier = secrets.token_urlsafe(64)
+        challenge = (
+            base64.urlsafe_b64encode(
+                hashlib.sha256(verifier.encode("ascii")).digest()
+            )
+            .decode("ascii")
+            .rstrip("=")
+        )
+        self._pending[state] = _GooglePending(
+            membership.binding, self._clock() + 900, verifier
+        )
         url = GOOGLE_AUTHORIZATION_ENDPOINT + "?" + urlencode(
             {
                 "client_id": self._client_id,
@@ -400,6 +417,8 @@ class GoogleOAuth:
                 "prompt": "consent",
                 "include_granted_scopes": "false",
                 "state": state,
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
             }
         )
         return GoogleAttempt(state, url)
@@ -443,8 +462,10 @@ class GoogleOAuth:
         pending = self._pending.pop(state, None)
         if (
             pending is None
-            or self._clock() >= pending[1]
-            or not secrets.compare_digest(pending[0], membership.binding)
+            or self._clock() >= pending.expires_at
+            or not secrets.compare_digest(
+                pending.membership_binding, membership.binding
+            )
         ):
             raise Refuse("Google callback state, subject, or book does not match")
         code = _one(values, "code", "Google callback")
@@ -455,6 +476,7 @@ class GoogleOAuth:
                 "client_secret": self._client_secret,
                 "redirect_uri": GOOGLE_REDIRECT_URI,
                 "code": code,
+                "code_verifier": pending.verifier,
             }
         )
         refresh = _secret(payload.get("refresh_token"), "Google refresh token")

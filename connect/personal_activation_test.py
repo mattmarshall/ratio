@@ -351,6 +351,8 @@ class ActivationTest(unittest.TestCase):
         self.assertEqual(query["redirect_uri"], [activation.GOOGLE_REDIRECT_URI])
         self.assertEqual(query["scope"], ["https://www.googleapis.com/auth/calendar.events.readonly"])
         self.assertEqual(query["access_type"], ["offline"])
+        self.assertEqual(query["code_challenge_method"], ["S256"])
+        self.assertNotIn("=", query["code_challenge"][0])
         runner = self.runner()
         runner.complete_google(
             google,
@@ -359,6 +361,14 @@ class ActivationTest(unittest.TestCase):
         )
         self.assertNotIn("google-access-old", self.path.read_text())
         self.assertNotIn("google-refresh-secret", self.path.read_text())
+        exchange_fields = parse_qs(oauth_transport.calls[0][3].decode())
+        self.assertIn("code_verifier", exchange_fields)
+        expected_challenge = base64.urlsafe_b64encode(
+            activation.hashlib.sha256(
+                exchange_fields["code_verifier"][0].encode("ascii")
+            ).digest()
+        ).decode("ascii").rstrip("=")
+        self.assertEqual(query["code_challenge"], [expected_challenge])
 
         # Seed an expired incremental cursor. A 410 retries a full sync while
         # preserving the prior seen index, then commits only the successful cut.

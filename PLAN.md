@@ -5084,9 +5084,9 @@ sync tokens, and event-id/etag indexes under a one-way subject/book membership
 binding. Atomic mode-0600 writes survive restart and authenticated data prevents
 a record from moving to another membership or provider. Status results contain
 metadata only. Plaid retires a pending row when the posted transaction names
-its `pending_transaction_id`; Google refreshes access, preserves refresh-token
-rotation, and retries a 410 as full sync with the prior index. Both providers
-must revoke successfully before local custody is deleted.
+its `pending_transaction_id`; Google uses PKCE S256, refreshes access, preserves
+refresh-token rotation, and retries a 410 as full sync with the prior index.
+Both providers must revoke successfully before local custody is deleted.
 
 The production contract is explicit in
 `docs/personal-provider-activation.md`: WorkOS uses the exact
