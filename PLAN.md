@@ -5043,6 +5043,14 @@ streams through `tee` while retaining the smoke assertions.
 migration field, accepted difference, conditional PUT, bucket, prefix, or
 serving startup contract changes.
 
+Deploy `34515565216` proved the migration and bounded validation succeeded,
+then the new Lambda returned the persistent startup-failed 503. Its failed
+smoke dump omitted the server's exact `journal startup failed` line because the
+CloudWatch filter named only runtime-level tokens. Failed smoke diagnostics now
+include that explicit startup refusal while the public response remains
+generic. #336 owns the diagnostic correction; the production incident stays
+open until a later deploy smoke-passes.
+
 Remaining work: #328 — merge this correction, complete the main deployment and
 record the green run plus live `/version` SHA.
 

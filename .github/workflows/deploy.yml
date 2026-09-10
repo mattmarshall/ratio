@@ -536,12 +536,12 @@ jobs:
           # error — bootstrap.yaml is applied by a human, so this stays
           # `|| true` until that stack is updated.
           dump_lambda_logs() {
-            echo "=== CloudWatch /aws/lambda/ratio-demo (ERROR/panic/INIT/Runtime) ==="
+            echo "=== CloudWatch /aws/lambda/ratio-demo (startup/ERROR/panic/INIT/Runtime) ==="
             START_MS=$(( ($(date +%s) - 900) * 1000 ))
             aws logs filter-log-events \
               --log-group-name /aws/lambda/ratio-demo \
               --start-time "$START_MS" \
-              --filter-pattern '?ERROR ?panic ?INIT ?Runtime' \
+              --filter-pattern '?"journal startup failed" ?ERROR ?panic ?INIT ?Runtime' \
               --output text \
               || echo "(filter-log-events failed — deploy role may lack logs:FilterLogEvents until deploy/bootstrap.yaml is applied)"
           }
