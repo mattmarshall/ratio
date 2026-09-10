@@ -34,6 +34,12 @@ messages also pass the [issue-completion check](issue-completion.md).
   alone grants no book. `RATIO_DEMO_OPEN` defaults off in the deployed demo.
   This does not establish every operator or app's activation. Issue 22 owns
   the remaining membership/registration and signed-in walkthrough evidence.
+- **Post-create control:** Published books derive ACTIVE, newest-first HISTORY,
+  and explicit AuthKit-subject / organization membership from one verified,
+  predecessor-enforced protobuf transition stream on the configured object
+  backend. Membership is resolved at each public operation boundary. Connect
+  client/template grants remain separate and conjunctive; a Connect token
+  inherits neither the bootstrap creator grant nor an organization grant.
 - **Connect activation:** the LP portal's read grant is proven. Its hosted
   walkthrough and drip elections remain on issue 161. Other apps need their
   own registration. The API client-template allowlist is tracked in issue
@@ -53,9 +59,10 @@ messages also pass the [issue-completion check](issue-completion.md).
   approximately 40 GB journal fold or a measurement of multiple views;
   those measurements remain in issue 268. See HANDOFF for the digest and
   workload details.
-- **Recovery:** persistent journal hydration is built. Recovering every book
-  plane and reproducing figures after a restore still needs the drill in
-  issue 264.
+- **Recovery:** persistent journal hydration, immutable book bootstrap, and
+  post-create configuration/membership transitions are built. NAVs,
+  reports/proposals, CHANGELOG, complete backup coverage, and the external
+  restore drill remain separate recovery work.
 
 ## Scope decisions that remain in force
 

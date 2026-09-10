@@ -20,6 +20,7 @@ aip_proto_library(
         "ratio/v1/chart.proto",
         "ratio/console/v1/console.proto",
         "ratio/storage/v1/bootstrap.proto",
+        "ratio/storage/v1/control.proto",
         "ratio/console/v1/connect.proto",
         "ratio/v1/ledger.proto",
         "ratio/v1/recon.proto",

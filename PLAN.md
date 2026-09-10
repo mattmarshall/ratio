@@ -39,7 +39,8 @@ is an eight-week plan for a product nobody was buying.
 > ConnectApiUrl. The demo API Lambda hydrates
 > ScaleBucket `journals/` (`RATIO_JOURNAL_BUCKET` /
 > `RATIO_JOURNAL_PREFIX`) for durable journal storage.
-> Published bootstrap recovery is in place; later control and evidence remain #299/#300.
+> Published bootstrap and post-create control recovery are in place;
+> operational evidence remains #300.
 > Pending hydration returns a retryable 503;
 > failed storage startup refuses book traffic until restart
 > ([startup contract](docs/durable-startup.md), #293).
@@ -333,8 +334,8 @@ deployed demo. first-party Connect apps call ConnectApiUrl.
 The demo API Lambda hydrates ScaleBucket `journals/`
 (`RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX`) so
 CreateBook and other writes use the durable journal. Complete
-published bootstrap recovery is in place; later control and evidence remain
-on #299/#300. Pending hydration returns
+published bootstrap and post-create control recovery are in place;
+operational evidence remains on #300. Pending hydration returns
 503 (“the journal is still hydrating”) with Retry-After.
 A failed store installation or book hydration refuses all book
 traffic until storage is corrected and the process restarts;
@@ -5039,3 +5040,26 @@ scope equality, callback errors, and malformed token responses. WorkOS
 application creation and a live grant remain operator actions on #22 and each
 parent issue. Bank and calendar provider OAuth remain separate grants on #163
 and #165.
+
+### Amendment, 2026-09-10 — Post-create control state is a durable transition stream
+
+Related: #304, #299, and #291. Published books had an immutable recoverable
+bootstrap but later configuration and membership still depended on local
+ACTIVE/HISTORY and whole-file membership rewrites. A cold process could return
+to opening policy, and two acknowledged grants could overwrite one another.
+
+`ratio-store::control` now stores exact configuration bytes by SHA-256 and
+conditionally claims one immutable protobuf transition at the expected next
+per-book revision. Every operation binds the bootstrap, predecessor, unique
+operation ID, stable actor/provenance, and one promotion or explicit AuthKit
+subject / organization membership decision. Exact retries return the original
+receipt only for identical operation bytes; conflicts require reread and
+review. ACTIVE, newest-first HISTORY, and membership are derived from the
+verified stream. Startup seeds and plausible local files cannot replace it.
+
+**Post-create control state is durable and predecessor-enforced** is the Built
+phrase. Server and trusted CLI mutations use the same configured object
+backend. Public membership is resolved afresh, with a bounded 25-second
+in-flight authorization window; Connect client/template policy remains a
+separate conjunctive grant. NAVs, reports, proposals, general audit
+presentation, backup copies, and RPO/RTO remain outside this amendment.

@@ -253,7 +253,8 @@ The demo API stores its journal durably in ScaleBucket `journals/`;
 the #230 `/tmp`-only mode remains superseded. Pending hydration returns a retryable 503.
 Failed storage startup refuses book traffic until restart; see
 [the startup contract](docs/durable-startup.md) (#293). Complete
-published bootstrap recovery is in place; later control and evidence remain #299/#300.
+published bootstrap recovery and predecessor-enforced post-create configuration
+/ membership transitions are in place; operational evidence remains #300.
 
 ## Connect write grants (2026-09-09)
 
@@ -1062,7 +1063,7 @@ or `sidepocket:*`.
   installation or hydration refuses book traffic until restart;
   health, version, and auth configuration remain available.
   See [durable startup](docs/durable-startup.md) (#293).
-  Post-create control transitions and operational evidence remain #299/#300. The 40GB scale fold stays on
+  Post-create control transitions are durable; operational evidence remains #300. The 40GB scale fold stays on
   Fargate ScaleTask. Scale keeps ScaleBucket.
   Leftover on
   #22: unused Cognito CloudFormation resources removed;
@@ -1353,7 +1354,7 @@ than one that is entirely unclassified.
 | `console/` | the console itself. Next.js on Vercel; ⛔ Bazel does not build it |
 | `tomato-bazel/rules_postgres` | `Pg.Rel.Semantics` — merged, PR #9. Stage E instantiates the sound preserved-side rewrite and the outer-join counterexample in-tree (`lean/Pg/Rel/Semantics.lean`, `lean/Ratio/Sql/Pushdown.lean`) so a rewrite elaborates here rather than citing a fetch |
 | `AGENTS.md` | the rules, for a person or a model, and the dispatch contract (one issue → one cloud agent → one PR). Replaces the two stale LLM guides |
-| `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Connect tokens accepted with catalog scopes on `/v1` after membership. Write-route actor = WorkOS `sub`; a Connect-shaped token never takes `RATIO_DEMO_OPEN` and never matches `org:{id}` (#151). API Gateway JWT verifies Connect tokens on the Connect HTTP API (AuthKit custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the deployed demo. first-party Connect apps call ConnectApiUrl. The demo API Lambda uses ScaleBucket for durable journals and published book bootstraps. Pending hydration returns a retryable 503. Failed storage startup refuses book traffic until restart (#293; [startup contract](docs/durable-startup.md)). Post-create control transitions and operational evidence remain #299/#300. The 40GB scale fold stays on Fargate ScaleTask. Scale keeps ScaleBucket. Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation. leftover #22: unused Cognito CloudFormation resources removed; `DEMO_MEMBERS` naming a live WorkOS `sub` and WorkOS dashboard registration remain. Equalization, drip, and side-pocket stay Connect ([#177](https://github.com/mattmarshall/ratio/issues/177)) — existing scopes, no new grants; drip on #161; equalization / side-pocket apps not filed |
+| `docs/connect-scopes.md` | WorkOS Connect scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)). Connect tokens accepted with catalog scopes on `/v1` after fresh durable membership resolution. Write-route actor = WorkOS `sub`; a Connect-shaped token never takes `RATIO_DEMO_OPEN` and never matches an organization grant (#151). API Gateway JWT verifies Connect tokens on the Connect HTTP API (AuthKit custom-domain issuer). `RATIO_DEMO_OPEN` defaults off on the deployed demo. first-party Connect apps call ConnectApiUrl. The demo API Lambda uses ScaleBucket for durable journals, published book bootstraps, and post-create control transitions. Pending hydration returns a retryable 503. Failed storage startup refuses book traffic until restart (#293; [startup contract](docs/durable-startup.md)). Operational evidence remains #300. The 40GB scale fold stays on Fargate ScaleTask. Scale keeps ScaleBucket. Hard non-scopes: `rules:approve`, `config:promote`, portal impersonation. leftover #22: unused Cognito CloudFormation resources removed; `DEMO_MEMBERS` naming a live WorkOS `sub` and WorkOS dashboard registration remain. Equalization, drip, and side-pocket stay Connect ([#177](https://github.com/mattmarshall/ratio/issues/177)) — existing scopes, no new grants; drip on #161; equalization / side-pocket apps not filed |
 | `connect/bank-feed/` | First-party Connect app for Personal bank feeds ([#165](https://github.com/mattmarshall/ratio/issues/165), provider slices [#317](https://github.com/mattmarshall/ratio/issues/317) / [#318](https://github.com/mattmarshall/ratio/issues/318)). Plaid Link creation/exchange binds an expiring one-time state to a hashed WorkOS-subject/book id and moves its server-only token into the bounded Transactions Sync client. Sync parses numeric JSON as Decimal, requires an explicit rule choice, exposes pending rows without posting, refuses modified/removed rows, keeps stable retry ids, and supports Item removal. first-party Connect apps call ConnectApiUrl; production credentials, Dashboard redirect registration, encrypted token custody/rotation, webhooks, and live institution evidence remain. Does not close #165 |
 | `connect/tax-pack/` | First-party Connect app for household tax-pack export ([#166](https://github.com/mattmarshall/ratio/issues/166)). 8949-ish CSV from lot / wash / lot-terms cites. Mixed acquired dates stay unclassified — `Ratio.Lots.PoolPeriod`, not an invented FIFO oldest date or two Form 8949 boxes. first-party Connect apps call ConnectApiUrl; IRS e-file is refused. Does not close #166 |
 | `connect/goals/` | First-party Connect app for Personal net-worth goals and what-if scenarios ([#168](https://github.com/mattmarshall/ratio/issues/168)). Cites sheet / bridge / cash-flow; opt-in scenario journals on allowlisted Personal templates; closed-through and empty-allowlist refuse. first-party Connect apps call ConnectApiUrl. Not a cash forecast. Does not close #168 |
@@ -1388,6 +1389,25 @@ still passing as a probe, no longer reaching the model at all.
 It found three probes that could not say what they claimed on its first run,
 including one naming an invariant that does not exist.
 
+## Durable control boundary, September 10, 2026
+
+Published books no longer read mutable local ACTIVE/HISTORY or infer current
+membership from the bootstrap creator forever. `ratio-store::control` folds one
+gapless, canonical protobuf stream from the immutable bootstrap predecessor.
+Configuration bytes are SHA-256 addressed and verified on every read; staging
+bytes does not promote them. Promotions and explicit AuthKit-subject /
+organization grants or revocations conditionally claim exactly the reviewed
+successor. Exact operation retries return the original receipt only when the
+complete operation bytes match.
+
+The public console resolves durable membership at every book boundary. AuthKit
+creator and organization grants do not become Connect grants; Connect client,
+scope, BookKind/template permission, and explicit current subject membership
+remain conjunctive. A request has a 25-second authorization window and checks
+again before posting. A concurrent promotion does not rewrite the digest an
+in-flight posting already captured. Fresh-process tests delete the serving root
+and recover two promotions plus grant/revoke history from the object backend.
+
 ## Recovery boundary, September 9, 2026
 
 [The recovery inventory](docs/recovery.md) and
@@ -1395,8 +1415,10 @@ including one naming an invariant that does not exist.
 configuration/journal digest checks, NAV replay, and restored membership.
 Related: #264. S3 preserves the journal, six append-only planes, and the
 published immutable bootstrap for new books. That bootstrap recovers chart,
-identity, kind, opening configuration, and creator membership. Later control
-changes, NAVS, reports/proposals, and CHANGELOG remain local. The object-only
+identity, kind, opening configuration, and creator membership. Later
+configuration promotions and explicit membership grants/revocations use the
+same durable object backend and recover by verified predecessor transition.
+NAVS, reports/proposals, and CHANGELOG remain local. The object-only
 probe now explicitly characterizes a legacy book created before storage was
 attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery

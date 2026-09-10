@@ -47,11 +47,12 @@ use std::sync::Arc;
 
 mod objects;
 pub mod bootstrap;
+pub mod control;
 pub use objects::{
     install_object_store, installed_object_store, DirStore, MemoryStore, ObjectStore, SeqLog,
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use ratio_chart::{AccountType, Posting, TrialBalance};
 use ratio_kernel::{transaction_is_balanced, Transaction};
 use serde::{Deserialize, Serialize};
@@ -1396,30 +1397,96 @@ impl FileBook {
     fn configs(&self) -> Result<DirectoryConfigStore> {
         DirectoryConfigStore::open(self.config_dir())
     }
+
+    /// Current verified post-create control state for a published book.
+    pub fn control_state(&self) -> Result<Option<control::ControlState>> {
+        let Some((objects, book_id)) = &self.objects else {
+            return Ok(None);
+        };
+        if self.bootstrap.is_none() {
+            return Ok(None);
+        }
+        Ok(Some(control::ControlStore::new(objects.clone()).read(book_id)?))
+    }
+
+    /// Conditionally publish one reviewed control operation.
+    pub fn commit_control(
+        &self,
+        operation: &control::ControlOperation,
+    ) -> Result<control::ControlReceipt> {
+        let (objects, book_id) = self
+            .objects
+            .as_ref()
+            .context("the book has no configured durable backend")?;
+        ensure!(
+            self.bootstrap.is_some() && operation.book_id == *book_id,
+            "control operation does not name this published book"
+        );
+        control::ControlStore::new(objects.clone()).commit(operation)
+    }
+
+    /// The immutable identity needed to prepare an explicit successor.
+    pub fn control_identity(&self) -> Result<Option<(String, i64, String, String)>> {
+        let Some((_, book_id)) = &self.objects else {
+            return Ok(None);
+        };
+        let Some(state) = self.control_state()? else {
+            return Ok(None);
+        };
+        Ok(Some((
+            book_id.clone(),
+            state.revision,
+            state.predecessor_digest,
+            state.bootstrap_digest,
+        )))
+    }
 }
 
 impl ConfigStore for FileBook {
     fn put(&mut self, bytes: &[u8]) -> Result<Digest> {
-        if let Some(state) = &self.bootstrap {
-            if bytes != state.config { bail!("durable configuration changes are not implemented"); }
-            return Digest::parse(&state.config_digest);
+        if let Some((objects, _)) = &self.objects {
+            if self.bootstrap.is_some() {
+                return control::ControlStore::new(objects.clone()).stage_config(bytes);
+            }
         }
         self.configs()?.put(bytes)
     }
     fn get(&self, digest: &Digest) -> Result<Vec<u8>> {
+        if let Some(state) = &self.bootstrap {
+            if state.config_digest == digest.as_str() {
+                ensure!(
+                    Digest::of(&state.config) == *digest,
+                    "bootstrap configuration digest mismatch"
+                );
+                return Ok(state.config.clone());
+            }
+            let (objects, _) = self
+                .objects
+                .as_ref()
+                .context("published book lost its durable backend")?;
+            return control::ControlStore::new(objects.clone()).config(digest);
+        }
         self.configs()?.get(digest)
     }
     fn set_active(&mut self, digest: &Digest) -> Result<()> {
-        if let Some(state) = &self.bootstrap {
-            if digest.as_str() != state.active { bail!("durable configuration promotion is not implemented"); }
-            return Ok(());
+        if self.bootstrap.is_some() {
+            bail!(
+                "a published book requires a predecessor-enforced control operation; \
+                 saving configuration bytes does not promote them"
+            );
         }
         self.configs()?.set_active(digest)
     }
     fn active(&self) -> Result<Option<Digest>> {
+        if let Some(state) = self.control_state()? {
+            return Ok(Some(state.active));
+        }
         self.configs()?.active()
     }
     fn history(&self) -> Result<Vec<Digest>> {
+        if let Some(state) = self.control_state()? {
+            return Ok(state.history);
+        }
         self.configs()?.history()
     }
 }
