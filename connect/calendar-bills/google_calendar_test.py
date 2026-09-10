@@ -105,13 +105,20 @@ class CalendarSync(unittest.TestCase):
         self.assertEqual(result.nonposting[0].reason, "no explicit Ratio metadata")
 
     def test_tentative_and_newly_cancelled_events_are_visible_and_nonposting(self):
-        client, _ = calendar([(200, page(items=[event("tentative", status="tentative"),
-                                                event("cancelled", status="cancelled")],
-                                           sync_token="sync"))])
+        client, _ = calendar([
+            (200, page(items=[event("tentative", status="tentative"),
+                              event("cancelled", status="cancelled")], sync_token="sync")),
+            (200, page(items=[event("cancelled", etag='"etag-2"')], sync_token="sync-2")),
+        ])
         result = client.sync(calendar_id="calendar-id", seen={}, book=personal(),
                              ratio_client=ratio_client())
         self.assertEqual(result.proposed, ())
         self.assertEqual({row.status for row in result.nonposting}, {"tentative", "cancelled"})
+        self.assertEqual(result.seen, {})
+        confirmed = client.sync(calendar_id="calendar-id", sync_token=result.sync_token,
+                                seen=result.seen, book=personal(), ratio_client=ratio_client())
+        self.assertEqual(len(confirmed.proposed), 1)
+        self.assertEqual(confirmed.seen["cancelled"], '"etag-2"')
 
     def test_changed_or_deleted_imported_occurrence_refuses_the_batch(self):
         for changed in (event(etag='"etag-2"'), event(etag='"etag-2"', status="cancelled")):
@@ -131,13 +138,14 @@ class CalendarSync(unittest.TestCase):
                         ratio_client=ratio_client())
 
     def test_expired_sync_token_requires_full_sync_with_the_seen_index_retained(self):
-        client, _ = calendar([(410, '{"error":{"code":410}}')])
-        with self.assertRaises(google.FullResyncRequired) as caught:
-            client.sync(calendar_id="calendar-id", sync_token="expired",
-                        seen={"event-1": '"etag-1"'}, book=personal(),
-                        ratio_client=ratio_client())
-        self.assertIn("retaining", str(caught.exception))
-        self.assertIn("event-id/etag", str(caught.exception))
+        for body in ('{"error":{"code":410}}', "provider non-json body"):
+            client, _ = calendar([(410, body)])
+            with self.assertRaises(google.FullResyncRequired) as caught:
+                client.sync(calendar_id="calendar-id", sync_token="expired",
+                            seen={"event-1": '"etag-1"'}, book=personal(),
+                            ratio_client=ratio_client())
+            self.assertIn("retaining", str(caught.exception))
+            self.assertIn("event-id/etag", str(caught.exception))
 
     def test_incomplete_metadata_invalid_dates_and_page_shapes_refuse(self):
         bad_events = [

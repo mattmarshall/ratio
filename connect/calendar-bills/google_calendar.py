@@ -138,7 +138,6 @@ class GoogleCalendar:
                 continue
             if status == "cancelled":
                 evidence.append(EventEvidence(event_id, etag, status, "cancelled before import"))
-                updated_seen[event_id] = etag
                 continue
             if status == "tentative":
                 evidence.append(EventEvidence(event_id, etag, status, "tentative"))
@@ -173,6 +172,13 @@ class GoogleCalendar:
             raise Refuse(f"Google Calendar transport failed: {type(exc).__name__}") from None
         if not isinstance(status, int) or isinstance(status, bool):
             raise Refuse("Google Calendar transport returned a malformed HTTP status")
+        if status == 410:
+            raise FullResyncRequired(
+                "Google sync token expired; perform a full sync without it while retaining "
+                "the prior event-id/etag index so journal history is not reposted"
+            )
+        if status >= 400:
+            raise Refuse(f"Google Calendar returned HTTP {status}")
         try:
             payload = json.loads(raw)
         except (json.JSONDecodeError, TypeError):
@@ -181,13 +187,6 @@ class GoogleCalendar:
             raise Refuse("Google Calendar returned malformed JSON") from None
         if not isinstance(payload, dict):
             raise Refuse("Google Calendar returned a non-object response")
-        if status == 410:
-            raise FullResyncRequired(
-                "Google sync token expired; perform a full sync without it while retaining "
-                "the prior event-id/etag index so journal history is not reposted"
-            )
-        if status >= 400:
-            raise Refuse(f"Google Calendar returned HTTP {status}")
         return payload
 
 
@@ -262,15 +261,15 @@ def _event_day(event: Mapping[str, Any]) -> date:
         raw = start.get("date")
         try:
             return date.fromisoformat(str(raw))
-        except ValueError as exc:
-            raise Refuse("Google all-day event has an invalid date") from exc
+        except ValueError:
+            raise Refuse("Google all-day event has an invalid date") from None
     raw = start.get("dateTime")
     if not isinstance(raw, str):
         raise Refuse("Google event has no dated occurrence")
     try:
         parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise Refuse("Google event has an invalid RFC3339 start") from exc
+    except ValueError:
+        raise Refuse("Google event has an invalid RFC3339 start") from None
     if parsed.tzinfo is None:
         raise Refuse("Google event start has no time-zone offset")
     return parsed.date()
