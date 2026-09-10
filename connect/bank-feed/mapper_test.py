@@ -345,7 +345,7 @@ class ManifestHonesty(unittest.TestCase):
         doc = json.dumps(app())
         self.assertEqual("built", app()["grant_path"]["status"])
         self.assertIn("ConnectApiUrl", app()["grant_path"]["note"])
-        self.assertIn("WorkOS dashboard registration", app()["grant_path"]["note"])
+        self.assertIn("application and callback are registered", app()["grant_path"]["note"])
         self.assertIn("encrypted per-membership custody", app()["bank_oauth"]["status"])
         self.assertIn("pending-to-posted", app()["bank_oauth"]["note"])
         self.assertIn("revokes before deleting", app()["bank_oauth"]["note"])
