@@ -33,15 +33,18 @@ pub struct ControlState {
     pub active: Digest,
     pub history: Vec<Digest>,
     pub members: BTreeSet<Principal>,
+    explicit_subjects: BTreeSet<String>,
     operations: BTreeMap<String, (String, ControlReceipt)>,
 }
 
 impl ControlState {
     pub fn allows(&self, subject: &str, organization: &str, connect: bool) -> bool {
+        if connect {
+            return self.explicit_subjects.contains(subject);
+        }
         self.members
             .contains(&Principal::AuthKitSubject(subject.to_string()))
-            || (!connect
-                && !organization.is_empty()
+            || (!organization.is_empty()
                 && self
                     .members
                     .contains(&Principal::Organization(organization.to_string())))
@@ -192,6 +195,7 @@ impl ControlStore {
                     .subject
                     .clone(),
             )]),
+            explicit_subjects: BTreeSet::new(),
             operations: BTreeMap::new(),
         };
         let prefix = Self::transition_prefix(book_id);
@@ -256,9 +260,15 @@ impl ControlStore {
                     let principal = Self::principal(change)?;
                     match membership_revision::Action::try_from(change.action)? {
                         membership_revision::Action::Grant => {
+                            if let Principal::AuthKitSubject(subject) = &principal {
+                                state.explicit_subjects.insert(subject.clone());
+                            }
                             state.members.insert(principal);
                         }
                         membership_revision::Action::Revoke => {
+                            if let Principal::AuthKitSubject(subject) = &principal {
+                                state.explicit_subjects.remove(subject);
+                            }
                             state.members.remove(&principal);
                         }
                         membership_revision::Action::Unspecified => {
