@@ -346,8 +346,8 @@ class ManifestHonesty(unittest.TestCase):
         self.assertEqual("built", app()["grant_path"]["status"])
         self.assertIn("ConnectApiUrl", app()["grant_path"]["note"])
         self.assertIn("WorkOS dashboard registration", app()["grant_path"]["note"])
-        self.assertIn("adapter built", app()["bank_oauth"]["status"])
-        self.assertIn("Live Plaid Link", app()["bank_oauth"]["note"])
+        self.assertIn("boundaries built", app()["bank_oauth"]["status"])
+        self.assertIn("Live Plaid credentials", app()["bank_oauth"]["note"])
         self.assertIn("#165", doc)
         self.assertIn("#150", doc)
 

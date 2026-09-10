@@ -45,3 +45,23 @@ sh_test(
         "testdata/sync-page-2.json",
     ],
 )
+
+sh_test(
+    name = "plaid_link_test",
+    size = "small",
+    srcs = ["plaid_link_test.sh"],
+    args = [
+        "$(rootpath plaid_link.py)",
+        "$(rootpath plaid_link_test.py)",
+    ],
+    data = [
+        "//connect:grant.py",
+        "mapper.py",
+        "plaid.py",
+        "plaid_link.py",
+        "plaid_link_test.py",
+        "plaid_link_test.sh",
+        "testdata/link-create.json",
+        "testdata/token-exchange.json",
+    ],
+)
