@@ -45,14 +45,13 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub mod bootstrap;
-pub mod control;
 mod objects;
+pub mod bootstrap;
 pub use objects::{
     install_object_store, installed_object_store, DirStore, MemoryStore, ObjectStore, SeqLog,
 };
 
-use anyhow::{anyhow, bail, ensure, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use ratio_chart::{AccountType, Posting, TrialBalance};
 use ratio_kernel::{transaction_is_balanced, Transaction};
 use serde::{Deserialize, Serialize};
@@ -254,13 +253,7 @@ impl PostingRecord {
     /// A posting that concerns no particular instrument — a fee, a
     /// subscription, a transfer.
     pub fn new(dim: i64, amount: i64) -> Self {
-        PostingRecord {
-            dim,
-            amount,
-            currency: None,
-            instrument: None,
-            quantity: None,
-        }
+        PostingRecord { dim, amount, currency: None, instrument: None, quantity: None }
     }
 
     /// A posting against an instrument, with the quantity it moved.
@@ -629,8 +622,7 @@ fn hydrate_jsonl(path: &Path, log: &SeqLog) -> Result<()> {
     if !path.exists() {
         return Ok(());
     }
-    let text =
-        fs::read_to_string(path).with_context(|| format!("seeding from {}", path.display()))?;
+    let text = fs::read_to_string(path).with_context(|| format!("seeding from {}", path.display()))?;
     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
     let seed_line_count = u64::try_from(lines.len())
         .ok()
@@ -729,8 +721,8 @@ impl DirectoryConfigStore {
     fn replace_atomically(path: &Path, contents: &str) -> Result<()> {
         let tmp = path.with_extension("tmp");
         {
-            let mut f =
-                File::create(&tmp).with_context(|| format!("creating {}", tmp.display()))?;
+            let mut f = File::create(&tmp)
+                .with_context(|| format!("creating {}", tmp.display()))?;
             f.write_all(contents.as_bytes())
                 .with_context(|| format!("writing {}", tmp.display()))?;
             f.sync_all()
@@ -1036,7 +1028,10 @@ impl FileBook {
     /// Open a book against an explicit store. Tests use this so they do not
     /// have to mutate process-global state; the demo binary installs once
     /// and calls [`open`][`FileBook::open`].
-    pub fn open_with(root: impl AsRef<Path>, store: Option<Arc<dyn ObjectStore>>) -> Result<Self> {
+    pub fn open_with(
+        root: impl AsRef<Path>,
+        store: Option<Arc<dyn ObjectStore>>,
+    ) -> Result<Self> {
         Self::open_with_seed(root, store, true)
     }
 
@@ -1055,9 +1050,8 @@ impl FileBook {
     ) -> Result<Self> {
         let root = root.as_ref().to_path_buf();
         let bootstrap = match &store {
-            Some(objects) if bootstrap::valid_book_id(&book_key(&root)) => {
-                bootstrap::BootstrapStore::new(objects.clone()).get(&book_key(&root))?
-            }
+            Some(objects) if bootstrap::valid_book_id(&book_key(&root)) =>
+                bootstrap::BootstrapStore::new(objects.clone()).get(&book_key(&root))?,
             _ => None,
         };
         if let Some((publication, state)) = &bootstrap {
@@ -1068,15 +1062,9 @@ impl FileBook {
         fs::create_dir_all(root.join("config"))
             .with_context(|| format!("creating book at {}", root.display()))?;
         let objects = store.map(|s| (s, book_key(&root)));
-        let book = FileBook {
-            root,
-            objects,
-            bootstrap: bootstrap.map(|(_, state)| state),
-        };
+        let book = FileBook { root, objects, bootstrap: bootstrap.map(|(_, state)| state) };
         // A published book never hydrates a baked seed into its journal.
-        if book.bootstrap.is_none() && hydrate_legacy_seed {
-            book.hydrate_objects()?;
-        }
+        if book.bootstrap.is_none() && hydrate_legacy_seed { book.hydrate_objects()?; }
         Ok(book)
     }
 
@@ -1162,8 +1150,9 @@ impl FileBook {
         if let Some(seq) = self.plane_log(log) {
             let mut out = Vec::new();
             seq.for_each_since(0, &mut |n, bytes| {
-                let s = std::str::from_utf8(bytes)
-                    .with_context(|| format!("{} sequence {n} is not utf-8", log.file()))?;
+                let s = std::str::from_utf8(bytes).with_context(|| {
+                    format!("{} sequence {n} is not utf-8", log.file())
+                })?;
                 out.push(
                     serde_json::from_str(s)
                         .with_context(|| format!("{} sequence {n}", log.file()))?,
@@ -1176,8 +1165,7 @@ impl FileBook {
         if !path.exists() {
             return Ok(Vec::new());
         }
-        let text =
-            fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        let text = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
         text.lines()
             .filter(|l| !l.trim().is_empty())
             .enumerate()
@@ -1193,9 +1181,7 @@ impl FileBook {
     pub fn put_accounts(&mut self, accounts: &[Account]) -> Result<()> {
         let json = serde_json::to_string_pretty(accounts)?;
         if let Some(state) = &self.bootstrap {
-            if json.as_bytes() != state.chart {
-                bail!("durable chart changes require a publication protocol");
-            }
+            if json.as_bytes() != state.chart { bail!("durable chart changes require a publication protocol"); }
             return Ok(());
         }
         fs::write(self.accounts_path(), json).context("writing accounts")?;
@@ -1224,9 +1210,7 @@ impl FileBook {
     pub fn latest_close(&self, view: &str) -> Result<Option<CloseRecord>> {
         let mut closes = self.closes()?;
         closes.retain(|c| c.view == view);
-        Ok(closes
-            .into_iter()
-            .max_by(|a, b| a.closed_date.cmp(&b.closed_date)))
+        Ok(closes.into_iter().max_by(|a, b| a.closed_date.cmp(&b.closed_date)))
     }
 
     /// ⛔ A SHADOW RUN IS NOT A SECOND BOOK.
@@ -1412,120 +1396,53 @@ impl FileBook {
     fn configs(&self) -> Result<DirectoryConfigStore> {
         DirectoryConfigStore::open(self.config_dir())
     }
-
-    /// Current verified post-create control state for a published book.
-    pub fn control_state(&self) -> Result<Option<control::ControlState>> {
-        let Some((objects, book_id)) = &self.objects else {
-            return Ok(None);
-        };
-        if self.bootstrap.is_none() {
-            return Ok(None);
-        }
-        Ok(Some(
-            control::ControlStore::new(objects.clone()).read(book_id)?,
-        ))
-    }
-
-    /// Conditionally publish one reviewed control operation.
-    pub fn commit_control(
-        &self,
-        operation: &control::ControlOperation,
-    ) -> Result<control::ControlReceipt> {
-        let (objects, book_id) = self
-            .objects
-            .as_ref()
-            .context("the book has no configured durable backend")?;
-        ensure!(
-            self.bootstrap.is_some() && operation.book_id == *book_id,
-            "control operation does not name this published book"
-        );
-        control::ControlStore::new(objects.clone()).commit(operation)
-    }
-
-    /// The immutable identity needed to prepare an explicit successor.
-    pub fn control_identity(&self) -> Result<Option<(String, u64, String, String)>> {
-        let Some((_, book_id)) = &self.objects else {
-            return Ok(None);
-        };
-        let Some(state) = self.control_state()? else {
-            return Ok(None);
-        };
-        Ok(Some((
-            book_id.clone(),
-            state.revision,
-            state.predecessor_digest,
-            state.bootstrap_digest,
-        )))
-    }
 }
 
 impl ConfigStore for FileBook {
     fn put(&mut self, bytes: &[u8]) -> Result<Digest> {
-        if let Some((objects, _)) = &self.objects {
-            if self.bootstrap.is_some() {
-                return control::ControlStore::new(objects.clone()).stage_config(bytes);
-            }
+        if let Some(state) = &self.bootstrap {
+            if bytes != state.config { bail!("durable configuration changes are not implemented"); }
+            return Digest::parse(&state.config_digest);
         }
         self.configs()?.put(bytes)
     }
     fn get(&self, digest: &Digest) -> Result<Vec<u8>> {
-        if let Some(state) = &self.bootstrap {
-            if state.config_digest == digest.as_str() {
-                ensure!(
-                    Digest::of(&state.config) == *digest,
-                    "bootstrap configuration digest mismatch"
-                );
-                return Ok(state.config.clone());
-            }
-            let (objects, _) = self
-                .objects
-                .as_ref()
-                .context("published book lost its durable backend")?;
-            return control::ControlStore::new(objects.clone()).config(digest);
-        }
         self.configs()?.get(digest)
     }
     fn set_active(&mut self, digest: &Digest) -> Result<()> {
-        if self.bootstrap.is_some() {
-            bail!(
-                "a published book requires a predecessor-enforced control operation; \
-                 saving configuration bytes does not promote them"
-            );
+        if let Some(state) = &self.bootstrap {
+            if digest.as_str() != state.active { bail!("durable configuration promotion is not implemented"); }
+            return Ok(());
         }
         self.configs()?.set_active(digest)
     }
     fn active(&self) -> Result<Option<Digest>> {
-        if let Some(state) = self.control_state()? {
-            return Ok(Some(state.active));
-        }
         self.configs()?.active()
     }
     fn history(&self) -> Result<Vec<Digest>> {
-        if let Some(state) = self.control_state()? {
-            return Ok(state.history);
-        }
         self.configs()?.history()
     }
 }
 
 impl FactStore for FileBook {
     fn record_fact(&mut self, bytes: &[u8]) -> Result<()> {
-        let v: serde_json::Value = serde_json::from_slice(bytes).context("a fact must be JSON")?;
+        let v: serde_json::Value =
+            serde_json::from_slice(bytes).context("a fact must be JSON")?;
         let id = v
             .get("id")
             .and_then(|x| x.as_str())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| anyhow!("a fact without an id cannot be addressed"))?
             .to_string();
-        let provenance = v
-            .get("provenance")
-            .ok_or_else(|| anyhow!("fact {id} has no provenance — a figure cannot open it"))?;
+        let provenance = v.get("provenance").ok_or_else(|| {
+            anyhow!("fact {id} has no provenance — a figure cannot open it")
+        })?;
         if provenance_is_empty(provenance) {
             bail!("fact {id} has empty provenance — a figure cannot open it");
         }
         for existing in self.facts()? {
-            let ev: serde_json::Value =
-                serde_json::from_slice(&existing).context("reading a stored fact")?;
+            let ev: serde_json::Value = serde_json::from_slice(&existing)
+                .context("reading a stored fact")?;
             if ev.get("id").and_then(|x| x.as_str()) == Some(id.as_str()) {
                 bail!(
                     "fact {id} is already recorded — a correction is a new fact, \
@@ -1538,8 +1455,8 @@ impl FactStore for FileBook {
 
     fn get_fact(&self, id: &str) -> Result<Vec<u8>> {
         for bytes in self.facts()? {
-            let v: serde_json::Value =
-                serde_json::from_slice(&bytes).context("reading a stored fact")?;
+            let v: serde_json::Value = serde_json::from_slice(&bytes)
+                .context("reading a stored fact")?;
             if v.get("id").and_then(|x| x.as_str()) == Some(id) {
                 return Ok(bytes);
             }
@@ -1566,11 +1483,7 @@ impl Journal for FileBook {
             return Err(anyhow!(
                 "entry {:?} does not conserve value: postings net to {net}, not 0{}",
                 entry.id,
-                if entry.conserves_every_currency() {
-                    ""
-                } else {
-                    CURRENCY_HINT
-                }
+                if entry.conserves_every_currency() { "" } else { CURRENCY_HINT }
             ));
         }
         // The provenance has to resolve, or the entry is not reproducible.
@@ -1633,11 +1546,7 @@ impl Journal for FileBook {
                 return Err(anyhow!(
                     "entry {:?} does not conserve value: postings net to {net}, not 0{}",
                     entry.id,
-                    if entry.conserves_every_currency() {
-                        ""
-                    } else {
-                        CURRENCY_HINT
-                    }
+                    if entry.conserves_every_currency() { "" } else { CURRENCY_HINT }
                 ));
             }
             if checked.insert(&entry.config) && self.get(&entry.config).is_err() {
@@ -1671,8 +1580,7 @@ impl Journal for FileBook {
             let line = serde_json::to_string(entry).context("serializing entry")?;
             buf.push_str(&line);
             buf.push('\n');
-            f.write_all(buf.as_bytes())
-                .context("appending to journal")?;
+            f.write_all(buf.as_bytes()).context("appending to journal")?;
         }
         Ok(())
     }
@@ -1701,8 +1609,9 @@ impl Journal for FileBook {
             // a different book, which `follow` already refuses when the
             // journal appears to shrink.
             return log.for_each_since(offset, &mut |seq, bytes| {
-                let entry: JournalEntry = serde_json::from_slice(bytes)
-                    .with_context(|| format!("journal sequence {seq} is not an entry"))?;
+                let entry: JournalEntry = serde_json::from_slice(bytes).with_context(|| {
+                    format!("journal sequence {seq} is not an entry")
+                })?;
                 f(&entry)
             });
         }
@@ -1726,8 +1635,7 @@ impl Journal for FileBook {
                 path.display()
             );
         }
-        file.seek(SeekFrom::Start(offset))
-            .context("seeking the journal")?;
+        file.seek(SeekFrom::Start(offset)).context("seeking the journal")?;
 
         let mut reader = BufReader::new(file);
         // ⛔ ONE BUFFER, REUSED. `lines()` allocates a `String` per line.
@@ -1747,8 +1655,9 @@ impl Journal for FileBook {
             if line.trim().is_empty() {
                 continue;
             }
-            let entry: JournalEntry = serde_json::from_str(line.trim_end())
-                .with_context(|| format!("{} line {} after byte {offset}", path.display(), i))?;
+            let entry: JournalEntry = serde_json::from_str(line.trim_end()).with_context(|| {
+                format!("{} line {} after byte {offset}", path.display(), i)
+            })?;
             f(&entry)?;
         }
         Ok(consumed)
@@ -1839,7 +1748,7 @@ mod position_tests {
                 PostingRecord::of(1, 25_000_00, "inst-vti", Some(100)),
                 PostingRecord::new(2, -25_000_00),
             ],
-
+        
             trade_date: None,
             announcement: None,
             due_date: None,
@@ -1857,7 +1766,7 @@ mod position_tests {
                 PostingRecord::new(1, 1_000_00),
                 PostingRecord::new(2, -1_000_00),
             ],
-
+        
             trade_date: None,
             announcement: None,
             due_date: None,
@@ -1874,11 +1783,7 @@ mod position_tests {
 
         let bal = b.balances_by_dim().unwrap();
         let account: i64 = bal[&(1, None)].0 - bal[&(1, None)].1;
-        let attributed: i64 = held
-            .iter()
-            .filter(|((d, _), _)| *d == 1)
-            .map(|(_, v)| v.0)
-            .sum();
+        let attributed: i64 = held.iter().filter(|((d, _), _)| *d == 1).map(|(_, v)| v.0).sum();
         assert_eq!(
             attributed + rest[&1],
             account,
@@ -1888,10 +1793,7 @@ mod position_tests {
         // …and conservation is untouched: an instrument partitions where the
         // value sits, not how much there is.
         let tb = b.trial_balance().unwrap();
-        assert_eq!(
-            tb.debits, tb.credits,
-            "an instrument partitions value, it does not create any"
-        );
+        assert_eq!(tb.debits, tb.credits, "an instrument partitions value, it does not create any");
     }
 }
 
@@ -1904,10 +1806,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let p = std::env::temp_dir().join(format!(
-            "ratio-store-test-{n}-{:?}",
-            std::thread::current().id()
-        ));
+        let p = std::env::temp_dir().join(format!("ratio-store-test-{n}-{:?}", std::thread::current().id()));
         fs::create_dir_all(&p).unwrap();
         p
     }
@@ -2010,10 +1909,7 @@ mod tests {
         assert!(!e.conserves_every_currency());
         let err = b.append(&e).unwrap_err();
         let msg = format!("{err:#}");
-        assert!(
-            msg.contains("own conservation law"),
-            "names WHICH law: {msg}"
-        );
+        assert!(msg.contains("own conservation law"), "names WHICH law: {msg}");
     }
 
     #[test]
@@ -2034,11 +1930,11 @@ mod tests {
                 ],
                 trade_date: None,
                 announcement: None,
-                due_date: None,
-                application: None,
-                identified_lots: None,
-                special_allocations: None,
-                kind: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+            kind: None,
             })
             .is_ok());
     }
@@ -2090,11 +1986,7 @@ mod tests {
             "None skips the field so old journals stay readable: {line}"
         );
         let parsed: JournalEntry = serde_json::from_str(&line).unwrap();
-        assert!(
-            parsed.kind.is_none(),
-            "absence is an actual: {:?}",
-            parsed.kind
-        );
+        assert!(parsed.kind.is_none(), "absence is an actual: {:?}", parsed.kind);
         assert!(!parsed.is_forecast_material());
 
         let mut payroll = entry("pay", &cfg, &[(1, 100), (2, -100)]);
@@ -2170,11 +2062,7 @@ mod tests {
         let mut s = DirectoryConfigStore::open(&dir).unwrap();
         let d = s.put(b"fee = 75bp").unwrap();
         assert_eq!(s.active().unwrap(), None, "put must not move the pointer");
-        assert_eq!(
-            s.put(b"fee = 75bp").unwrap(),
-            d,
-            "identical bytes, one digest"
-        );
+        assert_eq!(s.put(b"fee = 75bp").unwrap(), d, "identical bytes, one digest");
         assert!(
             dir.join(d.as_str()).exists(),
             "the blob is a file named by the hash",
@@ -2190,10 +2078,7 @@ mod tests {
         let ghost = Digest::of(b"never stored");
         assert!(s.set_active(&ghost).is_err());
         assert_eq!(s.active().unwrap(), None);
-        assert!(
-            s.history().unwrap().is_empty(),
-            "a refused promotion is not history"
-        );
+        assert!(s.history().unwrap().is_empty(), "a refused promotion is not history");
     }
 
     #[test]
@@ -2208,11 +2093,7 @@ mod tests {
         s.set_active(&d1).unwrap();
         s.set_active(&d2).unwrap();
         let raw = fs::read_to_string(dir.join("ACTIVE")).unwrap();
-        assert_eq!(
-            raw,
-            d2.as_str(),
-            "ACTIVE is the digest, not a partial write"
-        );
+        assert_eq!(raw, d2.as_str(), "ACTIVE is the digest, not a partial write");
         assert_eq!(s.active().unwrap(), Some(d2.clone()));
         assert_eq!(s.history().unwrap()[0], d2);
         assert!(!dir.join("ACTIVE.tmp").exists(), "the temp does not linger");
@@ -2251,9 +2132,7 @@ mod tests {
             .to_string();
         assert!(err.contains("provenance"), "{err}");
         let err = b
-            .record_fact(
-                br#"{"id":"p1","kind":"price","provenance":{"delivery":"","template":""}}"#,
-            )
+            .record_fact(br#"{"id":"p1","kind":"price","provenance":{"delivery":"","template":""}}"#)
             .unwrap_err()
             .to_string();
         assert!(err.contains("empty provenance"), "{err}");
@@ -2271,7 +2150,8 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("already recorded"), "{err}");
-        let v: serde_json::Value = serde_json::from_slice(&b.get_fact("p1").unwrap()).unwrap();
+        let v: serde_json::Value =
+            serde_json::from_slice(&b.get_fact("p1").unwrap()).unwrap();
         assert_eq!(
             v["provenance"]["delivery"],
             "aa".repeat(32),
@@ -2367,12 +2247,8 @@ mod tests {
     #[test]
     fn multi_leg_entries_tie_too() {
         let (mut b, cfg) = book();
-        b.append(&entry(
-            "fee",
-            &cfg,
-            &[(10, 61_240_18), (20, -61_240_00), (21, -18)],
-        ))
-        .unwrap();
+        b.append(&entry("fee", &cfg, &[(10, 61_240_18), (20, -61_240_00), (21, -18)]))
+            .unwrap();
         let tb = b.trial_balance().unwrap();
         assert!(ratio_chart::trial_balance_ties(tb));
         assert_eq!(tb.debits, 61_240_18);
@@ -2396,18 +2272,12 @@ mod tests {
         // in no currency, printed under a currency-free column header by five
         // separate callers. Splitting the key is what makes that unsayable.
         let (mut b, cfg) = book();
-        b.append(&entry_in("a", &cfg, "USD", &[(1, 300), (2, -300)]))
-            .unwrap();
-        b.append(&entry_in("b", &cfg, "EUR", &[(1, 200), (2, -200)]))
-            .unwrap();
+        b.append(&entry_in("a", &cfg, "USD", &[(1, 300), (2, -300)])).unwrap();
+        b.append(&entry_in("b", &cfg, "EUR", &[(1, 200), (2, -200)])).unwrap();
         let by = b.balances_by_dim().unwrap();
         assert_eq!(by[&(1, Some("USD".into()))], (300, 0));
         assert_eq!(by[&(1, Some("EUR".into()))], (200, 0));
-        assert_eq!(
-            by.get(&(1, None)),
-            None,
-            "nothing lands in the untyped slot"
-        );
+        assert_eq!(by.get(&(1, None)), None, "nothing lands in the untyped slot");
     }
 
     #[test]
@@ -2582,11 +2452,7 @@ mod tests {
         assert_eq!(first.entries().unwrap().len(), 1);
         store.clear();
         let second = FileBook::open_with(&root, Some(store.clone())).unwrap();
-        assert_eq!(
-            second.entries().unwrap().len(),
-            1,
-            "a second hydrate must not duplicate the seed"
-        );
+        assert_eq!(second.entries().unwrap().len(), 1, "a second hydrate must not duplicate the seed");
         assert!(
             store.puts().is_empty(),
             "a full seed must not re-claim: {:?}",
@@ -2601,10 +2467,7 @@ mod tests {
         let root = tmp();
         fs::write(root.join("journal.jsonl"), "one\ntwo\nthree\n").unwrap();
         let store = Arc::new(CountingStore::new());
-        let log = SeqLog::new(
-            store.clone(),
-            format!("{}/journal/", super::book_key(&root)),
-        );
+        let log = SeqLog::new(store.clone(), format!("{}/journal/", super::book_key(&root)));
         assert!(log.claim(1, b"one").unwrap());
         store.clear();
         let _ = FileBook::open_with(&root, Some(store.clone())).unwrap();
@@ -2636,10 +2499,7 @@ mod tests {
     fn list_entry_count_falls_back_to_store_height() {
         let root = tmp();
         let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
-        let log = SeqLog::new(
-            store.clone(),
-            format!("{}/journal/", super::book_key(&root)),
-        );
+        let log = SeqLog::new(store.clone(), format!("{}/journal/", super::book_key(&root)));
         assert!(log.claim(1, b"one").unwrap());
         assert!(log.claim(2, b"two").unwrap());
         assert_eq!(FileBook::list_entry_count(&root, Some(store)).unwrap(), 2);

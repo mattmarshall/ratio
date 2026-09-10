@@ -48,13 +48,8 @@ usage:
   ratio init [--kind KIND] [--book DIR]  create a book and seed a chart of accounts
                                        --kind uses the CreateBook chart and templates
                                        (investment · personal · project · operating)
-  ratio config set FILE [--book DIR]   store and promote a local configuration
-  ratio config set FILE --operation ID --expected-revision N --predecessor SHA
-                                       promote on the configured durable backend
+  ratio config set FILE [--book DIR]   store a configuration and promote it
   ratio config show [--book DIR]       the active configuration and its history
-  ratio membership grant PRINCIPAL --operation ID --expected-revision N --predecessor SHA
-  ratio membership revoke PRINCIPAL --operation ID --expected-revision N --predecessor SHA
-                                       PRINCIPAL is authkit:SUB or organization:ID
   ratio rules check FILE [--book DIR]  check a rule set against the chart
   ratio rules show [--book DIR]        render the active rules for a human
   ratio apply FILE [--book DIR]        apply rules to events and post the result
@@ -124,12 +119,11 @@ fn flags(rest: &[&str]) -> Result<std::collections::BTreeMap<String, String>> {
     let mut it = rest.iter();
     while let Some(k) = it.next() {
         if !KNOWN.contains(k) {
-            bail!(
-                "unrecognized flag {k:?} — this verb takes {}",
-                KNOWN.join(" or ")
-            );
+            bail!("unrecognized flag {k:?} — this verb takes {}", KNOWN.join(" or "));
         }
-        let v = it.next().with_context(|| format!("{k} needs a value"))?;
+        let v = it
+            .next()
+            .with_context(|| format!("{k} needs a value"))?;
         if out.insert(k.to_string(), v.to_string()).is_some() {
             bail!("{k} given twice");
         }
@@ -164,13 +158,7 @@ fn main() -> Result<()> {
         ["init"] => init(book),
         ["init", "--kind", k] => init_with_kind(book, k),
         ["config", "set", file] => config_set(book, file),
-        ["config", "set", file, "--operation", operation, "--expected-revision", revision, "--predecessor", predecessor] => {
-            config_set_control(book, file, operation, revision, predecessor)
-        }
         ["config", "show"] => config_show(book),
-        ["membership", action @ ("grant" | "revoke"), principal, "--operation", operation, "--expected-revision", revision, "--predecessor", predecessor] => {
-            membership_control(book, action, principal, operation, revision, predecessor)
-        }
         ["rules", "check", file] => rules_check(book, file),
         ["rules", "show"] => rules_show(book),
         ["apply", file] => apply(book, file),
@@ -184,11 +172,7 @@ fn main() -> Result<()> {
         ["explain", account] => explain(book, account),
         ["strike", rest @ ..] => {
             let f = flags(rest)?;
-            strike(
-                book,
-                f.get("--as-of").map(String::as_str),
-                f.get("--view").map(String::as_str),
-            )
+            strike(book, f.get("--as-of").map(String::as_str), f.get("--view").map(String::as_str))
         }
         ["navs", rest @ ..] => {
             let f = flags(rest)?;
@@ -202,14 +186,20 @@ fn main() -> Result<()> {
         ["recon", "--from-ingest", "--out", out] => recon_from_ingest_cmd(book, Some(out)),
         ["recon", txns, positions] => recon(book, txns, positions, None, false),
         ["recon", txns, positions, "--post"] => recon(book, txns, positions, None, true),
-        ["recon", txns, positions, "--out", out] => recon(book, txns, positions, Some(out), false),
+        ["recon", txns, positions, "--out", out] => {
+            recon(book, txns, positions, Some(out), false)
+        }
         ["recon", txns, positions, "--out", out, "--post"]
         | ["recon", txns, positions, "--post", "--out", out] => {
             recon(book, txns, positions, Some(out), true)
         }
         ["watch"] => watch::watch(book, 7373),
-        ["watch", "--port", p] => watch::watch(book, p.parse().context("--port must be a number")?),
-        ["ingest", file, "--template", id] | ["ingest", file, "-t", id] => ingest(book, file, id),
+        ["watch", "--port", p] => {
+            watch::watch(book, p.parse().context("--port must be a number")?)
+        }
+        ["ingest", file, "--template", id] | ["ingest", file, "-t", id] => {
+            ingest(book, file, id)
+        }
         ["entities"] => entities(book),
         ["entity", "add", rest @ ..] => entity_add(book, rest),
         ["pending"] => pending(book),
@@ -226,9 +216,6 @@ fn main() -> Result<()> {
         ["scale-run", "--size", size, "--id", id] => scale_run(size, id),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
-        ["approve", id, "--operation", operation, "--expected-revision", revision, "--predecessor", predecessor] => {
-            approve_control(book, id, operation, revision, predecessor)
-        }
         // ⚠ SPELLED OUT RATHER THAN PUT THROUGH `flags`, because `--because`
         // takes free text and `flags`' KNOWN list is shared with every other
         // verb — adding it there would make `ratio strike --because "…"` parse
@@ -236,15 +223,16 @@ fn main() -> Result<()> {
         // the same reason.
         ["accept", brk, "--because", why] => accept(book, brk, None, why),
         ["accept", brk, "--because", why, "--view", v]
-        | ["accept", brk, "--view", v, "--because", why] => accept(book, brk, Some(v), why),
+        | ["accept", brk, "--view", v, "--because", why] => {
+            accept(book, brk, Some(v), why)
+        }
         // ⚠ SPELLED OUT rather than put through `flags`, because `--through`
         // is this verb's day and `flags` only knows `--as-of` / `--view`.
         // Adding it there would make `ratio strike --through "…"` parse
         // and be ignored. The `accept` arms above enumerate for the same reason.
         ["close", "--through", d] => close_cmd(book, None, d),
-        ["close", "--view", v, "--through", d] | ["close", "--through", d, "--view", v] => {
-            close_cmd(book, Some(v), d)
-        }
+        ["close", "--view", v, "--through", d]
+        | ["close", "--through", d, "--view", v] => close_cmd(book, Some(v), d),
         ["server"] => serve(),
         other => {
             eprint!("{USAGE}");
@@ -267,9 +255,7 @@ fn replace_sections(
     let mut doc: toml::Table = if previous.trim().is_empty() {
         toml::Table::new()
     } else {
-        previous
-            .parse()
-            .context("the configuration in force is not valid TOML")?
+        previous.parse().context("the configuration in force is not valid TOML")?
     };
     // Serialize just the rules, then lift the array out of it, so the rule
     // encoding stays `RuleSet`'s business rather than being duplicated here.
@@ -344,11 +330,7 @@ fn ingest(book: PathBuf, file: &str, template_id: &str) -> Result<()> {
             "no template {template_id:?} in the configuration in force \
              ({} template(s) there: {})",
             set.templates.len(),
-            set.templates
-                .iter()
-                .map(|t| t.id.as_str())
-                .collect::<Vec<_>>()
-                .join(", "),
+            set.templates.iter().map(|t| t.id.as_str()).collect::<Vec<_>>().join(", "),
         )
     })?;
     let problems = template.check();
@@ -371,9 +353,12 @@ fn ingest(book: PathBuf, file: &str, template_id: &str) -> Result<()> {
     };
 
     let rows = match template.reads {
-        ratio_ingest::Reader::Csv => ratio_ingest::extract_csv(&String::from_utf8_lossy(&bytes))?,
+        ratio_ingest::Reader::Csv => {
+            ratio_ingest::extract_csv(&String::from_utf8_lossy(&bytes))?
+        }
     };
-    let projection = ratio_ingest::project(template, &delivery, &rows, digest.as_str());
+    let projection =
+        ratio_ingest::project(template, &delivery, &rows, digest.as_str());
 
     // A fact id is derived from the delivery digest and the row, so the same
     // bytes under the same template do not produce a second set.
@@ -382,11 +367,8 @@ fn ingest(book: PathBuf, file: &str, template_id: &str) -> Result<()> {
         .into_iter()
         .map(|f| f.id)
         .collect();
-    let fresh: Vec<&ratio_ingest::Fact> = projection
-        .facts
-        .iter()
-        .filter(|f| !known.contains(&f.id))
-        .collect();
+    let fresh: Vec<&ratio_ingest::Fact> =
+        projection.facts.iter().filter(|f| !known.contains(&f.id)).collect();
 
     b.append_record(Plane::Deliveries, &delivery)?;
     for f in &fresh {
@@ -426,11 +408,7 @@ fn ingest(book: PathBuf, file: &str, template_id: &str) -> Result<()> {
 fn report_resolution(facts: &[ratio_ingest::Fact], master: &[ratio_ingest::Entity]) {
     let resolved = ratio_ingest::resolve_all(facts, master);
     let ok = resolved.iter().filter(|r| r.is_admissible()).count();
-    println!(
-        "  ready  {ok} of {} ({} pending)",
-        resolved.len(),
-        resolved.len() - ok
-    );
+    println!("  ready  {ok} of {} ({} pending)", resolved.len(), resolved.len() - ok);
 }
 
 fn pending(book: PathBuf) -> Result<()> {
@@ -449,11 +427,7 @@ fn pending(book: PathBuf) -> Result<()> {
     println!("PENDING — {} of {} fact(s)", held.len(), facts.len());
     println!();
     for r in &held {
-        println!(
-            "  {:<12} {}",
-            r.fact.reference,
-            r.blocker().unwrap_or_default()
-        );
+        println!("  {:<12} {}", r.fact.reference, r.blocker().unwrap_or_default());
         println!(
             "  {:<12} row {} of {} · template {}",
             "",
@@ -475,16 +449,10 @@ fn entities(book: PathBuf) -> Result<()> {
         println!("the master is empty — `ratio entity add` puts something in it");
         return Ok(());
     }
-    println!(
-        "{:<16}{:<14}{:<28}{}",
-        "ID", "KIND", "NAME", "IDENTIFIED BY"
-    );
+    println!("{:<16}{:<14}{:<28}{}", "ID", "KIND", "NAME", "IDENTIFIED BY");
     for e in &master {
-        let by: Vec<String> = e
-            .attributes
-            .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect();
+        let by: Vec<String> =
+            e.attributes.iter().map(|(k, v)| format!("{k}={v}")).collect();
         println!(
             "{:<16}{:<14}{:<28}{}",
             e.id,
@@ -503,11 +471,7 @@ fn entity_add(book: PathBuf, args: &[&str]) -> Result<()> {
     let mut attributes = std::collections::BTreeMap::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
-        let mut next = || {
-            it.next()
-                .copied()
-                .with_context(|| format!("{a} needs a value"))
-        };
+        let mut next = || it.next().copied().with_context(|| format!("{a} needs a value"));
         match *a {
             "--kind" => {
                 kind = Some(match next()? {
@@ -627,10 +591,7 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str)
 
     println!("applied  {id}");
     println!("  {instrument} {}-for-{}", s.num, s.den);
-    println!(
-        "  units    {}{moved} on account {dim}",
-        if moved > 0 { "+" } else { "" }
-    );
+    println!("  units    {}{moved} on account {dim}", if moved > 0 { "+" } else { "" });
     println!("  cost     unchanged — a split moves units, not value");
     println!();
     println!("Applying it again is refused: an action is not idempotent, and the");
@@ -698,9 +659,7 @@ fn shape_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Shape, Vec<&'a str>)> 
             // holdings and identical trades — which is what "the method is a
             // term of the agreement" looks like on a screen.
             "--method" => {
-                let name = it
-                    .next()
-                    .ok_or_else(|| anyhow::anyhow!("--method needs a name"))?;
+                let name = it.next().ok_or_else(|| anyhow::anyhow!("--method needs a name"))?;
                 shape.method = ratio_rules::LotMethod::ALL
                     .into_iter()
                     .find(|m| m.as_declared() == *name)
@@ -748,29 +707,13 @@ fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
         .map(|v| v.id.clone())
         .unwrap_or_else(|| ratio_rules::UNDECLARED_VIEW.to_string());
     let label = |s: &str| {
-        if books.views.is_empty() {
-            s.to_string()
-        } else {
-            format!("{s} ({view})")
-        }
+        if books.views.is_empty() { s.to_string() } else { format!("{s} ({view})") }
     };
-    println!(
-        "generated {} into {}",
-        plural(entries as i64, "entry", "entries"),
-        book.display()
-    );
+    println!("generated {} into {}", plural(entries as i64, "entry", "entries"), book.display());
     println!("  {:<22}{:>12}", "securities", shape.securities);
     println!("  {:<22}{:>12}", "currencies", shape.currencies);
-    println!(
-        "  {:<22}{:>12}",
-        label("open tax lots"),
-        proj.open_lots(&view)?
-    );
-    println!(
-        "  {:<22}{:>12}",
-        label("open positions"),
-        proj.positions(&view)?.value.held.len()
-    );
+    println!("  {:<22}{:>12}", label("open tax lots"), proj.open_lots(&view)?);
+    println!("  {:<22}{:>12}", label("open positions"), proj.positions(&view)?.value.held.len());
     Ok(())
 }
 
@@ -801,9 +744,7 @@ fn books_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Books, Vec<&'a str>)> 
             // `abor,ibor:t+2` — a bare id recognises on the trade date, and
             // `:t+n` settles n open days after it.
             "--views" => {
-                let spec = it
-                    .next()
-                    .ok_or_else(|| anyhow::anyhow!("--views needs a list"))?;
+                let spec = it.next().ok_or_else(|| anyhow::anyhow!("--views needs a list"))?;
                 for one in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
                     let (id, settles_in) = match one.split_once(':') {
                         None => (one, None),
@@ -822,10 +763,7 @@ fn books_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Books, Vec<&'a str>)> 
                             (id, Some(n))
                         }
                     };
-                    books.views.push(ratio_gen::GenView {
-                        id: id.to_string(),
-                        settles_in,
-                    });
+                    books.views.push(ratio_gen::GenView { id: id.to_string(), settles_in });
                 }
             }
             "--settle-tail" => {
@@ -904,11 +842,8 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
 
     let folding = args.contains(&"--fold");
     let (shape, dir) = if folding {
-        let rest: Vec<&str> = args
-            .iter()
-            .copied()
-            .filter(|a| *a != "--fold" && *a != "--json")
-            .collect();
+        let rest: Vec<&str> =
+            args.iter().copied().filter(|a| *a != "--fold" && *a != "--json").collect();
         if let Some(other) = rest.first() {
             bail!(
                 "`--fold` measures the book at {}, so {other:?} would describe a fund that is \
@@ -947,16 +882,8 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     out!();
     out!("  {:<22}{:>12}", "securities", shape.securities);
     out!("  {:<22}{:>12}", "currencies", shape.currencies);
-    out!(
-        "  {:<22}{:>12}   at steady state",
-        "open lots / security",
-        shape.lots_per
-    );
-    out!(
-        "  {:<22}{:>12}   opened per lot left open",
-        "turnover",
-        shape.turnover
-    );
+    out!("  {:<22}{:>12}   at steady state", "open lots / security", shape.lots_per);
+    out!("  {:<22}{:>12}   opened per lot left open", "turnover", shape.turnover);
     out!("  {:<22}{:>12}", "open corp. actions", shape.open_actions);
     out!();
 
@@ -972,10 +899,7 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
         // generation line reads as "generating this fund was free", which is the
         // opposite of true — it is the line item this mode SKIPS, and per the
         // measurement above it is the most expensive one.
-        out!(
-            "  generated {:>14}   ⛔ not generated here — folded as found",
-            "—"
-        );
+        out!("  generated {:>14}   ⛔ not generated here — folded as found", "—");
         (None, None)
     } else {
         let t = Instant::now();
@@ -1008,11 +932,7 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
                 let _ = std::io::stderr().flush();
             }
         })
-        .inspect(|_| {
-            if !json {
-                eprintln!()
-            }
-        })?
+        .inspect(|_| if !json { eprintln!() })?
     } else {
         ratio_project::Projection::of_book(&dir)?
     };
@@ -1027,7 +947,9 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     let prices: std::collections::BTreeMap<String, i64> = facts
         .iter()
         .filter(|f| f.kind == "price")
-        .filter_map(|f| Some((f.reference.clone(), f.values.get("price")?.as_minor()?)))
+        .filter_map(|f| {
+            Some((f.reference.clone(), f.values.get("price")?.as_minor()?))
+        })
         .collect();
     // ⛔ ONE READER OF THE RATE FACTS, shared with the console. Two would be two
     // chances to disagree about which field is the rate, and the disagreement
@@ -1074,19 +996,16 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     let fx_ns = t.elapsed().as_nanos() as i64;
 
     // STRIKE: the fold, off maintained totals rather than the journal.
-    let types: std::collections::BTreeMap<i64, ratio_store::AccountTypeRecord> = b
-        .accounts()?
-        .into_iter()
-        .map(|a| (a.dim, a.account_type))
-        .collect();
+    let types: std::collections::BTreeMap<i64, ratio_store::AccountTypeRecord> =
+        b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
     let t = Instant::now();
     let struck = proj.nav(
         bv,
         &|dim| {
-            matches!(
-                types.get(&dim),
-                Some(ratio_store::AccountTypeRecord::Asset)
-                    | Some(ratio_store::AccountTypeRecord::Liability)
+        matches!(
+            types.get(&dim),
+            Some(ratio_store::AccountTypeRecord::Asset)
+                | Some(ratio_store::AccountTypeRecord::Liability)
             )
         },
         &rates,
@@ -1099,11 +1018,7 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     let nav_ns = mark_ns + fx_ns + strike_ns;
     out!();
     out!("  {:<26}{:>14}", "journal entries", entries);
-    out!(
-        "  {:<26}{:>14}   ⛔ steady state, not cumulative",
-        "open positions",
-        open_positions
-    );
+    out!("  {:<26}{:>14}   ⛔ steady state, not cumulative", "open positions", open_positions);
     // ⛔ THE TWO NUMBERS THE SCALE ARGUMENT IS ACTUALLY ABOUT. Positions are a
     // CHART — five hundred entries whatever the fund's history. Lots are a
     // HISTORY, and this is where the memory is.
@@ -1114,11 +1029,7 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
         open_lots * 40 / 1_048_576
     );
     if breaks > 0 {
-        out!(
-            "  {:<26}{:>14}   ⚠ sales that could not be relieved",
-            "lot breaks",
-            breaks
-        );
+        out!("  {:<26}{:>14}   ⚠ sales that could not be relieved", "lot breaks", breaks);
         for b in proj.lot_breaks(bv)?.iter().take(2) {
             out!("      {b}");
         }
@@ -1132,18 +1043,15 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     let cost = proj.cost();
     out!(
         "  {:<26}{:>14}   O(entries), and MEASURED to be",
-        "COLD BUILD",
-        ratio_nav::closure::human_nanos(cold_ns)
+        "COLD BUILD", ratio_nav::closure::human_nanos(cold_ns)
     );
     out!(
         "  {:<26}{:>14}   reading and deserializing",
-        "  parse",
-        ratio_nav::closure::human_nanos(cost.parse.as_nanos() as i64)
+        "  parse", ratio_nav::closure::human_nanos(cost.parse.as_nanos() as i64)
     );
     out!(
         "  {:<26}{:>14}   totals, positions, actions, lots",
-        "  fold",
-        ratio_nav::closure::human_nanos(cost.fold.as_nanos() as i64)
+        "  fold", ratio_nav::closure::human_nanos(cost.fold.as_nanos() as i64)
     );
     out!(
         "  {:<26}{:>14}   of the fold, in {} reliefs",
@@ -1151,36 +1059,16 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
         ratio_nav::closure::human_nanos(cost.relieve.as_nanos() as i64),
         cost.reliefs
     );
-    out!(
-        "  {:<26}{:>14}   {marked} prices",
-        "  mark",
-        ratio_nav::closure::human_nanos(mark_ns)
-    );
-    out!(
-        "  {:<26}{:>14}   {translated} rates, not {marked}",
-        "  fx",
-        ratio_nav::closure::human_nanos(fx_ns)
-    );
-    out!(
-        "  {:<26}{:>14}   off maintained totals",
-        "  strike",
-        ratio_nav::closure::human_nanos(strike_ns)
-    );
-    out!(
-        "  {:<26}{:>14}",
-        "NAV  (O(chart))",
-        ratio_nav::closure::human_nanos(nav_ns)
-    );
+    out!("  {:<26}{:>14}   {marked} prices", "  mark", ratio_nav::closure::human_nanos(mark_ns));
+    out!("  {:<26}{:>14}   {translated} rates, not {marked}", "  fx", ratio_nav::closure::human_nanos(fx_ns));
+    out!("  {:<26}{:>14}   off maintained totals", "  strike", ratio_nav::closure::human_nanos(strike_ns));
+    out!("  {:<26}{:>14}", "NAV  (O(chart))", ratio_nav::closure::human_nanos(nav_ns));
     out!();
     // ⭐ THE FIGURE THIS ENGINE EXISTS FOR. Six lot methods, holding-period
     // classification and the whole relief layer decide it, and until the sale
     // posted three legs it was computed and discarded.
     let realized = proj.nav(bv, &|dim| dim == 30, &rates)?.value.0;
-    out!(
-        "  net asset value {:>20}   over {} entries",
-        struck.value.0,
-        struck.prefix
-    );
+    out!("  net asset value {:>20}   over {} entries", struck.value.0, struck.prefix);
     out!(
         "  realized gain   {:>20}   credit-normal, so a gain reads negative",
         realized
@@ -1323,20 +1211,11 @@ fn closure(book: PathBuf, args: &[&str]) -> Result<()> {
     println!("  {:<22}{:>12}", "currencies", d.currencies);
     println!("  {:<22}{:>12}", "open corp. actions", d.open_actions);
     println!("  {:<22}{:>12}", "capital transactions", d.capital_txns);
-    println!(
-        "  {:<22}{:>12}   ⛔ not read by the NAV",
-        "open tax lots", e.open_lots
-    );
+    println!("  {:<22}{:>12}   ⛔ not read by the NAV", "open tax lots", e.open_lots);
     println!();
     println!("READS");
-    println!(
-        "  {:<22}{:>12}   one price per security",
-        "marking", e.marks
-    );
-    println!(
-        "  {:<22}{:>12}   one rate per CURRENCY, not per position",
-        "fx", e.fx
-    );
+    println!("  {:<22}{:>12}   one price per security", "marking", e.marks);
+    println!("  {:<22}{:>12}   one rate per CURRENCY, not per position", "fx", e.fx);
     println!(
         "  {:<22}{:>12}   {}% of the work — the LOTS of one name",
         "corporate actions",
@@ -1347,11 +1226,7 @@ fn closure(book: PathBuf, args: &[&str]) -> Result<()> {
     println!("  {:<22}{:>12}", "", "────────────");
     println!("  {:<22}{:>12}", "total", e.reads);
     println!();
-    println!(
-        "  ≈ {}   {}",
-        ratio_nav::closure::human_nanos(e.nanos),
-        e.provenance
-    );
+    println!("  ≈ {}   {}", ratio_nav::closure::human_nanos(e.nanos), e.provenance);
     if let Some(why) = &fell_back {
         println!("           not measured here: {why}");
     }
@@ -1403,10 +1278,7 @@ fn mark(book: PathBuf, as_of: &str) -> Result<()> {
     println!("MARKED TO MARKET — {as_of}");
     println!();
     if !out.marks.is_empty() {
-        println!(
-            "{:<34}{:>10}{:>16}{:>16}{:>14}",
-            "INSTRUMENT", "UNITS", "CARRYING", "MARKET", "MOVEMENT"
-        );
+        println!("{:<34}{:>10}{:>16}{:>16}{:>14}", "INSTRUMENT", "UNITS", "CARRYING", "MARKET", "MOVEMENT");
         for m in &out.marks {
             println!(
                 "{:<34}{:>10}{:>16}{:>16}{:>14}",
@@ -1527,11 +1399,7 @@ pub(crate) fn init(book: PathBuf) -> Result<()> {
             // A disposal relieves the investment at cost and books the
             // difference here. Without it the scope in ratio-recon claims
             // coverage this chart cannot deliver.
-            acct(
-                31,
-                "Realized gain on investments",
-                AccountTypeRecord::Income,
-            ),
+            acct(31, "Realized gain on investments", AccountTypeRecord::Income),
             acct(40, "Management fee payable", AccountTypeRecord::Liability),
         ])?;
     }
@@ -1556,7 +1424,6 @@ fn acct(dim: i64, name: &str, t: AccountTypeRecord) -> Account {
 }
 
 fn config_set(book: PathBuf, file: &str) -> Result<()> {
-    install_control_backend()?;
     let mut b = FileBook::open(&book)?;
     let bytes = std::fs::read(file).with_context(|| format!("reading {file}"))?;
     let digest = b.put(&bytes)?;
@@ -1565,160 +1432,7 @@ fn config_set(book: PathBuf, file: &str) -> Result<()> {
     Ok(())
 }
 
-#[derive(Clone)]
-struct ControlIntent<'a> {
-    operation_id: &'a str,
-    expected_revision: u64,
-    predecessor: &'a str,
-}
-
-fn control_intent<'a>(
-    operation_id: &'a str,
-    revision: &str,
-    predecessor: &'a str,
-) -> Result<ControlIntent<'a>> {
-    Ok(ControlIntent {
-        operation_id,
-        expected_revision: revision
-            .parse()
-            .context("--expected-revision must be a non-negative whole number")?,
-        predecessor,
-    })
-}
-
-fn install_control_backend() -> Result<()> {
-    if let Some(bucket) = std::env::var("RATIO_JOURNAL_BUCKET")
-        .ok()
-        .filter(|value| !value.is_empty())
-    {
-        let prefix = std::env::var("RATIO_JOURNAL_PREFIX")
-            .ok()
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| "journals/".to_string());
-        let store = scale::S3::open(&bucket, prefix)
-            .with_context(|| format!("opening the control store in s3://{bucket}"))?;
-        ratio_store::install_object_store(std::sync::Arc::new(store));
-    } else if let Some(dir) = std::env::var("RATIO_JOURNAL_LOCAL")
-        .ok()
-        .filter(|value| !value.is_empty())
-    {
-        ratio_store::install_object_store(std::sync::Arc::new(ratio_store::DirStore::at(dir)));
-    }
-    Ok(())
-}
-
-fn control_operation(
-    b: &FileBook,
-    intent: &ControlIntent<'_>,
-    change: ratio_store::control::control_operation::Change,
-) -> Result<ratio_store::control::ControlOperation> {
-    let (book_id, _, _, bootstrap_digest) = b
-        .control_identity()?
-        .context("the book is not published on the configured durable backend")?;
-    Ok(ratio_store::control::ControlOperation {
-        format_version: 1,
-        book_id,
-        bootstrap_digest,
-        expected_revision: intent.expected_revision,
-        expected_predecessor_digest: intent.predecessor.to_string(),
-        operation_id: intent.operation_id.to_string(),
-        actor_subject: actor_name(),
-        actor_provenance: "trusted-cli".into(),
-        change: Some(change),
-    })
-}
-
-fn promote_control(
-    b: &FileBook,
-    digest: &ratio_store::Digest,
-    intent: &ControlIntent<'_>,
-) -> Result<ratio_store::control::ControlReceipt> {
-    let operation = control_operation(
-        b,
-        intent,
-        ratio_store::control::control_operation::Change::ConfigPromotion(
-            ratio_store::control::ConfigPromotion {
-                config_digest: digest.as_str().to_string(),
-            },
-        ),
-    )?;
-    b.commit_control(&operation)
-}
-
-fn config_set_control(
-    book: PathBuf,
-    file: &str,
-    operation: &str,
-    revision: &str,
-    predecessor: &str,
-) -> Result<()> {
-    install_control_backend()?;
-    let intent = control_intent(operation, revision, predecessor)?;
-    let mut b = FileBook::open(&book)?;
-    let bytes = std::fs::read(file).with_context(|| format!("reading {file}"))?;
-    let set =
-        RuleSet::from_toml(std::str::from_utf8(&bytes).context("configuration is not UTF-8")?)?;
-    let errors: Vec<_> = check(&set, &b.accounts()?)
-        .into_iter()
-        .filter(|finding| !finding.is_question)
-        .collect();
-    if !errors.is_empty() {
-        bail!("configuration does not check against the book chart: {errors:?}");
-    }
-    let digest = b.put(&bytes)?;
-    let receipt = promote_control(&b, &digest, &intent)?;
-    println!(
-        "config {} promoted at control revision {} ({} bytes)",
-        digest.short(),
-        receipt.committed_revision,
-        bytes.len()
-    );
-    Ok(())
-}
-
-fn membership_control(
-    book: PathBuf,
-    action: &str,
-    principal: &str,
-    operation: &str,
-    revision: &str,
-    predecessor: &str,
-) -> Result<()> {
-    install_control_backend()?;
-    let intent = control_intent(operation, revision, predecessor)?;
-    let b = FileBook::open(&book)?;
-    let principal = if let Some(subject) = principal.strip_prefix("authkit:") {
-        ratio_store::control::membership_revision::Principal::AuthkitSubject(subject.into())
-    } else if let Some(organization) = principal.strip_prefix("organization:") {
-        ratio_store::control::membership_revision::Principal::OrganizationId(organization.into())
-    } else {
-        bail!("membership principal must be authkit:SUB or organization:ID");
-    };
-    let action = match action {
-        "grant" => ratio_store::control::membership_revision::Action::Grant,
-        "revoke" => ratio_store::control::membership_revision::Action::Revoke,
-        _ => bail!("membership action must be grant or revoke"),
-    };
-    let operation = control_operation(
-        &b,
-        &intent,
-        ratio_store::control::control_operation::Change::MembershipRevision(
-            ratio_store::control::MembershipRevision {
-                action: action as i32,
-                principal: Some(principal),
-            },
-        ),
-    )?;
-    let receipt = b.commit_control(&operation)?;
-    println!(
-        "membership {action:?} committed at control revision {}",
-        receipt.committed_revision
-    );
-    Ok(())
-}
-
 fn config_show(book: PathBuf) -> Result<()> {
-    install_control_backend()?;
     let b = FileBook::open(&book)?;
     match b.active()? {
         None => println!("no configuration promoted"),
@@ -1748,11 +1462,7 @@ fn rules_check(book: PathBuf, file: &str) -> Result<()> {
     let errors = findings.iter().filter(|f| !f.is_question).count();
     let questions = findings.iter().filter(|f| f.is_question).count();
 
-    println!(
-        "checked  {} rule(s) against {} account(s)",
-        set.rules.len(),
-        chart.len()
-    );
+    println!("checked  {} rule(s) against {} account(s)", set.rules.len(), chart.len());
     for f in &findings {
         let mark = if f.is_question { "?" } else { "x" };
         println!("  {mark} {}: {}", f.rule, f.message);
@@ -1813,10 +1523,7 @@ fn apply(book: PathBuf, file: &str) -> Result<()> {
         for f in &errors {
             println!("  x {}: {}", f.rule, f.message);
         }
-        bail!(
-            "the active configuration has {} error(s); fix it before applying",
-            errors.len()
-        );
+        bail!("the active configuration has {} error(s); fix it before applying", errors.len());
     }
 
     let text = std::fs::read_to_string(file).with_context(|| format!("reading {file}"))?;
@@ -1825,12 +1532,9 @@ fn apply(book: PathBuf, file: &str) -> Result<()> {
 
     let mut posted = 0usize;
     for event in &events {
-        let rule = set.rule(&event.rule).with_context(|| {
-            format!(
-                "event {:?} names rule {:?}, which is not in the active configuration",
-                event.id, event.rule
-            )
-        })?;
+        let rule = set
+            .rule(&event.rule)
+            .with_context(|| format!("event {:?} names rule {:?}, which is not in the active configuration", event.id, event.rule))?;
         let postings = compile(rule, event)?;
         b.append(&JournalEntry {
             id: event.id.clone(),
@@ -1841,7 +1545,7 @@ fn apply(book: PathBuf, file: &str) -> Result<()> {
             },
             config: digest.clone(),
             postings,
-
+        
             trade_date: None,
             announcement: None,
             due_date: None,
@@ -1890,10 +1594,7 @@ fn post(book: PathBuf, file: &str) -> Result<()> {
         }
     }
 
-    println!(
-        "posted   {posted} entrie(s) under config {}",
-        config.short()
-    );
+    println!("posted   {posted} entrie(s) under config {}", config.short());
     if !refused.is_empty() {
         println!("refused  {}", refused.len());
         for r in &refused {
@@ -1945,14 +1646,7 @@ fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
             // bottom of this function: a view keeps or drops WHOLE entries, so
             // its columns tie by `Ratio.Views.every_view_conserves` — and if
             // they ever do not, the bail below says so instead of printing.
-            (
-                rows,
-                ratio_chart::TrialBalance {
-                    debits: d,
-                    credits: c,
-                },
-                bal.through,
-            )
+            (rows, ratio_chart::TrialBalance { debits: d, credits: c }, bal.through)
         }
     };
 
@@ -1972,10 +1666,7 @@ fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
     println!();
     // ⛔ ONE ROW PER (ACCOUNT, CURRENCY) — see `Journal::balances_by_dim`. One
     // row per account added dollars to euros under a currency-free header.
-    println!(
-        "{:<30}{:<5}{:>18}{:>18}",
-        "ACCOUNT", "CCY", "DEBIT", "CREDIT"
-    );
+    println!("{:<30}{:<5}{:>18}{:>18}", "ACCOUNT", "CCY", "DEBIT", "CREDIT");
     for ((dim, ccy), (debit, credit)) in &by_dim {
         let label = match names.get(dim) {
             Some(a) => {
@@ -2039,9 +1730,7 @@ fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
             // the header says which when there is an election: a dual-basis
             // book relieves one lot book per view, so "the" realized gain is a
             // view's realized gain.
-            let rv = view
-                .map(str::to_string)
-                .unwrap_or_else(|| set.default_view());
+            let rv = view.map(str::to_string).unwrap_or_else(|| set.default_view());
             if let Some(r) = proj.realized(&rv, Some(roles), &rates)?.value {
                 println!();
                 let heading = if set.views_declared() {
@@ -2049,36 +1738,16 @@ fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
                 } else {
                     "REALIZED, SINCE INCEPTION".to_string()
                 };
-                println!(
-                    "{:<37}{}",
-                    heading,
-                    ratio_project::relief::Method::from(set.effective_lot_method()).describe()
-                );
+                println!("{:<37}{}", heading, ratio_project::relief::Method::from(set.effective_lot_method()).describe());
                 // ⚠ A GAIN IS CREDIT-NORMAL, so the stored figure is negative
                 // when money was made. It is flipped HERE, once, at the render
                 // boundary — the same place `console/src/lib/format.ts` flips it — and
                 // the convention is stated beside the number rather than left
                 // for a reader to infer from a minus sign.
-                println!(
-                    "{:<30}{:>23}",
-                    "  gain",
-                    minor(i64::try_from(-r.gain).unwrap_or(0))
-                );
-                println!(
-                    "{:<30}{:>23}",
-                    "  basis relieved",
-                    minor(i64::try_from(r.basis).unwrap_or(0))
-                );
-                println!(
-                    "{:<30}{:>23}",
-                    "  short-term",
-                    minor(i64::try_from(-r.short_term).unwrap_or(0))
-                );
-                println!(
-                    "{:<30}{:>23}",
-                    "  long-term",
-                    minor(i64::try_from(-r.long_term).unwrap_or(0))
-                );
+                println!("{:<30}{:>23}", "  gain", minor(i64::try_from(-r.gain).unwrap_or(0)));
+                println!("{:<30}{:>23}", "  basis relieved", minor(i64::try_from(r.basis).unwrap_or(0)));
+                println!("{:<30}{:>23}", "  short-term", minor(i64::try_from(-r.short_term).unwrap_or(0)));
+                println!("{:<30}{:>23}", "  long-term", minor(i64::try_from(-r.long_term).unwrap_or(0)));
                 // ⚠ NAMES BOTH CAUSES AND ASSERTS NEITHER. This said "⛔ lots
                 // with no acquisition date", which is one of the two things
                 // that land here — and on a three-currency book the OTHER one
@@ -2098,7 +1767,8 @@ fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
         }
     }
 
-    if by_dim.values().any(|(d, c)| d - c != 0) && names.is_empty() {
+    if by_dim.values().any(|(d, c)| d - c != 0) && names.is_empty()
+    {
         println!("\n(no chart of accounts — run `ratio init`)");
     }
     println!("\n* sits on the side its account type does not call normal");
@@ -2166,16 +1836,10 @@ fn strike(book: PathBuf, as_of: Option<&str>, view: Option<&str>) -> Result<()> 
     println!("  difference {}", minor(s.trial_balance_difference));
     println!("  journal    {} entrie(s)", s.journal_position);
     println!("  digest     {}", &s.journal_digest[..12]);
-    println!(
-        "  config     {}",
-        &s.config_digest[..7.min(s.config_digest.len())]
-    );
+    println!("  config     {}", &s.config_digest[..7.min(s.config_digest.len())]);
     println!("  by         {}", s.actor);
     println!();
-    println!(
-        "Re-derive it any time with:  ratio replay {} --view {}",
-        s.id, s.view
-    );
+    println!("Re-derive it any time with:  ratio replay {} --view {}", s.id, s.view);
     Ok(())
 }
 
@@ -2266,11 +1930,8 @@ fn views_cmd(book: PathBuf) -> Result<()> {
 /// number, with nothing saying which part is which.
 fn reconcile_cmd(book: PathBuf, here: &str, there: &str) -> Result<()> {
     let b = FileBook::open(&book)?;
-    let types: std::collections::BTreeMap<i64, ratio_store::AccountTypeRecord> = b
-        .accounts()?
-        .into_iter()
-        .map(|a| (a.dim, a.account_type))
-        .collect();
+    let types: std::collections::BTreeMap<i64, ratio_store::AccountTypeRecord> =
+        b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
     let is_al = |d: i64| {
         matches!(
             types.get(&d),
@@ -2293,16 +1954,8 @@ fn reconcile_cmd(book: PathBuf, here: &str, there: &str) -> Result<()> {
     );
     println!();
     // The arithmetic on three lines, so a reader is never asked to trust it.
-    println!(
-        "{:<26}{:>20}",
-        format!("{here} net asset value"),
-        minor(nav_here)
-    );
-    println!(
-        "{:<26}{:>20}",
-        format!("{there} net asset value"),
-        minor(nav_there)
-    );
+    println!("{:<26}{:>20}", format!("{here} net asset value"), minor(nav_here));
+    println!("{:<26}{:>20}", format!("{there} net asset value"), minor(nav_there));
     println!("{:<26}{:>20}", "difference", minor(rec.value.difference));
 
     let day = |d: ratio_project::views::Day| ratio_common::iso_date_from_days(i64::from(d));
@@ -2328,12 +1981,10 @@ fn reconcile_cmd(book: PathBuf, here: &str, there: &str) -> Result<()> {
             );
         }
     };
-    let (in_here, in_there): (Vec<_>, Vec<_>) = rec.value.entries.iter().partition(|e| e.in_here);
+    let (in_here, in_there): (Vec<_>, Vec<_>) =
+        rec.value.entries.iter().partition(|e| e.in_here);
     side(format!("RECOGNISED IN {here}, NOT YET IN {there}"), in_here);
-    side(
-        format!("RECOGNISED IN {there}, NOT YET IN {here}"),
-        in_there,
-    );
+    side(format!("RECOGNISED IN {there}, NOT YET IN {here}"), in_there);
 
     // ⛔ SHOWN, NOT OMITTED. These contribute to neither figure, so leaving
     // them off would make the difference look fully explained when entries sit
@@ -2342,11 +1993,7 @@ fn reconcile_cmd(book: PathBuf, here: &str, there: &str) -> Result<()> {
         println!();
         println!("NEITHER VIEW CAN PLACE");
         for u in &rec.value.unplaceable {
-            println!(
-                "  {:<26}{}",
-                if u.memo.is_empty() { &u.id } else { &u.memo },
-                u.why
-            );
+            println!("  {:<26}{}", if u.memo.is_empty() { &u.id } else { &u.memo }, u.why);
         }
     }
     Ok(())
@@ -2414,29 +2061,13 @@ fn blocking_text(book: &std::path::Path, as_of: Option<&str>) -> Result<Option<S
 
     if !blocking.breaks.is_empty() {
         writeln!(m)?;
-        writeln!(
-            m,
-            "{} break(s) nobody has explained:",
-            blocking.breaks.len()
-        )?;
+        writeln!(m, "{} break(s) nobody has explained:", blocking.breaks.len())?;
         for k in &blocking.breaks {
             let id = k.name.rsplit('/').next().unwrap_or(&k.name);
-            writeln!(
-                m,
-                "  {:<32}{:>16}  {}",
-                k.account,
-                minor_str(&k.difference),
-                k.cause
-            )?;
+            writeln!(m, "  {:<32}{:>16}  {}", k.account, minor_str(&k.difference), k.cause)?;
             if k.name.contains("/breaks/lot-") {
-                writeln!(
-                    m,
-                    "      corrected by an entry, not a note — the lot book and the"
-                )?;
-                writeln!(
-                    m,
-                    "      position disagree, and that corrupts the realized gain"
-                )?;
+                writeln!(m, "      corrected by an entry, not a note — the lot book and the")?;
+                writeln!(m, "      position disagree, and that corrupts the realized gain")?;
             } else {
                 writeln!(m, "      ratio accept {id} --because \"…\"")?;
             }
@@ -2456,19 +2087,12 @@ fn blocking_text(book: &std::path::Path, as_of: Option<&str>) -> Result<Option<S
     if !unpriced.is_empty() {
         let day = as_of.unwrap_or("");
         writeln!(m)?;
-        writeln!(
-            m,
-            "{} position(s) with no price on or before {day}:",
-            unpriced.len()
-        )?;
+        writeln!(m, "{} position(s) with no price on or before {day}:", unpriced.len())?;
         for (name, units) in &unpriced {
             writeln!(m, "  {name:<38}{units:>10} units")?;
         }
         writeln!(m)?;
-        writeln!(
-            m,
-            "  These are not held at zero; they are unvalued. Deliver a price"
-        )?;
+        writeln!(m, "  These are not held at zero; they are unvalued. Deliver a price")?;
         writeln!(m, "  file and `ratio mark --as-of {day}`.")?;
     }
 
@@ -2478,9 +2102,7 @@ fn blocking_text(book: &std::path::Path, as_of: Option<&str>) -> Result<Option<S
 
 /// A minor-unit figure that arrived as a string, printed the way money is.
 fn minor_str(s: &str) -> String {
-    s.parse::<i64>()
-        .map(minor)
-        .unwrap_or_else(|_| s.to_string())
+    s.parse::<i64>().map(minor).unwrap_or_else(|_| s.to_string())
 }
 
 /// Every NAV struck on this book.
@@ -2527,26 +2149,15 @@ fn replay_strike(book: PathBuf, id: &str, view: Option<&str>) -> Result<()> {
     let r = ratio_nav::replay(&book, &s)?;
 
     println!("replaying {} in {}", s.id, s.view);
-    println!(
-        "  struck     {} by {}",
-        ratio_nav::rfc3339(s.valuation_time),
-        s.actor
-    );
-    println!(
-        "  folding    {} entrie(s) of the journal",
-        s.journal_position
-    );
+    println!("  struck     {} by {}", ratio_nav::rfc3339(s.valuation_time), s.actor);
+    println!("  folding    {} entrie(s) of the journal", s.journal_position);
     println!();
     println!(
         "  history    {}",
         if r.history_intact {
             "intact — the journal prefix hashes as it did".to_string()
         } else {
-            format!(
-                "REWRITTEN — {} now, {} then",
-                &r.journal_digest[..12.min(r.journal_digest.len())],
-                &s.journal_digest[..12]
-            )
+            format!("REWRITTEN — {} now, {} then", &r.journal_digest[..12.min(r.journal_digest.len())], &s.journal_digest[..12])
         }
     );
     println!(
@@ -2554,11 +2165,7 @@ fn replay_strike(book: PathBuf, id: &str, view: Option<&str>) -> Result<()> {
         if r.reproduced {
             format!("reproduced — {}", minor(r.net_asset_value))
         } else {
-            format!(
-                "DIVERGED — {} now, {} then",
-                minor(r.net_asset_value),
-                minor(s.net_asset_value)
-            )
+            format!("DIVERGED — {} now, {} then", minor(r.net_asset_value), minor(s.net_asset_value))
         }
     );
     println!();
@@ -2630,17 +2237,16 @@ fn explain(book: PathBuf, account: &str) -> Result<()> {
     }
     println!("{name} — {} posting(s)", rows.len());
     println!();
-    println!(
-        "  {:<18}{:>16}  {:<8}  {}",
-        "ENTRY", "AMOUNT", "CONFIG", "MEMO"
-    );
+    println!("  {:<18}{:>16}  {:<8}  {}", "ENTRY", "AMOUNT", "CONFIG", "MEMO");
     for r in &rows {
         println!("{r}");
     }
     println!();
     println!("  {:<18}{:>16}", "net", minor(total));
     println!();
-    println!("Re-running the configuration each line names reproduces that line exactly.");
+    println!(
+        "Re-running the configuration each line names reproduces that line exactly."
+    );
     Ok(())
 }
 
@@ -2661,7 +2267,13 @@ fn explain(book: PathBuf, account: &str) -> Result<()> {
 /// 3 is not a failure of the run; it is the run declining to produce a
 /// comparison it cannot stand behind. Conflating it with 2 would let a
 /// refusal be scripted as "breaks found" and quietly investigated as data.
-fn recon(book: PathBuf, txns: &str, positions: &str, out: Option<&str>, post: bool) -> Result<()> {
+fn recon(
+    book: PathBuf,
+    txns: &str,
+    positions: &str,
+    out: Option<&str>,
+    post: bool,
+) -> Result<()> {
     let mut b = FileBook::open(&book)?;
     let digest = b
         .active()?
@@ -2673,8 +2285,8 @@ fn recon(book: PathBuf, txns: &str, positions: &str, out: Option<&str>, post: bo
     let pos_text =
         std::fs::read_to_string(positions).with_context(|| format!("reading {positions}"))?;
 
-    let parsed =
-        ratio_recon::parse_transactions(&txn_text).with_context(|| format!("parsing {txns}"))?;
+    let parsed = ratio_recon::parse_transactions(&txn_text)
+        .with_context(|| format!("parsing {txns}"))?;
     let reported = ratio_recon::parse_reported(&pos_text, &chart)
         .with_context(|| format!("parsing {positions}"))?;
 
@@ -2803,21 +2415,7 @@ fn mcp(book: PathBuf) -> Result<()> {
 /// set rather than replacing it, so approving a fee rule does not silently
 /// retire the trade rules.
 fn approve(book: PathBuf, id: &str) -> Result<()> {
-    install_control_backend()?;
-    print!("{}", approve_text_with_control(&book, id, None)?);
-    Ok(())
-}
-
-fn approve_control(
-    book: PathBuf,
-    id: &str,
-    operation: &str,
-    revision: &str,
-    predecessor: &str,
-) -> Result<()> {
-    install_control_backend()?;
-    let intent = control_intent(operation, revision, predecessor)?;
-    print!("{}", approve_text_with_control(&book, id, Some(&intent))?);
+    print!("{}", approve_text(&book, id)?);
     Ok(())
 }
 
@@ -2911,14 +2509,6 @@ fn book_fund_id(_book: &std::path::Path) -> &'static str {
 /// own code path; the only thing worth showing is the command a person really
 /// runs.
 pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
-    approve_text_with_control(book, id, None)
-}
-
-fn approve_text_with_control(
-    book: &std::path::Path,
-    id: &str,
-    control: Option<&ControlIntent<'_>>,
-) -> Result<String> {
     let book = book.to_path_buf();
     let mut b = FileBook::open(&book)?;
     let path = book.join("proposals").join(format!("{id}.toml"));
@@ -2964,10 +2554,8 @@ fn approve_text_with_control(
     let findings = check(&incoming, &chart);
     let errors: Vec<_> = findings.iter().filter(|f| !f.is_question).collect();
     if !errors.is_empty() {
-        let detail: Vec<String> = errors
-            .iter()
-            .map(|f| format!("  x {}: {}", f.rule, f.message))
-            .collect();
+        let detail: Vec<String> =
+            errors.iter().map(|f| format!("  x {}: {}", f.rule, f.message)).collect();
         bail!(
             "proposal {id} does not pass its checks and cannot be approved\n{}",
             detail.join("\n")
@@ -3027,11 +2615,7 @@ fn approve_text_with_control(
 
     let toml = replace_sections(&previous_text, &merged, &templates)?;
     let digest = b.put(toml.as_bytes())?;
-    if let Some(intent) = control {
-        promote_control(&b, &digest, intent)?;
-    } else {
-        b.set_active(&digest)?;
-    }
+    b.set_active(&digest)?;
 
     // Record WHO did this, not just that the configuration moved.
     //
@@ -3216,10 +2800,7 @@ weight = -1
         let log = std::fs::read_to_string(book.join("CHANGELOG")).unwrap();
         let fields: Vec<&str> = log.trim().split('\t').collect();
         assert_eq!(fields.len(), 5, "expected 5 tab-separated fields: {log:?}");
-        assert!(
-            fields[0].parse::<u64>().unwrap() > 1_700_000_000,
-            "no timestamp"
-        );
+        assert!(fields[0].parse::<u64>().unwrap() > 1_700_000_000, "no timestamp");
         assert_eq!(fields[1], "e.marsh");
         assert_eq!(fields[2], "approved");
         assert_eq!(fields[3], "p1");
@@ -3237,8 +2818,8 @@ weight = -1
         // none had ever been declared.
         let book = book_with_a_proposal("keepstemplates");
         let mut b = FileBook::open(&book).unwrap();
-        let before =
-            String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap()).into_owned();
+        let before = String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap())
+            .into_owned();
         let with_template = format!(
             "{before}\n[[template]]\nid = \"gs_trades\"\nreads = \"csv\"\n\
              [template.fact]\nkind = \"trade\"\nreference = \"Ref\"\n",
@@ -3254,8 +2835,8 @@ weight = -1
         approve(book.clone(), "p1").unwrap();
 
         let b = FileBook::open(&book).unwrap();
-        let after =
-            String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap()).into_owned();
+        let after = String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap())
+            .into_owned();
         assert!(
             after.contains("gs_trades"),
             "approving a rule deleted the template beside it:\n{after}",
@@ -3263,10 +2844,7 @@ weight = -1
         // …and the rule it was approving is in there too, so the fix did not
         // simply stop writing.
         let set = RuleSet::from_toml(&after).unwrap();
-        assert!(
-            !set.rules.is_empty(),
-            "the approved rule should be in force"
-        );
+        assert!(!set.rules.is_empty(), "the approved rule should be in force");
     }
 
     /// A book with a chart, a declared tolerance, one posted entry, and a
@@ -3280,25 +2858,14 @@ weight = -1
         init(dir.clone()).unwrap();
 
         let cfg = dir.join("rules.toml");
-        std::fs::write(
-            &cfg,
-            "rules = []\n[tolerance]\nbelow_notice = 500\nblocks_nav = 100000\n",
-        )
-        .unwrap();
+        std::fs::write(&cfg, "rules = []\n[tolerance]\nbelow_notice = 500\nblocks_nav = 100000\n")
+            .unwrap();
         config_set(dir.clone(), cfg.to_str().unwrap()).unwrap();
 
         let mut b = FileBook::open(&dir).unwrap();
         b.put_accounts(&[
-            Account {
-                dim: 1,
-                display_name: "Investments at fair value".into(),
-                account_type: A::Asset,
-            },
-            Account {
-                dim: 2,
-                display_name: "Cash and equivalents".into(),
-                account_type: A::Asset,
-            },
+            Account { dim: 1, display_name: "Investments at fair value".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash and equivalents".into(), account_type: A::Asset },
         ])
         .unwrap();
         let d = b.active().unwrap().unwrap();
@@ -3371,10 +2938,7 @@ weight = -1
         // `Ratio.Period.one_answer_per_day` means the valuation point is spent.
         let book = book_with_a_break("norecord", 200_000);
         assert!(strike(book.clone(), None, None).is_err());
-        assert!(
-            ratio_nav::list(&book).unwrap().is_empty(),
-            "a refused strike recorded a NAV"
-        );
+        assert!(ratio_nav::list(&book).unwrap().is_empty(), "a refused strike recorded a NAV");
     }
 
     #[test]
@@ -3383,10 +2947,7 @@ weight = -1
         // every assertion above and is useless, so one break has to get
         // through — and which one is a term of the agreement, not a constant.
         let book = book_with_a_break("under", 100);
-        assert!(
-            strike(book, None, None).is_ok(),
-            "100 is beneath notice and blocks nothing"
-        );
+        assert!(strike(book, None, None).is_ok(), "100 is beneath notice and blocks nothing");
     }
 
     #[test]
@@ -3395,23 +2956,11 @@ weight = -1
         // so the gate and the verb that clears it ship together and this is
         // what joins them.
         let book = book_with_a_break("cleared", 200_000);
-        assert!(
-            strike(book.clone(), None, None).is_err(),
-            "blocked to begin with"
-        );
+        assert!(strike(book.clone(), None, None).is_err(), "blocked to begin with");
 
-        accept(
-            book.clone(),
-            "1",
-            None,
-            "the custodian's unsettled dividend, clears T+2",
-        )
-        .unwrap();
+        accept(book.clone(), "1", None, "the custodian's unsettled dividend, clears T+2").unwrap();
 
-        assert!(
-            strike(book.clone(), None, None).is_ok(),
-            "and struck once somebody explained it"
-        );
+        assert!(strike(book.clone(), None, None).is_ok(), "and struck once somebody explained it");
         assert_eq!(ratio_nav::list(&book).unwrap().len(), 1);
     }
 
@@ -3421,10 +2970,7 @@ weight = -1
         // one. The fund goes back to blocked, and the words stay visible.
         let book = book_with_a_break("stalegate", 200_000);
         accept(book.clone(), "1", None, "about the old number").unwrap();
-        assert!(
-            strike(book.clone(), None, None).is_ok(),
-            "explained, so strikeable"
-        );
+        assert!(strike(book.clone(), None, None).is_ok(), "explained, so strikeable");
 
         // A later run reports a different figure for the same break.
         let mut b = FileBook::open(&book).unwrap();
@@ -3458,10 +3004,7 @@ weight = -1
         .unwrap();
 
         let e = strike(book.clone(), None, None).unwrap_err().to_string();
-        assert!(
-            e.contains("the NAV was not struck"),
-            "a moved figure is unexplained again: {e}"
-        );
+        assert!(e.contains("the NAV was not struck"), "a moved figure is unexplained again: {e}");
     }
 
     #[test]
@@ -3469,9 +3012,7 @@ weight = -1
         // `unpriced_at`'s discipline: a refusal that does not say what to do
         // next sends somebody to read the source.
         let book = book_with_a_break("names", 200_000);
-        let m = blocking_text(&book, None)
-            .unwrap()
-            .expect("this fund is blocked");
+        let m = blocking_text(&book, None).unwrap().expect("this fund is blocked");
         assert!(m.contains("ratio accept 1 --because"), "{m}");
         assert!(m.contains("nobody has explained"), "{m}");
         assert!(m.contains("2000.00"), "and the figure that blocks: {m}");
@@ -3484,14 +3025,9 @@ weight = -1
         // three places already, and three round trips to learn three things is
         // how somebody stops reading the message.
         let book = book_with_a_break("everything", 200_000);
-        let m = blocking_text(&book, Some("2026-02-26"))
-            .unwrap()
-            .expect("blocked");
+        let m = blocking_text(&book, Some("2026-02-26")).unwrap().expect("blocked");
         assert!(m.contains("nobody has explained"), "the break: {m}");
-        assert!(
-            m.contains("no price on or before"),
-            "and the unpriced position: {m}"
-        );
+        assert!(m.contains("no price on or before"), "and the unpriced position: {m}");
     }
 
     #[test]
@@ -3511,19 +3047,13 @@ weight = -1
 
         let e = approve(book.clone(), "p2").unwrap_err().to_string();
         assert!(e.contains("not something a proposal moves"), "{e}");
-        assert!(
-            e.contains("ratio config set"),
-            "the refusal names the human path: {e}"
-        );
+        assert!(e.contains("ratio config set"), "the refusal names the human path: {e}");
 
         // And nothing moved: no new configuration was promoted.
         let b = FileBook::open(&book).unwrap();
-        let active =
-            String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap()).into_owned();
-        assert!(
-            !active.contains("tolerance"),
-            "a refused proposal changed the configuration"
-        );
+        let active = String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap())
+            .into_owned();
+        assert!(!active.contains("tolerance"), "a refused proposal changed the configuration");
     }
 
     #[test]
@@ -3532,8 +3062,8 @@ weight = -1
         // not lose them because somebody approved an unrelated fee rule.
         let book = book_with_a_proposal("keepstolerance");
         let mut b = FileBook::open(&book).unwrap();
-        let before =
-            String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap()).into_owned();
+        let before = String::from_utf8_lossy(&b.get(&b.active().unwrap().unwrap()).unwrap())
+            .into_owned();
         let with_tolerance =
             format!("{before}\n[tolerance]\nbelow_notice = 100\nblocks_nav = 250\n");
         let d = b.put(with_tolerance.as_bytes()).unwrap();
@@ -3545,16 +3075,10 @@ weight = -1
         let set = active_rules(&book);
         assert_eq!(
             set.tolerance,
-            Some(ratio_rules::Tolerance {
-                below_notice: 100,
-                blocks_nav: 250
-            }),
+            Some(ratio_rules::Tolerance { below_notice: 100, blocks_nav: 250 }),
             "approving a rule dropped the tolerance beside it",
         );
-        assert!(
-            !set.rules.is_empty(),
-            "and the approved rule is still in force"
-        );
+        assert!(!set.rules.is_empty(), "and the approved rule is still in force");
     }
 
     #[test]
@@ -3571,15 +3095,8 @@ weight = -1
         approve(book.clone(), "p1").unwrap();
         approve(book.clone(), "p2").unwrap();
 
-        let ids: Vec<_> = active_rules(&book)
-            .rules
-            .iter()
-            .map(|r| r.id.clone())
-            .collect();
-        assert!(
-            ids.contains(&"management_fee_accrual".to_string()),
-            "{ids:?}"
-        );
+        let ids: Vec<_> = active_rules(&book).rules.iter().map(|r| r.id.clone()).collect();
+        assert!(ids.contains(&"management_fee_accrual".to_string()), "{ids:?}");
         assert!(ids.contains(&"other".to_string()), "{ids:?}");
     }
 
@@ -3600,10 +3117,7 @@ weight = -1
         )
         .unwrap();
         assert!(approve(book.clone(), "bad").is_err());
-        assert!(
-            active_rules(&book).rules.is_empty(),
-            "a refused proposal must not go active"
-        );
+        assert!(active_rules(&book).rules.is_empty(), "a refused proposal must not go active");
     }
 
     #[test]

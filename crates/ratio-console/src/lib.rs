@@ -163,19 +163,14 @@ pub struct Console {
     /// correct about freshness would be a cache that could be wrong about it.
     projections: std::sync::Mutex<BTreeMap<String, ratio_project::Projection>>,
 
-    /// Legacy local membership mode. `Unrestricted` is `Local` and the open
-    /// demo — not a tenant. Restricted callers are resolved afresh at every
-    /// public book boundary; this initial value preserves fail-closed
-    /// construction without becoming a process-lifetime authorization cache.
+    /// What the caller may open, resolved ONCE from `MEMBERSHIP.tsv` at
+    /// construction so `open_book` is a set lookup rather than a file read per
+    /// handler. `Unrestricted` is `Local` and the open demo — not a tenant.
     /// `Granted` restricts, and an empty set is a real, valid answer (the
     /// operator is a member of nothing) rather than a refusal. `Unreadable` is
     /// the refusal: the membership file existed and could not be read.
     scope: Scope,
     subject: Subject,
-    /// One authenticated public operation may finish inside this bounded
-    /// window after its fresh membership read. A later request receives a new
-    /// Console and a new membership snapshot; this deadline is never renewed.
-    authorization_deadline: Option<std::time::Instant>,
     objects: Option<std::sync::Arc<dyn ratio_store::ObjectStore>>,
     /// The network server sets this only after its startup hydrate gate is
     /// Ready. Request-time opens then attach to the store without repeating
@@ -206,12 +201,7 @@ pub struct Console {
 /// Catalog scopes carried by a Connect subject. AuthKit / Local stay `None`.
 fn connect_grants_of(subject: &Subject) -> Option<auth::ConnectAuthorization> {
     match subject {
-        Subject::Member {
-            connect: true,
-            client_id,
-            scopes,
-            ..
-        } => Some(auth::ConnectAuthorization {
+        Subject::Member { connect: true, client_id, scopes, .. } => Some(auth::ConnectAuthorization {
             client_id: client_id.clone(),
             scopes: scopes.clone(),
         }),
@@ -323,8 +313,6 @@ impl Console {
         connect_grants: Option<auth::ConnectAuthorization>,
         subject: Subject,
     ) -> Self {
-        let authorization_deadline = matches!(subject, Subject::Member { .. })
-            .then(|| std::time::Instant::now() + std::time::Duration::from_secs(25));
         Console {
             root,
             max_entries: std::env::var("RATIO_MAX_API_ENTRIES")
@@ -333,7 +321,6 @@ impl Console {
             projections: Default::default(),
             scope,
             subject,
-            authorization_deadline,
             objects: installed_object_store(),
             startup_hydrated: false,
             actor,
@@ -344,10 +331,7 @@ impl Console {
 
     /// Inject the backend before serving requests. The process-installed store
     /// remains the default; tests and independent local readers can be explicit.
-    pub fn with_object_store(
-        mut self,
-        objects: std::sync::Arc<dyn ratio_store::ObjectStore>,
-    ) -> Self {
+    pub fn with_object_store(mut self, objects: std::sync::Arc<dyn ratio_store::ObjectStore>) -> Self {
         self.objects = Some(objects);
         self.projections = Default::default();
         self
@@ -359,68 +343,27 @@ impl Console {
         self
     }
 
-    fn bootstrap(
-        &self,
-        id: &str,
-    ) -> Result<
-        Option<(
-            ratio_store::bootstrap::BookPublication,
-            ratio_store::bootstrap::BookBootstrap,
-        )>,
-    > {
-        let Some(objects) = &self.objects else {
-            return Ok(None);
-        };
+    fn bootstrap(&self, id: &str) -> Result<Option<(ratio_store::bootstrap::BookPublication, ratio_store::bootstrap::BookBootstrap)>> {
+        let Some(objects) = &self.objects else { return Ok(None); };
         let state = ratio_store::bootstrap::BootstrapStore::new(objects.clone()).get(id)?;
-        if let Some((_, bootstrap)) = &state {
-            book::validate_bootstrap(bootstrap)?;
-        }
+        if let Some((_, bootstrap)) = &state { book::validate_bootstrap(bootstrap)?; }
         Ok(state)
     }
 
-    fn durable_allows(&self, id: &str) -> Result<bool> {
-        self.ensure_authorization_live()?;
-        let objects = self
-            .objects
-            .as_ref()
-            .context("durable membership backend is absent")?;
-        let state = ratio_store::control::ControlStore::new(objects.clone()).read(id)?;
+    fn bootstrap_allows(&self, bootstrap: &ratio_store::bootstrap::BookBootstrap) -> bool {
         match &self.subject {
-            Subject::Local => Ok(true),
-            Subject::Member {
-                sub,
-                organization,
-                connect,
-                ..
-            } => Ok(state.allows(sub, organization, *connect)),
+            Subject::Local => true,
+            Subject::Member { sub, connect: false, .. } => bootstrap.creator_grant.as_ref()
+                .map(|grant| !sub.is_empty() && grant.subject == *sub).unwrap_or(false),
+            // A creator grant is not a delegation to a Connect client.
+            Subject::Member { .. } => false,
         }
-    }
-
-    fn legacy_allows(&self, id: &str) -> Result<bool> {
-        self.ensure_authorization_live()?;
-        if self.scope == Scope::Unrestricted {
-            return Ok(true);
-        }
-        auth::scope_for(&self.root, &self.subject).allows(id)
-    }
-
-    fn ensure_authorization_live(&self) -> Result<()> {
-        ensure!(
-            self.authorization_deadline
-                .map_or(true, |deadline| std::time::Instant::now() <= deadline),
-            "the bounded authorization window expired; begin a new request"
-        );
-        Ok(())
     }
 
     /// Refuse a Connect token that lacks the catalog scope this `/v1` door
     /// needs. AuthKit sessions and `Local` skip the table.
     pub fn authorize_connect(&self, method: &str, path: &str) -> Result<()> {
-        auth::authorize_connect(
-            self.connect_grants.as_ref().map(|g| &g.scopes),
-            method,
-            path,
-        )
+        auth::authorize_connect(self.connect_grants.as_ref().map(|g| &g.scopes), method, path)
     }
 
     /// Append one line to the fund's audit log — who did what, when, to what,
@@ -443,9 +386,7 @@ impl Console {
         // carry either, but a stray control character is dropped rather than
         // trusted.
         let clean = |s: &str| -> String {
-            s.chars()
-                .filter(|c| *c != '\t' && *c != '\n' && *c != '\r')
-                .collect()
+            s.chars().filter(|c| *c != '\t' && *c != '\n' && *c != '\r').collect()
         };
         let mut f = std::fs::OpenOptions::new()
             .create(true)
@@ -510,23 +451,13 @@ impl Console {
                         let entry = entry?;
                         // Complete files in staging are not a discoverable book,
                         // including debris left by a crash before the rename.
-                        if entry
-                            .file_name()
-                            .to_string_lossy()
-                            .starts_with(".bootstrap-")
-                        {
-                            continue;
-                        }
-                        if entry.path().join("accounts.json").is_file()
-                            || entry.path().join(ratio_store::bootstrap::MARKER).exists()
-                        {
-                            if let Ok(id) = entry.file_name().into_string() {
-                                candidates.insert(id);
-                            }
+                        if entry.file_name().to_string_lossy().starts_with(".bootstrap-") { continue; }
+                        if entry.path().join("accounts.json").is_file() || entry.path().join(ratio_store::bootstrap::MARKER).exists() {
+                            if let Ok(id) = entry.file_name().into_string() { candidates.insert(id); }
                         }
                     }
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
                 Err(e) => return Err(e).context("reading books root"),
             }
         }
@@ -536,26 +467,15 @@ impl Console {
         let mut ids = Vec::new();
         for id in candidates {
             if let Some((publication, bootstrap)) = self.bootstrap(&id)? {
-                if self.durable_allows(&id)? {
-                    ratio_store::bootstrap::materialize(
-                        &self.root.join(&id),
-                        &publication,
-                        &bootstrap,
-                    )?;
+                if self.bootstrap_allows(&bootstrap) {
+                    ratio_store::bootstrap::materialize(&self.root.join(&id), &publication, &bootstrap)?;
                     ids.push(id);
                 }
             } else {
-                if self
-                    .root
-                    .join(&id)
-                    .join(ratio_store::bootstrap::MARKER)
-                    .exists()
-                {
+                if self.root.join(&id).join(ratio_store::bootstrap::MARKER).exists() {
                     bail!("durable book publication is unavailable; refusing local fallback");
                 }
-                if self.legacy_allows(&id)? {
-                    ids.push(id);
-                }
+                if self.scope.allows(&id)? { ids.push(id); }
             }
         }
         Ok(ids)
@@ -582,27 +502,16 @@ impl Console {
         // The id reaches the filesystem, and this service is behind a public
         // endpoint. Anything that is not a fund id is refused before it is
         // joined to a path.
-        if id.is_empty()
-            || !id
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
+        if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
             bail!("{id:?} is not a fund id");
         }
         if let Some((publication, bootstrap)) = self.bootstrap(id)? {
-            if !self.durable_allows(id)? {
-                bail!("no fund {id:?}");
-            }
+            if !self.bootstrap_allows(&bootstrap) { bail!("no fund {id:?}"); }
             let path = self.root.join(id);
             ratio_store::bootstrap::materialize(&path, &publication, &bootstrap)?;
             return Ok(path);
         }
-        if self
-            .root
-            .join(id)
-            .join(ratio_store::bootstrap::MARKER)
-            .exists()
-        {
+        if self.root.join(id).join(ratio_store::bootstrap::MARKER).exists() {
             bail!("durable book publication is unavailable; refusing local fallback");
         }
         // ⛔ TENANCY IS ENFORCED HERE AND AT `open_book`. A path is not enough:
@@ -615,7 +524,7 @@ impl Console {
         // different sentence — a broken membership file must not look like
         // "no fund". `Local` is unrestricted; a person at a terminal is not a
         // tenant.
-        if !self.legacy_allows(id)? {
+        if !self.scope.allows(id)? {
             bail!("no fund {id:?}");
         }
         if self.root.join("accounts.json").is_file() {
@@ -653,12 +562,12 @@ impl Console {
         let id = if path == self.root.as_path() {
             "demo"
         } else {
-            path.file_name().and_then(|s| s.to_str()).unwrap_or("")
+            path.file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
         };
         let authorized = self.book_path(id)?;
-        if authorized != path {
-            bail!("book path is outside the serving root");
-        }
+        if authorized != path { bail!("book path is outside the serving root"); }
         if self.startup_hydrated {
             FileBook::open_attached_with(path, self.objects.clone())
         } else {
@@ -714,7 +623,11 @@ impl Console {
     /// Fund / Project / Investment / Operating do not wear this figure.
     /// Actuals folds skip those kinds so a scheduled rent does not
     /// become this month's cash-flow.
-    pub fn list_accounts(&self, parent: &str, filter: &str) -> Result<pb::ListAccountsResponse> {
+    pub fn list_accounts(
+        &self,
+        parent: &str,
+        filter: &str,
+    ) -> Result<pb::ListAccountsResponse> {
         let (fund, view) = view_scoped_parent(parent)?;
         let (kind, period) = list_accounts_window(filter);
         if kind == "pnl" && period.is_empty() {
@@ -762,7 +675,9 @@ impl Console {
         if kind == "cashflow" {
             let path = self.book_path(&fund)?;
             let meta = book::BookMeta::load(&path, &fund);
-            if meta.kind != book::BookKind::Personal && meta.kind != book::BookKind::Operating {
+            if meta.kind != book::BookKind::Personal
+                && meta.kind != book::BookKind::Operating
+            {
                 bail!(
                     "cash-flow statement is a household or operating-company figure — this book is {}",
                     meta.kind.as_str()
@@ -822,11 +737,7 @@ impl Console {
             ("capital", p) if !p.is_empty() => AccountFold::Activity(parse_period(p)?),
             ("budget", p) => AccountFold::Activity(parse_period(p)?),
             ("forecast", p) => AccountFold::Forecast(parse_period(p)?),
-            ("loan", p)
-            | ("bridge", p)
-            | ("cashflow", p)
-            | ("change", p)
-            | ("nav", p)
+            ("loan", p) | ("bridge", p) | ("cashflow", p) | ("change", p) | ("nav", p)
             | ("close", p) => AccountFold::Loan(parse_period(p)?),
             (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
             _ => AccountFold::Current,
@@ -862,10 +773,7 @@ impl Console {
                 _ => true,
             })
             .collect();
-        Ok(pb::ListAccountsResponse {
-            accounts: keep,
-            next_page_token: String::new(),
-        })
+        Ok(pb::ListAccountsResponse { accounts: keep, next_page_token: String::new() })
     }
 
     pub fn get_account(&self, name: &str) -> Result<pb::Account> {
@@ -1074,7 +982,8 @@ impl Console {
                 // of actuals, and inventing one would be a fake zero.
                 // Unset is the console's job when nothing moved.
                 let proj = self.projection(fund)?;
-                let mut rows: BTreeMap<(i64, Option<String>), (i128, i128, i64)> = BTreeMap::new();
+                let mut rows: BTreeMap<(i64, Option<String>), (i128, i128, i64)> =
+                    BTreeMap::new();
                 b.for_each_entry_since(0, &mut |entry| {
                     if !entry.is_forecast_material() {
                         return Ok(());
@@ -1251,9 +1160,7 @@ impl Console {
         // id was well-formed. The denial must not depend on the caller's input,
         // or "no fund" and "not a dimension" tell an outsider which is which.
         let path = self.book_path(&fund)?;
-        let dim: i64 = dim_str
-            .parse()
-            .with_context(|| format!("{dim_str:?} is not a dimension"))?;
+        let dim: i64 = dim_str.parse().with_context(|| format!("{dim_str:?} is not a dimension"))?;
         let b = self.open_file_book(&path)?;
         let proj = self.projection(&fund)?;
 
@@ -1278,10 +1185,7 @@ impl Console {
                 }
                 running += p.amount;
                 out.push(pb::Posting {
-                    name: format!(
-                        "funds/{fund}/views/{view}/accounts/{dim}/postings/{}.{leg}",
-                        entry.id
-                    ),
+                    name: format!("funds/{fund}/views/{view}/accounts/{dim}/postings/{}.{leg}", entry.id),
                     entry_id: entry.id.clone(),
                     memo: entry.memo.clone(),
                     amount: p.amount.to_string(),
@@ -1291,10 +1195,7 @@ impl Console {
             }
             Ok(())
         })?;
-        Ok(pb::ListPostingsResponse {
-            postings: out,
-            next_page_token: String::new(),
-        })
+        Ok(pb::ListPostingsResponse { postings: out, next_page_token: String::new() })
     }
 
     /// Every journal entry, in the order the journal holds them.
@@ -1418,16 +1319,14 @@ impl Console {
         {
             bail!("{name:?} is not a funds/*/views/*/accounts/*/postings/* name");
         }
-        let parent = format!(
-            "funds/{}/views/{}/accounts/{}",
-            parts[1], parts[3], parts[5]
-        );
+        let parent = format!("funds/{}/views/{}/accounts/{}", parts[1], parts[3], parts[5]);
         self.list_postings(&parent)?
             .postings
             .into_iter()
             .find(|p| p.name == name)
             .with_context(|| format!("no posting {:?}", parts[7]))
     }
+
 
     /// The rules in force, structured enough to choose one.
     pub fn list_rules(&self, parent: &str) -> Result<pb::ListRulesResponse> {
@@ -1450,9 +1349,7 @@ impl Console {
         let path = self.book_path(fund)?;
         let b = self.open_file_book(&path)?;
         let chart = b.accounts()?;
-        let Some(digest) = b.active()? else {
-            return Ok(Vec::new());
-        };
+        let Some(digest) = b.active()? else { return Ok(Vec::new()) };
         let set = RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))?;
 
         Ok(set
@@ -1498,28 +1395,17 @@ impl Console {
         // The event id reaches a filename-shaped identifier and, on the public
         // demo, a screen other visitors read. Nothing but an id gets through.
         let id = req.event_id.trim();
-        if id.is_empty()
-            || id.len() > 64
-            || !id
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+        if id.is_empty() || id.len() > 64
+            || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
         {
-            bail!(
-                "{:?} is not an event id — letters, digits, - _ . and at most 64 of them",
-                req.event_id
-            );
+            bail!("{:?} is not an event id — letters, digits, - _ . and at most 64 of them", req.event_id);
         }
 
         let amount = parse_amount(&req.amount)?;
         let days = if req.days.trim().is_empty() {
             None
         } else {
-            Some(
-                req.days
-                    .trim()
-                    .parse::<i64>()
-                    .context("days must be a whole number")?,
-            )
+            Some(req.days.trim().parse::<i64>().context("days must be a whole number")?)
         };
 
         // ── what makes this a trade rather than a movement of value ─────────
@@ -1640,9 +1526,7 @@ impl Console {
         };
 
         let mut b = self.open_file_book(&path)?;
-        let digest = b
-            .active()?
-            .context("no configuration is in force on this fund")?;
+        let digest = b.active()?.context("no configuration is in force on this fund")?;
         let chart = b.accounts()?;
         let set = RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))?;
         let rule = set
@@ -1744,16 +1628,8 @@ impl Console {
             // accrual — appending it would increment a count and print
             // a silent 0. Same-sign legs would hide the fee.
             // `Ratio.Fees.a_posting_conserves`.
-            let expense: i64 = postings
-                .iter()
-                .filter(|p| p.amount > 0)
-                .map(|p| p.amount)
-                .sum();
-            let receivable: i64 = postings
-                .iter()
-                .filter(|p| p.amount < 0)
-                .map(|p| p.amount)
-                .sum();
+            let expense: i64 = postings.iter().filter(|p| p.amount > 0).map(|p| p.amount).sum();
+            let receivable: i64 = postings.iter().filter(|p| p.amount < 0).map(|p| p.amount).sum();
             if expense == 0 || receivable != -expense {
                 bail!(
                     "a fee accrual must post a conserved receivable/expense; \
@@ -1774,10 +1650,7 @@ impl Console {
             // first redemption look like it retired units nobody issued.
             // `Ratio.Partners.cannot_redeem_when_unset`.
             let proj = self.projection(&fund)?;
-            for p in postings
-                .iter()
-                .filter(|p| p.quantity.is_some_and(|q| q < 0))
-            {
+            for p in postings.iter().filter(|p| p.quantity.is_some_and(|q| q < 0)) {
                 let outstanding = units_on_dim(&b, &proj, &default_view, p.dim)?;
                 let retiring = -p.quantity.unwrap();
                 ratio_rules::redeem(outstanding, retiring)?;
@@ -1819,11 +1692,6 @@ impl Console {
         // the check — there is no state in which this wrote something that
         // does not conserve.
         if !req.validate_only {
-            // The configuration above is this request's pin. A concurrent
-            // revocation does not rewrite it, but an operation that outlives
-            // the public 25-second authorization window is cancelled before
-            // it can append.
-            self.ensure_authorization_live()?;
             b.append(&entry)?;
             self.record_change(&path, "posted", id, digest.as_str())?;
         }
@@ -1848,10 +1716,7 @@ impl Console {
                     let mut translatable = true;
                     for p in postings.iter().filter(|p| {
                         matches!(
-                            chart
-                                .iter()
-                                .find(|a| a.dim == p.dim)
-                                .map(|a| a.account_type),
+                            chart.iter().find(|a| a.dim == p.dim).map(|a| a.account_type),
                             Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
                         )
                     }) {
@@ -1859,8 +1724,7 @@ impl Console {
                             translatable = false;
                             break;
                         };
-                        delta +=
-                            p.amount as i128 * factor as i128 / ratio_project::RATE_SCALE as i128;
+                        delta += p.amount as i128 * factor as i128 / ratio_project::RATE_SCALE as i128;
                     }
                     if translatable && !previous.is_empty() {
                         (previous.parse::<i128>().unwrap_or(0) + delta).to_string()
@@ -1888,6 +1752,7 @@ impl Console {
             previous_net_asset_value: previous,
         })
     }
+
 
     /// Files received on the data plane, newest first.
     pub fn list_deliveries(&self, parent: &str) -> Result<pb::ListDeliveriesResponse> {
@@ -1925,10 +1790,7 @@ impl Console {
         // because when it arrived is part of the record even when the bytes
         // are not new.
         out.reverse();
-        Ok(pb::ListDeliveriesResponse {
-            deliveries: out,
-            next_page_token: String::new(),
-        })
+        Ok(pb::ListDeliveriesResponse { deliveries: out, next_page_token: String::new() })
     }
 
     pub fn get_delivery(&self, name: &str) -> Result<pb::Delivery> {
@@ -2030,18 +1892,19 @@ impl Console {
         // still the right theorem — it allows resolved -> AMBIGUOUS by design.
         // This is the system-level consequence of that allowance, and no
         // theorem about resolution could have shown it.
-        let posted: std::collections::BTreeSet<String> = {
-            // ⚠ STREAMED, AND STILL O(entries) BY NATURE — this is a set of
-            // every id the journal holds. What it no longer holds is the
-            // ENTRIES behind them. The real fix is an index rather than a
-            // scan; noted rather than pretended away.
-            let mut ids: std::collections::BTreeSet<String> = Default::default();
-            b.for_each_entry_since(0, &mut |e| {
-                ids.insert(e.id.clone());
-                Ok(())
-            })?;
-            ids
-        };
+        let posted: std::collections::BTreeSet<String> =
+            {
+                // ⚠ STREAMED, AND STILL O(entries) BY NATURE — this is a set of
+                // every id the journal holds. What it no longer holds is the
+                // ENTRIES behind them. The real fix is an index rather than a
+                // scan; noted rather than pretended away.
+                let mut ids: std::collections::BTreeSet<String> = Default::default();
+                b.for_each_entry_since(0, &mut |e| {
+                    ids.insert(e.id.clone());
+                    Ok(())
+                })?;
+                ids
+            };
 
         Ok(ratio_ingest::resolve_all(&facts, &master)
             .into_iter()
@@ -2179,7 +2042,10 @@ impl Console {
                 // looks like a sold-out position.
                 lot_counts.insert(
                     (*dim, inst.clone()),
-                    store.lots_of(fund, view, *dim, inst, &pin)?.value.len() as i64,
+                    store
+                        .lots_of(fund, view, *dim, inst, &pin)?
+                        .value
+                        .len() as i64,
                 );
             }
             (held, rest, lot_counts)
@@ -2192,7 +2058,8 @@ impl Console {
                 .iter()
                 .map(|((d, i), v)| ((*d, i.to_string()), *v))
                 .collect();
-            let rest: Vec<(i64, i64)> = as_of.value.rest.iter().map(|(d, v)| (*d, *v)).collect();
+            let rest: Vec<(i64, i64)> =
+                as_of.value.rest.iter().map(|(d, v)| (*d, *v)).collect();
             let mut lot_counts = BTreeMap::new();
             for ((dim, inst), _) in &held {
                 lot_counts.insert(
@@ -2216,12 +2083,7 @@ impl Console {
                 .into_iter()
                 .map(|e| (e.id, e.display_name))
                 .collect();
-        let label = |d: i64| {
-            chart
-                .get(&d)
-                .cloned()
-                .unwrap_or_else(|| format!("dimension {d}"))
-        };
+        let label = |d: i64| chart.get(&d).cloned().unwrap_or_else(|| format!("dimension {d}"));
 
         // The price facts, so a position that has been marked can name the
         // observation it cited — an operator opens it from the figure.
@@ -2237,9 +2099,7 @@ impl Console {
         // the record.
         let mut marked: BTreeMap<String, String> = BTreeMap::new();
         b.for_each_entry_since(0, &mut |e| {
-            let Some(rest) = e.id.strip_prefix("mark-") else {
-                return Ok(());
-            };
+            let Some(rest) = e.id.strip_prefix("mark-") else { return Ok(()) };
             // `mark-<instrument>-<YYYY-MM-DD>`; the date is the last ten.
             if rest.len() < 11 {
                 return Ok(());
@@ -2278,9 +2138,7 @@ impl Console {
                         .cloned()
                         .unwrap_or_else(|| instrument.clone()),
                     mark_date: marked.get(&instrument).and_then(|d| iso_date(d)),
-                    price_fact: cite
-                        .map(|o| fact_name(fund, &o.fact_id))
-                        .unwrap_or_default(),
+                    price_fact: cite.map(|o| fact_name(fund, &o.fact_id)).unwrap_or_default(),
                     delivery_digest: cite.map(|o| o.delivery.clone()).unwrap_or_default(),
                     config_digest: cite.map(|o| o.config.clone()).unwrap_or_default(),
                     instrument,
@@ -2345,9 +2203,7 @@ impl Console {
     fn templates_of(&self, fund: &str) -> Result<Vec<pb::Template>> {
         let path = self.book_path(fund)?;
         let b = self.open_file_book(&path)?;
-        let Some(digest) = b.active()? else {
-            return Ok(Vec::new());
-        };
+        let Some(digest) = b.active()? else { return Ok(Vec::new()) };
         let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
         Ok(ratio_ingest::TemplateSet::from_toml(&text)?
             .templates
@@ -2374,9 +2230,7 @@ impl Console {
         let path = self.book_path(&fund)?;
         let mut b = self.open_file_book(&path)?;
 
-        let digest = b
-            .active()?
-            .context("no configuration is in force on this fund")?;
+        let digest = b.active()?.context("no configuration is in force on this fund")?;
         let text = String::from_utf8_lossy(&b.get(&digest)?).into_owned();
         let set = ratio_ingest::TemplateSet::from_toml(&text)?;
         let template = set.template(&req.template_id).with_context(|| {
@@ -2384,11 +2238,7 @@ impl Console {
                 "no template {:?} in the configuration in force ({} there: {})",
                 req.template_id,
                 set.templates.len(),
-                set.templates
-                    .iter()
-                    .map(|t| t.id.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", "),
+                set.templates.iter().map(|t| t.id.as_str()).collect::<Vec<_>>().join(", "),
             )
         })?;
         let problems = template.check();
@@ -2412,18 +2262,16 @@ impl Console {
         let rows = match template.reads {
             ratio_ingest::Reader::Csv => ratio_ingest::extract_csv(&req.content)?,
         };
-        let projection = ratio_ingest::project(template, &delivery, &rows, digest.as_str());
+        let projection =
+            ratio_ingest::project(template, &delivery, &rows, digest.as_str());
 
         let known: BTreeMap<String, ()> = b
             .records::<ratio_ingest::Fact>(Plane::Facts)?
             .into_iter()
             .map(|f| (f.id, ()))
             .collect();
-        let fresh: Vec<&ratio_ingest::Fact> = projection
-            .facts
-            .iter()
-            .filter(|f| !known.contains_key(&f.id))
-            .collect();
+        let fresh: Vec<&ratio_ingest::Fact> =
+            projection.facts.iter().filter(|f| !known.contains_key(&f.id)).collect();
 
         if !req.validate_only {
             if let Some(max) = self.max_entries {
@@ -2457,10 +2305,7 @@ impl Console {
             rejected: projection
                 .rejected
                 .iter()
-                .map(|r| pb::RejectedRow {
-                    row: r.row.to_string(),
-                    reason: r.reason.clone(),
-                })
+                .map(|r| pb::RejectedRow { row: r.row.to_string(), reason: r.reason.clone() })
                 .collect(),
             pending: resolved
                 .iter()
@@ -2590,8 +2435,10 @@ impl Console {
             if i != instrument || units == 0 {
                 continue;
             }
-            let after =
-                ratio_ingest::actions::split(s, &ratio_ingest::actions::Holding { units, cost })?;
+            let after = ratio_ingest::actions::split(
+                s,
+                &ratio_ingest::actions::Holding { units, cost },
+            )?;
             moved += after.units - units;
             dim_touched = dim;
         }
@@ -2609,13 +2456,8 @@ impl Console {
             // ⚠ AMOUNT ZERO. A split moves units and not value, so the entry
             // conserves trivially — and a reader who checked only the amounts
             // would see nothing happen.
-            postings: vec![ratio_store::PostingRecord::of(
-                dim_touched,
-                0,
-                instrument,
-                Some(moved),
-            )],
-
+            postings: vec![ratio_store::PostingRecord::of(dim_touched, 0, instrument, Some(moved))],
+        
             trade_date: None,
             announcement: None,
             due_date: None,
@@ -2684,10 +2526,8 @@ impl Console {
         let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
         let observed = observations(&ratio_ingest::resolve_all(&facts, &master))?;
         let (positions, _) = b.positions()?;
-        let names: BTreeMap<String, String> = ratio_ingest::current(&master)
-            .into_iter()
-            .map(|e| (e.id, e.display_name))
-            .collect();
+        let names: BTreeMap<String, String> =
+            ratio_ingest::current(&master).into_iter().map(|e| (e.id, e.display_name)).collect();
 
         let (mut marks, mut unpriced, mut inexact) = (Vec::new(), Vec::new(), Vec::new());
         let mut posted = 0usize;
@@ -2696,10 +2536,7 @@ impl Console {
             if dim != held_in {
                 continue;
             }
-            let label = names
-                .get(&instrument)
-                .cloned()
-                .unwrap_or_else(|| instrument.clone());
+            let label = names.get(&instrument).cloned().unwrap_or_else(|| instrument.clone());
             let row = |market: i64,
                        movement: i64,
                        price: i64,
@@ -2730,38 +2567,15 @@ impl Console {
             // that way — and a whole quantity always values exactly
             // (`whole_units_value_exactly`).
             let units = quantity.saturating_mul(100);
-            match value_position(
-                &as_of,
-                units,
-                carrying,
-                observed.get(&instrument).map_or(&[][..], |v| v),
-            ) {
+            match value_position(&as_of, units, carrying, observed.get(&instrument).map_or(&[][..], |v| v)) {
                 Valuation::Unpriced => {
-                    unpriced.push(row(
-                        0,
-                        0,
-                        0,
-                        "",
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                    ));
+                    unpriced.push(row(0, 0, 0, "", String::new(), String::new(), String::new()));
                 }
                 Valuation::Inexact { price, reason } => {
                     inexact.push(format!("{label}: {reason} (price {price})"));
                 }
-                Valuation::Marked {
-                    market,
-                    delta,
-                    price,
-                    on_day,
-                    delivery,
-                    fact_id,
-                    config,
-                } => {
-                    marks.push(row(
-                        market, delta, price, &on_day, delivery, fact_id, config,
-                    ));
+                Valuation::Marked { market, delta, price, on_day, delivery, fact_id, config } => {
+                    marks.push(row(market, delta, price, &on_day, delivery, fact_id, config));
                     // A position already at market moves by nothing and posts
                     // nothing — `Ratio.Valuation.mark_again_posts_nothing`.
                     if delta == 0 {
@@ -2789,14 +2603,14 @@ impl Console {
                                     quantity: None,
                                 },
                             )?,
-
+                        
                             trade_date: None,
                             announcement: None,
-                            due_date: None,
-                            application: None,
-                            identified_lots: None,
-                            special_allocations: None,
-                            kind: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+            kind: None,
                         })?;
                     }
                     posted += 1;
@@ -2844,10 +2658,8 @@ impl Console {
         let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
         let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
         let observed = observations(&ratio_ingest::resolve_all(&facts, &master))?;
-        let names: BTreeMap<String, String> = ratio_ingest::current(&master)
-            .into_iter()
-            .map(|e| (e.id, e.display_name))
-            .collect();
+        let names: BTreeMap<String, String> =
+            ratio_ingest::current(&master).into_iter().map(|e| (e.id, e.display_name)).collect();
 
         let (held, _) = b.positions()?;
         let mut out = Vec::new();
@@ -2863,10 +2675,7 @@ impl Console {
                 .map_or(true, |os| mark_price(as_of, os).is_none());
             if none {
                 out.push((
-                    names
-                        .get(&instrument)
-                        .cloned()
-                        .unwrap_or_else(|| instrument.clone()),
+                    names.get(&instrument).cloned().unwrap_or_else(|| instrument.clone()),
                     quantity,
                 ));
             }
@@ -2893,15 +2702,16 @@ impl Console {
         let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
         let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
         let resolved = ratio_ingest::resolve_all(&facts, &master);
-        let posted: BTreeMap<String, ()> = {
-            // ⚠ As above: streamed, still O(distinct ids), wants an index.
-            let mut ids: BTreeMap<String, ()> = Default::default();
-            b.for_each_entry_since(0, &mut |e| {
-                ids.insert(e.id.clone(), ());
-                Ok(())
-            })?;
-            ids
-        };
+        let posted: BTreeMap<String, ()> =
+            {
+                // ⚠ As above: streamed, still O(distinct ids), wants an index.
+                let mut ids: BTreeMap<String, ()> = Default::default();
+                b.for_each_entry_since(0, &mut |e| {
+                    ids.insert(e.id.clone(), ());
+                    Ok(())
+                })?;
+                ids
+            };
 
         let (mut n, mut recorded) = (0usize, 0usize);
         let mut refused = Vec::new();
@@ -3062,11 +2872,7 @@ impl Console {
         Ok(pb::AdmitFactsResponse {
             posted_count: n.to_string(),
             recorded_count: recorded.to_string(),
-            pending_count: resolved
-                .iter()
-                .filter(|r| !r.is_admissible())
-                .count()
-                .to_string(),
+            pending_count: resolved.iter().filter(|r| !r.is_admissible()).count().to_string(),
             refused,
             net_asset_value,
             previous_net_asset_value: previous,
@@ -3097,17 +2903,9 @@ impl Console {
             .iter()
             .find(|a| a.display_name == "Investments at fair value")
         {
-            (
-                a,
-                ratio_recon::custodian_positions_live("USD"),
-                "custodian-positions",
-            )
+            (a, ratio_recon::custodian_positions_live("USD"), "custodian-positions")
         } else if let Some(a) = chart.iter().find(|a| a.display_name == "Investments") {
-            (
-                a,
-                ratio_recon::brokerage_positions_live("USD"),
-                "brokerage-positions",
-            )
+            (a, ratio_recon::brokerage_positions_live("USD"), "brokerage-positions")
         } else {
             anyhow::bail!(
                 "this book has no Investments account — live holdings recon \
@@ -3215,7 +3013,9 @@ impl Console {
                 dir.join(&name),
                 report
                     .to_proto(
-                        path.file_name().and_then(|s| s.to_str()).unwrap_or(fund),
+                        path.file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or(fund),
                         &name.trim_end_matches(".pb"),
                     )
                     .encode_to_vec(),
@@ -3230,10 +3030,7 @@ impl Console {
         for id in self.fund_ids()? {
             funds.push(self.list_fund_row(&id)?);
         }
-        Ok(pb::ListFundsResponse {
-            funds,
-            next_page_token: String::new(),
-        })
+        Ok(pb::ListFundsResponse { funds, next_page_token: String::new() })
     }
 
     pub fn list_books(&self) -> Result<pb::ListBooksResponse> {
@@ -3241,10 +3038,7 @@ impl Console {
         for id in self.book_ids()? {
             books.push(self.list_book_row(&id)?);
         }
-        Ok(pb::ListBooksResponse {
-            books,
-            next_page_token: String::new(),
-        })
+        Ok(pb::ListBooksResponse { books, next_page_token: String::new() })
     }
 
     /// The books-index row: sidecar, local ACTIVE, local journal line count.
@@ -3520,9 +3314,7 @@ impl Console {
     pub fn create_book(&self, req: pb::CreateBookRequest) -> Result<pb::Book> {
         let id = req.book_id.trim();
         if id.is_empty()
-            || !id
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         {
             bail!("{id:?} is not a book id");
         }
@@ -3541,23 +3333,16 @@ impl Console {
         };
         let digest = if let Some(objects) = &self.objects {
             let subject = match &self.subject {
-                Subject::Member {
-                    sub,
-                    connect: false,
-                    ..
-                } if !sub.is_empty() => sub,
+                Subject::Member { sub, connect: false, .. } if !sub.is_empty() => sub,
                 _ => bail!("durable book creation requires an authenticated creator subject"),
             };
             let bootstrap = book::bootstrap(id, &display, kind, subject)?;
-            let publication =
-                ratio_store::bootstrap::BootstrapStore::new(objects.clone()).publish(&bootstrap)?;
+            let publication = ratio_store::bootstrap::BootstrapStore::new(objects.clone()).publish(&bootstrap)?;
             ratio_store::bootstrap::materialize(&path, &publication, &bootstrap)?;
             ratio_store::Digest::parse(&bootstrap.config_digest)?
         } else {
             let digest = book::initialize(&path, id, &display, kind)?;
-            if let Some(actor) = &self.actor {
-                book::grant(&self.root, actor, id)?;
-            }
+            if let Some(actor) = &self.actor { book::grant(&self.root, actor, id)?; }
             digest
         };
         // The grant is on disk; `scope` was computed at construction, so
@@ -3760,10 +3545,7 @@ impl Console {
             // two COLUMN totals can, and they live on `View`.
             trial_balance_difference: (tb.debits - tb.credits).to_string(),
             entry_count: entries_len as i64,
-            config_digest: b
-                .active()?
-                .map(|d| d.as_str().to_string())
-                .unwrap_or_default(),
+            config_digest: b.active()?.map(|d| d.as_str().to_string()).unwrap_or_default(),
             // ⭐ THE SAME FOLD THE BADGE JUST READ. Empty lists when nothing
             // blocks, not absent — ListFunds is the one that leaves this
             // unset. Unpriced stays empty: no valuation date was named.
@@ -3793,10 +3575,7 @@ impl Console {
         // and its page token, and `Fund.default_view` already answers it — a
         // second copy is a second thing to keep in step, which is the argument
         // views exist to avoid.
-        Ok(pb::ListViewsResponse {
-            views,
-            next_page_token: String::new(),
-        })
+        Ok(pb::ListViewsResponse { views, next_page_token: String::new() })
     }
 
     /// One book of record, with the figures it recognises.
@@ -3862,15 +3641,10 @@ impl Console {
         out.nav_gate = fund.nav_gate;
         out.realized_gain = realized.map(|r| r.gain.to_string()).unwrap_or_default();
         out.basis_relieved = realized.map(|r| r.basis.to_string()).unwrap_or_default();
-        out.short_term_gain = realized
-            .map(|r| r.short_term.to_string())
-            .unwrap_or_default();
-        out.long_term_gain = realized
-            .map(|r| r.long_term.to_string())
-            .unwrap_or_default();
-        out.unclassified_gain = realized
-            .map(|r| r.unclassified().to_string())
-            .unwrap_or_default();
+        out.short_term_gain = realized.map(|r| r.short_term.to_string()).unwrap_or_default();
+        out.long_term_gain = realized.map(|r| r.long_term.to_string()).unwrap_or_default();
+        out.unclassified_gain =
+            realized.map(|r| r.unclassified().to_string()).unwrap_or_default();
         out.open_lot_count = proj.open_lots(&view)?;
         out.position_count = proj.positions(&view)?.value.held.len() as i64;
         out.journal_position = proj.prefix() as i64;
@@ -3939,20 +3713,19 @@ impl Console {
         let phase_budget: BTreeMap<i64, i64> = {
             let b = self.open_file_book(&path)?;
             match b.active()? {
-                Some(digest) => {
-                    match RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?)) {
-                        Ok(set) => set
-                            .project
-                            .map(|p| {
-                                p.phases
-                                    .into_iter()
-                                    .filter_map(|ph| ph.budget.map(|n| (ph.account, n)))
-                                    .collect()
-                            })
-                            .unwrap_or_default(),
-                        Err(_) => BTreeMap::new(),
-                    }
-                }
+                Some(digest) => match RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&digest)?))
+                {
+                    Ok(set) => set
+                        .project
+                        .map(|p| {
+                            p.phases
+                                .into_iter()
+                                .filter_map(|ph| ph.budget.map(|n| (ph.account, n)))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    Err(_) => BTreeMap::new(),
+                },
                 None => BTreeMap::new(),
             }
         };
@@ -3997,7 +3770,11 @@ impl Console {
     /// leaves that side unset — remaining per item is unknown, and
     /// FIFO or an equal split would make the buckets look exact
     /// while being somebody else's. Over-application unsets too.
-    pub fn operating_aging(&self, name: &str, filter: &str) -> Result<pb::OperatingAgingResponse> {
+    pub fn operating_aging(
+        &self,
+        name: &str,
+        filter: &str,
+    ) -> Result<pb::OperatingAgingResponse> {
         let (fund, view) = view_scoped_parent(name).context("bad view name")?;
         let path = self.book_path(&fund)?;
         let meta = book::BookMeta::load(&path, &fund);
@@ -4072,11 +3849,8 @@ impl Console {
         let b = self.open_file_book(&path)?;
         let (_, rates) = rates_of(&id, &path, &b)?;
         let proj = self.projection(&id)?;
-        let by_dim: BTreeMap<i64, AccountTypeRecord> = b
-            .accounts()?
-            .into_iter()
-            .map(|a| (a.dim, a.account_type))
-            .collect();
+        let by_dim: BTreeMap<i64, AccountTypeRecord> =
+            b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
         let is_al = |d: i64| {
             matches!(
                 by_dim.get(&d),
@@ -4088,9 +3862,7 @@ impl Console {
         let nav_there = proj.nav(against, &is_al, &rates)?.value.0;
 
         let date = |d: Option<ratio_project::views::Day>| {
-            d.map(|n| ratio_common::iso_date_from_days(i64::from(n)))
-                .as_deref()
-                .and_then(iso_date)
+            d.map(|n| ratio_common::iso_date_from_days(i64::from(n))).as_deref().and_then(iso_date)
         };
         let row = |e: &ratio_project::InFlightEntry| pb::RecognitionDifference {
             entry_id: e.id.clone(),
@@ -4107,20 +3879,8 @@ impl Console {
             net_asset_value: nav_here.to_string(),
             against_net_asset_value: nav_there.to_string(),
             difference: rec.value.difference.to_string(),
-            recognised_here: rec
-                .value
-                .entries
-                .iter()
-                .filter(|e| e.in_here)
-                .map(row)
-                .collect(),
-            recognised_there: rec
-                .value
-                .entries
-                .iter()
-                .filter(|e| !e.in_here)
-                .map(row)
-                .collect(),
+            recognised_here: rec.value.entries.iter().filter(|e| e.in_here).map(row).collect(),
+            recognised_there: rec.value.entries.iter().filter(|e| !e.in_here).map(row).collect(),
             // ⛔ SHOWN, NOT OMITTED — AND NOT ZEROED. These contribute to
             // neither figure. A difference that looks fully explained while
             // entries sit outside both books of record is the shape of every
@@ -4154,10 +3914,7 @@ impl Console {
             "unexplained" => !k.explained,
             _ => true,
         });
-        Ok(pb::ListBreaksResponse {
-            breaks,
-            next_page_token: String::new(),
-        })
+        Ok(pb::ListBreaksResponse { breaks, next_page_token: String::new() })
     }
 
     pub fn get_break(&self, name: &str) -> Result<pb::Break> {
@@ -4210,10 +3967,7 @@ impl Console {
             // empty rule set and every rule reads as ADDED. That is what
             // happened: a book opens with no rules and the opening
             // configuration puts them there.
-            versions
-                .get(at.wrapping_sub(1))
-                .map(|v| v.digest.clone())
-                .unwrap_or_default()
+            versions.get(at.wrapping_sub(1)).map(|v| v.digest.clone()).unwrap_or_default()
         } else {
             base.to_string()
         };
@@ -4260,11 +4014,7 @@ impl Console {
         }
         changes.sort_by(|a, b| a.rule_id.cmp(&b.rule_id));
 
-        Ok(pb::DiffConfigVersionsResponse {
-            base_digest,
-            digest,
-            changes,
-        })
+        Ok(pb::DiffConfigVersionsResponse { base_digest, digest, changes })
     }
 
     /// Every configuration this fund has run, oldest first.
@@ -4276,17 +4026,11 @@ impl Console {
     fn config_versions(&self, fund: &str) -> Result<Vec<pb::ConfigVersion>> {
         let path = self.book_path(fund)?;
         let b = self.open_file_book(&path)?;
-        let active = b
-            .active()?
-            .map(|d| d.as_str().to_string())
-            .unwrap_or_default();
+        let active = b.active()?.map(|d| d.as_str().to_string()).unwrap_or_default();
         let chart = b.accounts()?;
 
         let mut promoted: BTreeMap<String, (i64, String, String)> = BTreeMap::new();
-        for l in std::fs::read_to_string(path.join("CHANGELOG"))
-            .unwrap_or_default()
-            .lines()
-        {
+        for l in std::fs::read_to_string(path.join("CHANGELOG")).unwrap_or_default().lines() {
             let f: Vec<&str> = l.split('\t').collect();
             // ⛔ ONLY AN "approved" LINE IS A PROMOTION. The CHANGELOG is the
             // fund's whole audit trail — it also carries who posted, ingested,
@@ -4297,11 +4041,7 @@ impl Console {
             if f.len() >= 5 && f[2] == "approved" {
                 promoted.insert(
                     f[4].to_string(),
-                    (
-                        f[0].parse().unwrap_or(0),
-                        f[1].to_string(),
-                        f[3].to_string(),
-                    ),
+                    (f[0].parse().unwrap_or(0), f[1].to_string(), f[3].to_string()),
                 );
             }
         }
@@ -4318,11 +4058,7 @@ impl Console {
         for (i, digest) in history.iter().enumerate() {
             let d = digest.as_str().to_string();
             let rules = match RuleSet::from_toml(&String::from_utf8_lossy(&b.get(digest)?)) {
-                Ok(set) => set
-                    .rules
-                    .iter()
-                    .map(|r| ratio_rules::render(r, &chart))
-                    .collect(),
+                Ok(set) => set.rules.iter().map(|r| ratio_rules::render(r, &chart)).collect(),
                 // A version that no longer parses is still part of the history
                 // and is shown as such. Dropping it would make the sequence lie
                 // about what this fund has run.
@@ -4385,7 +4121,8 @@ impl Console {
     }
 
     pub fn get_nav_strike(&self, name: &str) -> Result<pb::NavStrike> {
-        let (fund, view, id) = view_scoped_id(name, "navStrikes").context("bad name")?;
+        let (fund, view, id) =
+            view_scoped_id(name, "navStrikes").context("bad name")?;
         let path = self.book_path(&fund)?;
         let s = ratio_nav::get(&path, &view, &id)?;
         // Getting one strike qualifies it the same way listing them does — a
@@ -4425,9 +4162,15 @@ impl Console {
     /// A period with no income or expense still closes (the door
     /// holds) and leaves `closing_entry` / `surplus` absent — not a
     /// measured zero. `Ratio.Close.missing_destination_refuses_the_close`.
-    pub fn close_period(&self, fund: &str, view: &str, through: &str) -> Result<CloseRecord> {
-        ratio_common::days_from_iso_date(through)
-            .with_context(|| format!("{through:?} is not a calendar day (YYYY-MM-DD)"))?;
+    pub fn close_period(
+        &self,
+        fund: &str,
+        view: &str,
+        through: &str,
+    ) -> Result<CloseRecord> {
+        ratio_common::days_from_iso_date(through).with_context(|| {
+            format!("{through:?} is not a calendar day (YYYY-MM-DD)")
+        })?;
 
         let (path, mut b) = self.open_book(fund)?;
         let digest = b
@@ -4494,7 +4237,8 @@ impl Console {
             for p in &entry.postings {
                 match types.get(&p.dim) {
                     Some(AccountTypeRecord::Income | AccountTypeRecord::Expense) => {
-                        *temps.entry((p.dim, p.currency.clone())).or_default() += p.amount as i128;
+                        *temps.entry((p.dim, p.currency.clone())).or_default() +=
+                            p.amount as i128;
                     }
                     _ => {}
                 }
@@ -4518,8 +4262,9 @@ impl Console {
             }
             surplus += *bal;
             currencies.insert(ccy.clone());
-            let amount = i64::try_from(*bal)
-                .map_err(|_| anyhow::anyhow!("temporary balance on {dim} does not fit i64"))?;
+            let amount = i64::try_from(*bal).map_err(|_| {
+                anyhow::anyhow!("temporary balance on {dim} does not fit i64")
+            })?;
             let neg = ratio_common::checked::neg(amount, "closing a temporary account")?;
             let mut p = PostingRecord::new(*dim, neg);
             p.currency = ccy.clone();
@@ -4547,8 +4292,8 @@ impl Console {
                     .unwrap_or_else(|| digest.as_str().to_string()),
             )
         } else {
-            let dest_amt =
-                i64::try_from(surplus).map_err(|_| anyhow::anyhow!("surplus does not fit i64"))?;
+            let dest_amt = i64::try_from(surplus)
+                .map_err(|_| anyhow::anyhow!("surplus does not fit i64"))?;
             let mut dest_leg = PostingRecord::new(dest, dest_amt);
             if let Some(Some(c)) = currencies.iter().next() {
                 dest_leg.currency = Some(c.clone());
@@ -4610,7 +4355,8 @@ impl Console {
     }
 
     pub fn get_period_close(&self, name: &str) -> Result<pb::PeriodClose> {
-        let (fund, view, id) = view_scoped_id(name, "periodCloses").context("bad name")?;
+        let (fund, view, id) =
+            view_scoped_id(name, "periodCloses").context("bad name")?;
         let (_, b) = self.open_book(&fund)?;
         b.closes()?
             .into_iter()
@@ -4629,7 +4375,10 @@ impl Console {
     /// second application would double the position while the trial balance
     /// went on tying. A stored `applied` flag that drifted would be the thing
     /// that let that happen.
-    pub fn list_corporate_actions(&self, parent: &str) -> Result<pb::ListCorporateActionsResponse> {
+    pub fn list_corporate_actions(
+        &self,
+        parent: &str,
+    ) -> Result<pb::ListCorporateActionsResponse> {
         let id = resource_id(parent, "funds").context("bad parent")?;
         Ok(pb::ListCorporateActionsResponse {
             corporate_actions: self.corporate_actions(&id)?,
@@ -4732,7 +4481,8 @@ impl Console {
                     .filter(|s| {
                         let day = ratio_nav::rfc3339(s.valuation_time);
                         let day = day.get(..10).unwrap_or("");
-                        day >= a.ex_date.as_str() && !at.is_some_and(|i| i < s.journal_position)
+                        day >= a.ex_date.as_str()
+                            && !at.is_some_and(|i| i < s.journal_position)
                     })
                     .map(|s| format!("funds/{fund}/views/{}/navStrikes/{}", s.view, s.id))
                     .collect();
@@ -4768,7 +4518,8 @@ impl Console {
 
     /// Re-derive a strike. Read-only: it folds a journal prefix and compares.
     pub fn replay_nav_strike(&self, name: &str) -> Result<pb::ReplayNavStrikeResponse> {
-        let (fund, view, id) = view_scoped_id(name, "navStrikes").context("bad name")?;
+        let (fund, view, id) =
+            view_scoped_id(name, "navStrikes").context("bad name")?;
         let path = self.book_path(&fund)?;
         let s = ratio_nav::get(&path, &view, &id)?;
         // ⛔ AND THE REPLAY RESOLVES THE VIEW'S TERMS FROM THE DIGEST EACH ENTRY
@@ -4825,34 +4576,31 @@ impl Console {
         // different claims, and a contribution without units does not
         // count. `Ratio.Partners.Units`.
         let capital_txns = count_unit_capital_entries(&b, &chart, &proj, &view)?;
-        let (shape, refusal) =
-            match ratio_nav::shape_of(&proj, &view, accounts, cal, Some(capital_txns)) {
-                Ok(s) => (Some(s), String::new()),
-                // ⛔ `{e:#}` — the WHOLE chain. The refusal's prose is the answer
-                // this endpoint gives, and truncating it to the outermost line
-                // would leave a screen saying "cannot" without saying why.
-                Err(e) => (None, format!("{e:#}")),
-            };
+        let (shape, refusal) = match ratio_nav::shape_of(
+            &proj,
+            &view,
+            accounts,
+            cal,
+            Some(capital_txns),
+        ) {
+            Ok(s) => (Some(s), String::new()),
+            // ⛔ `{e:#}` — the WHOLE chain. The refusal's prose is the answer
+            // this endpoint gives, and truncating it to the outermost line
+            // would leave a screen saying "cannot" without saying why.
+            Err(e) => (None, format!("{e:#}")),
+        };
 
         // ⛔ MEASURED NOW, RE-DERIVING THE PINNED PREFIX — NOT WHAT THE ORIGINAL
         // STRIKE COST. Nothing was recorded at strike time. `ExplainNavStrikeResponse
         // .analyzed` is what lets the screen say so, and it says so beside every
         // actual rather than once at the bottom.
-        let measured = if analyze {
-            Some(ratio_nav::analyze(&path, &s)?)
-        } else {
-            None
-        };
+        let measured = if analyze { Some(ratio_nav::analyze(&path, &s)?) } else { None };
 
-        let plan =
-            ratio_nav::explain::plan_of(name, &s, shape.as_ref(), &refusal, measured.as_ref(), cal);
+        let plan = ratio_nav::explain::plan_of(name, &s, shape.as_ref(), &refusal, measured.as_ref(), cal);
         Ok(plan_pb(&plan))
     }
 
-    pub fn list_change_log_entries(
-        &self,
-        parent: &str,
-    ) -> Result<pb::ListChangeLogEntriesResponse> {
+    pub fn list_change_log_entries(&self, parent: &str) -> Result<pb::ListChangeLogEntriesResponse> {
         let id = resource_id(parent, "funds").context("bad parent")?;
         let path = self.book_path(&id)?;
         Ok(pb::ListChangeLogEntriesResponse {
@@ -4990,7 +4738,8 @@ impl Console {
         // the refusal `ratio strike` prints and the console's URL are
         // `funds/*/views/*/breaks/*`; accepting the shorter form would mean the
         // name somebody was shown is not the name this verb takes.
-        let (fund, view, want) = view_scoped_id(break_name, "breaks").context("bad break name")?;
+        let (fund, view, want) =
+            view_scoped_id(break_name, "breaks").context("bad break name")?;
         let path = self.book_path(&fund)?;
 
         let text = text.trim();
@@ -5003,10 +4752,7 @@ impl Console {
         // requires those to fail before a person reads them — here, before one
         // is recorded at all.
         let breaks = self.breaks_for(&path, &fund, &view)?;
-        let Some(brk) = breaks
-            .iter()
-            .find(|k| break_id_of(&k.name) == want.as_str())
-        else {
+        let Some(brk) = breaks.iter().find(|k| break_id_of(&k.name) == want.as_str()) else {
             bail!(
                 "no break {break_name} on this fund — the breaks it does have are listed by \
                  `ratio watch` and on the exceptions screen"
@@ -5108,9 +4854,7 @@ impl Console {
     /// anything either.
     fn explain(&self, breaks: &mut [pb::Break], recorded: &BTreeMap<String, BreakExplanation>) {
         for k in breaks.iter_mut() {
-            let Some(e) = recorded.get(break_id_of(&k.name)) else {
-                continue;
-            };
+            let Some(e) = recorded.get(break_id_of(&k.name)) else { continue };
             let same_figure = e.difference.to_string() == k.difference;
             let same_terms = e.config_digest == k.config_digest;
             k.explained = same_figure && same_terms;
@@ -5140,11 +4884,8 @@ impl Console {
             return self.lot_breaks_for(fund, view);
         };
         let b = self.open_file_book(book)?;
-        let dims: BTreeMap<String, i64> = b
-            .accounts()?
-            .into_iter()
-            .map(|a| (a.display_name, a.dim))
-            .collect();
+        let dims: BTreeMap<String, i64> =
+            b.accounts()?.into_iter().map(|a| (a.display_name, a.dim)).collect();
         // ⛔ ONE PASS, FOR THE DIMENSIONS THAT ACTUALLY HAVE BREAKS. This held
         // the whole journal and re-filtered it once PER BREAK — O(breaks x
         // entries) time on top of O(entries) memory. Streaming naively would be
@@ -5191,12 +4932,10 @@ impl Console {
                 // `tolerance_of`.
                 None => pb::Severity::High,
             };
-            let dim = dims
-                .get(&line.display_name)
-                .copied()
-                .unwrap_or(line.account);
+            let dim = dims.get(&line.display_name).copied().unwrap_or(line.account);
 
-            let postings: Vec<pb::BreakPosting> = by_dim.get(&dim).cloned().unwrap_or_default();
+            let postings: Vec<pb::BreakPosting> =
+                by_dim.get(&dim).cloned().unwrap_or_default();
 
             out.push(pb::Break {
                 // Derived from the dimension, so a break keeps the same URL
@@ -5271,10 +5010,7 @@ impl Console {
                 .collect();
             ids.sort();
             for id in ids {
-                if out
-                    .iter()
-                    .any(|e| e.subject == id && e.action == "approved")
-                {
+                if out.iter().any(|e| e.subject == id && e.action == "approved") {
                     continue; // already approved; it appears above as a person's act
                 }
                 out.push(pb::ChangeLogEntry {
@@ -5387,13 +5123,15 @@ struct SaleLeg {
     sold_on: ratio_project::relief::Day,
 }
 
-fn sale_of(e: &ratio_store::JournalEntry, roles: &ratio_rules::ChartRoles) -> Option<SaleLeg> {
-    let sold_on = ratio_common::days_from_iso_date(e.trade_date.as_ref()?).ok()?
-        as ratio_project::relief::Day;
-    let inv = e
-        .postings
-        .iter()
-        .find(|p| p.dim == roles.investments && p.quantity.unwrap_or(0) < 0)?;
+fn sale_of(
+    e: &ratio_store::JournalEntry,
+    roles: &ratio_rules::ChartRoles,
+) -> Option<SaleLeg> {
+    let sold_on = ratio_common::days_from_iso_date(e.trade_date.as_ref()?)
+        .ok()? as ratio_project::relief::Day;
+    let inv = e.postings.iter().find(|p| {
+        p.dim == roles.investments && p.quantity.unwrap_or(0) < 0
+    })?;
     let instrument = inv.instrument.clone()?;
     let units = -inv.quantity?;
     let posted = e
@@ -5414,8 +5152,8 @@ fn purchase_of(
     roles: &ratio_rules::ChartRoles,
     instrument: &str,
 ) -> Option<(ratio_project::relief::Day, i64)> {
-    let bought_on = ratio_common::days_from_iso_date(e.trade_date.as_ref()?).ok()?
-        as ratio_project::relief::Day;
+    let bought_on = ratio_common::days_from_iso_date(e.trade_date.as_ref()?)
+        .ok()? as ratio_project::relief::Day;
     let inv = e.postings.iter().find(|p| {
         p.dim == roles.investments
             && p.quantity.unwrap_or(0) > 0
@@ -5484,15 +5222,20 @@ fn wash_cite_for_strike(s: &ratio_nav::Strike, src: &WashSource) -> WashCite {
             let Some((bought_on, bought)) = purchase_of(buy, roles, &sale.instrument) else {
                 continue;
             };
-            let Ok(deferred) = ratio_project::relief::disallowed(signed, sale.units, bought) else {
-                continue;
-            };
-            let Ok(new_signed) =
-                ratio_common::checked::add(signed, deferred, "the restated realized gain")
+            let Ok(deferred) =
+                ratio_project::relief::disallowed(signed, sale.units, bought)
             else {
                 continue;
             };
-            if let Some(r) = ratio_project::relief::restate(&struck, window, bought_on, new_signed)
+            let Ok(new_signed) = ratio_common::checked::add(
+                signed,
+                deferred,
+                "the restated realized gain",
+            ) else {
+                continue;
+            };
+            if let Some(r) =
+                ratio_project::relief::restate(&struck, window, bought_on, new_signed)
             {
                 restated = Some(r);
                 break;
@@ -5643,6 +5386,7 @@ pub(crate) fn display_name(id: &str) -> String {
 /// the same rounding bug, and only one of them had the `1.005` test.
 pub use ratio_common::parse_minor as parse_amount;
 
+
 /// One unresolved fact, as the console reports it.
 ///
 /// Shared by the pending list and the ingest preview so the two cannot describe
@@ -5737,11 +5481,7 @@ fn units_folded(
         }
         Ok(())
     })?;
-    Ok(UnitsFold {
-        ending,
-        issued,
-        redeemed,
-    })
+    Ok(UnitsFold { ending, issued, redeemed })
 }
 
 /// Signed units posted to one dimension, or unset when no posting on
@@ -5828,12 +5568,7 @@ fn fact_subject(r: &ratio_ingest::Resolved) -> String {
                 .find(|(_, e)| e.kind == ratio_ingest::EntityKind::Instrument)
                 .and_then(|(k, _)| r.entity(k))
                 .unwrap_or(&r.fact.reference);
-            let day = r
-                .fact
-                .values
-                .get("asOf")
-                .and_then(|v| v.as_text())
-                .unwrap_or("");
+            let day = r.fact.values.get("asOf").and_then(|v| v.as_text()).unwrap_or("");
             format!("price:{inst}:{day}")
         }
         _ => format!("id:{}", r.fact.id),
@@ -5939,11 +5674,7 @@ fn iso_date(day: &str) -> Option<ratio_proto::date_proto::google::r#type::Date> 
 
 /// Minor units as a decimal, for a memo a person reads.
 fn money_words(minor: i64) -> String {
-    let (sign, m) = if minor < 0 {
-        ("-", -minor)
-    } else {
-        ("", minor)
-    };
+    let (sign, m) = if minor < 0 { ("-", -minor) } else { ("", minor) };
     format!("{sign}{}.{:02}", m / 100, m % 100)
 }
 
@@ -5981,9 +5712,9 @@ pub fn resource_id(name: &str, collection: &str) -> Result<String> {
 /// splitting on the last or on all of them would resolve a real instrument to a
 /// different one — or to none, which at least fails loudly.
 pub fn position_key(id: &str) -> Result<(i64, String)> {
-    let (dim, instrument) = id.split_once('-').with_context(|| {
-        format!("{id:?} is not a position id — expected {{dim}}-{{instrument}}")
-    })?;
+    let (dim, instrument) = id
+        .split_once('-')
+        .with_context(|| format!("{id:?} is not a position id — expected {{dim}}-{{instrument}}"))?;
     Ok((
         dim.parse()
             .with_context(|| format!("{id:?} does not begin with a dimension"))?,
@@ -5996,22 +5727,26 @@ pub fn position_key(id: &str) -> Result<(i64, String)> {
 /// ⛔ A KEY THAT IS NOT ON THE CHART IS A REFUSAL, NOT A SKIP. Omitting it
 /// would look like unset, and the operator would not know the schedule they
 /// wrote was unread.
-fn loan_schedules(set: &RuleSet, chart: &[ratio_store::Account]) -> Result<Vec<pb::LoanSchedule>> {
+fn loan_schedules(
+    set: &RuleSet,
+    chart: &[ratio_store::Account],
+) -> Result<Vec<pb::LoanSchedule>> {
     let Some(p) = set.personal.as_ref() else {
         return Ok(vec![]);
     };
     if p.loan.is_empty() {
         return Ok(vec![]);
     }
-    let by_dim: BTreeMap<i64, &ratio_store::Account> = chart.iter().map(|a| (a.dim, a)).collect();
+    let by_dim: BTreeMap<i64, &ratio_store::Account> =
+        chart.iter().map(|a| (a.dim, a)).collect();
     let mut out = Vec::new();
     for (k, interest) in &p.loan {
         let dim: i64 = k
             .parse()
             .with_context(|| format!("[personal.loan] {k:?} is not a chart dimension"))?;
-        let liab = by_dim
-            .get(&dim)
-            .with_context(|| format!("[personal.loan] {k} is not on this book's chart"))?;
+        let liab = by_dim.get(&dim).with_context(|| {
+            format!("[personal.loan] {k} is not on this book's chart")
+        })?;
         if liab.account_type != AccountTypeRecord::Liability {
             bail!("[personal.loan] {k} is not a liability");
         }
@@ -6280,11 +6015,10 @@ fn aging_cut(filter: &str) -> Result<(String, bool)> {
     if spec.is_empty() {
         return Ok((utc_today()?, false));
     }
-    if spec.len() == 10
-        && spec.as_bytes().get(4) == Some(&b'-')
-        && spec.as_bytes().get(7) == Some(&b'-')
+    if spec.len() == 10 && spec.as_bytes().get(4) == Some(&b'-') && spec.as_bytes().get(7) == Some(&b'-')
     {
-        ratio_common::days_from_iso_date(spec).with_context(|| format!("{spec:?} is not a day"))?;
+        ratio_common::days_from_iso_date(spec)
+            .with_context(|| format!("{spec:?} is not a day"))?;
         return Ok((spec.to_string(), true));
     }
     let window = parse_period(spec)?;
@@ -6486,6 +6220,7 @@ impl AgingFold {
     }
 }
 
+
 /// One view's NAV in minor units, and how long the fold that struck it took.
 ///
 /// ⭐ ONE IMPLEMENTATION, BECAUSE IT IS ONE NUMBER. `GetView` shows it and
@@ -6506,11 +6241,8 @@ fn nav_from(
     view: &str,
     rates: &ratio_project::Rates,
 ) -> Result<(i64, std::time::Duration)> {
-    let by_dim: BTreeMap<i64, AccountTypeRecord> = b
-        .accounts()?
-        .into_iter()
-        .map(|a| (a.dim, a.account_type))
-        .collect();
+    let by_dim: BTreeMap<i64, AccountTypeRecord> =
+        b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
     let is_asset_or_liability = |d: i64| {
         matches!(
             by_dim.get(&d),
@@ -6544,12 +6276,10 @@ fn figure(v: Option<i64>) -> String {
 /// ⚠ Non-negative by construction — these are elapsed times and read counts
 /// multiplied by a rate — so the truncating division is the right one.
 fn duration(ns: Option<i64>) -> Option<ratio_proto::duration_proto::google::protobuf::Duration> {
-    ns.map(
-        |n| ratio_proto::duration_proto::google::protobuf::Duration {
-            seconds: n / 1_000_000_000,
-            nanos: (n % 1_000_000_000) as i32,
-        },
-    )
+    ns.map(|n| ratio_proto::duration_proto::google::protobuf::Duration {
+        seconds: n / 1_000_000_000,
+        nanos: (n % 1_000_000_000) as i32,
+    })
 }
 
 /// A plan, as the contract carries it.
@@ -6732,7 +6462,10 @@ fn classify_notice(
 
 /// Partner cut the entry pinned. Unreadable or empty is unset —
 /// not a fallback to `active()`.
-fn pinned_partner_cut(b: &FileBook, digest_hex: &str) -> Option<Vec<ratio_rules::PartnerShare>> {
+fn pinned_partner_cut(
+    b: &FileBook,
+    digest_hex: &str,
+) -> Option<Vec<ratio_rules::PartnerShare>> {
     let digest = ratio_store::Digest::parse(digest_hex).ok()?;
     let bytes = b.get(&digest).ok()?;
     let set = RuleSet::from_toml(&String::from_utf8_lossy(&bytes)).ok()?;
@@ -6849,11 +6582,7 @@ pub fn view_scoped_id(name: &str, collection: &str) -> Result<(String, String, S
     if parts.len() != 6 || parts[0] != "funds" || parts[2] != "views" || parts[4] != collection {
         bail!("{name:?} is not a funds/*/views/*/{collection}/* name");
     }
-    Ok((
-        parts[1].to_string(),
-        parts[3].to_string(),
-        parts[5].to_string(),
-    ))
+    Ok((parts[1].to_string(), parts[3].to_string(), parts[5].to_string()))
 }
 
 pub fn nested_id(name: &str, outer: &str, inner: &str) -> Result<(String, String)> {
@@ -6907,31 +6636,11 @@ mod tests {
         use ratio_store::{Account, AccountTypeRecord as A, JournalEntry, PostingRecord};
         let mut b = FileBook::open(at).unwrap();
         b.put_accounts(&[
-            Account {
-                dim: 1,
-                display_name: "Investments at fair value".into(),
-                account_type: A::Asset,
-            },
-            Account {
-                dim: 2,
-                display_name: "Cash and equivalents".into(),
-                account_type: A::Asset,
-            },
-            Account {
-                dim: 10,
-                display_name: "Management fee expense".into(),
-                account_type: A::Expense,
-            },
-            Account {
-                dim: 20,
-                display_name: "Capital contributions".into(),
-                account_type: A::Equity,
-            },
-            Account {
-                dim: 40,
-                display_name: "Management fee payable".into(),
-                account_type: A::Liability,
-            },
+            Account { dim: 1, display_name: "Investments at fair value".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash and equivalents".into(), account_type: A::Asset },
+            Account { dim: 10, display_name: "Management fee expense".into(), account_type: A::Expense },
+            Account { dim: 20, display_name: "Capital contributions".into(), account_type: A::Equity },
+            Account { dim: 40, display_name: "Management fee payable".into(), account_type: A::Liability },
         ])
         .unwrap();
         let d = b.put(b"rules = []\n").unwrap();
@@ -6941,18 +6650,15 @@ mod tests {
                 id: id.into(),
                 memo: memo.into(),
                 config: d.clone(),
-                postings: legs
-                    .into_iter()
-                    .map(|(dim, amount)| PostingRecord::new(dim, amount))
-                    .collect(),
-
+                postings: legs.into_iter().map(|(dim, amount)| PostingRecord::new(dim, amount)).collect(),
+            
                 trade_date: None,
                 announcement: None,
-                due_date: None,
-                application: None,
-                identified_lots: None,
-                special_allocations: None,
-                kind: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+            kind: None,
             })
             .unwrap();
         };
@@ -7102,10 +6808,7 @@ mod tests {
             transcode::ROUTES.len(),
             "every live route must be classified"
         );
-        assert!(
-            scoped >= 36,
-            "expected every fund/book route covered, only saw {scoped}"
-        );
+        assert!(scoped >= 36, "expected every fund/book route covered, only saw {scoped}");
         assert_eq!(lists, 2, "ListBooks and ListFunds");
         assert_eq!(creates, 1, "CreateBook");
 
@@ -7133,26 +6836,14 @@ mod tests {
         // and a refusal are different answers; here it is neither empty nor
         // leaking.
         let funds = transcode::serve(&console, "GET", "/v1/funds", "", "").unwrap();
-        assert!(
-            funds.contains("funds/a"),
-            "the subject's fund is missing: {funds}"
-        );
-        assert!(
-            !funds.contains("funds/b"),
-            "another tenant's fund leaked into the list: {funds}"
-        );
+        assert!(funds.contains("funds/a"), "the subject's fund is missing: {funds}");
+        assert!(!funds.contains("funds/b"), "another tenant's fund leaked into the list: {funds}");
 
         // The same boundary on the book collection: `b` is on disk and absent
         // from the list, and GetBook refuses it as "no fund".
         let books = transcode::serve(&console, "GET", "/v1/books", "", "").unwrap();
-        assert!(
-            books.contains("books/a"),
-            "the subject's book is missing: {books}"
-        );
-        assert!(
-            !books.contains("books/b"),
-            "another tenant's book leaked into the list: {books}"
-        );
+        assert!(books.contains("books/a"), "the subject's book is missing: {books}");
+        assert!(!books.contains("books/b"), "another tenant's book leaked into the list: {books}");
     }
 
     #[test]
@@ -7165,12 +6856,8 @@ mod tests {
         std::fs::write(root.join("MEMBERSHIP.tsv"), "S\ta\n").unwrap();
 
         let console = Console::new(&root); // Subject::Local
-        assert!(
-            transcode::serve(&console, "GET", "/v1/funds/a/views/book/accounts", "", "").is_ok()
-        );
-        assert!(
-            transcode::serve(&console, "GET", "/v1/funds/b/views/book/accounts", "", "").is_ok()
-        );
+        assert!(transcode::serve(&console, "GET", "/v1/funds/a/views/book/accounts", "", "").is_ok());
+        assert!(transcode::serve(&console, "GET", "/v1/funds/b/views/book/accounts", "", "").is_ok());
         let funds = transcode::serve(&console, "GET", "/v1/funds", "", "").unwrap();
         assert!(funds.contains("funds/a") && funds.contains("funds/b"));
     }
@@ -7187,22 +6874,21 @@ mod tests {
         book(&root.join("b"));
         std::fs::write(root.join("MEMBERSHIP.tsv"), "S\ta\n").unwrap();
 
-        let subject = Subject::Member {
-            sub: "S".into(),
-            email: "s@x.test".into(),
-            organization: String::new(),
-            groups: vec![],
-            connect: false,
-            client_id: String::new(),
-            scopes: BTreeSet::new(),
-        };
+        let subject =
+            Subject::Member {
+                sub: "S".into(),
+                email: "s@x.test".into(),
+                organization: String::new(),
+                groups: vec![],
+                connect: false,
+                client_id: String::new(),
+                scopes: BTreeSet::new(),
+            };
         let console = Console::open(&root, subject);
 
         // `b` is granted by nobody and is seen anyway — the whole point. If open
         // mode leaked into `scoped`, the tenancy test above would already be red.
-        assert!(
-            transcode::serve(&console, "GET", "/v1/funds/a/views/book/accounts", "", "").is_ok()
-        );
+        assert!(transcode::serve(&console, "GET", "/v1/funds/a/views/book/accounts", "", "").is_ok());
         assert!(
             transcode::serve(&console, "GET", "/v1/funds/b/views/book/accounts", "", "").is_ok(),
             "open mode must grant a fund MEMBERSHIP omits"
@@ -7217,14 +6903,9 @@ mod tests {
         // Local's RATIO_ACTOR. Open changes what is SEEN, never who ACTED.
         let book_a = root.join("a");
         let digest = FileBook::open(&book_a).unwrap().active().unwrap().unwrap();
-        console
-            .record_change(&book_a, "posted", "evt-1", digest.as_str())
-            .unwrap();
+        console.record_change(&book_a, "posted", "evt-1", digest.as_str()).unwrap();
         let log = std::fs::read_to_string(book_a.join("CHANGELOG")).unwrap();
-        assert!(
-            log.contains("\tS\tposted\t"),
-            "the write must be signed by the subject: {log}"
-        );
+        assert!(log.contains("\tS\tposted\t"), "the write must be signed by the subject: {log}");
     }
 
     #[test]
@@ -7270,10 +6951,7 @@ mod tests {
         let bob_a = transcode::serve(&bob_c, "GET", "/v1/funds/a/views/book/accounts", "", "")
             .unwrap_err()
             .to_string();
-        assert!(
-            bob_a.contains("no fund"),
-            "B must not open A's fund: {bob_a}"
-        );
+        assert!(bob_a.contains("no fund"), "B must not open A's fund: {bob_a}");
         let bob_funds = transcode::serve(&bob_c, "GET", "/v1/funds", "", "").unwrap();
         assert!(
             !bob_funds.contains("funds/a") && !bob_funds.contains("funds/b"),
@@ -7302,17 +6980,12 @@ mod tests {
         let digest = FileBook::open(&book_a).unwrap().active().unwrap().unwrap();
 
         // What every write handler records after a successful append.
-        console
-            .record_change(&book_a, "posted", "evt-1", digest.as_str())
-            .unwrap();
+        console.record_change(&book_a, "posted", "evt-1", digest.as_str()).unwrap();
 
         // The change log shows it, attributed to the VERIFIED subject — the id
         // resolved from the gateway's claims, never a string the caller chose.
         let log = console.change_log_for(&book_a, "a").unwrap();
-        let posted = log
-            .iter()
-            .find(|e| e.action == "posted")
-            .expect("the write is in the log");
+        let posted = log.iter().find(|e| e.action == "posted").expect("the write is in the log");
         assert_eq!(posted.actor.as_str(), "signer-sub");
         assert_eq!(posted.subject.as_str(), "evt-1");
         assert_eq!(posted.actor_kind, pb::ActorKind::Person as i32);
@@ -7328,11 +7001,7 @@ mod tests {
             .iter()
             .find(|v| v.digest.as_str() == digest.as_str())
             .expect("the active config is a version");
-        assert_eq!(
-            v.actor.as_str(),
-            "",
-            "a posted-event line must not be read as the approver"
-        );
+        assert_eq!(v.actor.as_str(), "", "a posted-event line must not be read as the approver");
     }
 
     #[test]
@@ -7370,17 +7039,14 @@ mod tests {
                 id: "t2".into(),
                 memo: "buy".into(),
                 config: cfg,
-                postings: vec![
-                    PostingRecord::new(1, 5_000_000),
-                    PostingRecord::new(2, -5_000_000),
-                ],
+                postings: vec![PostingRecord::new(1, 5_000_000), PostingRecord::new(2, -5_000_000)],
                 trade_date: None,
                 announcement: None,
-                due_date: None,
-                application: None,
-                identified_lots: None,
-                special_allocations: None,
-                kind: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+            kind: None,
             })
             .unwrap();
         }
@@ -7391,19 +7057,8 @@ mod tests {
         // the cache safe to have at all.
         let cold = ratio_project::Projection::of_book(&d).unwrap();
         let assets = |dim: i64| dim == 1 || dim == 2 || dim == 40;
-        assert_eq!(
-            after
-                .nav(B, &assets, &ratio_project::Rates::none())
-                .unwrap()
-                .value,
-            cold.nav(B, &assets, &ratio_project::Rates::none())
-                .unwrap()
-                .value
-        );
-        assert_eq!(
-            after.positions(B).unwrap().value,
-            &cold.positions(B).unwrap().value.clone()
-        );
+        assert_eq!(after.nav(B, &assets, &ratio_project::Rates::none()).unwrap().value, cold.nav(B, &assets, &ratio_project::Rates::none()).unwrap().value);
+        assert_eq!(after.positions(B).unwrap().value, &cold.positions(B).unwrap().value.clone());
     }
 
     #[test]
@@ -7422,19 +7077,9 @@ mod tests {
         {
             use ratio_store::{Account, AccountTypeRecord as A, JournalEntry, PostingRecord};
             let mut b = FileBook::open(&d).unwrap();
-            b.put_accounts(&[
-                Account {
-                    dim: 1,
-                    display_name: "Investments".into(),
-                    account_type: A::Asset,
-                },
-                Account {
-                    dim: 2,
-                    display_name: "Cash".into(),
-                    account_type: A::Asset,
-                },
-            ])
-            .unwrap();
+            b.put_accounts(&[Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+                             Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset }])
+                .unwrap();
             let cfg = b.put(b"rules = []\n").unwrap();
             b.set_active(&cfg).unwrap();
             b.append(&JournalEntry {
@@ -7444,29 +7089,18 @@ mod tests {
                 postings: vec![PostingRecord::new(1, 11), PostingRecord::new(2, -11)],
                 trade_date: None,
                 announcement: None,
-                due_date: None,
-                application: None,
-                identified_lots: None,
-                special_allocations: None,
-                kind: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+            kind: None,
             })
             .unwrap();
         }
 
         let p = c.projection("demo").unwrap();
-        assert_eq!(
-            p.prefix(),
-            1,
-            "rebuilt from the new book, not spliced onto the old"
-        );
-        assert_eq!(
-            p.nav(B, &|dim| dim == 1, &ratio_project::Rates::none())
-                .unwrap()
-                .value
-                .0,
-            11,
-            "and the totals are the new book's"
-        );
+        assert_eq!(p.prefix(), 1, "rebuilt from the new book, not spliced onto the old");
+        assert_eq!(p.nav(B, &|dim| dim == 1, &ratio_project::Rates::none()).unwrap().value.0, 11, "and the totals are the new book's");
     }
 
     /// A book whose buys carry an instrument, so list_lots has something to
@@ -7489,9 +7123,7 @@ mod tests {
         .unwrap();
         let c = b.put(b"rules = []\n").unwrap();
         b.set_active(&c).unwrap();
-        for (n, (inst, cost, qty)) in [("vti", 25_000_i64, 100_i64), ("voo", 10_000, 40)]
-            .iter()
-            .enumerate()
+        for (n, (inst, cost, qty)) in [("vti", 25_000_i64, 100_i64), ("voo", 10_000, 40)].iter().enumerate()
         {
             b.append(&JournalEntry {
                 id: format!("t{n}"),
@@ -7521,8 +7153,8 @@ mod tests {
         let d = fresh("stage-e-reads");
         book_with_lots(&d);
         let memory = Console::new(&d);
-        let store =
-            Console::new(&d).with_stage_e_store(ratio_sql_project::ProjectionReads::in_process());
+        let store = Console::new(&d)
+            .with_stage_e_store(ratio_sql_project::ProjectionReads::in_process());
 
         let parent = format!("{}/positions/1-vti", demo_view());
         let mem_lots = memory.list_lots(&parent).unwrap();
@@ -7603,22 +7235,16 @@ mod tests {
                 memo: "buy".into(),
                 config: cfg.clone(),
                 postings: vec![
-                    PostingRecord {
-                        dim: 1,
-                        amount: 100,
-                        currency: None,
-                        instrument: Some("VTI".into()),
-                        quantity: Some(7),
-                    },
+                    PostingRecord { dim: 1, amount: 100, currency: None, instrument: Some("VTI".into()), quantity: Some(7) },
                     PostingRecord::new(2, -100),
                 ],
                 trade_date: None,
                 announcement: None,
-                due_date: None,
-                application: None,
-                identified_lots: None,
-                special_allocations: None,
-                kind: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+            kind: None,
             })
             .unwrap();
             b.append(&JournalEntry {
@@ -7626,22 +7252,16 @@ mod tests {
                 memo: "sell".into(),
                 config: cfg,
                 postings: vec![
-                    PostingRecord {
-                        dim: 1,
-                        amount: -45,
-                        currency: None,
-                        instrument: Some("VTI".into()),
-                        quantity: Some(-3),
-                    },
+                    PostingRecord { dim: 1, amount: -45, currency: None, instrument: Some("VTI".into()), quantity: Some(-3) },
                     PostingRecord::new(2, 45),
                 ],
                 trade_date: None,
                 announcement: None,
-                due_date: None,
-                application: None,
-                identified_lots: None,
-                special_allocations: None,
-                kind: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+            kind: None,
             })
             .unwrap();
         }
@@ -7649,17 +7269,8 @@ mod tests {
         let c = Console::new(&d);
         let breaks = c.list_breaks(&demo_view(), "").unwrap().breaks;
         let lot: Vec<_> = breaks.iter().filter(|b| b.name.contains("lot-")).collect();
-        assert_eq!(
-            lot.len(),
-            1,
-            "{:?}",
-            breaks.iter().map(|b| &b.cause).collect::<Vec<_>>()
-        );
-        assert!(
-            lot[0].cause.contains("administration agreement"),
-            "{}",
-            lot[0].cause
-        );
+        assert_eq!(lot.len(), 1, "{:?}", breaks.iter().map(|b| &b.cause).collect::<Vec<_>>());
+        assert!(lot[0].cause.contains("administration agreement"), "{}", lot[0].cause);
 
         // ⚠ HIGH, and not because of the amount. Every other break is graded by
         // money at stake; this one is graded by what it means — the figure it
@@ -7692,11 +7303,7 @@ mod tests {
         assert_eq!(created.name, "books/household");
         assert_eq!(created.display_name, "Household");
         assert_eq!(created.kind, book::BookKind::Personal.proto());
-        assert!(
-            created.fund.is_empty(),
-            "CreateBook must not file a fund: {:?}",
-            created.fund
-        );
+        assert!(created.fund.is_empty(), "CreateBook must not file a fund: {:?}", created.fund);
         assert!(
             created.organization.is_empty(),
             "CreateBook must not file an org: {:?}",
@@ -7713,20 +7320,17 @@ mod tests {
 
         // GetFund still answers — existing screens and /books/:id rewrites
         // keep working against the same directory.
-        assert_eq!(
-            console.get_fund("funds/household").unwrap().name,
-            "funds/household"
-        );
+        assert_eq!(console.get_fund("funds/household").unwrap().name, "funds/household");
 
         // ⭐ KIND-AWARE INGEST. CreateBook wrote the household mappings,
         // so the templates list a Personal book offers is not the fund
         // snapshot. Brokerage CSV is a household feed, not `custodian-positions`.
-        let templates = console.list_templates("funds/household").unwrap().templates;
+        let templates = console
+            .list_templates("funds/household")
+            .unwrap()
+            .templates;
         assert_eq!(
-            templates
-                .iter()
-                .map(|t| t.template_id.as_str())
-                .collect::<Vec<_>>(),
+            templates.iter().map(|t| t.template_id.as_str()).collect::<Vec<_>>(),
             vec![
                 "bank-statement",
                 "loan-payment",
@@ -7737,21 +7341,15 @@ mod tests {
         );
         assert!(templates[0].posts, "a statement row can post");
         assert!(
-            templates
-                .iter()
-                .any(|t| t.template_id == "loan-payment" && t.posts),
+            templates.iter().any(|t| t.template_id == "loan-payment" && t.posts),
             "loan-payment posts interest and principal"
         );
         assert!(
-            templates
-                .iter()
-                .any(|t| t.template_id == "brokerage-statement" && t.posts),
+            templates.iter().any(|t| t.template_id == "brokerage-statement" && t.posts),
             "brokerage-statement posts household transfers"
         );
         assert!(
-            templates
-                .iter()
-                .any(|t| t.template_id == "brokerage-positions" && !t.posts),
+            templates.iter().any(|t| t.template_id == "brokerage-positions" && !t.posts),
             "brokerage-positions records and never posts"
         );
         assert!(
@@ -7761,14 +7359,7 @@ mod tests {
         );
     }
 
-    fn household_req(
-        id: &str,
-        rule: &str,
-        amount: &str,
-        y: i32,
-        m: i32,
-        d: i32,
-    ) -> pb::ApplyEventRequest {
+    fn household_req(id: &str, rule: &str, amount: &str, y: i32, m: i32, d: i32) -> pb::ApplyEventRequest {
         pb::ApplyEventRequest {
             parent: "funds/household".into(),
             rule_id: rule.into(),
@@ -7804,15 +7395,8 @@ mod tests {
             book_id: "household".into(),
         })
         .unwrap();
-        c.apply_event(&household_req(
-            "xfer-1",
-            "xfer_cash_investments",
-            "250.00",
-            2026,
-            3,
-            15,
-        ))
-        .unwrap();
+        c.apply_event(&household_req("xfer-1", "xfer_cash_investments", "250.00", 2026, 3, 15))
+            .unwrap();
 
         let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
         let sheet = c.list_accounts(&view, "sheet").unwrap().accounts;
@@ -7822,12 +7406,7 @@ mod tests {
         );
         assert!(sheet.iter().any(|a| a.display_name == "Investments"));
         assert!(sheet.iter().any(|a| a.display_name == "Credit cards"));
-        assert_eq!(
-            c.get_fund("funds/household")
-                .unwrap()
-                .trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/household").unwrap().trial_balance_difference, "0");
 
         let proj = c.projection("household").unwrap();
         assert_eq!(
@@ -7876,10 +7455,7 @@ mod tests {
             .iter()
             .find(|a| a.display_name == "Living expenses")
             .expect("pnl names the personal expense account");
-        assert_eq!(
-            living.debit, "4000",
-            "March is 40.00, not 40+60+99: {living:?}"
-        );
+        assert_eq!(living.debit, "4000", "March is 40.00, not 40+60+99: {living:?}");
         assert_eq!(living.posting_count, "1");
         assert!(
             march.iter().any(|a| a.display_name == "Income"),
@@ -7891,20 +7467,11 @@ mod tests {
         );
 
         let year = c.list_accounts(&view, "pnl-2026").unwrap().accounts;
-        let living_y = year
-            .iter()
-            .find(|a| a.display_name == "Living expenses")
-            .unwrap();
-        assert_eq!(
-            living_y.debit, "10000",
-            "the year is March+April, still not the undated 99"
-        );
+        let living_y = year.iter().find(|a| a.display_name == "Living expenses").unwrap();
+        assert_eq!(living_y.debit, "10000", "the year is March+April, still not the undated 99");
 
         let refused = c.list_accounts(&view, "pnl");
-        assert!(
-            refused.is_err(),
-            "a P&L without a period is the cumulative default this refuses"
-        );
+        assert!(refused.is_err(), "a P&L without a period is the cumulative default this refuses");
     }
 
     #[test]
@@ -7936,9 +7503,7 @@ mod tests {
         let mut b = FileBook::open(&path).unwrap();
         let digest = b.active().unwrap().unwrap();
         let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
-        text.push_str(
-            "\n[personal]\nbudget = 500000\n[personal.envelope]\n10 = 400000\n11 = 100000\n",
-        );
+        text.push_str("\n[personal]\nbudget = 500000\n[personal.envelope]\n10 = 400000\n11 = 100000\n");
         let next = b.put(text.as_bytes()).unwrap();
         b.set_active(&next).unwrap();
 
@@ -7964,19 +7529,14 @@ mod tests {
         let view = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
         let march = c.list_accounts(&view, "budget-2026-03").unwrap().accounts;
         assert!(
-            march
-                .iter()
-                .all(|a| a.r#type == pb::account::Type::Expense as i32),
+            march.iter().all(|a| a.r#type == pb::account::Type::Expense as i32),
             "budget actuals are expenses, not a balance sheet: {march:?}"
         );
         let living = march
             .iter()
             .find(|a| a.display_name == "Living expenses")
             .expect("budget names the personal expense account");
-        assert_eq!(
-            living.balance, "4000",
-            "March only, not April and not the undated spend"
-        );
+        assert_eq!(living.balance, "4000", "March only, not April and not the undated spend");
         let taxes = march
             .iter()
             .find(|a| a.display_name == "Taxes")
@@ -7984,14 +7544,8 @@ mod tests {
         assert_eq!(taxes.balance, "0");
 
         let year = c.list_accounts(&view, "budget-2026").unwrap().accounts;
-        let living_y = year
-            .iter()
-            .find(|a| a.display_name == "Living expenses")
-            .unwrap();
-        assert_eq!(
-            living_y.balance, "10000",
-            "year keeps March and April, drops undated"
-        );
+        let living_y = year.iter().find(|a| a.display_name == "Living expenses").unwrap();
+        assert_eq!(living_y.balance, "10000", "year keeps March and April, drops undated");
 
         let refused = c.list_accounts(&view, "budget");
         assert!(
@@ -8001,12 +7555,7 @@ mod tests {
 
         // The baseline is still the configuration total; actuals are the journal.
         assert_eq!(c.get_book("books/household").unwrap().budget, "500000");
-        assert_eq!(
-            c.get_fund("funds/household")
-                .unwrap()
-                .trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/household").unwrap().trial_balance_difference, "0");
     }
 
     #[test]
@@ -8072,17 +7621,13 @@ mod tests {
 
         let cited = c.get_book("books/household").unwrap();
         assert_eq!(cited.currency_code, "USD");
-        assert_eq!(cited.currencies, vec!["USD".to_string(), "EUR".to_string()]);
+        assert_eq!(
+            cited.currencies,
+            vec!["USD".to_string(), "EUR".to_string()]
+        );
 
         let silent = c
-            .apply_event(&household_req(
-                "no-ccy",
-                "living_expense",
-                "10.00",
-                2026,
-                3,
-                2,
-            ))
+            .apply_event(&household_req("no-ccy", "living_expense", "10.00", 2026, 3, 2))
             .unwrap_err()
             .to_string();
         assert!(
@@ -8120,10 +7665,7 @@ mod tests {
         // Conservation is the journal's, per currency.
         let posted = FileBook::open(&path).unwrap();
         let tb = posted.trial_balance().unwrap();
-        assert_eq!(
-            tb.debits, tb.credits,
-            "a same-currency household expense conserves"
-        );
+        assert_eq!(tb.debits, tb.credits, "a same-currency household expense conserves");
         let entry = posted
             .entries()
             .unwrap()
@@ -8135,10 +7677,7 @@ mod tests {
             "each currency is its own law: {entry:?}"
         );
         assert!(
-            entry
-                .postings
-                .iter()
-                .all(|p| p.currency.as_deref() == Some("EUR")),
+            entry.postings.iter().all(|p| p.currency.as_deref() == Some("EUR")),
             "ApplyEvent stamps the named code, not a silent USD: {:?}",
             entry.postings
         );
@@ -8175,10 +7714,7 @@ ECB-EXR-2026-03-10-EUR-USD,2026-03-10,EUR,1.17,USD,1,1.1652
             .unwrap();
         assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
         assert_eq!(admitted.recorded_count, "1");
-        assert_eq!(
-            admitted.posted_count, "0",
-            "a rate never writes the journal"
-        );
+        assert_eq!(admitted.posted_count, "0", "a rate never writes the journal");
 
         let cash = c
             .get_account(&format!("{view}/accounts/1"))
@@ -8267,7 +7803,11 @@ ECB-EXR-2026-03-10-EUR-USD,2026-03-10,EUR,1.17,USD,1,1.1652
             days: String::new(),
             instrument: String::new(),
             quantity: String::new(),
-            trade_date: Some(ratio_proto::date_proto::google::r#type::Date { year, month, day }),
+            trade_date: Some(ratio_proto::date_proto::google::r#type::Date {
+                year,
+                month,
+                day,
+            }),
             validate_only: false,
             ..Default::default()
         }
@@ -8308,33 +7848,15 @@ ECB-EXR-2026-03-10-EUR-USD,2026-03-10,EUR,1.17,USD,1,1.1652
             book_id: "partners".into(),
         })
         .unwrap();
-        c.apply_event(&capital_req(
-            "partners",
-            "c-lp",
-            "contribute_lp",
-            "100.00",
-            2026,
-            3,
-            1,
-        ))
-        .unwrap();
-        c.apply_event(&capital_req(
-            "partners",
-            "d-lp",
-            "distribute_lp",
-            "25.00",
-            2026,
-            3,
-            15,
-        ))
-        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "100.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "d-lp", "distribute_lp", "25.00", 2026, 3, 15))
+            .unwrap();
 
         let view = capital_view("partners");
         let capital = c.list_accounts(&view, "capital").unwrap().accounts;
         assert!(
-            capital
-                .iter()
-                .any(|a| a.display_name == "Partner capital — LP"),
+            capital.iter().any(|a| a.display_name == "Partner capital — LP"),
             "capital names chart_for(Investment) partners, not a blotter: {capital:?}"
         );
         assert!(capital.iter().any(|a| a.display_name == "Distributions"));
@@ -8348,17 +7870,12 @@ ECB-EXR-2026-03-10-EUR-USD,2026-03-10,EUR,1.17,USD,1,1.1652
             .unwrap();
         assert_eq!(lp.credit, "10000", "100.00 contributed: {lp:?}");
         assert_eq!(lp.debit, "2500", "25.00 distributed: {lp:?}");
+        assert_eq!(lp.balance, "-7500", "ending capital is credit-normal: {lp:?}");
         assert_eq!(
-            lp.balance, "-7500",
-            "ending capital is credit-normal: {lp:?}"
+            lp.units, "",
+            "a contribution must not invent units: {lp:?}"
         );
-        assert_eq!(lp.units, "", "a contribution must not invent units: {lp:?}");
-        assert_eq!(
-            c.get_fund("funds/partners")
-                .unwrap()
-                .trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
 
         let proj = c.projection("partners").unwrap();
         assert_eq!(
@@ -8460,9 +7977,7 @@ ECB-EXR-2026-03-10-EUR-USD,2026-03-10,EUR,1.17,USD,1,1.1652
         assert_eq!(lp.units, "10", "LP subscription issued 10: {lp:?}");
         assert_eq!(gp.units, "4", "GP subscription issued 4: {gp:?}");
         assert_eq!(
-            c.get_fund("funds/unitized")
-                .unwrap()
-                .trial_balance_difference,
+            c.get_fund("funds/unitized").unwrap().trial_balance_difference,
             "0"
         );
 
@@ -8483,8 +7998,13 @@ ECB-EXR-2026-03-10-EUR-USD,2026-03-10,EUR,1.17,USD,1,1.1652
 
         let b = FileBook::open(&root.join("unitized")).unwrap();
         let chart = b.accounts().unwrap();
-        let n = super::count_unit_capital_entries(&b, &chart, &proj, ratio_rules::UNDECLARED_VIEW)
-            .unwrap();
+        let n = super::count_unit_capital_entries(
+            &b,
+            &chart,
+            &proj,
+            ratio_rules::UNDECLARED_VIEW,
+        )
+        .unwrap();
         assert_eq!(n, 2, "two unit events; the contribution does not count");
 
         // Period NAV cites the subscription money the same way a
@@ -8497,10 +8017,7 @@ ECB-EXR-2026-03-10-EUR-USD,2026-03-10,EUR,1.17,USD,1,1.1652
             .unwrap();
         assert_eq!(lp_mar.credit, "15000", "{lp_mar:?}");
         assert_eq!(lp_mar.units, "10", "{lp_mar:?}");
-        assert_eq!(
-            lp_mar.units_issued, "10",
-            "March issued the subscription: {lp_mar:?}"
-        );
+        assert_eq!(lp_mar.units_issued, "10", "March issued the subscription: {lp_mar:?}");
         assert_eq!(
             lp_mar.units_redeemed, "",
             "March redeemed nothing — unset, not a silent zero: {lp_mar:?}"
@@ -8513,10 +8030,7 @@ ECB-EXR-2026-03-10-EUR-USD,2026-03-10,EUR,1.17,USD,1,1.1652
             .iter()
             .find(|a| a.display_name == "Partner capital — LP")
             .unwrap();
-        assert_eq!(
-            lp_feb.units, "",
-            "February as-of is before the issue: {lp_feb:?}"
-        );
+        assert_eq!(lp_feb.units, "", "February as-of is before the issue: {lp_feb:?}");
         assert_eq!(lp_feb.units_issued, "", "no February issue: {lp_feb:?}");
         assert_eq!(lp_feb.units_redeemed, "", "no February redeem: {lp_feb:?}");
     }
@@ -8630,10 +8144,7 @@ ECB-EXR-2026-03-10-EUR-USD,2026-03-10,EUR,1.17,USD,1,1.1652
             .unwrap();
         assert_eq!(lp_mar.units_issued, "10", "March issued 10: {lp_mar:?}");
         assert_eq!(lp_mar.units_redeemed, "4", "March redeemed 4: {lp_mar:?}");
-        assert_eq!(
-            lp_mar.units, "6",
-            "ending is the net, not the issued plug: {lp_mar:?}"
-        );
+        assert_eq!(lp_mar.units, "6", "ending is the net, not the issued plug: {lp_mar:?}");
         assert_eq!(lp.debit, "4000", "{lp:?}");
         assert_eq!(
             c.get_fund("funds/redeem").unwrap().trial_balance_difference,
@@ -8750,9 +8261,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(lp_mar.units_issued, "10", "{lp_mar:?}");
         assert_eq!(lp_mar.units_redeemed, "", "{lp_mar:?}");
         assert_eq!(
-            c.get_fund("funds/ingested")
-                .unwrap()
-                .trial_balance_difference,
+            c.get_fund("funds/ingested").unwrap().trial_balance_difference,
             "0"
         );
         let proj = c.projection("ingested").unwrap();
@@ -8776,53 +8285,20 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             book_id: "partners".into(),
         })
         .unwrap();
-        c.apply_event(&capital_req(
-            "partners",
-            "c-lp",
-            "contribute_lp",
-            "100.00",
-            2026,
-            3,
-            1,
-        ))
-        .unwrap();
-        c.apply_event(&capital_req(
-            "partners",
-            "x-1",
-            "transfer_lp_gp",
-            "40.00",
-            2026,
-            3,
-            2,
-        ))
-        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "100.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "x-1", "transfer_lp_gp", "40.00", 2026, 3, 2))
+            .unwrap();
 
         let view = capital_view("partners");
         let capital = c.list_accounts(&view, "capital").unwrap().accounts;
-        let lp = capital
-            .iter()
-            .find(|a| a.display_name == "Partner capital — LP")
-            .unwrap();
-        let gp = capital
-            .iter()
-            .find(|a| a.display_name == "Partner capital — GP")
-            .unwrap();
+        let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        let gp = capital.iter().find(|a| a.display_name == "Partner capital — GP").unwrap();
         assert_eq!(lp.balance, "-6000", "LP kept 60.00: {lp:?}");
         assert_eq!(gp.balance, "-4000", "GP received 40.00: {gp:?}");
-        let ending: i64 = capital
-            .iter()
-            .map(|a| a.balance.parse::<i64>().unwrap())
-            .sum();
-        assert_eq!(
-            ending, -10000,
-            "book capital is unchanged by a transfer: {capital:?}"
-        );
-        assert_eq!(
-            c.get_fund("funds/partners")
-                .unwrap()
-                .trial_balance_difference,
-            "0"
-        );
+        let ending: i64 = capital.iter().map(|a| a.balance.parse::<i64>().unwrap()).sum();
+        assert_eq!(ending, -10000, "book capital is unchanged by a transfer: {capital:?}");
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
     }
 
     #[test]
@@ -8840,85 +8316,33 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             book_id: "partners".into(),
         })
         .unwrap();
-        c.apply_event(&capital_req(
-            "partners",
-            "c-lp",
-            "contribute_lp",
-            "600.00",
-            2026,
-            3,
-            1,
-        ))
-        .unwrap();
-        c.apply_event(&capital_req(
-            "partners",
-            "c-gp",
-            "contribute_gp",
-            "400.00",
-            2026,
-            3,
-            1,
-        ))
-        .unwrap();
+        c.apply_event(&capital_req("partners", "c-lp", "contribute_lp", "600.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "c-gp", "contribute_gp", "400.00", 2026, 3, 1))
+            .unwrap();
         // Exact integer shares, not a percentage: 60.00 and 40.00 of the fee.
-        c.apply_event(&capital_req(
-            "partners",
-            "f-lp",
-            "allocate_fee_lp",
-            "60.00",
-            2026,
-            3,
-            10,
-        ))
-        .unwrap();
-        c.apply_event(&capital_req(
-            "partners",
-            "f-gp",
-            "allocate_fee_gp",
-            "40.00",
-            2026,
-            3,
-            10,
-        ))
-        .unwrap();
+        c.apply_event(&capital_req("partners", "f-lp", "allocate_fee_lp", "60.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "f-gp", "allocate_fee_gp", "40.00", 2026, 3, 10))
+            .unwrap();
 
-        assert_eq!(
-            c.get_fund("funds/partners")
-                .unwrap()
-                .trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/partners").unwrap().trial_balance_difference, "0");
         let view = capital_view("partners");
         let capital = c.list_accounts(&view, "capital").unwrap().accounts;
-        let lp = capital
-            .iter()
-            .find(|a| a.display_name == "Partner capital — LP")
-            .unwrap();
-        let gp = capital
-            .iter()
-            .find(|a| a.display_name == "Partner capital — GP")
-            .unwrap();
+        let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        let gp = capital.iter().find(|a| a.display_name == "Partner capital — GP").unwrap();
         assert_eq!(lp.balance, "-54000", "LP 600.00 − 60.00: {lp:?}");
         assert_eq!(gp.balance, "-36000", "GP 400.00 − 40.00: {gp:?}");
         let all = c.list_accounts(&view, "").unwrap().accounts;
-        let expense = all
-            .iter()
-            .find(|a| a.display_name == "Management fee expense")
-            .unwrap();
-        assert_eq!(
-            expense.credit, "10000",
-            "fee closed into capital, not rounded: {expense:?}"
-        );
+        let expense = all.iter().find(|a| a.display_name == "Management fee expense").unwrap();
+        assert_eq!(expense.credit, "10000", "fee closed into capital, not rounded: {expense:?}");
         assert!(
             all.iter().any(|a| a.display_name == "Unrealized gain"),
             "the whole chart still has valuation equity"
         );
-        assert!(c
-            .list_accounts(&view, "capital")
-            .unwrap()
-            .accounts
-            .iter()
-            .all(|a| { a.display_name != "Unrealized gain" }));
+        assert!(c.list_accounts(&view, "capital").unwrap().accounts.iter().all(|a| {
+            a.display_name != "Unrealized gain"
+        }));
     }
 
     #[test]
@@ -8945,11 +8369,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(created.partner_cut[1].weight, 20);
         assert!(created.special_allocations.is_empty());
         assert!(created.allocation_facts.is_empty());
-        assert!(
-            created.notices.is_empty(),
-            "CreateBook posts no call: {:?}",
-            created.notices
-        );
+        assert!(created.notices.is_empty(), "CreateBook posts no call: {:?}", created.notices);
         // ⛔ NOT 1/N. Two partners is not 50/50.
         assert_ne!(created.partner_cut[0].weight, created.partner_cut[1].weight);
 
@@ -8958,11 +8378,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(cited.partner_cut[0].weight, 80);
         assert_eq!(cited.partner_cut[1].weight, 20);
         assert_ne!(cited.partner_cut[0].weight, cited.partner_cut[1].weight);
-        assert!(
-            cited.allocation_facts.is_empty(),
-            "empty journal: {:?}",
-            cited.allocation_facts
-        );
+        assert!(cited.allocation_facts.is_empty(), "empty journal: {:?}", cited.allocation_facts);
         assert!(
             cited.notices.is_empty(),
             "empty journal is unset, not a silent notice: {:?}",
@@ -9051,10 +8467,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!((day.year, day.month, day.day), (2026, 3, 15));
 
         let named = c.get_entry("funds/facts/entries/special-income").unwrap();
-        assert!(
-            named.special_allocations_declared,
-            "somebody named a special"
-        );
+        assert!(named.special_allocations_declared, "somebody named a special");
         assert_eq!(named.special_allocations.len(), 1);
         assert_eq!(named.special_allocations[0].partner, "GP");
         assert_eq!(named.special_allocations[0].amount, 4_000);
@@ -9257,26 +8670,10 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             book_id: "partners".into(),
         })
         .unwrap();
-        c.apply_event(&capital_req(
-            "partners",
-            "mar",
-            "contribute_lp",
-            "40.00",
-            2026,
-            3,
-            10,
-        ))
-        .unwrap();
-        c.apply_event(&capital_req(
-            "partners",
-            "apr",
-            "contribute_lp",
-            "60.00",
-            2026,
-            4,
-            2,
-        ))
-        .unwrap();
+        c.apply_event(&capital_req("partners", "mar", "contribute_lp", "40.00", 2026, 3, 10))
+            .unwrap();
+        c.apply_event(&capital_req("partners", "apr", "contribute_lp", "60.00", 2026, 4, 2))
+            .unwrap();
         {
             let mut req = capital_req("partners", "undated", "contribute_lp", "99.00", 2026, 3, 1);
             req.trade_date = None;
@@ -9292,19 +8689,10 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(lp.credit, "4000", "March is 40.00, not 40+60+99: {lp:?}");
         assert_eq!(lp.posting_count, "1");
         let year = c.list_accounts(&view, "capital-2026").unwrap().accounts;
-        let lp_y = year
-            .iter()
-            .find(|a| a.display_name == "Partner capital — LP")
-            .unwrap();
-        assert_eq!(
-            lp_y.credit, "10000",
-            "the year is March+April, not the undated: {lp_y:?}"
-        );
+        let lp_y = year.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        assert_eq!(lp_y.credit, "10000", "the year is March+April, not the undated: {lp_y:?}");
         let all = c.list_accounts(&view, "capital").unwrap().accounts;
-        let lp_all = all
-            .iter()
-            .find(|a| a.display_name == "Partner capital — LP")
-            .unwrap();
+        let lp_all = all.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
         assert_eq!(
             lp_all.credit, "19900",
             "inception includes the undated entry the period fold refused: {lp_all:?}"
@@ -9335,69 +8723,31 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             .iter()
             .find(|a| a.display_name == "Undrawn commitments — LP")
             .expect("CreateBook seeds undrawn on the chart");
-        assert_eq!(
-            undrawn.posting_count, "0",
-            "unset, not a callable zero: {undrawn:?}"
-        );
+        assert_eq!(undrawn.posting_count, "0", "unset, not a callable zero: {undrawn:?}");
         assert_eq!(undrawn.debit, "0");
         assert_eq!(undrawn.credit, "0");
 
-        c.apply_event(&capital_req(
-            "callbook",
-            "k-lp",
-            "commit_lp",
-            "100.00",
-            2026,
-            3,
-            1,
-        ))
-        .unwrap();
+        c.apply_event(&capital_req("callbook", "k-lp", "commit_lp", "100.00", 2026, 3, 1))
+            .unwrap();
         {
             let all = c.list_accounts(&view, "").unwrap().accounts;
-            let cash = all
-                .iter()
-                .find(|a| a.display_name == "Cash and equivalents")
-                .unwrap();
+            let cash = all.iter().find(|a| a.display_name == "Cash and equivalents").unwrap();
             assert_eq!(cash.debit, "0", "a commitment is not cash: {cash:?}");
             let capital = c.list_accounts(&view, "capital").unwrap().accounts;
-            let lp = capital
-                .iter()
-                .find(|a| a.display_name == "Partner capital — LP")
-                .unwrap();
+            let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
             assert_eq!(lp.credit, "0", "a commitment is not funded capital: {lp:?}");
-            let undrawn = capital
-                .iter()
-                .find(|a| a.display_name == "Undrawn commitments — LP")
-                .unwrap();
-            let commitments = capital
-                .iter()
-                .find(|a| a.display_name == "Commitments — LP")
-                .unwrap();
+            let undrawn = capital.iter().find(|a| a.display_name == "Undrawn commitments — LP").unwrap();
+            let commitments = capital.iter().find(|a| a.display_name == "Commitments — LP").unwrap();
             assert_eq!(undrawn.debit, "10000");
             assert_eq!(commitments.credit, "10000");
             assert_ne!(undrawn.posting_count, "0");
         }
-        c.apply_event(&capital_req(
-            "callbook", "call-1", "call_lp", "40.00", 2026, 3, 15,
-        ))
-        .unwrap();
-        c.apply_event(&capital_req(
-            "callbook",
-            "c-extra",
-            "contribute_lp",
-            "10.00",
-            2026,
-            3,
-            20,
-        ))
-        .unwrap();
+        c.apply_event(&capital_req("callbook", "call-1", "call_lp", "40.00", 2026, 3, 15))
+            .unwrap();
+        c.apply_event(&capital_req("callbook", "c-extra", "contribute_lp", "10.00", 2026, 3, 20))
+            .unwrap();
 
-        assert_eq!(
-            c.get_fund("funds/callbook")
-                .unwrap()
-                .trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/callbook").unwrap().trial_balance_difference, "0");
         let proj = c.projection("callbook").unwrap();
         assert_eq!(
             proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
@@ -9406,37 +8756,19 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         );
 
         let capital = c.list_accounts(&view, "capital").unwrap().accounts;
-        let lp = capital
-            .iter()
-            .find(|a| a.display_name == "Partner capital — LP")
-            .unwrap();
-        let commitments = capital
-            .iter()
-            .find(|a| a.display_name == "Commitments — LP")
-            .unwrap();
-        let undrawn = capital
-            .iter()
-            .find(|a| a.display_name == "Undrawn commitments — LP")
-            .unwrap();
+        let lp = capital.iter().find(|a| a.display_name == "Partner capital — LP").unwrap();
+        let commitments = capital.iter().find(|a| a.display_name == "Commitments — LP").unwrap();
+        let undrawn = capital.iter().find(|a| a.display_name == "Undrawn commitments — LP").unwrap();
         // Partner capital: 40.00 called + 10.00 contributed, not the commitment.
         assert_eq!(lp.credit, "5000", "call 40 + contribute 10: {lp:?}");
-        assert_eq!(
-            commitments.credit, "10000",
-            "committed 100.00: {commitments:?}"
-        );
-        assert_eq!(
-            commitments.debit, "4000",
-            "called 40.00 against the commitment: {commitments:?}"
-        );
-        assert_eq!(
-            undrawn.debit, "10000",
-            "commitment opened undrawn: {undrawn:?}"
-        );
+        assert_eq!(commitments.credit, "10000", "committed 100.00: {commitments:?}");
+        assert_eq!(commitments.debit, "4000", "called 40.00 against the commitment: {commitments:?}");
+        assert_eq!(undrawn.debit, "10000", "commitment opened undrawn: {undrawn:?}");
         assert_eq!(undrawn.credit, "4000", "the call drew 40.00: {undrawn:?}");
         assert_ne!(undrawn.posting_count, "0");
         // Remaining commitment (credit − debit) equals remaining undrawn (debit − credit).
-        let remaining_commitment: i64 =
-            commitments.credit.parse::<i64>().unwrap() - commitments.debit.parse::<i64>().unwrap();
+        let remaining_commitment: i64 = commitments.credit.parse::<i64>().unwrap()
+            - commitments.debit.parse::<i64>().unwrap();
         let remaining_undrawn: i64 =
             undrawn.debit.parse::<i64>().unwrap() - undrawn.credit.parse::<i64>().unwrap();
         assert_eq!(remaining_commitment, 6000);
@@ -9448,14 +8780,8 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         );
 
         let all = c.list_accounts(&view, "").unwrap().accounts;
-        let cash = all
-            .iter()
-            .find(|a| a.display_name == "Cash and equivalents")
-            .unwrap();
-        assert_eq!(
-            cash.debit, "5000",
-            "call + contribute hit cash; the commit did not: {cash:?}"
-        );
+        let cash = all.iter().find(|a| a.display_name == "Cash and equivalents").unwrap();
+        assert_eq!(cash.debit, "5000", "call + contribute hit cash; the commit did not: {cash:?}");
         assert!(
             capital.iter().all(|a| a.display_name != "Unrealized gain"),
             "valuation equity is not a commitment: {capital:?}"
@@ -9486,16 +8812,8 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             before.notices
         );
 
-        c.apply_event(&capital_req(
-            "noticebook",
-            "k-lp",
-            "commit_lp",
-            "100.00",
-            2026,
-            3,
-            1,
-        ))
-        .unwrap();
+        c.apply_event(&capital_req("noticebook", "k-lp", "commit_lp", "100.00", 2026, 3, 1))
+            .unwrap();
         let committed = c.get_book("books/noticebook").unwrap();
         assert!(
             committed.notices.is_empty(),
@@ -9503,34 +8821,13 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             committed.notices
         );
 
-        c.apply_event(&capital_req(
-            "noticebook",
-            "call-1",
-            "call_lp",
-            "40.00",
-            2026,
-            3,
-            15,
-        ))
-        .unwrap();
-        c.apply_event(&capital_req(
-            "noticebook",
-            "c-extra",
-            "contribute_lp",
-            "10.00",
-            2026,
-            3,
-            20,
-        ))
-        .unwrap();
+        c.apply_event(&capital_req("noticebook", "call-1", "call_lp", "40.00", 2026, 3, 15))
+            .unwrap();
+        c.apply_event(&capital_req("noticebook", "c-extra", "contribute_lp", "10.00", 2026, 3, 20))
+            .unwrap();
 
         let after = c.get_book("books/noticebook").unwrap();
-        assert_eq!(
-            after.notices.len(),
-            1,
-            "contribute is not a notice: {:?}",
-            after.notices
-        );
+        assert_eq!(after.notices.len(), 1, "contribute is not a notice: {:?}", after.notices);
         let n = &after.notices[0];
         assert_eq!(n.kind, "call", "{n:?}");
         assert_eq!(n.amount, 4000, "{n:?}");
@@ -9549,21 +8846,10 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             n.amounts.iter().all(|a| a.partner != "GP"),
             "issue of 40.00 under 80/20 invents GP: {n:?}"
         );
-        assert_ne!(
-            n.amounts[0].amount, 3200,
-            "80/20 of 40.00 is not the posted call"
-        );
+        assert_ne!(n.amounts[0].amount, 3200, "80/20 of 40.00 is not the posted call");
 
-        c.apply_event(&capital_req(
-            "noticebook",
-            "d-lp",
-            "distribute_lp",
-            "5.00",
-            2026,
-            3,
-            25,
-        ))
-        .unwrap();
+        c.apply_event(&capital_req("noticebook", "d-lp", "distribute_lp", "5.00", 2026, 3, 25))
+            .unwrap();
         let both = c.get_book("books/noticebook").unwrap();
         assert_eq!(both.notices.len(), 2, "{both:?}");
         let dist = both
@@ -9576,12 +8862,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(dist.amounts[0].partner, "LP");
         assert_eq!(dist.amounts[0].amount, 500);
         assert_ne!(dist.digest, after.notices[0].digest, "two documents");
-        assert_eq!(
-            c.get_fund("funds/noticebook")
-                .unwrap()
-                .trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/noticebook").unwrap().trial_balance_difference, "0");
     }
 
     #[test]
@@ -9620,93 +8901,47 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
 
         let empty = console.list_accounts(&view, "nav-2026-03").unwrap();
         assert!(
-            empty
-                .accounts
-                .iter()
-                .all(|a| a.balance == "0" && a.debit == "0" && a.credit == "0"),
+            empty.accounts.iter().all(|a| a.balance == "0" && a.debit == "0" && a.credit == "0"),
             "an empty journal is zeros on the chart, not a NAV figure: {:?}",
             empty.accounts
         );
         assert!(
-            empty
-                .accounts
-                .iter()
-                .any(|a| a.display_name == "Cash and equivalents"),
+            empty.accounts.iter().any(|a| a.display_name == "Cash and equivalents"),
             "the whole chart is the source of the rows: {:?}",
             empty.accounts
         );
         assert!(
-            empty
-                .accounts
-                .iter()
-                .any(|a| a.display_name == "Unrealized gain"),
+            empty.accounts.iter().any(|a| a.display_name == "Unrealized gain"),
             "unrealized stays on the roll-forward chart: {:?}",
             empty.accounts
         );
         assert!(
-            empty
-                .accounts
-                .iter()
-                .any(|a| a.display_name == "Partner capital — LP"),
+            empty.accounts.iter().any(|a| a.display_name == "Partner capital — LP"),
             "partner capital is the same account /capital cites: {:?}",
             empty.accounts
         );
 
-        let house = format!("funds/rollfwd-house/views/{}", ratio_rules::UNDECLARED_VIEW);
-        let personal = console
-            .list_accounts(&house, "nav-2026-03")
-            .unwrap_err()
-            .to_string();
+        let house = format!(
+            "funds/rollfwd-house/views/{}",
+            ratio_rules::UNDECLARED_VIEW
+        );
+        let personal = console.list_accounts(&house, "nav-2026-03").unwrap_err().to_string();
         assert!(personal.contains("Investment"), "{personal}");
 
         console
-            .apply_event(&capital_req(
-                "rollfwd",
-                "feb-c",
-                "contribute_lp",
-                "100.00",
-                2026,
-                2,
-                1,
-            ))
+            .apply_event(&capital_req("rollfwd", "feb-c", "contribute_lp", "100.00", 2026, 2, 1))
             .unwrap();
         console
-            .apply_event(&capital_req(
-                "rollfwd",
-                "feb-k",
-                "commit_lp",
-                "50.00",
-                2026,
-                2,
-                1,
-            ))
+            .apply_event(&capital_req("rollfwd", "feb-k", "commit_lp", "50.00", 2026, 2, 1))
             .unwrap();
         console
-            .apply_event(&capital_req(
-                "rollfwd",
-                "mar-c",
-                "contribute_lp",
-                "40.00",
-                2026,
-                3,
-                10,
-            ))
+            .apply_event(&capital_req("rollfwd", "mar-c", "contribute_lp", "40.00", 2026, 3, 10))
             .unwrap();
         console
-            .apply_event(&capital_req(
-                "rollfwd",
-                "mar-d",
-                "distribute_lp",
-                "10.00",
-                2026,
-                3,
-                15,
-            ))
+            .apply_event(&capital_req("rollfwd", "mar-d", "distribute_lp", "10.00", 2026, 3, 15))
             .unwrap();
         console
-            .apply_event(&capital_req(
-                "rollfwd", "mar-call", "call_lp", "20.00", 2026, 3, 20,
-            ))
+            .apply_event(&capital_req("rollfwd", "mar-call", "call_lp", "20.00", 2026, 3, 20))
             .unwrap();
         {
             let mut req = capital_req("rollfwd", "undated", "contribute_lp", "99.00", 2026, 3, 1);
@@ -9728,19 +8963,12 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
 
         // Ending cash = 100 + 40 − 10 + 20 = 150.00; undated 99 is dropped.
         assert_eq!(cash.balance, "15000", "{cash:?}");
-        assert_eq!(
-            cash.debit, "6000",
-            "March contribute 40 + call 20: {cash:?}"
-        );
+        assert_eq!(cash.debit, "6000", "March contribute 40 + call 20: {cash:?}");
         assert_eq!(cash.credit, "1000", "March distribute 10: {cash:?}");
         let cash_end: i64 = cash.balance.parse().unwrap();
         let cash_d: i64 = cash.debit.parse().unwrap();
         let cash_c: i64 = cash.credit.parse().unwrap();
-        assert_eq!(
-            cash_end - (cash_d - cash_c),
-            10_000,
-            "February contribution is the beginning cut"
-        );
+        assert_eq!(cash_end - (cash_d - cash_c), 10_000, "February contribution is the beginning cut");
 
         // Partner In this window is contribute 40 + call 20 — the same
         // credits `capital-2026-03` reports. The February 100 is beginning.
@@ -9756,10 +8984,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(cap_lp.debit, lp.debit, "roll-forward Out is /capital Out");
 
         // Commitment posted in February; March draws 20. Both sides equity.
-        assert_eq!(
-            commitments.debit, "2000",
-            "the call drew 20.00: {commitments:?}"
-        );
+        assert_eq!(commitments.debit, "2000", "the call drew 20.00: {commitments:?}");
         assert_eq!(undrawn.credit, "2000", "{undrawn:?}");
         assert_eq!(unreal.debit, "0");
         assert_eq!(unreal.credit, "0");
@@ -9782,10 +9007,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             "treating undrawn as an asset would inflate NAV by the unfunded line"
         );
         assert_eq!(
-            console
-                .get_fund("funds/rollfwd")
-                .unwrap()
-                .trial_balance_difference,
+            console.get_fund("funds/rollfwd").unwrap().trial_balance_difference,
             "0"
         );
     }
@@ -9846,7 +9068,10 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         // An investment book is refused, not given a household figure.
         book(&root.join("fundbook"));
         // `book()` writes a legacy sidecar-less fund named by its directory.
-        let fund_view = format!("funds/fundbook/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let fund_view = format!(
+            "funds/fundbook/views/{}",
+            ratio_rules::UNDECLARED_VIEW
+        );
         // The helper writes into root/fundbook; book_ids picks directories
         // with accounts.json. Kind is Investment (legacy).
         let inv = console
@@ -10028,24 +9253,21 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
 
         let empty = console.list_accounts(&view, "bridge-2026-03").unwrap();
         assert!(
-            empty
-                .accounts
-                .iter()
-                .all(|a| a.balance == "0" && a.debit == "0" && a.credit == "0"),
+            empty.accounts.iter().all(|a| a.balance == "0" && a.debit == "0" && a.credit == "0"),
             "an empty journal is zeros on the chart, not a NW figure: {:?}",
             empty.accounts
         );
         assert!(
-            empty
-                .accounts
-                .iter()
-                .any(|a| a.display_name == "Cash and bank"),
+            empty.accounts.iter().any(|a| a.display_name == "Cash and bank"),
             "the chart is the source of the rows: {:?}",
             empty.accounts
         );
 
         book(&root.join("fundbook"));
-        let fund_view = format!("funds/fundbook/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let fund_view = format!(
+            "funds/fundbook/views/{}",
+            ratio_rules::UNDECLARED_VIEW
+        );
         let inv = console
             .list_accounts(&fund_view, "bridge-2026-03")
             .unwrap_err()
@@ -10087,34 +9309,13 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             .apply_event(&household_req("spend", "spend_cash", "6.00", 2026, 3, 8))
             .unwrap();
         console
-            .apply_event(&household_req(
-                "prin",
-                "mortgage_principal",
-                "8.00",
-                2026,
-                3,
-                10,
-            ))
+            .apply_event(&household_req("prin", "mortgage_principal", "8.00", 2026, 3, 10))
             .unwrap();
         console
-            .apply_event(&household_req(
-                "int",
-                "mortgage_interest",
-                "2.00",
-                2026,
-                3,
-                10,
-            ))
+            .apply_event(&household_req("int", "mortgage_interest", "2.00", 2026, 3, 10))
             .unwrap();
         console
-            .apply_event(&household_req(
-                "xfer",
-                "xfer_cash_investments",
-                "5.00",
-                2026,
-                3,
-                15,
-            ))
+            .apply_event(&household_req("xfer", "xfer_cash_investments", "5.00", 2026, 3, 15))
             .unwrap();
         {
             let mut req = household_req("undated", "receive_income", "99.00", 2026, 3, 1);
@@ -10137,10 +9338,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
 
         // Ending cash = 100_000 + 30 − 6 − 8 − 2 − 5 = 100_009.00
         assert_eq!(cash.balance, "10000900", "{cash:?}");
-        assert_eq!(
-            inv_acct.debit, "500",
-            "the transfer is investments activity"
-        );
+        assert_eq!(inv_acct.debit, "500", "the transfer is investments activity");
         assert_eq!(inv_acct.balance, "500");
         assert_eq!(mortgage.debit, "800", "principal paid this window");
         assert_eq!(mortgage.balance, "-9999200");
@@ -10152,10 +9350,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         let cash_d: i64 = cash.debit.parse().unwrap();
         let cash_c: i64 = cash.credit.parse().unwrap();
         let cash_begin = cash_end - (cash_d - cash_c);
-        assert_eq!(
-            cash_begin, 10_000_000,
-            "February origination is the beginning cut"
-        );
+        assert_eq!(cash_begin, 10_000_000, "February origination is the beginning cut");
 
         let mort_end: i64 = mortgage.balance.parse().unwrap();
         let mort_d: i64 = mortgage.debit.parse().unwrap();
@@ -10163,14 +9358,12 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(mort_end - (mort_d - mort_c), -10_000_000);
 
         // ΔNW = ending A+L − beginning A+L = income − expenses, not principal.
-        let end_nw = cash_end + inv_acct.balance.parse::<i64>().unwrap() + mort_end;
+        let end_nw = cash_end
+            + inv_acct.balance.parse::<i64>().unwrap()
+            + mort_end;
         let begin_nw = cash_begin + -10_000_000;
         assert_eq!(begin_nw, 0, "origination nets to a real zero NW");
-        assert_eq!(
-            end_nw - begin_nw,
-            2_200,
-            "30.00 − 6.00 − 2.00, not ±principal ±xfer"
-        );
+        assert_eq!(end_nw - begin_nw, 2_200, "30.00 − 6.00 − 2.00, not ±principal ±xfer");
     }
 
     #[test]
@@ -10202,24 +9395,21 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
 
         let empty = console.list_accounts(&view, "cashflow-2026-03").unwrap();
         assert!(
-            empty
-                .accounts
-                .iter()
-                .all(|a| a.balance == "0" && a.debit == "0" && a.credit == "0"),
+            empty.accounts.iter().all(|a| a.balance == "0" && a.debit == "0" && a.credit == "0"),
             "an empty journal is zeros on the chart, not a cash figure: {:?}",
             empty.accounts
         );
         assert!(
-            empty
-                .accounts
-                .iter()
-                .any(|a| a.display_name == "Cash and bank"),
+            empty.accounts.iter().any(|a| a.display_name == "Cash and bank"),
             "the chart is the source of the rows: {:?}",
             empty.accounts
         );
 
         book(&root.join("fundbook"));
-        let fund_view = format!("funds/fundbook/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let fund_view = format!(
+            "funds/fundbook/views/{}",
+            ratio_rules::UNDECLARED_VIEW
+        );
         let inv = console
             .list_accounts(&fund_view, "cashflow-2026-03")
             .unwrap_err()
@@ -10260,34 +9450,13 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             .apply_event(&household_req("spend", "spend_cash", "6.00", 2026, 3, 8))
             .unwrap();
         console
-            .apply_event(&household_req(
-                "prin",
-                "mortgage_principal",
-                "8.00",
-                2026,
-                3,
-                10,
-            ))
+            .apply_event(&household_req("prin", "mortgage_principal", "8.00", 2026, 3, 10))
             .unwrap();
         console
-            .apply_event(&household_req(
-                "int",
-                "mortgage_interest",
-                "2.00",
-                2026,
-                3,
-                10,
-            ))
+            .apply_event(&household_req("int", "mortgage_interest", "2.00", 2026, 3, 10))
             .unwrap();
         console
-            .apply_event(&household_req(
-                "xfer",
-                "xfer_cash_investments",
-                "5.00",
-                2026,
-                3,
-                15,
-            ))
+            .apply_event(&household_req("xfer", "xfer_cash_investments", "5.00", 2026, 3, 15))
             .unwrap();
         {
             let mut req = household_req("undated", "receive_income", "99.00", 2026, 3, 1);
@@ -10313,25 +9482,16 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         let cash_d: i64 = cash.debit.parse().unwrap();
         let cash_c: i64 = cash.credit.parse().unwrap();
         let cash_begin = cash_end - (cash_d - cash_c);
-        assert_eq!(
-            cash_begin, 10_000_000,
-            "February origination is the beginning cash cut"
-        );
+        assert_eq!(cash_begin, 10_000_000, "February origination is the beginning cash cut");
         assert_eq!(cash_end, 10_000_900, "{cash:?}");
 
         // Cash from an account = −(debit − credit).
-        let income_cash =
-            -(income.debit.parse::<i64>().unwrap() - income.credit.parse::<i64>().unwrap());
-        let living_cash =
-            -(living.debit.parse::<i64>().unwrap() - living.credit.parse::<i64>().unwrap());
-        let interest_cash =
-            -(interest.debit.parse::<i64>().unwrap() - interest.credit.parse::<i64>().unwrap());
-        let cards_cash =
-            -(cards.debit.parse::<i64>().unwrap() - cards.credit.parse::<i64>().unwrap());
-        let inv_cash =
-            -(inv_acct.debit.parse::<i64>().unwrap() - inv_acct.credit.parse::<i64>().unwrap());
-        let mort_cash =
-            -(mortgage.debit.parse::<i64>().unwrap() - mortgage.credit.parse::<i64>().unwrap());
+        let income_cash = -(income.debit.parse::<i64>().unwrap() - income.credit.parse::<i64>().unwrap());
+        let living_cash = -(living.debit.parse::<i64>().unwrap() - living.credit.parse::<i64>().unwrap());
+        let interest_cash = -(interest.debit.parse::<i64>().unwrap() - interest.credit.parse::<i64>().unwrap());
+        let cards_cash = -(cards.debit.parse::<i64>().unwrap() - cards.credit.parse::<i64>().unwrap());
+        let inv_cash = -(inv_acct.debit.parse::<i64>().unwrap() - inv_acct.credit.parse::<i64>().unwrap());
+        let mort_cash = -(mortgage.debit.parse::<i64>().unwrap() - mortgage.credit.parse::<i64>().unwrap());
 
         let operating = income_cash + living_cash + interest_cash + cards_cash;
         let investing = inv_cash;
@@ -10391,7 +9551,10 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         );
 
         book(&root.join("fundbook"));
-        let fund_view = format!("funds/fundbook/views/{}", ratio_rules::UNDECLARED_VIEW);
+        let fund_view = format!(
+            "funds/fundbook/views/{}",
+            ratio_rules::UNDECLARED_VIEW
+        );
         let inv = console
             .list_accounts(&fund_view, "forecast-2026-03")
             .unwrap_err()
@@ -10463,14 +9626,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             ))
             .unwrap();
         console
-            .apply_event(&household_req(
-                "out",
-                "scheduled_income",
-                "5.00",
-                2026,
-                4,
-                1,
-            ))
+            .apply_event(&household_req("out", "scheduled_income", "5.00", 2026, 4, 1))
             .unwrap();
 
         let forecast = console.list_accounts(&view, "forecast-2026-03").unwrap();
@@ -10486,8 +9642,8 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(cash.credit, "1000", "forecast spend");
         assert_eq!(income.credit, "4000");
         assert_eq!(living.debit, "1000");
-        let cash_net: i64 =
-            cash.debit.parse::<i64>().unwrap() - cash.credit.parse::<i64>().unwrap();
+        let cash_net: i64 = cash.debit.parse::<i64>().unwrap()
+            - cash.credit.parse::<i64>().unwrap();
         assert_eq!(cash_net, 3000, "40.00 − 10.00, not the actual 30.00");
 
         let listed = console.list_accounts(&view, "cashflow-2026-03").unwrap();
@@ -10670,10 +9826,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         c.apply_event(&project_event("cost-site", "project_cost_site", "250.00"))
             .unwrap();
 
-        assert_eq!(
-            c.get_fund("funds/bridge").unwrap().trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
         let proj = c.projection("bridge").unwrap();
         assert_eq!(
             proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
@@ -10686,11 +9839,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         assert_eq!(fig.earned, "80000");
         assert_eq!(fig.billed_minus_earned, "20000");
         assert_eq!(fig.retainage_receivable, "10000");
-        assert!(
-            fig.retainage_payable.is_empty(),
-            "{:?}",
-            fig.retainage_payable
-        );
+        assert!(fig.retainage_payable.is_empty(), "{:?}", fig.retainage_payable);
 
         let site = fig
             .phases
@@ -10698,11 +9847,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             .find(|p| p.display_name == "Site and mobilization")
             .expect("site phase");
         assert_eq!(site.cost, "25000");
-        assert!(
-            site.budget.is_empty(),
-            "unset budget is empty, not zero: {:?}",
-            site.budget
-        );
+        assert!(site.budget.is_empty(), "unset budget is empty, not zero: {:?}", site.budget);
         let structure = fig
             .phases
             .iter()
@@ -10713,10 +9858,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
 
         c.apply_event(&project_event("vhold-1", "hold_vendor_retainage", "50.00"))
             .unwrap();
-        assert_eq!(
-            c.get_fund("funds/bridge").unwrap().trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
         let after_vendor = c.project_progress(&view).unwrap();
         assert_eq!(after_vendor.retainage_payable, "5000");
         assert_eq!(after_vendor.retainage_receivable, "10000");
@@ -10787,10 +9929,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             .unwrap();
         c.apply_event(&project_event("collect-1", "collect_receivable", "400.00"))
             .unwrap();
-        assert_eq!(
-            c.get_fund("funds/bridge").unwrap().trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
         let proj = c.projection("bridge").unwrap();
         assert_eq!(
             proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
@@ -10843,9 +9982,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         let mut b = FileBook::open(&path).unwrap();
         let digest = b.active().unwrap().unwrap();
         let mut text = String::from_utf8(b.get(&digest).unwrap()).unwrap();
-        text.push_str(
-            "\n[project]\nbudget = 1000000\n[[project.phase]]\naccount = 11\nbudget = 400000\n",
-        );
+        text.push_str("\n[project]\nbudget = 1000000\n[[project.phase]]\naccount = 11\nbudget = 400000\n");
         let next = b.put(text.as_bytes()).unwrap();
         b.set_active(&next).unwrap();
 
@@ -10880,10 +10017,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         ))
         .unwrap();
 
-        assert_eq!(
-            c.get_fund("funds/bridge").unwrap().trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
         let proj = c.projection("bridge").unwrap();
         assert_eq!(
             proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
@@ -10898,7 +10032,11 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             after.budget
         );
         let fig = c.project_progress(&view).unwrap();
-        let site = fig.phases.iter().find(|p| p.account == "11").expect("site");
+        let site = fig
+            .phases
+            .iter()
+            .find(|p| p.account == "11")
+            .expect("site");
         assert_eq!(
             site.budget, "400000",
             "an approved CO must not rewrite the phase baseline: {:?}",
@@ -10937,9 +10075,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             .iter()
             .find(|a| a.display_name == "Approved change orders — Site and mobilization");
         assert!(
-            feb_site
-                .map(|a| a.credit.as_str() == "0" && a.posting_count == "0")
-                .unwrap_or(true),
+            feb_site.map(|a| a.credit.as_str() == "0" && a.posting_count == "0").unwrap_or(true),
             "a February window must not cite a March approval as in-period: {feb_site:?}"
         );
 
@@ -10952,10 +10088,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             1,
         ))
         .unwrap();
-        assert_eq!(
-            c.get_fund("funds/bridge").unwrap().trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
         let after_deduct = c.list_accounts(&view, "").unwrap().accounts;
         let site_net = after_deduct
             .iter()
@@ -10995,10 +10128,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             .expect_err("personal books have no change orders")
             .to_string();
         assert!(err.contains("not a project"), "{err}");
-        assert!(
-            !err.contains("0"),
-            "a refusal must not look like a zero figure: {err}"
-        );
+        assert!(!err.contains("0"), "a refusal must not look like a zero figure: {err}");
     }
 
     #[test]
@@ -11058,21 +10188,14 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             "setting [project] budget must not invent an awarded commitment: {still_unawarded:?}"
         );
 
-        c.apply_event(&project_event(
-            "po-site-1",
-            "award_commitment_site",
-            "3000.00",
-        ))
-        .unwrap();
+        c.apply_event(&project_event("po-site-1", "award_commitment_site", "3000.00"))
+            .unwrap();
         c.apply_event(&project_event("po-all-1", "award_commitment", "500.00"))
             .unwrap();
         c.apply_event(&project_event("cost-site", "project_cost_site", "250.00"))
             .unwrap();
 
-        assert_eq!(
-            c.get_fund("funds/bridge").unwrap().trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
         let proj = c.projection("bridge").unwrap();
         assert_eq!(
             proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
@@ -11126,16 +10249,9 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
         let incurred: i64 = 25_000;
         assert_eq!(1_000_000 - incurred - awarded, 625_000);
 
-        c.apply_event(&project_event(
-            "po-site-r",
-            "release_commitment_site",
-            "800.00",
-        ))
-        .unwrap();
-        assert_eq!(
-            c.get_fund("funds/bridge").unwrap().trial_balance_difference,
-            "0"
-        );
+        c.apply_event(&project_event("po-site-r", "release_commitment_site", "800.00"))
+            .unwrap();
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
         let after_release = c.list_accounts(&view, "").unwrap().accounts;
         let site_net = after_release
             .iter()
@@ -11184,7 +10300,11 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
 
         let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
         let fig = c.project_progress(&view).unwrap();
-        let site = fig.phases.iter().find(|p| p.account == "11").expect("site");
+        let site = fig
+            .phases
+            .iter()
+            .find(|p| p.account == "11")
+            .expect("site");
         assert_eq!(site.budget, "400000");
         assert_eq!(site.cost, "0");
         let unpartitioned = fig
@@ -11220,10 +10340,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             .expect_err("personal books have no progress billing")
             .to_string();
         assert!(err.contains("not a project"), "{err}");
-        assert!(
-            !err.contains("0"),
-            "a refusal must not look like a zero figure: {err}"
-        );
+        assert!(!err.contains("0"), "a refusal must not look like a zero figure: {err}");
     }
 
     #[test]
@@ -11282,10 +10399,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
                 .unwrap()
                 .templates;
             assert_eq!(
-                listed
-                    .iter()
-                    .map(|t| t.template_id.as_str())
-                    .collect::<Vec<_>>(),
+                listed.iter().map(|t| t.template_id.as_str()).collect::<Vec<_>>(),
                 expected.iter().map(|(tid, _)| *tid).collect::<Vec<_>>(),
                 "{id}"
             );
@@ -11407,10 +10521,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             })
             .unwrap();
         assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
-        assert_eq!(
-            admitted.posted_count, "2",
-            "VTI and VOO post; VWRL does not"
-        );
+        assert_eq!(admitted.posted_count, "2", "VTI and VOO post; VWRL does not");
         assert_eq!(admitted.pending_count, "1");
 
         let pending = console
@@ -11440,8 +10551,7 @@ SUB-1,2026-03-02,100.00,USD,10,subscribe_lp
             .unwrap();
             assert_eq!(ids, vec!["PB-0041", "PB-0042"]);
             assert!(
-                !ids.iter()
-                    .any(|id| id.starts_with('t') || id.starts_with("sub-")),
+                !ids.iter().any(|id| id.starts_with('t') || id.starts_with("sub-")),
                 "recon-seeded history leaked onto a CreateBook book: {ids:?}"
             );
         }
@@ -11577,10 +10687,7 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
             .unwrap();
         assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
         assert_eq!(admitted.posted_count, "2");
-        assert_eq!(
-            admitted.recorded_count, "2",
-            "positions record, they do not post"
-        );
+        assert_eq!(admitted.recorded_count, "2", "positions record, they do not post");
 
         {
             use ratio_store::{FileBook, Journal};
@@ -11593,8 +10700,7 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
             .unwrap();
             assert_eq!(ids, vec!["PB-0041", "PB-0042"]);
             assert!(
-                !ids.iter()
-                    .any(|id| id.starts_with('t') || id.starts_with("sub-")),
+                !ids.iter().any(|id| id.starts_with('t') || id.starts_with("sub-")),
                 "recon-seeded history leaked onto a CreateBook book: {ids:?}"
             );
         }
@@ -11608,11 +10714,7 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
         assert_eq!(report.breaks[0].reported_amount, 43_920_000);
         assert_eq!(report.breaks[0].difference, -920_000);
         assert!(
-            root.join("feed/reports")
-                .read_dir()
-                .unwrap()
-                .next()
-                .is_some(),
+            root.join("feed/reports").read_dir().unwrap().next().is_some(),
             "the live run must store the report the NAV gate reads"
         );
 
@@ -11694,12 +10796,7 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
         );
         assert!(
             !root.join("gap/reports").is_dir()
-                || root
-                    .join("gap/reports")
-                    .read_dir()
-                    .unwrap()
-                    .next()
-                    .is_none(),
+                || root.join("gap/reports").read_dir().unwrap().next().is_none(),
             "a refused live run must not store a report the gate would read as clean"
         );
     }
@@ -11784,10 +10881,7 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
             })
             .unwrap();
         assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
-        assert_eq!(
-            admitted.posted_count, "2",
-            "VTI and VOO post; VWRL does not"
-        );
+        assert_eq!(admitted.posted_count, "2", "VTI and VOO post; VWRL does not");
         assert_eq!(admitted.pending_count, "1");
 
         let pending = console
@@ -11833,10 +10927,7 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
             inv.balance, "43000000",
             "two buys landed as transfers (430,000.00 minor units): {inv:?}"
         );
-        assert_eq!(
-            inv.posting_count, "2",
-            "each buy is a posting, not a lot: {inv:?}"
-        );
+        assert_eq!(inv.posting_count, "2", "each buy is a posting, not a lot: {inv:?}");
         let proj = console.projection("house").unwrap();
         assert_eq!(
             proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
@@ -12166,10 +11257,7 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
             .unwrap();
         assert!(admitted.refused.is_empty(), "{:?}", admitted.refused);
         assert_eq!(admitted.posted_count, "2");
-        assert_eq!(
-            admitted.recorded_count, "2",
-            "positions record, they do not post"
-        );
+        assert_eq!(admitted.recorded_count, "2", "positions record, they do not post");
 
         let report = console.recon_from_ingest("feed").unwrap();
         assert!(report.was_reconciled(), "{}", ratio_recon::render(&report));
@@ -12185,11 +11273,7 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
         assert!(text.contains("posts nothing"), "{text}");
         assert!(!text.contains("ratio strike"), "{text}");
         assert!(
-            root.join("feed/reports")
-                .read_dir()
-                .unwrap()
-                .next()
-                .is_some(),
+            root.join("feed/reports").read_dir().unwrap().next().is_some(),
             "the live run must store the report"
         );
 
@@ -12267,12 +11351,7 @@ P-9,2026-02-26,US0000000000,UNKN,XNAS,10,1000.00,USD
         assert!(text.contains("P-9"), "{text}");
         assert!(
             !root.join("gap/reports").is_dir()
-                || root
-                    .join("gap/reports")
-                    .read_dir()
-                    .unwrap()
-                    .next()
-                    .is_none(),
+                || root.join("gap/reports").read_dir().unwrap().next().is_none(),
             "a refused live run must not store a report"
         );
     }
@@ -12376,7 +11455,9 @@ P-1,2026-02-26,IE00B3RBWM25,VWRL,XAMS,250,28100.00,EUR
                         id: id.into(),
                         kind: ratio_ingest::EntityKind::Counterparty,
                         display_name: name.into(),
-                        attributes: [("name".into(), name.into())].into_iter().collect(),
+                        attributes: [("name".into(), name.into())]
+                            .into_iter()
+                            .collect(),
                     },
                 )
                 .unwrap();
@@ -12461,8 +11542,7 @@ P-1,2026-02-26,IE00B3RBWM25,VWRL,XAMS,250,28100.00,EUR
             .unwrap();
             assert_eq!(ids, vec!["INV-1", "BILL-1", "COST-1"]);
             assert!(
-                !ids.iter()
-                    .any(|id| id == "RET-1" || id == "WIP-1" || id == "INV-2"),
+                !ids.iter().any(|id| id == "RET-1" || id == "WIP-1" || id == "INV-2"),
                 "refused retainage/WIP or a pending vendor leaked onto the journal: {ids:?}"
             );
         }
@@ -12475,10 +11555,7 @@ P-1,2026-02-26,IE00B3RBWM25,VWRL,XAMS,250,28100.00,EUR
 
         let view = format!("funds/bridge/views/{}", ratio_rules::UNDECLARED_VIEW);
         let fig = console.project_progress(&view).unwrap();
-        assert_eq!(
-            fig.billed, "500000",
-            "progress_bill is the billed cite: {fig:?}"
-        );
+        assert_eq!(fig.billed, "500000", "progress_bill is the billed cite: {fig:?}");
         assert!(
             fig.earned.is_empty(),
             "an AP / progress-bill file must not invent earned: {:?}",
@@ -12495,10 +11572,7 @@ P-1,2026-02-26,IE00B3RBWM25,VWRL,XAMS,250,28100.00,EUR
             .iter()
             .find(|p| p.display_name == "Site and mobilization")
             .expect("site phase");
-        assert_eq!(
-            site.cost, "120000",
-            "invoice_site landed on the site package: {site:?}"
-        );
+        assert_eq!(site.cost, "120000", "invoice_site landed on the site package: {site:?}");
         let accounts = console.list_accounts(&view, "").unwrap().accounts;
         let wip = accounts
             .iter()
@@ -12575,21 +11649,10 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let stranger = Console::scoped(&root, member("stranger", "s@x.test", ""));
         let books = stranger.list_books().unwrap();
         let funds = stranger.list_funds().unwrap();
-        assert!(
-            books.books.is_empty(),
-            "authorized empty must be []: {:?}",
-            books.books
-        );
-        assert!(
-            funds.funds.is_empty(),
-            "authorized empty must be []: {:?}",
-            funds.funds
-        );
+        assert!(books.books.is_empty(), "authorized empty must be []: {:?}", books.books);
+        assert!(funds.funds.is_empty(), "authorized empty must be []: {:?}", funds.funds);
         let listed = transcode::serve(&stranger, "GET", "/v1/books", "", "").unwrap();
-        assert!(
-            listed.contains("\"books\":[]"),
-            "authorized empty on the wire: {listed}"
-        );
+        assert!(listed.contains("\"books\":[]"), "authorized empty on the wire: {listed}");
 
         std::fs::create_dir_all(root.join("MEMBERSHIP.tsv")).unwrap();
         let broken = Console::scoped(&root, member("stranger", "s@x.test", ""));
@@ -12606,17 +11669,11 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let via_route = transcode::serve(&broken, "GET", "/v1/books", "", "")
             .unwrap_err()
             .to_string();
-        assert!(
-            via_route.contains("membership could not be read"),
-            "{via_route}"
-        );
+        assert!(via_route.contains("membership could not be read"), "{via_route}");
         let via_funds = transcode::serve(&broken, "GET", "/v1/funds", "", "")
             .unwrap_err()
             .to_string();
-        assert!(
-            via_funds.contains("membership could not be read"),
-            "{via_funds}"
-        );
+        assert!(via_funds.contains("membership could not be read"), "{via_funds}");
     }
 
     #[test]
@@ -12652,18 +11709,10 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         .unwrap();
         assert!(posted.contains("inc-1"), "A's write must land: {posted}");
 
-        let log = alice
-            .change_log_for(&root.join("household"), "household")
-            .unwrap();
-        let created_line = log
-            .iter()
-            .find(|e| e.action == "created")
-            .expect("create is in the log");
+        let log = alice.change_log_for(&root.join("household"), "household").unwrap();
+        let created_line = log.iter().find(|e| e.action == "created").expect("create is in the log");
         assert_eq!(created_line.actor.as_str(), "user_a");
-        let posted_line = log
-            .iter()
-            .find(|e| e.action == "posted")
-            .expect("the write is in the log");
+        let posted_line = log.iter().find(|e| e.action == "posted").expect("the write is in the log");
         assert_eq!(
             posted_line.actor.as_str(),
             "user_a",
@@ -12675,34 +11724,17 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
 
         let bob = Console::for_request(&root, b, false);
         let books = bob.list_books().unwrap();
-        assert!(
-            books.books.is_empty(),
-            "B is a member of nothing: {:?}",
-            books.books
-        );
+        assert!(books.books.is_empty(), "B is a member of nothing: {:?}", books.books);
         let funds = bob.list_funds().unwrap();
-        assert!(
-            funds.funds.is_empty(),
-            "B is a member of nothing: {:?}",
-            funds.funds
-        );
+        assert!(funds.funds.is_empty(), "B is a member of nothing: {:?}", funds.funds);
         let listed = transcode::serve(&bob, "GET", "/v1/books", "", "").unwrap();
-        assert!(
-            listed.contains("\"books\":[]"),
-            "authorized empty on the wire: {listed}"
-        );
-        assert!(
-            !listed.contains("household"),
-            "A's book leaked into B's list: {listed}"
-        );
+        assert!(listed.contains("\"books\":[]"), "authorized empty on the wire: {listed}");
+        assert!(!listed.contains("household"), "A's book leaked into B's list: {listed}");
 
         let get = transcode::serve(&bob, "GET", "/v1/books/household", "", "")
             .unwrap_err()
             .to_string();
-        assert!(
-            get.contains("no fund"),
-            "GetBook must refuse as no fund: {get}"
-        );
+        assert!(get.contains("no fund"), "GetBook must refuse as no fund: {get}");
         let write = transcode::serve(
             &bob,
             "POST",
@@ -12712,17 +11744,11 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         )
         .unwrap_err()
         .to_string();
-        assert!(
-            write.contains("no fund"),
-            "B must not post on A's book: {write}"
-        );
+        assert!(write.contains("no fund"), "B must not post on A's book: {write}");
         let journal = transcode::serve(&bob, "GET", "/v1/funds/household/entries", "", "")
             .unwrap_err()
             .to_string();
-        assert!(
-            journal.contains("no fund"),
-            "B must not read A's journal: {journal}"
-        );
+        assert!(journal.contains("no fund"), "B must not read A's journal: {journal}");
     }
 
     #[test]
@@ -12774,22 +11800,14 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
                 "inst-vti",
                 ratio_ingest::EntityKind::Instrument,
                 "Vanguard Total Stock Market ETF",
-                &[
-                    ("isin", "US9229087690"),
-                    ("ticker", "VTI"),
-                    ("exchange", "ARCX"),
-                ],
+                &[("isin", "US9229087690"), ("ticker", "VTI"), ("exchange", "ARCX")],
             );
             add(
                 &mut book,
                 "inst-voo",
                 ratio_ingest::EntityKind::Instrument,
                 "Vanguard S&P 500 ETF",
-                &[
-                    ("isin", "US9229083632"),
-                    ("ticker", "VOO"),
-                    ("exchange", "ARCX"),
-                ],
+                &[("isin", "US9229083632"), ("ticker", "VOO"), ("exchange", "ARCX")],
             );
         }
 
@@ -12810,17 +11828,13 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
                 validate_only: false,
             })
             .unwrap();
-        assert_eq!(
-            admitted.posted_count, "2",
-            "VTI and VOO post; VWRL does not"
-        );
+        assert_eq!(admitted.posted_count, "2", "VTI and VOO post; VWRL does not");
 
         let log = alice.change_log_for(&root.join("alpha"), "alpha").unwrap();
         for action in ["created", "ingested", "admitted"] {
-            let line = log
-                .iter()
-                .find(|e| e.action == action)
-                .unwrap_or_else(|| panic!("{action} missing from CHANGELOG: {log:?}"));
+            let line = log.iter().find(|e| e.action == action).unwrap_or_else(|| {
+                panic!("{action} missing from CHANGELOG: {log:?}")
+            });
             assert_eq!(line.actor.as_str(), "user_a", "{action} actor");
         }
 
@@ -12849,10 +11863,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let close_log = closer
             .change_log_for(&root.join("household"), "household")
             .unwrap();
-        let closed = close_log
-            .iter()
-            .find(|e| e.action == "closed")
-            .expect("closed");
+        let closed = close_log.iter().find(|e| e.action == "closed").expect("closed");
         assert_eq!(closed.actor.as_str(), "user_a");
 
         // ⛔ CONNECT + DEMO_OPEN IS THE BYPASS. The shared demo grants any
@@ -12876,10 +11887,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let sneak = transcode::serve(&via_open, "GET", "/v1/books/alpha", "", "")
             .unwrap_err()
             .to_string();
-        assert!(
-            sneak.contains("no fund"),
-            "Connect must not open A's book: {sneak}"
-        );
+        assert!(sneak.contains("no fund"), "Connect must not open A's book: {sneak}");
 
         // An AuthKit session under DEMO_OPEN still sees the demo — that
         // path is the local/CI dial, not the deployed default.
@@ -13149,11 +12157,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         Console::new(&root)
             .close_period("household", ratio_rules::UNDECLARED_VIEW, "2026-03-31")
             .unwrap();
-        let after_close = Console::new(&root)
-            .list_entries("funds/household")
-            .unwrap()
-            .entries
-            .len();
+        let after_close = Console::new(&root).list_entries("funds/household").unwrap().entries.len();
         let e = caller
             .apply_event(&household_req("closed", "spend_cash", "1.00", 2026, 3, 8))
             .unwrap_err()
@@ -13235,18 +12239,12 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let root = fresh("connect-authorizer");
         book(&root.join("alpha"));
         book(&root.join("beta"));
-        std::fs::write(
-            root.join("MEMBERSHIP.tsv"),
-            "user_c\talpha\norg:org_01a\tbeta\n",
-        )
-        .unwrap();
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "user_c\talpha\norg:org_01a\tbeta\n")
+            .unwrap();
 
         let reader = Console::for_request(&root, connect_subject("user_c", "books:read"), true);
         let listed = transcode::serve(&reader, "GET", "/v1/books", "", "").unwrap();
-        assert!(
-            listed.contains("books/alpha"),
-            "books:read lists the member book: {listed}"
-        );
+        assert!(listed.contains("books/alpha"), "books:read lists the member book: {listed}");
         assert!(
             !listed.contains("books/beta"),
             "org:{{id}} is not membership on a Connect token: {listed}"
@@ -13261,7 +12259,11 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             "a non-member book stays no-fund, not an org inherit: {stranger_book}"
         );
 
-        let breaks = Console::for_request(&root, connect_subject("user_c", "breaks:read"), true);
+        let breaks = Console::for_request(
+            &root,
+            connect_subject("user_c", "breaks:read"),
+            true,
+        );
         transcode::serve(&breaks, "GET", "/v1/funds/alpha/views/book/breaks", "", "")
             .expect("breaks:read opens the exception queue on a member book");
         let no_books = transcode::serve(&breaks, "GET", "/v1/books", "", "")
@@ -13272,7 +12274,11 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             "breaks:read does not list books: {no_books}"
         );
 
-        let audit = Console::for_request(&root, connect_subject("user_c", "audit:export"), true);
+        let audit = Console::for_request(
+            &root,
+            connect_subject("user_c", "audit:export"),
+            true,
+        );
         transcode::serve(&audit, "GET", "/v1/funds/alpha/changeLogEntries", "", "")
             .expect("audit:export opens the change log on a member book");
 
@@ -13311,19 +12317,32 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             "a hard non-scope is not a grant: {hard}"
         );
 
-        let writer = Console::for_request(&root, connect_subject("user_c", "journals:post"), false);
+        let writer = Console::for_request(
+            &root,
+            connect_subject("user_c", "journals:post"),
+            false,
+        );
         // A scope passes route authorization, but never supplies a template grant.
-        let msg = transcode::serve(&writer, "POST", "/v1/funds/alpha:applyEvent", "", "{}")
-            .unwrap_err()
-            .to_string();
+        let msg = transcode::serve(
+            &writer,
+            "POST",
+            "/v1/funds/alpha:applyEvent",
+            "",
+            "{}",
+        ).unwrap_err().to_string();
         assert!(
             msg.contains("Connect post refused:"),
             "journals:post alone must not post without an exact grant: {msg}"
         );
-        let read_cannot_post =
-            transcode::serve(&reader, "POST", "/v1/funds/alpha:applyEvent", "", "{}")
-                .unwrap_err()
-                .to_string();
+        let read_cannot_post = transcode::serve(
+            &reader,
+            "POST",
+            "/v1/funds/alpha:applyEvent",
+            "",
+            "{}",
+        )
+        .unwrap_err()
+        .to_string();
         assert!(
             read_cannot_post.contains("scope `journals:post` is required"),
             "books:read does not post: {read_cannot_post}"
@@ -13373,16 +12392,12 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
 
         let get_fund = console.get_fund("funds/demo").unwrap_err().to_string();
         assert!(
-            get_fund.contains("journal")
-                || get_fund.contains("entry")
-                || get_fund.contains("expected"),
+            get_fund.contains("journal") || get_fund.contains("entry") || get_fund.contains("expected"),
             "GetFund must still fold, and this journal must refuse: {get_fund}"
         );
         let get_book = console.get_book("books/demo").unwrap_err().to_string();
         assert!(
-            get_book.contains("journal")
-                || get_book.contains("entry")
-                || get_book.contains("expected"),
+            get_book.contains("journal") || get_book.contains("entry") || get_book.contains("expected"),
             "GetBook must still fold: {get_book}"
         );
     }
@@ -13443,9 +12458,10 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             }
         }
         assert!(
-            opens.iter().all(|(_, l)| l
-                .contains("FileBook::open_with(path, self.objects.clone())")
-                || l.contains("FileBook::open_attached_with(path, self.objects.clone())")),
+            opens.iter().all(|(_, l)|
+                l.contains("FileBook::open_with(path, self.objects.clone())")
+                    || l.contains("FileBook::open_attached_with(path, self.objects.clone())")
+            ),
             "production FileBook::open must take an authorized Path, not a joined id: {opens:?}"
         );
         assert_eq!(
@@ -13490,10 +12506,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
 
         let creator_again = Console::scoped(&root, creator);
         let books = creator_again.list_books().unwrap().books;
-        assert!(
-            books.iter().any(|b| b.name == "books/household"),
-            "{books:?}"
-        );
+        assert!(books.iter().any(|b| b.name == "books/household"), "{books:?}");
         let funds = creator_again.list_funds().unwrap().funds;
         assert!(
             funds.iter().all(|f| f.name != "funds/household"),
@@ -13507,20 +12520,11 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             "a fellow org member must not inherit a personal book: {:?}",
             theirs.books
         );
-        let err = colleague
-            .get_book("books/household")
+        let err = colleague.get_book("books/household").unwrap_err().to_string();
+        assert!(err.contains("no fund"), "{err}");
+        let err = transcode::serve(&colleague, "GET", "/v1/funds/household/views/book/accounts", "", "")
             .unwrap_err()
             .to_string();
-        assert!(err.contains("no fund"), "{err}");
-        let err = transcode::serve(
-            &colleague,
-            "GET",
-            "/v1/funds/household/views/book/accounts",
-            "",
-            "",
-        )
-        .unwrap_err()
-        .to_string();
         assert!(err.contains("no fund"), "{err}");
     }
 
@@ -13567,19 +12571,12 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         })
         .unwrap();
 
-        c.apply_event(&project_event("fund-1", "receive_funding", "200.00"))
-            .unwrap();
-        c.apply_event(&project_event("cost-1", "project_cost", "100.00"))
-            .unwrap();
-        c.apply_event(&project_event("cap-1", "capitalize_wip", "60.00"))
-            .unwrap();
-        c.apply_event(&project_event("rec-1", "recognize_wip", "20.00"))
-            .unwrap();
+        c.apply_event(&project_event("fund-1", "receive_funding", "200.00")).unwrap();
+        c.apply_event(&project_event("cost-1", "project_cost", "100.00")).unwrap();
+        c.apply_event(&project_event("cap-1", "capitalize_wip", "60.00")).unwrap();
+        c.apply_event(&project_event("rec-1", "recognize_wip", "20.00")).unwrap();
 
-        assert_eq!(
-            c.get_fund("funds/bridge").unwrap().trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
         let proj = c.projection("bridge").unwrap();
         assert_eq!(
             proj.open_lots(ratio_rules::UNDECLARED_VIEW).unwrap(),
@@ -13637,24 +12634,13 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         b.set_active(&next).unwrap();
 
         assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
-        c.apply_event(&project_event("cost-1", "project_cost", "250.00"))
-            .unwrap();
-        assert_eq!(
-            c.get_fund("funds/bridge").unwrap().trial_balance_difference,
-            "0"
-        );
+        c.apply_event(&project_event("cost-1", "project_cost", "250.00")).unwrap();
+        assert_eq!(c.get_fund("funds/bridge").unwrap().trial_balance_difference, "0");
         // The baseline is still the configuration total; actuals are the journal.
         assert_eq!(c.get_book("books/bridge").unwrap().budget, "1000000");
     }
 
-    fn operating_req(
-        id: &str,
-        rule: &str,
-        amount: &str,
-        y: i32,
-        m: i32,
-        d: i32,
-    ) -> pb::ApplyEventRequest {
+    fn operating_req(id: &str, rule: &str, amount: &str, y: i32, m: i32, d: i32) -> pb::ApplyEventRequest {
         pb::ApplyEventRequest {
             parent: "funds/studio".into(),
             rule_id: rule.into(),
@@ -13684,13 +12670,11 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         application: &str,
     ) -> pb::ApplyEventRequest {
         let mut req = operating_req(id, rule, amount, y, m, d);
-        req.due_date = due.map(
-            |(yy, mm, dd)| ratio_proto::date_proto::google::r#type::Date {
-                year: yy,
-                month: mm,
-                day: dd,
-            },
-        );
+        req.due_date = due.map(|(yy, mm, dd)| ratio_proto::date_proto::google::r#type::Date {
+            year: yy,
+            month: mm,
+            day: dd,
+        });
         req.application = application.into();
         req
     }
@@ -13714,11 +12698,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         assert_eq!(created.name, "books/studio");
         assert_eq!(created.display_name, "Studio");
         assert_eq!(created.kind, book::BookKind::Operating.proto());
-        assert!(
-            created.fund.is_empty(),
-            "CreateBook must not file a fund: {:?}",
-            created.fund
-        );
+        assert!(created.fund.is_empty(), "CreateBook must not file a fund: {:?}", created.fund);
         assert!(
             created.organization.is_empty(),
             "CreateBook must not file an org: {:?}",
@@ -13776,33 +12756,12 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             book_id: "studio".into(),
         })
         .unwrap();
-        c.apply_event(&operating_req(
-            "eq",
-            "contribute_equity",
-            "1000.00",
-            2026,
-            3,
-            1,
-        ))
-        .unwrap();
-        c.apply_event(&operating_req(
-            "inv",
-            "invoice_customer",
-            "400.00",
-            2026,
-            3,
-            5,
-        ))
-        .unwrap();
-        c.apply_event(&operating_req(
-            "cash",
-            "receive_revenue",
-            "100.00",
-            2026,
-            3,
-            10,
-        ))
-        .unwrap();
+        c.apply_event(&operating_req("eq", "contribute_equity", "1000.00", 2026, 3, 1))
+            .unwrap();
+        c.apply_event(&operating_req("inv", "invoice_customer", "400.00", 2026, 3, 5))
+            .unwrap();
+        c.apply_event(&operating_req("cash", "receive_revenue", "100.00", 2026, 3, 10))
+            .unwrap();
         c.apply_event(&operating_req("bill", "vendor_bill", "80.00", 2026, 3, 12))
             .unwrap();
         c.apply_event(&operating_req("exp", "pay_expense", "20.00", 2026, 3, 15))
@@ -13816,18 +12775,12 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         }
 
         let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
-        assert_eq!(
-            c.get_fund("funds/studio").unwrap().trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/studio").unwrap().trial_balance_difference, "0");
 
         let sheet = c.list_accounts(&view, "sheet").unwrap().accounts;
         let by: std::collections::BTreeMap<_, _> =
             sheet.iter().map(|a| (a.display_name.as_str(), a)).collect();
-        assert!(
-            by.contains_key("Cash"),
-            "the sheet names chart_for(Operating): {sheet:?}"
-        );
+        assert!(by.contains_key("Cash"), "the sheet names chart_for(Operating): {sheet:?}");
         assert!(by.contains_key("Accounts receivable"));
         assert!(by.contains_key("Accounts payable"));
         assert!(by.contains_key("Owner equity"));
@@ -13843,10 +12796,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         );
 
         // Raw debit-minus-credit: A + L + E + I + X = 0 when the books tie.
-        let raw: i64 = sheet
-            .iter()
-            .map(|a| a.balance.parse::<i64>().unwrap())
-            .sum();
+        let raw: i64 = sheet.iter().map(|a| a.balance.parse::<i64>().unwrap()).sum();
         assert_eq!(raw, 0, "sheet accounts must conserve: {sheet:?}");
 
         // Cash: +1000 contrib +100 sale −20 March expense −50 April −99 undated.
@@ -13862,39 +12812,19 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
 
         let march = c.list_accounts(&view, "pnl-2026-03").unwrap().accounts;
         assert!(
-            march
-                .iter()
-                .all(|a| a.r#type == pb::account::Type::Revenue as i32
-                    || a.r#type == pb::account::Type::Expense as i32),
+            march.iter().all(|a| a.r#type == pb::account::Type::Revenue as i32
+                || a.r#type == pb::account::Type::Expense as i32),
             "a period income statement is not a balance sheet: {march:?}"
         );
-        let rev = march
-            .iter()
-            .find(|a| a.display_name == "Operating revenue")
-            .unwrap();
-        assert_eq!(
-            rev.credit, "50000",
-            "March revenue is invoice+cash, not April: {rev:?}"
-        );
-        let exp = march
-            .iter()
-            .find(|a| a.display_name == "Operating expenses")
-            .unwrap();
-        assert_eq!(
-            exp.debit, "10000",
-            "March is 80+20, not 80+20+50+99: {exp:?}"
-        );
+        let rev = march.iter().find(|a| a.display_name == "Operating revenue").unwrap();
+        assert_eq!(rev.credit, "50000", "March revenue is invoice+cash, not April: {rev:?}");
+        let exp = march.iter().find(|a| a.display_name == "Operating expenses").unwrap();
+        assert_eq!(exp.debit, "10000", "March is 80+20, not 80+20+50+99: {exp:?}");
         assert_eq!(exp.posting_count, "2");
 
         let year = c.list_accounts(&view, "pnl-2026").unwrap().accounts;
-        let exp_y = year
-            .iter()
-            .find(|a| a.display_name == "Operating expenses")
-            .unwrap();
-        assert_eq!(
-            exp_y.debit, "15000",
-            "the year is March+April, still not the undated 99"
-        );
+        let exp_y = year.iter().find(|a| a.display_name == "Operating expenses").unwrap();
+        assert_eq!(exp_y.debit, "15000", "the year is March+April, still not the undated 99");
 
         let refused = c.list_accounts(&view, "pnl");
         assert!(
@@ -13924,44 +12854,27 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         })
         .unwrap();
         let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
-        let budget = c
-            .list_accounts(&view, "budget-2026-03")
-            .expect_err("not household");
+        let budget = c.list_accounts(&view, "budget-2026-03").expect_err("not household");
         assert!(budget.to_string().contains("household"), "{budget}");
-        let bridge = c
-            .list_accounts(&view, "bridge-2026-03")
-            .expect_err("not household");
+        let bridge = c.list_accounts(&view, "bridge-2026-03").expect_err("not household");
         assert!(bridge.to_string().contains("household"), "{bridge}");
-        let change = c
-            .list_accounts(&view, "change-2026-03")
-            .expect_err("not a project");
+        let change = c.list_accounts(&view, "change-2026-03").expect_err("not a project");
         assert!(change.to_string().contains("project"), "{change}");
-        let nav = c
-            .list_accounts(&view, "nav-2026-03")
-            .expect_err("not investment");
+        let nav = c.list_accounts(&view, "nav-2026-03").expect_err("not investment");
         assert!(nav.to_string().contains("Investment"), "{nav}");
         let progress = c
             .project_progress(&view)
             .expect_err("operating books have no progress billing");
         assert!(progress.to_string().contains("not a project"), "{progress}");
-        assert!(
-            !progress.to_string().contains("0"),
-            "a refusal must not look like a zero figure: {progress}"
-        );
+        assert!(!progress.to_string().contains("0"), "a refusal must not look like a zero figure: {progress}");
 
         // Empty AR/AP: aging is unset, not a book of current-bucket zeros.
         let empty = c.operating_aging(&view, "2026-04-15").unwrap();
         let ar = empty.receivable.as_ref().expect("a schedule object");
         let ap = empty.payable.as_ref().expect("a schedule object");
-        assert!(
-            ar.current.is_empty(),
-            "empty AR must not look current: {ar:?}"
-        );
+        assert!(ar.current.is_empty(), "empty AR must not look current: {ar:?}");
         assert!(ar.control.is_empty(), "unposted AR has no control: {ar:?}");
-        assert!(
-            ap.current.is_empty(),
-            "empty AP must not look current: {ap:?}"
-        );
+        assert!(ap.current.is_empty(), "empty AP must not look current: {ap:?}");
         assert!(ap.control.is_empty(), "unposted AP has no control: {ap:?}");
     }
 
@@ -14035,10 +12948,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         .unwrap();
 
         let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
-        assert_eq!(
-            c.get_fund("funds/studio").unwrap().trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/studio").unwrap().trial_balance_difference, "0");
 
         let aged = c.operating_aging(&view, "2026-04-15").unwrap();
         let ar = aging_of(&aged, true);
@@ -14049,21 +12959,12 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         assert_eq!(ar.days_sixty, "0", "{ar:?}");
         assert_eq!(ar.days_ninety, "0", "{ar:?}");
         assert_eq!(ar.days_older, "0", "{ar:?}");
-        assert!(
-            ar.undated.is_empty(),
-            "every remaining invoice has a due date: {ar:?}"
-        );
+        assert!(ar.undated.is_empty(), "every remaining invoice has a due date: {ar:?}");
         assert_eq!(ar.control, "50000", "400 + 200 − 100: {ar:?}");
-        let ar_sum: i64 = [
-            &ar.current,
-            &ar.days_thirty,
-            &ar.days_sixty,
-            &ar.days_ninety,
-            &ar.days_older,
-        ]
-        .iter()
-        .map(|s| s.parse::<i64>().unwrap())
-        .sum();
+        let ar_sum: i64 = [&ar.current, &ar.days_thirty, &ar.days_sixty, &ar.days_ninety, &ar.days_older]
+            .iter()
+            .map(|s| s.parse::<i64>().unwrap())
+            .sum();
         assert_eq!(ar_sum, ar.control.parse::<i64>().unwrap());
 
         let ap = aging_of(&aged, false);
@@ -14092,15 +12993,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             book_id: "studio".into(),
         })
         .unwrap();
-        c.apply_event(&operating_req(
-            "inv-bare",
-            "invoice_customer",
-            "400.00",
-            2026,
-            3,
-            5,
-        ))
-        .unwrap();
+        c.apply_event(&operating_req("inv-bare", "invoice_customer", "400.00", 2026, 3, 5))
+            .unwrap();
         c.apply_event(&operating_req_aged(
             "bill-bare",
             "vendor_bill",
@@ -14116,20 +13010,11 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
         let aged = c.operating_aging(&view, "2026-04-15").unwrap();
         let ar = aging_of(&aged, true);
-        assert!(
-            ar.current.is_empty(),
-            "undated AR must not look current: {ar:?}"
-        );
+        assert!(ar.current.is_empty(), "undated AR must not look current: {ar:?}");
         assert!(ar.days_thirty.is_empty(), "{ar:?}");
-        assert_eq!(
-            ar.control, "40000",
-            "the control is still the sheet figure: {ar:?}"
-        );
+        assert_eq!(ar.control, "40000", "the control is still the sheet figure: {ar:?}");
         let ap = aging_of(&aged, false);
-        assert!(
-            ap.current.is_empty(),
-            "undated AP must not look current: {ap:?}"
-        );
+        assert!(ap.current.is_empty(), "undated AP must not look current: {ap:?}");
         assert_eq!(ap.control, "-8000", "{ap:?}");
     }
 
@@ -14158,23 +13043,13 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             "",
         ))
         .unwrap();
-        c.apply_event(&operating_req(
-            "col-orphan",
-            "collect_receivable",
-            "100.00",
-            2026,
-            4,
-            1,
-        ))
-        .unwrap();
+        c.apply_event(&operating_req("col-orphan", "collect_receivable", "100.00", 2026, 4, 1))
+            .unwrap();
 
         let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
         let aged = c.operating_aging(&view, "2026-04-15").unwrap();
         let ar = aging_of(&aged, true);
-        assert!(
-            ar.current.is_empty(),
-            "unapplied collection must unset AR: {ar:?}"
-        );
+        assert!(ar.current.is_empty(), "unapplied collection must unset AR: {ar:?}");
         assert_eq!(ar.control, "30000", "the control still ties: {ar:?}");
     }
 
@@ -14202,15 +13077,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             "",
         ))
         .unwrap();
-        c.apply_event(&operating_req(
-            "inv-undated",
-            "invoice_customer",
-            "200.00",
-            2026,
-            3,
-            6,
-        ))
-        .unwrap();
+        c.apply_event(&operating_req("inv-undated", "invoice_customer", "200.00", 2026, 3, 6))
+            .unwrap();
 
         let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
         let aged = c.operating_aging(&view, "2026-04-15").unwrap();
@@ -14263,10 +13131,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
         let aged = c.operating_aging(&view, "2026-04-15").unwrap();
         let ar = aging_of(&aged, true);
-        assert_eq!(
-            ar.current, "0",
-            "fully collected is a real zero, not unset: {ar:?}"
-        );
+        assert_eq!(ar.current, "0", "fully collected is a real zero, not unset: {ar:?}");
         assert_eq!(ar.days_thirty, "0", "{ar:?}");
         assert!(ar.undated.is_empty(), "{ar:?}");
         assert_eq!(ar.control, "0", "{ar:?}");
@@ -14314,14 +13179,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
         let aged = c.operating_aging(&view, "2026-04-15").unwrap();
         let ar = aging_of(&aged, true);
-        assert!(
-            ar.current.is_empty(),
-            "over-applied remaining must not age: {ar:?}"
-        );
-        assert_eq!(
-            ar.control, "-5000",
-            "the control still reports the books: {ar:?}"
-        );
+        assert!(ar.current.is_empty(), "over-applied remaining must not age: {ar:?}");
+        assert_eq!(ar.control, "-5000", "the control still reports the books: {ar:?}");
     }
 
     #[test]
@@ -14338,9 +13197,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         })
         .unwrap();
         let household = format!("funds/household/views/{}", ratio_rules::UNDECLARED_VIEW);
-        let personal = c
-            .operating_aging(&household, "2026-04-15")
-            .expect_err("not operating");
+        let personal = c.operating_aging(&household, "2026-04-15").expect_err("not operating");
         assert!(personal.to_string().contains("operating"), "{personal}");
         assert!(
             !personal.to_string().contains("0"),
@@ -14357,14 +13214,9 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         })
         .unwrap();
         let job = format!("funds/job/views/{}", ratio_rules::UNDECLARED_VIEW);
-        let project = c
-            .operating_aging(&job, "2026-04-15")
-            .expect_err("not operating");
+        let project = c.operating_aging(&job, "2026-04-15").expect_err("not operating");
         assert!(project.to_string().contains("operating"), "{project}");
-        assert!(
-            !project.to_string().contains("0"),
-            "a refusal must not look like a zero figure: {project}"
-        );
+        assert!(!project.to_string().contains("0"), "a refusal must not look like a zero figure: {project}");
     }
 
     #[test]
@@ -14414,42 +13266,14 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         );
 
         // February contribution is the beginning cash cut.
-        c.apply_event(&operating_req(
-            "eq",
-            "contribute_equity",
-            "1000.00",
-            2026,
-            2,
-            1,
-        ))
-        .unwrap();
-        c.apply_event(&operating_req(
-            "inv",
-            "invoice_customer",
-            "400.00",
-            2026,
-            3,
-            5,
-        ))
-        .unwrap();
-        c.apply_event(&operating_req(
-            "col",
-            "collect_receivable",
-            "150.00",
-            2026,
-            3,
-            8,
-        ))
-        .unwrap();
-        c.apply_event(&operating_req(
-            "cash",
-            "receive_revenue",
-            "100.00",
-            2026,
-            3,
-            10,
-        ))
-        .unwrap();
+        c.apply_event(&operating_req("eq", "contribute_equity", "1000.00", 2026, 2, 1))
+            .unwrap();
+        c.apply_event(&operating_req("inv", "invoice_customer", "400.00", 2026, 3, 5))
+            .unwrap();
+        c.apply_event(&operating_req("col", "collect_receivable", "150.00", 2026, 3, 8))
+            .unwrap();
+        c.apply_event(&operating_req("cash", "receive_revenue", "100.00", 2026, 3, 10))
+            .unwrap();
         c.apply_event(&operating_req("bill", "vendor_bill", "80.00", 2026, 3, 12))
             .unwrap();
         c.apply_event(&operating_req("pay", "pay_vendor", "30.00", 2026, 3, 14))
@@ -14466,10 +13290,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             c.apply_event(&undated).unwrap();
         }
 
-        assert_eq!(
-            c.get_fund("funds/studio").unwrap().trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/studio").unwrap().trial_balance_difference, "0");
 
         let listed = c.list_accounts(&view, "cashflow-2026-03").unwrap();
         let by: std::collections::BTreeMap<_, _> = listed
@@ -14488,21 +13309,12 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let cash_d: i64 = cash.debit.parse().unwrap();
         let cash_c: i64 = cash.credit.parse().unwrap();
         let cash_begin = cash_end - (cash_d - cash_c);
-        assert_eq!(
-            cash_begin, 100_000,
-            "February contribution is the beginning cash cut"
-        );
+        assert_eq!(cash_begin, 100_000, "February contribution is the beginning cash cut");
         // 1_000 + 150 collect + 100 sale − 30 pay − 20 cash exp − 50 draw = 1_150
         // April 50 and the undated 99 are outside the March window.
         assert_eq!(cash_end, 115_000, "{cash:?}");
-        assert_eq!(
-            rev.credit, "50000",
-            "March revenue is invoice+cash, not April: {rev:?}"
-        );
-        assert_eq!(
-            exp.debit, "10000",
-            "March is 80+20, not 80+20+50+99: {exp:?}"
-        );
+        assert_eq!(rev.credit, "50000", "March revenue is invoice+cash, not April: {rev:?}");
+        assert_eq!(exp.debit, "10000", "March is 80+20, not 80+20+50+99: {exp:?}");
 
         let cash_from = |a: &pb::Account| -> i64 {
             -(a.debit.parse::<i64>().unwrap() - a.credit.parse::<i64>().unwrap())
@@ -14514,10 +13326,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let equity_cash = cash_from(equity);
         let operating = income_cash + expense_cash + ar_cash + ap_cash;
         let financing = equity_cash;
-        assert_eq!(
-            operating, 20_000,
-            "100+150−20−30; invoice and bill are working capital"
-        );
+        assert_eq!(operating, 20_000, "100+150−20−30; invoice and bill are working capital");
         assert_eq!(financing, -5_000, "the draw is financing, not operating");
         assert_eq!(
             cash_begin + operating + financing,
@@ -14555,18 +13364,9 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             std::fs::create_dir_all(d.join(id)).unwrap();
             book(&d.join(id));
         }
-        let names: Vec<String> = Console::new(&d)
-            .list_funds()
-            .unwrap()
-            .funds
-            .iter()
-            .map(|f| f.name.clone())
-            .collect();
-        assert_eq!(
-            names,
-            vec!["funds/calderwood", "funds/harbourline"],
-            "and sorted"
-        );
+        let names: Vec<String> =
+            Console::new(&d).list_funds().unwrap().funds.iter().map(|f| f.name.clone()).collect();
+        assert_eq!(names, vec!["funds/calderwood", "funds/harbourline"], "and sorted");
     }
 
     #[test]
@@ -14591,9 +13391,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // two agree about which question is being answered.
         assert_eq!(f.default_view, ratio_rules::UNDECLARED_VIEW);
         assert_eq!(f.view_count, 1);
-        let v = c
-            .get_view(&format!("funds/demo/views/{}", f.default_view))
-            .unwrap();
+        let v = c.get_view(&format!("funds/demo/views/{}", f.default_view)).unwrap();
         assert_eq!(v.net_asset_value, "29900000");
         assert_eq!(f.trial_balance_difference, "0", "any accepted book ties");
         assert_eq!(f.entry_count, 3);
@@ -14616,10 +13414,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         book(&d);
         let c = Console::new(&d);
         for bad in ["../etc", "..", "a/b", ""] {
-            assert!(
-                c.get_fund(&format!("funds/{bad}")).is_err(),
-                "{bad:?} was accepted"
-            );
+            assert!(c.get_fund(&format!("funds/{bad}")).is_err(), "{bad:?} was accepted");
         }
     }
 
@@ -14635,15 +13430,9 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         book(&d);
         let c = Console::new(&d);
         let f = c.get_fund("funds/demo").unwrap().to_json();
-        for field in [
-            "entryCount",
-            "openBreakCount",
-            "trialBalanceDifference",
-            "pendingFactCount",
-            "viewCount",
-            "longTermDays",
-            "washWindowDays",
-        ] {
+        for field in ["entryCount", "openBreakCount", "trialBalanceDifference",
+                      "pendingFactCount", "viewCount", "longTermDays",
+                      "washWindowDays"] {
             assert!(
                 f.contains(&format!("\"{field}\":\"")),
                 "{field} is not a string in {f}"
@@ -14656,19 +13445,10 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // test would have gone on passing while saying less each time a field
         // moved.
         let v = c.get_view(&demo_view()).unwrap().to_json();
-        for field in [
-            "netAssetValue",
-            "totalDebit",
-            "totalCredit",
-            "openDifference",
-            "openBreakCount",
-            "openLotCount",
-            "positionCount",
-            "journalPosition",
-            "settlementOpenDays",
-            "holidayCount",
-            "unplaceableEntryCount",
-        ] {
+        for field in ["netAssetValue", "totalDebit", "totalCredit", "openDifference",
+                      "openBreakCount", "openLotCount", "positionCount",
+                      "journalPosition", "settlementOpenDays", "holidayCount",
+                      "unplaceableEntryCount"] {
             assert!(
                 v.contains(&format!("\"{field}\":\"")),
                 "{field} is not a string in {v}"
@@ -14678,18 +13458,13 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // And enums cross as their names, not their numbers — on both, since
         // both carry the same `Fund.State`.
         for json in [&f, &v] {
-            assert!(
-                json.contains("\"state\":\"BLOCKED\"")
-                    || json.contains("\"state\":\"STRUCK\"")
+            assert!(json.contains("\"state\":\"BLOCKED\"") || json.contains("\"state\":\"STRUCK\"")
                     || json.contains("\"state\":\"IN_REVIEW\"")
                     || json.contains("\"state\":\"AWAITING_PRICES\""),
-                "state is not a canonical enum name: {json}"
-            );
+                    "state is not a canonical enum name: {json}");
         }
-        assert!(
-            v.contains("\"basis\":\"RECORDED\""),
-            "a book declaring no views recognises in journal order: {v}"
-        );
+        assert!(v.contains("\"basis\":\"RECORDED\""),
+                "a book declaring no views recognises in journal order: {v}");
     }
 
     #[test]
@@ -14701,10 +13476,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         book(&d);
         let silent = Console::new(&d).get_fund("funds/demo").unwrap();
         assert!(!silent.wash_window_declared, "nobody said");
-        assert_eq!(
-            silent.wash_window_days, 0,
-            "and the wire does not invent 30"
-        );
+        assert_eq!(silent.wash_window_days, 0, "and the wire does not invent 30");
         assert!(!silent.wash_keep_holding_period, "unset is not keep");
 
         let mut b = FileBook::open(&d).unwrap();
@@ -14817,12 +13589,16 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             .lots_of(ratio_rules::UNDECLARED_VIEW, 1, "vti")
             .unwrap()
             .value;
-        let r =
-            ratio_project::relief::relieve_by(ratio_project::relief::Method::Fifo, &held, units)
-                .unwrap();
-        let postings =
-            ratio_project::relief::sale_postings(roles, None, "vti", units, r.cost, proceeds)
-                .unwrap();
+        let r = ratio_project::relief::relieve_by(
+            ratio_project::relief::Method::Fifo,
+            &held,
+            units,
+        )
+        .unwrap();
+        let postings = ratio_project::relief::sale_postings(
+            roles, None, "vti", units, r.cost, proceeds,
+        )
+        .unwrap();
         b.append(&JournalEntry {
             id: id.into(),
             memo: "sell".into(),
@@ -14845,8 +13621,13 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // wash cite — not a silent qualification and not a silent rewrite.
         let d = fresh("wash-asof-silent");
         book(&d);
-        ratio_nav::strike_and_record(&d, ratio_rules::UNDECLARED_VIEW, 1_781_913_600, "e.marsh")
-            .unwrap();
+        ratio_nav::strike_and_record(
+            &d,
+            ratio_rules::UNDECLARED_VIEW,
+            1_781_913_600,
+            "e.marsh",
+        )
+        .unwrap();
         let listed = Console::new(&d)
             .list_nav_strikes("funds/demo/views/book")
             .unwrap();
@@ -14930,10 +13711,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         book(&d);
         let silent = Console::new(&d).get_fund("funds/demo").unwrap();
         assert!(!silent.min_tax_declared, "nobody said");
-        assert_eq!(
-            silent.min_tax_short_weight, 0,
-            "and the wire does not invent 2"
-        );
+        assert_eq!(silent.min_tax_short_weight, 0, "and the wire does not invent 2");
         assert!(!silent.average_cost, "unset is not a pool");
 
         let mut b = FileBook::open(&d).unwrap();
@@ -15010,24 +13788,12 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             transactions_replayed: 2,
             entries_posted: 2,
             breaks: vec![
-                kernel::BreakLine {
-                    account: 40,
-                    display_name: "Management fee payable".into(),
-                    ratio_amount: 100,
-                    reported_amount: 0,
-                    difference: 100,
-                    cause: kernel::Cause::AmountDiffers as i32,
-                    ratio_basis: "1".into(),
-                },
-                kernel::BreakLine {
-                    account: 1,
-                    display_name: "Investments at fair value".into(),
-                    ratio_amount: 25_000_000,
-                    reported_amount: 24_000_000,
-                    difference: 1_000_000,
-                    cause: kernel::Cause::AmountDiffers as i32,
-                    ratio_basis: "1".into(),
-                },
+                kernel::BreakLine { account: 40, display_name: "Management fee payable".into(),
+                    ratio_amount: 100, reported_amount: 0, difference: 100,
+                    cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
+                kernel::BreakLine { account: 1, display_name: "Investments at fair value".into(),
+                    ratio_amount: 25_000_000, reported_amount: 24_000_000, difference: 1_000_000,
+                    cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
             ],
             exceptions: vec![],
             book_ties: true,
@@ -15035,41 +13801,21 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         std::fs::create_dir_all(d.join("reports")).unwrap();
         std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
 
-        let ks = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
         assert_eq!(ks.len(), 2);
         assert_eq!(ks[0].difference, "1000000", "largest first");
-        assert_eq!(
-            ks[0].severity,
-            pb::Severity::High as i32,
-            "1,000,000 blocks the NAV"
-        );
-        assert_eq!(
-            ks[1].severity,
-            pb::Severity::Low as i32,
-            "100 is below notice"
-        );
+        assert_eq!(ks[0].severity, pb::Severity::High as i32, "1,000,000 blocks the NAV");
+        assert_eq!(ks[1].severity, pb::Severity::Low as i32, "100 is below notice");
         // The postings behind Ratio's figure travel with the break.
         assert_eq!(ks[0].postings.len(), 1);
         assert_eq!(ks[0].postings[0].entry_id, "t1");
-        assert!(
-            !ks[0].config_digest.is_empty(),
-            "a break must cite its configuration"
-        );
+        assert!(!ks[0].config_digest.is_empty(), "a break must cite its configuration");
         // And the terms it was graded against travel with it, so a reader does
         // not have to go and look them up to know what the grade meant.
-        let t = ks[0]
-            .tolerance
-            .as_ref()
-            .expect("a graded break names its bounds");
+        let t = ks[0].tolerance.as_ref().expect("a graded break names its bounds");
         assert_eq!(t.blocks_nav, "100000");
         assert_eq!(t.below_notice, "500");
-        assert!(
-            t.declared,
-            "this configuration says so rather than getting it by custom"
-        );
+        assert!(t.declared, "this configuration says so rather than getting it by custom");
         // Nothing has explained anything, and nothing pretends otherwise.
         assert!(ks.iter().all(|k| !k.explained));
 
@@ -15104,13 +13850,9 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             transactions_replayed: 1,
             entries_posted: 1,
             breaks: vec![kernel::BreakLine {
-                account: 1,
-                display_name: "Investments at fair value".into(),
-                ratio_amount: 25_000_000,
-                reported_amount: 24_900_000,
-                difference: 100_000,
-                cause: kernel::Cause::AmountDiffers as i32,
-                ratio_basis: "1".into(),
+                account: 1, display_name: "Investments at fair value".into(),
+                ratio_amount: 25_000_000, reported_amount: 24_900_000, difference: 100_000,
+                cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into(),
             }],
             exceptions: vec![],
             book_ties: true,
@@ -15118,15 +13860,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         std::fs::create_dir_all(d.join("reports")).unwrap();
         std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
 
-        let before = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
-        assert_eq!(
-            before[0].severity,
-            pb::Severity::Medium as i32,
-            "reportable under those bands"
-        );
+        let before = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert_eq!(before[0].severity, pb::Severity::Medium as i32, "reportable under those bands");
 
         // Now the fund tightens its tolerance and promotes it. The report is
         // untouched — same bytes, same figures, same digest.
@@ -15136,10 +13871,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             .unwrap();
         b.set_active(&tight).unwrap();
 
-        let after = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
+        let after = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
         assert_eq!(
             after[0].severity,
             pb::Severity::Medium as i32,
@@ -15166,13 +13898,9 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             transactions_replayed: 1,
             entries_posted: 1,
             breaks: vec![kernel::BreakLine {
-                account: 40,
-                display_name: "Management fee payable".into(),
-                ratio_amount: 1,
-                reported_amount: 0,
-                difference: 1,
-                cause: kernel::Cause::AmountDiffers as i32,
-                ratio_basis: "1".into(),
+                account: 40, display_name: "Management fee payable".into(),
+                ratio_amount: 1, reported_amount: 0, difference: 1,
+                cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into(),
             }],
             exceptions: vec![],
             book_ties: true,
@@ -15180,19 +13908,9 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         std::fs::create_dir_all(d.join("reports")).unwrap();
         std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
 
-        let ks = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
-        assert_eq!(
-            ks[0].severity,
-            pb::Severity::High as i32,
-            "one minor unit, and it blocks"
-        );
-        assert!(
-            ks[0].tolerance.is_none(),
-            "and it does not claim bounds it could not read"
-        );
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert_eq!(ks[0].severity, pb::Severity::High as i32, "one minor unit, and it blocks");
+        assert!(ks[0].tolerance.is_none(), "and it does not claim bounds it could not read");
         // The screen still renders rather than erroring: a pruned configuration
         // must not turn the exceptions queue into a stack trace.
         assert_eq!(ks.len(), 1);
@@ -15229,9 +13947,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         std::fs::create_dir_all(d.join("reports")).unwrap();
         // ⚠ A DISTINCT NAME PER REPORT. `newest_report` picks by mtime, and two
         // written inside one filesystem timestamp order arbitrarily.
-        let n = std::fs::read_dir(d.join("reports"))
-            .map(|r| r.count())
-            .unwrap_or(0);
+        let n = std::fs::read_dir(d.join("reports")).map(|r| r.count()).unwrap_or(0);
         std::fs::write(d.join(format!("reports/r{n}.pb")), report.encode_to_vec()).unwrap();
     }
 
@@ -15242,14 +13958,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         c.accept_explanation(&demo_break("1"), "the custodian's unsettled dividend")
             .unwrap();
 
-        let ks = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
-        assert!(
-            ks[0].explained,
-            "a person recorded why, and the break says so"
-        );
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert!(ks[0].explained, "a person recorded why, and the break says so");
         let e = ks[0].explanation.as_ref().unwrap();
         assert_eq!(e.text, "the custodian's unsettled dividend");
         assert_eq!(e.actor, "e.marsh");
@@ -15268,8 +13978,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // looking like the software being careful.
         let d = book_with_a_break("stillexplained", 200_000);
         let c = Console::new(&d).as_actor("e.marsh");
-        c.accept_explanation(&demo_break("1"), "clears T+2")
-            .unwrap();
+        c.accept_explanation(&demo_break("1"), "clears T+2").unwrap();
 
         let mut b = FileBook::open(&d).unwrap();
         let cfg = b.active().unwrap().unwrap();
@@ -15292,10 +14001,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         .unwrap();
         drop(b);
 
-        let ks = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
         assert!(ks[0].explained, "the journal grew; the figure did not");
         assert!(ks[0].explanation.as_ref().unwrap().qualification.is_empty());
     }
@@ -15321,29 +14027,13 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // A later run, same terms, different figure.
         write_report(&d, &digest, 275_000);
 
-        let ks = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
-        assert!(
-            !ks[0].explained,
-            "the note was about a figure that has moved"
-        );
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
+        assert!(!ks[0].explained, "the note was about a figure that has moved");
         let e = ks[0].explanation.as_ref().unwrap();
-        assert_eq!(
-            e.text, "clears T+2",
-            "and the note is still visible as evidence"
-        );
-        assert_eq!(
-            e.difference, "200000",
-            "carrying the figure it was written about"
-        );
+        assert_eq!(e.text, "clears T+2", "and the note is still visible as evidence");
+        assert_eq!(e.difference, "200000", "carrying the figure it was written about");
         assert_eq!(e.qualification.len(), 1, "and saying what moved");
-        assert!(
-            e.qualification[0].contains("275000"),
-            "{:?}",
-            e.qualification
-        );
+        assert!(e.qualification[0].contains("275000"), "{:?}", e.qualification);
     }
 
     #[test]
@@ -15361,10 +14051,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let digest = newest_report(&d).unwrap().unwrap().config_digest;
         write_report(&d, &digest, 1);
 
-        let ks = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
         assert!(!ks[0].explained);
     }
 
@@ -15374,15 +14061,10 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // one somebody thought better of is part of what happened.
         let d = book_with_a_break("corrected", 200_000);
         let c = Console::new(&d).as_actor("e.marsh");
-        c.accept_explanation(&demo_break("1"), "first thought")
-            .unwrap();
-        c.accept_explanation(&demo_break("1"), "second thought")
-            .unwrap();
+        c.accept_explanation(&demo_break("1"), "first thought").unwrap();
+        c.accept_explanation(&demo_break("1"), "second thought").unwrap();
 
-        let ks = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
         assert_eq!(ks[0].explanation.as_ref().unwrap().text, "second thought");
 
         let raw = std::fs::read_to_string(d.join("explanations.jsonl")).unwrap();
@@ -15401,17 +14083,11 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             .accept_explanation(&demo_break("1"), "signed by somebody else, allegedly")
             .unwrap();
 
-        let ks = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
         assert_eq!(ks[0].explanation.as_ref().unwrap().actor, "k.oyelaran");
 
         let log = std::fs::read_to_string(d.join("CHANGELOG")).unwrap();
-        let line = log
-            .lines()
-            .find(|l| l.contains("accepted"))
-            .expect("an accepted line");
+        let line = log.lines().find(|l| l.contains("accepted")).expect("an accepted line");
         let f: Vec<&str> = line.split('\t').collect();
         assert_eq!(f.len(), 5, "five tab-separated fields");
         assert_eq!(f[1], "k.oyelaran");
@@ -15431,10 +14107,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             .unwrap_err()
             .to_string();
         assert!(e.contains("no break"), "{e}");
-        assert!(
-            !d.join("explanations.jsonl").exists(),
-            "and nothing was written"
-        );
+        assert!(!d.join("explanations.jsonl").exists(), "and nothing was written");
     }
 
     #[test]
@@ -15455,13 +14128,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // anybody made about it.
         let d = book_with_a_break("filterexplained", 200_000);
         let c = Console::new(&d);
-        assert_eq!(
-            c.list_breaks(&demo_view(), "unexplained")
-                .unwrap()
-                .breaks
-                .len(),
-            1
-        );
+        assert_eq!(c.list_breaks(&demo_view(), "unexplained").unwrap().breaks.len(), 1);
 
         Console::new(&d)
             .as_actor("e.marsh")
@@ -15469,18 +14136,11 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             .unwrap();
 
         assert_eq!(
-            c.list_breaks(&demo_view(), "unexplained")
-                .unwrap()
-                .breaks
-                .len(),
+            c.list_breaks(&demo_view(), "unexplained").unwrap().breaks.len(),
             0,
             "explained is not unexplained"
         );
-        assert_eq!(
-            c.list_breaks(&demo_view(), "").unwrap().breaks.len(),
-            1,
-            "and it is still there"
-        );
+        assert_eq!(c.list_breaks(&demo_view(), "").unwrap().breaks.len(), 1, "and it is still there");
     }
 
     #[test]
@@ -15612,10 +14272,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             }],
         };
         let gate = nav_gate_of(&blocking, &[("VWRL".into(), 100)]);
-        assert!(
-            gate.unexplained_breaks[0].contains("Investments"),
-            "{gate:?}"
-        );
+        assert!(gate.unexplained_breaks[0].contains("Investments"), "{gate:?}");
         assert!(
             gate.unresolved_trades[0].contains("XS2434590128"),
             "{gate:?}"
@@ -15631,25 +14288,15 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // one who approved it. `accepted` is a new verb writing the break's
         // config digest into that same column.
         let d = book_with_a_break("changelogverbs", 200_000);
-        let before = Console::new(&d)
-            .list_config_versions("funds/demo")
-            .unwrap()
-            .config_versions;
+        let before = Console::new(&d).list_config_versions("funds/demo").unwrap().config_versions;
 
         Console::new(&d)
             .as_actor("e.marsh")
             .accept_explanation(&demo_break("1"), "known and accepted")
             .unwrap();
 
-        let after = Console::new(&d)
-            .list_config_versions("funds/demo")
-            .unwrap()
-            .config_versions;
-        assert_eq!(
-            after.len(),
-            before.len(),
-            "an acceptance is not a promotion"
-        );
+        let after = Console::new(&d).list_config_versions("funds/demo").unwrap().config_versions;
+        assert_eq!(after.len(), before.len(), "an acceptance is not a promotion");
         for v in &after {
             assert_ne!(v.actor, "e.marsh", "and it did not sign one: {v:?}");
         }
@@ -15675,22 +14322,16 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
                 memo: "buy".into(),
                 config: cfg.clone(),
                 postings: vec![
-                    PostingRecord {
-                        dim: 1,
-                        amount: 100,
-                        currency: None,
-                        instrument: Some("VTI".into()),
-                        quantity: Some(7),
-                    },
+                    PostingRecord { dim: 1, amount: 100, currency: None, instrument: Some("VTI".into()), quantity: Some(7) },
                     PostingRecord::new(2, -100),
                 ],
                 trade_date: None,
                 announcement: None,
-                due_date: None,
-                application: None,
-                identified_lots: None,
-                special_allocations: None,
-                kind: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+            kind: None,
             })
             .unwrap();
             b.append(&JournalEntry {
@@ -15698,30 +14339,21 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
                 memo: "sell".into(),
                 config: cfg,
                 postings: vec![
-                    PostingRecord {
-                        dim: 1,
-                        amount: -45,
-                        currency: None,
-                        instrument: Some("VTI".into()),
-                        quantity: Some(-3),
-                    },
+                    PostingRecord { dim: 1, amount: -45, currency: None, instrument: Some("VTI".into()), quantity: Some(-3) },
                     PostingRecord::new(2, 45),
                 ],
                 trade_date: None,
                 announcement: None,
-                due_date: None,
-                application: None,
-                identified_lots: None,
-                special_allocations: None,
-                kind: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+            kind: None,
             })
             .unwrap();
         }
 
-        let ks = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
         let lot = ks
             .iter()
             .find(|k| k.name.contains("/breaks/lot-"))
@@ -15732,10 +14364,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             .unwrap_err()
             .to_string();
         assert!(e.contains("not explained, it is corrected"), "{e}");
-        assert!(
-            e.contains("realized gain"),
-            "the refusal says what is at stake: {e}"
-        );
+        assert!(e.contains("realized gain"), "the refusal says what is at stake: {e}");
     }
 
     #[test]
@@ -15763,10 +14392,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         })
         .unwrap_err();
 
-        let ks = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks;
+        let ks = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks;
         for k in ks.iter().filter(|k| k.name.contains("/breaks/lot-")) {
             assert_eq!(k.severity, pb::Severity::High as i32);
             assert!(k.tolerance.is_none(), "graded by meaning, not by amount");
@@ -15783,35 +14409,21 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         book(&d);
         let report = kernel::BreakReport {
             name: "books/SOMETHING-ELSE/breakReports/r".into(),
-            config_digest: "c".into(),
-            scope: None,
-            transactions_replayed: 1,
-            entries_posted: 1,
-            breaks: vec![kernel::BreakLine {
-                account: 1,
+            config_digest: "c".into(), scope: None,
+            transactions_replayed: 1, entries_posted: 1,
+            breaks: vec![kernel::BreakLine { account: 1,
                 display_name: "Investments at fair value".into(),
-                ratio_amount: 5,
-                reported_amount: 4,
-                difference: 1,
-                cause: kernel::Cause::AmountDiffers as i32,
-                ratio_basis: "1".into(),
-            }],
-            exceptions: vec![],
-            book_ties: true,
-        };
+                ratio_amount: 5, reported_amount: 4, difference: 1,
+                cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() }],
+            exceptions: vec![], book_ties: true };
         std::fs::create_dir_all(d.join("reports")).unwrap();
         std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
 
         let c = Console::new(&d);
         let listed = c.list_breaks(&demo_view(), "").unwrap().breaks;
-        assert_eq!(
-            listed[0].name, "funds/demo/views/book/breaks/1",
-            "the name must name the fund that was asked for, not the report's book"
-        );
-        assert!(
-            c.get_break(&listed[0].name).is_ok(),
-            "the listed name did not fetch"
-        );
+        assert_eq!(listed[0].name, "funds/demo/views/book/breaks/1",
+            "the name must name the fund that was asked for, not the report's book");
+        assert!(c.get_break(&listed[0].name).is_ok(), "the listed name did not fetch");
     }
 
     #[test]
@@ -15821,41 +14433,19 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // an email dead by morning.
         let d = fresh("stablename");
         book(&d);
-        let line = kernel::BreakLine {
-            account: 1,
-            display_name: "Investments at fair value".into(),
-            ratio_amount: 5,
-            reported_amount: 4,
-            difference: 1,
-            cause: kernel::Cause::AmountDiffers as i32,
-            ratio_basis: "1".into(),
-        };
+        let line = kernel::BreakLine { account: 1, display_name: "Investments at fair value".into(),
+            ratio_amount: 5, reported_amount: 4, difference: 1,
+            cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() };
         let mk = |n: &str| kernel::BreakReport {
-            name: format!("books/demo/breakReports/{n}"),
-            config_digest: "c".into(),
-            scope: None,
-            transactions_replayed: 1,
-            entries_posted: 1,
-            breaks: vec![line.clone()],
-            exceptions: vec![],
-            book_ties: true,
-        };
+            name: format!("books/demo/breakReports/{n}"), config_digest: "c".into(), scope: None,
+            transactions_replayed: 1, entries_posted: 1, breaks: vec![line.clone()],
+            exceptions: vec![], book_ties: true };
         std::fs::create_dir_all(d.join("reports")).unwrap();
         std::fs::write(d.join("reports/a.pb"), mk("a").encode_to_vec()).unwrap();
-        let first = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks[0]
-            .name
-            .clone();
+        let first = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks[0].name.clone();
         std::thread::sleep(std::time::Duration::from_millis(1100));
         std::fs::write(d.join("reports/b.pb"), mk("b").encode_to_vec()).unwrap();
-        let second = Console::new(&d)
-            .list_breaks(&demo_view(), "")
-            .unwrap()
-            .breaks[0]
-            .name
-            .clone();
+        let second = Console::new(&d).list_breaks(&demo_view(), "").unwrap().breaks[0].name.clone();
         assert_eq!(first, second);
         assert_eq!(first, "funds/demo/views/book/breaks/1");
         // And it is fetchable by that name.
@@ -15869,10 +14459,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         b.set_active(&d).unwrap();
         let log = at.join("CHANGELOG");
         let mut prior = std::fs::read_to_string(&log).unwrap_or_default();
-        prior.push_str(&format!(
-            "1780000000\t{actor}\tapproved\t{subject}\t{}\n",
-            d.as_str()
-        ));
+        prior.push_str(&format!("1780000000\t{actor}\tapproved\t{subject}\t{}\n", d.as_str()));
         std::fs::write(&log, prior).unwrap();
         d.as_str().to_string()
     }
@@ -15888,14 +14475,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         book(&d);
         promote(&d, R1, "e.marsh", "fee_q2");
 
-        let vs = Console::new(&d)
-            .list_config_versions("funds/demo")
-            .unwrap()
-            .config_versions;
-        assert!(
-            vs.len() >= 2,
-            "expected the initial version and the promoted one"
-        );
+        let vs = Console::new(&d).list_config_versions("funds/demo").unwrap().config_versions;
+        assert!(vs.len() >= 2, "expected the initial version and the promoted one");
         // Newest first, and the newest is the active one.
         assert!(vs[0].active, "the newest version should be active");
         assert_eq!(vs[0].actor, "e.marsh");
@@ -15921,12 +14502,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // `previous_net_asset_value` is a figure about a recognition
         // convention like every other, so the comparison has to be against
         // the same one rather than against "the fund".
-        let before = c
-            .get_view(&format!(
-                "funds/demo/views/{}",
-                ratio_rules::UNDECLARED_VIEW
-            ))
-            .unwrap();
+        let before = c.get_view(&format!("funds/demo/views/{}", ratio_rules::UNDECLARED_VIEW)).unwrap();
         let entries_before = FileBook::open(&d).unwrap().entries().unwrap().len();
 
         let req = |validate_only: bool| pb::ApplyEventRequest {
@@ -15946,15 +14522,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let preview = c.apply_event(&req(true)).unwrap();
         assert!(preview.validate_only);
         let entry = preview.entry.as_ref().unwrap();
-        assert!(
-            !entry.postings.is_empty(),
-            "a preview still shows the postings"
-        );
-        assert_eq!(
-            entry.config_digest.len(),
-            64,
-            "and which configuration decided them"
-        );
+        assert!(!entry.postings.is_empty(), "a preview still shows the postings");
+        assert_eq!(entry.config_digest.len(), 64, "and which configuration decided them");
         assert_eq!(preview.previous_net_asset_value, before.net_asset_value);
 
         // …and writes nothing.
@@ -15963,15 +14532,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             entries_before,
             "a preview must not touch the journal",
         );
-        assert_eq!(
-            c.get_view(&format!(
-                "funds/demo/views/{}",
-                ratio_rules::UNDECLARED_VIEW
-            ))
-            .unwrap()
-            .net_asset_value,
-            before.net_asset_value
-        );
+        assert_eq!(c.get_view(&format!("funds/demo/views/{}", ratio_rules::UNDECLARED_VIEW)).unwrap().net_asset_value, before.net_asset_value);
 
         // The commit writes exactly one entry, and the NAV the preview
         // predicted is the NAV that results.
@@ -16038,10 +14599,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         );
 
         // A preview writes nothing, so the ceiling has no business refusing it.
-        assert!(
-            c.apply_event(&req("over-1", true)).is_ok(),
-            "a preview is not a write"
-        );
+        assert!(c.apply_event(&req("over-1", true)).is_ok(), "a preview is not a write");
 
         // With no ceiling there is no limit — a local run is not the demo.
         let c = c.with_max_entries(None);
@@ -16087,10 +14645,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         Console::new(&d).apply_event(&trade_req("trd-1")).unwrap();
 
         let entries = FileBook::open(&d).unwrap().entries().unwrap();
-        let e = entries
-            .iter()
-            .find(|e| e.id == "trd-1")
-            .expect("the trade was written");
+        let e = entries.iter().find(|e| e.id == "trd-1").expect("the trade was written");
 
         // ⛔ THE DAY IS ON THE ENTRY, which is where `Ratio.Lots.Relief` reads a
         // holding period from. A lot opened by an entry without one is refused
@@ -16099,16 +14654,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
 
         // ⛔ AND ONLY THE `per_instrument` LEG IS ATTRIBUTED. The cash leg names
         // no instrument, because cash is not held in one.
-        let inv = e
-            .postings
-            .iter()
-            .find(|p| p.dim == 1)
-            .expect("the investments leg");
-        let cash = e
-            .postings
-            .iter()
-            .find(|p| p.dim == 2)
-            .expect("the cash leg");
+        let inv = e.postings.iter().find(|p| p.dim == 1).expect("the investments leg");
+        let cash = e.postings.iter().find(|p| p.dim == 2).expect("the cash leg");
         assert_eq!(inv.instrument.as_deref(), Some("ACME"));
         assert_eq!(inv.quantity, Some(1_000), "a purchase adds units");
         assert_eq!(cash.instrument, None);
@@ -16160,10 +14707,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // ⛔ AND NEGATIVE IS THE OTHER WAY TO BOOK A TRADE BACKWARDS.
         let mut req = trade_req("trd-neg");
         req.quantity = "-1000".into();
-        assert!(
-            c.apply_event(&req).is_err(),
-            "a negative quantity must be refused"
-        );
+        assert!(c.apply_event(&req).is_err(), "a negative quantity must be refused");
     }
 
     #[test]
@@ -16190,10 +14734,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let mut req = trade_req("trd-none");
         req.instrument = String::new();
         req.quantity = String::new();
-        assert!(
-            c.apply_event(&req).is_ok(),
-            "an event with no instrument is still an event"
-        );
+        assert!(c.apply_event(&req).is_ok(), "an event with no instrument is still an event");
     }
 
     #[test]
@@ -16214,10 +14755,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
                 month: bad.1,
                 day: bad.2,
             });
-            assert!(
-                c.apply_event(&req).is_err(),
-                "{bad:?} should not be a trade date"
-            );
+            assert!(c.apply_event(&req).is_err(), "{bad:?} should not be a trade date");
         }
 
         // ⚠ And ABSENT is not the same as invalid. An event that names no day is
@@ -16236,13 +14774,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let c = Console::new(&d);
 
         // This reaches a journal other people read, on a public endpoint.
-        for bad in [
-            "",
-            "../../etc/passwd",
-            "a b",
-            "<script>",
-            "x".repeat(65).as_str(),
-        ] {
+        for bad in ["", "../../etc/passwd", "a b", "<script>", "x".repeat(65).as_str()] {
             let r = c.apply_event(&pb::ApplyEventRequest {
                 parent: "funds/demo".into(),
                 rule_id: "fee".into(),
@@ -16258,20 +14790,19 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             assert!(r.is_err(), "{bad:?} should not be accepted as an event id");
         }
         // And the memo is composed, never supplied — there is no field for it.
-        let ok = c
-            .apply_event(&pb::ApplyEventRequest {
-                parent: "funds/demo".into(),
-                rule_id: "fee".into(),
-                event_id: "acc-2".into(),
-                amount: "1000.00".into(),
-                days: "1".into(),
-                instrument: String::new(),
-                quantity: String::new(),
-                trade_date: None,
-                validate_only: true,
-                ..Default::default()
-            })
-            .unwrap();
+        let ok = c.apply_event(&pb::ApplyEventRequest {
+            parent: "funds/demo".into(),
+            rule_id: "fee".into(),
+            event_id: "acc-2".into(),
+            amount: "1000.00".into(),
+            days: "1".into(),
+            instrument: String::new(),
+            quantity: String::new(),
+            trade_date: None,
+            validate_only: true,
+            ..Default::default()
+        })
+        .unwrap();
         assert_eq!(ok.entry.unwrap().memo, "acc-2 via fee");
     }
 
@@ -16283,13 +14814,9 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let d = fresh("stale");
         book(&d);
         // A NAV, struck before anybody heard about the action.
-        let s = ratio_nav::strike_and_record(
-            &d,
-            ratio_rules::UNDECLARED_VIEW,
-            1_780_000_000,
-            "e.marsh",
-        )
-        .unwrap();
+        let s =
+            ratio_nav::strike_and_record(&d, ratio_rules::UNDECLARED_VIEW, 1_780_000_000, "e.marsh")
+                .unwrap();
         let day = ratio_nav::rfc3339(s.valuation_time)[..10].to_string();
 
         let mut b = FileBook::open(&d).unwrap();
@@ -16312,11 +14839,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         drop(b);
 
         let rows = Console::new(&d).stale_strikes("demo").unwrap();
-        assert_eq!(
-            rows.len(),
-            1,
-            "only the one that should have been in it: {rows:?}"
-        );
+        assert_eq!(rows.len(), 1, "only the one that should have been in it: {rows:?}");
         assert_eq!(rows[0].0, s.id);
         assert_eq!(rows[0].1, "before");
         assert!(rows[0].2.contains("not applied"), "{}", rows[0].2);
@@ -16357,25 +14880,12 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let c = Console::new(&d);
         let rows = c.list_accounts(&demo_view(), "").unwrap().accounts;
 
-        assert_eq!(
-            rows.len(),
-            6,
-            "every account in the chart, posted to or not"
-        );
-        let idle = rows
-            .iter()
-            .find(|a| a.dimension == "3")
-            .expect("the untouched account is a row");
+        assert_eq!(rows.len(), 6, "every account in the chart, posted to or not");
+        let idle = rows.iter().find(|a| a.dimension == "3").expect("the untouched account is a row");
         assert_eq!(idle.posting_count, "0");
         assert_eq!(idle.balance, "0");
         // …and `posted` is what drops it.
-        assert_eq!(
-            c.list_accounts(&demo_view(), "posted")
-                .unwrap()
-                .accounts
-                .len(),
-            5
-        );
+        assert_eq!(c.list_accounts(&demo_view(), "posted").unwrap().accounts.len(), 5);
 
         let debit: i64 = rows.iter().map(|a| a.debit.parse::<i64>().unwrap()).sum();
         let credit: i64 = rows.iter().map(|a| a.credit.parse::<i64>().unwrap()).sum();
@@ -16392,10 +14902,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let v = c.get_view(&demo_view()).unwrap();
         assert_eq!(v.total_debit, debit.to_string());
         assert_eq!(v.total_credit, credit.to_string());
-        assert_eq!(
-            c.get_fund("funds/demo").unwrap().trial_balance_difference,
-            "0"
-        );
+        assert_eq!(c.get_fund("funds/demo").unwrap().trial_balance_difference, "0");
     }
 
     #[test]
@@ -16408,16 +14915,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let d = fresh("abnormal");
         let mut b = FileBook::open(&d).unwrap();
         b.put_accounts(&[
-            Account {
-                dim: 2,
-                display_name: "Cash and equivalents".into(),
-                account_type: A::Asset,
-            },
-            Account {
-                dim: 20,
-                display_name: "Capital contributions".into(),
-                account_type: A::Equity,
-            },
+            Account { dim: 2, display_name: "Cash and equivalents".into(), account_type: A::Asset },
+            Account { dim: 20, display_name: "Capital contributions".into(), account_type: A::Equity },
         ])
         .unwrap();
         let cfg = b.put(b"rules = []\n").unwrap();
@@ -16427,8 +14926,11 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             id: "w1".into(),
             memo: "drawn down past zero".into(),
             config: cfg.clone(),
-            postings: vec![PostingRecord::new(2, -500), PostingRecord::new(20, 500)],
-
+            postings: vec![
+                PostingRecord::new(2, -500),
+                PostingRecord::new(20, 500),
+            ],
+        
             trade_date: None,
             announcement: None,
             due_date: None,
@@ -16441,32 +14943,18 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         drop(b);
 
         let c = Console::new(&d);
-        let cash = c
-            .get_account(&format!("{}/accounts/2", demo_view()))
-            .unwrap();
+        let cash = c.get_account(&format!("{}/accounts/2", demo_view())).unwrap();
         assert_eq!(cash.balance, "-500");
-        assert!(
-            cash.abnormal,
-            "an asset with a credit balance sits on the abnormal side"
-        );
+        assert!(cash.abnormal, "an asset with a credit balance sits on the abnormal side");
 
         // Equity is credit-normal, so a credit balance is ordinary there —
         // otherwise the flag would just be reporting the sign.
-        let equity = c
-            .get_account(&format!("{}/accounts/20", demo_view()))
-            .unwrap();
+        let equity = c.get_account(&format!("{}/accounts/20", demo_view())).unwrap();
         assert_eq!(equity.balance, "500");
-        assert!(
-            equity.abnormal,
-            "equity holding a DEBIT balance is the abnormal one"
-        );
+        assert!(equity.abnormal, "equity holding a DEBIT balance is the abnormal one");
 
         let flagged = c.list_accounts(&demo_view(), "abnormal").unwrap().accounts;
-        assert_eq!(
-            flagged.len(),
-            2,
-            "the filter returns exactly what is flagged"
-        );
+        assert_eq!(flagged.len(), 2, "the filter returns exactly what is flagged");
     }
 
     #[test]
@@ -16514,25 +15002,17 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         assert_eq!(e.entry_id, "t1");
         assert_eq!(e.memo, "buy");
         assert_eq!(e.name, "funds/demo/entries/t1");
-        assert!(
-            !e.config_digest.is_empty(),
-            "an entry cites the configuration that posted it"
-        );
+        assert!(!e.config_digest.is_empty(), "an entry cites the configuration that posted it");
         assert_eq!(e.postings.len(), 2, "a buy moves two accounts");
         // ⚠ VIEW-SCOPED, so a pasted name resolves after the jobs moved under
         // `/books`. A fund-only account name would 404 in the confident voice.
         assert!(
-            e.postings
-                .iter()
-                .all(|p| p.account.contains("/views/book/accounts/")),
+            e.postings.iter().all(|p| p.account.contains("/views/book/accounts/")),
             "account names must name the default view: {:?}",
             e.postings.iter().map(|p| &p.account).collect::<Vec<_>>(),
         );
         let miss = c.get_entry("funds/demo/entries/nope");
-        assert!(
-            miss.is_err(),
-            "an id the journal does not have is an absence"
-        );
+        assert!(miss.is_err(), "an id the journal does not have is an absence");
         assert!(
             format!("{:#}", miss.unwrap_err()).contains("no entry"),
             "the 404 mapping in watch.rs keys on this phrase",
@@ -16541,11 +15021,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // AIP-121: the list is the journal, and every listed name GetEntry
         // answers. A list whose links 404 is how this started one layer down.
         let listed = c.list_entries("funds/demo").unwrap().entries;
-        assert_eq!(
-            listed.len(),
-            3,
-            "the seeded book posts capital, a buy, a fee"
-        );
+        assert_eq!(listed.len(), 3, "the seeded book posts capital, a buy, a fee");
         assert_eq!(listed[1].entry_id, "t1");
         for e in &listed {
             let one = c.get_entry(&e.name).unwrap();
@@ -16597,10 +15073,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             !silent.identified_lots_declared,
             "a sale that names nothing is not SpecID"
         );
-        assert!(
-            silent.identified_lots.is_empty(),
-            "and the wire does not invent FIFO names"
-        );
+        assert!(silent.identified_lots.is_empty(), "and the wire does not invent FIFO names");
     }
 
     #[test]
@@ -16644,16 +15117,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let d = fresh("firstversion");
         let mut b = FileBook::open(&d).unwrap();
         b.put_accounts(&[
-            Account {
-                dim: 10,
-                display_name: "Management fee expense".into(),
-                account_type: A::Expense,
-            },
-            Account {
-                dim: 40,
-                display_name: "Management fee payable".into(),
-                account_type: A::Liability,
-            },
+            Account { dim: 10, display_name: "Management fee expense".into(), account_type: A::Expense },
+            Account { dim: 40, display_name: "Management fee payable".into(), account_type: A::Liability },
         ])
         .unwrap();
         drop(b);
@@ -16665,14 +15130,9 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
 
         // Nothing precedes it, so there is no base digest to name.
         assert_eq!(out.base_digest, "", "the first version has no predecessor");
+        assert!(!out.changes.is_empty(), "the opening configuration is not empty");
         assert!(
-            !out.changes.is_empty(),
-            "the opening configuration is not empty"
-        );
-        assert!(
-            out.changes
-                .iter()
-                .all(|c| c.kind == pb::rule_change::Kind::Added as i32),
+            out.changes.iter().all(|c| c.kind == pb::rule_change::Kind::Added as i32),
             "every rule in the first version was added by it",
         );
         assert!(
@@ -16697,15 +15157,9 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let diff = c
             .diff_config_versions(&format!("funds/demo/configVersions/{v2}"), "")
             .unwrap();
-        assert_eq!(
-            diff.base_digest, v1,
-            "base should default to the previous version"
-        );
-        let by: BTreeMap<&str, i32> = diff
-            .changes
-            .iter()
-            .map(|c| (c.rule_id.as_str(), c.kind))
-            .collect();
+        assert_eq!(diff.base_digest, v1, "base should default to the previous version");
+        let by: BTreeMap<&str, i32> =
+            diff.changes.iter().map(|c| (c.rule_id.as_str(), c.kind)).collect();
         assert_eq!(by["fee"], pb::rule_change::Kind::Changed as i32);
         assert_eq!(by["perf"], pb::rule_change::Kind::Added as i32);
         // A changed rule carries both forms, which is what makes the diff
@@ -16718,11 +15172,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let back = c
             .diff_config_versions(&format!("funds/demo/configVersions/{v1}"), &v2)
             .unwrap();
-        let kinds: BTreeMap<&str, i32> = back
-            .changes
-            .iter()
-            .map(|c| (c.rule_id.as_str(), c.kind))
-            .collect();
+        let kinds: BTreeMap<&str, i32> =
+            back.changes.iter().map(|c| (c.rule_id.as_str(), c.kind)).collect();
         assert_eq!(kinds["perf"], pb::rule_change::Kind::Removed as i32);
     }
 
@@ -16743,14 +15194,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // normal state of a fund on its first day.
         let d = fresh("cfgfirst");
         book(&d);
-        let first = Console::new(&d)
-            .list_config_versions("funds/demo")
-            .unwrap()
-            .config_versions
-            .last()
-            .unwrap()
-            .digest
-            .clone();
+        let first = Console::new(&d).list_config_versions("funds/demo").unwrap()
+            .config_versions.last().unwrap().digest.clone();
         let diff = Console::new(&d)
             .diff_config_versions(&format!("funds/demo/configVersions/{first}"), "")
             .unwrap();
@@ -16762,9 +15207,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let d = fresh("cfgunknown");
         book(&d);
         let c = Console::new(&d);
-        assert!(c
-            .get_config_version("funds/demo/configVersions/deadbeef")
-            .is_err());
+        assert!(c.get_config_version("funds/demo/configVersions/deadbeef").is_err());
         assert!(c
             .diff_config_versions("funds/demo/configVersions/deadbeef", "")
             .is_err());
@@ -16774,18 +15217,12 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
     fn the_change_log_reads_what_approve_recorded_and_a_model_never_approves() {
         let d = fresh("log");
         book(&d);
-        std::fs::write(
-            d.join("CHANGELOG"),
-            "1780000000\te.marsh\tapproved\tfee_q2\tabc123\n",
-        )
-        .unwrap();
+        std::fs::write(d.join("CHANGELOG"),
+            "1780000000\te.marsh\tapproved\tfee_q2\tabc123\n").unwrap();
         std::fs::create_dir_all(d.join("proposals")).unwrap();
         std::fs::write(d.join("proposals/perf_fee.toml"), "").unwrap();
 
-        let es = Console::new(&d)
-            .list_change_log_entries("funds/demo")
-            .unwrap()
-            .change_log_entries;
+        let es = Console::new(&d).list_change_log_entries("funds/demo").unwrap().change_log_entries;
         assert_eq!(es.len(), 2);
         // Newest first: the pending draft is the most recent thing to happen.
         assert_eq!(es[0].action, "drafted");
@@ -16796,8 +15233,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // The load-bearing one: no model ever appears as the author of an
         // approval, in the log a regulator would read.
         assert!(
-            es.iter()
-                .all(|e| !(e.actor_kind == pb::ActorKind::Model as i32 && e.action == "approved")),
+            es.iter().all(|e| !(e.actor_kind == pb::ActorKind::Model as i32 && e.action == "approved")),
             "a model appears as an approver in the change log"
         );
         assert!(Console::new(&d).get_change_log_entry(&es[1].name).is_ok());
@@ -16807,22 +15243,12 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
     fn an_approved_proposal_stops_appearing_as_a_pending_draft() {
         let d = fresh("logdedupe");
         book(&d);
-        std::fs::write(
-            d.join("CHANGELOG"),
-            "1780000000\te.marsh\tapproved\tfee_q2\tabc123\n",
-        )
-        .unwrap();
+        std::fs::write(d.join("CHANGELOG"),
+            "1780000000\te.marsh\tapproved\tfee_q2\tabc123\n").unwrap();
         std::fs::create_dir_all(d.join("proposals")).unwrap();
         std::fs::write(d.join("proposals/fee_q2.toml"), "").unwrap();
-        let es = Console::new(&d)
-            .list_change_log_entries("funds/demo")
-            .unwrap()
-            .change_log_entries;
-        assert_eq!(
-            es.len(),
-            1,
-            "the draft and its approval collapsed to the approval"
-        );
+        let es = Console::new(&d).list_change_log_entries("funds/demo").unwrap().change_log_entries;
+        assert_eq!(es.len(), 1, "the draft and its approval collapsed to the approval");
         assert_eq!(es[0].action, "approved");
     }
 
@@ -16837,52 +15263,23 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         // working when everything happens to block.
         let digest = config_with_tolerance(&d, 500, 100_000);
         let report = kernel::BreakReport {
-            name: "books/demo/breakReports/r".into(),
-            config_digest: digest,
-            scope: None,
-            transactions_replayed: 1,
-            entries_posted: 1,
+            name: "books/demo/breakReports/r".into(), config_digest: digest, scope: None,
+            transactions_replayed: 1, entries_posted: 1,
             breaks: vec![
-                kernel::BreakLine {
-                    account: 1,
-                    display_name: "Investments at fair value".into(),
-                    ratio_amount: 200_000,
-                    reported_amount: 0,
-                    difference: 200_000,
-                    cause: kernel::Cause::AmountDiffers as i32,
-                    ratio_basis: "1".into(),
-                },
-                kernel::BreakLine {
-                    account: 40,
-                    display_name: "Management fee payable".into(),
-                    ratio_amount: 10,
-                    reported_amount: 0,
-                    difference: 10,
-                    cause: kernel::Cause::AmountDiffers as i32,
-                    ratio_basis: "1".into(),
-                },
+                kernel::BreakLine { account: 1, display_name: "Investments at fair value".into(),
+                    ratio_amount: 200_000, reported_amount: 0, difference: 200_000,
+                    cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
+                kernel::BreakLine { account: 40, display_name: "Management fee payable".into(),
+                    ratio_amount: 10, reported_amount: 0, difference: 10,
+                    cause: kernel::Cause::AmountDiffers as i32, ratio_basis: "1".into() },
             ],
-            exceptions: vec![],
-            book_ties: true,
-        };
+            exceptions: vec![], book_ties: true };
         std::fs::create_dir_all(d.join("reports")).unwrap();
         std::fs::write(d.join("reports/r.pb"), report.encode_to_vec()).unwrap();
         let c = Console::new(&d);
         assert_eq!(c.list_breaks(&demo_view(), "").unwrap().breaks.len(), 2);
-        assert_eq!(
-            c.list_breaks(&demo_view(), "blocking")
-                .unwrap()
-                .breaks
-                .len(),
-            1
-        );
-        assert_eq!(
-            c.list_breaks(&demo_view(), "unexplained")
-                .unwrap()
-                .breaks
-                .len(),
-            2
-        );
+        assert_eq!(c.list_breaks(&demo_view(), "blocking").unwrap().breaks.len(), 1);
+        assert_eq!(c.list_breaks(&demo_view(), "unexplained").unwrap().breaks.len(), 2);
     }
 
     fn rate_fact(id: &str, ccy: &str, minor: i64, cfg: &str) -> ratio_ingest::Fact {
@@ -16892,10 +15289,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             reference: ccy.into(),
             entities: Default::default(),
             values: [
-                (
-                    "currency".into(),
-                    ratio_ingest::Value::Text { text: ccy.into() },
-                ),
+                ("currency".into(), ratio_ingest::Value::Text { text: ccy.into() }),
                 ("rate".into(), ratio_ingest::Value::Decimal { minor }),
             ]
             .into_iter()
@@ -16924,10 +15318,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             .unwrap();
         drop(b);
 
-        let facts = Console::new(&d)
-            .list_facts("funds/demo", "kind=rate")
-            .unwrap()
-            .facts;
+        let facts = Console::new(&d).list_facts("funds/demo", "kind=rate").unwrap().facts;
         assert_eq!(facts.len(), 2);
         assert_eq!(facts[0].assertion, "EUR at 1.10");
         assert!(!facts[0].superseded, "the later fact is in force");
@@ -17025,12 +15416,11 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         assert_eq!(rec.actor, "tester");
         assert_eq!(rec.equity_destination, 25);
         assert_eq!(rec.surplus, Some(-2400), "30.00 income − 6.00 expense, raw");
-        assert_eq!(rec.closing_entry.as_deref(), Some("close:book:2026-03-31"));
-        assert!(
-            rec.journal_position >= 3,
-            "income, spend, close: {}",
-            rec.journal_position
+        assert_eq!(
+            rec.closing_entry.as_deref(),
+            Some("close:book:2026-03-31")
         );
+        assert!(rec.journal_position >= 3, "income, spend, close: {}", rec.journal_position);
         assert_eq!(rec.journal_digest.len(), 64);
         assert_eq!(rec.config_digest.len(), 64);
         assert!(rec.recorded > 0);
@@ -17059,7 +15449,10 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         assert_eq!(got.closing_entry, "close:book:2026-03-31");
 
         let again = c.close_period("household", view, "2026-03-31").unwrap_err();
-        assert!(again.to_string().contains("already closed"), "{again}");
+        assert!(
+            again.to_string().contains("already closed"),
+            "{again}"
+        );
     }
 
     #[test]
@@ -17136,10 +15529,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             .iter()
             .find(|a| a.display_name == "Living expenses")
             .expect("pnl still names Living expenses");
-        assert_eq!(
-            income.credit, "3000",
-            "March P&L keeps the income: {income:?}"
-        );
+        assert_eq!(income.credit, "3000", "March P&L keeps the income: {income:?}");
         assert_eq!(living.debit, "600", "March P&L keeps the spend: {living:?}");
 
         let sheet = c.list_accounts(&view, "sheet-2026-03").unwrap();
@@ -17166,7 +15556,10 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             .find(|a| a.display_name == "Retained earnings")
             .unwrap();
         assert_eq!(tb_re.balance, "-2400");
-        assert_eq!(rec.closing_entry.as_deref(), Some("close:book:2026-03-31"));
+        assert_eq!(
+            rec.closing_entry.as_deref(),
+            Some("close:book:2026-03-31")
+        );
 
         c.apply_event(&household_req("apr", "spend_cash", "4.00", 2026, 4, 2))
             .unwrap();
@@ -17199,11 +15592,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let end: i64 = roll_re.balance.parse().unwrap();
         let d: i64 = roll_re.debit.parse().unwrap();
         let cr: i64 = roll_re.credit.parse().unwrap();
-        assert_eq!(
-            end - (d - cr),
-            0,
-            "first close: beginning RE is a real zero"
-        );
+        assert_eq!(end - (d - cr), 0, "first close: beginning RE is a real zero");
         assert_eq!(end, -2400);
     }
 
@@ -17306,26 +15695,15 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             book_id: "studio".into(),
         })
         .unwrap();
-        c.apply_event(&operating_req(
-            "sale",
-            "receive_revenue",
-            "50.00",
-            2026,
-            3,
-            4,
-        ))
-        .unwrap();
+        c.apply_event(&operating_req("sale", "receive_revenue", "50.00", 2026, 3, 4))
+            .unwrap();
         c.apply_event(&operating_req("bill", "pay_expense", "12.00", 2026, 3, 12))
             .unwrap();
         let rec = c
             .close_period("studio", ratio_rules::UNDECLARED_VIEW, "2026-03-31")
             .unwrap();
         assert_eq!(rec.equity_destination, 25);
-        assert_eq!(
-            rec.surplus,
-            Some(-3800),
-            "50.00 revenue − 12.00 expense, raw"
-        );
+        assert_eq!(rec.surplus, Some(-3800), "50.00 revenue − 12.00 expense, raw");
         let view = format!("funds/studio/views/{}", ratio_rules::UNDECLARED_VIEW);
         let sheet = c.list_accounts(&view, "sheet-2026-03").unwrap();
         let re = sheet
@@ -17333,10 +15711,7 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             .iter()
             .find(|a| a.display_name == "Retained earnings")
             .expect("operating sheet names Retained earnings");
-        assert_eq!(
-            re.balance, "-3800",
-            "surplus landed on RE, not Owner equity: {re:?}"
-        );
+        assert_eq!(re.balance, "-3800", "surplus landed on RE, not Owner equity: {re:?}");
         let owner = sheet
             .accounts
             .iter()
@@ -17369,21 +15744,9 @@ calendar = "wk"
         let d = fresh(name);
         let mut b = FileBook::open(&d).unwrap();
         b.put_accounts(&[
-            Account {
-                dim: 1,
-                display_name: "Investments".into(),
-                account_type: A::Asset,
-            },
-            Account {
-                dim: 2,
-                display_name: "Cash".into(),
-                account_type: A::Asset,
-            },
-            Account {
-                dim: 3,
-                display_name: "Capital".into(),
-                account_type: A::Equity,
-            },
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+            Account { dim: 3, display_name: "Capital".into(), account_type: A::Equity },
         ])
         .unwrap();
         let cfg = b.put(DUAL_VIEWS.as_bytes()).unwrap();
@@ -17427,10 +15790,7 @@ calendar = "wk"
             .unwrap_err()
             .to_string();
         assert!(e.contains("translation residue"), "{e}");
-        assert!(
-            !e.contains("\"difference\":\"0\""),
-            "must not publish a silent zero: {e}"
-        );
+        assert!(!e.contains("\"difference\":\"0\""), "must not publish a silent zero: {e}");
     }
 
     #[test]
@@ -17455,21 +15815,9 @@ calendar = "wk"
         let d = fresh("bff-unplaceable-why");
         let mut b = FileBook::open(&d).unwrap();
         b.put_accounts(&[
-            Account {
-                dim: 1,
-                display_name: "Investments".into(),
-                account_type: A::Asset,
-            },
-            Account {
-                dim: 2,
-                display_name: "Cash".into(),
-                account_type: A::Asset,
-            },
-            Account {
-                dim: 3,
-                display_name: "Capital".into(),
-                account_type: A::Equity,
-            },
+            Account { dim: 1, display_name: "Investments".into(), account_type: A::Asset },
+            Account { dim: 2, display_name: "Cash".into(), account_type: A::Asset },
+            Account { dim: 3, display_name: "Capital".into(), account_type: A::Equity },
         ])
         .unwrap();
         let plain = b.put(b"rules = []\n").unwrap();
