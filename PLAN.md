@@ -4970,6 +4970,31 @@ regression is visible without asserting a brittle Internet latency ceiling.
 This does not replace #304's mutable control transitions or #300's evidence
 persistence.
 
+### Amendment, 2026-09-10 — baked books publish before serving traffic
+
+Related: #309. The Platform deploy workflow, not a Lambda cold start, owns the
+baked demo books. Before CloudFormation receives a new image digest, CI applies
+the narrow journal bucket policy while retaining the currently served image,
+then runs `ratio publish-seeds` for the single demo book and all eight fund
+books. It conditionally claims each missing line at its baked sequence through
+the existing `SeqLog` contract, compares occupied seed slots byte-for-byte, and
+only then conditionally publishes a format-v1 marker containing the whole-seed
+digest and every append-only plane length.
+
+An unchanged marker makes publication one GET per book. A changed marker or
+occupied sequence fails with the book, plane, sequence, and digests before
+traffic shifts. The serving process verifies all markers and opens through the
+read-only attachment door; no cold serving process publishes seed entries.
+Rollback changes only the image and preserves the same bucket and journal
+prefix. Deployment evidence opens Northstar's small journal and Ashcombe's
+generated large journal before the function update, then the existing live
+smoke proves the newly cold-started API opens the seeded demo book.
+
+**Baked books publish before serving traffic** is the Built phrase. This is not
+a backup, a mutable-control replacement, or a new book scope. Publication
+failure ownership and the no-delete mismatch procedure are in
+`docs/durable-startup.md` and `deploy/README.md`.
+
 ### Amendment, 2026-09-10 — Personal transfers name a declared currency
 
 Related: #311 and #178. Personal books already declared currencies and the

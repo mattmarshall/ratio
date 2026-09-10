@@ -131,6 +131,62 @@ jobs:
           echo "uri=$DIGEST" >> "$GITHUB_OUTPUT"
           echo "Deploying $DIGEST"
 
+          # ⭐ POLICY FIRST, WITH THE CURRENT IMAGE STILL SERVING. The publisher
+          # needs conditional Get/Put/List on journals/, but granting that permission
+          # must not expose the image whose seed has not been published yet. Reuse
+          # every live parameter so this update changes only the bucket policy.
+      - name: Grant the pre-traffic seed publisher
+        run: |
+          set -euo pipefail
+          mapfile -t KEYS < <(
+            aws cloudformation describe-stacks --stack-name "$STACK" \
+              --query 'Stacks[0].Parameters[].ParameterKey' --output text \
+              | tr '\t' '\n'
+          )
+          PREVIOUS=()
+          for key in "${KEYS[@]}"; do
+            [ -n "$key" ] || continue
+            PREVIOUS+=("ParameterKey=${key},UsePreviousValue=true")
+          done
+          [ "${#PREVIOUS[@]}" -gt 0 ] || {
+            echo "::error::${STACK} has no readable live parameters; refusing a policy update that could shift the image"
+            exit 1
+          }
+          aws cloudformation deploy \
+            --template-file deploy/app.yaml \
+            --stack-name "$STACK" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides "${PREVIOUS[@]}"
+
+          # The binary uses ObjectStore::put_if_absent and SeqLog::claim — the same
+          # conditional sequence contract as runtime appends. An existing marker
+          # makes an unchanged seed one GET. A different marker or occupied seed
+          # sequence fails here while the previous application version still serves.
+      - name: Publish and open every baked seed
+        env:
+          RATIO_JOURNAL_BUCKET: ratio-demo-scale-320473299741
+          RATIO_JOURNAL_PREFIX: journals/
+        run: |
+          set -euo pipefail
+          PUBLISHED="$(
+            ./deploy/ratio publish-seeds \
+              --book deploy/demo-book \
+              --funds deploy/demo-funds
+          )"
+          echo "$PUBLISHED"
+          # One reconciliation-sized book and the generated lot book. The
+          # publisher opens every durable journal after publication; naming
+          # both here keeps the small/large cold-open evidence in deploy logs.
+          grep -q '^seed northstar-multi-strategy ' <<<"$PUBLISHED" || {
+            echo "::error::the deployment publisher did not open the small northstar seed"
+            exit 1
+          }
+          grep -q '^seed ashcombe-global-equity ' <<<"$PUBLISHED" || {
+            echo "::error::the deployment publisher did not open the large ashcombe seed"
+            exit 1
+          }
+
       - name: Deploy
         env:
           # Who the seeded funds are granted to, comma-separated WorkOS `sub`

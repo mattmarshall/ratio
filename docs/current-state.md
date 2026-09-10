@@ -51,8 +51,11 @@ messages also pass the [issue-completion check](issue-completion.md).
   260, and the minimal read-only reference app in issue 270; neither should be
   confused with local provider activation.
 - **Demonstration data:** `deploy/seed-demo-funds.sh` seeds eight synthetic
-  Investment funds and `deploy/seed_test.sh` verifies that count. Independent
-  book creation supports all four kinds. A fixture, seed, or green render
+  Investment funds and `deploy/seed_test.sh` verifies that count. Deployment
+  conditionally publishes every baked journal/append-only plane and its
+  versioned whole-seed marker before updating the Lambda image. Cold serving
+  processes verify those markers and attach without seed-entry PUTs.
+  Independent book creation supports all four kinds. A fixture, seed, or green render
   test is not a completed signed-in customer workflow or an accepted customer
   period; those gates remain on issues 27 and 262.
 - **Figures:** the lot elections, partner cut, unit movements, capital

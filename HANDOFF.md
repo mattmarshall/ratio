@@ -1065,11 +1065,15 @@ or `sidepocket:*`.
   the `scoped` path. Connect tokens accepted with catalog scopes on
   `/v1` (frozen names only; aliases and hard non-scopes refused).
   RATIO_DEMO_OPEN defaults off on the deployed demo. first-party
-  Connect apps call ConnectApiUrl. The demo API Lambda hydrates
-  ScaleBucket `journals/` (`RATIO_JOURNAL_BUCKET` /
-  `RATIO_JOURNAL_PREFIX`) for durable journal storage.
-  Pending hydration returns a retryable 503. Failed storage
-  installation or hydration refuses book traffic until restart;
+  Connect apps call ConnectApiUrl. The Platform deploy workflow
+  conditionally publishes all baked journal/append-only planes and their
+  format-v1 whole-seed markers to ScaleBucket `journals/` before the new
+  image receives traffic (#309). A cold Lambda verifies all nine markers
+  and attaches with no seed-entry PUT (`RATIO_JOURNAL_BUCKET` /
+  `RATIO_JOURNAL_PREFIX`). A marker or occupied-sequence mismatch fails
+  deployment while the previous image keeps serving; rollback uses the
+  same journals. Pending attachment returns the compatibility hydrate
+  503. Failed storage installation or marker verification refuses book traffic until restart;
   health, version, and auth configuration remain available.
   See [durable startup](docs/durable-startup.md) (#293).
   Post-create control transitions are durable; operational evidence remains #300. The 40GB scale fold stays on
