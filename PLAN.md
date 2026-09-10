@@ -4906,3 +4906,32 @@ bypass the picker. An empty declaration is an explanatory refusal, not USD.
 not expose the Investment `/trade` ticket, attach an instrument or quantity,
 or add another posting path. The journal still enforces independent currency
 conservation. Live rate-provider registration and activation remain on #178.
+
+### Amendment, 2026-09-10 — Personal books ingest cited ECB rates
+
+Related: #313 and #178. Personal books could declare currencies and refuse a
+translated figure when a rate was absent, but CreateBook supplied no rate
+mapping and no first-party provider could put that evidence on the fact plane.
+
+CreateBook(Personal) now includes `ecb-reference-rates`, a reference-data
+template with no posting rules. `connect/ecb-rates/` reads a named daily EXR
+observation from the European Central Bank, computes the cross rate into the
+book's declared reporting base with `Decimal`, and quantizes once with
+round-half-even into the existing hundredths rate shape. The cited delivery
+retains both raw ECB observations, the observation day, currencies, and the
+normalized factor, so the approximation boundary is inspectable rather than
+hidden behind a float.
+
+The app requests only `books:read`, `books:ingest`, and `facts:admit`; it has no
+journal scope and calls ConnectApiUrl through the shared verified-token and
+membership path. Wrong book kind, undeclared/missing currency, mismatched or
+future day, duplicate/missing provider rows, malformed or nonpositive values,
+and DemoUrl all refuse before a fact is delivered.
+
+**Personal books ingest cited ECB rates** is the Built phrase. Tests carry a
+nonzero EUR-to-USD observation through the Personal template into the same
+`Rates::of_facts` fold used by translated figures, asserting the currency label,
+117 factor, delivery digest, and configuration digest. A live ECB fetch for
+2026-09-09 returned the retained source observation 1.1652 and normalized 1.17.
+WorkOS dashboard registration, OAuth grant, and a live permitted-book admission
+remain on #22 / #178; a fixture and a provider GET are not activation evidence.

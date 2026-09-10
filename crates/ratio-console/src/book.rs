@@ -19,10 +19,10 @@ use ratio_store::{Account, AccountTypeRecord, ConfigStore, Digest, FileBook, Pos
 /// The live list is the book's own configuration; these ids are what
 /// [`config_for`] puts there, and what the console catalog filters on.
 ///
-/// Personal is four mappings on purpose: bank / card, named-loan
+/// Personal is five mappings on purpose: bank / card, named-loan
 /// payments, the brokerage trade column contract (household transfers
 /// by default; `[personal] lot_relief` remaps onto lot-opening rules),
-/// and the holdings snapshot (recorded, never booked).
+/// the holdings snapshot, and ECB rates (both recorded, never booked).
 /// Investment is four mappings on purpose: the holdings snapshot (recorded,
 /// never booked), the trade column contract that posts, the capital-call
 /// contract (`commit_*` / `call_*`), and subscriptions / redemptions
@@ -35,6 +35,7 @@ pub fn ingest_template_ids(kind: BookKind) -> &'static [&'static str] {
             "loan-payment",
             "brokerage-statement",
             "brokerage-positions",
+            "ecb-reference-rates",
         ],
         BookKind::Investment => &[
             "custodian-positions",
@@ -389,8 +390,9 @@ pub fn is_awarded_commitment_account(display_name: &str) -> bool {
 /// The opening configuration CreateBook writes: posting rules that hit
 /// [`chart_for`] and the ingest template(s) for this kind.
 ///
-/// Personal seeds four mappings (`bank-statement`, `loan-payment`,
-/// `brokerage-statement`, `brokerage-positions`); Investment and Project
+/// Personal seeds five mappings (`bank-statement`, `loan-payment`,
+/// `brokerage-statement`, `brokerage-positions`, `ecb-reference-rates`);
+/// Investment and Project
 /// seed their own. The live list is the book's configuration.
 ///
 /// ⭐ INVESTMENT SEEDS THE TRADE COLUMN CONTRACT, NOT A JOURNAL. The mapping
@@ -962,6 +964,35 @@ reads = "csv"
   as = "money"
   column = "MarketValue"
   currency = "Ccy"
+
+# ECB reference rates. Reference data only: a rate can change a translated
+# figure, but it never posts a journal entry. The delivery retains SourceRate
+# and SourceBase columns even though this mapping needs only the normalized
+# two-decimal factor, so the cited bytes still carry the provider observation.
+[[template]]
+id = "ecb-reference-rates"
+reads = "csv"
+
+  [template.fact]
+  kind = "rate"
+  reference = "Reference"
+
+  [[template.fact.value]]
+  field = "asOf"
+  as = "date"
+  column = "AsOf"
+  format = "YYYY-MM-DD"
+
+  [[template.fact.value]]
+  field = "currency"
+  as = "text"
+  column = "Currency"
+
+  [[template.fact.value]]
+  field = "rate"
+  as = "money"
+  column = "Rate"
+  currency = "Base"
 
 # Where a period close rolls surplus. Absent is unset — not Opening equity.
 [close]
@@ -2635,6 +2666,9 @@ mod tests {
         assert!(personal.template("brokerage-statement").unwrap().check().is_empty());
         assert!(personal.template("brokerage-positions").is_some());
         assert!(personal.template("brokerage-positions").unwrap().check().is_empty());
+        let rates = personal.template("ecb-reference-rates").unwrap();
+        assert!(rates.check().is_empty());
+        assert!(rates.fact.posts.is_none(), "a reference rate never posts");
         assert!(personal.template("prime_equity_trades").is_none());
         assert!(personal.template("project-invoices").is_none());
         let project = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Project)).unwrap();
@@ -2647,6 +2681,39 @@ mod tests {
         assert!(operating.template("project-invoices").is_none());
         assert!(operating.template("bank-statement").is_none());
         assert!(operating.template("custodian-positions").is_none());
+    }
+
+    #[test]
+    fn the_personal_rate_template_records_a_cited_nonzero_translation_factor() {
+        // ⭐ PROVIDER BYTES -> TEMPLATE -> THE SAME RATES FOLD AS NAV. A test
+        // that merely finds the template would stay green if Currency and Rate
+        // were swapped, which would label the wrong number and still parse.
+        let set = ratio_ingest::TemplateSet::from_toml(config_for(BookKind::Personal)).unwrap();
+        let template = set.template("ecb-reference-rates").unwrap();
+        let content = "Reference,AsOf,Currency,Rate,Base,SourceRate,SourceBase\n\
+ECB-EXR-2026-09-09-EUR-USD,2026-09-09,EUR,1.17,USD,1,1.1693\n";
+        let rows = ratio_ingest::extract_csv(content).unwrap();
+        let delivery = ratio_ingest::Delivery {
+            digest: "e".repeat(64),
+            origin: "ecb:EXR:2026-09-09".into(),
+            received: 1,
+            bytes: content.len() as i64,
+        };
+        let projected = ratio_ingest::project(template, &delivery, &rows, "config-digest");
+        assert!(projected.rejected.is_empty(), "{:?}", projected.rejected);
+        assert_eq!(projected.facts.len(), 1);
+        let fact = &projected.facts[0];
+        assert_eq!(fact.kind, "rate");
+        assert_eq!(fact.values["currency"].as_text(), Some("EUR"));
+        assert_eq!(fact.values["rate"].as_minor(), Some(117));
+        assert_eq!(fact.provenance.delivery, delivery.digest);
+        assert_eq!(fact.provenance.template, "config-digest");
+
+        let rates = ratio_project::Rates::of_facts("USD", &projected.facts);
+        assert_eq!(rates.factor_of("USD"), Some(100));
+        assert_eq!(rates.factor_of("EUR"), Some(117));
+        assert_ne!(rates.factor_of("EUR"), rates.factor_of("USD"));
+        assert_eq!(rates.factor_of("GBP"), None, "an absent rate stays absent");
     }
 
     #[test]
@@ -3111,13 +3178,15 @@ P-2,2026-02-26,,VOO,ARCX,400,176700.00,USD
                 "bank-statement",
                 "loan-payment",
                 "brokerage-statement",
-                "brokerage-positions"
+                "brokerage-positions",
+                "ecb-reference-rates"
             ]
         );
         assert!(set.template("custodian-positions").is_none());
         assert!(set.template("prime_equity_trades").is_none());
         assert!(set.template("brokerage-statement").unwrap().fact.posts.is_some());
         assert!(set.template("brokerage-positions").unwrap().fact.posts.is_none());
+        assert!(set.template("ecb-reference-rates").unwrap().fact.posts.is_none());
         // ⛔ AND THE JOURNAL IS EMPTY. A CreateBook book that arrived with
         // recon-posted history would be the fake past #76 is about.
         let mut n = 0usize;

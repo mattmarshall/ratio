@@ -41,3 +41,8 @@ Human WorkOS dashboard registration, `DEMO_MEMBERS` naming a live
 WorkOS `sub`. Unused Cognito CloudFormation resources are removed. Bank / calendar
 OAuth product UI, licensed AIA forms, IRS e-file, and a kernel blob
 store stay refused on the apps that name them.
+
+`ecb-rates/` is the bounded Personal FX reference-data provider. It uses the
+official ECB Data API and the existing ingest/fact plane; it carries no journal
+scope. Its live WorkOS registration and permitted-book activation remain on
+#22 / #178.

@@ -1,0 +1,25 @@
+package(default_visibility = ["//visibility:public"])
+
+# ECB reference rates are a first-party Connect app. The adapter is held to
+# the Personal template, frozen scopes, provider refusals, and ConnectApiUrl.
+# Live WorkOS application registration remains operator evidence on #22.
+sh_test(
+    name = "ecb_rates_test",
+    size = "small",
+    srcs = ["ecb_rates_test.sh"],
+    args = [
+        "$(rootpath ecb_rates.py)",
+        "$(rootpath ecb_rates_test.py)",
+        "$(rootpath app.json)",
+        "$(rootpath //crates/ratio-console:src/book.rs)",
+        "$(rootpath //:docs/connect-scopes.md)",
+    ],
+    data = [
+        "//connect:grant.py",
+        "ecb_rates.py",
+        "ecb_rates_test.py",
+        "app.json",
+        "//crates/ratio-console:src/book.rs",
+        "//:docs/connect-scopes.md",
+    ],
+)

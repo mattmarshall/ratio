@@ -174,7 +174,14 @@ those declared codes and the Server Action checks the current book
 again before preview or post; an empty declaration keeps the door
 shut rather than inventing USD. It remains a transfer with no
 instrument or quantity, not the Investment `/trade` ticket. This
-file does not close #178 (live rate Connect activation remains).
+file does not close #178. `connect/ecb-rates/` is the first bounded
+rate provider (#313): the official ECB daily EXR observation is
+normalized with Decimal / round-half-even into the existing
+hundredths rate-fact shape, while the cited delivery retains both raw
+cross-rate observations. CreateBook(Personal) seeds the non-posting
+`ecb-reference-rates` mapping. The app has `books:read`,
+`books:ingest`, and `facts:admit`, never `journals:post`; live WorkOS
+registration and a permitted-book activation remain on #22 / #178.
 Optional lot relief on household Investments (#187): `[personal]
 lot_relief = true`
 elects the wash / MinTax / SpecID / average-cost engines already

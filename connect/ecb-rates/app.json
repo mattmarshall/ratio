@@ -1,0 +1,29 @@
+{
+  "name": "Ratio ECB reference rates",
+  "book_kind": "PERSONAL",
+  "issue": 313,
+  "provider": {
+    "name": "European Central Bank Data Portal",
+    "series": "EXR/D.{currency}.EUR.SP00.A",
+    "docs": "https://data.ecb.europa.eu/help/api/overview",
+    "quantization": "ROUND_HALF_EVEN to two decimal places of the declared reporting base; the cited delivery retains the raw ECB observation"
+  },
+  "workos_connect": {
+    "application_type": "oauth",
+    "trust": "first-party",
+    "flow": "authorization_code",
+    "docs": "https://workos.com/docs/authkit/connect/oauth",
+    "catalog": "docs/connect-scopes.md",
+    "scopes": [
+      "books:read",
+      "books:ingest",
+      "facts:admit"
+    ]
+  },
+  "ingest_template": "ecb-reference-rates",
+  "journal_access": "none",
+  "grant_path": {
+    "status": "built",
+    "note": "The app calls ConnectApiUrl with a verified Connect access token. Membership remains required. WorkOS dashboard registration and live activation remain on #22 and #178."
+  }
+}
