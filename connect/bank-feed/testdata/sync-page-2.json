@@ -1,0 +1,1 @@
+{"added":[{"transaction_id":"fixture-pending","account_id":"fixture-card","date":"2026-03-16","amount":24.25,"iso_currency_code":"USD","name":"Fixture pending","pending":true}],"modified":[],"removed":[],"next_cursor":"fixture-cursor-2","has_more":false}
