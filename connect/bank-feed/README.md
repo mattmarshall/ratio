@@ -51,8 +51,11 @@ built. A green fixture run is not a live institution authorization.
   public token is exchanged once, then its server-only `LinkedItem` moves the
   access token directly into `PlaidClient` without returning it to the browser.
 
-`bazel test //connect/bank-feed:mapper_test //connect/bank-feed:plaid_test
-//connect/bank-feed:plaid_link_test` is the focused gate. Retained provider
+```
+bazel test //connect/bank-feed:mapper_test //connect/bank-feed:plaid_test //connect/bank-feed:plaid_link_test
+```
+
+This is the focused gate. Retained provider
 fixtures exercise numeric JSON money, multi-page pending behavior, Link token
 creation, and public-token exchange.
 

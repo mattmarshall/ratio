@@ -63,7 +63,8 @@ class PlaidLink(unittest.TestCase):
             (200, (FIXTURES / "token-exchange.json").read_text()),
         ])
         session = client.create(workos_subject="user", book="books/home")
-        item = client.complete(state=session.state, public_token="public-once",
+        item = client.complete(state=session.state, workos_subject="user", book="books/home",
+                               public_token="public-once",
                                expected_item_id="item-fixture")
         self.assertEqual(item.item_id, "item-fixture")
         self.assertNotIn("access-fixture", repr(item))
@@ -71,24 +72,29 @@ class PlaidLink(unittest.TestCase):
         sync = client.sync_client(item, transport=lambda _path, _body: (200, "{}"))
         self.assertNotIn("access-fixture", repr(sync))
         with self.assertRaisesRegex(link.Refuse, "unknown or mismatched"):
-            client.complete(state=session.state, public_token="public-once")
+            client.complete(state=session.state, workos_subject="user", book="books/home",
+                            public_token="public-once")
 
     def test_state_mismatch_expiry_and_cancellation_never_exchange(self):
         clock = Clock()
         client, transport = subject([(200, '{"link_token":"link"}')], clock=clock, seconds=10)
         session = client.create(workos_subject="user", book="book")
         with self.assertRaisesRegex(link.Refuse, "unknown or mismatched"):
-            client.complete(state="other", public_token="public")
+            client.complete(state="other", workos_subject="user", book="book",
+                            public_token="public")
         clock.now += 11
         with self.assertRaisesRegex(link.Refuse, "expired"):
-            client.complete(state=session.state, public_token="public")
+            client.complete(state=session.state, workos_subject="user", book="book",
+                            public_token="public")
         self.assertEqual(len(transport.calls), 1)
 
         client, transport = subject([(200, '{"link_token":"link"}')])
         session = client.create(workos_subject="user", book="book")
-        client.cancel(state=session.state, provider_error="USER_EXIT")
+        client.cancel(state=session.state, workos_subject="user", book="book",
+                      provider_error="USER_EXIT")
         with self.assertRaisesRegex(link.Refuse, "unknown or mismatched"):
-            client.complete(state=session.state, public_token="public")
+            client.complete(state=session.state, workos_subject="user", book="book",
+                            public_token="public")
         self.assertEqual(len(transport.calls), 1)
 
     def test_a_wrong_item_refuses_after_one_exchange(self):
@@ -96,7 +102,8 @@ class PlaidLink(unittest.TestCase):
                              (200, '{"access_token":"access","item_id":"other"}')])
         session = client.create(workos_subject="user", book="book")
         with self.assertRaisesRegex(link.Refuse, "different Item"):
-            client.complete(state=session.state, public_token="public", expected_item_id="expected")
+            client.complete(state=session.state, workos_subject="user", book="book",
+                            public_token="public", expected_item_id="expected")
 
     def test_pending_sessions_are_bounded_and_expired_slots_are_reclaimed(self):
         clock = Clock()
@@ -112,6 +119,29 @@ class PlaidLink(unittest.TestCase):
         session = client.create(workos_subject="user", book="three")
         self.assertTrue(session.state)
         self.assertEqual(len(transport.calls), 2)
+
+    def test_completion_is_bound_to_the_workos_subject_and_book(self):
+        for subject_change, book_change in (("other", "book"), ("user", "other")):
+            client, transport = subject([(200, '{"link_token":"link"}')])
+            session = client.create(workos_subject="user", book="book")
+            with self.assertRaisesRegex(link.Refuse, "unknown or mismatched"):
+                client.complete(
+                    state=session.state,
+                    workos_subject=subject_change,
+                    book=book_change,
+                    public_token="public",
+                )
+            self.assertEqual(len(transport.calls), 1)
+
+    def test_request_parameters_cannot_override_server_credentials(self):
+        client, transport = subject([(200, '{}')])
+        client._request(link.LINK_CREATE_PATH, {
+            "client_id": "attacker",
+            "secret": "attacker",
+        })
+        sent = transport.calls[0][1]
+        self.assertEqual(sent["client_id"], "client-id")
+        self.assertEqual(sent["secret"], "plaid-secret")
 
     def test_redirect_country_language_and_identity_are_validated(self):
         for kwargs in (
@@ -144,7 +174,8 @@ class PlaidLink(unittest.TestCase):
             client, _ = subject([(200, '{"link_token":"link"}'), (200, response)])
             session = client.create(workos_subject="user", book="book")
             with self.assertRaises(link.Refuse):
-                client.complete(state=session.state, public_token="public")
+                client.complete(state=session.state, workos_subject="user", book="book",
+                                public_token="public")
 
 
 if __name__ == "__main__":

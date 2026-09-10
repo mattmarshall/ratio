@@ -9,6 +9,7 @@ into Plaid's non-PII client_user_id and are never sent in clear text.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import secrets
 import time
@@ -64,6 +65,7 @@ class LinkedItem:
 @dataclass(frozen=True)
 class _Pending:
     expires_at: float
+    membership_binding: str
 
 
 class PlaidLink:
@@ -127,17 +129,19 @@ class PlaidLink:
         while state in self._pending:
             state = secrets.token_urlsafe(32)
         expires_at = now + self._session_seconds
-        self._pending[state] = _Pending(expires_at)
+        self._pending[state] = _Pending(expires_at, client_user_id)
         return LinkSession(state, link_token, expires_at)
 
     def complete(
         self,
         *,
         state: str,
+        workos_subject: str,
+        book: str,
         public_token: str,
         expected_item_id: str | None = None,
     ) -> LinkedItem:
-        pending = self._claim(state)
+        self._claim(state, workos_subject=workos_subject, book=book)
         token = _nonempty(public_token, "Plaid public token", maximum=4096)
         response = self._request(TOKEN_EXCHANGE_PATH, {"public_token": token})
         item_id = _nonempty(response.get("item_id"), "Plaid Item id", maximum=256)
@@ -146,8 +150,15 @@ class PlaidLink:
             raise Refuse("Plaid exchanged a different Item than the Link completion named")
         return LinkedItem(item_id, access_token)
 
-    def cancel(self, *, state: str, provider_error: str | None = None) -> None:
-        self._claim(state)
+    def cancel(
+        self,
+        *,
+        state: str,
+        workos_subject: str,
+        book: str,
+        provider_error: str | None = None,
+    ) -> None:
+        self._claim(state, workos_subject=workos_subject, book=book)
         if provider_error:
             _nonempty(provider_error, "Plaid Link error", maximum=256)
 
@@ -165,8 +176,9 @@ class PlaidLink:
             max_pages=max_pages,
         )
 
-    def _claim(self, state: str) -> _Pending:
+    def _claim(self, state: str, *, workos_subject: str, book: str) -> None:
         key = _nonempty(state, "Link state", maximum=256)
+        expected_binding = _client_user_id(workos_subject, book)
         # Pop before exchange. After an uncertain network result, replaying a
         # public token could attach the wrong outcome to a second request.
         pending = self._pending.pop(key, None)
@@ -174,10 +186,11 @@ class PlaidLink:
             raise Refuse("Link state is unknown or mismatched")
         if self._clock() >= pending.expires_at:
             raise Refuse("Link state expired")
-        return pending
+        if not hmac.compare_digest(pending.membership_binding, expected_binding):
+            raise Refuse("Link state is unknown or mismatched")
 
     def _request(self, path: str, body: Mapping[str, Any]) -> Mapping[str, Any]:
-        request = {"client_id": self._client_id, "secret": self._secret, **body}
+        request = {**body, "client_id": self._client_id, "secret": self._secret}
         try:
             status, raw = self._transport(path, request)
         except Exception as exc:
