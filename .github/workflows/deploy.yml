@@ -70,7 +70,11 @@ jobs:
     # Pinned, not `ubuntu-latest`. The binary links against this runner's glibc
     # and deploy/Dockerfile runs it on ubuntu:24.04; the two are a matched pair.
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    # The reviewed one-time legacy seed migration compares every durable slot
+    # before publishing its v2 marker. The 5,396-entry scale book exceeded the
+    # former 45-minute ceiling on the first migration run. Once the marker is
+    # present, unchanged deploys return after one marker read per book.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -462,7 +466,7 @@ jobs:
             # adopt_ops_domain is invoked as `func || dump` which
             # disables `set -e` inside the function (bash). Run
             # 34006554883: ValidationError, then ChangeSetNotFound
-            # waiter/execute, then hang until timeout-minutes: 45
+            # waiter/execute, then hang until the job timeout
             # (#250). Check the CLI here; do not wait for a change
             # set that was never created.
             if ! aws cloudformation create-change-set \
