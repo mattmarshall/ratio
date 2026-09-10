@@ -1078,10 +1078,11 @@ or `sidepocket:*`.
   #328 found that the seeder itself wrote wall-clock receipt / acceptance
   seconds and generated relative to the build day. Seeds now pin
   2026-09-03 UTC, when durable publication first succeeded in #130. The named
-  `legacy-volatile-times-v1` migration records,
-  without overwriting, only those three JSON clock paths while no v2 marker
-  exists; every other difference still refuses and the door cannot be reused
-  after v2 publication.
+  `legacy-volatile-times-v1` migration records, without overwriting, those
+  three metadata clock paths plus `trade_date` on the same named generated
+  `sub-tail-*` journal entry while no v2 marker exists. The tail ID and every
+  posting still match exactly; every other difference refuses and the door
+  cannot be reused after v2 publication.
   Deploy `34505523090` then measured the migration's I/O defect: 41 silent
   minutes, from serial validation GETs plus a second 16,245-journal-body read
   used only to count. Occupied validation now has 32 bounded readers; the

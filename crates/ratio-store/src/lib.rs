@@ -760,6 +760,16 @@ fn legacy_time_migration_matches(plane: &str, durable: &[u8], baked: &[u8]) -> R
         "deliveries" => &["received"],
         "facts" => &["provenance", "received"],
         "explanations" => &["accept_time"],
+        "journal" => {
+            let durable_id = durable.get("id").and_then(serde_json::Value::as_str);
+            let baked_id = baked.get("id").and_then(serde_json::Value::as_str);
+            if durable_id != baked_id
+                || !durable_id.is_some_and(|id| id.starts_with("sub-tail-"))
+            {
+                return Ok(false);
+            }
+            &["trade_date"]
+        }
         _ => return Ok(false),
     };
     ensure!(
@@ -816,7 +826,7 @@ fn validate_occupied_seed(
                                 && legacy_time_migration_matches(plane, &durable, baked)?,
                         "seed mismatch for book {} plane {plane} sequence {seq}: durable digest {} \
                          differs from baked digest {}; the requested migration permits only legacy \
-                         delivery/fact/explanation wall-clock fields; refusing to alter the existing book",
+                         reviewed clock fields; refusing to alter the existing book",
                         expected.book_id,
                         Digest::of(&durable).short(),
                         Digest::of(baked).short()
@@ -853,11 +863,12 @@ pub fn publish_seed(root: impl AsRef<Path>, store: Arc<dyn ObjectStore>) -> Resu
 
 /// One-time adoption for demo seeds created before their clocks were fixed.
 ///
-/// This does not overwrite durable bytes. It permits only `received` on a
-/// delivery, `provenance.received` on a fact, and `accept_time` on an
-/// explanation to differ while the v2 marker is absent. Once a v2 marker
-/// exists, even this door compares the marker normally and cannot be reused to
-/// adopt a later change.
+/// This does not overwrite durable bytes. While the v2 marker is absent, it
+/// permits only `received` on a delivery, `provenance.received` on a fact,
+/// `accept_time` on an explanation, and `trade_date` on matching generated
+/// `sub-tail-*` journal records to differ. Once a v2 marker exists, even this
+/// door compares the marker normally and cannot be reused to adopt a later
+/// change.
 pub fn publish_seed_with_legacy_time_migration(
     root: impl AsRef<Path>,
     store: Arc<dyn ObjectStore>,
@@ -3040,6 +3051,57 @@ mod tests {
             .to_string();
         assert!(err.contains("seed mismatch"), "{err}");
         assert!(err.contains("permits only legacy"), "{err}");
+    }
+
+    #[test]
+    fn legacy_time_migration_admits_only_the_named_tail_trade_date() {
+        let root = seed_tmp();
+        fs::write(
+            root.join("journal.jsonl"),
+            br#"{"id":"sub-tail-1","memo":"subscription 2","trade_date":"2026-09-02","postings":[{"dim":2,"amount":500},{"dim":20,"amount":-500}]}
+"#,
+        )
+        .unwrap();
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let log = SeqLog::new(
+            store.clone(),
+            format!("{}/journal/", super::book_key(&root)),
+        );
+        assert!(log
+            .claim(
+                1,
+                br#"{"id":"sub-tail-1","memo":"subscription 2","trade_date":"2026-09-09","postings":[{"dim":2,"amount":500},{"dim":20,"amount":-500}]}"#,
+            )
+            .unwrap());
+
+        publish_seed_with_legacy_time_migration(&root, store).unwrap();
+    }
+
+    #[test]
+    fn legacy_time_migration_refuses_other_journal_differences() {
+        for (id, amount) in [("ordinary", 500), ("sub-tail-1", 501)] {
+            let root = seed_tmp();
+            fs::write(
+                root.join("journal.jsonl"),
+                br#"{"id":"sub-tail-1","memo":"subscription 2","trade_date":"2026-09-02","postings":[{"dim":2,"amount":500},{"dim":20,"amount":-500}]}
+"#,
+            )
+            .unwrap();
+            let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+            let log = SeqLog::new(
+                store.clone(),
+                format!("{}/journal/", super::book_key(&root)),
+            );
+            let durable = format!(
+                "{{\"id\":\"{id}\",\"memo\":\"subscription 2\",\"trade_date\":\"2026-09-09\",\"postings\":[{{\"dim\":2,\"amount\":{amount}}},{{\"dim\":20,\"amount\":-500}}]}}"
+            );
+            assert!(log.claim(1, durable.as_bytes()).unwrap());
+
+            let err = publish_seed_with_legacy_time_migration(&root, store)
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("seed mismatch"), "{err}");
+        }
     }
 
     #[test]

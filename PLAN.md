@@ -5008,9 +5008,11 @@ durable journals first published successfully in #130. Publication
 uses a format-v2 marker. While that marker is absent, the explicitly named
 `legacy-volatile-times-v1` migration may compare old and fixed-clock JSON after
 removing only delivery `received`, fact `provenance.received`, and explanation
-`accept_time`. Every other field and plane remains exact. It overwrites no
-durable bytes, records the migration on the v2 marker, and cannot run around a
-v2 mismatch once that marker exists. Old v1 markers remain evidence.
+`accept_time`, plus `trade_date` when both journal records name the same
+generated `sub-tail-*` entry. The tail ID and every posting remain exact; every
+other field and plane remains exact. It overwrites no durable bytes, records the
+migration on the v2 marker, and cannot run around a v2 mismatch once that marker
+exists. Old v1 markers remain evidence.
 
 **Baked seed clocks are explicit** is the Built phrase. This is a one-time
 adoption of known synthetic-demo provenance drift, not a generic normalization
