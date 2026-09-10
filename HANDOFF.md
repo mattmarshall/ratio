@@ -1091,6 +1091,10 @@ or `sidepocket:*`.
   Deploy `34515565216` passed that seed step but exposed a persistent serving
   startup refusal. Failed smoke now includes the exact `journal startup failed`
   CloudWatch line; the public 503 still withholds storage details (#336).
+  Deploy `34517087152` then named the cause: the image copied the seed to
+  `/tmp/book`, deriving durable ID `book`, although publication used
+  `demo-book`. Serving now copies to `/tmp/demo-book`; durable bytes and marker
+  keys do not move (#337).
   See [durable startup](docs/durable-startup.md) (#293).
   Post-create control transitions are durable; operational evidence remains #300. The 40GB scale fold stays on
   Fargate ScaleTask. Scale keeps ScaleBucket.

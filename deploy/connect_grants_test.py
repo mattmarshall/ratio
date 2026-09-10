@@ -37,6 +37,8 @@ with tempfile.TemporaryDirectory() as temp:
     assert policy.read_bytes() == b"previous", "a failed decode must not install a partial policy"
 
 assert 'RATIO_CONNECT_TEMPLATE_GRANTS_BASE64: !Ref ConnectTemplateGrantsBase64' in app.read_text()
+assert 'BOOK="${RATIO_BOOK:-/tmp/demo-book}"' in source
+assert 'RATIO_BOOK: /tmp/demo-book' in app.read_text()
 assert 'CONNECT_TEMPLATE_GRANTS_BASE64: ${{ vars.CONNECT_TEMPLATE_GRANTS_BASE64 }}' in flow.read_text()
 assert 'ConnectTemplateGrantsBase64="${CONNECT_TEMPLATE_GRANTS_BASE64:-}"' in flow.read_text()
 print("Connect policy startup: exact bytes, empty revocation, malformed refusal, deployment wiring")

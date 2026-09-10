@@ -28,7 +28,7 @@ if [ "$#" -gt 0 ]; then
   exec /usr/local/bin/ratio "$@"
 fi
 
-BOOK="${RATIO_BOOK:-/tmp/book}"
+BOOK="${RATIO_BOOK:-/tmp/demo-book}"
 if [ ! -d "$BOOK" ]; then
   cp -r /opt/demo-book "$BOOK"
 fi
