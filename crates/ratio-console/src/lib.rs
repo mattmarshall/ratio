@@ -6995,6 +6995,18 @@ mod tests {
     }
 
     #[test]
+    fn an_expired_public_authorization_window_refuses_before_opening_a_book() {
+        let root = fresh("authorization-deadline");
+        book(&root.join("a"));
+        std::fs::write(root.join("MEMBERSHIP.tsv"), "user_a\ta\n").unwrap();
+        let mut console = Console::scoped(&root, member("user_a", "a@x.test", ""));
+        console.authorization_deadline =
+            Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+        let error = console.get_book("books/a").unwrap_err().to_string();
+        assert!(error.contains("authorization window expired"), "{error}");
+    }
+
+    #[test]
     fn a_write_is_attributed_to_the_verified_subject_and_does_not_pollute_config_versions() {
         let root = fresh("attribution");
         book(&root.join("a"));

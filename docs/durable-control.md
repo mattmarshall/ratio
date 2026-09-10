@@ -5,12 +5,13 @@ Related: [#303](https://github.com/mattmarshall/ratio/issues/303), implementatio
 [#299](https://github.com/mattmarshall/ratio/issues/299), and durability parent
 [#291](https://github.com/mattmarshall/ratio/issues/291).
 
-This is the implementation contract for post-create control state. It extends
+This is the implemented contract for post-create control state. It extends
 [atomic book publication](book-publication.md): the immutable bootstrap is
 revision zero, including its exact opening configuration and explicit creator
 grant. Later ACTIVE, promotion history, and membership come from one verified
-immutable transition stream for that book. This change adds a model and probes;
-it does not enable Rust configuration or membership persistence.
+immutable transition stream for that book. `ratio-store::control` implements
+the protobuf boundary and fold over the same `ObjectStore` used by the server's
+durable journal.
 
 ## One predecessor, one conditional publication
 
@@ -47,12 +48,11 @@ There is no global revision or lock. An operation on book B does not consume a
 revision in book A or block A's unused slot. This is a safety and enabledness
 claim; unlimited failures or an unfair scheduler can prevent progress.
 
-## Protobuf boundary for #304
+## Protobuf boundary
 
-Define these as actual `.proto` messages in the implementation. The following
-field table is a contract, not an alternate JSON or Rust persistence schema.
-Field numbers and package placement are for #304 to finalize before writing
-objects; published version-one bytes must subsequently remain interpretable.
+`proto/ratio/storage/v1/control.proto` defines these messages. The following
+field table is the persisted contract, not an alternate JSON schema. Published
+version-one bytes must remain interpretable.
 
 | Message | Required fields and validation |
 |---|---|
@@ -118,9 +118,15 @@ An already authorized request may finish within its bounded authorization
 window after a concurrent revocation. It retains the configuration digest and
 membership snapshot captured at its own start. This does not permit a second
 request to reuse that authorization. Expiration, retry, and process restart
-require a new check. #304 must define and enforce the concrete request deadline
-and cancellation behavior at each public operation boundary. The model uses
-one logical tick for the window, not a claimed number of seconds.
+require a new check. The network console gives an authenticated operation a
+25-second authorization window, inside API Gateway's 30-second integration
+ceiling. It resolves current membership when a public book boundary is entered
+and checks the deadline again immediately before `ApplyEvent` appends. Expiry
+refuses and requires a new request; the window is never renewed on one
+`Console`. A concurrent revocation may therefore allow the already-authorized
+operation to finish before that deadline, but the next operation resolves the
+committed revocation. The posting keeps the configuration digest captured
+before its append even if a promotion commits concurrently.
 
 Control operations also respect that window, and their expected predecessor
 provides an additional fence: an intervening revocation or promotion takes the
@@ -196,3 +202,22 @@ Verification on this bounded model: the normal run explored 1,032,189 generated
 states and 186,198 distinct states to depth 18, with no invariant violation.
 The six focused probes each failed for the invariant listed above; the complete
 `tla/probes.sh` sweep reported all 41 probes red for their named reason.
+
+## Running implementation
+
+Configuration blobs are stored at `_control/config-blobs/{sha256}`. Transition
+objects are conditionally created at
+`_control/transitions/{book}/{revision:020}`. Readers verify canonical protobuf
+bytes, bootstrap identity, gapless revisions, predecessor and operation
+digests, every promoted blob, and unique operation IDs before deriving ACTIVE,
+newest-first HISTORY, or membership. Local `config/ACTIVE`,
+`config/HISTORY`, and `MEMBERSHIP.tsv` remain legacy inputs only for books
+without a durable publication; they cannot override a published book.
+
+Trusted `ratio config set`, `ratio approve`, and `ratio membership
+grant|revoke` durable forms require `--operation`, `--expected-revision`, and
+`--predecessor`. They select `RATIO_JOURNAL_BUCKET` /
+`RATIO_JOURNAL_PREFIX`, or `RATIO_JOURNAL_LOCAL`, exactly as the server does.
+An unusable configured store refuses instead of mutating local state. The
+actor is the stable `RATIO_ACTOR` / OS user and provenance is `trusted-cli`;
+the committed operation still requires that actor to be a current book member.

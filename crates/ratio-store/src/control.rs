@@ -637,12 +637,34 @@ mod tests {
             .commit(&operation(
                 &control,
                 "book",
-                "revoke-creator",
+                "grant-admin",
                 "creator",
+                member(membership_revision::Action::Grant, "admin"),
+            ))
+            .unwrap();
+        let conflict = control.commit(&stale).unwrap_err().to_string();
+        assert!(conflict.contains("predecessor conflict"), "{conflict}");
+
+        let revoked_request = operation(
+            &control,
+            "book",
+            "creator-later",
+            "creator",
+            member(membership_revision::Action::Grant, "guest"),
+        );
+        control
+            .commit(&operation(
+                &control,
+                "book",
+                "revoke-creator",
+                "admin",
                 member(membership_revision::Action::Revoke, "creator"),
             ))
             .unwrap();
-        let auth = control.commit(&stale).unwrap_err().to_string();
+        let auth = control
+            .commit(&revoked_request)
+            .unwrap_err()
+            .to_string();
         assert!(auth.contains("not a current book member"), "{auth}");
     }
 }
