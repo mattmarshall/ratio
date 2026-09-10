@@ -99,7 +99,14 @@ fn open_journal(book: &Path, install: impl FnOnce() -> Result<()>) -> Result<()>
                 .with_context(|| format!("reading baked funds at {}", funds.display()))?
             {
                 let path = entry?.path();
-                if path.is_dir() && path.join("accounts.json").is_file() {
+                // A warm-container process restart can leave CreateBook
+                // materializations beside the eight baked funds. Those are
+                // governed by their immutable bootstrap publication, not by a
+                // baked-seed marker, and must not be mistaken for image input.
+                if path.is_dir()
+                    && path.join("accounts.json").is_file()
+                    && !path.join(ratio_store::bootstrap::MARKER).exists()
+                {
                     ratio_store::verify_seed_publication(&path, store.clone())
                         .with_context(|| format!("verifying baked fund {}", path.display()))?;
                 }
