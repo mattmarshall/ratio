@@ -145,7 +145,10 @@ class PlaidClient:
             rows.append(_mapper_row(normalized, choice))
             source_ids.append(transaction_id)
 
-        proposed = mapper.map_batch(rows, book=book, client=ratio_client)
+        try:
+            proposed = mapper.map_batch(rows, book=book, client=ratio_client)
+        except mapper.Refuse as exc:
+            raise Refuse(str(exc)) from exc
         return SyncResult(next_cursor, tuple(proposed), tuple(pending.values()), tuple(source_ids))
 
     def disconnect(self) -> None:
@@ -155,11 +158,14 @@ class PlaidClient:
         self._connected = False
 
     def _request(self, path: str, body: Mapping[str, Any]) -> Mapping[str, Any]:
+        # Provider inputs may choose endpoint parameters, never credentials.
+        # Place the server-held values last so an internal caller cannot turn
+        # this boundary into a confused-deputy request for another Item.
         request = {
+            **body,
             "client_id": self._client_id,
             "secret": self._secret,
             "access_token": self._access_token,
-            **body,
         }
         try:
             status, raw = self._transport(path, request)

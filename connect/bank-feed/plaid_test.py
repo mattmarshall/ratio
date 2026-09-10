@@ -192,6 +192,28 @@ class Sync(unittest.TestCase):
         self.assertNotIn("secret", str(caught.exception))
         self.assertEqual(repr(subject), "PlaidClient(credentials=<redacted>)")
 
+    def test_request_parameters_cannot_override_server_credentials(self):
+        subject, transport = client([(200, response())])
+        subject._request(plaid.SYNC_PATH, {
+            "client_id": "attacker",
+            "secret": "attacker",
+            "access_token": "attacker",
+        })
+        sent = transport.calls[0][1]
+        self.assertEqual(sent["client_id"], "id")
+        self.assertEqual(sent["secret"], "secret")
+        self.assertEqual(sent["access_token"], "item-token")
+
+    def test_mapper_refusal_stays_inside_the_provider_boundary(self):
+        subject, _ = client([(200, response(added=[transaction()]))])
+        with self.assertRaises(plaid.Refuse) as caught:
+            subject.sync(
+                choices={"txn-1": plaid.RuleChoice("not-a-rule")},
+                book=personal(),
+                ratio_client=ratio_client(),
+            )
+        self.assertIsInstance(caught.exception.__cause__, mapper.Refuse)
+
     def test_disconnect_revokes_the_item_and_stops_future_pulls(self):
         subject, transport = client([(200, "{}")])
         subject.disconnect()
