@@ -62,8 +62,11 @@ confuse or fork Personal into that tree.
 - A `410 Gone` requires full sync while retaining the prior event-id/etag
   index. It never clears or silently reposts journal history.
 
-`bazel test //connect/calendar-bills:bills_test
-//connect/calendar-bills:google_calendar_test` is the focused gate.
+```
+bazel test //connect/calendar-bills:bills_test //connect/calendar-bills:google_calendar_test
+```
+
+This is the focused gate.
 
 ## WorkOS Connect — application shape
 

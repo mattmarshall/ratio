@@ -170,13 +170,15 @@ class GoogleCalendar:
         try:
             status, raw = self._transport(url, headers)
         except Exception as exc:
-            raise Refuse(f"Google Calendar transport failed: {type(exc).__name__}") from exc
+            raise Refuse(f"Google Calendar transport failed: {type(exc).__name__}") from None
         if not isinstance(status, int) or isinstance(status, bool):
             raise Refuse("Google Calendar transport returned a malformed HTTP status")
         try:
             payload = json.loads(raw)
-        except (json.JSONDecodeError, TypeError) as exc:
-            raise Refuse("Google Calendar returned malformed JSON") from exc
+        except (json.JSONDecodeError, TypeError):
+            # JSONDecodeError retains the source document. Do not attach
+            # provider content to a traceback crossing this adapter boundary.
+            raise Refuse("Google Calendar returned malformed JSON") from None
         if not isinstance(payload, dict):
             raise Refuse("Google Calendar returned a non-object response")
         if status == 410:

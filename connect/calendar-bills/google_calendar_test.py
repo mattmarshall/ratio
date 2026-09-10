@@ -164,7 +164,22 @@ class CalendarSync(unittest.TestCase):
                         ratio_client=ratio_client())
         self.assertNotIn("google-access-token", str(caught.exception))
         self.assertNotIn("calendar contents", str(caught.exception))
+        self.assertIsNone(caught.exception.__cause__)
         self.assertEqual(repr(client), "GoogleCalendar(access_token=<redacted>)")
+
+        client, transport = calendar([(200, page(sync_token="sync"))])
+        client.sync(calendar_id="calendar-id", seen={}, book=personal(),
+                    ratio_client=ratio_client())
+        url, headers = transport.calls[0]
+        self.assertEqual(headers["Authorization"], "Bearer google-access-token")
+        self.assertEqual(headers["Accept"], "application/json")
+        self.assertNotIn("google-access-token", url)
+
+        client, _ = calendar([(200, "google-access-token calendar contents")])
+        with self.assertRaises(google.Refuse) as caught:
+            client.sync(calendar_id="calendar-id", seen={}, book=personal(),
+                        ratio_client=ratio_client())
+        self.assertIsNone(caught.exception.__cause__)
 
     def test_mapper_refusal_stays_inside_the_provider_boundary(self):
         client, _ = calendar([(200, page(items=[event()], sync_token="sync"))])
