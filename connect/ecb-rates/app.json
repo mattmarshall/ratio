@@ -12,6 +12,9 @@
     "application_type": "oauth",
     "trust": "first-party",
     "flow": "authorization_code",
+    "public_client": true,
+    "uses_pkce": true,
+    "redirect_uri": "http://127.0.0.1:8765/callback",
     "docs": "https://workos.com/docs/authkit/connect/oauth",
     "catalog": "docs/connect-scopes.md",
     "scopes": [

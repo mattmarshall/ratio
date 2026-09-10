@@ -46,3 +46,10 @@ store stay refused on the apps that name them.
 official ECB Data API and the existing ingest/fact plane; it carries no journal
 scope. Its live WorkOS registration and permitted-book activation remain on
 #22 / #178.
+
+`oauth.py` is the shared native activation path for the Personal Connect apps.
+It uses a public WorkOS OAuth client, PKCE S256, an exact
+`http://127.0.0.1:8765/callback` loopback, and state verification. It returns
+the bearer in memory and never prints or persists access, refresh, or ID
+tokens. Each app's `app.json` remains the exact Ratio resource-scope list;
+`openid` is added only as the OAuth protocol scope.

@@ -1,6 +1,9 @@
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["grant.py"])
+exports_files([
+    "grant.py",
+    "oauth.py",
+])
 
 # Shared Connect grant path. First-party apps call ConnectApiUrl
 # with a verified Connect access token. Membership still required.
@@ -17,5 +20,34 @@ sh_test(
     data = [
         "grant.py",
         "grant_test.py",
+    ],
+)
+
+# A public native client completes WorkOS Connect authorization without
+# creating or persisting a client secret. The loopback callback, PKCE, state,
+# and manifest scope boundary are all part of the contract.
+sh_test(
+    name = "oauth_test",
+    size = "small",
+    srcs = ["oauth_test.sh"],
+    args = [
+        "$(rootpath oauth.py)",
+        "$(rootpath oauth_test.py)",
+        "$(rootpath //connect/bank-feed:app.json)",
+        "$(rootpath //connect/bank-balance-predictor:app.json)",
+        "$(rootpath //connect/calendar-bills:app.json)",
+        "$(rootpath //connect/goals:app.json)",
+        "$(rootpath //connect/tax-pack:app.json)",
+        "$(rootpath //connect/ecb-rates:app.json)",
+    ],
+    data = [
+        "oauth.py",
+        "oauth_test.py",
+        "//connect/bank-feed:app.json",
+        "//connect/bank-balance-predictor:app.json",
+        "//connect/calendar-bills:app.json",
+        "//connect/goals:app.json",
+        "//connect/tax-pack:app.json",
+        "//connect/ecb-rates:app.json",
     ],
 )
