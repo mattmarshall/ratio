@@ -362,11 +362,23 @@ It first applies only the ScaleBucket policy while retaining every live stack
 parameter and the currently served image. It then runs `ratio publish-seeds`
 for the single demo book and all eight fund books. That command publishes the
 journal and all six append-only side planes through `SeqLog::claim`, compares
-occupied slots byte-for-byte, conditionally writes the format-v1 whole-seed
-marker at `journals/_seed/publications/<book-id>`, and opens every durable
+occupied slots byte-for-byte, conditionally writes the format-v2 whole-seed
+marker at `journals/_seed/publications-v2/<book-id>`, and opens every durable
 journal. Only after that succeeds does CloudFormation receive the new image
 digest. The smoke names both Northstar (small) and Ashcombe (large) in that
 cold-open evidence.
+
+⚠ **The v1 rollout exposed a real seeder defect, not corrupt S3.** Ingest and
+explanation records used the build runner's current second, and generated
+settlement tails used its current day. The scripts now pin their explicit
+source-of-truth clock to 2026-09-03 00:00:00 UTC, when the durable journals
+first published successfully in #130. The deploy's reviewed
+`legacy-volatile-times-v1` adoption is available only before a v2 marker and
+permits only delivery `received`, fact `provenance.received`, and explanation
+`accept_time` to differ. It records that migration without rewriting the old
+evidence. Everything else remains exact, and once v2 exists the migration
+cannot be reused to bless later drift. See
+[durable startup](../docs/durable-startup.md) for the failure procedure.
 
 A Lambda cold start verifies every marker and attaches through the read-only
 door. It performs no seed-entry PUTs. The compatibility 503
@@ -411,6 +423,9 @@ unchanged suffix; conditional sequence claims resume safely. For a
 book/plane/sequence and expected/actual digests to determine whether the image
 contains the wrong seed or the workflow targets the wrong durable prefix, then
 rebuild the intended image or restore/choose the correct untouched prefix.
+Do not broaden or rename `legacy-volatile-times-v1` to handle another mismatch;
+anything outside its three documented clock fields is a real divergence for
+this procedure.
 Rollback changes only the image and preserves the same bucket/prefix, so the
 prior version attaches to the same journals and ignores the newer marker.
 The full procedure is in [durable startup](../docs/durable-startup.md).

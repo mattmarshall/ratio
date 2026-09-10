@@ -101,6 +101,8 @@ usage:
   ratio publish-seeds --funds DIR [--book DIR]
                                        deployment-only: conditionally publish and
                                        validate every baked append-only plane
+  ratio publish-seeds --funds DIR --migration legacy-volatile-times-v1
+                                       one-time adoption of pre-fixed-clock demos
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio accept BREAK --because TEXT    record why a difference is acceptable
@@ -226,7 +228,13 @@ fn main() -> Result<()> {
         // calls on a thread. Two implementations would be two answers to "what
         // did the fold cost", and the one nobody ran locally would be quoted.
         ["scale-run", "--size", size, "--id", id] => scale_run(size, id),
-        ["publish-seeds", "--funds", funds] => publish_seeds(book, PathBuf::from(funds)),
+        ["publish-seeds", "--funds", funds] => {
+            publish_seeds(book, PathBuf::from(funds), None)
+        }
+        ["publish-seeds", "--funds", funds, "--migration", migration] => {
+            ensure_seed_migration(migration)?;
+            publish_seeds(book, PathBuf::from(funds), Some(migration))
+        }
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
         ["approve", id, "--operation", operation, "--expected-revision", revision, "--predecessor", predecessor] =>
@@ -305,12 +313,21 @@ fn replace_sections(
     toml::to_string_pretty(&doc).context("re-serializing the configuration")
 }
 
-/// Seconds since the epoch, for a received-at stamp.
-fn now() -> i64 {
-    std::time::SystemTime::now()
+/// Seconds since the epoch, with one explicit clock for generated demo books.
+///
+/// `RATIO_SEED_EPOCH` is set only by the reviewed seed script. Without it the
+/// CLI records real receipt/announcement time as before. A malformed override
+/// refuses instead of silently returning to the wall clock and baking drift.
+fn now() -> Result<i64> {
+    if let Some(epoch) = std::env::var("RATIO_SEED_EPOCH").ok().filter(|v| !v.is_empty()) {
+        return epoch
+            .parse()
+            .context("RATIO_SEED_EPOCH must be whole seconds since the Unix epoch");
+    }
+    Ok(std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+        .unwrap_or(0))
 }
 
 // ─── the data plane ───────────────────────────────────────────────────────
@@ -363,7 +380,7 @@ fn ingest(book: PathBuf, file: &str, template_id: &str) -> Result<()> {
     let delivery = ratio_ingest::Delivery {
         digest: ratio_store::Digest::of(&bytes).as_str().to_string(),
         origin: file.to_string(),
-        received: now(),
+        received: now()?,
         bytes: bytes.len() as i64,
     };
 
@@ -591,7 +608,7 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str)
                     numerator: s.num,
                     denominator: s.den,
                     ex_date: ex_date.to_string(),
-                    announced: now(),
+                    announced: now()?,
                 }),
                 due_date: None,
                 application: None,
@@ -744,12 +761,11 @@ fn plural(n: i64, one: &str, many: &str) -> String {
 /// recognition convention is not a dimension of a fund's size. Putting `--views`
 /// there would make it appear in a benchmark that has no use for it.
 ///
-/// ⚠ AND THIS IS WHERE THE WALL CLOCK ENTERS. `ratio-gen` has no `now` and is
-/// not getting one: it exists to produce the same book from the same dials. But
-/// `ratio strike` values at NOW, and a settlement tail that has already settled
-/// by then demonstrates nothing — `Ratio.Views.a_fold_with_no_cut_hides_the_
-/// settlement_gap` — so the tail is anchored to today, here, at the edge. The
-/// twenty years of history above it stay fixed.
+/// ⚠ AND THIS IS WHERE THE CLOCK ENTERS. Normally the tail is anchored to today:
+/// `ratio strike` values at now, and a settlement tail that has already settled
+/// demonstrates nothing — `Ratio.Views.a_fold_with_no_cut_hides_the_settlement_
+/// gap`. The baked demo sets `RATIO_SEED_EPOCH`, so rebuilding the same image
+/// input tomorrow cannot rewrite every generated trade date.
 fn books_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Books, Vec<&'a str>)> {
     let mut books = ratio_gen::Books::default();
     let mut rest = Vec::new();
@@ -798,10 +814,7 @@ fn books_from<'a>(args: &[&'a str]) -> Result<(ratio_gen::Books, Vec<&'a str>)> 
             other => rest.push(other),
         }
     }
-    books.tail_ends = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64 / 86_400)
-        .unwrap_or(0);
+    books.tail_ends = now()? / 86_400;
     Ok((books, rest))
 }
 
@@ -1484,7 +1497,17 @@ fn install_control_backend() -> Result<()> {
     Ok(())
 }
 
-fn publish_seeds(book: PathBuf, funds: PathBuf) -> Result<()> {
+fn ensure_seed_migration(migration: &str) -> Result<()> {
+    if migration != ratio_store::LEGACY_SEED_TIME_MIGRATION {
+        bail!(
+            "unknown seed migration {migration:?}; the only reviewed migration is {:?}",
+            ratio_store::LEGACY_SEED_TIME_MIGRATION
+        );
+    }
+    Ok(())
+}
+
+fn publish_seeds(book: PathBuf, funds: PathBuf, migration: Option<&str>) -> Result<()> {
     install_control_backend()?;
     let store = ratio_store::installed_object_store().context(
         "publish-seeds requires RATIO_JOURNAL_BUCKET or RATIO_JOURNAL_LOCAL; \
@@ -1505,8 +1528,14 @@ fn publish_seeds(book: PathBuf, funds: PathBuf) -> Result<()> {
     books.extend(fund_paths);
 
     for path in books {
-        let publication = ratio_store::publish_seed(&path, store.clone())
-            .with_context(|| format!("publishing baked seed {}", path.display()))?;
+        let publication = match migration {
+            Some(_) => ratio_store::publish_seed_with_legacy_time_migration(
+                &path,
+                store.clone(),
+            ),
+            None => ratio_store::publish_seed(&path, store.clone()),
+        }
+        .with_context(|| format!("publishing baked seed {}", path.display()))?;
         // Open through the read-only attachment door after publication. Parsing
         // every durable journal here makes deployment, rather than first user
         // traffic, own the first real read of both the small and large seeds.
@@ -1517,11 +1546,16 @@ fn publish_seeds(book: PathBuf, funds: PathBuf) -> Result<()> {
             .with_context(|| format!("validating published journal {}", publication.book_id))?
             .len();
         println!(
-            "seed {} {} ({} baked journal entries; {} durable journal entries)",
+            "seed {} {} ({} baked journal entries; {} durable journal entries){}",
             publication.book_id,
             publication.seed_digest,
             publication.plane_lengths.get("journal").copied().unwrap_or(0),
-            entries
+            entries,
+            publication
+                .migration
+                .as_deref()
+                .map(|name| format!("; migration {name}"))
+                .unwrap_or_default()
         );
     }
     Ok(())
@@ -2032,11 +2066,7 @@ fn strike(book: PathBuf, as_of: Option<&str>, view: Option<&str>) -> Result<()> 
     // convention nobody chose is the failure this whole feature is about.
     let view = view_or_refuse(&book, view)?;
     let actor = actor_name();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let s = ratio_nav::strike_and_record(&book, &view, now, &actor)?;
+    let s = ratio_nav::strike_and_record(&book, &view, now()?, &actor)?;
 
     println!("struck {} in {}", s.id, s.view);
     println!("  NAV        {}", minor(s.net_asset_value));

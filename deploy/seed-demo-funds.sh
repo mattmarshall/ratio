@@ -19,6 +19,12 @@ mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 rm -rf "${OUT:?}"/*
 export RATIO_ACTOR="${RATIO_ACTOR:-e.marsh}"
+SEED_EPOCH=1788393600
+if [ -n "${RATIO_SEED_EPOCH:-}" ] && [ "$RATIO_SEED_EPOCH" != "$SEED_EPOCH" ]; then
+  echo "RATIO_SEED_EPOCH is fixed at $SEED_EPOCH for the baked demo, got $RATIO_SEED_EPOCH" >&2
+  exit 1
+fi
+export RATIO_SEED_EPOCH="$SEED_EPOCH"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

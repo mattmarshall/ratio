@@ -611,8 +611,9 @@ fn book_key(root: &Path) -> String {
         .to_string()
 }
 
-const SEED_PUBLICATIONS: &str = "_seed/publications/";
-const SEED_FORMAT_VERSION: u32 = 1;
+const SEED_PUBLICATIONS: &str = "_seed/publications-v2/";
+const SEED_FORMAT_VERSION: u32 = 2;
+pub const LEGACY_SEED_TIME_MIGRATION: &str = "legacy-volatile-times-v1";
 
 /// The immutable deployment marker for one baked book.
 ///
@@ -626,6 +627,10 @@ pub struct SeedPublication {
     pub book_id: String,
     pub seed_digest: String,
     pub plane_lengths: std::collections::BTreeMap<String, u64>,
+    /// Present only when an explicitly requested one-time migration validated
+    /// legacy wall-clock drift before publishing this marker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub migration: Option<String>,
 }
 
 fn seed_lines(root: &Path) -> Result<Vec<(String, Vec<Vec<u8>>)>> {
@@ -678,6 +683,7 @@ fn expected_seed_publication(root: &Path) -> Result<SeedPublication> {
         book_id: id,
         seed_digest: Digest::of(&manifest).as_str().to_string(),
         plane_lengths,
+        migration: None,
     })
 }
 
@@ -710,7 +716,10 @@ fn ensure_seed_marker_matches(
     expected: &SeedPublication,
 ) -> Result<()> {
     ensure!(
-        actual == expected,
+        actual.format_version == expected.format_version
+            && actual.book_id == expected.book_id
+            && actual.seed_digest == expected.seed_digest
+            && actual.plane_lengths == expected.plane_lengths,
         "seed mismatch for book {}: durable marker has digest {} and plane lengths {:?}, \
          but this image has digest {} and plane lengths {:?}; refusing to alter the existing book",
         expected.book_id,
@@ -722,6 +731,45 @@ fn ensure_seed_marker_matches(
     Ok(())
 }
 
+fn legacy_time_migration_matches(plane: &str, durable: &[u8], baked: &[u8]) -> Result<bool> {
+    if durable == baked {
+        return Ok(true);
+    }
+    let mut durable: serde_json::Value = serde_json::from_slice(durable)
+        .with_context(|| format!("legacy {plane} sequence is not JSON"))?;
+    let mut baked: serde_json::Value =
+        serde_json::from_slice(baked).with_context(|| format!("baked {plane} sequence is not JSON"))?;
+
+    let remove = |value: &mut serde_json::Value, path: &[&str]| -> bool {
+        let mut cursor = value;
+        for part in &path[..path.len().saturating_sub(1)] {
+            let Some(next) = cursor.get_mut(*part) else {
+                return false;
+            };
+            cursor = next;
+        }
+        let Some(field) = path.last() else {
+            return false;
+        };
+        let Some(object) = cursor.as_object_mut() else {
+            return false;
+        };
+        object.remove(*field).is_some()
+    };
+    let path: &[&str] = match plane {
+        "deliveries" => &["received"],
+        "facts" => &["provenance", "received"],
+        "explanations" => &["accept_time"],
+        _ => return Ok(false),
+    };
+    ensure!(
+        remove(&mut durable, path) && remove(&mut baked, path),
+        "the {LEGACY_SEED_TIME_MIGRATION} migration expected {} on plane {plane}",
+        path.join(".")
+    );
+    Ok(durable == baked)
+}
+
 /// Publish every baked append-only plane, then conditionally expose its marker.
 ///
 /// Existing sequence slots are compared before missing slots are claimed.
@@ -729,7 +777,32 @@ fn ensure_seed_marker_matches(
 /// contract as legacy hydration, but unlike hydration it cannot silently
 /// accept a different seed merely because the durable log is already taller.
 pub fn publish_seed(root: impl AsRef<Path>, store: Arc<dyn ObjectStore>) -> Result<SeedPublication> {
-    let root = root.as_ref();
+    publish_seed_inner(root.as_ref(), store, None)
+}
+
+/// One-time adoption for demo seeds created before their clocks were fixed.
+///
+/// This does not overwrite durable bytes. It permits only `received` on a
+/// delivery, `provenance.received` on a fact, and `accept_time` on an
+/// explanation to differ while the v2 marker is absent. Once a v2 marker
+/// exists, even this door compares the marker normally and cannot be reused to
+/// adopt a later change.
+pub fn publish_seed_with_legacy_time_migration(
+    root: impl AsRef<Path>,
+    store: Arc<dyn ObjectStore>,
+) -> Result<SeedPublication> {
+    publish_seed_inner(
+        root.as_ref(),
+        store,
+        Some(LEGACY_SEED_TIME_MIGRATION),
+    )
+}
+
+fn publish_seed_inner(
+    root: &Path,
+    store: Arc<dyn ObjectStore>,
+    migration: Option<&str>,
+) -> Result<SeedPublication> {
     let expected = expected_seed_publication(root)?;
     if let Some(actual) = read_seed_publication(store.as_ref(), &expected.book_id)? {
         ensure_seed_marker_matches(&actual, &expected)?;
@@ -750,9 +823,13 @@ pub fn publish_seed(root: impl AsRef<Path>, store: Arc<dyn ObjectStore>) -> Resu
             })?;
             let baked = &lines[(seq - 1) as usize];
             ensure!(
-                durable == *baked,
+                durable == *baked
+                    || migration
+                        .is_some_and(|name| name == LEGACY_SEED_TIME_MIGRATION)
+                        && legacy_time_migration_matches(&plane, &durable, baked)?,
                 "seed mismatch for book {} plane {plane} sequence {seq}: durable digest {} \
-                 differs from baked digest {}; refusing to alter the existing book",
+                 differs from baked digest {}; the requested migration permits only legacy \
+                 delivery/fact/explanation wall-clock fields; refusing to alter the existing book",
                 expected.book_id,
                 Digest::of(&durable).short(),
                 Digest::of(baked).short()
@@ -775,7 +852,9 @@ pub fn publish_seed(root: impl AsRef<Path>, store: Arc<dyn ObjectStore>) -> Resu
     }
 
     let key = format!("{SEED_PUBLICATIONS}{}", expected.book_id);
-    let bytes = serde_json::to_vec(&expected)?;
+    let mut publication = expected.clone();
+    publication.migration = migration.map(str::to_string);
+    let bytes = serde_json::to_vec(&publication)?;
     if !store.put_if_absent(&key, &bytes)? {
         let actual = read_seed_publication(store.as_ref(), &expected.book_id)?
             .context("a lost seed-marker claim left no readable marker")?;
@@ -2711,7 +2790,7 @@ mod tests {
             "every baked append-only plane must be published: {puts:?}"
         );
         assert!(
-            puts.iter().any(|key| key.contains("_seed/publications/")),
+            puts.iter().any(|key| key.contains("_seed/publications-v2/")),
             "the marker must be conditionally published after the planes: {puts:?}"
         );
 
@@ -2752,6 +2831,81 @@ mod tests {
         assert!(err.contains("plane journal sequence 1"), "{err}");
         assert!(err.contains("durable digest"), "{err}");
         assert!(err.contains("baked digest"), "{err}");
+    }
+
+    #[test]
+    fn legacy_time_migration_is_explicit_narrow_and_one_time() {
+        let root = seed_tmp();
+        let baked = br#"{"digest":"abc","origin":"seed.csv","received":1788998400,"bytes":3}"#;
+        fs::write(root.join("deliveries.jsonl"), [baked.as_slice(), b"\n"].concat()).unwrap();
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let log = SeqLog::new(
+            store.clone(),
+            format!("{}/deliveries/", super::book_key(&root)),
+        );
+        assert!(log
+            .claim(
+                1,
+                br#"{"digest":"abc","origin":"seed.csv","received":1788900000,"bytes":3}"#,
+            )
+            .unwrap());
+
+        let err = publish_seed(&root, store.clone()).unwrap_err().to_string();
+        assert!(err.contains("seed mismatch"), "{err}");
+
+        let publication =
+            publish_seed_with_legacy_time_migration(&root, store.clone()).unwrap();
+        assert_eq!(
+            publication.migration.as_deref(),
+            Some(LEGACY_SEED_TIME_MIGRATION)
+        );
+        assert_eq!(
+            log.get(1).unwrap().unwrap(),
+            br#"{"digest":"abc","origin":"seed.csv","received":1788900000,"bytes":3}"#,
+            "adoption records the allowed drift; it never overwrites durable evidence"
+        );
+
+        fs::write(
+            root.join("deliveries.jsonl"),
+            br#"{"digest":"abc","origin":"different.csv","received":1788998400,"bytes":3}
+"#,
+        )
+        .unwrap();
+        let err = publish_seed_with_legacy_time_migration(&root, store)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("durable marker has digest"),
+            "a v2 marker makes the migration non-reusable: {err}"
+        );
+    }
+
+    #[test]
+    fn legacy_time_migration_refuses_non_time_divergence() {
+        let root = seed_tmp();
+        fs::write(
+            root.join("facts.jsonl"),
+            br#"{"id":"f1","reference":"wanted","provenance":{"received":1788998400}}
+"#,
+        )
+        .unwrap();
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let log = SeqLog::new(
+            store.clone(),
+            format!("{}/facts/", super::book_key(&root)),
+        );
+        assert!(log
+            .claim(
+                1,
+                br#"{"id":"f1","reference":"different","provenance":{"received":1788900000}}"#,
+            )
+            .unwrap());
+
+        let err = publish_seed_with_legacy_time_migration(&root, store)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("seed mismatch"), "{err}");
+        assert!(err.contains("permits only legacy"), "{err}");
     }
 
     #[test]

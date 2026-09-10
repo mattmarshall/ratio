@@ -172,7 +172,8 @@ jobs:
           PUBLISHED="$(
             ./deploy/ratio publish-seeds \
               --book deploy/demo-book \
-              --funds deploy/demo-funds
+              --funds deploy/demo-funds \
+              --migration legacy-volatile-times-v1
           )"
           echo "$PUBLISHED"
           # One reconciliation-sized book and the generated lot book. The

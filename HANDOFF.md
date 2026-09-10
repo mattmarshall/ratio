@@ -1067,7 +1067,7 @@ or `sidepocket:*`.
   RATIO_DEMO_OPEN defaults off on the deployed demo. first-party
   Connect apps call ConnectApiUrl. The Platform deploy workflow
   conditionally publishes all baked journal/append-only planes and their
-  format-v1 whole-seed markers to ScaleBucket `journals/` before the new
+  format-v2 whole-seed markers to ScaleBucket `journals/` before the new
   image receives traffic (#309). A cold Lambda verifies all nine markers
   and attaches with no seed-entry PUT (`RATIO_JOURNAL_BUCKET` /
   `RATIO_JOURNAL_PREFIX`). A marker or occupied-sequence mismatch fails
@@ -1075,6 +1075,13 @@ or `sidepocket:*`.
   same journals. Pending attachment returns the compatibility hydrate
   503. Failed storage installation or marker verification refuses book traffic until restart;
   health, version, and auth configuration remain available.
+  #328 found that the seeder itself wrote wall-clock receipt / acceptance
+  seconds and generated relative to the build day. Seeds now pin
+  2026-09-03 UTC, when durable publication first succeeded in #130. The named
+  `legacy-volatile-times-v1` migration records,
+  without overwriting, only those three JSON clock paths while no v2 marker
+  exists; every other difference still refuses and the door cannot be reused
+  after v2 publication.
   See [durable startup](docs/durable-startup.md) (#293).
   Post-create control transitions are durable; operational evidence remains #300. The 40GB scale fold stays on
   Fargate ScaleTask. Scale keeps ScaleBucket.
