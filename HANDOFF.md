@@ -1088,6 +1088,9 @@ or `sidepocket:*`.
   used only to count. Occupied validation now has 32 bounded readers; the
   post-marker attached open uses LIST height, missing suffix PUTs remain
   sequential/conditional, and per-book/plane progress streams in Actions.
+  Deploy `34515565216` passed that seed step but exposed a persistent serving
+  startup refusal. Failed smoke now includes the exact `journal startup failed`
+  CloudWatch line; the public 503 still withholds storage details (#336).
   See [durable startup](docs/durable-startup.md) (#293).
   Post-create control transitions are durable; operational evidence remains #300. The 40GB scale fold stays on
   Fargate ScaleTask. Scale keeps ScaleBucket.
