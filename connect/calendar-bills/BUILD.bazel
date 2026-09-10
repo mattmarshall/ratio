@@ -7,9 +7,10 @@ package(default_visibility = ["//visibility:public"])
 #
 # ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token.
 # WorkOS dashboard registration stays leftover #22.
-# Live calendar OAuth is leftover on #163. Payroll / envelope kinds
-# refuse. Recurrence is not expanded into the journal. screensFor
-# is not forked. No kernel forecast RPC.
+# Encrypted local activation is //connect:personal_activation_test; live
+# calendar evidence stays on #163. Payroll / envelope kinds refuse.
+# Recurrence is not expanded into the journal. screensFor is not forked.
+# No kernel forecast RPC.
 sh_test(
     name = "bills_test",
     size = "small",

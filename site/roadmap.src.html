@@ -209,9 +209,16 @@ __STYLE__
           kinds only — unset when none exist, not a fake zero.
           Bank-balance predictor and calendar-bills Connect app
           scaffolds post that <code>forecast_*</code> /
-          <code>scheduled_*</code> material; live
-          bank / calendar OAuth stay leftover on
-          <a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>.
+          <code>scheduled_*</code> material. A local Personal activation
+          runner binds the public WorkOS grant to one subject/book while
+          keeping Plaid and Google grants separate; provider credentials and
+          retry cuts are encrypted per membership across restarts. Plaid
+          pending-to-posted and Google refresh / expired-sync recovery are
+          explicit. Production registration, credentials, webhooks, and
+          redacted live bank / calendar evidence stay on
+          <a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>,
+          <a href="https://github.com/mattmarshall/ratio/issues/165">#165</a>,
+          and <a href="https://github.com/mattmarshall/ratio/issues/22">#22</a>.
           Personal books declare
           currencies — unset stays unset, not a silent USD; unbalanced
           FX is refused; rate providers stay Connect

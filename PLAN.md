@@ -5063,3 +5063,39 @@ backend. Public membership is resolved afresh, with a bounded 25-second
 in-flight authorization window; Connect client/template policy remains a
 separate conjunctive grant. NAVs, reports, proposals, general audit
 presentation, backup copies, and RPO/RTO remain outside this amendment.
+
+### Amendment, 2026-09-10 — Personal provider grants survive the local process
+
+Related: #324, #163, #165, and #22. Plaid Link/Transactions, Google Calendar
+Events, and public WorkOS PKCE were separate working boundaries, but provider
+credentials and opaque sync cuts died with the process. A successful grant
+therefore could not become a repeatable local Personal sync.
+
+`connect/personal_activation.py` composes those boundaries for one selected
+Personal book and the `sub` in a freshly authorized WorkOS Connect JWT. It
+confirms that membership through ConnectApiUrl before opening provider custody;
+the local JWT decode binds identity but does not replace API Gateway signature
+verification. Plaid and Google remain independent upstream grants and grant no
+Ratio membership.
+
+**Personal provider grants survive the local process** is the Built phrase.
+AES-256-GCM records seal credentials, cursors, pending transactions, Google
+sync tokens, and event-id/etag indexes under a one-way subject/book membership
+binding. Atomic mode-0600 writes survive restart and authenticated data prevents
+a record from moving to another membership or provider. Status results contain
+metadata only. Plaid retires a pending row when the posted transaction names
+its `pending_transaction_id`; Google refreshes access, preserves refresh-token
+rotation, and retries a 410 as full sync with the prior index. Both providers
+must revoke successfully before local custody is deleted.
+
+The production contract is explicit in
+`docs/personal-provider-activation.md`: WorkOS uses the exact
+`http://127.0.0.1:8765/callback` public-PKCE redirect and manifest scopes;
+Google uses a Desktop client, exact
+`http://127.0.0.1:8766/google/callback`, and only
+`calendar.events.readonly`; Plaid uses the `transactions` product and exact
+HTTPS redirect `https://ratio.marsh.build/connect/plaid`. Secret and endpoint
+environment names are listed there. Production credentials, dashboard
+registration, webhook operation, and redacted signed-in provider/book evidence
+remain on #163, #165, #22, and #324. No kernel scope, hosted core callback, or
+`screensFor` branch was added.

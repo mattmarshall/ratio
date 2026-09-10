@@ -6,7 +6,7 @@ token pulls cites and delivers against **ConnectApiUrl**, never DemoUrl.
 
 ⭐ Core stays a thin book of record. Breadth is WorkOS Connect. Live
 registration leftover is #22. PLAN maps refuse phrases to Connect
-issues or never — scaffolds here are not live OAuth.
+issues or never.
 
 ## Live OAuth shape
 
@@ -47,9 +47,18 @@ official ECB Data API and the existing ingest/fact plane; it carries no journal
 scope. Its live WorkOS registration and permitted-book activation remain on
 #22 / #178.
 
-`oauth.py` is the shared native activation path for the Personal Connect apps.
+`oauth.py` is the shared native WorkOS activation path for the Personal Connect apps.
 It uses a public WorkOS OAuth client, PKCE S256, an exact
 `http://127.0.0.1:8765/callback` loopback, and state verification. It returns
 the bearer in memory and never prints or persists access, refresh, or ID
 tokens. Each app's `app.json` remains the exact Ratio resource-scope list;
 `openid` is added only as the OAuth protocol scope.
+
+`personal_activation.py` composes that grant with Plaid Link/Transactions and
+Google Calendar for one selected Personal membership. Provider credentials,
+cursors, and idempotency indexes are AES-256-GCM encrypted in a durable local
+mode-0600 store keyed by a hash of WorkOS `sub` plus book. Plaid and Google
+grants remain independent of WorkOS authorization. Exact production setup and
+secret names are in
+[`docs/personal-provider-activation.md`](../docs/personal-provider-activation.md).
+Live provider and signed-in book evidence remains on #163, #165, and #22.

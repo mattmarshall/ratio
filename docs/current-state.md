@@ -1,6 +1,6 @@
 # Ratio — current state
 
-Updated September 9, 2026. This is the current implementation summary. Update
+Updated September 10, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
 The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
@@ -40,11 +40,16 @@ messages also pass the [issue-completion check](issue-completion.md).
   backend. Membership is resolved at each public operation boundary. Connect
   client/template grants remain separate and conjunctive; a Connect token
   inherits neither the bootstrap creator grant nor an organization grant.
-- **Connect activation:** the LP portal's read grant is proven. Its hosted
-  walkthrough and drip elections remain on issue 161. Other apps need their
-  own registration. The API client-template allowlist is tracked in issue
-  260, and the minimal read-only reference app in issue 270; neither should
-  be confused with a grant helper or an app's local template checks.
+- **Connect activation:** the LP portal's read grant is proven. Personal bank
+  and calendar apps have a local runner that binds public WorkOS PKCE to one
+  subject/Personal book, then keeps the separate Plaid or Google credential and
+  retry cut in AES-256-GCM per-membership custody. Plaid pending-to-posted and
+  Google refresh/410 recovery are restart-safe. Production registration,
+  credentials, and redacted signed-in provider evidence remain on issues 22,
+  163, 165, and 324. The LP portal's hosted walkthrough and drip elections
+  remain on issue 161. The API client-template allowlist is tracked in issue
+  260, and the minimal read-only reference app in issue 270; neither should be
+  confused with local provider activation.
 - **Demonstration data:** `deploy/seed-demo-funds.sh` seeds eight synthetic
   Investment funds and `deploy/seed_test.sh` verifies that count. Independent
   book creation supports all four kinds. A fixture, seed, or green render
