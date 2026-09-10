@@ -173,13 +173,14 @@ jobs:
           RATIO_JOURNAL_PREFIX: journals/
         run: |
           set -euo pipefail
-          PUBLISHED="$(
-            ./deploy/ratio publish-seeds \
-              --book deploy/demo-book \
-              --funds deploy/demo-funds \
-              --migration legacy-volatile-times-v1
-          )"
-          echo "$PUBLISHED"
+          PUBLISHED_FILE="$(mktemp)"
+          ./deploy/ratio publish-seeds \
+            --book deploy/demo-book \
+            --funds deploy/demo-funds \
+            --migration legacy-volatile-times-v1 \
+            | tee "$PUBLISHED_FILE"
+          PUBLISHED="$(cat "$PUBLISHED_FILE")"
+          rm -f "$PUBLISHED_FILE"
           # One reconciliation-sized book and the generated lot book. The
           # publisher opens every durable journal after publication; naming
           # both here keeps the small/large cold-open evidence in deploy logs.

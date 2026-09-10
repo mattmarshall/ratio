@@ -770,6 +770,18 @@ def main(app_path, bootstrap_path, workflow_path):
         )
     else:
         print("  ok  deploy names the one reviewed legacy-time migration")
+    if re.search(r'PUBLISHED="\$\(\s*\./deploy/ratio publish-seeds', flow):
+        fail(
+            f"{workflow_path} captures publish-seeds before echoing it — a slow "
+            "migration emits no visible progress and times out without a diagnosis"
+        )
+    elif '| tee "$PUBLISHED_FILE"' not in flow:
+        fail(
+            f"{workflow_path} does not stream publish-seeds output through tee — "
+            "the next slow durable read will again be silent"
+        )
+    else:
+        print("  ok  seed publication output streams while preserving smoke assertions")
     for seeded in ("northstar-multi-strategy", "ashcombe-global-equity"):
         if seeded not in flow:
             fail(

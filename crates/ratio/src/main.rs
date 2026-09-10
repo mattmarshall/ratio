@@ -1528,6 +1528,7 @@ fn publish_seeds(book: PathBuf, funds: PathBuf, migration: Option<&str>) -> Resu
     books.extend(fund_paths);
 
     for path in books {
+        eprintln!("seed publication: {}", path.display());
         let publication = match migration {
             Some(_) => ratio_store::publish_seed_with_legacy_time_migration(
                 &path,
@@ -1536,15 +1537,19 @@ fn publish_seeds(book: PathBuf, funds: PathBuf, migration: Option<&str>) -> Resu
             None => ratio_store::publish_seed(&path, store.clone()),
         }
         .with_context(|| format!("publishing baked seed {}", path.display()))?;
-        // Open through the read-only attachment door after publication. Parsing
-        // every durable journal here makes deployment, rather than first user
-        // traffic, own the first real read of both the small and large seeds.
-        let attached = FileBook::open_attached_with(&path, Some(store.clone()))
+        // Open through the read-only attachment door after publication, then
+        // inspect the durable sequence height. Publication just compared every
+        // occupied seed body; parsing the whole journal AGAIN would issue
+        // another 16,000+ serial S3 GETs and was what pushed deploy #329 past
+        // its 45-minute budget.
+        let _attached = FileBook::open_attached_with(&path, Some(store.clone()))
             .with_context(|| format!("opening published seed {}", publication.book_id))?;
-        let entries = attached
-            .entries()
-            .with_context(|| format!("validating published journal {}", publication.book_id))?
-            .len();
+        let entries = ratio_store::SeqLog::new(
+            store.clone(),
+            format!("{}/journal/", publication.book_id),
+        )
+        .height()
+        .with_context(|| format!("reading published journal height {}", publication.book_id))?;
         println!(
             "seed {} {} ({} baked journal entries; {} durable journal entries){}",
             publication.book_id,

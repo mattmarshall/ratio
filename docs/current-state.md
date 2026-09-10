@@ -57,6 +57,9 @@ messages also pass the [issue-completion check](issue-completion.md).
   processes verify those markers and attach without seed-entry PUTs. Seeds use
   an explicit fixed clock; the one-time legacy-clock adoption permits only the
   three documented receipt/acceptance fields and cannot bypass a v2 marker.
+  Occupied seed bodies validate with at most 32 readers; result/progress output
+  streams before traffic shifts, and missing suffix writes remain ordered and
+  conditional.
   Independent book creation supports all four kinds. A fixture, seed, or green render
   test is not a completed signed-in customer workflow or an accepted customer
   period; those gates remain on issues 27 and 262.

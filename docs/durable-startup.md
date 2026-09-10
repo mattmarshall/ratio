@@ -44,6 +44,24 @@ exists, the migration cannot be reused: later publication compares the marker
 normally and any changed seed fails closed. Old format-v1 markers are retained
 as rollout evidence but are not the serving marker.
 
+### Migration I/O and progress
+
+Deploy `34505523090` established the failure curve: 41 minutes in publication
+before the 45-minute job budget cancelled it. The publisher performed one
+serial S3 GET for every occupied seed sequence, then `entries()` downloaded all
+16,245 journal bodies a second time to print a count. Including side planes,
+that was more than 32,000 sequential body reads. Shell command substitution
+captured all successful stdout until exit, leaving no progress in Actions.
+
+Occupied-prefix validation now runs with a hard ceiling of 32 concurrent GET
+readers. The write side is unchanged: missing suffix sequences are claimed in
+order through conditional PUT, so an interrupted initial publication still
+resumes from a contiguous prefix. Once bodies have been validated and the
+marker published, the attached-open proof reads journal height with LIST rather
+than parsing the same bodies again. The command writes each book and
+plane/sequence count to the live log; the workflow streams successful result
+lines through `tee` before applying smoke assertions.
+
 `ratio watch` binds and accepts HTTP while durable attachment initializes.
 It verifies every baked marker and uses `FileBook::open_attached`; startup has
 no seed-publication call and performs no seed-entry PUT.
