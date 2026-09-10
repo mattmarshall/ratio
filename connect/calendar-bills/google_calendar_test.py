@@ -166,6 +166,22 @@ class CalendarSync(unittest.TestCase):
         self.assertNotIn("calendar contents", str(caught.exception))
         self.assertEqual(repr(client), "GoogleCalendar(access_token=<redacted>)")
 
+    def test_mapper_refusal_stays_inside_the_provider_boundary(self):
+        client, _ = calendar([(200, page(items=[event()], sync_token="sync"))])
+        denied = bills.Client(
+            client_id="client_ratio_calendar_bills",
+            allowlist=frozenset(),
+            scopes=bills.CANONICAL_SCOPES,
+        )
+        with self.assertRaises(google.Refuse) as caught:
+            client.sync(
+                calendar_id="calendar-id",
+                seen={},
+                book=personal(),
+                ratio_client=denied,
+            )
+        self.assertIsInstance(caught.exception.__cause__, bills.Refuse)
+
     def test_page_count_and_concrete_calendar_are_bounded(self):
         client, _ = calendar([(200, page(page_token="again"))], max_pages=1)
         with self.assertRaisesRegex(google.Refuse, "1-page bound"):

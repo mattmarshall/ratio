@@ -158,7 +158,10 @@ class GoogleCalendar:
             )
             updated_seen[event_id] = etag
 
-        proposed = bills.map_batch(rows, book=book, client=ratio_client)
+        try:
+            proposed = bills.map_batch(rows, book=book, client=ratio_client)
+        except bills.Refuse as exc:
+            raise Refuse(str(exc)) from exc
         assert final_sync_token is not None
         return SyncResult(final_sync_token, tuple(proposed), updated_seen, tuple(evidence))
 
