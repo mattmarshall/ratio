@@ -728,6 +728,48 @@ def main(app_path, bootstrap_path, workflow_path):
             )
         else:
             print("  ok  journal policy is on ScaleBucket")
+        if "role/ratio-demo-deploy" not in journal_policy:
+            fail(
+                f"{app_path} journal bucket policy does not grant the deployment role — "
+                "publish-seeds runs before the new Function image and cannot borrow "
+                "the serving process's credentials"
+            )
+        else:
+            print("  ok  journal policy grants the pre-traffic deployment publisher")
+
+    # ⭐ #309: grant with the OLD image, publish/validate, then update the image.
+    # Merely placing publish-seeds somewhere in the workflow is not the
+    # pre-traffic contract. The policy-only update must preserve live parameters,
+    # and the final ImageUri handoff must appear after publication.
+    publisher = flow.find("./deploy/ratio publish-seeds")
+    image_handoff = flow.find("ImageUri='${{ steps.image.outputs.uri }}'")
+    if publisher < 0:
+        fail(
+            f"{workflow_path} never runs the deployment-only publish-seeds command — "
+            "a Lambda cold start would still own baked publication"
+        )
+    elif image_handoff < 0 or publisher > image_handoff:
+        fail(
+            f"{workflow_path} publishes seeds after handing CloudFormation the new "
+            "ImageUri — traffic can reach an uninitialized journal"
+        )
+    else:
+        print("  ok  baked seeds publish before CloudFormation receives the new image")
+    if "UsePreviousValue=true" not in flow:
+        fail(
+            f"{workflow_path} does not preserve live stack parameters for the "
+            "publisher-policy update — that preparatory update could shift traffic"
+        )
+    else:
+        print("  ok  publisher-policy update retains the currently served image")
+    for seeded in ("northstar-multi-strategy", "ashcombe-global-equity"):
+        if seeded not in flow:
+            fail(
+                f"{workflow_path} deployment smoke does not name the "
+                f"{seeded} cold-open evidence"
+            )
+        else:
+            print(f"  ok  deployment smoke opens {seeded}")
 
     # ⛔ SMOKE STILL ASKS FOR A TYING BOOK, AND STILL REFUSES AN OPEN /v1.
     # A "fix" that dropped the difference:0.00 assertion, or that opened

@@ -700,6 +700,13 @@ Resources:
   # and cannot iam:PutRolePolicy on ratio-demo-execution. Putting the
   # grant here is what makes the next app deploy apply it.
   #
+  # ⭐ DEPLOYMENT IS THE SEED PUBLICATION OWNER. CI first applies this policy
+  # with the currently served ImageUri, then conditionally publishes and
+  # validates every baked book, and only then updates the Function. The deploy
+  # role needs the same no-overwrite object verbs for that pre-traffic step.
+  # Giving only the Function permission would force publication back into cold
+  # start, which is the coupling issue #309 removes.
+  #
   # ⛔ NO DeleteObject. Same reason as TheJournal: a delete is a
   # truncation wearing an IAM grant. PutObject is the conditional PUT
   # (`If-None-Match:*`) hydrate and append both use — `tla/S3Journal.tla`.
@@ -715,7 +722,9 @@ Resources:
           - Sid: TheExecutionRoleWritesTheJournal
             Effect: Allow
             Principal:
-              AWS: !Ref ExecutionRoleArn
+              AWS:
+                - !Ref ExecutionRoleArn
+                - !Sub "arn:aws:iam::${AWS::AccountId}:role/ratio-demo-deploy"
             Action:
               - s3:GetObject
               - s3:PutObject

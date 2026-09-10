@@ -611,6 +611,201 @@ fn book_key(root: &Path) -> String {
         .to_string()
 }
 
+const SEED_PUBLICATIONS: &str = "_seed/publications/";
+const SEED_FORMAT_VERSION: u32 = 1;
+
+/// The immutable deployment marker for one baked book.
+///
+/// The digest covers every baked append-only plane, including empty planes.
+/// Once this marker exists, a different image cannot reinterpret an existing
+/// durable prefix as its own seed. The marker itself is conditionally created
+/// only after every occupied seed slot has been compared byte-for-byte.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SeedPublication {
+    pub format_version: u32,
+    pub book_id: String,
+    pub seed_digest: String,
+    pub plane_lengths: std::collections::BTreeMap<String, u64>,
+}
+
+fn seed_lines(root: &Path) -> Result<Vec<(String, Vec<Vec<u8>>)>> {
+    let files = [
+        ("journal", "journal.jsonl"),
+        ("deliveries", "deliveries.jsonl"),
+        ("entities", "entities.jsonl"),
+        ("facts", "facts.jsonl"),
+        ("actions", "actions.jsonl"),
+        ("explanations", "explanations.jsonl"),
+        ("closes", "closes.jsonl"),
+    ];
+    let mut out = Vec::new();
+    for (plane, file) in files {
+        let path = root.join(file);
+        let lines = if path.exists() {
+            let text = fs::read_to_string(&path)
+                .with_context(|| format!("reading baked seed plane {}", path.display()))?;
+            text.lines()
+                .filter(|line| !line.trim().is_empty())
+                .map(|line| line.as_bytes().to_vec())
+                .collect()
+        } else {
+            Vec::new()
+        };
+        out.push((plane.to_string(), lines));
+    }
+    Ok(out)
+}
+
+fn expected_seed_publication(root: &Path) -> Result<SeedPublication> {
+    let id = book_key(root);
+    ensure!(bootstrap::valid_book_id(&id), "invalid baked seed book ID {id:?}");
+    let planes = seed_lines(root)?;
+    let mut manifest = Vec::new();
+    let mut plane_lengths = std::collections::BTreeMap::new();
+    manifest.extend_from_slice(format!("ratio-seed-v{SEED_FORMAT_VERSION}\n{id}\n").as_bytes());
+    for (plane, lines) in planes {
+        let count = u64::try_from(lines.len()).context("a baked seed plane is too long")?;
+        plane_lengths.insert(plane.clone(), count);
+        manifest.extend_from_slice(format!("{plane}\n{count}\n").as_bytes());
+        for line in lines {
+            manifest.extend_from_slice(format!("{}\n", line.len()).as_bytes());
+            manifest.extend_from_slice(&line);
+            manifest.push(b'\n');
+        }
+    }
+    Ok(SeedPublication {
+        format_version: SEED_FORMAT_VERSION,
+        book_id: id,
+        seed_digest: Digest::of(&manifest).as_str().to_string(),
+        plane_lengths,
+    })
+}
+
+fn read_seed_publication(
+    store: &dyn ObjectStore,
+    book_id: &str,
+) -> Result<Option<SeedPublication>> {
+    let key = format!("{SEED_PUBLICATIONS}{book_id}");
+    let Some(bytes) = store.get(&key)? else {
+        return Ok(None);
+    };
+    let publication: SeedPublication =
+        serde_json::from_slice(&bytes).with_context(|| format!("invalid seed marker at {key}"))?;
+    ensure!(
+        publication.format_version == SEED_FORMAT_VERSION,
+        "seed marker for book {book_id} has unsupported version {} (expected {})",
+        publication.format_version,
+        SEED_FORMAT_VERSION
+    );
+    ensure!(
+        publication.book_id == book_id,
+        "seed marker for book {book_id} names book {:?}",
+        publication.book_id
+    );
+    Ok(Some(publication))
+}
+
+fn ensure_seed_marker_matches(
+    actual: &SeedPublication,
+    expected: &SeedPublication,
+) -> Result<()> {
+    ensure!(
+        actual == expected,
+        "seed mismatch for book {}: durable marker has digest {} and plane lengths {:?}, \
+         but this image has digest {} and plane lengths {:?}; refusing to alter the existing book",
+        expected.book_id,
+        actual.seed_digest,
+        actual.plane_lengths,
+        expected.seed_digest,
+        expected.plane_lengths
+    );
+    Ok(())
+}
+
+/// Publish every baked append-only plane, then conditionally expose its marker.
+///
+/// Existing sequence slots are compared before missing slots are claimed.
+/// Publication therefore uses the same predetermined, conditional sequence
+/// contract as legacy hydration, but unlike hydration it cannot silently
+/// accept a different seed merely because the durable log is already taller.
+pub fn publish_seed(root: impl AsRef<Path>, store: Arc<dyn ObjectStore>) -> Result<SeedPublication> {
+    let root = root.as_ref();
+    let expected = expected_seed_publication(root)?;
+    if let Some(actual) = read_seed_publication(store.as_ref(), &expected.book_id)? {
+        ensure_seed_marker_matches(&actual, &expected)?;
+        return Ok(actual);
+    }
+
+    for (plane, lines) in seed_lines(root)? {
+        let log = SeqLog::new(store.clone(), format!("{}/{plane}/", expected.book_id));
+        let height = log.height()?;
+        let seed_height = u64::try_from(lines.len()).context("a baked seed plane is too long")?;
+        let occupied_seed_height = height.min(seed_height);
+        for seq in 1..=occupied_seed_height {
+            let durable = log.get(seq)?.with_context(|| {
+                format!(
+                    "seed mismatch for book {} plane {plane}: sequence {seq} is missing below height {height}",
+                    expected.book_id
+                )
+            })?;
+            let baked = &lines[(seq - 1) as usize];
+            ensure!(
+                durable == *baked,
+                "seed mismatch for book {} plane {plane} sequence {seq}: durable digest {} \
+                 differs from baked digest {}; refusing to alter the existing book",
+                expected.book_id,
+                Digest::of(&durable).short(),
+                Digest::of(baked).short()
+            );
+        }
+        for seq in (height + 1)..=seed_height {
+            let baked = &lines[(seq - 1) as usize];
+            if !log.claim(seq, baked)? {
+                let durable = log.get(seq)?.context("a lost seed claim left no readable object")?;
+                ensure!(
+                    durable == *baked,
+                    "seed mismatch for book {} plane {plane} sequence {seq}: a concurrent writer \
+                     claimed digest {}, baked digest is {}",
+                    expected.book_id,
+                    Digest::of(&durable).short(),
+                    Digest::of(baked).short()
+                );
+            }
+        }
+    }
+
+    let key = format!("{SEED_PUBLICATIONS}{}", expected.book_id);
+    let bytes = serde_json::to_vec(&expected)?;
+    if !store.put_if_absent(&key, &bytes)? {
+        let actual = read_seed_publication(store.as_ref(), &expected.book_id)?
+            .context("a lost seed-marker claim left no readable marker")?;
+        ensure_seed_marker_matches(&actual, &expected)?;
+    }
+    let actual = read_seed_publication(store.as_ref(), &expected.book_id)?
+        .context("the seed marker could not be read after publication")?;
+    ensure_seed_marker_matches(&actual, &expected)?;
+    Ok(actual)
+}
+
+/// Verify that deployment already published exactly this baked seed.
+///
+/// Read-only by construction: serving startup calls this before attaching and
+/// never falls back to [`publish_seed`].
+pub fn verify_seed_publication(
+    root: impl AsRef<Path>,
+    store: Arc<dyn ObjectStore>,
+) -> Result<SeedPublication> {
+    let expected = expected_seed_publication(root)?;
+    let actual = read_seed_publication(store.as_ref(), &expected.book_id)?.with_context(|| {
+        format!(
+            "baked seed {} is not published; run the deployment seed-publication step before serving traffic",
+            expected.book_id
+        )
+    })?;
+    ensure_seed_marker_matches(&actual, &expected)?;
+    Ok(actual)
+}
+
 /// PUT each non-empty line at its 1-based sequence, starting after the
 /// store's current height.
 ///
@@ -2478,6 +2673,98 @@ mod tests {
             self.lists.lock().expect("lists").push(prefix.to_string());
             self.inner.list(prefix)
         }
+    }
+
+    #[test]
+    fn seed_publication_claims_missing_sequences_then_makes_repeats_cheap() {
+        let root = tmp();
+        fs::write(root.join("journal.jsonl"), "one\ntwo\n").unwrap();
+        fs::write(root.join("facts.jsonl"), "fact-one\n").unwrap();
+        let store = Arc::new(CountingStore::new());
+        let journal = SeqLog::new(
+            store.clone(),
+            format!("{}/journal/", super::book_key(&root)),
+        );
+        assert!(journal.claim(1, b"one").unwrap());
+
+        store.clear();
+        let first = publish_seed(&root, store.clone()).unwrap();
+        let puts = store.puts();
+        assert!(
+            !puts.iter().any(|key| key.ends_with("00000000000000000001")),
+            "the occupied first journal slot must be compared, not re-PUT: {puts:?}"
+        );
+        assert!(
+            puts.iter().any(|key| key.ends_with("journal/00000000000000000002")),
+            "the missing journal suffix must use the conditional sequence claim: {puts:?}"
+        );
+        assert!(
+            puts.iter().any(|key| key.ends_with("facts/00000000000000000001")),
+            "every baked append-only plane must be published: {puts:?}"
+        );
+        assert!(
+            puts.iter().any(|key| key.contains("_seed/publications/")),
+            "the marker must be conditionally published after the planes: {puts:?}"
+        );
+
+        store.clear();
+        let second = publish_seed(&root, store.clone()).unwrap();
+        assert_eq!(second, first);
+        assert!(
+            store.puts().is_empty() && store.lists().is_empty(),
+            "an unchanged marker must make publication one GET, with no LIST or PUT"
+        );
+    }
+
+    #[test]
+    fn a_seed_marker_refuses_a_different_baked_book() {
+        let root = tmp();
+        fs::write(root.join("journal.jsonl"), "the-original-seed\n").unwrap();
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        publish_seed(&root, store.clone()).unwrap();
+
+        fs::write(root.join("journal.jsonl"), "a-different-seed\n").unwrap();
+        let err = publish_seed(&root, store).unwrap_err().to_string();
+        assert!(err.contains("seed mismatch"), "{err}");
+        assert!(err.contains("refusing to alter the existing book"), "{err}");
+    }
+
+    #[test]
+    fn first_marker_migration_detects_an_existing_wrong_sequence() {
+        let root = tmp();
+        fs::write(root.join("journal.jsonl"), "wanted\n").unwrap();
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let log = SeqLog::new(
+            store.clone(),
+            format!("{}/journal/", super::book_key(&root)),
+        );
+        assert!(log.claim(1, b"somebody-elses-entry").unwrap());
+
+        let err = publish_seed(&root, store).unwrap_err().to_string();
+        assert!(err.contains("plane journal sequence 1"), "{err}");
+        assert!(err.contains("durable digest"), "{err}");
+        assert!(err.contains("baked digest"), "{err}");
+    }
+
+    #[test]
+    fn serving_attachment_verifies_without_seed_puts() {
+        let root = tmp();
+        fs::write(root.join("journal.jsonl"), "one\n").unwrap();
+        let store = Arc::new(CountingStore::new());
+        publish_seed(&root, store.clone()).unwrap();
+
+        store.clear();
+        verify_seed_publication(&root, store.clone()).unwrap();
+        FileBook::open_attached_with(&root, Some(store.clone())).unwrap();
+        assert!(
+            store.puts().is_empty(),
+            "a cold serving process must not publish seed entries: {:?}",
+            store.puts()
+        );
+        assert!(
+            store.lists().is_empty(),
+            "marker verification and attachment must not scan sequence prefixes"
+        );
     }
 
     #[test]

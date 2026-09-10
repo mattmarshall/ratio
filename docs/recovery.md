@@ -45,6 +45,7 @@ With neither installed, FileBook uses local JSONL files.
 | Material | Local path | With the object store installed | Recovery significance |
 |---|---|---|---|
 | Journal | `journal.jsonl` | `<book>/journal/<sequence>` | Preserve exact order, every entry, and all cited configuration digests. A balanced shortened journal can still be wrong. |
+| Baked-seed publication marker | Baked JSONL planes in the deployment image | `_seed/publications/<book-id>` under `RATIO_JOURNAL_PREFIX` | Format version 1, whole-seed digest, and per-plane lengths prove which baked prefix deployment published. Preserve it with the journal; deleting it to clear a mismatch removes the deployment fence. |
 | Published bootstrap | `BOOTSTRAP.pb` and its materialized files | `_bootstrap/publications/<book-id>` and referenced `_bootstrap/blobs/<digest>` | The immutable, content-addressed bootstrap preserves chart, identity, kind, opening configuration, and creator grant. Capture both the publication pointer and its exact referenced blob. |
 | Configurations and promotion state | `config/<digest>`, `config/ACTIVE`, `config/HISTORY` | Opening state is in the published bootstrap; later promotions are **still local** | Preserve every later referenced blob, promotion history, and the actual active pointer until #304 supplies durable transitions. |
 | Chart | `accounts.json` | In the published bootstrap for new books; legacy local books have no publication | Names and types the dimensions. Never infer a missing legacy chart from defaults. |
@@ -81,10 +82,12 @@ The implementation supporting this inventory is:
 - [NAV persistence](../crates/ratio-nav/src/lib.rs) and
   [ingest delivery schema](../crates/ratio-ingest/src/lib.rs).
 - [Startup](../deploy/entrypoint.sh) and
-  [store installation](../crates/ratio/src/watch.rs). Startup copies baked
-  seeds into `/tmp` and can regenerate demo memberships from
-  `RATIO_DEMO_MEMBER`. Published books recover independently of those seeds;
-  later local configuration promotions and membership changes do not yet.
+  [store installation](../crates/ratio/src/watch.rs). The Platform deployment
+  owner conditionally publishes and validates baked JSONL before traffic.
+  Startup copies the local chart/config cache into `/tmp`, verifies every
+  `_seed/publications/<book-id>` marker, and attaches without seed PUTs. It can
+  regenerate demo memberships from `RATIO_DEMO_MEMBER`. Published CreateBook
+  books recover independently of the baked seeds.
 
 ## Rebuildable material
 
@@ -122,7 +125,10 @@ environment. It is not currently an automated production backup command.
    object in each book's seven sequence prefixes, plus every
    `_bootstrap/publications/<book-id>` record and its referenced
    `_bootstrap/blobs/<digest>`. Record sequence heights and content hashes and
-   check that each sequence is contiguous. Record
+   every `_seed/publications/<book-id>` marker. Check each marker's format
+   version, digest, and plane lengths against the captured baked source; do not
+   synthesize or remove a marker during restore. Check that each sequence is
+   contiguous. Record
    the journal prefix/digest, ACTIVE, HISTORY, hashes of every configuration
    blob, NAV strike records and their replay results, closes, explanations,
    and the expected authorized/unauthorized subjects. Keep identity material

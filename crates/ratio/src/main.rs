@@ -98,6 +98,9 @@ usage:
         [--open-actions N] [--capital N]
                                        what a period end costs, before running it
   ratio scale-run --size NAME --id ID  fold one declared shape and publish it
+  ratio publish-seeds --funds DIR [--book DIR]
+                                       deployment-only: conditionally publish and
+                                       validate every baked append-only plane
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio accept BREAK --because TEXT    record why a difference is acceptable
@@ -223,6 +226,7 @@ fn main() -> Result<()> {
         // calls on a thread. Two implementations would be two answers to "what
         // did the fold cost", and the one nobody ran locally would be quoted.
         ["scale-run", "--size", size, "--id", id] => scale_run(size, id),
+        ["publish-seeds", "--funds", funds] => publish_seeds(book, PathBuf::from(funds)),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
         ["approve", id, "--operation", operation, "--expected-revision", revision, "--predecessor", predecessor] =>
@@ -1476,6 +1480,49 @@ fn install_control_backend() -> Result<()> {
         ratio_store::install_object_store(std::sync::Arc::new(store));
     } else if let Some(dir) = std::env::var("RATIO_JOURNAL_LOCAL").ok().filter(|v| !v.is_empty()) {
         ratio_store::install_object_store(std::sync::Arc::new(ratio_store::DirStore::at(dir)));
+    }
+    Ok(())
+}
+
+fn publish_seeds(book: PathBuf, funds: PathBuf) -> Result<()> {
+    install_control_backend()?;
+    let store = ratio_store::installed_object_store().context(
+        "publish-seeds requires RATIO_JOURNAL_BUCKET or RATIO_JOURNAL_LOCAL; \
+         a deployment must name the durable journal it is publishing",
+    )?;
+
+    let mut books = vec![book];
+    let mut fund_paths = Vec::new();
+    for entry in std::fs::read_dir(&funds)
+        .with_context(|| format!("reading baked funds at {}", funds.display()))?
+    {
+        let path = entry?.path();
+        if path.is_dir() && path.join("accounts.json").is_file() {
+            fund_paths.push(path);
+        }
+    }
+    fund_paths.sort();
+    books.extend(fund_paths);
+
+    for path in books {
+        let publication = ratio_store::publish_seed(&path, store.clone())
+            .with_context(|| format!("publishing baked seed {}", path.display()))?;
+        // Open through the read-only attachment door after publication. Parsing
+        // every durable journal here makes deployment, rather than first user
+        // traffic, own the first real read of both the small and large seeds.
+        let attached = FileBook::open_attached_with(&path, Some(store.clone()))
+            .with_context(|| format!("opening published seed {}", publication.book_id))?;
+        let entries = attached
+            .entries()
+            .with_context(|| format!("validating published journal {}", publication.book_id))?
+            .len();
+        println!(
+            "seed {} {} ({} baked journal entries; {} durable journal entries)",
+            publication.book_id,
+            publication.seed_digest,
+            publication.plane_lengths.get("journal").copied().unwrap_or(0),
+            entries
+        );
     }
     Ok(())
 }

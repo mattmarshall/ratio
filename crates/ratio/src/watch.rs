@@ -77,17 +77,43 @@ fn startup_open_failure_is_fatal(journal_bucket: Option<&str>, journal_local: Op
     ![journal_bucket, journal_local].into_iter().flatten().any(|s| !s.is_empty())
 }
 
-/// ⛔ A failed install must never reach FileBook's valid local-only fallback.
+/// ⛔ A failed install or absent seed publication must never reach FileBook's
+/// valid local-only fallback.
 fn open_journal(book: &Path, install: impl FnOnce() -> Result<()>) -> Result<()> {
     install()?;
-    FileBook::open(book)
+    let Some(store) = ratio_store::installed_object_store() else {
+        return FileBook::open(book)
+            .map(|_| ())
+            .with_context(|| format!("opening local book at {}", book.display()));
+    };
+
+    // ⭐ DEPLOYMENT OWNS PUBLICATION. A serving process only proves that every
+    // baked book matches the marker deployment conditionally installed, then
+    // attaches. There is no call to FileBook::open_with here because that is
+    // the legacy door that can PUT missing seed sequences.
+    ratio_store::verify_seed_publication(book, store.clone())
+        .with_context(|| format!("verifying baked book {}", book.display()))?;
+    if let Some(funds) = std::env::var_os("RATIO_FUNDS").map(PathBuf::from) {
+        if funds != book {
+            for entry in std::fs::read_dir(&funds)
+                .with_context(|| format!("reading baked funds at {}", funds.display()))?
+            {
+                let path = entry?.path();
+                if path.is_dir() && path.join("accounts.json").is_file() {
+                    ratio_store::verify_seed_publication(&path, store.clone())
+                        .with_context(|| format!("verifying baked fund {}", path.display()))?;
+                }
+            }
+        }
+    }
+    FileBook::open_attached_with(book, Some(store))
         .map(|_| ())
-        .with_context(|| format!("opening book at {}", book.display()))
+        .with_context(|| format!("attaching to durable book at {}", book.display()))
 }
 
-/// How long a book route waits for startup hydrate before 503.
+/// How long a book route waits for startup attachment before 503.
 ///
-/// The deployed seed normally attaches in about 1.5 seconds. Refusing after
+/// The deployed seed publication normally verifies quickly. Refusing after
 /// 200ms made the console retry through API Gateway, where each retry could
 /// create another cold Lambda and repeat the same refusal. Two seconds lets
 /// the request already assigned to the warming process finish, while staying
@@ -95,10 +121,10 @@ fn open_journal(book: &Path, install: impl FnOnce() -> Result<()>) -> Result<()>
 /// bypass this wait entirely.
 const BOOK_READY_WAIT: Duration = Duration::from_secs(2);
 
-/// How far startup hydrate has got.
+/// How far startup attachment has got.
 ///
 /// ⭐ `/healthz` AND `/version` NEVER CONSULT THIS. They must answer
-/// while `FileBook::open` is still issuing PutObjects. Book routes wait
+/// while durable seed markers are being verified. Book routes wait
 /// [`BOOK_READY_WAIT`], then 503 with Retry-After while pending. A failed
 /// startup is terminal for this process: correct storage and restart.
 enum HydrateStatus {
@@ -192,16 +218,15 @@ fn route_needs_hydrated_book(path: &str) -> bool {
 
 /// Serve the screens until interrupted.
 pub fn watch(book: PathBuf, port: u16) -> Result<()> {
-    // Bind BEFORE hydrate. LWA's readiness check is HTTP GET /healthz on
+    // Bind BEFORE durable attachment. LWA's readiness check is HTTP GET /healthz on
     // this port; a closed port is an API Gateway 500 on every route for
-    // the life of the function. After #84 the journal is one object per
-    // entry, and FileBook::open issues a conditional PUT per seed line.
+    // the life of the function.
     //
     // ⛔ BIND IS NOT ENOUGH. #126 moved TcpListener::bind above open, but
-    // watch() still ran hydrate synchronously before incoming(). The
+    // watch() still ran startup synchronously before incoming(). The
     // port was open and nobody accept()d, so LWA's GET /healthz hung
     // and API Gateway returned 503 on authenticated routes. Accept
-    // starts here; hydrate is someone else's thread.
+    // starts here; attachment is someone else's thread.
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let listener = TcpListener::bind(addr)
         .with_context(|| format!("binding {addr} — is another `ratio watch` running?"))?;
@@ -220,12 +245,13 @@ pub fn watch(book: PathBuf, port: u16) -> Result<()> {
         std::env::var("RATIO_JOURNAL_LOCAL").ok().as_deref(),
     );
     watch_ready(book, listener, durable_configured, move |book| {
-        // ⛔ BEFORE THE FIRST OPEN, AND ON THE HYDRATE THREAD. FileBook
+        // ⛔ BEFORE THE FIRST OPEN, AND ON THE STARTUP THREAD. FileBook
         // reads the process-wide store on `open`, so installing after a
         // request-time open would leave that request writing `/tmp`
         // while later ones write the object store — two journals under
         // one URL. Book routes wait on the gate, so they cannot open
-        // before this returns.
+        // before this returns. The deployment publisher has already claimed
+        // seed slots; this path only verifies markers and attaches.
         //
         // A failed install leaves the gate failed, never a local book.
         open_journal(book, install_journal_store)

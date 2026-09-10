@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 #
-# Copy the baked demo book somewhere writable, then serve — or, given arguments,
-# run those instead.
+# Copy the baked demo book's local materialized view somewhere writable, then
+# serve — or, given arguments, run those instead.
 #
 # A Lambda filesystem is read-only apart from /tmp, so the seeded chart and
-# config have to land there. The journal does not: when RATIO_JOURNAL_BUCKET is
-# set, FileBook appends to the object store (`tla/S3Journal.tla`) and this copy
-# is only the seed that hydrates an empty prefix. A cold start without that
-# store used to reset every ApplyEvent; two containers used to build two
-# journals under one URL. That is issue #24.
+# config have to land there. The journal does not: deployment has already
+# conditionally published and marked every baked JSONL plane in the object
+# store. A cold serving process verifies that marker and attaches read-only;
+# it never publishes seed entries. A cold start without that store used to
+# reset every ApplyEvent; two containers used to build two journals under one
+# URL. That is issue #24.
 set -euo pipefail
 
 # ⛔ ARGUMENTS RUN THE BINARY, AND WITHOUT THIS THEY WERE SILENTLY DISCARDED.

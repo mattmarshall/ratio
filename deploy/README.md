@@ -351,21 +351,36 @@ content-addressed under `_bootstrap/`. Later promotions and membership changes,
 NAV records, reports, and audit files remain follow-on work in #299/#300.
 Whole-book recovery objectives and an external restore drill remain on #264.
 
-`entrypoint.sh` copies the seeded chart and config to `/tmp` at start, because a
-Lambda filesystem is read-only elsewhere. **The demo API journal is S3
+`entrypoint.sh` copies the seeded chart and config cache to `/tmp` at start,
+because a Lambda filesystem is read-only elsewhere. **The demo API journal is S3
 `journals/` on ScaleBucket.** `RATIO_JOURNAL_BUCKET` / `RATIO_JOURNAL_PREFIX`
 must stay set on the `ratio-demo` Function: unset is `/tmp` only, and a cold
-start then wipes CreateBook (Household on ratio.marsh.build after #230). Hydrate
-503 `"the journal is still hydrating"` is transient — accept-during-hydrate /
+start then wipes CreateBook (Household on ratio.marsh.build after #230).
+
+⭐ **The Platform deploy workflow owns baked-book publication, before traffic.**
+It first applies only the ScaleBucket policy while retaining every live stack
+parameter and the currently served image. It then runs `ratio publish-seeds`
+for the single demo book and all eight fund books. That command publishes the
+journal and all six append-only side planes through `SeqLog::claim`, compares
+occupied slots byte-for-byte, conditionally writes the format-v1 whole-seed
+marker at `journals/_seed/publications/<book-id>`, and opens every durable
+journal. Only after that succeeds does CloudFormation receive the new image
+digest. The smoke names both Northstar (small) and Ashcombe (large) in that
+cold-open evidence.
+
+A Lambda cold start verifies every marker and attaches through the read-only
+door. It performs no seed-entry PUTs. The compatibility 503
+`"the journal is still hydrating"` can still appear while marker verification
+and attachment finish — accept-during-hydrate /
 orTransient (#136/#137) still apply; `/healthz` and `/version` never wait;
 unauthenticated `/v1` 401s without waiting for the book. The console retries
-that hydrate 503 the way deploy smoke does, rather than painting the first
+that startup 503 the way deploy smoke does, rather than painting the first
 cold-start answer as a lasting unavailable.
 After the startup gate reaches Ready, request handlers attach to that same
-store without repeating the legacy seed-plane scan. Published books still
+store. Published books still
 fetch and verify their bootstrap pointer on open, so a later durable control
 transition cannot be hidden by the fast path. Deploy smoke prints a second,
-warm `/balance.json` duration to make request-time seed scans visible again.
+warm `/balance.json` duration.
 The ~40 GB scale fold
 stays on Fargate ScaleTask, not this Lambda. The measured 20M-lot
 *projection* fold (HANDOFF 10,000 × 2,000, not this journal) is
@@ -389,6 +404,16 @@ carries a bucket policy for the same role, same prefix, no `DeleteObject`
 accepts a resource-based Allow even when the identity policy has not
 caught up. Re-running bootstrap still attaches the identity grant; it is
 no longer the thing that unblocks smoke.
+
+On publication failure, leave the prior image serving. Retry an interrupted
+unchanged suffix; conditional sequence claims resume safely. For a
+`seed mismatch`, do not delete the marker or any journal object. Use the named
+book/plane/sequence and expected/actual digests to determine whether the image
+contains the wrong seed or the workflow targets the wrong durable prefix, then
+rebuild the intended image or restore/choose the correct untouched prefix.
+Rollback changes only the image and preserves the same bucket/prefix, so the
+prior version attaches to the same journals and ignores the newer marker.
+The full procedure is in [durable startup](../docs/durable-startup.md).
 
 Two assertions guard the seed, because a missing book is invisible: the image build
 fails if the book lacks its accounts, journal, reports or proposals, and the
