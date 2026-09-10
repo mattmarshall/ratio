@@ -3158,14 +3158,14 @@ calendar-bills Connect app** are the Built phrases this amendment adds.
 
 **What this is NOT:**
 
-- **Not live Connect OAuth.** API Gateway JWT verifies Connect tokens
-  on ConnectApiUrl. `fetch_statements()` and `deliver()` still refuse.
-  Live OAuth is leftover #22 / #150. Write-route actor binding
-  landed (#151). This file does not close #150.
-- **Not live bank or calendar OAuth.** No Plaid / MX / TrueLayer token,
-  no Google Calendar / Outlook grant. The mappers accept a normalized
-  predicted movement or a dated occurrence. Provider wiring stays
-  leftover on #163.
+- **Not a live Connect grant.** API Gateway JWT verifies Connect tokens on
+  ConnectApiUrl; the public PKCE client plus fetch/deliver paths are built.
+  WorkOS application registration and live evidence remain #22 / #150.
+  Write-route actor binding landed (#151). This file does not close #150.
+- **Not live bank or calendar authorization.** Plaid provider protocol slices
+  are #317/#318. Google Events sync is #319. Production provider credentials,
+  consent, durable token custody, webhooks, and authorized sources remain
+  #163/#165.
 - **Not the #218 core cite.** `/cashflow` already folds posted
   `forecast_*` / `scheduled_*`. This file does not redo that slice.
 - **Not envelopes or payroll.** Those stay refused. Envelope coaching
@@ -3188,6 +3188,32 @@ a fixture rent mapping to `scheduled_spend`, a closed March refusing a
 being rejected as a scope, and payroll / envelope kinds being refused.
 It cannot show a Connect token opening a book, a live bank or calendar
 login, envelope coaching, payroll, or a posting that reached `/v1`.
+
+### Amendment, 2026-09-10 — Google expands calendar recurrence, and event prose never chooses a posting
+
+[#319](https://github.com/mattmarshall/ratio/issues/319) supplies the second
+provider path required by #163. The calendar app reads one concrete Google
+calendar with the narrow `calendar.events.readonly` scope. Events pagination is
+bounded; `singleEvents=true`, `showDeleted=true`, and stable query parameters
+carry one batch to a final sync token. The token returns only after every page
+and proposed occurrence passes.
+
+Google expands recurring series into individual dated instances. The adapter
+never hands an RRULE to the journal. Only private `ratio_amount`,
+`ratio_currency`, and `ratio_kind` metadata can create a proposal, with kind
+limited to `bill` or `income`. Title, description, organizer, and attendees are
+not accounting configuration.
+
+Untagged, tentative, and newly cancelled events remain visible and non-posting.
+An imported event's id plus etag makes an exact retry non-posting; a changed or
+deleted imported event refuses because no correction/reversal policy exists.
+Google `410 Gone` requires a full sync with the prior id/etag index retained, so
+the application neither clears nor silently reposts journal history.
+
+Production Google OAuth credentials and consent, encrypted token
+custody/refresh, an authorized calendar, WorkOS registration, and a redacted
+end-to-end Personal forecast walk-through remain #163/#22. This does not close
+#163, reopen #164, or redo #218.
 
 ### Amendment, 2026-09-04 — an audit-export Connect app, and the grant path still does not open
 

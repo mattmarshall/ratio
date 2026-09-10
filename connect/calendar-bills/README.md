@@ -9,8 +9,8 @@ the operations console, or a new kernel RPC. The citeable forecast fold
 already landed in core (`/cashflow`, `filter=forecast-YYYY[-MM]`) — this
 app posts the `scheduled_*` material that fold will name.
 
-This is a scaffold. A green mapper is not a live calendar login and not
-a Connect token that `/v1` accepts.
+The mapper and bounded Google Calendar Events adapter are built. A green
+fixture run is not a live calendar login or production consent grant.
 
 The bank-balance-predictor sibling is
 [`connect/bank-balance-predictor/`](../bank-balance-predictor/).
@@ -45,8 +45,28 @@ confuse or fork Personal into that tree.
   invention, not a bill. #164 stays refused. No new `Method` /
   `Order` / `lot_method` variant.
 - `fetch_statements()` and `deliver()` call ConnectApiUrl. first-party Connect apps call ConnectApiUrl with a verified Connect access token. Membership still required.
+- Google Calendar access uses only
+  `https://www.googleapis.com/auth/calendar.events.readonly` and one concrete,
+  explicitly selected calendar. `primary` is refused.
+- Events sync is bounded and uses stable `singleEvents=true`,
+  `showDeleted=true`, and page-token parameters. Google expands recurrence;
+  only dated instances reach the mapper. The final sync token is returned only
+  after every page and proposal passes.
+- Only private event metadata `ratio_amount`, `ratio_currency`, and
+  `ratio_kind` (`bill` or `income`) can select a posting. Titles, descriptions,
+  organizers, and attendees never do.
+- Untagged, tentative, and newly cancelled events remain visible and
+  non-posting. A changed or deleted previously imported event refuses until a
+  correction/reversal policy exists. Event id plus etag makes exact retries
+  non-posting.
+- A `410 Gone` requires full sync while retaining the prior event-id/etag
+  index. It never clears or silently reposts journal history.
 
-`bazel test //connect/calendar-bills:bills_test` is the gate.
+```
+bazel test //connect/calendar-bills:bills_test //connect/calendar-bills:google_calendar_test
+```
+
+This is the focused gate.
 
 ## WorkOS Connect — application shape
 
@@ -84,12 +104,13 @@ attribute a bill to a client secret.
 | | Who | What it grants |
 |---|---|---|
 | **WorkOS Connect** | The bills app, talking to Ratio | Catalog scopes on books the subject administers |
-| **Calendar** | The household, talking to a calendar provider | Dated occurrences. **Not wired.** |
+| **Calendar** | The household, talking to Google Calendar | Bounded Events sync built; live OAuth activation pending. |
 
-The second one is leftover on #163. The mapper accepts a normalized
-row (`dated`, `amount` as a decimal string, `currency`, `kind`). It
-does not speak Google Calendar, Outlook, or a calendar token endpoint,
-and it does not expand an `rrule` into the journal.
+The Google adapter reads Events pages and hands explicitly tagged dated
+instances to the mapper (`dated`, `amount` as decimal text, `currency`, `kind`).
+Google expands recurring series with `singleEvents=true`; the adapter never
+hands an `rrule` to the journal. Production OAuth credentials/consent and token
+custody remain #163; an Outlook provider would be a separate slice.
 
 ## Grant contract this app honors (and cannot yet exercise)
 
@@ -128,8 +149,9 @@ PERSONAL chrome is unchanged. `screensFor` is not forked. The
    on ConnectApiUrl. In-process `/v1` accepts catalog scopes after
    membership. Dashboard registration, redirect, and a live token
    stay leftover. Write-route actor binding landed (#151).
-2. **Live calendar OAuth.** Provider SDK, token refresh, and
-   occurrence pull. Recurrence expansion stays with the provider.
+2. **Live calendar OAuth.** Google production credentials and consent, durable
+   encrypted token custody/refresh, and an authorized calendar. The bounded
+   occurrence pull is built; recurrence expansion stays with Google.
 3. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover
    on #150. This app checks its own list; the kernel does not yet key
    one by `client_id`.

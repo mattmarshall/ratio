@@ -1,0 +1,1 @@
+{"items":[{"id":"rent-instance-20260401","etag":"\"rent-1\"","status":"confirmed","recurringEventId":"rent-series","originalStartTime":{"date":"2026-04-01"},"start":{"date":"2026-04-01"},"summary":"Rent","extendedProperties":{"private":{"ratio_amount":"1800.00","ratio_currency":"USD","ratio_kind":"bill"}}}],"nextPageToken":"page-2"}
