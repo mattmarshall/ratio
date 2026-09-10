@@ -34,3 +34,22 @@ sh_test(
         "//proto:ratio/console/v1/console.proto",
     ],
 )
+
+sh_test(
+    name = "google_calendar_test",
+    size = "small",
+    srcs = ["google_calendar_test.sh"],
+    args = [
+        "$(rootpath google_calendar.py)",
+        "$(rootpath google_calendar_test.py)",
+    ],
+    data = [
+        "//connect:grant.py",
+        "bills.py",
+        "google_calendar.py",
+        "google_calendar_test.py",
+        "google_calendar_test.sh",
+        "testdata/events-page-1.json",
+        "testdata/events-page-2.json",
+    ],
+)

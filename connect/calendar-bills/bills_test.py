@@ -388,12 +388,13 @@ class ManifestHonesty(unittest.TestCase):
             self.assertNotIn(forbidden, templates)
             self.assertFalse(any(forbidden in t for t in templates), forbidden)
 
-    def test_grant_path_and_calendar_oauth_stay_named_as_leftovers(self):
+    def test_grant_path_and_google_activation_state_are_explicit(self):
         doc = json.dumps(app())
         self.assertEqual("built", app()["grant_path"]["status"])
         self.assertIn("ConnectApiUrl", app()["grant_path"]["note"])
         self.assertIn("WorkOS dashboard registration", app()["grant_path"]["note"])
-        self.assertIn("not wired", app()["calendar_oauth"]["status"])
+        self.assertIn("adapter built", app()["calendar_oauth"]["status"])
+        self.assertIn("Production credentials", app()["calendar_oauth"]["note"])
         self.assertIn("#163", doc)
         self.assertIn("#150", doc)
         self.assertIn("#164", doc)

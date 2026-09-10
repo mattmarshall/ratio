@@ -32,8 +32,11 @@
     "note": "This app instantiates CreateBook(Personal) scheduled_income / scheduled_spend. ApplyEvent marks JournalEntry.kind from the rule-id prefix. A future-dated spend_cash is still an actual and is refused here. forecast_* is the bank-balance-predictor sibling. Payroll and envelope kinds are not invented. Recurrence rules stay in the calendar; each occurrence is a dated row."
   },
   "calendar_oauth": {
-    "status": "not wired",
-    "note": "Live calendar OAuth (Google Calendar, Outlook, or similar) is leftover on #163. This scaffold accepts a normalized dated occurrence, not a provider SDK and not an rrule expander in the journal."
+    "provider": "Google Calendar",
+    "status": "Events sync adapter built; live OAuth activation pending",
+    "provider_scope": "https://www.googleapis.com/auth/calendar.events.readonly",
+    "events_endpoint": "https://www.googleapis.com/calendar/v3/calendars/{calendarId}/events",
+    "note": "The bounded adapter selects one concrete calendar, asks Google to expand recurring events, requires explicit private Ratio amount/currency/kind metadata, and returns a sync token only after all pages pass. Production credentials, consent, encrypted token custody, and an authorized calendar remain on #163."
   },
   "grant_path": {
     "status": "built",

@@ -42,8 +42,9 @@ A calendar "paycheck" is payroll invention, not a bill.
 Connect HTTP API. Membership is still required. Live calendar
 OAuth stays leftover on #163. WorkOS dashboard registration stays leftover #22.
 
-⚠ LIVE CALENDAR OAUTH IS NOT WIRED. A normalized dated occurrence
-is the input. Google Calendar / Outlook stay leftover on #163.
+⚠ LIVE GOOGLE OAUTH IS NOT ACTIVATED. `google_calendar.py` supplies bounded
+Events sync using the read-only events scope. Production credentials, consent,
+token custody, and an authorized calendar stay leftover on #163.
 """
 
 from __future__ import annotations
