@@ -45,6 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$BOOK_ID" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "::error::invalid book ID"; exit 1; }
+          [ "$BOOK_ID" != _bootstrap ] || { echo "::error::_bootstrap is a reserved book ID"; exit 1; }
           [[ "$ACTION" == grant || "$ACTION" == revoke ]] || { echo "::error::invalid action"; exit 1; }
           [[ "$OPERATION_ID" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo "::error::invalid operation ID"; exit 1; }
           [ "$CONFIRMATION" = "$ACTION:$BOOK_ID" ] || { echo "::error::confirmation must exactly match ACTION:BOOK_ID"; exit 1; }
@@ -66,8 +67,7 @@ jobs:
           DEMO_MEMBERS: ${{ vars.DEMO_MEMBERS }}
         run: |
           set -euo pipefail
-          mapfile -t subjects < <(tr ',' '\n' <<< "$DEMO_MEMBERS" | sed -n '/^user_[A-Za-z0-9_]*$/p')
-          [ "${#subjects[@]}" -eq 1 ] || { echo "::error::DEMO_MEMBERS must name exactly one AuthKit subject"; exit 1; }
-          export RATIO_ACTOR="${subjects[0]}"
+          [[ "$DEMO_MEMBERS" =~ ^user_[A-Za-z0-9_]+$ ]] || { echo "::error::DEMO_MEMBERS must name exactly one AuthKit subject"; exit 1; }
+          export RATIO_ACTOR="$DEMO_MEMBERS"
           "$(bazel info bazel-bin)/crates/ratio/ratio" membership "$ACTION" \
-            "authkit:${subjects[0]}" --published "$BOOK_ID" --operation "$OPERATION_ID"
+            "authkit:$DEMO_MEMBERS" --published "$BOOK_ID" --operation "$OPERATION_ID"

@@ -56,6 +56,7 @@ usage:
   ratio membership revoke PRINCIPAL --operation ID --expected-revision N --predecessor SHA
                                        PRINCIPAL is authkit:SUB or organization:ID
   ratio membership grant PRINCIPAL --published BOOK --operation ID
+  ratio membership revoke PRINCIPAL --published BOOK --operation ID
                                        append against the current durable predecessor;
                                        refuses a concurrent change rather than rebasing
   ratio rules check FILE [--book DIR]  check a rule set against the chart
@@ -1704,8 +1705,8 @@ fn membership_control_published_with(
     let change = membership_change(action, principal)?;
     let store = ratio_store::control::ControlStore::new(objects);
     // ⭐ This read is the reviewed predecessor. `commit` reads again and its
-    // conditional successor claim refuses any intervening operation; this
-    // command never catches that conflict and silently rebases the decision.
+    // conditional successor claim refuses any intervening operation. This
+    // command propagates that refusal and never retries against a newer head.
     let state = store.read(book_id)?;
     let operation = ratio_store::control::ControlOperation {
         format_version: 1,
