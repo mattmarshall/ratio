@@ -169,9 +169,14 @@ is the election, first code is the reporting base, empty is unset
 — not a silent USD on ListBooks / GetBook. ApplyEvent stamps a
 named declared code; the journal door still refuses unbalanced
 FX; a missing rate reuses the #160 `Rates` refuse. FX rate
-providers stay Connect. This file does not close #178 (live rate
-Connect apps and a `/trade` picker remain). Optional lot relief
-on household Investments (#187): `[personal] lot_relief = true`
+providers stay Connect. The Personal Transfer ticket selects only
+those declared codes and the Server Action checks the current book
+again before preview or post; an empty declaration keeps the door
+shut rather than inventing USD. It remains a transfer with no
+instrument or quantity, not the Investment `/trade` ticket. This
+file does not close #178 (live rate Connect activation remains).
+Optional lot relief on household Investments (#187): `[personal]
+lot_relief = true`
 elects the wash / MinTax / SpecID / average-cost engines already
 on the book; unset stays unset. This file closes #187. It does
 not start #163 or #164.

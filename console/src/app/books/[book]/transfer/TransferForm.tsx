@@ -24,7 +24,15 @@ import { submit, type Result } from "./actions";
  * configuration does not name is a refusal rather than a synthesized
  * posting that would bypass the control plane.
  */
-export function TransferForm({ fund, rules }: { fund: string; rules: Rule[] }) {
+export function TransferForm({
+  fund,
+  rules,
+  currencies,
+}: {
+  fund: string;
+  rules: Rule[];
+  currencies: string[];
+}) {
   const [result, action, pending] = useActionState<Result, FormData>(
     submit,
     null,
@@ -35,6 +43,9 @@ export function TransferForm({ fund, rules }: { fund: string; rules: Rule[] }) {
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
   const [eventId, setEventId] = useState("");
+  const [currency, setCurrency] = useState(
+    currencies.length === 1 ? (currencies[0] ?? "") : "",
+  );
 
   const accounts = useMemo(() => {
     const names = new Set<string>();
@@ -53,10 +64,10 @@ export function TransferForm({ fund, rules }: { fund: string; rules: Rule[] }) {
   const parsed = amount ? hundredths(amount, "an amount") : null;
   const dateOk = TRADE_DATE.test(date);
   const complete =
-    Boolean(rule) && parsed?.ok === true && dateOk && from !== to;
+    Boolean(rule) && parsed?.ok === true && dateOk && from !== to && Boolean(currency);
 
   const named = eventId.trim() || (dateOk ? `xfer-${date}` : "");
-  const now = [rule?.ruleId ?? "", amount.trim(), date.trim(), named].join(" ");
+  const now = [rule?.ruleId ?? "", amount.trim(), date.trim(), named, currency].join(" ");
   const previewed =
     result?.ok === true && result.response.validateOnly && result.signature === now;
 
@@ -87,6 +98,15 @@ export function TransferForm({ fund, rules }: { fund: string; rules: Rule[] }) {
       onValue={setAmount}
       mode="decimal"
       hint="250.00"
+    />
+  );
+  const currencyPicker = (
+    <Picker
+      name="Currency"
+      value={currency}
+      onValue={setCurrency}
+      empty={currencies.length === 0 ? "No currencies declared" : "Choose a currency"}
+      options={currencies.map((code) => ({ value: code, label: code }))}
     />
   );
   const dateField = (
@@ -170,6 +190,26 @@ export function TransferForm({ fund, rules }: { fund: string; rules: Rule[] }) {
       ),
     },
     {
+      id: "currency",
+      label: "Currency",
+      ask: "Which declared currency moves?",
+      why: [
+        "Each currency is conserved independently; the code belongs on both legs.",
+        "Only currencies declared by this household are available. An empty list does not imply USD.",
+      ],
+      answer: currency || null,
+      body: (
+        <>
+          {currencyPicker}
+          {currencies.length === 0 ? (
+            <p className="ruleform">
+              Declare household currencies in Configuration before posting a transfer.
+            </p>
+          ) : null}
+        </>
+      ),
+    },
+    {
       id: "amount",
       label: "Amount",
       ask: "For how much?",
@@ -234,7 +274,11 @@ export function TransferForm({ fund, rules }: { fund: string; rules: Rule[] }) {
       summary={
         complete && parsed?.ok && rule ? (
           <>
-            Move <b className="num">{money(parsed.minor.toString())}</b> from{" "}
+            Move{" "}
+            <b className="num">
+              {money(parsed.minor.toString())} {currency}
+            </b>{" "}
+            from{" "}
             {from} to {to} on <code>{date}</code>.
           </>
         ) : (
@@ -247,6 +291,12 @@ export function TransferForm({ fund, rules }: { fund: string; rules: Rule[] }) {
           <div className="form">
             {fromPicker}
             {toPicker}
+            {currencyPicker}
+            {currencies.length === 0 ? (
+              <p className="ruleform">
+                Declare household currencies in Configuration before posting a transfer.
+              </p>
+            ) : null}
             {amountField}
             {dateField}
             {idField}
@@ -265,6 +315,7 @@ export function TransferForm({ fund, rules }: { fund: string; rules: Rule[] }) {
           <input type="hidden" name="fund" value={fund} />
           <input type="hidden" name="ruleId" value={rule?.ruleId ?? ""} />
           <input type="hidden" name="amount" value={amount} />
+          <input type="hidden" name="currencyCode" value={currency} />
           <input type="hidden" name="date" value={date} />
           <input type="hidden" name="eventId" value={eventId} />
           <Commit

@@ -4674,7 +4674,12 @@ describe("the write screens", () => {
       ],
       [
         "transfer",
-        <TransferForm key="x" fund="household" rules={[XFER_CASH_INV]} />,
+        <TransferForm
+          key="x"
+          fund="household"
+          rules={[XFER_CASH_INV]}
+          currencies={["USD"]}
+        />,
       ],
       [
         "budget-post",
@@ -5025,7 +5030,13 @@ describe("the write screens", () => {
     // asked for units would open a lot; this one must not even have the
     // fields.
     const { TransferForm } = await import("./books/[book]/transfer/TransferForm");
-    render(<TransferForm fund="household" rules={[XFER_CASH_INV]} />);
+    render(
+      <TransferForm
+        fund="household"
+        rules={[XFER_CASH_INV]}
+        currencies={["USD", "EUR"]}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Form" }));
     expect(screen.getByText(/this is not a trade/)).toBeDefined();
     fireEvent.change(screen.getByLabelText("From"), {
@@ -5033,6 +5044,9 @@ describe("the write screens", () => {
     });
     fireEvent.change(screen.getByLabelText("To"), {
       target: { value: "Investments" },
+    });
+    fireEvent.change(screen.getByLabelText("Currency"), {
+      target: { value: "EUR" },
     });
     fireEvent.change(screen.getByLabelText("Amount"), {
       target: { value: "250.00" },
@@ -5049,10 +5063,21 @@ describe("the write screens", () => {
       fund: "household",
       ruleId: "xfer_cash_investments",
       amount: "250.00",
+      currencyCode: "EUR",
       date: "2026-03-15",
     });
     expect(sent).not.toHaveProperty("instrument");
     expect(sent).not.toHaveProperty("quantity");
+  });
+
+  it("does not invent USD for a household that declared no currencies", async () => {
+    const { TransferForm } = await import("./books/[book]/transfer/TransferForm");
+    render(<TransferForm fund="household" rules={[XFER_CASH_INV]} currencies={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    expect(screen.getByText("No currencies declared")).toBeDefined();
+    expect(screen.getByText(/Declare household currencies in Configuration/)).toBeDefined();
+    expect(screen.queryByText("USD")).toBeNull();
+    expect(screen.getByRole("button", { name: "Preview" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("posts a phase-keyed award from /budget without inventing a journal kind", async () => {

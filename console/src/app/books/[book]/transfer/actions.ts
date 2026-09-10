@@ -28,6 +28,7 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
   const fund = String(form.get("fund") ?? "");
   const ruleId = String(form.get("ruleId") ?? "");
   const amount = String(form.get("amount") ?? "").trim();
+  const currencyCode = String(form.get("currencyCode") ?? "").trim();
   const day = String(form.get("date") ?? "").trim();
   let eventId = String(form.get("eventId") ?? "").trim();
   const validateOnly = form.get("commit") === null;
@@ -55,6 +56,12 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
     if (!offersTicket(b.kind, "transfer")) {
       return { ok: false, error: "This book does not support this transfer action." };
     }
+    if (!currencyCode) {
+      return { ok: false, error: "Choose one of this household's declared currencies." };
+    }
+    if (!b.currencies.includes(currencyCode)) {
+      return { ok: false, error: `${currencyCode} is not declared for this household.` };
+    }
     const response = await applyEvent(c, fund, {
       ruleId,
       eventId,
@@ -63,6 +70,7 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
       instrument: "",
       quantity: "",
       tradeDate,
+      currencyCode,
       validateOnly,
     });
     if (!validateOnly) {
@@ -71,7 +79,9 @@ export async function submit(_prev: Result, form: FormData): Promise<Result> {
     return {
       ok: true,
       response,
-      signature: [ruleId, amount, day, eventId].map((s) => s.trim()).join(" "),
+      signature: [ruleId, amount, day, eventId, currencyCode]
+        .map((s) => s.trim())
+        .join(" "),
     };
   } catch (e) {
     if (e instanceof AuthError) return { ok: false, error: "Sign in required." };
