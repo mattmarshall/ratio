@@ -182,6 +182,12 @@ cross-rate observations. CreateBook(Personal) seeds the non-posting
 `ecb-reference-rates` mapping. The app has `books:read`,
 `books:ingest`, and `facts:admit`, never `journals:post`; live WorkOS
 registration and a permitted-book activation remain on #22 / #178.
+The Personal Connect tools now share `connect/oauth.py` (#315): a public
+native WorkOS client with PKCE S256 and the exact
+`http://127.0.0.1:8765/callback` production loopback. It reads each app's
+resource scopes from `app.json`, adds only the `openid` protocol scope, keeps
+the bearer in memory, and creates or stores no client secret. Dashboard
+application creation and a live authorization remain operator evidence.
 Optional lot relief on household Investments (#187): `[personal]
 lot_relief = true`
 elects the wash / MinTax / SpecID / average-cost engines already

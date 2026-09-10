@@ -4935,3 +4935,27 @@ nonzero EUR-to-USD observation through the Personal template into the same
 2026-09-09 returned the retained source observation 1.1652 and normalized 1.17.
 WorkOS dashboard registration, OAuth grant, and a live permitted-book admission
 remain on #22 / #178; a fixture and a provider GET are not activation evidence.
+
+### Amendment, 2026-09-10 — Personal Connect apps can complete public PKCE
+
+Related: #315, #22, #163, #165, #166, #168, and #178. The Personal Connect
+scaffolds named WorkOS OAuth and an app callback, but no client in this tree
+could receive the code. Dashboard registration would therefore have created a
+credential for a flow that could not run.
+
+`connect/oauth.py` is the one local-native client. Each app declares a public,
+first-party OAuth application with PKCE S256 and the exact production loopback
+`http://127.0.0.1:8765/callback`. The client derives the requested Ratio scopes
+only from that app's manifest, adds `openid` as the protocol scope, binds only
+127.0.0.1, verifies state and the callback path, and sends the verifier during
+the code exchange. It returns only the bearer in memory. It never creates,
+sends, prints, or persists a client secret, access token, refresh token, or ID
+token.
+
+**Personal Connect apps can complete public PKCE** is the Built phrase. A local
+fake authorization round trip proves the callback and token exchange; mutation
+checks cover state, path, issuer, redirect, verifier, secret absence, manifest
+scope equality, callback errors, and malformed token responses. WorkOS
+application creation and a live grant remain operator actions on #22 and each
+parent issue. Bank and calendar provider OAuth remain separate grants on #163
+and #165.

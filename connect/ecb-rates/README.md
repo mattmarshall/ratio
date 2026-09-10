@@ -15,6 +15,16 @@ Scopes are `books:read`, `books:ingest`, and `facts:admit`. There is no
 `journals:post`; a rate changes a translated read only after it is recorded on
 the fact plane. Membership remains enforced by Ratio.
 
+## WorkOS Connect registration
+
+Register this as a first-party, public OAuth application with PKCE S256. Its
+redirect URI is exactly `http://127.0.0.1:8765/callback`, which WorkOS permits
+for a production native client. Request `openid` for the OAuth protocol plus
+the three Ratio scopes in `app.json`. The runtime needs the public `client_id`;
+it creates, stores, prints, and sends no client secret. `connect/oauth.py`
+receives the callback, verifies state, exchanges the code with its PKCE
+verifier, and returns the access token in memory to `sync()`.
+
 ## Refusals
 
 - A book that is not Personal, lacks a reporting base, or names no currencies.

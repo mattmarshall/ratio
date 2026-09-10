@@ -47,10 +47,10 @@ Registration notes (WorkOS Dashboard → Applications → Connect):
 
 | | |
 |---|---|
-| Type | OAuth (not M2M) |
+| Type | Public OAuth native client with PKCE S256 (not M2M) |
 | Trust | First-party — Ratio deploys this tree |
-| Redirect URI | The app's callback. Must match the registered value exactly, including a trailing slash. |
-| Credentials | `client_id` / `client_secret` from a Connect credential. Up to five. Shown once. |
+| Redirect URI | `http://127.0.0.1:8765/callback` exactly. WorkOS permits loopback HTTP for production native clients. |
+| Credentials | Public `client_id` only. No client secret is created, stored, printed, or sent. |
 | Requested scopes | `books:read` `statements:read` `journals:post` — plus `openid` if the library requires an OIDC discovery scope. Do not request `journal:append`. |
 | Issuer / JWKS | WorkOS Connect access tokens mint `iss` as the AuthKit custom domain (`https://auth.ratio.marsh.build`). API Gateway JWT verifies them on `ConnectApiUrl` `/v1` (audience = Ratio WorkOS project client). AuthKit session tokens stay on DemoUrl. |
 
