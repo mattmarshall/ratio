@@ -3,6 +3,10 @@ use super::*;
 use prost::Message;
 use ratio_store::{
     bootstrap::{BookBootstrap, BookPublication, BootstrapStore},
+    control::{
+        control_operation, membership_revision, ConfigPromotion, ControlOperation, ControlStore,
+        MembershipRevision,
+    },
     Digest, DirStore, MemoryStore, ObjectStore,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -45,6 +49,37 @@ fn request(id: &str, kind: book::BookKind) -> pb::CreateBookRequest {
 }
 fn entry(digest: &Digest) -> ratio_store::JournalEntry {
     serde_json::from_value(serde_json::json!({"id":"opening", "config":digest.as_str(), "postings":[{"dim":1,"amount":12345},{"dim":20,"amount":-12345}]})).unwrap()
+}
+
+fn control_operation(
+    control: &ControlStore,
+    book: &str,
+    id: &str,
+    actor: &str,
+    change: control_operation::Change,
+) -> ControlOperation {
+    let state = control.read(book).unwrap();
+    ControlOperation {
+        format_version: 1,
+        book_id: book.into(),
+        bootstrap_digest: state.bootstrap_digest,
+        expected_revision: state.revision,
+        expected_predecessor_digest: state.predecessor_digest,
+        operation_id: id.into(),
+        actor_subject: actor.into(),
+        actor_provenance: "verified-test-context".into(),
+        change: Some(change),
+    }
+}
+
+fn membership(
+    action: membership_revision::Action,
+    principal: membership_revision::Principal,
+) -> control_operation::Change {
+    control_operation::Change::MembershipRevision(MembershipRevision {
+        action: action as i32,
+        principal: Some(principal),
+    })
 }
 
 #[test]
@@ -127,6 +162,118 @@ fn all_kinds_recover_exact_bytes_grants_and_the_journal_from_an_empty_root() {
     assert!(console(&recovered, objects, "stranger")
         .get_book("books/personal")
         .is_err());
+}
+
+#[test]
+fn one_console_resolves_durable_membership_again_at_every_operation_boundary() {
+    let temp = Temp::new();
+    let objects: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    console(&temp.0, objects.clone(), "creator")
+        .create_book(request("book", book::BookKind::Personal))
+        .unwrap();
+    let creator = console(&temp.0, objects.clone(), "creator");
+    let guest = console(&temp.0, objects.clone(), "guest");
+    assert!(creator.get_book("books/book").is_ok());
+    assert!(guest.get_book("books/book").is_err());
+
+    let control = ControlStore::new(objects.clone());
+    control
+        .commit(&control_operation(
+            &control,
+            "book",
+            "grant-guest",
+            "creator",
+            membership(
+                membership_revision::Action::Grant,
+                membership_revision::Principal::AuthkitSubject("guest".into()),
+            ),
+        ))
+        .unwrap();
+    assert!(
+        guest.get_book("books/book").is_ok(),
+        "an already-created Console must observe a later grant"
+    );
+    control
+        .commit(&control_operation(
+            &control,
+            "book",
+            "revoke-creator",
+            "guest",
+            membership(
+                membership_revision::Action::Revoke,
+                membership_revision::Principal::AuthkitSubject("creator".into()),
+            ),
+        ))
+        .unwrap();
+    assert!(
+        creator.get_book("books/book").is_err(),
+        "the next operation on an existing Console must observe revocation"
+    );
+}
+
+#[test]
+fn explicit_organization_membership_never_delegates_to_connect() {
+    let temp = Temp::new();
+    let objects: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    console(&temp.0, objects.clone(), "creator")
+        .create_book(request("book", book::BookKind::Personal))
+        .unwrap();
+    let control = ControlStore::new(objects.clone());
+    control
+        .commit(&control_operation(
+            &control,
+            "book",
+            "grant-org",
+            "creator",
+            membership(
+                membership_revision::Action::Grant,
+                membership_revision::Principal::OrganizationId("same-org".into()),
+            ),
+        ))
+        .unwrap();
+    let operator = console(&temp.0, objects.clone(), "other-authkit-sub");
+    assert!(operator.get_book("books/book").is_ok());
+
+    let mut connect = member("connect-sub");
+    if let Subject::Member { connect, .. } = &mut connect {
+        *connect = true;
+    }
+    let client = Console::scoped(&temp.0, connect).with_object_store(objects);
+    assert!(
+        client.get_book("books/book").is_err(),
+        "Connect identity and scope remain conjunctive with its own current membership"
+    );
+}
+
+#[test]
+fn a_posting_keeps_the_configuration_digest_captured_before_a_promotion() {
+    let temp = Temp::new();
+    let objects: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    console(&temp.0, objects.clone(), "creator")
+        .create_book(request("book", book::BookKind::Personal))
+        .unwrap();
+    let path = temp.0.join("book");
+    let mut in_flight = FileBook::open_with(&path, Some(objects.clone())).unwrap();
+    let pinned = in_flight.active().unwrap().unwrap();
+
+    let control = ControlStore::new(objects);
+    let next = control
+        .stage_config(b"rules = []\n# promoted later\n")
+        .unwrap();
+    control
+        .commit(&control_operation(
+            &control,
+            "book",
+            "promotion",
+            "creator",
+            control_operation::Change::ConfigPromotion(ConfigPromotion {
+                config_digest: next.as_str().into(),
+            }),
+        ))
+        .unwrap();
+    assert_eq!(in_flight.active().unwrap(), Some(next));
+    in_flight.append(&entry(&pinned)).unwrap();
+    assert_eq!(in_flight.entries().unwrap()[0].config, pinned);
 }
 
 #[test]
@@ -422,7 +569,12 @@ fn legacy_seeds_are_not_published_and_conflicting_or_changed_caches_are_not_rese
         .unwrap();
     let path = temp.0.join("durable");
     let mut b = FileBook::open_with(&path, Some(objects.clone())).unwrap();
-    assert!(b.put(b"rules = []").is_err());
+    let staged = b.put(b"rules = []").unwrap();
+    assert_ne!(
+        b.active().unwrap(),
+        Some(staged),
+        "saving durable bytes alone must not promote them"
+    );
     assert!(b.set_active(&Digest::of(b"later")).is_err());
     assert!(b.put_accounts(&[]).is_err());
     std::fs::write(path.join("config/ACTIVE"), b"later").unwrap();
@@ -456,10 +608,59 @@ fn bootstrap_process() {
     };
     let root = PathBuf::from(std::env::var_os("RATIO_BOOTSTRAP_TEST_ROOT").unwrap());
     let objects = PathBuf::from(std::env::var_os("RATIO_BOOTSTRAP_TEST_OBJECTS").unwrap());
-    ratio_store::install_object_store(Arc::new(DirStore::at(objects)));
+    ratio_store::install_object_store(Arc::new(DirStore::at(&objects)));
     let c = Console::scoped(&root, member("creator"));
     if mode == "create" {
         c.create_book(request("cold", book::BookKind::Personal))
+            .unwrap();
+        let control = ControlStore::new(Arc::new(DirStore::at(&objects)));
+        let first = control.stage_config(b"rules = []\n# first\n").unwrap();
+        control
+            .commit(&control_operation(
+                &control,
+                "cold",
+                "first",
+                "creator",
+                control_operation::Change::ConfigPromotion(ConfigPromotion {
+                    config_digest: first.as_str().into(),
+                }),
+            ))
+            .unwrap();
+        control
+            .commit(&control_operation(
+                &control,
+                "cold",
+                "grant",
+                "creator",
+                membership(
+                    membership_revision::Action::Grant,
+                    membership_revision::Principal::AuthkitSubject("guest".into()),
+                ),
+            ))
+            .unwrap();
+        let second = control.stage_config(b"rules = []\n# second\n").unwrap();
+        control
+            .commit(&control_operation(
+                &control,
+                "cold",
+                "second",
+                "guest",
+                control_operation::Change::ConfigPromotion(ConfigPromotion {
+                    config_digest: second.as_str().into(),
+                }),
+            ))
+            .unwrap();
+        control
+            .commit(&control_operation(
+                &control,
+                "cold",
+                "revoke",
+                "creator",
+                membership(
+                    membership_revision::Action::Revoke,
+                    membership_revision::Principal::AuthkitSubject("guest".into()),
+                ),
+            ))
             .unwrap();
         let mut b = FileBook::open(root.join("cold")).unwrap();
         let digest = b.active().unwrap().unwrap();
@@ -492,7 +693,15 @@ fn bootstrap_process() {
             b.entries().unwrap(),
             vec![entry(&b.active().unwrap().unwrap())]
         );
-        assert_eq!(b.history().unwrap(), vec![b.active().unwrap().unwrap()]);
+        assert_eq!(b.history().unwrap().len(), 3);
+        assert!(
+            Console::scoped(&root, member("guest"))
+                .list_books()
+                .unwrap()
+                .books
+                .is_empty(),
+            "a seed import must not resurrect a revoked member"
+        );
         assert_eq!(
             Console::scoped(&root, member("stranger"))
                 .list_books()
@@ -504,7 +713,7 @@ fn bootstrap_process() {
     }
 }
 #[test]
-fn a_new_process_discovers_a_created_book_after_the_entire_serving_root_is_lost() {
+fn a_new_process_recovers_promotions_and_membership_after_the_serving_root_is_lost() {
     let temp = Temp::new();
     let root = temp.0.join("serving");
     for mode in ["create", "reinitialize", "recover"] {
