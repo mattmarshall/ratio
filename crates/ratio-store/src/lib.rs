@@ -770,6 +770,77 @@ fn legacy_time_migration_matches(plane: &str, durable: &[u8], baked: &[u8]) -> R
     Ok(durable == baked)
 }
 
+const SEED_VALIDATION_WORKERS: usize = 32;
+
+fn validate_occupied_seed(
+    log: &SeqLog,
+    expected: &SeedPublication,
+    plane: &str,
+    lines: &[Vec<u8>],
+    height: u64,
+    migration: Option<&str>,
+) -> Result<()> {
+    let line_count = u64::try_from(lines.len()).context("a baked seed plane is too long")?;
+    let occupied = usize::try_from(height.min(line_count))
+        .context("the occupied seed prefix does not fit in memory")?;
+    if occupied == 0 {
+        return Ok(());
+    }
+    let workers = occupied.min(SEED_VALIDATION_WORKERS);
+    eprintln!(
+        "seed {}: validating {occupied} occupied {plane} sequence(s) with {workers} reader(s)",
+        expected.book_id
+    );
+    std::thread::scope(|scope| -> Result<()> {
+        let mut readers = Vec::with_capacity(workers);
+        for worker in 0..workers {
+            readers.push(scope.spawn(move || -> Result<()> {
+                let mut index = worker;
+                while index < occupied {
+                    let seq = u64::try_from(index)
+                        .ok()
+                        .and_then(|n| n.checked_add(1))
+                        .context("the seed sequence does not fit in 64 bits")?;
+                    let durable = log.get(seq)?.with_context(|| {
+                        format!(
+                            "seed mismatch for book {} plane {plane}: sequence {seq} is \
+                             missing below height {height}",
+                            expected.book_id
+                        )
+                    })?;
+                    let baked = &lines[index];
+                    ensure!(
+                        durable == *baked
+                            || migration
+                                .is_some_and(|name| name == LEGACY_SEED_TIME_MIGRATION)
+                                && legacy_time_migration_matches(plane, &durable, baked)?,
+                        "seed mismatch for book {} plane {plane} sequence {seq}: durable digest {} \
+                         differs from baked digest {}; the requested migration permits only legacy \
+                         delivery/fact/explanation wall-clock fields; refusing to alter the existing book",
+                        expected.book_id,
+                        Digest::of(&durable).short(),
+                        Digest::of(baked).short()
+                    );
+                    index = index
+                        .checked_add(workers)
+                        .context("the seed reader index overflowed")?;
+                }
+                Ok(())
+            }));
+        }
+        for reader in readers {
+            match reader.join() {
+                Ok(result) => result?,
+                Err(_) => bail!(
+                    "a seed validation reader panicked for book {} plane {plane}",
+                    expected.book_id
+                ),
+            }
+        }
+        Ok(())
+    })
+}
+
 /// Publish every baked append-only plane, then conditionally expose its marker.
 ///
 /// Existing sequence slots are compared before missing slots are claimed.
@@ -813,28 +884,14 @@ fn publish_seed_inner(
         let log = SeqLog::new(store.clone(), format!("{}/{plane}/", expected.book_id));
         let height = log.height()?;
         let seed_height = u64::try_from(lines.len()).context("a baked seed plane is too long")?;
-        let occupied_seed_height = height.min(seed_height);
-        for seq in 1..=occupied_seed_height {
-            let durable = log.get(seq)?.with_context(|| {
-                format!(
-                    "seed mismatch for book {} plane {plane}: sequence {seq} is missing below height {height}",
-                    expected.book_id
-                )
-            })?;
-            let baked = &lines[(seq - 1) as usize];
-            ensure!(
-                durable == *baked
-                    || migration
-                        .is_some_and(|name| name == LEGACY_SEED_TIME_MIGRATION)
-                        && legacy_time_migration_matches(&plane, &durable, baked)?,
-                "seed mismatch for book {} plane {plane} sequence {seq}: durable digest {} \
-                 differs from baked digest {}; the requested migration permits only legacy \
-                 delivery/fact/explanation wall-clock fields; refusing to alter the existing book",
-                expected.book_id,
-                Digest::of(&durable).short(),
-                Digest::of(baked).short()
-            );
-        }
+        validate_occupied_seed(
+            &log,
+            &expected,
+            &plane,
+            &lines,
+            height,
+            migration,
+        )?;
         for seq in (height + 1)..=seed_height {
             let baked = &lines[(seq - 1) as usize];
             if !log.claim(seq, baked)? {
@@ -2758,6 +2815,76 @@ mod tests {
             self.lists.lock().expect("lists").push(prefix.to_string());
             self.inner.list(prefix)
         }
+    }
+
+    struct DelayedGetStore {
+        inner: MemoryStore,
+        active: std::sync::atomic::AtomicUsize,
+        max_active: std::sync::atomic::AtomicUsize,
+    }
+
+    impl DelayedGetStore {
+        fn new() -> Self {
+            Self {
+                inner: MemoryStore::new(),
+                active: std::sync::atomic::AtomicUsize::new(0),
+                max_active: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl ObjectStore for DelayedGetStore {
+        fn put_if_absent(&self, key: &str, body: &[u8]) -> Result<bool> {
+            self.inner.put_if_absent(key, body)
+        }
+
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_active.fetch_max(active, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let result = self.inner.get(key);
+            self.active.fetch_sub(1, Ordering::SeqCst);
+            result
+        }
+
+        fn list(&self, prefix: &str) -> Result<Vec<String>> {
+            self.inner.list(prefix)
+        }
+    }
+
+    #[test]
+    fn occupied_seed_validation_uses_bounded_parallel_gets() {
+        let root = seed_tmp();
+        let lines: Vec<String> = (1..=64).map(|n| format!("line-{n}")).collect();
+        fs::write(root.join("journal.jsonl"), format!("{}\n", lines.join("\n"))).unwrap();
+        let store = Arc::new(DelayedGetStore::new());
+        let log = SeqLog::new(
+            store.clone(),
+            format!("{}/journal/", super::book_key(&root)),
+        );
+        for (index, line) in lines.iter().enumerate() {
+            let seq = u64::try_from(index + 1).unwrap();
+            assert!(log.claim(seq, line.as_bytes()).unwrap());
+        }
+
+        let started = std::time::Instant::now();
+        publish_seed(&root, store.clone()).unwrap();
+        let elapsed = started.elapsed();
+        let max = store.max_active.load(Ordering::SeqCst);
+        eprintln!(
+            "64 delayed GETs: parallel {:?}, serial floor {:?}, max readers {max}",
+            elapsed,
+            std::time::Duration::from_millis(64 * 20)
+        );
+        assert!(max > 1, "occupied seed bodies were still fetched serially");
+        assert!(
+            max <= SEED_VALIDATION_WORKERS,
+            "seed validation exceeded its reader bound: {max}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_millis(64 * 20),
+            "parallel validation took no less than the serial GET floor: {elapsed:?}"
+        );
     }
 
     #[test]

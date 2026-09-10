@@ -380,6 +380,15 @@ evidence. Everything else remains exact, and once v2 exists the migration
 cannot be reused to bless later drift. See
 [durable startup](../docs/durable-startup.md) for the failure procedure.
 
+⚠ **VALIDATION READS CONCURRENTLY; PUBLICATION STILL WRITES IN ORDER.** Main
+deploy `34505523090` timed out after 41 silent minutes because migration GET
+each occupied S3 object serially and then `entries()` downloaded the 16,245
+journal objects again just to count them. Validation now bounds itself to 32
+readers, and the post-marker attached open obtains durable height with LIST.
+Missing suffix PUTs stay sequential and conditional. Book/plane progress goes
+to stderr and successful result lines stream through `tee`, so another slow or
+failed plane is named while it is running rather than after the job budget.
+
 A Lambda cold start verifies every marker and attaches through the read-only
 door. It performs no seed-entry PUTs. The compatibility 503
 `"the journal is still hydrating"` can still appear while marker verification

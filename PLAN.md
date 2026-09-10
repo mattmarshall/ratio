@@ -5020,6 +5020,30 @@ prefixes do not move across deploy or rollback.
 Remaining work: #328 — merge this correction, complete the main deployment and
 record the green run plus live `/version` SHA.
 
+### Amendment, 2026-09-10 — seed migration validates concurrently
+
+Related: #328 and #309. Main deploy `34505523090` spent 41 minutes in
+`publish-seeds` before the 45-minute job budget cancelled it. The migration
+read every occupied S3 sequence body serially, then `entries()` read all 16,245
+baked journal bodies serially a second time merely to print their count: more
+than 32,000 sequential body GETs before side planes. Command substitution also
+withheld every successful book line until process exit, so the run exposed no
+progress.
+
+Occupied seed validation now uses at most 32 concurrent readers. Missing suffix
+claims remain sequential and conditional, preserving the contiguous-prefix
+recovery contract. After marker publication, the read-only attached open checks
+the durable journal height with LIST; it does not re-download bodies already
+compared. Per-book and per-plane progress goes to the live job log, and stdout
+streams through `tee` while retaining the smoke assertions.
+
+**Seed migration validates concurrently** is the Built phrase. No marker,
+migration field, accepted difference, conditional PUT, bucket, prefix, or
+serving startup contract changes.
+
+Remaining work: #328 — merge this correction, complete the main deployment and
+record the green run plus live `/version` SHA.
+
 ### Amendment, 2026-09-10 — Personal transfers name a declared currency
 
 Related: #311 and #178. Personal books already declared currencies and the
