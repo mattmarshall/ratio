@@ -341,11 +341,26 @@ impl ControlStore {
             operation_digest: operation_digest.as_str().to_string(),
         };
         let bytes = transition.encode_to_vec();
-        ensure!(
-            self.objects
-                .put_if_absent(&Self::transition_key(&operation.book_id, revision), &bytes)?,
-            "control predecessor conflict; reread and review before retrying"
-        );
+        if !self
+            .objects
+            .put_if_absent(&Self::transition_key(&operation.book_id, revision), &bytes)?
+        {
+            // Two exact retries can pass the same predecessor check before
+            // either conditional claim completes. The loser rereads the
+            // authority: identical bytes receive the winner's receipt, while
+            // any other winner remains a conflict and is never rebased.
+            let committed = self.read(&operation.book_id)?;
+            if let Some((existing_digest, receipt)) =
+                committed.operations.get(&operation.operation_id)
+            {
+                ensure!(
+                    existing_digest == operation_digest.as_str(),
+                    "operation ID was already committed with different bytes"
+                );
+                return Ok(receipt.clone());
+            }
+            bail!("control predecessor conflict; reread and review before retrying");
+        }
         ensure!(
             self.objects
                 .get(&Self::transition_key(&operation.book_id, revision))?
@@ -543,6 +558,40 @@ mod tests {
                 .collect::<Vec<_>>()
         });
         assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
+        assert_eq!(control.read("book").unwrap().revision, 1);
+    }
+
+    #[test]
+    fn simultaneous_exact_retries_receive_one_identical_receipt() {
+        let objects: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let control = publish(objects, "book");
+        let digest = control.stage_config(b"one reviewed candidate").unwrap();
+        let request = operation(
+            &control,
+            "book",
+            "same-operation",
+            "creator",
+            promote(&digest),
+        );
+        let start = Arc::new(Barrier::new(3));
+        let receipts = std::thread::scope(|scope| {
+            let mut handles = Vec::new();
+            for _ in 0..2 {
+                let control = control.clone();
+                let request = request.clone();
+                let start = start.clone();
+                handles.push(scope.spawn(move || {
+                    start.wait();
+                    control.commit(&request).unwrap()
+                }));
+            }
+            start.wait();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(receipts[0], receipts[1]);
         assert_eq!(control.read("book").unwrap().revision, 1);
     }
 
