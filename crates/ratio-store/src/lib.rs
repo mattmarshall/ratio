@@ -2839,11 +2839,16 @@ mod tests {
         }
 
         fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
-            let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
-            self.max_active.fetch_max(active, Ordering::SeqCst);
+            let active = self
+                .active
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                + 1;
+            self.max_active
+                .fetch_max(active, std::sync::atomic::Ordering::SeqCst);
             std::thread::sleep(std::time::Duration::from_millis(20));
             let result = self.inner.get(key);
-            self.active.fetch_sub(1, Ordering::SeqCst);
+            self.active
+                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
             result
         }
 
@@ -2870,7 +2875,9 @@ mod tests {
         let started = std::time::Instant::now();
         publish_seed(&root, store.clone()).unwrap();
         let elapsed = started.elapsed();
-        let max = store.max_active.load(Ordering::SeqCst);
+        let max = store
+            .max_active
+            .load(std::sync::atomic::Ordering::SeqCst);
         eprintln!(
             "64 delayed GETs: parallel {:?}, serial floor {:?}, max readers {max}",
             elapsed,
