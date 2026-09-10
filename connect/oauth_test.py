@@ -119,6 +119,7 @@ class OAuthTest(unittest.TestCase):
             "http://localhost:8765/callback",
             "http://127.0.0.1:8765/other",
             "http://127.0.0.1:8765/callback?next=x",
+            "http://127.0.0.1:0/callback",
             "http://*.example.test/callback",
         ]:
             with self.subTest(redirect=redirect), self.assertRaises(oauth.Refuse):
@@ -138,6 +139,13 @@ class OAuthTest(unittest.TestCase):
             thread.join(timeout=2)
             self.assertFalse(thread.is_alive())
             self.assertEqual(server.result.code, "sensitive-code")
+
+    def test_an_occupied_callback_port_is_a_refusal(self):
+        app = self.app()
+        attempt = oauth.Attempt("state", "nonce", "verifier", "challenge")
+        with oauth.callback_server(app, attempt, timeout=2):
+            with self.assertRaisesRegex(oauth.Refuse, "cannot bind"):
+                oauth.callback_server(app, attempt, timeout=2)
 
     def test_authorize_completes_the_loopback_and_returns_only_the_access_token(self):
         app = self.app()

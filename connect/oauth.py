@@ -95,6 +95,7 @@ def validate_redirect(raw: str) -> str:
         parsed.scheme != "http"
         or parsed.hostname != "127.0.0.1"
         or parsed.port is None
+        or parsed.port <= 0
         or parsed.path != "/callback"
         or parsed.params
         or parsed.query
@@ -219,7 +220,13 @@ class _CallbackHandler(BaseHTTPRequestHandler):
 
 def callback_server(app: Application, attempt: Attempt, *, timeout: float = 180.0) -> _CallbackServer:
     parsed = urlparse(app.redirect_uri)
-    server = _CallbackServer(("127.0.0.1", parsed.port or 0), _CallbackHandler)
+    port = parsed.port
+    if port is None or port <= 0:
+        raise Refuse("Connect redirect URI has no usable loopback port")
+    try:
+        server = _CallbackServer(("127.0.0.1", port), _CallbackHandler)
+    except OSError as exc:
+        raise Refuse(f"cannot bind the Connect callback on 127.0.0.1:{port}") from exc
     server.expected_state = attempt.state
     server.result = None
     server.refusal = None
