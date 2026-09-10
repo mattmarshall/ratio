@@ -392,7 +392,7 @@ class ManifestHonesty(unittest.TestCase):
         doc = json.dumps(app())
         self.assertEqual("built", app()["grant_path"]["status"])
         self.assertIn("ConnectApiUrl", app()["grant_path"]["note"])
-        self.assertIn("WorkOS dashboard registration", app()["grant_path"]["note"])
+        self.assertIn("application and callback are registered", app()["grant_path"]["note"])
         self.assertIn("encrypted per-membership custody", app()["calendar_oauth"]["status"])
         self.assertIn("refreshes access tokens", app()["calendar_oauth"]["note"])
         self.assertIn("recovers 410", app()["calendar_oauth"]["note"])

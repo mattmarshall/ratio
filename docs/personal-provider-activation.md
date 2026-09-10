@@ -35,10 +35,10 @@ command-line arguments or JSON output.
 
 Create two first-party public OAuth applications, one from each app manifest:
 
-| Application | Ratio scopes |
-|---|---|
-| `connect/bank-feed/app.json` | `books:read statements:read journals:post` |
-| `connect/calendar-bills/app.json` | `books:read statements:read journals:post` |
+| Application | WorkOS client ID | Ratio scopes |
+|---|---|---|
+| `connect/bank-feed/app.json` | `client_01M25RHQDVTDM4ZP38MTXWNJRP` | `books:read statements:read journals:post` |
+| `connect/calendar-bills/app.json` | `client_01M25RW01TMRVN2S7VQ2NTDK54` | `books:read statements:read journals:post` |
 
 For both applications:
 
@@ -94,6 +94,11 @@ Ratio is:
 
 `http://127.0.0.1:8766/google/callback`
 
+The configured public client id is
+`77367259022-0kgmbom552pamp8mhpp04f7ikchqkddc.apps.googleusercontent.com` in
+Google Cloud project `marsh-software`. Its downloaded client JSON remains
+outside the repository.
+
 Use these environment names:
 
 | Name | Value |
@@ -136,6 +141,13 @@ mode `0600`. Back up the key separately: loss of the key makes grants
 unreadable, while reuse of the store with a different key is an authentication
 failure. To rotate, revoke grants while the old key is loaded, replace the key
 and store, then reconnect each provider.
+
+For hosted execution in the ResuMarsh AWS account, store
+`RATIO_PERSONAL_TOKEN_KEY`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, and the Google
+desktop client secret in AWS Secrets Manager. SSM is acceptable only with
+`SecureString`. Provider records may remain in the AES-GCM store or move behind
+the same membership/provider vault boundary; never place plaintext provider
+tokens in ordinary SSM strings.
 
 Provider tokens are never returned by status methods, printed, or logged.
 Status exposes only connection metadata, cursor presence, and bounded counts.
