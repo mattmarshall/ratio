@@ -1077,7 +1077,8 @@ or `sidepocket:*`.
   health, version, and auth configuration remain available.
   #328 found that the seeder itself wrote wall-clock receipt / acceptance
   seconds and generated relative to the build day. Seeds now pin
-  2026-09-10 UTC. The named `legacy-volatile-times-v1` migration records,
+  2026-09-03 UTC, when durable publication first succeeded in #130. The named
+  `legacy-volatile-times-v1` migration records,
   without overwriting, only those three JSON clock paths while no v2 marker
   exists; every other difference still refuses and the door cannot be reused
   after v2 publication.

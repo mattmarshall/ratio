@@ -371,7 +371,8 @@ cold-open evidence.
 ⚠ **The v1 rollout exposed a real seeder defect, not corrupt S3.** Ingest and
 explanation records used the build runner's current second, and generated
 settlement tails used its current day. The scripts now pin their explicit
-source-of-truth clock to 2026-09-10 00:00:00 UTC. The deploy's reviewed
+source-of-truth clock to 2026-09-03 00:00:00 UTC, when the durable journals
+first published successfully in #130. The deploy's reviewed
 `legacy-volatile-times-v1` adoption is available only before a v2 marker and
 permits only delivery `received`, fact `provenance.received`, and explanation
 `accept_time` to differ. It records that migration without rewriting the old

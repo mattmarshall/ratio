@@ -5003,7 +5003,8 @@ seconds flowed into facts, explanation acceptance used another wall-clock
 second, and generated settlement tails used the build day. #327's determinism
 check rebuilt twice inside one second, so it tested the wrong boundary.
 
-The baked source now fixes its clock at 2026-09-10 00:00:00 UTC. Publication
+The baked source now fixes its clock at 2026-09-03 00:00:00 UTC, the day the
+durable journals first published successfully in #130. Publication
 uses a format-v2 marker. While that marker is absent, the explicitly named
 `legacy-volatile-times-v1` migration may compare old and fixed-clock JSON after
 removing only delivery `received`, fact `provenance.received`, and explanation

@@ -28,7 +28,8 @@ build day. The local determinism check in #327 rebuilt twice within one second,
 so it could not expose that cross-deploy drift.
 
 The seed scripts now fix their explicit source-of-truth clock at Unix epoch
-`1788998400` (2026-09-10 00:00:00 UTC). The deployment invokes the named
+`1788393600` (2026-09-03 00:00:00 UTC), the day the durable journals first
+published successfully in deploy #130. The deployment invokes the named
 `legacy-volatile-times-v1` migration while a v2 marker is absent. That one-time
 door parses and compares each occupied JSON record after removing only:
 

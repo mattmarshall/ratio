@@ -30,10 +30,10 @@ done
 
 # `ratio gen` anchors settlement tails to now in normal CLI use. The seed epoch
 # is the deployment source of truth that makes the baked large fund stable.
-RATIO_SEED_EPOCH=1788998400 "$RATIO" gen --book "$ROOT/gen-a" \
+RATIO_SEED_EPOCH=1788393600 "$RATIO" gen --book "$ROOT/gen-a" \
   --securities 20 --lots-per 40 --currencies 3 --seed 1 >/dev/null
 sleep 2
-RATIO_SEED_EPOCH=1788998400 "$RATIO" gen --book "$ROOT/gen-b" \
+RATIO_SEED_EPOCH=1788393600 "$RATIO" gen --book "$ROOT/gen-b" \
   --securities 20 --lots-per 40 --currencies 3 --seed 1 >/dev/null
 cmp "$ROOT/gen-a/journal.jsonl" "$ROOT/gen-b/journal.jsonl" || {
   echo "  x unchanged generated fund depends on the build clock" >&2
