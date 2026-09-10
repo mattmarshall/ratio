@@ -2697,7 +2697,9 @@ mod tests {
         let first = publish_seed(&root, store.clone()).unwrap();
         let puts = store.puts();
         assert!(
-            !puts.iter().any(|key| key.ends_with("00000000000000000001")),
+            !puts
+                .iter()
+                .any(|key| key.ends_with("journal/00000000000000000001")),
             "the occupied first journal slot must be compared, not re-PUT: {puts:?}"
         );
         assert!(
