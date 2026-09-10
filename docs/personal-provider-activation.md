@@ -37,8 +37,13 @@ Create two first-party public OAuth applications, one from each app manifest:
 
 | Application | WorkOS client ID | Ratio scopes |
 |---|---|---|
-| `connect/bank-feed/app.json` | `client_01M25RHQDVTDM4ZP38MTXWNJRP` | `books:read statements:read journals:post` |
-| `connect/calendar-bills/app.json` | `client_01M25RW01TMRVN2S7VQ2NTDK54` | `books:read statements:read journals:post` |
+| `connect/bank-feed/app.json` | `client_01M2642YRKA47T8BKD834MRF8P` | `books:read statements:read journals:post` |
+| `connect/calendar-bills/app.json` | `client_01M263ZX1AA2KBW38TR7C9PHFT` | `books:read statements:read journals:post` |
+
+Both applications belong to the WorkOS **Ratio** project production environment
+(`environment_01M1JJZTBCFS9K7QEJ1ADFMEZW`), which owns
+`https://auth.ratio.marsh.build`. A client registered in another WorkOS project
+is not visible to this authorization server and returns `application_not_found`.
 
 For both applications:
 
