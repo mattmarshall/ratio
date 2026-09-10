@@ -182,7 +182,9 @@ Resources:
         - !Ref "AWS::NoValue"
       Environment:
         Variables:
-          RATIO_BOOK: /tmp/book
+          # The object-store identity is the directory basename. Keep this
+          # equal to the publisher's deploy/demo-book basename.
+          RATIO_BOOK: /tmp/demo-book
           RATIO_FUNDS: /tmp/funds
           # The journal is the part that does not heal on a cold start, so the
           # one write path has a ceiling even now that a caller must be signed

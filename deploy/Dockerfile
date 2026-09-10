@@ -110,7 +110,7 @@ RUN set -eu; \
 # race the first request.
 ENV AWS_LWA_PORT=8080 \
     AWS_LWA_READINESS_CHECK_PATH=/healthz \
-    RATIO_BOOK=/tmp/book
+    RATIO_BOOK=/tmp/demo-book
 
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

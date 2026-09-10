@@ -5051,6 +5051,12 @@ include that explicit startup refusal while the public response remains
 generic. #336 owns the diagnostic correction; the production incident stays
 open until a later deploy smoke-passes.
 
+The resulting diagnostic deploy `34517087152` named the refusal: the Lambda
+looked up `/tmp/book` as durable ID `book`, while deployment had published the
+baked source directory as ID `demo-book`. The serving path now preserves that
+basename at `/tmp/demo-book`, so marker verification and every journal prefix
+name the same immutable book. No durable object is renamed or rewritten.
+
 Remaining work: #328 — merge this correction, complete the main deployment and
 record the green run plus live `/version` SHA.
 
