@@ -10,11 +10,38 @@ opens every durable journal may the workflow update the Lambda image.
 Publication claims each missing line at its baked one-based sequence with the
 same conditional `put_if_absent` contract as a journal append. It compares every
 occupied seed slot byte-for-byte first. The final conditional object is
-`journals/_seed/publications/<book-id>`: format version 1, a digest over every
+`journals/_seed/publications-v2/<book-id>`: format version 2, a digest over every
 baked plane (including empty planes), and each plane's baked length. An
 unchanged deploy reads that marker and performs no sequence LIST or PUT. A
 different marker or occupied sequence fails deployment with the book, plane,
 sequence, and expected/actual digest where applicable.
+
+### The reviewed legacy-clock adoption
+
+The first format-v1 rollout failed correctly on the old Harbourline delivery:
+the durable and newly baked records differed. Source review identified the
+cause rather than declaring the bytes equivalent by fiat: the seeder used the
+build runner's wall clock for `Delivery.received`, copied it to
+`Fact.provenance.received`, used another clock for
+`BreakExplanation.accept_time`, and anchored generated settlement tails to the
+build day. The local determinism check in #327 rebuilt twice within one second,
+so it could not expose that cross-deploy drift.
+
+The seed scripts now fix their explicit source-of-truth clock at Unix epoch
+`1788998400` (2026-09-10 00:00:00 UTC). The deployment invokes the named
+`legacy-volatile-times-v1` migration while a v2 marker is absent. That one-time
+door parses and compares each occupied JSON record after removing only:
+
+- `received` from a delivery;
+- `provenance.received` from a fact; and
+- `accept_time` from a break explanation.
+
+Every other field and every other plane must still match. Adoption does not
+overwrite the durable timestamp or any sequence object; the v2 marker records
+the migration name and the deterministic baked digest. Once that v2 marker
+exists, the migration cannot be reused: later publication compares the marker
+normally and any changed seed fails closed. Old format-v1 markers are retained
+as rollout evidence but are not the serving marker.
 
 `ratio watch` binds and accepts HTTP while durable attachment initializes.
 It verifies every baked marker and uses `FileBook::open_attached`; startup has
@@ -60,10 +87,14 @@ application version continues serving the same journals:
    a journal, or change the baked files merely to make deployment green.
    Determine whether the image contains the wrong seed or the destination
    prefix/book ID names different durable data.
-3. Rebuild/redeploy the intended seed, or select the correct untouched durable
+3. Do not add another normalization field or generic bypass to
+   `legacy-volatile-times-v1`. That reviewed migration is valid only while a v2
+   marker is absent and only for the three paths above. Any other mismatch is a
+   real divergence for this procedure.
+4. Rebuild/redeploy the intended seed, or select the correct untouched durable
    prefix. Escalate unexplained durable-byte changes through the recovery
    procedure before allowing traffic to shift.
-4. Rerun deployment. The publisher validates all books, including the small
+5. Rerun deployment. The publisher validates all books, including the small
    Northstar seed and large Ashcombe seed, before CloudFormation updates the
    Function.
 

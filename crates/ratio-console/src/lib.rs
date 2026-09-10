@@ -2290,7 +2290,7 @@ impl Console {
             // Composed, never taken raw: on a public endpoint this reaches a
             // screen other people read.
             origin: sanitize_origin(&req.origin),
-            received: now(),
+            received: now()?,
             bytes: bytes.len() as i64,
         };
 
@@ -4821,10 +4821,7 @@ impl Console {
             break_id: want.to_string(),
             text: text.to_string(),
             actor: self.actor.clone().unwrap_or_default(),
-            accept_time: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0),
+            accept_time: now()?,
             difference: brk.difference.parse().unwrap_or(0),
             config_digest: brk.config_digest.clone(),
             journal_position: position,
@@ -5685,12 +5682,17 @@ fn sanitize_origin(origin: &str) -> String {
     }
 }
 
-/// Seconds since the epoch, for a received-at stamp.
-fn now() -> i64 {
-    std::time::SystemTime::now()
+/// Seconds since the epoch, honoring the reviewed baked-seed clock.
+fn now() -> Result<i64> {
+    if let Some(epoch) = std::env::var("RATIO_SEED_EPOCH").ok().filter(|v| !v.is_empty()) {
+        return epoch
+            .parse()
+            .context("RATIO_SEED_EPOCH must be whole seconds since the Unix epoch");
+    }
+    Ok(std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+        .unwrap_or(0))
 }
 
 /// `2026-02-26` as a `google.type.Date`. An empty day yields none rather than

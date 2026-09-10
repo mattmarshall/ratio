@@ -762,6 +762,14 @@ def main(app_path, bootstrap_path, workflow_path):
         )
     else:
         print("  ok  publisher-policy update retains the currently served image")
+    if "--migration legacy-volatile-times-v1" not in flow:
+        fail(
+            f"{workflow_path} does not name the reviewed one-time receipt-time "
+            "migration — omitting it leaves pre-fixed-clock demo journals stuck; "
+            "a generic bypass would weaken mismatch refusal"
+        )
+    else:
+        print("  ok  deploy names the one reviewed legacy-time migration")
     for seeded in ("northstar-multi-strategy", "ashcombe-global-equity"):
         if seeded not in flow:
             fail(

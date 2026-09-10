@@ -20,6 +20,18 @@ OUT="${2:?usage: seed-demo-book.sh <ratio-binary> <out-dir> [positions.csv]}"
 POSITIONS="${3:-}"
 [ -n "$POSITIONS" ] && POSITIONS="$(cd "$(dirname "$POSITIONS")" && pwd)/$(basename "$POSITIONS")"
 
+# ⭐ THE BAKED BOOK HAS AN EXPLICIT CLOCK. Ingest deliveries, fact provenance,
+# accepted explanations, and generated settlement tails used the build runner's
+# wall clock. Rebuilding unchanged source later therefore produced different
+# seed bytes and correctly tripped the durable mismatch gate (#328). September
+# 10 is the intentional valuation day already used by this demo generation.
+SEED_EPOCH=1788998400
+if [ -n "${RATIO_SEED_EPOCH:-}" ] && [ "$RATIO_SEED_EPOCH" != "$SEED_EPOCH" ]; then
+  echo "RATIO_SEED_EPOCH is fixed at $SEED_EPOCH for the baked demo, got $RATIO_SEED_EPOCH" >&2
+  exit 1
+fi
+export RATIO_SEED_EPOCH="$SEED_EPOCH"
+
 # Resolve BOTH paths before the `cd` below, and resolve them absolutely.
 #
 # This script changes directory into a scratch dir to keep its intermediate

@@ -47,14 +47,16 @@ messages also pass the [issue-completion check](issue-completion.md).
   Google refresh/410 recovery are restart-safe. Production registration,
   credentials, and redacted signed-in provider evidence remain on issues 22,
   163, 165, and 324. The LP portal's hosted walkthrough and drip elections
-  remain on issue 161. The API client-template allowlist is tracked in issue
-  260, and the minimal read-only reference app in issue 270; neither should be
+  remain on issue 161. Exact client-template grants are enforced. The minimal
+  read-only reference app remains on issue 270; neither should be
   confused with local provider activation.
 - **Demonstration data:** `deploy/seed-demo-funds.sh` seeds eight synthetic
   Investment funds and `deploy/seed_test.sh` verifies that count. Deployment
   conditionally publishes every baked journal/append-only plane and its
   versioned whole-seed marker before updating the Lambda image. Cold serving
-  processes verify those markers and attach without seed-entry PUTs.
+  processes verify those markers and attach without seed-entry PUTs. Seeds use
+  an explicit fixed clock; the one-time legacy-clock adoption permits only the
+  three documented receipt/acceptance fields and cannot bypass a v2 marker.
   Independent book creation supports all four kinds. A fixture, seed, or green render
   test is not a completed signed-in customer workflow or an accepted customer
   period; those gates remain on issues 27 and 262.

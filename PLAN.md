@@ -4995,6 +4995,30 @@ a backup, a mutable-control replacement, or a new book scope. Publication
 failure ownership and the no-delete mismatch procedure are in
 `docs/durable-startup.md` and `deploy/README.md`.
 
+### Amendment, 2026-09-10 — baked seed clocks are explicit
+
+Related: #328 and #309. The first pre-traffic publication correctly refused
+Harbourline, but the divergence was authored by the seeder: delivery receipt
+seconds flowed into facts, explanation acceptance used another wall-clock
+second, and generated settlement tails used the build day. #327's determinism
+check rebuilt twice inside one second, so it tested the wrong boundary.
+
+The baked source now fixes its clock at 2026-09-10 00:00:00 UTC. Publication
+uses a format-v2 marker. While that marker is absent, the explicitly named
+`legacy-volatile-times-v1` migration may compare old and fixed-clock JSON after
+removing only delivery `received`, fact `provenance.received`, and explanation
+`accept_time`. Every other field and plane remains exact. It overwrites no
+durable bytes, records the migration on the v2 marker, and cannot run around a
+v2 mismatch once that marker exists. Old v1 markers remain evidence.
+
+**Baked seed clocks are explicit** is the Built phrase. This is a one-time
+adoption of known synthetic-demo provenance drift, not a generic normalization
+rule, reset, truncation, or customer-book migration. The bucket and book
+prefixes do not move across deploy or rollback.
+
+Remaining work: #328 — merge this correction, complete the main deployment and
+record the green run plus live `/version` SHA.
+
 ### Amendment, 2026-09-10 — Personal transfers name a declared currency
 
 Related: #311 and #178. Personal books already declared currencies and the
