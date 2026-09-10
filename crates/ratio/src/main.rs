@@ -48,8 +48,13 @@ usage:
   ratio init [--kind KIND] [--book DIR]  create a book and seed a chart of accounts
                                        --kind uses the CreateBook chart and templates
                                        (investment · personal · project · operating)
-  ratio config set FILE [--book DIR]   store a configuration and promote it
+  ratio config set FILE [--book DIR]   store and promote a local configuration
+  ratio config set FILE --operation ID --expected-revision N --predecessor SHA
+                                       promote on the configured durable backend
   ratio config show [--book DIR]       the active configuration and its history
+  ratio membership grant PRINCIPAL --operation ID --expected-revision N --predecessor SHA
+  ratio membership revoke PRINCIPAL --operation ID --expected-revision N --predecessor SHA
+                                       PRINCIPAL is authkit:SUB or organization:ID
   ratio rules check FILE [--book DIR]  check a rule set against the chart
   ratio rules show [--book DIR]        render the active rules for a human
   ratio apply FILE [--book DIR]        apply rules to events and post the result
@@ -158,7 +163,11 @@ fn main() -> Result<()> {
         ["init"] => init(book),
         ["init", "--kind", k] => init_with_kind(book, k),
         ["config", "set", file] => config_set(book, file),
+        ["config", "set", file, "--operation", operation, "--expected-revision", revision, "--predecessor", predecessor] =>
+            config_set_control(book, file, operation, revision, predecessor),
         ["config", "show"] => config_show(book),
+        ["membership", action @ ("grant" | "revoke"), principal, "--operation", operation, "--expected-revision", revision, "--predecessor", predecessor] =>
+            membership_control(book, action, principal, operation, revision, predecessor),
         ["rules", "check", file] => rules_check(book, file),
         ["rules", "show"] => rules_show(book),
         ["apply", file] => apply(book, file),
@@ -216,6 +225,8 @@ fn main() -> Result<()> {
         ["scale-run", "--size", size, "--id", id] => scale_run(size, id),
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
+        ["approve", id, "--operation", operation, "--expected-revision", revision, "--predecessor", predecessor] =>
+            approve_control(book, id, operation, revision, predecessor),
         // ⚠ SPELLED OUT RATHER THAN PUT THROUGH `flags`, because `--because`
         // takes free text and `flags`' KNOWN list is shared with every other
         // verb — adding it there would make `ratio strike --because "…"` parse
@@ -1424,6 +1435,7 @@ fn acct(dim: i64, name: &str, t: AccountTypeRecord) -> Account {
 }
 
 fn config_set(book: PathBuf, file: &str) -> Result<()> {
+    install_control_backend()?;
     let mut b = FileBook::open(&book)?;
     let bytes = std::fs::read(file).with_context(|| format!("reading {file}"))?;
     let digest = b.put(&bytes)?;
@@ -1432,7 +1444,155 @@ fn config_set(book: PathBuf, file: &str) -> Result<()> {
     Ok(())
 }
 
+#[derive(Clone)]
+struct ControlIntent<'a> {
+    operation_id: &'a str,
+    expected_revision: u64,
+    predecessor: &'a str,
+}
+
+fn control_intent<'a>(
+    operation_id: &'a str,
+    revision: &str,
+    predecessor: &'a str,
+) -> Result<ControlIntent<'a>> {
+    Ok(ControlIntent {
+        operation_id,
+        expected_revision: revision
+            .parse()
+            .context("--expected-revision must be a non-negative whole number")?,
+        predecessor,
+    })
+}
+
+fn install_control_backend() -> Result<()> {
+    if let Some(bucket) = std::env::var("RATIO_JOURNAL_BUCKET").ok().filter(|v| !v.is_empty()) {
+        let prefix = std::env::var("RATIO_JOURNAL_PREFIX")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "journals/".to_string());
+        let store = scale::S3::open(&bucket, prefix)
+            .with_context(|| format!("opening the control store in s3://{bucket}"))?;
+        ratio_store::install_object_store(std::sync::Arc::new(store));
+    } else if let Some(dir) = std::env::var("RATIO_JOURNAL_LOCAL").ok().filter(|v| !v.is_empty()) {
+        ratio_store::install_object_store(std::sync::Arc::new(ratio_store::DirStore::at(dir)));
+    }
+    Ok(())
+}
+
+fn control_operation(
+    b: &FileBook,
+    intent: &ControlIntent<'_>,
+    change: ratio_store::control::control_operation::Change,
+) -> Result<ratio_store::control::ControlOperation> {
+    let (book_id, _, _, bootstrap_digest) = b
+        .control_identity()?
+        .context("the book is not published on the configured durable backend")?;
+    Ok(ratio_store::control::ControlOperation {
+        format_version: 1,
+        book_id,
+        bootstrap_digest,
+        expected_revision: intent.expected_revision,
+        expected_predecessor_digest: intent.predecessor.to_string(),
+        operation_id: intent.operation_id.to_string(),
+        actor_subject: actor_name(),
+        actor_provenance: "trusted-cli".into(),
+        change: Some(change),
+    })
+}
+
+fn promote_control(
+    b: &FileBook,
+    digest: &ratio_store::Digest,
+    intent: &ControlIntent<'_>,
+) -> Result<ratio_store::control::ControlReceipt> {
+    let operation = control_operation(
+        b,
+        intent,
+        ratio_store::control::control_operation::Change::ConfigPromotion(
+            ratio_store::control::ConfigPromotion {
+                config_digest: digest.as_str().to_string(),
+            },
+        ),
+    )?;
+    b.commit_control(&operation)
+}
+
+fn config_set_control(
+    book: PathBuf,
+    file: &str,
+    operation: &str,
+    revision: &str,
+    predecessor: &str,
+) -> Result<()> {
+    install_control_backend()?;
+    let intent = control_intent(operation, revision, predecessor)?;
+    let mut b = FileBook::open(&book)?;
+    let bytes = std::fs::read(file).with_context(|| format!("reading {file}"))?;
+    let set = RuleSet::from_toml(
+        std::str::from_utf8(&bytes).context("configuration is not UTF-8")?,
+    )?;
+    let errors: Vec<_> = check(&set, &b.accounts()?)
+        .into_iter()
+        .filter(|finding| !finding.is_question)
+        .collect();
+    if !errors.is_empty() {
+        bail!("configuration does not check against the book chart: {errors:?}");
+    }
+    let digest = b.put(&bytes)?;
+    let receipt = promote_control(&b, &digest, &intent)?;
+    println!(
+        "config {} promoted at control revision {} ({} bytes)",
+        digest.short(),
+        receipt.committed_revision,
+        bytes.len()
+    );
+    Ok(())
+}
+
+fn membership_control(
+    book: PathBuf,
+    action: &str,
+    principal: &str,
+    operation: &str,
+    revision: &str,
+    predecessor: &str,
+) -> Result<()> {
+    install_control_backend()?;
+    let intent = control_intent(operation, revision, predecessor)?;
+    let b = FileBook::open(&book)?;
+    let principal = if let Some(subject) = principal.strip_prefix("authkit:") {
+        ratio_store::control::membership_revision::Principal::AuthkitSubject(subject.into())
+    } else if let Some(organization) = principal.strip_prefix("organization:") {
+        ratio_store::control::membership_revision::Principal::OrganizationId(organization.into())
+    } else {
+        bail!("membership principal must be authkit:SUB or organization:ID");
+    };
+    let action = match action {
+        "grant" => ratio_store::control::membership_revision::Action::Grant,
+        "revoke" => ratio_store::control::membership_revision::Action::Revoke,
+        _ => bail!("membership action must be grant or revoke"),
+    };
+    let operation = control_operation(
+        &b,
+        &intent,
+        ratio_store::control::control_operation::Change::MembershipRevision(
+            ratio_store::control::MembershipRevision {
+                action: action as i32,
+                principal: Some(principal),
+            },
+        ),
+    )?;
+    let receipt = b.commit_control(&operation)?;
+    println!(
+        "membership {action:?} committed at control revision {}",
+        receipt.committed_revision
+    );
+    Ok(())
+}
+
 fn config_show(book: PathBuf) -> Result<()> {
+    install_control_backend()?;
     let b = FileBook::open(&book)?;
     match b.active()? {
         None => println!("no configuration promoted"),
@@ -2415,7 +2575,21 @@ fn mcp(book: PathBuf) -> Result<()> {
 /// set rather than replacing it, so approving a fee rule does not silently
 /// retire the trade rules.
 fn approve(book: PathBuf, id: &str) -> Result<()> {
-    print!("{}", approve_text(&book, id)?);
+    install_control_backend()?;
+    print!("{}", approve_text_with_control(&book, id, None)?);
+    Ok(())
+}
+
+fn approve_control(
+    book: PathBuf,
+    id: &str,
+    operation: &str,
+    revision: &str,
+    predecessor: &str,
+) -> Result<()> {
+    install_control_backend()?;
+    let intent = control_intent(operation, revision, predecessor)?;
+    print!("{}", approve_text_with_control(&book, id, Some(&intent))?);
     Ok(())
 }
 
@@ -2509,6 +2683,14 @@ fn book_fund_id(_book: &std::path::Path) -> &'static str {
 /// own code path; the only thing worth showing is the command a person really
 /// runs.
 pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
+    approve_text_with_control(book, id, None)
+}
+
+fn approve_text_with_control(
+    book: &std::path::Path,
+    id: &str,
+    control: Option<&ControlIntent<'_>>,
+) -> Result<String> {
     let book = book.to_path_buf();
     let mut b = FileBook::open(&book)?;
     let path = book.join("proposals").join(format!("{id}.toml"));
@@ -2615,7 +2797,11 @@ pub(crate) fn approve_text(book: &std::path::Path, id: &str) -> Result<String> {
 
     let toml = replace_sections(&previous_text, &merged, &templates)?;
     let digest = b.put(toml.as_bytes())?;
-    b.set_active(&digest)?;
+    if let Some(intent) = control {
+        promote_control(&b, &digest, intent)?;
+    } else {
+        b.set_active(&digest)?;
+    }
 
     // Record WHO did this, not just that the configuration moved.
     //

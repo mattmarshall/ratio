@@ -163,14 +163,19 @@ pub struct Console {
     /// correct about freshness would be a cache that could be wrong about it.
     projections: std::sync::Mutex<BTreeMap<String, ratio_project::Projection>>,
 
-    /// What the caller may open, resolved ONCE from `MEMBERSHIP.tsv` at
-    /// construction so `open_book` is a set lookup rather than a file read per
-    /// handler. `Unrestricted` is `Local` and the open demo — not a tenant.
+    /// Legacy local membership mode. `Unrestricted` is `Local` and the open
+    /// demo — not a tenant. Restricted callers are resolved afresh at every
+    /// public book boundary; this initial value preserves fail-closed
+    /// construction without becoming a process-lifetime authorization cache.
     /// `Granted` restricts, and an empty set is a real, valid answer (the
     /// operator is a member of nothing) rather than a refusal. `Unreadable` is
     /// the refusal: the membership file existed and could not be read.
     scope: Scope,
     subject: Subject,
+    /// One authenticated public operation may finish inside this bounded
+    /// window after its fresh membership read. A later request receives a new
+    /// Console and a new membership snapshot; this deadline is never renewed.
+    authorization_deadline: Option<std::time::Instant>,
     objects: Option<std::sync::Arc<dyn ratio_store::ObjectStore>>,
     /// The network server sets this only after its startup hydrate gate is
     /// Ready. Request-time opens then attach to the store without repeating
@@ -313,6 +318,8 @@ impl Console {
         connect_grants: Option<auth::ConnectAuthorization>,
         subject: Subject,
     ) -> Self {
+        let authorization_deadline = matches!(subject, Subject::Member { .. })
+            .then(|| std::time::Instant::now() + std::time::Duration::from_secs(25));
         Console {
             root,
             max_entries: std::env::var("RATIO_MAX_API_ENTRIES")
@@ -321,6 +328,7 @@ impl Console {
             projections: Default::default(),
             scope,
             subject,
+            authorization_deadline,
             objects: installed_object_store(),
             startup_hydrated: false,
             actor,
@@ -350,14 +358,36 @@ impl Console {
         Ok(state)
     }
 
-    fn bootstrap_allows(&self, bootstrap: &ratio_store::bootstrap::BookBootstrap) -> bool {
+    fn durable_allows(&self, id: &str) -> Result<bool> {
+        self.ensure_authorization_live()?;
+        let objects = self
+            .objects
+            .as_ref()
+            .context("durable membership backend is absent")?;
+        let state = ratio_store::control::ControlStore::new(objects.clone()).read(id)?;
         match &self.subject {
-            Subject::Local => true,
-            Subject::Member { sub, connect: false, .. } => bootstrap.creator_grant.as_ref()
-                .map(|grant| !sub.is_empty() && grant.subject == *sub).unwrap_or(false),
-            // A creator grant is not a delegation to a Connect client.
-            Subject::Member { .. } => false,
+            Subject::Local => Ok(true),
+            Subject::Member { sub, organization, connect, .. } => {
+                Ok(state.allows(sub, organization, *connect))
+            }
         }
+    }
+
+    fn legacy_allows(&self, id: &str) -> Result<bool> {
+        self.ensure_authorization_live()?;
+        if self.scope == Scope::Unrestricted {
+            return Ok(true);
+        }
+        auth::scope_for(&self.root, &self.subject).allows(id)
+    }
+
+    fn ensure_authorization_live(&self) -> Result<()> {
+        ensure!(
+            self.authorization_deadline
+                .map_or(true, |deadline| std::time::Instant::now() <= deadline),
+            "the bounded authorization window expired; begin a new request"
+        );
+        Ok(())
     }
 
     /// Refuse a Connect token that lacks the catalog scope this `/v1` door
@@ -467,7 +497,7 @@ impl Console {
         let mut ids = Vec::new();
         for id in candidates {
             if let Some((publication, bootstrap)) = self.bootstrap(&id)? {
-                if self.bootstrap_allows(&bootstrap) {
+                if self.durable_allows(&id)? {
                     ratio_store::bootstrap::materialize(&self.root.join(&id), &publication, &bootstrap)?;
                     ids.push(id);
                 }
@@ -475,7 +505,7 @@ impl Console {
                 if self.root.join(&id).join(ratio_store::bootstrap::MARKER).exists() {
                     bail!("durable book publication is unavailable; refusing local fallback");
                 }
-                if self.scope.allows(&id)? { ids.push(id); }
+                if self.legacy_allows(&id)? { ids.push(id); }
             }
         }
         Ok(ids)
@@ -506,7 +536,7 @@ impl Console {
             bail!("{id:?} is not a fund id");
         }
         if let Some((publication, bootstrap)) = self.bootstrap(id)? {
-            if !self.bootstrap_allows(&bootstrap) { bail!("no fund {id:?}"); }
+            if !self.durable_allows(id)? { bail!("no fund {id:?}"); }
             let path = self.root.join(id);
             ratio_store::bootstrap::materialize(&path, &publication, &bootstrap)?;
             return Ok(path);
@@ -524,7 +554,7 @@ impl Console {
         // different sentence — a broken membership file must not look like
         // "no fund". `Local` is unrestricted; a person at a terminal is not a
         // tenant.
-        if !self.scope.allows(id)? {
+        if !self.legacy_allows(id)? {
             bail!("no fund {id:?}");
         }
         if self.root.join("accounts.json").is_file() {
@@ -1692,6 +1722,11 @@ impl Console {
         // the check — there is no state in which this wrote something that
         // does not conserve.
         if !req.validate_only {
+            // The configuration above is this request's pin. A concurrent
+            // revocation does not rewrite it, but an operation that outlives
+            // the public 25-second authorization window is cancelled before
+            // it can append.
+            self.ensure_authorization_live()?;
             b.append(&entry)?;
             self.record_change(&path, "posted", id, digest.as_str())?;
         }
