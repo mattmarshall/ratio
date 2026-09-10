@@ -39,5 +39,11 @@ cmp "$ROOT/gen-a/journal.jsonl" "$ROOT/gen-b/journal.jsonl" || {
   echo "  x unchanged generated fund depends on the build clock" >&2
   exit 1
 }
+RATIO_SEED_EPOCH=1788393600 "$RATIO" strike --book "$ROOT/gen-a" >/dev/null
+RATIO_SEED_EPOCH=1788393600 "$RATIO" strike --book "$ROOT/gen-b" >/dev/null
+cmp "$ROOT/gen-a/NAVS" "$ROOT/gen-b/NAVS" || {
+  echo "  x unchanged generated NAV depends on the build clock" >&2
+  exit 1
+}
 
-echo "  ok  delivery, fact, explanation, and generated-journal seeds are byte-identical"
+echo "  ok  delivery, fact, explanation, generated journal, and NAV seeds are byte-identical"

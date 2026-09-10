@@ -2066,11 +2066,7 @@ fn strike(book: PathBuf, as_of: Option<&str>, view: Option<&str>) -> Result<()> 
     // convention nobody chose is the failure this whole feature is about.
     let view = view_or_refuse(&book, view)?;
     let actor = actor_name();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let s = ratio_nav::strike_and_record(&book, &view, now, &actor)?;
+    let s = ratio_nav::strike_and_record(&book, &view, now()?, &actor)?;
 
     println!("struck {} in {}", s.id, s.view);
     println!("  NAV        {}", minor(s.net_asset_value));
