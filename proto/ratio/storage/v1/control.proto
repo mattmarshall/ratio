@@ -13,7 +13,7 @@ message ControlOperation {
   int32 format_version = 1;
   string book_id = 2;
   string bootstrap_digest = 3;
-  uint64 expected_revision = 4;
+  int64 expected_revision = 4;
   string expected_predecessor_digest = 5;
   string operation_id = 6;
   string actor_subject = 7;
@@ -47,7 +47,7 @@ message MembershipRevision {
 message ControlTransition {
   // Only version 1 is supported. Zero is not a default version.
   int32 format_version = 1;
-  uint64 revision = 2;
+  int64 revision = 2;
   ControlOperation operation = 3;
   // SHA-256 of the canonical protobuf bytes of operation.
   string operation_digest = 4;
@@ -59,6 +59,6 @@ message ControlReceipt {
   string bootstrap_digest = 2;
   string operation_id = 3;
   string operation_digest = 4;
-  uint64 committed_revision = 5;
+  int64 committed_revision = 5;
   string transition_digest = 6;
 }

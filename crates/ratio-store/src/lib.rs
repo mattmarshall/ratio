@@ -1426,7 +1426,7 @@ impl FileBook {
     }
 
     /// The immutable identity needed to prepare an explicit successor.
-    pub fn control_identity(&self) -> Result<Option<(String, u64, String, String)>> {
+    pub fn control_identity(&self) -> Result<Option<(String, i64, String, String)>> {
         let Some((_, book_id)) = &self.objects else {
             return Ok(None);
         };

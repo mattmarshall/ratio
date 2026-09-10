@@ -28,7 +28,7 @@ pub enum Principal {
 #[derive(Clone, Debug)]
 pub struct ControlState {
     pub bootstrap_digest: String,
-    pub revision: u64,
+    pub revision: i64,
     pub predecessor_digest: String,
     pub active: Digest,
     pub history: Vec<Digest>,
@@ -62,7 +62,7 @@ impl ControlStore {
         format!("{TRANSITIONS}{book_id}/")
     }
 
-    fn transition_key(book_id: &str, revision: u64) -> String {
+    fn transition_key(book_id: &str, revision: i64) -> String {
         format!("{}{revision:020}", Self::transition_prefix(book_id))
     }
 
@@ -108,6 +108,10 @@ impl ControlStore {
         ensure!(
             operation.format_version == 1,
             "unsupported control operation version"
+        );
+        ensure!(
+            operation.expected_revision >= 0,
+            "control operation expected revision is negative"
         );
         ensure!(
             valid_book_id(&operation.book_id),
@@ -193,7 +197,7 @@ impl ControlStore {
         let prefix = Self::transition_prefix(book_id);
         let keys = self.objects.list(&prefix)?;
         for (offset, key) in keys.iter().enumerate() {
-            let revision = u64::try_from(offset + 1).context("control revision overflow")?;
+            let revision = i64::try_from(offset + 1).context("control revision overflow")?;
             ensure!(
                 key == &Self::transition_key(book_id, revision),
                 "control transition stream has a gap or invalid key at revision {revision}"
@@ -208,7 +212,7 @@ impl ControlStore {
                 "unsupported control transition version"
             );
             ensure!(
-                transition.revision == revision,
+                transition.revision > 0 && transition.revision == revision,
                 "control transition revision mismatch"
             );
             let operation = transition

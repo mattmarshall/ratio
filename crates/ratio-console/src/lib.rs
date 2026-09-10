@@ -32,7 +32,7 @@ pub use auth::{Scope, Subject};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use prost::Message;
 use ratio_proto::ratio::console::v1 as pb;
 // The kernel's own contracts. A shadow run writes a `ratio.v1.BreakReport`,

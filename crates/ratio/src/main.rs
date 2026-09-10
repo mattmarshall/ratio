@@ -1447,7 +1447,7 @@ fn config_set(book: PathBuf, file: &str) -> Result<()> {
 #[derive(Clone)]
 struct ControlIntent<'a> {
     operation_id: &'a str,
-    expected_revision: u64,
+    expected_revision: i64,
     predecessor: &'a str,
 }
 
