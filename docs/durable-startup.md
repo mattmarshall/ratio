@@ -34,10 +34,13 @@ published successfully in deploy #130. The deployment invokes the named
 door parses and compares each occupied JSON record after removing only:
 
 - `received` from a delivery;
-- `provenance.received` from a fact; and
-- `accept_time` from a break explanation.
+- `provenance.received` from a fact;
+- `accept_time` from a break explanation; and
+- `trade_date` from a generated journal record only when both records carry the
+  same `sub-tail-*` ID.
 
-Every other field and every other plane must still match. Adoption does not
+Every other field, including every posting on that tail record, and every other
+plane must still match. Adoption does not
 overwrite the durable timestamp or any sequence object; the v2 marker records
 the migration name and the deterministic baked digest. Once that v2 marker
 exists, the migration cannot be reused: later publication compares the marker
