@@ -4,8 +4,9 @@ package(default_visibility = ["//visibility:public"])
 # WorkOS binary here; it holds the mapper to the catalog, to
 # CreateBook(Personal), and to the refusals the issue named.
 #
-# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token. WorkOS dashboard registration stays leftover #22. Live bank OAuth is leftover
-# on #165.
+# ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token. WorkOS
+# dashboard registration stays leftover #22. Encrypted local activation is
+# //connect:personal_activation_test; live bank evidence stays on #165.
 sh_test(
     name = "mapper_test",
     size = "small",

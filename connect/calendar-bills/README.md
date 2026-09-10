@@ -20,7 +20,9 @@ confuse or fork Personal into that tree.
 ## What landed
 
 - Scope declaration using the frozen catalog names only:
-  `statements:read`, `journals:post`.
+  `books:read`, `statements:read`, `journals:post`. `books:read` lets the
+  activation runner verify the selected Personal membership before opening
+  Google custody.
 - The issue body still says `journal:append`. That string is an alias
   and is refused. Canonical: `journals:post`
   ([docs/connect-scopes.md](../../docs/connect-scopes.md)).
@@ -87,7 +89,7 @@ Registration notes (WorkOS Dashboard → Applications → Connect):
 | Trust | First-party — Ratio deploys this tree |
 | Redirect URI | `http://127.0.0.1:8765/callback` exactly. WorkOS permits loopback HTTP for production native clients. |
 | Credentials | Public `client_id` only. No client secret is created, stored, printed, or sent. |
-| Requested scopes | `statements:read` `journals:post` — plus `openid` if the library requires an OIDC discovery scope. Do not request `journal:append`. |
+| Requested scopes | `books:read` `statements:read` `journals:post` — plus `openid` if the library requires an OIDC discovery scope. Do not request `journal:append`. |
 | Issuer / JWKS | WorkOS Connect access tokens mint `iss` as the AuthKit custom domain (`https://auth.ratio.marsh.build`). API Gateway JWT verifies them on `ConnectApiUrl` `/v1` (audience = Ratio WorkOS project client). AuthKit session tokens stay on DemoUrl. |
 
 A third-party flag would prompt AuthKit consent and bind the app to an
@@ -104,13 +106,19 @@ attribute a bill to a client secret.
 | | Who | What it grants |
 |---|---|---|
 | **WorkOS Connect** | The bills app, talking to Ratio | Catalog scopes on books the subject administers |
-| **Calendar** | The household, talking to Google Calendar | Bounded Events sync built; live OAuth activation pending. |
+| **Calendar** | The household, talking to Google Calendar | Local PKCE, encrypted custody, refresh/revoke, and bounded Events sync built; production evidence pending. |
 
 The Google adapter reads Events pages and hands explicitly tagged dated
 instances to the mapper (`dated`, `amount` as decimal text, `currency`, `kind`).
 Google expands recurring series with `singleEvents=true`; the adapter never
-hands an `rrule` to the journal. Production OAuth credentials/consent and token
-custody remain #163; an Outlook provider would be a separate slice.
+hands an `rrule` to the journal. `connect/personal_activation.py` now binds
+Google state to the selected WorkOS subject/book, AES-256-GCM seals
+refresh/access tokens and retry state, refreshes access tokens, retries a
+`410 Gone` as a full sync with the prior index, and revokes before deleting
+custody. Exact production configuration is in
+[`docs/personal-provider-activation.md`](../../docs/personal-provider-activation.md).
+Production credentials, consent, and an authorized calendar remain #163; an
+Outlook provider would be a separate slice.
 
 ## Grant contract this app honors (and cannot yet exercise)
 
@@ -149,9 +157,10 @@ PERSONAL chrome is unchanged. `screensFor` is not forked. The
    on ConnectApiUrl. In-process `/v1` accepts catalog scopes after
    membership. Dashboard registration, redirect, and a live token
    stay leftover. Write-route actor binding landed (#151).
-2. **Live calendar OAuth.** Google production credentials and consent, durable
-   encrypted token custody/refresh, and an authorized calendar. The bounded
-   occurrence pull is built; recurrence expansion stays with Google.
+2. **Live calendar evidence.** Google production credentials and consent plus
+   an authorized calendar. Encrypted per-membership token custody/refresh,
+   bounded occurrence pull, expired-token recovery, and revoke are built;
+   recurrence expansion stays with Google.
 3. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover
    on #150. This app checks its own list; the kernel does not yet key
    one by `client_id`.

@@ -3,6 +3,7 @@ package(default_visibility = ["//visibility:public"])
 exports_files([
     "grant.py",
     "oauth.py",
+    "personal_activation.py",
 ])
 
 # Shared Connect grant path. First-party apps call ConnectApiUrl
@@ -49,5 +50,30 @@ sh_test(
         "//connect/goals:app.json",
         "//connect/tax-pack:app.json",
         "//connect/ecb-rates:app.json",
+    ],
+)
+
+# Local Personal provider lifecycle. Provider credentials and retry state are
+# encrypted per WorkOS-subject/book membership and never cross the CLI surface.
+sh_test(
+    name = "personal_activation_test",
+    size = "small",
+    srcs = ["personal_activation_test.sh"],
+    args = [
+        "$(rootpath personal_activation.py)",
+        "$(rootpath personal_activation_test.py)",
+        "$(rootpath //:docs/personal-provider-activation.md)",
+    ],
+    data = [
+        "grant.py",
+        "oauth.py",
+        "personal_activation.py",
+        "personal_activation_test.py",
+        "//:docs/personal-provider-activation.md",
+        "//connect/bank-feed:mapper.py",
+        "//connect/bank-feed:plaid.py",
+        "//connect/bank-feed:plaid_link.py",
+        "//connect/calendar-bills:bills.py",
+        "//connect/calendar-bills:google_calendar.py",
     ],
 )

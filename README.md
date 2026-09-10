@@ -81,8 +81,9 @@ cd console && pnpm install && pnpm dev          # then open http://localhost:300
   stays leftover on issue 22.
 - **[connect/bank-feed/](connect/bank-feed/)** — first-party Connect app
   that maps household bank rows onto Personal templates
-  ([#165](https://github.com/mattmarshall/ratio/issues/165)). Scaffold;
-  first-party Connect apps call ConnectApiUrl, and live bank OAuth is leftover.
+  ([#165](https://github.com/mattmarshall/ratio/issues/165)). The local
+  activation runner binds WorkOS membership to Plaid and encrypts Item-token
+  custody and retry state; production webhooks and institution evidence remain.
 - **[connect/tax-pack/](connect/tax-pack/)** — first-party Connect app
   that emits 8949-ish CSV from lot, wash, and lot-terms cites
   ([#166](https://github.com/mattmarshall/ratio/issues/166)). Scaffold;

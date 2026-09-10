@@ -209,9 +209,16 @@ __STYLE__
           kinds only — unset when none exist, not a fake zero.
           Bank-balance predictor and calendar-bills Connect app
           scaffolds post that <code>forecast_*</code> /
-          <code>scheduled_*</code> material; live
-          bank / calendar OAuth stay leftover on
-          <a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>.
+          <code>scheduled_*</code> material. A local Personal activation
+          runner binds the public WorkOS grant to one subject/book while
+          keeping Plaid and Google grants separate; provider credentials and
+          retry cuts are encrypted per membership across restarts. Plaid
+          pending-to-posted and Google refresh / expired-sync recovery are
+          explicit. Production registration, credentials, webhooks, and
+          redacted live bank / calendar evidence stay on
+          <a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>,
+          <a href="https://github.com/mattmarshall/ratio/issues/165">#165</a>,
+          and <a href="https://github.com/mattmarshall/ratio/issues/22">#22</a>.
           Personal books declare
           currencies — unset stays unset, not a silent USD; unbalanced
           FX is refused; rate providers stay Connect
@@ -580,9 +587,10 @@ __STYLE__
           depths of specification.</li>
           <li>The workload planner, the authoring assistant, and every interface
           shown anywhere on this site apart from one: an operations console
-          exists and addresses books. A bank-feed Connect app scaffold maps
-          household rows to allowlisted Personal templates; live bank OAuth
-          is leftover on
+          exists and addresses books. A bank-feed Connect app maps household
+          rows to allowlisted Personal templates, and local Plaid activation
+          keeps its Item token and sync cut encrypted per membership.
+          Production credentials, webhooks, and institution evidence remain on
           <a href="https://github.com/mattmarshall/ratio/issues/165">#165</a>.
           A tax-pack Connect app scaffold emits 8949-ish CSV from lot and
           wash cites; IRS e-file is leftover on
@@ -603,10 +611,11 @@ __STYLE__
           PROJECT books; live OAuth and a live
           <code>ListBooks</code> filter stay leftover on
           <a href="https://github.com/mattmarshall/ratio/issues/179">#179</a>.
-          Bank-balance predictor and calendar-bills Connect app
-          scaffolds post allowlisted Personal <code>forecast_*</code>
-          / <code>scheduled_*</code> templates; live bank / calendar
-          OAuth stay leftover on
+          Bank-balance predictor and calendar-bills Connect apps post
+          allowlisted Personal <code>forecast_*</code> /
+          <code>scheduled_*</code> templates. Local Google activation keeps
+          refresh/access tokens and occurrence sync state encrypted per
+          membership; production consent and calendar evidence remain on
           <a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>.
           An audit-export Connect app scaffold packages cited
           closes, strikes, breaks, and digests as a ZIP; live ZIP
@@ -839,8 +848,9 @@ __STYLE__
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/bank-feed">bank-feed Connect app</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/165">#165</a>)
       maps household rows to allowlisted Personal templates; Connect
-      tokens accepted with catalog scopes, and live bank OAuth is leftover
-      on that issue. A
+      tokens are accepted with catalog scopes, while local Plaid activation
+      encrypts the Item token and retry cut per membership. Production
+      credentials, webhooks, and institution evidence remain on that issue. A
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/tax-pack">tax-pack Connect app</a>
       (<a href="https://github.com/mattmarshall/ratio/issues/166">#166</a>)
       emits 8949-ish CSV from lot, wash, and lot-terms cites; mixed dates
@@ -880,14 +890,15 @@ __STYLE__
       (<a href="https://github.com/mattmarshall/ratio/issues/163">#163</a>)
       maps predicted movements onto allowlisted
       <code>forecast_income</code> / <code>forecast_spend</code>;
-      unset cited cash is not a silent 0.00 baseline, and live bank
-      OAuth is leftover on that
-      issue. A
+      unset cited cash is not a silent 0.00 baseline. Local Plaid activation
+      and encrypted custody are shared with the bank feed; production evidence
+      remains on that issue. A
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/calendar-bills">calendar-bills Connect app</a>
       (same issue) maps dated occurrences onto allowlisted
       <code>scheduled_income</code> / <code>scheduled_spend</code>;
-      an <code>rrule</code> is refused rather than expanded, and live
-      calendar OAuth is leftover.
+      an <code>rrule</code> is refused rather than expanded. Local Google
+      PKCE, refresh, encrypted custody, and expired-sync recovery are built;
+      production consent and calendar evidence remain.
       Neither invents envelopes or payroll, and neither grows a
       kernel RPC.       An
       <a href="https://github.com/mattmarshall/ratio/tree/main/connect/audit-export">audit-export Connect app</a>

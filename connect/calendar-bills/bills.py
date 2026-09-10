@@ -42,9 +42,11 @@ A calendar "paycheck" is payroll invention, not a bill.
 Connect HTTP API. Membership is still required. Live calendar
 OAuth stays leftover on #163. WorkOS dashboard registration stays leftover #22.
 
-⚠ LIVE GOOGLE OAUTH IS NOT ACTIVATED. `google_calendar.py` supplies bounded
-Events sync using the read-only events scope. Production credentials, consent,
-token custody, and an authorized calendar stay leftover on #163.
+⚠ LIVE GOOGLE EVIDENCE IS NOT RECORDED. `google_calendar.py` supplies bounded
+Events sync using the read-only events scope; `connect/personal_activation.py`
+supplies encrypted per-membership custody, refresh, revoke, and restart-safe
+retry state. Production credentials, consent, and an authorized calendar stay
+leftover on #163.
 """
 
 from __future__ import annotations
@@ -60,7 +62,7 @@ import grant as _grant
 I64_MIN = -(2**63)
 I64_MAX = 2**63 - 1
 
-CANONICAL_SCOPES = frozenset({"statements:read", "journals:post"})
+CANONICAL_SCOPES = frozenset({"books:read", "statements:read", "journals:post"})
 REFUSED_ALIASES = frozenset({"journal:append", "journal:read"})
 
 # CreateBook(Personal) scheduled templates this app may instantiate.

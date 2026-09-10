@@ -61,6 +61,10 @@ class LinkedItem:
     def __repr__(self) -> str:
         return "LinkedItem(item_id=<redacted>, access_token=<redacted>)"
 
+    def deposit(self, custody: Callable[[str, str], None]) -> None:
+        """Move the credential into encrypted custody without returning it."""
+        custody(self._item_id, self._access_token)
+
 
 @dataclass(frozen=True)
 class _Pending:

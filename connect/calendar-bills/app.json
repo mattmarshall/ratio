@@ -12,6 +12,7 @@
     "docs": "https://workos.com/docs/authkit/connect/oauth",
     "catalog": "docs/connect-scopes.md",
     "scopes": [
+      "books:read",
       "statements:read",
       "journals:post"
     ],
@@ -33,10 +34,10 @@
   },
   "calendar_oauth": {
     "provider": "Google Calendar",
-    "status": "Events sync adapter built; live OAuth activation pending",
+    "status": "Local OAuth activation, encrypted per-membership custody, and Events sync built; live provider evidence pending",
     "provider_scope": "https://www.googleapis.com/auth/calendar.events.readonly",
     "events_endpoint": "https://www.googleapis.com/calendar/v3/calendars/{calendarId}/events",
-    "note": "The bounded adapter selects one concrete calendar, asks Google to expand recurring events, requires explicit private Ratio amount/currency/kind metadata, and returns a sync token only after all pages pass. Production credentials, consent, encrypted token custody, and an authorized calendar remain on #163."
+    "note": "The Personal activation runner binds Google state and PKCE S256 to the WorkOS subject/book, encrypts refresh/access tokens and retry state, refreshes access tokens, and revokes before deleting custody. The bounded adapter selects one concrete calendar, asks Google to expand recurring events, requires explicit private Ratio amount/currency/kind metadata, returns a sync token only after all pages pass, and recovers 410 by retaining the prior index during full sync. Production credentials, consent, and an authorized calendar remain on #163."
   },
   "grant_path": {
     "status": "built",

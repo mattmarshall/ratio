@@ -43,7 +43,8 @@ built. A green fixture run is not a live institution authorization.
 - A stable digest of the Plaid transaction id becomes the Ratio event id, so an
   exact retry is idempotent without exposing the provider id in the journal.
 - `/item/remove` disconnects the runtime client. It does not rewrite prior
-  journal facts. Credentials and Item tokens remain runtime-only and redacted.
+  journal facts. The activation runner decrypts an Item token only for one
+  adapter call; tokens remain redacted.
 - `/link/token/create` asks only for `transactions`, explicit countries and a
   language. The WorkOS subject plus Ratio book is hashed into Plaid's stable
   non-PII `client_user_id`; neither identifier is sent in clear text.
@@ -100,9 +101,13 @@ attribute a card charge to a client secret.
 The Plaid boundary speaks `/link/token/create`, `/item/public_token/exchange`,
 `/transactions/sync`, and `/item/remove`, then hands explicitly classified rows
 to the mapper (`dated`, `amount` as decimal text, `currency`, `kind`, optional
-`from`/`to` for transfers). Production credentials, Dashboard redirect
-registration, durable encrypted Item-token custody/rotation, webhooks, and a
-live institution authorization remain operator work on #165.
+`from`/`to` for transfers). `connect/personal_activation.py` now binds that
+lifecycle to the selected WorkOS subject/book, AES-256-GCM seals the Item token,
+cursor, and pending index, survives restart, records pending-to-posted links,
+and revokes before deleting custody. Exact production configuration is in
+[`docs/personal-provider-activation.md`](../../docs/personal-provider-activation.md).
+Production credentials, Dashboard redirect registration, webhooks, and a live
+institution authorization remain operator work on #165.
 
 ## Grant contract this app honors (and cannot yet exercise)
 
@@ -137,10 +142,10 @@ or a posting that reached `/v1`. BookKind PERSONAL chrome is unchanged.
    tokens on ConnectApiUrl. In-process `/v1` accepts catalog scopes
    after membership. Dashboard registration, redirect, and a live
    token stay leftover. Write-route actor binding landed (#151).
-2. **Live bank authorization.** Production credentials, Dashboard redirect
-   registration, durable encrypted Item-token custody/rotation, webhook
-   operation, and institution evidence. Link creation/exchange, bounded
-   Transactions Sync, and disconnect are built.
+2. **Live bank evidence.** Production credentials, Dashboard redirect
+   registration, webhook operation, and institution evidence. Link
+   creation/exchange, encrypted per-membership Item-token custody, bounded
+   Transactions Sync, pending-to-posted state, and disconnect are built.
 3. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover
    on #150. This app checks its own list; the kernel does not yet key
    one by `client_id`.

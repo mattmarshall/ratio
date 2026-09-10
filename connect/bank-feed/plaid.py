@@ -46,6 +46,7 @@ class PendingTransaction:
     amount: Decimal
     currency: str
     name: str
+    pending_transaction_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class SyncResult:
     proposed: tuple[mapper.ProposedPost, ...]
     pending: tuple[PendingTransaction, ...]
     source_ids: tuple[str, ...]
+    resolved_pending_ids: tuple[str, ...] = ()
 
 
 class PlaidClient:
@@ -131,6 +133,7 @@ class PlaidClient:
 
         rows: list[Mapping[str, Any]] = []
         source_ids: list[str] = []
+        resolved_pending_ids: list[str] = []
         for transaction_id, record in added.items():
             normalized = _transaction(record)
             if bool(record.get("pending")):
@@ -144,12 +147,20 @@ class PlaidClient:
                 )
             rows.append(_mapper_row(normalized, choice))
             source_ids.append(transaction_id)
+            if normalized.pending_transaction_id is not None:
+                resolved_pending_ids.append(normalized.pending_transaction_id)
 
         try:
             proposed = mapper.map_batch(rows, book=book, client=ratio_client)
         except mapper.Refuse as exc:
             raise Refuse(str(exc)) from exc
-        return SyncResult(next_cursor, tuple(proposed), tuple(pending.values()), tuple(source_ids))
+        return SyncResult(
+            next_cursor,
+            tuple(proposed),
+            tuple(pending.values()),
+            tuple(source_ids),
+            tuple(resolved_pending_ids),
+        )
 
     def disconnect(self) -> None:
         if not self._connected:
@@ -258,6 +269,15 @@ def _transaction(record: Mapping[str, Any]) -> PendingTransaction:
     is_pending = record.get("pending")
     if not isinstance(is_pending, bool):
         raise Refuse(f"Plaid transaction {transaction_id!r} has no boolean pending state")
+    pending_transaction_id = record.get("pending_transaction_id")
+    if pending_transaction_id is not None:
+        if (
+            not isinstance(pending_transaction_id, str)
+            or not pending_transaction_id.strip()
+            or len(pending_transaction_id) > 256
+        ):
+            raise Refuse("Plaid record has no stable pending_transaction_id")
+        pending_transaction_id = pending_transaction_id.strip()
     return PendingTransaction(
         transaction_id=transaction_id,
         account_id=account_id,
@@ -265,6 +285,7 @@ def _transaction(record: Mapping[str, Any]) -> PendingTransaction:
         amount=_amount(record.get("amount")),
         currency=_currency(record),
         name=name.strip(),
+        pending_transaction_id=pending_transaction_id,
     )
 
 

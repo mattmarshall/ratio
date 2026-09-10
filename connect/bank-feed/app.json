@@ -40,12 +40,12 @@
   },
   "bank_oauth": {
     "provider": "Plaid",
-    "status": "Link and transactions sync boundaries built; live activation pending",
+    "status": "Local activation, encrypted per-membership custody, and transactions sync built; live provider evidence pending",
     "link_create_endpoint": "/link/token/create",
     "token_exchange_endpoint": "/item/public_token/exchange",
     "sync_endpoint": "/transactions/sync",
     "disconnect_endpoint": "/item/remove",
-    "note": "The Link boundary creates a minimal transactions token, binds completion to one-time state, and moves the exchanged Item token directly into the bounded sync client. The sync adapter requires a user rule choice for each settled transaction, exposes pending rows without posting, and refuses modified/removed rows. Live Plaid credentials, redirect registration, durable encrypted token custody, webhooks, and institution authorization remain on #165."
+    "note": "The Link boundary creates a minimal transactions token and binds completion to one-time state. The Personal activation runner binds WorkOS subject/book, encrypts the Item token and retry state, carries complete bounded pages into the sync adapter, records pending-to-posted transitions, and revokes before deleting custody. The sync adapter requires a user rule choice for each settled transaction, exposes pending rows without posting, and refuses modified/removed rows. Live Plaid credentials, redirect registration, webhooks, and institution authorization remain on #165."
   },
   "grant_path": {
     "status": "built",
