@@ -4888,3 +4888,21 @@ prefixes. Deploy smoke records a second warm balance-read duration so the
 regression is visible without asserting a brittle Internet latency ceiling.
 This does not replace #304's mutable control transitions or #300's evidence
 persistence.
+
+### Amendment, 2026-09-10 — Personal transfers name a declared currency
+
+Related: #311 and #178. Personal books already declared currencies and the
+API already refused an absent or undeclared code. The household transfer
+ticket did not carry that field, so a valid multi-currency Personal book had
+no kind-correct console path to post the transfer.
+
+The existing `/transfer` ticket now offers exactly `Book.currencies`, carries
+the selected ISO code through `ApplyEventRequest.currency_code`, and includes
+it in the preview signature. The Server Action reads the book again and refuses
+an empty or undeclared code before `ApplyEvent`, so a direct action call cannot
+bypass the picker. An empty declaration is an explanatory refusal, not USD.
+
+**Personal transfers name a declared currency** is the Built phrase. This does
+not expose the Investment `/trade` ticket, attach an instrument or quantity,
+or add another posting path. The journal still enforces independent currency
+conservation. Live rate-provider registration and activation remain on #178.

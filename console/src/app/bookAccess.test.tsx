@@ -29,7 +29,7 @@ const screens: [string, BookKind[]][] = [
 ];
 beforeEach(() => { vi.clearAllMocks(); });
 function bookOf(kind: BookKind) {
-  vi.mocked(getBook).mockResolvedValue({ ...bookFixture, kind });
+  vi.mocked(getBook).mockResolvedValue({ ...bookFixture, kind, currencies: ["USD", "EUR"] });
 }
 describe("a saved URL cannot borrow another book kind's figures", () => {
   for (const [segment, allowed] of screens) for (const kind of kinds) {
@@ -56,7 +56,16 @@ describe("a saved URL cannot borrow another book kind's figures", () => {
   }
 });
 const actions = [
-  { name: "transfer", run: transfer, allowed: ["PERSONAL"], fields: { ruleId: "xfer_cash_card", date: "2026-09-09" } },
+  {
+    name: "transfer",
+    run: transfer,
+    allowed: ["PERSONAL"],
+    fields: {
+      ruleId: "xfer_cash_card",
+      date: "2026-09-09",
+      currencyCode: "EUR",
+    },
+  },
   { name: "budget", run: budget, allowed: ["PROJECT"], fields: { ruleId: "approve_co_site", dated: "2026-09-09" } },
   { name: "billing", run: billing, allowed: ["PROJECT"], fields: { ruleId: "collect_receivable", dated: "2026-09-09" } },
   { name: "trade", run: trade, allowed: ["INVESTMENT", "UNSPECIFIED"], fields: { ruleId: "equity_purchase", instrument: "TEST", units: "2", price: "3.00", tradeDate: "2026-09-09", reference: "test-event" } },
@@ -87,4 +96,45 @@ describe("direct Server Action calls enforce book kind before preview or commit"
       }
     });
   }
+
+  it("a household transfer refuses an undeclared currency before ApplyEvent", async () => {
+    bookOf("PERSONAL");
+    const form = new FormData();
+    for (const [key, value] of Object.entries({
+      fund: "selected",
+      ruleId: "xfer_cash_card",
+      eventId: "xfer-eur",
+      amount: "6.00",
+      date: "2026-09-09",
+      currencyCode: "GBP",
+    }))
+      form.set(key, value);
+    expect(await transfer(null, form)).toEqual({
+      ok: false,
+      error: "GBP is not declared for this household.",
+    });
+    expect(applyEvent).not.toHaveBeenCalled();
+  });
+
+  it("a household with no declared currency refuses before ApplyEvent", async () => {
+    vi.mocked(getBook).mockResolvedValue({
+      ...bookFixture,
+      kind: "PERSONAL",
+      currencies: [],
+    });
+    const form = new FormData();
+    for (const [key, value] of Object.entries({
+      fund: "selected",
+      ruleId: "xfer_cash_card",
+      eventId: "xfer-untyped",
+      amount: "6.00",
+      date: "2026-09-09",
+    }))
+      form.set(key, value);
+    expect(await transfer(null, form)).toEqual({
+      ok: false,
+      error: "Choose one of this household's declared currencies.",
+    });
+    expect(applyEvent).not.toHaveBeenCalled();
+  });
 });

@@ -25,5 +25,5 @@ export default async function Transfer({
   const { rules } = await listRules(c, book);
   const xfer = rules.filter((r) => r.ruleId.startsWith("xfer_"));
 
-  return <TransferForm fund={book} rules={xfer} />;
+  return <TransferForm fund={book} rules={xfer} currencies={b.currencies} />;
 }
