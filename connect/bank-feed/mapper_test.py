@@ -341,12 +341,13 @@ class ManifestHonesty(unittest.TestCase):
             self.assertNotIn(forbidden, templates)
             self.assertFalse(any(forbidden in t for t in templates), forbidden)
 
-    def test_grant_path_and_bank_oauth_stay_named_as_leftovers(self):
+    def test_grant_path_and_plaid_activation_state_are_explicit(self):
         doc = json.dumps(app())
         self.assertEqual("built", app()["grant_path"]["status"])
         self.assertIn("ConnectApiUrl", app()["grant_path"]["note"])
         self.assertIn("WorkOS dashboard registration", app()["grant_path"]["note"])
-        self.assertIn("not wired", app()["bank_oauth"]["status"])
+        self.assertIn("adapter built", app()["bank_oauth"]["status"])
+        self.assertIn("Live Plaid Link", app()["bank_oauth"]["note"])
         self.assertIn("#165", doc)
         self.assertIn("#150", doc)
 

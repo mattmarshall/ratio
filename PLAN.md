@@ -1547,11 +1547,14 @@ chrome is unchanged — `screensFor` is not forked.
 
 **What this is NOT:**
 
-- **Not live Connect OAuth.** API Gateway JWT verifies Connect tokens
-  on ConnectApiUrl. `deliver()` still refuses. Live OAuth is leftover
-  #22 / #150. This file does not close #150.
-- **Not live bank OAuth.** No Plaid / MX / TrueLayer token. The mapper
-  accepts a normalized row. Provider wiring stays leftover on #165.
+- **Not a live Connect grant.** API Gateway JWT verifies Connect tokens
+  on ConnectApiUrl, and the public PKCE client plus `deliver()` path are built.
+  WorkOS application registration and live grant evidence remain #22 / #150.
+  This file does not close #150.
+- **Not live bank authorization.** The Plaid Transactions Sync and disconnect
+  adapter is built by #317. Plaid Link, production credentials, public-token
+  exchange, Item-token custody, webhooks, and an authorized institution remain
+  on #165.
 - **Not #150's read-only reference skeleton.** That leftover is
   `books:read` + `statements:read` proving the door opens. This app
   requests `journals:post` and does not open the door.
@@ -1567,6 +1570,35 @@ remain. It does not start #166 or #168.
 show a fixture expense mapping to `living_expense`, a closed March
 refusing a 15 March row, and `journal:append` being rejected as a scope.
 It cannot show a Connect token opening a book or a live bank login.
+
+### Amendment, 2026-09-10 — Plaid Transactions Sync is bounded, and the user still chooses the rule
+
+[#317](https://github.com/mattmarshall/ratio/issues/317) supplies the first
+provider boundary behind the Personal bank-feed mapper. Plaid
+`/transactions/sync` pages form one bounded batch and the cursor is returned
+only after the complete batch passes. Numeric JSON money is parsed as decimal,
+with exact dates, ISO currencies, stable transaction/account ids, and a
+two-decimal refusal boundary.
+
+**The provider does not decide the accounting.** Every settled transaction
+needs an explicit user `RuleChoice`; Plaid amount sign and category are evidence,
+not a route to `living_expense`, `household_income`, or a transfer template.
+Pending rows remain visible and non-posting. Modified and removed rows refuse
+the cursor advance because an append-only journal needs a named correction or
+reversal policy before either can change a figure. Duplicate provider ids must
+be byte-equivalent within the batch, and a stable digest supplies the Ratio
+event id for exact retries.
+
+`/item/remove` stops later pulls without rewriting the journal. Secrets and Item
+access tokens exist only in the runtime client and are redacted from its
+representation and errors. Retained fixtures prove pagination, Decimal money,
+retry identity, pending treatment, category refusal, mutation/removal refusal,
+malformed responses, transport failure, and disconnect behavior.
+
+**Still not live bank OAuth.** Plaid Link, production credentials, public-token
+exchange, Item-token custody/rotation, webhooks, and an authorized institution
+remain on #165. The WorkOS application registration and live Ratio grant remain
+on #22. This amendment does not close #165 or #163.
 
 ### Amendment, 2026-09-04 — a Personal tax-pack Connect app, and e-file still does not happen here
 

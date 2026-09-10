@@ -26,3 +26,22 @@ sh_test(
         "//:docs/connect-scopes.md",
     ],
 )
+
+sh_test(
+    name = "plaid_test",
+    size = "small",
+    srcs = ["plaid_test.sh"],
+    args = [
+        "$(rootpath plaid.py)",
+        "$(rootpath plaid_test.py)",
+    ],
+    data = [
+        "//connect:grant.py",
+        "mapper.py",
+        "plaid.py",
+        "plaid_test.sh",
+        "plaid_test.py",
+        "testdata/sync-page-1.json",
+        "testdata/sync-page-2.json",
+    ],
+)

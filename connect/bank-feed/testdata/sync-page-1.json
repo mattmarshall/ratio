@@ -1,0 +1,1 @@
+{"added":[{"transaction_id":"fixture-expense","account_id":"fixture-checking","date":"2026-03-15","amount":1.10,"iso_currency_code":"USD","name":"Fixture grocer","pending":false,"personal_finance_category":{"primary":"FOOD_AND_DRINK"}}],"modified":[],"removed":[],"next_cursor":"fixture-cursor-1","has_more":true}

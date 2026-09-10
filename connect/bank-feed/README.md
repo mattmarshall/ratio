@@ -7,7 +7,8 @@ Issue [#165](https://github.com/mattmarshall/ratio/issues/165). First-party
 Bank OAuth and transaction → journal mapping live **here**. They do not
 live in `ratio watch`, the operations console, or a new kernel RPC.
 
-This is a scaffold. A green mapper is not a live feed.
+The mapper and a bounded Plaid Transactions Sync adapter are built. A green
+fixture run is not a live institution authorization.
 
 ## What landed
 
@@ -28,9 +29,25 @@ This is a scaffold. A green mapper is not a live feed.
 - Conservation: each instantiated template is two legs of opposite
   weight in one currency. `[USD +100, EUR −100]` is not balanced.
   Money is minor units, split on the point, never a float.
-- `deliver()` refuses. first-party Connect apps call ConnectApiUrl with a verified Connect access token. Membership still required.
+- `deliver()` calls ConnectApiUrl with a verified Connect access token.
+  Membership is still required.
+- Plaid `/transactions/sync` pagination is bounded and advances its opaque
+  cursor only after a complete, mutation-consistent batch is accepted.
+- Provider JSON money is decoded as `Decimal`. ISO currency, exact posted day,
+  stable transaction/account ids, and no more than two decimal places are
+  required.
+- A caller supplies a `RuleChoice` for every settled Plaid transaction. Neither
+  Plaid category nor amount sign selects an accounting rule.
+- Pending rows are returned for review and never reach `map_batch`. Modified or
+  removed rows refuse the batch until a correction/reversal policy exists.
+- A stable digest of the Plaid transaction id becomes the Ratio event id, so an
+  exact retry is idempotent without exposing the provider id in the journal.
+- `/item/remove` disconnects the runtime client. It does not rewrite prior
+  journal facts. Credentials and Item tokens remain runtime-only and redacted.
 
-`bazel test //connect/bank-feed:mapper_test` is the gate.
+`bazel test //connect/bank-feed:mapper_test //connect/bank-feed:plaid_test` is
+the focused gate. Retained provider fixtures exercise numeric JSON money and
+multi-page pending behavior.
 
 ## WorkOS Connect — application shape
 
@@ -68,12 +85,13 @@ attribute a card charge to a client secret.
 | | Who | What it grants |
 |---|---|---|
 | **WorkOS Connect** | The bank-feed app, talking to Ratio | Catalog scopes on books the subject administers |
-| **Bank / custodian** | The household, talking to a feed provider | Normalized statement rows. **Not wired.** |
+| **Bank / custodian** | The household, talking to Plaid | Transactions Sync adapter built; live Link activation pending. |
 
-The second one is leftover on this issue. The mapper accepts a
-normalized row (`dated`, `amount` as a decimal string, `currency`,
-`kind`, optional `from`/`to` for transfers). It does not speak Plaid,
-MX, TrueLayer, or a bank's token endpoint.
+The Plaid adapter speaks `/transactions/sync` and `/item/remove`, then hands
+explicitly classified rows to the mapper (`dated`, `amount` as decimal text,
+`currency`, `kind`, optional `from`/`to` for transfers). Plaid Link token
+creation, public-token exchange, production credentials, and a live institution
+authorization remain operator work on #165.
 
 ## Grant contract this app honors (and cannot yet exercise)
 
@@ -108,8 +126,9 @@ or a posting that reached `/v1`. BookKind PERSONAL chrome is unchanged.
    tokens on ConnectApiUrl. In-process `/v1` accepts catalog scopes
    after membership. Dashboard registration, redirect, and a live
    token stay leftover. Write-route actor binding landed (#151).
-2. **Live bank / custodian OAuth.** Provider SDK, token refresh, and
-   statement pull.
+2. **Live bank authorization.** Plaid Link, public-token exchange, production
+   credentials, Item-token custody/rotation, webhook operation, and institution
+   evidence. The bounded Transactions Sync pull and disconnect operation are built.
 3. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover
    on #150. This app checks its own list; the kernel does not yet key
    one by `client_id`.
