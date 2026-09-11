@@ -1446,11 +1446,14 @@ those explicit Connect membership decisions (#340). The operator names one
 published book, grant or revoke, and a unique operation ID, then confirms the
 exact action/book pair. GitHub OIDC assumes the existing deploy role; no durable
 AWS key is added. The workflow derives the sole AuthKit subject from the
-protected `DEMO_MEMBERS` repository variable, without accepting or printing a
-subject input. The CLI reads the current durable control head and conditionally
-commits exactly its successor, so a concurrent decision refuses instead of
-silently rebasing. A live production grant remains to be exercised after this
-workflow lands; this paragraph does not close #340 or a provider walkthrough.
+protected `DEMO_MEMBERS` repository variable, validating its documented
+comma-separated subject / optional verified-email shape without accepting or
+printing a subject input. Exactly one `user_…` subject is required; every other
+entry must be email-shaped. The CLI reads the current durable control head and
+conditionally commits exactly its successor, so a concurrent decision refuses
+instead of silently rebasing. A live production grant remains to be exercised
+after this workflow lands; this paragraph does not close #340 or a provider
+walkthrough.
 
 ## Recovery boundary, September 9, 2026
 

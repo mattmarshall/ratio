@@ -10,6 +10,7 @@ required = [
     "RATIO_JOURNAL_BUCKET: ratio-demo-scale-320473299741",
     'confirmation must exactly match ACTION:BOOK_ID',
     '_bootstrap is a reserved book ID',
+    'invalid DEMO_MEMBERS entry',
     'DEMO_MEMBERS must name exactly one AuthKit subject',
     'membership "$ACTION"',
     '--published "$BOOK_ID"',
