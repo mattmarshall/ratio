@@ -32,6 +32,14 @@ py_test(
     main = "iac_test.py",
 )
 
+py_test(
+    name = "control_workflow_test",
+    size = "small",
+    srcs = ["control_workflow_test.py"],
+    args = ["$(location //:.github/workflows/control.yml)"],
+    data = ["//:.github/workflows/control.yml"],
+)
+
 sh_test(
     name = "seed_test",
     size = "small",

@@ -1,0 +1,73 @@
+name: durable control
+
+on:
+  workflow_dispatch:
+    inputs:
+      book_id:
+        description: Published book ID
+        required: true
+        type: string
+      action:
+        description: Membership decision
+        required: true
+        type: choice
+        options: [grant, revoke]
+      operation_id:
+        description: Unique reviewed operation ID
+        required: true
+        type: string
+      confirmation:
+        description: Type ACTION:BOOK_ID exactly
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  membership:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      AWS_REGION: us-east-1
+      RATIO_JOURNAL_BUCKET: ratio-demo-scale-320473299741
+      RATIO_JOURNAL_PREFIX: journals/
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse an ambiguous decision
+        env:
+          BOOK_ID: ${{ inputs.book_id }}
+          ACTION: ${{ inputs.action }}
+          OPERATION_ID: ${{ inputs.operation_id }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$BOOK_ID" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "::error::invalid book ID"; exit 1; }
+          [ "$BOOK_ID" != _bootstrap ] || { echo "::error::_bootstrap is a reserved book ID"; exit 1; }
+          [[ "$ACTION" == grant || "$ACTION" == revoke ]] || { echo "::error::invalid action"; exit 1; }
+          [[ "$OPERATION_ID" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo "::error::invalid operation ID"; exit 1; }
+          [ "$CONFIRMATION" = "$ACTION:$BOOK_ID" ] || { echo "::error::confirmation must exactly match ACTION:BOOK_ID"; exit 1; }
+
+      - name: Build the reviewed control client
+        run: bazel build --lockfile_mode=error //crates/ratio
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::320473299741:role/ratio-demo-deploy
+          aws-region: us-east-1
+          role-session-name: control-${{ github.run_id }}
+
+      - name: Commit the membership decision
+        env:
+          BOOK_ID: ${{ inputs.book_id }}
+          ACTION: ${{ inputs.action }}
+          OPERATION_ID: ${{ inputs.operation_id }}
+          DEMO_MEMBERS: ${{ vars.DEMO_MEMBERS }}
+        run: |
+          set -euo pipefail
+          [[ "$DEMO_MEMBERS" =~ ^user_[A-Za-z0-9_]+$ ]] || { echo "::error::DEMO_MEMBERS must name exactly one AuthKit subject"; exit 1; }
+          export RATIO_ACTOR="$DEMO_MEMBERS"
+          "$(bazel info bazel-bin)/crates/ratio/ratio" membership "$ACTION" \
+            "authkit:$DEMO_MEMBERS" --published "$BOOK_ID" --operation "$OPERATION_ID"

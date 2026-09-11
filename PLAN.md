@@ -41,6 +41,14 @@ is an eight-week plan for a product nobody was buying.
 > `RATIO_JOURNAL_PREFIX`) for durable journal storage.
 > Published bootstrap and post-create control recovery are in place;
 > operational evidence remains #300.
+> A bounded manual GitHub Actions workflow is the production operator
+> door for explicit Connect membership (#340): it takes one published
+> book, grant/revoke, and an operation ID, requires an exact action/book
+> confirmation, derives the sole subject from protected `DEMO_MEMBERS`,
+> and uses GitHub OIDC with the existing deploy role. The CLI reads the
+> current durable head and conditionally claims only its successor, so a
+> race refuses instead of silently rebasing. The live grant and provider
+> walkthrough remain open until exercised after the workflow lands.
 > Pending hydration returns a retryable 503;
 > failed storage startup refuses book traffic until restart
 > ([startup contract](docs/durable-startup.md), #293).

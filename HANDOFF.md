@@ -1441,6 +1441,17 @@ again before posting. A concurrent promotion does not rewrite the digest an
 in-flight posting already captured. Fresh-process tests delete the serving root
 and recover two promotions plus grant/revoke history from the object backend.
 
+A bounded manual GitHub Actions workflow is the production operator door for
+those explicit Connect membership decisions (#340). The operator names one
+published book, grant or revoke, and a unique operation ID, then confirms the
+exact action/book pair. GitHub OIDC assumes the existing deploy role; no durable
+AWS key is added. The workflow derives the sole AuthKit subject from the
+protected `DEMO_MEMBERS` repository variable, without accepting or printing a
+subject input. The CLI reads the current durable control head and conditionally
+commits exactly its successor, so a concurrent decision refuses instead of
+silently rebasing. A live production grant remains to be exercised after this
+workflow lands; this paragraph does not close #340 or a provider walkthrough.
+
 ## Recovery boundary, September 9, 2026
 
 [The recovery inventory](docs/recovery.md) and

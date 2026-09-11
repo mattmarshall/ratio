@@ -10,7 +10,7 @@
 
 use std::path::PathBuf;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use ratio_api::LedgerService;
 use ratio_chart::{normal_side, Side};
 use ratio_proto::ratio::v1::ledger_server::LedgerServer;
@@ -55,6 +55,10 @@ usage:
   ratio membership grant PRINCIPAL --operation ID --expected-revision N --predecessor SHA
   ratio membership revoke PRINCIPAL --operation ID --expected-revision N --predecessor SHA
                                        PRINCIPAL is authkit:SUB or organization:ID
+  ratio membership grant PRINCIPAL --published BOOK --operation ID
+  ratio membership revoke PRINCIPAL --published BOOK --operation ID
+                                       append against the current durable predecessor;
+                                       refuses a concurrent change rather than rebasing
   ratio rules check FILE [--book DIR]  check a rule set against the chart
   ratio rules show [--book DIR]        render the active rules for a human
   ratio apply FILE [--book DIR]        apply rules to events and post the result
@@ -173,6 +177,8 @@ fn main() -> Result<()> {
         ["config", "show"] => config_show(book),
         ["membership", action @ ("grant" | "revoke"), principal, "--operation", operation, "--expected-revision", revision, "--predecessor", predecessor] =>
             membership_control(book, action, principal, operation, revision, predecessor),
+        ["membership", action @ ("grant" | "revoke"), principal, "--published", published, "--operation", operation] =>
+            membership_control_published(action, principal, published, operation),
         ["rules", "check", file] => rules_check(book, file),
         ["rules", "show"] => rules_show(book),
         ["apply", file] => apply(book, file),
@@ -1647,9 +1653,24 @@ fn membership_control(
     install_control_backend()?;
     let intent = control_intent(operation, revision, predecessor)?;
     let b = FileBook::open(&book)?;
+    let operation = control_operation(&b, &intent, membership_change(action, principal)?)?;
+    let receipt = b.commit_control(&operation)?;
+    println!(
+        "membership {action:?} committed at control revision {}",
+        receipt.committed_revision
+    );
+    Ok(())
+}
+
+fn membership_change(
+    action: &str,
+    principal: &str,
+) -> Result<ratio_store::control::control_operation::Change> {
     let principal = if let Some(subject) = principal.strip_prefix("authkit:") {
+        ensure_canonical_control_id(subject, "authkit membership subject")?;
         ratio_store::control::membership_revision::Principal::AuthkitSubject(subject.into())
     } else if let Some(organization) = principal.strip_prefix("organization:") {
+        ensure_canonical_control_id(organization, "organization membership ID")?;
         ratio_store::control::membership_revision::Principal::OrganizationId(organization.into())
     } else {
         bail!("membership principal must be authkit:SUB or organization:ID");
@@ -1659,19 +1680,85 @@ fn membership_control(
         "revoke" => ratio_store::control::membership_revision::Action::Revoke,
         _ => bail!("membership action must be grant or revoke"),
     };
-    let operation = control_operation(
-        &b,
-        &intent,
-        ratio_store::control::control_operation::Change::MembershipRevision(
-            ratio_store::control::MembershipRevision {
-                action: action as i32,
-                principal: Some(principal),
-            },
-        ),
+    Ok(ratio_store::control::control_operation::Change::MembershipRevision(
+        ratio_store::control::MembershipRevision {
+            action: action as i32,
+            principal: Some(principal),
+        },
+    ))
+}
+
+fn ensure_canonical_control_id(value: &str, name: &str) -> Result<()> {
+    ensure!(!value.is_empty(), "{name} is empty");
+    ensure!(value == value.trim(), "{name} is not canonical");
+    ensure!(
+        !value.chars().any(char::is_control),
+        "{name} contains a control character"
+    );
+    Ok(())
+}
+
+fn membership_control_published_with(
+    objects: std::sync::Arc<dyn ratio_store::ObjectStore>,
+    action: &str,
+    principal: &str,
+    book_id: &str,
+    operation_id: &str,
+    actor: &str,
+    provenance: &str,
+) -> Result<ratio_store::control::ControlReceipt> {
+    ensure!(
+        ratio_store::bootstrap::valid_book_id(book_id),
+        "invalid published book ID"
+    );
+    ensure_canonical_control_id(operation_id, "control operation ID")?;
+    ensure_canonical_control_id(actor, "control actor subject")?;
+    ensure_canonical_control_id(provenance, "control actor provenance")?;
+    let change = membership_change(action, principal)?;
+    let store = ratio_store::control::ControlStore::new(objects);
+    // ⭐ This read is the reviewed predecessor. `commit` reads again and its
+    // conditional successor claim refuses any intervening operation. This
+    // command propagates that refusal and never retries against a newer head.
+    let state = store.read(book_id)?;
+    let operation = ratio_store::control::ControlOperation {
+        format_version: 1,
+        book_id: book_id.into(),
+        bootstrap_digest: state.bootstrap_digest,
+        expected_revision: state.revision,
+        expected_predecessor_digest: state.predecessor_digest,
+        operation_id: operation_id.into(),
+        actor_subject: actor.into(),
+        actor_provenance: provenance.into(),
+        change: Some(change),
+    };
+    store.commit(&operation)
+}
+
+fn membership_control_published(
+    action: &str,
+    principal: &str,
+    book_id: &str,
+    operation_id: &str,
+) -> Result<()> {
+    install_control_backend()?;
+    let objects = ratio_store::installed_object_store()
+        .context("published membership requires RATIO_JOURNAL_BUCKET or RATIO_JOURNAL_LOCAL")?;
+    let provenance = if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true") {
+        "github-actions-oidc"
+    } else {
+        "trusted-cli"
+    };
+    let receipt = membership_control_published_with(
+        objects,
+        action,
+        principal,
+        book_id,
+        operation_id,
+        &actor_name(),
+        provenance,
     )?;
-    let receipt = b.commit_control(&operation)?;
     println!(
-        "membership {action:?} committed at control revision {}",
+        "membership {action} committed for book {book_id} at control revision {}",
         receipt.committed_revision
     );
     Ok(())
@@ -3393,5 +3480,103 @@ weight = -1
         let book = book_with_a_proposal("missing");
         let e = approve(book, "nope").unwrap_err().to_string();
         assert!(e.contains("nope"), "{e}");
+    }
+
+    #[test]
+    fn published_membership_refuses_malformed_operator_inputs_before_storage() {
+        let objects: std::sync::Arc<dyn ratio_store::ObjectStore> =
+            std::sync::Arc::new(ratio_store::MemoryStore::new());
+        for (action, principal, book, operation, actor, provenance, expected) in [
+            ("allow", "authkit:user_1", "household", "op-1", "user_1", "trusted-cli", "action"),
+            ("grant", "user_1", "household", "op-1", "user_1", "trusted-cli", "principal"),
+            ("grant", "authkit:", "household", "op-1", "user_1", "trusted-cli", "subject"),
+            ("grant", "authkit: user_1", "household", "op-1", "user_1", "trusted-cli", "canonical"),
+            ("grant", "authkit:user_1", "../household", "op-1", "user_1", "trusted-cli", "book ID"),
+            ("grant", "authkit:user_1", "household", "", "user_1", "trusted-cli", "operation ID"),
+            ("grant", "authkit:user_1", "household", "op-1\n", "user_1", "trusted-cli", "canonical"),
+            ("grant", "authkit:user_1", "household", "op-1", " user_1", "trusted-cli", "actor subject"),
+            ("grant", "authkit:user_1", "household", "op-1", "user_1", "trusted-cli\n", "provenance"),
+        ] {
+            let error = membership_control_published_with(
+                objects.clone(), action, principal, book, operation, actor, provenance,
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(error.contains(expected), "{error:?} did not name {expected:?}");
+        }
+    }
+
+    #[test]
+    fn published_membership_refuses_an_absent_publication() {
+        let objects: std::sync::Arc<dyn ratio_store::ObjectStore> =
+            std::sync::Arc::new(ratio_store::MemoryStore::new());
+        let error = membership_control_published_with(
+            objects,
+            "grant",
+            "authkit:user_1",
+            "household",
+            "op-1",
+            "user_1",
+            "trusted-cli",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("durable book publication is absent"), "{error}");
+    }
+
+    #[test]
+    fn published_membership_commits_against_the_current_control_head() {
+        use ratio_store::bootstrap::{BookBootstrap, BootstrapStore, CreatorGrant};
+        use ratio_store::Digest;
+
+        let objects: std::sync::Arc<dyn ratio_store::ObjectStore> =
+            std::sync::Arc::new(ratio_store::MemoryStore::new());
+        let chart = serde_json::to_vec(&vec![Account {
+            dim: 1,
+            display_name: "Cash".into(),
+            account_type: AccountTypeRecord::Asset,
+        }])
+        .unwrap();
+        let config = b"rules = []\n".to_vec();
+        let config_digest = Digest::of(&config).as_str().to_string();
+        BootstrapStore::new(objects.clone())
+            .publish(&BookBootstrap {
+                format_version: 1,
+                book_id: "household".into(),
+                kind: 1,
+                display_name: "Household".into(),
+                chart_digest: Digest::of(&chart).as_str().into(),
+                chart,
+                config,
+                config_digest: config_digest.clone(),
+                active: config_digest.clone(),
+                history: vec![config_digest],
+                creator_grant: Some(CreatorGrant {
+                    book_id: "household".into(),
+                    subject: "user_1".into(),
+                }),
+                creator_subject: "user_1".into(),
+            })
+            .unwrap();
+        assert!(!ratio_store::control::ControlStore::new(objects.clone())
+            .read("household")
+            .unwrap()
+            .allows("user_1", "", true));
+
+        let receipt = membership_control_published_with(
+            objects.clone(),
+            "grant",
+            "authkit:user_1",
+            "household",
+            "walkthrough-1",
+            "user_1",
+            "github-actions-oidc",
+        )
+        .unwrap();
+        assert_eq!(receipt.committed_revision, 1);
+        let state = ratio_store::control::ControlStore::new(objects)
+            .read("household")
+            .unwrap();
+        assert!(state.allows("user_1", "", true));
     }
 }
