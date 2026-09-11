@@ -2781,6 +2781,13 @@ What landed is the declaration, not a Personal FX method:
   `screensFor` fork. FX rate providers stay Connect fact apps.
   **Personal books declare currencies** is the Built phrase this
   amendment adds.
+- Production activation: the fixed-purpose GitHub OIDC workflow on #344
+  may add exactly `["USD", "EUR", "GBP"]` to the existing
+  `personal-fx-walkthrough` configuration. It accepts neither a book nor a
+  currency-list input, refuses an existing conflicting election, validates
+  the preserved successor, stages it by content digest, and conditionally
+  claims the reviewed control predecessor. This is the narrow operator path
+  for the #178 walkthrough, not a general `config:promote` Connect scope.
 
 **What this is NOT:**
 

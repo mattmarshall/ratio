@@ -47,6 +47,14 @@ py_test(
     data = ["//:.github/workflows/control.yml"],
 )
 
+py_test(
+    name = "personal_fx_control_workflow_test",
+    size = "small",
+    srcs = ["personal_fx_control_workflow_test.py"],
+    args = ["$(location //:.github/workflows/activate-personal-fx.yml)"],
+    data = ["//:.github/workflows/activate-personal-fx.yml"],
+)
+
 sh_test(
     name = "seed_test",
     size = "small",

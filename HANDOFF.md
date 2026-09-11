@@ -174,7 +174,13 @@ those declared codes and the Server Action checks the current book
 again before preview or post; an empty declaration keeps the door
 shut rather than inventing USD. It remains a transfer with no
 instrument or quantity, not the Investment `/trade` ticket. This
-file does not close #178. `connect/ecb-rates/` is the first bounded
+file does not close #178. The fixed-purpose `activate Personal FX
+walkthrough` workflow (#344) is the reviewed production election for
+`personal-fx-walkthrough`: it preserves the active TOML, refuses a
+conflicting `[personal] currencies`, validates the successor, stages it
+by digest, and conditionally commits `USD / EUR / GBP` through durable
+control under GitHub OIDC. It accepts no book or currency input and never
+prints the protected WorkOS subject. `connect/ecb-rates/` is the first bounded
 rate provider (#313): the official ECB daily EXR observation is
 normalized with Decimal / round-half-even into the existing
 hundredths rate-fact shape, while the cited delivery retains both raw

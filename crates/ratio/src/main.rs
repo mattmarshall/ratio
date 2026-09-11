@@ -51,6 +51,9 @@ usage:
   ratio config set FILE [--book DIR]   store and promote a local configuration
   ratio config set FILE --operation ID --expected-revision N --predecessor SHA
                                        promote on the configured durable backend
+  ratio config activate-personal-fx --operation ID
+                                       elect USD/EUR/GBP on the reviewed
+                                       personal-fx-walkthrough production book
   ratio config show [--book DIR]       the active configuration and its history
   ratio membership grant PRINCIPAL --operation ID --expected-revision N --predecessor SHA
   ratio membership revoke PRINCIPAL --operation ID --expected-revision N --predecessor SHA
@@ -174,6 +177,8 @@ fn main() -> Result<()> {
         ["config", "set", file] => config_set(book, file),
         ["config", "set", file, "--operation", operation, "--expected-revision", revision, "--predecessor", predecessor] =>
             config_set_control(book, file, operation, revision, predecessor),
+        ["config", "activate-personal-fx", "--operation", operation] =>
+            activate_personal_fx_control(operation),
         ["config", "show"] => config_show(book),
         ["membership", action @ ("grant" | "revoke"), principal, "--operation", operation, "--expected-revision", revision, "--predecessor", predecessor] =>
             membership_control(book, action, principal, operation, revision, predecessor),
@@ -1759,6 +1764,98 @@ fn membership_control_published(
     )?;
     println!(
         "membership {action} committed for book {book_id} at control revision {}",
+        receipt.committed_revision
+    );
+    Ok(())
+}
+
+const PERSONAL_FX_BOOK: &str = "personal-fx-walkthrough";
+const PERSONAL_FX_CURRENCIES: [&str; 3] = ["USD", "EUR", "GBP"];
+
+fn activate_personal_fx_control_with(
+    objects: std::sync::Arc<dyn ratio_store::ObjectStore>,
+    operation_id: &str,
+    actor: &str,
+    provenance: &str,
+) -> Result<ratio_store::control::ControlReceipt> {
+    ensure_canonical_control_id(operation_id, "control operation ID")?;
+    ensure_canonical_control_id(actor, "control actor subject")?;
+    ensure_canonical_control_id(provenance, "control actor provenance")?;
+    let (_, bootstrap) = ratio_store::bootstrap::BootstrapStore::new(objects.clone())
+        .get(PERSONAL_FX_BOOK)?
+        .context("durable book publication is absent")?;
+    let store = ratio_store::control::ControlStore::new(objects);
+    let state = store.read(PERSONAL_FX_BOOK)?;
+    let active = match store.opening_config(&bootstrap, &state.active) {
+        Some(bytes) => bytes,
+        None => store.config(&state.active)?,
+    };
+    let previous = String::from_utf8(active)
+        .context("active configuration is not UTF-8")?;
+    let mut document: toml::Table = previous
+        .parse()
+        .context("active configuration is not TOML")?;
+    let personal = document
+        .entry("personal")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+        .as_table_mut()
+        .context("[personal] is not a table")?;
+    let election = toml::Value::Array(
+        PERSONAL_FX_CURRENCIES
+            .iter()
+            .map(|code| toml::Value::String((*code).into()))
+            .collect(),
+    );
+    if let Some(current) = personal.get("currencies") {
+        ensure!(
+            current == &election,
+            "[personal] currencies already declares a conflicting election"
+        );
+    } else {
+        personal.insert("currencies".into(), election);
+    }
+    let next = toml::to_string_pretty(&document)
+        .context("serializing the Personal FX configuration")?;
+    RuleSet::from_toml(&next).context("Personal FX configuration is invalid")?;
+    let digest = store.stage_config(next.as_bytes())?;
+    let operation = ratio_store::control::ControlOperation {
+        format_version: 1,
+        book_id: PERSONAL_FX_BOOK.into(),
+        bootstrap_digest: state.bootstrap_digest,
+        expected_revision: state.revision,
+        expected_predecessor_digest: state.predecessor_digest,
+        operation_id: operation_id.into(),
+        actor_subject: actor.into(),
+        actor_provenance: provenance.into(),
+        change: Some(
+            ratio_store::control::control_operation::Change::ConfigPromotion(
+                ratio_store::control::ConfigPromotion {
+                    config_digest: digest.as_str().into(),
+                },
+            ),
+        ),
+    };
+    store.commit(&operation)
+}
+
+fn activate_personal_fx_control(operation_id: &str) -> Result<()> {
+    install_control_backend()?;
+    let objects = ratio_store::installed_object_store().context(
+        "Personal FX activation requires RATIO_JOURNAL_BUCKET or RATIO_JOURNAL_LOCAL",
+    )?;
+    let provenance = if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true") {
+        "github-actions-oidc"
+    } else {
+        "trusted-cli"
+    };
+    let receipt = activate_personal_fx_control_with(
+        objects,
+        operation_id,
+        &actor_name(),
+        provenance,
+    )?;
+    println!(
+        "Personal FX election committed at control revision {}",
         receipt.committed_revision
     );
     Ok(())
@@ -3578,5 +3675,91 @@ weight = -1
             .read("household")
             .unwrap();
         assert!(state.allows("user_1", "", true));
+    }
+
+    fn published_personal_fx(
+        config: &[u8],
+    ) -> std::sync::Arc<dyn ratio_store::ObjectStore> {
+        use ratio_store::bootstrap::{BookBootstrap, BootstrapStore, CreatorGrant};
+        use ratio_store::Digest;
+        let objects: std::sync::Arc<dyn ratio_store::ObjectStore> =
+            std::sync::Arc::new(ratio_store::MemoryStore::new());
+        let chart = serde_json::to_vec(&ratio_console::book::chart_for(
+            ratio_console::book::BookKind::Personal,
+        ))
+        .unwrap();
+        let config_digest = Digest::of(config).as_str().to_string();
+        BootstrapStore::new(objects.clone())
+            .publish(&BookBootstrap {
+                format_version: 1,
+                book_id: PERSONAL_FX_BOOK.into(),
+                kind: 1,
+                display_name: "Personal FX walkthrough".into(),
+                chart_digest: Digest::of(&chart).as_str().into(),
+                chart,
+                config: config.to_vec(),
+                config_digest: config_digest.clone(),
+                active: config_digest.clone(),
+                history: vec![config_digest],
+                creator_grant: Some(CreatorGrant {
+                    book_id: PERSONAL_FX_BOOK.into(),
+                    subject: "user_1".into(),
+                }),
+                creator_subject: "user_1".into(),
+            })
+            .unwrap();
+        objects
+    }
+
+    #[test]
+    fn personal_fx_activation_preserves_the_configuration_and_commits_the_fixed_election() {
+        let objects = published_personal_fx(
+            b"rules = []\n\n[[template]]\nid = \"keep-me\"\nreads = \"csv\"\n",
+        );
+        let receipt = activate_personal_fx_control_with(
+            objects.clone(),
+            "personal-fx-activation-1",
+            "user_1",
+            "github-actions-oidc",
+        )
+        .unwrap();
+        assert_eq!(receipt.committed_revision, 1);
+        let store = ratio_store::control::ControlStore::new(objects);
+        let state = store.read(PERSONAL_FX_BOOK).unwrap();
+        let text = String::from_utf8(store.config(&state.active).unwrap()).unwrap();
+        let document: toml::Table = text.parse().unwrap();
+        assert_eq!(
+            document["personal"]["currencies"],
+            toml::Value::Array(
+                PERSONAL_FX_CURRENCIES
+                    .iter()
+                    .map(|code| toml::Value::String((*code).into()))
+                    .collect()
+            )
+        );
+        assert_eq!(document["template"][0]["id"].as_str(), Some("keep-me"));
+    }
+
+    #[test]
+    fn personal_fx_activation_refuses_a_conflicting_election_without_a_transition() {
+        let objects = published_personal_fx(
+            b"rules = []\n[personal]\ncurrencies = [\"USD\", \"CAD\"]\n",
+        );
+        let error = activate_personal_fx_control_with(
+            objects.clone(),
+            "personal-fx-activation-conflict",
+            "user_1",
+            "github-actions-oidc",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("conflicting election"), "{error}");
+        assert_eq!(
+            ratio_store::control::ControlStore::new(objects)
+                .read(PERSONAL_FX_BOOK)
+                .unwrap()
+                .revision,
+            0
+        );
     }
 }
