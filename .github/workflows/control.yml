@@ -67,19 +67,7 @@ jobs:
           DEMO_MEMBERS: ${{ vars.DEMO_MEMBERS }}
         run: |
           set -euo pipefail
-          IFS=',' read -ra members <<< "$DEMO_MEMBERS"
-          subjects=()
-          for member in "${members[@]}"; do
-            if [[ "$member" =~ ^user_[A-Za-z0-9_]+$ ]]; then
-              subjects+=("$member")
-            elif [[ "$member" =~ ^[^,@[:space:]]+@[^,@[:space:]]+$ ]]; then
-              : # A verified email is an existing seeded-rail member, not the control principal.
-            else
-              echo "::error::invalid DEMO_MEMBERS entry"
-              exit 1
-            fi
-          done
-          [ "${#subjects[@]}" -eq 1 ] || { echo "::error::DEMO_MEMBERS must name exactly one AuthKit subject"; exit 1; }
-          export RATIO_ACTOR="${subjects[0]}"
+          subject="$(deploy/control_member.sh "$DEMO_MEMBERS")" || { echo "::error::DEMO_MEMBERS is invalid"; exit 1; }
+          export RATIO_ACTOR="$subject"
           "$(bazel info bazel-bin)/crates/ratio/ratio" membership "$ACTION" \
-            "authkit:${subjects[0]}" --published "$BOOK_ID" --operation "$OPERATION_ID"
+            "authkit:$subject" --published "$BOOK_ID" --operation "$OPERATION_ID"
