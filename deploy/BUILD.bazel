@@ -32,6 +32,13 @@ py_test(
     main = "iac_test.py",
 )
 
+sh_test(
+    name = "control_member_test",
+    size = "small",
+    srcs = ["control_member_test.sh"],
+    data = ["control_member.sh"],
+)
+
 py_test(
     name = "control_workflow_test",
     size = "small",

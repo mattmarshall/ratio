@@ -67,7 +67,7 @@ jobs:
           DEMO_MEMBERS: ${{ vars.DEMO_MEMBERS }}
         run: |
           set -euo pipefail
-          [[ "$DEMO_MEMBERS" =~ ^user_[A-Za-z0-9_]+$ ]] || { echo "::error::DEMO_MEMBERS must name exactly one AuthKit subject"; exit 1; }
-          export RATIO_ACTOR="$DEMO_MEMBERS"
+          subject="$(deploy/control_member.sh "$DEMO_MEMBERS")" || { echo "::error::DEMO_MEMBERS is invalid"; exit 1; }
+          export RATIO_ACTOR="$subject"
           "$(bazel info bazel-bin)/crates/ratio/ratio" membership "$ACTION" \
-            "authkit:$DEMO_MEMBERS" --published "$BOOK_ID" --operation "$OPERATION_ID"
+            "authkit:$subject" --published "$BOOK_ID" --operation "$OPERATION_ID"

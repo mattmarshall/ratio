@@ -44,7 +44,8 @@ is an eight-week plan for a product nobody was buying.
 > A bounded manual GitHub Actions workflow is the production operator
 > door for explicit Connect membership (#340): it takes one published
 > book, grant/revoke, and an operation ID, requires an exact action/book
-> confirmation, derives the sole subject from protected `DEMO_MEMBERS`,
+> confirmation, derives exactly one `user_…` subject from the documented
+> comma-separated subject / optional verified-email `DEMO_MEMBERS` shape,
 > and uses GitHub OIDC with the existing deploy role. The CLI reads the
 > current durable head and conditionally claims only its successor, so a
 > race refuses instead of silently rebasing. The live grant and provider
