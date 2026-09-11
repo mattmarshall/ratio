@@ -11,6 +11,8 @@ required = [
     'confirmation must exactly match ACTION:BOOK_ID',
     '_bootstrap is a reserved book ID',
     'subject="$(deploy/control_member.sh "$DEMO_MEMBERS")"',
+    'export RATIO_ACTOR="$subject"',
+    '"authkit:$subject"',
     'membership "$ACTION"',
     '--published "$BOOK_ID"',
     '--operation "$OPERATION_ID"',

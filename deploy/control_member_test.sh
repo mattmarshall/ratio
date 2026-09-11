@@ -20,6 +20,9 @@ bad_values=(
   user_one,,person@example.com
   'user_\one'
   'a@b@c,user_one'
+  'user_one,a@b'
+  'user_one,a@-b.example'
+  $'user_one,a\001b@example.com'
   'bad,user_one'
 )
 for value in "${bad_values[@]}"; do
