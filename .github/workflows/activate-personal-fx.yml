@@ -1,0 +1,57 @@
+name: activate Personal FX walkthrough
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation_id:
+        description: Unique reviewed operation ID
+        required: true
+        type: string
+      confirmation:
+        description: Type activate:personal-fx-walkthrough exactly
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ratio-personal-fx-control
+  cancel-in-progress: false
+
+jobs:
+  activate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      AWS_REGION: us-east-1
+      RATIO_JOURNAL_BUCKET: ratio-demo-scale-320473299741
+      RATIO_JOURNAL_PREFIX: journals/
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse an ambiguous activation
+        env:
+          OPERATION_ID: ${{ inputs.operation_id }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$OPERATION_ID" =~ ^[A-Za-z0-9._:-]+$ ]] || { echo "::error::invalid operation ID"; exit 1; }
+          [ "$CONFIRMATION" = "activate:personal-fx-walkthrough" ] || { echo "::error::confirmation must exactly match activate:personal-fx-walkthrough"; exit 1; }
+      - name: Build the reviewed control client
+        run: bazel build --lockfile_mode=error //crates/ratio
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::320473299741:role/ratio-demo-deploy
+          aws-region: us-east-1
+          role-session-name: personal-fx-${{ github.run_id }}
+      - name: Commit the fixed Personal FX election
+        env:
+          OPERATION_ID: ${{ inputs.operation_id }}
+          DEMO_MEMBERS: ${{ vars.DEMO_MEMBERS }}
+        run: |
+          set -euo pipefail
+          subject="$(deploy/control_member.sh "$DEMO_MEMBERS")" || { echo "::error::DEMO_MEMBERS is invalid"; exit 1; }
+          export RATIO_ACTOR="$subject"
+          "$(bazel info bazel-bin)/crates/ratio/ratio" config activate-personal-fx \
+            --operation "$OPERATION_ID"

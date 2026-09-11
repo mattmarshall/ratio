@@ -17,6 +17,7 @@ exports_files([
 # `//deploy:iac_test`.
 exports_files([
     ".github/workflows/control.yml",
+    ".github/workflows/activate-personal-fx.yml",
     ".github/workflows/deploy.yml",
 ])
 
