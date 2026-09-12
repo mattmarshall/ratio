@@ -8,5 +8,10 @@ path = "src/lib.rs"
 
 [dependencies]
 ratio-store = { path = "../ratio-store" }
+ratio-common = { path = "../ratio-common" }
+ratio-ingest = { path = "../ratio-ingest" }
+ratio-rules = { path = "../ratio-rules" }
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"

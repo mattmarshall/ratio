@@ -14,7 +14,7 @@ slice, not proof that every item in its parent issue is complete.
 |---|---|---|
 | Book of record | Append-only journal plus content-addressed configuration and provenance-bearing facts. Investment, Personal, Project, and Operating are book kinds over one kernel. | `crates/ratio-store`, `proto/ratio/console/v1/console.proto` |
 | Arithmetic and temporal rules | Lean proofs, TLA+ models, Rust execution; some Rust is emitted from Lean. Money is integral, with explicitly accounted FX/per-share residues where defined. | `lean/Ratio`, `tla`, `crates/ratio-common` |
-| Read projection | In-process by default. Setting `RATIO_PG_URL` selects the live Postgres projection for lots, positions, and Current aggregates. The journal remains authoritative; stale watermarks refuse. | `crates/ratio-sql-project/src/reads.rs`, `crates/ratio-console/src/store.rs` |
+| Read projection | In-process by default. Setting `RATIO_PG_URL` selects the live Postgres projection for lots, positions, and Current aggregates. The journal remains authoritative; stale watermarks refuse. Verified journal-prefix checkpoints accelerate cold in-memory folds: load the newest valid pin and replay only the tail; corrupt/mismatch falls back to full replay. | `crates/ratio-project/src/checkpoint.rs`, `crates/ratio-sql-project/src/reads.rs`, `crates/ratio-console/src/store.rs` |
 | Multiple views | Declared views fold their own cuts and explain reconciliation differences; this is implemented, not an unresolved per-view design. | `crates/ratio-console/src/lib.rs`, `lean/Ratio/Views.lean`, `tla/Projection.tla` |
 | Operations interface | Next.js console on Vercel, Rust API on Lambda. Kind selects the chart and available screens. Direct-route coverage is being completed under issue 26. | `console/src/lib/screens.ts`, `crates/ratio-console`, `deploy/app.yaml` |
 | Connect | Python first-party applications use the authenticated Connect API. A scaffold or local allowlist is not a live provider integration or an API permission boundary. | `connect/`, [scope catalog](connect-scopes.md) |
@@ -71,7 +71,9 @@ messages also pass the [issue-completion check](issue-completion.md).
   × 2,000 lots) took 17.4 seconds. That is not the full 140-million-entry /
   approximately 40 GB journal fold or a measurement of multiple views;
   those measurements remain in issue 268. See HANDOFF for the digest and
-  workload details.
+  workload details. Verified journal-prefix checkpoints (#310) report cold
+  full replay, checkpoint load, and tail replay for the large demo shape
+  (~5,400 entries); the journal remains the book of record.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
   post-create configuration/membership transitions are built. NAVs,
   reports/proposals, CHANGELOG, complete backup coverage, and the external

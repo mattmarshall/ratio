@@ -33,6 +33,9 @@ rust_library(
         "//crates/ratio-rules",
         "//crates/ratio-store",
         "@crates//:anyhow",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:sha2",
     ],
 )
 
@@ -44,4 +47,20 @@ rust_test(
     # replaces — not against another projection, which would prove only that it
     # is consistent with its own mistake.
     deps = ["//crates/ratio-nav"],
+)
+
+# ⭐ #310: cold full replay, checkpoint load, and tail replay for the large
+# demo shape (securities=20, lots_per=40). Prints projection_checkpoint_bench.
+rust_test(
+    name = "checkpoint_bench_test",
+    srcs = ["tests/checkpoint_bench.rs"],
+    crate_root = "tests/checkpoint_bench.rs",
+    edition = "2021",
+    size = "medium",
+    deps = [
+        ":ratio-project",
+        "//crates/ratio-gen",
+        "//crates/ratio-store",
+        "@crates//:anyhow",
+    ],
 )
