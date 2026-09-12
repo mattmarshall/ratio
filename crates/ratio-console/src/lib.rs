@@ -469,13 +469,23 @@ impl Console {
         Ok(p.clone())
     }
 
-    /// Per-book directory for verified projection checkpoints.
+    /// Console-local cache for verified projection checkpoints (#310).
+    ///
+    /// ⛔ NOT UNDER THE BOOK DIRECTORY. Checkpoints are disposable acceleration,
+    /// not citeable book content — a recovery fingerprint of the book tree must
+    /// not grow a blob because somebody asked for a trial balance. Kept under
+    /// `.ratio-cache/` at the console root so membership and journal planes stay
+    /// the authority a restore drill compares.
     fn checkpoint_dir(&self, fund: &str) -> PathBuf {
-        if self.root.join("accounts.json").is_file() {
-            self.root.join(".projection-checkpoints")
+        let leaf = if self.root.join("accounts.json").is_file() {
+            "book"
         } else {
-            self.root.join(fund).join(".projection-checkpoints")
-        }
+            fund
+        };
+        self.root
+            .join(".ratio-cache")
+            .join("projection-checkpoints")
+            .join(leaf)
     }
 
     /// The same console with an explicit ceiling, for a caller that has one —

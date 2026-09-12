@@ -62,6 +62,16 @@ fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
         for row in fs::read_dir(dir).unwrap() {
             let path = row.unwrap().path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            // ⛔ DISPOSABLE ACCELERATION IS NOT CITEABLE BOOK CONTENT (#310).
+            // Console projection checkpoints live under `.ratio-cache/` (and any
+            // legacy `.projection-checkpoints/`). A restore drill that treated
+            // them as part of the book would fail the moment a trial balance
+            // warmed a fold — while the journal, config, and membership were
+            // intact. Skip them here; they are not in the backup contract.
+            if name == ".ratio-cache" || name == ".projection-checkpoints" {
+                continue;
+            }
             if path.is_dir() {
                 walk(root, &path, out);
             } else {
