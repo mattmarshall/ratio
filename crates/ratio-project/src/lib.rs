@@ -43,6 +43,9 @@ pub mod relief;
 /// `Ratio.Views` proves.
 pub mod views;
 
+/// Verified journal-prefix projection checkpoints (#310).
+pub mod checkpoint;
+
 use anyhow::Result;
 use ratio_ingest::factor::Step;
 use ratio_common::intern::Text;
@@ -128,7 +131,7 @@ pub struct Totals {
 
 /// One (dimension, currency) row of a view's fold: both sides, and how many
 /// postings landed there.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DimTotal {
     pub debit: i128,
     pub credit: i128,
@@ -298,7 +301,7 @@ struct Actions {
 /// are terms of an administration agreement rather than implementation
 /// choices, and each decides a REALIZED GAIN — the figure with no
 /// counterparty, which no reconciliation reaches.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Terms {
     /// Which lots a sale gives up.
     pub method: relief::Method,
@@ -654,7 +657,7 @@ struct Pending {
 }
 
 /// One entry a view can never recognise, and why.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Unplaced {
     /// Empty on the one refusal that is about the VIEW rather than an entry —
     /// a view declared after this projection had already folded a prefix.

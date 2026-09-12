@@ -1833,8 +1833,13 @@ name = "ratio-project"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "ratio-common",
+ "ratio-ingest",
+ "ratio-rules",
  "ratio-store",
+ "serde",
  "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]

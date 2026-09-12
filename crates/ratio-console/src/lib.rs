@@ -441,22 +441,41 @@ impl Console {
     /// Returns a clone so the lock is not held across a caller's work. The
     /// clone is of the folded TOTALS, not of the journal — a chart, not a
     /// history.
+    ///
+    /// ⭐ On a cold process cache miss, loads a verified journal-prefix
+    /// checkpoint when one exists (`#310`) and replays only the tail. A
+    /// corrupt, missing, or mismatched checkpoint falls back to a full fold.
     pub fn projection(&self, fund: &str) -> Result<ratio_project::Projection> {
         let (_, book) = self.open_book(fund)?;
         let mut cache = self
             .projections
             .lock()
             .map_err(|_| anyhow::anyhow!("the projection cache was poisoned by a panic"))?;
-        let p = cache.entry(fund.to_string()).or_default();
+        if !cache.contains_key(fund) {
+            let store = self.checkpoint_dir(fund);
+            let (p, _) = ratio_project::checkpoint::follow_with_checkpoint(&book, &store)?;
+            cache.insert(fund.to_string(), p);
+        }
+        let p = cache.get_mut(fund).expect("just inserted or already present");
         // ⛔ If the journal was REPLACED rather than appended to, `follow`
         // refuses — an append-only log does not shrink, so a shorter file at
         // this path is a different book. Start again rather than splice two
         // histories together.
         if p.follow_book(&book).is_err() {
-            *p = ratio_project::Projection::new();
-            p.follow_book(&book)?;
+            let store = self.checkpoint_dir(fund);
+            let (fresh, _) = ratio_project::checkpoint::follow_with_checkpoint(&book, &store)?;
+            *p = fresh;
         }
         Ok(p.clone())
+    }
+
+    /// Per-book directory for verified projection checkpoints.
+    fn checkpoint_dir(&self, fund: &str) -> PathBuf {
+        if self.root.join("accounts.json").is_file() {
+            self.root.join(".projection-checkpoints")
+        } else {
+            self.root.join(fund).join(".projection-checkpoints")
+        }
     }
 
     /// The same console with an explicit ceiling, for a caller that has one —

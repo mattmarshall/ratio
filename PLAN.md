@@ -5205,3 +5205,36 @@ environment names are listed there. Production credentials, dashboard
 registration, webhook operation, and redacted signed-in provider/book evidence
 remain on #163, #165, #22, and #324. No kernel scope, hosted core callback, or
 `screensFor` branch was added.
+
+### Amendment, 2026-09-12 — verified journal-prefix projection checkpoints
+
+Related: #310, #291, #306. Warm reads still replay thousands of immutable
+journal objects after seed hydration is paid once per process. The large demo
+shape (`securities=20`, `lots_per=40`) is about 5,400 entries.
+
+A checkpoint is disposable acceleration keyed by the exact journal prefix and
+`prefix_digest`. Load the newest valid blob and replay only the tail. The
+journal remains authoritative: corrupt, missing, mismatched, or
+wrong-version checkpoints fall back to a full fold and produce the same
+result. Publication writes the content-addressed blob (sync + rename) before
+atomically replacing HEAD, so concurrent readers never see a pointer before
+its bytes are durable. Accepting a checkpoint for the wrong prefix fails.
+Format version 1 refuses unknown versions rather than migrating in place.
+Production stderr reports `hit` / `miss` / `tail_length` without journal or
+customer content. `//crates/ratio-project:checkpoint_bench_test` reports cold
+full replay, checkpoint load, and tail replay for that demo shape
+(measured: 5396 entries; cold 48 ms, load 2 ms, empty-tail 0 ms on the agent
+host).
+
+Crova (`tomato-bazel/crova`) was evaluated as a candidate blob layer: content
+addressing and verify-on-read fit checkpoints. It is **not** wired. PLAN still
+defers crova (no consumers, registry/tag lag, no production remote deployment
+model). Crova must not become the ordered journal unless it first gains and
+proves atomic conditional append. v1 is
+`DirectoryCheckpointStore` — the same directory / SHA-256 / atomic-pointer
+seam as `DirectoryConfigStore`.
+
+**verified journal-prefix projection checkpoints** is the Built phrase. Console
+`projection()` loads per-book `.projection-checkpoints` on a cold cache miss.
+Postgres Stage E watermarks are unchanged. The 140M-entry / 40GB fold stays on
+ScaleTask.

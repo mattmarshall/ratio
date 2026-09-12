@@ -170,6 +170,11 @@ __STYLE__
           / ~40GB journal fold stays on Fargate ScaleTask /
           ScaleBucket. The demo Lambda does not host twenty
           million lots as a browser table.</li>
+          <li>verified journal-prefix projection checkpoints — a disposable
+          content-addressed fold of one journal prefix and digest; load the
+          newest valid blob and replay only the tail. Corrupt, missing, or
+          mismatched checkpoints fall back to full replay. Crova was evaluated
+          and deferred; the journal stays the system of record.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>live custodian statement ingest — a CreateBook Investment book

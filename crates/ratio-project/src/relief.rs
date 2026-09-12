@@ -45,7 +45,7 @@ use crate::generated_lots::{lot_is_sound, partial_cost, partial_divides, takes_w
 pub type Day = i32;
 
 /// A tax lot: when it was acquired, what it holds, what it cost.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Lot {
     /// Acquisition ordinal. ⛔ FIFO IS THIS FIELD, not the order of the vector —
     /// `relieve` sorts by it rather than trusting what it was handed.
@@ -125,7 +125,8 @@ impl Relieved {
 /// holding, and MINTAX ranks at a SALE PRICE — none belongs in this enum.
 /// Adding average cost here as a variant is the mistake
 /// `Ratio.Lots.AverageCost` exists to prevent.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Method {
     /// Oldest acquisition first.
     #[default]
@@ -338,6 +339,14 @@ impl Holding {
     /// A holding that gives lots up under `order`.
     pub fn new(order: Method) -> Self {
         Self { order, ..Default::default() }
+    }
+
+    /// The relief method this holding gives lots up under.
+    ///
+    /// ⭐ CHECKPOINTS REBUILD THROUGH [`Self::push`], so the method must travel
+    /// with the lots — restoring FIFO into a HIFO holding would reorder silently.
+    pub fn method(&self) -> Method {
+        self.order
     }
 
     /// How many lots are open.
