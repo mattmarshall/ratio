@@ -6,6 +6,7 @@ exports_files([
     "grant.py",
     "oauth.py",
     "personal_activation.py",
+    "requirements.txt",
 ])
 
 py_library(
