@@ -247,7 +247,6 @@ class LiveProgress:
 @dataclass(frozen=True)
 class _LiveBookState:
     name: str
-    fund: str
     view: str
     currency: str
     config_digest: str
@@ -868,24 +867,22 @@ def _read_live_book_index(
     if not isinstance(raw, Mapping) or raw.get("kind") != "PERSONAL":
         raise Refuse("the selected live book is not BookKind PERSONAL")
     name = raw.get("name")
-    fund = raw.get("fund")
     view = raw.get("defaultView")
     currency = raw.get("currencyCode")
     digest = raw.get("configDigest")
-    if not all(isinstance(value, str) for value in (name, fund, view, currency, digest)):
+    if not all(isinstance(value, str) for value in (name, view, currency, digest)):
         raise Refuse("the live Personal book has non-string wire fields")
     if (
         name != f"books/{selected}"
-        or re.fullmatch(r"funds/[A-Za-z0-9_-]+", fund) is None
         or re.fullmatch(r"[a-z0-9-]+", view) is None
         or re.fullmatch(r"[A-Z]{3}", currency) is None
         or re.fullmatch(r"[0-9a-f]{64}", digest) is None
     ):
         raise Refuse(
-            "the live Personal book lacks its exact resource, fund, view, currency, "
+            "the live Personal book lacks its exact resource, view, currency, "
             "or configuration state"
         )
-    return _LiveBookState(name, fund, view, currency, digest)
+    return _LiveBookState(name, view, currency, digest)
 
 
 def _read_live_statement_data(
@@ -931,7 +928,7 @@ def _read_live_statement_data(
     sheet_filter = f"sheet-{period}"
     response = _grant.pull(
         token=token,
-        path=f"{before.fund}/views/{before.view}/accounts?filter={sheet_filter}",
+        path=f"{before.name}/views/{before.view}/accounts?filter={sheet_filter}",
         transport=transport,
         error=Refuse,
     )
@@ -943,7 +940,7 @@ def _read_live_statement_data(
         "",
     ):
         raise Refuse("the live sheet is missing, malformed, or unexpectedly paginated")
-    expected_parent = f"{before.fund}/views/{before.view}/accounts/"
+    expected_parent = f"{before.name}/views/{before.view}/accounts/"
     net_worth = 0
     net_worth_is_set = False
     cash: int | None = None

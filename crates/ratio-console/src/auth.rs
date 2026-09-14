@@ -279,6 +279,7 @@ pub fn required_connect_scopes(method: &str, path: &str) -> Option<&'static [&'s
     }
     let segs: Vec<&str> = rest.split('/').filter(|s| !s.is_empty()).collect();
     Some(match segs.as_slice() {
+        ["books", _, "views", _, "accounts", ..] => &["statements:read"],
         ["books"] | ["books", _] | ["funds"] | ["funds", _] => &["books:read"],
         ["funds", _, "views"] => &["views:read"],
         ["funds", _, "views", v] if v.ends_with(":reconcile") => &["views:read"],
@@ -799,6 +800,35 @@ mod tests {
         // AuthKit / Local skip the table.
         authorize_connect(None, "GET", "/v1/funds/alpha/entries")
             .expect("an AuthKit session is not a Connect grant");
+    }
+
+    #[test]
+    fn a_book_scoped_sheet_requires_statements_read() {
+        let statements = catalog_grants("statements:read");
+        authorize_connect(
+            Some(&statements),
+            "GET",
+            "/v1/books/house/views/book/accounts",
+        )
+        .expect("statements:read opens a book-scoped sheet");
+        authorize_connect(
+            Some(&statements),
+            "GET",
+            "/v1/books/house/views/book/accounts/1",
+        )
+        .expect("statements:read opens a cited book account");
+
+        let err = authorize_connect(
+            Some(&catalog_grants("books:read")),
+            "GET",
+            "/v1/books/house/views/book/accounts",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("scope `statements:read` is required"),
+            "book discovery must not expose statements: {err}"
+        );
     }
 
     #[test]

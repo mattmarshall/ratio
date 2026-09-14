@@ -37,7 +37,9 @@ def from_descriptor(path: Path) -> set[str]:
     # ASCII colon. On any rule that declares a body it lands on the end of the
     # template, so `…:applyEvent` scanned as `…:applyEvent:`. A template never
     # ends in a bare colon; a custom method always names one after it.
-    found = {m.decode("ascii").rstrip(":") for m in TEMPLATE.findall(blob)}
+    # An HttpRule additional_binding is field 11 (wire tag 0x5a, ASCII `Z`).
+    # Like the body tag above, it can immediately follow the primary template.
+    found = {m.decode("ascii").rstrip(":Z") for m in TEMPLATE.findall(blob)}
     # Other services in the same descriptor declare /v1 routes too. The kernel
     # keys accounts and transactions on `books/`; the console's book RPCs are
     # only the collection and the book itself. Everything under `funds/` is
@@ -45,7 +47,13 @@ def from_descriptor(path: Path) -> set[str]:
     return {
         t
         for t in found
-        if "funds" in t or t in {"/v1/books", "/v1/{name=books/*}"}
+        if "funds" in t
+        or t in {"/v1/books", "/v1/{name=books/*}"}
+        or t
+        in {
+            "/v1/{parent=books/*/views/*}/accounts",
+            "/v1/{name=books/*/views/*/accounts/*}",
+        }
     }
 
 

@@ -34,6 +34,8 @@ pub const ROUTES: &[Route] = &[
     // Literals before patterns: `/v1/{name=books/*}` would swallow `/v1/books`.
     Route { method: "GET", template: "/v1/books" },
     Route { method: "GET", template: "/v1/{name=books/*}" },
+    Route { method: "GET", template: "/v1/{parent=books/*/views/*}/accounts" },
+    Route { method: "GET", template: "/v1/{name=books/*/views/*/accounts/*}" },
     Route { method: "POST", template: "/v1/books" },
     Route { method: "GET", template: "/v1/funds" },
     Route { method: "GET", template: "/v1/{parent=funds/*}/views" },
@@ -255,6 +257,15 @@ pub fn serve(
                 &format!("funds/{id}/views/{v}"),
                 filter_of(query),
             )?)?
+        }
+        ["books", id, "views", v, "accounts"] => {
+            to_json(&console.list_accounts(
+                &format!("books/{id}/views/{v}"),
+                filter_of(query),
+            )?)?
+        }
+        ["books", id, "views", v, "accounts", a] => {
+            to_json(&console.get_account(&format!("books/{id}/views/{v}/accounts/{a}"))?)?
         }
         ["funds", id, "views", v, "accounts", a, "postings"] => {
             to_json(&console.list_postings(&format!("funds/{id}/views/{v}/accounts/{a}"))?)?
