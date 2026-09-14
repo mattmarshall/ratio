@@ -1,3 +1,5 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
 package(default_visibility = ["//visibility:public"])
 
 exports_files([
@@ -5,6 +7,31 @@ exports_files([
     "oauth.py",
     "personal_activation.py",
 ])
+
+py_library(
+    name = "grant_module",
+    srcs = ["grant.py"],
+    imports = ["."],
+)
+
+py_library(
+    name = "oauth_module",
+    srcs = ["oauth.py"],
+    imports = ["."],
+)
+
+py_library(
+    name = "personal_activation_module",
+    srcs = ["personal_activation.py"],
+    imports = ["."],
+    deps = [
+        ":grant_module",
+        ":oauth_module",
+        "//connect/bank-feed:personal_provider_modules",
+        "//connect/calendar-bills:personal_provider_modules",
+        "@personal_pypi//cryptography",
+    ],
+)
 
 # Shared Connect grant path. First-party apps call ConnectApiUrl
 # with a verified Connect access token. Membership still required.
@@ -55,25 +82,18 @@ sh_test(
 
 # Local Personal provider lifecycle. Provider credentials and retry state are
 # encrypted per WorkOS-subject/book membership and never cross the CLI surface.
-sh_test(
+py_test(
     name = "personal_activation_test",
     size = "small",
-    srcs = ["personal_activation_test.sh"],
+    srcs = ["personal_activation_test.py"],
     args = [
-        "$(rootpath personal_activation.py)",
-        "$(rootpath personal_activation_test.py)",
         "$(rootpath //:docs/personal-provider-activation.md)",
     ],
     data = [
-        "grant.py",
-        "oauth.py",
-        "personal_activation.py",
-        "personal_activation_test.py",
         "//:docs/personal-provider-activation.md",
-        "//connect/bank-feed:mapper.py",
-        "//connect/bank-feed:plaid.py",
-        "//connect/bank-feed:plaid_link.py",
-        "//connect/calendar-bills:bills.py",
-        "//connect/calendar-bills:google_calendar.py",
     ],
+    deps = [
+        ":personal_activation_module",
+    ],
+    main = "personal_activation_test.py",
 )

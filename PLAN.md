@@ -5194,6 +5194,13 @@ its `pending_transaction_id`; Google uses PKCE S256, refreshes access, preserves
 refresh-token rotation, and retries a 410 as full sync with the prior index.
 Both providers must revoke successfully before local custody is deleted.
 
+The activation module and both provider adapter sets are Bazel Python
+libraries. The test runs under the pinned Python 3.11 toolchain with the exact
+`cryptography`, `cffi`, and `pycparser` wheels declared in
+`connect/requirements.txt`; it does not inherit an operator's site packages.
+**Personal provider custody has a declared runtime** is the Built phrase for
+#347.
+
 The production contract is explicit in
 `docs/personal-provider-activation.md`: WorkOS uses the exact
 `http://127.0.0.1:8765/callback` public-PKCE redirect and manifest scopes;
