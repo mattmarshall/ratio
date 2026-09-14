@@ -129,6 +129,15 @@ pub struct BreakExplanation {
     pub journal_digest: String,
 }
 
+struct ListedBook {
+    id: String,
+    path: PathBuf,
+    durable: Option<(
+        ratio_store::bootstrap::BookBootstrap,
+        ratio_store::control::ControlState,
+    )>,
+}
+
 /// The books this console serves.
 pub struct Console {
     root: PathBuf,
@@ -359,12 +368,16 @@ impl Console {
     }
 
     fn durable_allows(&self, id: &str) -> Result<bool> {
-        self.ensure_authorization_live()?;
         let objects = self
             .objects
             .as_ref()
             .context("durable membership backend is absent")?;
         let state = ratio_store::control::ControlStore::new(objects.clone()).read(id)?;
+        self.durable_state_allows(&state)
+    }
+
+    fn durable_state_allows(&self, state: &ratio_store::control::ControlState) -> Result<bool> {
+        self.ensure_authorization_live()?;
         match &self.subject {
             Subject::Local => Ok(true),
             Subject::Member { sub, organization, connect, .. } => {
@@ -499,7 +512,7 @@ impl Console {
     ///
     /// Sorted by id rather than by anything derived, so the list does not
     /// reorder under an operator between two glances at the same screen.
-    fn listed_ids(&self) -> Result<Vec<String>> {
+    fn listed_books(&self) -> Result<Vec<ListedBook>> {
         let mut candidates = BTreeSet::new();
         if self.root.join("accounts.json").is_file() {
             candidates.insert("demo".to_string());
@@ -523,38 +536,42 @@ impl Console {
         if let Some(objects) = &self.objects {
             candidates.extend(ratio_store::bootstrap::BootstrapStore::new(objects.clone()).ids()?);
         }
-        let mut ids = Vec::new();
+        let mut books = Vec::new();
         for id in candidates {
             if let Some((publication, bootstrap)) = self.bootstrap(&id)? {
-                if self.durable_allows(&id)? {
-                    ratio_store::bootstrap::materialize(&self.root.join(&id), &publication, &bootstrap)?;
-                    ids.push(id);
+                let objects = self
+                    .objects
+                    .as_ref()
+                    .context("durable book has no object store")?;
+                let state = ratio_store::control::ControlStore::new(objects.clone()).read(&id)?;
+                if self.durable_state_allows(&state)? {
+                    let path = self.root.join(&id);
+                    ratio_store::bootstrap::materialize(&path, &publication, &bootstrap)?;
+                    books.push(ListedBook {
+                        id,
+                        path,
+                        durable: Some((bootstrap, state)),
+                    });
                 }
             } else {
                 if self.root.join(&id).join(ratio_store::bootstrap::MARKER).exists() {
                     bail!("durable book publication is unavailable; refusing local fallback");
                 }
-                if self.legacy_allows(&id)? { ids.push(id); }
+                if self.legacy_allows(&id)? {
+                    let path = if self.root.join("accounts.json").is_file() {
+                        self.root.clone()
+                    } else {
+                        self.root.join(&id)
+                    };
+                    books.push(ListedBook {
+                        path,
+                        id,
+                        durable: None,
+                    });
+                }
             }
         }
-        Ok(ids)
-    }
-
-    fn book_ids(&self) -> Result<Vec<String>> {
-        self.listed_ids()
-    }
-
-    /// Books that carry a fund layer — a missing sidecar (legacy) or an explicit
-    /// `fund` in `book.toml`. An independent book CreateBook wrote is absent.
-    fn fund_ids(&self) -> Result<Vec<String>> {
-        let mut ids = Vec::new();
-        for id in self.listed_ids()? {
-            let path = self.book_path(&id)?;
-            if book::BookMeta::load(&path, &id).fund.is_some() {
-                ids.push(id);
-            }
-        }
-        Ok(ids)
+        Ok(books)
     }
 
     fn book_path(&self, id: &str) -> Result<PathBuf> {
@@ -3091,16 +3108,18 @@ impl Console {
 
     pub fn list_funds(&self) -> Result<pb::ListFundsResponse> {
         let mut funds = Vec::new();
-        for id in self.fund_ids()? {
-            funds.push(self.list_fund_row(&id)?);
+        for listed in self.listed_books()? {
+            if book::BookMeta::load(&listed.path, &listed.id).fund.is_some() {
+                funds.push(self.list_fund_row(&listed)?);
+            }
         }
         Ok(pb::ListFundsResponse { funds, next_page_token: String::new() })
     }
 
     pub fn list_books(&self) -> Result<pb::ListBooksResponse> {
         let mut books = Vec::new();
-        for id in self.book_ids()? {
-            books.push(self.list_book_row(&id)?);
+        for listed in self.listed_books()? {
+            books.push(self.list_book_row(&listed)?);
         }
         Ok(pb::ListBooksResponse { books, next_page_token: String::new() })
     }
@@ -3119,8 +3138,26 @@ impl Console {
         let Some((_, bootstrap)) = self.bootstrap(id)? else {
             return Ok(local_config(path));
         };
+        let state = ratio_store::control::ControlStore::new(objects.clone()).read(id)?;
+        self.active_config_from(path, Some((&bootstrap, &state)))
+    }
+
+    fn active_config_from(
+        &self,
+        path: &Path,
+        durable: Option<(
+            &ratio_store::bootstrap::BookBootstrap,
+            &ratio_store::control::ControlState,
+        )>,
+    ) -> Result<(String, Option<RuleSet>)> {
+        let Some((bootstrap, state)) = durable else {
+            return Ok(local_config(path));
+        };
+        let objects = self
+            .objects
+            .as_ref()
+            .context("durable book has no object store")?;
         let control = ratio_store::control::ControlStore::new(objects.clone());
-        let state = control.read(id)?;
         let bytes = match control.opening_config(&bootstrap, &state.active) {
             Some(bytes) => bytes,
             None => control.config(&state.active)?,
@@ -3128,6 +3165,14 @@ impl Console {
         let text = String::from_utf8(bytes).context("active durable configuration is not UTF-8")?;
         let rules = RuleSet::from_toml(&text)
             .map_err(|_| anyhow::anyhow!("active durable configuration is invalid"))?;
+        let chart: Vec<ratio_store::Account> = serde_json::from_slice(&bootstrap.chart)
+            .context("published chart is invalid")?;
+        ensure!(
+            ratio_rules::check(&rules, &chart)
+                .into_iter()
+                .all(|finding| finding.is_question),
+            "active durable configuration does not check against the published chart"
+        );
         Ok((state.active.as_str().to_string(), Some(rules)))
     }
 
@@ -3138,10 +3183,15 @@ impl Console {
     /// fund cannot finish that inside API Gateway's 30s — the index needs a
     /// name, a kind, a count and a digest, not a trial balance. The active
     /// durable configuration is a bounded control read, not a journal fold.
-    fn list_book_row(&self, id: &str) -> Result<pb::Book> {
-        let path = self.book_path(id)?;
+    fn list_book_row(&self, listed: &ListedBook) -> Result<pb::Book> {
+        let id = &listed.id;
+        let path = &listed.path;
         let meta = book::BookMeta::load(&path, id);
-        let (config_digest, set) = self.active_config(&path, id)?;
+        let durable = listed
+            .durable
+            .as_ref()
+            .map(|(bootstrap, state)| (bootstrap, state));
+        let (config_digest, set) = self.active_config_from(path, durable)?;
         let effective = set.clone().unwrap_or_default();
         let (partner_cut, special_allocations) = partner_terms_of(set.as_ref());
         Ok(pb::Book {
@@ -3191,10 +3241,15 @@ impl Console {
 
     /// The funds-index row. Same cheap inputs as [`list_book_row`]; state and
     /// open breaks stay unset because they are a fold.
-    fn list_fund_row(&self, id: &str) -> Result<pb::Fund> {
-        let path = self.book_path(id)?;
+    fn list_fund_row(&self, listed: &ListedBook) -> Result<pb::Fund> {
+        let id = &listed.id;
+        let path = &listed.path;
         let meta = book::BookMeta::load(&path, id);
-        let (config_digest, set) = self.active_config(&path, id)?;
+        let durable = listed
+            .durable
+            .as_ref()
+            .map(|(bootstrap, state)| (bootstrap, state));
+        let (config_digest, set) = self.active_config_from(path, durable)?;
         let effective = set.clone().unwrap_or_default();
         let entry_count = FileBook::list_entry_count(&path, self.objects.clone())? as i64;
         // Awaiting prices is the one state the index can name without a
@@ -3253,13 +3308,27 @@ impl Console {
         // Read the durable control head before the journal fold. Besides
         // supplying the current terms, this keeps a malformed successor from
         // surfacing a parser detail through GetFund first.
-        let (_, set) = self.active_config(&path, &id)?;
+        let (config_digest, set) = self.active_config(&path, &id)?;
         // Figures are the same ones GetFund already folds. GetFund still
         // answers for any book directory so existing screens and rewrites keep
         // working; the sidecar is what distinguishes a fund listing from a book.
         let fund = self.get_fund(&format!("funds/{id}"))?;
+        ensure!(
+            fund.config_digest == config_digest,
+            "active configuration changed during GetBook; retry the read"
+        );
         let (budget, envelopes) = budget_terms_of(set.as_ref(), meta.kind);
-        let loans = self.loan_schedules_of(&id)?;
+        let loans = if meta.kind == book::BookKind::Personal {
+            match set.as_ref() {
+                Some(rules) => {
+                    let book = self.open_file_book(&path)?;
+                    loan_schedules(rules, &book.accounts()?)?
+                }
+                None => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
         let (partner_cut, special_allocations) = partner_terms_of(set.as_ref());
         let fee_receivable = self.fee_receivable_of(&id, &fund.default_view, set.as_ref())?;
         let allocation_facts = self.allocation_facts_of(&id)?;
@@ -3540,9 +3609,13 @@ impl Console {
         // repurchase disallows the loss — so all three are reported beside
         // the figure rather than left as something a reader has to go and
         // look up.
-        let set = match b.active()? {
-            Some(d) => ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?)).ok(),
-            None => None,
+        let (active_digest, set) = match b.active()? {
+            Some(d) => {
+                let set = ratio_rules::RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))
+                    .ok();
+                (d.as_str().to_string(), set)
+            }
+            None => (String::new(), None),
         };
         // ⭐ WHICH BOOKS OF RECORD THIS FUND KEEPS. From ACTIVE, because that is
         // a question about NOW — how an ENTRY is recognised comes from the
@@ -3573,7 +3646,7 @@ impl Console {
         // `blocking_at` rather than restated, so the badge and the refusal are
         // one derivation — two folds of "what blocks" would be plausible,
         // independently maintained, and one field apart within a month.
-        let blocking = self.blocking_at(&id)?;
+        let blocking = self.blocking_at_view(&path, &id, &default_view)?;
         let state = if entries_len == 0 && pending.is_empty() {
             pb::fund::State::AwaitingPrices
         } else if !blocking.is_empty() {
@@ -3639,7 +3712,7 @@ impl Console {
             // two COLUMN totals can, and they live on `View`.
             trial_balance_difference: (tb.debits - tb.credits).to_string(),
             entry_count: entries_len as i64,
-            config_digest: b.active()?.map(|d| d.as_str().to_string()).unwrap_or_default(),
+            config_digest: active_digest,
             // ⭐ THE SAME FOLD THE BADGE JUST READ. Empty lists when nothing
             // blocks, not absent — ListFunds is the one that leaves this
             // unset. Unpriced stays empty: no valuation date was named.
@@ -4792,7 +4865,11 @@ impl Console {
     pub fn blocking_at(&self, fund: &str) -> Result<Blocking> {
         let path = self.book_path(fund)?;
         let view = self.default_view_of(fund)?;
-        let breaks = self.breaks_for(&path, fund, &view)?;
+        self.blocking_at_view(&path, fund, &view)
+    }
+
+    fn blocking_at_view(&self, path: &Path, fund: &str, view: &str) -> Result<Blocking> {
+        let breaks = self.breaks_for(path, fund, view)?;
         Ok(Blocking {
             breaks: breaks
                 .into_iter()
