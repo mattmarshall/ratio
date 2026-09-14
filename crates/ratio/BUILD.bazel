@@ -39,6 +39,7 @@ rust_binary(
         "@crates//:serde",
         "@crates//:serde_json",
         "@crates//:toml",
+        "@crates//:toml_edit",
         "@crates//:tokio",
         "@crates//:tonic",
     ],
