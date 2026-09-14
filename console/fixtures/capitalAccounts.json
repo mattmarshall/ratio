@@ -13,7 +13,9 @@
       "currencyTotals": [],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/partners/views/book/accounts/51",
@@ -28,7 +30,9 @@
       "currencyTotals": [],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/partners/views/book/accounts/20",
@@ -43,7 +47,9 @@
       "currencyTotals": [],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/partners/views/book/accounts/22",
@@ -58,7 +64,9 @@
       "currencyTotals": [],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/partners/views/book/accounts/52",
@@ -73,7 +81,9 @@
       "currencyTotals": [],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/partners/views/book/accounts/54",
@@ -88,7 +98,9 @@
       "currencyTotals": [],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     }
   ],
   "nextPageToken": ""

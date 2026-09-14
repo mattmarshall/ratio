@@ -2353,6 +2353,12 @@ message Account {
   // the fold's window). Empty when no redemption posted this window —
   // unset, not a silent zero redemption. `Ratio.Partners.no_redeem_is_unset`.
   string units_redeemed = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The active configuration used for this account fold. Every row in one
+  // ListAccounts response carries the same pin; the server refuses when the
+  // monotonic control revision changes during the fold.
+  string config_digest = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 control_revision = 15 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 // One account's activity in one denomination, before any translation.

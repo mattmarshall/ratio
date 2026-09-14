@@ -932,6 +932,9 @@ export interface Account {
    * Empty when no redemption posted this window — unset, not a silent zero.
    */
   unitsRedeemed?: string;
+  /** Active configuration pin for the fold that produced this row. */
+  configDigest?: string;
+  controlRevision?: string;
 }
 
 /** One account's activity in one denomination, before any translation. */

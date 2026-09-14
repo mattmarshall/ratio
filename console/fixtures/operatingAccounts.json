@@ -24,7 +24,9 @@
       ],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/studio/views/book/accounts/2",
@@ -50,7 +52,9 @@
       ],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/studio/views/book/accounts/10",
@@ -76,7 +80,9 @@
       ],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/studio/views/book/accounts/20",
@@ -102,7 +108,9 @@
       ],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/studio/views/book/accounts/30",
@@ -128,7 +136,9 @@
       ],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/studio/views/book/accounts/40",
@@ -154,7 +164,9 @@
       ],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     }
   ],
   "nextPageToken": ""

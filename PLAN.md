@@ -5318,12 +5318,16 @@ net worth stays unset. A posted zero remains a measured zero. Every account
 resource must belong to the selected book and view, and an unexpectedly
 paginated result refuses rather than presenting a partial sheet.
 
-The account fold response does not carry the configuration it used. The app
-therefore does not attach the separately observed Book configuration digest to
-the goal cite; doing so would falsely claim an atomic snapshot across two API
-reads. Instead it requires exact Book metadata before and after the fold to
-match, including view, currency, and digest, and refuses a detected promotion.
-`evaluate_live_goal` retains the Book, filter, and account resource names beside
+One lightweight Book index read supplies the selected view, reporting currency,
+active configuration digest, and fund association for the fund-scoped statement
+route. An independent Book refuses because core exposes no book-scoped sheet.
+Every `ListAccounts` row carries the exact
+digest and monotonic control revision used after the server checks both before
+and after its fold. A promotion, including A → B → A, therefore refuses at the
+API boundary; the app also requires every row's digest to match the selected
+Book.
+`evaluate_live_goal` retains the Book, filter, shared configuration digest and
+revision, and account resource names beside
 the result rather than letting the live caller discard them. Every account's
 dimension and type must match `chart_for(Personal)`. The dedicated first-party
 WorkOS application is a public PKCE client

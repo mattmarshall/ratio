@@ -24,7 +24,9 @@
       ],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/household/views/book/accounts/2",
@@ -50,7 +52,9 @@
       ],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/household/views/book/accounts/10",
@@ -76,7 +80,9 @@
       ],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/household/views/book/accounts/11",
@@ -91,7 +97,9 @@
       "currencyTotals": [],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/household/views/book/accounts/20",
@@ -117,7 +125,9 @@
       ],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/household/views/book/accounts/30",
@@ -143,7 +153,9 @@
       ],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     },
     {
       "name": "funds/household/views/book/accounts/40",
@@ -158,7 +170,9 @@
       "currencyTotals": [],
       "units": "",
       "unitsIssued": "",
-      "unitsRedeemed": ""
+      "unitsRedeemed": "",
+      "configDigest": "9f2c1ab7de40551c",
+      "controlRevision": "1"
     }
   ],
   "nextPageToken": ""
