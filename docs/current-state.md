@@ -50,8 +50,9 @@ messages also pass the [issue-completion check](issue-completion.md).
   remain on issue 161. Exact client-template grants are enforced. The minimal
   read-only reference app remains on issue 270; neither should be
   confused with local provider activation.
-- **Demonstration data:** `deploy/seed-demo-funds.sh` seeds eight synthetic
-  Investment funds and `deploy/seed_test.sh` verifies that count. Deployment
+- **Demonstration data:** `deploy/seed-demo-funds.sh` seeds nine synthetic
+  books: eight Investment funds and one Personal tax walkthrough.
+  `deploy/seed_test.sh` verifies that inventory. Deployment
   conditionally publishes every baked journal/append-only plane and its
   versioned whole-seed marker before updating the Lambda image. Cold serving
   processes verify those markers and attach without seed-entry PUTs. Seeds use

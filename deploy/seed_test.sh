@@ -159,18 +159,17 @@ TAX="$OUT/personal-tax-walkthrough"
 grep -q '^kind = "personal"' "$TAX/book.toml" \
   || fail "the tax walkthrough is not a Personal book"
 tax_active=$(cat "$TAX/config/ACTIVE")
-grep -q 'lot_relief = true' "$TAX/config/$tax_active" \
-  || fail "the tax walkthrough did not elect household lot relief"
-grep -q 'currencies = \["USD"\]' "$TAX/config/$tax_active" \
-  || fail "the tax walkthrough did not elect its USD reporting currency"
-grep -q 'wash_window_days = 30' "$TAX/config/$tax_active" \
-  || fail "the tax walkthrough cannot cite the wash election"
-grep -q '"id":"tax-sell-loss"' "$TAX/journal.jsonl" \
-  || fail "the tax walkthrough has no loss disposal"
-grep -q '"id":"tax-replacement"' "$TAX/journal.jsonl" \
-  || fail "the tax walkthrough has no later wash replacement"
-grep -q '"id":"tax-buy-undated"' "$TAX/journal.jsonl" \
-  || fail "the tax walkthrough has no missing-date lot"
+tax_config="$TAX/config/$tax_active"
+awk '/^[[:space:]]*\[/ { section=$0 } section == "[personal]" && $0 == "lot_relief = true" { relief=1 } section == "[personal]" && $0 == "currencies = [\"USD\"]" { currency=1 } END { exit !(relief && currency) }' "$tax_config" \
+  || fail "the tax walkthrough lacks effective Personal lot-relief or USD elections"
+awk '/^[[:space:]]*\[/ { section=$0 } section == "[chart_roles]" && $0 == "investments = 2" { investments=1 } section == "[chart_roles]" && $0 == "cash = 1" { cash=1 } section == "[chart_roles]" && $0 == "realized_gain = 31" { gain=1 } END { exit !(investments && cash && gain) }' "$tax_config" \
+  || fail "the tax walkthrough lacks its required chart roles"
+awk '/^[[:space:]]*\[/ { section=$0 } section == "" && $0 == "wash_window_days = 30" { wash=1 } END { exit !wash }' "$tax_config" \
+  || fail "the tax walkthrough cannot cite the top-level wash election"
+for entry in tax-buy-loss tax-sell-loss tax-replacement tax-buy-undated tax-sell-undated; do
+  grep -q "\"id\":\"$entry\"" "$TAX/journal.jsonl" \
+    || fail "the tax walkthrough is missing $entry"
+done
 if "$RATIO" strike --book "$BLOCKED" >/dev/null 2>&1; then
   fail "a blocked fund struck a NAV"
 fi

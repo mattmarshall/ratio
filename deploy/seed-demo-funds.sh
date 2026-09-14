@@ -184,10 +184,12 @@ TOML
 TAX="$OUT/personal-tax-walkthrough"
 "$RATIO" init --kind personal --book "$TAX" >/dev/null
 tax_active="$(cat "$TAX/config/ACTIVE")"
-cp "$TAX/config/$tax_active" "$WORK/personal-tax.toml"
-cat >> "$WORK/personal-tax.toml" <<'TOML'
-
+cat > "$WORK/personal-tax.toml" <<'TOML'
 wash_window_days = 30
+
+TOML
+cat "$TAX/config/$tax_active" >> "$WORK/personal-tax.toml"
+cat >> "$WORK/personal-tax.toml" <<'TOML'
 
 [personal]
 lot_relief = true
