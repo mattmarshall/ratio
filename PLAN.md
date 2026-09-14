@@ -2791,6 +2791,16 @@ What landed is the declaration, not a Personal FX method:
   digest and conditionally claims the reviewed control predecessor. This is
   the narrow operator path for the #178 walkthrough, not a general
   `config:promote` Connect scope.
+- Active read contract (#350): a published book's local bootstrap files are an
+  immutable opening cache, not its current control plane. ListBooks and GetBook
+  resolve configuration-backed fields from the digest-verified active durable
+  control revision. The index still does not fold the journal. Currencies,
+  budgets, allocations, and wash terms therefore change with a committed
+  promotion immediately; an absent, corrupt, or invalid successor refuses
+  instead of silently showing the opening defaults.
+
+**Published book reads cite the active durable configuration** is the Built
+phrase this correction adds.
 
 **What this is NOT:**
 

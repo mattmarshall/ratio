@@ -3105,16 +3105,43 @@ impl Console {
         Ok(pb::ListBooksResponse { books, next_page_token: String::new() })
     }
 
-    /// The books-index row: sidecar, local ACTIVE, local journal line count.
+    /// The configuration currently authorized for a read.
+    ///
+    /// ⭐ A PUBLISHED BOOK'S BOOTSTRAP IS IMMUTABLE. Its local `config/ACTIVE`
+    /// is therefore only the opening value. Post-create promotions live in the
+    /// durable control stream and must be read and digest-verified there. A
+    /// malformed successor refuses rather than making the opening rules look
+    /// current. Local books keep their atomic filesystem pointer.
+    fn active_config(&self, path: &Path, id: &str) -> Result<(String, Option<RuleSet>)> {
+        let Some(objects) = &self.objects else {
+            return Ok(local_config(path));
+        };
+        let Some((_, bootstrap)) = self.bootstrap(id)? else {
+            return Ok(local_config(path));
+        };
+        let control = ratio_store::control::ControlStore::new(objects.clone());
+        let state = control.read(id)?;
+        let bytes = match control.opening_config(&bootstrap, &state.active) {
+            Some(bytes) => bytes,
+            None => control.config(&state.active)?,
+        };
+        let text = String::from_utf8(bytes).context("active durable configuration is not UTF-8")?;
+        let rules = RuleSet::from_toml(&text)
+            .map_err(|_| anyhow::anyhow!("active durable configuration is invalid"))?;
+        Ok((state.active.as_str().to_string(), Some(rules)))
+    }
+
+    /// The books-index row: sidecar, active configuration, journal line count.
     ///
     /// ⛔ NOT `get_book` / `get_fund`. Those fold `trial_balance` and
     /// `for_each_entry_since`, which GET every S3 journal object. A generated
     /// fund cannot finish that inside API Gateway's 30s — the index needs a
-    /// name, a kind, a count and a digest, not a trial balance.
+    /// name, a kind, a count and a digest, not a trial balance. The active
+    /// durable configuration is a bounded control read, not a journal fold.
     fn list_book_row(&self, id: &str) -> Result<pb::Book> {
         let path = self.book_path(id)?;
         let meta = book::BookMeta::load(&path, id);
-        let (config_digest, set) = local_config(&path);
+        let (config_digest, set) = self.active_config(&path, id)?;
         let effective = set.clone().unwrap_or_default();
         let (partner_cut, special_allocations) = partner_terms_of(set.as_ref());
         Ok(pb::Book {
@@ -3167,7 +3194,7 @@ impl Console {
     fn list_fund_row(&self, id: &str) -> Result<pb::Fund> {
         let path = self.book_path(id)?;
         let meta = book::BookMeta::load(&path, id);
-        let (config_digest, set) = local_config(&path);
+        let (config_digest, set) = self.active_config(&path, id)?;
         let effective = set.clone().unwrap_or_default();
         let entry_count = FileBook::list_entry_count(&path, self.objects.clone())? as i64;
         // Awaiting prices is the one state the index can name without a
@@ -3223,13 +3250,16 @@ impl Console {
         let id = resource_id(name, "books").context("bad book name")?;
         let path = self.book_path(&id)?;
         let meta = book::BookMeta::load(&path, &id);
+        // Read the durable control head before the journal fold. Besides
+        // supplying the current terms, this keeps a malformed successor from
+        // surfacing a parser detail through GetFund first.
+        let (_, set) = self.active_config(&path, &id)?;
         // Figures are the same ones GetFund already folds. GetFund still
         // answers for any book directory so existing screens and rewrites keep
         // working; the sidecar is what distinguishes a fund listing from a book.
         let fund = self.get_fund(&format!("funds/{id}"))?;
-        let (budget, envelopes) = budget_terms_of(&path, meta.kind);
+        let (budget, envelopes) = budget_terms_of(set.as_ref(), meta.kind);
         let loans = self.loan_schedules_of(&id)?;
-        let (_, set) = local_config(&path);
         let (partner_cut, special_allocations) = partner_terms_of(set.as_ref());
         let fee_receivable = self.fee_receivable_of(&id, &fund.default_view, set.as_ref())?;
         let allocation_facts = self.allocation_facts_of(&id)?;
@@ -4157,8 +4187,9 @@ impl Console {
                 // `stale_strikes`: a strike pins a journal position and an
                 // applied action is a journal entry, so nothing is stored.
                 let stale = self.stale_strikes(&id).unwrap_or_default();
+                let (_, rules) = self.active_config(&path, &id)?;
                 let wash = wash_source(
-                    &path,
+                    rules,
                     &id,
                     || {
                         self.open_file_book(&path)
@@ -4199,8 +4230,9 @@ impl Console {
             .filter(|(strike, _, _)| *strike == s.id)
             .map(|(_, _, why)| why)
             .collect();
+        let (_, rules) = self.active_config(&path, &fund)?;
         let wash = wash_source(
-            &path,
+            rules,
             &fund,
             || {
                 self.open_file_book(&path)
@@ -5139,12 +5171,11 @@ struct WashSource {
 }
 
 fn wash_source(
-    path: &Path,
+    rules: Option<RuleSet>,
     fund: &str,
     entries: impl FnOnce() -> Vec<ratio_store::JournalEntry>,
     projection: impl FnOnce(&str) -> Result<ratio_project::Projection>,
 ) -> WashSource {
-    let (_, rules) = local_config(path);
     let window = rules.as_ref().and_then(|r| r.wash_window_days);
     let roles = rules.as_ref().and_then(|r| r.chart_roles);
     if window.is_none() {
@@ -6565,66 +6596,38 @@ fn partner_terms_of(set: Option<&RuleSet>) -> (Vec<pb::PartnerShare>, Vec<pb::Sp
     )
 }
 
-fn budget_terms_of(path: &Path, kind: book::BookKind) -> (String, Vec<pb::HouseholdEnvelope>) {
+fn budget_terms_of(
+    set: Option<&RuleSet>,
+    kind: book::BookKind,
+) -> (String, Vec<pb::HouseholdEnvelope>) {
+    let Some(set) = set else {
+        return (String::new(), Vec::new());
+    };
     match kind {
-        book::BookKind::Personal => household_terms_of(path),
-        book::BookKind::Project => (project_budget_of(path), Vec::new()),
-        _ => (String::new(), Vec::new()),
-    }
-}
-
-/// Authorized household spend from the configuration in force.
-fn household_terms_of(path: &Path) -> (String, Vec<pb::HouseholdEnvelope>) {
-    let Ok(b) = ratio_store::DirectoryConfigStore::open(path.join("config")) else {
-        return (String::new(), Vec::new());
-    };
-    let Ok(Some(digest)) = b.active() else {
-        return (String::new(), Vec::new());
-    };
-    let Ok(bytes) = b.get(&digest) else {
-        return (String::new(), Vec::new());
-    };
-    match RuleSet::from_toml(&String::from_utf8_lossy(&bytes)) {
-        Ok(set) => {
-            let Some(p) = set.personal else {
+        book::BookKind::Personal => {
+            let Some(personal) = set.personal.as_ref() else {
                 return (String::new(), Vec::new());
             };
-            let budget = p.budget.map(|n| n.to_string()).unwrap_or_default();
-            let envelopes = p
+            let budget = personal.budget.map(|n| n.to_string()).unwrap_or_default();
+            let envelopes = personal
                 .envelope
-                .into_iter()
+                .iter()
                 .map(|(dimension, n)| pb::HouseholdEnvelope {
-                    dimension,
+                    dimension: dimension.clone(),
                     budget: n.to_string(),
                 })
                 .collect();
             (budget, envelopes)
         }
-        Err(_) => (String::new(), Vec::new()),
-    }
-}
-
-/// Authorized project spend from the configuration in force, minor units.
-///
-/// Empty when unset — a project whose configuration omits `[project] budget`,
-/// and a directory we cannot read. `0` is a set baseline of nothing.
-fn project_budget_of(path: &Path) -> String {
-    let Ok(b) = ratio_store::DirectoryConfigStore::open(path.join("config")) else {
-        return String::new();
-    };
-    let Ok(Some(digest)) = b.active() else {
-        return String::new();
-    };
-    let Ok(bytes) = b.get(&digest) else {
-        return String::new();
-    };
-    match RuleSet::from_toml(&String::from_utf8_lossy(&bytes)) {
-        Ok(set) => set
-            .project
-            .and_then(|p| p.budget)
-            .map(|n| n.to_string())
-            .unwrap_or_default(),
-        Err(_) => String::new(),
+        book::BookKind::Project => (
+            set.project
+                .as_ref()
+                .and_then(|project| project.budget)
+                .map(|n| n.to_string())
+                .unwrap_or_default(),
+            Vec::new(),
+        ),
+        _ => (String::new(), Vec::new()),
     }
 }
 

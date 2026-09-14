@@ -165,6 +165,96 @@ fn all_kinds_recover_exact_bytes_grants_and_the_journal_from_an_empty_root() {
 }
 
 #[test]
+fn list_and_get_read_a_promotion_after_the_bootstrap_cache_was_materialized() {
+    let temp = Temp::new();
+    let objects: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    let reader = console(&temp.0, objects.clone(), "creator");
+    reader
+        .create_book(request("household", book::BookKind::Personal))
+        .unwrap();
+
+    // Materialize the immutable opening bootstrap before the promotion. The
+    // regression was that both reads kept consulting this empty local election.
+    assert!(reader.list_books().unwrap().books[0].currencies.is_empty());
+    assert!(reader
+        .get_book("books/household")
+        .unwrap()
+        .currencies
+        .is_empty());
+
+    let control = ControlStore::new(objects);
+    let successor = format!(
+        "{}\n[personal]\ncurrencies = [\"USD\", \"EUR\", \"GBP\"]\n",
+        book::config_for(book::BookKind::Personal)
+    );
+    let digest = control.stage_config(successor.as_bytes()).unwrap();
+    control
+        .commit(&control_operation(
+            &control,
+            "household",
+            "activate-fx",
+            "creator",
+            control_operation::Change::ConfigPromotion(ConfigPromotion {
+                config_digest: digest.as_str().into(),
+            }),
+        ))
+        .unwrap();
+
+    for observed in [
+        reader.list_books().unwrap().books.remove(0),
+        reader.get_book("books/household").unwrap(),
+    ] {
+        assert_eq!(observed.config_digest, digest.as_str());
+        assert_eq!(observed.currency_code, "USD");
+        assert_eq!(observed.currencies, ["USD", "EUR", "GBP"]);
+    }
+    assert!(
+        std::fs::read_to_string(temp.0.join("household/config/ACTIVE"))
+            .unwrap()
+            .trim()
+            != digest.as_str(),
+        "the immutable bootstrap cache stays opening state; reads use control"
+    );
+}
+
+#[test]
+fn a_malformed_active_durable_configuration_never_falls_back_to_bootstrap() {
+    let temp = Temp::new();
+    let objects: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    let reader = console(&temp.0, objects.clone(), "creator");
+    reader
+        .create_book(request("household", book::BookKind::Personal))
+        .unwrap();
+    let control = ControlStore::new(objects);
+    let digest = control.stage_config(b"[personal\n").unwrap();
+    control
+        .commit(&control_operation(
+            &control,
+            "household",
+            "bad-config",
+            "creator",
+            control_operation::Change::ConfigPromotion(ConfigPromotion {
+                config_digest: digest.as_str().into(),
+            }),
+        ))
+        .unwrap();
+
+    for refusal in [
+        reader.list_books().unwrap_err().to_string(),
+        reader.get_book("books/household").unwrap_err().to_string(),
+    ] {
+        assert!(
+            refusal.contains("active durable configuration is invalid"),
+            "{refusal}"
+        );
+        assert!(
+            !refusal.contains("[personal"),
+            "configuration bytes must stay redacted"
+        );
+    }
+}
+
+#[test]
 fn one_console_resolves_durable_membership_again_at_every_operation_boundary() {
     let temp = Temp::new();
     let objects: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
