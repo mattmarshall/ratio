@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package ratio.console.v1;
+
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/type/date.proto";
+
+option java_multiple_files = true;
+option java_package = "com.fastverk.ratio.console.v1";
+option java_outer_classname = "TaxPackProto";
+
+// Batch citation reads used by the Personal tax-pack Connect app.
+//
+// Keeping this separate from Console is deliberate: every Console method must
+// reach a product screen, while tax packing remains a Connect application.
+service TaxPack {
+  // Successful lot reliefs behind one view, in journal order. (AIP-132)
+  rpc ListDisposals(ListDisposalsRequest) returns (ListDisposalsResponse) {
+    option (google.api.http) = {get: "/v1/{parent=funds/*/views/*}/disposals"};
+    option (google.api.method_signature) = "parent";
+  }
+
+  // Gets one successful disposal citation. (AIP-131)
+  rpc GetDisposal(GetDisposalRequest) returns (Disposal) {
+    option (google.api.http) = {get: "/v1/{name=funds/*/views/*/disposals/*}"};
+    option (google.api.method_signature) = "name";
+  }
+
+}
+
+// One successful disposal as the lot engine relieved it.
+message Disposal {
+  option (google.api.resource) = {
+    type: "ratio.fastverk.dev/Disposal"
+    pattern: "funds/{fund}/views/{view}/disposals/{disposal}"
+    singular: "disposal"
+    plural: "disposals"
+  };
+
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+  string entry_id = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string memo = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string config_digest = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 journal_prefix = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 account_dimension = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string instrument = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string currency_code = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+  google.type.Date disposed = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string units = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Empty when the journal did not carry one unambiguous realized-gain leg.
+  // Basis remains cited, but an export must refuse to invent proceeds.
+  string proceeds = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string basis = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
+  repeated RelievedLot relieved_lots = 13 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // Presence is explicit: zero is a real no-adjustment result only when the
+  // configuration declared a wash window.
+  bool wash_window_declared = 14 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 wash_window_days = 15 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string wash_disallowed = 16 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The threshold from the configuration this disposal pins. A later active
+  // configuration must not reclassify a historical gain.
+  int64 long_term_days = 17 [(google.api.field_behavior) = OUTPUT_ONLY];
+  int64 posting_leg = 18 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The journal cut through which this citation observed later wash writes.
+  int64 observed_journal_prefix = 19 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// One lot (or partial lot) consumed by a disposal.
+message RelievedLot {
+  int64 sequence = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string units = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+  string cost = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Absent when the source lot carried no acquisition date. Never defaulted.
+  google.type.Date acquired = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListDisposalsRequest {
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+  ];
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListDisposalsResponse {
+  repeated Disposal disposals = 1;
+  string next_page_token = 2;
+}
+
+message GetDisposalRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference).type = "ratio.fastverk.dev/Disposal"
+  ];
+}

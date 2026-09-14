@@ -375,6 +375,200 @@ class Refusals(unittest.TestCase):
             out = p.fetch_cites(token="connect-access-token", transport=transport)
         self.assertEqual(out, {"books": []})
 
+    def test_a_live_pack_cites_the_relief_config_prefix_and_wash_without_recomputing(self):
+        digest = "ab" * 32
+        responses = {
+            "/v1/books/house": (
+                200,
+                json.dumps(
+                    {
+                        "name": "books/house",
+                        "kind": "PERSONAL",
+                        "defaultView": "book",
+                        "configDigest": digest,
+                    }
+                ),
+            ),
+            "/v1/funds/house/views/book/disposals": (
+                200,
+                json.dumps(
+                    {
+                        "disposals": [
+                            {
+                                "name": "funds/house/views/book/disposals/2-3",
+                                "entryId": "sale-1",
+                                "memo": "VTI sale",
+                                "configDigest": digest,
+                                "journalPrefix": "2",
+                                "observedJournalPrefix": "3",
+                                "instrument": "VTI",
+                                "currencyCode": "USD",
+                                "disposed": {"year": 2026, "month": 6, "day": 30},
+                                "units": "2",
+                                "proceeds": "10000",
+                                "basis": "15000",
+                                "relievedLots": [
+                                    {
+                                        "sequence": "0",
+                                        "units": "1",
+                                        "cost": "7000",
+                                        "acquired": {"year": 2024, "month": 1, "day": 1},
+                                    },
+                                    {
+                                        "sequence": "1",
+                                        "units": "1",
+                                        "cost": "8000",
+                                        "acquired": {"year": 2026, "month": 1, "day": 1},
+                                    },
+                                ],
+                                "washWindowDeclared": True,
+                                "washWindowDays": "30",
+                                "washDisallowed": "5000",
+                                "longTermDays": "365",
+                            }
+                        ]
+                    }
+                ),
+            ),
+            "/v1/funds/house/views/book/periodCloses": (
+                200,
+                json.dumps({"periodCloses": []}),
+            ),
+            f"/v1/funds/house/configVersions/{digest}": (
+                200,
+                json.dumps(
+                    {
+                        "name": f"funds/house/configVersions/{digest}",
+                        "digest": digest,
+                    }
+                ),
+            ),
+            "/v1/funds/house": (
+                200,
+                json.dumps(
+                    {
+                        "name": "funds/house",
+                        "configDigest": digest,
+                        "longTermDays": "999",
+                        "lotMethod": "fifo",
+                        "lotMethodDeclared": True,
+                        "washWindowDays": "30",
+                        "washWindowDeclared": True,
+                        "washKeepHoldingPeriod": False,
+                        "minTaxDeclared": False,
+                        "averageCost": False,
+                    }
+                ),
+            ),
+        }
+        transport = p._grant.FakeTransport(responses=responses)
+        with mock.patch.dict(os.environ, {"RATIO_CONNECT_API_URL": "https://connect.example"}):
+            live = p.fetch_live_pack("books/house", token="token", transport=transport)
+        self.assertTrue(
+            all(call[2]["authorization"] == "Bearer token" for call in transport.calls),
+            "the presented bearer reaches every live citation request",
+        )
+        self.assertEqual(live.book_name, "books/house")
+        self.assertEqual(live.entry_ids, ("sale-1",))
+        self.assertEqual(live.journal_prefixes, (2,))
+        self.assertEqual(live.observed_journal_prefixes, (3,))
+        self.assertEqual(live.config_digests, (digest,))
+        self.assertEqual(live.lot_terms, (p.LotTerms(long_term_days=365, wash_window_days=30),))
+        self.assertEqual(len(live.pack.unclassified), 1, "mixed dates stay unset")
+        self.assertEqual(live.pack.unclassified[0].adjustment_code, "W")
+        self.assertEqual(live.pack.unclassified[0].adjustment, "50.00")
+        self.assertEqual(live.pack.unclassified[0].gain, "0.00")
+        files = p.as_live_files(live)
+        self.assertIn("citations.csv", files)
+        self.assertIn("sale-1", files["citations.csv"])
+        self.assertIn(digest, files["citations.csv"])
+        self.assertIn("365", files["lot_terms.csv"])
+        self.assertIn("relieved_lots.csv", files)
+        self.assertIn("7000", files["relieved_lots.csv"])
+        self.assertIn("8000", files["relieved_lots.csv"])
+
+        # The active book now says 999 days, while the sale's pinned config
+        # says 365. Exactly 365 days must remain LONG under the historical cite.
+        cited = json.loads(responses["/v1/funds/house/views/book/disposals"][1])
+        cited["disposals"][0]["relievedLots"] = [
+            {
+                "sequence": "0",
+                "units": "2",
+                "cost": "15000",
+                "acquired": {"year": 2025, "month": 6, "day": 30},
+            }
+        ]
+        responses["/v1/funds/house/views/book/disposals"] = (200, json.dumps(cited))
+        transport = p._grant.FakeTransport(responses=responses)
+        with mock.patch.dict(os.environ, {"RATIO_CONNECT_API_URL": "https://connect.example"}):
+            historical = p.fetch_live_pack("house", token="token", transport=transport)
+        self.assertEqual(historical.pack.form_8949[0].category, "LONG")
+
+        valid_disposals = responses["/v1/funds/house/views/book/disposals"]
+        inconsistent_wash = json.loads(valid_disposals[1])
+        inconsistent_wash["disposals"][0]["washWindowDeclared"] = False
+        responses["/v1/funds/house/views/book/disposals"] = (
+            200,
+            json.dumps(inconsistent_wash),
+        )
+        with mock.patch.dict(os.environ, {"RATIO_CONNECT_API_URL": "https://connect.example"}):
+            with self.assertRaisesRegex(p.Refuse, "without a declared wash window"):
+                p.fetch_live_pack(
+                    "house", token="token", transport=p._grant.FakeTransport(responses=responses)
+                )
+        responses["/v1/funds/house/views/book/disposals"] = valid_disposals
+
+        unfooted_lots = json.loads(valid_disposals[1])
+        unfooted_lots["disposals"][0]["relievedLots"][0]["cost"] = "14999"
+        responses["/v1/funds/house/views/book/disposals"] = (
+            200,
+            json.dumps(unfooted_lots),
+        )
+        with mock.patch.dict(os.environ, {"RATIO_CONNECT_API_URL": "https://connect.example"}):
+            with self.assertRaisesRegex(p.Refuse, "do not foot"):
+                p.fetch_live_pack(
+                    "house", token="token", transport=p._grant.FakeTransport(responses=responses)
+                )
+        responses["/v1/funds/house/views/book/disposals"] = valid_disposals
+
+        valid_config = responses[f"/v1/funds/house/configVersions/{digest}"]
+        responses[f"/v1/funds/house/configVersions/{digest}"] = (
+            200,
+            json.dumps(
+                {
+                    "name": f"funds/house/configVersions/{digest}",
+                    "digest": "cd" * 32,
+                }
+            ),
+        )
+        with mock.patch.dict(os.environ, {"RATIO_CONNECT_API_URL": "https://connect.example"}):
+            with self.assertRaisesRegex(p.Refuse, "could not be verified"):
+                p.fetch_live_pack(
+                    "house", token="token", transport=p._grant.FakeTransport(responses=responses)
+                )
+        responses[f"/v1/funds/house/configVersions/{digest}"] = valid_config
+
+        responses["/v1/funds/house/views/book/periodCloses"] = (
+            200,
+            json.dumps(
+                {
+                    "periodCloses": [
+                        {"closedDate": {"year": 2026, "month": 6, "day": 30}}
+                    ]
+                }
+            ),
+        )
+        with mock.patch.dict(os.environ, {"RATIO_CONNECT_API_URL": "https://connect.example"}):
+            with self.assertRaisesRegex(p.Refuse, "closed-through"):
+                p.fetch_live_pack(
+                    "house", token="token", transport=p._grant.FakeTransport(responses=responses)
+                )
+
+    def test_a_live_pack_refuses_url_syntax_in_a_book_id(self):
+        for bad in ("house?view=other", "house#other", "books/house/other"):
+            with self.subTest(bad=bad), self.assertRaisesRegex(p.Refuse, "exactly one"):
+                p.fetch_live_pack(bad, token="token", transport=p._grant.FakeTransport())
+
     def test_submit_refuses_because_irs_e_file_is_not_a_connect_scope(self):
         out = pack_of([row()])
         with self.assertRaises(p.Refuse) as ctx:
@@ -390,14 +584,14 @@ class ManifestHonesty(unittest.TestCase):
             self.assertNotIn(alias, scopes)
         self.assertNotIn("journals:post", scopes)
 
-    def test_grant_path_and_irs_submission_stay_named_as_leftovers(self):
+    def test_registered_grant_and_refused_irs_submission_stay_named(self):
         doc = json.dumps(app())
         self.assertEqual("built", app()["grant_path"]["status"])
         self.assertIn("ConnectApiUrl", app()["grant_path"]["note"])
-        self.assertIn("WorkOS dashboard registration", app()["grant_path"]["note"])
+        self.assertIn("registered", app()["grant_path"]["note"])
+        self.assertIn("books:read", app()["grant_path"]["note"])
         self.assertIn("refused", app()["irs_submission"]["status"])
         self.assertIn("#166", doc)
-        self.assertIn("#150", doc)
         category = app()["pooled_holding_period"]
         self.assertEqual(category["status"], "cited")
         self.assertIn("Ratio.Lots.PoolPeriod", category["note"])

@@ -310,6 +310,8 @@ pub fn required_connect_scopes(method: &str, path: &str) -> Option<&'static [&'s
         | ["funds", _, "views", _, "periodCloses", _] => &["closes:read"],
         ["funds", _, "views", _, "positions", _, "lots"]
         | ["funds", _, "views", _, "positions", _, "lots", _] => &["lots:read"],
+        ["funds", _, "views", _, "disposals"]
+        | ["funds", _, "views", _, "disposals", _] => &["lots:read"],
         ["funds", _, "views", _, "positions"] | ["funds", _, "views", _, "positions", _] => {
             &["positions:read"]
         }
@@ -797,6 +799,34 @@ mod tests {
         // AuthKit / Local skip the table.
         authorize_connect(None, "GET", "/v1/funds/alpha/entries")
             .expect("an AuthKit session is not a Connect grant");
+    }
+
+    #[test]
+    fn disposal_citations_require_the_lot_scope() {
+        let lots = catalog_grants("lots:read");
+        authorize_connect(
+            Some(&lots),
+            "GET",
+            "/v1/funds/alpha/views/book/disposals",
+        )
+        .expect("lots:read opens ListDisposals");
+        authorize_connect(
+            Some(&lots),
+            "GET",
+            "/v1/funds/alpha/views/book/disposals/2-0",
+        )
+        .expect("lots:read opens GetDisposal");
+        let err = authorize_connect(
+            Some(&catalog_grants("books:read")),
+            "GET",
+            "/v1/funds/alpha/views/book/disposals",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("scope `lots:read` is required"),
+            "book discovery does not expose tax-lot history: {err}"
+        );
     }
 
     #[test]

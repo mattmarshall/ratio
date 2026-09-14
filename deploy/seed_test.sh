@@ -23,13 +23,13 @@ rm -rf "$OUT"
 
 fail() { echo "  x $*" >&2; exit 1; }
 
-# Eight funds — four states, a fifth that differs from one of them by one line
+# Nine books — four states, a fifth that differs from one of them by one line
 # of configuration, a sixth that differs from another by one person's act, a
 # seventh that differs from itself: one journal read under two books of record,
-# and an eighth that elects the average-cost pool (which cannot share a book
-# with lot_method or min-tax).
+# an eighth that elects the average-cost pool (which cannot share a book with
+# lot_method or min-tax), and a Personal book for the cited tax export.
 n=$(find "$OUT" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')
-[ "$n" -eq 8 ] || fail "expected 8 funds, found $n"
+[ "$n" -eq 9 ] || fail "expected 9 books, found $n"
 
 GEN="$OUT/ashcombe-global-equity"
 [ -d "$GEN" ] || fail "the generated fund is missing"
@@ -150,6 +150,27 @@ grep -q "average_cost = true" "$KESTREL/config/$kestrel_active" \
   || fail "kestrel elects no average-cost pool — the walk-through cannot cite one"
 grep -q "min_tax_short_weight" "$KESTREL/config/$kestrel_active" \
   && fail "kestrel wrote min-tax — two elections for one sale"
+
+# #166 has a permitted Personal seed whose live pack can cite the exact loss
+# relief, the later replacement, and a missing acquisition date. These checks
+# pin the input story; the disposal API tests pin the engine's output story.
+TAX="$OUT/personal-tax-walkthrough"
+[ -d "$TAX" ] || fail "the Personal tax walkthrough book is missing"
+grep -q '^kind = "personal"' "$TAX/book.toml" \
+  || fail "the tax walkthrough is not a Personal book"
+tax_active=$(cat "$TAX/config/ACTIVE")
+grep -q 'lot_relief = true' "$TAX/config/$tax_active" \
+  || fail "the tax walkthrough did not elect household lot relief"
+grep -q 'currencies = \["USD"\]' "$TAX/config/$tax_active" \
+  || fail "the tax walkthrough did not elect its USD reporting currency"
+grep -q 'wash_window_days = 30' "$TAX/config/$tax_active" \
+  || fail "the tax walkthrough cannot cite the wash election"
+grep -q '"id":"tax-sell-loss"' "$TAX/journal.jsonl" \
+  || fail "the tax walkthrough has no loss disposal"
+grep -q '"id":"tax-replacement"' "$TAX/journal.jsonl" \
+  || fail "the tax walkthrough has no later wash replacement"
+grep -q '"id":"tax-buy-undated"' "$TAX/journal.jsonl" \
+  || fail "the tax walkthrough has no missing-date lot"
 if "$RATIO" strike --book "$BLOCKED" >/dev/null 2>&1; then
   fail "a blocked fund struck a NAV"
 fi
@@ -246,4 +267,4 @@ grep -q "RECOGNISED IN abor, NOT YET IN ibor" <<<"$rec" \
 awk '/RECOGNISED IN abor, NOT YET IN ibor/{getline; if ($0 ~ /nothing in flight/) exit 1; exit 0}' <<<"$rec" \
   || fail "abor recognises the settlement tail and ibor does not — that list cannot be empty"
 
-echo "  ok  8 funds, $lots open tax lots, FIFO $a vs HIFO $b, ABOR $abor vs IBOR $ibor, reconciled entry by entry, blocked refuses and explained strikes"
+echo "  ok  9 books, $lots open tax lots, FIFO $a vs HIFO $b, Personal tax cites, ABOR $abor vs IBOR $ibor, reconciled entry by entry, blocked refuses and explained strikes"

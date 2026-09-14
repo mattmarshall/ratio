@@ -68,6 +68,8 @@ pub const ROUTES: &[Route] = &[
     Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/periodCloses" },
     Route { method: "GET", template: "/v1/{name=funds/*/views/*/periodCloses/*}" },
     Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/positions" },
+    Route { method: "GET", template: "/v1/{parent=funds/*/views/*}/disposals" },
+    Route { method: "GET", template: "/v1/{name=funds/*/views/*/disposals/*}" },
     // ⛔ BEFORE the bare position, and before the position pattern can swallow
     // it. `funds/f/positions/p/lots` has more segments than `funds/*/positions/*`
     // matches, but the ordering here is the documented contract and a reader
@@ -176,6 +178,14 @@ pub fn serve(
                 &param_of(query, "filter"),
             )?)?
         }
+        ["funds", id, "views", view, "disposals"] => {
+            to_json(&console.list_disposals(&format!("funds/{id}/views/{view}"))?)?
+        }
+        ["funds", id, "views", view, "disposals", disposal] => to_json(
+            &console.get_disposal(&format!(
+                "funds/{id}/views/{view}/disposals/{disposal}"
+            ))?,
+        )?,
         ["funds", id, "views", v] => {
             to_json(&console.get_view(&format!("funds/{id}/views/{v}"))?)?
         }
@@ -1066,6 +1076,68 @@ impl JsonView for pb::ListLotsResponse {
         format!(
             "{{\"lots\":[{}],\"nextPageToken\":{}}}",
             self.lots.iter().map(|l| l.to_json()).collect::<Vec<_>>().join(","),
+            q(&self.next_page_token)
+        )
+    }
+}
+
+impl JsonView for pb::RelievedLot {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"sequence\":{},\"units\":{},\"cost\":{},\"acquired\":{}}}",
+            q(&self.sequence.to_string()),
+            q(&self.units),
+            q(&self.cost),
+            date_json(&self.acquired)
+        )
+    }
+}
+
+impl JsonView for pb::Disposal {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"name\":{},\"entryId\":{},\"memo\":{},\"configDigest\":{},\
+             \"journalPrefix\":{},\"accountDimension\":{},\"instrument\":{},\
+             \"currencyCode\":{},\"disposed\":{},\"units\":{},\"proceeds\":{},\
+             \"basis\":{},\"relievedLots\":[{}],\"washWindowDeclared\":{},\
+             \"washWindowDays\":{},\"washDisallowed\":{},\"longTermDays\":{},\
+             \"postingLeg\":{},\"observedJournalPrefix\":{}}}",
+            q(&self.name),
+            q(&self.entry_id),
+            q(&self.memo),
+            q(&self.config_digest),
+            q(&self.journal_prefix.to_string()),
+            q(&self.account_dimension.to_string()),
+            q(&self.instrument),
+            q(&self.currency_code),
+            date_json(&self.disposed),
+            q(&self.units),
+            q(&self.proceeds),
+            q(&self.basis),
+            self.relieved_lots
+                .iter()
+                .map(|lot| lot.to_json())
+                .collect::<Vec<_>>()
+                .join(","),
+            self.wash_window_declared,
+            q(&self.wash_window_days.to_string()),
+            q(&self.wash_disallowed),
+            q(&self.long_term_days.to_string()),
+            q(&self.posting_leg.to_string()),
+            q(&self.observed_journal_prefix.to_string())
+        )
+    }
+}
+
+impl JsonView for pb::ListDisposalsResponse {
+    fn to_json(&self) -> String {
+        format!(
+            "{{\"disposals\":[{}],\"nextPageToken\":{}}}",
+            self.disposals
+                .iter()
+                .map(|disposal| disposal.to_json())
+                .collect::<Vec<_>>()
+                .join(","),
             q(&self.next_page_token)
         )
     }

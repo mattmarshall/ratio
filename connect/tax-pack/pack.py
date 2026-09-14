@@ -5,9 +5,9 @@ A WorkOS Connect app, not a kernel RPC. Tax packing and 8949-ish /
 CSV export live here. They do not live in `ratio watch`, the
 operations console, or a new kernel method.
 
-⭐ SCOPES ARE THE FROZEN CATALOG NAMES. `lots:read`, `statements:read`,
-`config:read`. Aliases and invented strings are refused. See
-docs/connect-scopes.md.
+⭐ SCOPES ARE THE FROZEN CATALOG NAMES. `books:read`, `lots:read`,
+`statements:read`, `closes:read`, and `config:read`. Aliases and invented
+strings are refused. See docs/connect-scopes.md.
 
 ⭐ THIS APP IS READ-ONLY RELATIVE TO THE JOURNAL. It does not request
 `journals:post`. A tax pack is a read of cites, not a rewrite.
@@ -32,7 +32,8 @@ invent `lot_method = "wash"`.
 verified Connect access token and pulls against the Connect HTTP
 API. Membership is still required. A Connect token never takes
 `RATIO_DEMO_OPEN` and never matches `org:{id}`. IRS e-file stays
-refused. WorkOS dashboard registration stays leftover #22.
+refused. The tax-pack OAuth application is registered; production activation
+still has to prove the live grant and cited export.
 
 ⚠ IRS E-FILE IS REFUSED. `submit` refuses. No CPA portal, no
 MeF transmission, no packing inside core.
@@ -43,6 +44,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Iterable, Mapping, Sequence
@@ -53,7 +55,9 @@ import grant as _grant
 I64_MIN = -(2**63)
 I64_MAX = 2**63 - 1
 
-CANONICAL_SCOPES = frozenset({"lots:read", "statements:read", "config:read"})
+CANONICAL_SCOPES = frozenset(
+    {"books:read", "lots:read", "statements:read", "closes:read", "config:read"}
+)
 REFUSED_ALIASES = frozenset({"journal:append", "journal:read"})
 
 # ⛔ NOT METHODS. Each is an election with its own shape. The TLA
@@ -170,6 +174,31 @@ class Pack:
     ambiguities: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class CitedRelievedLot:
+    """One exact engine-relief row retained for the evidence CSV."""
+
+    sequence: int
+    units: int
+    cost: int
+    acquired: str | None
+
+
+@dataclass(frozen=True)
+class LiveExport:
+    """A pack plus the live Ratio resources it cites."""
+
+    pack: Pack
+    book_name: str
+    disposal_names: tuple[str, ...]
+    entry_ids: tuple[str, ...]
+    journal_prefixes: tuple[int, ...]
+    observed_journal_prefixes: tuple[int, ...]
+    config_digests: tuple[str, ...]
+    lot_terms: tuple[LotTerms, ...]
+    relieved_lots: tuple[tuple[CitedRelievedLot, ...], ...]
+
+
 def load_app(path: str) -> dict[str, Any]:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
@@ -273,7 +302,8 @@ def _require_scopes(client: Client) -> None:
         raise Refuse(
             "refused alias scope "
             + ", ".join(sorted(aliases))
-            + " — catalogs use lots:read / statements:read / config:read"
+            + " — catalogs use books:read / lots:read / statements:read / "
+            "closes:read / config:read"
         )
     extra = client.scopes - CANONICAL_SCOPES
     if extra:
@@ -293,8 +323,9 @@ def _require_scopes(client: Client) -> None:
             "this app needs "
             + ", ".join(sorted(CANONICAL_SCOPES))
             + f"; missing {', '.join(sorted(missing))}. "
-            "lots:read is the disposals; config:read is lot-terms; "
-            "statements:read is how closed-through is read"
+            "books:read selects one permitted Personal book; "
+            "lots:read is the disposals; closes:read enforces the period fence; "
+            "config:read verifies their versions"
         )
 
 
@@ -620,6 +651,312 @@ def fetch_cites(
         transport=transport,
         error=Refuse,
     )
+
+
+def _wire_day(raw: Any) -> str | None:
+    if raw in (None, ""):
+        return None
+    if not isinstance(raw, Mapping):
+        raise Refuse("a cited calendar day is an object, not a string or timestamp")
+    try:
+        return date(int(raw["year"]), int(raw["month"]), int(raw["day"])).isoformat()
+    except (KeyError, TypeError, ValueError) as exc:
+        raise Refuse("a cited calendar day is not a valid year/month/day") from exc
+
+
+def _wire_unsigned(raw: Any, field: str) -> int:
+    if not isinstance(raw, str) or not raw or not raw.isdigit():
+        raise Refuse(f"{field} is not an unsigned integer string")
+    value = int(raw)
+    if value > I64_MAX:
+        raise Refuse(f"{field} does not fit in i64")
+    return value
+
+
+def _wire_minor(raw: Any, field: str) -> int:
+    try:
+        return _wire_unsigned(raw, field)
+    except Refuse as exc:
+        raise Refuse(f"{field} is not an unsigned i64 minor-unit amount") from exc
+
+
+def fetch_live_pack(
+    book_id: str,
+    *,
+    token: str | None = None,
+    transport: _grant.Transport | None = None,
+) -> LiveExport:
+    """Build a pack from one explicitly named, permitted Personal book."""
+    selected = book_id.removeprefix("books/").removeprefix("funds/").strip()
+    if re.fullmatch(r"[A-Za-z0-9_-]+", selected) is None:
+        raise Refuse("book_id must name exactly one books/{book} resource")
+
+    book = _grant.pull(
+        token=token,
+        path=f"books/{selected}",
+        transport=transport,
+        error=Refuse,
+    )
+    if not isinstance(book, Mapping) or book.get("kind") != "PERSONAL":
+        raise Refuse("the selected live book is not BookKind PERSONAL")
+    book_name = str(book.get("name") or "")
+    if book_name != f"books/{selected}":
+        raise Refuse("the live book response does not match the selected resource")
+    view = str(book.get("defaultView") or "").strip()
+    if re.fullmatch(r"[A-Za-z0-9_-]+", view) is None:
+        raise Refuse("the selected Personal book has no usable default view")
+
+    fund = _grant.pull(
+        token=token,
+        path=f"funds/{selected}",
+        transport=transport,
+        error=Refuse,
+    )
+    if not isinstance(fund, Mapping) or fund.get("name") != f"funds/{selected}":
+        raise Refuse("the live fund response does not match the selected book")
+    if fund.get("configDigest") != book.get("configDigest"):
+        raise Refuse("book and fund configuration citations disagree; retry the export")
+
+    raw_disposals = _grant.pull(
+        token=token,
+        path=f"funds/{selected}/views/{view}/disposals",
+        transport=transport,
+        error=Refuse,
+    )
+    rows = raw_disposals.get("disposals") if isinstance(raw_disposals, Mapping) else None
+    if not isinstance(rows, list):
+        raise Refuse("the live disposal response is not a disposal list")
+
+    raw_closes = _grant.pull(
+        token=token,
+        path=f"funds/{selected}/views/{view}/periodCloses",
+        transport=transport,
+        error=Refuse,
+    )
+    close_rows = raw_closes.get("periodCloses") if isinstance(raw_closes, Mapping) else None
+    if not isinstance(close_rows, list):
+        raise Refuse("the live period-close response is not a close list")
+    closed_dates: list[date] = []
+    for close in close_rows:
+        if not isinstance(close, Mapping):
+            raise Refuse("a live period-close cite is not a record")
+        closed = _wire_day(close.get("closedDate"))
+        if closed is None:
+            raise Refuse("a live period-close cite has no closed date")
+        closed_dates.append(date.fromisoformat(closed))
+    closed_through = max(closed_dates, default=None)
+
+    mapped: list[dict[str, Any]] = []
+    cited_terms: list[LotTerms] = []
+    names: list[str] = []
+    entries: list[str] = []
+    prefixes: list[int] = []
+    observed_prefixes: list[int] = []
+    digests: list[str] = []
+    exact_lots: list[tuple[CitedRelievedLot, ...]] = []
+    for raw in rows:
+        if not isinstance(raw, Mapping):
+            raise Refuse("a live disposal cite is not a record")
+        digest = str(raw.get("configDigest") or "").strip()
+        name = str(raw.get("name") or "").strip()
+        entry = str(raw.get("entryId") or "").strip()
+        prefix = _wire_unsigned(raw.get("journalPrefix"), "journalPrefix")
+        observed_prefix = _wire_unsigned(
+            raw.get("observedJournalPrefix"), "observedJournalPrefix"
+        )
+        expected_parent = f"funds/{selected}/views/{view}/disposals/"
+        if (
+            re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or not name.startswith(expected_parent)
+            or not name.removeprefix(expected_parent)
+            or "/" in name.removeprefix(expected_parent)
+            or not entry
+            or prefix <= 0
+            or observed_prefix < prefix
+        ):
+            raise Refuse("a live disposal is missing its resource, entry, prefix, or config cite")
+        relieved = raw.get("relievedLots")
+        if not isinstance(relieved, list) or not relieved:
+            raise Refuse("a live disposal cites no relieved lots")
+        lots: list[CitedRelievedLot] = []
+        for lot in relieved:
+            if not isinstance(lot, Mapping):
+                raise Refuse("a relieved-lot cite is not a record")
+            lots.append(
+                CitedRelievedLot(
+                    sequence=_wire_unsigned(lot.get("sequence"), "lot.sequence"),
+                    units=_wire_unsigned(lot.get("units"), "lot.units"),
+                    cost=_wire_minor(lot.get("cost"), "lot.cost"),
+                    acquired=_wire_day(lot.get("acquired")),
+                )
+            )
+        basis = _wire_minor(raw.get("basis"), "basis")
+        units = _wire_unsigned(raw.get("units"), "units")
+        if (
+            sum(lot.cost for lot in lots) != basis
+            or sum(lot.units for lot in lots) != units
+        ):
+            raise Refuse(
+                "the relieved-lot rows do not foot to the disposal basis and units"
+            )
+        declared_wash = raw.get("washWindowDeclared")
+        if not isinstance(declared_wash, bool):
+            raise Refuse("washWindowDeclared is not a boolean")
+        if not declared_wash and raw.get("washDisallowed") not in (None, "", "0"):
+            raise Refuse("washDisallowed is set without a declared wash window")
+        wash_disallowed = (
+            _wire_minor(raw.get("washDisallowed"), "washDisallowed")
+            if declared_wash
+            else 0
+        )
+        long_term_days = _wire_unsigned(raw.get("longTermDays"), "longTermDays")
+        if long_term_days == 0:
+            raise Refuse("longTermDays must be positive")
+        wash_window_days = (
+            _wire_unsigned(raw.get("washWindowDays"), "washWindowDays")
+            if declared_wash
+            else None
+        )
+        if declared_wash and wash_window_days == 0:
+            raise Refuse("washWindowDays must be positive when declared")
+        mapped.append(
+            {
+                "instrument": raw.get("instrument"),
+                "description": raw.get("memo"),
+                "disposed": _wire_day(raw.get("disposed")),
+                "acquired_dates": [lot.acquired for lot in lots],
+                "proceeds": format_minor(_wire_minor(raw.get("proceeds"), "proceeds")),
+                "basis": format_minor(basis),
+                "currency": raw.get("currencyCode"),
+                "units": units,
+                "wash": (
+                    {
+                        "disallowed_loss": format_minor(wash_disallowed),
+                        "code": "W",
+                        "sold_on": _wire_day(raw.get("disposed")),
+                        "window_days": wash_window_days,
+                    }
+                    if wash_disallowed
+                    else None
+                ),
+            }
+        )
+        names.append(name)
+        entries.append(entry)
+        prefixes.append(prefix)
+        observed_prefixes.append(observed_prefix)
+        digests.append(digest)
+        exact_lots.append(tuple(lots))
+        cited_terms.append(
+            LotTerms(
+                long_term_days=long_term_days,
+                wash_window_days=wash_window_days,
+            )
+        )
+
+    for digest in sorted(set(digests)):
+        cited = _grant.pull(
+            token=token,
+            path=f"funds/{selected}/configVersions/{digest}",
+            transport=transport,
+            error=Refuse,
+        )
+        if (
+            not isinstance(cited, Mapping)
+            or cited.get("name") != f"funds/{selected}/configVersions/{digest}"
+            or cited.get("digest") != digest
+        ):
+            raise Refuse("a disposal configuration citation could not be verified")
+
+    parts = [
+        build_pack(
+            [row],
+            book=Book(kind="PERSONAL", closed_through=closed_through),
+            client=Client("ratio-tax-pack", CANONICAL_SCOPES),
+            terms=terms,
+        )
+        for row, terms in zip(mapped, cited_terms, strict=True)
+    ]
+    pack = Pack(
+        form_8949=tuple(row for part in parts for row in part.form_8949),
+        unclassified=tuple(row for part in parts for row in part.unclassified),
+        wash_cites=tuple(row for part in parts for row in part.wash_cites),
+        # The live companion sheet below carries the aligned historical terms.
+        # This legacy singular is meaningful only for a one-configuration pack.
+        lot_terms=cited_terms[0] if cited_terms else LotTerms(),
+        ambiguities=tuple(item for part in parts for item in part.ambiguities),
+    )
+    return LiveExport(
+        pack=pack,
+        book_name=book_name,
+        disposal_names=tuple(names),
+        entry_ids=tuple(entries),
+        journal_prefixes=tuple(prefixes),
+        observed_journal_prefixes=tuple(observed_prefixes),
+        config_digests=tuple(digests),
+        lot_terms=tuple(cited_terms),
+        relieved_lots=tuple(exact_lots),
+    )
+
+
+def csv_live_citations(export: LiveExport) -> str:
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf)
+    writer.writerow(
+        (
+            "book",
+            "disposal",
+            "entry_id",
+            "journal_prefix",
+            "observed_journal_prefix",
+            "config_digest",
+        )
+    )
+    for row in zip(
+        export.disposal_names,
+        export.entry_ids,
+        export.journal_prefixes,
+        export.observed_journal_prefixes,
+        export.config_digests,
+        strict=True,
+    ):
+        writer.writerow((export.book_name, *row))
+    return buf.getvalue()
+
+
+def as_live_files(export: LiveExport) -> dict[str, str]:
+    files = as_files(export.pack)
+    files["citations.csv"] = csv_live_citations(export)
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf)
+    writer.writerow(
+        ("disposal", "config_digest", "long_term_days", "wash_window_days")
+    )
+    for name, digest, terms in zip(
+        export.disposal_names,
+        export.config_digests,
+        export.lot_terms,
+        strict=True,
+    ):
+        writer.writerow(
+            (
+                name,
+                digest,
+                terms.long_term_days,
+                "" if terms.wash_window_days is None else terms.wash_window_days,
+            )
+    )
+    files["lot_terms.csv"] = buf.getvalue()
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf)
+    writer.writerow(("disposal", "sequence", "units", "cost", "acquired"))
+    for name, lots in zip(export.disposal_names, export.relieved_lots, strict=True):
+        for lot in lots:
+            writer.writerow(
+                (name, lot.sequence, lot.units, lot.cost, lot.acquired or "")
+            )
+    files["relieved_lots.csv"] = buf.getvalue()
+    return files
 
 
 def submit(pack: Pack, *, token: str | None = None) -> None:

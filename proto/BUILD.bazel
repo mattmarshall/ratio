@@ -22,6 +22,7 @@ aip_proto_library(
         "ratio/storage/v1/bootstrap.proto",
         "ratio/storage/v1/control.proto",
         "ratio/console/v1/connect.proto",
+        "ratio/console/v1/tax_pack.proto",
         "ratio/v1/ledger.proto",
         "ratio/v1/recon.proto",
     ],

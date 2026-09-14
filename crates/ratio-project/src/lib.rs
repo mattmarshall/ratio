@@ -46,7 +46,7 @@ pub mod views;
 /// Verified journal-prefix projection checkpoints (#310).
 pub mod checkpoint;
 
-use anyhow::Result;
+use anyhow::{bail, Context as _, Result};
 use ratio_ingest::factor::Step;
 use ratio_common::intern::Text;
 use ratio_store::{FileBook, Journal, JournalEntry};
@@ -400,6 +400,52 @@ pub struct Realized {
     pub long_term: i128,
 }
 
+/// One successful sale relief, retained only for an explicit citation walk.
+///
+/// This is the proof-backed lot engine's answer, not a tax app recomputing
+/// basis from journal postings. Normal maintained projections do not retain
+/// this history; [`Projection::disposals_from_book`] opts into it for an
+/// export whose cost is expected to grow with the journal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LotDisposal {
+    pub entry_id: String,
+    pub memo: String,
+    pub config_digest: String,
+    pub prefix: usize,
+    pub posting_leg: usize,
+    pub dimension: i64,
+    pub instrument: String,
+    pub currency: Option<String>,
+    pub disposed_on: Option<relief::Day>,
+    pub units: i64,
+    pub proceeds: Option<i64>,
+    pub basis: i64,
+    pub relieved_lots: Vec<relief::Taken>,
+    pub long_term_days: i64,
+    pub wash_window_days: Option<i64>,
+    pub wash_disallowed: i64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum DisposalCapture {
+    #[default]
+    None,
+    All,
+    One { prefix: usize, posting_leg: usize },
+}
+
+impl DisposalCapture {
+    fn includes(self, prefix: usize, posting_leg: usize) -> bool {
+        match self {
+            Self::None => false,
+            Self::All => true,
+            Self::One { prefix: wanted_prefix, posting_leg: wanted_leg } => {
+                prefix == wanted_prefix && posting_leg == wanted_leg
+            }
+        }
+    }
+}
+
 impl Realized {
     /// The part of the gain no holding period could be established for.
     ///
@@ -523,6 +569,9 @@ struct LotBook {
     /// is how the write still happens, onto a lot the sale did not take.
     /// `//tla:wash_engine_check`.
     pending_wash: Vec<PendingWash>,
+    /// Populated only by an explicit disposal citation walk. Keeping it empty
+    /// on ordinary projections preserves their chart-sized clone contract.
+    disposals: Vec<LotDisposal>,
     /// ⛔ SALES THAT COULD NOT BE RELIEVED, named rather than propagated.
     ///
     /// A husk, a pro-rata split that will not divide, a holding that is short —
@@ -564,6 +613,9 @@ struct PendingWash {
     remaining_units: i64,
     remaining_loss: i64,
     original_acquired: Option<relief::Day>,
+    /// Index into `LotBook::disposals` during an explicit citation walk.
+    /// Ordinary/checkpoint projections do not retain disposal history.
+    disposal: Option<usize>,
 }
 
 /// One book of record's fold over the shared journal.
@@ -728,6 +780,8 @@ pub struct Projection {
     /// `//tla:calendar_in_side_file_check`. Which views EXIST is the active
     /// configuration's question; this map answers the other one.
     view_defs: BTreeMap<ratio_store::Digest, Result<Vec<views::ViewDef>, String>>,
+    /// Explicit batch export mode. False for every maintained projection.
+    capture_disposals: DisposalCapture,
 }
 
 /// ⛔ HAND-WRITTEN, FOR THE REASON `RuleSet`'s IS. `#[derive(Default)]` gives
@@ -750,6 +804,7 @@ impl Default for Projection {
             names: ratio_common::intern::Interner::default(),
             terms: BTreeMap::new(),
             view_defs: BTreeMap::new(),
+            capture_disposals: DisposalCapture::None,
         }
     }
 }
@@ -912,12 +967,22 @@ impl Projection {
         // THE LOOP. Reaching through `self` for each in turn would borrow the
         // whole thing twice per posting; destructuring splits the borrow at no
         // cost, which is the same reason `names` exists at all.
-        let Self { names, views, cost, view_defs, .. } = self;
+        let Self { names, views, cost, view_defs, capture_disposals, .. } = self;
         for (vid, vf) in views.iter_mut() {
             let placement = Self::placement_of(view_defs, vid, entry, trade_day);
             match placement {
                 views::Placement::Always => {
-                    Self::apply(vf, names, cost, at, entry, terms, trade_day, date_break.as_deref())
+                    Self::apply(
+                        vf,
+                        names,
+                        cost,
+                        *capture_disposals,
+                        at,
+                        entry,
+                        terms,
+                        trade_day,
+                        date_break.as_deref(),
+                    )
                 }
                 views::Placement::On(d) => {
                     // ⚠ `<=`, AND THE BOUNDARY IS ON THE DAY — an entry
@@ -925,7 +990,17 @@ impl Projection {
                     // `ViewDef::recognises` and `the_settlement_day_itself_is_
                     // recognised`.
                     if vf.recognised_through.is_some_and(|c| d <= c) {
-                        Self::apply(vf, names, cost, at, entry, terms, trade_day, date_break.as_deref())
+                        Self::apply(
+                            vf,
+                            names,
+                            cost,
+                            *capture_disposals,
+                            at,
+                            entry,
+                            terms,
+                            trade_day,
+                            date_break.as_deref(),
+                        )
                     } else {
                         vf.pending.entry(d).or_default().push(Pending {
                             at,
@@ -966,6 +1041,7 @@ impl Projection {
                                         vf,
                                         names,
                                         cost,
+                                        *capture_disposals,
                                         pe.at,
                                         &pe.entry,
                                         &pe.terms,
@@ -1096,6 +1172,7 @@ impl Projection {
         fold: &mut ViewFold,
         names: &mut ratio_common::intern::Interner,
         cost: &mut FoldCost,
+        capture_disposals: DisposalCapture,
         at: usize,
         entry: &JournalEntry,
         terms: &Result<Terms, String>,
@@ -1105,7 +1182,16 @@ impl Projection {
         if let Some(b) = date_break {
             fold.lots.breaks.push(b.to_string());
         }
-        Self::apply_lots(fold, names, cost, at, entry, terms, trade_day);
+        Self::apply_lots(
+            fold,
+            names,
+            cost,
+            capture_disposals,
+            at,
+            entry,
+            terms,
+            trade_day,
+        );
         for p in &entry.postings {
             // ⚠ `-p.amount` is not the magnitude at the floor: `-i64::MIN`
             // overflows. Widened first, it does not.
@@ -1302,6 +1388,68 @@ impl Projection {
         self.cost
     }
 
+    /// Replay a book explicitly to cite every successful disposal in one view.
+    ///
+    /// This batch read intentionally pays O(journal) and retains O(disposals)
+    /// for the duration of the call. Maintained projections remain chart-sized
+    /// and checkpoints remain disposable acceleration rather than tax records.
+    pub fn disposals_from_book(
+        book: &FileBook,
+        view: &str,
+    ) -> Result<AsOf<Vec<LotDisposal>>> {
+        let mut projection = Self { capture_disposals: DisposalCapture::All, ..Self::default() };
+        projection.follow_book(book)?;
+        let fold = projection.fold_of(view)?;
+        if !fold.lots.breaks.is_empty() {
+            bail!(
+                "disposal citations refuse while the selected view has lot breaks: {}",
+                fold.lots.breaks.join("; ")
+            );
+        }
+        let mut disposals = fold.lots.disposals.clone();
+        disposals.sort_by_key(|d| (d.prefix, d.posting_leg));
+        Ok(AsOf {
+            value: disposals,
+            prefix: projection.at,
+            view: view.to_string(),
+            through: Self::through_of(fold),
+        })
+    }
+
+    /// Replay a book while retaining only one named disposal citation.
+    /// Later entries still run so forward wash writes remain observable.
+    pub fn disposal_from_book(
+        book: &FileBook,
+        view: &str,
+        prefix: usize,
+        posting_leg: usize,
+    ) -> Result<AsOf<LotDisposal>> {
+        let mut projection = Self {
+            capture_disposals: DisposalCapture::One { prefix, posting_leg },
+            ..Self::default()
+        };
+        projection.follow_book(book)?;
+        let fold = projection.fold_of(view)?;
+        if !fold.lots.breaks.is_empty() {
+            bail!(
+                "disposal citations refuse while the selected view has lot breaks: {}",
+                fold.lots.breaks.join("; ")
+            );
+        }
+        let disposal = fold
+            .lots
+            .disposals
+            .first()
+            .cloned()
+            .with_context(|| format!("no disposal at journal prefix {prefix}, posting leg {posting_leg}"))?;
+        Ok(AsOf {
+            value: disposal,
+            prefix: projection.at,
+            view: view.to_string(),
+            through: Self::through_of(fold),
+        })
+    }
+
     /// The terms a stored configuration sets for the lot engine.
     ///
     /// ⚠ THE ERROR IS CARRIED, NOT RAISED. A configuration that cannot be read
@@ -1447,6 +1595,7 @@ impl Projection {
         fold: &mut ViewFold,
         names: &mut ratio_common::intern::Interner,
         cost: &mut FoldCost,
+        capture_disposals: DisposalCapture,
         at: usize,
         entry: &JournalEntry,
         terms: &Result<Terms, String>,
@@ -1479,7 +1628,7 @@ impl Projection {
             (sales == 1 && !legs.is_empty()).then(|| legs.iter().sum())
         });
 
-        for p in &entry.postings {
+        for (posting_leg, p) in entry.postings.iter().enumerate() {
             let (Some(inst), Some(qty)) = (&p.instrument, p.quantity) else {
                 continue;
             };
@@ -1523,6 +1672,7 @@ impl Projection {
                     lot.seq,
                     qty,
                     trade_day,
+                    &mut fold.lots.disposals,
                 ) {
                     fold.lots.breaks.push(format!("{}: {e:#}", entry.id));
                 }
@@ -1665,6 +1815,42 @@ impl Projection {
                             *fold.lots.short_term.entry(ccy.clone()).or_default() += short;
                             *fold.lots.long_term.entry(ccy).or_default() += long;
                         }
+                        let disposal = if capture_disposals.includes(at + 1, posting_leg) {
+                            // Proceeds are the journal's cash leg. Rebuilding
+                            // them from engine basis and posted gain is wrong
+                            // precisely when the basis reconciliation breaks.
+                            let proceeds = terms.roles.and_then(|roles| {
+                                let mut cash = entry.postings.iter().filter(|leg| {
+                                    leg.dim == roles.cash
+                                        && leg.currency == p.currency
+                                        && leg.amount >= 0
+                                });
+                                let first = cash.next()?;
+                                cash.next().is_none().then_some(first.amount)
+                            });
+                            let index = fold.lots.disposals.len();
+                            fold.lots.disposals.push(LotDisposal {
+                                entry_id: entry.id.clone(),
+                                memo: entry.memo.clone(),
+                                config_digest: entry.config.as_str().to_string(),
+                                prefix: at + 1,
+                                posting_leg,
+                                dimension: p.dim,
+                                instrument: inst.clone(),
+                                currency: p.currency.clone(),
+                                disposed_on: trade_day,
+                                units: -qty,
+                                proceeds,
+                                basis: r.cost,
+                                relieved_lots: r.taken.clone(),
+                                long_term_days: terms.long_term_days,
+                                wash_window_days: terms.wash_window_days,
+                                wash_disallowed: attached.as_ref().map_or(0, |w| w.attached),
+                            });
+                            Some(index)
+                        } else {
+                            None
+                        };
                         match (attached, trade_day, terms.wash_window_days) {
                             (Some(w), Some(sold_on), Some(window))
                                 if w.remaining_units > 0 && w.remaining_loss < 0 =>
@@ -1679,6 +1865,7 @@ impl Projection {
                                         terms.wash_keep_holding_period == Some(true),
                                         r.taken.iter().filter_map(|t| t.acquired).min(),
                                     ),
+                                    disposal,
                                 })
                             }
                             _ => None,
@@ -2291,6 +2478,7 @@ fn match_pending_washes(
     replacement_seq: u64,
     bought_units: i64,
     buy_day: Option<relief::Day>,
+    disposals: &mut [LotDisposal],
 ) -> Result<()> {
     let Some(buy_day) = buy_day else {
         return Ok(());
@@ -2305,7 +2493,7 @@ fn match_pending_washes(
             leftover.push(w);
             continue;
         }
-        let (_, remaining_units, remaining_loss) = relief::wash_purchase(
+        let (attached, remaining_units, remaining_loss) = relief::wash_purchase(
             held,
             replacement_seq,
             units_left,
@@ -2313,6 +2501,20 @@ fn match_pending_washes(
             w.remaining_units,
             w.original_acquired,
         )?;
+        if attached > 0 {
+            if let Some(index) = w.disposal {
+                let cited = disposals.get_mut(index).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "wash continuation cites missing disposal index {index}"
+                    )
+                })?;
+                cited.wash_disallowed = ratio_common::checked::add(
+                    cited.wash_disallowed,
+                    attached,
+                    "the disposal's wash adjustment",
+                )?;
+            }
+        }
         units_left -= w.remaining_units - remaining_units;
         w.remaining_units = remaining_units;
         w.remaining_loss = remaining_loss;
@@ -3741,6 +3943,81 @@ mod tests {
         let p = Projection::of_book(&d).unwrap();
         assert_eq!(p.relieved_cost(B).unwrap(), 2000 + 900);
         assert!(p.lots_of(B, 1, "vti").unwrap().value.is_empty());
+    }
+
+    #[test]
+    fn a_disposal_citation_keeps_the_relief_and_later_wash_write() {
+        let d = book_with_wash("disposal-cite", 30, "fifo");
+        buy_on(&d, "orig", 100, 2000, "2026-01-01");
+        dispose(&d, "sale", 100, 1000, "2026-06-15");
+        // The forward half of the wash window lands after the sale. A citation
+        // that captured only sale-time state would silently omit this $4.00.
+        buy_on(&d, "replacement", 40, 500, "2026-06-20");
+
+        let book = FileBook::open(&d).unwrap();
+        let cited = Projection::disposals_from_book(&book, B).unwrap();
+        assert_eq!(cited.prefix, 3);
+        assert_eq!(cited.value.len(), 1);
+        let sale = &cited.value[0];
+        assert_eq!(sale.entry_id, "sale");
+        assert_eq!(sale.prefix, 2, "the cite names the sale's journal prefix");
+        assert_eq!(sale.posting_leg, 0);
+        assert_eq!(sale.instrument, "vti");
+        assert_eq!(sale.units, 100);
+        assert_eq!(sale.basis, 2000);
+        assert_eq!(sale.proceeds, Some(1000));
+        assert_eq!(sale.disposed_on, Some(day("2026-06-15")));
+        assert_eq!(sale.relieved_lots.len(), 1);
+        assert_eq!(sale.relieved_lots[0].acquired, Some(day("2026-01-01")));
+        assert_eq!(sale.long_term_days, 365);
+        assert_eq!(sale.wash_window_days, Some(30));
+        assert_eq!(sale.wash_disallowed, 400);
+        assert!(!sale.config_digest.is_empty());
+
+        let one = Projection::disposal_from_book(&book, B, 2, 0).unwrap();
+        assert_eq!(one.prefix, 3);
+        assert_eq!(one.value, *sale);
+    }
+
+    #[test]
+    fn disposal_citations_refuse_a_basis_break() {
+        let d = book_with_wash("disposal-basis-break", 30, "fifo");
+        buy_on(&d, "orig", 100, 2000, "2026-01-01");
+        let mut book = FileBook::open(&d).unwrap();
+        let config = book.active().unwrap().unwrap();
+        book.append(&JournalEntry {
+            id: "broken-sale".into(),
+            memo: "posted basis disagrees with relief".into(),
+            config,
+            postings: relief::sale_postings(ROLES, None, "vti", 100, 1900, 1000).unwrap(),
+            trade_date: Some("2026-06-15".into()),
+            announcement: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+            kind: None,
+        })
+        .unwrap();
+        drop(book);
+
+        let book = FileBook::open(&d).unwrap();
+        let error = Projection::disposals_from_book(&book, B).unwrap_err().to_string();
+        assert!(error.contains("lot breaks"), "{error}");
+        assert!(error.contains("posted 1900 of basis"), "{error}");
+    }
+
+    #[test]
+    fn disposal_citations_refuse_an_inexact_wash_write() {
+        let d = book_with_wash("disposal-wash-break", 30, "fifo");
+        buy_on(&d, "orig", 3, 3, "2026-01-01");
+        dispose(&d, "sale", 3, 2, "2026-06-15");
+        buy_on(&d, "replacement", 1, 1, "2026-06-20");
+
+        let book = FileBook::open(&d).unwrap();
+        let error = Projection::disposals_from_book(&book, B).unwrap_err().to_string();
+        assert!(error.contains("lot breaks"), "{error}");
+        assert!(error.contains("divide"), "{error}");
     }
 
     #[test]
