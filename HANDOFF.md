@@ -176,10 +176,12 @@ shut rather than inventing USD. It remains a transfer with no
 instrument or quantity, not the Investment `/trade` ticket. This
 file does not close #178. The fixed-purpose `activate Personal FX
 walkthrough` workflow (#344) is the reviewed production election for
-`personal-fx-walkthrough`: it preserves the active TOML, refuses a
-conflicting `[personal] currencies`, validates the successor, stages it
-by digest, and conditionally commits `USD / EUR / GBP` through durable
-control under GitHub OIDC. It accepts no book or currency input and never
+`personal-fx-walkthrough`: it requires the published kind to be Personal,
+preserves every active TOML byte outside the added election, treats an empty
+list as unset, and refuses a conflicting `[personal] currencies`. It validates
+the successor against the published chart before staging it by digest and
+conditionally commits `USD / EUR / GBP` through durable control under GitHub
+OIDC. It accepts no book or currency input and never
 prints the protected WorkOS subject. `connect/ecb-rates/` is the first bounded
 rate provider (#313): the official ECB daily EXR observation is
 normalized with Decimal / round-half-even into the existing

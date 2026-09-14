@@ -2784,10 +2784,13 @@ What landed is the declaration, not a Personal FX method:
 - Production activation: the fixed-purpose GitHub OIDC workflow on #344
   may add exactly `["USD", "EUR", "GBP"]` to the existing
   `personal-fx-walkthrough` configuration. It accepts neither a book nor a
-  currency-list input, refuses an existing conflicting election, validates
-  the preserved successor, stages it by content digest, and conditionally
-  claims the reviewed control predecessor. This is the narrow operator path
-  for the #178 walkthrough, not a general `config:promote` Connect scope.
+  currency-list input, verifies the published book is Personal, treats an
+  empty currency list as unset, and refuses an existing conflicting election.
+  A source-preserving TOML edit changes only that election; the complete
+  successor must still pass the published chart before it is staged by content
+  digest and conditionally claims the reviewed control predecessor. This is
+  the narrow operator path for the #178 walkthrough, not a general
+  `config:promote` Connect scope.
 
 **What this is NOT:**
 

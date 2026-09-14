@@ -1400,6 +1400,14 @@ fn split_book_flag(args: &[String]) -> Result<(Vec<String>, PathBuf)> {
             positional.push(a.clone());
         }
     }
+    let fixed_personal_fx = positional.len() == 4
+        && positional[0] == "config"
+        && positional[1] == "activate-personal-fx"
+        && positional[2] == "--operation";
+    ensure!(
+        book.is_none() || !fixed_personal_fx,
+        "activate-personal-fx accepts no --book input"
+    );
     let book = book
         .or_else(|| std::env::var_os("RATIO_BOOK").map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from("book"));
@@ -1772,6 +1780,72 @@ fn membership_control_published(
 const PERSONAL_FX_BOOK: &str = "personal-fx-walkthrough";
 const PERSONAL_FX_CURRENCIES: [&str; 3] = ["USD", "EUR", "GBP"];
 
+fn personal_fx_array(values: &mut toml_edit::Array) -> Result<()> {
+    let exact = values.len() == PERSONAL_FX_CURRENCIES.len()
+        && values
+            .iter()
+            .zip(PERSONAL_FX_CURRENCIES)
+            .all(|(value, code)| value.as_str() == Some(code));
+    ensure!(
+        values.is_empty() || exact,
+        "[personal] currencies already declares a conflicting election"
+    );
+    if values.is_empty() {
+        for code in PERSONAL_FX_CURRENCIES {
+            values.push(code);
+        }
+    }
+    Ok(())
+}
+
+fn fixed_personal_fx_array() -> toml_edit::Array {
+    let mut election = toml_edit::Array::new();
+    for code in PERSONAL_FX_CURRENCIES {
+        election.push(code);
+    }
+    election
+}
+
+fn personal_fx_successor(previous: &str) -> Result<String> {
+    let mut document = previous
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|_| anyhow::anyhow!("active configuration is not valid TOML"))?;
+    if !document.contains_key("personal") {
+        document["personal"] = toml_edit::Item::Table(toml_edit::Table::new());
+    }
+    let personal = document.get_mut("personal").expect("inserted above");
+    if let Some(table) = personal.as_table_mut() {
+        if let Some(current) = table.get_mut("currencies") {
+            personal_fx_array(
+                current
+                    .as_array_mut()
+                    .context("[personal] currencies is not an array")?,
+            )?;
+        } else {
+            table.insert(
+                "currencies",
+                toml_edit::Item::Value(toml_edit::Value::Array(fixed_personal_fx_array())),
+            );
+        }
+    } else if let Some(table) = personal.as_inline_table_mut() {
+        if let Some(current) = table.get_mut("currencies") {
+            personal_fx_array(
+                current
+                    .as_array_mut()
+                    .context("[personal] currencies is not an array")?,
+            )?;
+        } else {
+            table.insert(
+                "currencies",
+                toml_edit::Value::Array(fixed_personal_fx_array()),
+            );
+        }
+    } else {
+        bail!("[personal] is not a table");
+    }
+    Ok(document.to_string())
+}
+
 fn activate_personal_fx_control_with(
     objects: std::sync::Arc<dyn ratio_store::ObjectStore>,
     operation_id: &str,
@@ -1784,6 +1858,10 @@ fn activate_personal_fx_control_with(
     let (_, bootstrap) = ratio_store::bootstrap::BootstrapStore::new(objects.clone())
         .get(PERSONAL_FX_BOOK)?
         .context("durable book publication is absent")?;
+    ensure!(
+        bootstrap.kind == ratio_console::book::BookKind::Personal.proto(),
+        "Personal FX activation requires a Personal book"
+    );
     let store = ratio_store::control::ControlStore::new(objects);
     let state = store.read(PERSONAL_FX_BOOK)?;
     let active = match store.opening_config(&bootstrap, &state.active) {
@@ -1792,31 +1870,19 @@ fn activate_personal_fx_control_with(
     };
     let previous = String::from_utf8(active)
         .context("active configuration is not UTF-8")?;
-    let mut document: toml::Table = previous
-        .parse()
-        .context("active configuration is not TOML")?;
-    let personal = document
-        .entry("personal")
-        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
-        .as_table_mut()
-        .context("[personal] is not a table")?;
-    let election = toml::Value::Array(
-        PERSONAL_FX_CURRENCIES
-            .iter()
-            .map(|code| toml::Value::String((*code).into()))
-            .collect(),
+    let next = personal_fx_successor(&previous)?;
+    let rules = RuleSet::from_toml(&next)
+        .map_err(|_| anyhow::anyhow!("Personal FX configuration is invalid"))?;
+    let chart: Vec<Account> =
+        serde_json::from_slice(&bootstrap.chart).context("published chart is invalid")?;
+    let errors: Vec<_> = check(&rules, &chart)
+        .into_iter()
+        .filter(|finding| !finding.is_question)
+        .collect();
+    ensure!(
+        errors.is_empty(),
+        "Personal FX configuration does not check against the published chart"
     );
-    if let Some(current) = personal.get("currencies") {
-        ensure!(
-            current == &election,
-            "[personal] currencies already declares a conflicting election"
-        );
-    } else {
-        personal.insert("currencies".into(), election);
-    }
-    let next = toml::to_string_pretty(&document)
-        .context("serializing the Personal FX configuration")?;
-    RuleSet::from_toml(&next).context("Personal FX configuration is invalid")?;
     let digest = store.stage_config(next.as_bytes())?;
     let operation = ratio_store::control::ControlOperation {
         format_version: 1,
@@ -3151,6 +3217,20 @@ mod tests {
     }
 
     #[test]
+    fn personal_fx_activation_refuses_a_book_argument_before_dispatch() {
+        let args = vec![
+            "config".into(),
+            "activate-personal-fx".into(),
+            "--operation".into(),
+            "op-1".into(),
+            "--book".into(),
+            "/tmp/wrong".into(),
+        ];
+        let error = split_book_flag(&args).unwrap_err().to_string();
+        assert!(error.contains("accepts no --book input"), "{error}");
+    }
+
+    #[test]
     fn init_kind_personal_seeds_the_brokerage_templates_and_no_journal() {
         let dir = std::env::temp_dir().join("ratio-init-kind-personal-brokerage");
         let _ = std::fs::remove_dir_all(&dir);
@@ -3680,20 +3760,29 @@ weight = -1
     fn published_personal_fx(
         config: &[u8],
     ) -> std::sync::Arc<dyn ratio_store::ObjectStore> {
+        published_personal_fx_with(
+            config,
+            ratio_console::book::BookKind::Personal,
+            ratio_console::book::chart_for(ratio_console::book::BookKind::Personal),
+        )
+    }
+
+    fn published_personal_fx_with(
+        config: &[u8],
+        kind: ratio_console::book::BookKind,
+        chart: Vec<Account>,
+    ) -> std::sync::Arc<dyn ratio_store::ObjectStore> {
         use ratio_store::bootstrap::{BookBootstrap, BootstrapStore, CreatorGrant};
         use ratio_store::Digest;
         let objects: std::sync::Arc<dyn ratio_store::ObjectStore> =
             std::sync::Arc::new(ratio_store::MemoryStore::new());
-        let chart = serde_json::to_vec(&ratio_console::book::chart_for(
-            ratio_console::book::BookKind::Personal,
-        ))
-        .unwrap();
+        let chart = serde_json::to_vec(&chart).unwrap();
         let config_digest = Digest::of(config).as_str().to_string();
         BootstrapStore::new(objects.clone())
             .publish(&BookBootstrap {
                 format_version: 1,
                 book_id: PERSONAL_FX_BOOK.into(),
-                kind: 1,
+                kind: kind.proto(),
                 display_name: "Personal FX walkthrough".into(),
                 chart_digest: Digest::of(&chart).as_str().into(),
                 chart,
@@ -3713,9 +3802,8 @@ weight = -1
 
     #[test]
     fn personal_fx_activation_preserves_the_configuration_and_commits_the_fixed_election() {
-        let objects = published_personal_fx(
-            b"rules = []\n\n[[template]]\nid = \"keep-me\"\nreads = \"csv\"\n",
-        );
+        let previous = b"# operator comment\nrules = []\n\n[[template]] # keep this spacing\nid = \"keep-me\"\nreads = \"csv\"\n";
+        let objects = published_personal_fx(previous);
         let receipt = activate_personal_fx_control_with(
             objects.clone(),
             "personal-fx-activation-1",
@@ -3727,6 +3815,14 @@ weight = -1
         let store = ratio_store::control::ControlStore::new(objects);
         let state = store.read(PERSONAL_FX_BOOK).unwrap();
         let text = String::from_utf8(store.config(&state.active).unwrap()).unwrap();
+        assert_eq!(
+            text,
+            format!(
+                "{}\n[personal]\ncurrencies = [\"USD\", \"EUR\", \"GBP\"]\n",
+                String::from_utf8_lossy(previous)
+            ),
+            "only the fixed election may be added to the active bytes"
+        );
         let document: toml::Table = text.parse().unwrap();
         assert_eq!(
             document["personal"]["currencies"],
@@ -3754,6 +3850,122 @@ weight = -1
         .unwrap_err()
         .to_string();
         assert!(error.contains("conflicting election"), "{error}");
+        assert_eq!(
+            ratio_store::control::ControlStore::new(objects)
+                .read(PERSONAL_FX_BOOK)
+                .unwrap()
+                .revision,
+            0
+        );
+    }
+
+    #[test]
+    fn personal_fx_activation_treats_an_empty_currency_array_as_unset() {
+        let previous = b"rules = []\n[personal]\n# election follows\ncurrencies = [] # intentionally unset\n";
+        let objects = published_personal_fx(previous);
+        activate_personal_fx_control_with(
+            objects.clone(),
+            "personal-fx-activation-empty",
+            "user_1",
+            "github-actions-oidc",
+        )
+        .unwrap();
+        let store = ratio_store::control::ControlStore::new(objects);
+        let state = store.read(PERSONAL_FX_BOOK).unwrap();
+        let text = String::from_utf8(store.config(&state.active).unwrap()).unwrap();
+        assert!(text.contains("# election follows"), "{text}");
+        assert!(text.contains("# intentionally unset"), "{text}");
+        assert!(text.contains("currencies = [\"USD\", \"EUR\", \"GBP\"]"), "{text}");
+    }
+
+    #[test]
+    fn personal_fx_activation_preserves_an_inline_personal_table() {
+        let previous = b"# keep\nrules = []\npersonal = { currencies = [] } # inline stays inline\n";
+        let objects = published_personal_fx(previous);
+        activate_personal_fx_control_with(
+            objects.clone(),
+            "personal-fx-activation-inline",
+            "user_1",
+            "github-actions-oidc",
+        )
+        .unwrap();
+        let store = ratio_store::control::ControlStore::new(objects);
+        let state = store.read(PERSONAL_FX_BOOK).unwrap();
+        let text = String::from_utf8(store.config(&state.active).unwrap()).unwrap();
+        assert_eq!(
+            text,
+            "# keep\nrules = []\npersonal = { currencies = [\"USD\", \"EUR\", \"GBP\"] } # inline stays inline\n"
+        );
+    }
+
+    #[test]
+    fn personal_fx_activation_refuses_a_non_personal_publication() {
+        let objects = published_personal_fx_with(
+            b"rules = []\n",
+            ratio_console::book::BookKind::Investment,
+            ratio_console::book::chart_for(ratio_console::book::BookKind::Investment),
+        );
+        let error = activate_personal_fx_control_with(
+            objects.clone(),
+            "personal-fx-wrong-kind",
+            "user_1",
+            "github-actions-oidc",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("requires a Personal book"), "{error}");
+        assert_eq!(
+            ratio_store::control::ControlStore::new(objects)
+                .read(PERSONAL_FX_BOOK)
+                .unwrap()
+                .revision,
+            0
+        );
+    }
+
+    #[test]
+    fn personal_fx_activation_refuses_rules_outside_the_published_chart() {
+        let config = b"[[rule]]\nid = \"bad-chart\"\nkind = \"trade\"\n[[rule.posting]]\naccount = 99999\nweight = 1\n[[rule.posting]]\naccount = 1\nweight = -1\n";
+        let objects = published_personal_fx_with(
+            config,
+            ratio_console::book::BookKind::Personal,
+            ratio_console::book::chart_for(ratio_console::book::BookKind::Personal),
+        );
+        let error = activate_personal_fx_control_with(
+            objects.clone(),
+            "personal-fx-bad-chart",
+            "user_1",
+            "github-actions-oidc",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("published chart"), "{error}");
+        assert!(!error.contains("bad-chart"), "rule IDs must not reach public logs: {error}");
+        assert!(!error.contains("Cash"), "chart names must not reach public logs: {error}");
+        assert_eq!(
+            ratio_store::control::ControlStore::new(objects)
+                .read(PERSONAL_FX_BOOK)
+                .unwrap()
+                .revision,
+            0
+        );
+    }
+
+    #[test]
+    fn personal_fx_activation_redacts_invalid_configuration_details() {
+        let objects = published_personal_fx(
+            b"rules = []\n[personal.envelope]\nsensitive-invalid-value = 1\n",
+        );
+        let error = activate_personal_fx_control_with(
+            objects.clone(),
+            "personal-fx-invalid-config",
+            "user_1",
+            "github-actions-oidc",
+        )
+        .unwrap_err()
+        .to_string();
+        assert_eq!(error, "Personal FX configuration is invalid");
+        assert!(!error.contains("sensitive-invalid-value"), "{error}");
         assert_eq!(
             ratio_store::control::ControlStore::new(objects)
                 .read(PERSONAL_FX_BOOK)
