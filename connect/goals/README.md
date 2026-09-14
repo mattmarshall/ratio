@@ -8,13 +8,13 @@ Goals and what-if scenarios live **here**. They do not live in
 `ratio watch`, the operations console, or a new kernel RPC. Sheet,
 bridge, and cash-flow stay core.
 
-This is a scaffold. A green overlay is not a live Connect token and
-not a cash forecast.
+The registered public-PKCE app and live sheet reader are the activation path.
+A green overlay is still not a cash forecast or permission to post.
 
 ## What landed
 
 - Scope declaration using the frozen catalog names only:
-  `statements:read`, `journals:post`.
+  `books:read`, `statements:read`, `journals:post`.
 - The issue body still says `journal:append`. That string is an alias
   and is refused. Canonical: `journals:post`
   ([docs/connect-scopes.md](../../docs/connect-scopes.md)).
@@ -39,7 +39,19 @@ not a cash forecast.
   Money is minor units, split on the point, never a float.
 - Required monthly savings and a FIRE number refuse. This is not a
   cash forecast.
-- `fetch_statements()` and `deliver()` call ConnectApiUrl. first-party Connect apps call ConnectApiUrl with a verified Connect access token. Membership still required.
+- `fetch_live_statement()` verifies one permitted Personal Book, reads its
+  period `sheet-*` account resources, and retains the exact book, filter, and
+  account names. A sheet with no posted asset or liability stays unset; an
+  observed zero remains a figure. Exact Book metadata is read before and after
+  the sheet; a changed view, currency, or configuration refuses. The account
+  response does not carry a configuration pin, so the app does not attach the
+  surrounding Book digest to the account fold.
+- `evaluate_live_goal()` requires that provenance wrapper and returns the goal
+  result with its exact book, filter, and account resource names. The fixture
+  evaluator remains available for deterministic unit tests.
+- `fetch_statements()` and `deliver()` call ConnectApiUrl. First-party Connect
+  apps call ConnectApiUrl with a verified Connect access token. Membership
+  remains required.
 
 `bazel test //connect/goals:goals_test` is the gate.
 
@@ -60,9 +72,10 @@ Registration notes (WorkOS Dashboard → Applications → Connect):
 |---|---|
 | Type | Public OAuth native client with PKCE S256 (not M2M) |
 | Trust | First-party — Ratio deploys this tree |
+| Client | `client_01M287GBM6W5NB79T9ZQG7M741` (public; no client secret) |
 | Redirect URI | `http://127.0.0.1:8765/callback` exactly. WorkOS permits loopback HTTP for production native clients. |
 | Credentials | Public `client_id` only. No client secret is created, stored, printed, or sent. |
-| Requested scopes | `statements:read` `journals:post` — plus `openid` if the library requires an OIDC discovery scope. Do not request `journal:append`. `journals:post` is only exercised on opt-in. |
+| Requested scopes | `books:read` `statements:read` `journals:post` — plus `openid` as the protocol scope. Do not request `journal:append`. `journals:post` is only exercised on opt-in. |
 | Issuer / JWKS | WorkOS Connect access tokens mint `iss` as the AuthKit custom domain (`https://auth.ratio.marsh.build`). API Gateway JWT verifies them on `ConnectApiUrl` `/v1` (audience = Ratio WorkOS project client). AuthKit session tokens stay on DemoUrl. |
 
 A third-party flag would prompt AuthKit consent and bind the app to an
@@ -74,13 +87,12 @@ M2M (`client_credentials`) is the wrong shape here. There is no user
 on an M2M token, and a scenario journal that posted without one would
 attribute a what-if to a client secret.
 
-## Grant contract this app honors (and cannot yet exercise)
+## Grant contract this app honors
 
 From the catalog, restated so a later RPC does not "just" add them:
 
-1. Token is a Connect access token, verified against the environment
-   JWKS — leftover on #151.
-2. AuthKit `sub` is in the book's membership — leftover on #151.
+1. Token is a Connect access token, verified against the environment JWKS.
+2. AuthKit `sub` is in the book's membership.
 3. Action is in the catalog. Aliases refused.
 4. `journals:post` passes the per-`client_id` allowlist. Empty refuses.
    The write is also gated on opt-in.
@@ -88,8 +100,9 @@ From the catalog, restated so a later RPC does not "just" add them:
    on a Personal book is refused even if a client listed it.
 6. Closed-through, conservation, bounds. A scope does not waive a proof.
 
-Until Dashboard registration lands, a live walk-through stays leftover. `fetch_statements()` and `deliver()` call ConnectApiUrl; they are the
-honesty: they refuse with the leftover named.
+The WorkOS application is registered. `fetch_live_statement()` verifies the
+BookKind and selected resource before measuring a goal; `deliver()` remains
+behind the explicit opt-in and the API's client-template policy.
 
 ## What a walk-through can and cannot show
 
@@ -99,26 +112,21 @@ projected net worth, a card charge that does not move cash, a closed
 March refusing an opted-in 15 March post, an empty allowlist refusing
 everything, and `journal:append` being rejected as a scope.
 
-It cannot show a live walk-through without WorkOS dashboard registration, a live OAuth grant, a
-cash forecast, a FIRE number, or a posting that reached `/v1`.
+It cannot show a cash forecast, a FIRE number, or treat an overlay as a posting.
 BookKind PERSONAL chrome is unchanged. `screensFor` is not forked.
 Sheet, bridge, and cash-flow stay the core cites.
 
-## Leftovers — this does not close #168
+## Remaining acceptance
 
-1. **WorkOS dashboard registration**
-   (#150 / leftover on issue 22). API Gateway JWT verifies Connect
-   tokens on ConnectApiUrl. In-process `/v1` accepts catalog scopes
-   after membership. Dashboard registration, redirect, and a live
-   token stay leftover. Write-route actor binding landed (#151).
-2. **`journals:post` allowlist enforced at `ApplyEvent`** — leftover
-   on #150. This app checks its own list; the kernel does not yet key
-   one by `client_id`.
+1. **Live cited goal.** Complete public PKCE, read one named Personal sheet,
+   and retain redacted goal, unset, and refusal evidence on #168.
+2. **Scenario writes remain opt-in.** The API client-template fence is built.
+   No scenario is posted during activation without a separate explicit user
+   instruction; a disallowed template and a closed date must refuse.
 3. **#150's read-only reference skeleton** (`books:read` +
    `statements:read` only) is a different app. This one requests
-   `journals:post` for opt-in scenario posts and leftover is WorkOS dashboard registration, not a missing `/v1` accept path.
+   `journals:post` for opt-in scenario posts.
 
-Does not close #165 (grant-path + live bank OAuth leftovers stay
-on #165). Does not close #166 (grant path, IRS e-file, #9 leftover).
+Does not close #165 (live bank OAuth stays on #165). Does not reopen #166.
 Does not close #150. Does not grow `ratio watch` or Console chrome
 for goals product UI.

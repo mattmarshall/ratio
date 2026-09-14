@@ -22,13 +22,21 @@ spec.loader.exec_module(oauth)
 
 class OAuthTest(unittest.TestCase):
     def app(self, manifest: pathlib.Path | None = None, **overrides):
+        selected = manifest or MANIFESTS[0]
+        declared = json.loads(selected.read_text())["workos_connect"].get("client_id")
         return oauth.application_from_manifest(
-            manifest or MANIFESTS[0],
-            client_id=overrides.get("client_id", "client_personal_test"),
+            selected,
+            client_id=overrides.get("client_id", declared or "client_personal_test"),
             issuer=overrides.get("issuer", oauth.DEFAULT_ISSUER),
             redirect_uri=overrides.get("redirect_uri", oauth.DEFAULT_REDIRECT_URI),
             allow_loopback_issuer=overrides.get("allow_loopback_issuer", False),
         )
+
+    def test_a_declared_client_id_is_the_runtime_client_id(self):
+        goals = next(path for path in MANIFESTS if path.parent.name == "goals")
+        with self.assertRaises(oauth.Refuse) as ctx:
+            self.app(goals, client_id="client_wrong")
+        self.assertIn("exactly match", str(ctx.exception))
 
     def test_every_personal_app_declares_one_public_pkce_shape_and_exact_scopes(self):
         for manifest in MANIFESTS:

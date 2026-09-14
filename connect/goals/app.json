@@ -6,12 +6,14 @@
     "application_type": "oauth",
     "trust": "first-party",
     "flow": "authorization_code",
+    "client_id": "client_01M287GBM6W5NB79T9ZQG7M741",
     "public_client": true,
     "uses_pkce": true,
     "redirect_uri": "http://127.0.0.1:8765/callback",
     "docs": "https://workos.com/docs/authkit/connect/oauth",
     "catalog": "docs/connect-scopes.md",
     "scopes": [
+      "books:read",
       "statements:read",
       "journals:post"
     ],
@@ -21,7 +23,7 @@
     ]
   },
   "journals_post_allowlist": {
-    "client_id": "client_ratio_goals",
+    "client_id": "client_01M287GBM6W5NB79T9ZQG7M741",
     "templates": [
       "living_expense",
       "household_income",
@@ -43,6 +45,6 @@
   },
   "grant_path": {
     "status": "built",
-    "note": "first-party Connect apps call ConnectApiUrl with a verified Connect access token (authorization_code or client_credentials against WorkOS Connect). Membership still required. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. leftover #22: WorkOS dashboard registration, DEMO_MEMBERS naming a live WorkOS sub, unused Cognito CloudFormation resources. Write-route actor binding landed (#151). This file does not reopen #151. This file leaves #150 and #168 open."
+    "note": "The dedicated public PKCE WorkOS application is registered in Ratio production and calls ConnectApiUrl with a verified authorization_code access token. Membership remains required. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. Write-route actor binding and the client-template API fence are delivered. Live cited goal evidence remains on #168."
   }
 }

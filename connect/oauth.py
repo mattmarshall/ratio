@@ -140,6 +140,10 @@ def application_from_manifest(
     named = client_id.strip()
     if not named or not named.startswith("client_"):
         raise Refuse("a WorkOS Connect public client_id is required")
+    declared_client = connect.get("client_id")
+    if declared_client is not None:
+        if not isinstance(declared_client, str) or declared_client != named:
+            raise Refuse("runtime client_id must exactly match the app manifest")
     return Application(
         client_id=named,
         scopes=scopes,

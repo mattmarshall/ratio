@@ -36,7 +36,7 @@ number are refused — PLAN already named those as cannot-show.
 ⭐ THE GRANT PATH CALLS CONNECTAPIURL. `fetch_statements` and
 `deliver` present a verified Connect access token against the
 Connect HTTP API. Membership is still required. A cash forecast
-stays refused. WorkOS dashboard registration stays leftover #22.
+stays refused. The dedicated public-PKCE application is registered.
 
 ⚠ CLOSED-THROUGH IS A GATE ON WRITES. A dated opt-in post on or
 before the book's closed-through day refuses the batch. An overlay
@@ -45,7 +45,9 @@ is not a mutation.
 
 from __future__ import annotations
 
+import calendar
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Iterable, Mapping, Sequence
@@ -56,7 +58,7 @@ import grant as _grant
 I64_MIN = -(2**63)
 I64_MAX = 2**63 - 1
 
-CANONICAL_SCOPES = frozenset({"statements:read", "journals:post"})
+CANONICAL_SCOPES = frozenset({"books:read", "statements:read", "journals:post"})
 READ_SCOPES = frozenset({"statements:read"})
 REFUSED_ALIASES = frozenset({"journal:append", "journal:read"})
 
@@ -109,6 +111,26 @@ PERSONAL_SEEDED_RULES = frozenset(PERSONAL_LEGS) | frozenset(
 # and must not be counted twice.
 SHEET_ACCOUNTS = frozenset({1, 2, 40, 41, 42, 43})
 CASH_ACCOUNT = 1
+ACCOUNT_TYPES = frozenset(
+    {"ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"}
+)
+PERSONAL_CHART = {
+    1: "ASSET",
+    2: "ASSET",
+    10: "EXPENSE",
+    11: "EXPENSE",
+    12: "EXPENSE",
+    13: "EXPENSE",
+    14: "EXPENSE",
+    20: "EQUITY",
+    25: "EQUITY",
+    30: "REVENUE",
+    31: "REVENUE",
+    40: "LIABILITY",
+    41: "LIABILITY",
+    42: "LIABILITY",
+    43: "LIABILITY",
+}
 
 
 class Refuse(Exception):
@@ -197,6 +219,34 @@ class Overlay:
     cash_delta: int
     currency: str
     posts: tuple[ProposedPost, ...]
+
+
+@dataclass(frozen=True)
+class LiveStatement:
+    """One Personal sheet plus the exact resources it cites."""
+
+    statement: Statement
+    book_name: str
+    account_names: tuple[str, ...]
+    filter: str
+
+
+@dataclass(frozen=True)
+class LiveProgress:
+    """Goal progress that cannot discard the live statement's provenance."""
+
+    progress: Progress
+    book_name: str
+    account_names: tuple[str, ...]
+    filter: str
+
+
+@dataclass(frozen=True)
+class _LiveBookState:
+    name: str
+    view: str
+    currency: str
+    config_digest: str
 
 
 def load_app(path: str) -> dict[str, Any]:
@@ -396,6 +446,15 @@ def _require_read_scopes(client: Client) -> None:
             "this app needs statements:read — sheet / bridge / cash-flow "
             "are the cites a goal is measured against. Without them the "
             "app would invent a net worth"
+        )
+
+
+def _require_live_read_scopes(client: Client) -> None:
+    _require_read_scopes(client)
+    if "books:read" not in client.scopes:
+        raise Refuse(
+            "a live goal needs books:read to verify BookKind PERSONAL and "
+            "the selected book resource"
         )
 
 
@@ -741,19 +800,204 @@ def fire_number(*_args: Any, **_kwargs: Any) -> None:
     )
 
 
+def _wire_i64(raw: Any, field: str) -> int:
+    if not isinstance(raw, str) or re.fullmatch(r"-?(0|[1-9][0-9]*)", raw) is None:
+        raise Refuse(f"{field} is not a signed integer string in minor units")
+    if len(raw.removeprefix("-")) > 19:
+        raise Refuse(f"{field} does not fit in i64 minor units")
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise Refuse(f"{field} is not a signed integer string in minor units") from exc
+    if value < I64_MIN or value > I64_MAX:
+        raise Refuse(f"{field} does not fit in i64 minor units")
+    return value
+
+
+def _wire_count(raw: Any, field: str) -> int:
+    if not isinstance(raw, str) or re.fullmatch(r"0|[1-9][0-9]*", raw) is None:
+        raise Refuse(f"{field} is not an unsigned integer string")
+    if len(raw) > 19:
+        raise Refuse(f"{field} does not fit in i64")
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise Refuse(f"{field} is not an unsigned integer string") from exc
+    if value > I64_MAX:
+        raise Refuse(f"{field} does not fit in i64")
+    return value
+
+
+def _wire_dimension(raw: Any) -> str:
+    if not isinstance(raw, str) or re.fullmatch(r"[1-9][0-9]*", raw) is None:
+        raise Refuse("dimension is not a canonical positive integer string")
+    if len(raw) > 19 or int(raw) > I64_MAX:
+        raise Refuse("dimension does not fit in i64")
+    return raw
+
+
+def _read_live_book(
+    selected: str,
+    *,
+    token: str | None,
+    transport: _grant.Transport | None,
+) -> _LiveBookState:
+    raw = _grant.pull(
+        token=token,
+        path=f"books/{selected}",
+        transport=transport,
+        error=Refuse,
+    )
+    if not isinstance(raw, Mapping) or raw.get("kind") != "PERSONAL":
+        raise Refuse("the selected live book is not BookKind PERSONAL")
+    name = raw.get("name")
+    view = raw.get("defaultView")
+    currency = raw.get("currencyCode")
+    digest = raw.get("configDigest")
+    if not all(isinstance(value, str) for value in (name, view, currency, digest)):
+        raise Refuse("the live Personal book has non-string wire fields")
+    if (
+        name != f"books/{selected}"
+        or re.fullmatch(r"[A-Za-z0-9_-]+", view) is None
+        or re.fullmatch(r"[A-Z]{3}", currency) is None
+        or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+    ):
+        raise Refuse(
+            "the live Personal book lacks its exact resource, view, currency, "
+            "or configuration state"
+        )
+    return _LiveBookState(name, view, currency, digest)
+
+
+def fetch_live_statement(
+    book_id: str,
+    period: str,
+    *,
+    token: str | None = None,
+    client: Client,
+    transport: _grant.Transport | None = None,
+) -> LiveStatement:
+    """Read one period sheet without turning an empty book into zero."""
+    _require_live_read_scopes(client)
+    if not isinstance(book_id, str) or not isinstance(period, str):
+        raise Refuse("book_id and period must be strings")
+    selected = book_id.removeprefix("books/").removeprefix("funds/").strip()
+    if re.fullmatch(r"[A-Za-z0-9_-]+", selected) is None:
+        raise Refuse("book_id must name exactly one books/{book} resource")
+    if re.fullmatch(r"[0-9]{4}(-[0-9]{2})?", period) is None:
+        raise Refuse("period must be YYYY or YYYY-MM")
+    if len(period) == 7:
+        year, month = map(int, period.split("-"))
+        try:
+            as_of = date(year, month, calendar.monthrange(year, month)[1])
+        except ValueError as exc:
+            raise Refuse("period must name a real calendar month") from exc
+    else:
+        try:
+            as_of = date(int(period), 12, 31)
+        except ValueError as exc:
+            raise Refuse("period must name a real calendar year") from exc
+
+    before = _read_live_book(selected, token=token, transport=transport)
+
+    sheet_filter = f"sheet-{period}"
+    response = _grant.pull(
+        token=token,
+        path=f"funds/{selected}/views/{before.view}/accounts?filter={sheet_filter}",
+        transport=transport,
+        error=Refuse,
+    )
+    accounts = response.get("accounts") if isinstance(response, Mapping) else None
+    if not isinstance(accounts, list) or response.get("nextPageToken") not in (
+        None,
+        "",
+    ):
+        raise Refuse("the live sheet is missing, malformed, or unexpectedly paginated")
+    expected_parent = f"funds/{selected}/views/{before.view}/accounts/"
+    net_worth = 0
+    net_worth_is_set = False
+    cash: int | None = None
+    names: list[str] = []
+    dimensions: set[str] = set()
+    for account in accounts:
+        if not isinstance(account, Mapping):
+            raise Refuse("a live sheet account is not a record")
+        name = account.get("name")
+        kind = account.get("type")
+        if not isinstance(name, str) or not isinstance(kind, str):
+            raise Refuse("a live sheet account has non-string wire fields")
+        dimension = _wire_dimension(account.get("dimension"))
+        if (
+            not name.startswith(expected_parent)
+            or name.removeprefix(expected_parent) != dimension
+        ):
+            raise Refuse("a live sheet account does not match the selected book and view")
+        if name in names or dimension in dimensions:
+            raise Refuse("a live sheet repeats an account resource or dimension")
+        if kind not in ACCOUNT_TYPES:
+            raise Refuse(f"a live sheet account has unknown type {kind!r}")
+        dim = int(dimension)
+        if PERSONAL_CHART.get(dim) != kind:
+            raise Refuse(
+                f"dimension {dimension} with type {kind!r} is not in chart_for(Personal)"
+            )
+        posting_count = _wire_count(account.get("postingCount"), "postingCount")
+        balance = _wire_i64(account.get("balance"), "balance")
+        if kind in {"ASSET", "LIABILITY"} and posting_count > 0:
+            net_worth = checked_add(net_worth, balance)
+            net_worth_is_set = True
+        if dimension == str(CASH_ACCOUNT):
+            cash = balance if posting_count > 0 else None
+        names.append(name)
+        dimensions.add(dimension)
+    after = _read_live_book(selected, token=token, transport=transport)
+    if after != before:
+        raise Refuse(
+            "the Personal book's view, currency, or configuration changed "
+            "during the sheet read"
+        )
+    return LiveStatement(
+        statement=Statement(
+            currency=before.currency,
+            as_of=as_of,
+            net_worth=net_worth if net_worth_is_set else None,
+            cash=cash,
+        ),
+        book_name=before.name,
+        account_names=tuple(names),
+        filter=sheet_filter,
+    )
+
+
+def evaluate_live_goal(
+    goal: Goal | Mapping[str, Any],
+    *,
+    live: LiveStatement,
+    client: Client,
+) -> LiveProgress:
+    """Evaluate a live goal while retaining every source resource."""
+    progress = evaluate_goal(
+        goal,
+        statement=live.statement,
+        book=Book(kind="PERSONAL"),
+        client=client,
+    )
+    return LiveProgress(
+        progress=progress,
+        book_name=live.book_name,
+        account_names=live.account_names,
+        filter=live.filter,
+    )
+
+
 def fetch_statements(
     *,
     token: str | None = None,
     book_id: str | None = None,
     transport: _grant.Transport | None = None,
 ) -> Any:
-    """Pull sheet / statement cites from ConnectApiUrl."""
-    return _grant.pull(
-        token=token,
-        book_id=book_id,
-        transport=transport,
-        error=Refuse,
-    )
+    """Compatibility read of a book resource; use fetch_live_statement for a sheet."""
+    return _grant.pull(token=token, book_id=book_id, transport=transport, error=Refuse)
 
 
 def deliver(

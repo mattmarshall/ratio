@@ -6,7 +6,7 @@ package(default_visibility = ["//visibility:public"])
 # issue named.
 #
 # ⭐ THE GRANT PATH CALLS CONNECTAPIURL. fetch/deliver present a token.
-# WorkOS dashboard registration stays leftover #22.
+# The registered public-PKCE client is held to its manifest and live reader.
 # Non-opt-in must not post. Closed-through refuses the write.
 # No kernel Goal RPC.
 sh_test(
