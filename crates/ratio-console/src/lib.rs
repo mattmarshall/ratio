@@ -2091,6 +2091,46 @@ impl Console {
             .with_context(|| format!("no lot {lot:?} open in position {pos:?}"))
     }
 
+    /// Successful lot reliefs in one view, as an explicit batch/export read.
+    ///
+    /// The journal is replayed so this response cites the exact `Taken` lots
+    /// and later wash writes produced by the proof-backed relief engine. It is
+    /// deliberately not served from open-lot storage: a closed lot is history.
+    pub fn list_disposals(&self, parent: &str) -> Result<pb::ListDisposalsResponse> {
+        let (fund, view) = view_scoped_parent(parent)?;
+        let (_, book) = self.open_book(&fund)?;
+        let cited = ratio_project::Projection::disposals_from_book(&book, &view)?;
+        let as_of_prefix = cited.prefix;
+        let disposals = cited
+            .value
+            .into_iter()
+            .map(|d| disposal_to_pb(&fund, &view, d, as_of_prefix))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(pb::ListDisposalsResponse {
+            disposals,
+            next_page_token: String::new(),
+        })
+    }
+
+    pub fn get_disposal(&self, name: &str) -> Result<pb::Disposal> {
+        let (fund, view, id) = view_scoped_id(name, "disposals").context("bad name")?;
+        // ⭐ TENANCY BEFORE RESOURCE DETAIL. An unauthorized caller must not
+        // learn whether the disposal id parses or exists in another book.
+        let (_, book) = self.open_book(&fund)?;
+        let (prefix, posting_leg) = id
+            .split_once('-')
+            .context("a disposal id is {journal_prefix}-{posting_leg}")?;
+        let prefix = prefix.parse::<usize>().context("bad disposal journal prefix")?;
+        let posting_leg = posting_leg.parse::<usize>().context("bad disposal posting leg")?;
+        let cited = ratio_project::Projection::disposal_from_book(
+            &book,
+            &view,
+            prefix,
+            posting_leg,
+        )?;
+        disposal_to_pb(&fund, &view, cited.value, cited.prefix)
+    }
+
     fn positions_of(&self, fund: &str, view: &str) -> Result<Vec<pb::Position>> {
         let path = self.book_path(fund)?;
         let b = self.open_file_book(&path)?;
@@ -5442,6 +5482,63 @@ fn to_pb_close(fund: &str, c: &CloseRecord) -> pb::PeriodClose {
         equity_destination: c.equity_destination.to_string(),
         surplus: c.surplus.map(|s| s.to_string()).unwrap_or_default(),
     }
+}
+
+fn disposal_to_pb(
+    fund: &str,
+    view: &str,
+    d: ratio_project::LotDisposal,
+    observed_prefix: usize,
+) -> Result<pb::Disposal> {
+    Ok(pb::Disposal {
+        name: format!(
+            "funds/{fund}/views/{view}/disposals/{}-{}",
+            d.prefix, d.posting_leg
+        ),
+        entry_id: d.entry_id,
+        memo: d.memo,
+        config_digest: d.config_digest,
+        journal_prefix: i64::try_from(d.prefix).context("disposal prefix exceeds i64")?,
+        account_dimension: d.dimension,
+        instrument: d.instrument,
+        currency_code: d.currency.unwrap_or_default(),
+        disposed: d
+            .disposed_on
+            .map(|day| ratio_common::iso_date_from_days(day as i64))
+            .as_deref()
+            .and_then(iso_date),
+        units: d.units.to_string(),
+        proceeds: d.proceeds.map(|v| v.to_string()).unwrap_or_default(),
+        basis: d.basis.to_string(),
+        relieved_lots: d
+            .relieved_lots
+            .into_iter()
+            .map(|lot| {
+                Ok(pb::RelievedLot {
+                    sequence: i64::try_from(lot.seq)
+                        .context("relieved lot sequence exceeds i64")?,
+                    units: lot.units.to_string(),
+                    cost: lot.cost.to_string(),
+                    acquired: lot
+                        .acquired
+                        .map(|day| ratio_common::iso_date_from_days(day as i64))
+                        .as_deref()
+                        .and_then(iso_date),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?,
+        wash_window_declared: d.wash_window_days.is_some(),
+        wash_window_days: d.wash_window_days.unwrap_or_default(),
+        wash_disallowed: d
+            .wash_window_days
+            .map(|_| d.wash_disallowed.to_string())
+            .unwrap_or_default(),
+        long_term_days: d.long_term_days,
+        posting_leg: i64::try_from(d.posting_leg)
+            .context("disposal posting leg exceeds i64")?,
+        observed_journal_prefix: i64::try_from(observed_prefix)
+            .context("disposal as-of prefix exceeds i64")?,
+    })
 }
 
 fn newest_report(book: &Path) -> Result<Option<kernel::BreakReport>> {
@@ -13771,6 +13868,40 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
             kind: None,
         })
         .unwrap();
+    }
+
+    #[test]
+    fn a_disposal_resource_cites_relief_and_a_later_wash() {
+        let d = wash_strike_book("disposal-resource");
+        wash_buy(&d, "original", 100, 2000, "2026-01-01");
+        wash_sell(&d, "sale", 100, 1000, "2026-06-15");
+        wash_buy(&d, "replacement", 40, 500, "2026-06-20");
+
+        let console = Console::new(&d);
+        let listed = console
+            .list_disposals("funds/demo/views/book")
+            .unwrap();
+        assert_eq!(listed.disposals.len(), 1);
+        let sale = &listed.disposals[0];
+        assert_eq!(sale.entry_id, "sale");
+        assert_eq!(sale.journal_prefix, 2);
+        assert_eq!(sale.instrument, "vti");
+        assert_eq!(sale.units, "100");
+        assert_eq!(sale.proceeds, "1000");
+        assert_eq!(sale.basis, "2000");
+        assert_eq!(sale.relieved_lots.len(), 1);
+        assert_eq!(sale.relieved_lots[0].cost, "2000");
+        assert_eq!(sale.wash_disallowed, "400");
+        assert!(sale.wash_window_declared);
+        assert_eq!(sale.wash_window_days, 30);
+        assert_eq!(sale.long_term_days, 365);
+        assert_eq!(sale.posting_leg, 0);
+        assert_eq!(sale.observed_journal_prefix, 3);
+        assert_eq!(
+            console.get_disposal(&sale.name).unwrap(),
+            *sale,
+            "targeted Get cites the same relief and later wash write"
+        );
     }
 
     #[test]

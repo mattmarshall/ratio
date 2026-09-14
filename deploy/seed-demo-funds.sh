@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Seed the demo with eight funds, each in a state the console has to render and
+# Seed the demo with nine books, each in a state the product has to render or a
+# Connect app has to cite, and
 # each showing something the others cannot.
 #
 # Each is a REAL book built through the same code path — same chart, same rules,
@@ -174,4 +175,52 @@ average_cost = true
 TOML
 "$RATIO" config set "$WORK/kestrel-average-cost.toml" --book "$OUT/kestrel-pooled-basis" >/dev/null
 
-echo "seeded 8 funds at $OUT"
+# ── 9. Personal tax export: exact relief, later wash, missing date ─────────
+#
+# This book exists for #166's live Connect proof. A balanced sale does not say
+# which lot it relieved, and a sale-time snapshot misses the forward half of a
+# wash window. The five entries below force both claims: a loss sale followed
+# by a replacement, then an undated lot whose gain must remain unclassified.
+TAX="$OUT/personal-tax-walkthrough"
+"$RATIO" init --kind personal --book "$TAX" >/dev/null
+tax_active="$(cat "$TAX/config/ACTIVE")"
+cp "$TAX/config/$tax_active" "$WORK/personal-tax.toml"
+cat >> "$WORK/personal-tax.toml" <<'TOML'
+
+wash_window_days = 30
+
+[personal]
+lot_relief = true
+currencies = ["USD"]
+
+[chart_roles]
+investments = 2
+cash = 1
+realized_gain = 31
+TOML
+"$RATIO" config set "$WORK/personal-tax.toml" --book "$TAX" >/dev/null
+
+cat > "$WORK/personal-tax-entries.json" <<'JSON'
+[
+  {"id":"tax-buy-loss","memo":"VTI loss lot","trade_date":"2026-01-01","postings":[
+    {"dim":2,"amount":20000,"currency":"USD","instrument":"VTI","quantity":100},
+    {"dim":1,"amount":-20000,"currency":"USD"}]},
+  {"id":"tax-sell-loss","memo":"VTI loss disposal","trade_date":"2026-06-15","postings":[
+    {"dim":2,"amount":-20000,"currency":"USD","instrument":"VTI","quantity":-100},
+    {"dim":1,"amount":10000,"currency":"USD"},
+    {"dim":31,"amount":10000,"currency":"USD"}]},
+  {"id":"tax-replacement","memo":"VTI replacement inside wash window","trade_date":"2026-06-20","postings":[
+    {"dim":2,"amount":5000,"currency":"USD","instrument":"VTI","quantity":40},
+    {"dim":1,"amount":-5000,"currency":"USD"}]},
+  {"id":"tax-buy-undated","memo":"ACME lot with missing acquisition date","postings":[
+    {"dim":2,"amount":4000,"currency":"USD","instrument":"ACME","quantity":20},
+    {"dim":1,"amount":-4000,"currency":"USD"}]},
+  {"id":"tax-sell-undated","memo":"ACME disposal stays unclassified","trade_date":"2026-07-01","postings":[
+    {"dim":2,"amount":-4000,"currency":"USD","instrument":"ACME","quantity":-20},
+    {"dim":1,"amount":5000,"currency":"USD"},
+    {"dim":31,"amount":-1000,"currency":"USD"}]}
+]
+JSON
+"$RATIO" post "$WORK/personal-tax-entries.json" --book "$TAX" >/dev/null
+
+echo "seeded 9 books at $OUT"

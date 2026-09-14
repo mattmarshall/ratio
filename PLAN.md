@@ -4478,7 +4478,7 @@ live OAuth, a licensed AIA form, or IRS e-file.
 | a rule language parser | **never** (fence) | Approval is `ratio approve` at a terminal. `rules:approve` is absence. |
 | Kubernetes | **never** | Deploy is Lambda / Fargate. Not a product door. |
 | bank OAuth | Connect [#165](https://github.com/mattmarshall/ratio/issues/165) / [#163](https://github.com/mattmarshall/ratio/issues/163) / [#174](https://github.com/mattmarshall/ratio/issues/174) | Scaffolds landed. Live provider OAuth leftover #22. |
-| tax e-file | Connect [#166](https://github.com/mattmarshall/ratio/issues/166) | 8949-ish CSV scaffold. IRS e-file / CPA portal / tax-lot planner stay leftovers on that issue. |
+| tax e-file | Connect [#166](https://github.com/mattmarshall/ratio/issues/166) | Cited 8949-ish CSV export; post-deploy proof remains. IRS e-file / CPA portal / tax-lot planner stay refused on that issue. |
 | vendor portal | Connect [#172](https://github.com/mattmarshall/ratio/issues/172) | Scaffold. Vendor user directory stays out of core. Leftover #22. |
 | waterfall engine | **destination-only** | Never in kernel. First-party app not filed. [#157](https://github.com/mattmarshall/ratio/issues/157) is a citeable notice, not preferred-return math. |
 | GC/sub marketplace | **destination-only** | First-party app not filed. |
@@ -5258,3 +5258,43 @@ seam as `DirectoryConfigStore`.
 `projection()` loads per-book `.projection-checkpoints` on a cold cache miss.
 Postgres Stage E watermarks are unchanged. The 140M-entry / 40GB fold stays on
 ScaleTask.
+
+### Amendment, 2026-09-14 — tax exports cite the relief that actually ran
+
+Related: #166. A balanced sale entry does not reveal which lots the relief
+engine consumed, and open-lot storage has already discarded a closed lot. A
+Connect app that reconstructs basis from postings can therefore emit the wrong
+taxable gain while the journal still ties.
+
+`ListDisposals` is an explicit batch/export read over one named view. It replays
+the pinned journal through the proof-backed lot engine and returns each
+successful disposal's entry, journal prefix, configuration digest, relieved
+lot sequence / units / cost / acquisition date, exact basis and proceeds, and
+the final wash adjustment after later in-window repurchases. Ordinary maintained
+projections and checkpoints retain no disposal history; only this call pays
+O(journal) and holds O(disposals). A lot-engine break refuses the whole citation
+read, so a basis mismatch or inexact wash split cannot become a complete-looking
+tax row. Results are sorted by sale prefix and posting leg.
+
+The Personal tax-pack Connect app selects one permitted Personal book and maps
+those resources to its 8949-ish and companion CSV files. Each row uses the
+holding-period threshold carried from the configuration that its sale pinned;
+the current active configuration cannot reclassify history. Mixed acquisition
+dates remain unclassified under `Ratio.Lots.PoolPeriod`. Money remains integer
+minor units, and basis and wash are copied from the engine rather than rerun in
+Python. `relieved_lots.csv` retains every cited lot sequence, unit, cost, and
+acquisition date and must foot to each disposal. The dedicated first-party
+WorkOS OAuth application is registered with the loopback callback and requests
+`books:read`, `lots:read`, `statements:read`, `closes:read`, and `config:read`.
+
+The deployment builds `personal-tax-walkthrough` through the same CLI and
+publication path as the other demo books. Its journal has a loss disposal and
+a later replacement inside the elected 30-day wash window, plus a separate
+disposal whose source lot has no acquisition date. It contains no customer
+data. The seed gives the OAuth walk-through a stable permitted book on which a
+wash cite and an unclassified row must both be visible.
+
+**tax exports cite the relief that actually ran** is the Built phrase. IRS
+e-file, a CPA portal, a tax-lot planner UI, and packing inside Ratio core remain
+refused. #166 remains open until the deployed route and registered scope produce
+a redacted live export from a permitted Personal book.

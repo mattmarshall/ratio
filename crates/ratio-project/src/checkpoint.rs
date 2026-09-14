@@ -461,6 +461,7 @@ impl BodyV1 {
             names,
             terms,
             view_defs,
+            capture_disposals: super::DisposalCapture::None,
         })
     }
 }
@@ -588,6 +589,7 @@ impl ViewFoldV1 {
                 remaining_units: w.remaining_units,
                 remaining_loss: w.remaining_loss,
                 original_acquired: w.original_acquired,
+                disposal: None,
             })
             .collect();
         let mut pending = BTreeMap::new();
@@ -619,6 +621,7 @@ impl ViewFoldV1 {
                 short_term,
                 long_term,
                 pending_wash,
+                disposals: Vec::new(),
                 breaks: self.lots.breaks,
             },
             basis: self.basis,
