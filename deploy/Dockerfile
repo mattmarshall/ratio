@@ -61,13 +61,17 @@ RUN chmod +x /usr/local/bin/ratio /usr/local/bin/entrypoint.sh
 # that is stuck. `deploy/seed_test.sh` makes the same pair of assertions against
 # the script; these two files have to move together.
 #
-# ⛔ THE EIGHTH FUND IS THE AVERAGE-COST POOL, AND THE COUNT ALONE CANNOT
+# ⛔ THE EIGHTH BOOK IS THE AVERAGE-COST POOL, AND THE COUNT ALONE CANNOT
 # SAY SO. A slot that is not kestrel, or a kestrel that wrote no
 # `average_cost = true`, is the same silence #9 already refused as a
 # Method. `deploy/seed_test.sh` asserts the election against the script;
 # this asserts the IMAGE carries the cite. `lot_method = "average_cost"`
 # stays refused — this is `average_cost = true`, not a Method, and
 # min-tax must stay unset on the same blob.
+#
+# ⛔ THE NINTH BOOK IS THE PERSONAL TAX WALKTHROUGH. Its kind, election,
+# reporting currency, and journal story are checked here because a copied but
+# unusable book would pass the exact count while leaving the live export empty.
 #
 # ⚠ NOTHING ON A PULL REQUEST RUNS THIS FILE. `deploy.yml` fires on push to
 # main, so a stale assertion here is invisible until it is merged and the deploy
@@ -86,7 +90,7 @@ RUN set -eu; \
     echo "demo book ok: $(find /opt/demo-book -type f | wc -l) file(s)"; \
     echo "== /opt/demo-funds =="; \
     ls -1 /opt/demo-funds | sed 's|^|  |'; \
-    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 8 || { echo "FAIL: expected 8 funds"; exit 1; }; \
+    test "$(ls -1 /opt/demo-funds | wc -l)" -eq 9 || { echo "FAIL: expected 9 books"; exit 1; }; \
     for f in /opt/demo-funds/*/; do \
       test -s "$f/accounts.json" || { echo "FAIL: $f has no chart"; exit 1; }; \
     done; \
@@ -104,7 +108,22 @@ RUN set -eu; \
       || { echo "FAIL: kestrel elects no average-cost pool — the walk-through cannot cite one"; exit 1; }; \
     grep -q "min_tax_short_weight" "/opt/demo-funds/kestrel-pooled-basis/config/$kestrel_active" \
       && { echo "FAIL: kestrel wrote min-tax — two elections for one sale"; exit 1; }; \
-    echo "demo funds ok: 8, kestrel elects the pool, and $ashcombe entries on the generated one"
+    test -d /opt/demo-funds/personal-tax-walkthrough || { echo "FAIL: the Personal tax walkthrough book is missing"; exit 1; }; \
+    grep -q '^kind = "personal"' /opt/demo-funds/personal-tax-walkthrough/book.toml \
+      || { echo "FAIL: the tax walkthrough is not a Personal book"; exit 1; }; \
+    tax_active=$(cat /opt/demo-funds/personal-tax-walkthrough/config/ACTIVE); \
+    tax_config="/opt/demo-funds/personal-tax-walkthrough/config/$tax_active"; \
+    awk '/^[[:space:]]*\[/ { section=$0 } section == "[personal]" && $0 == "lot_relief = true" { relief=1 } section == "[personal]" && $0 == "currencies = [\"USD\"]" { currency=1 } END { exit !(relief && currency) }' "$tax_config" \
+      || { echo "FAIL: the tax walkthrough lacks effective Personal lot-relief or USD elections"; exit 1; }; \
+    awk '/^[[:space:]]*\[/ { section=$0 } section == "[chart_roles]" && $0 == "investments = 2" { investments=1 } section == "[chart_roles]" && $0 == "cash = 1" { cash=1 } section == "[chart_roles]" && $0 == "realized_gain = 31" { gain=1 } END { exit !(investments && cash && gain) }' "$tax_config" \
+      || { echo "FAIL: the tax walkthrough lacks its required chart roles"; exit 1; }; \
+    awk '/^[[:space:]]*\[/ { section=$0 } section == "" && $0 == "wash_window_days = 30" { wash=1 } END { exit !wash }' "$tax_config" \
+      || { echo "FAIL: the tax walkthrough cannot cite the top-level wash election"; exit 1; }; \
+    for entry in tax-buy-loss tax-sell-loss tax-replacement tax-buy-undated tax-sell-undated; do \
+      grep -q "\"id\":\"$entry\"" /opt/demo-funds/personal-tax-walkthrough/journal.jsonl \
+        || { echo "FAIL: the tax walkthrough is missing $entry"; exit 1; }; \
+    done; \
+    echo "demo books ok: 9, including the Personal tax walkthrough; kestrel elects the pool; $ashcombe entries on the generated one"
 
 # The adapter polls this until the server answers, so a cold start does not
 # race the first request.
