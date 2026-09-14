@@ -1,4 +1,17 @@
+load("@rules_python//python:defs.bzl", "py_library")
+
 package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "personal_provider_modules",
+    srcs = [
+        "mapper.py",
+        "plaid.py",
+        "plaid_link.py",
+    ],
+    imports = ["."],
+    deps = ["//connect:grant_module"],
+)
 
 # The bank-feed Connect app is a sibling tree. Bazel does not build a
 # WorkOS binary here; it holds the mapper to the catalog, to

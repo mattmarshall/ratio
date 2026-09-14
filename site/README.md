@@ -303,14 +303,15 @@ everywhere** — "modeled", "color", "license", "organized", "gray", "judgment".
 An earlier draft of this site was written in British English throughout and had
 to be swept; if you are adding copy, write it American first.
 
-## No Bazel target (yet)
+## No site Bazel target (yet)
 
 Every other artifact in this repo builds under Bazel; this one does not, on
-purpose. `rules_python` is not in the module graph at all, so a `py_binary`
-would mean adding a `bazel_dep` — and the alternative, a `genrule` shelling out
-to whatever `python3` is on `PATH`, would put a non-hermetic step into a repo
-whose whole argument is reproducibility. Both are the repo owner's call rather
-than a side effect of adding a website, so for now: run `build.py`.
+purpose. `rules_python` now provides the pinned Personal provider runtime, but
+the site generator is not a `py_binary`; making it one would broaden that
+toolchain's scope. The alternative, a `genrule` shelling out to whatever
+`python3` is on `PATH`, would put a non-hermetic step into a repo whose whole
+argument is reproducibility. That remains the repo owner's call rather than a
+side effect of adding a website, so for now: run `build.py`.
 
 ## Before this goes public
 

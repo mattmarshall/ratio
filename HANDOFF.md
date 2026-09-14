@@ -202,6 +202,9 @@ durable and membership-isolated; provider credentials, cursors, and idempotency
 indexes stay encrypted and never enter status output. Plaid pending-to-posted
 links retire the pending row, Google PKCE/refresh and 410 full-resync retain
 the prior event index, and provider revoke succeeds before custody is deleted.
+Its Bazel runtime is Python 3.11 with pinned `cryptography`, `cffi`, and
+`pycparser` wheels; the activation test no longer relies on ambient site
+packages (#347).
 Exact production client, redirect, scope, and secret names are in
 `docs/personal-provider-activation.md`. Live WorkOS/provider evidence remains
 on #22/#163/#165.
