@@ -182,7 +182,13 @@ list as unset, and refuses a conflicting `[personal] currencies`. It validates
 the successor against the published chart before staging it by digest and
 conditionally commits `USD / EUR / GBP` through durable control under GitHub
 OIDC. It accepts no book or currency input and never
-prints the protected WorkOS subject. `connect/ecb-rates/` is the first bounded
+prints the protected WorkOS subject. Published book reads now resolve
+configuration-backed fields from the verified active durable control revision
+rather than the immutable opening bootstrap cache (#350); ListBooks remains a
+bounded index read, while GetBook uses the same active rules for currencies,
+budgets, allocations, and wash terms. A missing, corrupt, or invalid active
+successor refuses instead of falling back to opening defaults.
+`connect/ecb-rates/` is the first bounded
 rate provider (#313): the official ECB daily EXR observation is
 normalized with Decimal / round-half-even into the existing
 hundredths rate-fact shape, while the cited delivery retains both raw

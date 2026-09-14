@@ -165,6 +165,193 @@ fn all_kinds_recover_exact_bytes_grants_and_the_journal_from_an_empty_root() {
 }
 
 #[test]
+fn list_and_get_read_a_promotion_after_the_bootstrap_cache_was_materialized() {
+    let temp = Temp::new();
+    let objects: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    let reader = console(&temp.0, objects.clone(), "creator");
+    reader
+        .create_book(request("household", book::BookKind::Personal))
+        .unwrap();
+
+    // Materialize the immutable opening bootstrap before the promotion. The
+    // regression was that both reads kept consulting this empty local election.
+    assert!(reader.list_books().unwrap().books[0].currencies.is_empty());
+    assert!(reader
+        .get_book("books/household")
+        .unwrap()
+        .currencies
+        .is_empty());
+
+    let control = ControlStore::new(objects.clone());
+    let successor = format!(
+        "{}\n[personal]\ncurrencies = [\"USD\", \"EUR\", \"GBP\"]\n\
+         budget = 500000\n[personal.envelope]\n10 = 400000\n11 = 100000\n",
+        book::config_for(book::BookKind::Personal)
+    );
+    let digest = control.stage_config(successor.as_bytes()).unwrap();
+    control
+        .commit(&control_operation(
+            &control,
+            "household",
+            "activate-fx",
+            "creator",
+            control_operation::Change::ConfigPromotion(ConfigPromotion {
+                config_digest: digest.as_str().into(),
+            }),
+        ))
+        .unwrap();
+
+    for observed in [
+        reader.list_books().unwrap().books.remove(0),
+        reader.get_book("books/household").unwrap(),
+        console(&temp.0, objects.clone(), "creator")
+            .list_books()
+            .unwrap()
+            .books
+            .remove(0),
+        console(&temp.0, objects, "creator")
+            .get_book("books/household")
+            .unwrap(),
+    ] {
+        assert_eq!(observed.config_digest, digest.as_str());
+        assert_eq!(observed.currency_code, "USD");
+        assert_eq!(observed.currencies, ["USD", "EUR", "GBP"]);
+    }
+    let detailed = reader.get_book("books/household").unwrap();
+    assert_eq!(detailed.budget, "500000");
+    assert_eq!(
+        detailed
+            .envelopes
+            .iter()
+            .map(|row| (row.dimension.as_str(), row.budget.as_str()))
+            .collect::<Vec<_>>(),
+        [("10", "400000"), ("11", "100000")]
+    );
+    assert!(
+        std::fs::read_to_string(temp.0.join("household/config/ACTIVE"))
+            .unwrap()
+            .trim()
+            != digest.as_str(),
+        "the immutable bootstrap cache stays opening state; reads use control"
+    );
+}
+
+#[derive(Default)]
+struct CountControlScans {
+    objects: MemoryStore,
+    transition_lists: AtomicU64,
+}
+
+impl ObjectStore for CountControlScans {
+    fn put_if_absent(&self, key: &str, bytes: &[u8]) -> Result<bool> {
+        self.objects.put_if_absent(key, bytes)
+    }
+
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        self.objects.get(key)
+    }
+
+    fn list(&self, prefix: &str) -> Result<Vec<String>> {
+        if prefix.starts_with("_control/transitions/") {
+            self.transition_lists.fetch_add(1, Ordering::Relaxed);
+        }
+        self.objects.list(prefix)
+    }
+}
+
+#[test]
+fn a_published_index_row_scans_its_control_stream_once() {
+    let temp = Temp::new();
+    let counted = Arc::new(CountControlScans::default());
+    let objects: Arc<dyn ObjectStore> = counted.clone();
+    let reader = console(&temp.0, objects, "creator");
+    reader
+        .create_book(request("household", book::BookKind::Personal))
+        .unwrap();
+    counted.transition_lists.store(0, Ordering::Relaxed);
+
+    assert_eq!(reader.list_books().unwrap().books.len(), 1);
+    assert_eq!(
+        counted.transition_lists.load(Ordering::Relaxed),
+        1,
+        "authorization and active configuration must reuse one control snapshot"
+    );
+}
+
+#[test]
+fn a_malformed_active_durable_configuration_never_falls_back_to_bootstrap() {
+    let temp = Temp::new();
+    let objects: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    let reader = console(&temp.0, objects.clone(), "creator");
+    reader
+        .create_book(request("household", book::BookKind::Personal))
+        .unwrap();
+    let control = ControlStore::new(objects);
+    let digest = control.stage_config(b"[personal\n").unwrap();
+    control
+        .commit(&control_operation(
+            &control,
+            "household",
+            "bad-config",
+            "creator",
+            control_operation::Change::ConfigPromotion(ConfigPromotion {
+                config_digest: digest.as_str().into(),
+            }),
+        ))
+        .unwrap();
+
+    for refusal in [
+        reader.list_books().unwrap_err().to_string(),
+        reader.get_book("books/household").unwrap_err().to_string(),
+    ] {
+        assert!(
+            refusal.contains("active durable configuration is invalid"),
+            "{refusal}"
+        );
+        assert!(
+            !refusal.contains("[personal"),
+            "configuration bytes must stay redacted"
+        );
+    }
+}
+
+#[test]
+fn an_active_rule_outside_the_published_chart_is_refused() {
+    let temp = Temp::new();
+    let objects: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    let reader = console(&temp.0, objects.clone(), "creator");
+    reader
+        .create_book(request("household", book::BookKind::Personal))
+        .unwrap();
+    let control = ControlStore::new(objects);
+    let successor = format!(
+        "{}\n[[rule]]\nid = \"outside-chart\"\nkind = \"trade\"\n\
+         [[rule.posting]]\naccount = 999\nweight = 1\n\
+         [[rule.posting]]\naccount = 1\nweight = -1\n",
+        book::config_for(book::BookKind::Personal)
+    );
+    let digest = control.stage_config(successor.as_bytes()).unwrap();
+    control
+        .commit(&control_operation(
+            &control,
+            "household",
+            "outside-chart",
+            "creator",
+            control_operation::Change::ConfigPromotion(ConfigPromotion {
+                config_digest: digest.as_str().into(),
+            }),
+        ))
+        .unwrap();
+
+    let refusal = reader.list_books().unwrap_err().to_string();
+    assert!(
+        refusal.contains("does not check against the published chart"),
+        "{refusal}"
+    );
+    assert!(!refusal.contains("999"), "configuration details stay redacted");
+}
+
+#[test]
 fn one_console_resolves_durable_membership_again_at_every_operation_boundary() {
     let temp = Temp::new();
     let objects: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
