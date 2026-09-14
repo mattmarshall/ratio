@@ -88,9 +88,10 @@ From the catalog, restated so a later RPC does not "just" add them:
    waive a proof.
 
 The dedicated first-party tax-pack application is registered in WorkOS with
-the loopback callback. Production activation still must add the final
-`books:read` and `closes:read` scopes, authorize the deterministic `personal-tax-walkthrough`
-book, and retain redacted walk-through evidence on #166. That deployment seed
+the loopback callback and the exact `books:read`, `lots:read`,
+`statements:read`, `closes:read`, and `config:read` scopes. A production OAuth
+walk-through exported the permitted deterministic `personal-tax-walkthrough`
+book on 2026-09-14. That deployment seed
 contains a loss disposal followed by a replacement inside the elected wash
 window and a separate missing-date disposal; it contains no customer data.
 
@@ -101,28 +102,26 @@ a mixed-date pool landing on `unclassified.csv` rather than inventing
 FIFO's oldest date, a wash cite as code `W`, and `lot_method = "wash"`
 being rejected.
 
-The repository test does not claim the production OAuth walk-through; that
-evidence belongs on #166 after deployment and authorization. IRS e-file and a
+The production OAuth walk-through produced the cited wash-adjusted and
+unclassified rows; the repository tests continue to verify those shapes
+without depending on production. IRS e-file and a
 CPA portal remain refused. Mixed dates stay unclassified — that is
 `Ratio.Lots.PoolPeriod`, not an invented box. BookKind PERSONAL
 chrome is unchanged. `screensFor` is not forked. Household lots stay
 unset until `[personal] lot_relief = true` (#187); this pack cites
 those engines and does not elect them.
 
-## Remaining activation work
+## Remaining product work
 
-1. **Live cited export.** Deploy this disposal resource, add `books:read` and `closes:read` to
-   the registered tax-pack application, authorize `personal-tax-walkthrough`,
-   and retain redacted evidence of the generated files on #166.
-2. **CPA / IRS submission.** Never in core. A filed return, a MeF
+1. **CPA / IRS submission.** Never in core. A filed return, a MeF
    transmission, and a CPA portal remain refused product decisions.
-3. **Pooled holding-period category.** Mixed acquisition dates stay
+2. **Pooled holding-period category.** Mixed acquisition dates stay
    unset. The kernel rule is `Ratio.Lots.PoolPeriod`; this file
    cites it. The category itself is complete.
-4. **#150's read-only reference skeleton** (`books:read` +
+3. **#150's read-only reference skeleton** (`books:read` +
    `statements:read` only) is a different app. This one requests
    `lots:read` and `config:read`; the tax-pack application is separately
-   registered and awaits its post-deploy live proof.
+   registered and proven against its permitted synthetic book.
 
 Does not close #165 (grant-path + live bank OAuth leftovers stay
 on #165). Does not start #168 (net-worth goals). Does not close

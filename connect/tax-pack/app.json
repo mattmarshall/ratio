@@ -29,7 +29,7 @@
   },
   "grant_path": {
     "status": "built",
-    "note": "The dedicated first-party tax-pack OAuth application is registered with its loopback callback. It calls ConnectApiUrl with a verified authorization_code access token and still requires book membership. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}. Production activation must add books:read and closes:read and prove a cited export from a permitted Personal book on #166."
+    "note": "The dedicated first-party tax-pack OAuth application is registered with its loopback callback and exact books:read, lots:read, statements:read, closes:read, and config:read scopes. A production OAuth walk-through proved a cited export from the permitted deterministic personal-tax-walkthrough book on 2026-09-14. It calls ConnectApiUrl with a verified authorization_code access token and still requires book membership. A Connect token never takes RATIO_DEMO_OPEN and never matches org:{id}."
   },
   "pooled_holding_period": {
     "status": "cited",

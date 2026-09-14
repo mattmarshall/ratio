@@ -5294,7 +5294,51 @@ disposal whose source lot has no acquisition date. It contains no customer
 data. The seed gives the OAuth walk-through a stable permitted book on which a
 wash cite and an unclassified row must both be visible.
 
-**tax exports cite the relief that actually ran** is the Built phrase. IRS
-e-file, a CPA portal, a tax-lot planner UI, and packing inside Ratio core remain
-refused. #166 remains open until the deployed route and registered scope produce
-a redacted live export from a permitted Personal book.
+**tax exports cite the relief that actually ran** is the Built phrase. On
+2026-09-14 the deployed route and registered scopes produced a live export from
+the permitted synthetic `personal-tax-walkthrough` book: one wash-adjusted Form
+8949 row, one missing-date unclassified row, and their exact journal,
+configuration, lot, and wash cites. IRS e-file, a CPA portal, a tax-lot planner
+UI, and packing inside Ratio core remain refused.
+
+### Amendment, 2026-09-14 — live goals read the Personal sheet they cite
+
+Related: #168. The goals scaffold evaluated a supplied `Statement`, but its
+function named `fetch_statements` only read a Book resource. A caller could
+therefore label fixture values as live without proving the selected book was
+Personal or tying the values to an account resource.
+
+`fetch_live_statement` selects exactly one membership-permitted Book, verifies
+`BookKind PERSONAL`, its default view, and reporting currency, then reads the
+period `sheet-YYYY[-MM]` through
+`statements:read`. Net worth is the exact signed sum of posted Asset and
+Liability balances; Revenue, Expense, and Equity are not counted again. Cash is
+the posted balance of dimension 1. When no Asset or Liability has a posting,
+net worth stays unset. A posted zero remains a measured zero. Every account
+resource must belong to the selected book and view, and an unexpectedly
+paginated result refuses rather than presenting a partial sheet.
+
+One lightweight Book index read supplies the selected view, reporting currency,
+active configuration digest, and fund association for the fund-scoped statement
+route. An independent Book refuses because core exposes no book-scoped sheet.
+Every `ListAccounts` row carries the exact
+digest and monotonic control revision used after the server checks both before
+and after its fold. A promotion, including A → B → A, therefore refuses at the
+API boundary; the app also requires every row's digest to match the selected
+Book.
+`evaluate_live_goal` retains the Book, filter, shared configuration digest and
+revision, and account resource names beside
+the result rather than letting the live caller discard them. Every account's
+dimension and type must match `chart_for(Personal)`. The dedicated first-party
+WorkOS application is a public PKCE client
+with the exact loopback callback and requests `books:read`, `statements:read`,
+and `journals:post`. `books:read` verifies the kind and selected resource; it
+does not replace membership. Scenario overlays remain reads. An ApplyEvent proposal is
+still produced only after explicit opt-in, and the API's client + BookKind +
+template policy, closed-through gate, conservation, and bounds checks remain
+conjunctive.
+
+**live goals read the Personal sheet they cite** is the Built phrase. A cash
+forecast, required savings rate, FIRE number, goal RPC in core, and automatic
+scenario posting remain refused. Live OAuth evidence remains on #168 until the
+registered scopes are exercised against a permitted Personal book.

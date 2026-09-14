@@ -15,6 +15,7 @@ import json
 import pathlib
 import sys
 import os
+import re
 import unittest
 from unittest import mock
 from datetime import date
@@ -510,6 +511,542 @@ class ForecastRefusals(unittest.TestCase):
         )
 
 
+class LiveStatementReads(unittest.TestCase):
+    def complete_accounts(self, overrides=None):
+        values = {
+            1: ("800000", "2"),
+            2: ("4200000", "1"),
+            30: ("-4200000", "1"),
+            40: ("-500000", "1"),
+        }
+        if overrides:
+            values.update(overrides)
+        return [
+            {
+                "name": f"funds/house/views/book/accounts/{dimension}",
+                "dimension": str(dimension),
+                "type": kind,
+                "balance": values.get(dimension, ("0", "0"))[0],
+                "postingCount": values.get(dimension, ("0", "0"))[1],
+            }
+            for dimension, kind in g.PERSONAL_CHART.items()
+        ]
+
+    def live_transport(self, *, kind="PERSONAL", accounts=None, next_page_token=""):
+        if accounts is None:
+            accounts = self.complete_accounts()
+        return g._grant.FakeTransport(
+            responses={
+                "/v1/books": (
+                    200,
+                    json.dumps(
+                        {
+                            "books": [
+                                {
+                                    "name": "books/house",
+                                    "fund": "funds/house",
+                                    "kind": kind,
+                                    "currencyCode": "USD",
+                                    "defaultView": "book",
+                                    "configDigest": "a" * 64,
+                                }
+                            ],
+                            "nextPageToken": "",
+                        }
+                    ),
+                ),
+                "/v1/funds/house/views/book/accounts?filter=sheet-2026-03": (
+                    200,
+                    json.dumps(
+                        {
+                            "accounts": [
+                                {
+                                    **account,
+                                    "configDigest": "a" * 64,
+                                    "controlRevision": "0",
+                                }
+                                for account in accounts
+                            ],
+                            "nextPageToken": next_page_token,
+                        }
+                    ),
+                ),
+            }
+        )
+
+    def test_a_live_goal_reads_a_personal_sheet_and_cites_its_resources(self):
+        transport = self.live_transport()
+        env = {"RATIO_CONNECT_API_URL": "https://connect.example"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            live = g.fetch_live_statement(
+                "house",
+                "2026-03",
+                token="connect-access-token",
+                client=declared_client(),
+                transport=transport,
+            )
+        self.assertEqual(live.statement.net_worth, 4_500_000)
+        self.assertEqual(live.statement.cash, 800_000)
+        self.assertEqual(live.statement.as_of, date(2026, 3, 31))
+        self.assertEqual(live.filter, "sheet-2026-03")
+        self.assertEqual(len(live.account_names), len(g.PERSONAL_CHART))
+        self.assertFalse(hasattr(live, "_seal"))
+        self.assertEqual(live.config_digest, "a" * 64)
+        self.assertEqual(live.control_revision, 0)
+        urls = [call[1] for call in transport.calls]
+        self.assertEqual(sum(url.endswith("/v1/books") for url in urls), 1)
+        self.assertFalse(any("/v1/books/house" in url for url in urls))
+        cited = g.evaluate_live_goal(goal(), live=live, client=declared_client())
+        self.assertEqual(cited.progress.current, 4_500_000)
+        self.assertEqual(cited.config_digest, "a" * 64)
+        self.assertEqual(cited.control_revision, 0)
+        self.assertEqual(cited.book_name, live.book_name)
+        self.assertEqual(cited.account_names, live.account_names)
+        self.assertEqual(cited.filter, live.filter)
+
+    def test_an_empty_live_sheet_is_unset_not_zero(self):
+        accounts = self.complete_accounts(
+            {1: ("0", "0"), 2: ("0", "0"), 30: ("0", "0"), 40: ("0", "0")}
+        )
+        transport = self.live_transport(accounts=accounts)
+        env = {"RATIO_CONNECT_API_URL": "https://connect.example"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            live = g.fetch_live_statement(
+                "books/house",
+                "2026-03",
+                token="connect-access-token",
+                client=declared_client(),
+                transport=transport,
+            )
+        self.assertIsNone(live.statement.net_worth)
+        self.assertIsNone(live.statement.cash)
+
+    def test_a_posted_zero_live_sheet_is_a_measured_zero(self):
+        accounts = self.complete_accounts(
+            {1: ("0", "2"), 2: ("0", "0"), 30: ("0", "0"), 40: ("0", "0")}
+        )
+        with mock.patch.dict(
+            os.environ,
+            {"RATIO_CONNECT_API_URL": "https://connect.example"},
+            clear=False,
+        ):
+            live = g.fetch_live_statement(
+                "house",
+                "2026-03",
+                token="connect-access-token",
+                client=declared_client(),
+                transport=self.live_transport(accounts=accounts),
+            )
+        self.assertEqual(live.statement.net_worth, 0)
+        self.assertEqual(live.statement.cash, 0)
+
+    def test_a_live_goal_refuses_a_non_personal_book(self):
+        transport = self.live_transport(kind="INVESTMENT")
+        env = {"RATIO_CONNECT_API_URL": "https://connect.example"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            with self.assertRaises(g.Refuse) as ctx:
+                g.fetch_live_statement(
+                    "house",
+                    "2026-03",
+                    token="connect-access-token",
+                    client=declared_client(),
+                    transport=transport,
+                )
+        self.assertIn("BookKind PERSONAL", str(ctx.exception))
+
+    def test_a_live_goal_requires_books_read_for_kind_and_resource_cites(self):
+        with self.assertRaises(g.Refuse) as ctx:
+            g.fetch_live_statement(
+                "house",
+                "2026-03",
+                token="connect-access-token",
+                client=declared_client(scopes=frozenset({"statements:read"})),
+                transport=self.live_transport(),
+            )
+        self.assertIn("books:read", str(ctx.exception))
+
+    def test_a_partial_live_sheet_refuses_its_continuation_token(self):
+        with mock.patch.dict(
+            os.environ,
+            {"RATIO_CONNECT_API_URL": "https://connect.example"},
+            clear=False,
+        ):
+            with self.assertRaises(g.Refuse) as ctx:
+                g.fetch_live_statement(
+                    "house",
+                    "2026-03",
+                    token="connect-access-token",
+                    client=declared_client(),
+                    transport=self.live_transport(next_page_token="more"),
+                )
+        self.assertIn("paginated", str(ctx.exception))
+
+    def test_non_object_live_responses_refuse(self):
+        for path, body, message in (
+            ("/v1/books", "null", "book index"),
+            (
+                "/v1/funds/house/views/book/accounts?filter=sheet-2026-03",
+                "[]",
+                "live sheet",
+            ),
+        ):
+            transport = self.live_transport()
+            status, _ = transport.responses[path]
+            transport.responses[path] = (status, body)
+            with self.subTest(path=path):
+                with mock.patch.dict(
+                    os.environ,
+                    {"RATIO_CONNECT_API_URL": "https://connect.example"},
+                    clear=False,
+                ):
+                    with self.assertRaises(g.Refuse) as ctx:
+                        g.fetch_live_statement(
+                            "house",
+                            "2026-03",
+                            token="connect-access-token",
+                            client=declared_client(),
+                            transport=transport,
+                        )
+                self.assertIn(message, str(ctx.exception))
+
+    def test_a_sheet_missing_one_chart_account_refuses_as_incomplete(self):
+        accounts = self.complete_accounts()[:-1]
+        with mock.patch.dict(
+            os.environ,
+            {"RATIO_CONNECT_API_URL": "https://connect.example"},
+            clear=False,
+        ):
+            with self.assertRaises(g.Refuse) as ctx:
+                g.fetch_live_statement(
+                    "house",
+                    "2026-03",
+                    token="connect-access-token",
+                    client=declared_client(),
+                    transport=self.live_transport(accounts=accounts),
+                )
+        self.assertIn("complete Personal chart", str(ctx.exception))
+
+    def test_live_net_worth_refuses_an_i64_sum_overflow(self):
+        accounts = self.complete_accounts(
+            {1: (str(g.I64_MAX), "1"), 2: ("1", "1"), 40: ("0", "0")}
+        )
+        with mock.patch.dict(
+            os.environ,
+            {"RATIO_CONNECT_API_URL": "https://connect.example"},
+            clear=False,
+        ):
+            with self.assertRaises(g.Refuse) as ctx:
+                g.fetch_live_statement(
+                    "house",
+                    "2026-03",
+                    token="connect-access-token",
+                    client=declared_client(),
+                    transport=self.live_transport(accounts=accounts),
+                )
+        self.assertIn("i64 minor units", str(ctx.exception))
+
+    def test_a_caller_cannot_forge_live_statement_provenance(self):
+        self.assertFalse(hasattr(g, "_make_live_statement"))
+        with self.assertRaises(g.Refuse) as ctx:
+            g.LiveStatement(
+                g.Statement(currency="USD", net_worth=1),
+                "books/house",
+                ("funds/house/views/book/accounts/1",),
+                "sheet-2026-03",
+            )
+        self.assertIn("live reader", str(ctx.exception))
+
+        class Forged(g.LiveStatement):
+            @property
+            def statement(self):
+                return g.Statement(currency="USD", net_worth=1)
+
+            @property
+            def book_name(self):
+                return "books/house"
+
+            @property
+            def account_names(self):
+                return ()
+
+            @property
+            def filter(self):
+                return "sheet-2026-03"
+
+        forged = object.__new__(Forged)
+        with self.assertRaises(g.Refuse) as subclass_ctx:
+            g.evaluate_live_goal(goal(), live=forged, client=declared_client())
+        self.assertIn("live reader", str(subclass_ctx.exception))
+
+        copied = object.__new__(g.LiveStatement)
+        with self.assertRaises(g.Refuse) as copied_ctx:
+            g.evaluate_live_goal(goal(), live=copied, client=declared_client())
+        self.assertIn("live reader", str(copied_ctx.exception))
+
+    def test_year_zero_refuses_before_the_live_request(self):
+        transport = self.live_transport()
+        with self.assertRaises(g.Refuse) as ctx:
+            g.fetch_live_statement(
+                "house",
+                "0000-03",
+                token="connect-access-token",
+                client=declared_client(),
+                transport=transport,
+            )
+        self.assertIn("0001 through 9999", str(ctx.exception))
+        self.assertEqual(transport.calls, [])
+
+    def test_an_unposted_nonzero_live_balance_refuses(self):
+        accounts = self.complete_accounts({14: ("1", "0")})
+        with mock.patch.dict(
+            os.environ,
+            {"RATIO_CONNECT_API_URL": "https://connect.example"},
+            clear=False,
+        ):
+            with self.assertRaises(g.Refuse) as ctx:
+                g.fetch_live_statement(
+                    "house",
+                    "2026-03",
+                    token="connect-access-token",
+                    client=declared_client(),
+                    transport=self.live_transport(accounts=accounts),
+                )
+        self.assertIn("unposted", str(ctx.exception))
+
+    def test_negative_zero_is_not_a_canonical_wire_balance(self):
+        accounts = self.complete_accounts({1: ("-0", "1")})
+        with mock.patch.dict(
+            os.environ,
+            {"RATIO_CONNECT_API_URL": "https://connect.example"},
+            clear=False,
+        ):
+            with self.assertRaises(g.Refuse) as ctx:
+                g.fetch_live_statement(
+                    "house",
+                    "2026-03",
+                    token="connect-access-token",
+                    client=declared_client(),
+                    transport=self.live_transport(accounts=accounts),
+                )
+        self.assertIn("signed integer string", str(ctx.exception))
+
+    def test_public_live_selectors_refuse_non_strings(self):
+        for book_id, period in ((1, "2026-03"), ("house", 202603)):
+            with self.subTest(book_id=book_id, period=period):
+                with self.assertRaises(g.Refuse) as ctx:
+                    g.fetch_live_statement(
+                        book_id,  # type: ignore[arg-type]
+                        period,  # type: ignore[arg-type]
+                        token="connect-access-token",
+                        client=declared_client(),
+                        transport=self.live_transport(),
+                    )
+                self.assertIn("must be strings", str(ctx.exception))
+
+    def test_live_book_selector_refuses_nested_or_normalized_resources(self):
+        for book_id in ("books/funds/house", "funds/books/house", " house "):
+            with self.subTest(book_id=book_id):
+                with self.assertRaises(g.Refuse) as ctx:
+                    g.fetch_live_statement(
+                        book_id,
+                        "2026-03",
+                        token="connect-access-token",
+                        client=declared_client(),
+                        transport=self.live_transport(),
+                    )
+                self.assertIn("exactly one", str(ctx.exception))
+
+    def test_book_wire_values_are_exact_not_normalized(self):
+        for field, value in (
+            ("defaultView", " book "),
+            ("defaultView", "Book"),
+            ("defaultView", "book_view"),
+            ("currencyCode", "usd"),
+            ("currencyCode", " USD "),
+        ):
+            base = self.live_transport()
+            book_status, book_body = base.responses["/v1/books"]
+            response = json.loads(book_body)
+            book = response["books"][0]
+            book[field] = value
+            base.responses["/v1/books"] = (book_status, json.dumps(response))
+            with self.subTest(field=field, value=value):
+                with mock.patch.dict(
+                    os.environ,
+                    {"RATIO_CONNECT_API_URL": "https://connect.example"},
+                    clear=False,
+                ):
+                    with self.assertRaises(g.Refuse):
+                        g.fetch_live_statement(
+                            "house",
+                            "2026-03",
+                            token="connect-access-token",
+                            client=declared_client(),
+                            transport=base,
+                        )
+
+    def test_a_non_personal_chart_dimension_cannot_enter_net_worth(self):
+        accounts = [
+            {
+                "name": "funds/house/views/book/accounts/999",
+                "dimension": "999",
+                "type": "ASSET",
+                "balance": "800000",
+                "postingCount": "2",
+            }
+        ]
+        with mock.patch.dict(
+            os.environ,
+            {"RATIO_CONNECT_API_URL": "https://connect.example"},
+            clear=False,
+        ):
+            with self.assertRaises(g.Refuse) as ctx:
+                g.fetch_live_statement(
+                    "house",
+                    "2026-03",
+                    token="connect-access-token",
+                    client=declared_client(),
+                    transport=self.live_transport(accounts=accounts),
+                )
+        self.assertIn("chart_for(Personal)", str(ctx.exception))
+
+    def test_a_sheet_under_a_different_configuration_refuses(self):
+        base = self.live_transport()
+        key = "/v1/funds/house/views/book/accounts?filter=sheet-2026-03"
+        status, raw = base.responses[key]
+        value = json.loads(raw)
+        value["accounts"][0]["configDigest"] = "b" * 64
+        base.responses[key] = (status, json.dumps(value))
+
+        with mock.patch.dict(
+            os.environ,
+            {"RATIO_CONNECT_API_URL": "https://connect.example"},
+            clear=False,
+        ):
+            with self.assertRaises(g.Refuse) as ctx:
+                g.fetch_live_statement(
+                    "house",
+                    "2026-03",
+                    token="connect-access-token",
+                    client=declared_client(),
+                    transport=base,
+                )
+        self.assertIn("selected configuration", str(ctx.exception))
+
+    def test_accounts_from_different_control_revisions_refuse(self):
+        base = self.live_transport()
+        key = "/v1/funds/house/views/book/accounts?filter=sheet-2026-03"
+        status, raw = base.responses[key]
+        value = json.loads(raw)
+        value["accounts"][1]["controlRevision"] = "1"
+        base.responses[key] = (status, json.dumps(value))
+
+        with mock.patch.dict(
+            os.environ,
+            {"RATIO_CONNECT_API_URL": "https://connect.example.test"},
+            clear=False,
+        ):
+            with self.assertRaises(g.Refuse) as ctx:
+                g.fetch_live_statement(
+                    "books/house",
+                    "2026-03",
+                    token="connect-access-token",
+                    client=declared_client(),
+                    transport=base,
+                )
+        self.assertIn("share one configuration pin", str(ctx.exception))
+
+    def test_a_repeated_dimension_refuses_instead_of_counting_net_worth_twice(self):
+        accounts = [
+            {
+                "name": "funds/house/views/book/accounts/1",
+                "dimension": "1",
+                "type": "ASSET",
+                "balance": "800000",
+                "postingCount": "2",
+            },
+            {
+                "name": "funds/house/views/book/accounts/1",
+                "dimension": "1",
+                "type": "ASSET",
+                "balance": "800000",
+                "postingCount": "2",
+            },
+        ]
+        with mock.patch.dict(
+            os.environ,
+            {"RATIO_CONNECT_API_URL": "https://connect.example"},
+            clear=False,
+        ):
+            with self.assertRaises(g.Refuse) as ctx:
+                g.fetch_live_statement(
+                    "house",
+                    "2026-03",
+                    token="connect-access-token",
+                    client=declared_client(),
+                    transport=self.live_transport(accounts=accounts),
+                )
+        self.assertIn("repeats", str(ctx.exception))
+
+    def test_an_unknown_account_type_refuses_instead_of_disappearing(self):
+        accounts = [
+            {
+                "name": "funds/house/views/book/accounts/1",
+                "dimension": "1",
+                "type": "CRYPTO_ASSET",
+                "balance": "800000",
+                "postingCount": "2",
+            }
+        ]
+        with mock.patch.dict(
+            os.environ,
+            {"RATIO_CONNECT_API_URL": "https://connect.example"},
+            clear=False,
+        ):
+            with self.assertRaises(g.Refuse) as ctx:
+                g.fetch_live_statement(
+                    "house",
+                    "2026-03",
+                    token="connect-access-token",
+                    client=declared_client(),
+                    transport=self.live_transport(accounts=accounts),
+                )
+        self.assertIn("unknown type", str(ctx.exception))
+
+    def test_non_string_and_noncanonical_wire_fields_refuse(self):
+        for field, value, expected in (
+            ("name", 1, "non-string"),
+            ("dimension", 1, "dimension"),
+            ("dimension", "01", "dimension"),
+            ("type", 1, "non-string"),
+            ("postingCount", "²", "postingCount"),
+            ("balance", "9" * 10_000, "balance"),
+        ):
+            account = {
+                "name": "funds/house/views/book/accounts/1",
+                "dimension": "1",
+                "type": "ASSET",
+                "balance": "800000",
+                "postingCount": "2",
+            }
+            account[field] = value
+            with self.subTest(field=field, value=str(value)[:20]):
+                with mock.patch.dict(
+                    os.environ,
+                    {"RATIO_CONNECT_API_URL": "https://connect.example"},
+                    clear=False,
+                ):
+                    with self.assertRaises(g.Refuse) as ctx:
+                        g.fetch_live_statement(
+                            "house",
+                            "2026-03",
+                            token="connect-access-token",
+                            client=declared_client(),
+                            transport=self.live_transport(accounts=[account]),
+                        )
+                self.assertIn(expected, str(ctx.exception))
+
+
 class ManifestHonesty(unittest.TestCase):
     def test_the_app_declares_only_canonical_scopes(self):
         scopes = app()["workos_connect"]["scopes"]
@@ -517,6 +1054,7 @@ class ManifestHonesty(unittest.TestCase):
         for alias in g.REFUSED_ALIASES:
             self.assertNotIn(alias, scopes)
         self.assertIn("statements:read", scopes)
+        self.assertIn("books:read", scopes)
         self.assertIn("journals:post", scopes)
 
     def test_the_declared_allowlist_is_personal_templates_not_methods(self):
@@ -527,14 +1065,18 @@ class ManifestHonesty(unittest.TestCase):
             self.assertNotIn(forbidden, templates)
             self.assertFalse(any(forbidden in t for t in templates), forbidden)
 
-    def test_grant_path_and_opt_in_stay_named_as_leftovers(self):
+    def test_grant_path_names_the_registered_public_client_and_live_leftover(self):
         doc = json.dumps(app())
         self.assertEqual("built", app()["grant_path"]["status"])
         self.assertIn("ConnectApiUrl", app()["grant_path"]["note"])
-        self.assertIn("WorkOS dashboard registration", app()["grant_path"]["note"])
+        self.assertTrue(app()["workos_connect"]["public_client"])
+        self.assertTrue(app()["workos_connect"]["uses_pkce"])
+        self.assertEqual(
+            app()["workos_connect"]["client_id"],
+            app()["journals_post_allowlist"]["client_id"],
+        )
         self.assertIn("opt-in only", app()["scenario_journals"]["status"])
         self.assertIn("#168", doc)
-        self.assertIn("#150", doc)
 
     def test_every_instantiated_template_is_in_createbook_personal(self):
         if BOOK_RS is None or not BOOK_RS.is_file():
@@ -549,6 +1091,32 @@ class ManifestHonesty(unittest.TestCase):
                 personal_src,
                 f"{rule_id} is not a CreateBook(Personal) rule — the app invented it",
             )
+
+    def test_the_live_personal_chart_matches_the_rust_source_of_truth(self):
+        if BOOK_RS is None or not BOOK_RS.is_file():
+            self.skipTest("book.rs not handed to the test")
+        src = BOOK_RS.read_text()
+        start = src.index("BookKind::Personal => vec![")
+        end = src.index("BookKind::Project => vec![", start)
+        personal_src = src[start:end]
+        rust_types = {
+            "Asset": "ASSET",
+            "Liability": "LIABILITY",
+            "Equity": "EQUITY",
+            "Income": "REVENUE",
+            "Expense": "EXPENSE",
+        }
+        pairs = re.findall(
+            r'acct\((\d+),\s*"[^"]+",\s*AccountTypeRecord::(\w+)\)',
+            personal_src,
+        )
+        self.assertEqual(
+            len(pairs),
+            len({dimension for dimension, _kind in pairs}),
+            "chart_for(Personal) repeats a dimension",
+        )
+        actual = {int(dimension): rust_types[kind] for dimension, kind in pairs}
+        self.assertEqual(g.PERSONAL_CHART, actual)
 
     def test_the_catalog_still_refuses_the_alias_this_issue_named(self):
         if CATALOG is None or not CATALOG.is_file():

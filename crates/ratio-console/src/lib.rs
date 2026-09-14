@@ -704,6 +704,18 @@ impl Console {
         parent: &str,
         filter: &str,
     ) -> Result<pb::ListAccountsResponse> {
+        self.list_accounts_observing(parent, filter, || {})
+    }
+
+    fn list_accounts_observing<F>(
+        &self,
+        parent: &str,
+        filter: &str,
+        after_fold: F,
+    ) -> Result<pb::ListAccountsResponse>
+    where
+        F: FnOnce(),
+    {
         let (fund, view) = view_scoped_parent(parent)?;
         let (kind, period) = list_accounts_window(filter);
         if kind == "pnl" && period.is_empty() {
@@ -818,13 +830,14 @@ impl Console {
             (_, p) if !p.is_empty() => AccountFold::AsOf(parse_period(p)?),
             _ => AccountFold::Current,
         };
+        let before = self.account_config_snapshot(&fund)?;
         let accounts = self.accounts_folded(&fund, &view, fold)?;
         let loan_dims = if kind == "loan" {
             self.loan_dimensions(&fund)?
         } else {
             BTreeSet::new()
         };
-        let keep: Vec<pb::Account> = accounts
+        let mut keep: Vec<pb::Account> = accounts
             .into_iter()
             .filter(|a| match kind {
                 "posted" => a.posting_count != "0",
@@ -849,15 +862,46 @@ impl Console {
                 _ => true,
             })
             .collect();
-        Ok(pb::ListAccountsResponse { accounts: keep, next_page_token: String::new() })
+        after_fold();
+        let after = self.account_config_snapshot(&fund)?;
+        // ⭐ DurableControl's committed revision is the monotonic pin. Digest
+        // equality alone misses A→B→A while this figure is folding.
+        ensure_account_config_snapshot(&before, &after)?;
+        for account in &mut keep {
+            account.config_digest.clone_from(&before.1);
+            account.control_revision = before.0;
+        }
+        Ok(pb::ListAccountsResponse {
+            accounts: keep,
+            next_page_token: String::new(),
+        })
+    }
+
+    fn account_config_snapshot(&self, fund: &str) -> Result<(i64, String)> {
+        let path = self.book_path(fund)?;
+        let book = self.open_file_book(&path)?;
+        if let Some(state) = book.control_state()? {
+            return Ok((state.revision, state.active.as_str().to_string()));
+        }
+        let revision = i64::try_from(book.history()?.len()).context("config revision overflow")?;
+        let active = book
+            .active()?
+            .context("the book has no active configuration")?;
+        Ok((revision, active.as_str().to_string()))
     }
 
     pub fn get_account(&self, name: &str) -> Result<pb::Account> {
         let (fund, view, dim) = view_scoped_id(name, "accounts")?;
-        self.accounts_of(&fund, &view)?
+        let before = self.account_config_snapshot(&fund)?;
+        let mut account = self.accounts_of(&fund, &view)?
             .into_iter()
             .find(|a| a.dimension == dim)
-            .with_context(|| format!("no account {dim:?} in {fund}"))
+            .with_context(|| format!("no account {dim:?} in {fund}"))?;
+        let after = self.account_config_snapshot(&fund)?;
+        ensure_account_config_snapshot(&before, &after)?;
+        account.config_digest = before.1;
+        account.control_revision = before.0;
+        Ok(account)
     }
 
     /// Every account in a fund's chart, with its debit and credit totals.
@@ -1198,6 +1242,8 @@ impl Console {
                         .get(&a.dim)
                         .map(|n| n.to_string())
                         .unwrap_or_default(),
+                    config_digest: String::new(),
+                    control_revision: 0,
                 }
             })
             .collect())
@@ -6177,6 +6223,14 @@ enum AccountFold {
     /// Actuals folds skip these kinds so a scheduled rent is not
     /// this month's cash-flow. Activity-shaped: no fake beginning.
     Forecast(PeriodWindow),
+}
+
+fn ensure_account_config_snapshot(before: &(i64, String), after: &(i64, String)) -> Result<()> {
+    ensure!(
+        before == after,
+        "active configuration changed during account read; retry the read"
+    );
+    Ok(())
 }
 
 #[derive(Clone, Debug)]
@@ -15822,6 +15876,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         assert_eq!(living.debit, "600", "March P&L keeps the spend: {living:?}");
 
         let sheet = c.list_accounts(&view, "sheet-2026-03").unwrap();
+        assert!(sheet.accounts.iter().all(|account| account.control_revision == 1));
+        assert!(sheet.accounts.iter().all(|account| account.config_digest.len() == 64));
         let re = sheet
             .accounts
             .iter()
@@ -15883,6 +15939,24 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         let cr: i64 = roll_re.credit.parse().unwrap();
         assert_eq!(end - (d - cr), 0, "first close: beginning RE is a real zero");
         assert_eq!(end, -2400);
+    }
+
+    #[test]
+    fn an_a_b_a_config_promotion_refuses_the_account_fold() {
+        let root = fresh("accounts-a-b-a");
+        book(&root);
+        let console = Console::new(&root);
+        let err = console
+            .list_accounts_observing(&demo_view(), "", || {
+                let mut live = FileBook::open(&root).unwrap();
+                let original = live.active().unwrap().unwrap();
+                let other = live.put(R1.as_bytes()).unwrap();
+                live.set_active(&other).unwrap();
+                live.set_active(&original).unwrap();
+            })
+            .expect_err("A→B→A during the real account fold must refuse")
+            .to_string();
+        assert!(err.contains("changed during account read"), "{err}");
     }
 
     #[test]

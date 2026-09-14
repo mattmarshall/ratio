@@ -32,8 +32,8 @@ invent `lot_method = "wash"`.
 verified Connect access token and pulls against the Connect HTTP
 API. Membership is still required. A Connect token never takes
 `RATIO_DEMO_OPEN` and never matches `org:{id}`. IRS e-file stays
-refused. The tax-pack OAuth application is registered; production activation
-still has to prove the live grant and cited export.
+refused. The registered tax-pack OAuth application proved its live grant and
+cited export against the deterministic Personal demo book.
 
 ⚠ IRS E-FILE IS REFUSED. `submit` refuses. No CPA portal, no
 MeF transmission, no packing inside core.

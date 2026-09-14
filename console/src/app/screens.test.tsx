@@ -33,7 +33,30 @@ import operatingAgingFixture from "../../fixtures/operatingAging.json";
 // `string`. `//console:fixtures_test` checks their SHAPE against console.proto
 // on every build, which is the check a cast here would otherwise be pretending
 // to be.
-import type { Rule } from "@/wire/types";
+import type { Account, ListAccountsResponse, Rule } from "@/wire/types";
+
+function capturedAccountType(value: string): Account["type"] {
+  switch (value) {
+    case "ASSET":
+    case "LIABILITY":
+    case "EQUITY":
+    case "REVENUE":
+    case "EXPENSE":
+      return value;
+    default:
+      throw new Error(`captured account has unknown type ${value}`);
+  }
+}
+
+// JSON imports widen enum literals to string. Normalize that one wire enum;
+// the assignment keeps every other captured field compiler-checked.
+const capturedAccounts: ListAccountsResponse = {
+  ...accountsFixture,
+  accounts: accountsFixture.accounts.map((account) => ({
+    ...account,
+    type: capturedAccountType(account.type),
+  })),
+};
 
 // ⛔ THE SUCCESSOR TO `//web:rendered_test`, AND ITS REASON IS UNCHANGED.
 //
@@ -125,7 +148,7 @@ const wire = {
   operatingAging: async () => operatingAgingFixture,
   getBreak: async () => breakFixture,
   listBreaks: async () => breaksFixture,
-  listAccounts: async () => accountsFixture,
+  listAccounts: async () => capturedAccounts,
   getPosting: async () => postingsFixture.postings[0],
   listEntries: async () => entriesFixture,
   getEntry: async () => entryFixture,
