@@ -39,9 +39,8 @@ A green overlay is still not a cash forecast or permission to post.
   Money is minor units, split on the point, never a float.
 - Required monthly savings and a FIRE number refuse. This is not a
   cash forecast.
-- `fetch_live_statement()` verifies one permitted Personal Book and its fund
-  association, then reads that fund's
-  complete period `sheet-*` chart, and retains the exact book, filter, and
+- `fetch_live_statement()` verifies one permitted Personal Book, then reads
+  its book-scoped complete period `sheet-*` chart and retains the exact book, filter, and
   account names. A source-contract test holds that chart to the Rust
   `chart_for(Personal)` source. A sheet with no posted asset or liability stays
   unset; an observed zero remains a figure. One lightweight Book index read
@@ -50,8 +49,8 @@ A green overlay is still not a cash forecast or permission to post.
   digest and its monotonic control revision after the server checks both before
   and after its fold. A promotion, including A → B → A, therefore refuses, and
   the app requires every row's folded digest to match the selected Book. The
-  result retains that shared digest and revision. An independent Book refuses
-  because core exposes no book-scoped sheet.
+  result retains that shared digest and revision. The Book remains independent;
+  reading its sheet does not create or infer a Fund association.
 - `evaluate_live_goal()` requires that provenance wrapper and returns the goal
   result with its exact book, filter, and account resource names. The fixture
   evaluator remains available for deterministic unit tests.

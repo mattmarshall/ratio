@@ -716,7 +716,7 @@ impl Console {
     where
         F: FnOnce(),
     {
-        let (fund, view) = view_scoped_parent(parent)?;
+        let (scope, fund, view) = account_scoped_parent(parent)?;
         let (kind, period) = list_accounts_window(filter);
         if kind == "pnl" && period.is_empty() {
             bail!("a period P&L needs a month (YYYY-MM) or a year (YYYY)");
@@ -868,6 +868,10 @@ impl Console {
         // equality alone misses A→B→A while this figure is folding.
         ensure_account_config_snapshot(&before, &after)?;
         for account in &mut keep {
+            account.name = format!(
+                "{scope}/{fund}/views/{view}/accounts/{}",
+                account.dimension
+            );
             account.config_digest.clone_from(&before.1);
             account.control_revision = before.0;
         }
@@ -891,7 +895,7 @@ impl Console {
     }
 
     pub fn get_account(&self, name: &str) -> Result<pb::Account> {
-        let (fund, view, dim) = view_scoped_id(name, "accounts")?;
+        let (scope, fund, view, dim) = account_scoped_id(name)?;
         let before = self.account_config_snapshot(&fund)?;
         let mut account = self.accounts_of(&fund, &view)?
             .into_iter()
@@ -901,6 +905,7 @@ impl Console {
         ensure_account_config_snapshot(&before, &after)?;
         account.config_digest = before.1;
         account.control_revision = before.0;
+        account.name = format!("{scope}/{fund}/views/{view}/accounts/{dim}");
         Ok(account)
     }
 
@@ -6880,6 +6885,37 @@ pub fn view_scoped_id(name: &str, collection: &str) -> Result<(String, String, S
         bail!("{name:?} is not a funds/*/views/*/{collection}/* name");
     }
     Ok((parts[1].to_string(), parts[3].to_string(), parts[5].to_string()))
+}
+
+/// A cited account sheet may be addressed through its independent Book or
+/// through the legacy Fund alias. The book id still passes through `open_book`,
+/// which is the sole durable membership boundary.
+fn account_scoped_parent(parent: &str) -> Result<(String, String, String)> {
+    let parts: Vec<&str> = parent.split('/').collect();
+    if parts.len() != 4
+        || !matches!(parts[0], "books" | "funds")
+        || parts[2] != "views"
+    {
+        bail!("{parent:?} is not a books/*/views/* or funds/*/views/* name");
+    }
+    Ok((parts[0].to_string(), parts[1].to_string(), parts[3].to_string()))
+}
+
+fn account_scoped_id(name: &str) -> Result<(String, String, String, String)> {
+    let parts: Vec<&str> = name.split('/').collect();
+    if parts.len() != 6
+        || !matches!(parts[0], "books" | "funds")
+        || parts[2] != "views"
+        || parts[4] != "accounts"
+    {
+        bail!("{name:?} is not a books/*/views/*/accounts/* or funds/*/views/*/accounts/* name");
+    }
+    Ok((
+        parts[0].to_string(),
+        parts[1].to_string(),
+        parts[3].to_string(),
+        parts[5].to_string(),
+    ))
 }
 
 pub fn nested_id(name: &str, outer: &str, inner: &str) -> Result<(String, String)> {
@@ -15246,6 +15282,68 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         assert_eq!(v.total_debit, debit.to_string());
         assert_eq!(v.total_credit, credit.to_string());
         assert_eq!(c.get_fund("funds/demo").unwrap().trial_balance_difference, "0");
+    }
+
+    #[test]
+    fn an_independent_book_can_cite_its_account_sheet() {
+        let d = fresh("book-scoped-account-sheet");
+        let creator = Console::new(&d);
+        let created = creator
+            .create_book(pb::CreateBookRequest {
+                book: Some(pb::Book {
+                    display_name: "Household".into(),
+                    kind: book::BookKind::Personal.proto(),
+                    ..Default::default()
+                }),
+                book_id: "household".into(),
+            })
+            .unwrap();
+        assert!(created.fund.is_empty(), "an independent Book has no Fund");
+        book::grant(&d, "S", "household").unwrap();
+        let c = Console::scoped(&d, member("S", "s@x.test", ""));
+
+        let book_parent = "books/household/views/book";
+        let rows = c.list_accounts(book_parent, "sheet").unwrap().accounts;
+        assert!(!rows.is_empty());
+        assert!(rows.iter().all(|row| {
+            row.name
+                == format!("{book_parent}/accounts/{}", row.dimension)
+        }));
+        assert!(rows.iter().all(|row| !row.config_digest.is_empty()));
+
+        let listed = transcode::serve(
+            &c,
+            "GET",
+            "/v1/books/household/views/book/accounts",
+            "filter=sheet",
+            "",
+        )
+        .unwrap();
+        assert!(listed.contains("books/household/views/book/accounts/2"));
+        let got = transcode::serve(
+            &c,
+            "GET",
+            "/v1/books/household/views/book/accounts/2",
+            "",
+            "",
+        )
+        .unwrap();
+        assert!(got.contains("books/household/views/book/accounts/2"));
+
+        let account = c
+            .get_account("books/household/views/book/accounts/2")
+            .unwrap();
+        assert_eq!(account.name, "books/household/views/book/accounts/2");
+
+        // The Fund spelling remains a compatible alias for callers that
+        // already use it; only the resource name in the response changes.
+        let legacy = c
+            .get_account("funds/household/views/book/accounts/2")
+            .unwrap();
+        assert_eq!(legacy.name, "funds/household/views/book/accounts/2");
+        assert_eq!(account.balance, legacy.balance);
+        assert_eq!(account.config_digest, legacy.config_digest);
+        assert_eq!(account.control_revision, legacy.control_revision);
     }
 
     #[test]

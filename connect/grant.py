@@ -79,7 +79,11 @@ class FakeTransport:
         body: bytes | None,
     ) -> tuple[int, str]:
         self.calls.append((method, url, dict(headers), body))
-        for needle, resp in self.responses.items():
+        # Match the most specific fixture first. Collection paths are prefixes
+        # of every resource beneath them (`/v1/books` in particular).
+        for needle, resp in sorted(
+            self.responses.items(), key=lambda item: len(item[0]), reverse=True
+        ):
             if needle in url:
                 return resp
         return self.default

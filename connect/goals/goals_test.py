@@ -523,7 +523,7 @@ class LiveStatementReads(unittest.TestCase):
             values.update(overrides)
         return [
             {
-                "name": f"funds/house/views/book/accounts/{dimension}",
+                "name": f"books/house/views/book/accounts/{dimension}",
                 "dimension": str(dimension),
                 "type": kind,
                 "balance": values.get(dimension, ("0", "0"))[0],
@@ -544,7 +544,6 @@ class LiveStatementReads(unittest.TestCase):
                             "books": [
                                 {
                                     "name": "books/house",
-                                    "fund": "funds/house",
                                     "kind": kind,
                                     "currencyCode": "USD",
                                     "defaultView": "book",
@@ -555,7 +554,7 @@ class LiveStatementReads(unittest.TestCase):
                         }
                     ),
                 ),
-                "/v1/funds/house/views/book/accounts?filter=sheet-2026-03": (
+                "/v1/books/house/views/book/accounts?filter=sheet-2026-03": (
                     200,
                     json.dumps(
                         {
@@ -595,7 +594,9 @@ class LiveStatementReads(unittest.TestCase):
         self.assertEqual(live.control_revision, 0)
         urls = [call[1] for call in transport.calls]
         self.assertEqual(sum(url.endswith("/v1/books") for url in urls), 1)
-        self.assertFalse(any("/v1/books/house" in url for url in urls))
+        self.assertEqual(
+            sum("/v1/books/house/views/book/accounts" in url for url in urls), 1
+        )
         cited = g.evaluate_live_goal(goal(), live=live, client=declared_client())
         self.assertEqual(cited.progress.current, 4_500_000)
         self.assertEqual(cited.config_digest, "a" * 64)
@@ -685,7 +686,7 @@ class LiveStatementReads(unittest.TestCase):
         for path, body, message in (
             ("/v1/books", "null", "book index"),
             (
-                "/v1/funds/house/views/book/accounts?filter=sheet-2026-03",
+                "/v1/books/house/views/book/accounts?filter=sheet-2026-03",
                 "[]",
                 "live sheet",
             ),
@@ -751,7 +752,7 @@ class LiveStatementReads(unittest.TestCase):
             g.LiveStatement(
                 g.Statement(currency="USD", net_worth=1),
                 "books/house",
-                ("funds/house/views/book/accounts/1",),
+                ("books/house/views/book/accounts/1",),
                 "sheet-2026-03",
             )
         self.assertIn("live reader", str(ctx.exception))
@@ -888,7 +889,7 @@ class LiveStatementReads(unittest.TestCase):
     def test_a_non_personal_chart_dimension_cannot_enter_net_worth(self):
         accounts = [
             {
-                "name": "funds/house/views/book/accounts/999",
+                "name": "books/house/views/book/accounts/999",
                 "dimension": "999",
                 "type": "ASSET",
                 "balance": "800000",
@@ -912,7 +913,7 @@ class LiveStatementReads(unittest.TestCase):
 
     def test_a_sheet_under_a_different_configuration_refuses(self):
         base = self.live_transport()
-        key = "/v1/funds/house/views/book/accounts?filter=sheet-2026-03"
+        key = "/v1/books/house/views/book/accounts?filter=sheet-2026-03"
         status, raw = base.responses[key]
         value = json.loads(raw)
         value["accounts"][0]["configDigest"] = "b" * 64
@@ -935,7 +936,7 @@ class LiveStatementReads(unittest.TestCase):
 
     def test_accounts_from_different_control_revisions_refuse(self):
         base = self.live_transport()
-        key = "/v1/funds/house/views/book/accounts?filter=sheet-2026-03"
+        key = "/v1/books/house/views/book/accounts?filter=sheet-2026-03"
         status, raw = base.responses[key]
         value = json.loads(raw)
         value["accounts"][1]["controlRevision"] = "1"
@@ -959,14 +960,14 @@ class LiveStatementReads(unittest.TestCase):
     def test_a_repeated_dimension_refuses_instead_of_counting_net_worth_twice(self):
         accounts = [
             {
-                "name": "funds/house/views/book/accounts/1",
+                "name": "books/house/views/book/accounts/1",
                 "dimension": "1",
                 "type": "ASSET",
                 "balance": "800000",
                 "postingCount": "2",
             },
             {
-                "name": "funds/house/views/book/accounts/1",
+                "name": "books/house/views/book/accounts/1",
                 "dimension": "1",
                 "type": "ASSET",
                 "balance": "800000",
@@ -991,7 +992,7 @@ class LiveStatementReads(unittest.TestCase):
     def test_an_unknown_account_type_refuses_instead_of_disappearing(self):
         accounts = [
             {
-                "name": "funds/house/views/book/accounts/1",
+                "name": "books/house/views/book/accounts/1",
                 "dimension": "1",
                 "type": "CRYPTO_ASSET",
                 "balance": "800000",
@@ -1023,7 +1024,7 @@ class LiveStatementReads(unittest.TestCase):
             ("balance", "9" * 10_000, "balance"),
         ):
             account = {
-                "name": "funds/house/views/book/accounts/1",
+                "name": "books/house/views/book/accounts/1",
                 "dimension": "1",
                 "type": "ASSET",
                 "balance": "800000",

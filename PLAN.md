@@ -5303,7 +5303,7 @@ UI, and packing inside Ratio core remain refused.
 
 ### Amendment, 2026-09-14 — live goals read the Personal sheet they cite
 
-Related: #168. The goals scaffold evaluated a supplied `Statement`, but its
+Related: #168 and #355. The goals scaffold evaluated a supplied `Statement`, but its
 function named `fetch_statements` only read a Book resource. A caller could
 therefore label fixture values as live without proving the selected book was
 Personal or tying the values to an account resource.
@@ -5319,8 +5319,10 @@ resource must belong to the selected book and view, and an unexpectedly
 paginated result refuses rather than presenting a partial sheet.
 
 One lightweight Book index read supplies the selected view, reporting currency,
-active configuration digest, and fund association for the fund-scoped statement
-route. An independent Book refuses because core exposes no book-scoped sheet.
+and active configuration digest. `ListAccounts` and `GetAccount` now expose
+additional `books/{book}/views/{view}` HTTP bindings, so an independent Book is
+the statement resource and no Fund association is created or inferred. The
+legacy Fund bindings remain compatible.
 Every `ListAccounts` row carries the exact
 digest and monotonic control revision used after the server checks both before
 and after its fold. A promotion, including A → B → A, therefore refuses at the

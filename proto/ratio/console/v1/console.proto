@@ -417,13 +417,19 @@ service Console {
   // these figures, and until you can open one there is no difference between
   // a proved ledger and a confident one.
   rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse) {
-    option (google.api.http) = {get: "/v1/{parent=funds/*/views/*}/accounts"};
+    option (google.api.http) = {
+      get: "/v1/{parent=funds/*/views/*}/accounts"
+      additional_bindings {get: "/v1/{parent=books/*/views/*}/accounts"}
+    };
     option (google.api.method_signature) = "parent";
   }
 
   // Gets one account with its balance. (AIP-131)
   rpc GetAccount(GetAccountRequest) returns (Account) {
-    option (google.api.http) = {get: "/v1/{name=funds/*/views/*/accounts/*}"};
+    option (google.api.http) = {
+      get: "/v1/{name=funds/*/views/*/accounts/*}"
+      additional_bindings {get: "/v1/{name=books/*/views/*/accounts/*}"}
+    };
     option (google.api.method_signature) = "name";
   }
 
@@ -1051,6 +1057,7 @@ message View {
   option (google.api.resource) = {
     type: "ratio.fastverk.dev/View"
     pattern: "funds/{fund}/views/{view}"
+    pattern: "books/{book}/views/{view}"
     singular: "view"
     plural: "views"
   };
@@ -2276,6 +2283,7 @@ message Account {
   option (google.api.resource) = {
     type: "ratio.fastverk.dev/Account"
     pattern: "funds/{fund}/views/{view}/accounts/{account}"
+    pattern: "books/{book}/views/{view}/accounts/{account}"
     singular: "account"
     plural: "accounts"
   };

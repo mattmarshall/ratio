@@ -40,6 +40,15 @@ from pathlib import Path
 # What decides whether a page renders is the NUMBER of calls, not the distance.
 MAX_READS_PER_FILE = 3
 
+# Additional HTTP bindings consumed by first-party Connect apps rather than a
+# Next.js screen. They are aliases of RPCs the console already calls through
+# the Fund spelling, not unread methods. Keeping this set exact makes a stale
+# exception fail when the binding leaves the protocol.
+CONNECT_ONLY_BINDINGS = {
+    ("GET", "/v1/{parent=books/*/views/*}/accounts"),
+    ("GET", "/v1/{name=books/*/views/*/accounts/*}"),
+}
+
 
 def strip_comments(text: str) -> str:
     """Drop `//` comments so a template quoted in prose is not read as a rule."""
@@ -106,11 +115,17 @@ def main() -> None:
     problems: list[str] = []
 
     # 1. The client calls exactly the contract's routes.
-    want, have = proto_rules(proto_text), client_rules(client_text)
-    if not want:
+    contract, have = proto_rules(proto_text), client_rules(client_text)
+    if not contract:
         sys.exit("::error::no google.api.http rules found — this would pass vacuously")
     if not have:
         sys.exit("::error::no routes found in the client — this would pass vacuously")
+    stale_connect_routes = CONNECT_ONLY_BINDINGS - contract
+    for method, template in sorted(stale_connect_routes):
+        problems.append(
+            f"{method} {template}: Connect-only binding is absent from the contract"
+        )
+    want = contract - CONNECT_ONLY_BINDINGS
     for method, template in sorted(want - have):
         problems.append(f"{method} {template}: in the contract, not called by the console")
     for method, template in sorted(have - want):
@@ -148,7 +163,8 @@ def main() -> None:
         sys.exit(f"\n{len(problems)} problem(s) between the contract and the console")
 
     print(
-        f"  ok  {len(want)} route(s) in the contract, all called; "
+        f"  ok  {len(contract)} route(s) in the contract; "
+        f"{len(CONNECT_ONLY_BINDINGS)} Connect-only binding(s); "
         f"{len(routes)} screen(s), all present; {len(exports)} call(s), all read"
     )
 
