@@ -1,7 +1,9 @@
-# Reddit ad concepts — the developer register
+# Reddit ad concepts — accounting for developers
 
-Seven paid-post concepts positioning Ratio to **engineers** as a scalable,
-embeddable, correct accounting kernel that you can run a simulation against.
+Nine paid-post concepts positioning Ratio to **engineers** the way Resend
+positions email: the product is the API call, and the snippet is the pitch.
+Ratio is a machine-checked ledger kernel you post to over gRPC, embed, run on
+your own store, and point a simulation at.
 
 **Figma:** <https://www.figma.com/design/cEk1cBfIJiHnKhSS0cmn48>
 — `Ad concepts` (creatives), `In-feed previews` (how they read in a feed),
@@ -19,8 +21,8 @@ than trust has to be accurate about itself, or it argues against itself.
 ### Correct
 
 The kernel's sole invariant is machine-checked in Lean 4, and the Rust records
-are emitted from that Lean — **never committed**, so there is no hand-written
-copy that can drift from the proof.
+are emitted from that Lean — **never committed**, so nothing hand-written can
+drift from the proof.
 
 - `lean/Ratio/Core.lean` — `theorem ledger_conserves`
 - `lean/Ratio/Kernel/Emit.lean`, and 46 Lean sources under `lean/`
@@ -37,40 +39,71 @@ that one instead. The stale doc comments are worth a separate look.
 
 ### Embeddable
 
-One crate, one dependency. No database: the journal is a file and the
-configuration is content-addressed beside it. The binary you build locally is
-the one that runs on Lambda; MCP speaks stdio.
+One crate, one dependency. CLI, gRPC and MCP over stdio from one binary — the
+one you build locally is the one that runs on Lambda. `CreateTransaction`
+refuses an unbalanced post with `FAILED_PRECONDITION`.
 
 - `crates/ratio-kernel/Cargo.toml` — `[dependencies]` is `ratio-common`, alone
-- `README.md` — Quickstart; the default local path needs no database
-- `docs/current-state.md` — Book of record
-- `crates/ratio-store`, `crates/ratio-mcp`, `crates/ratio/src/main.rs`
+- `proto/ratio/v1/ledger.proto` — `Ledger.CreateTransaction`, and its declared
+  HTTP binding `POST /v1/{parent=books/*}/transactions`
+- `crates/ratio-api/src/lib.rs` — `tonic::Status::failed_precondition(
+  "transaction does not conserve value: postings must net to zero")`, and the
+  test `create_rejects_unbalanced_with_failed_precondition`
+- `crates/ratio/src/main.rs` — `USAGE`: `server` · `mcp` · `watch`
+- `crates/ratio-mcp` — MCP over stdio, line-delimited JSON-RPC
 
-### Scalable
+⚠ `ratio server` serves gRPC. The `POST` path on concept 00's creative is the
+proto's declared HTTP binding, not a hosted REST endpoint. The public
+`/balance` on the demo host is the console API, a different surface.
 
-A 20,000,000-lot projection fold measured in-repo at 17.4 s. Verified
-journal-prefix checkpoints replay only the tail. Postgres is an optional read
-projection; the journal stays the book of record.
+### Pluggable persistence
 
+Three seams stated as traits — `ConfigStore`, `FactStore`, `Journal` — so the
+implementation can change without the callers noticing, over a three-method
+`ObjectStore`: memory, a directory, or S3, one object per entry with one
+conditional PUT. `RATIO_PG_URL` adds a Postgres read projection; the journal
+stays the book of record wherever it sits.
+
+- `crates/ratio-store/src/lib.rs` — the three seams, stated as traits
+- `crates/ratio-store/src/objects.rs` — `ObjectStore`: `put_if_absent` ·
+  `get` · `list`; `MemoryStore`, `DirStore`
+- `crates/ratio/src/scale.rs` — the S3 adapter, installed once at process start
+- `tla/S3Journal.tla` — what the backend must guarantee: create the key or
+  report it held, never overwrite
+- `crates/ratio-sql-project/src/reads.rs` — `RATIO_PG_URL`; unset is the
+  in-memory fold
+
+### One model
+
+Personal, Investment, Project and Operating are kinds of book over one kernel.
+Kind selects the chart `chart_for` writes and the screens `screensFor` offers —
+different partitions of the same conserved quantities, not forked products.
+Every label a posting carries is exactly one of conserved, partitioning or
+measured.
+
+- `crates/ratio-console/src/book.rs` — `BookKind`; `chart_for`: "personal and
+  project are different partitions of the same conserved quantities"
+- `console/src/lib/screens.ts` — `screensFor`: "kind selects the list"
+- `lean/Ratio/Chart/Dimensions.lean` — conserved / partitioning / measured;
+  currency nets to zero, an account says where it sits, a quantity is counted
+- `crates/ratio/src/main.rs` — `ratio init --kind` accepts all four
+
+### For simulation
+
+`ratio gen` builds a fund from named dials with no RNG crate — byte-identical
+on any machine. `ratio bench` recorded a 20,000,000-lot projection fold at
+17.4 s; `ratio closure` costs a period end before running it; `ratio replay`
+re-derives a struck NAV and proves it again.
+
+- `crates/ratio-gen/src/lib.rs` — the dials, and why there is no RNG crate
 - `HANDOFF.md` — 10,000 × 2,000 = 20,000,000 lots, 17.4 s, digest cited
-- `docs/current-state.md` — Scale
-- `crates/ratio-project/src/checkpoint.rs`, `crates/ratio-sql-project`
+- `crates/ratio/src/main.rs` — `USAGE`: `gen` · `bench` · `closure` · `replay`
+- `demo/rehearse.sh`, `demo/shadow-run.sh` — the demos, asserted in CI
 
 ⛔ The full ~40 GB / 140M-entry journal fold is **not** measured, and every GPU
 and NAV-runtime figure on the platform page is **modeled, never measured**.
-Neither may appear as achieved performance. Concept 03's creative carries that
+Neither may appear as achieved performance. Concept 05's creative carries that
 caveat in the artwork, not in a footnote somebody can crop.
-
-### For simulation and development
-
-`ratio gen` builds a fund from named dials with no RNG crate — byte-identical
-on any machine. `ratio bench` measures a period end, `ratio closure` costs one
-before running it, and `ratio replay` re-derives a struck NAV and proves it
-again.
-
-- `crates/ratio-gen/src/lib.rs` — the dials, and why there is no RNG crate
-- `crates/ratio/src/main.rs` — `USAGE`: `gen` · `bench` · `closure` · `replay`
-- `demo/rehearse.sh`, `demo/shadow-run.sh` — the demos, asserted in CI
 
 ---
 
@@ -80,6 +113,7 @@ again.
 
 | Line | Source |
 |---|---|
+| "Accounting for developers" — the umbrella; every concept hangs off it | this brief |
 | "AGPL-3.0, with a commercial license alongside it" | `LICENSING.md` |
 | "machine-checked" · "emitted from the Lean" · "measured in-repo" | `lean/`, `HANDOFF.md` |
 | Name the shape behind every number — 10,000 securities × 2,000 lots, 17.4 s | `HANDOFF.md` |
@@ -93,6 +127,7 @@ again.
 | "open core" · "MIT licen…" · "permissively licensed" · "use it however you like" | implies the permissive grant the license no longer carries | `site/verify.py`, `marketing/verify_language.py` |
 | "not open source" | AGPL-3.0 is OSI- and FSF-approved, so this is now false | `marketing/verify_language.py` |
 | "Rust/Python" | the core stack is Lean-authored and Rust-emitted | `marketing/verify_language.py` |
+| "fastverk" · `ratio.fastverk.dev` · `com.fastverk` | internal naming that survives in `ledger.proto`; never on a creative | `marketing/verify_language.py` |
 | A modeled figure restated as achieved performance | nothing has been run on a 20M-lot book at NAV scale | `site/README.md` |
 | A named fund complex behind the 20M-lot workload | it is a scale illustration, not a customer | `site/README.md` |
 | Performance, attribution or composites as features | not committed; PLAN's refusal stands | `docs/current-state.md` |
@@ -102,7 +137,7 @@ again.
 `site/verify.py` fails the build if the practitioner page (`index.html`)
 acquires *kernel*, *Lean*, *conservation*, *Rust*, *append-only* or *GPU* —
 because a fund accountant reading that vocabulary has been sent to the wrong
-document. **Point these seven ads at engineers.** An operations or
+document. **Point these nine ads at engineers.** An operations or
 fund-accounting audience needs `index.html`'s language, which is a different
 set of creatives and is not in this file.
 
@@ -111,7 +146,7 @@ set of creatives and is not in this file.
 ## Format notes
 
 - Creatives are **1200 × 628** (1.91:1) for the feed link ad, with 1080 × 1080
-  variants for mobile feed (concepts 02, 03, 05).
+  variants for mobile feed (concepts 00, 02, 05, 06).
 - On Reddit the **headline is the post title** and the **CTA button is Reddit's
   own chrome** — neither is baked into the image. The image's job is to prove
   the claim the title makes.
@@ -122,7 +157,22 @@ set of creatives and is not in this file.
 
 ---
 
-## The seven concepts
+## The nine concepts
+
+### 00 · Accounting for developers — dark · the hero
+
+> Accounting for developers — a machine-checked ledger kernel you post to over
+> gRPC, embed as a crate, and run on any store
+
+- **CTA** Try the demo
+- **Subreddits** r/programming · r/rust · r/ExperiencedDevs · r/webdev
+- **Creative** the one call: `POST /v1/books/fund-1/transactions` with two
+  postings that net to zero, then the same call with `124999` returning
+  `FAILED_PRECONDITION: transaction does not conserve value`
+- **Backed by** `proto/ratio/v1/ledger.proto`; `crates/ratio-api/src/lib.rs`;
+  `crates/ratio/src/main.rs` — `server` · `mcp` · `watch`
+- ⚠ See the Embeddable caveat: gRPC is served, the HTTP path is the declared
+  binding.
 
 ### 01 · Theorem — cream
 
@@ -147,7 +197,34 @@ set of creatives and is not in this file.
 - **Backed by** `crates/ratio-kernel/src/lib.rs` — the `transaction_total_exact`
   doc comment, near-verbatim; `Cargo.toml` — one dependency
 
-### 03 · Determinism — cream
+### 03 · Bring your own store — cream
+
+> The store under our accounting kernel is a three-method trait. Memory, a
+> directory, or S3 — and a TLA+ spec for what it must guarantee
+
+- **CTA** Read the trait
+- **Subreddits** r/rust · r/softwarearchitecture · r/programming · r/aws
+- **Creative** `pub trait ObjectStore` verbatim — `put_if_absent`, `get`,
+  `list` — over chips for `MemoryStore`, `DirStore`, `S3` and
+  `RATIO_PG_URL → reads`
+- **Backed by** `crates/ratio-store/src/objects.rs`;
+  `crates/ratio-store/src/lib.rs`; `crates/ratio/src/scale.rs`;
+  `tla/S3Journal.tla`; `crates/ratio-sql-project/src/reads.rs`
+
+### 04 · One kernel, four kinds — green surface
+
+> Personal, investment, project and operating books run on one accounting
+> kernel — kind selects the chart, not a fork
+
+- **CTA** Build a book
+- **Subreddits** r/programming · r/SideProject · r/fintech · r/selfhosted
+- **Creative** `ratio init --kind` × four, over the classification —
+  CONSERVED currency nets to zero · PARTITIONING account says where it sits ·
+  MEASURED quantity is only counted
+- **Backed by** `crates/ratio-console/src/book.rs`; `console/src/lib/screens.ts`;
+  `lean/Ratio/Chart/Dimensions.lean`
+
+### 05 · Simulation — cream
 
 > A deterministic ledger generator with no RNG crate: same dials, same seed,
 > byte-identical 20M-lot book on any machine
@@ -161,18 +238,7 @@ set of creatives and is not in this file.
 - ⚠ The creative states in the artwork that this is the **projection** fold,
   not the full 140M-entry journal fold.
 
-### 04 · Embeddable — green surface
-
-> An accounting kernel you can embed with no database under it — the journal is
-> a file and the config is content-addressed beside it
-
-- **CTA** Build a book
-- **Subreddits** r/rust · r/programming · r/selfhosted · r/SideProject
-- **Creative** investment · personal · project · operating, over one kernel bar
-- **Backed by** `README.md` Quickstart; `docs/current-state.md`;
-  `crates/ratio-store`; `ratio init --kind`
-
-### 05 · Agent fence — dark
+### 06 · Agent fence — dark
 
 > We gave an LLM write access to an accounting ledger and deleted the approve
 > tool. Not permission-checked — not dispatched
@@ -183,18 +249,6 @@ set of creatives and is not in this file.
   struck for the model and reading `ratio approve` for the human
 - **Backed by** `crates/ratio-mcp/src/lib.rs` — the fence table, verbatim;
   `ORCHESTRATION.md`; `docs/connect-scopes.md` — `rules:approve` is absent
-
-### 06 · The mark — cream
-
-> However the entries are divided, the totals are equal — an accounting book
-> whose core properties are machine-checked
-
-- **CTA** See the live book
-- **Subreddits** r/rust · r/programming · r/fintech · r/opensource
-- **Creative** `mark-ratio.svg` drawn to scale, with its split annotated
-  38 + 62 = 100
-- **Backed by** `README.md`; `site/marks/mark-ratio.svg` — two rows of equal
-  ink, the top one cut 38/62
 
 ### 07 · Emitted, not written — dark
 
@@ -209,19 +263,31 @@ set of creatives and is not in this file.
   `crates/ratio-kernel/BUILD.bazel`; `lean/BUILD.bazel` —
   `lean_emit(name = "ratio_kernel_ast")`
 
+### 08 · The mark — cream
+
+> However the entries are divided, the totals are equal — an accounting book
+> whose core properties are machine-checked
+
+- **CTA** See the live book
+- **Subreddits** r/rust · r/programming · r/fintech · r/opensource
+- **Creative** `mark-ratio.svg` drawn to scale, with its split annotated
+  38 + 62 = 100
+- **Backed by** `README.md`; `site/marks/mark-ratio.svg` — two rows of equal
+  ink, the top one cut 38/62
+
 ---
 
 ## Open before any of this is bought
 
 - **The CTAs have no destination.** `site/README.md` already flags this for the
   website's buttons, and an ad is worse: a paid click that lands on a page with
-  nothing to say yes to is a paid bounce. Decide what "Read the kernel" opens —
+  nothing to say yes to is a paid bounce. Decide what "Read the trait" opens —
   the repository, the live trial balance, or a contact route.
 - **`ratio.marsh.build` is the URL on every creative.** Confirm that is the
   destination for a developer audience rather than the console sign-in, which
   is what that host serves today.
-- **The repository must be public** for four of the seven CTAs to work at all.
-  The same checklist item is open on the website.
+- **The repository must be public** for most of the CTAs to work at all. The
+  same checklist item is open on the website.
 - **Reddit disclosure.** These run as Promoted posts from a Ratio account.
   Decide the account name before the first buy; it appears above every headline.
 - **`marketing/BUILD.bazel` still describes the license as "NOT open source and
