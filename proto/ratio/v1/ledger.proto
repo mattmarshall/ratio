@@ -16,12 +16,12 @@ import "google/api/field_behavior.proto";
 import "google/api/resource.proto";
 
 option java_multiple_files = true;
-option java_package = "com.fastverk.ratio.v1";
+option java_package = "build.marsh.ratio.v1";
 option java_outer_classname = "LedgerProto";
 
 // The accounting kernel: posts and reads balanced transactions over a ledger.
 service Ledger {
-  option (google.api.default_host) = "ratio.fastverk.dev";
+  option (google.api.default_host) = "ratio.marsh.build";
 
   // Gets a transaction. (AIP-131)
   rpc GetTransaction(GetTransactionRequest) returns (Transaction) {
@@ -51,7 +51,7 @@ service Ledger {
 // valid iff its postings net to zero per dimension. (AIP-123)
 message Transaction {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Transaction"
+    type: "ratio.marsh.build/Transaction"
     pattern: "books/{book}/transactions/{transaction}"
     singular: "transaction"
     plural: "transactions"
@@ -65,7 +65,11 @@ message Transaction {
   repeated Posting postings = 2 [(google.api.field_behavior) = REQUIRED];
 
   // Hash of the control-plane artifact under which this transaction was
-  // generated — provenance for deterministic replay (research.tex §4).
+  // generated — provenance for deterministic replay (research.tex §4). On
+  // create, a non-empty value must name the configuration in force, or the
+  // post is refused (FAILED_PRECONDITION): a client that pins the rules it
+  // expects is told when they have moved. On read, the digest the entry was
+  // posted under.
   string control_plane_hash = 3 [(google.api.field_behavior) = OPTIONAL];
 }
 
@@ -77,6 +81,23 @@ message Posting {
 
   // The signed amount in minor units. Exact integer; no floats.
   int64 amount = 2 [(google.api.field_behavior) = REQUIRED];
+
+  // What the amount is denominated in. The conserved quantity that must net to
+  // zero on its own: two currencies are two independent conservation laws, not
+  // one law over a sum (`Ratio.Chart.Dimensions`). Absent is the book's untyped
+  // group, not its base currency — an entry that names a currency on one leg
+  // and not the other is refused as ambiguous rather than guessed at.
+  optional string currency_code = 3 [(google.api.field_behavior) = OPTIONAL];
+
+  // Which instrument this posting concerns, if any. An account partitions
+  // value and an instrument partitions it further, so conservation is
+  // untouched by construction (`Ratio.Ingest.partition_preserves_conservation`).
+  optional string instrument = 4 [(google.api.field_behavior) = OPTIONAL];
+
+  // Units, for a posting that concerns an instrument. Measured, not conserved:
+  // buying a hundred shares creates a hundred shares in the book, because the
+  // counterparty is outside it.
+  optional int64 quantity = 5 [(google.api.field_behavior) = OPTIONAL];
 }
 
 // Request message for `GetTransaction`. (AIP-131)
@@ -85,7 +106,7 @@ message GetTransactionRequest {
   // Format: `books/{book}/transactions/{transaction}`
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "ratio.fastverk.dev/Transaction"}
+    (google.api.resource_reference) = {type: "ratio.marsh.build/Transaction"}
   ];
 }
 
@@ -95,7 +116,7 @@ message ListTransactionsRequest {
   // Format: `books/{book}`
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {child_type: "ratio.fastverk.dev/Transaction"}
+    (google.api.resource_reference) = {child_type: "ratio.marsh.build/Transaction"}
   ];
 
   // The maximum number of transactions to return. The service may return fewer.
@@ -120,7 +141,7 @@ message CreateTransactionRequest {
   // Format: `books/{book}`
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {child_type: "ratio.fastverk.dev/Transaction"}
+    (google.api.resource_reference) = {child_type: "ratio.marsh.build/Transaction"}
   ];
 
   // The transaction to post. Must be balanced (conservation).

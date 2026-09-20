@@ -1,5 +1,7 @@
 exports_files([
     "ratio/console/v1/console.proto",
+    "ratio/v1/chart.proto",
+    "ratio/v1/ledger.proto",
     "ratio/v1/recon.proto",
 ])
 
@@ -110,6 +112,33 @@ sh_test(
         "ratio/console/v1/console.proto",
         "//crates/ratio-console:src/transcode.rs",
         "//console:src/wire/types.ts",
+    ],
+)
+
+# ⛔ The kernel API's three hand-written mirrors, checked against the contract:
+# the REST JSON codec in ratio-api, the Python SDK's types and the TypeScript
+# SDK's wire interfaces. Same discipline as `mirrors_test` above, for the same
+# reason — the Rust encoder can promise a key the contract never declared and
+# every client would learn to rely on it.
+sh_test(
+    name = "sdk_mirrors_test",
+    size = "small",
+    srcs = ["sdk_mirrors_test.sh"],
+    args = [
+        "$(rootpath sdk_mirrors_test.py)",
+        "$(rootpath ratio/v1/ledger.proto)",
+        "$(rootpath ratio/v1/chart.proto)",
+        "$(rootpath //crates/ratio-api:src/json.rs)",
+        "$(rootpath //sdk/python:ratio/types.py)",
+        "$(rootpath //sdk/typescript:src/types.ts)",
+    ],
+    data = [
+        "sdk_mirrors_test.py",
+        "ratio/v1/ledger.proto",
+        "ratio/v1/chart.proto",
+        "//crates/ratio-api:src/json.rs",
+        "//sdk/python:ratio/types.py",
+        "//sdk/typescript:src/types.ts",
     ],
 )
 

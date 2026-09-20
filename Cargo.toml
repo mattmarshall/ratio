@@ -18,6 +18,7 @@ members = [
     "crates/ratio-project",
     "crates/ratio-recon",
     "crates/ratio-api",
+    "crates/ratio-client",
     "crates/ratio-tui",
     "crates/ratio",
     "rust/json_to_rust",

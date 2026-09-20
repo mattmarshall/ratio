@@ -16,7 +16,9 @@ cd console && pnpm check   # only if you touched console/
 Then a pull request. Follow the [issue-completion merge check](docs/issue-completion.md):
 use neutral references for partial work, require the wording check, and review
 the final merge message and manually linked issues. CI runs `bazel build //...` and `bazel test //...`, and —
-for a change under `console/` — `.github/workflows/console.yml`.
+for a change under `console/` — `.github/workflows/console.yml`; for a change
+under `sdk/typescript/` — `.github/workflows/sdk-typescript.yml`, for the same
+reason.
 
 ⚠ **`bazel test //...` is no longer the whole gate, and it used to be.** The
 operations console is a Next.js application built by Vercel, so Bazel has no

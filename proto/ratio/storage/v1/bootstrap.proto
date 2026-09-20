@@ -5,7 +5,7 @@ package ratio.storage.v1;
 import "ratio/console/v1/console.proto";
 
 option java_multiple_files = true;
-option java_package = "com.fastverk.ratio.storage.v1";
+option java_package = "build.marsh.ratio.storage.v1";
 option java_outer_classname = "BootstrapProto";
 
 // Immutable initial book generation. Exact chart/config bytes are retained;

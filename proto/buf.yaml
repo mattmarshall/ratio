@@ -1,0 +1,11 @@
+# The contract as a buf module, for consumers generating a client in a language
+# this repository does not ship an SDK for. Bazel is still the build here; this
+# file exists so `buf generate` works from a checkout with nothing else.
+version: v2
+modules:
+  - path: .
+deps:
+  - buf.build/googleapis/googleapis
+lint:
+  use:
+    - STANDARD

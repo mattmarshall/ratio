@@ -39,22 +39,26 @@ that one instead. The stale doc comments are worth a separate look.
 
 ### Embeddable
 
-One crate, one dependency. CLI, gRPC and MCP over stdio from one binary — the
-one you build locally is the one that runs on Lambda. `CreateTransaction`
-refuses an unbalanced post with `FAILED_PRECONDITION`.
+One crate, one dependency. CLI, gRPC **and REST on one port**, and MCP over
+stdio, from one binary — the one you build locally is the one that runs on
+Lambda. `CreateTransaction` refuses an unbalanced post with
+`FAILED_PRECONDITION`, over either protocol, from one implementation.
 
 - `crates/ratio-kernel/Cargo.toml` — `[dependencies]` is `ratio-common`, alone
-- `proto/ratio/v1/ledger.proto` — `Ledger.CreateTransaction`, and its declared
-  HTTP binding `POST /v1/{parent=books/*}/transactions`
+- `proto/ratio/v1/ledger.proto` — `Ledger.CreateTransaction`, and its HTTP
+  binding `POST /v1/{parent=books/*}/transactions`, served natively by
+  `crates/ratio-api/src/rest.rs` from the same trait impl
 - `crates/ratio-api/src/lib.rs` — `tonic::Status::failed_precondition(
   "transaction does not conserve value: postings must net to zero")`, and the
   test `create_rejects_unbalanced_with_failed_precondition`
 - `crates/ratio/src/main.rs` — `USAGE`: `server` · `mcp` · `watch`
 - `crates/ratio-mcp` — MCP over stdio, line-delimited JSON-RPC
 
-⚠ `ratio server` serves gRPC. The `POST` path on concept 00's creative is the
-proto's declared HTTP binding, not a hosted REST endpoint. The public
-`/balance` on the demo host is the console API, a different surface.
+`ratio server --book DIR` serves gRPC and REST on one port; the `POST` on
+concept 00's creative is a real call. `crates/ratio-api:rest_routes_test`
+holds the route table to the contract. SDKs: `crates/ratio-client` (Rust),
+`sdk/python`, `sdk/typescript` — see `sdk/README.md`. The public `/balance`
+on the demo host is the console API, a different surface.
 
 ### Pluggable persistence
 
@@ -127,7 +131,7 @@ caveat in the artwork, not in a footnote somebody can crop.
 | "open core" · "MIT licen…" · "permissively licensed" · "use it however you like" | implies the permissive grant the license no longer carries | `site/verify.py`, `marketing/verify_language.py` |
 | "not open source" | AGPL-3.0 is OSI- and FSF-approved, so this is now false | `marketing/verify_language.py` |
 | "Rust/Python" | the core stack is Lean-authored and Rust-emitted | `marketing/verify_language.py` |
-| "fastverk" · `ratio.fastverk.dev` · `com.fastverk` | internal naming that survives in `ledger.proto`; never on a creative | `marketing/verify_language.py` |
+| "fastverk" · `ratio.fastverk.dev` · `com.fastverk` | internal naming; the protos now say `ratio.marsh.build`, and it must not come back on a creative | `marketing/verify_language.py` |
 | A modeled figure restated as achieved performance | nothing has been run on a 20M-lot book at NAV scale | `site/README.md` |
 | A named fund complex behind the 20M-lot workload | it is a scale illustration, not a customer | `site/README.md` |
 | Performance, attribution or composites as features | not committed; PLAN's refusal stands | `docs/current-state.md` |
@@ -169,10 +173,8 @@ set of creatives and is not in this file.
 - **Creative** the one call: `POST /v1/books/fund-1/transactions` with two
   postings that net to zero, then the same call with `124999` returning
   `FAILED_PRECONDITION: transaction does not conserve value`
-- **Backed by** `proto/ratio/v1/ledger.proto`; `crates/ratio-api/src/lib.rs`;
-  `crates/ratio/src/main.rs` — `server` · `mcp` · `watch`
-- ⚠ See the Embeddable caveat: gRPC is served, the HTTP path is the declared
-  binding.
+- **Backed by** `proto/ratio/v1/ledger.proto`; `crates/ratio-api/src/lib.rs`
+  and `rest.rs`; `crates/ratio/src/main.rs` — `server` · `mcp` · `watch`
 
 ### 01 · Theorem — cream
 

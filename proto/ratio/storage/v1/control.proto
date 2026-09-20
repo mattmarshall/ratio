@@ -3,7 +3,7 @@ syntax = "proto3";
 package ratio.storage.v1;
 
 option java_multiple_files = true;
-option java_package = "com.fastverk.ratio.storage.v1";
+option java_package = "build.marsh.ratio.storage.v1";
 option java_outer_classname = "ControlProto";
 
 // One reviewed post-create change. The actor is supplied by a trusted caller,

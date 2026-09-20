@@ -1,4 +1,4 @@
-"""ratio — Lean-authored, Rust-emitted personal-finance app on the fastverk stack.
+"""ratio — a Lean-authored, Rust-emitted accounting kernel, built with Bazel.
 
 Phase 0: Rust toolchain + crate_universe so the Cargo workspace builds under Bazel.
 Later phases add rules_lean (the Lean kernel + emitter), rules_aip (proto lint),
@@ -112,6 +112,7 @@ crate.from_cargo(
         "//crates/ratio-nav:Cargo.toml",
         "//crates/ratio-recon:Cargo.toml",
         "//crates/ratio-api:Cargo.toml",
+        "//crates/ratio-client:Cargo.toml",
         "//crates/ratio-tui:Cargo.toml",
         "//crates/ratio:Cargo.toml",
         "//rust/json_to_rust:Cargo.toml",

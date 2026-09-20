@@ -1,0 +1,13 @@
+# The TypeScript SDK.
+#
+# ⛔ BAZEL DOES NOT BUILD OR TEST THIS, for the reason it does not build the
+# console: there is no JavaScript toolchain in the Bazel graph, on purpose (see
+# MODULE.bazel). `pnpm install && pnpm test` in this directory is the check.
+#
+# ⛔ THE EXPORT BELOW IS LOAD-BEARING. `//proto:sdk_mirrors_test` reads the wire
+# types by label to assert they still mirror `ledger.proto` and `chart.proto`
+# field-for-field — the one opinion Bazel holds about this package.
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["src/types.ts"])

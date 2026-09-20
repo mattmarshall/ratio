@@ -48,8 +48,13 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 | `//crates/*:*_test` | the Rust (except `pg_engine_test`, below) |
 | `//crates/ratio-sql-project:pg_engine_test` | live apply of `schema.sql` — tagged `manual`, run by name in `build.yml` |
 | `//crates/ratio-sql-project:fold_scale_test` | measured 20M-lot fold of the HANDOFF geometry (10,000 × 2,000); in `//...` |
-| `//proto:ratio_aip_lint`, `//proto:mirrors_test` | the wire contract, and its two hand-written mirrors |
-| `//crates/ratio-console:transcode_test` | the route table against the proto |
+| `//proto:ratio_aip_lint`, `//proto:mirrors_test` | the wire contract, and the console's two hand-written mirrors |
+| `//proto:sdk_mirrors_test` | the kernel API's three hand-written mirrors — the REST JSON codec in `ratio-api`, the Python SDK's types, the TypeScript SDK's types — each carrying exactly the contract's fields |
+| `//crates/ratio-console:transcode_test` | the console's route table against the proto |
+| `//crates/ratio-api:rest_routes_test` | the kernel API's REST route table against the proto |
+| `//crates/ratio-api:ratio-api_test` | `Ledger` and `Chart` over a real book, gRPC and REST, from one implementation |
+| `//crates/ratio-client:ratio-client_test` | the Rust SDK against the real server over a socket |
+| `//sdk/python:*` | the Python SDK: JSON and wire codecs, and `rest_e2e_test` against the built binary (`ratio init`, `ratio server --addr 127.0.0.1:0`) |
 | `//demo:rehearse_test`, `//demo:shadow_run_test` | the demo and the shadow run, end to end |
 | `//:connect_scopes_test` | PLAN, HANDOFF and `docs/connect-scopes.md` still name the same Connect grants and leftovers — the in-process authorizer accepts catalog scopes; API Gateway JWT verifies Connect tokens; first-party Connect apps call ConnectApiUrl; WorkOS dashboard registration stays leftover |
 | `//connect/bank-feed:mapper_test` | Personal bank-feed mapper (#165): canonical scopes, empty-allowlist / closed-through / conservation refusals — not that a token is accepted |
@@ -73,6 +78,11 @@ JavaScript toolchain since the console left the binary. Bazel covers:
 `console/` — and on a change to `console.proto`, because the wire types mirror
 it. `site.yml` re-runs `tokens_test.py`, because `site/**` is ignored above and
 a token changed there has to go red where it was changed.
+
+`sdk-typescript.yml` runs `pnpm test` in `sdk/typescript/` on any change there —
+and on a change to `ledger.proto` or `chart.proto`, because its wire types mirror
+them. Bazel holds those types to the contract (`//proto:sdk_mirrors_test`) and
+nothing more, for the reason it holds the console's.
 
 ⚠ **Bazel does not run those six.** They were `sh_test`s under `//console:` and
 failed twice on Bazel wiring rather than on anything they check — a
@@ -137,8 +147,10 @@ stays on Fargate ScaleTask.
 ```
 lean/Ratio/       the proofs, and the Emit modules that author Rust from them
 tla/              the specs, their MC configs, and the failure-path probes
-crates/           the Rust. `ratio` is the binary; the rest are libraries
-proto/            the wire types, AIP-linted
+crates/           the Rust. `ratio` is the binary; the rest are libraries.
+                  `ratio-api` is the kernel API (gRPC + REST); `ratio-client` the Rust SDK
+proto/            the wire types, AIP-linted; `buf.gen.yaml` for consumers in other languages
+sdk/              the Python and TypeScript SDKs (TypeScript is NOT built by Bazel, like the console)
 console/          the operations console (Next.js, deployed to Vercel — NOT built by Bazel)
 connect/          first-party WorkOS Connect apps (sibling trees; not kernel RPCs)
 demo/             the five-minute demo and the shadow run, as shell tests

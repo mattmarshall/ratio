@@ -1,0 +1,29 @@
+# `cd proto && buf generate` — typed gRPC clients for the languages below, from
+# the same contract the Rust server is generated from. Remote plugins, so no
+# protoc install; drop any you do not need.
+version: v2
+inputs:
+  - directory: .
+    paths:
+      - ratio/v1
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: gen/go
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go
+    out: gen/go
+    opt: paths=source_relative
+  - remote: buf.build/protocolbuffers/java
+    out: gen/java
+  - remote: buf.build/grpc/java
+    out: gen/java
+  - remote: buf.build/protocolbuffers/kotlin
+    out: gen/kotlin
+  - remote: buf.build/grpc/kotlin
+    out: gen/kotlin
+  - remote: buf.build/protocolbuffers/python
+    out: gen/python
+  - remote: buf.build/grpc/python
+    out: gen/python
+  - remote: buf.build/bufbuild/es
+    out: gen/typescript

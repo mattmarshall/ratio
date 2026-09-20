@@ -5,7 +5,7 @@ package ratio.console.v1;
 import "ratio/console/v1/console.proto";
 
 option java_multiple_files = true;
-option java_package = "com.fastverk.ratio.console.v1";
+option java_package = "build.marsh.ratio.console.v1";
 option java_outer_classname = "ConnectProto";
 
 // Operator-owned CONNECT_GRANTS.pb. No RPC or token claim can write this file.

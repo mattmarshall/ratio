@@ -1,0 +1,72 @@
+name: sdk-typescript
+
+# The TypeScript SDK — a plain npm package, tested with `node --test`.
+#
+# Not under Bazel, for the reason the console is not: there is no JavaScript
+# toolchain in the Bazel graph (see the ⛔ in MODULE.bazel). What Bazel does
+# hold is the SDK's wire types against the contract (`//proto:sdk_mirrors_test`);
+# that check runs here too, so a contract change the SDK has not caught up with
+# goes red in the workflow that owns this directory.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sdk/typescript/**'
+      # The wire types mirror these two files.
+      - 'proto/ratio/v1/ledger.proto'
+      - 'proto/ratio/v1/chart.proto'
+      - 'proto/sdk_mirrors_test.py'
+      - '.github/workflows/sdk-typescript.yml'
+  pull_request:
+    paths:
+      - 'sdk/typescript/**'
+      - 'proto/ratio/v1/ledger.proto'
+      - 'proto/ratio/v1/chart.proto'
+      - 'proto/sdk_mirrors_test.py'
+      - '.github/workflows/sdk-typescript.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: sdk-typescript-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: pnpm
+          cache-dependency-path: sdk/typescript/pnpm-lock.yaml
+
+      # ⛔ `--frozen-lockfile`, as console.yml: an install allowed to rewrite the
+      # lockfile proves nothing about what a user will install.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck, build and test
+        run: pnpm test
+
+      # The same check Bazel runs, from the same script, so an SDK-only push
+      # cannot drift from the contract unnoticed.
+      - name: The wire types mirror the contract
+        working-directory: .
+        run: |
+          python3 proto/sdk_mirrors_test.py \
+            proto/ratio/v1/ledger.proto proto/ratio/v1/chart.proto \
+            crates/ratio-api/src/json.rs sdk/python/ratio/types.py sdk/typescript/src/types.ts

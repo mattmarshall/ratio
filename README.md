@@ -47,6 +47,27 @@ configuration is content-addressed beside it. `RATIO_PG_URL` opts into the
 Postgres read projection; the journal remains the book of record. Python
 Connect apps live in `connect/` and use the same authenticated API contract.
 
+## From your code
+
+`ratio server --book <dir>` serves the kernel API — `ratio.v1.Ledger` and
+`ratio.v1.Chart` — over **gRPC and REST on one port**, from one implementation,
+over the same journal the CLI writes. Post a transaction; if it does not
+conserve value on every dimension it is refused with `FAILED_PRECONDITION`
+and never reaches the journal.
+
+```sh
+ratio init --kind investment --book fund-1 && ratio server --book fund-1
+curl -s -X POST localhost:50051/v1/books/fund-1/transactions \
+  -H 'content-type: application/json' \
+  -d '{"postings":[{"dim":2,"amount":-125000},{"dim":1,"amount":125000}]}'
+```
+
+- **Rust** — [`crates/ratio-client`](crates/ratio-client) · **Python** —
+  [`sdk/python`](sdk/python) (`pip install ratio-sdk`) · **TypeScript** —
+  [`sdk/typescript`](sdk/typescript) (`npm install ratio-sdk`)
+- **Anything else** — `cd proto && buf generate`. The API, the error model and
+  what is checked: [sdk/README.md](sdk/README.md).
+
 The **operations console** — the authenticated one, with a URL for every book,
 break, strike and configuration — is a separate Next.js application in
 [`console/`](console/), deployed to Vercel while the API keeps deploying to AWS.

@@ -3520,7 +3520,7 @@ mod tests {
         // ⛔ On the shared execute-api host, HSTS would poison HSTS state for
         // every other AWS API served from it. It is gated on the canonical host.
         let shared = "abc123.execute-api.us-east-1.amazonaws.com";
-        let ours = "ratio.fastverk.dev";
+        let ours = "ratio.marsh.build";
         assert!(
             !security_headers("text/html", shared, Some(ours))
                 .contains("Strict-Transport-Security"),

@@ -1,0 +1,39 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["ratio/types.py"])
+
+# The Python SDK. REST needs the standard library and nothing else, like every
+# first-party Connect app; the gRPC transport imports `grpc` lazily and is not
+# exercised here, because grpcio is not in the pinned Personal runtime.
+py_library(
+    name = "ratio",
+    srcs = glob(["ratio/*.py"]),
+    imports = ["."],
+)
+
+py_test(
+    name = "types_test",
+    size = "small",
+    srcs = ["tests/types_test.py"],
+    deps = [":ratio"],
+)
+
+py_test(
+    name = "wire_test",
+    size = "small",
+    srcs = ["tests/wire_test.py"],
+    deps = [":ratio"],
+)
+
+# The real binary, the real server, the installed client: `ratio init`, then
+# `ratio server --addr 127.0.0.1:0`, then post / refuse / read / tie over REST.
+py_test(
+    name = "rest_e2e_test",
+    size = "small",
+    srcs = ["tests/rest_e2e_test.py"],
+    args = ["$(rootpath //crates/ratio)"],
+    data = ["//crates/ratio"],
+    deps = [":ratio"],
+)
