@@ -32,10 +32,18 @@ feature, and it does not close any product issue.
 | **Ratio Fund** | milestone **Fund accounting** only | Platform, Personal, Project |
 | **Ratio Personal** | milestone **Personal finance** only | Platform, Fund, Project |
 | **Ratio Project** | milestone **Project finance** only | Platform, Fund, Personal |
+| **Ratio iOS** | the [`mattmarshall/ratio-ios`](https://github.com/mattmarshall/ratio-ios) repository — the SwiftUI shell, its bridge, and its build | The kernel, the journal format, any amount-deciding behavior, and every milestone in this tree |
 
 A track agent that picks an issue outside its milestone is the claim that
 fails: the labels already named the owner, and crossing them puts two
 authors on `PLAN.md` for no reason.
+
+⛔ **Ratio iOS does not change an amount.** The shell consumes a pinned
+kernel revision. A change to the lot engine, the projection, the journal
+format, or anything emitted from Lean is a PR into *this* tree under
+Platform & Connect — never a patch in the shell. A kernel forked into
+`ratio-ios` is the exact failure that row exists to prevent, and it would
+arrive looking like a local fix to an iOS bug.
 
 ### Dispatch unit
 
@@ -70,10 +78,15 @@ person (or the track agent that owns the dependency) marks `ready`.
 `PLAN.md`, `HANDOFF.md`, and `site/roadmap.src.html` are on almost every
 engine PR, so a fourth agent is a conflict factory, not throughput.
 
-Connect apps that live in a **separate tree or repo** can run wider —
-they do not share those three files. Work that stays in *this* tree
-still counts against the two-to-three cap, including a Connect-layer
-issue that edits PLAN.
+Work that lives in a **separate tree or repo** can run wider — Connect
+apps, and the iOS shell in `mattmarshall/ratio-ios`. They do not share
+those three files, so they are not the conflict this cap is about.
+
+Work that stays in *this* tree still counts against the two-to-three cap,
+including a Connect-layer issue that edits PLAN, and including the
+kernel-side half of an iOS slice. ⚠ A two-repo slice is still one issue
+and one agent; it is not a license to open a PR in each tree and let the
+pinned revision drift between them.
 
 ### PR rules
 
