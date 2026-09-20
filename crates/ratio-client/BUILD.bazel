@@ -1,0 +1,32 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+# The Rust SDK: a typed wrapper over the generated tonic clients, so a program
+# that embeds a book talks to `ratio server` the way the CLI does.
+rust_library(
+    name = "ratio-client",
+    srcs = ["src/lib.rs"],
+    crate_name = "ratio_client",
+    edition = "2021",
+    deps = [
+        "//proto:ratio_rust_proto",
+        "@crates//:tonic",
+    ],
+)
+
+# End to end over a socket: the in-process server on an ephemeral port, the
+# client over h2c — the transport a real caller uses, not a stub.
+rust_test(
+    name = "ratio-client_test",
+    crate = ":ratio-client",
+    edition = "2021",
+    deps = [
+        "//crates/ratio-api",
+        "//crates/ratio-store",
+        "@crates//:anyhow",
+        "@crates//:tokio",
+    ],
+)

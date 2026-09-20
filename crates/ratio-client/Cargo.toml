@@ -1,0 +1,19 @@
+[package]
+name = "ratio-client"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# The generated clients come from //proto:ratio_rust_proto under Bazel; this
+# manifest exists so the crate joins the workspace's one crate universe.
+tonic = "0.12"
+prost = "0.13"
+
+[dev-dependencies]
+ratio-api = { path = "../ratio-api" }
+ratio-store = { path = "../ratio-store" }
+anyhow = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }

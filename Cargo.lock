@@ -626,6 +626,8 @@ dependencies = [
  "http 1.4.2",
  "http-body 1.0.1",
  "http-body-util",
+ "hyper",
+ "hyper-util",
  "itoa",
  "matchit",
  "memchr",
@@ -635,6 +637,7 @@ dependencies = [
  "rustversion",
  "serde",
  "sync_wrapper",
+ "tokio",
  "tower 0.5.3",
  "tower-layer",
  "tower-service",
@@ -1736,11 +1739,17 @@ dependencies = [
 name = "ratio-api"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
+ "axum",
  "prost",
  "prost-types",
+ "ratio-chart",
  "ratio-kernel",
+ "ratio-store",
+ "serde_json",
  "tokio",
  "tonic",
+ "tower 0.4.13",
 ]
 
 [[package]]
@@ -1748,6 +1757,18 @@ name = "ratio-chart"
 version = "0.0.0"
 dependencies = [
  "ratio-kernel",
+]
+
+[[package]]
+name = "ratio-client"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "prost",
+ "ratio-api",
+ "ratio-store",
+ "tokio",
+ "tonic",
 ]
 
 [[package]]
@@ -2405,6 +2426,7 @@ dependencies = [
  "futures-util",
  "pin-project-lite",
  "sync_wrapper",
+ "tokio",
  "tower-layer",
  "tower-service",
 ]

@@ -46,12 +46,12 @@ import "google/protobuf/timestamp.proto";
 import "google/type/date.proto";
 
 option java_multiple_files = true;
-option java_package = "com.fastverk.ratio.console.v1";
+option java_package = "build.marsh.ratio.console.v1";
 option java_outer_classname = "ConsoleProto";
 
 // What a fund controller works from.
 service Console {
-  option (google.api.default_host) = "ratio.fastverk.dev";
+  option (google.api.default_host) = "ratio.marsh.build";
 
   // Lists the books this operator may open. (AIP-132)
   //
@@ -577,7 +577,7 @@ service Console {
 // absence, not a hidden operating template.
 message Book {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Book"
+    type: "ratio.marsh.build/Book"
     pattern: "books/{book}"
     singular: "book"
     plural: "books"
@@ -823,7 +823,7 @@ message ListBooksResponse {
 message GetBookRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Book"
+    (google.api.resource_reference).type = "ratio.marsh.build/Book"
   ];
 }
 
@@ -837,7 +837,7 @@ message CreateBookRequest {
 // A fund on a valuation date.
 message Fund {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Fund"
+    type: "ratio.marsh.build/Fund"
     pattern: "funds/{fund}"
     singular: "fund"
     plural: "funds"
@@ -1055,7 +1055,7 @@ message NavGate {
 // to keep in step with the first.
 message View {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/View"
+    type: "ratio.marsh.build/View"
     pattern: "funds/{fund}/views/{view}"
     pattern: "books/{book}/views/{view}"
     singular: "view"
@@ -1287,7 +1287,7 @@ message BreakPosting {
 // because that is the desk's word; the contract uses the accountant's.
 message Break {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Break"
+    type: "ratio.marsh.build/Break"
     pattern: "funds/{fund}/views/{view}/breaks/{break}"
     singular: "break"
     plural: "breaks"
@@ -1430,7 +1430,7 @@ enum ActorKind {
 // Who changed the configuration, and how.
 message ChangeLogEntry {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/ChangeLogEntry"
+    type: "ratio.marsh.build/ChangeLogEntry"
     pattern: "funds/{fund}/changeLogEntries/{change_log_entry}"
     singular: "changeLogEntry"
     plural: "changeLogEntries"
@@ -1471,7 +1471,7 @@ message ListFundsResponse {
 message GetFundRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
 }
 
@@ -1479,7 +1479,7 @@ message ListViewsRequest {
   // `funds/{fund}`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -1499,7 +1499,7 @@ message GetViewRequest {
   // `funds/{fund}/views/{view}`.
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+    (google.api.resource_reference).type = "ratio.marsh.build/View"
   ];
 }
 
@@ -1507,7 +1507,7 @@ message ReconcileViewsRequest {
   // `funds/{fund}/views/{view}` — the view being read.
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+    (google.api.resource_reference).type = "ratio.marsh.build/View"
   ];
 
   // The view id to compare it against.
@@ -1555,7 +1555,7 @@ message ProjectProgressRequest {
   // `funds/{fund}/views/{view}` — the book of record the figures fold.
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+    (google.api.resource_reference).type = "ratio.marsh.build/View"
   ];
 }
 
@@ -1600,7 +1600,7 @@ message OperatingAgingRequest {
   // `funds/{fund}/views/{view}` — the book of record the figures fold.
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+    (google.api.resource_reference).type = "ratio.marsh.build/View"
   ];
 
   // As-of cut. Empty is now (every entry, including undated). `YYYY-MM` /
@@ -1670,7 +1670,7 @@ message ListBreaksRequest {
   // exactly the confusion it would be if this said `Fund`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+    (google.api.resource_reference).type = "ratio.marsh.build/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -1689,14 +1689,14 @@ message ListBreaksResponse {
 message GetBreakRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/FundBreak"
+    (google.api.resource_reference).type = "ratio.marsh.build/FundBreak"
   ];
 }
 
 message GetChangeLogEntryRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/ChangeLogEntry"
+    (google.api.resource_reference).type = "ratio.marsh.build/ChangeLogEntry"
   ];
 }
 
@@ -1717,7 +1717,7 @@ message GetChangeLogEntryRequest {
 // should make the first impossible; saying so is cheaper than assuming it.
 message NavStrike {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/NavStrike"
+    type: "ratio.marsh.build/NavStrike"
     pattern: "funds/{fund}/views/{view}/navStrikes/{nav_strike}"
     singular: "navStrike"
     plural: "navStrikes"
@@ -1810,7 +1810,7 @@ message NavStrike {
 // is then nothing to roll. Empty is not a measured zero.
 message PeriodClose {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/PeriodClose"
+    type: "ratio.marsh.build/PeriodClose"
     pattern: "funds/{fund}/views/{view}/periodCloses/{period_close}"
     singular: "periodClose"
     plural: "periodCloses"
@@ -1872,7 +1872,7 @@ message PeriodClose {
 // once`. `applied` is therefore not a status field; it is the idempotence.
 message CorporateAction {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/CorporateAction"
+    type: "ratio.marsh.build/CorporateAction"
     pattern: "funds/{fund}/corporateActions/{corporate_action}"
     singular: "corporateAction"
     plural: "corporateActions"
@@ -2184,7 +2184,7 @@ message ExplainNavStrikeResponse {
 // computed under" a citation rather than a label.
 message ConfigVersion {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/ConfigVersion"
+    type: "ratio.marsh.build/ConfigVersion"
     pattern: "funds/{fund}/configVersions/{config_version}"
     singular: "configVersion"
     plural: "configVersions"
@@ -2239,7 +2239,7 @@ message RuleChange {
 message ListConfigVersionsRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -2253,7 +2253,7 @@ message ListConfigVersionsResponse {
 message GetConfigVersionRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/ConfigVersion"
+    (google.api.resource_reference).type = "ratio.marsh.build/ConfigVersion"
   ];
 }
 
@@ -2261,7 +2261,7 @@ message DiffConfigVersionsRequest {
   // The version to diff, which is the AFTER side.
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/ConfigVersion"
+    (google.api.resource_reference).type = "ratio.marsh.build/ConfigVersion"
   ];
 
   // The digest to compare against. Defaults to the version immediately before
@@ -2281,7 +2281,7 @@ message DiffConfigVersionsResponse {
 
 message Account {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Account"
+    type: "ratio.marsh.build/Account"
     pattern: "funds/{fund}/views/{view}/accounts/{account}"
     pattern: "books/{book}/views/{view}/accounts/{account}"
     singular: "account"
@@ -2398,7 +2398,7 @@ message CurrencyTotal {
   // an untyped leg — both translate at par without a fact.
   string rate_fact = 6 [
     (google.api.field_behavior) = OUTPUT_ONLY,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fact"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fact"
   ];
   string delivery_digest = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
   // The config digest that fact pinned — the active configuration the ingest
@@ -2409,7 +2409,7 @@ message CurrencyTotal {
 // One line of one entry, as it lands on an account.
 message Posting {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Posting"
+    type: "ratio.marsh.build/Posting"
     pattern: "funds/{fund}/views/{view}/accounts/{account}/postings/{posting}"
     singular: "posting"
     plural: "postings"
@@ -2440,7 +2440,7 @@ message ListAccountsRequest {
   // A view. See `ListBreaksRequest.parent`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+    (google.api.resource_reference).type = "ratio.marsh.build/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -2483,14 +2483,14 @@ message ListAccountsResponse {
 message GetAccountRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Account"
+    (google.api.resource_reference).type = "ratio.marsh.build/Account"
   ];
 }
 
 message ListPostingsRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Account"
+    (google.api.resource_reference).type = "ratio.marsh.build/Account"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -2504,14 +2504,14 @@ message ListPostingsResponse {
 message GetPostingRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Posting"
+    (google.api.resource_reference).type = "ratio.marsh.build/Posting"
   ];
 }
 
 // One rule of the active configuration, structured enough to choose from.
 message Rule {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Rule"
+    type: "ratio.marsh.build/Rule"
     pattern: "funds/{fund}/rules/{rule}"
     singular: "rule"
     plural: "rules"
@@ -2557,7 +2557,7 @@ message Rule {
 message ListRulesRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -2571,7 +2571,7 @@ message ListRulesResponse {
 // One entry in the journal, and the postings the rule produced.
 message Entry {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Entry"
+    type: "ratio.marsh.build/Entry"
     pattern: "funds/{fund}/entries/{entry}"
     singular: "entry"
     plural: "entries"
@@ -2637,7 +2637,7 @@ message EntryPosting {
   // view; only its totals do.
   string account = 1 [
     (google.api.field_behavior) = OUTPUT_ONLY,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Account"
+    (google.api.resource_reference).type = "ratio.marsh.build/Account"
   ];
 
   string display_name = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
@@ -2649,14 +2649,14 @@ message EntryPosting {
 message GetEntryRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Entry"
+    (google.api.resource_reference).type = "ratio.marsh.build/Entry"
   ];
 }
 
 message ListEntriesRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -2670,14 +2670,14 @@ message ListEntriesResponse {
 message GetRuleRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Rule"
+    (google.api.resource_reference).type = "ratio.marsh.build/Rule"
   ];
 }
 
 message ApplyEventRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
 
   // Which rule of the ACTIVE configuration to apply. Not a set of postings:
@@ -2780,7 +2780,7 @@ message ApplyEventResponse {
 // A file received on the data plane.
 message Delivery {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Delivery"
+    type: "ratio.marsh.build/Delivery"
     pattern: "funds/{fund}/deliveries/{delivery}"
     singular: "delivery"
     plural: "deliveries"
@@ -2808,7 +2808,7 @@ message Delivery {
 // A fact that cannot post yet, and why.
 message PendingFact {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/PendingFact"
+    type: "ratio.marsh.build/PendingFact"
     pattern: "funds/{fund}/pendingFacts/{pending_fact}"
     singular: "pendingFact"
     plural: "pendingFacts"
@@ -2849,7 +2849,7 @@ message PendingFact {
 message ListDeliveriesRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -2863,7 +2863,7 @@ message ListDeliveriesResponse {
 message ListPendingFactsRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -2877,14 +2877,14 @@ message ListPendingFactsResponse {
 message GetDeliveryRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Delivery"
+    (google.api.resource_reference).type = "ratio.marsh.build/Delivery"
   ];
 }
 
 message GetPendingFactRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/PendingFact"
+    (google.api.resource_reference).type = "ratio.marsh.build/PendingFact"
   ];
 }
 
@@ -2896,7 +2896,7 @@ message GetPendingFactRequest {
 // cited, and the later one is the rate in force now.
 message Fact {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Fact"
+    type: "ratio.marsh.build/Fact"
     pattern: "funds/{fund}/facts/{fact}"
     singular: "fact"
     plural: "facts"
@@ -2930,7 +2930,7 @@ message Fact {
 message ListFactsRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -2947,14 +2947,14 @@ message ListFactsResponse {
 message GetFactRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fact"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fact"
   ];
 }
 
 // What a fund holds in one instrument, in one account.
 message Position {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Position"
+    type: "ratio.marsh.build/Position"
     pattern: "funds/{fund}/views/{view}/positions/{position}"
     singular: "position"
     plural: "positions"
@@ -2965,7 +2965,7 @@ message Position {
   // The account, as a resource name.
   string account = 2 [
     (google.api.field_behavior) = OUTPUT_ONLY,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Account"
+    (google.api.resource_reference).type = "ratio.marsh.build/Account"
   ];
   // Its label, so a screen does not have to join to show one. `_label` rather
   // than `_name`: AIP-122 reserves `name` for a resource name.
@@ -3009,7 +3009,7 @@ message Position {
   // marked — then the value is cost, and there is no price to open.
   string price_fact = 9 [
     (google.api.field_behavior) = OUTPUT_ONLY,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fact"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fact"
   ];
   string delivery_digest = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
   string config_digest = 12 [(google.api.field_behavior) = OUTPUT_ONLY];
@@ -3019,7 +3019,7 @@ message ListPositionsRequest {
   // A view. See `ListBreaksRequest.parent`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+    (google.api.resource_reference).type = "ratio.marsh.build/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -3033,7 +3033,7 @@ message ListPositionsResponse {
 message GetPositionRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Position"
+    (google.api.resource_reference).type = "ratio.marsh.build/Position"
   ];
 }
 
@@ -3044,7 +3044,7 @@ message GetPositionRequest {
 // these and not others, and which ones decides the taxable income.
 message Lot {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Lot"
+    type: "ratio.marsh.build/Lot"
     pattern: "funds/{fund}/views/{view}/positions/{position}/lots/{lot}"
     singular: "lot"
     plural: "lots"
@@ -3080,7 +3080,7 @@ message Lot {
 message ListLotsRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Position"
+    (google.api.resource_reference).type = "ratio.marsh.build/Position"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -3094,14 +3094,14 @@ message ListLotsResponse {
 message GetLotRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Lot"
+    (google.api.resource_reference).type = "ratio.marsh.build/Lot"
   ];
 }
 
 // A mapping template: how a counterparty's file becomes facts.
 message Template {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Template"
+    type: "ratio.marsh.build/Template"
     pattern: "funds/{fund}/templates/{template}"
     singular: "template"
     plural: "templates"
@@ -3125,7 +3125,7 @@ message Template {
 message ListTemplatesRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -3139,7 +3139,7 @@ message ListTemplatesResponse {
 message GetTemplateRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Template"
+    (google.api.resource_reference).type = "ratio.marsh.build/Template"
   ];
 }
 
@@ -3152,7 +3152,7 @@ message RejectedRow {
 message IngestDeliveryRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
 
   // A template in the configuration in force.
@@ -3207,7 +3207,7 @@ message Mark {
   // The fact that supplied the price, so a mark preview names its evidence.
   string price_fact = 9 [
     (google.api.field_behavior) = OUTPUT_ONLY,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fact"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fact"
   ];
   string delivery_digest = 10 [(google.api.field_behavior) = OUTPUT_ONLY];
   string config_digest = 11 [(google.api.field_behavior) = OUTPUT_ONLY];
@@ -3216,7 +3216,7 @@ message Mark {
 message MarkPositionsRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
 
   // The day to value at. A price observed after it is not evidence about it
@@ -3253,7 +3253,7 @@ message MarkPositionsResponse {
 message AdmitFactsRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
   bool validate_only = 2 [(google.api.field_behavior) = OPTIONAL];
 }
@@ -3280,7 +3280,7 @@ message ListNavStrikesRequest {
   // A view. See `ListBreaksRequest.parent`.
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+    (google.api.resource_reference).type = "ratio.marsh.build/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -3294,14 +3294,14 @@ message ListNavStrikesResponse {
 message GetNavStrikeRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/NavStrike"
+    (google.api.resource_reference).type = "ratio.marsh.build/NavStrike"
   ];
 }
 
 message ListCorporateActionsRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -3315,21 +3315,21 @@ message ListCorporateActionsResponse {
 message GetCorporateActionRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/CorporateAction"
+    (google.api.resource_reference).type = "ratio.marsh.build/CorporateAction"
   ];
 }
 
 message ReplayNavStrikeRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/NavStrike"
+    (google.api.resource_reference).type = "ratio.marsh.build/NavStrike"
   ];
 }
 
 message ExplainNavStrikeRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/NavStrike"
+    (google.api.resource_reference).type = "ratio.marsh.build/NavStrike"
   ];
 
   // Re-derive the strike under instrumentation and report what the fold saw.
@@ -3342,7 +3342,7 @@ message ExplainNavStrikeRequest {
 message ListChangeLogEntriesRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Fund"
+    (google.api.resource_reference).type = "ratio.marsh.build/Fund"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -3356,7 +3356,7 @@ message ListChangeLogEntriesResponse {
 message ListPeriodClosesRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+    (google.api.resource_reference).type = "ratio.marsh.build/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -3370,6 +3370,6 @@ message ListPeriodClosesResponse {
 message GetPeriodCloseRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/PeriodClose"
+    (google.api.resource_reference).type = "ratio.marsh.build/PeriodClose"
   ];
 }

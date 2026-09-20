@@ -9,7 +9,7 @@ import "google/api/resource.proto";
 import "google/type/date.proto";
 
 option java_multiple_files = true;
-option java_package = "com.fastverk.ratio.console.v1";
+option java_package = "build.marsh.ratio.console.v1";
 option java_outer_classname = "TaxPackProto";
 
 // Batch citation reads used by the Personal tax-pack Connect app.
@@ -34,7 +34,7 @@ service TaxPack {
 // One successful disposal as the lot engine relieved it.
 message Disposal {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Disposal"
+    type: "ratio.marsh.build/Disposal"
     pattern: "funds/{fund}/views/{view}/disposals/{disposal}"
     singular: "disposal"
     plural: "disposals"
@@ -84,7 +84,7 @@ message RelievedLot {
 message ListDisposalsRequest {
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/View"
+    (google.api.resource_reference).type = "ratio.marsh.build/View"
   ];
   int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
   string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
@@ -98,6 +98,6 @@ message ListDisposalsResponse {
 message GetDisposalRequest {
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference).type = "ratio.fastverk.dev/Disposal"
+    (google.api.resource_reference).type = "ratio.marsh.build/Disposal"
   ];
 }

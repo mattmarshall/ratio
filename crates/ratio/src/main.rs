@@ -11,9 +11,7 @@
 use std::path::PathBuf;
 
 use anyhow::{bail, ensure, Context, Result};
-use ratio_api::LedgerService;
 use ratio_chart::{normal_side, Side};
-use ratio_proto::ratio::v1::ledger_server::LedgerServer;
 use ratio_rules::{check, compile, render, Event, RuleSet};
 use ratio_store::{
     Account, AccountTypeRecord, ConfigStore, FileBook, Journal, JournalEntry, PostingRecord,
@@ -116,7 +114,8 @@ usage:
         [--book DIR] [--view NAME]     — humans only, like approve
   ratio close --through YYYY-MM-DD     close a period; rolls surplus into equity
         [--view V] [--book DIR]        — humans only, like accept
-  ratio server                         serve the Ledger gRPC API
+  ratio server [--addr HOST:PORT]      serve the kernel API — Ledger and Chart,
+        [--book DIR]                   gRPC and REST on one port (127.0.0.1:50051)
 
 The book defaults to ./book, or $RATIO_BOOK if set.
 ";
@@ -267,7 +266,8 @@ fn main() -> Result<()> {
         ["close", "--through", d] => close_cmd(book, None, d),
         ["close", "--view", v, "--through", d]
         | ["close", "--through", d, "--view", v] => close_cmd(book, Some(v), d),
-        ["server"] => serve(),
+        ["server"] => serve(book, None),
+        ["server", "--addr", addr] => serve(book, Some(addr)),
         other => {
             eprint!("{USAGE}");
             bail!("unrecognized command: {}", other.join(" "));
@@ -3172,15 +3172,30 @@ fn approve_text_with_control(
 
 /// Serve the Ledger gRPC API. Every posted transaction must conserve value or
 /// it is rejected (FAILED_PRECONDITION).
+/// `ratio server`: the kernel API over one book, gRPC and REST on one port.
+///
+/// The book is the same `--book DIR` / `$RATIO_BOOK` every other verb reads,
+/// and it is served as `books/<dirname>` — the key the store itself files the
+/// journal under. One process, one book: a request naming any other book is
+/// NOT_FOUND rather than a guess at a directory.
 #[tokio::main]
-async fn serve() -> Result<()> {
-    let addr = "127.0.0.1:50051".parse()?;
-    println!("ratio: Ledger gRPC server listening on {addr}");
-    tonic::transport::Server::builder()
-        .add_service(LedgerServer::new(LedgerService::default()))
-        .serve(addr)
-        .await?;
-    Ok(())
+async fn serve(book: PathBuf, addr: Option<&str>) -> Result<()> {
+    let addr: std::net::SocketAddr = addr
+        .unwrap_or("127.0.0.1:50051")
+        .parse()
+        .context("--addr takes HOST:PORT, e.g. 127.0.0.1:50051")?;
+    let book = std::sync::Arc::new(ratio_api::Book::open(&book)?);
+    // Bind before announcing, so `--addr 127.0.0.1:0` prints the port the OS
+    // chose and a harness can read it off stdout.
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .with_context(|| format!("binding {addr}"))?;
+    let bound = listener.local_addr()?;
+    println!(
+        "ratio: serving {} — gRPC (ratio.v1.Ledger, ratio.v1.Chart) and REST (/v1/...) on http://{bound}",
+        book.resource()
+    );
+    ratio_api::serve_on(listener, book).await
 }
 
 #[cfg(test)]

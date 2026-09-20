@@ -25,13 +25,13 @@ import "google/api/field_behavior.proto";
 import "google/api/resource.proto";
 
 option java_multiple_files = true;
-option java_package = "com.fastverk.ratio.v1";
+option java_package = "build.marsh.ratio.v1";
 option java_outer_classname = "ChartProto";
 
 // The chart of accounts: the named dimensions a book is kept in, and the trial
 // balance over them.
 service Chart {
-  option (google.api.default_host) = "ratio.fastverk.dev";
+  option (google.api.default_host) = "ratio.marsh.build";
 
   // Gets an account. (AIP-131)
   rpc GetAccount(GetAccountRequest) returns (Account) {
@@ -101,7 +101,7 @@ enum AccountType {
 // A named conserved dimension — what an accountant calls an account. (AIP-123)
 message Account {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/Account"
+    type: "ratio.marsh.build/Account"
     pattern: "books/{book}/accounts/{account}"
     singular: "account"
     plural: "accounts"
@@ -130,7 +130,7 @@ message Account {
 // them. (AIP-123)
 message TrialBalance {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/TrialBalance"
+    type: "ratio.marsh.build/TrialBalance"
     pattern: "books/{book}/trialBalance"
     singular: "trialBalance"
     plural: "trialBalances"
@@ -165,7 +165,7 @@ message AccountBalance {
   // Format: `books/{book}/accounts/{account}`
   string account = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "ratio.fastverk.dev/Account"}
+    (google.api.resource_reference) = {type: "ratio.marsh.build/Account"}
   ];
 
   // Debits posted to the account, in minor units.
@@ -173,6 +173,11 @@ message AccountBalance {
 
   // Credits posted to the account, in minor units, as a positive number.
   int64 credits = 3 [(google.api.field_behavior) = REQUIRED];
+
+  // The currency group this row totals. One row per (account, currency), as
+  // `ratio balance` prints them: a figure that summed dollars and euros would
+  // tie and be wrong. Absent is the book's untyped group.
+  optional string currency_code = 4 [(google.api.field_behavior) = OPTIONAL];
 }
 
 // Request message for `GetAccount`. (AIP-131)
@@ -181,7 +186,7 @@ message GetAccountRequest {
   // Format: `books/{book}/accounts/{account}`
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "ratio.fastverk.dev/Account"}
+    (google.api.resource_reference) = {type: "ratio.marsh.build/Account"}
   ];
 }
 
@@ -191,7 +196,7 @@ message ListAccountsRequest {
   // Format: `books/{book}`
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {child_type: "ratio.fastverk.dev/Account"}
+    (google.api.resource_reference) = {child_type: "ratio.marsh.build/Account"}
   ];
 
   // The maximum number of accounts to return. The service may return fewer.
@@ -216,7 +221,7 @@ message CreateAccountRequest {
   // Format: `books/{book}`
   string parent = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {child_type: "ratio.fastverk.dev/Account"}
+    (google.api.resource_reference) = {child_type: "ratio.marsh.build/Account"}
   ];
 
   // The account to create.
@@ -232,6 +237,6 @@ message GetTrialBalanceRequest {
   // Format: `books/{book}/trialBalance`
   string name = 1 [
     (google.api.field_behavior) = REQUIRED,
-    (google.api.resource_reference) = {type: "ratio.fastverk.dev/TrialBalance"}
+    (google.api.resource_reference) = {type: "ratio.marsh.build/TrialBalance"}
   ];
 }

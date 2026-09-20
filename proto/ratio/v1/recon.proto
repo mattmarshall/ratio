@@ -30,7 +30,7 @@ import "google/api/field_behavior.proto";
 import "google/api/resource.proto";
 
 option java_multiple_files = true;
-option java_package = "com.fastverk.ratio.v1";
+option java_package = "build.marsh.ratio.v1";
 option java_outer_classname = "ReconProto";
 
 // What a reconciliation covers. Declared, not inferred — a run states its
@@ -147,7 +147,7 @@ message BreakLine {
 // The result of a shadow run.
 message BreakReport {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/BreakReport"
+    type: "ratio.marsh.build/BreakReport"
     pattern: "books/{book}/breakReports/{break_report}"
     singular: "breakReport"
     plural: "breakReports"
@@ -224,7 +224,7 @@ message ConfigDelta {
 // false-break failure this whole crate is arranged to avoid — one layer up.
 message ConfigComparison {
   option (google.api.resource) = {
-    type: "ratio.fastverk.dev/ConfigComparison"
+    type: "ratio.marsh.build/ConfigComparison"
     pattern: "books/{book}/configComparisons/{config_comparison}"
     singular: "configComparison"
     plural: "configComparisons"
