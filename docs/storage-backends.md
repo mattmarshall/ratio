@@ -119,7 +119,7 @@ estimates.
 | Fold of 1.77M entries after streaming landed | 50 MB resident (was 1.85 GB) |
 | `ratio balance` | 9 MB (was 1.26 GB) |
 | Console serving a book | 39 MB |
-| Deploy `34505523090` publication | 41 min for ~32,000 sequential S3 body reads, cancelled at the 45-min job budget |
+| Deploy `34505523090` publication | 41 min for ~32,000 sequential S3 body reads, canceled at the 45-min job budget |
 
 ⛔ **The last row is the whole hosting problem in one line.** One object per
 journal entry means a cold fold is N serial GETs. Publication hit it first and
@@ -134,7 +134,7 @@ paginated `ListObjectsV2` over the whole book — 200 requests for a 200k-entry
 book — and `append()` pays it once per retry. This is backend-independent and
 is a present defect, not a property of any proposed backend.
 
-So the economics do not currently favour hosting Personal books, and the work
+So the economics do not currently favor hosting Personal books, and the work
 that would fix them is largely the same work either track needs.
 
 ---
