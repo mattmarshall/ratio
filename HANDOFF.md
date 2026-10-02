@@ -1563,3 +1563,15 @@ CLI/MCP installation guard has a sabotage check: removing the pre-dispatch
 `install_control_backend()` call made
 `//crates/ratio:configured_store_refuses_local_cli_test` fail with `init
 accepted a local-only book`, and restoring the call made it green.
+
+## Object-store height, October 1, 2026 (issue #358, branch-local)
+
+`SeqLog::append` now obtains height from `ObjectStore::max_sequence`. The
+default scans a listing so MemoryStore and DirStore retain their behavior;
+S3 overrides it with bounded one-key `StartAfter` listings. At 200,000
+entries this asks at most 37 height questions instead of downloading
+roughly 200 pages of keys. This is a request-count bound, not measured S3
+latency. The `If-None-Match:*` claim is still separate from height and the
+`NoWriteIsLost` probe still goes red. `for_each_since` still refuses a hole.
+Issue #358 needs live S3 cost/latency evidence before closing. Issue #359's
+cross-backend digest gate and the recovery work remain independent gates.

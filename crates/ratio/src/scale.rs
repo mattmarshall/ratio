@@ -513,6 +513,59 @@ impl ratio_store::ObjectStore for S3 {
     fn list(&self, prefix: &str) -> Result<Vec<String>> {
         Store::list(self, prefix)
     }
+    fn max_sequence(&self, prefix: &str) -> Result<u64> {
+        let p = self.key(prefix);
+        // S3 has ascending LIST only. A one-key query after a padded numeric
+        // boundary answers whether the log is taller; exponential search then
+        // binary search bounds the request count without downloading the log.
+        // The claim remains a separate conditional PUT, as in S3Journal.tla.
+        self.runtime.block_on(async {
+            let prefix = &p;
+            let above = |height: u64| async move {
+                let page = self.client.list_objects_v2()
+                    .bucket(&self.bucket)
+                    .prefix(prefix)
+                    .start_after(format!("{prefix}{height:020}"))
+                    .max_keys(1)
+                    .send()
+                    .await
+                    .map_err(|e| aws(&format!("finding height under {prefix}"), e))?;
+                let Some(key) = page.contents().first().and_then(|object| object.key()) else {
+                    return Ok::<bool, anyhow::Error>(false);
+                };
+                let suffix = key.strip_prefix(prefix).context("S3 returned a key outside the journal prefix")?;
+                if suffix.len() != 20 || !suffix.bytes().all(|byte| byte.is_ascii_digit()) {
+                    anyhow::bail!("non-sequence key under journal prefix: {key}");
+                }
+                let sequence: u64 = suffix.parse().context("journal sequence exceeds u64")?;
+                Ok::<bool, anyhow::Error>(sequence > height)
+            };
+            locate_max_sequence(above).await
+        })
+    }
+}
+
+async fn locate_max_sequence<F, Fut>(mut above: F) -> Result<u64>
+where
+    F: FnMut(u64) -> Fut,
+    Fut: std::future::Future<Output = Result<bool>>,
+{
+    let mut upper = 1u64;
+    while above(upper).await? {
+        let next = upper.saturating_mul(2);
+        if next == upper { break; }
+        upper = next;
+    }
+    let mut lower = 0u64;
+    while lower < upper {
+        let middle = lower + (upper - lower) / 2;
+        if above(middle).await? {
+            lower = middle + 1;
+        } else {
+            upper = middle;
+        }
+    }
+    Ok(lower)
 }
 
 
@@ -1290,6 +1343,22 @@ impl<S: Store> Runs<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounded_height_search_finds_empty_sparse_and_large_logs() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        for expected in [0, 1, 2, 3, 20_000, 200_000, u64::MAX] {
+            let mut requests = 0usize;
+            let found = runtime.block_on(locate_max_sequence(|candidate| {
+                requests += 1;
+                async move { Ok(expected > candidate) }
+            })).unwrap();
+            assert_eq!(found, expected);
+            if expected == 200_000 {
+                assert!(requests <= 37, "{requests} one-key listings");
+            }
+        }
+    }
 
     #[test]
     fn s3_preserves_binary_objects_and_the_conditional_publication_header() {
