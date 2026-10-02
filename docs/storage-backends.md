@@ -1,6 +1,6 @@
 # Storage backends and the distribution model
 
-Status: **analysis with stacked branch-local #300 evidence, #357 checkpoints, and #358 append-height notes.** The backend verdicts remain proposals. This document maps the persistence layer and names the blockers between the current shape and a two-track distribution model — on-device Personal, hosted SQL for funds and shared workspaces.
+Status: **analysis with stacked branch-local #300 evidence and #357–#359 storage notes.** The backend verdicts remain proposals. This document maps the persistence layer, records operational evidence, checkpoint, append-height, and conformance changes under review, and names the blockers between the current shape and a two-track distribution model — on-device Personal, hosted SQL for funds and shared workspaces.
 
 Related decision gate: [#282](https://github.com/mattmarshall/ratio/issues/282)
 (reviewed config storage). Related measurement: [#268](https://github.com/mattmarshall/ratio/issues/268).
@@ -496,3 +496,14 @@ The console now passes its explicit store through operational evidence paths.
 namespace, deletes the original roots, and checks journal and evidence replay
 in a child process. It covers both book access and corruption/refusal. This
 does not establish live S3 backup copies, retention, or customer objectives.
+
+### October 1, 2026 conformance note (#359, branch-local)
+
+`//crates/ratio-project:backend_conformance_gate` checks journal and all six
+side-plane replay across local JSONL, MemoryStore, DirStore, and the S3 adapter
+against an in-process endpoint. It compares trial balances and every
+journal-prefix digest to the NAV digest, and includes conditional-claim,
+no-hole, checkpoint privacy, and S3Journal model tests. A source inventory
+fails the build when a new ObjectStore implementation is not registered for
+conformance. The full fixture has not been run against live S3; do not treat
+the gate as provider acceptance or as proof of customer recovery.

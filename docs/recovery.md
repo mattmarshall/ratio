@@ -95,9 +95,10 @@ The implementation supporting this inventory is:
   files captured.
 - [ObjectStore and SeqLog](../crates/ratio-store/src/objects.rs), plus the
   [S3 adapter](../crates/ratio/src/scale.rs). `put_if_absent` protects sequence
-  slots; `max_sequence` only finds append height and does not change the
-  conditional claim or no-hole refusal. Neither is a backup, a cross-plane
-  checkpoint, or a metadata store.
+  slots; `max_sequence` finds append height while the conditional claim and
+  no-hole refusal remain separate. The #359 conformance gate compares local
+  JSONL, MemoryStore, DirStore, and the S3 adapter through an in-process
+  endpoint. None of these is a backup or proof of live S3 recovery.
 - [Book initialization and grants](../crates/ratio-console/src/book.rs) and
   [CreateBook, CHANGELOG, reports, and book discovery](../crates/ratio-console/src/lib.rs).
   The branch-local report store in `crates/ratio-store/src/reports.rs` is the

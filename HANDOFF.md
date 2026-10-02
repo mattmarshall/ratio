@@ -1578,3 +1578,17 @@ latency. The `If-None-Match:*` claim is still separate from height and the
 `NoWriteIsLost` probe still goes red. `for_each_since` still refuses a hole.
 Issue #358 needs live S3 cost/latency evidence before closing. Issue #359's
 cross-backend digest gate and the recovery work remain independent gates.
+
+## Cross-backend conformance, October 1, 2026 (issue #359, branch-local)
+
+`bazel test //crates/ratio-project:backend_conformance_gate` exercises one
+journal and six-plane fixture against local JSONL, MemoryStore, DirStore, and
+the S3 adapter through an in-process S3 endpoint. It compares trial balances,
+NAV/projection prefix digests, and records; the deliberately unconditional
+MemoryStore fails the conditional claim check for its named reason. The
+source inventory includes every crate package and fails the build for a new
+ObjectStore implementation until the gate is extended. A sabotage run adding
+`UnregisteredBackend` went red for that reason. Checkpoint privacy and the
+S3Journal model remain in the suite. A live S3 run and a customer recovery
+drill remain unproven; the `LostWrite.cfg` manual probe must still go red for
+`NoWriteIsLost`.
