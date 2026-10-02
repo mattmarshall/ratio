@@ -5344,3 +5344,12 @@ conjunctive.
 forecast, required savings rate, FIRE number, goal RPC in core, and automatic
 scenario posting remain refused. Live OAuth evidence remains on #168 until the
 registered scopes are exercised against a permitted Personal book.
+
+### Amendment, 2026-10-02 — interrupted object claim restore (partial #264)
+
+Related: #264. A two-book directory object-store drill now leaves a journal
+body in unpublished staging after sequence 1, copies the namespace into a
+clean environment, and verifies the acknowledged digest and next sequence.
+The other book remains inaccessible to the restored subject. This is local
+failure evidence; customer S3 backup/restore, RPO/RTO, retention, and named
+operator acceptance remain open.

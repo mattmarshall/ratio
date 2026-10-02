@@ -1493,3 +1493,13 @@ probe now explicitly characterizes a legacy book created before storage was
 attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery
 guarantee.
+
+### Interrupted object claim, October 2, 2026 (issue #264, branch-local)
+
+The local recovery test now carries two published books through an independent
+directory object-store copy after one journal entry was acknowledged and a
+second body was left in unpublished staging. The restored alpha prefix keeps
+its digest, its next append claims sequence 2, beta's journal stays empty, and
+membership stays isolated. This is an interrupted local PUT fixture; the live
+customer backup, recovery objectives, retention, and named operators remain
+unproved.

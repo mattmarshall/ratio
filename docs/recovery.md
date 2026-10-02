@@ -16,7 +16,10 @@ checks a journal prefix and digest, two local configuration versions, a NAV
 strike and replay, book kinds, and membership isolation. A second probe records
 the legacy gap when a local book is created before an object store is attached.
 Published CreateBook recovery is covered separately by the bootstrap tests.
-Neither is an S3 recovery drill or a customer recovery commitment.
+An interrupted object-claim drill now restores an acknowledged journal prefix
+while ignoring an unpublished staged body, then appends at the next sequence
+without widening another book's membership.
+These tests are not an S3 recovery drill or a customer recovery commitment.
 
 ## Recovery objectives and ownership
 
@@ -192,6 +195,14 @@ is removed, its journal survives while its un-published control plane does not.
 This characterizes legacy compatibility; it does not describe CreateBook after
 #302. `ratio-store` bootstrap tests cover successful published-book discovery,
 verification, and materialization after local-root loss.
+
+The interrupted-claim test uses two published books in a directory object
+store. It writes one acknowledged journal entry, leaves a staged but
+unpublished second body as crash debris, copies the object namespace, and
+deletes the original book and object roots. The restored book retains the
+original prefix digest and claims sequence 2 for the next append; the other
+book's journal and membership remain isolated. This models a crash before
+publication, not an S3 outage or a customer RPO measurement.
 
 The local copy helper checks bytes; it does not implement archival metadata
 preservation. This small fixture has no reports, facts, entity corrections,

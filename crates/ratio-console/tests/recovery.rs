@@ -10,7 +10,7 @@ use std::sync::Arc;
 use anyhow::{ensure, Result};
 use ratio_console::{book::BookKind, Console, Subject};
 use ratio_proto::ratio::console::v1 as pb;
-use ratio_store::{ConfigStore, Digest, DirStore, FileBook, Journal, JournalEntry, PostingRecord};
+use ratio_store::{ConfigStore, Digest, DirStore, FileBook, Journal, JournalEntry, ObjectStore, PostingRecord, SeqLog};
 
 fn scratch(name: &str) -> PathBuf {
     let root = std::env::var_os("TEST_TMPDIR")
@@ -207,5 +207,58 @@ fn a_legacy_book_attached_after_creation_does_not_gain_a_durable_bootstrap() {
     assert!(!cold_path.join("book.toml").exists());
     assert!(!cold_root.join("MEMBERSHIP.tsv").exists());
     assert!(Console::scoped(&cold_root, member("alice")).list_books().unwrap().books.is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn an_interrupted_object_claim_recovers_the_acked_prefix_and_next_slot() {
+    let root = scratch("interrupted-object-claim");
+    let live = root.join("live");
+    let source_objects = root.join("source-objects");
+    let source: Arc<dyn ObjectStore> = Arc::new(DirStore::at(&source_objects));
+    for (id, owner, kind) in [
+        ("alpha", "alice", BookKind::Investment),
+        ("beta", "bob", BookKind::Personal),
+    ] {
+        Console::scoped(&live, member(owner)).with_object_store(source.clone())
+            .create_book(pb::CreateBookRequest {
+                book_id: id.into(),
+                book: Some(pb::Book { kind: kind.proto(), ..Default::default() }),
+            }).unwrap();
+    }
+    let alpha = live.join("alpha");
+    let mut book = FileBook::open_with(&alpha, Some(source.clone())).unwrap();
+    let config = book.active().unwrap().unwrap();
+    book.append(&entry("acknowledged", &config, 50_000)).unwrap();
+    let before = ratio_nav::prefix_digest(&book.entries().unwrap()).unwrap();
+    drop(book);
+
+    // A crashed DirStore PUT can leave a staged body, but only its hard link
+    // at the sequence key is an acknowledged journal entry.
+    let staging = source_objects.join(".object-staging");
+    fs::create_dir_all(&staging).unwrap();
+    fs::write(staging.join("crashed-next-entry"), b"incomplete").unwrap();
+    assert_eq!(SeqLog::new(source.clone(), "alpha/journal/").height().unwrap(), 1);
+    let backup = root.join("backup");
+    copy_tree(&source_objects, &backup);
+    fs::remove_dir_all(&live).unwrap();
+    fs::remove_dir_all(&source_objects).unwrap();
+    let restored_objects = root.join("restored-objects");
+    copy_tree(&backup, &restored_objects);
+    let restored = root.join("restored");
+    let restored_store: Arc<dyn ObjectStore> = Arc::new(DirStore::at(&restored_objects));
+    let restored_alpha = restored.join("alpha");
+    let mut reopened = FileBook::open_with(&restored_alpha, Some(restored_store.clone())).unwrap();
+    assert_eq!(reopened.entries().unwrap().len(), 1);
+    assert_eq!(ratio_nav::prefix_digest(&reopened.entries().unwrap()).unwrap(), before);
+    reopened.append(&entry("after-recovery", &config, 10_000)).unwrap();
+    assert_eq!(reopened.entries().unwrap().iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+        ["acknowledged", "after-recovery"]);
+    assert_eq!(SeqLog::new(restored_store.clone(), "alpha/journal/").height().unwrap(), 2);
+    assert_eq!(SeqLog::new(restored_store.clone(), "beta/journal/").height().unwrap(), 0);
+    let alice = Console::scoped(&restored, member("alice")).with_object_store(restored_store.clone());
+    let bob = Console::scoped(&restored, member("bob")).with_object_store(restored_store);
+    assert!(alice.get_book("books/beta").is_err());
+    assert!(bob.get_book("books/alpha").is_err());
     fs::remove_dir_all(root).unwrap();
 }
