@@ -5379,3 +5379,15 @@ then path and retaining each timestamp; it checks occupied slots and claims
 completion only after all reports match. The journal remains the book of
 record. This does not complete #300: proposals and CHANGELOG still need durable
 storage, and #264 still needs a live external restore and agreed objectives.
+
+### Amendment, 2026-10-01 — proposal evidence on configured storage
+
+Related: #300. MCP rule/template drafts, CLI approval, watch, and console now
+use one proposal store. It conditionally claims exact TOML bytes under a
+versioned protobuf envelope keyed by `(book, proposal id)`: identical retry
+is idempotent and a changed draft under the same id refuses. A legacy local
+proposal directory is fenced by a retained source and completion claim;
+interrupted migration resumes and cold reads refuse a missing completed draft.
+The proposal is still inactive until a person approves it. This leaves
+CHANGELOG persistence, a live S3 restore, and customer recovery objectives
+open under #300/#264.

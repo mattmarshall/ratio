@@ -570,8 +570,9 @@ __STYLE__
           <code>RATIO_JOURNAL_PREFIX</code>) so CreateBook
           uses the durable journal. The #300 branch conditionally persists
           signed NAV strikes by book, view, and valuation point. Report
-          protobufs also persist in an ordered object log; proposals,
-          CHANGELOG, and the external restore drill remain open.
+          protobufs also persist in an ordered object log; proposal TOML
+          is conditionally stored by reviewed id. CHANGELOG and the external
+          restore drill remain open.
           Complete metadata recovery
           remains on #291. Pending hydration returns a retryable
           503; a failed storage startup refuses book traffic

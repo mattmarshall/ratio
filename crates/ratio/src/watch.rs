@@ -1510,16 +1510,7 @@ fn rules_json(book: &Path) -> Result<String> {
     // beside the active rules is the point: the difference between the two
     // lists is exactly what a human decision bought.
     let mut pending = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(book.join("proposals")) {
-        let mut paths: Vec<PathBuf> = rd
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "toml"))
-            .collect();
-        paths.sort();
-        for p in paths {
-            let id = p.file_stem().unwrap_or_default().to_string_lossy().to_string();
-            let text = std::fs::read_to_string(&p).unwrap_or_default();
+    for (id, text) in ratio_store::proposals::list(book)? {
             let rendered = match RuleSet::from_toml(&text) {
                 Ok(s) => s
                     .rules
@@ -1549,7 +1540,6 @@ fn rules_json(book: &Path) -> Result<String> {
                 quote(&rendered),
                 already
             ));
-        }
     }
 
     Ok(format!(

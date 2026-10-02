@@ -41,3 +41,19 @@ message ReportMigration {
   string book_id = 2;
   repeated StoredReport reports = 3;
 }
+
+// A model-authored draft. It is not active configuration: only a person's
+// separate approval may promote reviewed bytes.
+message StoredProposal {
+  int32 format_version = 1;
+  string book_id = 2;
+  string proposal_id = 3;
+  bytes toml_bytes = 4;
+}
+
+// Exact local drafts that predate configured object storage.
+message ProposalMigration {
+  int32 format_version = 1;
+  string book_id = 2;
+  repeated StoredProposal proposals = 3;
+}

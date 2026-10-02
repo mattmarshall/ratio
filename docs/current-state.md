@@ -87,8 +87,9 @@ messages also pass the [issue-completion check](issue-completion.md).
   #300 NAV slice conditionally persists signed strikes in the object store and
   fences legacy NAVS migration. The later #300 slice stores exact report
   bytes and their former mtime/path order in an append-only object log.
-  Proposals, CHANGELOG, complete backup coverage, and the external restore
-  drill remain recovery work. The CLI entry point now attaches
+  The proposal slice conditionally preserves the exact reviewed TOML by ID.
+  CHANGELOG, complete backup coverage, and the external restore drill remain
+  recovery work. The CLI entry point now attaches
   configured object storage before book commands, including stdio MCP and
   person-only writes; that guard alone does not make the remaining local
   evidence artifacts durable. Issue 300 remains open.

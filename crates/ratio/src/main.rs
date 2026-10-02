@@ -3032,9 +3032,8 @@ fn approve_text_with_control(
 ) -> Result<String> {
     let book = book.to_path_buf();
     let mut b = FileBook::open(&book)?;
-    let path = book.join("proposals").join(format!("{id}.toml"));
-    let proposed = std::fs::read_to_string(&path)
-        .with_context(|| format!("no proposal {id} — expected {}", path.display()))?;
+    let proposed = ratio_store::proposals::read(&book, id)?
+        .with_context(|| format!("no proposal {id} for {}", book.display()))?;
     let incoming = RuleSet::from_toml(&proposed)?;
 
     // ⛔ A PROPOSED TOLERANCE IS REFUSED, NOT MERGED, AND NOT DROPPED.

@@ -465,3 +465,11 @@ CLI, console, and watch use the same write/read door. Legacy local reports are
 migrated in their prior mtime/path order under a fenced source and completion
 claim. This closes the report-only part of operational evidence, not proposals,
 CHANGELOG, customer backup policy, or an external restore drill.
+
+### October 1, 2026 proposal evidence note (#300, branch-local)
+
+`StoredProposal` conditionally stores exact TOML by `(book, proposal id)`.
+MCP writers and the approval/watch/console readers use the same door. Local
+proposals migrate through a retained source and completion claim; changing
+reviewed bytes under one id refuses. A proposal remains inactive until a
+person approves it. CHANGELOG and the external recovery drill remain open.

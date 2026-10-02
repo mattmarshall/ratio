@@ -59,7 +59,8 @@ With neither installed, FileBook uses local JSONL files.
 | Period closes | `closes.jsonl` | `<book>/closes/<sequence>` | Records the cited boundary and prevents posting back into a closed period. Closing postings are separate journal entries. |
 | NAV strikes | `NAVS` | `<book>/nav-strikes/<sha256(view, id)>` immutable protobuf objects when a store is installed; legacy migration source and completion under `_nav-migration/` | Records `(view, valuation point)`, actor, prefix, digest, and figure. The conditional claim refuses a second answer. Preserve strike objects and migration records; recomputing today's NAV does not restore the signed strike. |
 | Reconciliation reports | `reports/*.pb` | `<book>/reports/<sequence>` immutable protobuf envelopes when a store is installed; legacy source and completion under `_report-migration/` | Preserve exact report bytes, filename, and original modification time in the envelope. Legacy reports migrate in mtime/path order, then newest means the last durable append. A recomputed report is a new artifact. |
-| Proposals and audit trail | `proposals/`, `CHANGELOG` | **Still local** | Preserve pending/accepted proposal artifacts and who approved or acted under a configuration. |
+| Proposals | `proposals/*.toml` | `<book>/proposals/<sha256(id)>` immutable protobuf drafts when a store is installed; migration source/completion under `_proposal-migration/` | Preserve exact reviewed TOML and proposal IDs. A changed draft under one ID refuses; approval remains a separate human act. |
+| Audit trail | `CHANGELOG` | **Still local** | Preserve who approved or acted under a configuration; a reconstructed config history cannot restore actor attribution. |
 | Original delivery files and external app evidence | External source locations; no general retained-blob path in the ingest code | **No complete retention contract here** | Inventory the actual upstream archive and Connect app stores. A delivery digest alone cannot recover the original file. |
 
 Do not restore into a different parent directory in the same object store and
@@ -97,7 +98,7 @@ The implementation supporting this inventory is:
 - The CLI entry point also attaches configured object storage before opening a
   book for person-only writes or stdio MCP. This prevents those commands from
   silently selecting a local journal when a durable backend is configured;
-  Proposals and CHANGELOG still require durable persistence on
+  CHANGELOG still requires durable persistence on
   [#300](https://github.com/mattmarshall/ratio/issues/300).
 
 ## Rebuildable material
@@ -139,7 +140,9 @@ environment. It is not currently an automated production backup command.
    `_control/transitions/<book-id>/` stream and every referenced
    `_control/config-blobs/<digest>` object. Include `nav-strikes/` objects and
    both `_nav-migration/` records where present. Capture each report sequence
-   and its `_report-migration/` source/completion records as well. Record sequence heights and content hashes and
+   and its `_report-migration/` source/completion records as well. Include
+   `<book>/proposals/` plus the `_proposal-migration/` source/completion
+   records. Record sequence heights and content hashes and
    every `_seed/publications*/<book-id>` marker. Check each marker's format
    version, digest, and plane lengths against the captured baked source; do not
    synthesize or remove a marker during restore. Check that each sequence is
@@ -222,7 +225,7 @@ customer-scale timing remain required external drill coverage.
 - Published-book post-create configuration and membership transitions are
   durable; legacy unpublished books retain their local control-state risk.
   [#300](https://github.com/mattmarshall/ratio/issues/300) covers NAVs,
-  reports/proposals, audit logs, and remaining operational evidence and
+  audit logs, remaining operational evidence, and
   writer-storage consistency.
 - No whole-book backup scheduler, consistent checkpoint/export command,
   restore command, retention policy, or independent backup copy is established

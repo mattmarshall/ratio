@@ -1488,8 +1488,8 @@ published immutable bootstrap for new books. That bootstrap recovers chart,
 identity, kind, opening configuration, and creator membership. Later
 configuration promotions and explicit membership grants/revocations use the
 same durable object backend and recover by verified predecessor transition.
-NAVS and reports are object-backed on the #300 branch; proposals and
-CHANGELOG remain local. The object-only
+NAVS, reports, and proposals are object-backed on the #300 branch;
+CHANGELOG remains local. The object-only
 probe now explicitly characterizes a legacy book created before storage was
 attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery
@@ -1498,8 +1498,8 @@ guarantee.
 The #300 CLI entry guard attaches configured object storage before book
 commands, including person-only verbs and stdio MCP. It closes the local-only
 journal selection path for those commands; the later #300 NAV slice persists
-NAVS; the later report slice persists reports, while proposals and
-CHANGELOG remain local. The complete #300 and #264 acceptance gates
+NAVS; later slices persist reports and proposals, while CHANGELOG remains
+local. The complete #300 and #264 acceptance gates
 remain open.
 
 ### NAV evidence, October 1, 2026 (issue #300, branch-local)
@@ -1526,3 +1526,14 @@ completion claim follows only after all report sequence objects match. A cold
 read refuses a hole or missing migrated report. The unconfigured local path
 still writes and reads the original files. Proposals, CHANGELOG, a live S3
 restore, and customer recovery objectives remain #300/#264 work.
+
+### Proposal evidence, October 1, 2026 (issue #300, branch-local)
+
+MCP rule and template proposal writers now conditionally store a versioned
+`StoredProposal` envelope at a deterministic per-book, per-id object key.
+Identical retries succeed; changed TOML under the same ID refuses. CLI approval,
+watch, and console read the durable drafts, keeping activation exclusively
+behind the person's approval door. A legacy `proposals/*.toml` directory is
+fenced as exact bytes under `_proposal-migration/<book>`; interrupted migration
+resumes and a cold read refuses a missing completed draft. CHANGELOG, live S3
+recovery, and customer RPO/RTO/retention decisions remain #300/#264 work.

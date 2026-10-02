@@ -5256,15 +5256,8 @@ impl Console {
 
         // Proposals nobody has approved: the other half of the story, and the
         // only place a model appears in this log.
-        if let Ok(rd) = std::fs::read_dir(book.join("proposals")) {
-            let mut ids: Vec<String> = rd
-                .filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|x| x == "toml"))
-                .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-                .collect();
-            ids.sort();
-            for id in ids {
+        {
+            for (id, _) in ratio_store::proposals::list(book)? {
                 if out.iter().any(|e| e.subject == id && e.action == "approved") {
                     continue; // already approved; it appears above as a person's act
                 }
