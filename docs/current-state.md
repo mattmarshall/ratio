@@ -50,13 +50,12 @@ messages also pass the [issue-completion check](issue-completion.md).
   remain on issue 161. Exact client-template grants are enforced. The minimal
   read-only reference app remains on issue 270; neither should be
   confused with local provider activation.
-- **Personal goals status (October 1 audit):** book-scoped cited account sheets
+- **Personal goals status (October 2 audit):** book-scoped cited account sheets
   and the goals app's live reader are on main. The deployed independent-Book
   PKCE walkthrough required by issues 355 and 168 has no completion evidence
-  in those issues. Both still carry `status:in-flight` even though neither
-  shows an active PR or assignee; their remaining acceptance is live operator
-  evidence, not another account-sheet implementation. Reconcile those labels
-  with the GitHub project before dispatching further work.
+  in those issues. Neither has an active PR or assignee; both now carry
+  `status:ready` in the GitHub project. Their remaining acceptance is live
+  operator evidence, not another account-sheet implementation.
 - **Demonstration data:** `deploy/seed-demo-funds.sh` seeds nine synthetic
   books: eight Investment funds and one Personal tax walkthrough.
   `deploy/seed_test.sh` verifies that inventory. Deployment
