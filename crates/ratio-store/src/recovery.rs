@@ -216,27 +216,6 @@ mod tests {
 
     static NEXT_TEST_ROOT: AtomicU64 = AtomicU64::new(0);
 
-    struct MissingObject<'a> {
-        inner: &'a MemoryStore,
-        key: &'a str,
-    }
-
-    impl ObjectStore for MissingObject<'_> {
-        fn put_if_absent(&self, key: &str, body: &[u8]) -> Result<bool> {
-            self.inner.put_if_absent(key, body)
-        }
-        fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
-            if key == self.key {
-                Ok(None)
-            } else {
-                self.inner.get(key)
-            }
-        }
-        fn list(&self, prefix: &str) -> Result<Vec<String>> {
-            self.inner.list(prefix)
-        }
-    }
-
     #[test]
     fn a_manifest_restores_exact_objects_and_refuses_incomplete_backup() {
         let source = MemoryStore::new();
@@ -284,16 +263,6 @@ mod tests {
                 .contains("destination must be empty")
         );
         let key = "journals/alpha/closes/00000000000000000001";
-        let missing = MissingObject {
-            inner: &backup,
-            key,
-        };
-        assert!(
-            restore_object_namespace(&missing, &MemoryStore::new(), "_recovery/capture.pb")
-                .unwrap_err()
-                .to_string()
-                .contains("backup object is missing")
-        );
         assert!(backup.put_if_absent("journals/unlisted", b"extra").unwrap());
         assert!(
             restore_object_namespace(&backup, &MemoryStore::new(), "_recovery/capture.pb")
@@ -339,7 +308,8 @@ mod tests {
         assert!(source
             .put_if_absent("alpha/journal/00000000000000000001", b"entry")
             .unwrap());
-        let backup = DirStore::at(root.join("backup"));
+        let backup_root = root.join("backup");
+        let backup = DirStore::at(&backup_root);
         capture_object_namespace(&source, &backup, "", "_recovery/capture.pb").unwrap();
         std::fs::remove_dir_all(source_root).unwrap();
         let restored = DirStore::at(root.join("restored"));
@@ -357,6 +327,14 @@ mod tests {
                 .unwrap()
                 .unwrap(),
             b"entry"
+        );
+        std::fs::remove_file(backup_root.join("alpha/journal/00000000000000000001")).unwrap();
+        let empty = DirStore::at(root.join("empty-restore"));
+        assert!(
+            restore_object_namespace(&backup, &empty, "_recovery/capture.pb")
+                .unwrap_err()
+                .to_string()
+                .contains("backup object is missing")
         );
         std::fs::remove_dir_all(root).unwrap();
     }
