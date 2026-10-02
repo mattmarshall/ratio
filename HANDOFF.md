@@ -1493,3 +1493,14 @@ probe now explicitly characterizes a legacy book created before storage was
 attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery
 guarantee.
+
+## Cross-backend conformance, October 1, 2026 (issue #359, branch-local)
+
+`bazel test //crates/ratio-project:backend_conformance_gate` exercises local
+JSONL, MemoryStore, and DirStore journal/side-plane equivalence, NAV and
+projection prefix-digest equality, object claim/no-hole refusal, checkpoint
+privacy, the existing S3 binary conditional-PUT test, and the S3Journal model.
+It is included in `bazel test //...`. A live S3 version of the complete
+fixture and a disposable recovery run remain unproven; do not call this full
+cross-provider acceptance. The `LostWrite.cfg` manual probe must still go red
+for `NoWriteIsLost`.

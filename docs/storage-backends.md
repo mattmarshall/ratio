@@ -1,11 +1,10 @@
 # Storage backends and the distribution model
 
-Status: **analysis and proposal.** Nothing here is a committed feature, a PLAN
-amendment, or an authorization to implement. It maps the persistence layer as
-built, states which alternative backends the existing seams can carry, and
-names the blockers that stand between the current shape and a two-track
-distribution model — on-device Personal, hosted SQL for funds and shared
-workspaces.
+Status: **analysis with a branch-local #359 implementation note.** The backend
+verdicts remain proposals. This document maps the persistence layer, states
+which alternative backends the existing seams can carry, and names the
+blockers between the current shape and a two-track distribution model —
+on-device Personal, hosted SQL for funds and shared workspaces.
 
 Related decision gate: [#282](https://github.com/mattmarshall/ratio/issues/282)
 (reviewed config storage). Related measurement: [#268](https://github.com/mattmarshall/ratio/issues/268).
@@ -457,3 +456,12 @@ criteria, per the roadmap's own rules.
 interesting problem — spends the toolchain budget before the storage seam is
 ready to carry a second backend, and leaves the hosted read path broken for
 whichever customer arrives first.
+
+### October 1, 2026 conformance note (#359, branch-local)
+
+`//crates/ratio-project:backend_conformance_gate` checks journal and all six
+side-plane replay across local JSONL, MemoryStore, and DirStore. It compares
+every journal-prefix digest to the NAV digest and includes conditional-claim,
+no-hole, checkpoint privacy, S3 adapter, and S3Journal model tests. The full
+fixture has not been run against live S3; do not treat the gate as provider
+acceptance or as proof of customer recovery.

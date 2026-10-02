@@ -75,7 +75,9 @@ The implementation supporting this inventory is:
   verified immutable bootstrap; later control transitions remain #304.
 - [ObjectStore and SeqLog](../crates/ratio-store/src/objects.rs), plus the
   [S3 adapter](../crates/ratio/src/scale.rs). `put_if_absent` protects sequence
-  slots; that is not a backup, a cross-plane checkpoint, or a metadata store.
+  slots; the branch-local #359 conformance gate compares replay and digest
+  behavior across local JSONL, MemoryStore, and DirStore. It has not proved
+  live S3 recovery and is not a backup or cross-plane checkpoint.
 - [Book initialization and grants](../crates/ratio-console/src/book.rs) and
   [CreateBook, CHANGELOG, reports, and book discovery](../crates/ratio-console/src/lib.rs).
   CreateBook publishes complete bootstrap state before returning success.
