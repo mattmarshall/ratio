@@ -64,3 +64,30 @@ rust_test(
         "@crates//:anyhow",
     ],
 )
+
+rust_test(
+    name = "backend_conformance_test",
+    srcs = ["tests/backend_conformance.rs"],
+    crate_root = "tests/backend_conformance.rs",
+    edition = "2021",
+    deps = [
+        ":ratio-project",
+        "//crates/ratio-nav",
+        "//crates/ratio-store",
+        "@crates//:serde_json",
+    ],
+)
+
+# The issue #359 gate: generic journal/plane equivalence, the deployed S3
+# adapter's conditional claim, checkpoint pin/privacy, and the S3 model.
+test_suite(
+    name = "backend_conformance_gate",
+    tests = [
+        ":backend_conformance_test",
+        ":ratio-project_test",
+        "//crates/ratio-store:ratio-store_test",
+        "//crates/ratio:ratio_test",
+        "//tla:s3_journal_check",
+        "//tla:probes_test",
+    ],
+)

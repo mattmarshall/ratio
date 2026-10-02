@@ -499,3 +499,11 @@ The console now passes its explicit store through operational evidence paths.
 namespace, deletes the original roots, and checks journal and evidence replay
 in a child process. It covers both book access and corruption/refusal. This
 does not establish live S3 backup copies, retention, or customer objectives.
+### October 1, 2026 conformance note (#359, branch-local)
+
+`//crates/ratio-project:backend_conformance_gate` checks journal and all six
+side-plane replay across local JSONL, MemoryStore, and DirStore. It compares
+every journal-prefix digest to the NAV digest and includes conditional-claim,
+no-hole, checkpoint privacy, S3 adapter, and S3Journal model tests. The full
+fixture has not been run against live S3; do not treat the gate as provider
+acceptance or as proof of customer recovery.

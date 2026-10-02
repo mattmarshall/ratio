@@ -116,6 +116,11 @@ messages also pass the [issue-completion check](issue-completion.md).
   default scans all keys. Live S3 paired height/append curves and the initial
   smaller-shape regression are recorded in the provider report. Final merge
   acceptance remains on #358.
+- **Storage conformance (#359, branch-local):** a Bazel gate compares
+  journal prefixes and all six append-only side planes across local JSONL,
+  MemoryStore, and DirStore, and includes S3 adapter/model tests. The
+  complete fixture has not run against live S3; this is not full issue
+  acceptance.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
   post-create configuration/membership transitions are built. The branch-local
   #300 NAV slice conditionally persists signed strikes in the object store and
