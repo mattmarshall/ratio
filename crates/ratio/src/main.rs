@@ -2904,7 +2904,7 @@ fn scale_run(size: &str, id: &str) -> Result<()> {
 fn mcp(book: PathBuf) -> Result<()> {
     open_cli_book(&book)?; // fail here rather than mid-conversation
     let stdin = std::io::stdin();
-    ratio_mcp::serve(&book, stdin.lock(), std::io::stdout())
+    ratio_mcp::serve_with_store(&book, ratio_store::installed_object_store(), stdin.lock(), std::io::stdout())
 }
 
 /// Promote a proposal to the active configuration.

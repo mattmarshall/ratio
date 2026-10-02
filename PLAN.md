@@ -5354,5 +5354,7 @@ serving binary, CLI, and other direct book opens still use process-global
 installation, so hosted multi-book storage is not yet complete.
 
 CLI and watch direct book opens now pass the startup-selected backend into
-`FileBook::open_with` or `open_attached_with`. NAV and MCP library calls still
-use the global default, so `FileBook::open` cannot yet become local-only.
+`FileBook::open_with` or `open_attached_with`. MCP tool dispatch carries that
+selection through explicit book opens; two-store tests cover journal writes.
+NAV and other library calls still use the global default, so `FileBook::open`
+cannot yet become local-only.

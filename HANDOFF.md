@@ -1499,9 +1499,10 @@ guarantee.
 object store. Bootstrap discovery, membership, active configuration, counts,
 and authorized `FileBook` opens resolve through that map. A missing mapping
 refuses instead of falling back to local files. A cold-root test creates two
-books on separate stores and recovers both in one process. The serving binary
-still selects one process-wide store; NAV, MCP, and other direct
-`FileBook::open` paths still use that installation. This is a seam toward #360, not completion of its hosted
+books on separate stores, writes isolated journal entries, and recovers both in one process. The serving binary
+still selects one process-wide store, but its MCP entry points carry that
+selection explicitly through tool dispatch. NAV and other direct
+`FileBook::open` paths still use the installation. This is a seam toward #360, not completion of its hosted
 multi-book acceptance.
 
 The next branch-local slice moves all direct CLI and watch book opens through
