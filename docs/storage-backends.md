@@ -1,6 +1,6 @@
 # Storage backends and the distribution model
 
-Status: **analysis with stacked branch-local #300 evidence and #357–#359 storage notes.** The backend verdicts remain proposals. This document maps the persistence layer, records operational evidence, checkpoint, append-height, and conformance changes under review, and names the blockers between the current shape and a two-track distribution model — on-device Personal, hosted SQL for funds and shared workspaces.
+Status: **analysis with stacked branch-local #300 evidence and #357–#360 storage notes.** The backend verdicts remain proposals. This document maps the persistence layer, records operational evidence, checkpoint, append-height, conformance, and per-book routing changes under review, and names the blockers between the current shape and a two-track distribution model — on-device Personal, hosted SQL for funds and shared workspaces.
 
 Related decision gate: [#282](https://github.com/mattmarshall/ratio/issues/282)
 (reviewed config storage). Related measurement: [#268](https://github.com/mattmarshall/ratio/issues/268).
@@ -507,3 +507,15 @@ no-hole, checkpoint privacy, and S3Journal model tests. A source inventory
 fails the build when a new ObjectStore implementation is not registered for
 conformance. The full fixture has not been run against live S3; do not treat
 the gate as provider acceptance or as proof of customer recovery.
+
+### October 2, 2026 per-book routing note (#360, branch-local)
+
+An explicit console map selects an `ObjectStore` by book ID. Cold
+published-book discovery, membership, active configuration, book opens,
+and NAV replay use the selected store; an unmapped ID refuses. CLI, watch,
+API, MCP, projection, and NAV entry points pass explicit handles.
+`FileBook::open`, `open_attached`, Console constructors, and MCP default entry
+points are local-only. Only the binary reads the process-installed store.
+The server still selects
+one store at startup, so the hosted per-book router and provider recovery
+evidence remain before #360 is complete.

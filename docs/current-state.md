@@ -1,6 +1,6 @@
 # Ratio — current state
 
-Updated October 2, 2026 (including stacked branch-local #300/#357–#359 work). This is the current implementation summary. Update
+Updated October 2, 2026 (including stacked branch-local #300/#357–#360 work). This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
 The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
@@ -94,6 +94,17 @@ messages also pass the [issue-completion check](issue-completion.md).
   S3 endpoint. It refuses holes and overwrites and checks that an unregistered
   ObjectStore implementation fails the build. The complete fixture has not
   run against live S3; provider behavior remains unverified.
+
+- **Per-book storage (#360, branch-local):** the console can resolve a
+  MemoryStore and a DirStore by book ID in one process, including cold
+  published-book discovery, journal writes, and active configuration. An unregistered ID
+  refuses, as does opening one materialized book against the other store.
+  CLI, watch, API, MCP, projection, and NAV entry points now pass
+  explicit store handles. `FileBook::open`, `open_attached`, and Console
+  constructors and MCP default entry points are local-only. Only binary
+  startup reads the installed store.
+  The serving binary still selects one store at startup; a hosted per-book
+  router and provider recovery evidence remain before #360 is complete.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
   post-create configuration/membership transitions are built. The branch-local
   #300 NAV slice conditionally persists signed strikes in the object store and

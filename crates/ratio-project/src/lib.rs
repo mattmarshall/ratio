@@ -1260,6 +1260,13 @@ impl Projection {
         Ok(p)
     }
 
+    /// Build from an already authorized book and its selected backend.
+    pub fn of_file_book(book: &FileBook) -> Result<Self> {
+        let mut projection = Self::new();
+        projection.follow_book(book)?;
+        Ok(projection)
+    }
+
     /// Fold whatever has been appended since this last read. Returns how many.
     ///
     /// ⭐ THIS IS WHAT MAKES THE FLAT CURVE TRUE IN A RUNNING PROCESS. A

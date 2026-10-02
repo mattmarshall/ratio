@@ -65,10 +65,8 @@ impl<S: ObjectStore + ?Sized> ObjectStore for Arc<S> {
     }
 }
 
-/// The process-wide store, installed once by the binary when the demo is
-/// wired to a durable backend. [`FileBook`][`super::FileBook`] reads it on
-/// open so every caller — console, MCP, projection — sees the same journal
-/// without threading a handle through every `open`.
+/// The binary's startup selection for a single-backend deployment. Library
+/// book opens receive an explicit store handle and never consult this value.
 ///
 /// Unset is the local shape: one JSON line per entry on disk, which is what
 /// every test and every `ratio` invocation without the env uses.
