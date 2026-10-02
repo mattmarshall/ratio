@@ -3,6 +3,21 @@ package(default_visibility = ["//visibility:public"])
 # Exposed for crate_universe's `manifests` (the workspace root manifest).
 exports_files(["Cargo.toml"])
 
+# A new production ObjectStore must be reviewed by the same Bazel gate that
+# compares journal and side-plane behavior across registered backends.
+filegroup(
+    name = "object_store_registry_sources",
+    srcs = ["//" + package + ":object_store_source_files" for package in subpackages(include = ["crates/*"])],
+)
+
+sh_test(
+    name = "object_store_registry_gate",
+    size = "small",
+    srcs = ["//crates/ratio-project:tests/object_store_registry_gate.py"],
+    args = ["$(locations :object_store_registry_sources)"],
+    data = [":object_store_registry_sources"],
+)
+
 # PLAN.md is DATA to the console-side BookKind check.
 exports_files(["PLAN.md"])
 

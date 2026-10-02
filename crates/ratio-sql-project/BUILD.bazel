@@ -86,3 +86,9 @@ rust_test(
         ":ratio-sql-project",
     ],
 )
+
+# Source inventory for the build-enforced ObjectStore conformance registry.
+filegroup(
+    name = "object_store_source_files",
+    srcs = glob(["src/**/*.rs"]),
+)
