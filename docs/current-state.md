@@ -94,7 +94,9 @@ messages also pass the [issue-completion check](issue-completion.md).
   process. Complete live S3 backup coverage and the customer restore drill
   remain #264 recovery work. The CLI entry point now attaches
   configured object storage before book commands, including stdio MCP and
-  person-only writes. Issue 300 remains open pending its PR and merge; the
+  person-only writes. A seeded-book regression verifies post, strike, close,
+  approve, and accept refuse an unusable configured backend without a local
+  book mutation. Issue 300 remains open pending its PR and merge; the
   external customer drill is #264 acceptance, not #300 acceptance.
 
 ## Scope decisions that remain in force
