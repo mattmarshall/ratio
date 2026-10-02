@@ -14,11 +14,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{bail, Context, Result};
 use ratio_common::intern::Text;
-use ratio_store::{Digest, DigestBuilder, FileBook, Journal, JournalEntry};
+use ratio_store::{Digest, DigestBuilder, FileBook, Journal, JournalEntry, ObjectStore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
@@ -132,6 +133,36 @@ pub fn prefix_digest_book(book: &FileBook, prefix: usize) -> Result<String> {
         );
     }
     Ok(d.finish().as_str().to_string())
+}
+
+/// Check the whole current journal and an optional checkpoint prefix in one
+/// streaming pass. Object-backed books still read each immutable journal body
+/// to verify the pin; this avoids materializing the entire journal in memory.
+fn scan_journal_pins(
+    book: &FileBook,
+    checkpoint_prefix: Option<usize>,
+) -> Result<(usize, CheckpointPin, Option<String>)> {
+    let mut all = DigestBuilder::new();
+    let mut claimed = checkpoint_prefix.map(|_| DigestBuilder::new());
+    let mut height = 0usize;
+    book.for_each_entry_since(0, &mut |entry| {
+        let line = serde_json::to_string(entry).context("serializing an entry")?;
+        all.update(line.as_bytes());
+        all.update(b"\n");
+        if height < checkpoint_prefix.unwrap_or(0) {
+            if let Some(digest) = claimed.as_mut() {
+                digest.update(line.as_bytes());
+                digest.update(b"\n");
+            }
+        }
+        height = height.checked_add(1).context("journal height exceeds usize")?;
+        Ok(())
+    })?;
+    let pin = CheckpointPin {
+        prefix: height,
+        digest: all.finish().as_str().to_string(),
+    };
+    Ok((height, pin, claimed.map(|d| d.finish().as_str().to_string())))
 }
 
 /// On-disk envelope. Version first so an unknown format refuses before body parse.
@@ -643,6 +674,13 @@ pub struct DirectoryCheckpointStore {
     dir: PathBuf,
 }
 
+/// Disposable checkpoint storage. The journal pin is checked by the caller,
+/// regardless of which backend supplied these bytes.
+pub trait CheckpointStore: Send + Sync {
+    fn publish(&self, bytes: &[u8]) -> Result<String>;
+    fn latest(&self) -> Result<Option<Checkpoint>, CheckpointMiss>;
+}
+
 impl DirectoryCheckpointStore {
     pub fn open(dir: impl AsRef<Path>) -> Result<Self> {
         let dir = dir.as_ref().to_path_buf();
@@ -747,9 +785,108 @@ impl DirectoryCheckpointStore {
     }
 }
 
+impl CheckpointStore for DirectoryCheckpointStore {
+    fn publish(&self, bytes: &[u8]) -> Result<String> {
+        DirectoryCheckpointStore::publish(self, bytes)
+    }
+
+    fn latest(&self) -> Result<Option<Checkpoint>, CheckpointMiss> {
+        DirectoryCheckpointStore::latest(self)
+    }
+}
+
+/// Immutable checkpoint blobs and conditional, height-keyed HEAD claims.
+///
+/// The newest HEAD is the highest checkpoint prefix, so a slow publisher of
+/// an older fold cannot move the pointer backward. A conflicting claim at the
+/// same prefix refuses; it cannot silently replace a different journal pin.
+/// Keys are outside every book's authoritative tree.
+pub struct ObjectCheckpointStore {
+    objects: Arc<dyn ObjectStore>,
+    prefix: String,
+}
+
+impl ObjectCheckpointStore {
+    pub fn new(objects: Arc<dyn ObjectStore>, book_id: &str) -> Self {
+        let id = DirectoryCheckpointStore::content_digest(book_id.as_bytes());
+        Self {
+            objects,
+            prefix: format!("_checkpoints/{id}/"),
+        }
+    }
+
+    fn blob_key(&self, digest: &str) -> String {
+        format!("{}blobs/{digest}", self.prefix)
+    }
+
+    fn head_key(&self, prefix: usize) -> String {
+        format!("{}heads/{prefix:020}", self.prefix)
+    }
+}
+
+impl CheckpointStore for ObjectCheckpointStore {
+    fn publish(&self, bytes: &[u8]) -> Result<String> {
+        let cp = Checkpoint::decode(bytes)
+            .map_err(|m| anyhow::anyhow!("checkpoint publication refused: {}", m.as_str()))?;
+        let digest = DirectoryCheckpointStore::content_digest(bytes);
+        let blob = self.blob_key(&digest);
+        if !self.objects.put_if_absent(&blob, bytes)? {
+            let existing = self.objects.get(&blob)?.context("checkpoint blob disappeared")?;
+            if existing != bytes {
+                bail!("checkpoint content-address collision or corrupt occupied blob");
+            }
+        }
+        let head = self.head_key(cp.pin().prefix);
+        if !self.objects.put_if_absent(&head, digest.as_bytes())? {
+            let existing = self.objects.get(&head)?.context("checkpoint HEAD disappeared")?;
+            if existing != digest.as_bytes() {
+                bail!("checkpoint HEAD already claims a different prefix digest");
+            }
+        }
+        Ok(digest)
+    }
+
+    fn latest(&self) -> Result<Option<Checkpoint>, CheckpointMiss> {
+        let heads = format!("{}heads/", self.prefix);
+        let keys = self.objects.list(&heads).map_err(|_| CheckpointMiss::Corrupt)?;
+        let mut newest = None;
+        for key in keys {
+            let suffix = key.strip_prefix(&heads).ok_or(CheckpointMiss::Corrupt)?;
+            if suffix.len() != 20 || !suffix.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(CheckpointMiss::Corrupt);
+            }
+            let prefix = suffix.parse::<usize>().map_err(|_| CheckpointMiss::Corrupt)?;
+            if newest.as_ref().is_none_or(|(height, _)| prefix > *height) {
+                newest = Some((prefix, key));
+            }
+        }
+        let Some((prefix, head)) = newest else {
+            return Err(CheckpointMiss::Missing);
+        };
+        let digest = self.objects.get(&head)
+            .map_err(|_| CheckpointMiss::Corrupt)?
+            .ok_or(CheckpointMiss::Missing)?;
+        let digest = String::from_utf8(digest).map_err(|_| CheckpointMiss::Corrupt)?;
+        if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(CheckpointMiss::Corrupt);
+        }
+        let bytes = self.objects.get(&self.blob_key(&digest))
+            .map_err(|_| CheckpointMiss::Corrupt)?
+            .ok_or(CheckpointMiss::Missing)?;
+        if DirectoryCheckpointStore::content_digest(&bytes) != digest {
+            return Err(CheckpointMiss::DigestMismatch);
+        }
+        let cp = Checkpoint::decode(&bytes)?;
+        if cp.pin().prefix != prefix {
+            return Err(CheckpointMiss::Corrupt);
+        }
+        Ok(Some(cp))
+    }
+}
+
 fn full_replay(
     book: &FileBook,
-    store: &DirectoryCheckpointStore,
+    store: &dyn CheckpointStore,
     miss: CheckpointMiss,
     checkpoint_prefix: usize,
     height: usize,
@@ -776,16 +913,24 @@ pub fn follow_with_checkpoint(
     store_dir: impl AsRef<Path>,
 ) -> Result<(Projection, CheckpointTelemetry)> {
     let store = DirectoryCheckpointStore::open(store_dir)?;
-    let entries = book.entries()?;
-    let height = entries.len();
-    let journal_pin = CheckpointPin::of_entries(&entries)?;
+    follow_with_checkpoint_store(book, &store)
+}
 
-    let cp = match store.latest() {
+/// Load from any checkpoint backend and replay only the verified journal tail.
+pub fn follow_with_checkpoint_store(
+    book: &FileBook,
+    store: &dyn CheckpointStore,
+) -> Result<(Projection, CheckpointTelemetry)> {
+    let latest = store.latest();
+    let checkpoint_prefix = latest.as_ref().ok().and_then(|cp| cp.as_ref()).map(|cp| cp.pin().prefix);
+    let (height, journal_pin, claimed_digest) = scan_journal_pins(book, checkpoint_prefix)?;
+
+    let cp = match latest {
         Ok(Some(cp)) => cp,
         Ok(None) | Err(CheckpointMiss::Missing) => {
             return full_replay(
                 book,
-                &store,
+                store,
                 CheckpointMiss::Missing,
                 0,
                 height,
@@ -793,7 +938,7 @@ pub fn follow_with_checkpoint(
             );
         }
         Err(m) => {
-            return full_replay(book, &store, m, 0, height, &journal_pin);
+            return full_replay(book, store, m, 0, height, &journal_pin);
         }
     };
 
@@ -801,32 +946,19 @@ pub fn follow_with_checkpoint(
     if claimed.prefix > height {
         return full_replay(
             book,
-            &store,
+            store,
             CheckpointMiss::PrefixMismatch,
             claimed.prefix,
             height,
             &journal_pin,
         );
     }
-    let actual = match prefix_digest(&entries[..claimed.prefix]) {
-        Ok(d) => d,
-        Err(_) => {
-            return full_replay(
-                book,
-                &store,
-                CheckpointMiss::Corrupt,
-                claimed.prefix,
-                height,
-                &journal_pin,
-            );
-        }
-    };
     let expected = CheckpointPin {
         prefix: claimed.prefix,
-        digest: actual,
+        digest: claimed_digest.context("checkpoint digest was not scanned")?,
     };
     if let Err(m) = cp.accept_for(&expected) {
-        return full_replay(book, &store, m, claimed.prefix, height, &journal_pin);
+        return full_replay(book, store, m, claimed.prefix, height, &journal_pin);
     }
 
     let mut p = match cp.into_projection() {
@@ -834,7 +966,7 @@ pub fn follow_with_checkpoint(
         Err(_) => {
             return full_replay(
                 book,
-                &store,
+                store,
                 CheckpointMiss::Corrupt,
                 claimed.prefix,
                 height,
@@ -847,7 +979,7 @@ pub fn follow_with_checkpoint(
         Err(_) => {
             return full_replay(
                 book,
-                &store,
+                store,
                 CheckpointMiss::Corrupt,
                 claimed.prefix,
                 height,
@@ -864,13 +996,13 @@ pub fn follow_with_checkpoint(
     };
     tel.report();
     if p.prefix() == height && (height > claimed.prefix || claimed.prefix == height) {
-        let _ = publish_checkpoint(&store, &p, &journal_pin);
+        let _ = publish_checkpoint(store, &p, &journal_pin);
     }
     Ok((p, tel))
 }
 
 fn publish_checkpoint(
-    store: &DirectoryCheckpointStore,
+    store: &dyn CheckpointStore,
     projection: &Projection,
     pin: &CheckpointPin,
 ) -> Result<()> {
@@ -950,7 +1082,10 @@ pub fn measure_checkpoint_bench(book: &FileBook, store_dir: impl AsRef<Path>) ->
 mod tests {
     use super::*;
     use ratio_store::{Account, AccountTypeRecord, ConfigStore, Journal, PostingRecord};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
+
+    static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
 
     fn tmp() -> PathBuf {
         let root = match std::env::var_os("TEST_TMPDIR") {
@@ -958,8 +1093,9 @@ mod tests {
             None => std::env::temp_dir(),
         };
         root.join(format!(
-            "ratio-checkpoint-{}-{}",
+            "ratio-checkpoint-{}-{}-{}",
             std::process::id(),
+            NEXT_TMP.fetch_add(1, Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -1074,6 +1210,109 @@ mod tests {
             from_mismatch.balances(ratio_rules::UNDECLARED_VIEW).unwrap().value,
             &balances
         );
+    }
+
+    #[test]
+    fn an_object_checkpoint_survives_a_cold_book_and_replays_only_the_tail() {
+        let (dir, book) = book_with(8);
+        let objects_dir = dir.with_extension("checkpoint-objects");
+        let _ = fs::remove_dir_all(&objects_dir);
+        let objects: Arc<dyn ObjectStore> = Arc::new(ratio_store::DirStore::at(&objects_dir));
+        let store = ObjectCheckpointStore::new(objects.clone(), "book-1");
+        let before: BTreeSet<_> = fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        let (_, cold) = follow_with_checkpoint_store(&book, &store).unwrap();
+        assert_eq!(cold.miss, Some(CheckpointMiss::Missing));
+        let after: BTreeSet<_> = fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(before, after, "checkpoint publication changed the book tree");
+        drop(book);
+        drop(store);
+        drop(objects);
+
+        let mut reopened = FileBook::open(&dir).unwrap();
+        let objects: Arc<dyn ObjectStore> = Arc::new(ratio_store::DirStore::at(&objects_dir));
+        let store = ObjectCheckpointStore::new(objects, "book-1");
+        let mut tail = reopened.entries().unwrap().last().unwrap().clone();
+        tail.id = "new-tail-entry".to_string();
+        reopened.append(&tail).unwrap();
+        let (warm, tel) = follow_with_checkpoint_store(&reopened, &store).unwrap();
+        assert!(tel.hit);
+        assert_eq!(tel.checkpoint_prefix, 8);
+        assert_eq!(tel.tail_length, 1);
+        assert_eq!(warm.prefix(), 9);
+
+        let (_, old_book) = book_with(4);
+        let mut older = Projection::new();
+        older.follow_book(&old_book).unwrap();
+        let old_pin = CheckpointPin::of_entries(&old_book.entries().unwrap()).unwrap();
+        let old_blob = Checkpoint::capture(&older, old_pin).unwrap().encode().unwrap();
+        store.publish(&old_blob).unwrap();
+        assert_eq!(store.latest().unwrap().unwrap().pin().prefix, 9);
+
+        let digest = DirectoryCheckpointStore::content_digest(
+            &Checkpoint::capture(&warm, CheckpointPin::of_entries(&reopened.entries().unwrap()).unwrap())
+                .unwrap().encode().unwrap(),
+        );
+        fs::write(objects_dir.join(store.blob_key(&digest)), b"corrupt").unwrap();
+        let (_, miss) = follow_with_checkpoint_store(&reopened, &store).unwrap();
+        assert_eq!(miss.miss, Some(CheckpointMiss::DigestMismatch));
+    }
+
+    #[test]
+    fn object_checkpoint_refuses_invalid_versions_and_wrong_journal_pins() {
+        let (dir, book) = book_with(3);
+        let objects_dir = dir.with_extension("invalid-checkpoint-objects");
+        let _ = fs::remove_dir_all(&objects_dir);
+        let objects: Arc<dyn ObjectStore> = Arc::new(ratio_store::DirStore::at(&objects_dir));
+        let mut p = Projection::new();
+        p.follow_book(&book).unwrap();
+        let mut wrong_pin = CheckpointPin::of_entries(&book.entries().unwrap()).unwrap();
+        wrong_pin.digest = "0".repeat(64);
+        let wrong = ObjectCheckpointStore::new(objects.clone(), "wrong-pin");
+        wrong.publish(&Checkpoint::capture(&p, wrong_pin).unwrap().encode().unwrap()).unwrap();
+        let (_, tel) = follow_with_checkpoint_store(&book, &wrong).unwrap();
+        assert_eq!(tel.miss, Some(CheckpointMiss::PrefixMismatch));
+
+        let pin = CheckpointPin::of_entries(&book.entries().unwrap()).unwrap();
+        let mut envelope: serde_json::Value = serde_json::from_slice(
+            &Checkpoint::capture(&p, pin).unwrap().encode().unwrap(),
+        ).unwrap();
+        envelope["version"] = serde_json::json!(FORMAT_VERSION + 1);
+        let bytes = serde_json::to_vec(&envelope).unwrap();
+        let digest = DirectoryCheckpointStore::content_digest(&bytes);
+        let versioned = ObjectCheckpointStore::new(objects.clone(), "version-refused");
+        assert!(objects.put_if_absent(&versioned.blob_key(&digest), &bytes).unwrap());
+        assert!(objects.put_if_absent(&versioned.head_key(3), digest.as_bytes()).unwrap());
+        let (_, tel) = follow_with_checkpoint_store(&book, &versioned).unwrap();
+        assert_eq!(tel.miss, Some(CheckpointMiss::VersionRefused));
+
+        let truncated = ObjectCheckpointStore::new(objects.clone(), "truncated");
+        let bytes = b"{truncated";
+        let digest = DirectoryCheckpointStore::content_digest(bytes);
+        assert!(objects.put_if_absent(&truncated.blob_key(&digest), bytes).unwrap());
+        assert!(objects.put_if_absent(&truncated.head_key(3), digest.as_bytes()).unwrap());
+        let (_, tel) = follow_with_checkpoint_store(&book, &truncated).unwrap();
+        assert_eq!(tel.miss, Some(CheckpointMiss::Corrupt));
+
+        let missing = ObjectCheckpointStore::new(objects.clone(), "missing-blob");
+        assert!(objects.put_if_absent(&missing.head_key(3), "f".repeat(64).as_bytes()).unwrap());
+        let (_, tel) = follow_with_checkpoint_store(&book, &missing).unwrap();
+        assert_eq!(tel.miss, Some(CheckpointMiss::Missing));
+    }
+
+    #[test]
+    fn a_checkpoint_cannot_hide_a_hole_in_the_object_journal() {
+        let (dir, local) = book_with(3);
+        drop(local);
+        let objects_dir = dir.with_extension("journal-hole-objects");
+        let _ = fs::remove_dir_all(&objects_dir);
+        let objects: Arc<dyn ObjectStore> = Arc::new(ratio_store::DirStore::at(&objects_dir));
+        let book = FileBook::open_with(&dir, Some(objects.clone())).unwrap();
+        let book_id = dir.file_name().unwrap().to_str().unwrap();
+        let checkpoints = ObjectCheckpointStore::new(objects, book_id);
+        follow_with_checkpoint_store(&book, &checkpoints).unwrap();
+        fs::remove_file(objects_dir.join(format!("{book_id}/journal/{:020}", 2))).unwrap();
+        let error = follow_with_checkpoint_store(&book, &checkpoints).err().unwrap().to_string();
+        assert!(error.contains("sequence 2 is missing"), "{error}");
     }
 
     #[test]

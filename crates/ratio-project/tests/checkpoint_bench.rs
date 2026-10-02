@@ -5,8 +5,14 @@
 //! or operator can cite the three numbers without opening a figure.
 
 use anyhow::Result;
+use std::sync::Arc;
+use std::time::Instant;
 use ratio_gen::Shape;
-use ratio_project::checkpoint::{measure_checkpoint_bench, CheckpointBench};
+use ratio_project::checkpoint::{
+    follow_with_checkpoint_store, measure_checkpoint_bench, CheckpointBench,
+    ObjectCheckpointStore,
+};
+use ratio_store::{DirStore, FileBook, ObjectStore};
 
 #[test]
 fn large_demo_checkpoint_bench_reports_cold_load_and_tail() -> Result<()> {
@@ -46,5 +52,28 @@ fn large_demo_checkpoint_bench_reports_cold_load_and_tail() -> Result<()> {
         report.cold_full_replay_ms
     );
     eprintln!("{}", report.report_line());
+
+    // The same generated shape through the configured object seam. Timings
+    // include prefix verification, so they do not imply zero journal GETs.
+    let objects_dir = root.join(format!("ratio-checkpoint-objects-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&objects_dir);
+    let objects: Arc<dyn ObjectStore> = Arc::new(DirStore::at(&objects_dir));
+    let durable_book = FileBook::open_with(&book_dir, Some(objects.clone()))?;
+    let checkpoint = ObjectCheckpointStore::new(objects.clone(), "checkpoint-bench-book");
+    let t0 = Instant::now();
+    let (_, first) = follow_with_checkpoint_store(&durable_book, &checkpoint)?;
+    let cold_ms = t0.elapsed().as_millis();
+    assert!(!first.hit);
+    drop(durable_book);
+    let reopened = FileBook::open_with(&book_dir, Some(objects))?;
+    let t1 = Instant::now();
+    let (_, second) = follow_with_checkpoint_store(&reopened, &checkpoint)?;
+    let warm_ms = t1.elapsed().as_millis();
+    assert!(second.hit);
+    assert_eq!(second.tail_length, 0);
+    eprintln!(
+        "projection_checkpoint_object_bench entries={} cold_ms={} checkpoint_ms={} tail_entries={}",
+        report.entries, cold_ms, warm_ms, second.tail_length
+    );
     Ok(())
 }

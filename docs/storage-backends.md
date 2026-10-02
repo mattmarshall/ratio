@@ -85,14 +85,20 @@ what makes retargeting the dialect feasible at all.
 verified prefix pin, so a cold read loads the newest valid pin and replays only
 the tail. A corrupt, missing, or mismatched blob falls back to a full replay.
 
-⛔ **The store is a local directory.** `DirectoryCheckpointStore`
-(`checkpoint.rs:642`) is `fs::` only, and the console keeps it under
-`.ratio-cache/projection-checkpoints` at the console root
-(`ratio-console/src/lib.rs:492`). On Lambda that is container-local and dies
-with the container. Every cold start is `CheckpointMiss::Missing` and pays a
-full fold. **The acceleration exists in the library and does not reach the
-deployed read path.** This is the highest-leverage unfixed thing in the
-persistence layer, for either track.
+The console now selects `ObjectCheckpointStore` when the configured object
+backend is installed and keeps `DirectoryCheckpointStore` for local books.
+Checkpoint blobs are content-addressed; an immutable, height-keyed HEAD claim
+is written conditionally after its blob. A delayed older publisher cannot move
+the newest pin backward, and a conflicting claim at one height refuses. Keys
+live under `_checkpoints/`, outside each authoritative book tree.
+
+⚠ **Prefix verification still reads every journal body.** The checkpoint saves
+the projection fold and replays only the tail, but it does not make the object
+read path one GET plus a tail. The scan is streamed, so it does not materialize
+the whole journal. On the generated 20-security × 40-lot demo shape (5,396
+entries), a directory-backed ObjectStore measured 13,809 ms for cold full
+replay and 1,318 ms for checkpoint load with an empty tail. Those are local
+filesystem timings, not S3 or API Gateway measurements.
 
 ### 1.5 Hosting
 
@@ -333,16 +339,14 @@ should be written before the first adapter.
 
 ## 5. Blockers, ordered by what they block
 
-### 5.1 Durable checkpoints — blocks *everything*, cheapest to fix
+### 5.1 Durable checkpoints — implemented, with a remaining remote-read cost
 
-`DirectoryCheckpointStore` is `fs::` only and the console caches under a
-container-local path. Move publication behind a trait with an `ObjectStore`
-implementation (the blob-plus-HEAD-pointer shape already matches
-`put_if_absent` + an atomic pointer) and the hosted cold-start fold collapses
-from N GETs to one blob plus a tail. This is a prerequisite for hosting
-Personal books *and* the single biggest serving-latency win for funds.
-
-Severity: **high.** Effort: **low.** No new dependency, no new spec.
+Publication and load use a trait with directory and ObjectStore
+implementations. The console chooses the configured object backend. The
+projection fold resumes from a verified checkpoint, but the current digest
+check still reads N immutable journal objects. Remote S3 timing and a faster
+verification path remain unproven; do not use the local benchmark as a hosting
+latency commitment.
 
 ### 5.2 `SeqLog::height()` is O(n) per append
 
@@ -434,8 +438,9 @@ Severity: **process, and the one most likely to be skipped.**
 
 ## 6. Suggested sequence
 
-Nothing here is dispatchable until it is split into issues with acceptance
-criteria, per the roadmap's own rules.
+The backend work is now split into issues #357–#366. The GitHub project and
+roadmap index #258 determine which issue is ready; this analysis does not
+override those labels or PLAN's scope decisions.
 
 1. **Backend-independent fixes.** Durable checkpoint store (§5.1); `height` on
    `ObjectStore` (§5.2). Both improve the deployed product today regardless of

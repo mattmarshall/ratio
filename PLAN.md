@@ -5344,3 +5344,21 @@ conjunctive.
 forecast, required savings rate, FIRE number, goal RPC in core, and automatic
 scenario posting remain refused. Live OAuth evidence remains on #168 until the
 registered scopes are exercised against a permitted Personal book.
+
+### Amendment, 2026-10-01 — configured object checkpoints survive a cold process
+
+Related: #357. The projection checkpoint door now has directory and configured
+ObjectStore implementations. A content-addressed blob is published before a
+conditional, height-keyed HEAD claim; a slower older publisher cannot move the
+newest pin backward. The console uses the object backend when installed and
+keeps the directory cache for local books. The journal remains authoritative:
+checkpoint corruption or prefix mismatch falls back to full replay, and the
+checkpoint lives outside the authoritative book tree.
+
+The generated 20-security × 40-lot shape (5,396 entries) measured 13,809 ms
+for a cold full replay and 1,318 ms for a checkpoint load through a local
+directory-backed ObjectStore, with an empty tail. Prefix verification still
+reads every journal object, so this does not assert one GET plus a tail or a
+live S3/API Gateway latency result. Remaining work: #357 — record deployed
+cold-start evidence and complete the issue acceptance; #264 — prove customer
+recovery independently of disposable checkpoints.
