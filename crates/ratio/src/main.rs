@@ -170,9 +170,13 @@ fn main() -> Result<()> {
     // opening any book. Otherwise a close, strike, or accepted explanation can
     // acknowledge a local-only write while the deployed journal is durable.
     // The scale runner has its own store and never opens this CLI book.
+    // Recovery capture/restore select explicit source and destination
+    // namespaces; attaching the serving journal first would make an
+    // otherwise valid restore depend on an unrelated live backend.
     if !matches!(
         cmd.as_slice(),
         [] | ["help"] | ["--help"] | ["-h"] | ["scale-run", "--size", _, "--id", _]
+            | ["recovery", "capture"] | ["recovery", "restore"]
     ) {
         install_control_backend()?;
     }
