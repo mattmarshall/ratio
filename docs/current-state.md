@@ -1,6 +1,6 @@
 # Ratio — current state
 
-Updated September 10, 2026. This is the current implementation summary. Update
+Updated October 2, 2026 (including stacked branch-local #300/#357 work). This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
 The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
@@ -14,7 +14,7 @@ slice, not proof that every item in its parent issue is complete.
 |---|---|---|
 | Book of record | Append-only journal plus content-addressed configuration and provenance-bearing facts. Investment, Personal, Project, and Operating are book kinds over one kernel. | `crates/ratio-store`, `proto/ratio/console/v1/console.proto` |
 | Arithmetic and temporal rules | Lean proofs, TLA+ models, Rust execution; some Rust is emitted from Lean. Money is integral, with explicitly accounted FX/per-share residues where defined. | `lean/Ratio`, `tla`, `crates/ratio-common` |
-| Read projection | In-process by default. Setting `RATIO_PG_URL` selects the live Postgres projection for lots, positions, and Current aggregates. The journal remains authoritative; stale watermarks refuse. Verified journal-prefix checkpoints accelerate cold in-memory folds: load the newest valid pin and replay only the tail; corrupt/mismatch falls back to full replay. | `crates/ratio-project/src/checkpoint.rs`, `crates/ratio-sql-project/src/reads.rs`, `crates/ratio-console/src/store.rs` |
+| Read projection | In-process by default. Setting `RATIO_PG_URL` selects the live Postgres projection for lots, positions, and Current aggregates. The journal remains authoritative; stale watermarks refuse. Verified journal-prefix checkpoints use the configured object store when present and a local directory otherwise. They resume the fold at the newest valid pin; corrupt/mismatch falls back to full replay. Prefix verification still reads every journal body, so remote latency is not established by the local benchmark. | `crates/ratio-project/src/checkpoint.rs`, `crates/ratio-sql-project/src/reads.rs`, `crates/ratio-console/src/lib.rs` |
 | Multiple views | Declared views fold their own cuts and explain reconciliation differences; this is implemented, not an unresolved per-view design. | `crates/ratio-console/src/lib.rs`, `lean/Ratio/Views.lean`, `tla/Projection.tla` |
 | Operations interface | Next.js console on Vercel, Rust API on Lambda. Kind selects the chart and available screens. Direct-route coverage is being completed under issue 26. | `console/src/lib/screens.ts`, `crates/ratio-console`, `deploy/app.yaml` |
 | Connect | Python first-party applications use the authenticated Connect API. A scaffold or local allowlist is not a live provider integration or an API permission boundary. | `connect/`, [scope catalog](connect-scopes.md) |
