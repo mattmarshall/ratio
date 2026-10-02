@@ -166,6 +166,17 @@ fn main() -> Result<()> {
     let (positional, book) = split_book_flag(&args)?;
     let cmd: Vec<&str> = positional.iter().map(String::as_str).collect();
 
+    // ⛔ A CLI or stdio writer must attach the configured object store before
+    // opening any book. Otherwise a close, strike, or accepted explanation can
+    // acknowledge a local-only write while the deployed journal is durable.
+    // The scale runner has its own store and never opens this CLI book.
+    if !matches!(
+        cmd.as_slice(),
+        [] | ["help"] | ["--help"] | ["-h"] | ["scale-run", "--size", _, "--id", _]
+    ) {
+        install_control_backend()?;
+    }
+
     match cmd.as_slice() {
         [] | ["help"] | ["--help"] | ["-h"] => {
             print!("{USAGE}");

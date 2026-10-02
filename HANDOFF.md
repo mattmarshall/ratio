@@ -1493,3 +1493,9 @@ probe now explicitly characterizes a legacy book created before storage was
 attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery
 guarantee.
+
+The #300 CLI entry guard attaches configured object storage before book
+commands, including person-only verbs and stdio MCP. It closes the local-only
+journal selection path for those commands, but it does not persist NAVS,
+reports/proposals, or CHANGELOG. The complete #300 and #264 acceptance gates
+remain open.

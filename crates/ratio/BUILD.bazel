@@ -50,3 +50,10 @@ rust_test(
     crate = ":ratio",
     edition = "2021",
 )
+
+sh_test(
+    name = "configured_store_refuses_local_cli_test",
+    srcs = ["configured_store_refuses_local_cli_test.sh"],
+    args = ["$(location :ratio)"],
+    data = [":ratio"],
+)

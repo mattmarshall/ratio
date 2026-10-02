@@ -50,6 +50,13 @@ messages also pass the [issue-completion check](issue-completion.md).
   remain on issue 161. Exact client-template grants are enforced. The minimal
   read-only reference app remains on issue 270; neither should be
   confused with local provider activation.
+- **Personal goals status (October 1 audit):** book-scoped cited account sheets
+  and the goals app's live reader are on main. The deployed independent-Book
+  PKCE walkthrough required by issues 355 and 168 has no completion evidence
+  in those issues. Both still carry `status:in-flight` even though neither
+  shows an active PR or assignee; their remaining acceptance is live operator
+  evidence, not another account-sheet implementation. Reconcile those labels
+  with the GitHub project before dispatching further work.
 - **Demonstration data:** `deploy/seed-demo-funds.sh` seeds nine synthetic
   books: eight Investment funds and one Personal tax walkthrough.
   `deploy/seed_test.sh` verifies that inventory. Deployment
@@ -78,7 +85,10 @@ messages also pass the [issue-completion check](issue-completion.md).
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
   post-create configuration/membership transitions are built. NAVs,
   reports/proposals, CHANGELOG, complete backup coverage, and the external
-  restore drill remain separate recovery work.
+  restore drill remain separate recovery work. The CLI entry point now attaches
+  configured object storage before book commands, including stdio MCP and
+  person-only writes; that guard alone does not make those local evidence
+  artifacts durable. Issue 300 remains open.
 
 ## Scope decisions that remain in force
 

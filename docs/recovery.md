@@ -3,13 +3,13 @@
 Related: [#264](https://github.com/mattmarshall/ratio/issues/264).
 Durable follow-on work: [#299](https://github.com/mattmarshall/ratio/issues/299)
 and [#300](https://github.com/mattmarshall/ratio/issues/300).
-Source review refreshed after #302, September 9, 2026.
+Source review refreshed October 1, 2026.
 
 Ratio does not yet have a demonstrated whole-book disaster recovery procedure
 for the deployed service. The journal's conditional S3 writes protect one part
 of a book. A book also needs its chart, configuration, identity, access grants,
-and the evidence attached to its figures. Several of those still live only in
-the serving container's filesystem.
+and the evidence attached to its figures. Operational evidence still lives
+only in the serving container's filesystem.
 
 The first executable evidence is a disposable **local directory restore**. It
 checks a journal prefix and digest, two local configuration versions, a NAV
@@ -47,10 +47,10 @@ With neither installed, FileBook uses local JSONL files.
 | Journal | `journal.jsonl` | `<book>/journal/<sequence>` | Preserve exact order, every entry, and all cited configuration digests. A balanced shortened journal can still be wrong. |
 | Baked-seed publication marker | Baked JSONL planes in the deployment image | `_seed/publications-v2/<book-id>` under `RATIO_JOURNAL_PREFIX` | Format version 2, whole-seed digest, per-plane lengths, and any one-time migration name prove which baked prefix deployment adopted. Preserve v1/v2 markers with the journal; deleting one to clear a mismatch removes the deployment fence. |
 | Published bootstrap | `BOOTSTRAP.pb` and its materialized files | `_bootstrap/publications/<book-id>` and referenced `_bootstrap/blobs/<digest>` | The immutable, content-addressed bootstrap preserves chart, identity, kind, opening configuration, and creator grant. Capture both the publication pointer and its exact referenced blob. |
-| Configurations and promotion state | `config/<digest>`, `config/ACTIVE`, `config/HISTORY` | Opening state is in the published bootstrap; later promotions are **still local** | Preserve every later referenced blob, promotion history, and the actual active pointer until #304 supplies durable transitions. |
+| Configurations and promotion state | `config/<digest>`, `config/ACTIVE`, `config/HISTORY` | Opening state is in the published bootstrap; later promotions are in the verified per-book control transition stream with content-addressed blobs | Preserve the bootstrap, every transition and referenced blob. Verify the predecessor chain and active digest rather than trusting materialized local files. |
 | Chart | `accounts.json` | In the published bootstrap for new books; legacy local books have no publication | Names and types the dimensions. Never infer a missing legacy chart from defaults. |
 | Book identity and kind | `book.toml` | In the published bootstrap for new books; legacy local books have no publication | Carries kind, display name, optional fund and organization. Missing legacy metadata can fall back to Investment semantics. |
-| Membership | `<funds-root>/MEMBERSHIP.tsv` | The creator grant is in the published bootstrap; later grants and revocations are **still local** | Preserve exact post-create grants. An organization claim and a Connect client/template grant cannot substitute for current book membership. |
+| Membership | `<funds-root>/MEMBERSHIP.tsv` | The creator grant is in the published bootstrap; later explicit subject and organization decisions are in the per-book control transition stream | Preserve exact post-create grants and revocations. An organization claim and a Connect client/template grant cannot substitute for current book membership. |
 | Deliveries | `deliveries.jsonl` | `<book>/deliveries/<sequence>` | Delivery metadata contains digest, origin, receipt time, and byte count; it does **not** contain the original delivered bytes. |
 | Entity master | `entities.jsonl` | `<book>/entities/<sequence>` | Preserve resolution history, including corrections. |
 | Facts | `facts.jsonl` | `<book>/facts/<sequence>` | Preserve provenance and order. Prices and FX are evidence a figure cites. |
@@ -72,7 +72,9 @@ The implementation supporting this inventory is:
 - [FileBook, planes, hydration, and bootstrap materialization](../crates/ratio-store/src/lib.rs).
   `hydrate_objects` copies legacy local JSONL into the object store. Published
   books are discovered through their publication records and materialize a
-  verified immutable bootstrap; later control transitions remain #304.
+  verified immutable bootstrap. Later control transitions and their blobs are
+  durable for published books; legacy unpublished books still need their local
+  files captured.
 - [ObjectStore and SeqLog](../crates/ratio-store/src/objects.rs), plus the
   [S3 adapter](../crates/ratio/src/scale.rs). `put_if_absent` protects sequence
   slots; that is not a backup, a cross-plane checkpoint, or a metadata store.
@@ -88,6 +90,11 @@ The implementation supporting this inventory is:
   `_seed/publications-v2/<book-id>` marker, and attaches without seed PUTs. It can
   regenerate demo memberships from `RATIO_DEMO_MEMBER`. Published CreateBook
   books recover independently of the baked seeds.
+- The CLI entry point also attaches configured object storage before opening a
+  book for person-only writes or stdio MCP. This prevents those commands from
+  silently selecting a local journal when a durable backend is configured;
+  NAVS, reports/proposals, and CHANGELOG still require durable persistence on
+  [#300](https://github.com/mattmarshall/ratio/issues/300).
 
 ## Rebuildable material
 
@@ -124,7 +131,9 @@ environment. It is not currently an automated production backup command.
    the root membership file, preserving bytes and report mtimes. Capture every
    object in each book's seven sequence prefixes, plus every
    `_bootstrap/publications/<book-id>` record and its referenced
-   `_bootstrap/blobs/<digest>`. Record sequence heights and content hashes and
+   `_bootstrap/blobs/<digest>`. Capture the book's gapless
+   `_control/transitions/<book-id>/` stream and every referenced
+   `_control/config-blobs/<digest>` object. Record sequence heights and content hashes and
    every `_seed/publications*/<book-id>` marker. Check each marker's format
    version, digest, and plane lengths against the captured baked source; do not
    synthesize or remove a marker during restore. Check that each sequence is
@@ -135,7 +144,8 @@ environment. It is not currently an automated production backup command.
    in the restricted backup evidence, not a public issue or CI log.
 4. **Validate the capture.** Hash the configuration bytes against their names
    and resolve all digests cited by journal entries, facts, closes, reports,
-   and strikes. Check source/backup counts and bytes independently. The
+   and strikes. Verify the control transition predecessor chain and its
+   bootstrap binding. Check source/backup counts and bytes independently. The
    existing `DirectoryConfigStore::get` reads the blob but does not verify
    its content address for you. Preserve all versions; selecting only ACTIVE
    makes old figures unreplayable. Record any missing source deliveries.
@@ -147,7 +157,8 @@ environment. It is not currently an automated production backup command.
    it contains your intended bytes. Do not rename book IDs as an isolation
    mechanism.
 6. **Verify the restored book.** Compare all captured counts/digests, exact
-   active/history state, chart and BookKind, recorded closes and explanations,
+   active/history state from the verified transition stream, chart and BookKind,
+   recorded closes and explanations,
    reports and NAV records. Rebuild projections; replay each selected strike
    against its own pinned prefix and configuration. Check an independently
    known figure as well as conservation. Exercise membership with a granted
@@ -202,10 +213,11 @@ customer-scale timing remain required external drill coverage.
 
 ## Gaps that block a production recovery claim
 
-- [#299](https://github.com/mattmarshall/ratio/issues/299): post-create config
-  promotions and membership changes still need durable transitions. [#300](https://github.com/mattmarshall/ratio/issues/300)
-  covers NAVs, reports/proposals, audit logs, and the remaining operational
-  evidence and writer-storage consistency.
+- Published-book post-create configuration and membership transitions are
+  durable; legacy unpublished books retain their local control-state risk.
+  [#300](https://github.com/mattmarshall/ratio/issues/300) covers NAVs,
+  reports/proposals, audit logs, and remaining operational evidence and
+  writer-storage consistency.
 - No whole-book backup scheduler, consistent checkpoint/export command,
   restore command, retention policy, or independent backup copy is established
   by this inventory. The S3 template configures encryption and prevents public

@@ -5344,3 +5344,12 @@ conjunctive.
 forecast, required savings rate, FIRE number, goal RPC in core, and automatic
 scenario posting remain refused. Live OAuth evidence remains on #168 until the
 registered scopes are exercised against a permitted Personal book.
+
+### Amendment, 2026-10-01 — CLI writers attach configured storage
+
+Related: #300. CLI book commands, including person-only verbs and stdio MCP,
+now attach configured object storage before opening a book. The journal stays
+the book of record. This guard does not make NAVS, reports/proposals, or
+CHANGELOG durable, and it does not prove external backup or recovery. Remaining
+work: #300 — persist operational evidence and verify every writer; #264 —
+agree objectives and prove an external restore with named operators.
