@@ -133,6 +133,11 @@ messages also pass the [issue-completion check](issue-completion.md).
   cadence, cross-account disaster recovery and real OAuth resumption are not
   implied; see the recovery and provider reports for exact limits.
 
+- **Per-book storage (#360, branch-local):** the console can resolve two
+  independent object stores by book ID in one process, including cold
+  published-book discovery and active configuration. An unregistered ID
+  refuses. Production startup and other library/CLI opens still use the
+  process-wide installed store; #360 is not complete.
 
 ## Scope decisions that remain in force
 

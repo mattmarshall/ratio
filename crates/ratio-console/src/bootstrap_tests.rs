@@ -36,6 +36,37 @@ fn member(sub: &str) -> Subject {
 fn console(root: &Path, objects: Arc<dyn ObjectStore>, sub: &str) -> Console {
     Console::scoped(root, member(sub)).with_object_store(objects)
 }
+
+#[test]
+fn two_books_resolve_independent_object_stores_in_one_process() {
+    let temp = Temp::new();
+    let alpha: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    let beta: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    let stores = std::collections::BTreeMap::from([
+        ("alpha".to_string(), alpha.clone()),
+        ("beta".to_string(), beta.clone()),
+    ]);
+    let client = Console::scoped(&temp.0, member("creator"))
+        .with_book_object_stores(stores.clone());
+    client.create_book(request("alpha", book::BookKind::Investment)).unwrap();
+    client.create_book(request("beta", book::BookKind::Personal)).unwrap();
+    assert!(BootstrapStore::new(alpha.clone()).get("alpha").unwrap().is_some());
+    assert!(BootstrapStore::new(alpha.clone()).get("beta").unwrap().is_none());
+    assert!(BootstrapStore::new(beta.clone()).get("beta").unwrap().is_some());
+    assert!(BootstrapStore::new(beta.clone()).get("alpha").unwrap().is_none());
+    std::fs::remove_dir_all(temp.0.join("alpha")).unwrap();
+    std::fs::remove_dir_all(temp.0.join("beta")).unwrap();
+    let recovered = Console::scoped(&temp.0, member("creator"))
+        .with_book_object_stores(stores);
+    assert_eq!(recovered.list_books().unwrap().books.len(), 2);
+    assert_eq!(recovered.get_book("books/alpha").unwrap().kind,
+        book::BookKind::Investment.proto());
+    assert_eq!(recovered.get_book("books/beta").unwrap().kind,
+        book::BookKind::Personal.proto());
+    assert!(recovered.create_book(request("unregistered", book::BookKind::Personal))
+        .unwrap_err().to_string().contains("no object store"));
+    assert!(!temp.0.join("unregistered").exists());
+}
 fn request(id: &str, kind: book::BookKind) -> pb::CreateBookRequest {
     pb::CreateBookRequest {
         book_id: id.into(),

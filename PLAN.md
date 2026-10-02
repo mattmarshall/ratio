@@ -5596,3 +5596,11 @@ removed. Provider and emulated evidence stay distinct in the retained report.
 **cross-backend journal and plane conformance** is the #359 Built phrase.
 Its identical live S3 fixture and compiled new-crate refusal probe passed;
 the emulated endpoint remains a separate cheap gate, not provider evidence.
+### Amendment, 2026-10-02 — console store routing by book (partial #360)
+
+The console now accepts an explicit map of book IDs to object stores. Each
+bootstrap, membership, active-configuration, count, and authorized book open
+uses the selected backend; a missing mapping refuses. A cold-root test proves
+that two published books on separate stores recover in one process. The
+serving binary, CLI, and other direct book opens still use process-global
+installation, so hosted multi-book storage is not yet complete.

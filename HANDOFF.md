@@ -1680,3 +1680,13 @@ All seven sequence planes refused overwrite and holes. The dynamic source
 registry also refused a real new crate without inventory/registration; no
 additional build aspect was needed. Exact logs and pins are retained in the
 provider report's three readback-verified archives. #360 isolation is separate.
+## Per-book store routing, October 2, 2026 (issue #360, branch-local)
+
+`Console::with_book_object_stores` maps each permitted book ID to its own
+object store. Bootstrap discovery, membership, active configuration, counts,
+and authorized `FileBook` opens resolve through that map. A missing mapping
+refuses instead of falling back to local files. A cold-root test creates two
+books on separate stores and recovers both in one process. The serving binary,
+CLI, and other direct `FileBook::open` paths still use the process-global
+installation; this is a seam toward #360, not completion of its hosted
+multi-book acceptance.

@@ -509,3 +509,11 @@ no-hole, checkpoint privacy, and S3Journal model tests. A source inventory
 fails the build when a new ObjectStore implementation is not registered for
 conformance. The full fixture has not been run against live S3; do not treat
 the gate as provider acceptance or as proof of customer recovery.
+### October 2, 2026 per-book routing note (#360, branch-local)
+
+An explicit console map now selects an `ObjectStore` by book ID. Cold
+published-book discovery, membership, active configuration, and book opens
+use the selected store; an unmapped ID refuses. The server and CLI still
+install one process-wide store, and direct library opens still have that
+default. The seam is covered by a two-store cold-recovery test but #360 is
+not complete until production paths use book-scoped handles.
