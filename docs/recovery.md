@@ -24,7 +24,12 @@ one configured directory object store into an independent namespace, removes
 both original roots, and verifies the restored book from a fresh process.
 It checks journal digest, closes, accepted explanations, NAV replay, report
 selection, proposals, audit attribution, and membership isolation. It removes
-or corrupts one object from each protected evidence plane and checks refusal.
+or corrupts one object from each protected evidence plane and checks refusal;
+known NAV/proposal IDs cannot be resolved after their objects are removed.
+The configured CLI/MCP guard was also sabotaged by omitting its pre-dispatch
+store installation: `//crates/ratio:configured_store_refuses_local_cli_test`
+went red because `init` accepted a local-only book, then passed after the
+source was restored.
 This is a disposable object-store drill; it does not prove a live S3 backup
 job, retention, or a customer RPO/RTO.
 

@@ -183,6 +183,20 @@ fn an_object_backup_restores_evidence_and_refuses_missing_planes() {
         assert!(result.is_err(), "{prefix} must refuse corrupt evidence");
         fs::write(path, bytes).unwrap();
     }
+    let nav_key = recovered.list("alpha/nav-strikes/").unwrap().pop().unwrap();
+    let nav_path = objects.join(nav_key);
+    let nav_bytes = fs::read(&nav_path).unwrap();
+    fs::remove_file(&nav_path).unwrap();
+    assert!(ratio_nav::get_with_store(&alpha, &strike.view, &strike.id,
+        Some(recovered.clone())).unwrap_err().to_string().contains("no NAV strike"));
+    fs::write(nav_path, nav_bytes).unwrap();
+    let proposal_key = recovered.list("alpha/proposals/").unwrap().pop().unwrap();
+    let proposal_path = objects.join(proposal_key);
+    let proposal_bytes = fs::read(&proposal_path).unwrap();
+    fs::remove_file(&proposal_path).unwrap();
+    assert!(proposals::read_with_store(&alpha, "draft", Some(recovered.clone()))
+        .unwrap().is_none(), "a missing reviewed draft cannot be approved from local cache");
+    fs::write(proposal_path, proposal_bytes).unwrap();
     fs::remove_dir_all(root).unwrap();
 }
 

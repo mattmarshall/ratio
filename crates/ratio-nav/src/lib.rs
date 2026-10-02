@@ -897,7 +897,13 @@ pub fn list_in(book_path: &std::path::Path, view: &str) -> Result<Vec<Strike>> {
 /// lookup on the id alone returns whichever the file happens to hold first —
 /// silently, and labelled with the view the caller asked for.
 pub fn get(book_path: &std::path::Path, view: &str, id: &str) -> Result<Strike> {
-    list(book_path)?
+    get_with_store(book_path, view, id, installed_object_store())
+}
+
+/// Look up one cited answer on an explicitly selected book store.
+pub fn get_with_store(book_path: &std::path::Path, view: &str, id: &str,
+    store: Option<Arc<dyn ObjectStore>>) -> Result<Strike> {
+    list_with_store(book_path, store)?
         .into_iter()
         .find(|s| s.id == id && s.view == view)
         .with_context(|| format!("no NAV strike {id:?} in view {view:?}"))

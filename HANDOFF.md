@@ -1557,3 +1557,9 @@ the signed NAV, newest report order, proposal bytes, audit attribution, and
 membership isolation. Removing an earlier sequence from each ordered plane
 and corrupting the NAV/proposal objects produces refusal. This is local
 disposable evidence, not a live customer S3 restore or an RPO/RTO promise.
+Removing a newly recorded NAV/proposal object also makes a request for its
+known ID refuse; an empty list alone is not evidence of completeness. The
+CLI/MCP installation guard has a sabotage check: removing the pre-dispatch
+`install_control_backend()` call made
+`//crates/ratio:configured_store_refuses_local_cli_test` fail with `init
+accepted a local-only book`, and restoring the call made it green.
