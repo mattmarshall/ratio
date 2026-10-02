@@ -164,8 +164,13 @@ pub struct Book {
 impl Book {
     /// Open the book at `root` and index its entry ids.
     pub fn open(root: impl AsRef<Path>) -> anyhow::Result<Self> {
+        Self::open_with(root, None)
+    }
+
+    /// Open with the backend selected for this book by the serving process.
+    pub fn open_with(root: impl AsRef<Path>, store: Option<std::sync::Arc<dyn ratio_store::ObjectStore>>) -> anyhow::Result<Self> {
         let root = root.as_ref().to_path_buf();
-        let book = FileBook::open(&root)?;
+        let book = FileBook::open_with(&root, store)?;
         let mut ids = BTreeSet::new();
         let mut count = 0u64;
         book.for_each_entry_since(0, &mut |e| {

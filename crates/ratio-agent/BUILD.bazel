@@ -12,6 +12,7 @@ rust_library(
     edition = "2021",
     deps = [
         "//crates/ratio-mcp",
+        "//crates/ratio-store",
         "@crates//:anyhow",
         "@crates//:aws-config",
         "@crates//:aws-sdk-bedrockruntime",

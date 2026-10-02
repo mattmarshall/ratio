@@ -511,11 +511,10 @@ conformance. The full fixture has not been run against live S3; do not treat
 the gate as provider acceptance or as proof of customer recovery.
 ### October 2, 2026 per-book routing note (#360, branch-local)
 
-An explicit console map now selects an `ObjectStore` by book ID. Cold
-published-book discovery, membership, active configuration, and book opens
-use the selected store; an unmapped ID refuses. The server and CLI still
-install one process-wide store, and direct library opens still have that
-default. The seam is covered by a two-store cold-recovery test but #360 is
-not complete until production paths use book-scoped handles.
-CLI and watch direct opens and MCP dispatch now pass their startup-selected
-store explicitly; NAV and remaining library opens still need that handle.
+An explicit console map selects an `ObjectStore` by book ID. Cold
+published-book discovery, membership, active configuration, book opens,
+and NAV replay use the selected store; an unmapped ID refuses. CLI, watch,
+API, MCP, projection, and NAV entry points pass explicit handles.
+`FileBook::open` and `open_attached` are local-only. The server still selects
+one store at startup, so the hosted per-book router and provider recovery
+evidence remain before #360 is complete.

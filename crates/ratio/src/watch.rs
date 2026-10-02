@@ -923,7 +923,9 @@ fn chat_json(book: &Path, body: &str) -> Result<String> {
     let req: serde_json::Value =
         serde_json::from_str(body).context("the chat request is not JSON")?;
     let message = req["message"].as_str().unwrap_or("");
-    let reply = ratio_agent::chat(book, &req["history"], message)?;
+    let reply = ratio_agent::chat_with_store(
+        book, &req["history"], message, ratio_store::installed_object_store(),
+    )?;
 
     let steps: Vec<String> = reply
         .steps
