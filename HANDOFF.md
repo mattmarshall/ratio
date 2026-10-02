@@ -1499,7 +1499,14 @@ guarantee.
 object store. Bootstrap discovery, membership, active configuration, counts,
 and authorized `FileBook` opens resolve through that map. A missing mapping
 refuses instead of falling back to local files. A cold-root test creates two
-books on separate stores and recovers both in one process. The serving binary,
-CLI, and other direct `FileBook::open` paths still use the process-global
-installation; this is a seam toward #360, not completion of its hosted
+books on separate stores and recovers both in one process. The serving binary
+still selects one process-wide store; NAV, MCP, and other direct
+`FileBook::open` paths still use that installation. This is a seam toward #360, not completion of its hosted
 multi-book acceptance.
+
+The next branch-local slice moves all direct CLI and watch book opens through
+`FileBook::open_with` / `open_attached_with`, passing the startup-selected
+backend. NAV and MCP library calls still use the process-global default,
+and `FileBook::open` itself has not yet become local-only. Removing that
+fallback before those callers are migrated would acknowledge local-only
+figures and postings on a configured book.

@@ -78,7 +78,8 @@ messages also pass the [issue-completion check](issue-completion.md).
 - **Per-book storage (#360, branch-local):** the console can resolve two
   independent object stores by book ID in one process, including cold
   published-book discovery and active configuration. An unregistered ID
-  refuses. Production startup and other library/CLI opens still use the
+  refuses. CLI and watch direct book opens now pass the startup-selected
+  store explicitly. NAV, MCP, and other library opens still consult the
   process-wide installed store; #360 is not complete.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
   post-create configuration/membership transitions are built. NAVs,

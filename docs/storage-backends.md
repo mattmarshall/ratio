@@ -465,3 +465,5 @@ use the selected store; an unmapped ID refuses. The server and CLI still
 install one process-wide store, and direct library opens still have that
 default. The seam is covered by a two-store cold-recovery test but #360 is
 not complete until production paths use book-scoped handles.
+CLI and watch direct opens now pass their startup-selected store explicitly;
+NAV, MCP, and the remaining library opens still need that handle.

@@ -5352,3 +5352,7 @@ uses the selected backend; a missing mapping refuses. A cold-root test proves
 that two published books on separate stores recover in one process. The
 serving binary, CLI, and other direct book opens still use process-global
 installation, so hosted multi-book storage is not yet complete.
+
+CLI and watch direct book opens now pass the startup-selected backend into
+`FileBook::open_with` or `open_attached_with`. NAV and MCP library calls still
+use the global default, so `FileBook::open` cannot yet become local-only.
