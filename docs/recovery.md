@@ -24,7 +24,7 @@ one configured directory object store into an independent namespace, removes
 both original roots, and verifies the restored book from a fresh process.
 It checks journal digest, closes, accepted explanations, NAV replay, report
 selection, proposals, audit attribution, and membership isolation. It removes
-or corrupts one object from each protected evidence plane and checks refusal;
+and corrupts objects from each protected evidence plane and checks refusal;
 known NAV/proposal IDs cannot be resolved after their objects are removed.
 The configured CLI/MCP guard was also sabotaged by omitting its pre-dispatch
 store installation: `//crates/ratio:configured_store_refuses_local_cli_test`
@@ -239,9 +239,10 @@ customer-scale timing remain required external drill coverage.
 
 - Published-book post-create configuration and membership transitions are
   durable; legacy unpublished books retain their local control-state risk.
-  [#300](https://github.com/mattmarshall/ratio/issues/300) still requires
-  live recovery evidence and writer-storage verification after these
-  branch-local operational evidence changes.
+  The branch-local [#300](https://github.com/mattmarshall/ratio/issues/300)
+  work covers operational evidence and configured writers in local tests.
+  It remains unmerged. Its issue acceptance leaves external backup and the
+  customer restore drill to #264.
 - No whole-book backup scheduler, consistent checkpoint/export command,
   restore command, retention policy, or independent backup copy is established
   by this inventory. The S3 template configures encryption and prevents public

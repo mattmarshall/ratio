@@ -1554,8 +1554,8 @@ process-wide install even when the console had been given a different store.
 new namespace, deletes the original book and object roots, and reopens it in
 a child process. It verifies journal digest, close and explanation records,
 the signed NAV, newest report order, proposal bytes, audit attribution, and
-membership isolation. Removing an earlier sequence from each ordered plane
-and corrupting the NAV/proposal objects produces refusal. This is local
+membership isolation. Removing and corrupting objects in each protected
+plane produces refusal. This is local
 disposable evidence, not a live customer S3 restore or an RPO/RTO promise.
 Removing a newly recorded NAV/proposal object also makes a request for its
 known ID refuse; an empty list alone is not evidence of completeness. The

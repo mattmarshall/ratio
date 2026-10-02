@@ -92,9 +92,10 @@ messages also pass the [issue-completion check](issue-completion.md).
   A disposable object-store backup reproduces those planes, cited closes and
   explanations, NAV replay, report selection, and membership in a fresh
   process. Complete live S3 backup coverage and the customer restore drill
-  remain recovery work. The CLI entry point now attaches
+  remain #264 recovery work. The CLI entry point now attaches
   configured object storage before book commands, including stdio MCP and
-  person-only writes. Issue 300 remains open pending live recovery evidence.
+  person-only writes. Issue 300 remains open pending its PR and merge; the
+  external customer drill is #264 acceptance, not #300 acceptance.
 
 ## Scope decisions that remain in force
 

@@ -5412,3 +5412,5 @@ deletes the original roots, and replays a published book in a fresh process.
 It checks cited closes/explanations, NAV replay, report ordering, proposal and
 audit bytes, and membership isolation; removed or corrupt evidence refuses.
 This is not a live S3 backup job or the customer RPO/RTO and operator drill.
+Those external recovery gates belong to #264. #300's local evidence and
+configured-writer changes remain branch-local until its PR lands.

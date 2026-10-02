@@ -168,6 +168,17 @@ fn an_object_backup_restores_evidence_and_refuses_missing_planes() {
             _ => changes::read_with_store(&alpha, Some(recovered.clone())).map(|_| ()),
         };
         assert!(result.unwrap_err().to_string().contains("missing"), "{plane}");
+        fs::write(&path, b"corrupt").unwrap();
+        let result = match plane {
+            "closes" => FileBook::open_with(&alpha, Some(recovered.clone()))
+                .and_then(|b| b.closes().map(|_| ())),
+            "explanations" => FileBook::open_with(&alpha, Some(recovered.clone()))
+                .and_then(|b| b.records::<BreakExplanation>(Plane::Explanations).map(|_| ())),
+            "reports" => reports::newest_report_with_store(&alpha, Some(recovered.clone()))
+                .map(|_| ()),
+            _ => changes::read_with_store(&alpha, Some(recovered.clone())).map(|_| ()),
+        };
+        assert!(result.is_err(), "{plane} must refuse corrupt evidence");
         fs::write(path, bytes).unwrap();
     }
     for prefix in ["alpha/nav-strikes/", "alpha/proposals/"] {
