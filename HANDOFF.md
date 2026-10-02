@@ -1544,3 +1544,16 @@ malformed durable entries. A legacy `CHANGELOG` is fenced by its exact source
 bytes and completion claim; interrupted import resumes, and completed import
 checks its retained prefix. This does not establish the external backup,
 restore, retention, or customer recovery objectives in #264/#300.
+
+### Disposable operational restore, October 2, 2026 (issue #300, branch-local)
+
+The console's explicit object-store handle now reaches report, proposal,
+audit, NAV read, and NAV replay paths; those previously consulted the
+process-wide install even when the console had been given a different store.
+`operational_recovery_test` copies a quiescent directory object store into a
+new namespace, deletes the original book and object roots, and reopens it in
+a child process. It verifies journal digest, close and explanation records,
+the signed NAV, newest report order, proposal bytes, audit attribution, and
+membership isolation. Removing an earlier sequence from each ordered plane
+and corrupting the NAV/proposal objects produces refusal. This is local
+disposable evidence, not a live customer S3 restore or an RPO/RTO promise.

@@ -5401,3 +5401,14 @@ malformed durable entry. A legacy `CHANGELOG` is fenced by its exact bytes,
 then imported with a retained completion claim. This preserves audit
 attribution after a cold reopen. Live external restore, customer recovery
 objectives, retention, and operator responsibility remain #300/#264 work.
+
+### Amendment, 2026-10-02 — disposable operational evidence restore
+
+Related: #300 and #264. The console now passes its explicit object-store
+handle through NAV, report, proposal, and audit reads/writes; a configured
+console no longer consults an unrelated process install for those artifacts.
+A Bazel test copies a quiescent directory store to an independent namespace,
+deletes the original roots, and replays a published book in a fresh process.
+It checks cited closes/explanations, NAV replay, report ordering, proposal and
+audit bytes, and membership isolation; removed or corrupt evidence refuses.
+This is not a live S3 backup job or the customer RPO/RTO and operator drill.

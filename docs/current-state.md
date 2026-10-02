@@ -89,8 +89,10 @@ messages also pass the [issue-completion check](issue-completion.md).
   bytes and their former mtime/path order in an append-only object log.
   The proposal slice conditionally preserves the exact reviewed TOML by ID.
   The audit trail now preserves ordered actor/action lines in the object store.
-  Complete backup coverage and the external restore drill remain recovery
-  work. The CLI entry point now attaches
+  A disposable object-store backup reproduces those planes, cited closes and
+  explanations, NAV replay, report selection, and membership in a fresh
+  process. Complete live S3 backup coverage and the customer restore drill
+  remain recovery work. The CLI entry point now attaches
   configured object storage before book commands, including stdio MCP and
   person-only writes. Issue 300 remains open pending live recovery evidence.
 

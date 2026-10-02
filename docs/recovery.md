@@ -19,6 +19,15 @@ the legacy gap when a local book is created before an object store is attached.
 Published CreateBook recovery is covered separately by the bootstrap tests.
 Neither is an S3 recovery drill or a customer recovery commitment.
 
+The branch-local `//crates/ratio-console:operational_recovery_test` also copies
+one configured directory object store into an independent namespace, removes
+both original roots, and verifies the restored book from a fresh process.
+It checks journal digest, closes, accepted explanations, NAV replay, report
+selection, proposals, audit attribution, and membership isolation. It removes
+or corrupts one object from each protected evidence plane and checks refusal.
+This is a disposable object-store drill; it does not prove a live S3 backup
+job, retention, or a customer RPO/RTO.
+
 ## Recovery objectives and ownership
 
 | Decision | Current state | Accountable role to assign before a pilot |
@@ -189,6 +198,7 @@ From the repository root:
 
 ```sh
 bazel test //crates/ratio-console:recovery_test --test_output=all
+bazel test //crates/ratio-console:operational_recovery_test --test_output=all
 ```
 
 The [test](../crates/ratio-console/tests/recovery.rs) creates synthetic books

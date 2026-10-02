@@ -364,10 +364,21 @@ pub fn strike(
     valuation_time: i64,
     actor: &str,
 ) -> Result<Strike> {
+    strike_with_store(book_path, view, valuation_time, actor, installed_object_store())
+}
+
+/// Derive a strike from one explicitly selected book store.
+pub fn strike_with_store(
+    book_path: &std::path::Path,
+    view: &str,
+    valuation_time: i64,
+    actor: &str,
+    store: Option<Arc<dyn ObjectStore>>,
+) -> Result<Strike> {
     if actor.trim().is_empty() {
         bail!("a NAV is signed by somebody — pass --actor or set RATIO_ACTOR");
     }
-    let book = FileBook::open(book_path)?;
+    let book = FileBook::open_with(book_path, store)?;
     // ⛔ ONE WALK, NOT THREE COPIES. This read the journal into a `Vec`, then
     // `prefix_digest` serialized every entry into a second `Vec`, then
     // `fold_nav` walked the first — to produce two numbers and a hash.
@@ -438,7 +449,13 @@ pub fn strike(
 
 /// Re-derive a strike and report what was found.
 pub fn replay(book_path: &std::path::Path, s: &Strike) -> Result<Replay> {
-    Ok(refold(book_path, s)?.0)
+    replay_with_store(book_path, s, installed_object_store())
+}
+
+/// Replay a cited answer against one explicitly selected book store.
+pub fn replay_with_store(book_path: &std::path::Path, s: &Strike,
+    store: Option<Arc<dyn ObjectStore>>) -> Result<Replay> {
+    Ok(refold_with_store(book_path, s, store)?.0)
 }
 
 /// Re-derive a strike and report what the fold COST, step by step.
@@ -519,8 +536,13 @@ pub fn shape_of(
 /// are unmeasurable against a fold; per-entry timing is the thing that would
 /// change what it measured.
 fn refold(book_path: &std::path::Path, s: &Strike) -> Result<(Replay, explain::Measured)> {
+    refold_with_store(book_path, s, installed_object_store())
+}
+
+fn refold_with_store(book_path: &std::path::Path, s: &Strike,
+    store: Option<Arc<dyn ObjectStore>>) -> Result<(Replay, explain::Measured)> {
     let setup = std::time::Instant::now();
-    let book = FileBook::open(book_path)?;
+    let book = FileBook::open_with(book_path, store)?;
 
     // ⛔ ONE WALK, AND ONLY THE PREFIX IS FOLDED. This read the whole journal
     // into a `Vec`, sliced it, and hashed a second `Vec` of the slice.
@@ -892,7 +914,19 @@ pub fn strike_and_record(
     valuation_time: i64,
     actor: &str,
 ) -> Result<Strike> {
-    let s = strike(book_path, view, valuation_time, actor)?;
+    strike_and_record_with_store(book_path, view, valuation_time, actor,
+        installed_object_store())
+}
+
+/// Strike and conditionally record on one explicitly selected store.
+pub fn strike_and_record_with_store(
+    book_path: &std::path::Path,
+    view: &str,
+    valuation_time: i64,
+    actor: &str,
+    store: Option<Arc<dyn ObjectStore>>,
+) -> Result<Strike> {
+    let s = strike_with_store(book_path, view, valuation_time, actor, store.clone())?;
     // ⛔ THE KEY IS `(view, id)`, AND WIDENING IT IS WHAT MAKES MULTI-VIEW BOOKS
     // POSSIBLE WITHOUT WEAKENING ANYTHING. `Ratio.Period.one_answer_per_view_
     // per_day` still refuses a second answer to the same question; two views
@@ -900,7 +934,7 @@ pub fn strike_and_record(
     // and `two_views_are_two_answers_and_neither_restates_the_other` is that
     // fact. Keyed on the id alone, the settlement strike would be refused as a
     // restatement of the accounting one.
-    if list(book_path)?.iter().any(|e| e.id == s.id && e.view == s.view) {
+    if list_with_store(book_path, store.clone())?.iter().any(|e| e.id == s.id && e.view == s.view) {
         bail!(
             "a NAV is already struck for {} in view {} — a valuation point has one answer \
              per book of record, and replacing it would remove the first",
@@ -908,7 +942,7 @@ pub fn strike_and_record(
             s.view
         );
     }
-    record_with_store(book_path, &s, installed_object_store())?;
+    record_with_store(book_path, &s, store)?;
     Ok(s)
 }
 

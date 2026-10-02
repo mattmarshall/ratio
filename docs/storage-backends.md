@@ -481,3 +481,11 @@ newline, in a per-book `SeqLog`. Console and CLI writers plus config-version
 and change-log readers use this door. A legacy `CHANGELOG` migrates under an
 exact-byte source and completion claim; durable reads refuse gaps and malformed
 entries. A live external restore and customer recovery objectives remain open.
+
+### October 2, 2026 disposable object restore note (#300, branch-local)
+
+The console now passes its explicit store through operational evidence paths.
+`operational_recovery_test` copies a directory object store into a separate
+namespace, deletes the original roots, and checks journal and evidence replay
+in a child process. It covers both book access and corruption/refusal. This
+does not establish live S3 backup copies, retention, or customer objectives.
