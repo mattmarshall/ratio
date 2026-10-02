@@ -208,7 +208,7 @@ customer-scale timing remain required external drill coverage.
   has not yet been merged into this branch.
 - [#360](https://github.com/mattmarshall/ratio/issues/360): book-scoped
   object-store handles now reach CLI, watch, API, MCP, projection, and NAV
-  paths. `FileBook::open` is local-only. The serving binary still chooses one
+  paths. `FileBook::open` and Console constructors are local-only. The serving binary still chooses one
   store at startup; hosted per-book routing and provider recovery remain open.
 - No whole-book backup scheduler, consistent checkpoint/export command,
   restore command, retention policy, or independent backup copy is established

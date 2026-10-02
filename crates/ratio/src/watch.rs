@@ -682,8 +682,11 @@ fn handle(mut stream: TcpStream, book: &Path, hydrate: &HydrateGate) -> Result<(
                 let c = match subject {
                     Some(s) => ratio_console::Console::for_request(root, s, open),
                     None => ratio_console::Console::new(root),
-                }
-                .after_startup_hydration();
+                };
+                let c = match ratio_store::installed_object_store() {
+                    Some(store) => c.with_object_store(store),
+                    None => c,
+                }.after_startup_hydration();
                 // ⚠ RATIO_PG_URL SET SERVES LOTS / POSITIONS / CURRENT
                 // AGGREGATES FROM THE STAGE E STORE. Unset keeps the
                 // in-memory fold. A URL that cannot be reached fails the

@@ -836,8 +836,8 @@ fn bootstrap_process() {
     };
     let root = PathBuf::from(std::env::var_os("RATIO_BOOTSTRAP_TEST_ROOT").unwrap());
     let objects = PathBuf::from(std::env::var_os("RATIO_BOOTSTRAP_TEST_OBJECTS").unwrap());
-    ratio_store::install_object_store(Arc::new(DirStore::at(&objects)));
-    let c = Console::scoped(&root, member("creator"));
+    let c = Console::scoped(&root, member("creator"))
+        .with_object_store(Arc::new(DirStore::at(&objects)));
     if mode == "create" {
         c.create_book(request("cold", book::BookKind::Personal))
             .unwrap();
@@ -923,12 +923,14 @@ fn bootstrap_process() {
         );
         assert_eq!(b.history().unwrap().len(), 3);
         assert!(Console::scoped(&root, member("guest"))
+            .with_object_store(Arc::new(DirStore::at(&objects)))
             .list_books()
             .unwrap()
             .books
             .is_empty());
         assert_eq!(
             Console::scoped(&root, member("stranger"))
+                .with_object_store(Arc::new(DirStore::at(&objects)))
                 .list_books()
                 .unwrap()
                 .books

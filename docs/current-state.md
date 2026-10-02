@@ -79,7 +79,8 @@ messages also pass the [issue-completion check](issue-completion.md).
   independent object stores by book ID in one process, including cold
   published-book discovery, journal writes, and active configuration. An unregistered ID
   refuses. CLI, watch, API, MCP, projection, and NAV entry points now pass
-  explicit store handles. `FileBook::open` and `open_attached` are local-only.
+  explicit store handles. `FileBook::open`, `open_attached`, and Console
+  constructors are local-only.
   The serving binary still selects one store at startup; a hosted per-book
   router and provider recovery evidence remain before #360 is complete.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and

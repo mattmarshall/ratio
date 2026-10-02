@@ -1502,6 +1502,7 @@ refuses instead of falling back to local files. A cold-root test creates two
 books on separate stores, writes isolated journal entries, strikes a NAV,
 and recovers both in one process. CLI, watch, API, MCP, projection, and NAV
 entry points now pass an explicit store handle. `FileBook::open` and
-`open_attached` are local-only; a durable caller must use `open_with` or
-`open_attached_with`. The serving binary still selects one store at startup.
+`open_attached` are local-only; Console constructors are also local-only and
+serving/CLI callers inject the selected store. A durable caller must use
+`open_with` or `open_attached_with`. The serving binary still selects one store at startup.
 The hosted router and provider recovery evidence remain acceptance work.

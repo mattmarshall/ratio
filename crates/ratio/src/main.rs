@@ -154,6 +154,14 @@ fn open_cli_book(book: impl AsRef<std::path::Path>) -> Result<FileBook> {
     FileBook::open_with(book, ratio_store::installed_object_store())
 }
 
+fn console_cli(book: impl AsRef<std::path::Path>) -> ratio_console::Console {
+    let console = ratio_console::Console::new(book);
+    match ratio_store::installed_object_store() {
+        Some(store) => console.with_object_store(store),
+        None => console,
+    }
+}
+
 fn main() -> Result<()> {
     // Restore the default SIGPIPE behavior that Rust turns off at startup.
     //
@@ -637,7 +645,7 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str)
         }
     }
     let (moved, dim) =
-        ratio_console::Console::new(&book).apply_action("demo", id, instrument, s)?;
+        console_cli(&book).apply_action("demo", id, instrument, s)?;
 
     println!("applied  {id}");
     println!("  {instrument} {}-for-{}", s.num, s.den);
@@ -656,7 +664,7 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str)
 /// should have been in — and a fund that cannot NAME them is publishing figures
 /// it cannot qualify.
 fn stale(book: PathBuf) -> Result<()> {
-    let rows = ratio_console::Console::new(&book).stale_strikes("demo")?;
+    let rows = console_cli(&book).stale_strikes("demo")?;
     if rows.is_empty() {
         println!("No struck NAV is missing a corporate action.");
         return Ok(());
@@ -1312,7 +1320,7 @@ fn mark(book: PathBuf, as_of: &str) -> Result<()> {
     if p.len() != 3 {
         bail!("{as_of:?} is not a date — YYYY-MM-DD");
     }
-    let c = ratio_console::Console::new(&book);
+    let c = console_cli(&book);
     let out = c.mark_positions(&ratio_proto::ratio::console::v1::MarkPositionsRequest {
         parent: "funds/demo".into(),
         valuation_date: Some(ratio_proto::date_proto::google::r#type::Date {
@@ -1368,7 +1376,7 @@ fn mark(book: PathBuf, as_of: &str) -> Result<()> {
 /// about the books, and the second silently lacked the instrument the first had
 /// just learned to carry, which is how the positions view came up empty.
 fn admit(book: PathBuf) -> Result<()> {
-    let c = ratio_console::Console::new(&book);
+    let c = console_cli(&book);
     let out = c.admit_facts(&ratio_proto::ratio::console::v1::AdmitFactsRequest {
         parent: "funds/demo".into(),
         validate_only: false,
@@ -2537,7 +2545,7 @@ fn refuse_if_blocked(book: &std::path::Path, as_of: Option<&str>) -> Result<()> 
 fn blocking_text(book: &std::path::Path, as_of: Option<&str>) -> Result<Option<String>> {
     use std::fmt::Write;
 
-    let c = ratio_console::Console::new(book);
+    let c = console_cli(book);
     let blocking = c.blocking_at("demo")?;
 
     // ⛔ WITHOUT A VALUATION DATE THE UNPRICED CHECK DOES NOT RUN, and that is
@@ -2864,7 +2872,7 @@ fn recon_from_ingest_cmd(book: PathBuf, out: Option<&str>) -> Result<()> {
             .and_then(|s| s.to_str())
             .context("the book path has no name")?
     };
-    let report = ratio_console::Console::new(&book).recon_from_ingest(fund)?;
+    let report = console_cli(&book).recon_from_ingest(fund)?;
     print!("{}", ratio_recon::render(&report));
 
     if let Some(path) = out {
@@ -2965,7 +2973,7 @@ fn accept(book: PathBuf, brk: &str, view: Option<&str>, why: &str) -> Result<()>
         format!("funds/{fund}/views/{view}/breaks/{brk}")
     };
     let actor = actor_name();
-    let e = ratio_console::Console::new(&book)
+    let e = console_cli(&book)
         .as_actor(&actor)
         .accept_explanation(&name, why)?;
 
@@ -2985,7 +2993,7 @@ fn accept(book: PathBuf, brk: &str, view: Option<&str>, why: &str) -> Result<()>
 fn close_cmd(book: PathBuf, view: Option<&str>, through: &str) -> Result<()> {
     let view = view_or_refuse(&book, view)?;
     let actor = actor_name();
-    let rec = ratio_console::Console::new(&book)
+    let rec = console_cli(&book)
         .as_actor(&actor)
         .close_period("demo", &view, through)?;
 
