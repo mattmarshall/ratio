@@ -83,7 +83,7 @@ messages also pass the [issue-completion check](issue-completion.md).
   full replay, checkpoint load, and tail replay for the large demo shape
   (~5,400 entries); the journal remains the book of record.
 - **Per-book storage (#360, branch-local):** the console can resolve two
-  independent object stores by book ID in one process, including cold
+  MemoryStore and DirStore by book ID in one process, including cold
   published-book discovery, journal writes, and active configuration. An unregistered ID
   refuses, as does opening one materialized book against the other store.
   CLI, watch, API, MCP, projection, and NAV entry points now pass

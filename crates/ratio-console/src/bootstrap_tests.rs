@@ -41,7 +41,7 @@ fn console(root: &Path, objects: Arc<dyn ObjectStore>, sub: &str) -> Console {
 fn two_books_resolve_independent_object_stores_in_one_process() {
     let temp = Temp::new();
     let alpha: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
-    let beta: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    let beta: Arc<dyn ObjectStore> = Arc::new(DirStore::at(temp.0.join("beta-objects")));
     let stores = std::collections::BTreeMap::from([
         ("alpha".to_string(), alpha.clone()),
         ("beta".to_string(), beta.clone()),

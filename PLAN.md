@@ -5420,7 +5420,7 @@ configured-writer changes remain branch-local until its PR lands.
 The console accepts an explicit map of book IDs to object stores. Bootstrap,
 membership, active configuration, counts, and authorized book opens use the
 selected backend; a missing mapping refuses. A cold-root test proves two
-published books on separate stores recover and strike a NAV in one process.
+published books on MemoryStore and DirStore recover and strike a NAV in one process.
 Opening one materialized book against the other store refuses before a write.
 CLI, watch, API, MCP, projection, and NAV entry points pass explicit handles.
 `FileBook::open`, `open_attached`, Console constructors, and MCP default
