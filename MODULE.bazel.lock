@@ -738,9 +738,9 @@
         "bzlTransitiveDigest": "jIhatWa9aOdayRvHrq0oSmeQhNkZxXeNn4QFe3Qk4Jk=",
         "usagesDigest": "09MbBhpepJ7bMOXA3RKcN43clnDsJYBOGevTGq5A2Os=",
         "recordedFileInputs": {
-          "@@//Cargo.lock": "a55ab961de5e12533ff919ee01f00f0708a7f32ee103d9f1833479bf75c709e6",
+          "@@//Cargo.lock": "be65c8b395256582e3e75d28cbe65df9c70c0092684c77103c7091b130d94532",
           "@@//Cargo.toml": "aa9796bfeb77d7187dc6f5c787431d0ced376f171ab988c64f2d319fb56109b8",
-          "@@//crates/ratio-agent/Cargo.toml": "f00f3fe0da7157863b87f5763d8e7998f65c2eb9e60ff5407765fb3bc38ec69d",
+          "@@//crates/ratio-agent/Cargo.toml": "8552d831125b0211f123288fc4b25bf51c0d41c74e46695c13c4e1722fb41b25",
           "@@//crates/ratio-api/Cargo.toml": "ef4b3637a75bbb01a08022ba08a7135c7129ad044d58d47d50f1d2b0eaf1caab",
           "@@//crates/ratio-chart/Cargo.toml": "e8114522d29a86e2a4ff75ac11605f53ddce833f225bfa301da77c395483199c",
           "@@//crates/ratio-client/Cargo.toml": "c880c1cd5e7cf16b837e6a3c736ba60854598d2e5a8767f175100665dc54c79e",

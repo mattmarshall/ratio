@@ -46,7 +46,8 @@ pub mod explain;
 
 use anyhow::{bail, Context, Result};
 use ratio_project::views;
-use ratio_store::{AccountTypeRecord, ConfigStore, Digest, FileBook, Journal, JournalEntry};
+use ratio_store::{AccountTypeRecord, ConfigStore, Digest, FileBook, Journal, JournalEntry, ObjectStore};
+use std::sync::Arc;
 
 /// A NAV, pinned to the journal that produced it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -361,10 +362,21 @@ pub fn strike(
     valuation_time: i64,
     actor: &str,
 ) -> Result<Strike> {
+    strike_with_store(book_path, view, valuation_time, actor, None)
+}
+
+/// Strike against the store selected for this book by its caller.
+pub fn strike_with_store(
+    book_path: &std::path::Path,
+    view: &str,
+    valuation_time: i64,
+    actor: &str,
+    store: Option<Arc<dyn ObjectStore>>,
+) -> Result<Strike> {
     if actor.trim().is_empty() {
         bail!("a NAV is signed by somebody — pass --actor or set RATIO_ACTOR");
     }
-    let book = FileBook::open(book_path)?;
+    let book = FileBook::open_with(book_path, store)?;
     // ⛔ ONE WALK, NOT THREE COPIES. This read the journal into a `Vec`, then
     // `prefix_digest` serialized every entry into a second `Vec`, then
     // `fold_nav` walked the first — to produce two numbers and a hash.
@@ -435,7 +447,13 @@ pub fn strike(
 
 /// Re-derive a strike and report what was found.
 pub fn replay(book_path: &std::path::Path, s: &Strike) -> Result<Replay> {
-    Ok(refold(book_path, s)?.0)
+    replay_with_store(book_path, s, None)
+}
+
+/// Replay against the store selected for this book by its caller.
+pub fn replay_with_store(book_path: &std::path::Path, s: &Strike,
+    store: Option<Arc<dyn ObjectStore>>) -> Result<Replay> {
+    Ok(refold_with_store(book_path, s, store)?.0)
 }
 
 /// Re-derive a strike and report what the fold COST, step by step.
@@ -450,7 +468,13 @@ pub fn replay(book_path: &std::path::Path, s: &Strike) -> Result<Replay> {
 /// it is the point: a screen that measured on load would be spending a period
 /// end's worth of work on somebody who wanted to look at a diagram.
 pub fn analyze(book_path: &std::path::Path, s: &Strike) -> Result<explain::Measured> {
-    Ok(refold(book_path, s)?.1)
+    analyze_with_store(book_path, s, None)
+}
+
+/// Measure a replay against the store selected for this book.
+pub fn analyze_with_store(book_path: &std::path::Path, s: &Strike,
+    store: Option<Arc<dyn ObjectStore>>) -> Result<explain::Measured> {
+    Ok(refold_with_store(book_path, s, store)?.1)
 }
 
 /// The dials this fund actually turns, read off a projection somebody is
@@ -515,9 +539,10 @@ pub fn shape_of(
 /// ⚠ FOUR `Instant`s, ALL OUTSIDE THE LOOP. `replay` pays for them too and they
 /// are unmeasurable against a fold; per-entry timing is the thing that would
 /// change what it measured.
-fn refold(book_path: &std::path::Path, s: &Strike) -> Result<(Replay, explain::Measured)> {
+fn refold_with_store(book_path: &std::path::Path, s: &Strike,
+    store: Option<Arc<dyn ObjectStore>>) -> Result<(Replay, explain::Measured)> {
     let setup = std::time::Instant::now();
-    let book = FileBook::open(book_path)?;
+    let book = FileBook::open_with(book_path, store)?;
 
     // ⛔ ONE WALK, AND ONLY THE PREFIX IS FOLDED. This read the whole journal
     // into a `Vec`, sliced it, and hashed a second `Vec` of the slice.
@@ -719,7 +744,19 @@ pub fn strike_and_record(
     valuation_time: i64,
     actor: &str,
 ) -> Result<Strike> {
-    let s = strike(book_path, view, valuation_time, actor)?;
+    strike_and_record_with_store(book_path, view, valuation_time, actor, None)
+}
+
+/// Strike from an explicit journal store and record under the selected book.
+/// The signed-record storage migration belongs to #300.
+pub fn strike_and_record_with_store(
+    book_path: &std::path::Path,
+    view: &str,
+    valuation_time: i64,
+    actor: &str,
+    store: Option<Arc<dyn ObjectStore>>,
+) -> Result<Strike> {
+    let s = strike_with_store(book_path, view, valuation_time, actor, store)?;
     // ⛔ THE KEY IS `(view, id)`, AND WIDENING IT IS WHAT MAKES MULTI-VIEW BOOKS
     // POSSIBLE WITHOUT WEAKENING ANYTHING. `Ratio.Period.one_answer_per_view_
     // per_day` still refuses a second answer to the same question; two views

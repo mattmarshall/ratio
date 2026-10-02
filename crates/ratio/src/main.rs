@@ -1245,7 +1245,9 @@ fn closure(book: PathBuf, args: &[&str]) -> Result<()> {
     // a constant is owed WHY it could not be measured, because "there is no book
     // here" and "the book is unreadable" are different situations and only one
     // of them is fine.
-    let (cal, fell_back) = match ratio_nav::closure::measure(&book) {
+    let (cal, fell_back) = match ratio_nav::closure::measure_with_store(
+        &book, ratio_store::installed_object_store(),
+    ) {
         Ok(c) => (c, None),
         Err(e) => (Calibration::measured(), Some(format!("{e:#}"))),
     };
@@ -2127,7 +2129,7 @@ fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
     let (by_dim, tb, through) = match view {
         None => (b.balances_by_dim()?, b.trial_balance()?, None),
         Some(v) => {
-            let proj = ratio_project::Projection::of_book(&book)?;
+            let proj = ratio_project::Projection::of_file_book(&b)?;
             let bal = proj.balances(v)?;
             let rows: std::collections::BTreeMap<(i64, Option<String>), (i64, i64)> = bal
                 .value
@@ -2228,7 +2230,7 @@ fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
                 ratio_store::BASE_CURRENCY,
                 &b.records(ratio_store::Plane::Facts)?,
             );
-            let proj = ratio_project::Projection::of_book(&book)?;
+            let proj = ratio_project::Projection::of_file_book(&b)?;
             // ⚠ THE NAMED VIEW'S REALIZED FIGURES — or the default view's, and
             // the header says which when there is an election: a dual-basis
             // book relieves one lot book per view, so "the" realized gain is a
@@ -2328,7 +2330,9 @@ fn strike(book: PathBuf, as_of: Option<&str>, view: Option<&str>) -> Result<()> 
     // convention nobody chose is the failure this whole feature is about.
     let view = view_or_refuse(&book, view)?;
     let actor = actor_name();
-    let s = ratio_nav::strike_and_record(&book, &view, now()?, &actor)?;
+    let s = ratio_nav::strike_and_record_with_store(
+        &book, &view, now()?, &actor, ratio_store::installed_object_store(),
+    )?;
 
     println!("struck {} in {}", s.id, s.view);
     println!("  NAV        {}", minor(s.net_asset_value));
@@ -2442,7 +2446,7 @@ fn reconcile_cmd(book: PathBuf, here: &str, there: &str) -> Result<()> {
         ratio_store::BASE_CURRENCY,
         &b.records(ratio_store::Plane::Facts)?,
     );
-    let proj = ratio_project::Projection::of_book(&book)?;
+    let proj = ratio_project::Projection::of_file_book(&b)?;
     let rec = proj.reconcile(here, there, &is_al, &rates)?;
     let nav_here = proj.nav(here, &is_al, &rates)?.value.0;
     let nav_there = proj.nav(there, &is_al, &rates)?.value.0;
@@ -2645,7 +2649,7 @@ fn navs(book: PathBuf, view: Option<&str>) -> Result<()> {
 /// on stdout and exits 0 is a replay nothing can be built on.
 fn replay_strike(book: PathBuf, id: &str, view: Option<&str>) -> Result<()> {
     let s = ratio_nav::get(&book, &view_or_refuse(&book, view)?, id)?;
-    let r = ratio_nav::replay(&book, &s)?;
+    let r = ratio_nav::replay_with_store(&book, &s, ratio_store::installed_object_store())?;
 
     println!("replaying {} in {}", s.id, s.view);
     println!("  struck     {} by {}", ratio_nav::rfc3339(s.valuation_time), s.actor);
@@ -3191,7 +3195,9 @@ async fn serve(book: PathBuf, addr: Option<&str>) -> Result<()> {
         .unwrap_or("127.0.0.1:50051")
         .parse()
         .context("--addr takes HOST:PORT, e.g. 127.0.0.1:50051")?;
-    let book = std::sync::Arc::new(ratio_api::Book::open(&book)?);
+    let book = std::sync::Arc::new(ratio_api::Book::open_with(
+        &book, ratio_store::installed_object_store(),
+    )?);
     // Bind before announcing, so `--addr 127.0.0.1:0` prints the port the OS
     // chose and a harness can read it off stdout.
     let listener = tokio::net::TcpListener::bind(addr)

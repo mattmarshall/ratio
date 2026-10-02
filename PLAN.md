@@ -5346,15 +5346,11 @@ scenario posting remain refused. Live OAuth evidence remains on #168 until the
 registered scopes are exercised against a permitted Personal book.
 ### Amendment, 2026-10-02 — console store routing by book (partial #360)
 
-The console now accepts an explicit map of book IDs to object stores. Each
-bootstrap, membership, active-configuration, count, and authorized book open
-uses the selected backend; a missing mapping refuses. A cold-root test proves
-that two published books on separate stores recover in one process. The
-serving binary, CLI, and other direct book opens still use process-global
-installation, so hosted multi-book storage is not yet complete.
-
-CLI and watch direct book opens now pass the startup-selected backend into
-`FileBook::open_with` or `open_attached_with`. MCP tool dispatch carries that
-selection through explicit book opens; two-store tests cover journal writes.
-NAV and other library calls still use the global default, so `FileBook::open`
-cannot yet become local-only.
+The console accepts an explicit map of book IDs to object stores. Bootstrap,
+membership, active configuration, counts, and authorized book opens use the
+selected backend; a missing mapping refuses. A cold-root test proves two
+published books on separate stores recover and strike a NAV in one process.
+CLI, watch, API, MCP, projection, and NAV entry points pass explicit handles.
+`FileBook::open` and `open_attached` are local-only. The serving binary still
+selects one store at startup; a hosted per-book router and provider recovery
+evidence remain before this issue is complete.

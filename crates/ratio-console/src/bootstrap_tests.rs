@@ -55,6 +55,10 @@ fn two_books_resolve_independent_object_stores_in_one_process() {
         let digest = book.active().unwrap().unwrap();
         book.append(&entry(&digest)).unwrap();
     }
+    let alpha_strike = ratio_nav::strike_with_store(
+        &temp.0.join("alpha"), ratio_rules::UNDECLARED_VIEW,
+        1_780_000_000, "creator", Some(alpha.clone()),
+    ).unwrap();
     assert!(BootstrapStore::new(alpha.clone()).get("alpha").unwrap().is_some());
     assert!(BootstrapStore::new(alpha.clone()).get("beta").unwrap().is_none());
     assert!(BootstrapStore::new(beta.clone()).get("beta").unwrap().is_some());
@@ -74,8 +78,12 @@ fn two_books_resolve_independent_object_stores_in_one_process() {
         book::BookKind::Investment.proto());
     assert_eq!(recovered.get_book("books/beta").unwrap().kind,
         book::BookKind::Personal.proto());
-    assert_eq!(FileBook::open_with(temp.0.join("alpha"), Some(alpha))
+    assert_eq!(FileBook::open_with(temp.0.join("alpha"), Some(alpha.clone()))
         .unwrap().entries().unwrap().len(), 1);
+    assert!(ratio_nav::replay_with_store(
+        &temp.0.join("alpha"), &alpha_strike,
+        Some(alpha),
+    ).unwrap().ok());
     assert_eq!(FileBook::open_with(temp.0.join("beta"), Some(beta))
         .unwrap().entries().unwrap().len(), 1);
     assert!(recovered.create_book(request("unregistered", book::BookKind::Personal))
@@ -877,18 +885,19 @@ fn bootstrap_process() {
                 ),
             ))
             .unwrap();
-        let mut b = FileBook::open(root.join("cold")).unwrap();
+        let mut b = FileBook::open_with(
+            root.join("cold"),
+            Some(Arc::new(DirStore::at(&objects))),
+        )
+        .unwrap();
         let digest = b.active().unwrap().unwrap();
         b.append(&entry(&digest)).unwrap();
     } else if mode == "reinitialize" {
         assert!(!root.exists());
-        assert!(book::initialize(
-            &root.join("cold"),
-            "cold",
-            "Replacement",
-            book::BookKind::Personal
-        )
-        .is_err());
+        let mut replacement = request("cold", book::BookKind::Personal);
+        replacement.book.as_mut().unwrap().display_name = "Replacement".into();
+        assert!(c.create_book(replacement).is_err());
+        assert_eq!(c.get_book("books/cold").unwrap().display_name, "Exact cold");
         assert_eq!(
             book::BookMeta::load(&root.join("cold"), "cold").display_name,
             "Exact cold"
@@ -903,7 +912,11 @@ fn bootstrap_process() {
         let book = c.get_book("books/cold").unwrap();
         assert_eq!(book.kind, book::BookKind::Personal.proto());
         assert_eq!(book.entry_count, 1);
-        let b = FileBook::open(root.join("cold")).unwrap();
+        let b = FileBook::open_with(
+            root.join("cold"),
+            Some(Arc::new(DirStore::at(&objects))),
+        )
+        .unwrap();
         assert_eq!(
             b.entries().unwrap(),
             vec![entry(&b.active().unwrap().unwrap())]

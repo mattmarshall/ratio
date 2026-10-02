@@ -4810,7 +4810,7 @@ impl Console {
         // PINNED, which `NavFold::def_for` does — never from ACTIVE. A calendar
         // amended since would otherwise re-derive a different settlement date,
         // and this endpoint would report a sound strike as unreproducible.
-        let r = ratio_nav::replay(&path, &s)?;
+        let r = ratio_nav::replay_with_store(&path, &s, self.object_store_for(&fund)?)?;
         Ok(pb::ReplayNavStrikeResponse {
             name: name.to_string(),
             history_intact: r.history_intact,
@@ -4878,7 +4878,9 @@ impl Console {
         // STRIKE COST. Nothing was recorded at strike time. `ExplainNavStrikeResponse
         // .analyzed` is what lets the screen say so, and it says so beside every
         // actual rather than once at the bottom.
-        let measured = if analyze { Some(ratio_nav::analyze(&path, &s)?) } else { None };
+        let measured = if analyze {
+            Some(ratio_nav::analyze_with_store(&path, &s, self.object_store_for(&fund)?)?)
+        } else { None };
 
         let plan = ratio_nav::explain::plan_of(name, &s, shape.as_ref(), &refusal, measured.as_ref(), cal);
         Ok(plan_pb(&plan))
