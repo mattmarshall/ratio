@@ -728,7 +728,9 @@ fn handle(mut stream: TcpStream, book: &Path, hydrate: &HydrateGate) -> Result<(
             "Chat messages are POSTed to this path.".to_string(),
         ),
 
-        ("POST", "/mcp") => match ratio_mcp::handle_line_attached(book, &req.body) {
+        ("POST", "/mcp") => match ratio_mcp::handle_line_attached_with_store(
+            book, &req.body, ratio_store::installed_object_store(),
+        ) {
             Some(response) => ("200 OK", "application/json", response),
             // A notification has no id and MUST NOT be answered. 202 with an
             // empty body is what the transport says to send.
