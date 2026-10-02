@@ -377,6 +377,16 @@ impl Console {
         Ok(self.objects.clone())
     }
 
+    fn object_store_for_path(&self, path: &Path) -> Result<Option<std::sync::Arc<dyn ratio_store::ObjectStore>>> {
+        let id = if path == self.root.as_path() {
+            "demo"
+        } else {
+            path.file_name().and_then(|name| name.to_str())
+                .context("book path has no UTF-8 basename")?
+        };
+        self.object_store_for(id)
+    }
+
     /// Use the serving-process fast path after its startup gate reached Ready.
     pub fn after_startup_hydration(mut self) -> Self {
         self.startup_hydrated = true;
@@ -457,7 +467,7 @@ impl Console {
             clean(action),
             clean(subject),
             clean(digest)
-        ), self.objects.clone())?;
+        ), self.object_store_for_path(book)?)?;
         Ok(())
     }
 
@@ -519,7 +529,7 @@ impl Console {
         fund: &str,
         book_path: &Path,
     ) -> Result<Box<dyn ratio_project::checkpoint::CheckpointStore>> {
-        if let Some(objects) = ratio_store::installed_object_store() {
+        if let Some(objects) = self.object_store_for(fund)? {
             let book_id = book_path.file_name().and_then(|n| n.to_str())
                 .context("checkpoint book has no filesystem basename")?;
             return Ok(Box::new(ratio_project::checkpoint::ObjectCheckpointStore::new(
@@ -2558,7 +2568,7 @@ impl Console {
 
         let mut out = Vec::new();
         for (a, _) in self.announcements(fund)? {
-            for s in ratio_nav::list_with_store(&path, self.objects.clone())? {
+            for s in ratio_nav::list_with_store(&path, self.object_store_for(fund)?)? {
                 // The strike's own day, as the ex-date is written.
                 let day = ratio_nav::rfc3339(s.valuation_time);
                 let day = day.get(..10).unwrap_or("").to_string();
@@ -3221,7 +3231,7 @@ impl Console {
                     path.file_name().and_then(|s| s.to_str()).unwrap_or(fund),
                     name.trim_end_matches(".pb"),
                 ).encode_to_vec(),
-                self.objects.clone(),
+                self.object_store_for(fund)?,
             )?;
         }
         Ok(report)
@@ -4316,7 +4326,7 @@ impl Console {
         let chart = b.accounts()?;
 
         let mut promoted: BTreeMap<String, (i64, String, String)> = BTreeMap::new();
-        for line in ratio_store::changes::read_with_store(&path, self.objects.clone())? {
+        for line in ratio_store::changes::read_with_store(&path, self.object_store_for(fund)?)? {
             let l = line.trim_end_matches('\n');
             let f: Vec<&str> = l.split('\t').collect();
             // ⛔ ONLY AN "approved" LINE IS A PROMOTION. The CHANGELOG is the
@@ -4392,7 +4402,7 @@ impl Console {
                     },
                     |fund| self.projection(fund),
                 );
-                ratio_nav::list_with_store(&path, self.objects.clone())?
+                ratio_nav::list_with_store(&path, self.object_store_for(&id)?)?
                     .into_iter().filter(|strike| strike.view == view).collect::<Vec<_>>()
                     .into_iter()
                     .map(|s| {
@@ -4756,7 +4766,7 @@ impl Console {
             })?;
         }
 
-        let strikes = ratio_nav::list_with_store(&path, self.objects.clone())?;
+        let strikes = ratio_nav::list_with_store(&path, self.object_store_for(fund)?)?;
 
         self.announcements(fund)?
             .into_iter()
@@ -5169,7 +5179,7 @@ impl Console {
     }
 
     fn breaks_for(&self, book: &Path, fund: &str, view: &str) -> Result<Vec<pb::Break>> {
-        let Some(report) = ratio_store::reports::newest_report_with_store(book, self.objects.clone())? else {
+        let Some(report) = ratio_store::reports::newest_report_with_store(book, self.object_store_for(fund)?)? else {
             // ⚠ STILL RETURNS THE LOT BREAKS. A fund with no reconciliation
             // report has no recon breaks, and used to have no breaks at all —
             // so a lot break on such a fund would have been invisible for the
@@ -5275,7 +5285,7 @@ impl Console {
     /// the fallback for configurations that predate the record.
     fn change_log_for(&self, book: &Path, fund: &str) -> Result<Vec<pb::ChangeLogEntry>> {
         let mut out = Vec::new();
-        for (i, line) in ratio_store::changes::read_with_store(book, self.objects.clone())?.iter().enumerate() {
+        for (i, line) in ratio_store::changes::read_with_store(book, self.object_store_for(fund)?)?.iter().enumerate() {
             let f: Vec<&str> = line.split('\t').collect();
             if f.len() < 5 {
                 continue; // a truncated line is skipped, not guessed at
@@ -5294,7 +5304,7 @@ impl Console {
         // Proposals nobody has approved: the other half of the story, and the
         // only place a model appears in this log.
         {
-            for (id, _) in ratio_store::proposals::list_with_store(book, self.objects.clone())? {
+            for (id, _) in ratio_store::proposals::list_with_store(book, self.object_store_for(fund)?)? {
                 if out.iter().any(|e| e.subject == id && e.action == "approved") {
                     continue; // already approved; it appears above as a person's act
                 }

@@ -9,6 +9,7 @@
 //! for a help string.
 
 use std::path::PathBuf;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::{bail, ensure, Context, Result};
 use ratio_chart::{normal_side, Side};
@@ -21,6 +22,18 @@ use serde::Deserialize;
 // Manual operator rehearsal only; no accounting behavior is implemented here.
 #[cfg(test)]
 mod recovery_live;
+// Single-backend CLI and watch startup selection lives in the binary. Library
+// callers must pass a book's store explicitly; process state cannot route a
+// hosted request for one book to another book's backend.
+static INSTALLED_OBJECT_STORE: OnceLock<Arc<dyn ratio_store::ObjectStore>> = OnceLock::new();
+
+fn install_object_store(store: Arc<dyn ratio_store::ObjectStore>) {
+    let _ = INSTALLED_OBJECT_STORE.set(store);
+}
+
+fn installed_object_store() -> Option<Arc<dyn ratio_store::ObjectStore>> {
+    INSTALLED_OBJECT_STORE.get().cloned()
+}
 
 /// An entry as a caller writes it: no `config`, because the book stamps the
 /// version in force rather than letting the caller assert one.
@@ -255,12 +268,12 @@ fn recovery_command(capture: bool) -> Result<()> {
 /// `FileBook::open` must not consult process state when two books may have
 /// different stores in one process.
 fn open_cli_book(book: impl AsRef<std::path::Path>) -> Result<FileBook> {
-    FileBook::open_with(book, ratio_store::installed_object_store())
+    FileBook::open_with(book, crate::installed_object_store())
 }
 
 fn console_cli(book: impl AsRef<std::path::Path>) -> ratio_console::Console {
     let console = ratio_console::Console::new(book);
-    match ratio_store::installed_object_store() {
+    match crate::installed_object_store() {
         Some(store) => console.with_object_store(store),
         None => console,
     }
@@ -1375,7 +1388,7 @@ fn closure(book: PathBuf, args: &[&str]) -> Result<()> {
     // here" and "the book is unreadable" are different situations and only one
     // of them is fine.
     let (cal, fell_back) = match ratio_nav::closure::measure_with_store(
-        &book, ratio_store::installed_object_store(),
+        &book, crate::installed_object_store(),
     ) {
         Ok(c) => (c, None),
         Err(e) => (Calibration::measured(), Some(format!("{e:#}"))),
@@ -1647,9 +1660,9 @@ fn install_control_backend() -> Result<()> {
             .unwrap_or_else(|| "journals/".to_string());
         let store = scale::S3::open(&bucket, prefix)
             .with_context(|| format!("opening the control store in s3://{bucket}"))?;
-        ratio_store::install_object_store(std::sync::Arc::new(store));
+        crate::install_object_store(std::sync::Arc::new(store));
     } else if let Some(dir) = std::env::var("RATIO_JOURNAL_LOCAL").ok().filter(|v| !v.is_empty()) {
-        ratio_store::install_object_store(std::sync::Arc::new(ratio_store::DirStore::at(dir)));
+        crate::install_object_store(std::sync::Arc::new(ratio_store::DirStore::at(dir)));
     }
     Ok(())
 }
@@ -1666,7 +1679,7 @@ fn ensure_seed_migration(migration: &str) -> Result<()> {
 
 fn publish_seeds(book: PathBuf, funds: PathBuf, migration: Option<&str>) -> Result<()> {
     install_control_backend()?;
-    let store = ratio_store::installed_object_store().context(
+    let store = crate::installed_object_store().context(
         "publish-seeds requires RATIO_JOURNAL_BUCKET or RATIO_JOURNAL_LOCAL; \
          a deployment must name the durable journal it is publishing",
     )?;
@@ -1892,7 +1905,7 @@ fn membership_control_published(
     operation_id: &str,
 ) -> Result<()> {
     install_control_backend()?;
-    let objects = ratio_store::installed_object_store()
+    let objects = crate::installed_object_store()
         .context("published membership requires RATIO_JOURNAL_BUCKET or RATIO_JOURNAL_LOCAL")?;
     let provenance = if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true") {
         "github-actions-oidc"
@@ -2044,7 +2057,7 @@ fn activate_personal_fx_control_with(
 
 fn activate_personal_fx_control(operation_id: &str) -> Result<()> {
     install_control_backend()?;
-    let objects = ratio_store::installed_object_store().context(
+    let objects = crate::installed_object_store().context(
         "Personal FX activation requires RATIO_JOURNAL_BUCKET or RATIO_JOURNAL_LOCAL",
     )?;
     let provenance = if std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true") {
@@ -2460,7 +2473,7 @@ fn strike(book: PathBuf, as_of: Option<&str>, view: Option<&str>) -> Result<()> 
     let view = view_or_refuse(&book, view)?;
     let actor = actor_name();
     let s = ratio_nav::strike_and_record_with_store(
-        &book, &view, now()?, &actor, ratio_store::installed_object_store(),
+        &book, &view, now()?, &actor, crate::installed_object_store(),
     )?;
 
     println!("struck {} in {}", s.id, s.view);
@@ -2739,10 +2752,11 @@ fn minor_str(s: &str) -> String {
 
 /// Every NAV struck on this book.
 fn navs(book: PathBuf, view: Option<&str>) -> Result<()> {
-    let all = match view {
-        Some(v) => ratio_nav::list_in(&book, &view_or_refuse(&book, Some(v))?)?,
-        None => ratio_nav::list(&book)?,
-    };
+    let mut all = ratio_nav::list_with_store(&book, crate::installed_object_store())?;
+    if let Some(v) = view {
+        let selected = view_or_refuse(&book, Some(v))?;
+        all.retain(|strike| strike.view == selected);
+    }
     if all.is_empty() {
         println!("No NAV has been struck on this book. `ratio strike` takes one.");
         return Ok(());
@@ -2777,8 +2791,10 @@ fn navs(book: PathBuf, view: Option<&str>) -> Result<()> {
 /// Exits non-zero when either check fails. A replay that reports a broken NAV
 /// on stdout and exits 0 is a replay nothing can be built on.
 fn replay_strike(book: PathBuf, id: &str, view: Option<&str>) -> Result<()> {
-    let s = ratio_nav::get(&book, &view_or_refuse(&book, view)?, id)?;
-    let r = ratio_nav::replay_with_store(&book, &s, ratio_store::installed_object_store())?;
+    let s = ratio_nav::get_with_store(
+        &book, &view_or_refuse(&book, view)?, id, crate::installed_object_store(),
+    )?;
+    let r = ratio_nav::replay_with_store(&book, &s, crate::installed_object_store())?;
 
     println!("replaying {} in {}", s.id, s.view);
     println!("  struck     {} by {}", ratio_nav::rfc3339(s.valuation_time), s.actor);
@@ -2945,8 +2961,9 @@ fn recon(
             // terminal is not evidence anybody else can look at.
             use prost::Message;
             let name = format!("{}-{}.pb", digest.short(), parsed.len());
-            ratio_store::reports::write_report(
+            ratio_store::reports::write_report_with_store(
                 &book, &name, &report.to_proto(&book_label(&book), &name).encode_to_vec(),
+                crate::installed_object_store(),
             )?;
 
             println!("\nposted {posted} entrie(s) into {}", book.display());
@@ -3033,7 +3050,7 @@ fn scale_run(size: &str, id: &str) -> Result<()> {
 fn mcp(book: PathBuf) -> Result<()> {
     open_cli_book(&book)?; // fail here rather than mid-conversation
     let stdin = std::io::stdin();
-    ratio_mcp::serve_with_store(&book, ratio_store::installed_object_store(), stdin.lock(), std::io::stdout())
+    ratio_mcp::serve_with_store(&book, crate::installed_object_store(), stdin.lock(), std::io::stdout())
 }
 
 /// Promote a proposal to the active configuration.
@@ -3161,7 +3178,7 @@ fn approve_text_with_control(
 ) -> Result<String> {
     let book = book.to_path_buf();
     let mut b = open_cli_book(&book)?;
-    let proposed = ratio_store::proposals::read_with_store(&book, id, ratio_store::installed_object_store())?
+    let proposed = ratio_store::proposals::read_with_store(&book, id, crate::installed_object_store())?
         .with_context(|| format!("no proposal {id} for {}", book.display()))?;
     let incoming = RuleSet::from_toml(&proposed)?;
 
@@ -3286,7 +3303,8 @@ fn approve_text_with_control(
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let line = format!("{when}\t{actor}\tapproved\t{id}\t{}\n", digest.as_str());
-    ratio_store::changes::append(&book, &line).context("recording the approval")?;
+    ratio_store::changes::append_with_store(&book, &line, crate::installed_object_store())
+        .context("recording the approval")?;
 
     let mut out = format!(
         "approved {id}\n  {} rule(s) now active ({replaced} replaced)\n  \
@@ -3317,7 +3335,7 @@ async fn serve(book: PathBuf, addr: Option<&str>) -> Result<()> {
         .parse()
         .context("--addr takes HOST:PORT, e.g. 127.0.0.1:50051")?;
     let book = std::sync::Arc::new(ratio_api::Book::open_with(
-        &book, ratio_store::installed_object_store(),
+        &book, crate::installed_object_store(),
     )?);
     // Bind before announcing, so `--addr 127.0.0.1:0` prints the port the OS
     // chose and a harness can read it off stdout.

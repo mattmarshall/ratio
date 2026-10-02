@@ -10,7 +10,7 @@ use anyhow::{bail, Context, Result};
 use prost::Message;
 use ratio_proto::ratio::storage::v1::{ProposalMigration, StoredProposal};
 
-use crate::{installed_object_store, Digest, ObjectStore};
+use crate::{Digest, ObjectStore};
 
 fn book_id(book: &Path) -> Result<&str> {
     book.file_name().and_then(|part| part.to_str())
@@ -178,7 +178,7 @@ pub fn write_with_store(book: &Path, id: &str, toml: &str,
 }
 
 pub fn write(book: &Path, id: &str, toml: &str) -> Result<()> {
-    write_with_store(book, id, toml, installed_object_store())
+    write_with_store(book, id, toml, None)
 }
 
 pub fn read_with_store(book: &Path, id: &str,
@@ -196,7 +196,7 @@ pub fn read_with_store(book: &Path, id: &str,
 }
 
 pub fn read(book: &Path, id: &str) -> Result<Option<String>> {
-    read_with_store(book, id, installed_object_store())
+    read_with_store(book, id, None)
 }
 
 pub fn list_with_store(book: &Path,
@@ -217,7 +217,7 @@ pub fn list_with_store(book: &Path,
 }
 
 pub fn list(book: &Path) -> Result<Vec<(String, String)>> {
-    list_with_store(book, installed_object_store())
+    list_with_store(book, None)
 }
 
 #[cfg(test)]

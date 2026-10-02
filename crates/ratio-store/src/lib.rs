@@ -53,7 +53,7 @@ pub mod bootstrap;
 pub mod recovery;
 pub mod control;
 pub use objects::{
-    install_object_store, installed_object_store, DirStore, MemoryStore, ObjectStore, SeqLog,
+    DirStore, MemoryStore, ObjectStore, SeqLog,
 };
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
