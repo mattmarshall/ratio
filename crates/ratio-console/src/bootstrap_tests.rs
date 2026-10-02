@@ -54,8 +54,9 @@ fn two_books_resolve_independent_object_stores_in_one_process() {
         let mut book = FileBook::open_with(temp.0.join(id), Some(objects.clone())).unwrap();
         let digest = book.active().unwrap().unwrap();
         book.append(&entry(&digest)).unwrap();
+        client.record_change(&temp.0.join(id), "posted", "opening", digest.as_str()).unwrap();
     }
-    let alpha_strike = ratio_nav::strike_with_store(
+    let alpha_strike = ratio_nav::strike_and_record_with_store(
         &temp.0.join("alpha"), ratio_rules::UNDECLARED_VIEW,
         1_780_000_000, "creator", Some(alpha.clone()),
     ).unwrap();
@@ -70,6 +71,10 @@ fn two_books_resolve_independent_object_stores_in_one_process() {
     assert!(FileBook::open_with(temp.0.join("alpha"), Some(beta.clone()))
         .err().unwrap().to_string().contains("durable book publication is unavailable"));
     assert_eq!(SeqLog::new(beta.clone(), "alpha/journal/").height().unwrap(), 0);
+    assert_eq!(SeqLog::new(alpha.clone(), "alpha/changes/").height().unwrap(), 2);
+    assert_eq!(SeqLog::new(beta.clone(), "beta/changes/").height().unwrap(), 2);
+    assert_eq!(SeqLog::new(beta.clone(), "alpha/changes/").height().unwrap(), 0);
+    assert_eq!(SeqLog::new(alpha.clone(), "beta/changes/").height().unwrap(), 0);
     std::fs::remove_dir_all(temp.0.join("alpha")).unwrap();
     std::fs::remove_dir_all(temp.0.join("beta")).unwrap();
     assert_eq!(SeqLog::new(beta.clone(), "alpha/journal/").height().unwrap(), 0);
@@ -81,6 +86,12 @@ fn two_books_resolve_independent_object_stores_in_one_process() {
         book::BookKind::Investment.proto());
     assert_eq!(recovered.get_book("books/beta").unwrap().kind,
         book::BookKind::Personal.proto());
+    assert_eq!(recovered.list_change_log_entries("funds/alpha").unwrap().change_log_entries.len(), 2);
+    assert_eq!(recovered.list_change_log_entries("funds/beta").unwrap().change_log_entries.len(), 2);
+    assert_eq!(recovered.list_nav_strikes(&format!("funds/alpha/views/{}", ratio_rules::UNDECLARED_VIEW))
+        .unwrap().nav_strikes.len(), 1);
+    assert!(recovered.list_nav_strikes(&format!("funds/beta/views/{}", ratio_rules::UNDECLARED_VIEW))
+        .unwrap().nav_strikes.is_empty());
     assert_eq!(FileBook::open_with(temp.0.join("alpha"), Some(alpha.clone()))
         .unwrap().entries().unwrap().len(), 1);
     assert!(ratio_nav::replay_with_store(

@@ -256,8 +256,10 @@ customer-scale timing remain required external drill coverage.
   evidence and writer-storage consistency. Its implementation is included in this stacked branch and has not yet
   merged into main.
 - [#360](https://github.com/mattmarshall/ratio/issues/360): book-scoped
-  object-store handles now reach CLI, watch, API, MCP, projection, and NAV
-  paths. `FileBook::open` and Console constructors are local-only. The serving binary still chooses one
+  object-store handles now reach CLI, watch, API, MCP, projection, NAV,
+  checkpoints, reports, proposals, and audit paths. The storage library has
+  no installed store; `FileBook::open` and Console constructors are local-only.
+  The serving binary still chooses one
   store at startup; hosted per-book routing and provider recovery remain open.
 - No whole-book backup scheduler, consistent checkpoint/export command,
   restore command, retention policy, or independent backup copy is established

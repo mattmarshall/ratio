@@ -8,14 +8,14 @@
 //! that fork, arriving as a truncation rather than as two `/tmp`s.
 //!
 //! This crate does not talk to S3. The deployed adapter lives in `ratio`
-//! (which already holds the SDK for the scale runner) and is installed once
-//! at process start. Tests use [`MemoryStore`] and [`DirStore`].
+//! (which already holds the SDK for the scale runner). Tests use
+//! [`MemoryStore`] and [`DirStore`].
 
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_OBJECT: AtomicU64 = AtomicU64::new(0);
@@ -63,27 +63,6 @@ impl<S: ObjectStore + ?Sized> ObjectStore for Arc<S> {
     fn max_sequence(&self, prefix: &str) -> Result<u64> {
         (**self).max_sequence(prefix)
     }
-}
-
-/// The binary's startup selection for a single-backend deployment. Library
-/// book opens receive an explicit store handle and never consult this value.
-///
-/// Unset is the local shape: one JSON line per entry on disk, which is what
-/// every test and every `ratio` invocation without the env uses.
-static INSTALLED: OnceLock<Arc<dyn ObjectStore>> = OnceLock::new();
-
-/// Install the durable journal backend for this process.
-///
-/// ⚠ FIRST CALL WINS. A second install is ignored rather than swapping the
-/// store under a book that has already hydrated from the first — two stores
-/// for one book is the fork this exists to close.
-pub fn install_object_store(store: Arc<dyn ObjectStore>) {
-    let _ = INSTALLED.set(store);
-}
-
-/// The store the process was wired to, if any.
-pub fn installed_object_store() -> Option<Arc<dyn ObjectStore>> {
-    INSTALLED.get().cloned()
 }
 
 /// In-memory objects. The test double, and the dial in the spec.
