@@ -41,6 +41,13 @@ pub trait ObjectStore: Send + Sync {
     /// Keys under `prefix`, in lex order. For the sequence log that is also
     /// numeric order, because the keys are zero-padded.
     fn list(&self, prefix: &str) -> Result<Vec<String>>;
+    /// Highest sequence key under a log prefix. Adapters may answer without
+    /// materializing the listing; keys use the log's 20-digit format.
+    fn max_sequence(&self, prefix: &str) -> Result<u64> {
+        Ok(self.list(prefix)?.into_iter().filter_map(|key| {
+            key.strip_prefix(prefix)?.parse::<u64>().ok()
+        }).max().unwrap_or(0))
+    }
 }
 
 impl<S: ObjectStore + ?Sized> ObjectStore for Arc<S> {
@@ -52,6 +59,9 @@ impl<S: ObjectStore + ?Sized> ObjectStore for Arc<S> {
     }
     fn list(&self, prefix: &str) -> Result<Vec<String>> {
         (**self).list(prefix)
+    }
+    fn max_sequence(&self, prefix: &str) -> Result<u64> {
+        (**self).max_sequence(prefix)
     }
 }
 
@@ -246,19 +256,9 @@ impl SeqLog {
         format!("{}{seq:020}", self.prefix)
     }
 
-    fn seq_of(&self, key: &str) -> Option<u64> {
-        key.strip_prefix(&self.prefix)?.parse().ok()
-    }
-
     /// Highest sequence present, or zero on an empty log. `Height` in the spec.
     pub fn height(&self) -> Result<u64> {
-        let mut max = 0u64;
-        for k in self.store.list(&self.prefix)? {
-            if let Some(n) = self.seq_of(&k) {
-                max = max.max(n);
-            }
-        }
-        Ok(max)
+        self.store.max_sequence(&self.prefix)
     }
 
     /// PUT `body` at `seq` only if that key is absent.
@@ -333,6 +333,55 @@ impl SeqLog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct MaxOnlyStore(MemoryStore);
+
+    impl ObjectStore for MaxOnlyStore {
+        fn put_if_absent(&self, key: &str, body: &[u8]) -> Result<bool> {
+            self.0.put_if_absent(key, body)
+        }
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            self.0.get(key)
+        }
+        fn list(&self, _: &str) -> Result<Vec<String>> {
+            bail!("append must use max_sequence, not list")
+        }
+        fn max_sequence(&self, prefix: &str) -> Result<u64> {
+            let m = self.0.inner.lock().expect("memory store mutex");
+            Ok(m.keys().rev().find_map(|key| {
+                key.strip_prefix(prefix)?.parse::<u64>().ok()
+            }).unwrap_or(0))
+        }
+    }
+
+    #[test]
+    fn append_uses_the_height_operation_without_listing_every_key() {
+        let log = SeqLog::new(Arc::new(MaxOnlyStore(MemoryStore::new())), "journal/");
+        assert_eq!(log.append(b"first").unwrap(), 1);
+        assert_eq!(log.append(b"second").unwrap(), 2);
+        assert_eq!(log.get(1).unwrap().as_deref(), Some(b"first".as_ref()));
+    }
+
+    #[test]
+    #[ignore = "manual local cost comparison; not an S3 latency measurement"]
+    fn append_cost_at_a_nontrivial_height() {
+        let baseline = Arc::new(MemoryStore::new());
+        let indexed = Arc::new(MaxOnlyStore(MemoryStore::new()));
+        for seq in 1..=20_000u64 {
+            let key = format!("journal/{seq:020}");
+            baseline.put_if_absent(&key, b"x").unwrap();
+            indexed.put_if_absent(&key, b"x").unwrap();
+        }
+        let baseline_log = SeqLog::new(baseline, "journal/");
+        let indexed_log = SeqLog::new(indexed, "journal/");
+        let start = std::time::Instant::now();
+        assert_eq!(baseline_log.append(b"next").unwrap(), 20_001);
+        let listed = start.elapsed();
+        let start = std::time::Instant::now();
+        assert_eq!(indexed_log.append(b"next").unwrap(), 20_001);
+        let height = start.elapsed();
+        eprintln!("20,000-entry local append: list={listed:?}, max_sequence={height:?}");
+    }
 
     #[test]
     fn directory_readers_observe_only_complete_binary_objects() {
