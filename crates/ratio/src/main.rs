@@ -2815,14 +2815,10 @@ fn recon(
             // the newest one; a report that only ever existed on somebody's
             // terminal is not evidence anybody else can look at.
             use prost::Message;
-            let dir = book.join("reports");
-            std::fs::create_dir_all(&dir).context("creating the reports directory")?;
             let name = format!("{}-{}.pb", digest.short(), parsed.len());
-            std::fs::write(
-                dir.join(&name),
-                report.to_proto(&book_label(&book), &name).encode_to_vec(),
-            )
-            .context("storing the report")?;
+            ratio_store::reports::write_report(
+                &book, &name, &report.to_proto(&book_label(&book), &name).encode_to_vec(),
+            )?;
 
             println!("\nposted {posted} entrie(s) into {}", book.display());
             println!("  report   reports/{name}");

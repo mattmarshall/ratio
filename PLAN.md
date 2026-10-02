@@ -5367,3 +5367,15 @@ strike is present. Local JSONL remains the unconfigured shape. This does not
 complete #300: reports/proposals, CHANGELOG, external recovery and every-writer
 verification remain. It does not complete #264: RPO, RTO, retention, named
 operators, and a customer-book restore drill remain unagreed or unproved.
+
+### Amendment, 2026-10-01 — reconciliation report evidence on configured storage
+
+Related: #300. Every in-book report writer now uses the shared report store:
+CLI reconciliation and console live holdings append exact `BreakReport` bytes
+inside a versioned protobuf envelope. Console and watch read its last durable
+sequence, refusing a hole. The migration of local `reports/*.pb` claims the
+complete original source under `_report-migration/<book>`, ordered by mtime
+then path and retaining each timestamp; it checks occupied slots and claims
+completion only after all reports match. The journal remains the book of
+record. This does not complete #300: proposals and CHANGELOG still need durable
+storage, and #264 still needs a live external restore and agreed objectives.

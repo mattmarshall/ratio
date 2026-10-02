@@ -3178,21 +3178,15 @@ impl Console {
 
         if report.was_reconciled() {
             use prost::Message;
-            let dir = path.join("reports");
-            std::fs::create_dir_all(&dir).context("creating the reports directory")?;
             let name = format!("{}-live-{}.pb", digest.short(), holdings);
-            std::fs::write(
-                dir.join(&name),
-                report
-                    .to_proto(
-                        path.file_name()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or(fund),
-                        &name.trim_end_matches(".pb"),
-                    )
-                    .encode_to_vec(),
-            )
-            .context("storing the live holdings report")?;
+            ratio_store::reports::write_report(
+                &path,
+                &name,
+                &report.to_proto(
+                    path.file_name().and_then(|s| s.to_str()).unwrap_or(fund),
+                    name.trim_end_matches(".pb"),
+                ).encode_to_vec(),
+            )?;
         }
         Ok(report)
     }
@@ -5593,32 +5587,7 @@ fn disposal_to_pb(
 }
 
 fn newest_report(book: &Path) -> Result<Option<kernel::BreakReport>> {
-    let dir = book.join("reports");
-    let mut found: Vec<PathBuf> = std::fs::read_dir(&dir)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|x| x == "pb"))
-                .collect()
-        })
-        .unwrap_or_default();
-    // ⚠ MTIME FIRST, THEN PATH. Two reports written in one filesystem
-    // timestamp (the test helper's `r0.pb` / `r1.pb`) used to order
-    // arbitrarily, so "the later figure retires the explanation" was a
-    // coin flip on a fast disk.
-    found.sort_by_key(|p| {
-        let mtime = std::fs::metadata(p)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        (mtime, p.clone())
-    });
-    match found.last() {
-        None => Ok(None),
-        Some(p) => Ok(Some(
-            kernel::BreakReport::decode(&std::fs::read(p)?[..])
-                .with_context(|| format!("reading {}", p.display()))?,
-        )),
-    }
+    ratio_store::reports::newest_report(book)
 }
 
 /// A break's id within its book: the last segment of its resource name.

@@ -1488,8 +1488,8 @@ published immutable bootstrap for new books. That bootstrap recovers chart,
 identity, kind, opening configuration, and creator membership. Later
 configuration promotions and explicit membership grants/revocations use the
 same durable object backend and recover by verified predecessor transition.
-NAVS is object-backed on the #300 branch; reports/proposals and CHANGELOG
-remain local. The object-only
+NAVS and reports are object-backed on the #300 branch; proposals and
+CHANGELOG remain local. The object-only
 probe now explicitly characterizes a legacy book created before storage was
 attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery
@@ -1498,7 +1498,8 @@ guarantee.
 The #300 CLI entry guard attaches configured object storage before book
 commands, including person-only verbs and stdio MCP. It closes the local-only
 journal selection path for those commands; the later #300 NAV slice persists
-NAVS, while reports/proposals and CHANGELOG remain local. The complete #300 and #264 acceptance gates
+NAVS; the later report slice persists reports, while proposals and
+CHANGELOG remain local. The complete #300 and #264 acceptance gates
 remain open.
 
 ### NAV evidence, October 1, 2026 (issue #300, branch-local)
@@ -1513,3 +1514,15 @@ marker only after every strike is present. Cold reads recheck those source
 strikes and refuse loss or mutation. The local fallback remains for an
 unconfigured process. Reports, proposals, CHANGELOG, external backup, and a
 customer restore drill remain unproved under #300/#264.
+
+### Reconciliation report evidence, October 1, 2026 (issue #300, branch-local)
+
+The CLI recon writer and console live-holdings writer now append exact
+`ratio.v1.BreakReport` bytes inside a `StoredReport` protobuf envelope on the
+configured object store. Console and watch read the same ordered report log.
+A legacy `reports/*.pb` directory is captured under `_report-migration/<book>`
+in prior mtime/path order, including each original modification timestamp; a
+completion claim follows only after all report sequence objects match. A cold
+read refuses a hole or missing migrated report. The unconfigured local path
+still writes and reads the original files. Proposals, CHANGELOG, a live S3
+restore, and customer recovery objectives remain #300/#264 work.

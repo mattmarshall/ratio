@@ -23,3 +23,21 @@ message StoredNavStrike {
   sint64 trial_balance_difference = 10;
   string config_digest = 11;
 }
+
+// Exact reconciliation report bytes, retained in append order. The nested
+// bytes are already a ratio.v1.BreakReport protobuf and are never rewritten.
+message StoredReport {
+  int32 format_version = 1;
+  string book_id = 2;
+  string filename = 3;
+  bytes report_bytes = 4;
+  google.protobuf.Timestamp record_time = 5;
+}
+
+// Fenced source for importing reports that predate durable storage. The
+// sequence is their former modification-time/path order, oldest first.
+message ReportMigration {
+  int32 format_version = 1;
+  string book_id = 2;
+  repeated StoredReport reports = 3;
+}

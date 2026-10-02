@@ -951,6 +951,9 @@ mod tests {
     use super::*;
     use ratio_store::{Account, AccountTypeRecord, ConfigStore, Journal, PostingRecord};
     use std::sync::{Arc, Mutex};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TEST_DIR: AtomicU64 = AtomicU64::new(0);
 
     fn tmp() -> PathBuf {
         let root = match std::env::var_os("TEST_TMPDIR") {
@@ -958,12 +961,13 @@ mod tests {
             None => std::env::temp_dir(),
         };
         root.join(format!(
-            "ratio-checkpoint-{}-{}",
+            "ratio-checkpoint-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT_TEST_DIR.fetch_add(1, Ordering::Relaxed)
         ))
     }
 

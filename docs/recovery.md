@@ -58,7 +58,7 @@ With neither installed, FileBook uses local JSONL files.
 | Break explanations | `explanations.jsonl` | `<book>/explanations/<sequence>` | Records actor, reason, accepted difference, configuration, and journal citation. Rebuilding balances cannot recreate a person's decision. |
 | Period closes | `closes.jsonl` | `<book>/closes/<sequence>` | Records the cited boundary and prevents posting back into a closed period. Closing postings are separate journal entries. |
 | NAV strikes | `NAVS` | `<book>/nav-strikes/<sha256(view, id)>` immutable protobuf objects when a store is installed; legacy migration source and completion under `_nav-migration/` | Records `(view, valuation point)`, actor, prefix, digest, and figure. The conditional claim refuses a second answer. Preserve strike objects and migration records; recomputing today's NAV does not restore the signed strike. |
-| Reconciliation reports | `reports/*.pb` | **Still local** | Preserve report bytes, names, and modification times: `newest_report` selects by mtime. A recomputed report is a new artifact, not the one previously accepted. |
+| Reconciliation reports | `reports/*.pb` | `<book>/reports/<sequence>` immutable protobuf envelopes when a store is installed; legacy source and completion under `_report-migration/` | Preserve exact report bytes, filename, and original modification time in the envelope. Legacy reports migrate in mtime/path order, then newest means the last durable append. A recomputed report is a new artifact. |
 | Proposals and audit trail | `proposals/`, `CHANGELOG` | **Still local** | Preserve pending/accepted proposal artifacts and who approved or acted under a configuration. |
 | Original delivery files and external app evidence | External source locations; no general retained-blob path in the ingest code | **No complete retention contract here** | Inventory the actual upstream archive and Connect app stores. A delivery digest alone cannot recover the original file. |
 
@@ -80,6 +80,8 @@ The implementation supporting this inventory is:
   slots; that is not a backup, a cross-plane checkpoint, or a metadata store.
 - [Book initialization and grants](../crates/ratio-console/src/book.rs) and
   [CreateBook, CHANGELOG, reports, and book discovery](../crates/ratio-console/src/lib.rs).
+  The branch-local report store in `crates/ratio-store/src/reports.rs` is the
+  shared writer/reader for the CLI, console, and watch screen.
   CreateBook publishes complete bootstrap state before returning success.
 - [NAV persistence](../crates/ratio-nav/src/lib.rs) and
   [ingest delivery schema](../crates/ratio-ingest/src/lib.rs). The branch-local
@@ -95,7 +97,7 @@ The implementation supporting this inventory is:
 - The CLI entry point also attaches configured object storage before opening a
   book for person-only writes or stdio MCP. This prevents those commands from
   silently selecting a local journal when a durable backend is configured;
-  Reports/proposals and CHANGELOG still require durable persistence on
+  Proposals and CHANGELOG still require durable persistence on
   [#300](https://github.com/mattmarshall/ratio/issues/300).
 
 ## Rebuildable material
@@ -136,7 +138,8 @@ environment. It is not currently an automated production backup command.
    `_bootstrap/blobs/<digest>`. Capture the book's gapless
    `_control/transitions/<book-id>/` stream and every referenced
    `_control/config-blobs/<digest>` object. Include `nav-strikes/` objects and
-   both `_nav-migration/` records where present. Record sequence heights and content hashes and
+   both `_nav-migration/` records where present. Capture each report sequence
+   and its `_report-migration/` source/completion records as well. Record sequence heights and content hashes and
    every `_seed/publications*/<book-id>` marker. Check each marker's format
    version, digest, and plane lengths against the captured baked source; do not
    synthesize or remove a marker during restore. Check that each sequence is

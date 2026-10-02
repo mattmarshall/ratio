@@ -456,3 +456,12 @@ criteria, per the roadmap's own rules.
 interesting problem — spends the toolchain budget before the storage seam is
 ready to carry a second backend, and leaves the hosted read path broken for
 whichever customer arrives first.
+
+### October 1, 2026 report evidence note (#300, branch-local)
+
+`StoredReport` keeps the original `BreakReport` bytes, filename, and recording
+time. Configured storage appends each envelope to a per-book sequence log;
+CLI, console, and watch use the same write/read door. Legacy local reports are
+migrated in their prior mtime/path order under a fenced source and completion
+claim. This closes the report-only part of operational evidence, not proposals,
+CHANGELOG, customer backup policy, or an external restore drill.
