@@ -1,11 +1,10 @@
 # Storage backends and the distribution model
 
-Status: **analysis and proposal.** Nothing here is a committed feature, a PLAN
-amendment, or an authorization to implement. It maps the persistence layer as
-built, states which alternative backends the existing seams can carry, and
-names the blockers that stand between the current shape and a two-track
-distribution model — on-device Personal, hosted SQL for funds and shared
-workspaces.
+Status: **analysis with branch-local implementation notes for #358.** The
+backend verdicts remain proposals. This document maps the persistence layer,
+records the append-height change under review, and names the blockers between
+the current shape and a two-track distribution model — on-device Personal,
+hosted SQL for funds and shared workspaces.
 
 Related decision gate: [#282](https://github.com/mattmarshall/ratio/issues/282)
 (reviewed config storage). Related measurement: [#268](https://github.com/mattmarshall/ratio/issues/268).
@@ -41,12 +40,13 @@ away. Any backend proposal that collapses these two is a different product.
 
 ### 1.2 The `ObjectStore` seam
 
-Three methods (`crates/ratio-store/src/objects.rs:32`):
+Four methods (`crates/ratio-store/src/objects.rs`):
 
 ```rust
 fn put_if_absent(&self, key: &str, body: &[u8]) -> Result<bool>;
 fn get(&self, key: &str) -> Result<Option<Vec<u8>>>;
 fn list(&self, prefix: &str) -> Result<Vec<String>>;
+fn max_sequence(&self, prefix: &str) -> Result<u64>; // default scans list
 ```
 
 `put_if_absent` is the entire concurrency argument. `tla/S3Journal.tla` models
@@ -56,8 +56,10 @@ losing an acked entry silently. Three implementations exist: `MemoryStore`,
 (`If-None-Match: *`, 412 is the expected refusal).
 
 `SeqLog` (`objects.rs:232`) lays a log over it: keys are `{prefix}{seq:020}`,
-zero-padded so a LIST is already in order. Append is LIST-for-height then
-conditional PUT at `height + 1`, retrying on a lost claim.
+zero-padded so a LIST is already in order. Append reads `max_sequence` then makes a
+conditional PUT at `height + 1`, retrying on a lost claim. The S3 adapter
+uses one-key `StartAfter` queries to bound the height; directory and memory
+stores keep the listing default.
 
 The store is installed **once per process** through a `OnceLock`
 (`objects.rs:72`), first call wins. `RATIO_JOURNAL_BUCKET` selects S3,
@@ -134,11 +136,14 @@ no such ceiling raised, no batching, and — per §1.4 — no durable checkpoint
 A household book of 50,000 entries at ~10 ms per GET is roughly eight minutes
 of cold fold against a 30 s gateway cap.
 
-⚠ **And `SeqLog::height()` is O(n) on every append.** It calls
-`store.list(prefix)` and scans every key (`objects.rs:254`). On S3 that is a
-paginated `ListObjectsV2` over the whole book — 200 requests for a 200k-entry
-book — and `append()` pays it once per retry. This is backend-independent and
-is a present defect, not a property of any proposed backend.
+⚠ **The original `SeqLog::height()` was O(n) on every append.** It
+materialized all keys; 200,000 objects cost roughly 200 S3 listing pages.
+Issue #358 adds `max_sequence`: S3 now uses exponentially bounded, then
+binary-searched one-key listings (at most 37 requests at 200,000
+entries). The local 20,000-entry test-double measurement was 4.585 ms for
+full listing versus 17.041 µs for a direct max operation. These are local
+CPU measurements, not live S3 latency. Small S3 books may need more listing
+requests than before, and live latency/cost remain unmeasured.
 
 So the economics do not currently favor hosting Personal books, and the work
 that would fix them is largely the same work either track needs.
@@ -171,11 +176,9 @@ ordered streaming scan instead of N round trips.
 
 Obstacles:
 
-1. **`ObjectStore` is the wrong shape for it.** `list(prefix) -> Vec<String>`
-   forces materializing every key to learn the height. The trait needs a
-   `height(prefix) -> u64` (or `max_key`) with a default implementation over
-   `list`, so a backend that can answer cheaply does. Small change, wide blast
-   radius, and it should land **before** any new backend, not after.
+1. **The height seam now exists.** `max_sequence(prefix)` defaults to a
+   listing; a SQL backend can override it with `SELECT max(seq)`. This
+   preliminary #358 implementation is branch-local until merged.
 2. **A real Rust client is a new `crate_universe` member.** PLAN refused
    SQLite partly over a C dependency; `tokio-postgres` / `rust-postgres` is
    pure Rust, so that objection does not transfer. `CARGO_BAZEL_REPIN=1` is
@@ -350,9 +353,10 @@ latency commitment.
 
 ### 5.2 `SeqLog::height()` is O(n) per append
 
-Add `height`/`max_key` to `ObjectStore` with a `list`-based default. Backend-
-independent defect; blocks any backend from being fast. Do this before adding
-a backend, not after.
+Issue #358 branch adds `max_sequence` with a listing default, and S3
+overrides it with bounded one-key listings. `SeqLog::append` uses the method.
+The conditional claim and no-hole reader are unchanged. A live S3 cost and
+latency comparison remains for issue acceptance.
 
 Severity: **high.** Effort: **low.**
 
