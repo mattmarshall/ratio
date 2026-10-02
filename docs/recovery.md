@@ -122,6 +122,9 @@ In-memory projections and the optional Postgres lots/positions/Current tables
 are derived from the journal. They are not a replacement backup for it.
 See [the console store door](../crates/ratio-console/src/store.rs) and
 [projection storage](../crates/ratio-sql-project/src/lib.rs).
+Projection checkpoints under `_checkpoints/` in the configured object store
+are likewise disposable. A restore may omit them and replay from the journal;
+it must never use a checkpoint as evidence that missing journal objects exist.
 
 Start a recovery environment with fresh projection state and rebuild at the
 restored journal prefix. Compare its watermark prefix and journal digest with

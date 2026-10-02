@@ -451,14 +451,14 @@ impl Console {
     /// checkpoint when one exists (`#310`) and replays only the tail. A
     /// corrupt, missing, or mismatched checkpoint falls back to a full fold.
     pub fn projection(&self, fund: &str) -> Result<ratio_project::Projection> {
-        let (_, book) = self.open_book(fund)?;
+        let (book_path, book) = self.open_book(fund)?;
         let mut cache = self
             .projections
             .lock()
             .map_err(|_| anyhow::anyhow!("the projection cache was poisoned by a panic"))?;
         if !cache.contains_key(fund) {
-            let store = self.checkpoint_dir(fund);
-            let (p, _) = ratio_project::checkpoint::follow_with_checkpoint(&book, &store)?;
+            let store = self.checkpoint_store(fund, &book_path)?;
+            let (p, _) = ratio_project::checkpoint::follow_with_checkpoint_store(&book, &*store)?;
             cache.insert(fund.to_string(), p);
         }
         let p = cache.get_mut(fund).expect("just inserted or already present");
@@ -467,20 +467,20 @@ impl Console {
         // this path is a different book. Start again rather than splice two
         // histories together.
         if p.follow_book(&book).is_err() {
-            let store = self.checkpoint_dir(fund);
-            let (fresh, _) = ratio_project::checkpoint::follow_with_checkpoint(&book, &store)?;
+            let store = self.checkpoint_store(fund, &book_path)?;
+            let (fresh, _) = ratio_project::checkpoint::follow_with_checkpoint_store(&book, &*store)?;
             *p = fresh;
         }
         Ok(p.clone())
     }
 
-    /// Console-local cache for verified projection checkpoints (#310).
+    /// Local fallback for verified projection checkpoints (#310).
     ///
     /// ⛔ NOT UNDER THE BOOK DIRECTORY. Checkpoints are disposable acceleration,
     /// not citeable book content — a recovery fingerprint of the book tree must
-    /// not grow a blob because somebody asked for a trial balance. Kept under
-    /// `.ratio-cache/` at the console root so membership and journal planes stay
-    /// the authority a restore drill compares.
+    /// not grow a blob because somebody asked for a trial balance. With an
+    /// installed ObjectStore the cache is under `_checkpoints/` there; local
+    /// books keep `.ratio-cache/` at the console root.
     fn checkpoint_dir(&self, fund: &str) -> PathBuf {
         let leaf = if self.root.join("accounts.json").is_file() {
             "book"
@@ -491,6 +491,23 @@ impl Console {
             .join(".ratio-cache")
             .join("projection-checkpoints")
             .join(leaf)
+    }
+
+    fn checkpoint_store(
+        &self,
+        fund: &str,
+        book_path: &Path,
+    ) -> Result<Box<dyn ratio_project::checkpoint::CheckpointStore>> {
+        if let Some(objects) = ratio_store::installed_object_store() {
+            let book_id = book_path.file_name().and_then(|n| n.to_str())
+                .context("checkpoint book has no filesystem basename")?;
+            return Ok(Box::new(ratio_project::checkpoint::ObjectCheckpointStore::new(
+                objects, book_id,
+            )));
+        }
+        Ok(Box::new(ratio_project::checkpoint::DirectoryCheckpointStore::open(
+            self.checkpoint_dir(fund),
+        )?))
     }
 
     /// The same console with an explicit ceiling, for a caller that has one —
