@@ -1,6 +1,6 @@
 # Storage backends and the distribution model
 
-Status: **analysis with stacked branch-local #300 evidence and #357–#360 storage notes.** The backend verdicts remain proposals. This document maps the persistence layer, records operational evidence, checkpoint, append-height, conformance, and per-book routing changes under review, and names the blockers between the current shape and a two-track distribution model — on-device Personal, hosted SQL for funds and shared workspaces.
+Status: **analysis with stacked branch-local #300 evidence and #357–#361 storage notes.** The backend verdicts remain proposals. This document maps the persistence layer, records operational evidence, checkpoint, append-height, conformance, per-book routing, and Postgres execution changes under review, and names the blockers between the current shape and a two-track distribution model — on-device Personal, hosted SQL for funds and shared workspaces.
 
 Related decision gate: [#282](https://github.com/mattmarshall/ratio/issues/282)
 (reviewed config storage). Related measurement: [#268](https://github.com/mattmarshall/ratio/issues/268).
@@ -518,3 +518,12 @@ the binary owns the startup singleton. The two-book test now checks isolated
 audit writes and NAV reads after cold recovery; MCP proposal writes use the
 selected store. The server still selects one store at startup, so hosted
 provider routing and recovery evidence remain open.
+
+### October 2, 2026 Postgres execution note (#361, branch-local)
+
+`PgExecutor` now owns SQL execution beneath `PgProjection`, while
+`PsqlExecutor` keeps the current subprocess behavior. The executor returns
+unaligned tab-separated rows with empty/null cells as the existing parser
+expects, and executes a transaction string in one request. A disposable
+PostgreSQL 16 run passed the existing live projection suite. This prepares
+the transport boundary; it does not add a native client or journal backend.

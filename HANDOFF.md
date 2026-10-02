@@ -1611,3 +1611,14 @@ serving/CLI callers inject the selected store. A durable caller must use
 store; the single-backend binary owns the startup singleton and still selects
 one store at startup.
 The hosted router and provider recovery evidence remain acceptance work.
+
+## Postgres execution seam, October 2, 2026 (issue #361, branch-local)
+
+`PgProjection` now owns an explicit `PgExecutor` instead of a URL coupled to
+`run_psql`. Its default `PsqlExecutor` issues the same `psql` arguments and
+returns the same unaligned tabular output. A replacement executor must keep
+the tab/null shape and execute a transaction request atomically. The
+disposable PostgreSQL 16 `pg_engine_test` passed; PostgreSQL 14 cannot parse
+the existing `UNIQUE NULLS NOT DISTINCT` schema. This seam does not introduce
+a library client or a Postgres journal. The recovery/conformance acceptance
+gates still precede #362.
