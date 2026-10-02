@@ -46,6 +46,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 mod objects;
+pub mod reports;
+pub mod proposals;
+pub mod changes;
 pub mod bootstrap;
 pub mod control;
 pub use objects::{

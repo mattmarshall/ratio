@@ -1404,27 +1404,9 @@ fn postings_json(book: &Path, query: &str) -> Result<String> {
 
 /// The newest stored break report.
 fn breaks_json(book: &Path) -> Result<String> {
-    let dir = book.join("reports");
-    let mut found: Vec<PathBuf> = std::fs::read_dir(&dir)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|x| x == "pb"))
-                .collect()
-        })
-        .unwrap_or_default();
-    // Newest by modification time; the name carries a digest, not an order.
-    found.sort_by_key(|p| {
-        std::fs::metadata(p)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-    });
-    let Some(path) = found.last() else {
+    let Some(report) = ratio_store::reports::newest_report(book)? else {
         return Ok("{\"report\":null}".to_string());
     };
-
-    let report = kernel::BreakReport::decode(&std::fs::read(path)?[..])
-        .with_context(|| format!("reading {}", path.display()))?;
 
     let breaks: Vec<String> = report
         .breaks
@@ -1528,16 +1510,7 @@ fn rules_json(book: &Path) -> Result<String> {
     // beside the active rules is the point: the difference between the two
     // lists is exactly what a human decision bought.
     let mut pending = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(book.join("proposals")) {
-        let mut paths: Vec<PathBuf> = rd
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "toml"))
-            .collect();
-        paths.sort();
-        for p in paths {
-            let id = p.file_stem().unwrap_or_default().to_string_lossy().to_string();
-            let text = std::fs::read_to_string(&p).unwrap_or_default();
+    for (id, text) in ratio_store::proposals::list(book)? {
             let rendered = match RuleSet::from_toml(&text) {
                 Ok(s) => s
                     .rules
@@ -1567,7 +1540,6 @@ fn rules_json(book: &Path) -> Result<String> {
                 quote(&rendered),
                 already
             ));
-        }
     }
 
     Ok(format!(

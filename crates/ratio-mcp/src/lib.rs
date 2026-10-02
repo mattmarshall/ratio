@@ -463,9 +463,7 @@ fn tool_propose_template(book: &std::path::Path, args: &Value, attached: bool) -
     }
 
     let id = format!("template-{}", template.id);
-    let dir = book.join("proposals");
-    std::fs::create_dir_all(&dir).context("creating the proposals directory")?;
-    std::fs::write(dir.join(format!("{id}.toml")), toml)
+    ratio_store::proposals::write(book, &id, toml)
         .with_context(|| format!("writing proposal {id}"))?;
 
     out.push_str(&format!(
@@ -555,10 +553,7 @@ fn tool_propose_rule(book: &std::path::Path, args: &Value, attached: bool) -> Re
     }
 
     let id = ratio_store::Digest::of(toml.as_bytes());
-    let dir = book.join("proposals");
-    std::fs::create_dir_all(&dir).context("creating proposals directory")?;
-    std::fs::write(dir.join(format!("{}.toml", id.short())), toml)
-        .context("writing proposal")?;
+    ratio_store::proposals::write(book, id.short(), toml)?;
 
     let mut rendered = String::new();
     for rule in &set.rules {

@@ -1488,8 +1488,81 @@ published immutable bootstrap for new books. That bootstrap recovers chart,
 identity, kind, opening configuration, and creator membership. Later
 configuration promotions and explicit membership grants/revocations use the
 same durable object backend and recover by verified predecessor transition.
-NAVS, reports/proposals, and CHANGELOG remain local. The object-only
+NAVS, reports, proposals, and CHANGELOG are object-backed on the #300 branch. The object-only
 probe now explicitly characterizes a legacy book created before storage was
 attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery
 guarantee.
+
+The #300 CLI entry guard attaches configured object storage before book
+commands, including person-only verbs and stdio MCP. It closes the local-only
+journal selection path for those commands; the later #300 NAV slice persists
+NAVS; later slices persist reports, proposals, and CHANGELOG. The complete #300 and #264 acceptance gates
+remain open.
+
+### NAV evidence, October 1, 2026 (issue #300, branch-local)
+
+The configured object store holds a protobuf `StoredNavStrike` at a
+deterministic hash of `(view, strike id)`. `If-None-Match:*` is the one-answer
+claim even when two writers passed the earlier list check. `NavEvidence.tla`
+models a process crash and durable reopen; its unconditional-PUT probe loses
+an acknowledged strike. Legacy `NAVS` migration claims the exact source bytes
+under `_nav-migration/<book>`, resumes a partial upload, and writes a completion
+marker only after every strike is present. Cold reads recheck those source
+strikes and refuse loss or mutation. The local fallback remains for an
+unconfigured process. Reports, proposals, CHANGELOG, external backup, and a
+customer restore drill remain unproved under #300/#264.
+
+### Reconciliation report evidence, October 1, 2026 (issue #300, branch-local)
+
+The CLI recon writer and console live-holdings writer now append exact
+`ratio.v1.BreakReport` bytes inside a `StoredReport` protobuf envelope on the
+configured object store. Console and watch read the same ordered report log.
+A legacy `reports/*.pb` directory is captured under `_report-migration/<book>`
+in prior mtime/path order, including each original modification timestamp; a
+completion claim follows only after all report sequence objects match. A cold
+read refuses a hole or missing migrated report. The unconfigured local path
+still writes and reads the original files. Proposals, CHANGELOG, a live S3
+restore, and customer recovery objectives remain #300/#264 work.
+
+### Proposal evidence, October 1, 2026 (issue #300, branch-local)
+
+MCP rule and template proposal writers now conditionally store a versioned
+`StoredProposal` envelope at a deterministic per-book, per-id object key.
+Identical retries succeed; changed TOML under the same ID refuses. CLI approval,
+watch, and console read the durable drafts, keeping activation exclusively
+behind the person's approval door. A legacy `proposals/*.toml` directory is
+fenced as exact bytes under `_proposal-migration/<book>`; interrupted migration
+resumes and a cold read refuses a missing completed draft. Live S3 recovery
+and customer RPO/RTO/retention decisions remain #300/#264 work.
+
+### Audit evidence, October 1, 2026 (issue #300, branch-local)
+
+Console actions and CLI approval append their exact actor/action lines to a
+per-book object sequence when storage is configured. Readers refuse holes and
+malformed durable entries. A legacy `CHANGELOG` is fenced by its exact source
+bytes and completion claim; interrupted import resumes, and completed import
+checks its retained prefix. This does not establish the external backup,
+restore, retention, or customer recovery objectives in #264/#300.
+
+### Disposable operational restore, October 2, 2026 (issue #300, branch-local)
+
+The console's explicit object-store handle now reaches report, proposal,
+audit, NAV read, and NAV replay paths; those previously consulted the
+process-wide install even when the console had been given a different store.
+`operational_recovery_test` copies a quiescent directory object store into a
+new namespace, deletes the original book and object roots, and reopens it in
+a child process. It verifies journal digest, close and explanation records,
+the signed NAV, newest report order, proposal bytes, audit attribution, and
+membership isolation. Removing and corrupting objects in each protected
+plane produces refusal. This is local
+disposable evidence, not a live customer S3 restore or an RPO/RTO promise.
+Removing a newly recorded NAV/proposal object also makes a request for its
+known ID refuse; an empty list alone is not evidence of completeness. The
+CLI/MCP installation guard has a sabotage check: removing the pre-dispatch
+`install_control_backend()` call made
+`//crates/ratio:configured_store_refuses_local_cli_test` fail with `init
+accepted a local-only book`, and restoring the call made it green.
+The same test now exercises post, strike, close, approve, and accept against
+an unusable configured directory store. Each must fail for that backend
+error and leave the seeded book bytes unchanged.

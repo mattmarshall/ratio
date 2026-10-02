@@ -5344,3 +5344,76 @@ conjunctive.
 forecast, required savings rate, FIRE number, goal RPC in core, and automatic
 scenario posting remain refused. Live OAuth evidence remains on #168 until the
 registered scopes are exercised against a permitted Personal book.
+
+### Amendment, 2026-10-01 — CLI writers attach configured storage
+
+Related: #300. CLI book commands, including person-only verbs and stdio MCP,
+now attach configured object storage before opening a book. The journal stays
+the book of record. This guard does not make NAVS, reports/proposals, or
+CHANGELOG durable, and it does not prove external backup or recovery. Remaining
+work: #300 — persist operational evidence and verify every writer; #264 —
+agree objectives and prove an external restore with named operators.
+The branch-local regression now seeds a valid book and confirms post, strike,
+close, approve, and accept all refuse an unusable configured backend without
+changing local book bytes; init and stdio MCP remain in the same gate.
+
+### Amendment, 2026-10-01 — NAV strike evidence on configured storage
+
+Related: #300. A configured object store now holds each signed NAV answer as a
+`ratio.storage.v1.StoredNavStrike` under a deterministic `(book, view, id)` key.
+A conditional PUT is the final refusal of a second answer even if concurrent
+writers both passed the prior list check. `NavEvidence.tla` models crash/reopen
+and the unconditional overwrite failure; all 42 manual TLA probes went red for
+their named reasons. Legacy NAVS bytes are fenced and retained in object
+storage during migration, with a completion marker written only after every
+strike is present. Local JSONL remains the unconfigured shape. This does not
+complete #300: reports/proposals, CHANGELOG, external recovery and every-writer
+verification remain. It does not complete #264: RPO, RTO, retention, named
+operators, and a customer-book restore drill remain unagreed or unproved.
+
+### Amendment, 2026-10-01 — reconciliation report evidence on configured storage
+
+Related: #300. Every in-book report writer now uses the shared report store:
+CLI reconciliation and console live holdings append exact `BreakReport` bytes
+inside a versioned protobuf envelope. Console and watch read its last durable
+sequence, refusing a hole. The migration of local `reports/*.pb` claims the
+complete original source under `_report-migration/<book>`, ordered by mtime
+then path and retaining each timestamp; it checks occupied slots and claims
+completion only after all reports match. The journal remains the book of
+record. This does not complete #300: proposals and CHANGELOG still need durable
+storage, and #264 still needs a live external restore and agreed objectives.
+
+### Amendment, 2026-10-01 — proposal evidence on configured storage
+
+Related: #300. MCP rule/template drafts, CLI approval, watch, and console now
+use one proposal store. It conditionally claims exact TOML bytes under a
+versioned protobuf envelope keyed by `(book, proposal id)`: identical retry
+is idempotent and a changed draft under the same id refuses. A legacy local
+proposal directory is fenced by a retained source and completion claim;
+interrupted migration resumes and cold reads refuse a missing completed draft.
+The proposal is still inactive until a person approves it. This leaves
+CHANGELOG persistence, a live S3 restore, and customer recovery objectives
+open under #300/#264.
+
+### Amendment, 2026-10-02 — ordered audit evidence on configured storage
+
+Related: #300. Console actions and CLI approvals now append their exact
+five-field actor/action lines to a per-book object sequence. Config version
+and change-log readers use that same ordered source and refuse a missing or
+malformed durable entry. A legacy `CHANGELOG` is fenced by its exact bytes,
+then imported with a retained completion claim. This preserves audit
+attribution after a cold reopen. Live external restore, customer recovery
+objectives, retention, and operator responsibility remain #300/#264 work.
+
+### Amendment, 2026-10-02 — disposable operational evidence restore
+
+Related: #300 and #264. The console now passes its explicit object-store
+handle through NAV, report, proposal, and audit reads/writes; a configured
+console no longer consults an unrelated process install for those artifacts.
+A Bazel test copies a quiescent directory store to an independent namespace,
+deletes the original roots, and replays a published book in a fresh process.
+It checks cited closes/explanations, NAV replay, report ordering, proposal and
+audit bytes, and membership isolation; removed or corrupt evidence refuses.
+This is not a live S3 backup job or the customer RPO/RTO and operator drill.
+Those external recovery gates belong to #264. #300's local evidence and
+configured-writer changes remain branch-local until its PR lands.

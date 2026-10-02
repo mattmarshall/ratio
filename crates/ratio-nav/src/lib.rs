@@ -45,8 +45,11 @@ pub mod closure;
 pub mod explain;
 
 use anyhow::{bail, Context, Result};
+use prost::Message;
 use ratio_project::views;
-use ratio_store::{AccountTypeRecord, ConfigStore, Digest, FileBook, Journal, JournalEntry};
+use ratio_proto::ratio::storage::v1::StoredNavStrike;
+use ratio_store::{installed_object_store, AccountTypeRecord, ConfigStore, Digest, FileBook, Journal, JournalEntry, ObjectStore};
+use std::sync::Arc;
 
 /// A NAV, pinned to the journal that produced it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -361,10 +364,21 @@ pub fn strike(
     valuation_time: i64,
     actor: &str,
 ) -> Result<Strike> {
+    strike_with_store(book_path, view, valuation_time, actor, installed_object_store())
+}
+
+/// Derive a strike from one explicitly selected book store.
+pub fn strike_with_store(
+    book_path: &std::path::Path,
+    view: &str,
+    valuation_time: i64,
+    actor: &str,
+    store: Option<Arc<dyn ObjectStore>>,
+) -> Result<Strike> {
     if actor.trim().is_empty() {
         bail!("a NAV is signed by somebody — pass --actor or set RATIO_ACTOR");
     }
-    let book = FileBook::open(book_path)?;
+    let book = FileBook::open_with(book_path, store)?;
     // ⛔ ONE WALK, NOT THREE COPIES. This read the journal into a `Vec`, then
     // `prefix_digest` serialized every entry into a second `Vec`, then
     // `fold_nav` walked the first — to produce two numbers and a hash.
@@ -435,7 +449,13 @@ pub fn strike(
 
 /// Re-derive a strike and report what was found.
 pub fn replay(book_path: &std::path::Path, s: &Strike) -> Result<Replay> {
-    Ok(refold(book_path, s)?.0)
+    replay_with_store(book_path, s, installed_object_store())
+}
+
+/// Replay a cited answer against one explicitly selected book store.
+pub fn replay_with_store(book_path: &std::path::Path, s: &Strike,
+    store: Option<Arc<dyn ObjectStore>>) -> Result<Replay> {
+    Ok(refold_with_store(book_path, s, store)?.0)
 }
 
 /// Re-derive a strike and report what the fold COST, step by step.
@@ -516,8 +536,13 @@ pub fn shape_of(
 /// are unmeasurable against a fold; per-entry timing is the thing that would
 /// change what it measured.
 fn refold(book_path: &std::path::Path, s: &Strike) -> Result<(Replay, explain::Measured)> {
+    refold_with_store(book_path, s, installed_object_store())
+}
+
+fn refold_with_store(book_path: &std::path::Path, s: &Strike,
+    store: Option<Arc<dyn ObjectStore>>) -> Result<(Replay, explain::Measured)> {
     let setup = std::time::Instant::now();
-    let book = FileBook::open(book_path)?;
+    let book = FileBook::open_with(book_path, store)?;
 
     // ⛔ ONE WALK, AND ONLY THE PREFIX IS FOLDED. This read the whole journal
     // into a `Vec`, sliced it, and hashed a second `Vec` of the slice.
@@ -682,12 +707,182 @@ fn parse(l: &str) -> Option<Strike> {
     })
 }
 
+fn nav_book_id(book_path: &std::path::Path) -> Result<&str> {
+    book_path.file_name().and_then(|part| part.to_str())
+        .filter(|part| !part.is_empty())
+        .context("a durable NAV strike needs a book directory name")
+}
+
+fn nav_prefix(book_path: &std::path::Path) -> Result<String> {
+    Ok(format!("{}/nav-strikes/", nav_book_id(book_path)?))
+}
+
+fn nav_key(prefix: &str, strike: &Strike) -> String {
+    let identity = format!("{}\0{}", strike.view, strike.id);
+    format!("{prefix}{}", Digest::of(identity.as_bytes()).as_str())
+}
+
+fn nav_record(book_id: &str, strike: &Strike) -> Result<StoredNavStrike> {
+    Ok(StoredNavStrike {
+        format_version: 1,
+        book_id: book_id.into(),
+        view: strike.view.clone(),
+        strike_id: strike.id.clone(),
+        valuation_time: Some(ratio_proto::timestamp_proto::google::protobuf::Timestamp {
+            seconds: strike.valuation_time,
+            nanos: 0,
+        }),
+        actor: strike.actor.clone(),
+        journal_position: i64::try_from(strike.journal_position)
+            .context("NAV journal position does not fit in i64")?,
+        journal_digest: strike.journal_digest.clone(),
+        net_asset_value: strike.net_asset_value,
+        trial_balance_difference: strike.trial_balance_difference,
+        config_digest: strike.config_digest.clone(),
+    })
+}
+
+fn strike_from_record(record: StoredNavStrike, book_id: &str) -> Result<Strike> {
+    if record.format_version != 1 || record.book_id != book_id {
+        bail!("NAV strike has an unsupported version or different book identity");
+    }
+    let valuation = record.valuation_time.context("NAV strike has no valuation time")?;
+    if valuation.nanos != 0 {
+        bail!("NAV valuation point has unsupported subsecond precision");
+    }
+    Ok(Strike {
+        view: record.view,
+        id: record.strike_id,
+        valuation_time: valuation.seconds,
+        actor: record.actor,
+        journal_position: usize::try_from(record.journal_position)
+            .context("NAV journal position does not fit in usize")?,
+        journal_digest: record.journal_digest,
+        net_asset_value: record.net_asset_value,
+        trial_balance_difference: record.trial_balance_difference,
+        config_digest: record.config_digest,
+    })
+}
+
+fn migrate_local_navs(book_path: &std::path::Path, store: &dyn ObjectStore) -> Result<()> {
+    let path = book_path.join("NAVS");
+    let book_id = nav_book_id(book_path)?;
+    let claim_key = format!("_nav-migration/{book_id}");
+    let complete_key = format!("_nav-migration-complete/{book_id}");
+    let local = match std::fs::read_to_string(&path) {
+        Ok(text) => Some(text),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error).with_context(|| format!("reading {}", path.display())),
+    };
+    let prefix = nav_prefix(book_path)?;
+    let claimed = store.get(&claim_key)?;
+    let text = match (local, claimed) {
+        (None, None) => return Ok(()),
+        (Some(local), Some(claimed)) => {
+            if local.as_bytes() != claimed { bail!("local NAVS changed after durable migration began"); }
+            local
+        }
+        (None, Some(claimed)) => String::from_utf8(claimed)
+            .context("durable NAVS migration source is not UTF-8")?,
+        (Some(local), None) => {
+            if local.trim().is_empty() { return Ok(()); }
+            if !store.list(&prefix)?.is_empty() {
+                bail!("local NAVS cannot seed an already durable NAV strike set");
+            }
+            if !store.put_if_absent(&claim_key, local.as_bytes())?
+                && store.get(&claim_key)?.as_deref() != Some(local.as_bytes())
+            {
+                bail!("concurrent NAVS migration names different source bytes");
+            }
+            local
+        }
+    };
+    let digest = Digest::of(text.as_bytes());
+    let claim = digest.as_str().as_bytes();
+    let completed = store.get(&complete_key)?;
+    if completed.as_deref().is_some_and(|body| body != claim) {
+        bail!("completed NAVS migration names different source bytes");
+    }
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        let strike = parse(line).context("legacy NAVS has an unreadable strike")?;
+        let key = nav_key(&prefix, &strike);
+        let bytes = nav_record(book_id, &strike)?.encode_to_vec();
+        if completed.is_some() {
+            if store.get(&key)?.as_deref() != Some(bytes.as_slice()) {
+                bail!("completed NAVS migration lost or changed a strike for view {} and point {}", strike.view, strike.id);
+            }
+        } else if !store.put_if_absent(&key, &bytes)? {
+            let existing = store.get(&key)?.context("occupied NAV strike disappeared")?;
+            if existing != bytes {
+                bail!("legacy NAV strike conflicts with durable answer for view {} and point {}", strike.view, strike.id);
+            }
+        }
+    }
+    if !store.put_if_absent(&complete_key, claim)?
+        && store.get(&complete_key)?.as_deref() != Some(claim)
+    {
+        bail!("completed NAVS migration names different source bytes");
+    }
+    Ok(())
+}
+
+/// Read strikes from an explicit store, for recovery tests and per-book callers.
+/// The installed store is used by the public `list` door below.
+pub fn list_with_store(
+    book_path: &std::path::Path,
+    store: Option<Arc<dyn ObjectStore>>,
+) -> Result<Vec<Strike>> {
+    let Some(store) = store else {
+        let text = std::fs::read_to_string(book_path.join("NAVS")).unwrap_or_default();
+        let mut out: Vec<Strike> = text.lines().filter_map(parse).collect();
+        out.reverse();
+        return Ok(out);
+    };
+    migrate_local_navs(book_path, store.as_ref())?;
+    let prefix = nav_prefix(book_path)?;
+    let book_id = nav_book_id(book_path)?;
+    let mut out = Vec::new();
+    for key in store.list(&prefix)? {
+        let bytes = store.get(&key)?.with_context(|| format!("listed NAV strike {key} disappeared"))?;
+        let record = StoredNavStrike::decode(bytes.as_slice())
+            .with_context(|| format!("decoding NAV strike {key}"))?;
+        let strike = strike_from_record(record, book_id)?;
+        if key != nav_key(&prefix, &strike) {
+            bail!("NAV strike key does not match its book/view/point: {key}");
+        }
+        out.push(strike);
+    }
+    out.sort_by(|a, b| b.valuation_time.cmp(&a.valuation_time)
+        .then_with(|| a.view.cmp(&b.view)).then_with(|| a.id.cmp(&b.id)));
+    Ok(out)
+}
+
+/// The deterministic key is the durable one-answer claim. A competing
+/// writer may have passed the earlier list check; only this conditional PUT
+/// decides whether its strike was recorded.
+fn record_with_store(
+    book_path: &std::path::Path,
+    strike: &Strike,
+    store: Option<Arc<dyn ObjectStore>>,
+) -> Result<()> {
+    if let Some(store) = store {
+        migrate_local_navs(book_path, store.as_ref())?;
+        let prefix = nav_prefix(book_path)?;
+        let bytes = nav_record(nav_book_id(book_path)?, strike)?.encode_to_vec();
+        if !store.put_if_absent(&nav_key(&prefix, strike), &bytes)? {
+            bail!("a NAV is already struck for {} in view {} — refusing a second answer", strike.id, strike.view);
+        }
+        return Ok(());
+    }
+    let path = book_path.join("NAVS");
+    let mut prior = std::fs::read_to_string(&path).unwrap_or_default();
+    prior.push_str(&line(strike));
+    std::fs::write(&path, prior).context("recording the strike")
+}
+
 /// Every strike on a book, in every view, newest first.
 pub fn list(book_path: &std::path::Path) -> Result<Vec<Strike>> {
-    let text = std::fs::read_to_string(book_path.join("NAVS")).unwrap_or_default();
-    let mut out: Vec<Strike> = text.lines().filter_map(parse).collect();
-    out.reverse();
-    Ok(out)
+    list_with_store(book_path, installed_object_store())
 }
 
 /// Every strike in one book of record, newest first.
@@ -702,7 +897,13 @@ pub fn list_in(book_path: &std::path::Path, view: &str) -> Result<Vec<Strike>> {
 /// lookup on the id alone returns whichever the file happens to hold first —
 /// silently, and labelled with the view the caller asked for.
 pub fn get(book_path: &std::path::Path, view: &str, id: &str) -> Result<Strike> {
-    list(book_path)?
+    get_with_store(book_path, view, id, installed_object_store())
+}
+
+/// Look up one cited answer on an explicitly selected book store.
+pub fn get_with_store(book_path: &std::path::Path, view: &str, id: &str,
+    store: Option<Arc<dyn ObjectStore>>) -> Result<Strike> {
+    list_with_store(book_path, store)?
         .into_iter()
         .find(|s| s.id == id && s.view == view)
         .with_context(|| format!("no NAV strike {id:?} in view {view:?}"))
@@ -719,7 +920,19 @@ pub fn strike_and_record(
     valuation_time: i64,
     actor: &str,
 ) -> Result<Strike> {
-    let s = strike(book_path, view, valuation_time, actor)?;
+    strike_and_record_with_store(book_path, view, valuation_time, actor,
+        installed_object_store())
+}
+
+/// Strike and conditionally record on one explicitly selected store.
+pub fn strike_and_record_with_store(
+    book_path: &std::path::Path,
+    view: &str,
+    valuation_time: i64,
+    actor: &str,
+    store: Option<Arc<dyn ObjectStore>>,
+) -> Result<Strike> {
+    let s = strike_with_store(book_path, view, valuation_time, actor, store.clone())?;
     // ⛔ THE KEY IS `(view, id)`, AND WIDENING IT IS WHAT MAKES MULTI-VIEW BOOKS
     // POSSIBLE WITHOUT WEAKENING ANYTHING. `Ratio.Period.one_answer_per_view_
     // per_day` still refuses a second answer to the same question; two views
@@ -727,7 +940,7 @@ pub fn strike_and_record(
     // and `two_views_are_two_answers_and_neither_restates_the_other` is that
     // fact. Keyed on the id alone, the settlement strike would be refused as a
     // restatement of the accounting one.
-    if list(book_path)?.iter().any(|e| e.id == s.id && e.view == s.view) {
+    if list_with_store(book_path, store.clone())?.iter().any(|e| e.id == s.id && e.view == s.view) {
         bail!(
             "a NAV is already struck for {} in view {} — a valuation point has one answer \
              per book of record, and replacing it would remove the first",
@@ -735,17 +948,14 @@ pub fn strike_and_record(
             s.view
         );
     }
-    let path = book_path.join("NAVS");
-    let mut prior = std::fs::read_to_string(&path).unwrap_or_default();
-    prior.push_str(&line(&s));
-    std::fs::write(&path, prior).context("recording the strike")?;
+    record_with_store(book_path, &s, store)?;
     Ok(s)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratio_store::{Account, AccountTypeRecord as A, PostingRecord};
+    use ratio_store::{Account, AccountTypeRecord as A, DirStore, MemoryStore, PostingRecord};
 
     /// The view a book declaring none has. Every book below is one.
     const V: &str = ratio_rules::UNDECLARED_VIEW;
@@ -903,6 +1113,52 @@ mod tests {
         let back = get(&d, V, &s.id).unwrap();
         assert_eq!(back, s, "what was written is not what comes back");
         assert!(replay(&d, &back).unwrap().ok());
+    }
+
+    #[test]
+    fn a_durable_strike_survives_a_cold_book_directory_and_refuses_restatement() {
+        let d = book("durable-strike");
+        let first = strike(&d, V, NOON, "e.marsh").unwrap();
+        let object_root = d.with_extension("object-store");
+        let _ = std::fs::remove_dir_all(&object_root);
+        for store in [
+            Arc::new(MemoryStore::new()) as Arc<dyn ObjectStore>,
+            Arc::new(DirStore::at(&object_root)) as Arc<dyn ObjectStore>,
+        ] {
+            record_with_store(&d, &first, Some(store.clone())).unwrap();
+            let err = record_with_store(&d, &first, Some(store.clone())).unwrap_err().to_string();
+            assert!(err.contains("already struck"), "{err}");
+            let mut other_view = first.clone();
+            other_view.view = "another-view".into();
+            record_with_store(&d, &other_view, Some(store.clone())).unwrap();
+            assert_eq!(list_with_store(&d, Some(store.clone())).unwrap().len(), 2);
+            let _ = std::fs::remove_dir_all(&d);
+            let recovered = list_with_store(&d, Some(store)).unwrap();
+            assert!(recovered.contains(&first));
+            assert!(recovered.contains(&other_view));
+        }
+    }
+
+    #[test]
+    fn a_legacy_navs_migration_retains_its_source_and_refuses_loss() {
+        let d = book("legacy-nav-migration");
+        let s = strike_and_record(&d, V, NOON, "e.marsh").unwrap();
+        let object_root = d.with_extension("migration-objects");
+        let _ = std::fs::remove_dir_all(&object_root);
+        let store = Arc::new(DirStore::at(&object_root));
+        assert_eq!(list_with_store(&d, Some(store.clone())).unwrap(), vec![s.clone()]);
+        std::fs::remove_file(d.join("NAVS")).unwrap();
+        assert_eq!(list_with_store(&d, Some(store.clone())).unwrap(), vec![s.clone()]);
+        let key = nav_key(&nav_prefix(&d).unwrap(), &s);
+        // The migration source survives independently; deletion of the
+        // completed strike is a refusal, never an empty successful restore.
+        assert!(store.get(&key).unwrap().is_some());
+        let marker = format!("_nav-migration/{}", nav_book_id(&d).unwrap());
+        assert!(store.get(&marker).unwrap().is_some());
+        std::fs::remove_file(object_root.join(&key)).unwrap();
+        let err = list_with_store(&d, Some(Arc::new(DirStore::at(&object_root))))
+            .unwrap_err().to_string();
+        assert!(err.contains("lost or changed"), "{err}");
     }
 
     #[test]

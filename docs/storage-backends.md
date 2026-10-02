@@ -1,11 +1,9 @@
 # Storage backends and the distribution model
 
-Status: **analysis and proposal.** Nothing here is a committed feature, a PLAN
-amendment, or an authorization to implement. It maps the persistence layer as
-built, states which alternative backends the existing seams can carry, and
-names the blockers that stand between the current shape and a two-track
-distribution model — on-device Personal, hosted SQL for funds and shared
-workspaces.
+Status: **analysis with a branch-local #300 NAV evidence amendment.** The
+backend verdicts remain proposals. This maps the persistence layer and names
+the blockers between the current shape and a two-track distribution model —
+on-device Personal, hosted SQL for funds and shared workspaces.
 
 Related decision gate: [#282](https://github.com/mattmarshall/ratio/issues/282)
 (reviewed config storage). Related measurement: [#268](https://github.com/mattmarshall/ratio/issues/268).
@@ -422,9 +420,10 @@ kernel.** Effort: **medium, and it is operational as much as it is code.**
 ### 5.10 Recovery objectives are unagreed
 
 `docs/recovery.md` records that RPO, RTO, backup frequency, retention, and
-named operators are **all unagreed**, and that NAV strikes, post-create
-membership, and later configuration promotions are still local for legacy
-books. Multiplying the number of backends before these are agreed multiplies
+named operators are **all unagreed**. Published books persist post-create
+membership and configuration transitions; the branch-local #300 slice also
+persists NAV strikes. Legacy unpublished books still need local chart,
+identity, and configuration material captured. Multiplying backends now multiplies
 the number of restore procedures that do not exist. ⚠ **Do not add a backend
 before #264 has answers; add the backend to the answer.**
 
@@ -457,3 +456,36 @@ criteria, per the roadmap's own rules.
 interesting problem — spends the toolchain budget before the storage seam is
 ready to carry a second backend, and leaves the hosted read path broken for
 whichever customer arrives first.
+
+### October 1, 2026 report evidence note (#300, branch-local)
+
+`StoredReport` keeps the original `BreakReport` bytes, filename, and recording
+time. Configured storage appends each envelope to a per-book sequence log;
+CLI, console, and watch use the same write/read door. Legacy local reports are
+migrated in their prior mtime/path order under a fenced source and completion
+claim. This closes the report-only part of operational evidence, not proposals,
+CHANGELOG, customer backup policy, or an external restore drill.
+
+### October 1, 2026 proposal evidence note (#300, branch-local)
+
+`StoredProposal` conditionally stores exact TOML by `(book, proposal id)`.
+MCP writers and the approval/watch/console readers use the same door. Local
+proposals migrate through a retained source and completion claim; changing
+reviewed bytes under one id refuses. A proposal remains inactive until a
+person approves it. CHANGELOG and the external recovery drill remain open.
+
+### October 2, 2026 audit evidence note (#300, branch-local)
+
+`StoredChange` keeps each exact five-field actor/action line, including its
+newline, in a per-book `SeqLog`. Console and CLI writers plus config-version
+and change-log readers use this door. A legacy `CHANGELOG` migrates under an
+exact-byte source and completion claim; durable reads refuse gaps and malformed
+entries. A live external restore and customer recovery objectives remain open.
+
+### October 2, 2026 disposable object restore note (#300, branch-local)
+
+The console now passes its explicit store through operational evidence paths.
+`operational_recovery_test` copies a directory object store into a separate
+namespace, deletes the original roots, and checks journal and evidence replay
+in a child process. It covers both book access and corruption/refusal. This
+does not establish live S3 backup copies, retention, or customer objectives.

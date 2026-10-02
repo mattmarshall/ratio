@@ -166,6 +166,21 @@ fn main() -> Result<()> {
     let (positional, book) = split_book_flag(&args)?;
     let cmd: Vec<&str> = positional.iter().map(String::as_str).collect();
 
+    // ⛔ A CLI or stdio writer must attach the configured object store before
+    // opening any book. Otherwise a close, strike, or accepted explanation can
+    // acknowledge a local-only write while the deployed journal is durable.
+    // The scale runner has its own store and never opens this CLI book.
+    // Recovery capture/restore select explicit source and destination
+    // namespaces; attaching the serving journal first would make an
+    // otherwise valid restore depend on an unrelated live backend.
+    if !matches!(
+        cmd.as_slice(),
+        [] | ["help"] | ["--help"] | ["-h"] | ["scale-run", "--size", _, "--id", _]
+            | ["recovery", "capture"] | ["recovery", "restore"]
+    ) {
+        install_control_backend()?;
+    }
+
     match cmd.as_slice() {
         [] | ["help"] | ["--help"] | ["-h"] => {
             print!("{USAGE}");
@@ -2804,14 +2819,10 @@ fn recon(
             // the newest one; a report that only ever existed on somebody's
             // terminal is not evidence anybody else can look at.
             use prost::Message;
-            let dir = book.join("reports");
-            std::fs::create_dir_all(&dir).context("creating the reports directory")?;
             let name = format!("{}-{}.pb", digest.short(), parsed.len());
-            std::fs::write(
-                dir.join(&name),
-                report.to_proto(&book_label(&book), &name).encode_to_vec(),
-            )
-            .context("storing the report")?;
+            ratio_store::reports::write_report(
+                &book, &name, &report.to_proto(&book_label(&book), &name).encode_to_vec(),
+            )?;
 
             println!("\nposted {posted} entrie(s) into {}", book.display());
             println!("  report   reports/{name}");
@@ -3025,9 +3036,8 @@ fn approve_text_with_control(
 ) -> Result<String> {
     let book = book.to_path_buf();
     let mut b = FileBook::open(&book)?;
-    let path = book.join("proposals").join(format!("{id}.toml"));
-    let proposed = std::fs::read_to_string(&path)
-        .with_context(|| format!("no proposal {id} — expected {}", path.display()))?;
+    let proposed = ratio_store::proposals::read(&book, id)?
+        .with_context(|| format!("no proposal {id} for {}", book.display()))?;
     let incoming = RuleSet::from_toml(&proposed)?;
 
     // ⛔ A PROPOSED TOLERANCE IS REFUSED, NOT MERGED, AND NOT DROPPED.
@@ -3151,10 +3161,7 @@ fn approve_text_with_control(
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let line = format!("{when}\t{actor}\tapproved\t{id}\t{}\n", digest.as_str());
-    let log = book.join("CHANGELOG");
-    let mut prior = std::fs::read_to_string(&log).unwrap_or_default();
-    prior.push_str(&line);
-    std::fs::write(&log, prior).context("recording the approval")?;
+    ratio_store::changes::append(&book, &line).context("recording the approval")?;
 
     let mut out = format!(
         "approved {id}\n  {} rule(s) now active ({replaced} replaced)\n  \

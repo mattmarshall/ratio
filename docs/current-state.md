@@ -50,6 +50,12 @@ messages also pass the [issue-completion check](issue-completion.md).
   remain on issue 161. Exact client-template grants are enforced. The minimal
   read-only reference app remains on issue 270; neither should be
   confused with local provider activation.
+- **Personal goals status (October 2 audit):** book-scoped cited account sheets
+  and the goals app's live reader are on main. The deployed independent-Book
+  PKCE walkthrough required by issues 355 and 168 has no completion evidence
+  in those issues. Neither has an active PR or assignee; both now carry
+  `status:ready` in the GitHub project. Their remaining acceptance is live
+  operator evidence, not another account-sheet implementation.
 - **Demonstration data:** `deploy/seed-demo-funds.sh` seeds nine synthetic
   books: eight Investment funds and one Personal tax walkthrough.
   `deploy/seed_test.sh` verifies that inventory. Deployment
@@ -76,9 +82,21 @@ messages also pass the [issue-completion check](issue-completion.md).
   full replay, checkpoint load, and tail replay for the large demo shape
   (~5,400 entries); the journal remains the book of record.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
-  post-create configuration/membership transitions are built. NAVs,
-  reports/proposals, CHANGELOG, complete backup coverage, and the external
-  restore drill remain separate recovery work.
+  post-create configuration/membership transitions are built. The branch-local
+  #300 NAV slice conditionally persists signed strikes in the object store and
+  fences legacy NAVS migration. The later #300 slice stores exact report
+  bytes and their former mtime/path order in an append-only object log.
+  The proposal slice conditionally preserves the exact reviewed TOML by ID.
+  The audit trail now preserves ordered actor/action lines in the object store.
+  A disposable object-store backup reproduces those planes, cited closes and
+  explanations, NAV replay, report selection, and membership in a fresh
+  process. Complete live S3 backup coverage and the customer restore drill
+  remain #264 recovery work. The CLI entry point now attaches
+  configured object storage before book commands, including stdio MCP and
+  person-only writes. A seeded-book regression verifies post, strike, close,
+  approve, and accept refuse an unusable configured backend without a local
+  book mutation. Issue 300 remains open pending its PR and merge; the
+  external customer drill is #264 acceptance, not #300 acceptance.
 
 ## Scope decisions that remain in force
 

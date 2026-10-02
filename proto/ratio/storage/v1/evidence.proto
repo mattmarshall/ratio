@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package ratio.storage.v1;
+
+option java_multiple_files = true;
+option java_package = "build.marsh.ratio.storage.v1";
+option java_outer_classname = "EvidenceProto";
+
+// One signed NAV answer under a book/view/valuation-point claim.
+// The object key is deterministic; a second claim must be refused.
+message StoredNavStrike {
+  int32 format_version = 1;
+  string book_id = 2;
+  string view = 3;
+  string strike_id = 4;
+  google.protobuf.Timestamp valuation_time = 5;
+  string actor = 6;
+  int64 journal_position = 7;
+  string journal_digest = 8;
+  sint64 net_asset_value = 9;
+  sint64 trial_balance_difference = 10;
+  string config_digest = 11;
+}
+
+// Exact reconciliation report bytes, retained in append order. The nested
+// bytes are already a ratio.v1.BreakReport protobuf and are never rewritten.
+message StoredReport {
+  int32 format_version = 1;
+  string book_id = 2;
+  string filename = 3;
+  bytes report_bytes = 4;
+  google.protobuf.Timestamp record_time = 5;
+}
+
+// Fenced source for importing reports that predate durable storage. The
+// sequence is their former modification-time/path order, oldest first.
+message ReportMigration {
+  int32 format_version = 1;
+  string book_id = 2;
+  repeated StoredReport reports = 3;
+}
+
+// A model-authored draft. It is not active configuration: only a person's
+// separate approval may promote reviewed bytes.
+message StoredProposal {
+  int32 format_version = 1;
+  string book_id = 2;
+  string proposal_id = 3;
+  bytes toml_bytes = 4;
+}
+
+// Exact local drafts that predate configured object storage.
+message ProposalMigration {
+  int32 format_version = 1;
+  string book_id = 2;
+  repeated StoredProposal proposals = 3;
+}
+
+// One exact audit line, including its final newline, in append order.
+message StoredChange {
+  int32 format_version = 1;
+  string book_id = 2;
+  bytes line_bytes = 3;
+}
+
+// Exact local CHANGELOG bytes before configured object storage took over.
+message ChangeMigration {
+  int32 format_version = 1;
+  string book_id = 2;
+  bytes source_bytes = 3;
+}
