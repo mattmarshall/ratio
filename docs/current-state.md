@@ -134,7 +134,7 @@ messages also pass the [issue-completion check](issue-completion.md).
   implied; see the recovery and provider reports for exact limits.
 
 - **Per-book storage (#360, branch-local):** the console can resolve two
-  independent object stores by book ID in one process, including cold
+  MemoryStore and DirStore by book ID in one process, including cold
   published-book discovery, journal writes, and active configuration. An unregistered ID
   refuses, as does opening one materialized book against the other store.
   CLI, watch, API, MCP, projection, and NAV entry points now pass
