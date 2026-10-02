@@ -251,6 +251,13 @@ fn recovery_command(capture: bool) -> Result<()> {
     Ok(())
 }
 
+/// CLI book opens use the backend selected at process startup. A library
+/// `FileBook::open` must not consult process state when two books may have
+/// different stores in one process.
+fn open_cli_book(book: impl AsRef<std::path::Path>) -> Result<FileBook> {
+    FileBook::open_with(book, ratio_store::installed_object_store())
+}
+
 fn main() -> Result<()> {
     // Restore the default SIGPIPE behavior that Rust turns off at startup.
     //
@@ -487,7 +494,7 @@ fn templates_of(b: &FileBook) -> Result<(ratio_ingest::TemplateSet, ratio_store:
 fn ingest(book: PathBuf, file: &str, template_id: &str) -> Result<()> {
     use ratio_store::Plane;
 
-    let mut b = FileBook::open(&book)?;
+    let mut b = open_cli_book(&book)?;
     let (set, digest) = templates_of(&b)?;
     let template = set.template(template_id).with_context(|| {
         format!(
@@ -577,7 +584,7 @@ fn report_resolution(facts: &[ratio_ingest::Fact], master: &[ratio_ingest::Entit
 
 fn pending(book: PathBuf) -> Result<()> {
     use ratio_store::Plane;
-    let b = FileBook::open(&book)?;
+    let b = open_cli_book(&book)?;
     let facts: Vec<ratio_ingest::Fact> = b.records(Plane::Facts)?;
     let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
     let resolved = ratio_ingest::resolve_all(&facts, &master);
@@ -607,7 +614,7 @@ fn pending(book: PathBuf) -> Result<()> {
 
 fn entities(book: PathBuf) -> Result<()> {
     use ratio_store::Plane;
-    let b = FileBook::open(&book)?;
+    let b = open_cli_book(&book)?;
     let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
     if master.is_empty() {
         println!("the master is empty — `ratio entity add` puts something in it");
@@ -666,7 +673,7 @@ fn entity_add(book: PathBuf, args: &[&str]) -> Result<()> {
         bail!("--attr is required at least once, or nothing can ever resolve to this");
     }
 
-    let mut b = FileBook::open(&book)?;
+    let mut b = open_cli_book(&book)?;
     let entity = ratio_ingest::Entity {
         id: id.clone(),
         kind,
@@ -715,7 +722,7 @@ fn action(book: PathBuf, id: &str, instrument: &str, ratio: &str, ex_date: &str)
     // that depended on it would answer differently on every replay as the world
     // told us more: `//tla:announcements_in_side_log_check`.
     {
-        let mut b = FileBook::open(&book)?;
+        let mut b = open_cli_book(&book)?;
         let announce_id = format!("announce-{id}");
         // ⛔ STREAMED. Asking "has this action been announced?" does not need
         // the journal in memory, and this book is the one that grows forever.
@@ -1102,7 +1109,7 @@ fn bench(book: PathBuf, args: &[&str]) -> Result<()> {
     // The prices and rates a NAV reads. `Ratio.Closure.navCost` is
     // `markCost + fxCost + ...` — one price per SECURITY, one rate per
     // CURRENCY, and the tax lots in neither.
-    let b = FileBook::open(&dir)?;
+    let b = open_cli_book(&dir)?;
     let facts: Vec<ratio_ingest::Fact> = b.records(ratio_store::Plane::Facts)?;
     let prices: std::collections::BTreeMap<String, i64> = facts
         .iter()
@@ -1552,7 +1559,7 @@ fn init_with_kind(book: PathBuf, kind: &str) -> Result<()> {
 }
 
 pub(crate) fn init(book: PathBuf) -> Result<()> {
-    let mut b = FileBook::open(&book)?;
+    let mut b = open_cli_book(&book)?;
     if b.accounts()?.is_empty() {
         // A minimal chart that a single-currency equity fund can actually post
         // against — the fund type PLAN.md scopes the first shadow run to.
@@ -1593,7 +1600,7 @@ fn acct(dim: i64, name: &str, t: AccountTypeRecord) -> Account {
 
 fn config_set(book: PathBuf, file: &str) -> Result<()> {
     install_control_backend()?;
-    let mut b = FileBook::open(&book)?;
+    let mut b = open_cli_book(&book)?;
     let bytes = std::fs::read(file).with_context(|| format!("reading {file}"))?;
     let digest = b.put(&bytes)?;
     b.set_active(&digest)?;
@@ -1753,7 +1760,7 @@ fn config_set_control(
 ) -> Result<()> {
     install_control_backend()?;
     let intent = control_intent(operation, revision, predecessor)?;
-    let mut b = FileBook::open(&book)?;
+    let mut b = open_cli_book(&book)?;
     let bytes = std::fs::read(file).with_context(|| format!("reading {file}"))?;
     let set = RuleSet::from_toml(
         std::str::from_utf8(&bytes).context("configuration is not UTF-8")?,
@@ -1786,7 +1793,7 @@ fn membership_control(
 ) -> Result<()> {
     install_control_backend()?;
     let intent = control_intent(operation, revision, predecessor)?;
-    let b = FileBook::open(&book)?;
+    let b = open_cli_book(&book)?;
     let operation = control_operation(&b, &intent, membership_change(action, principal)?)?;
     let receipt = b.commit_control(&operation)?;
     println!(
@@ -2050,7 +2057,7 @@ fn activate_personal_fx_control(operation_id: &str) -> Result<()> {
 
 fn config_show(book: PathBuf) -> Result<()> {
     install_control_backend()?;
-    let b = FileBook::open(&book)?;
+    let b = open_cli_book(&book)?;
     match b.active()? {
         None => println!("no configuration promoted"),
         Some(d) => {
@@ -2070,7 +2077,7 @@ fn config_show(book: PathBuf) -> Result<()> {
 /// Reports every finding rather than the first, so a configuration is fixed in
 /// one pass. Questions do not fail the check — they are for a human to answer.
 fn rules_check(book: PathBuf, file: &str) -> Result<()> {
-    let b = FileBook::open(&book)?;
+    let b = open_cli_book(&book)?;
     let text = std::fs::read_to_string(file).with_context(|| format!("reading {file}"))?;
     let set = RuleSet::from_toml(&text)?;
     let chart = b.accounts()?;
@@ -2101,7 +2108,7 @@ fn rules_check(book: PathBuf, file: &str) -> Result<()> {
 /// Nobody writes this syntax and nothing parses it — the rules are the TOML.
 /// This is what a reviewer or an examiner is shown.
 fn rules_show(book: PathBuf) -> Result<()> {
-    let b = FileBook::open(&book)?;
+    let b = open_cli_book(&book)?;
     let digest = b
         .active()?
         .context("no configuration promoted — run `ratio init` or `ratio config set`")?;
@@ -2126,7 +2133,7 @@ fn rules_show(book: PathBuf) -> Result<()> {
 /// `Ratio.Chart.balanced_template_balances` proves every instantiation of such
 /// a template balances at any amount. The book still checks on the way in.
 fn apply(book: PathBuf, file: &str) -> Result<()> {
-    let mut b = FileBook::open(&book)?;
+    let mut b = open_cli_book(&book)?;
     let digest = b
         .active()?
         .context("no configuration promoted — run `ratio init` or `ratio config set`")?;
@@ -2178,7 +2185,7 @@ fn apply(book: PathBuf, file: &str) -> Result<()> {
 }
 
 fn post(book: PathBuf, file: &str) -> Result<()> {
-    let mut b = FileBook::open(&book)?;
+    let mut b = open_cli_book(&book)?;
     let config = b
         .active()?
         .context("no configuration promoted — run `ratio init` or `ratio config set`")?;
@@ -2223,7 +2230,7 @@ fn post(book: PathBuf, file: &str) -> Result<()> {
 }
 
 fn balance(book: PathBuf, view: Option<&str>) -> Result<()> {
-    let b = FileBook::open(&book)?;
+    let b = open_cli_book(&book)?;
     // ⛔ COUNTED, NOT COLLECTED. This held the whole journal in memory to print
     // one number — 1.26 GB on a book whose trial balance is a dozen rows.
     let mut entry_count = 0usize;
@@ -2493,7 +2500,7 @@ fn view_or_refuse(book: &std::path::Path, asked: Option<&str>) -> Result<String>
 /// `NavFold` resolves per entry. Conflating the two is `Terms`' mistake one
 /// level out.
 fn declared_views(book: &std::path::Path) -> Result<Vec<String>> {
-    let b = FileBook::open(book)?;
+    let b = open_cli_book(book)?;
     let set = match b.active()? {
         Some(d) => RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))?,
         None => RuleSet::default(),
@@ -2503,7 +2510,7 @@ fn declared_views(book: &std::path::Path) -> Result<Vec<String>> {
 
 /// Every book of record this fund keeps.
 fn views_cmd(book: PathBuf) -> Result<()> {
-    let b = FileBook::open(&book)?;
+    let b = open_cli_book(&book)?;
     let set = match b.active()? {
         Some(d) => RuleSet::from_toml(&String::from_utf8_lossy(&b.get(&d)?))?,
         None => RuleSet::default(),
@@ -2542,7 +2549,7 @@ fn views_cmd(book: PathBuf) -> Result<()> {
 /// partly a settlement convention and partly one read being behind, in one
 /// number, with nothing saying which part is which.
 fn reconcile_cmd(book: PathBuf, here: &str, there: &str) -> Result<()> {
-    let b = FileBook::open(&book)?;
+    let b = open_cli_book(&book)?;
     let types: std::collections::BTreeMap<i64, ratio_store::AccountTypeRecord> =
         b.accounts()?.into_iter().map(|a| (a.dim, a.account_type)).collect();
     let is_al = |d: i64| {
@@ -2804,7 +2811,7 @@ fn actor_name() -> String {
 /// instruction pointing at a missing command is worse than no instruction.
 /// Takes a dimension number or an account name.
 fn explain(book: PathBuf, account: &str) -> Result<()> {
-    let b = FileBook::open(&book)?;
+    let b = open_cli_book(&book)?;
     let chart = b.accounts()?;
     let dim = match account.parse::<i64>() {
         Ok(d) => d,
@@ -2887,7 +2894,7 @@ fn recon(
     out: Option<&str>,
     post: bool,
 ) -> Result<()> {
-    let mut b = FileBook::open(&book)?;
+    let mut b = open_cli_book(&book)?;
     let digest = b
         .active()?
         .context("no configuration promoted — run `ratio approve` first")?;
@@ -3012,7 +3019,7 @@ fn scale_run(size: &str, id: &str) -> Result<()> {
 }
 
 fn mcp(book: PathBuf) -> Result<()> {
-    FileBook::open(&book)?; // fail here rather than mid-conversation
+    open_cli_book(&book)?; // fail here rather than mid-conversation
     let stdin = std::io::stdin();
     ratio_mcp::serve(&book, stdin.lock(), std::io::stdout())
 }
@@ -3141,8 +3148,8 @@ fn approve_text_with_control(
     control: Option<&ControlIntent<'_>>,
 ) -> Result<String> {
     let book = book.to_path_buf();
-    let mut b = FileBook::open(&book)?;
-    let proposed = ratio_store::proposals::read(&book, id)?
+    let mut b = open_cli_book(&book)?;
+    let proposed = ratio_store::proposals::read_with_store(&book, id, ratio_store::installed_object_store())?
         .with_context(|| format!("no proposal {id} for {}", book.display()))?;
     let incoming = RuleSet::from_toml(&proposed)?;
 
