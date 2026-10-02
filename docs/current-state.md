@@ -1,6 +1,6 @@
 # Ratio — current state
 
-Updated October 2, 2026 (including stacked branch-local #300/#357–#360 work). This is the current implementation summary. Update
+Updated October 2, 2026 (including stacked branch-local #300/#357–#361 work). This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
 The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
@@ -119,6 +119,10 @@ messages also pass the [issue-completion check](issue-completion.md).
   configured object storage before book commands, including stdio MCP and
   person-only writes. Issue 300 remains open pending its PR and merge; the
   external customer drill is #264 acceptance, not #300 acceptance.
+- **Postgres execution (#361, branch-local):** `PgProjection` routes all SQL
+  through `PgExecutor`; the default `PsqlExecutor` retains the subprocess
+  behavior. A transport contract test and a disposable PostgreSQL 16 live
+  projection run pass. No library client or Postgres journal backend exists.
 
 ## Scope decisions that remain in force
 
