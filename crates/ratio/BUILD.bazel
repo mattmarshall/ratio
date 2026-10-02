@@ -49,4 +49,11 @@ rust_test(
     name = "ratio_test",
     crate = ":ratio",
     edition = "2021",
+    deps = ["//crates/ratio-project:backend_fixture"],
+)
+
+# Source inventory for the build-enforced ObjectStore conformance registry.
+filegroup(
+    name = "object_store_source_files",
+    srcs = glob(["src/**/*.rs"]),
 )

@@ -1321,6 +1321,7 @@ mod tests {
                         Err(e) => panic!("{e}"),
                     }
                 };
+                socket.set_nonblocking(false).unwrap();
                 socket.set_read_timeout(Some(std::time::Duration::from_secs(15))).unwrap();
                 let mut reader = BufReader::new(socket.try_clone().unwrap());
                 let mut line = String::new(); reader.read_line(&mut line).unwrap();
@@ -1359,6 +1360,123 @@ mod tests {
         assert_eq!(ObjectStore::get(&store, "binary").unwrap(), None);
         assert!(ObjectStore::get(&store, "binary").is_err());
         assert!(Store::get(&store, "binary").is_err(), "text reads must refuse invalid UTF-8");
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn s3_adapter_runs_the_same_journal_and_side_plane_fixture() {
+        use std::collections::BTreeMap;
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::net::TcpListener;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use ratio_store::{ObjectStore, SeqLog};
+
+        fn decode(input: &str) -> String {
+            let mut out = Vec::new();
+            let mut bytes = input.bytes();
+            while let Some(byte) = bytes.next() {
+                if byte == b'%' {
+                    let hi = bytes.next().unwrap();
+                    let lo = bytes.next().unwrap();
+                    out.push((char::from(hi).to_digit(16).unwrap() * 16
+                        + char::from(lo).to_digit(16).unwrap()) as u8);
+                } else if byte == b'+' { out.push(b' '); }
+                else { out.push(byte); }
+            }
+            String::from_utf8(out).unwrap()
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        listener.set_nonblocking(true).unwrap();
+        let running = Arc::new(AtomicBool::new(true));
+        let serving = running.clone();
+        let server = std::thread::spawn(move || {
+            let mut objects = BTreeMap::<String, Vec<u8>>::new();
+            while serving.load(Ordering::Relaxed) {
+                let mut socket = match listener.accept() {
+                    Ok((socket, _)) => socket,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(1));
+                        continue;
+                    }
+                    Err(error) => panic!("{error}"),
+                };
+                socket.set_nonblocking(false).unwrap();
+                socket.set_read_timeout(Some(std::time::Duration::from_secs(15))).unwrap();
+                let mut reader = BufReader::new(socket.try_clone().unwrap());
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let mut parts = line.split_whitespace();
+                let method = parts.next().unwrap().to_string();
+                let target = parts.next().unwrap().to_string();
+                let mut headers = BTreeMap::new();
+                loop {
+                    line.clear();
+                    reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" { break; }
+                    let (name, value) = line.trim_end().split_once(':').unwrap();
+                    headers.insert(name.to_ascii_lowercase(), value.trim().to_string());
+                }
+                if headers.get("expect").map(String::as_str) == Some("100-continue") {
+                    socket.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").unwrap();
+                }
+                let mut body = vec![0; headers.get("content-length")
+                    .map(|value| value.parse().unwrap()).unwrap_or(0)];
+                reader.read_exact(&mut body).unwrap();
+                let (path, query) = target.split_once('?').unwrap_or((&target, ""));
+                let key = decode(path.trim_start_matches("/bucket/"));
+                let (status, response, mime) = if method == "PUT" {
+                    assert_eq!(headers.get("if-none-match").map(String::as_str), Some("*"));
+                    if objects.contains_key(&key) {
+                        ("412 Precondition Failed", Vec::new(), "application/xml")
+                    } else {
+                        objects.insert(key, body);
+                        ("200 OK", Vec::new(), "application/xml")
+                    }
+                } else if method == "GET" && query.contains("list-type=2") {
+                    let prefix = query.split('&').find_map(|part| part.strip_prefix("prefix="))
+                        .map(decode).unwrap_or_default();
+                    let keys: Vec<_> = objects.keys().filter(|key| key.starts_with(&prefix)).collect();
+                    let contents = keys.iter().map(|key| format!(
+                        "<Contents><Key>{key}</Key><Size>{}</Size></Contents>", objects[*key].len()
+                    )).collect::<String>();
+                    let xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Name>bucket</Name><Prefix>{prefix}</Prefix><KeyCount>{}</KeyCount><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated>{contents}</ListBucketResult>", keys.len());
+                    ("200 OK", xml.into_bytes(), "application/xml")
+                } else if method == "GET" {
+                    match objects.get(&key) {
+                        Some(bytes) => ("200 OK", bytes.clone(), "application/octet-stream"),
+                        None => ("404 Not Found", b"<Error><Code>NoSuchKey</Code></Error>".to_vec(), "application/xml"),
+                    }
+                } else { panic!("unexpected S3 request: {method} {target}") };
+                write!(socket, "HTTP/1.1 {status}\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", response.len()).unwrap();
+                socket.write_all(&response).unwrap();
+            }
+        });
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1).enable_all().build().unwrap();
+        let config = aws_sdk_s3::config::Builder::new()
+            .behavior_version(aws_config::BehaviorVersion::latest())
+            .region(aws_sdk_s3::config::Region::new("us-east-1"))
+            .credentials_provider(aws_sdk_s3::config::Credentials::new("test", "test", None, None, "test"))
+            .endpoint_url(endpoint).force_path_style(true).build();
+        let s3: Arc<dyn ObjectStore> = Arc::new(S3 {
+            bucket: "bucket".into(), prefix: "books/".into(),
+            client: aws_sdk_s3::Client::from_conf(config), runtime,
+        });
+        let base = std::env::var_os("TEST_TMPDIR")
+            .map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let local = backend_fixture::exercise(&base.join("s3-conformance-local"), None);
+        let remote = backend_fixture::exercise(&base.join("s3-conformance-remote"), Some(s3.clone()));
+        assert_eq!(local, remote);
+        let log = SeqLog::new(s3, "adversarial/");
+        assert!(log.claim(2, b"later").unwrap());
+        assert!(log.for_each_since(0, &mut |_, _| Ok(())).unwrap_err().to_string().contains("missing"));
+        assert!(log.claim(1, b"first").unwrap());
+        assert!(!log.claim(1, b"loser").unwrap());
+        assert_eq!(log.get(1).unwrap().as_deref(), Some(b"first".as_ref()));
+        running.store(false, Ordering::Relaxed);
         server.join().unwrap();
     }
 

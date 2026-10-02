@@ -1,9 +1,8 @@
 //! Build-enforced journal and side-plane equivalence across the local and
 //! object-backed stores. The journal remains the book of record.
 
-use ratio_project::checkpoint::{prefix_digest, prefix_digest_book};
-use ratio_store::{ConfigStore, DirStore, FileBook, Journal, JournalEntry, MemoryStore,
-    ObjectStore, Plane, PostingRecord, SeqLog};
+use backend_fixture::exercise;
+use ratio_store::{DirStore, MemoryStore, ObjectStore, SeqLog};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -16,50 +15,21 @@ fn root(label: &str) -> PathBuf {
         std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)))
 }
 
-fn entry(id: &str, config: &ratio_store::Digest) -> JournalEntry {
-    JournalEntry {
-        id: id.into(), memo: "a cited posting".into(), config: config.clone(),
-        postings: vec![
-            PostingRecord { dim: 1, amount: 7, currency: None, instrument: None, quantity: None },
-            PostingRecord { dim: 2, amount: -7, currency: None, instrument: None, quantity: None },
-        ],
-        trade_date: Some("2024-01-02".into()), announcement: None,
-        due_date: None, application: None, identified_lots: None,
-        special_allocations: None, kind: None,
-    }
-}
+const PREFIXES: [&str; 7] = ["journal/", "deliveries/", "entities/", "facts/",
+    "actions/", "explanations/", "closes/"];
 
-const PLANES: [Plane; 6] = [Plane::Deliveries, Plane::Entities, Plane::Facts,
-    Plane::Actions, Plane::Explanations, Plane::Closes];
-
-fn exercise(root: &PathBuf, store: Option<Arc<dyn ObjectStore>>) -> (Vec<String>, Vec<Vec<String>>, Vec<String>) {
-    let mut book = FileBook::open_with(root, store.clone()).unwrap();
-    let config = book.put(b"rules = []\n").unwrap();
-    book.set_active(&config).unwrap();
-    let mut digests = Vec::new();
-    digests.push(prefix_digest(&[]).unwrap());
-    for id in ["first", "second", "third"] {
-        book.append(&entry(id, &config)).unwrap();
-        let entries = book.entries().unwrap();
-        let digest = prefix_digest(&entries).unwrap();
-        assert_eq!(digest, prefix_digest_book(&book, entries.len()).unwrap());
-        assert_eq!(digest, ratio_nav::prefix_digest(&entries).unwrap());
-        digests.push(digest);
+fn claim_contract(store: Arc<dyn ObjectStore>, prefix: &str) -> Result<(), String> {
+    let log = SeqLog::new(store, prefix);
+    if !log.claim(1, b"first").map_err(|e| e.to_string())? {
+        return Err(format!("{prefix}: first conditional claim was refused"));
     }
-    for (index, plane) in PLANES.iter().enumerate() {
-        for sequence in 0..2 {
-            book.append_record(*plane, &serde_json::json!({
-                "plane": index, "sequence": sequence, "cite": "fixture"
-            })).unwrap();
-        }
+    if log.claim(1, b"lost").map_err(|e| e.to_string())? {
+        return Err(format!("{prefix}: conditional append accepted an overwrite"));
     }
-    drop(book);
-    let reopened = FileBook::open_with(root, store).unwrap();
-    let journal = reopened.entries().unwrap().iter().map(|e| serde_json::to_string(e).unwrap()).collect();
-    let planes = PLANES.iter().map(|p| reopened.records::<serde_json::Value>(*p).unwrap()
-        .iter().map(|v| serde_json::to_string(v).unwrap()).collect()).collect();
-    assert_eq!(prefix_digest_book(&reopened, 3).unwrap(), digests[3]);
-    (journal, planes, digests)
+    if log.get(1).map_err(|e| e.to_string())?.as_deref() != Some(b"first".as_ref()) {
+        return Err(format!("{prefix}: an acknowledged entry was replaced"));
+    }
+    Ok(())
 }
 
 #[test]
@@ -75,12 +45,21 @@ fn journal_and_six_side_planes_replay_identically_across_backends() {
 fn both_object_backends_refuse_lost_claims_and_holes() {
     for store in [Arc::new(MemoryStore::new()) as Arc<dyn ObjectStore>,
                   Arc::new(DirStore::at(root("holes"))) as Arc<dyn ObjectStore>] {
-        let log = SeqLog::new(store, "journal/");
-        assert!(log.claim(2, b"later").unwrap());
-        let err = log.for_each_since(0, &mut |_, _| Ok(())).unwrap_err().to_string();
-        assert!(err.contains("missing") && err.contains("gap"), "{err}");
-        assert!(log.claim(1, b"first").unwrap());
-        assert!(!log.claim(1, b"lost").unwrap());
-        assert_eq!(log.get(1).unwrap().as_deref(), Some(b"first".as_ref()));
+        for prefix in PREFIXES {
+            let key = format!("{prefix}hole/");
+            let log = SeqLog::new(store.clone(), &key);
+            assert!(log.claim(2, b"later").unwrap());
+            let err = log.for_each_since(0, &mut |_, _| Ok(())).unwrap_err().to_string();
+            assert!(err.contains("missing") && err.contains("gap"), "{key}: {err}");
+            claim_contract(store.clone(), &format!("{prefix}claim/"))
+                .unwrap_or_else(|reason| panic!("{reason}"));
+        }
     }
+}
+
+#[test]
+fn unconditional_memory_backend_fails_for_the_conditional_claim_it_breaks() {
+    let error = claim_contract(Arc::new(MemoryStore::unconditional()), "journal/")
+        .unwrap_err();
+    assert!(error.contains("conditional append accepted an overwrite"), "{error}");
 }

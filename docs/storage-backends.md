@@ -460,8 +460,10 @@ whichever customer arrives first.
 ### October 1, 2026 conformance note (#359, branch-local)
 
 `//crates/ratio-project:backend_conformance_gate` checks journal and all six
-side-plane replay across local JSONL, MemoryStore, and DirStore. It compares
-every journal-prefix digest to the NAV digest and includes conditional-claim,
-no-hole, checkpoint privacy, S3 adapter, and S3Journal model tests. The full
-fixture has not been run against live S3; do not treat the gate as provider
-acceptance or as proof of customer recovery.
+side-plane replay across local JSONL, MemoryStore, DirStore, and the S3 adapter
+against an in-process endpoint. It compares trial balances and every
+journal-prefix digest to the NAV digest, and includes conditional-claim,
+no-hole, checkpoint privacy, and S3Journal model tests. A source inventory
+fails the build when a new ObjectStore implementation is not registered for
+conformance. The full fixture has not been run against live S3; do not treat
+the gate as provider acceptance or as proof of customer recovery.

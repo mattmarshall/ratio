@@ -1496,11 +1496,14 @@ guarantee.
 
 ## Cross-backend conformance, October 1, 2026 (issue #359, branch-local)
 
-`bazel test //crates/ratio-project:backend_conformance_gate` exercises local
-JSONL, MemoryStore, and DirStore journal/side-plane equivalence, NAV and
-projection prefix-digest equality, object claim/no-hole refusal, checkpoint
-privacy, the existing S3 binary conditional-PUT test, and the S3Journal model.
-It is included in `bazel test //...`. A live S3 version of the complete
-fixture and a disposable recovery run remain unproven; do not call this full
-cross-provider acceptance. The `LostWrite.cfg` manual probe must still go red
-for `NoWriteIsLost`.
+`bazel test //crates/ratio-project:backend_conformance_gate` exercises one
+journal and six-plane fixture against local JSONL, MemoryStore, DirStore, and
+the S3 adapter through an in-process S3 endpoint. It compares trial balances,
+NAV/projection prefix digests, and records; the deliberately unconditional
+MemoryStore fails the conditional claim check for its named reason. The
+source inventory includes every crate package and fails the build for a new
+ObjectStore implementation until the gate is extended. A sabotage run adding
+`UnregisteredBackend` went red for that reason. Checkpoint privacy and the
+S3Journal model remain in the suite. A live S3 run and a customer recovery
+drill remain unproven; the `LostWrite.cfg` manual probe must still go red for
+`NoWriteIsLost`.

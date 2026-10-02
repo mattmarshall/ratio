@@ -5358,3 +5358,15 @@ uses the production formatter, whose fields omit book IDs, digests, journal
 bodies, and memos. A unique test-directory counter fixes a repeated parallel
 checkpoint test collision. The gate does not yet run the full fixture against
 live S3; provider credentials and a disposable bucket remain acceptance work.
+
+### Amendment, 2026-10-02 — every current ObjectStore enters the conformance gate
+
+Related: #359. The shared fixture now compares trial balances as well as every
+prefix digest and six side planes. The deployed S3 adapter runs it against a
+bounded in-process S3 endpoint, using the same conditional PUT, GET, and LIST
+calls as the provider client. Journal and each side plane refuse holes and
+occupied claims; `MemoryStore::unconditional()` fails for the overwritten
+claim it permits. A Bazel source inventory includes all crate packages and
+fails when a new `ObjectStore` implementation is added without extending the
+gate; a temporary unregistered implementation made the gate red. Live S3
+provider behavior and the customer recovery drill remain unproved.

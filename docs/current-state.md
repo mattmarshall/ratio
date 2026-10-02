@@ -76,10 +76,11 @@ messages also pass the [issue-completion check](issue-completion.md).
   full replay, checkpoint load, and tail replay for the large demo shape
   (~5,400 entries); the journal remains the book of record.
 - **Storage conformance (#359, branch-local):** a Bazel gate compares
-  journal prefixes and all six append-only side planes across local JSONL,
-  MemoryStore, and DirStore, and includes S3 adapter/model tests. The
-  complete fixture has not run against live S3; this is not full issue
-  acceptance.
+  journal prefixes, trial balances, and all six append-only side planes across
+  local JSONL, MemoryStore, DirStore, and the S3 adapter against an in-process
+  S3 endpoint. It refuses holes and overwrites and checks that an unregistered
+  ObjectStore implementation fails the build. The complete fixture has not
+  run against live S3; provider behavior remains unverified.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
   post-create configuration/membership transitions are built. NAVs,
   reports/proposals, CHANGELOG, complete backup coverage, and the external
