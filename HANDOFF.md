@@ -1514,3 +1514,7 @@ writing an empty target. This is a testable capture primitive, not a customer
 backup job or a replay/authorization acceptance result. The operator must
 quiesce writers, retain legacy local material separately, and verify figures
 and membership after restore.
+`ratio recovery capture|restore` exposes it for explicitly named local or S3
+source, backup, and destination namespaces. The directory command test removes
+the source before restore and refuses a changed backup object. No customer S3
+run, schedule, retention, or signed operator verification has occurred.

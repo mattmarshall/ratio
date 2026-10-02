@@ -5362,3 +5362,8 @@ and a protobuf key/length/SHA-256 manifest published last. Restore verifies
 the capture before writing an empty destination. It does not quiesce writers,
 schedule or retain backup copies, capture legacy local-only material, or prove
 customer figures and access. Those #264 acceptance steps remain open.
+An operator-facing `ratio recovery capture|restore` command now selects each
+local or S3 namespace explicitly and refuses occupied destinations; its
+directory test deletes the source before restore and corrupts a backup object.
+This makes the capture primitive runnable but does not establish a customer
+backup, retention policy, or signed recovery acceptance.

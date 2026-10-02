@@ -228,9 +228,27 @@ missing, changed, extra, or duplicate key before copying into an empty store.
 An interrupted copy leaves a partial destination that must be discarded. The
 helper does not stop writers, copy legacy local-only metadata, schedule backups,
 set retention, authenticate an operator, or verify a recovered figure. It has
-only been exercised with in-memory and directory object-store tests; the local book drill
-above supplies separate replay evidence. No live S3 or customer capture has
-used it.
+only been exercised with in-memory and directory object-store tests; the local
+book drill above supplies separate replay evidence. No live S3 or customer
+capture has used it.
+
+`ratio recovery capture` and `ratio recovery restore` expose that helper. For
+each named side (`SOURCE`, `BACKUP`, or `DESTINATION`), set exactly one of
+`RATIO_RECOVERY_<SIDE>_LOCAL` or the pair
+`RATIO_RECOVERY_<SIDE>_BUCKET` and `RATIO_RECOVERY_<SIDE>_PREFIX`.
+An S3 prefix must end in `/`; it names the isolated namespace, so the command
+copies every key relative to that prefix. Capture uses `SOURCE` and `BACKUP`;
+restore uses `BACKUP` and `DESTINATION`. Both destinations must be empty. The
+command refuses overlapping local paths or S3 prefixes in the same bucket.
+The manifest is `_recovery/capture.pb` within the backup namespace. The commands
+print object counts but no keys or object bytes. An operator must quiesce all
+writers before capture, select a separately protected backup location, retain
+legacy local material and original deliveries separately, and replay and check
+figures and access after restore. The command cannot enforce those external
+steps, and a failed partial destination must be discarded.
+The manifest detects accidental loss or alteration; it is not signed. A party
+able to rewrite both the manifest and objects can forge a matching capture,
+so backup access control and retention protection are still operator decisions.
 
 ## Gaps that block a production recovery claim
 
@@ -238,8 +256,8 @@ used it.
   reports/proposals, audit logs, and the remaining operational evidence and
   writer-storage consistency. Its branch-local work is not included in this
   #264 drill branch yet.
-- No whole-book backup scheduler, operator-facing export/restore command,
-  retention policy, or live independent backup copy is established
+- No whole-book backup scheduler, retention policy, or live independent backup
+  copy is established
   by this inventory. The S3 template configures encryption and prevents public
   access; it does not declare versioning or Object Lock on ScaleBucket.
   Live settings were not inspected and are not inferred from the template.

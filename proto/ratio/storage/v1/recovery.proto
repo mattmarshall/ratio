@@ -15,7 +15,8 @@ message RecoveryObject {
 
 // Published last, after every listed object has been copied and read back.
 // This proves bytes in one capture; it does not attest that writers were
-// quiescent or that a customer accepted the restored figures.
+// quiescent or that a customer accepted the restored figures. It is not a
+// signature: backup access control must prevent rewriting objects and manifest.
 message RecoveryManifest {
   int32 format_version = 1;
   string source_prefix = 2;

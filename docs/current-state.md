@@ -82,7 +82,8 @@ messages also pass the [issue-completion check](issue-completion.md).
   survive an interrupted object claim; the restored close refuses a backdated
   post and a next-period append takes the next slot. A branch-local object
   capture helper verifies each copied byte and publishes a protobuf manifest
-  last; it has only in-memory and directory-store evidence. NAVs,
+  last; `ratio recovery capture|restore` exposes it for explicit local or S3
+  namespaces, but only the directory command has been exercised. NAVs,
   reports/proposals, CHANGELOG, complete backup coverage, and the external
   restore drill remain separate recovery work.
 

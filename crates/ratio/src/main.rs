@@ -108,6 +108,10 @@ usage:
                                        validate every baked append-only plane
   ratio publish-seeds --funds DIR --migration legacy-volatile-times-v1
                                        one-time adoption of pre-fixed-clock demos
+  ratio recovery capture               copy a quiescent object namespace into
+                                       an empty independent backup namespace
+  ratio recovery restore               verify that backup and restore it into
+                                       an empty object namespace
   ratio mcp [--book DIR]               serve the MCP tools on stdio
   ratio approve ID [--book DIR]        promote a proposal — humans only
   ratio accept BREAK --because TEXT    record why a difference is acceptable
@@ -145,6 +149,102 @@ fn flags(rest: &[&str]) -> Result<std::collections::BTreeMap<String, String>> {
         }
     }
     Ok(out)
+}
+
+/// Recovery settings are separate from the serving journal settings. They
+/// retain location identity long enough to refuse overlapping namespaces.
+enum RecoveryLocation {
+    Local(PathBuf),
+    S3 { bucket: String, prefix: String },
+}
+
+impl RecoveryLocation {
+    fn open(&self) -> Result<Box<dyn ratio_store::ObjectStore>> {
+        match self {
+            Self::Local(path) => Ok(Box::new(ratio_store::DirStore::at(path))),
+            Self::S3 { bucket, prefix } => Ok(Box::new(scale::S3::open(bucket, prefix)?)),
+        }
+    }
+}
+
+fn recovery_location(side: &str) -> Result<RecoveryLocation> {
+    let value = |suffix: &str| {
+        std::env::var(format!("RATIO_RECOVERY_{side}_{suffix}"))
+            .ok()
+            .filter(|value| !value.is_empty())
+    };
+    let local = value("LOCAL");
+    let bucket = value("BUCKET");
+    let prefix = value("PREFIX");
+    match (local, bucket, prefix) {
+        (Some(path), None, None) => Ok(RecoveryLocation::Local(PathBuf::from(path))),
+        (None, Some(bucket), Some(prefix)) if prefix.ends_with('/') =>
+            Ok(RecoveryLocation::S3 { bucket, prefix }),
+        _ => bail!(
+            "{side} recovery store requires either RATIO_RECOVERY_{side}_LOCAL, \
+             or RATIO_RECOVERY_{side}_BUCKET plus a trailing-slash \
+             RATIO_RECOVERY_{side}_PREFIX; do not combine them"
+        ),
+    }
+}
+
+fn intended_local_path(path: &std::path::Path) -> Result<PathBuf> {
+    use std::path::Component;
+    ensure!(!path.components().any(|component| component == Component::ParentDir),
+        "recovery local paths cannot contain '..'");
+    let mut at = if path.is_absolute() { path.to_path_buf() } else { std::env::current_dir()?.join(path) };
+    let mut missing = Vec::new();
+    while !at.exists() {
+        missing.push(at.file_name().context("recovery local path has no final component")?.to_os_string());
+        at = at.parent().context("recovery local path has no existing ancestor")?.to_path_buf();
+    }
+    let mut resolved = at.canonicalize().context("resolving recovery local path")?;
+    for component in missing.into_iter().rev() { resolved.push(component); }
+    Ok(resolved)
+}
+
+fn refuse_overlapping_recovery_locations(a: &RecoveryLocation, b: &RecoveryLocation) -> Result<()> {
+    match (a, b) {
+        (RecoveryLocation::Local(a), RecoveryLocation::Local(b)) => {
+            let a = intended_local_path(a)?;
+            let b = intended_local_path(b)?;
+            ensure!(!a.starts_with(&b) && !b.starts_with(&a),
+                "recovery source and destination namespaces must be disjoint");
+        }
+        (RecoveryLocation::S3 { bucket: a_bucket, prefix: a_prefix },
+         RecoveryLocation::S3 { bucket: b_bucket, prefix: b_prefix }) if a_bucket == b_bucket => {
+            ensure!(!a_prefix.starts_with(b_prefix) && !b_prefix.starts_with(a_prefix),
+                "recovery source and destination namespaces must be disjoint");
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn recovery_command(capture: bool) -> Result<()> {
+    const MANIFEST: &str = "_recovery/capture.pb";
+    if capture {
+        let source_location = recovery_location("SOURCE")?;
+        let backup_location = recovery_location("BACKUP")?;
+        refuse_overlapping_recovery_locations(&source_location, &backup_location)?;
+        let source = source_location.open()?;
+        let backup = backup_location.open()?;
+        let manifest = ratio_store::recovery::capture_object_namespace(
+            source.as_ref(), backup.as_ref(), "", MANIFEST,
+        )?;
+        println!("captured {} objects; verify and retain the manifest with the backup", manifest.objects.len());
+    } else {
+        let backup_location = recovery_location("BACKUP")?;
+        let destination_location = recovery_location("DESTINATION")?;
+        refuse_overlapping_recovery_locations(&backup_location, &destination_location)?;
+        let backup = backup_location.open()?;
+        let destination = destination_location.open()?;
+        let manifest = ratio_store::recovery::restore_object_namespace(
+            backup.as_ref(), destination.as_ref(), MANIFEST,
+        )?;
+        println!("restored {} objects; replay and verify the book before serving", manifest.objects.len());
+    }
+    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -238,6 +338,8 @@ fn main() -> Result<()> {
         // calls on a thread. Two implementations would be two answers to "what
         // did the fold cost", and the one nobody ran locally would be quoted.
         ["scale-run", "--size", size, "--id", id] => scale_run(size, id),
+        ["recovery", "capture"] => recovery_command(true),
+        ["recovery", "restore"] => recovery_command(false),
         ["publish-seeds", "--funds", funds] => {
             publish_seeds(book, PathBuf::from(funds), None)
         }
