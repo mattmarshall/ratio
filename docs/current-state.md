@@ -1,6 +1,6 @@
 # Ratio — current state
 
-Updated September 10, 2026. This is the current implementation summary. Update
+Updated October 2, 2026 (including branch-local #361 work). This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
 The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
@@ -79,6 +79,10 @@ messages also pass the [issue-completion check](issue-completion.md).
   post-create configuration/membership transitions are built. NAVs,
   reports/proposals, CHANGELOG, complete backup coverage, and the external
   restore drill remain separate recovery work.
+- **Postgres execution (#361, branch-local):** `PgProjection` routes all SQL
+  through `PgExecutor`; the default `PsqlExecutor` retains the subprocess
+  behavior. A transport contract test and a disposable PostgreSQL 16 live
+  projection run pass. No library client or Postgres journal backend exists.
 
 ## Scope decisions that remain in force
 

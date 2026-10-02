@@ -457,3 +457,12 @@ criteria, per the roadmap's own rules.
 interesting problem — spends the toolchain budget before the storage seam is
 ready to carry a second backend, and leaves the hosted read path broken for
 whichever customer arrives first.
+
+### October 2, 2026 Postgres execution note (#361, branch-local)
+
+`PgExecutor` now owns SQL execution beneath `PgProjection`, while
+`PsqlExecutor` keeps the current subprocess behavior. The executor returns
+unaligned tab-separated rows with empty/null cells as the existing parser
+expects, and executes a transaction string in one request. A disposable
+PostgreSQL 16 run passed the existing live projection suite. This prepares
+the transport boundary; it does not add a native client or journal backend.

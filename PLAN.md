@@ -5344,3 +5344,13 @@ conjunctive.
 forecast, required savings rate, FIRE number, goal RPC in core, and automatic
 scenario posting remain refused. Live OAuth evidence remains on #168 until the
 registered scopes are exercised against a permitted Personal book.
+
+### Amendment, 2026-10-02 — reusable Postgres execution seam (#361, branch-local)
+
+`PgProjection` now sends each schema operation, pinned read, and atomic
+snapshot transaction through a `PgExecutor` trait. `PsqlExecutor` preserves
+the existing command-line transport and tabular output contract. The
+transport test checks schema scoping and failure refusal; the existing live
+projection suite passed against disposable PostgreSQL 16. A native library
+client and Postgres journal backend are separate work. The journal remains
+the book of record, and #362 must wait for the recovery and conformance gates.

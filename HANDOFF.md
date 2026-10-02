@@ -1493,3 +1493,14 @@ probe now explicitly characterizes a legacy book created before storage was
 attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery
 guarantee.
+
+## Postgres execution seam, October 2, 2026 (issue #361, branch-local)
+
+`PgProjection` now owns an explicit `PgExecutor` instead of a URL coupled to
+`run_psql`. Its default `PsqlExecutor` issues the same `psql` arguments and
+returns the same unaligned tabular output. A replacement executor must keep
+the tab/null shape and execute a transaction request atomically. The
+disposable PostgreSQL 16 `pg_engine_test` passed; PostgreSQL 14 cannot parse
+the existing `UNIQUE NULLS NOT DISTINCT` schema. This seam does not introduce
+a library client or a Postgres journal. The recovery/conformance acceptance
+gates still precede #362.
