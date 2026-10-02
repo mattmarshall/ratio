@@ -1563,6 +1563,9 @@ CLI/MCP installation guard has a sabotage check: removing the pre-dispatch
 `install_control_backend()` call made
 `//crates/ratio:configured_store_refuses_local_cli_test` fail with `init
 accepted a local-only book`, and restoring the call made it green.
+The same test now exercises post, strike, close, approve, and accept against
+an unusable configured directory store. Each must fail for that backend
+error and leave the seeded book bytes unchanged.
 
 ## Object-store height, October 1, 2026 (issue #358, branch-local)
 
