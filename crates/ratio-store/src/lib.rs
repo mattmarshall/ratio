@@ -52,7 +52,7 @@ pub mod changes;
 pub mod bootstrap;
 pub mod control;
 pub use objects::{
-    install_object_store, installed_object_store, DirStore, MemoryStore, ObjectStore, SeqLog,
+    DirStore, MemoryStore, ObjectStore, SeqLog,
 };
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
@@ -1327,17 +1327,13 @@ impl Plane {
 impl FileBook {
     /// Open a book, creating the layout if it is not there.
     ///
-    /// When a process-wide [`ObjectStore`] has been installed, the journal
-    /// (and the append-only planes) are read and written there. The seeded
-    /// `journal.jsonl` is copied into the store once, by conditional PUT at
-    /// the line's sequence number, so two containers hydrating the same seed
-    /// converge rather than fork.
+    /// This convenience door is local-only. A caller selecting durable storage
+    /// must pass its book-bound handle through [`open_with`][Self::open_with].
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
-        Self::open_with(root, installed_object_store())
+        Self::open_with(root, None)
     }
 
-    /// Attach to the installed store after this serving process completed its
-    /// startup hydrate.
+    /// Attach locally after this serving process completed its startup hydrate.
     ///
     /// Durable bootstrap publication is still fetched and verified on every
     /// open. Only legacy baked JSONL seeding is skipped: the startup gate has
@@ -1345,7 +1341,7 @@ impl FileBook {
     /// request. Calling this before that gate reaches Ready would expose an
     /// incomplete seed, so it is intentionally a separate, explicit door.
     pub fn open_attached(root: impl AsRef<Path>) -> Result<Self> {
-        Self::open_attached_with(root, installed_object_store())
+        Self::open_attached_with(root, None)
     }
 
     /// How many journal entries the index may report.
@@ -1371,9 +1367,8 @@ impl FileBook {
         Ok(0)
     }
 
-    /// Open a book against an explicit store. Tests use this so they do not
-    /// have to mutate process-global state; the demo binary installs once
-    /// and calls [`open`][`FileBook::open`].
+    /// Open a book against its explicitly selected store. A different store
+    /// for the same book is a fork, so serving code must bind this handle once.
     pub fn open_with(
         root: impl AsRef<Path>,
         store: Option<Arc<dyn ObjectStore>>,

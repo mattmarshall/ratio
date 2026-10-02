@@ -1592,3 +1592,22 @@ ObjectStore implementation until the gate is extended. A sabotage run adding
 S3Journal model remain in the suite. A live S3 run and a customer recovery
 drill remain unproven; the `LostWrite.cfg` manual probe must still go red for
 `NoWriteIsLost`.
+
+## Per-book store routing, October 2, 2026 (issue #360, branch-local)
+
+`Console::with_book_object_stores` maps each permitted book ID to its own
+object store. Bootstrap discovery, membership, active configuration, counts,
+and authorized `FileBook` opens resolve through that map. A missing mapping
+refuses instead of falling back to local files. A cold-root test creates two
+books on MemoryStore and DirStore, writes isolated journal and audit entries, records a NAV,
+and recovers both in one process. The same test refuses opening alpha's
+materialized book against beta's store before any beta write. CLI, watch, API, MCP, projection, and NAV
+entry points now pass an explicit store handle, as do the console's side
+planes and checkpoints and MCP proposal writes. `FileBook::open` and
+`open_attached` are local-only; Console and MCP default entry points are also
+local-only, and
+serving/CLI callers inject the selected store. A durable caller must use
+`open_with` or `open_attached_with`. The storage library has no installed
+store; the single-backend binary owns the startup singleton and still selects
+one store at startup.
+The hosted router and provider recovery evidence remain acceptance work.

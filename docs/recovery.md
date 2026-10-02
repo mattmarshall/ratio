@@ -3,7 +3,7 @@
 Related: [#264](https://github.com/mattmarshall/ratio/issues/264).
 Durable follow-on work: [#299](https://github.com/mattmarshall/ratio/issues/299)
 and [#300](https://github.com/mattmarshall/ratio/issues/300).
-Source review refreshed October 2, 2026.
+Source review refreshed October 2, 2026 for combined #300/#360 routing.
 
 Ratio does not yet have a demonstrated whole-book disaster recovery procedure
 for the deployed service. The journal's conditional S3 writes protect one part
@@ -247,10 +247,22 @@ customer-scale timing remain required external drill coverage.
 
 - Published-book post-create configuration and membership transitions are
   durable; legacy unpublished books retain their local control-state risk.
-  The branch-local [#300](https://github.com/mattmarshall/ratio/issues/300)
+  The stacked [#300](https://github.com/mattmarshall/ratio/issues/300)
   work covers operational evidence and configured writers in local tests.
-  It remains unmerged. Its issue acceptance leaves external backup and the
-  customer restore drill to #264.
+  It remains unmerged into main. Its issue acceptance leaves external backup
+  and the customer restore drill to #264.
+
+- Post-create configuration promotions and membership changes have durable
+  transitions. [#300](https://github.com/mattmarshall/ratio/issues/300)
+  covers NAVs, reports/proposals, audit logs, and remaining operational
+  evidence and writer-storage consistency. Its implementation is included in this stacked branch and has not yet
+  merged into main.
+- [#360](https://github.com/mattmarshall/ratio/issues/360): book-scoped
+  object-store handles now reach CLI, watch, API, MCP, projection, NAV,
+  checkpoints, reports, proposals, and audit paths. The storage library has
+  no installed store; `FileBook::open` and Console constructors are local-only.
+  The serving binary still chooses one
+  store at startup; hosted per-book routing and provider recovery remain open.
 - No whole-book backup scheduler, consistent checkpoint/export command,
   restore command, retention policy, or independent backup copy is established
   by this inventory. The S3 template configures encryption and prevents public
