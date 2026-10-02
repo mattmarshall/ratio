@@ -7,7 +7,7 @@ use ratio_store::{
         control_operation, membership_revision, ConfigPromotion, ControlOperation, ControlStore,
         MembershipRevision,
     },
-    Digest, DirStore, MemoryStore, ObjectStore,
+    Digest, DirStore, MemoryStore, ObjectStore, SeqLog,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
@@ -50,12 +50,23 @@ fn two_books_resolve_independent_object_stores_in_one_process() {
         .with_book_object_stores(stores.clone());
     client.create_book(request("alpha", book::BookKind::Investment)).unwrap();
     client.create_book(request("beta", book::BookKind::Personal)).unwrap();
+    for (id, objects) in [("alpha", &alpha), ("beta", &beta)] {
+        let mut book = FileBook::open_with(temp.0.join(id), Some(objects.clone())).unwrap();
+        let digest = book.active().unwrap().unwrap();
+        book.append(&entry(&digest)).unwrap();
+    }
     assert!(BootstrapStore::new(alpha.clone()).get("alpha").unwrap().is_some());
     assert!(BootstrapStore::new(alpha.clone()).get("beta").unwrap().is_none());
     assert!(BootstrapStore::new(beta.clone()).get("beta").unwrap().is_some());
     assert!(BootstrapStore::new(beta.clone()).get("alpha").unwrap().is_none());
+    assert_eq!(FileBook::open_with(temp.0.join("alpha"), Some(alpha.clone()))
+        .unwrap().entries().unwrap().len(), 1);
+    assert_eq!(FileBook::open_with(temp.0.join("beta"), Some(beta.clone()))
+        .unwrap().entries().unwrap().len(), 1);
     std::fs::remove_dir_all(temp.0.join("alpha")).unwrap();
     std::fs::remove_dir_all(temp.0.join("beta")).unwrap();
+    assert_eq!(SeqLog::new(beta.clone(), "alpha/journal/").height().unwrap(), 0);
+    assert_eq!(SeqLog::new(alpha.clone(), "beta/journal/").height().unwrap(), 0);
     let recovered = Console::scoped(&temp.0, member("creator"))
         .with_book_object_stores(stores);
     assert_eq!(recovered.list_books().unwrap().books.len(), 2);
@@ -63,6 +74,10 @@ fn two_books_resolve_independent_object_stores_in_one_process() {
         book::BookKind::Investment.proto());
     assert_eq!(recovered.get_book("books/beta").unwrap().kind,
         book::BookKind::Personal.proto());
+    assert_eq!(FileBook::open_with(temp.0.join("alpha"), Some(alpha))
+        .unwrap().entries().unwrap().len(), 1);
+    assert_eq!(FileBook::open_with(temp.0.join("beta"), Some(beta))
+        .unwrap().entries().unwrap().len(), 1);
     assert!(recovered.create_book(request("unregistered", book::BookKind::Personal))
         .unwrap_err().to_string().contains("no object store"));
     assert!(!temp.0.join("unregistered").exists());
