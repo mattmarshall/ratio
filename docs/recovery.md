@@ -29,7 +29,9 @@ known NAV/proposal IDs cannot be resolved after their objects are removed.
 The configured CLI/MCP guard was also sabotaged by omitting its pre-dispatch
 store installation: `//crates/ratio:configured_store_refuses_local_cli_test`
 went red because `init` accepted a local-only book, then passed after the
-source was restored.
+source was restored. The guard now also starts from a valid local book and
+checks post, strike, close, approve, and accept: each refuses with the
+configured backend error and leaves the book bytes unchanged.
 This is a disposable object-store drill; it does not prove a live S3 backup
 job, retention, or a customer RPO/RTO.
 

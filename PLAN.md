@@ -5353,6 +5353,9 @@ the book of record. This guard does not make NAVS, reports/proposals, or
 CHANGELOG durable, and it does not prove external backup or recovery. Remaining
 work: #300 — persist operational evidence and verify every writer; #264 —
 agree objectives and prove an external restore with named operators.
+The branch-local regression now seeds a valid book and confirms post, strike,
+close, approve, and accept all refuse an unusable configured backend without
+changing local book bytes; init and stdio MCP remain in the same gate.
 
 ### Amendment, 2026-10-01 — NAV strike evidence on configured storage
 
