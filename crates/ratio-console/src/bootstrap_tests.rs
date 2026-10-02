@@ -67,6 +67,9 @@ fn two_books_resolve_independent_object_stores_in_one_process() {
         .unwrap().entries().unwrap().len(), 1);
     assert_eq!(FileBook::open_with(temp.0.join("beta"), Some(beta.clone()))
         .unwrap().entries().unwrap().len(), 1);
+    assert!(FileBook::open_with(temp.0.join("alpha"), Some(beta.clone()))
+        .err().unwrap().to_string().contains("durable book publication is unavailable"));
+    assert_eq!(SeqLog::new(beta.clone(), "alpha/journal/").height().unwrap(), 0);
     std::fs::remove_dir_all(temp.0.join("alpha")).unwrap();
     std::fs::remove_dir_all(temp.0.join("beta")).unwrap();
     assert_eq!(SeqLog::new(beta.clone(), "alpha/journal/").height().unwrap(), 0);
