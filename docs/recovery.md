@@ -57,7 +57,7 @@ With neither installed, FileBook uses local JSONL files.
 | Legacy action announcements | `actions.jsonl` | `<book>/actions/<sequence>` | Preserve for legacy books. New announcement/application evidence also resides in journal entries; do not discard the legacy plane. |
 | Break explanations | `explanations.jsonl` | `<book>/explanations/<sequence>` | Records actor, reason, accepted difference, configuration, and journal citation. Rebuilding balances cannot recreate a person's decision. |
 | Period closes | `closes.jsonl` | `<book>/closes/<sequence>` | Records the cited boundary and prevents posting back into a closed period. Closing postings are separate journal entries. |
-| NAV strikes | `NAVS` | **Still local** | Records `(view, valuation point)`, actor, prefix, digest, and figure. Recomputing today's NAV does not restore the signed strike. |
+| NAV strikes | `NAVS` | `<book>/nav-strikes/<sha256(view, id)>` immutable protobuf objects when a store is installed; legacy migration source and completion under `_nav-migration/` | Records `(view, valuation point)`, actor, prefix, digest, and figure. The conditional claim refuses a second answer. Preserve strike objects and migration records; recomputing today's NAV does not restore the signed strike. |
 | Reconciliation reports | `reports/*.pb` | **Still local** | Preserve report bytes, names, and modification times: `newest_report` selects by mtime. A recomputed report is a new artifact, not the one previously accepted. |
 | Proposals and audit trail | `proposals/`, `CHANGELOG` | **Still local** | Preserve pending/accepted proposal artifacts and who approved or acted under a configuration. |
 | Original delivery files and external app evidence | External source locations; no general retained-blob path in the ingest code | **No complete retention contract here** | Inventory the actual upstream archive and Connect app stores. A delivery digest alone cannot recover the original file. |
@@ -82,7 +82,9 @@ The implementation supporting this inventory is:
   [CreateBook, CHANGELOG, reports, and book discovery](../crates/ratio-console/src/lib.rs).
   CreateBook publishes complete bootstrap state before returning success.
 - [NAV persistence](../crates/ratio-nav/src/lib.rs) and
-  [ingest delivery schema](../crates/ratio-ingest/src/lib.rs).
+  [ingest delivery schema](../crates/ratio-ingest/src/lib.rs). The branch-local
+  #300 NAV change conditionally claims one protobuf object per view/point;
+  legacy NAVS migration retains its source bytes and resumes a partial upload.
 - [Startup](../deploy/entrypoint.sh) and
   [store installation](../crates/ratio/src/watch.rs). The Platform deployment
   owner conditionally publishes and validates baked JSONL before traffic.
@@ -93,7 +95,7 @@ The implementation supporting this inventory is:
 - The CLI entry point also attaches configured object storage before opening a
   book for person-only writes or stdio MCP. This prevents those commands from
   silently selecting a local journal when a durable backend is configured;
-  NAVS, reports/proposals, and CHANGELOG still require durable persistence on
+  Reports/proposals and CHANGELOG still require durable persistence on
   [#300](https://github.com/mattmarshall/ratio/issues/300).
 
 ## Rebuildable material
@@ -133,7 +135,8 @@ environment. It is not currently an automated production backup command.
    `_bootstrap/publications/<book-id>` record and its referenced
    `_bootstrap/blobs/<digest>`. Capture the book's gapless
    `_control/transitions/<book-id>/` stream and every referenced
-   `_control/config-blobs/<digest>` object. Record sequence heights and content hashes and
+   `_control/config-blobs/<digest>` object. Include `nav-strikes/` objects and
+   both `_nav-migration/` records where present. Record sequence heights and content hashes and
    every `_seed/publications*/<book-id>` marker. Check each marker's format
    version, digest, and plane lengths against the captured baked source; do not
    synthesize or remove a marker during restore. Check that each sequence is

@@ -5353,3 +5353,17 @@ the book of record. This guard does not make NAVS, reports/proposals, or
 CHANGELOG durable, and it does not prove external backup or recovery. Remaining
 work: #300 — persist operational evidence and verify every writer; #264 —
 agree objectives and prove an external restore with named operators.
+
+### Amendment, 2026-10-01 — NAV strike evidence on configured storage
+
+Related: #300. A configured object store now holds each signed NAV answer as a
+`ratio.storage.v1.StoredNavStrike` under a deterministic `(book, view, id)` key.
+A conditional PUT is the final refusal of a second answer even if concurrent
+writers both passed the prior list check. `NavEvidence.tla` models crash/reopen
+and the unconditional overwrite failure; all 42 manual TLA probes went red for
+their named reasons. Legacy NAVS bytes are fenced and retained in object
+storage during migration, with a completion marker written only after every
+strike is present. Local JSONL remains the unconfigured shape. This does not
+complete #300: reports/proposals, CHANGELOG, external recovery and every-writer
+verification remain. It does not complete #264: RPO, RTO, retention, named
+operators, and a customer-book restore drill remain unagreed or unproved.

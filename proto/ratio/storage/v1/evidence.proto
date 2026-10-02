@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package ratio.storage.v1;
+
+option java_multiple_files = true;
+option java_package = "build.marsh.ratio.storage.v1";
+option java_outer_classname = "EvidenceProto";
+
+// One signed NAV answer under a book/view/valuation-point claim.
+// The object key is deterministic; a second claim must be refused.
+message StoredNavStrike {
+  int32 format_version = 1;
+  string book_id = 2;
+  string view = 3;
+  string strike_id = 4;
+  google.protobuf.Timestamp valuation_time = 5;
+  string actor = 6;
+  int64 journal_position = 7;
+  string journal_digest = 8;
+  sint64 net_asset_value = 9;
+  sint64 trial_balance_difference = 10;
+  string config_digest = 11;
+}

@@ -1488,7 +1488,8 @@ published immutable bootstrap for new books. That bootstrap recovers chart,
 identity, kind, opening configuration, and creator membership. Later
 configuration promotions and explicit membership grants/revocations use the
 same durable object backend and recover by verified predecessor transition.
-NAVS, reports/proposals, and CHANGELOG remain local. The object-only
+NAVS is object-backed on the #300 branch; reports/proposals and CHANGELOG
+remain local. The object-only
 probe now explicitly characterizes a legacy book created before storage was
 attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery
@@ -1496,6 +1497,19 @@ guarantee.
 
 The #300 CLI entry guard attaches configured object storage before book
 commands, including person-only verbs and stdio MCP. It closes the local-only
-journal selection path for those commands, but it does not persist NAVS,
-reports/proposals, or CHANGELOG. The complete #300 and #264 acceptance gates
+journal selection path for those commands; the later #300 NAV slice persists
+NAVS, while reports/proposals and CHANGELOG remain local. The complete #300 and #264 acceptance gates
 remain open.
+
+### NAV evidence, October 1, 2026 (issue #300, branch-local)
+
+The configured object store holds a protobuf `StoredNavStrike` at a
+deterministic hash of `(view, strike id)`. `If-None-Match:*` is the one-answer
+claim even when two writers passed the earlier list check. `NavEvidence.tla`
+models a process crash and durable reopen; its unconditional-PUT probe loses
+an acknowledged strike. Legacy `NAVS` migration claims the exact source bytes
+under `_nav-migration/<book>`, resumes a partial upload, and writes a completion
+marker only after every strike is present. Cold reads recheck those source
+strikes and refuse loss or mutation. The local fallback remains for an
+unconfigured process. Reports, proposals, CHANGELOG, external backup, and a
+customer restore drill remain unproved under #300/#264.

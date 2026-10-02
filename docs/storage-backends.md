@@ -1,11 +1,9 @@
 # Storage backends and the distribution model
 
-Status: **analysis and proposal.** Nothing here is a committed feature, a PLAN
-amendment, or an authorization to implement. It maps the persistence layer as
-built, states which alternative backends the existing seams can carry, and
-names the blockers that stand between the current shape and a two-track
-distribution model — on-device Personal, hosted SQL for funds and shared
-workspaces.
+Status: **analysis with a branch-local #300 NAV evidence amendment.** The
+backend verdicts remain proposals. This maps the persistence layer and names
+the blockers between the current shape and a two-track distribution model —
+on-device Personal, hosted SQL for funds and shared workspaces.
 
 Related decision gate: [#282](https://github.com/mattmarshall/ratio/issues/282)
 (reviewed config storage). Related measurement: [#268](https://github.com/mattmarshall/ratio/issues/268).
@@ -422,9 +420,10 @@ kernel.** Effort: **medium, and it is operational as much as it is code.**
 ### 5.10 Recovery objectives are unagreed
 
 `docs/recovery.md` records that RPO, RTO, backup frequency, retention, and
-named operators are **all unagreed**, and that NAV strikes, post-create
-membership, and later configuration promotions are still local for legacy
-books. Multiplying the number of backends before these are agreed multiplies
+named operators are **all unagreed**. Published books persist post-create
+membership and configuration transitions; the branch-local #300 slice also
+persists NAV strikes. Legacy unpublished books still need local chart,
+identity, and configuration material captured. Multiplying backends now multiplies
 the number of restore procedures that do not exist. ⚠ **Do not add a backend
 before #264 has answers; add the backend to the answer.**
 
