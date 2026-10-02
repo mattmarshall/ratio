@@ -463,7 +463,8 @@ An explicit console map selects an `ObjectStore` by book ID. Cold
 published-book discovery, membership, active configuration, book opens,
 and NAV replay use the selected store; an unmapped ID refuses. CLI, watch,
 API, MCP, projection, and NAV entry points pass explicit handles.
-`FileBook::open`, `open_attached`, and Console constructors are local-only.
+`FileBook::open`, `open_attached`, Console constructors, and MCP default entry
+points are local-only. Only the binary reads the process-installed store.
 The server still selects
 one store at startup, so the hosted per-book router and provider recovery
 evidence remain before #360 is complete.

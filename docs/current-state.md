@@ -80,7 +80,8 @@ messages also pass the [issue-completion check](issue-completion.md).
   published-book discovery, journal writes, and active configuration. An unregistered ID
   refuses. CLI, watch, API, MCP, projection, and NAV entry points now pass
   explicit store handles. `FileBook::open`, `open_attached`, and Console
-  constructors are local-only.
+  constructors and MCP default entry points are local-only. Only binary
+  startup reads the installed store.
   The serving binary still selects one store at startup; a hosted per-book
   router and provider recovery evidence remain before #360 is complete.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and

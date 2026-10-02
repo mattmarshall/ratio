@@ -5351,7 +5351,8 @@ membership, active configuration, counts, and authorized book opens use the
 selected backend; a missing mapping refuses. A cold-root test proves two
 published books on separate stores recover and strike a NAV in one process.
 CLI, watch, API, MCP, projection, and NAV entry points pass explicit handles.
-`FileBook::open`, `open_attached`, and Console constructors are local-only.
+`FileBook::open`, `open_attached`, Console constructors, and MCP default
+entry points are local-only; only binary startup reads the installed store.
 The serving binary still
 selects one store at startup; a hosted per-book router and provider recovery
 evidence remain before this issue is complete.

@@ -36,7 +36,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use ratio_rules::{check, compile, render, Event, RuleSet};
-use ratio_store::{installed_object_store, ConfigStore, FileBook, Journal, JournalEntry, ObjectStore};
+use ratio_store::{ConfigStore, FileBook, Journal, JournalEntry, ObjectStore};
 use serde_json::{json, Value};
 
 /// The protocol version answered when a client does not name one.
@@ -45,7 +45,7 @@ const DEFAULT_PROTOCOL: &str = "2024-11-05";
 /// Run the server against a book, reading requests from `input` and writing
 /// responses to `output`. One JSON object per line, in both directions.
 pub fn serve(book: &std::path::Path, input: impl BufRead, output: impl Write) -> Result<()> {
-    serve_with_store(book, installed_object_store(), input, output)
+    serve_with_store(book, None, input, output)
 }
 
 /// Serve a book with its selected store carried through every tool call.
@@ -71,12 +71,12 @@ pub fn serve_with_store(
 
 /// Handle one line. `None` for a notification, which must not be answered.
 pub fn handle_line(book: &std::path::Path, line: &str) -> Option<String> {
-    handle_line_with(book, line, false, installed_object_store())
+    handle_line_with(book, line, false, None)
 }
 
 /// Handle one network request after the serving process completed hydration.
 pub fn handle_line_attached(book: &std::path::Path, line: &str) -> Option<String> {
-    handle_line_attached_with_store(book, line, installed_object_store())
+    handle_line_attached_with_store(book, line, None)
 }
 
 /// Handle a hydrated book with its selected store.
@@ -346,7 +346,7 @@ pub fn tools() -> Value {
 
 /// Run one tool by name. `Err` is a message meant for the model to read.
 pub fn dispatch(book: &std::path::Path, name: &str, args: &Value) -> Result<String> {
-    dispatch_with(book, name, args, false, installed_object_store())
+    dispatch_with(book, name, args, false, None)
 }
 
 /// Run one tool against an explicitly selected book store.
