@@ -5374,3 +5374,29 @@ full listing and 17.041 µs for a direct max; it is not an S3 measurement.
 Live S3 request count, latency, and cost at a nontrivial height remain issue
 acceptance before the performance claim is complete. No production read or
 amount rule changes in this slice.
+
+### October 1, 2026 — cross-backend conformance gate, issue #359 (branch-local)
+
+`//crates/ratio-project:backend_conformance_gate` groups the journal/plane
+replay test, store and deployed S3 adapter tests, checkpoint tests, and the
+S3 journal model. The new fixture writes three postings and two records on
+*each* of deliveries, entities, facts, actions, explanations, and closes to
+local JSONL, MemoryStore, and DirStore; it reopens them and compares every
+record and every journal-prefix digest with the NAV digest. Direct object-log
+checks refuse occupied claims and holes. The checkpoint telemetry test now
+uses the production formatter, whose fields omit book IDs, digests, journal
+bodies, and memos. A unique test-directory counter fixes a repeated parallel
+checkpoint test collision. The gate does not yet run the full fixture against
+live S3; provider credentials and a disposable bucket remain acceptance work.
+
+### Amendment, 2026-10-02 — every current ObjectStore enters the conformance gate
+
+Related: #359. The shared fixture now compares trial balances as well as every
+prefix digest and six side planes. The deployed S3 adapter runs it against a
+bounded in-process S3 endpoint, using the same conditional PUT, GET, and LIST
+calls as the provider client. Journal and each side plane refuse holes and
+occupied claims; `MemoryStore::unconditional()` fails for the overwritten
+claim it permits. A Bazel source inventory includes all crate packages and
+fails when a new `ObjectStore` implementation is added without extending the
+gate; a temporary unregistered implementation made the gate red. Live S3
+provider behavior and the customer recovery drill remain unproved.

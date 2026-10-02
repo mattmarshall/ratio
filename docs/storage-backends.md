@@ -1,10 +1,10 @@
 # Storage backends and the distribution model
 
-Status: **analysis with branch-local implementation notes for #358.** The
+Status: **analysis with branch-local #357–#359 implementation notes.** The
 backend verdicts remain proposals. This document maps the persistence layer,
-records the append-height change under review, and names the blockers between
-the current shape and a two-track distribution model — on-device Personal,
-hosted SQL for funds and shared workspaces.
+records the checkpoint, append-height, and conformance changes under review,
+and names the blockers between the current shape and a two-track distribution
+model — on-device Personal, hosted SQL for funds and shared workspaces.
 
 Related decision gate: [#282](https://github.com/mattmarshall/ratio/issues/282)
 (reviewed config storage). Related measurement: [#268](https://github.com/mattmarshall/ratio/issues/268).
@@ -466,3 +466,14 @@ override those labels or PLAN's scope decisions.
 interesting problem — spends the toolchain budget before the storage seam is
 ready to carry a second backend, and leaves the hosted read path broken for
 whichever customer arrives first.
+
+### October 1, 2026 conformance note (#359, branch-local)
+
+`//crates/ratio-project:backend_conformance_gate` checks journal and all six
+side-plane replay across local JSONL, MemoryStore, DirStore, and the S3 adapter
+against an in-process endpoint. It compares trial balances and every
+journal-prefix digest to the NAV digest, and includes conditional-claim,
+no-hole, checkpoint privacy, and S3Journal model tests. A source inventory
+fails the build when a new ObjectStore implementation is not registered for
+conformance. The full fixture has not been run against live S3; do not treat
+the gate as provider acceptance or as proof of customer recovery.

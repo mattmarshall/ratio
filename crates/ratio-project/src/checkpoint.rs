@@ -67,14 +67,14 @@ pub struct CheckpointTelemetry {
 }
 
 impl CheckpointTelemetry {
-    /// One stderr line for CloudWatch. ⛔ No digest, no entry ids, no memos.
-    pub fn report(self) {
+    /// One CloudWatch line. ⛔ No digest, no entry ids, no memos.
+    pub fn log_line(self) -> String {
         match self.miss {
-            None => eprintln!(
+            None => format!(
                 "projection_checkpoint hit=1 miss=0 checkpoint_prefix={} journal_height={} tail_length={}",
                 self.checkpoint_prefix, self.journal_height, self.tail_length
             ),
-            Some(m) => eprintln!(
+            Some(m) => format!(
                 "projection_checkpoint hit=0 miss=1 reason={} checkpoint_prefix={} journal_height={} tail_length={}",
                 m.as_str(),
                 self.checkpoint_prefix,
@@ -82,6 +82,10 @@ impl CheckpointTelemetry {
                 self.tail_length
             ),
         }
+    }
+
+    pub fn report(self) {
+        eprintln!("{}", self.log_line());
     }
 }
 
@@ -1085,7 +1089,7 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
 
-    static NEXT_TMP: AtomicU64 = AtomicU64::new(0);
+    static NEXT_TEST_DIR: AtomicU64 = AtomicU64::new(0);
 
     fn tmp() -> PathBuf {
         let root = match std::env::var_os("TEST_TMPDIR") {
@@ -1095,7 +1099,7 @@ mod tests {
         root.join(format!(
             "ratio-checkpoint-{}-{}-{}",
             std::process::id(),
-            NEXT_TMP.fetch_add(1, Ordering::Relaxed),
+            NEXT_TEST_DIR.fetch_add(1, Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -1447,10 +1451,7 @@ mod tests {
             journal_height: 110,
             tail_length: 10,
         };
-        let line = format!(
-            "projection_checkpoint hit=1 miss=0 checkpoint_prefix={} journal_height={} tail_length={}",
-            tel.checkpoint_prefix, tel.journal_height, tel.tail_length
-        );
+        let line = tel.log_line();
         assert!(!line.contains("memo"));
         assert!(!line.contains("posting"));
         assert!(!line.contains('{'));
