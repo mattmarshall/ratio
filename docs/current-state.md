@@ -78,7 +78,8 @@ messages also pass the [issue-completion check](issue-completion.md).
 - **Per-book storage (#360, branch-local):** the console can resolve two
   independent object stores by book ID in one process, including cold
   published-book discovery, journal writes, and active configuration. An unregistered ID
-  refuses. CLI, watch, API, MCP, projection, and NAV entry points now pass
+  refuses, as does opening one materialized book against the other store.
+  CLI, watch, API, MCP, projection, and NAV entry points now pass
   explicit store handles. `FileBook::open`, `open_attached`, and Console
   constructors and MCP default entry points are local-only. Only binary
   startup reads the installed store.

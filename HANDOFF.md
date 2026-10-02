@@ -1500,7 +1500,8 @@ object store. Bootstrap discovery, membership, active configuration, counts,
 and authorized `FileBook` opens resolve through that map. A missing mapping
 refuses instead of falling back to local files. A cold-root test creates two
 books on separate stores, writes isolated journal entries, strikes a NAV,
-and recovers both in one process. CLI, watch, API, MCP, projection, and NAV
+and recovers both in one process. The same test refuses opening alpha's
+materialized book against beta's store before any beta write. CLI, watch, API, MCP, projection, and NAV
 entry points now pass an explicit store handle. `FileBook::open` and
 `open_attached` are local-only; Console and MCP default entry points are also
 local-only, and
