@@ -80,7 +80,9 @@ messages also pass the [issue-completion check](issue-completion.md).
   two-book restore now verifies the acknowledged journal prefix, later
   configuration promotion, membership grant, close, and explanation records
   survive an interrupted object claim; the restored close refuses a backdated
-  post and a next-period append takes the next slot. NAVs,
+  post and a next-period append takes the next slot. A branch-local object
+  capture helper verifies each copied byte and publishes a protobuf manifest
+  last; it has only in-memory and directory-store evidence. NAVs,
   reports/proposals, CHANGELOG, complete backup coverage, and the external
   restore drill remain separate recovery work.
 

@@ -5356,3 +5356,9 @@ post, while a next-period post claims sequence 3. The other book remains inacces
 the restored subject. This is local
 failure evidence; customer S3 backup/restore, RPO/RTO, retention, and named
 operator acceptance remain open.
+
+The same branch now has a conditional, readback-verified object-namespace copy
+and a protobuf key/length/SHA-256 manifest published last. Restore verifies
+the capture before writing an empty destination. It does not quiesce writers,
+schedule or retain backup copies, capture legacy local-only material, or prove
+customer figures and access. Those #264 acceptance steps remain open.

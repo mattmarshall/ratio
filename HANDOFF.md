@@ -1506,3 +1506,11 @@ history, beta's journal stays empty, and
 membership stays isolated. This is an interrupted local PUT fixture; the live
 customer backup, recovery objectives, retention, and named operators remain
 unproved.
+
+The #264 branch also adds `ratio_store::recovery`, a byte-level object copy
+helper whose protobuf manifest is published only after source and backup bytes
+match. Restore refuses changed, missing, extra, or duplicate objects before
+writing an empty target. This is a testable capture primitive, not a customer
+backup job or a replay/authorization acceptance result. The operator must
+quiesce writers, retain legacy local material separately, and verify figures
+and membership after restore.

@@ -219,14 +219,27 @@ preservation, report selection by mtime, S3 capture/restore, gateway
 authentication, Postgres rebuild, concurrent writers, operator procedures, and
 customer-scale timing remain required external drill coverage.
 
+The branch also has a reusable byte-level object-namespace capture in
+[`ratio_store::recovery`](../crates/ratio-store/src/recovery.rs). It lists a
+quiescent namespace, conditionally copies each object into an empty independent
+store, reads it back, then publishes a protobuf manifest of keys, lengths, and
+SHA-256 digests last. Restore checks every manifest object and refuses a
+missing, changed, extra, or duplicate key before copying into an empty store.
+An interrupted copy leaves a partial destination that must be discarded. The
+helper does not stop writers, copy legacy local-only metadata, schedule backups,
+set retention, authenticate an operator, or verify a recovered figure. It has
+only been exercised with in-memory and directory object-store tests; the local book drill
+above supplies separate replay evidence. No live S3 or customer capture has
+used it.
+
 ## Gaps that block a production recovery claim
 
 - [#300](https://github.com/mattmarshall/ratio/issues/300) covers NAVs,
   reports/proposals, audit logs, and the remaining operational evidence and
   writer-storage consistency. Its branch-local work is not included in this
   #264 drill branch yet.
-- No whole-book backup scheduler, consistent checkpoint/export command,
-  restore command, retention policy, or independent backup copy is established
+- No whole-book backup scheduler, operator-facing export/restore command,
+  retention policy, or live independent backup copy is established
   by this inventory. The S3 template configures encryption and prevents public
   access; it does not declare versioning or Object Lock on ScaleBucket.
   Live settings were not inspected and are not inferred from the template.
