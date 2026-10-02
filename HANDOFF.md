@@ -1488,8 +1488,7 @@ published immutable bootstrap for new books. That bootstrap recovers chart,
 identity, kind, opening configuration, and creator membership. Later
 configuration promotions and explicit membership grants/revocations use the
 same durable object backend and recover by verified predecessor transition.
-NAVS, reports, and proposals are object-backed on the #300 branch;
-CHANGELOG remains local. The object-only
+NAVS, reports, proposals, and CHANGELOG are object-backed on the #300 branch. The object-only
 probe now explicitly characterizes a legacy book created before storage was
 attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery
@@ -1498,8 +1497,7 @@ guarantee.
 The #300 CLI entry guard attaches configured object storage before book
 commands, including person-only verbs and stdio MCP. It closes the local-only
 journal selection path for those commands; the later #300 NAV slice persists
-NAVS; later slices persist reports and proposals, while CHANGELOG remains
-local. The complete #300 and #264 acceptance gates
+NAVS; later slices persist reports, proposals, and CHANGELOG. The complete #300 and #264 acceptance gates
 remain open.
 
 ### NAV evidence, October 1, 2026 (issue #300, branch-local)
@@ -1535,5 +1533,14 @@ Identical retries succeed; changed TOML under the same ID refuses. CLI approval,
 watch, and console read the durable drafts, keeping activation exclusively
 behind the person's approval door. A legacy `proposals/*.toml` directory is
 fenced as exact bytes under `_proposal-migration/<book>`; interrupted migration
-resumes and a cold read refuses a missing completed draft. CHANGELOG, live S3
-recovery, and customer RPO/RTO/retention decisions remain #300/#264 work.
+resumes and a cold read refuses a missing completed draft. Live S3 recovery
+and customer RPO/RTO/retention decisions remain #300/#264 work.
+
+### Audit evidence, October 1, 2026 (issue #300, branch-local)
+
+Console actions and CLI approval append their exact actor/action lines to a
+per-book object sequence when storage is configured. Readers refuse holes and
+malformed durable entries. A legacy `CHANGELOG` is fenced by its exact source
+bytes and completion claim; interrupted import resumes, and completed import
+checks its retained prefix. This does not establish the external backup,
+restore, retention, or customer recovery objectives in #264/#300.

@@ -473,3 +473,11 @@ MCP writers and the approval/watch/console readers use the same door. Local
 proposals migrate through a retained source and completion claim; changing
 reviewed bytes under one id refuses. A proposal remains inactive until a
 person approves it. CHANGELOG and the external recovery drill remain open.
+
+### October 2, 2026 audit evidence note (#300, branch-local)
+
+`StoredChange` keeps each exact five-field actor/action line, including its
+newline, in a per-book `SeqLog`. Console and CLI writers plus config-version
+and change-log readers use this door. A legacy `CHANGELOG` migrates under an
+exact-byte source and completion claim; durable reads refuse gaps and malformed
+entries. A live external restore and customer recovery objectives remain open.

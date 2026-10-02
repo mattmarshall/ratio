@@ -57,3 +57,17 @@ message ProposalMigration {
   string book_id = 2;
   repeated StoredProposal proposals = 3;
 }
+
+// One exact audit line, including its final newline, in append order.
+message StoredChange {
+  int32 format_version = 1;
+  string book_id = 2;
+  bytes line_bytes = 3;
+}
+
+// Exact local CHANGELOG bytes before configured object storage took over.
+message ChangeMigration {
+  int32 format_version = 1;
+  string book_id = 2;
+  bytes source_bytes = 3;
+}

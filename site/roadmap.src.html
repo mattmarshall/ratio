@@ -571,8 +571,8 @@ __STYLE__
           uses the durable journal. The #300 branch conditionally persists
           signed NAV strikes by book, view, and valuation point. Report
           protobufs also persist in an ordered object log; proposal TOML
-          is conditionally stored by reviewed id. CHANGELOG and the external
-          restore drill remain open.
+          is conditionally stored by reviewed id. Ordered audit lines also
+          persist in the object store. The external restore drill remains open.
           Complete metadata recovery
           remains on #291. Pending hydration returns a retryable
           503; a failed storage startup refuses book traffic

@@ -3,13 +3,14 @@
 Related: [#264](https://github.com/mattmarshall/ratio/issues/264).
 Durable follow-on work: [#299](https://github.com/mattmarshall/ratio/issues/299)
 and [#300](https://github.com/mattmarshall/ratio/issues/300).
-Source review refreshed October 1, 2026.
+Source review refreshed October 2, 2026.
 
 Ratio does not yet have a demonstrated whole-book disaster recovery procedure
 for the deployed service. The journal's conditional S3 writes protect one part
 of a book. A book also needs its chart, configuration, identity, access grants,
-and the evidence attached to its figures. Operational evidence still lives
-only in the serving container's filesystem.
+and the evidence attached to its figures. The #300 branch stores signed NAV
+strikes, reports, proposals, and audit lines in the configured object store;
+those changes still need a live, independent backup and restore drill.
 
 The first executable evidence is a disposable **local directory restore**. It
 checks a journal prefix and digest, two local configuration versions, a NAV
@@ -60,7 +61,7 @@ With neither installed, FileBook uses local JSONL files.
 | NAV strikes | `NAVS` | `<book>/nav-strikes/<sha256(view, id)>` immutable protobuf objects when a store is installed; legacy migration source and completion under `_nav-migration/` | Records `(view, valuation point)`, actor, prefix, digest, and figure. The conditional claim refuses a second answer. Preserve strike objects and migration records; recomputing today's NAV does not restore the signed strike. |
 | Reconciliation reports | `reports/*.pb` | `<book>/reports/<sequence>` immutable protobuf envelopes when a store is installed; legacy source and completion under `_report-migration/` | Preserve exact report bytes, filename, and original modification time in the envelope. Legacy reports migrate in mtime/path order, then newest means the last durable append. A recomputed report is a new artifact. |
 | Proposals | `proposals/*.toml` | `<book>/proposals/<sha256(id)>` immutable protobuf drafts when a store is installed; migration source/completion under `_proposal-migration/` | Preserve exact reviewed TOML and proposal IDs. A changed draft under one ID refuses; approval remains a separate human act. |
-| Audit trail | `CHANGELOG` | **Still local** | Preserve who approved or acted under a configuration; a reconstructed config history cannot restore actor attribution. |
+| Audit trail | `CHANGELOG` | `<book>/changes/<sequence>` immutable protobuf lines when a store is installed; legacy source/completion under `_change-migration/` | Preserve exact actor and action lines in order. A missing sequence refuses reads; a reconstructed config history cannot restore actor attribution. |
 | Original delivery files and external app evidence | External source locations; no general retained-blob path in the ingest code | **No complete retention contract here** | Inventory the actual upstream archive and Connect app stores. A delivery digest alone cannot recover the original file. |
 
 Do not restore into a different parent directory in the same object store and
@@ -96,10 +97,8 @@ The implementation supporting this inventory is:
   regenerate demo memberships from `RATIO_DEMO_MEMBER`. Published CreateBook
   books recover independently of the baked seeds.
 - The CLI entry point also attaches configured object storage before opening a
-  book for person-only writes or stdio MCP. This prevents those commands from
-  silently selecting a local journal when a durable backend is configured;
-  CHANGELOG still requires durable persistence on
-  [#300](https://github.com/mattmarshall/ratio/issues/300).
+  book for person-only writes or stdio MCP. Audit writes now use the same
+  configured store; they refuse a missing sequence or changed legacy source.
 
 ## Rebuildable material
 
@@ -142,7 +141,8 @@ environment. It is not currently an automated production backup command.
    both `_nav-migration/` records where present. Capture each report sequence
    and its `_report-migration/` source/completion records as well. Include
    `<book>/proposals/` plus the `_proposal-migration/` source/completion
-   records. Record sequence heights and content hashes and
+   records. Capture `<book>/changes/` and both `_change-migration/` records
+   where present. Record sequence heights and content hashes and
    every `_seed/publications*/<book-id>` marker. Check each marker's format
    version, digest, and plane lengths against the captured baked source; do not
    synthesize or remove a marker during restore. Check that each sequence is
@@ -224,9 +224,9 @@ customer-scale timing remain required external drill coverage.
 
 - Published-book post-create configuration and membership transitions are
   durable; legacy unpublished books retain their local control-state risk.
-  [#300](https://github.com/mattmarshall/ratio/issues/300) covers NAVs,
-  audit logs, remaining operational evidence, and
-  writer-storage consistency.
+  [#300](https://github.com/mattmarshall/ratio/issues/300) still requires
+  live recovery evidence and writer-storage verification after these
+  branch-local operational evidence changes.
 - No whole-book backup scheduler, consistent checkpoint/export command,
   restore command, retention policy, or independent backup copy is established
   by this inventory. The S3 template configures encryption and prevents public

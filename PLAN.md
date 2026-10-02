@@ -5391,3 +5391,13 @@ interrupted migration resumes and cold reads refuse a missing completed draft.
 The proposal is still inactive until a person approves it. This leaves
 CHANGELOG persistence, a live S3 restore, and customer recovery objectives
 open under #300/#264.
+
+### Amendment, 2026-10-02 — ordered audit evidence on configured storage
+
+Related: #300. Console actions and CLI approvals now append their exact
+five-field actor/action lines to a per-book object sequence. Config version
+and change-log readers use that same ordered source and refuse a missing or
+malformed durable entry. A legacy `CHANGELOG` is fenced by its exact bytes,
+then imported with a retained completion claim. This preserves audit
+attribution after a cold reopen. Live external restore, customer recovery
+objectives, retention, and operator responsibility remain #300/#264 work.

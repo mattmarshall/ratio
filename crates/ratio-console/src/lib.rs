@@ -419,7 +419,6 @@ impl Console {
     /// absent actor is recorded as empty rather than invented — an audit trail
     /// that makes up a name is worse than one that admits a gap.
     fn record_change(&self, book: &Path, action: &str, subject: &str, digest: &str) -> Result<()> {
-        use std::io::Write;
         let when = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -431,20 +430,13 @@ impl Console {
         let clean = |s: &str| -> String {
             s.chars().filter(|c| *c != '\t' && *c != '\n' && *c != '\r').collect()
         };
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(book.join("CHANGELOG"))
-            .context("opening CHANGELOG")?;
-        writeln!(
-            f,
-            "{when}\t{}\t{}\t{}\t{}",
+        ratio_store::changes::append(book, &format!(
+            "{when}\t{}\t{}\t{}\t{}\n",
             clean(self.actor.as_deref().unwrap_or("")),
             clean(action),
             clean(subject),
             clean(digest)
-        )
-        .context("appending to CHANGELOG")?;
+        ))?;
         Ok(())
     }
 
@@ -4282,7 +4274,8 @@ impl Console {
         let chart = b.accounts()?;
 
         let mut promoted: BTreeMap<String, (i64, String, String)> = BTreeMap::new();
-        for l in std::fs::read_to_string(path.join("CHANGELOG")).unwrap_or_default().lines() {
+        for line in ratio_store::changes::read(&path)? {
+            let l = line.trim_end_matches('\n');
             let f: Vec<&str> = l.split('\t').collect();
             // ⛔ ONLY AN "approved" LINE IS A PROMOTION. The CHANGELOG is the
             // fund's whole audit trail — it also carries who posted, ingested,
@@ -5237,8 +5230,7 @@ impl Console {
     /// the fallback for configurations that predate the record.
     fn change_log_for(&self, book: &Path, fund: &str) -> Result<Vec<pb::ChangeLogEntry>> {
         let mut out = Vec::new();
-        let text = std::fs::read_to_string(book.join("CHANGELOG")).unwrap_or_default();
-        for (i, line) in text.lines().filter(|l| !l.trim().is_empty()).enumerate() {
+        for (i, line) in ratio_store::changes::read(book)?.iter().enumerate() {
             let f: Vec<&str> = line.split('\t').collect();
             if f.len() < 5 {
                 continue; // a truncated line is skipped, not guessed at

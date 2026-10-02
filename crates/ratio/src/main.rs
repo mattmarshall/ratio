@@ -3157,10 +3157,7 @@ fn approve_text_with_control(
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let line = format!("{when}\t{actor}\tapproved\t{id}\t{}\n", digest.as_str());
-    let log = book.join("CHANGELOG");
-    let mut prior = std::fs::read_to_string(&log).unwrap_or_default();
-    prior.push_str(&line);
-    std::fs::write(&log, prior).context("recording the approval")?;
+    ratio_store::changes::append(&book, &line).context("recording the approval")?;
 
     let mut out = format!(
         "approved {id}\n  {} rule(s) now active ({replaced} replaced)\n  \
