@@ -1,6 +1,6 @@
 # Ratio — current state
 
-Updated October 2, 2026 (including stacked branch-local #300/#360 work). This is the current implementation summary. Update
+Updated October 2, 2026 (including stacked branch-local #300/#360/#361 work). This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
 The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
@@ -82,8 +82,8 @@ messages also pass the [issue-completion check](issue-completion.md).
   workload details. Verified journal-prefix checkpoints (#310) report cold
   full replay, checkpoint load, and tail replay for the large demo shape
   (~5,400 entries); the journal remains the book of record.
-- **Per-book storage (#360, branch-local):** the console can resolve two
-  MemoryStore and DirStore by book ID in one process, including cold
+- **Per-book storage (#360, branch-local):** the console can resolve a
+  MemoryStore and a DirStore by book ID in one process, including cold
   published-book discovery, journal writes, and active configuration. An unregistered ID
   refuses, as does opening one materialized book against the other store.
   CLI, watch, API, MCP, projection, and NAV entry points now pass
@@ -106,6 +106,10 @@ messages also pass the [issue-completion check](issue-completion.md).
   configured object storage before book commands, including stdio MCP and
   person-only writes. Issue 300 remains open pending its PR and merge; the
   external customer drill is #264 acceptance, not #300 acceptance.
+- **Postgres execution (#361, branch-local):** `PgProjection` routes all SQL
+  through `PgExecutor`; the default `PsqlExecutor` retains the subprocess
+  behavior. A transport contract test and a disposable PostgreSQL 16 live
+  projection run pass. No library client or Postgres journal backend exists.
 
 ## Scope decisions that remain in force
 

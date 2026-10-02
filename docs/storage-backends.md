@@ -1,6 +1,6 @@
 # Storage backends and the distribution model
 
-Status: **analysis with stacked branch-local #300 evidence and #360 routing amendments.** The
+Status: **analysis with stacked branch-local #300 evidence, #360 routing, and #361 Postgres execution amendments.** The
 backend verdicts remain proposals. This maps the persistence layer and names
 the blockers between the current shape and a two-track distribution model —
 on-device Personal, hosted SQL for funds and shared workspaces.
@@ -501,3 +501,12 @@ points are local-only. Only the binary reads the process-installed store.
 The server still selects
 one store at startup, so the hosted per-book router and provider recovery
 evidence remain before #360 is complete.
+
+### October 2, 2026 Postgres execution note (#361, branch-local)
+
+`PgExecutor` now owns SQL execution beneath `PgProjection`, while
+`PsqlExecutor` keeps the current subprocess behavior. The executor returns
+unaligned tab-separated rows with empty/null cells as the existing parser
+expects, and executes a transaction string in one request. A disposable
+PostgreSQL 16 run passed the existing live projection suite. This prepares
+the transport boundary; it does not add a native client or journal backend.

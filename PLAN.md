@@ -5428,3 +5428,13 @@ entry points are local-only; only binary startup reads the installed store.
 The serving binary still
 selects one store at startup; a hosted per-book router and provider recovery
 evidence remain before this issue is complete.
+
+### Amendment, 2026-10-02 — reusable Postgres execution seam (#361, branch-local)
+
+`PgProjection` now sends each schema operation, pinned read, and atomic
+snapshot transaction through a `PgExecutor` trait. `PsqlExecutor` preserves
+the existing command-line transport and tabular output contract. The
+transport test checks schema scoping and failure refusal; the existing live
+projection suite passed against disposable PostgreSQL 16. A native library
+client and Postgres journal backend are separate work. The journal remains
+the book of record, and #362 must wait for the recovery and conformance gates.
