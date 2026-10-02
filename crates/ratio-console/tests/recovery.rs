@@ -8,9 +8,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{ensure, Result};
-use ratio_console::{book::BookKind, Console, Subject};
+use ratio_console::{book::BookKind, BreakExplanation, Console, Subject};
 use ratio_proto::ratio::console::v1 as pb;
-use ratio_store::{ConfigStore, Digest, DirStore, FileBook, Journal, JournalEntry, PostingRecord};
+use ratio_store::{
+    control::{control_operation, membership_revision, ConfigPromotion, ControlOperation, ControlStore, MembershipRevision},
+    CloseRecord, ConfigStore, Digest, DirStore, FileBook, Journal, JournalEntry, ObjectStore,
+    Plane, PostingRecord, SeqLog,
+};
 
 fn scratch(name: &str) -> PathBuf {
     let root = std::env::var_os("TEST_TMPDIR")
@@ -207,5 +211,145 @@ fn a_legacy_book_attached_after_creation_does_not_gain_a_durable_bootstrap() {
     assert!(!cold_path.join("book.toml").exists());
     assert!(!cold_root.join("MEMBERSHIP.tsv").exists());
     assert!(Console::scoped(&cold_root, member("alice")).list_books().unwrap().books.is_empty());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn an_interrupted_object_claim_recovers_the_acked_prefix_and_next_slot() {
+    let root = scratch("interrupted-object-claim");
+    let live = root.join("live");
+    let source_objects = root.join("source-objects");
+    let source: Arc<dyn ObjectStore> = Arc::new(DirStore::at(&source_objects));
+    for (id, owner, kind) in [
+        ("alpha", "alice", BookKind::Investment),
+        ("beta", "bob", BookKind::Personal),
+    ] {
+        Console::scoped(&live, member(owner)).with_object_store(source.clone())
+            .create_book(pb::CreateBookRequest {
+                book_id: id.into(),
+                book: Some(pb::Book { kind: kind.proto(), ..Default::default() }),
+            }).unwrap();
+    }
+    let alpha = live.join("alpha");
+    let mut book = FileBook::open_with(&alpha, Some(source.clone())).unwrap();
+    let config = book.active().unwrap().unwrap();
+    book.append(&entry("acknowledged", &config, 50_000)).unwrap();
+    let control = ControlStore::new(source.clone());
+    let mut promoted_rules = book.get(&config).unwrap();
+    promoted_rules.extend_from_slice(b"\n# Recovery promotion\n");
+    let promoted = control.stage_config(&promoted_rules).unwrap();
+    let state = control.read("alpha").unwrap();
+    control.commit(&ControlOperation {
+        format_version: 1,
+        book_id: "alpha".into(),
+        bootstrap_digest: state.bootstrap_digest,
+        expected_revision: state.revision,
+        expected_predecessor_digest: state.predecessor_digest,
+        operation_id: "promote-after-opening".into(),
+        actor_subject: "alice".into(),
+        actor_provenance: "verified-test-context".into(),
+        change: Some(control_operation::Change::ConfigPromotion(ConfigPromotion {
+            config_digest: promoted.as_str().into(),
+        })),
+    }).unwrap();
+    let state = control.read("alpha").unwrap();
+    control.commit(&ControlOperation {
+        format_version: 1,
+        book_id: "alpha".into(),
+        bootstrap_digest: state.bootstrap_digest,
+        expected_revision: state.revision,
+        expected_predecessor_digest: state.predecessor_digest,
+        operation_id: "grant-after-opening".into(),
+        actor_subject: "alice".into(),
+        actor_provenance: "verified-test-context".into(),
+        change: Some(control_operation::Change::MembershipRevision(MembershipRevision {
+            action: membership_revision::Action::Grant as i32,
+            principal: Some(membership_revision::Principal::AuthkitSubject("guest".into())),
+        })),
+    }).unwrap();
+    let control_before = control.read("alpha").unwrap();
+    assert_eq!(control_before.revision, 2);
+    assert_eq!(book.active().unwrap(), Some(promoted.clone()));
+    book.append(&entry("after-promotion", &promoted, 10_000)).unwrap();
+    let before = ratio_nav::prefix_digest(&book.entries().unwrap()).unwrap();
+    let close = CloseRecord {
+        view: ratio_rules::UNDECLARED_VIEW.into(),
+        closed_date: "2026-06-30".into(),
+        journal_position: 2,
+        journal_digest: before.clone(),
+        config_digest: promoted.as_str().into(),
+        closing_entry: None,
+        actor: "alice".into(),
+        recorded: 1_781_784_001,
+        equity_destination: 20,
+        surplus: None,
+    };
+    let explanation = BreakExplanation {
+        break_id: "custodian-cash".into(),
+        text: "Accepted against the source statement".into(),
+        actor: "alice".into(),
+        accept_time: 1_781_784_002,
+        difference: 25,
+        config_digest: promoted.as_str().into(),
+        journal_position: 2,
+        journal_digest: before.clone(),
+    };
+    book.append_record(Plane::Closes, &close).unwrap();
+    book.append_record(Plane::Explanations, &explanation).unwrap();
+    assert_eq!(SeqLog::new(source.clone(), "alpha/closes/").height().unwrap(), 1);
+    assert_eq!(SeqLog::new(source.clone(), "alpha/explanations/").height().unwrap(), 1);
+    drop(book);
+
+    // A crashed DirStore PUT can leave a staged body, but only its hard link
+    // at the sequence key is an acknowledged journal entry.
+    let staging = source_objects.join(".object-staging");
+    fs::create_dir_all(&staging).unwrap();
+    fs::write(staging.join("crashed-next-entry"), b"incomplete").unwrap();
+    assert_eq!(SeqLog::new(source.clone(), "alpha/journal/").height().unwrap(), 2);
+    let backup = root.join("backup");
+    copy_tree(&source_objects, &backup);
+    fs::remove_dir_all(&live).unwrap();
+    fs::remove_dir_all(&source_objects).unwrap();
+    let restored_objects = root.join("restored-objects");
+    copy_tree(&backup, &restored_objects);
+    let restored = root.join("restored");
+    let restored_store: Arc<dyn ObjectStore> = Arc::new(DirStore::at(&restored_objects));
+    let restored_alpha = restored.join("alpha");
+    let mut reopened = FileBook::open_with(&restored_alpha, Some(restored_store.clone())).unwrap();
+    let control_after = ControlStore::new(restored_store.clone()).read("alpha").unwrap();
+    assert_eq!(control_after.revision, control_before.revision);
+    assert_eq!(control_after.predecessor_digest, control_before.predecessor_digest);
+    assert_eq!(reopened.entries().unwrap().len(), 2);
+    assert_eq!(reopened.active().unwrap(), Some(promoted.clone()));
+    assert_eq!(reopened.history().unwrap(), vec![promoted.clone(), config.clone()]);
+    assert_eq!(ratio_nav::prefix_digest(&reopened.entries().unwrap()).unwrap(), before);
+    assert_eq!(reopened.closes().unwrap(), vec![close]);
+    let restored_explanations: Vec<BreakExplanation> = reopened.records(Plane::Explanations).unwrap();
+    assert_eq!(restored_explanations.len(), 1);
+    assert_eq!(restored_explanations[0].break_id, explanation.break_id);
+    assert_eq!(restored_explanations[0].text, explanation.text);
+    assert_eq!(restored_explanations[0].actor, explanation.actor);
+    assert_eq!(restored_explanations[0].accept_time, explanation.accept_time);
+    assert_eq!(restored_explanations[0].difference, explanation.difference);
+    assert_eq!(restored_explanations[0].config_digest, explanation.config_digest);
+    assert_eq!(restored_explanations[0].journal_position, explanation.journal_position);
+    assert_eq!(restored_explanations[0].journal_digest, explanation.journal_digest);
+    let mut after_recovery = entry("after-recovery", &promoted, 10_000);
+    assert!(reopened.append(&after_recovery).unwrap_err().to_string().contains("closed through"),
+        "the restored close must still refuse a backdated posting");
+    after_recovery.trade_date = Some("2026-07-01".into());
+    reopened.append(&after_recovery).unwrap();
+    assert_eq!(reopened.entries().unwrap().iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
+        ["acknowledged", "after-promotion", "after-recovery"]);
+    assert_eq!(SeqLog::new(restored_store.clone(), "alpha/journal/").height().unwrap(), 3);
+    assert_eq!(SeqLog::new(restored_store.clone(), "beta/journal/").height().unwrap(), 0);
+    let alice = Console::scoped(&restored, member("alice")).with_object_store(restored_store.clone());
+    let bob = Console::scoped(&restored, member("bob")).with_object_store(restored_store.clone());
+    let guest = Console::scoped(&restored, member("guest")).with_object_store(restored_store);
+    assert_eq!(guest.list_books().unwrap().books.len(), 1);
+    assert_eq!(guest.get_book("books/alpha").unwrap().entry_count, 3);
+    assert!(guest.get_book("books/beta").is_err());
+    assert!(alice.get_book("books/beta").is_err());
+    assert!(bob.get_book("books/alpha").is_err());
     fs::remove_dir_all(root).unwrap();
 }

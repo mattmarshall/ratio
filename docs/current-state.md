@@ -76,7 +76,14 @@ messages also pass the [issue-completion check](issue-completion.md).
   full replay, checkpoint load, and tail replay for the large demo shape
   (~5,400 entries); the journal remains the book of record.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
-  post-create configuration/membership transitions are built. NAVs,
+  post-create configuration/membership transitions are built. A branch-local
+  two-book restore now verifies the acknowledged journal prefix, later
+  configuration promotion, membership grant, close, and explanation records
+  survive an interrupted object claim; the restored close refuses a backdated
+  post and a next-period append takes the next slot. A branch-local object
+  capture helper verifies each copied byte and publishes a protobuf manifest
+  last; `ratio recovery capture|restore` exposes it for explicit local or S3
+  namespaces, but only the directory command has been exercised. NAVs,
   reports/proposals, CHANGELOG, complete backup coverage, and the external
   restore drill remain separate recovery work.
 

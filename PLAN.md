@@ -5344,3 +5344,26 @@ conjunctive.
 forecast, required savings rate, FIRE number, goal RPC in core, and automatic
 scenario posting remain refused. Live OAuth evidence remains on #168 until the
 registered scopes are exercised against a permitted Personal book.
+
+### Amendment, 2026-10-02 — interrupted object claim restore (partial #264)
+
+Related: #264. A two-book directory object-store drill leaves a journal
+body in unpublished staging after two acknowledged entries, a configuration
+promotion, and a membership grant. It copies the namespace into a clean
+environment, verifies the acknowledged digest and control history, and
+restores cited close and explanation records. The close refuses a backdated
+post, while a next-period post claims sequence 3. The other book remains inaccessible to
+the restored subject. This is local
+failure evidence; customer S3 backup/restore, RPO/RTO, retention, and named
+operator acceptance remain open.
+
+The same branch now has a conditional, readback-verified object-namespace copy
+and a protobuf key/length/SHA-256 manifest published last. Restore verifies
+the capture before writing an empty destination. It does not quiesce writers,
+schedule or retain backup copies, capture legacy local-only material, or prove
+customer figures and access. Those #264 acceptance steps remain open.
+An operator-facing `ratio recovery capture|restore` command now selects each
+local or S3 namespace explicitly and refuses occupied destinations; its
+directory test deletes the source before restore and corrupts a backup object.
+This makes the capture primitive runnable but does not establish a customer
+backup, retention policy, or signed recovery acceptance.

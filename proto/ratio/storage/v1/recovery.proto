@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package ratio.storage.v1;
+
+option java_multiple_files = true;
+option java_package = "build.marsh.ratio.storage.v1";
+option java_outer_classname = "RecoveryProto";
+
+// An immutable object in a quiescent book-namespace capture.
+message RecoveryObject {
+  string key = 1;
+  int64 size = 2;
+  bytes sha256 = 3;
+}
+
+// Published last, after every listed object has been copied and read back.
+// This proves bytes in one capture; it does not attest that writers were
+// quiescent or that a customer accepted the restored figures. It is not a
+// signature: backup access control must prevent rewriting objects and manifest.
+message RecoveryManifest {
+  int32 format_version = 1;
+  string source_prefix = 2;
+  repeated RecoveryObject objects = 3;
+}
