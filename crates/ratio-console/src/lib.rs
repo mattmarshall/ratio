@@ -41,7 +41,7 @@ use ratio_proto::ratio::console::v1 as pb;
 use ratio_proto::ratio::v1 as kernel;
 use ratio_rules::RuleSet;
 use ratio_store::{
-    installed_object_store, AccountTypeRecord, CloseRecord, ConfigStore, FileBook, Journal,
+    AccountTypeRecord, CloseRecord, ConfigStore, FileBook, Journal,
     JournalEntry, Plane, PostingRecord,
 };
 
@@ -339,7 +339,7 @@ impl Console {
             scope,
             subject,
             authorization_deadline,
-            objects: installed_object_store(),
+            objects: None,
             book_objects: None,
             startup_hydrated: false,
             actor,
@@ -348,8 +348,8 @@ impl Console {
         }
     }
 
-    /// Inject the backend before serving requests. The process-installed store
-    /// remains the default; tests and independent local readers can be explicit.
+    /// Bind this console to the backend selected by its caller. Constructors
+    /// are local-only; a configured writer must call this before serving.
     pub fn with_object_store(mut self, objects: std::sync::Arc<dyn ratio_store::ObjectStore>) -> Self {
         self.objects = Some(objects);
         self.book_objects = None;
