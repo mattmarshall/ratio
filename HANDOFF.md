@@ -1493,3 +1493,13 @@ probe now explicitly characterizes a legacy book created before storage was
 attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery
 guarantee.
+## Per-book store routing, October 2, 2026 (issue #360, branch-local)
+
+`Console::with_book_object_stores` maps each permitted book ID to its own
+object store. Bootstrap discovery, membership, active configuration, counts,
+and authorized `FileBook` opens resolve through that map. A missing mapping
+refuses instead of falling back to local files. A cold-root test creates two
+books on separate stores and recovers both in one process. The serving binary,
+CLI, and other direct `FileBook::open` paths still use the process-global
+installation; this is a seam toward #360, not completion of its hosted
+multi-book acceptance.

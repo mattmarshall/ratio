@@ -186,6 +186,7 @@ pub struct Console {
     /// Console and a new membership snapshot; this deadline is never renewed.
     authorization_deadline: Option<std::time::Instant>,
     objects: Option<std::sync::Arc<dyn ratio_store::ObjectStore>>,
+    book_objects: Option<std::collections::BTreeMap<String, std::sync::Arc<dyn ratio_store::ObjectStore>>>,
     /// The network server sets this only after its startup hydrate gate is
     /// Ready. Request-time opens then attach to the store without repeating
     /// legacy seed publication. Other callers keep the safe hydrating open.
@@ -339,6 +340,7 @@ impl Console {
             subject,
             authorization_deadline,
             objects: installed_object_store(),
+            book_objects: None,
             startup_hydrated: false,
             actor,
             connect_grants,
@@ -350,8 +352,29 @@ impl Console {
     /// remains the default; tests and independent local readers can be explicit.
     pub fn with_object_store(mut self, objects: std::sync::Arc<dyn ratio_store::ObjectStore>) -> Self {
         self.objects = Some(objects);
+        self.book_objects = None;
         self.projections = Default::default();
         self
+    }
+
+    /// Bind each served book to its own backend. Once this map is installed,
+    /// an unregistered book refuses instead of silently using local files or
+    /// the process default. The map is runtime routing state, not book data.
+    pub fn with_book_object_stores(mut self,
+        objects: std::collections::BTreeMap<String, std::sync::Arc<dyn ratio_store::ObjectStore>>,
+    ) -> Self {
+        self.book_objects = Some(objects);
+        self.objects = None;
+        self.projections = Default::default();
+        self
+    }
+
+    fn object_store_for(&self, id: &str) -> Result<Option<std::sync::Arc<dyn ratio_store::ObjectStore>>> {
+        if let Some(books) = &self.book_objects {
+            return books.get(id).cloned().map(Some)
+                .with_context(|| format!("no object store is configured for books/{id}"));
+        }
+        Ok(self.objects.clone())
     }
 
     /// Use the serving-process fast path after its startup gate reached Ready.
@@ -361,18 +384,16 @@ impl Console {
     }
 
     fn bootstrap(&self, id: &str) -> Result<Option<(ratio_store::bootstrap::BookPublication, ratio_store::bootstrap::BookBootstrap)>> {
-        let Some(objects) = &self.objects else { return Ok(None); };
-        let state = ratio_store::bootstrap::BootstrapStore::new(objects.clone()).get(id)?;
+        let Some(objects) = self.object_store_for(id)? else { return Ok(None); };
+        let state = ratio_store::bootstrap::BootstrapStore::new(objects).get(id)?;
         if let Some((_, bootstrap)) = &state { book::validate_bootstrap(bootstrap)?; }
         Ok(state)
     }
 
     fn durable_allows(&self, id: &str) -> Result<bool> {
-        let objects = self
-            .objects
-            .as_ref()
+        let objects = self.object_store_for(id)?
             .context("durable membership backend is absent")?;
-        let state = ratio_store::control::ControlStore::new(objects.clone()).read(id)?;
+        let state = ratio_store::control::ControlStore::new(objects).read(id)?;
         self.durable_state_allows(&state)
     }
 
@@ -536,14 +557,19 @@ impl Console {
         if let Some(objects) = &self.objects {
             candidates.extend(ratio_store::bootstrap::BootstrapStore::new(objects.clone()).ids()?);
         }
+        if let Some(books) = &self.book_objects {
+            for (id, objects) in books {
+                if ratio_store::bootstrap::BootstrapStore::new(objects.clone()).get(id)?.is_some() {
+                    candidates.insert(id.clone());
+                }
+            }
+        }
         let mut books = Vec::new();
         for id in candidates {
             if let Some((publication, bootstrap)) = self.bootstrap(&id)? {
-                let objects = self
-                    .objects
-                    .as_ref()
+                let objects = self.object_store_for(&id)?
                     .context("durable book has no object store")?;
-                let state = ratio_store::control::ControlStore::new(objects.clone()).read(&id)?;
+                let state = ratio_store::control::ControlStore::new(objects).read(&id)?;
                 if self.durable_state_allows(&state)? {
                     let path = self.root.join(&id);
                     ratio_store::bootstrap::materialize(&path, &publication, &bootstrap)?;
@@ -645,9 +671,9 @@ impl Console {
         let authorized = self.book_path(id)?;
         if authorized != path { bail!("book path is outside the serving root"); }
         if self.startup_hydrated {
-            FileBook::open_attached_with(path, self.objects.clone())
+            FileBook::open_attached_with(path, self.object_store_for(id)?)
         } else {
-            FileBook::open_with(path, self.objects.clone())
+            FileBook::open_with(path, self.object_store_for(id)?)
         }
     }
 
@@ -3223,13 +3249,13 @@ impl Console {
     /// malformed successor refuses rather than making the opening rules look
     /// current. Local books keep their atomic filesystem pointer.
     fn active_config(&self, path: &Path, id: &str) -> Result<(String, Option<RuleSet>)> {
-        let Some(objects) = &self.objects else {
+        let Some(objects) = self.object_store_for(id)? else {
             return Ok(local_config(path));
         };
         let Some((_, bootstrap)) = self.bootstrap(id)? else {
             return Ok(local_config(path));
         };
-        let state = ratio_store::control::ControlStore::new(objects.clone()).read(id)?;
+        let state = ratio_store::control::ControlStore::new(objects).read(id)?;
         self.active_config_from(path, Some((&bootstrap, &state)))
     }
 
@@ -3244,11 +3270,9 @@ impl Console {
         let Some((bootstrap, state)) = durable else {
             return Ok(local_config(path));
         };
-        let objects = self
-            .objects
-            .as_ref()
+        let objects = self.object_store_for(&bootstrap.book_id)?
             .context("durable book has no object store")?;
-        let control = ratio_store::control::ControlStore::new(objects.clone());
+        let control = ratio_store::control::ControlStore::new(objects);
         let bytes = match control.opening_config(&bootstrap, &state.active) {
             Some(bytes) => bytes,
             None => control.config(&state.active)?,
@@ -3293,7 +3317,7 @@ impl Console {
             fund: meta.fund.map(|f| format!("funds/{f}")).unwrap_or_default(),
             organization: meta.organization.unwrap_or_default(),
             default_view: effective.default_view(),
-            entry_count: FileBook::list_entry_count(&path, self.objects.clone())? as i64,
+            entry_count: FileBook::list_entry_count(&path, self.object_store_for(&id)?)? as i64,
             config_digest,
             trial_balance_difference: String::new(),
             budget: String::new(),
@@ -3342,7 +3366,7 @@ impl Console {
             .map(|(bootstrap, state)| (bootstrap, state));
         let (config_digest, set) = self.active_config_from(path, durable)?;
         let effective = set.clone().unwrap_or_default();
-        let entry_count = FileBook::list_entry_count(&path, self.objects.clone())? as i64;
+        let entry_count = FileBook::list_entry_count(&path, self.object_store_for(&id)?)? as i64;
         // Awaiting prices is the one state the index can name without a
         // fold: no lines, nothing to strike. Anything else is GetFund.
         let state = if entry_count == 0 {
@@ -3585,13 +3609,13 @@ impl Console {
         } else {
             spec.display_name.trim().to_string()
         };
-        let digest = if let Some(objects) = &self.objects {
+        let digest = if let Some(objects) = self.object_store_for(id)? {
             let subject = match &self.subject {
                 Subject::Member { sub, connect: false, .. } if !sub.is_empty() => sub,
                 _ => bail!("durable book creation requires an authenticated creator subject"),
             };
             let bootstrap = book::bootstrap(id, &display, kind, subject)?;
-            let publication = ratio_store::bootstrap::BootstrapStore::new(objects.clone()).publish(&bootstrap)?;
+            let publication = ratio_store::bootstrap::BootstrapStore::new(objects).publish(&bootstrap)?;
             ratio_store::bootstrap::materialize(&path, &publication, &bootstrap)?;
             ratio_store::Digest::parse(&bootstrap.config_digest)?
         } else {
@@ -12804,8 +12828,8 @@ WIP-1,2026-03-16,200.00,USD,ACME STEEL,capitalize,capitalize_wip
         }
         assert!(
             opens.iter().all(|(_, l)|
-                l.contains("FileBook::open_with(path, self.objects.clone())")
-                    || l.contains("FileBook::open_attached_with(path, self.objects.clone())")
+                l.contains("FileBook::open_with(path, self.object_store_for(id)?)")
+                    || l.contains("FileBook::open_attached_with(path, self.object_store_for(id)?)")
             ),
             "production FileBook::open must take an authorized Path, not a joined id: {opens:?}"
         );

@@ -1,6 +1,6 @@
 # Ratio — current state
 
-Updated September 10, 2026. This is the current implementation summary. Update
+Updated October 2, 2026 (including branch-local #360 work). This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
 The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
@@ -75,6 +75,11 @@ messages also pass the [issue-completion check](issue-completion.md).
   workload details. Verified journal-prefix checkpoints (#310) report cold
   full replay, checkpoint load, and tail replay for the large demo shape
   (~5,400 entries); the journal remains the book of record.
+- **Per-book storage (#360, branch-local):** the console can resolve two
+  independent object stores by book ID in one process, including cold
+  published-book discovery and active configuration. An unregistered ID
+  refuses. Production startup and other library/CLI opens still use the
+  process-wide installed store; #360 is not complete.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
   post-create configuration/membership transitions are built. NAVs,
   reports/proposals, CHANGELOG, complete backup coverage, and the external
