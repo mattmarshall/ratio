@@ -5478,9 +5478,11 @@ membership, active configuration, counts, and authorized book opens use the
 selected backend; a missing mapping refuses. A cold-root test proves two
 published books on MemoryStore and DirStore recover and strike a NAV in one process.
 Opening one materialized book against the other store refuses before a write.
-CLI, watch, API, MCP, projection, and NAV entry points pass explicit handles.
-`FileBook::open`, `open_attached`, Console constructors, and MCP default
-entry points are local-only; only binary startup reads the installed store.
+CLI, watch, API, MCP, projection, NAV, audit, report, proposal, and checkpoint
+entry points pass explicit handles. The storage library has no installed
+store; the single-backend binary alone owns its startup singleton.
+`FileBook::open`, `open_attached`, Console constructors, MCP default entry
+points, and storage side-plane convenience functions are local-only.
 The serving binary still
 selects one store at startup; a hosted per-book router and provider recovery
 evidence remain before this issue is complete.

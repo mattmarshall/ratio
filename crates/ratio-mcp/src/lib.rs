@@ -467,7 +467,7 @@ fn tool_propose_template(book: &std::path::Path, args: &Value, attached: bool, s
     };
     let projection = ratio_ingest::project(template, &delivery, &rows, "draft");
 
-    let b = open_book(book, attached, store)?;
+    let b = open_book(book, attached, store.clone())?;
     let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
     let resolved = ratio_ingest::resolve_all(&projection.facts, &master);
 
@@ -499,7 +499,7 @@ fn tool_propose_template(book: &std::path::Path, args: &Value, attached: bool, s
     }
 
     let id = format!("template-{}", template.id);
-    ratio_store::proposals::write(book, &id, toml)
+    ratio_store::proposals::write_with_store(book, &id, toml, store)
         .with_context(|| format!("writing proposal {id}"))?;
 
     out.push_str(&format!(
@@ -578,7 +578,7 @@ fn tool_propose_rule(book: &std::path::Path, args: &Value, attached: bool, store
         .and_then(Value::as_str)
         .context("propose_rule needs `toml`")?;
     let set = RuleSet::from_toml(toml)?;
-    let b = open_book(book, attached, store)?;
+    let b = open_book(book, attached, store.clone())?;
     let chart = b.accounts()?;
     let (errors, text) = findings_text(&set, &chart);
 
@@ -589,7 +589,7 @@ fn tool_propose_rule(book: &std::path::Path, args: &Value, attached: bool, store
     }
 
     let id = ratio_store::Digest::of(toml.as_bytes());
-    ratio_store::proposals::write(book, id.short(), toml)?;
+    ratio_store::proposals::write_with_store(book, id.short(), toml, store)?;
 
     let mut rendered = String::new();
     for rule in &set.rules {
@@ -792,6 +792,9 @@ mod tests {
             dispatch_with_store(book, "post_events", &json!({"events": [{
                 "rule": "management_fee_accrual", "id": "one", "amount": 1_750_000_000i64, "days": 30
             }]}), Some(store.clone())).unwrap();
+            dispatch_with_store(book, "propose_rule", &json!({"toml": FEE}),
+                Some(store.clone())).unwrap();
+            assert!(!book.join("proposals").exists());
         }
         assert_eq!(FileBook::open_with(&first, Some(first_store.clone()))
             .unwrap().entries().unwrap().len(), 1);
@@ -801,6 +804,12 @@ mod tests {
             .height().unwrap(), 1);
         assert_eq!(ratio_store::SeqLog::new(second_store.clone(), format!("{}/journal/", second.file_name().unwrap().to_string_lossy()))
             .height().unwrap(), 1);
+        assert_eq!(ratio_store::proposals::list_with_store(&first, Some(first_store.clone()))
+            .unwrap().len(), 1);
+        assert_eq!(ratio_store::proposals::list_with_store(&second, Some(second_store.clone()))
+            .unwrap().len(), 1);
+        assert!(ratio_store::proposals::list_with_store(&first, Some(second_store.clone()))
+            .unwrap().is_empty());
         assert_eq!(ratio_store::SeqLog::new(first_store, format!("{}/journal/", second.file_name().unwrap().to_string_lossy()))
             .height().unwrap(), 0);
         assert_eq!(ratio_store::SeqLog::new(second_store, format!("{}/journal/", first.file_name().unwrap().to_string_lossy()))

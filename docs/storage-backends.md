@@ -57,9 +57,10 @@ conditional PUT at `height + 1`, retrying on a lost claim. The S3 adapter
 uses one-key `StartAfter` queries to bound the height; directory and memory
 stores keep the listing default.
 
-The store is installed **once per process** through a `OnceLock`
-(`objects.rs:72`), first call wins. `RATIO_JOURNAL_BUCKET` selects S3,
-`RATIO_JOURNAL_LOCAL` selects a directory, unset is local JSONL.
+The single-backend binary retains a startup-only `OnceLock`; the storage
+library has no installed store. Book, checkpoint, NAV, audit, report, and
+proposal operations take an explicit handle. `RATIO_JOURNAL_BUCKET` selects
+S3, `RATIO_JOURNAL_LOCAL` selects a directory, and unset is local JSONL.
 
 ### 1.3 The Postgres projection
 
@@ -358,15 +359,12 @@ Severity: **high.** Effort: **low.**
 
 ### 5.3 The process-global store install
 
-`install_object_store` is a first-call-wins `OnceLock`. The tree carries
-**225 `FileBook::open(` call sites against 33 `open_with`**. Many of the 225
-are in test modules, but every production path goes through the global —
-`ratio-console` (79 in `lib.rs`, 9 in `book.rs`), `ratio-project` (38),
-`ratio/src/main.rs` (32), `ratio-mcp` (9), `ratio-nav` (8), `ratio-gen` (10).
-One process therefore cannot serve tenant A on Postgres and tenant B on S3.
-`open_with` proves the plumbing exists; threading a handle through is
-mechanical but not small, and it is a hard prerequisite for Tier 2
-multi-tenancy.
+The original `install_object_store` lived in the storage library, so a
+first-call-wins `OnceLock` could affect every library consumer. The #360
+branch moves that singleton to the single-backend binary and routes console
+books and their side planes through explicit handles. The serving binary
+still needs a hosted provider router before it can select a backend per book
+from deployment configuration.
 
 Severity: **high for Tier 2, none for Tier 1.** Effort: **medium, mechanical.**
 
@@ -514,8 +512,9 @@ An explicit console map selects an `ObjectStore` by book ID. Cold
 published-book discovery, membership, active configuration, book opens,
 and NAV replay use the selected store; an unmapped ID refuses. CLI, watch,
 API, MCP, projection, and NAV entry points pass explicit handles.
-`FileBook::open`, `open_attached`, Console constructors, and MCP default entry
-points are local-only. Only the binary reads the process-installed store.
-The server still selects
-one store at startup, so the hosted per-book router and provider recovery
-evidence remain before #360 is complete.
+`FileBook::open`, `open_attached`, Console constructors, MCP default entry
+points, and storage side-plane convenience functions are local-only. Only
+the binary owns the startup singleton. The two-book test now checks isolated
+audit writes and NAV reads after cold recovery; MCP proposal writes use the
+selected store. The server still selects one store at startup, so hosted
+provider routing and recovery evidence remain open.
