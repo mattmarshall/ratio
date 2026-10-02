@@ -1,6 +1,6 @@
 # Ratio — current state
 
-Updated September 10, 2026. This is the current implementation summary. Update
+Updated October 1, 2026 (including branch-local #358 work). This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
 The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
@@ -75,6 +75,11 @@ messages also pass the [issue-completion check](issue-completion.md).
   workload details. Verified journal-prefix checkpoints (#310) report cold
   full replay, checkpoint load, and tail replay for the large demo shape
   (~5,400 entries); the journal remains the book of record.
+- **Object-store append (#358, branch-local):** `SeqLog` asks the store for
+  `max_sequence` before its conditional append claim. The S3 adapter uses
+  bounded one-key listings; the default scans all keys. A local 20,000-entry
+  cost comparison is recorded in PLAN. Live S3 latency and request-cost
+  evidence remain, so #358 is not complete.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
   post-create configuration/membership transitions are built. NAVs,
   reports/proposals, CHANGELOG, complete backup coverage, and the external

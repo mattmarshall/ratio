@@ -5344,3 +5344,15 @@ conjunctive.
 forecast, required savings rate, FIRE number, goal RPC in core, and automatic
 scenario posting remain refused. Live OAuth evidence remains on #168 until the
 registered scopes are exercised against a permitted Personal book.
+
+### October 1, 2026 — object-store append height, issue #358 (branch-local)
+
+`ObjectStore::max_sequence` now gives `SeqLog::append` a height operation with a
+listing default for existing stores. S3 answers with one-key `StartAfter`
+queries over zero-padded sequence keys, expanding and then bisecting the
+height range. The conditional PUT remains the claim, and readers still refuse
+holes. The local 20,000-entry test-double comparison measured 4.585 ms for a
+full listing and 17.041 µs for a direct max; it is not an S3 measurement.
+Live S3 request count, latency, and cost at a nontrivial height remain issue
+acceptance before the performance claim is complete. No production read or
+amount rule changes in this slice.
