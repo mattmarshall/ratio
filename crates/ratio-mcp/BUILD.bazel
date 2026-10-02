@@ -27,3 +27,9 @@ rust_test(
     crate = ":ratio-mcp",
     edition = "2021",
 )
+
+# Source inventory for the build-enforced ObjectStore conformance registry.
+filegroup(
+    name = "object_store_source_files",
+    srcs = glob(["src/**/*.rs"]),
+)

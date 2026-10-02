@@ -1,6 +1,6 @@
 # Ratio — current state
 
-Updated October 2, 2026 (including stacked branch-local #300/#357/#358 work). This is the current implementation summary. Update
+Updated October 2, 2026 (including stacked branch-local #300/#357–#359 work). This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
 The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
@@ -87,6 +87,13 @@ messages also pass the [issue-completion check](issue-completion.md).
   bounded one-key listings; the default scans all keys. A local 20,000-entry
   cost comparison is recorded in PLAN. Live S3 latency and request-cost
   evidence remain, so #358 is not complete.
+
+- **Storage conformance (#359, branch-local):** a Bazel gate compares
+  journal prefixes, trial balances, and all six append-only side planes across
+  local JSONL, MemoryStore, DirStore, and the S3 adapter against an in-process
+  S3 endpoint. It refuses holes and overwrites and checks that an unregistered
+  ObjectStore implementation fails the build. The complete fixture has not
+  run against live S3; provider behavior remains unverified.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
   post-create configuration/membership transitions are built. The branch-local
   #300 NAV slice conditionally persists signed strikes in the object store and
