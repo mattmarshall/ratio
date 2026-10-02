@@ -9,6 +9,8 @@ restored="$root/restored"
 mkdir -p "$source/_bootstrap/publications" "$source/alpha/journal"
 printf 'bootstrap' > "$source/_bootstrap/publications/alpha"
 printf 'journal entry' > "$source/alpha/journal/00000000000000000001"
+printf 'not a directory' > "$root/unusable-configured-store"
+export RATIO_JOURNAL_LOCAL="$root/unusable-configured-store"
 
 if RATIO_RECOVERY_SOURCE_LOCAL="$source" RATIO_RECOVERY_BACKUP_LOCAL="$source/nested" \
   "$ratio" recovery capture > "$root/overlap.out" 2>&1; then
