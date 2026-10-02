@@ -1,6 +1,6 @@
 # Storage backends and the distribution model
 
-Status: **analysis with a branch-local #300 NAV evidence amendment.** The
+Status: **analysis with stacked branch-local #300 evidence and #360 routing amendments.** The
 backend verdicts remain proposals. This maps the persistence layer and names
 the blockers between the current shape and a two-track distribution model —
 on-device Personal, hosted SQL for funds and shared workspaces.
@@ -489,3 +489,15 @@ The console now passes its explicit store through operational evidence paths.
 namespace, deletes the original roots, and checks journal and evidence replay
 in a child process. It covers both book access and corruption/refusal. This
 does not establish live S3 backup copies, retention, or customer objectives.
+
+### October 2, 2026 per-book routing note (#360, branch-local)
+
+An explicit console map selects an `ObjectStore` by book ID. Cold
+published-book discovery, membership, active configuration, book opens,
+and NAV replay use the selected store; an unmapped ID refuses. CLI, watch,
+API, MCP, projection, and NAV entry points pass explicit handles.
+`FileBook::open`, `open_attached`, Console constructors, and MCP default entry
+points are local-only. Only the binary reads the process-installed store.
+The server still selects
+one store at startup, so the hosted per-book router and provider recovery
+evidence remain before #360 is complete.

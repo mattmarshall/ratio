@@ -7,7 +7,7 @@ use ratio_store::{
         control_operation, membership_revision, ConfigPromotion, ControlOperation, ControlStore,
         MembershipRevision,
     },
-    Digest, DirStore, MemoryStore, ObjectStore,
+    Digest, DirStore, MemoryStore, ObjectStore, SeqLog,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
@@ -35,6 +35,63 @@ fn member(sub: &str) -> Subject {
 }
 fn console(root: &Path, objects: Arc<dyn ObjectStore>, sub: &str) -> Console {
     Console::scoped(root, member(sub)).with_object_store(objects)
+}
+
+#[test]
+fn two_books_resolve_independent_object_stores_in_one_process() {
+    let temp = Temp::new();
+    let alpha: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    let beta: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+    let stores = std::collections::BTreeMap::from([
+        ("alpha".to_string(), alpha.clone()),
+        ("beta".to_string(), beta.clone()),
+    ]);
+    let client = Console::scoped(&temp.0, member("creator"))
+        .with_book_object_stores(stores.clone());
+    client.create_book(request("alpha", book::BookKind::Investment)).unwrap();
+    client.create_book(request("beta", book::BookKind::Personal)).unwrap();
+    for (id, objects) in [("alpha", &alpha), ("beta", &beta)] {
+        let mut book = FileBook::open_with(temp.0.join(id), Some(objects.clone())).unwrap();
+        let digest = book.active().unwrap().unwrap();
+        book.append(&entry(&digest)).unwrap();
+    }
+    let alpha_strike = ratio_nav::strike_with_store(
+        &temp.0.join("alpha"), ratio_rules::UNDECLARED_VIEW,
+        1_780_000_000, "creator", Some(alpha.clone()),
+    ).unwrap();
+    assert!(BootstrapStore::new(alpha.clone()).get("alpha").unwrap().is_some());
+    assert!(BootstrapStore::new(alpha.clone()).get("beta").unwrap().is_none());
+    assert!(BootstrapStore::new(beta.clone()).get("beta").unwrap().is_some());
+    assert!(BootstrapStore::new(beta.clone()).get("alpha").unwrap().is_none());
+    assert_eq!(FileBook::open_with(temp.0.join("alpha"), Some(alpha.clone()))
+        .unwrap().entries().unwrap().len(), 1);
+    assert_eq!(FileBook::open_with(temp.0.join("beta"), Some(beta.clone()))
+        .unwrap().entries().unwrap().len(), 1);
+    assert!(FileBook::open_with(temp.0.join("alpha"), Some(beta.clone()))
+        .err().unwrap().to_string().contains("durable book publication is unavailable"));
+    assert_eq!(SeqLog::new(beta.clone(), "alpha/journal/").height().unwrap(), 0);
+    std::fs::remove_dir_all(temp.0.join("alpha")).unwrap();
+    std::fs::remove_dir_all(temp.0.join("beta")).unwrap();
+    assert_eq!(SeqLog::new(beta.clone(), "alpha/journal/").height().unwrap(), 0);
+    assert_eq!(SeqLog::new(alpha.clone(), "beta/journal/").height().unwrap(), 0);
+    let recovered = Console::scoped(&temp.0, member("creator"))
+        .with_book_object_stores(stores);
+    assert_eq!(recovered.list_books().unwrap().books.len(), 2);
+    assert_eq!(recovered.get_book("books/alpha").unwrap().kind,
+        book::BookKind::Investment.proto());
+    assert_eq!(recovered.get_book("books/beta").unwrap().kind,
+        book::BookKind::Personal.proto());
+    assert_eq!(FileBook::open_with(temp.0.join("alpha"), Some(alpha.clone()))
+        .unwrap().entries().unwrap().len(), 1);
+    assert!(ratio_nav::replay_with_store(
+        &temp.0.join("alpha"), &alpha_strike,
+        Some(alpha),
+    ).unwrap().ok());
+    assert_eq!(FileBook::open_with(temp.0.join("beta"), Some(beta))
+        .unwrap().entries().unwrap().len(), 1);
+    assert!(recovered.create_book(request("unregistered", book::BookKind::Personal))
+        .unwrap_err().to_string().contains("no object store"));
+    assert!(!temp.0.join("unregistered").exists());
 }
 fn request(id: &str, kind: book::BookKind) -> pb::CreateBookRequest {
     pb::CreateBookRequest {
@@ -782,8 +839,8 @@ fn bootstrap_process() {
     };
     let root = PathBuf::from(std::env::var_os("RATIO_BOOTSTRAP_TEST_ROOT").unwrap());
     let objects = PathBuf::from(std::env::var_os("RATIO_BOOTSTRAP_TEST_OBJECTS").unwrap());
-    ratio_store::install_object_store(Arc::new(DirStore::at(&objects)));
-    let c = Console::scoped(&root, member("creator"));
+    let c = Console::scoped(&root, member("creator"))
+        .with_object_store(Arc::new(DirStore::at(&objects)));
     if mode == "create" {
         c.create_book(request("cold", book::BookKind::Personal))
             .unwrap();
@@ -831,18 +888,19 @@ fn bootstrap_process() {
                 ),
             ))
             .unwrap();
-        let mut b = FileBook::open(root.join("cold")).unwrap();
+        let mut b = FileBook::open_with(
+            root.join("cold"),
+            Some(Arc::new(DirStore::at(&objects))),
+        )
+        .unwrap();
         let digest = b.active().unwrap().unwrap();
         b.append(&entry(&digest)).unwrap();
     } else if mode == "reinitialize" {
         assert!(!root.exists());
-        assert!(book::initialize(
-            &root.join("cold"),
-            "cold",
-            "Replacement",
-            book::BookKind::Personal
-        )
-        .is_err());
+        let mut replacement = request("cold", book::BookKind::Personal);
+        replacement.book.as_mut().unwrap().display_name = "Replacement".into();
+        assert!(c.create_book(replacement).is_err());
+        assert_eq!(c.get_book("books/cold").unwrap().display_name, "Exact cold");
         assert_eq!(
             book::BookMeta::load(&root.join("cold"), "cold").display_name,
             "Exact cold"
@@ -857,19 +915,25 @@ fn bootstrap_process() {
         let book = c.get_book("books/cold").unwrap();
         assert_eq!(book.kind, book::BookKind::Personal.proto());
         assert_eq!(book.entry_count, 1);
-        let b = FileBook::open(root.join("cold")).unwrap();
+        let b = FileBook::open_with(
+            root.join("cold"),
+            Some(Arc::new(DirStore::at(&objects))),
+        )
+        .unwrap();
         assert_eq!(
             b.entries().unwrap(),
             vec![entry(&b.active().unwrap().unwrap())]
         );
         assert_eq!(b.history().unwrap().len(), 3);
         assert!(Console::scoped(&root, member("guest"))
+            .with_object_store(Arc::new(DirStore::at(&objects)))
             .list_books()
             .unwrap()
             .books
             .is_empty());
         assert_eq!(
             Console::scoped(&root, member("stranger"))
+                .with_object_store(Arc::new(DirStore::at(&objects)))
                 .list_books()
                 .unwrap()
                 .books

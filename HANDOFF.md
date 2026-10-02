@@ -1563,3 +1563,19 @@ CLI/MCP installation guard has a sabotage check: removing the pre-dispatch
 `install_control_backend()` call made
 `//crates/ratio:configured_store_refuses_local_cli_test` fail with `init
 accepted a local-only book`, and restoring the call made it green.
+
+## Per-book store routing, October 2, 2026 (issue #360, branch-local)
+
+`Console::with_book_object_stores` maps each permitted book ID to its own
+object store. Bootstrap discovery, membership, active configuration, counts,
+and authorized `FileBook` opens resolve through that map. A missing mapping
+refuses instead of falling back to local files. A cold-root test creates two
+books on separate stores, writes isolated journal entries, strikes a NAV,
+and recovers both in one process. The same test refuses opening alpha's
+materialized book against beta's store before any beta write. CLI, watch, API, MCP, projection, and NAV
+entry points now pass an explicit store handle. `FileBook::open` and
+`open_attached` are local-only; Console and MCP default entry points are also
+local-only, and
+serving/CLI callers inject the selected store. A durable caller must use
+`open_with` or `open_attached_with`. The serving binary still selects one store at startup.
+The hosted router and provider recovery evidence remain acceptance work.

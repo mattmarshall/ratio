@@ -48,7 +48,7 @@ use anyhow::{bail, Context, Result};
 use prost::Message;
 use ratio_project::views;
 use ratio_proto::ratio::storage::v1::StoredNavStrike;
-use ratio_store::{installed_object_store, AccountTypeRecord, ConfigStore, Digest, FileBook, Journal, JournalEntry, ObjectStore};
+use ratio_store::{AccountTypeRecord, ConfigStore, Digest, FileBook, Journal, JournalEntry, ObjectStore};
 use std::sync::Arc;
 
 /// A NAV, pinned to the journal that produced it.
@@ -364,10 +364,10 @@ pub fn strike(
     valuation_time: i64,
     actor: &str,
 ) -> Result<Strike> {
-    strike_with_store(book_path, view, valuation_time, actor, installed_object_store())
+    strike_with_store(book_path, view, valuation_time, actor, None)
 }
 
-/// Derive a strike from one explicitly selected book store.
+/// Strike against the store selected for this book by its caller.
 pub fn strike_with_store(
     book_path: &std::path::Path,
     view: &str,
@@ -449,10 +449,10 @@ pub fn strike_with_store(
 
 /// Re-derive a strike and report what was found.
 pub fn replay(book_path: &std::path::Path, s: &Strike) -> Result<Replay> {
-    replay_with_store(book_path, s, installed_object_store())
+    replay_with_store(book_path, s, None)
 }
 
-/// Replay a cited answer against one explicitly selected book store.
+/// Replay against the store selected for this book by its caller.
 pub fn replay_with_store(book_path: &std::path::Path, s: &Strike,
     store: Option<Arc<dyn ObjectStore>>) -> Result<Replay> {
     Ok(refold_with_store(book_path, s, store)?.0)
@@ -470,7 +470,13 @@ pub fn replay_with_store(book_path: &std::path::Path, s: &Strike,
 /// it is the point: a screen that measured on load would be spending a period
 /// end's worth of work on somebody who wanted to look at a diagram.
 pub fn analyze(book_path: &std::path::Path, s: &Strike) -> Result<explain::Measured> {
-    Ok(refold(book_path, s)?.1)
+    analyze_with_store(book_path, s, None)
+}
+
+/// Measure a replay against the store selected for this book.
+pub fn analyze_with_store(book_path: &std::path::Path, s: &Strike,
+    store: Option<Arc<dyn ObjectStore>>) -> Result<explain::Measured> {
+    Ok(refold_with_store(book_path, s, store)?.1)
 }
 
 /// The dials this fund actually turns, read off a projection somebody is
@@ -535,10 +541,6 @@ pub fn shape_of(
 /// ⚠ FOUR `Instant`s, ALL OUTSIDE THE LOOP. `replay` pays for them too and they
 /// are unmeasurable against a fold; per-entry timing is the thing that would
 /// change what it measured.
-fn refold(book_path: &std::path::Path, s: &Strike) -> Result<(Replay, explain::Measured)> {
-    refold_with_store(book_path, s, installed_object_store())
-}
-
 fn refold_with_store(book_path: &std::path::Path, s: &Strike,
     store: Option<Arc<dyn ObjectStore>>) -> Result<(Replay, explain::Measured)> {
     let setup = std::time::Instant::now();
@@ -882,7 +884,7 @@ fn record_with_store(
 
 /// Every strike on a book, in every view, newest first.
 pub fn list(book_path: &std::path::Path) -> Result<Vec<Strike>> {
-    list_with_store(book_path, installed_object_store())
+    list_with_store(book_path, None)
 }
 
 /// Every strike in one book of record, newest first.
@@ -897,7 +899,7 @@ pub fn list_in(book_path: &std::path::Path, view: &str) -> Result<Vec<Strike>> {
 /// lookup on the id alone returns whichever the file happens to hold first —
 /// silently, and labelled with the view the caller asked for.
 pub fn get(book_path: &std::path::Path, view: &str, id: &str) -> Result<Strike> {
-    get_with_store(book_path, view, id, installed_object_store())
+    get_with_store(book_path, view, id, None)
 }
 
 /// Look up one cited answer on an explicitly selected book store.
@@ -920,11 +922,11 @@ pub fn strike_and_record(
     valuation_time: i64,
     actor: &str,
 ) -> Result<Strike> {
-    strike_and_record_with_store(book_path, view, valuation_time, actor,
-        installed_object_store())
+    strike_and_record_with_store(book_path, view, valuation_time, actor, None)
 }
 
-/// Strike and conditionally record on one explicitly selected store.
+/// Strike from an explicit journal store and record under the selected book.
+///
 pub fn strike_and_record_with_store(
     book_path: &std::path::Path,
     view: &str,
