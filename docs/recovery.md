@@ -18,7 +18,10 @@ Published CreateBook recovery is covered separately by the bootstrap tests.
 An interrupted object-claim drill restores an acknowledged journal prefix,
 post-create configuration promotion, and membership grant while ignoring an
 unpublished staged body. It then appends at the next sequence without widening
-another book's membership.
+another book's membership. The fixture also restores a cited period-close
+record and an accepted-explanation record, verifies their actor, time, prefix,
+configuration, and digest fields, and proves the close still refuses a
+backdated post while allowing the next period.
 These tests are not an S3 recovery drill or a customer recovery commitment.
 
 ## Recovery objectives and ownership
@@ -200,16 +203,19 @@ verification, and materialization after local-root loss.
 The interrupted-claim test uses two published books in a directory object
 store. It writes two acknowledged journal entries around a configuration
 promotion, grants a second subject, and leaves a staged but unpublished third
-body as crash debris. After copying the object namespace and deleting the
-original roots, the restored book retains its prefix digest, active/history
-state, and grant, then claims sequence 3 for the next append. The other book's
-journal and membership remain isolated. This models a crash before
+body as crash debris. It also records a cited close and explanation. After
+copying the object namespace and deleting the original roots, the restored
+book retains its prefix digest, active/history state, grant, close, and
+explanation. A backdated post is refused by the restored close; a post in the
+next period claims sequence 3. The other book's journal and membership remain
+isolated. This models a crash before
 publication, not an S3 outage or a customer RPO measurement.
 
 The local copy helper checks bytes; it does not implement archival metadata
-preservation. This small fixture has no reports, facts, entity corrections,
-accepted explanations, or period close and does not validate those lifecycles.
-Their full preservation, report selection by mtime, S3 capture/restore, gateway
+preservation. The interrupted-claim fixture verifies stored close and
+explanation bytes and closed-period refusal, but does not exercise the human
+acceptance flow. It has no reports, facts, or entity corrections. Their full
+preservation, report selection by mtime, S3 capture/restore, gateway
 authentication, Postgres rebuild, concurrent writers, operator procedures, and
 customer-scale timing remain required external drill coverage.
 

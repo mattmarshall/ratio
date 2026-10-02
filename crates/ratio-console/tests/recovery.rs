@@ -8,11 +8,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{ensure, Result};
-use ratio_console::{book::BookKind, Console, Subject};
+use ratio_console::{book::BookKind, BreakExplanation, Console, Subject};
 use ratio_proto::ratio::console::v1 as pb;
 use ratio_store::{
     control::{control_operation, membership_revision, ConfigPromotion, ControlOperation, ControlStore, MembershipRevision},
-    ConfigStore, Digest, DirStore, FileBook, Journal, JournalEntry, ObjectStore, PostingRecord, SeqLog,
+    CloseRecord, ConfigStore, Digest, DirStore, FileBook, Journal, JournalEntry, ObjectStore,
+    Plane, PostingRecord, SeqLog,
 };
 
 fn scratch(name: &str) -> PathBuf {
@@ -271,6 +272,32 @@ fn an_interrupted_object_claim_recovers_the_acked_prefix_and_next_slot() {
     assert_eq!(book.active().unwrap(), Some(promoted.clone()));
     book.append(&entry("after-promotion", &promoted, 10_000)).unwrap();
     let before = ratio_nav::prefix_digest(&book.entries().unwrap()).unwrap();
+    let close = CloseRecord {
+        view: ratio_rules::UNDECLARED_VIEW.into(),
+        closed_date: "2026-06-30".into(),
+        journal_position: 2,
+        journal_digest: before.clone(),
+        config_digest: promoted.as_str().into(),
+        closing_entry: None,
+        actor: "alice".into(),
+        recorded: 1_781_784_001,
+        equity_destination: 20,
+        surplus: None,
+    };
+    let explanation = BreakExplanation {
+        break_id: "custodian-cash".into(),
+        text: "Accepted against the source statement".into(),
+        actor: "alice".into(),
+        accept_time: 1_781_784_002,
+        difference: 25,
+        config_digest: promoted.as_str().into(),
+        journal_position: 2,
+        journal_digest: before.clone(),
+    };
+    book.append_record(Plane::Closes, &close).unwrap();
+    book.append_record(Plane::Explanations, &explanation).unwrap();
+    assert_eq!(SeqLog::new(source.clone(), "alpha/closes/").height().unwrap(), 1);
+    assert_eq!(SeqLog::new(source.clone(), "alpha/explanations/").height().unwrap(), 1);
     drop(book);
 
     // A crashed DirStore PUT can leave a staged body, but only its hard link
@@ -296,7 +323,22 @@ fn an_interrupted_object_claim_recovers_the_acked_prefix_and_next_slot() {
     assert_eq!(reopened.active().unwrap(), Some(promoted.clone()));
     assert_eq!(reopened.history().unwrap(), vec![promoted.clone(), config.clone()]);
     assert_eq!(ratio_nav::prefix_digest(&reopened.entries().unwrap()).unwrap(), before);
-    reopened.append(&entry("after-recovery", &promoted, 10_000)).unwrap();
+    assert_eq!(reopened.closes().unwrap(), vec![close]);
+    let restored_explanations: Vec<BreakExplanation> = reopened.records(Plane::Explanations).unwrap();
+    assert_eq!(restored_explanations.len(), 1);
+    assert_eq!(restored_explanations[0].break_id, explanation.break_id);
+    assert_eq!(restored_explanations[0].text, explanation.text);
+    assert_eq!(restored_explanations[0].actor, explanation.actor);
+    assert_eq!(restored_explanations[0].accept_time, explanation.accept_time);
+    assert_eq!(restored_explanations[0].difference, explanation.difference);
+    assert_eq!(restored_explanations[0].config_digest, explanation.config_digest);
+    assert_eq!(restored_explanations[0].journal_position, explanation.journal_position);
+    assert_eq!(restored_explanations[0].journal_digest, explanation.journal_digest);
+    let mut after_recovery = entry("after-recovery", &promoted, 10_000);
+    assert!(reopened.append(&after_recovery).unwrap_err().to_string().contains("closed through"),
+        "the restored close must still refuse a backdated posting");
+    after_recovery.trade_date = Some("2026-07-01".into());
+    reopened.append(&after_recovery).unwrap();
     assert_eq!(reopened.entries().unwrap().iter().map(|e| e.id.as_str()).collect::<Vec<_>>(),
         ["acknowledged", "after-promotion", "after-recovery"]);
     assert_eq!(SeqLog::new(restored_store.clone(), "alpha/journal/").height().unwrap(), 3);

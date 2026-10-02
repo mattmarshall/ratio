@@ -5351,7 +5351,8 @@ Related: #264. A two-book directory object-store drill leaves a journal
 body in unpublished staging after two acknowledged entries, a configuration
 promotion, and a membership grant. It copies the namespace into a clean
 environment, verifies the acknowledged digest and control history, and
-claims sequence 3 on the next append. The other book remains inaccessible to
+restores cited close and explanation records. The close refuses a backdated
+post, while a next-period post claims sequence 3. The other book remains inaccessible to
 the restored subject. This is local
 failure evidence; customer S3 backup/restore, RPO/RTO, retention, and named
 operator acceptance remain open.

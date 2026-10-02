@@ -1499,8 +1499,10 @@ guarantee.
 The local recovery test carries two published books through an independent
 directory object-store copy after two journal entries, a configuration
 promotion, and a membership grant were acknowledged. A third body is left in
-unpublished staging. The restored alpha prefix keeps its digest and control
-history, its next append claims sequence 3, beta's journal stays empty, and
+unpublished staging. A cited close and accepted-explanation record also
+survive the copy. The restored close refuses a backdated post; the next-period
+append claims sequence 3. The restored alpha prefix keeps its digest and control
+history, beta's journal stays empty, and
 membership stays isolated. This is an interrupted local PUT fixture; the live
 customer backup, recovery objectives, retention, and named operators remain
 unproved.

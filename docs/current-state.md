@@ -78,8 +78,9 @@ messages also pass the [issue-completion check](issue-completion.md).
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
   post-create configuration/membership transitions are built. A branch-local
   two-book restore now verifies the acknowledged journal prefix, later
-  configuration promotion, and membership grant survive an interrupted object
-  claim; the next append takes the next slot. NAVs,
+  configuration promotion, membership grant, close, and explanation records
+  survive an interrupted object claim; the restored close refuses a backdated
+  post and a next-period append takes the next slot. NAVs,
   reports/proposals, CHANGELOG, complete backup coverage, and the external
   restore drill remain separate recovery work.
 
