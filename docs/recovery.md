@@ -1,9 +1,8 @@
 # Book recovery: inventory and local drill
 
 Related: [#264](https://github.com/mattmarshall/ratio/issues/264).
-Durable follow-on work: [#299](https://github.com/mattmarshall/ratio/issues/299)
-and [#300](https://github.com/mattmarshall/ratio/issues/300).
-Source review refreshed after #302, September 9, 2026.
+Durable follow-on work: [#300](https://github.com/mattmarshall/ratio/issues/300).
+Source review refreshed October 2, 2026 for the disposable #264 drill.
 
 Ratio does not yet have a demonstrated whole-book disaster recovery procedure
 for the deployed service. The journal's conditional S3 writes protect one part
@@ -16,9 +15,10 @@ checks a journal prefix and digest, two local configuration versions, a NAV
 strike and replay, book kinds, and membership isolation. A second probe records
 the legacy gap when a local book is created before an object store is attached.
 Published CreateBook recovery is covered separately by the bootstrap tests.
-An interrupted object-claim drill now restores an acknowledged journal prefix
-while ignoring an unpublished staged body, then appends at the next sequence
-without widening another book's membership.
+An interrupted object-claim drill restores an acknowledged journal prefix,
+post-create configuration promotion, and membership grant while ignoring an
+unpublished staged body. It then appends at the next sequence without widening
+another book's membership.
 These tests are not an S3 recovery drill or a customer recovery commitment.
 
 ## Recovery objectives and ownership
@@ -50,10 +50,10 @@ With neither installed, FileBook uses local JSONL files.
 | Journal | `journal.jsonl` | `<book>/journal/<sequence>` | Preserve exact order, every entry, and all cited configuration digests. A balanced shortened journal can still be wrong. |
 | Baked-seed publication marker | Baked JSONL planes in the deployment image | `_seed/publications-v2/<book-id>` under `RATIO_JOURNAL_PREFIX` | Format version 2, whole-seed digest, per-plane lengths, and any one-time migration name prove which baked prefix deployment adopted. Preserve v1/v2 markers with the journal; deleting one to clear a mismatch removes the deployment fence. |
 | Published bootstrap | `BOOTSTRAP.pb` and its materialized files | `_bootstrap/publications/<book-id>` and referenced `_bootstrap/blobs/<digest>` | The immutable, content-addressed bootstrap preserves chart, identity, kind, opening configuration, and creator grant. Capture both the publication pointer and its exact referenced blob. |
-| Configurations and promotion state | `config/<digest>`, `config/ACTIVE`, `config/HISTORY` | Opening state is in the published bootstrap; later promotions are **still local** | Preserve every later referenced blob, promotion history, and the actual active pointer until #304 supplies durable transitions. |
+| Configurations and promotion state | `config/<digest>`, `config/ACTIVE`, `config/HISTORY` | Opening state is in the published bootstrap; later promotions are in the durable control log | Preserve every later referenced blob, promotion history, and the actual active pointer. |
 | Chart | `accounts.json` | In the published bootstrap for new books; legacy local books have no publication | Names and types the dimensions. Never infer a missing legacy chart from defaults. |
 | Book identity and kind | `book.toml` | In the published bootstrap for new books; legacy local books have no publication | Carries kind, display name, optional fund and organization. Missing legacy metadata can fall back to Investment semantics. |
-| Membership | `<funds-root>/MEMBERSHIP.tsv` | The creator grant is in the published bootstrap; later grants and revocations are **still local** | Preserve exact post-create grants. An organization claim and a Connect client/template grant cannot substitute for current book membership. |
+| Membership | `<funds-root>/MEMBERSHIP.tsv` | The creator grant is in the published bootstrap; later grants and revocations are in the durable control log | Preserve exact post-create grants. An organization claim and a Connect client/template grant cannot substitute for current book membership. |
 | Deliveries | `deliveries.jsonl` | `<book>/deliveries/<sequence>` | Delivery metadata contains digest, origin, receipt time, and byte count; it does **not** contain the original delivered bytes. |
 | Entity master | `entities.jsonl` | `<book>/entities/<sequence>` | Preserve resolution history, including corrections. |
 | Facts | `facts.jsonl` | `<book>/facts/<sequence>` | Preserve provenance and order. Prices and FX are evidence a figure cites. |
@@ -75,7 +75,8 @@ The implementation supporting this inventory is:
 - [FileBook, planes, hydration, and bootstrap materialization](../crates/ratio-store/src/lib.rs).
   `hydrate_objects` copies legacy local JSONL into the object store. Published
   books are discovered through their publication records and materialize a
-  verified immutable bootstrap; later control transitions remain #304.
+  verified immutable bootstrap; later promotions and grants replay from the
+  durable control log.
 - [ObjectStore and SeqLog](../crates/ratio-store/src/objects.rs), plus the
   [S3 adapter](../crates/ratio/src/scale.rs). `put_if_absent` protects sequence
   slots; that is not a backup, a cross-plane checkpoint, or a metadata store.
@@ -197,11 +198,12 @@ This characterizes legacy compatibility; it does not describe CreateBook after
 verification, and materialization after local-root loss.
 
 The interrupted-claim test uses two published books in a directory object
-store. It writes one acknowledged journal entry, leaves a staged but
-unpublished second body as crash debris, copies the object namespace, and
-deletes the original book and object roots. The restored book retains the
-original prefix digest and claims sequence 2 for the next append; the other
-book's journal and membership remain isolated. This models a crash before
+store. It writes two acknowledged journal entries around a configuration
+promotion, grants a second subject, and leaves a staged but unpublished third
+body as crash debris. After copying the object namespace and deleting the
+original roots, the restored book retains its prefix digest, active/history
+state, and grant, then claims sequence 3 for the next append. The other book's
+journal and membership remain isolated. This models a crash before
 publication, not an S3 outage or a customer RPO measurement.
 
 The local copy helper checks bytes; it does not implement archival metadata
@@ -213,10 +215,10 @@ customer-scale timing remain required external drill coverage.
 
 ## Gaps that block a production recovery claim
 
-- [#299](https://github.com/mattmarshall/ratio/issues/299): post-create config
-  promotions and membership changes still need durable transitions. [#300](https://github.com/mattmarshall/ratio/issues/300)
-  covers NAVs, reports/proposals, audit logs, and the remaining operational
-  evidence and writer-storage consistency.
+- [#300](https://github.com/mattmarshall/ratio/issues/300) covers NAVs,
+  reports/proposals, audit logs, and the remaining operational evidence and
+  writer-storage consistency. Its branch-local work is not included in this
+  #264 drill branch yet.
 - No whole-book backup scheduler, consistent checkpoint/export command,
   restore command, retention policy, or independent backup copy is established
   by this inventory. The S3 template configures encryption and prevents public
