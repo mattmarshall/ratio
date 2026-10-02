@@ -64,7 +64,7 @@ mod pg;
 mod plan;
 mod reads;
 pub use fold_scale::{fold, lots_for, Geometry, Report, HANDOFF_LOTS_PER, HANDOFF_SECURITIES};
-pub use pg::PgProjection;
+pub use pg::{PgExecutor, PgProjection, PsqlExecutor};
 pub use plan::{
     aggregates_plan, denote, eval_pred, lots_plan, pin_plan, positions_plan, push_below_outer_join,
     push_into_preserved, sql_of, Plan, Pred, Three, Val, AGGREGATES, LOTS, POSITIONS, WATERMARK,

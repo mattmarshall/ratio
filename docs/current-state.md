@@ -146,6 +146,10 @@ messages also pass the [issue-completion check](issue-completion.md).
   including membership isolation and Console NAV replay; the initial audit
   assertion failure is preserved. Single-backend startup remains explicit.
   Final CI and merge remain; hosted routing deployment is future product work.
+- **Postgres execution (#361, branch-local):** `PgProjection` routes all SQL
+  through `PgExecutor`; the default `PsqlExecutor` retains the subprocess
+  behavior. A transport contract test and a disposable PostgreSQL 16 live
+  projection run pass. No library client or Postgres journal backend exists.
 
 ## Scope decisions that remain in force
 

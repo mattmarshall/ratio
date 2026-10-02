@@ -5628,3 +5628,13 @@ cold audit-count failure remains preserved. CLI creation and Console NAV
 lookups now carry their selected store. Hosted deployment routing remains
 future product work; #360's acceptance concerns this explicit library seam
 and compatibility of single-backend startup. Final CI remains required.
+
+### Amendment, 2026-10-02 — reusable Postgres execution seam (#361, branch-local)
+
+`PgProjection` now sends each schema operation, pinned read, and atomic
+snapshot transaction through a `PgExecutor` trait. `PsqlExecutor` preserves
+the existing command-line transport and tabular output contract. The
+transport test checks schema scoping and failure refusal; the existing live
+projection suite passed against disposable PostgreSQL 16. A native library
+client and Postgres journal backend are separate work. The journal remains
+the book of record, and #362 must wait for the recovery and conformance gates.
