@@ -135,7 +135,7 @@ conformance.
 ## Pending owner actions
 
 Recovery PR #375 and operational-evidence PR #376 are ready for review with
-passing current-head CI; both remain unmerged. Automatic approval review
+passing implementation-head CI recorded in their PRs; both remain unmerged. Automatic approval review
 rejected the attempted #375 merge because explicit approval for the incomplete
 recovery slice was missing. That action has not been retried or bypassed.
 
