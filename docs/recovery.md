@@ -1,5 +1,9 @@
 # Book recovery: inventory and local drill
 
+The [October 22 readiness audit](recovery-readiness.md) verifies that the
+existing recovery/storage PRs remain unmerged and lists the operational
+inputs still required. It records no live-provider or customer acceptance.
+
 Related: [#264](https://github.com/mattmarshall/ratio/issues/264).
 Durable follow-on work: [#300](https://github.com/mattmarshall/ratio/issues/300).
 Source review refreshed October 2, 2026 for the disposable #264 drill.

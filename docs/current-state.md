@@ -1,5 +1,9 @@
 # Ratio — current state
 
+The [October 22 recovery readiness audit](recovery-readiness.md) distinguishes
+verified main from the existing unmerged recovery/storage stack. Operational
+recovery and live-provider conformance remain prerequisites for #362.
+
 Updated September 10, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).

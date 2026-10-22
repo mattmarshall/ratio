@@ -1,5 +1,11 @@
 # Ratio — path to revenue
 
+October 22, 2026: [recovery readiness](docs/recovery-readiness.md) verifies
+the current main and existing unmerged implementation slices. The remaining
+recovery objectives, ownership, independent backup, and live-provider evidence
+gate #362 and the subsequent #363–#366 sequence. This audit adds no backend
+or production recovery commitment.
+
 **Current delivery queue:** [GitHub roadmap project](https://github.com/users/mattmarshall/projects/1)
 and [index #258](https://github.com/mattmarshall/ratio/issues/258).
 [Current state](docs/current-state.md) is the concise implementation summary.

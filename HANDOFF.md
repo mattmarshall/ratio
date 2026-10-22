@@ -1,5 +1,10 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
+October 22, 2026: the [recovery readiness audit](docs/recovery-readiness.md)
+verified main at `9cc92b9` and found the existing #264/#300/#357–#361 slices
+unmerged. AWS SSO access and recovery owners/objectives remain pending. No
+live recovery or provider-conformance claim is established by that audit.
+
 **Start with [Current state](docs/current-state.md) for the supported
 architecture and live gaps.** This handoff preserves engineering evidence and
 dated outcomes; older issue dispositions and counts below are historical,
