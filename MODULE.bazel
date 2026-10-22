@@ -99,6 +99,20 @@ crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
 crate.from_cargo(
     name = "crates",
     cargo_lockfile = "//:Cargo.lock",
+    # The native shell pins this module and supplies the Apple toolchains.
+    # Without these triples crate_universe marks every iOS dependency
+    # incompatible before Rust compilation can begin.
+    supported_platform_triples = [
+        "aarch64-apple-darwin",
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "aarch64-unknown-linux-gnu",
+        "wasm32-unknown-unknown",
+        "wasm32-wasip1",
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu",
+        "x86_64-unknown-nixos-gnu",
+    ],
     manifests = [
         "//:Cargo.toml",
         "//crates/ratio-common:Cargo.toml",

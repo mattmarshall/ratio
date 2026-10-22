@@ -1,5 +1,15 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
+## Native iOS dependency targets, October 22, 2026
+
+The kernel's crate-universe platform list now retains the default targets and
+adds `aarch64-apple-ios` and `aarch64-apple-ios-sim`. Without them, the pinned
+native shell refuses `anyhow` during target analysis before compiling Rust.
+The shell supplies its Apple toolchains and will pin the merged kernel commit;
+this change supplies no Swift API or accounting behavior. Related:
+`mattmarshall/ratio-ios#1`. Device/simulator build and digest acceptance remain
+required in the shell; repository privacy alone does not resolve its issue #3.
+
 **Start with [Current state](docs/current-state.md) for the supported
 architecture and live gaps.** This handoff preserves engineering evidence and
 dated outcomes; older issue dispositions and counts below are historical,
