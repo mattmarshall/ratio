@@ -57,3 +57,10 @@ sh_test(
     args = ["$(location :ratio)"],
     data = [":ratio"],
 )
+
+sh_test(
+    name = "recovery_cli_test",
+    srcs = ["recovery_cli_test.sh"],
+    args = ["$(location :ratio)"],
+    data = [":ratio"],
+)

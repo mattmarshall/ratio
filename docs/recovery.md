@@ -1,9 +1,12 @@
 # Book recovery: inventory and local drill
 
+The [October 22 readiness audit](recovery-readiness.md) verifies that the
+existing recovery/storage PRs remain unmerged and lists the operational
+inputs still required. It records no live-provider or customer acceptance.
+
 Related: [#264](https://github.com/mattmarshall/ratio/issues/264).
-Durable follow-on work: [#299](https://github.com/mattmarshall/ratio/issues/299)
-and [#300](https://github.com/mattmarshall/ratio/issues/300).
-Source review refreshed October 2, 2026.
+Durable follow-on work: [#300](https://github.com/mattmarshall/ratio/issues/300).
+Source review refreshed October 2, 2026 for the disposable #264 drill.
 
 Ratio does not yet have a demonstrated whole-book disaster recovery procedure
 for the deployed service. The journal's conditional S3 writes protect one part
@@ -17,7 +20,14 @@ checks a journal prefix and digest, two local configuration versions, a NAV
 strike and replay, book kinds, and membership isolation. A second probe records
 the legacy gap when a local book is created before an object store is attached.
 Published CreateBook recovery is covered separately by the bootstrap tests.
-Neither is an S3 recovery drill or a customer recovery commitment.
+An interrupted object-claim drill restores an acknowledged journal prefix,
+post-create configuration promotion, and membership grant while ignoring an
+unpublished staged body. It then appends at the next sequence without widening
+another book's membership. The fixture also restores a cited period-close
+record and an accepted-explanation record, verifies their actor, time, prefix,
+configuration, and digest fields, and proves the close still refuses a
+backdated post while allowing the next period.
+These tests are not an S3 recovery drill or a customer recovery commitment.
 
 The branch-local `//crates/ratio-console:operational_recovery_test` also copies
 one configured directory object store into an independent namespace, removes
@@ -230,12 +240,55 @@ This characterizes legacy compatibility; it does not describe CreateBook after
 #302. `ratio-store` bootstrap tests cover successful published-book discovery,
 verification, and materialization after local-root loss.
 
+The interrupted-claim test uses two published books in a directory object
+store. It writes two acknowledged journal entries around a configuration
+promotion, grants a second subject, and leaves a staged but unpublished third
+body as crash debris. It also records a cited close and explanation. After
+copying the object namespace and deleting the original roots, the restored
+book retains its prefix digest, active/history state, grant, close, and
+explanation. A backdated post is refused by the restored close; a post in the
+next period claims sequence 3. The other book's journal and membership remain
+isolated. This models a crash before
+publication, not an S3 outage or a customer RPO measurement.
+
 The local copy helper checks bytes; it does not implement archival metadata
-preservation. This small fixture has no reports, facts, entity corrections,
-accepted explanations, or period close and does not validate those lifecycles.
-Their full preservation, report selection by mtime, S3 capture/restore, gateway
+preservation. The interrupted-claim fixture verifies stored close and
+explanation bytes and closed-period refusal, but does not exercise the human
+acceptance flow. It has no reports, facts, or entity corrections. Their full
+preservation, report selection by mtime, S3 capture/restore, gateway
 authentication, Postgres rebuild, concurrent writers, operator procedures, and
 customer-scale timing remain required external drill coverage.
+
+The branch also has a reusable byte-level object-namespace capture in
+[`ratio_store::recovery`](../crates/ratio-store/src/recovery.rs). It lists a
+quiescent namespace, conditionally copies each object into an empty independent
+store, reads it back, then publishes a protobuf manifest of keys, lengths, and
+SHA-256 digests last. Restore checks every manifest object and refuses a
+missing, changed, extra, or duplicate key before copying into an empty store.
+An interrupted copy leaves a partial destination that must be discarded. The
+helper does not stop writers, copy legacy local-only metadata, schedule backups,
+set retention, authenticate an operator, or verify a recovered figure. It has
+only been exercised with in-memory and directory object-store tests; the local
+book drill above supplies separate replay evidence. No live S3 or customer
+capture has used it.
+
+`ratio recovery capture` and `ratio recovery restore` expose that helper. For
+each named side (`SOURCE`, `BACKUP`, or `DESTINATION`), set exactly one of
+`RATIO_RECOVERY_<SIDE>_LOCAL` or the pair
+`RATIO_RECOVERY_<SIDE>_BUCKET` and `RATIO_RECOVERY_<SIDE>_PREFIX`.
+An S3 prefix must end in `/`; it names the isolated namespace, so the command
+copies every key relative to that prefix. Capture uses `SOURCE` and `BACKUP`;
+restore uses `BACKUP` and `DESTINATION`. Both destinations must be empty. The
+command refuses overlapping local paths or S3 prefixes in the same bucket.
+The manifest is `_recovery/capture.pb` within the backup namespace. The commands
+print object counts but no keys or object bytes. An operator must quiesce all
+writers before capture, select a separately protected backup location, retain
+legacy local material and original deliveries separately, and replay and check
+figures and access after restore. The command cannot enforce those external
+steps, and a failed partial destination must be discarded.
+The manifest detects accidental loss or alteration; it is not signed. A party
+able to rewrite both the manifest and objects can forge a matching capture,
+so backup access control and retention protection are still operator decisions.
 
 ## Gaps that block a production recovery claim
 
@@ -245,11 +298,13 @@ customer-scale timing remain required external drill coverage.
   work covers operational evidence and configured writers in local tests.
   It remains unmerged. Its issue acceptance leaves external backup and the
   customer restore drill to #264.
-- No whole-book backup scheduler, consistent checkpoint/export command,
-  restore command, retention policy, or independent backup copy is established
+- No whole-book backup scheduler, retention policy, or live independent backup copy is established
   by this inventory. The S3 template configures encryption and prevents public
   access; it does not declare versioning or Object Lock on ScaleBucket.
-  Live settings were not inspected and are not inferred from the template.
+  The October 22 read-only inspection found AES-256 encryption and public
+  access blocking, no enabled versioning, no Object Lock, and no journal
+  expiration rule. Existing 30-day expiration applies only to progress/await
+  records. This is not an independent backup or an agreed retention policy.
 - Original delivery bytes and Connect app state need explicit custody and
   recovery owners. Journal/fact citations cannot replace missing source bytes.
 - Customer RPO/RTO, named operators, the external drill and signed evidence

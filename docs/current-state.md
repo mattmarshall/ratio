@@ -1,5 +1,9 @@
 # Ratio — current state
 
+The [October 22 recovery readiness audit](recovery-readiness.md) distinguishes
+verified main from the existing unmerged recovery/storage stack. Operational
+recovery and live-provider conformance remain prerequisites for #362.
+
 Updated September 10, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
@@ -97,6 +101,11 @@ messages also pass the [issue-completion check](issue-completion.md).
   approve, and accept refuse an unusable configured backend without a local
   book mutation. Issue 300 remains open pending its PR and merge; the
   external customer drill is #264 acceptance, not #300 acceptance.
+  The integrated #264 slice also provides explicit local/S3 namespace capture
+  and restore with a protobuf key/length/SHA-256 manifest published last.
+  Its disposable two-book interrupted-claim test retains close/explanation
+  citations and refuses a backdated post. Live-provider and operator acceptance
+  remain unproved.
 
 ## Scope decisions that remain in force
 

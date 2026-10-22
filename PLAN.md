@@ -1,5 +1,11 @@
 # Ratio — path to revenue
 
+October 22, 2026: [recovery readiness](docs/recovery-readiness.md) verifies
+the current main and existing unmerged implementation slices. The remaining
+recovery objectives, ownership, independent backup, and live-provider evidence
+gate #362 and the subsequent #363–#366 sequence. This audit adds no backend
+or production recovery commitment.
+
 **Current delivery queue:** [GitHub roadmap project](https://github.com/users/mattmarshall/projects/1)
 and [index #258](https://github.com/mattmarshall/ratio/issues/258).
 [Current state](docs/current-state.md) is the concise implementation summary.
@@ -5417,3 +5423,26 @@ audit bytes, and membership isolation; removed or corrupt evidence refuses.
 This is not a live S3 backup job or the customer RPO/RTO and operator drill.
 Those external recovery gates belong to #264. #300's local evidence and
 configured-writer changes remain branch-local until its PR lands.
+
+### Amendment, 2026-10-02 — interrupted object claim restore (partial #264)
+
+Related: #264. A two-book directory object-store drill leaves a journal
+body in unpublished staging after two acknowledged entries, a configuration
+promotion, and a membership grant. It copies the namespace into a clean
+environment, verifies the acknowledged digest and control history, and
+restores cited close and explanation records. The close refuses a backdated
+post, while a next-period post claims sequence 3. The other book remains inaccessible to
+the restored subject. This is local
+failure evidence; customer S3 backup/restore, RPO/RTO, retention, and named
+operator acceptance remain open.
+
+The same branch now has a conditional, readback-verified object-namespace copy
+and a protobuf key/length/SHA-256 manifest published last. Restore verifies
+the capture before writing an empty destination. It does not quiesce writers,
+schedule or retain backup copies, capture legacy local-only material, or prove
+customer figures and access. Those #264 acceptance steps remain open.
+An operator-facing `ratio recovery capture|restore` command now selects each
+local or S3 namespace explicitly and refuses occupied destinations; its
+directory test deletes the source before restore and corrupts a backup object.
+This makes the capture primitive runnable but does not establish a customer
+backup, retention policy, or signed recovery acceptance.
