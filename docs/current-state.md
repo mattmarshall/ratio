@@ -1,5 +1,10 @@
 # Ratio — current state
 
+Native iOS build preparation (October 22): crate-universe includes device
+and simulator triples so the separate shell can compile a pinned kernel.
+The shell still owes xcframework, APFS/digest, and C ABI evidence. No iOS
+distribution or license decision is implied by a successful core build.
+
 Updated September 10, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
