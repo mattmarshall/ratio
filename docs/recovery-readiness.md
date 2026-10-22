@@ -83,6 +83,12 @@ The readiness documentation passed the site build with vendored-font checks,
 site verification, shared console-token checks, and `git diff --check`.
 These are documentation checks, not recovery or provider evidence.
 
+Current-main Bazel invocation `a1626869-2497-43c2-8dbc-a4f5f51394dd`
+passed `//proto:mirrors_test` and `//:plan_refusals_test`. The accompanying
+`//crates/ratio-console:recovery_test` build was interrupted when shared APFS
+free space fell to 2.3 GB. That test has no result from this audit. Do not
+carry the two passing source checks forward as a passing recovery suite.
+
 ## iOS coordination
 
 The owner selected private visibility. Source-license and contribution
@@ -91,7 +97,10 @@ decisions remain pending on
 Existing [PR #4](https://github.com/mattmarshall/ratio-ios/pull/4) pins kernel
 `2a20e7c1b6d288da8930becef4d0cb38997c7363`. Its recorded blocker is the
 kernel's crate-universe platform list omitting iOS device and simulator.
-A device build was started again during this audit; a started build is not
-an xcframework or an on-device APFS/digest result. The C ABI issue #2 depends
+A device build was run again during this audit (invocation
+`deb452f2-184b-4cda-9857-a55688075174`). It failed target analysis after
+362.132 seconds: `@crates//:anyhow` was incompatible with `//:ios_device`.
+The pinned kernel's crate-universe default platform list omits both iOS
+triples. No archive or xcframework was produced. The C ABI issue #2 depends
 on the pinned build. Keep all figure behavior in Ratio; do not patch a kernel
 copy in the shell. TestFlight and outside contributions remain gated by #3.
