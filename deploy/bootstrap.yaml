@@ -150,6 +150,14 @@ Resources:
                 Effect: Allow
                 Action: ecr:GetAuthorizationToken
                 Resource: "*"   # this action does not accept a resource
+              # Token acquisition only; neither action grants public publishing.
+              # Private ECR auth does not cover public.ecr.aws (#382).
+              - Sid: AuthToThePublicRegistry
+                Effect: Allow
+                Action:
+                  - ecr-public:GetAuthorizationToken
+                  - sts:GetServiceBearerToken
+                Resource: "*"   # these token actions do not accept a resource
               - Sid: DeployTheAppStack
                 Effect: Allow
                 Action:

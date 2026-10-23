@@ -572,6 +572,23 @@ aws cloudformation deploy \
 
 Then update `ACCOUNT_ID` in `.github/workflows/deploy.yml` and push.
 
+### Public adapter pull authentication (#382)
+
+The deployment authenticates both private ECR (the image push) and ECR Public
+(the Lambda adapter pull) with its existing short-lived OIDC role. Private
+login does not authenticate `public.ecr.aws`; anonymous runner pulls twice
+failed with HTTP 429 / `Data limit exceeded` before publication or rollout.
+The public login requires `ecr-public:GetAuthorizationToken` and
+`sts:GetServiceBearerToken`; these token actions grant no public publishing.
+See [AWS's authorization requirements](https://docs.aws.amazon.com/AmazonECRPublic/latest/APIReference/API_GetAuthorizationToken.html).
+
+Reapply the versioned bootstrap template above before using the updated
+workflow. Existing accounts do not receive new IAM permissions from a source
+merge. Preserve the live stack parameters and review the change set before
+execution. `//deploy:iac_test` checks both login ordering and the exact token
+actions; only a successful authenticated pull, deploy, and smoke run establish
+live acceptance. Authentication does not promise immunity from all throttling.
+
 ⚠ **Re-run bootstrap after adding auth.** The deploy role gained
 `cognito-idp:*` on the demo pool (create/update/describe/delete pool, client,
 and domain) so CI can manage the authorizer's user pool. An account that

@@ -171,6 +171,23 @@ def main(app_path, bootstrap_path, workflow_path):
     deploy_block = boot.split("ExecutionRole:")[0]
     granted = set(re.findall(r"^\s+-\s+([a-z0-9-]+):[A-Za-z*]+", deploy_block, re.M))
 
+    # Private registry credentials never authenticate public.ecr.aws. Check
+    # both halves of the live #382 failure: login ordering and role authority.
+    public_login = flow.find("registry-type: public")
+    credentials = flow.find("uses: aws-actions/configure-aws-credentials@v4")
+    image_build = flow.find("docker build --platform")
+    if not (0 <= credentials < public_login < image_build):
+        fail("ECR Public login must follow OIDC credentials and precede the image build")
+    if flow.count("uses: aws-actions/amazon-ecr-login@v2") != 2 or "id: ecr" not in flow:
+        fail("public adapter login must preserve the private ECR push login")
+    auth = deploy_block.split("Sid: AuthToThePublicRegistry", 1)
+    auth = auth[1].split("- Sid:", 1)[0] if len(auth) == 2 else ""
+    actions = set(re.findall(r"^\s+-\s+([a-z0-9-]+:[A-Za-z*]+)", auth, re.M))
+    if actions != {"ecr-public:GetAuthorizationToken", "sts:GetServiceBearerToken"}:
+        fail("ECR Public auth must grant exactly its two token-acquisition actions")
+    if 'Resource: "*"' not in auth or "Effect: Allow" not in auth:
+        fail("ECR Public token actions need an Allow grant on their supported wildcard resource")
+
     for svc in sorted(services):
         # ⚠ `iam` is granted as PassRole/CreateRole rather than as a bare
         # prefix, and is checked by name below instead.
