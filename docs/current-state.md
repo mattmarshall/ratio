@@ -4,6 +4,15 @@ The [October 22 recovery readiness audit](recovery-readiness.md) distinguishes
 verified main from the existing unmerged recovery/storage stack. Operational
 recovery and live-provider conformance remain prerequisites for #362.
 
+Native iOS build preparation (October 22): crate-universe includes device
+and simulator triples so the separate shell can compile a pinned kernel.
+The shell pins merged revision `7b81c1d6f5648ba902d69f30401bf18eedcaf6e4`.
+[Shell PR #4](https://github.com/mattmarshall/ratio-ios/pull/4) and
+[PR #5](https://github.com/mattmarshall/ratio-ios/pull/5) have passing
+device/simulator archive, simulator APFS/digest, and C ABI checks. Physical
+device execution remains unproved. Neither shell PR is merged, and no iOS
+distribution or license decision is implied by these checks.
+
 Updated September 10, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).

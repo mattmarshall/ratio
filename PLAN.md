@@ -6,6 +6,16 @@ recovery objectives, ownership, independent backup, and live-provider evidence
 gate #362 and the subsequent #363–#366 sequence. This audit adds no backend
 or production recovery commitment.
 
+### October 22, 2026 — native iOS dependency platforms
+
+Related: `mattmarshall/ratio-ios#1`. The native shell's pinned kernel build
+needs crate-universe to generate dependencies for iOS device and simulator.
+Add those two targets while retaining the existing supported targets. This
+build-only slice does not introduce a backend, change a figure, or satisfy
+on-device digest, C ABI, licensing, or distribution acceptance. The owner
+authorized a linked kernel build PR followed by an exact pin update in the
+existing shell PR; the kernel remains in this repository.
+
 **Current delivery queue:** [GitHub roadmap project](https://github.com/users/mattmarshall/projects/1)
 and [index #258](https://github.com/mattmarshall/ratio/issues/258).
 [Current state](docs/current-state.md) is the concise implementation summary.
