@@ -1,9 +1,17 @@
 # Ratio — current state
 
+The [October 22 recovery readiness audit](recovery-readiness.md) distinguishes
+verified main from the existing unmerged recovery/storage stack. Operational
+recovery and live-provider conformance remain prerequisites for #362.
+
 Native iOS build preparation (October 22): crate-universe includes device
 and simulator triples so the separate shell can compile a pinned kernel.
-The shell still owes xcframework, APFS/digest, and C ABI evidence. No iOS
-distribution or license decision is implied by a successful core build.
+The shell pins merged revision `7b81c1d6f5648ba902d69f30401bf18eedcaf6e4`.
+[Shell PR #4](https://github.com/mattmarshall/ratio-ios/pull/4) and
+[PR #5](https://github.com/mattmarshall/ratio-ios/pull/5) have passing
+device/simulator archive, simulator APFS/digest, and C ABI checks. Physical
+device execution remains unproved. Neither shell PR is merged, and no iOS
+distribution or license decision is implied by these checks.
 
 Updated September 10, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
@@ -81,7 +89,14 @@ messages also pass the [issue-completion check](issue-completion.md).
   full replay, checkpoint load, and tail replay for the large demo shape
   (~5,400 entries); the journal remains the book of record.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
-  post-create configuration/membership transitions are built. NAVs,
+  post-create configuration/membership transitions are built. A branch-local
+  two-book restore now verifies the acknowledged journal prefix, later
+  configuration promotion, membership grant, close, and explanation records
+  survive an interrupted object claim; the restored close refuses a backdated
+  post and a next-period append takes the next slot. A branch-local object
+  capture helper verifies each copied byte and publishes a protobuf manifest
+  last; `ratio recovery capture|restore` exposes it for explicit local or S3
+  namespaces, but only the directory command has been exercised. NAVs,
   reports/proposals, CHANGELOG, complete backup coverage, and the external
   restore drill remain separate recovery work.
 

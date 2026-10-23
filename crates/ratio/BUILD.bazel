@@ -50,3 +50,10 @@ rust_test(
     crate = ":ratio",
     edition = "2021",
 )
+
+sh_test(
+    name = "recovery_cli_test",
+    srcs = ["recovery_cli_test.sh"],
+    args = ["$(location :ratio)"],
+    data = [":ratio"],
+)

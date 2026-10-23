@@ -1,14 +1,21 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
+October 22, 2026: the [recovery readiness audit](docs/recovery-readiness.md)
+verified main at `9cc92b9` and found the existing #264/#300/#357–#361 slices
+unmerged at that audit. AWS access has since been renewed; recovery
+owners/objectives remain pending. No
+live recovery or provider-conformance claim is established by that audit.
+
 ## Native iOS dependency targets, October 22, 2026
 
 The kernel's crate-universe platform list now retains the default targets and
 adds `aarch64-apple-ios` and `aarch64-apple-ios-sim`. Without them, the pinned
 native shell refuses `anyhow` during target analysis before compiling Rust.
-The shell supplies its Apple toolchains and will pin the merged kernel commit;
+The shell supplies its Apple toolchains and pins the merged kernel commit;
 this change supplies no Swift API or accounting behavior. Related:
-`mattmarshall/ratio-ios#1`. Device/simulator build and digest acceptance remain
-required in the shell; repository privacy alone does not resolve its issue #3.
+`mattmarshall/ratio-ios#1`. Shell PRs #4 and #5 now have passing simulator-scoped build, APFS/digest,
+and C ABI CI. Physical-device acceptance remains open; repository privacy
+alone does not resolve its issue #3.
 
 **Start with [Current state](docs/current-state.md) for the supported
 architecture and live gaps.** This handoff preserves engineering evidence and
@@ -1500,6 +1507,31 @@ configuration promotions and explicit membership grants/revocations use the
 same durable object backend and recover by verified predecessor transition.
 NAVS, reports/proposals, and CHANGELOG remain local. The object-only
 probe now explicitly characterizes a legacy book created before storage was
-attached. Follow-on persistence is tracked on #299/#300. Customer RPO/RTO, complete backups,
+attached. Follow-on evidence persistence is tracked on #300. Customer RPO/RTO, complete backups,
 and the external drill remain open; the runbook makes no production recovery
 guarantee.
+
+### Interrupted object claim, October 2, 2026 (issue #264, branch-local)
+
+The local recovery test carries two published books through an independent
+directory object-store copy after two journal entries, a configuration
+promotion, and a membership grant were acknowledged. A third body is left in
+unpublished staging. A cited close and accepted-explanation record also
+survive the copy. The restored close refuses a backdated post; the next-period
+append claims sequence 3. The restored alpha prefix keeps its digest and control
+history, beta's journal stays empty, and
+membership stays isolated. This is an interrupted local PUT fixture; the live
+customer backup, recovery objectives, retention, and named operators remain
+unproved.
+
+The #264 branch also adds `ratio_store::recovery`, a byte-level object copy
+helper whose protobuf manifest is published only after source and backup bytes
+match. Restore refuses changed, missing, extra, or duplicate objects before
+writing an empty target. This is a testable capture primitive, not a customer
+backup job or a replay/authorization acceptance result. The operator must
+quiesce writers, retain legacy local material separately, and verify figures
+and membership after restore.
+`ratio recovery capture|restore` exposes it for explicitly named local or S3
+source, backup, and destination namespaces. The directory command test removes
+the source before restore and refuses a changed backup object. No customer S3
+run, schedule, retention, or signed operator verification has occurred.
