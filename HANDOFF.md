@@ -1,5 +1,12 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
+October 23, 2026 — Related: #382. Main's build/tests passed, but deploy
+`39891988194` failed twice pulling the public Lambda adapter with HTTP 429.
+The workflow now authenticates ECR Public separately from private ECR, and
+bootstrap grants its two token actions. Bootstrap application and an
+authenticated pull/deploy/smoke result remain required; no recovery evidence
+is implied. See [deployment setup](deploy/README.md#public-adapter-pull-authentication-382).
+
 October 22, 2026: the [recovery readiness audit](docs/recovery-readiness.md)
 verified main at `9cc92b9` and found the existing #264/#300/#357–#361 slices
 unmerged at that audit. AWS access has since been renewed; recovery

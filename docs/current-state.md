@@ -1,5 +1,11 @@
 # Ratio — current state
 
+Deployment dependency authentication (#382, October 23): the workflow logs
+into ECR Public before pulling the Lambda adapter, separately from its private
+ECR push login. The versioned bootstrap adds the required two token actions.
+The live bootstrap grant and successful pull/deploy/smoke still need proof;
+the observed failure is public-registry HTTP 429, before rollout.
+
 The [October 22 recovery readiness audit](recovery-readiness.md) distinguishes
 verified main from the existing unmerged recovery/storage stack. Operational
 recovery and live-provider conformance remain prerequisites for #362.

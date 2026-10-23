@@ -1,5 +1,14 @@
 # Ratio — path to revenue
 
+### October 23, 2026 — authenticated public deployment dependency
+
+Related: #382. Deployment's public Lambda adapter pull twice exhausted the
+anonymous ECR Public data allowance before rollout, despite passing core tests.
+Authenticate that pull with the existing main-only OIDC deploy role; preserve
+private registry login and grant only the two required public token actions.
+This is deployment plumbing. Bootstrap application and live pull/deploy/smoke
+acceptance remain open; no recovery, storage-conformance, or figure claim lands.
+
 October 22, 2026: [recovery readiness](docs/recovery-readiness.md) verifies
 the current main and existing unmerged implementation slices. The remaining
 recovery objectives, ownership, independent backup, and live-provider evidence

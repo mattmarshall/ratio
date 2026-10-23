@@ -120,6 +120,13 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
         id: ecr
 
+      # Private ECR login does not authenticate the adapter's public pull.
+      # Anonymous runner traffic exhausted ECR Public's data limit (#382).
+      - name: Authenticate the public adapter pull
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
       - name: Build and push
         id: image
         working-directory: deploy
