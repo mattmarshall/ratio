@@ -2,8 +2,20 @@
 
 October 22, 2026: the [recovery readiness audit](docs/recovery-readiness.md)
 verified main at `9cc92b9` and found the existing #264/#300/#357–#361 slices
-unmerged. AWS SSO access and recovery owners/objectives remain pending. No
+unmerged at that audit. AWS access has since been renewed; recovery
+owners/objectives remain pending. No
 live recovery or provider-conformance claim is established by that audit.
+
+## Native iOS dependency targets, October 22, 2026
+
+The kernel's crate-universe platform list now retains the default targets and
+adds `aarch64-apple-ios` and `aarch64-apple-ios-sim`. Without them, the pinned
+native shell refuses `anyhow` during target analysis before compiling Rust.
+The shell supplies its Apple toolchains and pins the merged kernel commit;
+this change supplies no Swift API or accounting behavior. Related:
+`mattmarshall/ratio-ios#1`. Shell PRs #4 and #5 now have passing simulator-scoped build, APFS/digest,
+and C ABI CI. Physical-device acceptance remains open; repository privacy
+alone does not resolve its issue #3.
 
 **Start with [Current state](docs/current-state.md) for the supported
 architecture and live gaps.** This handoff preserves engineering evidence and
