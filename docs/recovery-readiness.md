@@ -28,14 +28,21 @@ S3 evidence. The user requires recovery and live conformance to pass before
 ## Operational inputs
 
 The owner has not designated a recovery book or agreed objectives. Existing
-`ratio` and `ratio-ro` AWS profiles both failed STS identity checks because
-their SSO tokens expired. An SSO sign-in was initiated; no AWS read or write
-has succeeded during this audit. Deployment source names the demo account,
-`us-east-1`, stack `ratio-demo-app`, and its ScaleBucket. These are discovery
-coordinates, not evidence of their live settings or authorization to damage
-the deployed book.
+`ratio` and `ratio-ro` AWS profiles initially failed STS identity checks because
+their SSO tokens expired. After the owner renewed SSO, the `ratio` profile
+successfully identified the intended account and read the live deployment.
+Stack `ratio-demo-app` in `us-east-1` reports `UPDATE_COMPLETE`. Its journal
+bucket has AES-256 encryption and all four public-access blocks enabled.
+GetBucketVersioning returned no enabled versioning state;
+GetObjectLockConfiguration returned `ObjectLockConfigurationNotFoundError`.
+The only expiration lifecycle rules cover `runs/progress-` and `runs/await-`
+at 30 days, plus a one-day incomplete-multipart-upload abort rule. They do
+not establish journal backup retention. The known synthetic
+`personal-tax-walkthrough` book prefix contains five objects totaling 1,524
+bytes. No production object body was read, no production write occurred, and
+no original-delivery or Connect-state recovery was established by these reads.
 
-Prepare a disposable representative book after access is restored. A proposed
+Prepare a disposable representative book after the owner approves the rehearsal contract. A proposed
 rehearsal should include two book IDs, all journal and side planes, two config
 promotions, grants and revocations, NAV strikes, report ordering, reviewed
 proposals, audit events, a close, and an accepted explanation. Retain original
@@ -48,7 +55,7 @@ representative rehearsal; that cannot prove recovery of live provider state.
 | Required input | Next concrete action | Acceptance state |
 |---|---|---|
 | Book and known figures | Select an owner-approved representative book and independently recorded expected figures | Pending |
-| AWS identity and source | Complete SSO, verify account/role, inspect deployment and source prefixes read-only | Pending |
+| AWS identity and source | Identity, deployment, protections, and known synthetic namespace inspected read-only; drill source still to be created | Access verified; representative source pending |
 | Independent backup | Select a separately controlled backup location; inspect encryption, versioning, access, and retention | Pending |
 | Isolated restore | Select an empty namespace and serving root with outbound Connect writes disabled | Pending |
 | Writer quiescence | Enumerate HTTP, CLI, MCP, ingest, membership, and config writers; record how each stops and drains | Pending |
@@ -89,18 +96,58 @@ passed `//proto:mirrors_test` and `//:plan_refusals_test`. The accompanying
 free space fell to 2.3 GB. That test has no result from this audit. Do not
 carry the two passing source checks forward as a passing recovery suite.
 
-## iOS coordination
+## iOS coordination — latest verified state
 
-The owner selected private visibility. Source-license and contribution
-decisions remain pending on
+The owner selected private visibility and explicitly authorized a linked
+kernel build PR followed by an exact pin update in existing shell PR #4.
+Kernel [PR #381](https://github.com/mattmarshall/ratio/pull/381) merged as
+`7b81c1d6f5648ba902d69f30401bf18eedcaf6e4`. It adds the missing device and
+simulator dependency platforms and refreshes the Bazel lock without changing
+Cargo.lock or accounting code. This supersedes the earlier target-analysis
+failure at the old `2a20e7c1b6d288da8930becef4d0cb38997c7363` pin.
+
+Shell [PR #4](https://github.com/mattmarshall/ratio-ios/pull/4) now pins that
+exact merged revision. [CI 39845836493](https://github.com/mattmarshall/ratio-ios/actions/runs/39845836493)
+passed device/simulator XCFramework builds, an APFS app-sandbox no-replace
+contention/reopen check, and replay of the simulator-written journal using
+the actual pinned CLI. Both reproduced prefix 2, NAV 10000 minor units, and
+digest `5e0d32d7d553a694752e4018502b59f17d2a7226345daf59f3a7ade087319c3b`.
+A memo-only mutation reproduced the arithmetic but refused rewritten history.
+
+Shell [PR #5](https://github.com/mattmarshall/ratio-ios/pull/5), stacked on #4,
+adds the protobuf C ABI and generated typed Swift client for all 49 current
+Console RPCs. [CI 39850325396](https://github.com/mattmarshall/ratio-ios/actions/runs/39850325396)
+passed the ABI/RPC-contract/mirror tests, both archive builds, APFS check,
+pinned CLI replay, complete Swift regeneration, and simulator Swift response
+and refusal checks. Swift retained the exact authenticated-creator refusal
+and the kernel's non-dividing average-cost break. No shell accounting code
+or fabricated authenticated identity was introduced. On-device provisioning
+remains unresolved.
+
+Neither shell PR is merged. Simulator execution does not prove physical-device
+execution; Apple Development signing access is unavailable. Source-license
+and contribution decisions remain pending on
 [ratio-ios #3](https://github.com/mattmarshall/ratio-ios/issues/3).
-Existing [PR #4](https://github.com/mattmarshall/ratio-ios/pull/4) pins kernel
-`2a20e7c1b6d288da8930becef4d0cb38997c7363`. Its recorded blocker is the
-kernel's crate-universe platform list omitting iOS device and simulator.
-A device build was run again during this audit (invocation
-`deb452f2-184b-4cda-9857-a55688075174`). It failed target analysis after
-362.132 seconds: `@crates//:anyhow` was incompatible with `//:ios_device`.
-The pinned kernel's crate-universe default platform list omits both iOS
-triples. No archive or xcframework was produced. The C ABI issue #2 depends
-on the pinned build. Keep all figure behavior in Ratio; do not patch a kernel
-copy in the shell. TestFlight and outside contributions remain gated by #3.
+The repository remains private. TestFlight and outside contributions remain
+gated by #3. None of this native evidence proves live S3 recovery or provider
+conformance.
+
+## Pending owner actions
+
+After explicit owner approval, recovery PR #375 merged into main as
+`e1e9f6a792602b12f0e367769b62ef734ab98e9a`. Its updated head passed
+[build, tests, and live Postgres](https://github.com/mattmarshall/ratio/actions/runs/39891140110),
+[site](https://github.com/mattmarshall/ratio/actions/runs/39891140246), and
+closure checks. The earlier automatic approval rejection was resolved by that
+explicit approval. Issues #264 and #300 remain open. Operational-evidence
+PR #376 now targets main and incorporates the merged base; it remains
+unmerged. The table above preserves the initial audit, not current PR states.
+
+A proposed synthetic rehearsal uses two disposable books, disjoint source and
+restore namespaces, a separate encrypted backup bucket, no production writer
+interruption, RPO 0 at the quiescent cut, RTO 60 minutes, and seven-day lab
+evidence retention. These are proposed lab objectives, not an agreed customer
+recovery contract. Approval and a named independent verifier remain pending;
+no resources or retention policies were created from this proposal. Original
+deliveries and Connect state still require the inventory and custody evidence
+listed above. The Plaid/Google credential broker owner decision remains open.

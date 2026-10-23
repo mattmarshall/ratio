@@ -582,6 +582,32 @@ tla_library(
     srcs = ["S3Journal.tla"],
 )
 
+# Issue #300: a NAV strike is a conditional, view-and-point-keyed durable
+# claim; a serving-process crash loses its cache but not an acknowledged NAV.
+tla_library(
+    name = "nav_evidence",
+    srcs = ["NavEvidence.tla"],
+)
+
+tla_check(
+    name = "nav_evidence_check",
+    size = "medium",
+    config = "MCNavEvidence.cfg",
+    module = "MCNavEvidence.tla",
+    deps = [":nav_evidence"],
+)
+
+# ⛔ Remove the conditional claim and the second writer overwrites an
+# acknowledged strike at the same view/valuation point.
+tla_check(
+    name = "lost_nav_evidence_check",
+    size = "medium",
+    config = "LostNavEvidence.cfg",
+    module = "LostNavEvidence.tla",
+    tags = ["manual"],
+    deps = [":nav_evidence"],
+)
+
 tla_check(
     name = "s3_journal_check",
     size = "medium",

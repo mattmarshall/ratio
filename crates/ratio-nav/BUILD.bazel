@@ -27,7 +27,9 @@ rust_library(
         "//crates/ratio-ingest",
         "//crates/ratio-project",
         "//crates/ratio-store",
+        "//proto:ratio_rust_proto",
         "@crates//:anyhow",
+        "@crates//:prost",
         "@crates//:serde_json",
     ],
 )

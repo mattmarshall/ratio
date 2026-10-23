@@ -419,7 +419,6 @@ impl Console {
     /// absent actor is recorded as empty rather than invented — an audit trail
     /// that makes up a name is worse than one that admits a gap.
     fn record_change(&self, book: &Path, action: &str, subject: &str, digest: &str) -> Result<()> {
-        use std::io::Write;
         let when = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -431,20 +430,13 @@ impl Console {
         let clean = |s: &str| -> String {
             s.chars().filter(|c| *c != '\t' && *c != '\n' && *c != '\r').collect()
         };
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(book.join("CHANGELOG"))
-            .context("opening CHANGELOG")?;
-        writeln!(
-            f,
-            "{when}\t{}\t{}\t{}\t{}",
+        ratio_store::changes::append_with_store(book, &format!(
+            "{when}\t{}\t{}\t{}\t{}\n",
             clean(self.actor.as_deref().unwrap_or("")),
             clean(action),
             clean(subject),
             clean(digest)
-        )
-        .context("appending to CHANGELOG")?;
+        ), self.objects.clone())?;
         Ok(())
     }
 
@@ -2523,7 +2515,7 @@ impl Console {
 
         let mut out = Vec::new();
         for (a, _) in self.announcements(fund)? {
-            for s in ratio_nav::list(&path)? {
+            for s in ratio_nav::list_with_store(&path, self.objects.clone())? {
                 // The strike's own day, as the ex-date is written.
                 let day = ratio_nav::rfc3339(s.valuation_time);
                 let day = day.get(..10).unwrap_or("").to_string();
@@ -3178,21 +3170,16 @@ impl Console {
 
         if report.was_reconciled() {
             use prost::Message;
-            let dir = path.join("reports");
-            std::fs::create_dir_all(&dir).context("creating the reports directory")?;
             let name = format!("{}-live-{}.pb", digest.short(), holdings);
-            std::fs::write(
-                dir.join(&name),
-                report
-                    .to_proto(
-                        path.file_name()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or(fund),
-                        &name.trim_end_matches(".pb"),
-                    )
-                    .encode_to_vec(),
-            )
-            .context("storing the live holdings report")?;
+            ratio_store::reports::write_report_with_store(
+                &path,
+                &name,
+                &report.to_proto(
+                    path.file_name().and_then(|s| s.to_str()).unwrap_or(fund),
+                    name.trim_end_matches(".pb"),
+                ).encode_to_vec(),
+                self.objects.clone(),
+            )?;
         }
         Ok(report)
     }
@@ -4288,7 +4275,8 @@ impl Console {
         let chart = b.accounts()?;
 
         let mut promoted: BTreeMap<String, (i64, String, String)> = BTreeMap::new();
-        for l in std::fs::read_to_string(path.join("CHANGELOG")).unwrap_or_default().lines() {
+        for line in ratio_store::changes::read_with_store(&path, self.objects.clone())? {
+            let l = line.trim_end_matches('\n');
             let f: Vec<&str> = l.split('\t').collect();
             // ⛔ ONLY AN "approved" LINE IS A PROMOTION. The CHANGELOG is the
             // fund's whole audit trail — it also carries who posted, ingested,
@@ -4363,7 +4351,8 @@ impl Console {
                     },
                     |fund| self.projection(fund),
                 );
-                ratio_nav::list_in(&path, &view)?
+                ratio_nav::list_with_store(&path, self.objects.clone())?
+                    .into_iter().filter(|strike| strike.view == view).collect::<Vec<_>>()
                     .into_iter()
                     .map(|s| {
                         let why: Vec<String> = stale
@@ -4726,7 +4715,7 @@ impl Console {
             })?;
         }
 
-        let strikes = ratio_nav::list(&path)?;
+        let strikes = ratio_nav::list_with_store(&path, self.objects.clone())?;
 
         self.announcements(fund)?
             .into_iter()
@@ -4786,7 +4775,7 @@ impl Console {
         // PINNED, which `NavFold::def_for` does — never from ACTIVE. A calendar
         // amended since would otherwise re-derive a different settlement date,
         // and this endpoint would report a sound strike as unreproducible.
-        let r = ratio_nav::replay(&path, &s)?;
+        let r = ratio_nav::replay_with_store(&path, &s, self.objects.clone())?;
         Ok(pb::ReplayNavStrikeResponse {
             name: name.to_string(),
             history_intact: r.history_intact,
@@ -5137,7 +5126,7 @@ impl Console {
     }
 
     fn breaks_for(&self, book: &Path, fund: &str, view: &str) -> Result<Vec<pb::Break>> {
-        let Some(report) = newest_report(book)? else {
+        let Some(report) = ratio_store::reports::newest_report_with_store(book, self.objects.clone())? else {
             // ⚠ STILL RETURNS THE LOT BREAKS. A fund with no reconciliation
             // report has no recon breaks, and used to have no breaks at all —
             // so a lot break on such a fund would have been invisible for the
@@ -5243,8 +5232,7 @@ impl Console {
     /// the fallback for configurations that predate the record.
     fn change_log_for(&self, book: &Path, fund: &str) -> Result<Vec<pb::ChangeLogEntry>> {
         let mut out = Vec::new();
-        let text = std::fs::read_to_string(book.join("CHANGELOG")).unwrap_or_default();
-        for (i, line) in text.lines().filter(|l| !l.trim().is_empty()).enumerate() {
+        for (i, line) in ratio_store::changes::read_with_store(book, self.objects.clone())?.iter().enumerate() {
             let f: Vec<&str> = line.split('\t').collect();
             if f.len() < 5 {
                 continue; // a truncated line is skipped, not guessed at
@@ -5262,15 +5250,8 @@ impl Console {
 
         // Proposals nobody has approved: the other half of the story, and the
         // only place a model appears in this log.
-        if let Ok(rd) = std::fs::read_dir(book.join("proposals")) {
-            let mut ids: Vec<String> = rd
-                .filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|x| x == "toml"))
-                .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-                .collect();
-            ids.sort();
-            for id in ids {
+        {
+            for (id, _) in ratio_store::proposals::list_with_store(book, self.objects.clone())? {
                 if out.iter().any(|e| e.subject == id && e.action == "approved") {
                     continue; // already approved; it appears above as a person's act
                 }
@@ -5593,32 +5574,7 @@ fn disposal_to_pb(
 }
 
 fn newest_report(book: &Path) -> Result<Option<kernel::BreakReport>> {
-    let dir = book.join("reports");
-    let mut found: Vec<PathBuf> = std::fs::read_dir(&dir)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|x| x == "pb"))
-                .collect()
-        })
-        .unwrap_or_default();
-    // ⚠ MTIME FIRST, THEN PATH. Two reports written in one filesystem
-    // timestamp (the test helper's `r0.pb` / `r1.pb`) used to order
-    // arbitrarily, so "the later figure retires the explanation" was a
-    // coin flip on a fast disk.
-    found.sort_by_key(|p| {
-        let mtime = std::fs::metadata(p)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        (mtime, p.clone())
-    });
-    match found.last() {
-        None => Ok(None),
-        Some(p) => Ok(Some(
-            kernel::BreakReport::decode(&std::fs::read(p)?[..])
-                .with_context(|| format!("reading {}", p.display()))?,
-        )),
-    }
+    ratio_store::reports::newest_report(book)
 }
 
 /// A break's id within its book: the last segment of its resource name.

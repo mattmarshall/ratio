@@ -568,13 +568,16 @@ __STYLE__
           <code>journals/</code>
           (<code>RATIO_JOURNAL_BUCKET</code> /
           <code>RATIO_JOURNAL_PREFIX</code>) so CreateBook
-          uses the durable journal. Whole-book backup, failure, restore,
-          replay, and membership-isolation acceptance remain on
-          <a href="https://github.com/mattmarshall/ratio/issues/264">#264</a>;
-          the operational-evidence slice
+          uses the durable journal. The #300 branch conditionally persists
+          NAV strikes, ordered reports, reviewed proposal bytes, and audit lines.
+          A disposable copy replays those citations in a fresh process.
+          Whole-book backup, failure, restore, replay, and membership-isolation
+          acceptance remain on
+          <a href="https://github.com/mattmarshall/ratio/issues/264">#264</a>.
+          The operational-evidence slice
           <a href="https://github.com/mattmarshall/ratio/pull/376">#376</a>
-          is still under review. Live-provider storage conformance and
-          agreed recovery objectives gate a new journal backend.
+          remains under review. Live-provider conformance and agreed recovery
+          objectives gate a new journal backend.
           Pending hydration returns a retryable
           503; a failed storage startup refuses book traffic
           until restart (#293). Health and configuration endpoints
