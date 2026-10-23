@@ -134,10 +134,14 @@ conformance.
 
 ## Pending owner actions
 
-Recovery PR #375 and operational-evidence PR #376 are ready for review with
-passing implementation-head CI recorded in their PRs; both remain unmerged. Automatic approval review
-rejected the attempted #375 merge because explicit approval for the incomplete
-recovery slice was missing. That action has not been retried or bypassed.
+After explicit owner approval, recovery PR #375 merged into main as
+`e1e9f6a792602b12f0e367769b62ef734ab98e9a`. Its updated head passed
+[build, tests, and live Postgres](https://github.com/mattmarshall/ratio/actions/runs/39891140110),
+[site](https://github.com/mattmarshall/ratio/actions/runs/39891140246), and
+closure checks. The earlier automatic approval rejection was resolved by that
+explicit approval. Issues #264 and #300 remain open. Operational-evidence
+PR #376 now targets main and incorporates the merged base; it remains
+unmerged. The table above preserves the initial audit, not current PR states.
 
 A proposed synthetic rehearsal uses two disposable books, disjoint source and
 restore namespaces, a separate encrypted backup bucket, no production writer
