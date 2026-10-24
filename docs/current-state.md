@@ -10,8 +10,10 @@ at `ba7bd9fa37884ff02a7d22def629f02f1a4d33ff`.
 The [October 22 recovery readiness audit](recovery-readiness.md) distinguishes
 the initial state from the now-merged #264/#300 tooling and remaining
 unmerged storage stack. The approved [synthetic AWS drill](recovery-drill-2026-10-23.md)
-has RPO 0, RTO 60 minutes, seven-day retention, and Matt Marshall as verifier. Operational
-recovery and live-provider conformance remain prerequisites for #362.
+restored 33 objects with matching figures/digests, measured RPO 0 and RTO
+275.748 seconds against 60 minutes. Seven-day retained evidence includes all
+failures and passing CLI/HTTP/MCP writer continuations. Matt Marshall's independent
+acceptance and live-provider conformance remain prerequisites for #362.
 
 Native iOS build preparation (October 22): crate-universe includes device
 and simulator triples so the separate shell can compile a pinned kernel.
@@ -21,7 +23,8 @@ The shell pins merged revision `7b81c1d6f5648ba902d69f30401bf18eedcaf6e4`.
 device/simulator archive, simulator APFS/digest, and C ABI checks. Physical
 device execution remains unproved. Both shell PRs are merged. The owner has
 selected private, all-rights-reserved shell source with no outside contributions;
-that record is being finalized under iOS #3. Distribution remains a separate gate.
+that record merged in shell PR #6. Kernel contribution-policy scope and its
+licensing record remain under iOS #3. Distribution remains a separate gate.
 
 Updated September 10, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
@@ -118,7 +121,8 @@ messages also pass the [issue-completion check](issue-completion.md).
   configured object storage before book commands, including stdio MCP and
   person-only writes. A seeded-book regression verifies post, strike, close,
   approve, and accept refuse an unusable configured backend without a local
-  book mutation. Issue 300 remains open pending its PR and merge; the
+  book mutation. Issue 300's original PR #376 is merged; the live-discovered HTTP/S3 runtime
+  fix and evidence are in PR #384, pending CI, merge and verifier review; the
   external customer drill is #264 acceptance, not #300 acceptance.
   The integrated #264 slice also provides explicit local/S3 namespace capture
   and restore with a protobuf key/length/SHA-256 manifest published last.

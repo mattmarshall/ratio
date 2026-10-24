@@ -568,7 +568,7 @@ __STYLE__
           <code>journals/</code>
           (<code>RATIO_JOURNAL_BUCKET</code> /
           <code>RATIO_JOURNAL_PREFIX</code>) so CreateBook
-          uses the durable journal. The #300 branch conditionally persists
+          uses the durable journal. Merged #300 tooling conditionally persists
           NAV strikes, ordered reports, reviewed proposal bytes, and audit lines.
           A disposable copy replays those citations in a fresh process.
           Whole-book backup, failure, restore, replay, and membership-isolation
@@ -576,8 +576,13 @@ __STYLE__
           <a href="https://github.com/mattmarshall/ratio/issues/264">#264</a>.
           The operational-evidence slice
           <a href="https://github.com/mattmarshall/ratio/pull/376">#376</a>
-          remains under review. Live-provider conformance and agreed recovery
-          objectives gate a new journal backend.
+          has merged. The approved synthetic AWS drill restored 33 objects with
+          matching figures and digests, RPO 0, and measured RTO 275.748 seconds.
+          Its live writer checks found and corrected an HTTP/S3 runtime panic;
+          evidence and the fix are in
+          <a href="https://github.com/mattmarshall/ratio/pull/384">#384</a>.
+          Independent verifier acceptance and live-provider conformance still
+          gate a new journal backend.
           Pending hydration returns a retryable
           503; a failed storage startup refuses book traffic
           until restart (#293). Health and configuration endpoints
