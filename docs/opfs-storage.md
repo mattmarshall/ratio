@@ -2,7 +2,9 @@
 
 Related: #365. The proof was committed as `2e520dc` before adapter source.
 The implementation has distinct simulation and actual-browser evidence.
-Final exact-head CI remains the merge gate.
+[Final exact-head CI passed](https://github.com/mattmarshall/ratio/actions/runs/40070261423);
+PR #388 merged as `cdc2a30d80f63515118b3517cfa01db6ae923b97`.
+[Post-merge deployment/smoke passed](https://github.com/mattmarshall/ratio/actions/runs/40070769322).
 
 `OPFSJournal.tla` separates ownership, preparing an append position, writing,
 flushing/acknowledging, and crash/reload. An acknowledged write remains in the

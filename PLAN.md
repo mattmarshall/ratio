@@ -1,5 +1,27 @@
 # Ratio — path to revenue
 
+### October 24, 2026 — adopted storage and distribution tiers
+
+Related: #367. Matt Marshall adopted **on-device Personal and hosted SQL
+tiering**: Personal books run locally with the limited provider token broker;
+funds and shared workspaces use the hosted SQL direction. The journal remains
+the book of record, with explicit per-book backend selection, identical
+conformance and prefix-digest requirements, and optional disposable projections.
+This is the product direction, not a default-backend switch or a claim that
+a hosted Postgres service or full device application is deployed.
+
+The accepted synthetic recovery contract preceded new backends; live S3
+conformance, native Postgres, cache-independent metadata, wasm capacity and
+actual-browser OPFS evidence now cover #357–#366. All backend crates stay in
+this tree under the shared conformance gate. A separate store repository still
+waits for a second consumer. See [the decision and evidence](docs/storage-backends.md).
+
+Capacity limits remain explicit: the default wasm profile has a 1 GiB linear
+ceiling, browser host memory is additional, and exact-4-GiB diagnostics are
+unsupported. Hosted Postgres recovery and deployment, broker authentication/
+real-token recovery, device backup-key custody and physical iOS replay retain
+their own operational gates. No new backend is authorized to bypass recovery.
+
 ### October 24, 2026 — iOS licensing and contribution decision
 
 Related: `mattmarshall/ratio-ios#3`. The owner approved the linked kernel
