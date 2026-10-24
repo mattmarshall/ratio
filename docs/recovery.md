@@ -376,3 +376,13 @@ original-delivery byte custody, and Connect credentials need their own complete
 inventory and backup procedure before a browser customer recovery claim.
 The accepted #264/#300 evidence remains its documented S3 representative drill;
 it does not establish an OPFS RPO/RTO or retention policy.
+
+## Proposed on-device provider custody split (#366)
+
+The [approved broker scope](on-device-token-broker.md) requires separate recovery
+for broker token ciphertext/key references, provider cursors, outbox and
+revocation state, alongside device original deliveries, import history and the
+book. Reconcile replay and revoked memberships before resume. The accepted
+synthetic drill proves neither this future split nor real provider-token
+resumption; broker-specific objectives, retention and named operators must be
+agreed and measured before deployment.

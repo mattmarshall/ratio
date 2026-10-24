@@ -9,8 +9,9 @@ matches actual wasm bytes, all plane/digest pins, and figures. Its measured
 10,246,267 for two at the tested 10,000-security shape. Adjacent entries refuse;
 larger-memory controls pass. See [measurement and limits](wasm-capacity.md).
 #364 merged after [final CI passed](https://github.com/mattmarshall/ratio/actions/runs/40065694985).
-OPFS ownership/reload proof (#365) and
-the approved limited broker scope (#366) follow in order. Physical iOS
+OPFS ownership/reload proof (#365) merged in #388. The approved
+[limited token broker decision](on-device-token-broker.md) (#366) separates
+provider custody from device book content; implementation/deployment is future work. Physical iOS
 execution and the separate kernel contribution-policy decision remain open.
 
 The wasm report also records actual peak physical footprint (981,079,368 /
@@ -27,7 +28,8 @@ Rust adapter now compiles and passes the persistent-handle simulation and
 shared native/wasm fixture. [Actual browser evidence](opfs-storage.md) now
 proves second-tab exclusion, partial-write refusal, owner reload, retained
 figures/digests, durable client acknowledgment, and namespace isolation.
-Final exact-head CI remains before #365 completion.
+[Final exact-head CI passed](https://github.com/mattmarshall/ratio/actions/runs/40070261423);
+#365 is merged and complete for this evidence scope.
 
 Deployment dependency authentication (#382, October 23): the workflow logs
 into ECR Public before pulling the Lambda adapter, separately from its private

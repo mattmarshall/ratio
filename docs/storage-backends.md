@@ -607,3 +607,11 @@ labeled fs-backed handle simulation. Actual browser OPFS and reload/second-tab
 evidence now pass at the recorded clean revision. No browser product, browser-scale memory/performance,
 off-device backup, or eviction guarantee is claimed. Read the
 [ownership protocol](opfs-storage.md) before changing this adapter.
+
+## Limited provider broker decision (#366)
+
+The owner approved server custody of per-membership Plaid/Google tokens and
+provider responses. Ratio book content, import decisions and all amounts stay
+on the device. [The custody and retry boundary](on-device-token-broker.md)
+records the split, recovery obligations and server cost residue. Current local
+runners are unchanged; no deployed broker or real-token restore is claimed.

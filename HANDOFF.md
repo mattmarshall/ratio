@@ -1,5 +1,11 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
+October 24, 2026 — Related: #366. The approved [limited broker boundary](docs/on-device-token-broker.md)
+keeps provider credentials on the server and all Ratio book content and amount
+decisions on the device. Existing runner regressions remain the baseline; a
+deployed split, real-token recovery and its operating cost remain future gates.
+#365 merged in #388 after its actual browser recovery and final CI passed.
+
 October 23, 2026: the owner approved the [synthetic AWS recovery drill](docs/recovery-drill-2026-10-23.md)
 with Matt Marshall as verifier: RPO 0 at quiescence, RTO 60 minutes, seven-day
 lab evidence retention. Its manual fixture uses the production S3 adapter and

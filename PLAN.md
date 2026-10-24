@@ -1,5 +1,17 @@
 # Ratio — path to revenue
 
+### October 24, 2026 — limited on-device token broker decision
+
+Related: #366. The owner approved a **limited token broker decision**: server
+custody of per-membership Plaid and Google provider credentials and responses;
+Ratio journals, configuration, balances and NAVs remain on the device.
+[The boundary](docs/on-device-token-broker.md) separates provider retry/outbox
+from device mapping, import history and amount decisions. Existing local
+custody remains supported; this does not claim a deployed split or live-token
+recovery. The on-device tier carries the resulting server custody cost.
+#164 stays refused and #218 stays delivered. Deployment needs its own
+authentication, revocation, recovery and provider acceptance evidence.
+
 ### October 23, 2026 — approved synthetic recovery rehearsal
 
 Related: #264 and #300. The owner approved a two-book AWS lab and named Matt
