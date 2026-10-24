@@ -29,7 +29,7 @@ selected private, all-rights-reserved shell source with no outside contributions
 that record merged in shell PR #6. Kernel contribution-policy scope and its
 licensing record remain under iOS #3. Distribution remains a separate gate.
 
-Updated September 10, 2026. This is the current implementation summary. Update
+Updated October 23, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
 The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
@@ -110,40 +110,29 @@ messages also pass the [issue-completion check](issue-completion.md).
   workload details. Verified journal-prefix checkpoints (#310) report cold
   full replay, checkpoint load, and tail replay for the large demo shape
   (~5,400 entries); the journal remains the book of record.
-- **Object-store append (#358, branch-local):** `SeqLog` asks the store for
+- **Object-store append (#358):** `SeqLog` asks the store for
   `max_sequence` before its conditional append claim. The S3 adapter uses
   streaming pages for smaller logs and bounded search for larger logs; the
   default scans all keys. Live S3 paired height/append curves and the initial
-  smaller-shape regression are recorded in the provider report. Final merge
-  acceptance remains on #358.
+  smaller-shape regression are recorded in the provider report. The measured
+  implementation is merged; both the benefit and tradeoff remain explicit.
 - **Storage conformance (#359, branch-local):** a Bazel gate compares
   journal prefixes, trial balances, and all six append-only side planes across
   local JSONL, MemoryStore, DirStore, and the S3 adapter against an in-process
   S3 endpoint. It refuses holes and overwrites and checks that an unregistered
-  ObjectStore implementation fails the build. The complete fixture has not
-  run against live S3; provider behavior remains unverified.
-- **Recovery:** persistent journal hydration, immutable book bootstrap, and
-  post-create configuration/membership transitions are built. The branch-local
-  #300 NAV slice conditionally persists signed strikes in the object store and
-  fences legacy NAVS migration. The later #300 slice stores exact report
-  bytes and their former mtime/path order in an append-only object log.
-  The proposal slice conditionally preserves the exact reviewed TOML by ID.
-  The audit trail now preserves ordered actor/action lines in the object store.
-  A disposable object-store backup reproduces those planes, cited closes and
-  explanations, NAV replay, report selection, and membership in a fresh
-  process. Complete live S3 backup coverage and the customer restore drill
-  remain #264 recovery work. The CLI entry point now attaches
-  configured object storage before book commands, including stdio MCP and
-  person-only writes. A seeded-book regression verifies post, strike, close,
-  approve, and accept refuse an unusable configured backend without a local
-  book mutation. Issue 300's original PR #376 is merged; the live-discovered HTTP/S3 runtime
-  fix and evidence are in PR #384, pending CI, merge and verifier review; the
-  external customer drill is #264 acceptance, not #300 acceptance.
-  The integrated #264 slice also provides explicit local/S3 namespace capture
-  and restore with a protobuf key/length/SHA-256 manifest published last.
-  Its disposable two-book interrupted-claim test retains close/explanation
-  citations and refuses a backdated post. Live-provider and operator acceptance
-  remain unproved.
+  ObjectStore implementation fails the build, including a new-crate probe.
+  The identical fixture passed against live S3, with all prefix and side-plane
+  pins retained; final merge and #360 isolation remain separate.
+- **Recovery:** published journal/configuration/membership and operational
+  evidence are durable. Matt Marshall accepted the representative two-book
+  live S3 backup/loss/restore/replay/isolation drill: RPO 0, RTO 275.748 seconds,
+  separate encrypted/versioned/seven-day Object-Locked backup. Original
+  deliveries and explicitly synthetic Connect custody are inventoried. Every
+  configured CLI/MCP/HTTP writer and unavailable-backend refusal was checked.
+  #264/#300 are complete within that accepted synthetic scope. Customer backup
+  cadence, cross-account disaster recovery and real OAuth resumption are not
+  implied; see the recovery and provider reports for exact limits.
+
 
 ## Scope decisions that remain in force
 

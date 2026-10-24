@@ -5592,3 +5592,7 @@ record/digest sets, and trial balance. Real conditional and no-hole checks
 passed on seven sequence planes. The mandatory gate passed 7/7; a compilable
 new crate was refused both without inventory and without registration, then
 removed. Provider and emulated evidence stay distinct in the retained report.
+
+**cross-backend journal and plane conformance** is the #359 Built phrase.
+Its identical live S3 fixture and compiled new-crate refusal probe passed;
+the emulated endpoint remains a separate cheap gate, not provider evidence.

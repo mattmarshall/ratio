@@ -27,7 +27,7 @@ telemetry lines must match only hit/miss/reason and integer lengths. Protobuf
 records preserve source SHA, timings, assertion results, adapter-call counts,
 and limitations. Counts are not paginated HTTP-request counts. Serial prefix
 verification still reads journal bodies on a checkpoint hit; no one-GET claim
-is made. Provider results are pending execution.
+is made. Completed provider results follow below.
 
 ## Completed live checkpoint evidence (#357)
 
@@ -136,7 +136,7 @@ sequence planes. No emulated result is presented as live evidence.
 
 The registry explicitly classifies the manual counting and baseline-height
 wrappers as delegating test doubles. A new unclassified ObjectStore still
-fails the build. Live results remain pending execution.
+fails the build. Completed provider and mutation results follow below.
 
 ### Completed registered fixture provider evidence (#359)
 
