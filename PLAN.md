@@ -5628,3 +5628,30 @@ cold audit-count failure remains preserved. CLI creation and Console NAV
 lookups now carry their selected store. Hosted deployment routing remains
 future product work; #360's acceptance concerns this explicit library seam
 and compatibility of single-backend startup. Final CI remains required.
+
+### Amendment, 2026-10-02 — reusable Postgres execution seam (#361, branch-local)
+
+`PgProjection` now sends each schema operation, pinned read, and atomic
+snapshot transaction through a `PgExecutor` trait. `PsqlExecutor` preserves
+the existing command-line transport and tabular output contract. The
+transport test checks schema scoping and failure refusal; the existing live
+projection suite passed against disposable PostgreSQL 16. A native library
+client and Postgres journal backend are separate work. The journal remains
+the book of record, and #362 must wait for the recovery and conformance gates.
+
+### October 23 — Postgres execution transport seam (#361)
+
+**Postgres execution transport seam** is the #361 Built phrase. PgProjection
+accepts an explicit executor; its default remains the existing psql adapter.
+SQL, elected relief, atomic snapshot replacement, and watermark refusal are
+unchanged. The transport contract and SQL tests passed after the current
+recovery/conformance restack. All manual TLA probes, including stale-method
+relief, failed for their named invariants through the probe gate. Live
+PostgreSQL 16 and final CI remain the merge checks. No Postgres journal or
+native Rust client is claimed by this slice.
+
+October 23 verification for #361: the restacked execution seam passed all ten
+live PostgreSQL 16 projection tests (1.06 seconds), including stale-watermark
+and replaced-journal refusal, HIFO relief, replay digest equivalence, and
+atomic snapshot replacement without double counting. SQL unit tests and the
+expected-failure TLA probe gate passed. Final PR CI remains the merge gate.

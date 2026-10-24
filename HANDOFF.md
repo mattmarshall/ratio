@@ -1714,3 +1714,20 @@ proposal as a drafted row. Preserve that failed log. A further binding audit
 found Console NAV get/replay/impact still using the local convenience accessor;
 they now pass the selected backend. The corrected cold continuation exercises
 the Console replay endpoint, not just the lower-level NAV reader.
+
+## Postgres execution seam, October 2, 2026 (issue #361, branch-local)
+
+`PgProjection` now owns an explicit `PgExecutor` instead of a URL coupled to
+`run_psql`. Its default `PsqlExecutor` issues the same `psql` arguments and
+returns the same unaligned tabular output. A replacement executor must keep
+the tab/null shape and execute a transaction request atomically. The
+disposable PostgreSQL 16 `pg_engine_test` passed; PostgreSQL 14 cannot parse
+the existing `UNIQUE NULLS NOT DISTINCT` schema. This seam does not introduce
+a library client or a Postgres journal. The recovery/conformance acceptance
+gates still precede #362.
+
+October 23 verification for #361: the restacked execution seam passed all ten
+live PostgreSQL 16 projection tests (1.06 seconds), including stale-watermark
+and replaced-journal refusal, HIFO relief, replay digest equivalence, and
+atomic snapshot replacement without double counting. SQL unit tests and the
+expected-failure TLA probe gate passed. Final PR CI remains the merge gate.

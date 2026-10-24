@@ -523,3 +523,18 @@ recovery passed, including Console NAV replay and foreign membership refusal.
 Configured S3 and DirStore CLI reads passed; unset refused durable publication
 markers. Hosted routing deployment remains future product work, separate
 from #360's explicit library routing acceptance.
+
+### October 2, 2026 Postgres execution note (#361, branch-local)
+
+`PgExecutor` now owns SQL execution beneath `PgProjection`, while
+`PsqlExecutor` keeps the current subprocess behavior. The executor returns
+unaligned tab-separated rows with empty/null cells as the existing parser
+expects, and executes a transaction string in one request. A disposable
+PostgreSQL 16 run passed the existing live projection suite. This prepares
+the transport boundary; it does not add a native client or journal backend.
+
+October 23 verification for #361: the restacked execution seam passed all ten
+live PostgreSQL 16 projection tests (1.06 seconds), including stale-watermark
+and replaced-journal refusal, HIFO relief, replay digest equivalence, and
+atomic snapshot replacement without double counting. SQL unit tests and the
+expected-failure TLA probe gate passed. Final PR CI remains the merge gate.

@@ -13,6 +13,7 @@
 
 use std::path::Path;
 use std::process::Command;
+use std::sync::Arc;
 
 use anyhow::{bail, Result};
 use ratio_project::{relief, AsOf};
@@ -22,13 +23,35 @@ use crate::{
     Watermark, SCHEMA_SQL,
 };
 
+/// Execute a complete SQL request and return unaligned, tab-separated rows.
+/// Empty/null fields are empty cells, matching `psql -A -t -F '\t'`. A
+/// replacement client must retain that wire shape until row decoding itself
+/// is moved behind this boundary. An error means no successful result may be
+/// used; transaction SQL must execute atomically in one request.
+pub trait PgExecutor: Send + Sync {
+    fn execute(&self, sql: &str) -> Result<String>;
+}
+
+/// The existing subprocess implementation of [`PgExecutor`].
+pub struct PsqlExecutor {
+    url: String,
+}
+
+impl PsqlExecutor {
+    pub fn new(url: &str) -> Self { Self { url: url.into() } }
+}
+
+impl PgExecutor for PsqlExecutor {
+    fn execute(&self, sql: &str) -> Result<String> { run_psql(&self.url, sql) }
+}
+
 /// A Postgres that holds one book's snapshot under one watermark.
 ///
 /// ⛔ NOT THE SYSTEM OF RECORD. Replay rebuilds the tables from `journal.jsonl`.
 /// ⚠ ONE SCHEMA PER CONNECTION so tests do not share a search_path, and so a
 /// leftover row from another book cannot look like this one.
 pub struct PgProjection {
-    url: String,
+    executor: Arc<dyn PgExecutor>,
     schema: String,
 }
 
@@ -37,6 +60,13 @@ impl PgProjection {
     /// [`Self::apply_schema`], not here — applying the contract is a
     /// deliberate step, not a connect side-effect.
     pub fn connect(url: &str, schema: &str) -> Result<Self> {
+        Self::connect_with_executor(schema, Arc::new(PsqlExecutor::new(url)))
+    }
+
+    /// Use an explicitly selected execution transport with the same SQL and
+    /// schema contract. This is the library-client seam; the default remains
+    /// the psql subprocess until a separate adapter is implemented and proven.
+    pub fn connect_with_executor(schema: &str, executor: Arc<dyn PgExecutor>) -> Result<Self> {
         if schema.is_empty()
             || !schema
                 .chars()
@@ -48,7 +78,7 @@ impl PgProjection {
             );
         }
         let this = Self {
-            url: url.to_string(),
+            executor,
             schema: schema.to_string(),
         };
         this.exec_raw("SELECT 1")?;
@@ -286,7 +316,7 @@ impl PgProjection {
     }
 
     fn exec_raw(&self, sql: &str) -> Result<String> {
-        run_psql(&self.url, sql)
+        self.executor.execute(sql)
     }
 }
 
@@ -446,4 +476,47 @@ fn parse_i64(s: &str) -> Result<i64> {
 
 fn parse_i128(s: &str) -> Result<i128> {
     s.parse().map_err(|e| anyhow::anyhow!("not an i128 {s:?}: {e}"))
+}
+
+#[cfg(test)]
+mod execution_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct RecordingExecutor {
+        requests: Mutex<Vec<String>>,
+        fail: bool,
+    }
+
+    impl PgExecutor for RecordingExecutor {
+        fn execute(&self, sql: &str) -> Result<String> {
+            self.requests.lock().unwrap().push(sql.into());
+            if self.fail { bail!("injected transport refusal"); }
+            if sql.contains("SELECT journal_prefix, journal_digest") {
+                return Ok("2\tabc\n".into());
+            }
+            Ok(String::new())
+        }
+    }
+
+    #[test]
+    fn execution_transport_keeps_schema_scope_and_refuses_errors() {
+        let executor = Arc::new(RecordingExecutor::default());
+        let pg = PgProjection::connect_with_executor("tenant_a", executor.clone()).unwrap();
+        assert_eq!(pg.schema(), "tenant_a");
+        pg.apply_schema().unwrap();
+        let _ = pg.watermark("book-a").unwrap();
+        let requests = executor.requests.lock().unwrap();
+        assert_eq!(requests[0], "SELECT 1");
+        assert!(requests[1].contains("CREATE SCHEMA tenant_a;"));
+        assert!(requests[2].starts_with("SET search_path TO tenant_a, public;\n"));
+        assert!(requests[2].contains("book-a"));
+        drop(requests);
+
+        let failed = Arc::new(RecordingExecutor { fail: true, ..Default::default() });
+        assert!(PgProjection::connect_with_executor("tenant_a", failed)
+            .err().unwrap().to_string().contains("injected transport refusal"));
+        assert!(PgProjection::connect_with_executor("bad;schema", executor).is_err());
+    }
 }
