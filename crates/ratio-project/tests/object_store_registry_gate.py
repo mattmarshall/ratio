@@ -11,6 +11,10 @@ EXPECTED = {
     ("crates/ratio-store/src/objects.rs", "MemoryStore"),
     ("crates/ratio-store/src/objects.rs", "DirStore"),
     ("crates/ratio/src/scale.rs", "S3"),
+    # Manual provider wrappers delegate conditional writes unchanged; they
+    # expose counters and the before-height curve, not another backend.
+    ("crates/ratio/src/checkpoint_live.rs", "Counted"),
+    ("crates/ratio/src/height_live.rs", "Listed"),
     # Test-only doubles also belong here: a new implementation must be
     # classified explicitly instead of disappearing after a cfg(test) marker.
     ("crates/ratio-store/src/lib.rs", "CountingStore"),

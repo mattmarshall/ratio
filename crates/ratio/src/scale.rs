@@ -1621,7 +1621,7 @@ mod tests {
             .endpoint_url(endpoint).force_path_style(true).build();
         let s3: Arc<dyn ObjectStore> = Arc::new(S3 {
             bucket: "bucket".into(), prefix: "books/".into(),
-            client: aws_sdk_s3::Client::from_conf(config), runtime,
+            client: aws_sdk_s3::Client::from_conf(config), runtime: BlockingRuntime(Some(runtime)),
         });
         let base = std::env::var_os("TEST_TMPDIR")
             .map(PathBuf::from).unwrap_or_else(std::env::temp_dir);

@@ -4109,3 +4109,6 @@ mod checkpoint_live;
 
 #[cfg(test)]
 mod height_live;
+
+#[cfg(test)]
+mod provider_live;

@@ -5578,3 +5578,10 @@ claim it permits. A Bazel source inventory includes all crate packages and
 fails when a new `ObjectStore` implementation is added without extending the
 gate; a temporary unregistered implementation made the gate red. Live S3
 provider behavior and the customer recovery drill remain unproved.
+
+2026-10-23 #359 provider companion: preserve the cheap mandatory conformance
+gate and run its identical fixture against the deployed S3 adapter separately.
+Exact journal/prefix/side-plane/trial-balance equality, per-plane digest
+citations, and real conditional/no-hole refusals are required. Explicitly
+classify the new manual wrappers in the source registry; do not weaken the
+new-backend refusal. Live execution is not claimed before it passes.

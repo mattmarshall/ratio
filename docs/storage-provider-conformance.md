@@ -123,3 +123,17 @@ Both read-back-verified AES256/seven-day GOVERNANCE archives remain retained:
 These include seed, initial and corrected protobuf records and redacted logs.
 The S3 LIST/conditional-PUT model is unchanged; positive checks passed and the
 unconditional-write probe violated `NoWriteIsLost` for its named reason.
+## Registered fixture provider companion (#359)
+
+The mandatory cheap gate retains local JSONL, MemoryStore, DirStore, an
+emulated S3 endpoint, named conditional/no-hole probes, checkpoint telemetry
+privacy, and the ObjectStore source registry. Its manual provider companion
+executes the identical reusable fixture against real S3 with endpoint overrides
+refused. Exact journal bytes, all four prefixes (including empty), six side
+planes, and trial balance must match. Each side plane receives an explicit
+SHA-256 citation. Real occupied-claim and missing-slot checks run on all seven
+sequence planes. No emulated result is presented as live evidence.
+
+The registry explicitly classifies the manual counting and baseline-height
+wrappers as delegating test doubles. A new unclassified ObjectStore still
+fails the build. Live results remain pending execution.

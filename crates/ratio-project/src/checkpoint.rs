@@ -1088,9 +1088,6 @@ mod tests {
     use ratio_store::{Account, AccountTypeRecord, ConfigStore, Journal, PostingRecord};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static NEXT_TEST_DIR: AtomicU64 = AtomicU64::new(0);
 
     static NEXT_TEST_DIR: AtomicU64 = AtomicU64::new(0);
 
