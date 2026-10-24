@@ -5549,3 +5549,7 @@ near-parity 999/983 ms full-list/adaptive height at 5,398 entries and
 probe; the claim is bounded memory and the measured larger-curve improvement,
 not universal latency improvement. Both initial and corrected evidence remain
 retained, and conditional/no-hole assertions passed after correction.
+
+**backend height with bounded memory** is the #358 Built phrase. The live
+65k improvement and smaller-append tradeoff belong together on the roadmap;
+no universal latency or API Gateway cold-start claim is made.
