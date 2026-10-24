@@ -256,3 +256,9 @@ and Postgres is local while S3 is remote. It does not prove RDS/Lambda latency,
 a production throughput ceiling, hosted cost, or Postgres recovery guarantees.
 The configured S3 application deployment/smoke after #360 passed
 [run 40055926978](https://github.com/mattmarshall/ratio/actions/runs/40055926978).
+
+Retained native evidence: `evidence/provider-362-final.zip`, SHA-256
+`3992ae96ab8a7cb3bddb55e6c2404d1af48a80a5df0f8bf8ef46e022c9821025`.
+Readback matched, with AES-256 encryption, versioning, and seven-day GOVERNANCE
+retention. It includes seed/cold protobuf records, all three process logs,
+final native conformance output, and the 45-probe named-failure sweep.
