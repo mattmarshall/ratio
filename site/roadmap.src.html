@@ -197,6 +197,10 @@ __STYLE__
           use separate backends. Live S3 and filesystem books recovered their
           journals, audit, proposals, and reproducible NAVs in a cold process;
           wrong backend bindings and foreign membership refuse.</li>
+          <li>Postgres execution transport seam — the optional read projection
+          accepts an explicit executor; its default keeps the existing psql
+          transport, atomic snapshot replacement, and pinned watermark refusal.
+          The journal remains authoritative.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>live custodian statement ingest — a CreateBook Investment book

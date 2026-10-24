@@ -1725,3 +1725,9 @@ disposable PostgreSQL 16 `pg_engine_test` passed; PostgreSQL 14 cannot parse
 the existing `UNIQUE NULLS NOT DISTINCT` schema. This seam does not introduce
 a library client or a Postgres journal. The recovery/conformance acceptance
 gates still precede #362.
+
+October 23 verification for #361: the restacked execution seam passed all ten
+live PostgreSQL 16 projection tests (1.06 seconds), including stale-watermark
+and replaced-journal refusal, HIFO relief, replay digest equivalence, and
+atomic snapshot replacement without double counting. SQL unit tests and the
+expected-failure TLA probe gate passed. Final PR CI remains the merge gate.

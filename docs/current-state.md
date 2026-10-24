@@ -149,7 +149,8 @@ messages also pass the [issue-completion check](issue-completion.md).
 - **Postgres execution (#361, branch-local):** `PgProjection` routes all SQL
   through `PgExecutor`; the default `PsqlExecutor` retains the subprocess
   behavior. A transport contract test and a disposable PostgreSQL 16 live
-  projection run pass. No library client or Postgres journal backend exists.
+  projection run pass; the current restack passed all ten live PostgreSQL 16
+  tests. No library client or Postgres journal backend exists.
 
 ## Scope decisions that remain in force
 

@@ -532,3 +532,9 @@ unaligned tab-separated rows with empty/null cells as the existing parser
 expects, and executes a transaction string in one request. A disposable
 PostgreSQL 16 run passed the existing live projection suite. This prepares
 the transport boundary; it does not add a native client or journal backend.
+
+October 23 verification for #361: the restacked execution seam passed all ten
+live PostgreSQL 16 projection tests (1.06 seconds), including stale-watermark
+and replaced-journal refusal, HIFO relief, replay digest equivalence, and
+atomic snapshot replacement without double counting. SQL unit tests and the
+expected-failure TLA probe gate passed. Final PR CI remains the merge gate.
