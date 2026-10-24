@@ -5695,3 +5695,45 @@ observation. Both use the same 5,396-entry digest and fold/checkpoint function.
 Backend placement and warm database OS cache prevent a hosted latency claim.
 Final CI remains; hosted TLS/deployment and Postgres operational DR are not
 claimed by this implementation.
+
+### October 23 — FileBook durable state proof (#363, partial)
+
+The #363 premise about NAV and membership recovery is historical; accepted
+#264/#300 and merged #360 already cover those planes. The remaining gap is an
+unpublished FileBook's chart, staged configuration, and promotion state.
+FileBookState.tla checks exact-successor snapshots, stored-before-promotion,
+and historical-cache verification before current durable state is selected.
+The positive model passed 246 states. Three mutations fail for lost promotion
+history, absent configuration bytes, and cache-selected figures. The executable
+sweep ran all 48 manual probes, each red for its named invariant. This proof
+precedes the new Rust state protocol; implementation and recovery-table changes
+remain. Published bootstrap/ControlStore authority must not be broadened.
+
+### October 23 — durable unpublished book metadata (#363, implementation)
+
+**durable unpublished book metadata** is the #363 Built phrase. With an
+explicit store, FileBook's chart, staged configuration bytes, active digest,
+and newest-first promotion history live in immutable book-local state revisions
+and content-addressed blobs. A writer claims only its exact successor; stale
+snapshots refuse. A protobuf cache pin identifies the historical state whose
+local bytes must verify before refresh to current. Unknown cache content and
+missing backend refuse; published bootstrap/control authority stays separate.
+No-store layout stays unchanged. Identity/kind and local legacy membership
+are not invented by metadata recovery.
+
+The state proof preceded Rust. Storage, Console, recovery, schema, complete
+native/backend gate, API, MCP, and configured/unset CLI checks passed locally.
+The legacy-loss characterization now asserts metadata recovery while still
+requiring no bootstrap identity or grants. The native namespace fixture uses
+separate local caches, preserving wrong-backend refusal. New seed publication
+prepares metadata before its marker; an unchanged marker retains its one-GET
+data-plane fast path. Historical markers can import unpublished metadata on
+first attach, before figures are served. Live S3 metadata evidence and final
+CI remain before completion.
+
+October 24 verification: the actual S3 metadata seed passed in 11,013 ms and
+a separate cold process recovered exact metadata, journal digest, and 16,000
+minor-unit trial balance in 6,630 ms. A conflicting cache refused unchanged,
+was explicitly quarantined, and fresh-cache recovery succeeded. Evidence-only
+protobuf/log/proof archive readback matched under seven-day GOVERNANCE retention.
+No raw-object backup copy is claimed. Final PR CI remains the merge gate.

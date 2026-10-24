@@ -1021,3 +1021,43 @@ tla_check(
     deps = [":postgres_journal"],
     tags = ["manual"],
 )
+
+tla_library(
+    name = "filebook_state",
+    srcs = ["FileBookState.tla"],
+)
+
+tla_check(
+    name = "filebook_state_check",
+    size = "medium",
+    config = "MCFileBookState.cfg",
+    module = "MCFileBookState.tla",
+    deps = [":filebook_state"],
+)
+
+tla_check(
+    name = "filebook_stale_snapshot_check",
+    size = "medium",
+    config = "FileBookStaleSnapshot.cfg",
+    module = "FileBookStaleSnapshot.tla",
+    deps = [":filebook_state"],
+    tags = ["manual"],
+)
+
+tla_check(
+    name = "filebook_missing_config_check",
+    size = "medium",
+    config = "FileBookMissingConfig.cfg",
+    module = "FileBookMissingConfig.tla",
+    deps = [":filebook_state"],
+    tags = ["manual"],
+)
+
+tla_check(
+    name = "filebook_unverified_cache_check",
+    size = "medium",
+    config = "FileBookUnverifiedCache.cfg",
+    module = "FileBookUnverifiedCache.tla",
+    deps = [":filebook_state"],
+    tags = ["manual"],
+)

@@ -680,6 +680,10 @@ impl Console {
     /// call it. The source-text test is what makes a forgotten join fail the
     /// build rather than the demo.
     fn open_file_book(&self, path: &Path) -> Result<FileBook> {
+        self.open_file_book_mode(path, self.startup_hydrated)
+    }
+
+    fn open_file_book_mode(&self, path: &Path, attached: bool) -> Result<FileBook> {
         let id = if path == self.root.as_path() {
             "demo"
         } else {
@@ -689,7 +693,7 @@ impl Console {
         };
         let authorized = self.book_path(id)?;
         if authorized != path { bail!("book path is outside the serving root"); }
-        if self.startup_hydrated {
+        if attached {
             FileBook::open_attached_with(path, self.object_store_for(id)?)
         } else {
             FileBook::open_with(path, self.object_store_for(id)?)
@@ -3267,10 +3271,20 @@ impl Console {
             return Ok(local_config(path));
         };
         let Some((_, bootstrap)) = self.bootstrap(id)? else {
-            return Ok(local_config(path));
+            return self.unpublished_config(path);
         };
         let state = ratio_store::control::ControlStore::new(objects).read(id)?;
         self.active_config_from(path, Some((&bootstrap, &state)))
+    }
+
+    fn unpublished_config(&self, path: &Path) -> Result<(String, Option<RuleSet>)> {
+        if self.object_store_for_path(path)?.is_none() { return Ok(local_config(path)); }
+        // Keep the same authorization door while avoiding data-plane hydrate.
+        let book = self.open_file_book_mode(path, true)?;
+        let Some(digest) = book.active()? else { return Ok((String::new(), None)); };
+        let bytes = book.get(&digest)?;
+        let text = String::from_utf8(bytes).context("durable configuration is not UTF-8")?;
+        Ok((digest.as_str().into(), RuleSet::from_toml(&text).ok()))
     }
 
     fn active_config_from(
@@ -3282,7 +3296,7 @@ impl Console {
         )>,
     ) -> Result<(String, Option<RuleSet>)> {
         let Some((bootstrap, state)) = durable else {
-            return Ok(local_config(path));
+            return self.unpublished_config(path);
         };
         let objects = self.object_store_for(&bootstrap.book_id)?
             .context("durable book has no object store")?;

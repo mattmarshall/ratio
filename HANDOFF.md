@@ -1750,6 +1750,43 @@ target; a machine without PostgreSQL can run the hermetic gate, but cannot
 claim the native adapter passed without its live target.
 
 The final #362 native fixture also races two SeqLog appenders on independent
-connections: both acknowledgements remain at distinct contiguous slots. The
+connections: both acknowledgments remain at distinct contiguous slots. The
 loopback-only connector checks explicit host addresses as well as hostnames,
 so hostaddr cannot silently route its plaintext proof connection remotely.
+
+## FileBook state proof before code — October 23 (#363, partial)
+
+An unpublished configured book still keeps chart/config/ACTIVE/HISTORY locally.
+The new state model requires an exact predecessor/successor claim: never retry
+a stale full snapshot at a later slot, which loses an acknowledged promotion.
+Configuration bytes must be durable before activation. A cache is checked against
+its pinned historical snapshot and then refreshed to current durable state;
+unknown conflicting bytes refuse. Published bootstrap cache refusal and the
+local no-store layout remain mandatory. Positive model and all 48 named failure
+probes passed their expected outcomes before state protocol implementation.
+
+## Unpublished metadata implementation — October 23 (#363)
+
+State proof a1ec5bb preceded code. `_filebook/<book>/state/` is a predecessor-
+checked sequence of protobuf snapshots; `_filebook/<book>/config/<digest>`
+holds staged bytes. Cache pin `.filebook-cache.pb` names one exact historical
+revision. A recognized old cache refreshes; unknown content refuses rather
+than resetting. Keep the authorized `open_file_book_mode` door for Console
+metadata reads: a raw FileBook open would bypass tenancy and is rejected by
+the source fence. Local no-store paths keep their documented files.
+
+Initial tests caught overly broad seed-I/O assertions and the raw Console
+metadata open. The seed tests now distinguish metadata from journal/side-plane
+rescans, still forbid serving seed PUTs, and retain the unchanged-marker one-GET
+fast path. The Console helper goes through the existing authorized door.
+Configured recovery now restores legacy chart/configuration/history without
+creating a BookKind, organization, or membership grant. Published cache conflict
+refusal remains unchanged. Live S3 evidence and final CI remain.
+
+October 24: #363 live S3 seed/cold/cache-conflict proof passed from e2652dd.
+Read the provider report for exact measurements and the evidence-only backup
+hash. An optional raw-object archive was rejected by automatic approval review;
+it did not run. Sanitized measurement/proof evidence was retained instead.
+The GitHub project is available in the signed-in in-app browser: #357–#362
+already show Done, and #363 was updated from Blocked to In progress. A CLI
+project-token refresh is no longer needed for these UI updates.

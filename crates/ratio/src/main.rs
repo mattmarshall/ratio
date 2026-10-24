@@ -24,6 +24,8 @@ use serde::Deserialize;
 mod recovery_live;
 #[cfg(test)]
 mod isolation_live;
+#[cfg(test)]
+mod file_state_live;
 // Single-backend CLI and watch startup selection lives in the binary. Library
 // callers must pass a book's store explicitly; process state cannot route a
 // hosted request for one book to another book's backend.

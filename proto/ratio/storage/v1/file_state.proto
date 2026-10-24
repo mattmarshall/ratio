@@ -1,0 +1,28 @@
+syntax = "proto3";
+package ratio.storage.v1;
+option java_multiple_files = true;
+option java_package = "build.marsh.ratio.storage.v1";
+option java_outer_classname = "FileStateProto";
+
+// One immutable full-state revision for an unpublished configured FileBook.
+// Published books retain their separate bootstrap and reviewed control stream.
+message FileBookState {
+  int32 format_version = 1;
+  string book_id = 2;
+  int64 revision = 3;
+  string predecessor_digest = 4;
+  bytes chart = 5;
+  string active_digest = 6;
+  // Newest promotion first; staging bytes alone never adds a promotion.
+  repeated string promotion_history = 7;
+  // Sorted, unique content addresses of every staged configuration.
+  repeated string config_digests = 8;
+}
+
+// A disposable filesystem cache is checked against this exact durable revision.
+message FileBookCachePin {
+  int32 format_version = 1;
+  string book_id = 2;
+  int64 revision = 3;
+  string state_digest = 4;
+}

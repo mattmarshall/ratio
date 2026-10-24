@@ -52,6 +52,7 @@ pub mod changes;
 pub mod bootstrap;
 pub mod recovery;
 pub mod control;
+mod file_state;
 pub use objects::{
     DirStore, MemoryStore, ObjectStore, SeqLog,
 };
@@ -884,6 +885,14 @@ pub fn publish_seed_with_legacy_time_migration(
     )
 }
 
+fn publish_filebook_source(root: &Path, store: Arc<dyn ObjectStore>) -> Result<()> {
+    let id = book_key(root);
+    if bootstrap::valid_book_id(&id) && bootstrap::BootstrapStore::new(store.clone()).get(&id)?.is_some() {
+        return Ok(());
+    }
+    file_state::StateStore::new(store, &id)?.publish_source(root)
+}
+
 fn publish_seed_inner(
     root: &Path,
     store: Arc<dyn ObjectStore>,
@@ -923,6 +932,7 @@ fn publish_seed_inner(
         }
     }
 
+    publish_filebook_source(root, store.clone())?;
     let key = format!("{SEED_PUBLICATIONS}{}", expected.book_id);
     let mut publication = expected.clone();
     publication.migration = migration.map(str::to_string);
@@ -1401,6 +1411,13 @@ impl FileBook {
         } else if root.join(bootstrap::MARKER).exists() {
             bail!("durable book publication is unavailable; refusing local fallback");
         }
+        if bootstrap.is_none() {
+            if let Some(objects) = &store {
+                file_state::StateStore::new(objects.clone(), &book_key(&root))?.attach(&root)?;
+            } else if root.join(file_state::CACHE_PIN).exists() {
+                bail!("durable FileBook state is unavailable; refusing local fallback");
+            }
+        }
         fs::create_dir_all(root.join("config"))
             .with_context(|| format!("creating book at {}", root.display()))?;
         let objects = store.map(|s| (s, book_key(&root)));
@@ -1408,6 +1425,12 @@ impl FileBook {
         // A published book never hydrates a baked seed into its journal.
         if book.bootstrap.is_none() && hydrate_legacy_seed { book.hydrate_objects()?; }
         Ok(book)
+    }
+
+    fn file_state_store(&self) -> Result<Option<file_state::StateStore>> {
+        if self.bootstrap.is_some() { return Ok(None); }
+        self.objects.as_ref().map(|(objects, id)|
+            file_state::StateStore::new(objects.clone(), id)).transpose()
     }
 
     fn journal_log(&self) -> Option<SeqLog> {
@@ -1526,12 +1549,19 @@ impl FileBook {
             if json.as_bytes() != state.chart { bail!("durable chart changes require a publication protocol"); }
             return Ok(());
         }
+        if let Some(state) = self.file_state_store()? {
+            return state.put_chart(&self.root, json.as_bytes());
+        }
         fs::write(self.accounts_path(), json).context("writing accounts")?;
         Ok(())
     }
 
     /// The chart of accounts. Empty if none has been set.
     pub fn accounts(&self) -> Result<Vec<Account>> {
+        if let Some(state) = &self.bootstrap {
+            return serde_json::from_slice(&state.chart).context("decoding durable published chart");
+        }
+        if let Some(state) = self.file_state_store()? { return state.chart(); }
         let path = self.accounts_path();
         if !path.exists() {
             return Ok(Vec::new());
@@ -1790,6 +1820,7 @@ impl ConfigStore for FileBook {
                 return control::ControlStore::new(objects.clone()).stage_config(bytes);
             }
         }
+        if let Some(state) = self.file_state_store()? { return state.put(&self.root, bytes); }
         self.configs()?.put(bytes)
     }
     fn get(&self, digest: &Digest) -> Result<Vec<u8>> {
@@ -1807,6 +1838,7 @@ impl ConfigStore for FileBook {
                 .context("published book lost its durable backend")?;
             return control::ControlStore::new(objects.clone()).config(digest);
         }
+        if let Some(state) = self.file_state_store()? { return state.get(digest); }
         self.configs()?.get(digest)
     }
     fn set_active(&mut self, digest: &Digest) -> Result<()> {
@@ -1816,18 +1848,21 @@ impl ConfigStore for FileBook {
                  saving configuration bytes does not promote them"
             );
         }
+        if let Some(state) = self.file_state_store()? { return state.activate(&self.root, digest); }
         self.configs()?.set_active(digest)
     }
     fn active(&self) -> Result<Option<Digest>> {
         if let Some(state) = self.control_state()? {
             return Ok(Some(state.active));
         }
+        if let Some(state) = self.file_state_store()? { return state.active(); }
         self.configs()?.active()
     }
     fn history(&self) -> Result<Vec<Digest>> {
         if let Some(state) = self.control_state()? {
             return Ok(state.history);
         }
+        if let Some(state) = self.file_state_store()? { return state.history(); }
         self.configs()?.history()
     }
 }
@@ -3119,8 +3154,8 @@ mod tests {
             store.puts()
         );
         assert!(
-            store.lists().is_empty(),
-            "marker verification and attachment must not scan sequence prefixes"
+            store.lists().iter().all(|prefix|prefix.starts_with("_filebook/")),
+            "marker verification and attachment must not scan seeded data planes"
         );
     }
 
@@ -3140,7 +3175,7 @@ mod tests {
         store.clear();
         FileBook::open_attached_with(&root, Some(store.clone())).unwrap();
         assert!(
-            store.lists().is_empty(),
+            store.lists().iter().all(|prefix|prefix.starts_with("_filebook/")),
             "a request after startup must not rescan seed planes: {:?}",
             store.lists()
         );
@@ -3184,7 +3219,8 @@ mod tests {
         let _ = FileBook::open_with(&root, Some(store.clone())).unwrap();
         let puts = store.puts();
         assert!(
-            puts.iter().all(|k| !k.ends_with("00000000000000000001")),
+            puts.iter().filter(|key| key.starts_with(&format!("{}/journal/",super::book_key(&root))))
+                .all(|k| !k.ends_with("00000000000000000001")),
             "seq 1 is already held and must not be re-Put: {puts:?}"
         );
         assert!(

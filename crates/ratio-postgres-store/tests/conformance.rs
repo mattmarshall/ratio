@@ -18,7 +18,7 @@ fn the_native_backend_passes_the_registered_fixture_and_atomic_claims() -> Resul
         "native journal/six-plane fixture differs"
     );
     ensure!(
-        backend_fixture::exercise(&root.join("remote"), Some(beta.clone())) == expected,
+        backend_fixture::exercise(&root.join("beta").join("remote"), Some(beta.clone())) == expected,
         "independent namespace fixture differs"
     );
     ensure!(
