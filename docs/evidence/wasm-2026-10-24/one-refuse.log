@@ -1,0 +1,31 @@
+completed 0 linear_memory_bytes 1245184
+completed 1000000 linear_memory_bytes 45481984
+completed 2000000 linear_memory_bytes 86441984
+completed 3000000 linear_memory_bytes 168361984
+completed 4000000 linear_memory_bytes 168361984
+completed 5000000 linear_memory_bytes 168361984
+completed 6000000 linear_memory_bytes 332267520
+completed 7000000 linear_memory_bytes 332267520
+completed 8000000 linear_memory_bytes 332267520
+completed 9000000 linear_memory_bytes 332267520
+completed 10000000 linear_memory_bytes 332267520
+completed 11000000 linear_memory_bytes 660078592
+completed 12000000 linear_memory_bytes 660078592
+completed 13000000 linear_memory_bytes 660078592
+completed 14000000 linear_memory_bytes 660078592
+completed 15000000 linear_memory_bytes 660078592
+completed 16000000 linear_memory_bytes 660078592
+completed 17000000 linear_memory_bytes 660078592
+completed 18000000 linear_memory_bytes 660078592
+completed 19000000 linear_memory_bytes 660078592
+completed 20000000 linear_memory_bytes 660078592
+{
+  requested: 20486309,
+  views: 1,
+  completed: 20486308,
+  peak: 1073741824,
+  limit: 1073741824,
+  returned: false,
+  failure: 'RuntimeError: unreachable',
+  elapsedMilliseconds: 49407
+}

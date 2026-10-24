@@ -577,3 +577,9 @@ complete Console dependency graph, then runs the reusable fixture against
 native JSONL. The host runner needs Node.js on PATH; there is no console
 JavaScript build inside Bazel. The module imports only instrumentation clock
 and test progress functions. Browser durable storage awaits #365.
+
+The [measured wasm ceiling](wasm-capacity.md) includes one/two-view adjacent
+height verification and larger-memory controls. Peak allocated linear memory,
+source/module pins, and shape are recorded; native RSS estimates are not
+substituted. The 1 GiB profile is explicit and does not claim a browser-wide
+or total-device-memory guarantee.

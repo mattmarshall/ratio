@@ -1803,3 +1803,12 @@ Instrumentation uses a host monotonic nanosecond import; accounting dates and
 figures remain journal/configuration decisions. The 1 GiB linear-memory profile
 needs measured one/two-view ceilings before #364 completion. Browser OPFS and
 transport/authorization are separate #365 work; no browser product is claimed.
+
+The [capacity report](docs/wasm-capacity.md) now records exact successful and
+refusing adjacent heights for both views, all peak linear-memory allocations,
+and larger-memory controls. Eight protobuf measurements, decoded text, and
+logs are retained in-tree. The actual wasm link action was inspected: wasm32
+target, no tonic/tokio/AWS runtime rlibs. Native storage/Console/projection,
+schema, and optimized wasm runtime checks passed locally. The paired iPhone
+still reports tunnel unavailable and no DDI services; no physical run is
+claimed. PR #387 remains the issue-specific review and final CI gate.

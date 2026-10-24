@@ -5749,3 +5749,13 @@ Capacity measurement uses 10,000 securities and one or two recorded views,
 a fresh optimized module, and a declared 1 GiB linear-memory limit. Its
 peak allocation and failure-height evidence remain required. Existing Lean
 and TLA figure/claim semantics are reused; no arithmetic is reimplemented.
+
+**wasm core conformance** is the #364 Built phrase. The optimized 1 GiB profile
+returned exact lot counts and positions at 20,486,308 entries (one view) and
+10,246,267 (two views), then refused the next entry in fresh instances. Peak
+linear memory was 1,073,741,824 and 1,073,676,288 bytes; these are not RSS or
+universal browser limits. Identical-source 2 GiB controls passed the formerly
+refusing heights, identifying allocation pressure rather than an accounting
+assertion. The [report and eight retained protobuf measurements](docs/wasm-capacity.md)
+name source revisions, module hashes, runtime, and shape. Required final CI is
+the merge gate; browser storage/application transport remains separate work.
