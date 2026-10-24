@@ -105,6 +105,18 @@ rust_shared_library(
     deps = [":backend_fixture", ":ratio-project", "//crates/ratio-console", "//crates/ratio-store", "@crates//:serde_json", "@crates//:anyhow"],
 )
 
+# Measure the wasm32 address-space ceiling separately from the smaller profile.
+rust_shared_library(
+    name = "wasm_capacity_address_space",
+    platform = "//:wasm32",
+    srcs = ["tests/wasm_conformance.rs"],
+    crate_root = "tests/wasm_conformance.rs",
+    edition = "2021",
+    rustc_flags = ["-C", "link-arg=--max-memory=4294967296"],
+    tags = ["manual"],
+    deps = [":backend_fixture", ":ratio-project", "//crates/ratio-console", "//crates/ratio-store", "@crates//:serde_json", "@crates//:anyhow"],
+)
+
 rust_test(
     name = "backend_conformance_test",
     srcs = ["tests/backend_conformance.rs"],

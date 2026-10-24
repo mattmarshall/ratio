@@ -26,7 +26,7 @@ while (offset < bytes.length) {
   }
   offset = end;
 }
-if (![1073741824, 2147483648].includes(limit)) throw new Error('unsupported measurement memory profile');
+if (![1073741824, 2147483648, 4294967296].includes(limit)) throw new Error('unsupported measurement memory profile');
 const moduleObject = new WebAssembly.Module(bytes);
 let instance, completed = 0, failure = '', returned = false;
 instance = new WebAssembly.Instance(moduleObject, {env: {
