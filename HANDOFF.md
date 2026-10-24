@@ -1673,3 +1673,10 @@ ObjectStore implementation until the gate is extended. A sabotage run adding
 S3Journal model remain in the suite. A live S3 run and a customer recovery
 drill remain unproven; the `LostWrite.cfg` manual probe must still go red for
 `NoWriteIsLost`.
+
+2026-10-23 #359 provider fixture passed (source 9fc28b6): all four prefix
+pins, six side-plane byte/digest sets and trial balance matched local JSONL.
+All seven sequence planes refused overwrite and holes. The dynamic source
+registry also refused a real new crate without inventory/registration; no
+additional build aspect was needed. Exact logs and pins are retained in the
+provider report's three readback-verified archives. #360 isolation is separate.

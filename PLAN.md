@@ -5585,3 +5585,10 @@ Exact journal/prefix/side-plane/trial-balance equality, per-plane digest
 citations, and real conditional/no-hole refusals are required. Explicitly
 classify the new manual wrappers in the source registry; do not weaken the
 new-backend refusal. Live execution is not claimed before it passes.
+
+2026-10-23 #359 live conformance passed: the identical registered fixture
+matched actual S3 against local JSONL for every journal prefix, six side-plane
+record/digest sets, and trial balance. Real conditional and no-hole checks
+passed on seven sequence planes. The mandatory gate passed 7/7; a compilable
+new crate was refused both without inventory and without registration, then
+removed. Provider and emulated evidence stay distinct in the retained report.
