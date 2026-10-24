@@ -32,10 +32,11 @@
 //! more code to audit than the code it replaces.
 
 use std::io::{BufRead, Write};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use ratio_rules::{check, compile, render, Event, RuleSet};
-use ratio_store::{ConfigStore, FileBook, Journal, JournalEntry};
+use ratio_store::{ConfigStore, FileBook, Journal, JournalEntry, ObjectStore};
 use serde_json::{json, Value};
 
 /// The protocol version answered when a client does not name one.
@@ -43,13 +44,23 @@ const DEFAULT_PROTOCOL: &str = "2024-11-05";
 
 /// Run the server against a book, reading requests from `input` and writing
 /// responses to `output`. One JSON object per line, in both directions.
-pub fn serve(book: &std::path::Path, input: impl BufRead, mut output: impl Write) -> Result<()> {
+pub fn serve(book: &std::path::Path, input: impl BufRead, output: impl Write) -> Result<()> {
+    serve_with_store(book, None, input, output)
+}
+
+/// Serve a book with its selected store carried through every tool call.
+pub fn serve_with_store(
+    book: &std::path::Path,
+    store: Option<Arc<dyn ObjectStore>>,
+    input: impl BufRead,
+    mut output: impl Write,
+) -> Result<()> {
     for line in input.lines() {
         let line = line.context("reading request")?;
         if line.trim().is_empty() {
             continue;
         }
-        let Some(response) = handle_line(book, &line) else {
+        let Some(response) = handle_line_with(book, &line, false, store.clone()) else {
             continue; // a notification: no reply, by protocol
         };
         writeln!(output, "{response}").context("writing response")?;
@@ -60,15 +71,29 @@ pub fn serve(book: &std::path::Path, input: impl BufRead, mut output: impl Write
 
 /// Handle one line. `None` for a notification, which must not be answered.
 pub fn handle_line(book: &std::path::Path, line: &str) -> Option<String> {
-    handle_line_with(book, line, false)
+    handle_line_with(book, line, false, None)
 }
 
 /// Handle one network request after the serving process completed hydration.
 pub fn handle_line_attached(book: &std::path::Path, line: &str) -> Option<String> {
-    handle_line_with(book, line, true)
+    handle_line_attached_with_store(book, line, None)
 }
 
-fn handle_line_with(book: &std::path::Path, line: &str, attached: bool) -> Option<String> {
+/// Handle a hydrated book with its selected store.
+pub fn handle_line_attached_with_store(
+    book: &std::path::Path,
+    line: &str,
+    store: Option<Arc<dyn ObjectStore>>,
+) -> Option<String> {
+    handle_line_with(book, line, true, store)
+}
+
+fn handle_line_with(
+    book: &std::path::Path,
+    line: &str,
+    attached: bool,
+    store: Option<Arc<dyn ObjectStore>>,
+) -> Option<String> {
     let req: Value = match serde_json::from_str(line) {
         Ok(v) => v,
         // No id is recoverable from unparseable input, so this is the one case
@@ -88,7 +113,7 @@ fn handle_line_with(book: &std::path::Path, line: &str, attached: bool) -> Optio
     let result = match method {
         "initialize" => Ok(initialize(&req)),
         "tools/list" => Ok(tools_list()),
-        "tools/call" => call_tool(book, &req, attached),
+        "tools/call" => call_tool(book, &req, attached, store),
         "ping" => Ok(json!({})),
         other => {
             return Some(error_response(
@@ -296,7 +321,7 @@ fn tools_list() -> Value {
     ]})
 }
 
-fn call_tool(book: &std::path::Path, req: &Value, attached: bool) -> Result<Value> {
+fn call_tool(book: &std::path::Path, req: &Value, attached: bool, store: Option<Arc<dyn ObjectStore>>) -> Result<Value> {
     let name = req
         .pointer("/params/name")
         .and_then(Value::as_str)
@@ -305,7 +330,7 @@ fn call_tool(book: &std::path::Path, req: &Value, attached: bool) -> Result<Valu
         .pointer("/params/arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
-    let text = dispatch_with(book, name, &args, attached)?;
+    let text = dispatch_with(book, name, &args, attached, store)?;
     Ok(json!({"content": [{"type": "text", "text": text}], "isError": false}))
 }
 
@@ -321,7 +346,17 @@ pub fn tools() -> Value {
 
 /// Run one tool by name. `Err` is a message meant for the model to read.
 pub fn dispatch(book: &std::path::Path, name: &str, args: &Value) -> Result<String> {
-    dispatch_with(book, name, args, false)
+    dispatch_with(book, name, args, false, None)
+}
+
+/// Run one tool against an explicitly selected book store.
+pub fn dispatch_with_store(
+    book: &std::path::Path,
+    name: &str,
+    args: &Value,
+    store: Option<Arc<dyn ObjectStore>>,
+) -> Result<String> {
+    dispatch_with(book, name, args, false, store)
 }
 
 fn dispatch_with(
@@ -329,17 +364,18 @@ fn dispatch_with(
     name: &str,
     args: &Value,
     attached: bool,
+    store: Option<Arc<dyn ObjectStore>>,
 ) -> Result<String> {
     let args = args.clone();
     let text = match name {
-        "list_accounts" => tool_list_accounts(book, attached)?,
-        "propose_rule" => tool_propose_rule(book, &args, attached)?,
-        "propose_template" => tool_propose_template(book, &args, attached)?,
-        "list_entities" => tool_list_entities(book, attached)?,
-        "check_rule" => tool_check_rule(book, &args, attached)?,
-        "post_events" => tool_post_events(book, &args, attached)?,
-        "trial_balance" => tool_trial_balance(book, attached)?,
-        "explain_figure" => tool_explain_figure(book, &args, attached)?,
+        "list_accounts" => tool_list_accounts(book, attached, store.clone())?,
+        "propose_rule" => tool_propose_rule(book, &args, attached, store.clone())?,
+        "propose_template" => tool_propose_template(book, &args, attached, store.clone())?,
+        "list_entities" => tool_list_entities(book, attached, store.clone())?,
+        "check_rule" => tool_check_rule(book, &args, attached, store.clone())?,
+        "post_events" => tool_post_events(book, &args, attached, store.clone())?,
+        "trial_balance" => tool_trial_balance(book, attached, store.clone())?,
+        "explain_figure" => tool_explain_figure(book, &args, attached, store)?,
         // The fence, stated where a model will actually read it.
         "approve_rule" | "promote_config" | "set_active" => anyhow::bail!(
             "There is no such tool. Approving a rule is not something this server can do — \
@@ -351,18 +387,18 @@ fn dispatch_with(
     Ok(text)
 }
 
-fn open_book(book: &std::path::Path, attached: bool) -> Result<FileBook> {
+fn open_book(book: &std::path::Path, attached: bool, store: Option<Arc<dyn ObjectStore>>) -> Result<FileBook> {
     if attached {
-        FileBook::open_attached(book)
+        FileBook::open_attached_with(book, store)
     } else {
-        FileBook::open(book)
+        FileBook::open_with(book, store)
     }
 }
 
 /// The master, so a model can see what a ladder can match on.
-fn tool_list_entities(book: &std::path::Path, attached: bool) -> Result<String> {
+fn tool_list_entities(book: &std::path::Path, attached: bool, store: Option<Arc<dyn ObjectStore>>) -> Result<String> {
     use ratio_store::Plane;
-    let b = open_book(book, attached)?;
+    let b = open_book(book, attached, store)?;
     let master = ratio_ingest::current(&b.records::<ratio_ingest::Entity>(Plane::Entities)?);
     if master.is_empty() {
         return Ok("The master is empty. Every identity ladder will pend until \
@@ -392,7 +428,7 @@ fn tool_list_entities(book: &std::path::Path, attached: bool) -> Result<String> 
 /// ⛔ The dry run is the point. A person approving a mapping specification has
 /// to simulate it in their head; a person approving one they have SEEN RUN is
 /// reading an outcome. Same fence, better-informed approval.
-fn tool_propose_template(book: &std::path::Path, args: &Value, attached: bool) -> Result<String> {
+fn tool_propose_template(book: &std::path::Path, args: &Value, attached: bool, store: Option<Arc<dyn ObjectStore>>) -> Result<String> {
     use ratio_store::Plane;
     let toml = args
         .get("toml")
@@ -431,7 +467,7 @@ fn tool_propose_template(book: &std::path::Path, args: &Value, attached: bool) -
     };
     let projection = ratio_ingest::project(template, &delivery, &rows, "draft");
 
-    let b = open_book(book, attached)?;
+    let b = open_book(book, attached, store.clone())?;
     let master: Vec<ratio_ingest::Entity> = b.records(Plane::Entities)?;
     let resolved = ratio_ingest::resolve_all(&projection.facts, &master);
 
@@ -463,7 +499,7 @@ fn tool_propose_template(book: &std::path::Path, args: &Value, attached: bool) -
     }
 
     let id = format!("template-{}", template.id);
-    ratio_store::proposals::write(book, &id, toml)
+    ratio_store::proposals::write_with_store(book, &id, toml, store)
         .with_context(|| format!("writing proposal {id}"))?;
 
     out.push_str(&format!(
@@ -477,8 +513,8 @@ fn tool_propose_template(book: &std::path::Path, args: &Value, attached: bool) -
     Ok(out)
 }
 
-fn tool_list_accounts(book: &std::path::Path, attached: bool) -> Result<String> {
-    let b = open_book(book, attached)?;
+fn tool_list_accounts(book: &std::path::Path, attached: bool, store: Option<Arc<dyn ObjectStore>>) -> Result<String> {
+    let b = open_book(book, attached, store)?;
     let accounts = b.accounts()?;
     if accounts.is_empty() {
         return Ok("The chart of accounts is empty. Run `ratio init` first.".into());
@@ -518,13 +554,13 @@ fn findings_text(set: &RuleSet, chart: &[ratio_store::Account]) -> (usize, Strin
     (errors, out)
 }
 
-fn tool_check_rule(book: &std::path::Path, args: &Value, attached: bool) -> Result<String> {
+fn tool_check_rule(book: &std::path::Path, args: &Value, attached: bool, store: Option<Arc<dyn ObjectStore>>) -> Result<String> {
     let toml = args
         .get("toml")
         .and_then(Value::as_str)
         .context("check_rule needs `toml`")?;
     let set = RuleSet::from_toml(toml)?;
-    let b = open_book(book, attached)?;
+    let b = open_book(book, attached, store)?;
     let (errors, text) = findings_text(&set, &b.accounts()?);
     Ok(format!(
         "{text}\n{errors} error(s). {}",
@@ -536,13 +572,13 @@ fn tool_check_rule(book: &std::path::Path, args: &Value, attached: bool) -> Resu
     ))
 }
 
-fn tool_propose_rule(book: &std::path::Path, args: &Value, attached: bool) -> Result<String> {
+fn tool_propose_rule(book: &std::path::Path, args: &Value, attached: bool, store: Option<Arc<dyn ObjectStore>>) -> Result<String> {
     let toml = args
         .get("toml")
         .and_then(Value::as_str)
         .context("propose_rule needs `toml`")?;
     let set = RuleSet::from_toml(toml)?;
-    let b = open_book(book, attached)?;
+    let b = open_book(book, attached, store.clone())?;
     let chart = b.accounts()?;
     let (errors, text) = findings_text(&set, &chart);
 
@@ -553,7 +589,7 @@ fn tool_propose_rule(book: &std::path::Path, args: &Value, attached: bool) -> Re
     }
 
     let id = ratio_store::Digest::of(toml.as_bytes());
-    ratio_store::proposals::write(book, id.short(), toml)?;
+    ratio_store::proposals::write_with_store(book, id.short(), toml, store)?;
 
     let mut rendered = String::new();
     for rule in &set.rules {
@@ -570,13 +606,13 @@ fn tool_propose_rule(book: &std::path::Path, args: &Value, attached: bool) -> Re
     ))
 }
 
-fn tool_post_events(book: &std::path::Path, args: &Value, attached: bool) -> Result<String> {
+fn tool_post_events(book: &std::path::Path, args: &Value, attached: bool, store: Option<Arc<dyn ObjectStore>>) -> Result<String> {
     let events: Vec<Event> = serde_json::from_value(
         args.get("events").cloned().context("post_events needs `events`")?,
     )
     .context("`events` is not a list of events")?;
 
-    let mut b = open_book(book, attached)?;
+    let mut b = open_book(book, attached, store)?;
     let digest = b
         .active()?
         .context("no configuration is active — a person must approve one first")?;
@@ -619,8 +655,8 @@ fn tool_post_events(book: &std::path::Path, args: &Value, attached: bool) -> Res
     ))
 }
 
-fn tool_trial_balance(book: &std::path::Path, attached: bool) -> Result<String> {
-    let b = open_book(book, attached)?;
+fn tool_trial_balance(book: &std::path::Path, attached: bool, store: Option<Arc<dyn ObjectStore>>) -> Result<String> {
+    let b = open_book(book, attached, store)?;
     let names: std::collections::BTreeMap<i64, String> = b
         .accounts()?
         .into_iter()
@@ -695,12 +731,12 @@ fn tool_trial_balance(book: &std::path::Path, attached: bool) -> Result<String> 
     Ok(out)
 }
 
-fn tool_explain_figure(book: &std::path::Path, args: &Value, attached: bool) -> Result<String> {
+fn tool_explain_figure(book: &std::path::Path, args: &Value, attached: bool, store: Option<Arc<dyn ObjectStore>>) -> Result<String> {
     let dim = args
         .get("account")
         .and_then(Value::as_i64)
         .context("explain_figure needs `account`")?;
-    let b = open_book(book, attached)?;
+    let b = open_book(book, attached, store)?;
     let name = b
         .accounts()?
         .into_iter()
@@ -740,7 +776,45 @@ fn tool_explain_figure(book: &std::path::Path, args: &Value, attached: bool) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratio_store::MemoryStore;
     use std::path::PathBuf;
+
+    #[test]
+    fn tool_dispatch_keeps_two_journals_on_their_selected_stores() {
+        let first = tmp_book();
+        let second = tmp_book();
+        let first_store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let second_store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        for (book, store) in [(&first, &first_store), (&second, &second_store)] {
+            let mut opened = FileBook::open_with(book, Some(store.clone())).unwrap();
+            let digest = opened.put(FEE.as_bytes()).unwrap();
+            opened.set_active(&digest).unwrap();
+            dispatch_with_store(book, "post_events", &json!({"events": [{
+                "rule": "management_fee_accrual", "id": "one", "amount": 1_750_000_000i64, "days": 30
+            }]}), Some(store.clone())).unwrap();
+            dispatch_with_store(book, "propose_rule", &json!({"toml": FEE}),
+                Some(store.clone())).unwrap();
+            assert!(!book.join("proposals").exists());
+        }
+        assert_eq!(FileBook::open_with(&first, Some(first_store.clone()))
+            .unwrap().entries().unwrap().len(), 1);
+        assert_eq!(FileBook::open_with(&second, Some(second_store.clone()))
+            .unwrap().entries().unwrap().len(), 1);
+        assert_eq!(ratio_store::SeqLog::new(first_store.clone(), format!("{}/journal/", first.file_name().unwrap().to_string_lossy()))
+            .height().unwrap(), 1);
+        assert_eq!(ratio_store::SeqLog::new(second_store.clone(), format!("{}/journal/", second.file_name().unwrap().to_string_lossy()))
+            .height().unwrap(), 1);
+        assert_eq!(ratio_store::proposals::list_with_store(&first, Some(first_store.clone()))
+            .unwrap().len(), 1);
+        assert_eq!(ratio_store::proposals::list_with_store(&second, Some(second_store.clone()))
+            .unwrap().len(), 1);
+        assert!(ratio_store::proposals::list_with_store(&first, Some(second_store.clone()))
+            .unwrap().is_empty());
+        assert_eq!(ratio_store::SeqLog::new(first_store, format!("{}/journal/", second.file_name().unwrap().to_string_lossy()))
+            .height().unwrap(), 0);
+        assert_eq!(ratio_store::SeqLog::new(second_store, format!("{}/journal/", first.file_name().unwrap().to_string_lossy()))
+            .height().unwrap(), 0);
+    }
 
     #[test]
     fn the_trial_balance_cites_the_configuration_that_produced_it() {
@@ -751,7 +825,7 @@ mod tests {
         seed_fee_rule(&book);
         post_one_accrual(&book);
 
-        let out = tool_trial_balance(&book, false).unwrap();
+        let out = tool_trial_balance(&book, false, None).unwrap();
         let active = FileBook::open(&book).unwrap().active().unwrap().unwrap();
         assert!(
             out.contains(active.as_str()),
@@ -770,7 +844,7 @@ mod tests {
         bump_rate(&book);
         post_one_accrual(&book);
 
-        let out = tool_trial_balance(&book, false).unwrap();
+        let out = tool_trial_balance(&book, false, None).unwrap();
         assert!(out.contains("spans a change"), "{out}");
         assert!(out.contains("2 configurations"), "{out}");
     }

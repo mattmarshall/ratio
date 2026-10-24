@@ -14,7 +14,7 @@ use ratio_proto::ratio::storage::v1::{ReportMigration, StoredReport};
 use ratio_proto::ratio::v1::BreakReport;
 use ratio_proto::timestamp_proto::google::protobuf::Timestamp;
 
-use crate::{installed_object_store, Digest, ObjectStore, SeqLog};
+use crate::{Digest, ObjectStore, SeqLog};
 
 fn book_id(book: &Path) -> Result<&str> {
     book.file_name().and_then(|part| part.to_str())
@@ -206,7 +206,7 @@ pub fn write_report_with_store(
 }
 
 pub fn write_report(book: &Path, name: &str, bytes: &[u8]) -> Result<()> {
-    write_report_with_store(book, name, bytes, installed_object_store())
+    write_report_with_store(book, name, bytes, None)
 }
 
 /// Latest report by append order. A hole in the object log refuses a read.
@@ -230,7 +230,7 @@ pub fn newest_report_with_store(
 }
 
 pub fn newest_report(book: &Path) -> Result<Option<BreakReport>> {
-    newest_report_with_store(book, installed_object_store())
+    newest_report_with_store(book, None)
 }
 
 #[cfg(test)]

@@ -121,6 +121,16 @@ pub struct Reply {
 ///
 /// `history` is what a previous call returned, or `Value::Null` to start.
 pub fn chat(book: &std::path::Path, history: &Value, message: &str) -> Result<Reply> {
+    chat_with_store(book, history, message, None)
+}
+
+/// Run the model against tools bound to the selected book backend.
+pub fn chat_with_store(
+    book: &std::path::Path,
+    history: &Value,
+    message: &str,
+    store: Option<std::sync::Arc<dyn ratio_store::ObjectStore>>,
+) -> Result<Reply> {
     if message.trim().is_empty() {
         bail!("say something");
     }
@@ -222,7 +232,7 @@ pub fn chat(book: &std::path::Path, history: &Value, message: &str) -> Result<Re
             // RESULT with is_error, not as a transport failure — so it reads
             // the sentence, and the transcript shows it being refused rather
             // than the conversation ending.
-            let (text, refused) = match ratio_mcp::dispatch(book, name, &input) {
+            let (text, refused) = match ratio_mcp::dispatch_with_store(book, name, &input, store.clone()) {
                 Ok(t) => (t, false),
                 Err(e) => (format!("{e:#}"), true),
             };

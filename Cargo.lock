@@ -1730,6 +1730,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-bedrockruntime",
  "ratio-mcp",
+ "ratio-store",
  "serde_json",
  "time",
  "tokio",

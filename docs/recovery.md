@@ -309,14 +309,14 @@ so backup access control and retention protection are still operator decisions.
 
 ## Gaps that block a production recovery claim
 
-- Published-book post-create configuration and membership transitions are
-  durable; legacy unpublished books retain their local control-state risk.
-  The merged [#300](https://github.com/mattmarshall/ratio/issues/300)
-  work covers operational evidence and configured writers; PR #384 adds live
-  synthetic evidence and a discovered HTTP/S3 runtime fix, pending merge and
-  verifier acceptance. Its issue acceptance leaves external backup and the
-  customer restore drill to #264.
-- No whole-book backup scheduler, retention policy, or live independent backup copy is established
+- Published-book configuration, membership, and operational evidence are durable.
+  The representative synthetic recovery exercise for #264 and #300 was
+  accepted by the named verifier; see [the measured report](recovery-drill-2026-10-23.md).
+- [#360](https://github.com/mattmarshall/ratio/issues/360): explicit
+  book-scoped handles reach CLI, watch, API, MCP, projection, and NAV paths.
+  `FileBook::open` and Console constructors are local-only. Live S3/DirStore
+  isolation and cold recovery passed; see [provider evidence](storage-provider-conformance.md).
+- No production backup scheduler or customer retention policy is established
   by this inventory. The S3 template configures encryption and prevents public
   access; it does not declare versioning or Object Lock on ScaleBucket.
   The October 22 read-only inspection found AES-256 encryption and public
@@ -325,5 +325,5 @@ so backup access control and retention protection are still operator decisions.
   records. This is not an independent backup or an agreed retention policy.
 - Original delivery bytes and Connect app state need explicit custody and
   recovery owners. Journal/fact citations cannot replace missing source bytes.
-- Customer RPO/RTO, named operators, the external drill and signed evidence
-  remain open on #264.
+- Customer-specific RPO/RTO, custody, and recurring operational procedures
+  still require agreement before a customer production recovery claim.

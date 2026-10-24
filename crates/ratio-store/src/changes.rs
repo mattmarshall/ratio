@@ -10,7 +10,7 @@ use anyhow::{bail, Context, Result};
 use prost::Message;
 use ratio_proto::ratio::storage::v1::{ChangeMigration, StoredChange};
 
-use crate::{installed_object_store, Digest, ObjectStore, SeqLog};
+use crate::{Digest, ObjectStore, SeqLog};
 
 fn book_id(book: &Path) -> Result<&str> {
     book.file_name().and_then(|part| part.to_str())
@@ -137,7 +137,7 @@ pub fn append_with_store(book: &Path, line: &str,
 }
 
 pub fn append(book: &Path, line: &str) -> Result<()> {
-    append_with_store(book, line, installed_object_store())
+    append_with_store(book, line, None)
 }
 
 pub fn read_with_store(book: &Path, store: Option<Arc<dyn ObjectStore>>) -> Result<Vec<String>> {
@@ -157,7 +157,7 @@ pub fn read_with_store(book: &Path, store: Option<Arc<dyn ObjectStore>>) -> Resu
 }
 
 pub fn read(book: &Path) -> Result<Vec<String>> {
-    read_with_store(book, installed_object_store())
+    read_with_store(book, None)
 }
 
 #[cfg(test)]

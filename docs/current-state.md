@@ -133,6 +133,19 @@ messages also pass the [issue-completion check](issue-completion.md).
   cadence, cross-account disaster recovery and real OAuth resumption are not
   implied; see the recovery and provider reports for exact limits.
 
+- **Per-book storage (#360, branch-local):** the console can resolve two
+  MemoryStore and DirStore by book ID in one process, including cold
+  published-book discovery, journal writes, and active configuration. An unregistered ID
+  refuses, as does opening one materialized book against the other store.
+  CLI, watch, API, MCP, projection, NAV, audit, report, proposal, and
+  checkpoint paths now pass explicit store handles. `FileBook::open`,
+  `open_attached`, Console constructors, MCP default entry points, and storage
+  side-plane convenience functions are local-only. The storage library has no
+  installed store; the single-backend binary owns its startup singleton.
+  The live S3/DirStore seed and separate-process cold recovery passed,
+  including membership isolation and Console NAV replay; the initial audit
+  assertion failure is preserved. Single-backend startup remains explicit.
+  Final CI and merge remain; hosted routing deployment is future product work.
 
 ## Scope decisions that remain in force
 

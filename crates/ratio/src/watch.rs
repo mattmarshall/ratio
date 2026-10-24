@@ -58,11 +58,11 @@ fn install_journal_store() -> Result<()> {
             .unwrap_or_else(|| "journals/".to_string());
         let store = scale::S3::open(&bucket, prefix)
             .with_context(|| format!("opening the journal store in s3://{bucket}"))?;
-        ratio_store::install_object_store(std::sync::Arc::new(store));
+        crate::install_object_store(std::sync::Arc::new(store));
         return Ok(());
     }
     if let Some(dir) = std::env::var("RATIO_JOURNAL_LOCAL").ok().filter(|d| !d.is_empty()) {
-        ratio_store::install_object_store(std::sync::Arc::new(ratio_store::DirStore::at(dir)));
+        crate::install_object_store(std::sync::Arc::new(ratio_store::DirStore::at(dir)));
     }
     Ok(())
 }
@@ -81,7 +81,7 @@ fn startup_open_failure_is_fatal(journal_bucket: Option<&str>, journal_local: Op
 /// valid local-only fallback.
 fn open_journal(book: &Path, install: impl FnOnce() -> Result<()>) -> Result<()> {
     install()?;
-    let Some(store) = ratio_store::installed_object_store() else {
+    let Some(store) = crate::installed_object_store() else {
         return FileBook::open(book)
             .map(|_| ())
             .with_context(|| format!("opening local book at {}", book.display()));
@@ -682,8 +682,11 @@ fn handle(mut stream: TcpStream, book: &Path, hydrate: &HydrateGate) -> Result<(
                 let c = match subject {
                     Some(s) => ratio_console::Console::for_request(root, s, open),
                     None => ratio_console::Console::new(root),
-                }
-                .after_startup_hydration();
+                };
+                let c = match crate::installed_object_store() {
+                    Some(store) => c.with_object_store(store),
+                    None => c,
+                }.after_startup_hydration();
                 // ⚠ RATIO_PG_URL SET SERVES LOTS / POSITIONS / CURRENT
                 // AGGREGATES FROM THE STAGE E STORE. Unset keeps the
                 // in-memory fold. A URL that cannot be reached fails the
@@ -728,7 +731,9 @@ fn handle(mut stream: TcpStream, book: &Path, hydrate: &HydrateGate) -> Result<(
             "Chat messages are POSTed to this path.".to_string(),
         ),
 
-        ("POST", "/mcp") => match ratio_mcp::handle_line_attached(book, &req.body) {
+        ("POST", "/mcp") => match ratio_mcp::handle_line_attached_with_store(
+            book, &req.body, crate::installed_object_store(),
+        ) {
             Some(response) => ("200 OK", "application/json", response),
             // A notification has no id and MUST NOT be answered. 202 with an
             // empty body is what the transport says to send.
@@ -867,7 +872,7 @@ fn terminal_json(book: &Path, body: &str) -> Result<String> {
 
 /// The trial balance as the CLI prints it, for the terminal.
 fn balance_text(book: &Path) -> Result<String> {
-    let b = FileBook::open_attached(book)?;
+    let b = FileBook::open_attached_with(book, crate::installed_object_store())?;
     // ⛔ COUNTED, NOT COLLECTED — the whole journal was held resident to print
     // one number in a header.
     let mut entry_count = 0usize;
@@ -921,7 +926,9 @@ fn chat_json(book: &Path, body: &str) -> Result<String> {
     let req: serde_json::Value =
         serde_json::from_str(body).context("the chat request is not JSON")?;
     let message = req["message"].as_str().unwrap_or("");
-    let reply = ratio_agent::chat(book, &req["history"], message)?;
+    let reply = ratio_agent::chat_with_store(
+        book, &req["history"], message, crate::installed_object_store(),
+    )?;
 
     let steps: Vec<String> = reply
         .steps
@@ -955,7 +962,7 @@ fn chat_json(book: &Path, body: &str) -> Result<String> {
 /// kernel exists to prevent — a figure that has been exact all the way through
 /// should not meet a float in the last six inches of its journey.
 fn balance_json(book: &Path) -> Result<String> {
-    let b = FileBook::open_attached(book)?;
+    let b = FileBook::open_attached_with(book, crate::installed_object_store())?;
     // ⛔ COUNTED, NOT COLLECTED — see the note on the screen above.
     let mut entry_count = 0usize;
     b.for_each_entry_since(0, &mut |_| {
@@ -1367,7 +1374,7 @@ fn postings_json(book: &Path, query: &str) -> Result<String> {
         .parse()
         .context("account must be a number")?;
 
-    let b = FileBook::open_attached(book)?;
+    let b = FileBook::open_attached_with(book, crate::installed_object_store())?;
     let mut rows = Vec::new();
     let mut net = 0i64;
     // ⛔ STREAMED. Reading back the postings behind ONE account never needed the
@@ -1404,7 +1411,9 @@ fn postings_json(book: &Path, query: &str) -> Result<String> {
 
 /// The newest stored break report.
 fn breaks_json(book: &Path) -> Result<String> {
-    let Some(report) = ratio_store::reports::newest_report(book)? else {
+    let Some(report) = ratio_store::reports::newest_report_with_store(
+        book, crate::installed_object_store(),
+    )? else {
         return Ok("{\"report\":null}".to_string());
     };
 
@@ -1471,7 +1480,7 @@ fn breaks_json(book: &Path) -> Result<String> {
 
 /// The active rules, their checks, and anything still waiting on a person.
 fn rules_json(book: &Path) -> Result<String> {
-    let b = FileBook::open_attached(book)?;
+    let b = FileBook::open_attached_with(book, crate::installed_object_store())?;
     let chart = b.accounts()?;
     let digest = b.active()?;
     let set = match &digest {
@@ -1510,7 +1519,9 @@ fn rules_json(book: &Path) -> Result<String> {
     // beside the active rules is the point: the difference between the two
     // lists is exactly what a human decision bought.
     let mut pending = Vec::new();
-    for (id, text) in ratio_store::proposals::list(book)? {
+    for (id, text) in ratio_store::proposals::list_with_store(
+        book, crate::installed_object_store(),
+    )? {
             let rendered = match RuleSet::from_toml(&text) {
                 Ok(s) => s
                     .rules

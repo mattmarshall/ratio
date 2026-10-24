@@ -254,7 +254,12 @@ pub fn estimate(d: Dials, c: &Calibration) -> Result<Estimate> {
 pub const MIN_ENTRIES: usize = 100;
 
 pub fn measure(path: &Path) -> Result<Calibration> {
-    let b = FileBook::open(path).context("opening the book to measure it")?;
+    measure_with_store(path, None)
+}
+
+/// Measure the backend selected for this book by its caller.
+pub fn measure_with_store(path: &Path, store: Option<std::sync::Arc<dyn ratio_store::ObjectStore>>) -> Result<Calibration> {
+    let b = FileBook::open_with(path, store).context("opening the book to measure it")?;
 
     // One pass to warm, then timed passes. An unwarmed first read measures the
     // filesystem, not the store.
@@ -572,4 +577,3 @@ mod tests {
 
     }
 }
-

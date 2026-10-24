@@ -5596,3 +5596,35 @@ removed. Provider and emulated evidence stay distinct in the retained report.
 **cross-backend journal and plane conformance** is the #359 Built phrase.
 Its identical live S3 fixture and compiled new-crate refusal probe passed;
 the emulated endpoint remains a separate cheap gate, not provider evidence.
+### Amendment, 2026-10-02 — console store routing by book (partial #360)
+
+The console accepts an explicit map of book IDs to object stores. Bootstrap,
+membership, active configuration, counts, and authorized book opens use the
+selected backend; a missing mapping refuses. A cold-root test proves two
+published books on MemoryStore and DirStore recover and strike a NAV in one process.
+Opening one materialized book against the other store refuses before a write.
+CLI, watch, API, MCP, projection, NAV, audit, report, proposal, and checkpoint
+entry points pass explicit handles. The storage library has no installed
+store; the single-backend binary alone owns its startup singleton.
+`FileBook::open`, `open_attached`, Console constructors, MCP default entry
+points, and storage side-plane convenience functions are local-only.
+The serving binary still
+selects one store at startup; a hosted per-book router and provider recovery
+evidence remain before this issue is complete.
+
+### October 23 — explicit storage binding audit for #360
+
+The library defaults stay local. CLI generation and kind initialization now
+pass the selected startup store explicitly; generated-book projection follows
+that same handle. NAV list/get defaults also stay local. The manual provider
+harness separates seed and cold processes, with alpha on actual S3 and beta
+on a separate DirStore. Live results remain pending; no provider claim follows
+from the MemoryStore/DirStore test.
+
+**explicit per-book storage routing** is the #360 Built phrase. The live
+S3/DirStore seed passed in 2.26 seconds; corrected separate-process cold
+recovery passed in 17.05 seconds, including Console NAV replay. The initial
+cold audit-count failure remains preserved. CLI creation and Console NAV
+lookups now carry their selected store. Hosted deployment routing remains
+future product work; #360's acceptance concerns this explicit library seam
+and compatibility of single-backend startup. Final CI remains required.
