@@ -60,3 +60,66 @@ Five local checkpoint/protobuf/planning suites, both positive TLA checks and
 the expected-red unconditional-write probe passed their intended checks.
 The checkpoint reduces folding and body passes; it still reads the prefix.
 The measured minutes remain well beyond the gateway's 30-second cap.
+## Height and append run contract (#358)
+
+The separate existing #358 worktree measures the actual production S3 height
+method against the default full-list height at 5,396 and 65,536 entries.
+Both datasets are complete, contiguous synthetic sequence journals in a fresh
+`conformance-lab/<run>/358/` namespace. A bounded 32-worker fixture upload is
+outside measurements. Three paired height samples and real conditional
+appends record both curves; a regression on the smaller shape must be reported,
+not hidden by the asymptotic bound. Occupied claims must refuse without
+changing acknowledged bytes, and a separate missing-slot log must refuse
+replay. This does not fold a figure or mutate the running #357 fixture.
+
+### Initial live height result and correction
+
+Source `8404c1a285741a1925c28c4aa7c8aef40a572a01`, three paired samples:
+
+| Seed height | Full-list height median | One-key bounded height median | Full-list append | Bounded append |
+|---|---:|---:|---:|---:|
+| 5,396 | 823 ms | 1,419 ms | 1,207 ms | 1,456 ms |
+| 65,536 | 10,111 ms | 1,727 ms | 9,194 ms | 1,848 ms |
+
+The bounded-only implementation regresses the deployed smaller shape. Retain
+this result; it is not a failed claim/conservation test. The initial measurement
+also passed actual conditional overwrite refusal, unchanged acknowledged bytes,
+and missing-first-slot replay refusal. Appends compare adjacent heights (N and
+N+1), not two simultaneous writes against the same head.
+
+The correction streams one 1,000-key page at a time for smaller logs and uses
+a bounded search above a 32,768-entry threshold, selected between the measured
+shapes rather than claimed optimal. Small logs never accumulate every key in
+one vector; large logs avoid reading every page. The claim remains conditional.
+A separate `adaptive` attempt remeasures the same retained fixtures after the
+two acknowledged initial append probes (N+2), preserving the original record.
+Shared-host/provider timings are observations, not a capacity guarantee.
+
+### Completed adaptive height result (#358)
+
+Source `8d1241d12b09efca057c7c346984b0ebb23881fd`, three paired samples on
+the retained fixtures after the two initial appends:
+
+| Actual height | Full-list height median | Adaptive height median | Full-list append | Adaptive append |
+|---|---:|---:|---:|---:|
+| 5,398 | 999 ms | 983 ms | 937 ms | 1,047 ms |
+| 65,538 | 10,075 ms | 1,179 ms | 12,486 ms | 1,532 ms |
+
+The smaller height curve is now near parity, while its single append sample
+still includes roughly one extra probe's overhead. Do not claim a universal
+latency win. The larger curve avoids materializing the entire listing and
+substantially reduces observed latency. Actual occupied conditional claims,
+unchanged acknowledged bytes, and missing-slot refusal passed again. Both
+local storage/CLI suites passed after the correction; the known-lower-bound
+search covers threshold, large and u64-boundary cases.
+
+Both read-back-verified AES256/seven-day GOVERNANCE archives remain retained:
+
+- Initial: `evidence/provider-358-initial.zip`, SHA-256
+  `68c1796dfe0897924da09f9908e90075a97b7962e04c876a1c82318209f8b96e`.
+- Corrected: `evidence/provider-358-adaptive.zip`, SHA-256
+  `c64d24644bbd7c7599b1042d5ddfa8290cf5094b7dd1a9d586d9ccf520d78d30`.
+
+These include seed, initial and corrected protobuf records and redacted logs.
+The S3 LIST/conditional-PUT model is unchanged; positive checks passed and the
+unconditional-write probe violated `NoWriteIsLost` for its named reason.

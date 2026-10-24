@@ -572,8 +572,79 @@ impl ratio_store::ObjectStore for S3 {
     fn list(&self, prefix: &str) -> Result<Vec<String>> {
         Store::list(self, prefix)
     }
+    fn max_sequence(&self, prefix: &str) -> Result<u64> {
+        let p = self.key(prefix);
+        // Live measurements found that many one-key round trips regress the
+        // seeded 5k book, even though they help a 65k log. Stream small logs
+        // one page at a time; reserve bounded search for the larger curve.
+        // Height is observation only: the later claim remains conditional.
+        self.runtime.block_on(async {
+            let prefix = &p;
+            let mut page = self.client.list_objects_v2()
+                .bucket(&self.bucket).prefix(prefix).max_keys(1_000)
+                .send().await.map_err(|e| aws("reading the first height page", e))?;
+            let mut highest = 0;
+            for object in page.contents() {
+                highest = highest.max(s3_sequence(prefix, object.key().context("unnamed S3 sequence")?)?);
+            }
+            if !page.is_truncated().unwrap_or(false) { return Ok(highest); }
+            let above = |height: u64| async move {
+                let answer = self.client.list_objects_v2()
+                    .bucket(&self.bucket).prefix(prefix)
+                    .start_after(format!("{prefix}{height:020}")).max_keys(1)
+                    .send().await.map_err(|e| aws("probing sequence height", e))?;
+                answer.contents().first().map(|object| {
+                    Ok(s3_sequence(prefix, object.key().context("unnamed S3 sequence")?)? > height)
+                }).unwrap_or(Ok(false))
+            };
+            const STREAM_LIMIT: u64 = 32_768;
+            if above(STREAM_LIMIT).await? {
+                return locate_max_sequence_from(above, STREAM_LIMIT + 1).await;
+            }
+            // At most 33 pages here, and never a Vec containing the whole log.
+            loop {
+                let token = page.next_continuation_token().context("truncated height page has no continuation")?.to_string();
+                page = self.client.list_objects_v2().bucket(&self.bucket)
+                    .prefix(prefix).continuation_token(token).max_keys(1_000)
+                    .send().await.map_err(|e| aws("streaming sequence height", e))?;
+                for object in page.contents() {
+                    highest = highest.max(s3_sequence(prefix, object.key().context("unnamed S3 sequence")?)?);
+                }
+                if !page.is_truncated().unwrap_or(false) { return Ok(highest); }
+            }
+        })
+    }
 }
 
+fn s3_sequence(prefix: &str, key: &str) -> Result<u64> {
+    let suffix = key.strip_prefix(prefix).context("S3 returned a key outside the journal prefix")?;
+    if suffix.len() != 20 || !suffix.bytes().all(|byte| byte.is_ascii_digit()) {
+        anyhow::bail!("non-sequence key under journal prefix: {key}");
+    }
+    suffix.parse().context("journal sequence exceeds u64")
+}
+
+#[cfg(test)]
+async fn locate_max_sequence<F, Fut>(above: F) -> Result<u64>
+where F: FnMut(u64) -> Fut, Fut: std::future::Future<Output = Result<bool>> {
+    locate_max_sequence_from(above, 0).await
+}
+
+async fn locate_max_sequence_from<F, Fut>(mut above: F, mut lower: u64) -> Result<u64>
+where F: FnMut(u64) -> Fut, Fut: std::future::Future<Output = Result<bool>> {
+    let mut upper = lower.max(1);
+    while above(upper).await? {
+        let next = upper.saturating_mul(2);
+        if next == upper { break; }
+        lower = upper + 1;
+        upper = next;
+    }
+    while lower < upper {
+        let middle = lower + (upper - lower) / 2;
+        if above(middle).await? { lower = middle + 1; } else { upper = middle; }
+    }
+    Ok(lower)
+}
 
 // ── Leads, run reports, and the follow-up email ──────────────────────────────
 
@@ -1349,6 +1420,34 @@ impl<S: Store> Runs<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_known_lower_bound_keeps_large_height_search_exact() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        for expected in [32_769, 65_536, 200_000, u64::MAX] {
+            let found = runtime.block_on(locate_max_sequence_from(
+                |candidate| async move { Ok(expected > candidate) }, 32_769)).unwrap();
+            assert_eq!(found, expected);
+        }
+        assert!(s3_sequence("book/", "book/not-a-sequence").is_err());
+        assert!(s3_sequence("book/", "other/00000000000000000001").is_err());
+    }
+
+    #[test]
+    fn bounded_height_search_finds_empty_sparse_and_large_logs() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        for expected in [0, 1, 2, 3, 20_000, 200_000, u64::MAX] {
+            let mut requests = 0usize;
+            let found = runtime.block_on(locate_max_sequence(|candidate| {
+                requests += 1;
+                async move { Ok(expected > candidate) }
+            })).unwrap();
+            assert_eq!(found, expected);
+            if expected == 200_000 {
+                assert!(requests <= 37, "{requests} one-key listings");
+            }
+        }
+    }
 
     #[test]
     fn s3_preserves_binary_objects_and_the_conditional_publication_header() {

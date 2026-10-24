@@ -5518,3 +5518,38 @@ matched; live corruption/version/prefix cases named their fallback reasons,
 telemetry carried metrics only, and book fingerprints stayed unchanged.
 Immutable evidence and single-run/shared-host limitations are in
 `docs/storage-provider-conformance.md`. This is not a gateway-latency solution.
+### October 1, 2026 — object-store append height, issue #358 (branch-local)
+
+`ObjectStore::max_sequence` now gives `SeqLog::append` a height operation with a
+listing default for existing stores. S3 answers with one-key `StartAfter`
+queries over zero-padded sequence keys, expanding and then bisecting the
+height range. The conditional PUT remains the claim, and readers still refuse
+holes. The local 20,000-entry test-double comparison measured 4.585 ms for a
+full listing and 17.041 µs for a direct max; it is not an S3 measurement.
+Live S3 request count, latency, and cost at a nontrivial height remain issue
+acceptance before the performance claim is complete. No production read or
+amount rule changes in this slice.
+
+2026-10-23 #358 provider measurement amendment: paired live height and append
+curves use complete synthetic journals of 5,396 and 65,536 entries, separate
+from the running #357 fold. The bounded lookup's fewer returned keys is not a
+latency claim; both request-round-trip and payload tradeoffs must be reported.
+Conditional claims and hole refusal remain prerequisites.
+
+2026-10-23 #358 live correction: bounded-only height regressed 5,396 entries
+(1,419 ms median versus 823 ms full-list), while improving 65,536 entries
+(1,727 ms versus 10,111 ms). Preserve both curves. Use constant-memory page
+streaming for smaller logs and bounded search above a measured-shape threshold;
+remeasure before claiming completion. No claim or hole-refusal rule changes.
+
+2026-10-23 #358 corrected provider result: the retained N+2 fixtures measured
+near-parity 999/983 ms full-list/adaptive height at 5,398 entries and
+10,075/1,179 ms at 65,538. Append samples were 937/1,047 ms and
+12,486/1,532 ms respectively. The single smaller append still pays an extra
+probe; the claim is bounded memory and the measured larger-curve improvement,
+not universal latency improvement. Both initial and corrected evidence remain
+retained, and conditional/no-hole assertions passed after correction.
+
+**backend height with bounded memory** is the #358 Built phrase. The live
+65k improvement and smaller-append tradeoff belong together on the roadmap;
+no universal latency or API Gateway cold-start claim is made.

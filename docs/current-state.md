@@ -110,6 +110,12 @@ messages also pass the [issue-completion check](issue-completion.md).
   workload details. Verified journal-prefix checkpoints (#310) report cold
   full replay, checkpoint load, and tail replay for the large demo shape
   (~5,400 entries); the journal remains the book of record.
+- **Object-store append (#358, branch-local):** `SeqLog` asks the store for
+  `max_sequence` before its conditional append claim. The S3 adapter uses
+  streaming pages for smaller logs and bounded search for larger logs; the
+  default scans all keys. Live S3 paired height/append curves and the initial
+  smaller-shape regression are recorded in the provider report. Final merge
+  acceptance remains on #358.
 - **Recovery:** persistent journal hydration, immutable book bootstrap, and
   post-create configuration/membership transitions are built. The branch-local
   #300 NAV slice conditionally persists signed strikes in the object store and

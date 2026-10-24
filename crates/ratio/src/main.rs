@@ -4106,3 +4106,6 @@ weight = -1
 
 #[cfg(test)]
 mod checkpoint_live;
+
+#[cfg(test)]
+mod height_live;

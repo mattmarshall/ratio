@@ -179,9 +179,15 @@ __STYLE__
           mismatched checkpoints fall back to full replay. The configured
           object store now carries immutable checkpoint blobs and conditional
           HEAD claims across cold processes; local books keep a directory
-          cache. Prefix verification still reads each journal object, so remote
-          latency is not claimed. Crova was evaluated and deferred; the journal
+          cache. Prefix verification still reads each journal object; live operator-host
+          checkpoint loads took about six minutes, beyond the gateway cap.
+          Crova was evaluated and deferred; the journal
           stays the system of record.</li>
+          <li>backend height with bounded memory — streaming pages for smaller
+          object journals and bounded lookup for larger ones. Live 65k-entry
+          height medians were 10.1s for full listing and 1.2s for the adaptive
+          path; the smaller curve was near parity and its append still paid
+          an extra probe. Conditional claims and gap refusal remain enforced.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>live custodian statement ingest — a CreateBook Investment book
